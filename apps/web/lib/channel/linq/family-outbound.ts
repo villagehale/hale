@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
   configuredOutboundChannel,
@@ -308,8 +308,8 @@ export async function familySpeech(
   database: Database,
   familyId: string,
   userId: string,
-): Promise<{ name: string | null; language: ReplyLanguage }> {
-  if (typeof database.select !== 'function') return { name: null, language: 'en' };
+): Promise<{ name: string | null; language: ReplyLanguage | null }> {
+  if (typeof database.select !== 'function') return { name: null, language: null };
   const language = await familySpeechLanguage(database, familyId);
   const [user] = await database
     .select({ name: schema.users.name })
@@ -324,13 +324,14 @@ export async function familySpeech(
 export async function familySpeechLanguage(
   database: Database,
   familyId: string,
-): Promise<ReplyLanguage> {
+): Promise<ReplyLanguage | null> {
+  if (typeof database.select !== 'function') return null;
   const [family] = await database
     .select({ primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
     .where(eq(schema.families.id, familyId))
     .limit(1);
-  return family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  return acceptReplyLanguage(family?.primaryLanguage);
 }
 
 /** The names of this family's 13+ children as of `now`: never said in a group line (rule #1). */
@@ -541,33 +542,35 @@ export async function flushGroupDecisionSyncs(
     const speech = await familySpeech(database, familyId, rows[0]?.parentUserId ?? '');
     const lines: string[] = [];
     for (const row of rows) {
-      const name = speech.name ?? (speech.language === 'fr' ? 'Un parent' : 'A parent');
+      const name =
+        speech.name ?? (copyLanguage(speech.language) === 'fr' ? 'Un parent' : 'A parent');
       if (row.decision === 'picked' && row.day && row.time) {
-        lines.push(
-          groupPickedSyncLine(speech.language, {
-            name,
-            activity: row.activity,
-            kid: row.kid,
-            day: row.day,
-            time: row.time,
-          }),
-        );
-      } else if (row.decision === 'passed') {
-        lines.push(
-          groupPassedSyncLine(speech.language, {
-            name,
-            activity: row.activity,
-            kid: row.kid,
-          }),
-        );
-      } else if (row.decision === 'duty' && row.day && row.time) {
-        const line = dutySyncLine(speech.language, {
-          name: speech.name,
+        const line = groupPickedSyncLine(speech.language, {
+          name,
           activity: row.activity,
           kid: row.kid,
           day: row.day,
           time: row.time,
         });
+        if (line) lines.push(line);
+      } else if (row.decision === 'passed') {
+        const line = groupPassedSyncLine(speech.language, {
+          name,
+          activity: row.activity,
+          kid: row.kid,
+        });
+        if (line) lines.push(line);
+      } else if (row.decision === 'duty' && row.day && row.time) {
+        const copy = copyLanguage(speech.language);
+        const line = copy
+          ? dutySyncLine(copy, {
+              name: speech.name,
+              activity: row.activity,
+              kid: row.kid,
+              day: row.day,
+              time: row.time,
+            })
+          : null;
         if (line && line.split('\n').length <= 1) lines.push(line);
       }
     }

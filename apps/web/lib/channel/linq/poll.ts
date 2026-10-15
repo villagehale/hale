@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage, copyFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqPollsEnabled } from './config';
 import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
@@ -22,13 +22,13 @@ import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
  */
 
 /** Design locked. The text that precedes the poll. A Linq poll has no question field. */
-export const YEAR_FIND_POLL_PROMPT: Record<ReplyLanguage, string> = {
+export const YEAR_FIND_POLL_PROMPT: Record<CopyLanguage, string> = {
   en: 'Which of these should I look at first?',
   fr: 'Lequel je regarde en premier?',
 };
 
 /** Design locked. Always the last option. A vote for it is not another ask. */
-export const YEAR_FIND_POLL_NONE: Record<ReplyLanguage, string> = {
+export const YEAR_FIND_POLL_NONE: Record<CopyLanguage, string> = {
   en: 'None of these',
   fr: 'Aucun de ceux-la',
 };
@@ -37,7 +37,7 @@ export const YEAR_FIND_POLL_NONE: Record<ReplyLanguage, string> = {
  * Design locked sandbox scenario. A demo send when there is no live find.
  * Not a fallback for an empty search, and not sent on its own.
  */
-export const SANDBOX_YEAR_FIND_TITLES: Record<ReplyLanguage, readonly [string, string]> = {
+export const SANDBOX_YEAR_FIND_TITLES: Record<CopyLanguage, readonly [string, string]> = {
   en: ['Swim at the rec centre', 'Library storytime'],
   fr: ['Nage au centre recreatif', 'Heure du conte a la bibliotheque'],
 };
@@ -66,19 +66,28 @@ export function yearFindPollOptions(
     cleaned.push(title);
     if (cleaned.length === 3) break;
   }
-  if (cleaned.length < 2) return null;
-  return [...cleaned, YEAR_FIND_POLL_NONE[language]];
+  const none = copyFor(YEAR_FIND_POLL_NONE, language);
+  if (cleaned.length < 2 || !none) return null;
+  return [...cleaned, none];
 }
 
 /** The sandbox options, verbatim. Two fixed titles plus the none line. */
-export function sandboxYearFindPollOptions(language: ReplyLanguage): readonly string[] {
-  return [...SANDBOX_YEAR_FIND_TITLES[language], YEAR_FIND_POLL_NONE[language]];
+export function sandboxYearFindPollOptions(
+  language: ReplyLanguage | null,
+): readonly string[] | null {
+  const titles = copyFor(SANDBOX_YEAR_FIND_TITLES, language);
+  const none = copyFor(YEAR_FIND_POLL_NONE, language);
+  if (!titles || !none) return null;
+  return [...titles, none];
 }
 
 export type LinqPollOffer =
   | { status: 'sent'; providerMessageId: string; channelMessageId: string }
   | { status: 'prompted' }
-  | { status: 'skipped'; reason: 'flag_off' | 'not_a_choice' | 'not_imessage' | 'no_chat' }
+  | {
+      status: 'skipped';
+      reason: 'flag_off' | 'not_a_choice' | 'not_imessage' | 'no_chat' | 'language';
+    }
   | { status: 'skipped'; reason: 'refused' | 'not_configured'; code: string };
 
 /**
@@ -156,9 +165,11 @@ async function offerPoll(
   if (args.channel !== 'imessage') return { status: 'skipped', reason: 'not_imessage' };
   if (!args.chatId) return { status: 'skipped', reason: 'no_chat' };
   if (!args.options) return { status: 'skipped', reason: 'not_a_choice' };
+  const prompt = copyFor(YEAR_FIND_POLL_PROMPT, args.language);
+  if (!prompt) return { status: 'skipped', reason: 'language' };
   return sendChoicePoll(database, {
     chatId: args.chatId,
-    prompt: YEAR_FIND_POLL_PROMPT[args.language],
+    prompt,
     options: args.options.map((text) => ({ text })),
     familyId: args.familyId,
     parentUserId: args.parentUserId,

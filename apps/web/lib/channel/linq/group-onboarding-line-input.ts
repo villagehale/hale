@@ -1,4 +1,4 @@
-import type { ReplyLanguage } from '../language';
+import { type CopyLanguage, type ReplyLanguage, copyFor } from '../language';
 
 /**
  * Group onboarding v2 — what the model is handed for one who's-who line.
@@ -56,7 +56,7 @@ export interface GroupOnboardingLine {
   wayOut?: boolean;
 }
 
-const ROLE_WORD: Record<ReplyLanguage, Record<RoleWordKey, string>> = {
+const ROLE_WORD: Record<CopyLanguage, Record<RoleWordKey, string>> = {
   en: {
     mom: 'mom',
     dad: 'dad',
@@ -126,7 +126,7 @@ export function groupOnboardingLineInput(
         mustMention: [],
       };
     case 'role_confirmed': {
-      const roleWord = ROLE_WORD[language][request.role];
+      const roleWord = copyFor(ROLE_WORD, language)?.[request.role] ?? request.role;
       return {
         ...base,
         facts: { name: request.name, roleWord },

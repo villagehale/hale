@@ -7,7 +7,7 @@ import {
 } from '~/lib/channel/caregiver/copy';
 import type { CoParentRefusal } from '~/lib/channel/caregiver/invites';
 import { joinWelcome } from '~/lib/channel/join/copy';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 
 /**
@@ -87,31 +87,43 @@ export function inviterNameIsAffordable(inviterName: string | null): inviterName
  */
 
 /** Said to the parent once the invite is on its way. */
-export function coParentInviteSentAck(name: string, language: ReplyLanguage): string {
-  return language === 'fr'
-    ? `C'est parti - j'ai écrit à ${name}. Ils sont dans la famille dès qu'ils disent oui.`
-    : `Sent - I've texted ${name}. They're in as soon as they say yes.`;
+export function coParentInviteSentAck(name: string, language: ReplyLanguage | null): string | null {
+  const key = copyLanguage(language);
+  if (key === 'fr') {
+    return `C'est parti - j'ai écrit à ${name}. Ils sont dans la famille dès qu'ils disent oui.`;
+  }
+  if (key === 'en') return `Sent - I've texted ${name}. They're in as soon as they say yes.`;
+  return null;
 }
 
 /** Said to the parent when they answer the scope question with a no. */
-export function coParentInviteDroppedAck(name: string, language: ReplyLanguage): string {
-  return language === 'fr'
-    ? `D'accord - je n'ai pas écrit à ${name}.`
-    : `Okay - I haven't texted ${name}.`;
+export function coParentInviteDroppedAck(
+  name: string,
+  language: ReplyLanguage | null,
+): string | null {
+  const key = copyLanguage(language);
+  if (key === 'fr') return `D'accord - je n'ai pas écrit à ${name}.`;
+  if (key === 'en') return `Okay - I haven't texted ${name}.`;
+  return null;
 }
 
 /** The partner's first message AFTER they accept. The English half is the join link's own
  * welcome verbatim — the same person arrives through both doors and must not be told two
  * different things about what they just joined. */
-export function coParentWelcome(inviterName: string | null, language: ReplyLanguage): string {
-  if (language !== 'fr') return joinWelcome(inviterName);
+export function coParentWelcome(
+  inviterName: string | null,
+  language: ReplyLanguage | null,
+): string | null {
+  const key = copyLanguage(language);
+  if (key === 'en') return joinWelcome(inviterName);
+  if (key !== 'fr') return null;
   const who = inviterNameIsAffordable(inviterName) ? inviterName : 'votre co-parent';
   return `Vous y voilà - ${who} vous a ajouté comme co-parent, donc vous voyez ce qu'ils voient ici et vous pouvez m'écrire n'importe quand. Répondez ARRET à tout moment.`;
 }
 
 /** The invitee said no. The inviting parent is told NOTHING — the caregiver precedent:
  * a refusal from a number is that person's business, not the household's. */
-export const CO_PARENT_DECLINE_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_DECLINE_ACK_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: CAREGIVER_DECLINE_ACK,
   fr: 'Pas de souci - je ne vous écrirai plus.',
 };
@@ -127,7 +139,7 @@ export const CO_PARENT_DECLINE_ACK_BY_LANGUAGE: Record<ReplyLanguage, string> = 
  * It offers the door that does not need a name: a link the parent forwards themselves,
  * because a message handed over by a human needs no introduction.
  */
-export const REFERRER_UNNAMED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const REFERRER_UNNAMED_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: "I'd be texting them out of the blue, so I want to say who sent me - tell me your name first, or text add my partner for a link you forward.",
   fr: "Je leur écrirais sans prévenir, alors je veux pouvoir dire qui m'envoie - dites-moi votre nom d'abord, ou écrivez add my partner pour un lien à transférer.",
 };
@@ -141,7 +153,7 @@ export const REFERRER_UNNAMED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  * Hale, and did it say no" about any phone in the country. The three sentences next door
  * stay, and are reached only when the fact is this household's own.
  */
-export const CO_PARENT_UNAVAILABLE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_UNAVAILABLE_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: CANNOT_TEXT_THAT_NUMBER,
   // `être` is NOT in the GSM-7 basic alphabet (only `é è à ù ì ò Ç` are), so this line
   // shipped as UCS-2 — 70 units a part, three parts for a sentence budgeted as one.
@@ -154,7 +166,7 @@ export const CO_PARENT_UNAVAILABLE_BY_LANGUAGE: Record<ReplyLanguage, string> = 
  * about it. Said to THEM, not to the parent — they answered a question Hale asked, and
  * silence would leave a stranger believing they had joined something.
  */
-export const CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: "Thanks for answering - somebody else was added as the co-parent in the meantime, so there's no spot for you here. I won't text you again.",
   fr: "Merci d'avoir répondu - quelqu'un d'autre a été ajouté comme co-parent entre-temps, donc il n'y a plus de place ici. Je ne vous écrirai plus.",
 };
@@ -173,7 +185,7 @@ export const CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE: Record<ReplyLanguage, string
  * forward-looking half, and it is deliberately not a link: minting one unasked would be
  * Hale proposing a replacement co-parent on the day somebody left.
  */
-export const CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: 'Your co-parent has left Hale. Your week is yours alone now - nothing in it changed, and the join link still works if you want to add someone.',
   fr: "Votre co-parent a quitte Hale. Votre semaine est a vous seul maintenant - rien n'y a change, et le lien d'invitation fonctionne toujours.",
 };
@@ -195,7 +207,7 @@ export const CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE: Record<ReplyLanguage, string
  * It does not say "3 days" either: the number lives in `INVITE_SILENCE_MS`, and a copy
  * file that restated it would be the second place it is written.
  */
-export const INVITE_EXPIRED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const INVITE_EXPIRED_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: "Thanks for answering - that invitation has expired, so there's nothing for me to add you to. Ask them to send it again and I'll be right here.",
   fr: "Merci d'avoir répondu - cette invitation a expiré, donc je ne peux pas vous ajouter. Demandez-leur de la renvoyer et je serai là.",
 };
@@ -203,14 +215,14 @@ export const INVITE_EXPIRED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
 /** The number already has a Hale account IN THIS HOUSEHOLD. Deliberately does not say
  * whose — it may not be this parent's to know (rule #1), and the caregiver twin says "as
  * a caregiver". Another household's account is answered by the sentence above. */
-export const CO_PARENT_NUMBER_IN_USE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_NUMBER_IN_USE_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: "That number is already set up with Hale, so I can't add it as your co-parent - they'd need to reply STOP there first.",
   fr: "Ce numéro est déjà configuré avec Hale, donc je ne peux pas l'ajouter comme co-parent - il faudrait d'abord répondre ARRET là-bas.",
 };
 
 /** One co-parent seat per household. Says the bound plainly rather than opening a second
  * one quietly. */
-export const CO_PARENT_SEAT_TAKEN_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_SEAT_TAKEN_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: 'You already have a co-parent here. I keep one, so nobody is added without the other knowing.',
   fr: "Vous avez déjà un co-parent ici. J'en garde un seul, pour que personne ne soit ajouté sans que l'autre le sache.",
 };
@@ -226,22 +238,22 @@ export const CO_PARENT_SEAT_TAKEN_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  * turn the command into a query anyone could run against any number
  * ({@link CO_PARENT_UNAVAILABLE_BY_LANGUAGE}).
  */
-export const PREVIOUSLY_DECLINED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const PREVIOUSLY_DECLINED_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: "That number already said no to me once, so I won't text it again. If that's changed, they can text me first.",
   fr: "Ce numéro m'a déjà dit non une fois, donc je ne lui écrirai plus. Si les choses ont changé, il peut m'écrire en premier.",
 };
 
-export const CO_PARENT_OWN_NUMBER_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_OWN_NUMBER_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: OWN_NUMBER,
   fr: "C'est votre propre numéro - vous avez déjà votre place ici.",
 };
 
-export const CO_PARENT_ALREADY_INVITED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_ALREADY_INVITED_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: ALREADY_INVITED,
   fr: "Je leur ai déjà écrit - je vous dis dès qu'ils répondent.",
 };
 
-export const CO_PARENT_TOO_MANY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const CO_PARENT_TOO_MANY_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: TOO_MANY_INVITES,
   fr: "Ça fait beaucoup de monde en une journée - je reprends demain. Personne de nouveau n'a été contacté.",
 };
@@ -254,7 +266,7 @@ export const CO_PARENT_TOO_MANY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
  * until somebody writes what the parent is told, in both languages. A refusal with no
  * sentence is a parent who asked Hale to text their partner and got silence.
  */
-export const CO_PARENT_REFUSAL_COPY: Record<CoParentRefusal, Record<ReplyLanguage, string>> = {
+export const CO_PARENT_REFUSAL_COPY: Record<CoParentRefusal, Record<CopyLanguage, string>> = {
   own_number: CO_PARENT_OWN_NUMBER_BY_LANGUAGE,
   number_in_use: CO_PARENT_NUMBER_IN_USE_BY_LANGUAGE,
   already_invited: CO_PARENT_ALREADY_INVITED_BY_LANGUAGE,

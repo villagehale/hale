@@ -8,7 +8,12 @@ import {
   ahaWhenLabel,
 } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
-import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
+import {
+  type ReplyLanguage,
+  certainLanguageHint,
+  copyLanguage,
+  localeFor,
+} from '~/lib/channel/language';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import {
@@ -165,7 +170,7 @@ export interface FriendScheduled {
 
 export interface FriendVoiceInput {
   step: FriendStep;
-  language: ReplyLanguage;
+  language: ReplyLanguage | null;
   /** 1:1 is tu. A group thread is vous. */
   address: 'tu' | 'vous';
   introduce: boolean;
@@ -570,10 +575,10 @@ interface DayLabel {
   label: string;
 }
 
-function dayLabel(dayKey: string, language: ReplyLanguage): string {
+function dayLabel(dayKey: string, language: ReplyLanguage | null): string {
   const [year, month, day] = dayKey.split('-').map((part) => Number(part));
   if (!year || !month || !day) return dayKey;
-  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', {
+  return new Intl.DateTimeFormat(localeFor(language), {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -582,7 +587,7 @@ function dayLabel(dayKey: string, language: ReplyLanguage): string {
 }
 
 /** Today and the next three weeks, as the only dates the model may name. */
-export function upcomingDays(now: Date, language: ReplyLanguage): DayLabel[] {
+export function upcomingDays(now: Date, language: ReplyLanguage | null): DayLabel[] {
   const today = dayKeyIn(now, AHA_TIME_ZONE);
   const days: DayLabel[] = [];
   for (let offset = 0; offset <= SCHEDULE_DAYS_AHEAD; offset += 1) {
@@ -643,7 +648,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     // A hint only when certain; the parent's words decide the reply's language (#868).
     languageHint: certainLanguageHint(input.language),
     // tu/vous is French-only; sent bare it pulled English and Chinese hellos into French.
-    ...(certainLanguageHint(input.language) === 'fr' ? { address: input.address } : {}),
+    ...(copyLanguage(input.language) === 'fr' ? { address: input.address } : {}),
     introduce: input.introduce,
     parentWords: input.parentWords,
     // A message Hale sends on its own (after a connect, a card) answers nothing.

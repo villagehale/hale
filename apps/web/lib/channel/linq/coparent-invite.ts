@@ -13,8 +13,9 @@ import { CO_PARENT_REFUSAL_COPY, coParentInviteSentAck } from '~/lib/channel/cop
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
-import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, copyFor, copyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -66,9 +67,9 @@ export function parseCoParentNumberReply(
 }
 
 /** Slot fill for the locked sent-ack when the parent did not name them. */
-function inviteeLabel(name: string | null, language: ReplyLanguage): string {
+function inviteeLabel(name: string | null, language: ReplyLanguage | null): string {
   if (name) return name;
-  return language === 'fr' ? 'cette personne' : 'them';
+  return copyLanguage(language) === 'fr' ? 'cette personne' : 'them';
 }
 
 export interface CoParentNumberDeps {
@@ -82,19 +83,19 @@ export type CoParentNumberOutcome =
   | { status: 'not_pending' }
   | {
       status: 'sent';
-      reply: string;
+      reply: string | null;
       templateKey: typeof COPARENT_NUMBER_ACK_TEMPLATE_KEY;
     }
   | {
       status: 'instructed';
-      reply: string;
+      reply: string | null;
       templateKey: typeof LINQ_GROUP_INSTRUCTIONS_TEMPLATE_KEY;
     }
   | { status: 'group_opened'; reply: null; templateKey: 'linq:group_open' }
   | { status: 'invite_started'; reply: string }
   | {
       status: 'refused' | 'unreached';
-      reply: string;
+      reply: string | null;
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
     }
   /** The invite text could not be written. Nobody was texted. */
@@ -167,7 +168,7 @@ export async function deliverCoParentNumberInvite(
   // The co-parent ask already told them how to start the group.
   if (door.channel === 'imessage') return answerNewGroupChoice(database, input, parsed);
 
-  const language = replyLanguage(input.body);
+  const language = await familySpeechLanguage(database, input.familyId);
   const label = inviteeLabel(parsed.name, language);
   if (await familyHasCoParent(database, input.familyId)) return { status: 'not_pending' };
   if (!(await askWasDelivered(database, input))) return { status: 'not_pending' };
@@ -209,7 +210,11 @@ export async function deliverCoParentNumberInvite(
   }
 
   const name = await parentName(database, input.parentUserId);
-  if (!name) return held(CO_PARENT_REFUSAL_COPY.referrer_unnamed[language]);
+  const unnamed = copyFor(CO_PARENT_REFUSAL_COPY.referrer_unnamed, language);
+  if (!name) {
+    if (!unnamed) return { status: 'ask_unwritten', reply: null };
+    return held(unnamed);
+  }
   const inviteText = await writeConsentAsk(input.ask, {
     kind: 'coparent_invite',
     inviterName: name,
@@ -234,7 +239,9 @@ export async function deliverCoParentNumberInvite(
   });
   if (started.status === 'ask_unwritten') return { status: 'ask_unwritten', reply: null };
   if (started.status === 'refused') {
-    return held(CO_PARENT_REFUSAL_COPY[started.reason][language]);
+    const line = copyFor(CO_PARENT_REFUSAL_COPY[started.reason], language);
+    if (!line) return { status: 'ask_unwritten', reply: null };
+    return held(line);
   }
 
   const sms = await input.sendSms({

@@ -51,8 +51,23 @@ function fakeDatabase() {
     return builder;
   }
 
+  function update(_table: unknown) {
+    const builder = {
+      set(_values: unknown) {
+        return builder;
+      },
+      where(_clause: unknown) {
+        return builder;
+      },
+      // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
+      then: (resolve: (v: unknown) => unknown) => Promise.resolve([]).then(resolve),
+    };
+    return builder;
+  }
+
   const handle = {
     insert,
+    update,
     select: () => ({
       from: (table: unknown) => ({
         where: () => {
@@ -87,11 +102,22 @@ function input(sourceCode: string | null = null) {
     phoneE164: '+14165551234',
     phoneHash: 'blind-index-hash',
     children: [{ name: 'Maya', ageMonths: 30, agePrecision: 'years' as const }],
-    location: { postalCode: 'M4C 1B5', areaCoarse: 'M4C' },
+    location: {
+      postalCode: 'M4C 1B5',
+      areaCoarse: 'M4C',
+      country: 'Canada' as const,
+      countryCode: 'CA' as const,
+      timezone: 'America/Toronto',
+    },
     sourceCode,
     firstMessage: 'Maya is 2, we are at M4C 1B5',
     transcript: [
-      { direction: 'out' as const, body: 'greeting', providerId: 'SM_out_1', at: NOW.toISOString() },
+      {
+        direction: 'out' as const,
+        body: 'greeting',
+        providerId: 'SM_out_1',
+        at: NOW.toISOString(),
+      },
       { direction: 'in' as const, body: 'Maya is 2', providerId: 'SM_in_1', at: NOW.toISOString() },
     ],
     now: NOW,

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { CHANNEL_SIGNIN_TTL_MS } from '~/lib/auth/channel-signin';
 import { connectorNoun } from '~/lib/channel/connect/copy';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
-import { type ReplyLanguage, certainLanguageHint, replyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -183,19 +183,21 @@ export async function writeConnectorLink(
  */
 export async function writeGroupConnectAsk(
   writer: SaidLineWriter | null | undefined,
-  input: { language: ReplyLanguage; provider: 'gcal' | 'gmail'; name: string; url: string },
+  input: { language: ReplyLanguage | null; provider: 'gcal' | 'gmail'; name: string; url: string },
 ): Promise<string | null> {
   if (!writer) {
     console.error('group connect ask: no line writer - nothing sent');
     return null;
   }
   const gmail = input.provider === 'gmail';
+  const service =
+    connectorNoun(input.language, input.provider) ?? (gmail ? 'Gmail' : 'Google Calendar');
   return writer.write({
     purpose: 'group_connect_ask',
     language: input.language,
     facts: {
       name: input.name,
-      service: connectorNoun(input.language, input.provider),
+      service,
       why: gmail
         ? 'Hale would catch school and camp emails for them too'
         : "their calendar joins the kids' year Hale keeps for the family",
@@ -235,7 +237,7 @@ export async function writeCrisisLine(
   const written = writer
     ? await writer.write({
         purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',
-        language: replyLanguage(parentWords),
+        language: null,
         parentWords,
         facts:
           kind === 'emergency'

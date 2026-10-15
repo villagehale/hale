@@ -197,6 +197,7 @@ function deferred(reason: ComposeDeferral, detail?: string): FollowupVoiceOutcom
  */
 export function lockedActivityFollowup(activity: string): FollowupVoiceOutcome {
   const body = howItWentAsk(activity);
+  if (!body) return deferred('gate_exhausted', 'language');
   const problems = refusals(body, { kind: 'activity', activity });
   if (problems.length > 0 || smsSegments(withOptOut(body, 'full')) !== 1) {
     return deferred('gate_exhausted', problems.join('+') || 'segment');

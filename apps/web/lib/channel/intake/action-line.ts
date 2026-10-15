@@ -1,4 +1,4 @@
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage, copyFor } from '~/lib/channel/language';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { RadarDecision } from './radar-decide';
 
@@ -86,7 +86,9 @@ export type ActionLineHeld =
    *  that measures it, never here. */
   | 'over_budget'
   /** Computed, logged, and not appended. Assigned by the shell (see the dark flag). */
-  | 'flag_off';
+  | 'flag_off'
+  /** The stored tag is not English or French, so there is no template. The model writes it. */
+  | 'language';
 
 export type ActionLine =
   | { line: string; url: string; move: ActionMove }
@@ -123,7 +125,7 @@ export function firstReplyActionLineEnabled(): boolean {
  * while `ê`, `î`, lowercase `ç` and `œ` are not — and the encoding scan over this file
  * is what keeps the next French sentence honest.
  */
-const ACTION_LINE_COPY: Record<ReplyLanguage, Record<ActionMove, string>> = {
+const ACTION_LINE_COPY: Record<CopyLanguage, Record<ActionMove, string>> = {
   en: {
     register_open: 'The page is here: {url}',
     register_later_preview: 'The listings are up already if you want a look: {url}',
@@ -150,9 +152,9 @@ function render(
   // string that must survive byte-for-byte. A url outside the printable basic alphabet
   // is held rather than folded: folding it would send the family to a different address.
   if (!isPrintableGsm7Basic(url)) return { line: null, held: 'not_gsm7' };
-  const line = ACTION_LINE_COPY[language][move]
-    .replace('{when}', when === null ? '' : `, ${when}`)
-    .replace('{url}', url);
+  const row = copyFor(ACTION_LINE_COPY, language);
+  if (!row) return { line: null, held: 'language' };
+  const line = row[move].replace('{when}', when === null ? '' : `, ${when}`).replace('{url}', url);
   return { line, url, move };
 }
 

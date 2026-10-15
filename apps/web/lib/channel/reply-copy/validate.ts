@@ -7,7 +7,9 @@
  * come through here. Those stay fixed.
  */
 
-export type ReplyCopyLanguage = 'en' | 'fr';
+import { copyLanguage } from '~/lib/channel/language';
+
+export type ReplyCopyLanguage = string;
 export type ReplyCopyRole = 'prose' | 'opening' | 'closing';
 
 export type ReplyCopyFailure =
@@ -188,11 +190,14 @@ function cueCount(tokens: readonly string[], cues: ReadonlySet<string>): number 
 }
 
 function languageMatches(text: string, language: ReplyCopyLanguage): boolean {
-  if (language === 'fr' && [...text].some((char) => char.charCodeAt(0) > 0x7f)) return false;
+  const key = copyLanguage(language);
+  // Chinese, Arabic, and every other tag are the model's. A word list cannot grade them.
+  if (!key) return text.trim().length > 0;
+  if (key === 'fr' && [...text].some((char) => char.charCodeAt(0) > 0x7f)) return false;
   const tokens = words(text);
   const en = cueCount(tokens, EN_CUES);
   const fr = cueCount(tokens, FR_CUES);
-  if (language === 'fr') return fr > en && fr > 0;
+  if (key === 'fr') return fr > en && fr > 0;
   return en > fr && en > 0;
 }
 

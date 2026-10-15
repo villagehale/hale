@@ -342,7 +342,7 @@ export interface ParentMemoryResult {
 async function familyDoor(
   database: Database,
   familyId: string,
-): Promise<{ groupChatId: string | null; language: MemoryKindLanguage }> {
+): Promise<{ groupChatId: string | null; language: MemoryKindLanguage | null }> {
   const [family] = await database
     .select({
       linqGroupChatId: schema.families.linqGroupChatId,
@@ -484,12 +484,57 @@ export async function handleParentMemory(
 
   const door = await familyDoor(database, input.familyId);
   const origin = await originChatId(database, input.inboundChannelMessageId);
+  const language = door.language;
+  if (!language) {
+    if (intent.kind === 'recall') {
+      return {
+        claimed: true,
+        outcome: 'recalled',
+        reply: null,
+        forgotten: 0,
+        corrected: 0,
+        groupSync: { synced: false, skipped: 'language' },
+      };
+    }
+    if (intent.kind === 'forget') {
+      const forgotten = await forgetMatchingFacts(database, {
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        now: input.now,
+        needle: intent.needle,
+      });
+      return {
+        claimed: true,
+        outcome:
+          forgotten.forgotten > 0 ? 'forgotten' : forgotten.refused > 0 ? 'refused' : 'nothing',
+        reply: null,
+        forgotten: forgotten.forgotten,
+        corrected: 0,
+        groupSync: { synced: false, skipped: 'language' },
+      };
+    }
+    const corrected = await correctFamilyFact(database, {
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      factKey: intent.factKey ?? '',
+      value: intent.value ?? '',
+      now: input.now,
+    });
+    return {
+      claimed: true,
+      outcome: corrected.corrected ? 'corrected' : 'refused',
+      reply: null,
+      forgotten: 0,
+      corrected: corrected.corrected ? 1 : 0,
+      groupSync: { synced: false, skipped: 'language' },
+    };
+  }
 
   const layer = {
     client: await resolveReplyClient(input.replyClient),
     database,
     familyId: input.familyId,
-    language: door.language,
+    language,
     audience: 'direct' as const,
     flagOn: familyMemoryKindsCopyLocked(env),
     surface: 'memory' as const,
@@ -499,7 +544,7 @@ export async function handleParentMemory(
     const facts = await recallFamilyMemory(database, { familyId: input.familyId, now: input.now });
     let reply: string | null = null;
     try {
-      const parts = memoryRecallParts(door.language, recallItems(facts));
+      const parts = memoryRecallParts(language, recallItems(facts));
       let body: string;
       if (parts.empty) {
         body = await replyProse(layer, { fallback: parts.empty, facts: [] });
@@ -535,8 +580,8 @@ export async function handleParentMemory(
     const refusedOnly = forgotten.forgotten === 0 && forgotten.refused > 0;
     const lockedForget =
       forgotten.forgotten > 0
-        ? renderMemoryForgotten(door.language, forgotten.keys)
-        : memoryKindCopy(door.language, refusedOnly ? 'refused' : 'nothing');
+        ? renderMemoryForgotten(language, forgotten.keys)
+        : memoryKindCopy(language, refusedOnly ? 'refused' : 'nothing');
     const body = refusedOnly
       ? lockedForget
       : await replyProse(layer, { fallback: lockedForget, facts: forgotten.keys });
@@ -545,7 +590,7 @@ export async function handleParentMemory(
         ? await syncMemoryDecisionToGroup(database, {
             familyId: input.familyId,
             originChatId: origin,
-            language: door.language,
+            language,
             actorUserId: input.parentUserId,
             change: 'forget',
             env,
@@ -574,7 +619,7 @@ export async function handleParentMemory(
     ? await syncMemoryDecisionToGroup(database, {
         familyId: input.familyId,
         originChatId: origin,
-        language: door.language,
+        language,
         actorUserId: input.parentUserId,
         change: 'correct',
         env,
@@ -582,8 +627,8 @@ export async function handleParentMemory(
       })
     : { synced: false, skipped: 'nothing_to_sync' };
   const lockedCorrect = corrected.corrected
-    ? renderMemoryCorrected(door.language, intent.factKey ?? '', intent.value ?? '')
-    : memoryKindCopy(door.language, 'refused');
+    ? renderMemoryCorrected(language, intent.factKey ?? '', intent.value ?? '')
+    : memoryKindCopy(language, 'refused');
   const correctedBody = corrected.corrected
     ? await replyProse(layer, {
         fallback: lockedCorrect,

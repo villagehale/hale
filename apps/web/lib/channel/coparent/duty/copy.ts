@@ -327,10 +327,7 @@ export function dutyTitleMayBeSpoken(title: string | null | undefined): boolean 
  * changes" next step. Null when copy is unlocked, a token is missing, or
  * the event title is not a kid event (that title is not returned).
  */
-export function dutyOwnerEcho(
-  language: DutyCopyLanguage,
-  params: DutyCopyParams,
-): string | null {
+export function dutyOwnerEcho(language: DutyCopyLanguage, params: DutyCopyParams): string | null {
   if (!dutyTitleMayBeSpoken(params.event)) return null;
   if (!DUTY_NIGHT_BEFORE_COPY_EN.endsWith(DUTY_CHANGE_NEXT_EN)) return null;
   if (!DUTY_NIGHT_BEFORE_COPY_FR.endsWith(DUTY_CHANGE_NEXT_FR)) return null;

@@ -254,7 +254,7 @@ describe('the disconnect receipts stay one GSM-7 segment and say what Google sti
         (provider) =>
           [
             `${language}/${outcome}/${provider}`,
-            connectorRevokeReply(language, provider, outcome),
+            connectorRevokeReply(language, provider, outcome) ?? '',
           ] as const,
       ),
     ),
@@ -269,13 +269,13 @@ describe('the disconnect receipts stay one GSM-7 segment and say what Google sti
 
   it.each(['en', 'fr'] as const)('the %s revoked twin carries the removal URL', (language) => {
     for (const provider of PROVIDERS) {
-      expect(connectorRevokeReply(language, provider, 'revoked')).toContain(
+      expect(connectorRevokeReply(language, provider, 'revoked') ?? '').toContain(
         'myaccount.google.com/permissions',
       );
     }
     // Positive control for the absence below: the revoked twin really is the one that
     // carries it, so "the others do not" is a fact about them.
-    expect(connectorRevokeReply(language, 'gcal', 'not_connected')).not.toContain(
+    expect(connectorRevokeReply(language, 'gcal', 'not_connected') ?? '').not.toContain(
       'myaccount.google.com',
     );
   });
@@ -316,7 +316,7 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
   const ADDRESS = `hale+${'a'.repeat(30)}@mail.villagehale.com`;
 
   it.each(['en', 'fr'] as const)('%s', (language) => {
-    const body = forwardAddressReply(language, ADDRESS);
+    const body = forwardAddressReply(language, ADDRESS) ?? '';
     expect({
       encoding: smsEncoding(body),
       overBudget: smsSegments(body) > 2,
@@ -330,7 +330,7 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
     ['fr', 'revoked'],
     ['fr', 'not_configured'],
   ] as const)('the %s %s receipt is one segment', (language, outcome) => {
-    const body = forwardRevokeReply(language, outcome);
+    const body = forwardRevokeReply(language, outcome) ?? '';
     expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
       encoding: 'gsm7',
       segments: 1,
@@ -338,7 +338,7 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
   });
 
   it.each(['en', 'fr'] as const)('the %s declined receipt is one segment', (language) => {
-    const body = forwardRevokeDeclinedReply(language);
+    const body = forwardRevokeDeclinedReply(language) ?? '';
     expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
       encoding: 'gsm7',
       segments: 1,
@@ -373,9 +373,10 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
    * either an English word or an accented one the fold strips, so the confirm that came
    * back said "Reply YES". Hale must answer its own French in French.
    */
-  it('hears its own taught phrases as the language it taught them in', () => {
-    expect(replyLanguage('désactiver mon adresse de transfert')).toBe('fr');
-    expect(replyLanguage('adresse de transfert')).toBe('fr');
+  it('does not read a taught phrase as a language tag', () => {
+    expect(replyLanguage('désactiver mon adresse de transfert')).toBeNull();
+    expect(replyLanguage('adresse de transfert')).toBeNull();
+    expect(replyLanguage('fr')).toBe('fr');
   });
 });
 

@@ -46,11 +46,11 @@ import {
   type ParentCallNameVoice,
   handleParentCallNameReply,
 } from '~/lib/channel/identity/parent-call-name';
-import { replyLanguage } from '~/lib/channel/language';
 import {
   type CoParentNumberDeps,
   deliverCoParentNumberInvite,
 } from '~/lib/channel/linq/coparent-invite';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
@@ -376,7 +376,7 @@ export function connectorLinkHandler(
         return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
       }
 
-      const language = replyLanguage(ctx.body);
+      const language = await familySpeechLanguage(database, ctx.familyId);
       const target = named ?? fresh;
       if (!target) return { claimed: false };
       if (await familyGroupTurn(database, ctx)) {
@@ -536,7 +536,11 @@ export function connectorDisconnectHandler(
       return {
         claimed: true,
         outcome: outcome.status,
-        reply: connectorRevokeReply(replyLanguage(ctx.body), provider, outcome.status),
+        reply: connectorRevokeReply(
+          await familySpeechLanguage(database, ctx.familyId),
+          provider,
+          outcome.status,
+        ),
       };
     },
   };
@@ -593,7 +597,7 @@ export function forwardAddressHandler(
     name: 'forward_address',
     resolves: new Set<OpenQuestionKind>(['forward_address_revoke']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const language = replyLanguage(ctx.body);
+      const language = await familySpeechLanguage(database, ctx.familyId);
 
       const answer = await readRevokeAnswer(database, ctx, log, ports.consent);
       if (answer === 'no') {

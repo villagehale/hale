@@ -4,7 +4,7 @@ import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import { howItWentAsk } from './how-it-went-copy';
 
 describe('how it went ask', () => {
-  const en = howItWentAsk('swim');
+  const en = howItWentAsk('swim') ?? '';
 
   it('is the locked English sentence', () => {
     expect(en).toBe('How did swim go? One line is plenty.');
@@ -13,7 +13,7 @@ describe('how it went ask', () => {
   });
 
   it('is the locked French twin, GSM-7 ASCII, with the space before the question mark', () => {
-    const fr = howItWentAsk('swim', 'fr');
+    const fr = howItWentAsk('swim', 'fr') ?? '';
     expect(fr).toBe("Comment ca s'est passe pour swim ? Une ligne suffit.");
     expect(isPrintableGsm7Basic(fr)).toBe(true);
     expect((fr.match(/\?/g) ?? []).length).toBe(1);

@@ -12,6 +12,8 @@
  * kind and source travel with each fact. Do not invent a second export shape.
  */
 
+import { copyLanguage } from '~/lib/channel/language';
+
 export const FAMILY_MEMORY_KINDS_ENABLED_ENV = 'FAMILY_MEMORY_KINDS_ENABLED';
 export const FAMILY_MEMORY_KINDS_COPY_LOCKED_ENV = 'FAMILY_MEMORY_KINDS_COPY_LOCKED';
 
@@ -308,8 +310,10 @@ export function memoryKindCopy(language: MemoryKindLanguage, key: MemoryKindCopy
   return MEMORY_KIND_COPY[language][key];
 }
 
-export function memoryKindLanguage(primaryLanguage: string | null | undefined): MemoryKindLanguage {
-  return primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+export function memoryKindLanguage(
+  primaryLanguage: string | null | undefined,
+): MemoryKindLanguage | null {
+  return copyLanguage(primaryLanguage);
 }
 
 /**

@@ -76,7 +76,7 @@ export interface ProvisionInput {
   transcript: readonly TranscriptEntry[];
   now: Date;
   /** The kids-and-postal text's language. Receipts later have no sentence to read. */
-  language?: ReplyLanguage;
+  language?: ReplyLanguage | null;
   /**
    * A Name and Photo share that already happened, before this channel existed.
    * A held claim is stamped onto the new parent_channels row so a later turn

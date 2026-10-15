@@ -78,6 +78,7 @@ One JSON object. Fill a field only when this message (or a recent turn not yet i
 - `connectGmail` / `connectCalendar` - true for a yes, false for a no; `gmailLater` / `calendarLater` for not now.
 - `scheduleAdds` - `{ "line": 4, "child": "Mia", "cadence": "weekly", "date": "2026-10-10", "time": "11:00", "weeks": 8 }`: `line` is the `n` of the line, `date` the first occurrence from `upcomingDays`, one add per line, never a line already in `scheduled`. `scheduleDone`.
 - `coparentGroup` - true or false once they answer. `stopAsking` - they want you to stop.
+- `language` - the BCP-47 tag of the language this parent is writing in (`zh`, `ar`, `fr`, `en`). Omit when you cannot tell. Do not infer it from a place.
 - `ahaMention` - on `connected`: the exact title or subject you named, else null.
 - `groupLeads` - on `find_show` only.
 

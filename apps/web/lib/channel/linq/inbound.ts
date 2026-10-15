@@ -13,6 +13,7 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { loadOpenSession } from '~/lib/channel/intake/session';
+import { copyFor } from '~/lib/channel/language';
 import {
   lineStatusKnown,
   lineStatusPauses,
@@ -783,11 +784,17 @@ async function claimGroupFromTrigger(
       now,
     });
     if (seated.status === 'seated') {
+      const welcome = groupWelcome(language);
+      if (!welcome) {
+        deps.log.info({ reason: 'language' }, 'linq inbound: no welcome for this language');
+        await deps.countOutcome('intake');
+        return json({ outcome: 'group_claimed', claim: claim.status, notice: 'not_sent' });
+      }
       const notice = await deliverLinqGroupNotice(deps.database, {
         familyId: mapped.familyId,
         parentUserId: seated.userId,
         chatId: message.chatId,
-        text: groupWelcome(language),
+        text: welcome,
         templateKey: 'linq:coparent_welcome',
         now,
         send: deps.sendGroupText,
@@ -832,7 +839,11 @@ async function answerGroupTriggerInOneToOne(
   const from = linqFromE164();
   const text = from
     ? linqGroupTriggerInOneToOne(formatLinqLineForParent(from), language)
-    : LINQ_GROUP_LINE_MISSING_TEXT[language];
+    : copyFor(LINQ_GROUP_LINE_MISSING_TEXT, language);
+  if (!text) {
+    deps.log.info({ reason: 'language' }, 'linq inbound: no template for this language');
+    return { count: 'ignored', body: { outcome: 'group_trigger_in_1to1', notice: 'not_sent' } };
+  }
   const notice = await deliverLinqGroupNotice(deps.database, {
     familyId: mapped.familyId,
     parentUserId: mapped.userId,
@@ -1222,11 +1233,17 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         now,
       });
       if (seated.status === 'seated') {
+        const welcome = groupWelcome('en');
+        if (!welcome) {
+          deps.log.info({ reason: 'language' }, 'linq inbound: no welcome for this language');
+          await deps.countOutcome('intake');
+          return json({ outcome: 'group_coparent_seated', notice: 'not_sent' });
+        }
         const notice = await deliverLinqGroupNotice(deps.database, {
           familyId,
           parentUserId: seated.userId,
           chatId: signal.chatId,
-          text: groupWelcome('en'),
+          text: welcome,
           templateKey: 'linq:coparent_welcome',
           now,
           send: deps.sendGroupText,

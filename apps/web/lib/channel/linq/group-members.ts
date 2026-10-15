@@ -1,6 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import {
+  type CopyLanguage,
+  type ReplyLanguage,
+  acceptReplyLanguage,
+  copyFor,
+} from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -27,17 +32,17 @@ type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver'
  * speaks. Nothing else about the family goes into the thread until a parent
  * approves. French is ASCII. No opt-out wording.
  */
-export const GROUP_MEMBER_WELCOME_WITH_ADDER: Record<ReplyLanguage, string> = {
+export const GROUP_MEMBER_WELCOME_WITH_ADDER: Record<CopyLanguage, string> = {
   en: "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
   fr: "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
 };
 
-export const GROUP_MEMBER_WELCOME_NO_ADDER: Record<ReplyLanguage, string> = {
+export const GROUP_MEMBER_WELCOME_NO_ADDER: Record<CopyLanguage, string> = {
   en: "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
   fr: "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
 };
 
-export const GROUP_STRANGER_HOLD: Record<ReplyLanguage, string> = {
+export const GROUP_STRANGER_HOLD: Record<CopyLanguage, string> = {
   en: 'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. {parentA}, say "add them" if they share the load.',
   fr: 'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. {parentA}, dis "ajoute cette personne" si elle partage la charge.',
 };
@@ -46,23 +51,31 @@ function fillSlots(pattern: string, slots: Record<string, string>): string {
   return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
 }
 
-export function groupMemberWelcome(language: ReplyLanguage, adder: string | null): string {
+export function groupMemberWelcome(
+  language: ReplyLanguage | null,
+  adder: string | null,
+): string | null {
   const name = adder?.trim() ?? '';
-  if (!name) return GROUP_MEMBER_WELCOME_NO_ADDER[language];
-  return fillSlots(GROUP_MEMBER_WELCOME_WITH_ADDER[language], { adder: name });
+  if (!name) return copyFor(GROUP_MEMBER_WELCOME_NO_ADDER, language);
+  const pattern = copyFor(GROUP_MEMBER_WELCOME_WITH_ADDER, language);
+  return pattern ? fillSlots(pattern, { adder: name }) : null;
 }
 
-export function groupStrangerHold(language: ReplyLanguage, parentA: string): string {
-  return fillSlots(GROUP_STRANGER_HOLD[language], { parentA });
+export function groupStrangerHold(language: ReplyLanguage | null, parentA: string): string | null {
+  const pattern = copyFor(GROUP_STRANGER_HOLD, language);
+  return pattern ? fillSlots(pattern, { parentA }) : null;
 }
 
-async function familyReplyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
+async function familyReplyLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage | null> {
   const rows = await database
     .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
     .where(eq(schema.families.id, familyId));
   const language = rows.find((row) => row.id === familyId)?.primaryLanguage;
-  return language?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  return acceptReplyLanguage(language);
 }
 
 async function userFirstName(database: Database, userId: string | null): Promise<string | null> {
@@ -313,13 +326,20 @@ async function sendOnce(
     familyId: string;
     parentUserId: string;
     chatId: string;
-    text: string;
+    text: string | null;
     templateKey: string;
     dedupeKey: string;
     now: Date;
     send?: SendGroup;
   },
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  if (!input.text) {
+    console.info(
+      { familyId: input.familyId, templateKey: input.templateKey, reason: 'language' },
+      'linq group member: no template for this language',
+    );
+    return 'not_sent';
+  }
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({

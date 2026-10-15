@@ -186,8 +186,12 @@ describe('a late answer to an invitation that has lapsed', () => {
     expect(openQuestions).not.toHaveBeenCalled();
   });
 
-  it('answers a French late yes in French', async () => {
+  it('answers a late yes in the family language, not the words of the yes', async () => {
     const seeded = await seedFamily();
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, seeded.familyId));
     await seedAskedInvite(seeded);
     await loadOpenInviteByPhone(db.database, PARTNER_PHONE, LATE);
     const lapsed = await loadLapsedInviteByPhone(db.database, PARTNER_PHONE, LATE);

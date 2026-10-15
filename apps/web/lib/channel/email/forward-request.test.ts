@@ -169,7 +169,7 @@ describe('asking for the forwarding address', () => {
 describe('what Hale texts back', () => {
   it('carries the whole address in GSM-7, inside two segments, in both languages', () => {
     for (const language of ['en', 'fr'] as const) {
-      const body = forwardAddressReply(language, ADDRESS);
+      const body = forwardAddressReply(language, ADDRESS) ?? '';
       expect({
         language,
         encoding: smsEncoding(body),
@@ -188,7 +188,7 @@ describe('what Hale texts back', () => {
   it('keeps every receipt to one GSM-7 segment, and never calls nothing a success', () => {
     for (const language of ['en', 'fr'] as const) {
       for (const outcome of ['revoked', 'not_configured'] as const) {
-        const body = forwardRevokeReply(language, outcome);
+        const body = forwardRevokeReply(language, outcome) ?? '';
         expect({ language, outcome, encoding: smsEncoding(body), one: smsSegments(body) }).toEqual({
           language,
           outcome,
@@ -219,7 +219,7 @@ describe('what Hale texts back', () => {
       ['en', 'turn off my forwarding address'],
       ['fr', 'désactiver mon adresse de transfert'],
     ] as const) {
-      const reply = forwardAddressReply(language, ADDRESS);
+      const reply = forwardAddressReply(language, ADDRESS) ?? '';
       expect(reply).toContain(taught);
       expect(matchForwardAddressRequest(taught)).toBe('turn_off');
       // The WHOLE line, as a phone's "reply with quote" would send it back.
@@ -242,7 +242,7 @@ describe('the receipt for a no', () => {
 
   it('answers a NO in one segment, and says the address is still on', () => {
     for (const language of ['en', 'fr'] as const) {
-      const body = forwardRevokeDeclinedReply(language);
+      const body = forwardRevokeDeclinedReply(language) ?? '';
       expect({ language, encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
         language,
         encoding: 'gsm7',

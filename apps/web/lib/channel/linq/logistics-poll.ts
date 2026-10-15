@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage, copyFor } from '~/lib/channel/language';
 import { closeFacts, writeFact } from '~/lib/memory/facts';
 import type { PollOptionWrite } from './poll';
 
@@ -17,25 +17,25 @@ import type { PollOptionWrite } from './poll';
  */
 
 /** Design locked. The one who-takes bubble. Day and time are in the prompt. */
-export const WHO_TAKES_PROMPT: Record<ReplyLanguage, string> = {
+export const WHO_TAKES_PROMPT: Record<CopyLanguage, string> = {
   en: "Who's taking {kid}'s {event}, {day} at {time}?",
   fr: "Qui s'occupe de {event} pour {kid}, {day} a {time}?",
 };
 
 /** Design locked. Always the last who-takes option. Not a named taker. */
-export const FIGURE_IT_OUT: Record<ReplyLanguage, string> = {
+export const FIGURE_IT_OUT: Record<CopyLanguage, string> = {
   en: "We'll figure it out",
   fr: 'On verra',
 };
 
 /** Design locked. Replaces the both-free sentence when a parent asked and there are 2+ slots. */
-export const BOTH_FREE_PROMPT: Record<ReplyLanguage, string> = {
+export const BOTH_FREE_PROMPT: Record<CopyLanguage, string> = {
   en: 'Which time works for both of you?',
   fr: 'Quel creneau vous arrange tous les deux?',
 };
 
 /** Design locked. Always the last both-free option. Ends the ask. Not a chosen slot. */
-export const BOTH_FREE_NONE: Record<ReplyLanguage, string> = {
+export const BOTH_FREE_NONE: Record<CopyLanguage, string> = {
   en: 'None of these',
   fr: 'Aucun de ceux-la',
 };
@@ -102,10 +102,11 @@ function fill(pattern: string, slots: Record<string, string>): string {
 }
 
 export function whoTakesPrompt(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   input: { kid: string; event: string; day: string; time: string },
-): string {
-  return fill(WHO_TAKES_PROMPT[language], input);
+): string | null {
+  const pattern = copyFor(WHO_TAKES_PROMPT, language);
+  return pattern ? fill(pattern, input) : null;
 }
 
 /** The locked pass line, either language. Not a parent name. */
@@ -149,11 +150,12 @@ export function bothFreeDay(now: Date, timeZone: string): string {
  * same name cannot be told apart, so that is no poll either.
  */
 export function whoTakesPollOptions(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   parents: readonly LogisticsParent[],
   subjectKey: string,
 ): readonly PollOptionWrite[] | null {
-  const trailing = FIGURE_IT_OUT[language];
+  const trailing = copyFor(FIGURE_IT_OUT, language);
+  if (!trailing) return null;
   const seen = new Set<string>();
   const options: PollOptionWrite[] = [];
   let collided = false;
@@ -189,11 +191,12 @@ export function whoTakesPollOptions(
  * poll. A label that is itself the none line is dropped.
  */
 export function bothFreePollOptions(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   slots: readonly LogisticsSlot[],
   subjectKey: string,
 ): readonly PollOptionWrite[] | null {
-  const trailing = BOTH_FREE_NONE[language];
+  const trailing = copyFor(BOTH_FREE_NONE, language);
+  if (!trailing) return null;
   const seen = new Set<string>();
   const options: PollOptionWrite[] = [];
   for (const slot of slots) {

@@ -1,6 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import {
+  type CopyLanguage,
+  type ReplyLanguage,
+  copyFor,
+  copyLanguage,
+} from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -54,7 +59,7 @@ export const LINQ_GROUP_UNREACHABLE_TEXT =
  * this arrives from an enrolled parent. A sentence that merely contains it
  * is not the trigger.
  */
-export const LINQ_GROUP_TRIGGER_PHRASE: Record<ReplyLanguage, string> = {
+export const LINQ_GROUP_TRIGGER_PHRASE: Record<CopyLanguage, string> = {
   en: 'this is our year',
   fr: 'cest notre annee',
 };
@@ -63,9 +68,14 @@ export const LINQ_GROUP_TRIGGER_PHRASE: Record<ReplyLanguage, string> = {
  * Design locked (2026-09-24, #706). Told in the 1:1 after the co-parent number.
  * Hale does not text that number and does not create the group.
  */
-export function linqGroupMakeInstruction(line: string, language: ReplyLanguage): string {
-  const phrase = LINQ_GROUP_TRIGGER_PHRASE[language];
-  return language === 'fr'
+export function linqGroupMakeInstruction(
+  line: string,
+  language: ReplyLanguage | null,
+): string | null {
+  const key = copyLanguage(language);
+  const phrase = copyFor(LINQ_GROUP_TRIGGER_PHRASE, language);
+  if (!key || !phrase) return null;
+  return key === 'fr'
     ? `Ouvre un groupe iMessage avec eux et ce numero: ${line}. Dans ce groupe, envoie: ${phrase}.`
     : `Start an iMessage group with them and this number: ${line}. In that group, send: ${phrase}.`;
 }
@@ -74,27 +84,35 @@ export function linqGroupMakeInstruction(line: string, language: ReplyLanguage):
  * Design locked (Sloane, 2026-09-25). The co-parent ask on Linq, one bubble.
  * `{line}` is Hale's number. No "text me their number", no invite promise.
  */
-export function linqCoParentAsk(line: string, language: ReplyLanguage): string {
+export function linqCoParentAsk(line: string, language: ReplyLanguage | null): string | null {
+  const key = copyLanguage(language);
+  const instruction = linqGroupMakeInstruction(line, language);
+  if (!key || !instruction) return null;
   const lead =
-    language === 'fr'
+    key === 'fr'
       ? "Tu veux l'autre parent sur l'annee des enfants aussi?"
       : "Want the other parent on the kids' year too?";
-  return `${lead} ${linqGroupMakeInstruction(line, language)}`;
+  return `${lead} ${instruction}`;
 }
 
 /**
  * Design locked (2026-09-24, #706). The trigger arrived in the 1:1. Hale does
  * not claim a group from that chat.
  */
-export function linqGroupTriggerInOneToOne(line: string, language: ReplyLanguage): string {
-  const phrase = LINQ_GROUP_TRIGGER_PHRASE[language];
-  return language === 'fr'
+export function linqGroupTriggerInOneToOne(
+  line: string,
+  language: ReplyLanguage | null,
+): string | null {
+  const key = copyLanguage(language);
+  const phrase = copyFor(LINQ_GROUP_TRIGGER_PHRASE, language);
+  if (!key || !phrase) return null;
+  return key === 'fr'
     ? `Cette phrase va dans le groupe. Ouvrez un groupe iMessage avec eux et ${line}, puis envoyez: ${phrase}.`
     : `That phrase belongs in the group. Start an iMessage group with them and ${line}, then send: ${phrase}.`;
 }
 
 /** Design locked (2026-09-24, #706). This chat cannot become the household thread. */
-export const LINQ_GROUP_CLAIM_REFUSED_TEXT: Record<ReplyLanguage, string> = {
+export const LINQ_GROUP_CLAIM_REFUSED_TEXT: Record<CopyLanguage, string> = {
   en: "I can't use this thread as your kids' year.",
   fr: "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
 };
@@ -107,7 +125,7 @@ export const LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY = 'linq:group_claim_refused';
 export const LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY = 'linq:group_trigger_1to1';
 
 /** Design locked (2026-09-24, #706). Hale has no line to tell the parent to add. */
-export const LINQ_GROUP_LINE_MISSING_TEXT: Record<ReplyLanguage, string> = {
+export const LINQ_GROUP_LINE_MISSING_TEXT: Record<CopyLanguage, string> = {
   en: "I don't have a number for you to add to a group yet.",
   fr: "Je n'ai pas encore de numero a ajouter a un groupe.",
 };
@@ -122,7 +140,7 @@ export function formatLinqLineForParent(e164: string): string {
 }
 
 /** The trigger, or null. Trailing punctuation does not count as a different phrase. */
-export function matchLinqGroupTrigger(body: string): ReplyLanguage | null {
+export function matchLinqGroupTrigger(body: string): CopyLanguage | null {
   const normalized = body
     .trim()
     .replace(/[.!]+$/u, '')

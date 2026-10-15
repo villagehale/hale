@@ -1,5 +1,10 @@
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import {
+  type CopyLanguage,
+  type ReplyLanguage,
+  copyFor,
+  copyLanguage,
+} from '~/lib/channel/language';
 
 /**
  * Design-locked lines for the Linq household group (Sloane).
@@ -7,17 +12,17 @@ import type { ReplyLanguage } from '~/lib/channel/language';
  * name ack stay in their own modules.
  */
 
-export const GROUP_WELCOME: Record<ReplyLanguage, string> = {
+export const GROUP_WELCOME: Record<CopyLanguage, string> = {
   en: "Hi, I'm Hale. This thread is your kids' year — both of you, and me. What should I call you?",
   fr: "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
 };
 
-export const GROUP_CALENDAR_RECEIPT: Record<ReplyLanguage, string> = {
+export const GROUP_CALENDAR_RECEIPT: Record<CopyLanguage, string> = {
   en: "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
   fr: 'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
 };
 
-export const GROUP_GMAIL_RECEIPT: Record<ReplyLanguage, string> = {
+export const GROUP_GMAIL_RECEIPT: Record<CopyLanguage, string> = {
   en: "{name}'s Gmail is connected. I'll pull out the kids' dates; the inbox stays private.",
   fr: 'Le Gmail de {name} est connecte. Je garde les dates des enfants; la boite reste privee.',
 };
@@ -27,42 +32,48 @@ export const GROUP_GMAIL_RECEIPT: Record<ReplyLanguage, string> = {
  * The line never says Hale booked anything.
  */
 export function groupPickedSyncLine(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   input: { name: string; activity: string; kid: string; day: string; time: string },
-): string {
-  if (language === 'fr') {
+): string | null {
+  if (copyLanguage(language) === 'fr') {
     return `Pour info: ${input.name} a choisi ${input.activity} pour ${input.kid}, ${input.day} a ${input.time}.`;
   }
-  return `Quick sync: ${input.name} picked ${input.activity} for ${input.kid}, ${input.day} at ${input.time}.`;
+  if (copyLanguage(language) === 'en') {
+    return `Quick sync: ${input.name} picked ${input.activity} for ${input.kid}, ${input.day} at ${input.time}.`;
+  }
+  return null;
 }
 
 /** Sloane, locked. The passed twin. No day and no time, because nothing was chosen. */
 export function groupPassedSyncLine(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   input: { name: string; activity: string; kid: string },
-): string {
-  if (language === 'fr') {
+): string | null {
+  if (copyLanguage(language) === 'fr') {
     return `Pour info: ${input.name} a laisse tomber ${input.activity} pour ${input.kid}.`;
   }
-  return `Quick sync: ${input.name} passed on ${input.activity} for ${input.kid}.`;
+  if (copyLanguage(language) === 'en') {
+    return `Quick sync: ${input.name} passed on ${input.activity} for ${input.kid}.`;
+  }
+  return null;
 }
 
-export const GROUP_KID_EVENT: Record<ReplyLanguage, string> = {
+export const GROUP_KID_EVENT: Record<CopyLanguage, string> = {
   en: "Heads up: {name} added {kid}'s {event}, {day} at {time}.",
   fr: 'Pour info: {name} a ajoute {event} pour {kid}, {day} a {time}.',
 };
 
-export const GROUP_CONFLICT: Record<ReplyLanguage, string> = {
+export const GROUP_CONFLICT: Record<CopyLanguage, string> = {
   en: "{kid}'s {event} is {day} at {time}, and you're both busy then. Who's taking it?",
   fr: "{event} pour {kid}, {day} a {time}, et vous etes pris tous les deux. Qui s'en occupe?",
 };
 
-export const GROUP_HANDOFF: Record<ReplyLanguage, string> = {
+export const GROUP_HANDOFF: Record<CopyLanguage, string> = {
   en: "Tomorrow: {name} has {kid}'s {event} at {time}.",
   fr: "Demain: {name} s'occupe de {event} pour {kid} a {time}.",
 };
 
-export const GROUP_BOTH_FREE: Record<ReplyLanguage, string> = {
+export const GROUP_BOTH_FREE: Record<CopyLanguage, string> = {
   en: "You're both free {slot1} or {slot2}. Want the sign-up page for one?",
   fr: "Vous etes libres tous les deux {slot1} ou {slot2}. Vous voulez la page d'inscription pour l'un des deux?",
 };
@@ -71,46 +82,52 @@ function fill(pattern: string, slots: Record<string, string>): string {
   return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
 }
 
-export function groupWelcome(language: ReplyLanguage): string {
-  return GROUP_WELCOME[language];
+export function groupWelcome(language: ReplyLanguage | null): string | null {
+  return copyFor(GROUP_WELCOME, language);
 }
 
-export function groupCalendarReceipt(language: ReplyLanguage, name: string): string {
-  return fill(GROUP_CALENDAR_RECEIPT[language], { name });
+export function groupCalendarReceipt(language: ReplyLanguage | null, name: string): string | null {
+  const pattern = copyFor(GROUP_CALENDAR_RECEIPT, language);
+  return pattern ? fill(pattern, { name }) : null;
 }
 
-export function groupGmailReceipt(language: ReplyLanguage, name: string): string {
-  return fill(GROUP_GMAIL_RECEIPT[language], { name });
+export function groupGmailReceipt(language: ReplyLanguage | null, name: string): string | null {
+  const pattern = copyFor(GROUP_GMAIL_RECEIPT, language);
+  return pattern ? fill(pattern, { name }) : null;
 }
 
 export function groupKidEventText(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   input: { name: string; kid: string; event: string; day: string; time: string },
-): string {
-  return fill(GROUP_KID_EVENT[language], input);
+): string | null {
+  const pattern = copyFor(GROUP_KID_EVENT, language);
+  return pattern ? fill(pattern, input) : null;
 }
 
 export function groupConflictText(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   input: { kid: string; event: string; day: string; time: string },
-): string {
-  return fill(GROUP_CONFLICT[language], input);
+): string | null {
+  const pattern = copyFor(GROUP_CONFLICT, language);
+  return pattern ? fill(pattern, input) : null;
 }
 
 export function groupHandoffText(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   input: { name: string; kid: string; event: string; time: string },
-): string {
-  return fill(GROUP_HANDOFF[language], input);
+): string | null {
+  const pattern = copyFor(GROUP_HANDOFF, language);
+  return pattern ? fill(pattern, input) : null;
 }
 
 /** `{name}, ` then the locked how-it-went line, with the next letter lowercased. */
 export function groupPostEventText(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   name: string,
   activity: string,
-): string {
-  return groupAddressedLine(name, howItWentAsk(activity, language));
+): string | null {
+  const line = howItWentAsk(activity, language);
+  return line ? groupAddressedLine(name, line) : null;
 }
 
 /** `{name}, ` then the line. The first letter after the comma is lowercase. */
@@ -126,10 +143,10 @@ export function groupAddressedLine(name: string, line: string): string {
  * the English line and uses the French line, which has no tu.
  */
 export function groupActivityHowItWent(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   name: string | null,
   activity: string,
-): string {
+): string | null {
   if (name) return groupPostEventText(language, name, activity);
   return howItWentAsk(activity, language);
 }
@@ -146,12 +163,20 @@ export function groupTravelBriefOpening(city: string, days: string, kids: string
  * Sloane, locked. Said in the group when a parent leaves.
  * An unknown name is `Your co-parent` / `Votre co-parent`.
  */
-export function groupDepartureNotice(language: ReplyLanguage, name: string | null): string {
-  const who = name ?? (language === 'fr' ? 'Votre co-parent' : 'Your co-parent');
-  if (language === 'fr') {
+export function groupDepartureNotice(
+  language: ReplyLanguage | null,
+  name: string | null,
+): string | null {
+  const copy = copyLanguage(language);
+  if (copy === 'fr') {
+    const who = name ?? 'Votre co-parent';
     return `${who} a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.`;
   }
-  return `${who} left Hale. Nothing in the kids' year changed, and I'm still here.`;
+  if (copy === 'en') {
+    const who = name ?? 'Your co-parent';
+    return `${who} left Hale. Nothing in the kids' year changed, and I'm still here.`;
+  }
+  return null;
 }
 
 /**
@@ -180,8 +205,13 @@ export function absorbHowItWentLines(weekly: string, lines: readonly string[]): 
   return `${weekly.trimEnd()}\n${extra.join('\n')}`;
 }
 
-export function groupBothFreeText(language: ReplyLanguage, slot1: string, slot2: string): string {
-  return fill(GROUP_BOTH_FREE[language], { slot1, slot2 });
+export function groupBothFreeText(
+  language: ReplyLanguage | null,
+  slot1: string,
+  slot2: string,
+): string | null {
+  const pattern = copyFor(GROUP_BOTH_FREE, language);
+  return pattern ? fill(pattern, { slot1, slot2 }) : null;
 }
 
 /**

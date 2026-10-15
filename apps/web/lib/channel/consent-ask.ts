@@ -24,10 +24,10 @@ export type ConsentAsk =
   | { kind: 'caregiver_scope'; name: string; role: string }
   | { kind: 'caregiver_invite'; who: string; role: string }
   | { kind: 'caregiver_nudge' }
-  | { kind: 'coparent_scope'; name: string; language: ReplyLanguage }
-  | { kind: 'coparent_invite'; inviterName: string; language: ReplyLanguage }
-  | { kind: 'coparent_nudge'; language: ReplyLanguage }
-  | { kind: 'forward_revoke'; language: ReplyLanguage };
+  | { kind: 'coparent_scope'; name: string; language: ReplyLanguage | null }
+  | { kind: 'coparent_invite'; inviterName: string; language: ReplyLanguage | null }
+  | { kind: 'coparent_nudge'; language: ReplyLanguage | null }
+  | { kind: 'forward_revoke'; language: ReplyLanguage | null };
 
 export interface ConsentAskWriter {
   write(ask: ConsentAsk): Promise<string | null>;

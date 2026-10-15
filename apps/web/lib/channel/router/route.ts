@@ -35,11 +35,12 @@ import {
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
 import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
-import { replyLanguage } from '~/lib/channel/language';
+import { copyFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
   noteGroupSyncConversation,
@@ -1052,7 +1053,7 @@ async function routeChannelMessageInner(
   const identity = await identityChallengeReply(
     turn.body,
     deps.saidLine,
-    await readTextOnce(deps.turnReader, { text: turn.body, language: replyLanguage(turn.body) }),
+    await readTextOnce(deps.turnReader, { text: turn.body, language: null }),
   );
   if (identity.challenge) {
     // #868: the model writes the disclosure. A failed write sends nothing.
@@ -1271,7 +1272,7 @@ async function routeChannelMessageInner(
   } else {
     holding = armHoldingLine({
       afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
-      language: replyLanguage(context.body),
+      language: await familySpeechLanguage(deps.database, job.family_id),
       composer: deps.holdingLine,
       log: deps.log,
       send: async (line) => {
@@ -2192,11 +2193,18 @@ async function composeReconciledReply(
     if (inviteOnly && parseCoParentNumberReply(args.turn.body)) {
       const door = await resolveMessagingDoor(deps.database, args.turn.parentUserId);
       if (door.channel === 'imessage') {
-        const language = replyLanguage(args.turn.body);
+        const language = await familySpeechLanguage(deps.database, args.turn.familyId);
         const from = linqFromE164();
         const instruction = from
           ? linqCoParentAsk(formatLinqLineForParent(from), language)
-          : LINQ_GROUP_LINE_MISSING_TEXT[language];
+          : copyFor(LINQ_GROUP_LINE_MISSING_TEXT, language);
+        if (!instruction) {
+          deps.log.error(
+            { reason: 'language' },
+            'channel router: no co-parent ask for this language - nothing sent',
+          );
+          return { ...composed, reply: '', spotWatch: null, mints: [] };
+        }
         deps.log.error(
           { reason: 'no_coparent_invite' },
           'channel router: an invite claim was replaced with the Linq co-parent ask',

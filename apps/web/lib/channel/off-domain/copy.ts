@@ -22,7 +22,7 @@
  * alphabet — é è à ù are in it, â ê î ô û ç are not. See the same note at the top of
  * intake/copy.ts.
  */
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
 
 /**
  * The tokens that stop the ordinary answer for a physical emergency — the outage
@@ -130,7 +130,7 @@ export const PROVIDER_ACCESS_REPLY =
  * `Ce numéro répond aussi` rather than `Ce même numéro`: GSM-7 has no ê, and "aussi"
  * carries the "that same number" sense without it.
  */
-export const PROVIDER_ACCESS_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const PROVIDER_ACCESS_REPLY_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: PROVIDER_ACCESS_REPLY,
   fr: "Trouver un médecin pour vous, je ne peux pas - mais Accès Soins est la liste de l'Ontario pour un médecin de famille ou un pédiatre, et on s'y inscrit en composant le 811. Ce numéro répond aussi aux questions de santé à toute heure.",
 };
@@ -298,7 +298,7 @@ export const UNPLACEABLE_PROVIDER_REPLY =
   "I don't have a verified way to get you that one, and I'd rather say so than send you somewhere that can't help. Once you've got an appointment, tell me and I'll put it on your week.";
 
 /** The same refusal in French, with the same two halves: the honest no, then the can. */
-export const UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE: Record<ReplyLanguage, string> = {
+export const UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE: Record<CopyLanguage, string> = {
   en: UNPLACEABLE_PROVIDER_REPLY,
   fr: "Je n'ai pas de piste vérifiée pour celui-là, et je préfère le dire que vous envoyer au mauvais endroit. Dès que vous avez un rendez-vous, dites-le moi et je l'ajoute à votre semaine.",
 };
@@ -319,7 +319,7 @@ export const UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE: Record<ReplyLanguage, strin
 const REFERRAL_TABLE: ReadonlyArray<{
   service: 'eye-care' | 'primary-care';
   matches(body: string): boolean;
-  reply(language: ReplyLanguage): string;
+  reply(language: CopyLanguage): string;
 }> = [
   {
     service: 'eye-care',
@@ -338,7 +338,9 @@ const REFERRAL_TABLE: ReadonlyArray<{
 
 /** The fixed answer for one provider-access text: the verified path for a service Hale
  * has one for, and an honest "I don't know" for every service it does not. */
-export function referralReply(body: string, language: ReplyLanguage): string {
+export function referralReply(body: string, language: ReplyLanguage | null): string | null {
+  const key = copyLanguage(language);
+  if (!key) return null;
   const row = REFERRAL_TABLE.find((entry) => entry.matches(body));
-  return row ? row.reply(language) : UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE[language];
+  return row ? row.reply(key) : UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE[key];
 }

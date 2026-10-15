@@ -1,13 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
+import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
+import { copyFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import type { InboundMessage, ChannelTransport } from '~/lib/channel/intake/transport';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
-import { replyLanguage } from '~/lib/channel/language';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from './copy';
 import { type JoinInvite, loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from './invites';
 
@@ -279,7 +280,11 @@ async function tellRedeemerTheSeatIsGone(
     body: null,
     now,
   });
-  const body = CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE[replyLanguage(inbound.body)];
+  const body =
+    copyFor(
+      CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE,
+      await familySpeechLanguage(database, invite.familyId),
+    ) ?? '';
   const { providerMessageId } = await deps.transport.send({ to: args.phoneE164, body });
   await record(database, {
     familyId: invite.familyId,

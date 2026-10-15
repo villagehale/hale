@@ -166,6 +166,7 @@ function ports(
         return { status: 'written', reply: `written:${moment}` };
       },
     },
+    language: async () => 'en',
     recordUnmetIntent: async (input) => {
       harness.recorded.push({
         lane: input.lane,

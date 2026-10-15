@@ -186,6 +186,6 @@ describe('claimsNoLedgerCanBack', () => {
     expect(claimsNoLedgerCanBack("I'll send an invite").map((claim) => claim.kind)).toEqual([
       'co_parent_invite',
     ]);
-    expect(extractStateClaims(coParentInviteSentAck('them', 'en'))).toEqual([]);
+    expect(extractStateClaims(coParentInviteSentAck('them', 'en') ?? '')).toEqual([]);
   });
 });

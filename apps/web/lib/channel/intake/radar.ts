@@ -126,7 +126,7 @@ export interface RadarInput {
   /** The coarse area (FSA), never the full postal code (rule #1). */
   areaCoarse: string | null;
   /** The kids-and-postal text. The empty year-find has a French twin. */
-  language?: ReplyLanguage;
+  language?: ReplyLanguage | null;
   /**
    * Onboarding step 4: run one search per age-fit category and return the
    * grouped map instead of the single three-line year find. The message is

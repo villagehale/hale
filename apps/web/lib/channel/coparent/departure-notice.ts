@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, copyFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -64,6 +64,7 @@ export type DepartureNoticeOutcome =
   | 'no_staying_parent'
   | 'no_send_target'
   | 'send_failed'
+  | 'language'
   | `gate_refused:${ProactiveHoldReason}`;
 
 export interface DepartureNoticePorts {
@@ -177,15 +178,22 @@ export async function tellStayingParent(
   }
 
   const target = await familyOutboundTarget(database, familyId);
-  let message: string;
-  let language: ReplyLanguage;
+  let message: string | null;
+  let language: ReplyLanguage | null;
   if (target.channel === 'group') {
     const speech = await familySpeech(database, familyId, departedUserId);
     language = speech.language;
     message = groupDepartureNotice(language, speech.name);
   } else {
     language = await parentLanguage(database, parentUserId);
-    message = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
+    message = copyFor(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE, language);
+  }
+  if (!message) {
+    console.info(
+      { familyId, reason: 'language' },
+      'co-parent departure notice: no template for this language',
+    );
+    return 'language';
   }
 
   // CLAIM FIRST, by the insert rather than by the read above: two erasure requests

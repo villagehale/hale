@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { replyLanguage } from '~/lib/channel/language';
+import { copyFor } from '~/lib/channel/language';
 import {
   DIRECT_ACCESS_EYE_REPLY,
   PROVIDER_ACCESS_REPLY,
@@ -78,13 +78,13 @@ describe('the French off-domain lines', () => {
     expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.en).toBe(PROVIDER_ACCESS_REPLY);
   });
 
-  it('routes a French provider question to the French line and everything else to the English one', () => {
-    expect(
-      PROVIDER_ACCESS_REPLY_BY_LANGUAGE[replyLanguage('Je cherche un medecin de famille')],
-    ).toBe(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr);
-    expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE[replyLanguage('looking for a family doctor')]).toBe(
-      PROVIDER_ACCESS_REPLY,
+  it('uses a stored tag, not the words of the question', () => {
+    expect(copyFor(PROVIDER_ACCESS_REPLY_BY_LANGUAGE, 'fr')).toBe(
+      PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr,
     );
+    expect(copyFor(PROVIDER_ACCESS_REPLY_BY_LANGUAGE, 'en')).toBe(PROVIDER_ACCESS_REPLY);
+    expect(copyFor(PROVIDER_ACCESS_REPLY_BY_LANGUAGE, 'zh')).toBeNull();
+    expect(referralReply('Je cherche un medecin de famille', 'zh')).toBeNull();
   });
 });
 

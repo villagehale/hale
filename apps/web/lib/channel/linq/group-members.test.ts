@@ -116,9 +116,9 @@ describe('group member copy', () => {
       groupMemberWelcome('en', 'Sam'),
       groupStrangerHold('fr', 'Sam'),
     ]) {
-      expect(line).toMatch(/^[\x20-\x7E]+$/);
-      expect(line.toLowerCase()).not.toContain('stop');
-      expect(line).not.toMatch(/\b(swim|postal|birthday|calendar)\b/i);
+      expect(line ?? '').toMatch(/^[\x20-\x7E]+$/);
+      expect((line ?? '').toLowerCase()).not.toContain('stop');
+      expect(line ?? '').not.toMatch(/\b(swim|postal|birthday|calendar)\b/i);
     }
   });
 

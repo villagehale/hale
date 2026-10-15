@@ -168,7 +168,10 @@ describe('renderActionLine — what it refuses, and why', () => {
     };
     expect(renderActionLine(betweenCycles, 'en')).toEqual({ line: null, held: 'pick_displaced' });
     expect(
-      renderActionLine({ ...betweenCycles, weekendPick: pick({ access: 'register_at_venue' }).weekendPick }, 'en'),
+      renderActionLine(
+        { ...betweenCycles, weekendPick: pick({ access: 'register_at_venue' }).weekendPick },
+        'en',
+      ),
     ).toEqual({ line: null, held: 'pick_displaced' });
   });
 
@@ -248,7 +251,13 @@ describe('renderActionLine — one url, chosen by the cascade', () => {
 
   /** R9 — no action line is a promise. The ledger has no row for one made here. */
   it('promises nothing in any move or language', () => {
-    const shapes = [stillOpen(), upcoming(true), upcoming(false), pick(), pick({ access: 'register_at_venue' })];
+    const shapes = [
+      stillOpen(),
+      upcoming(true),
+      upcoming(false),
+      pick(),
+      pick({ access: 'register_at_venue' }),
+    ];
     for (const decision of shapes) {
       for (const language of ['en', 'fr'] as const) {
         const rendered = renderActionLine(decision, language);

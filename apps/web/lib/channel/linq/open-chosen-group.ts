@@ -3,7 +3,8 @@ import { and, eq } from 'drizzle-orm';
 import { startCoParentInvite } from '~/lib/channel/caregiver/invites';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
-import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { linqGroupOnboardingV2Enabled } from './config';
@@ -135,7 +136,7 @@ async function startInviteForUnconfirmed(
     );
     return { status: 'invite_dark' };
   }
-  const language = replyLanguage(args.inboundBody);
+  const language = await familySpeechLanguage(database, args.familyId);
   const name = await inviterName(database, args.parentUserId);
   const started = await startCoParentInvite(database, {
     familyId: args.familyId,
@@ -157,8 +158,8 @@ async function startInviteForUnconfirmed(
   return { status: 'invite_started', reply: started.reply };
 }
 
-function inviteeLabel(language: ReplyLanguage): string {
-  return language === 'fr' ? 'cette personne' : 'them';
+function inviteeLabel(language: ReplyLanguage | null): string {
+  return copyLanguage(language) === 'fr' ? 'cette personne' : 'them';
 }
 
 async function inviterName(database: Database, userId: string): Promise<string | null> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import type { CopyLanguage } from '~/lib/channel/language';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import {
   CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
@@ -19,7 +19,7 @@ import {
  * questions before they are wording questions.
  */
 
-const LANGUAGES: ReplyLanguage[] = ['en', 'fr'];
+const LANGUAGES: CopyLanguage[] = ['en', 'fr'];
 
 /** Exactly the ceiling `inviterNameIsAffordable` lets through (24 characters) — the
  * worst case every send has to survive, not merely a long-ish one. */
@@ -28,6 +28,7 @@ const LONGEST_NAME = 'Marie-Claude Bergeron-Ly';
 describe('co-parent copy · the budget', () => {
   it.each(LANGUAGES)('keeps the welcome inside two GSM-7 segments in %s', (language) => {
     const body = coParentWelcome(LONGEST_NAME, language);
+    if (!body) throw new Error('missing welcome');
     expect(isGsm7(body)).toBe(true);
     expect(smsSegments(body)).toBeLessThanOrEqual(2);
   });

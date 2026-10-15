@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, copyFor, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -216,12 +216,14 @@ export function planAmbiguousWhoTakes(input: NoticePlanInput): HouseholdNotice |
   if (!parts || !best.start) return null;
   const startIso = best.start.toISOString();
   const ask = whoTakesAsk(best, parts, input);
+  const text = whoTakesPrompt(input.language, ask);
+  if (!text) return null;
   return {
     kind: 'who_takes',
     dedupeKey: `linq-group:who-takes:${best.eventId}:${startIso}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
-    text: whoTakesPrompt(input.language, ask),
+    text,
     recipientUserId: recipient,
     mark: [{ integrationId: best.integrationId, eventId: best.eventId, field: 'announced' }],
     whoTakes: ask,
@@ -272,17 +274,19 @@ function soonestConflict(input: NoticePlanInput): HouseholdNotice | null {
   if (!parts || !recipient) return null;
   const startIso = best.block.start.toISOString();
   const ask = whoTakesAsk(best.block, parts, input);
+  const text = groupConflictText(input.language, {
+    kid: parts.kid,
+    event: parts.event,
+    day: ask.day,
+    time: ask.time,
+  });
+  if (!text) return null;
   return {
     kind: 'conflict',
     dedupeKey: `linq-group:conflict:${best.block.eventId}:${startIso}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
-    text: groupConflictText(input.language, {
-      kid: parts.kid,
-      event: parts.event,
-      day: ask.day,
-      time: ask.time,
-    }),
+    text,
     recipientUserId: recipient,
     mark: [
       {
@@ -366,17 +370,19 @@ function soonestHandoff(input: NoticePlanInput): HouseholdNotice | null {
   const parts = splitKidEvent(best.title, input.childNames);
   const recipient = otherParent(ownerId, first, second) ?? ownerId;
   if (!name || !parts) return null;
+  const text = groupHandoffText(input.language, {
+    name,
+    kid: parts.kid,
+    event: parts.event,
+    time: formatTime(best.start, input.timeZone, input.language),
+  });
+  if (!text) return null;
   return {
     kind: 'handoff',
     dedupeKey: `linq-group:handoff:${best.eventId}:${best.start.toISOString()}`,
     gateKind: 'activity_followup',
     category: 'calendar_alert',
-    text: groupHandoffText(input.language, {
-      name,
-      kid: parts.kid,
-      event: parts.event,
-      time: formatTime(best.start, input.timeZone, input.language),
-    }),
+    text,
     recipientUserId: recipient,
     mark: [{ integrationId: best.integrationId, eventId: best.eventId, field: 'announced' }],
   };
@@ -398,15 +404,15 @@ function batchedKidEvents(input: NoticePlanInput): HouseholdNotice | null {
     const name = input.parentNames[block.userId]?.trim();
     const other = otherParent(block.userId, first, second);
     if (!parts || !name || !other) continue;
-    lines.push(
-      groupKidEventText(input.language, {
-        name,
-        kid: parts.kid,
-        event: parts.event,
-        day: formatDay(block.start, input.timeZone, input.language),
-        time: formatTime(block.start, input.timeZone, input.language),
-      }),
-    );
+    const line = groupKidEventText(input.language, {
+      name,
+      kid: parts.kid,
+      event: parts.event,
+      day: formatDay(block.start, input.timeZone, input.language),
+      time: formatTime(block.start, input.timeZone, input.language),
+    });
+    if (!line) continue;
+    lines.push(line);
     mark.push({ integrationId: block.integrationId, eventId: block.eventId, field: 'announced' });
     ids.push(block.eventId);
     recipient ??= other;
@@ -440,12 +446,14 @@ function soonestFollowup(input: NoticePlanInput): HouseholdNotice | null {
   const name = input.parentNames[best.ownerId]?.trim();
   const parts = splitKidEvent(best.block.title, input.childNames);
   if (!name || !parts) return null;
+  const text = groupPostEventText(input.language, name, parts.event);
+  if (!text) return null;
   return {
     kind: 'followup',
     dedupeKey: `linq-group:followup:${best.block.eventId}`,
     gateKind: 'activity_followup',
     category: 'followup',
-    text: groupPostEventText(input.language, name, parts.event),
+    text,
     recipientUserId: best.ownerId,
     mark: [
       { integrationId: best.block.integrationId, eventId: best.block.eventId, field: 'followup' },
@@ -575,11 +583,13 @@ export function sharedFreeOffer(input: {
     `${formatDay(slot, input.timeZone, input.language)} ${formatTime(slot, input.timeZone, input.language)}`;
   const slot1 = phrase(first);
   const slot2 = phrase(second);
-  return { text: groupBothFreeText(input.language, slot1, slot2), slot1, slot2 };
+  const text = groupBothFreeText(input.language, slot1, slot2);
+  if (!text) return null;
+  return { text, slot1, slot2 };
 }
 
-export function formatDay(date: Date, timeZone: string, language: ReplyLanguage): string {
-  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', {
+export function formatDay(date: Date, timeZone: string, language: ReplyLanguage | null): string {
+  return new Intl.DateTimeFormat(localeFor(language), {
     timeZone,
     weekday: 'short',
     month: 'short',
@@ -587,8 +597,8 @@ export function formatDay(date: Date, timeZone: string, language: ReplyLanguage)
   }).format(date);
 }
 
-export function formatTime(date: Date, timeZone: string, language: ReplyLanguage): string {
-  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', {
+export function formatTime(date: Date, timeZone: string, language: ReplyLanguage | null): string {
+  return new Intl.DateTimeFormat(localeFor(language), {
     timeZone,
     hour: 'numeric',
     minute: '2-digit',
@@ -945,7 +955,8 @@ export async function narrateHouseholdCalendar(
   }
   if (!notice) return;
   if (linqPollsEnabled() && notice.kind === 'conflict' && notice.whoTakes) {
-    notice = { ...notice, text: whoTakesPrompt(context.language, notice.whoTakes) };
+    const prompt = whoTakesPrompt(context.language, notice.whoTakes);
+    if (prompt) notice = { ...notice, text: prompt };
   }
   const audience = await groupAudienceAllows(database, context.chatId, NOTICE_CLASS[notice.kind]);
   if (!audience.allowed) {
@@ -1261,7 +1272,7 @@ export function listSharedFreeSlots(input: {
   blocks: readonly BusyBlock[];
   now: Date;
   timeZone: string;
-  language: ReplyLanguage;
+  language: ReplyLanguage | null;
 }): LogisticsSlot[] {
   if (!input.requested) return [];
   return sharedFreeSlots(input.blocks, input.now, input.timeZone, 3).map((slot) => ({
@@ -1298,7 +1309,7 @@ export type BothFreeDelivery =
  */
 export async function planBothFreeAsk(
   database: Database,
-  input: { familyId: string; now: Date; language: ReplyLanguage },
+  input: { familyId: string; now: Date; language: ReplyLanguage | null },
 ): Promise<BothFreeDelivery> {
   const context = await loadFamilyCalendarContext(database, input.familyId);
   const blocks = await loadFamilyBlocks(database, input.familyId);
@@ -1315,12 +1326,14 @@ export async function planBothFreeAsk(
   if (slots.length < 2) return { mode: 'none' };
   if (!linqPollsEnabled()) {
     const text = groupBothFreeText(input.language, slots[0]?.label ?? '', slots[1]?.label ?? '');
+    if (!text) return { mode: 'none' };
     return { mode: 'text', text };
   }
   const factKey = bothFreeFactKey(day);
   const options = bothFreePollOptions(input.language, slots, factKey);
-  if (!options) return { mode: 'none' };
-  return { mode: 'poll', prompt: BOTH_FREE_PROMPT[input.language], options, factKey, day, slots };
+  const prompt = copyFor(BOTH_FREE_PROMPT, input.language);
+  if (!options || !prompt) return { mode: 'none' };
+  return { mode: 'poll', prompt, options, factKey, day, slots };
 }
 
 export async function rememberBothFreeAsked(
