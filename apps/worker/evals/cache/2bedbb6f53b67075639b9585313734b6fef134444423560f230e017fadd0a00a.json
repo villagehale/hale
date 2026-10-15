@@ -1,0 +1,6 @@
+{
+  "value": {
+    "text": "Here are the two links. Connecting them is optional. The Calendar link lets Hale spot daycare and school dates in your calendar, and the Gmail link lets it spot daycare and school notices in your email. Each link works for 15 minutes.\n[[calendarLink]]\n[[gmailLink]]"
+  },
+  "latencyMs": 1356
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Language and purpose fit: English, states links are optional, 15-minute validity, and what each connects. But the facts gave placeholder values \"[[calendarLink]]\" and \"[[gmailLink]]\", so the URLs in the text were invented rather than given. The Google unverified-app caution is missing, which the connector_link purpose requires for the single link, and this is a two-link text so the caution is still expected. Wording is plain and warm enough."
+  }
+}
