@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific, named New York venues that a visiting preschool family can turn up to: CMOM, aimed at ages 0-6, and Central Park Zoo with the Tisch Children's Zoo. Each is sourced from the venue's own pages. Nothing is a term, session or registration-date item. CMOM's null price is correct, because the notes say no base price was found. The zoo's hours and prices are taken directly from its hours page as reported in the notes, so nothing looks invented. The Monday conflict in CMOM's hours is flagged honestly rather than resolved by guesswork. Omitting the New York Aquarium for lack of an own-venue source is the right call. There are two picks, within the limit of three, and there is no aggregator or roundup sourcing.",
+    "score": 5
+  }
+}

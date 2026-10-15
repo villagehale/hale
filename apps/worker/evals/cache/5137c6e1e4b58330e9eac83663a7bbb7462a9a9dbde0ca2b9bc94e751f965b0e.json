@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real and carry the day, times, dates and age band exactly as printed, each cited to the Town page. The price is correctly null because the page sets fees elsewhere, and both slots carry the Aug 11 registration date. The message leads with the slots by name and attributes the facts with \"their site says\". It carries the Aug 11, 7 a.m. registration, handles the missing price in the first person (correct for page_has_schedule), and uses a first-person keep-watching line that is earned since watch=true. It is ASCII with no link and no question. One minor point: neither the slots nor the message mention that fees are in the Recreation Guide, which was not opened.",
+    "score": 5
+  }
+}

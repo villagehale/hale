@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are traceable to the pages they cite. Tiny Gym's age band (1 and walking to 3, with a parent) comes from programs.php. The Term 1 dates (Sept 14 to Nov 1) and Term 2 dates (Nov 2 to Dec 20) match the opened PDF. The registration date, Wed July 22, 2026 at 8am online, is cited to the homepage, where it is printed. Hale honestly says it could not tie the PDF grid times to weekdays and leaves price null, which fits the page saying pricing is only behind the registration login. No figures are borrowed from other programs. The message leads with Tiny Gym by name, attributes the facts with 'their site says' and carries the registration date. Because the schedule is published, it correctly uses the first person ('I could not pin down the weekday, time or price') rather than 'not posted'. With watch true, it makes a valid first-person watch commitment. It is plain ASCII, has no link and asks no question. One minor quibble: the slot's 'that date has passed' is an inference not printed on the page.",
+    "score": 5
+  }
+}

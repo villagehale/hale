@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and matches the page. Its name, age band (12 months to 4 years), days, times and the Sept 8 to Dec 11 dates are as printed and cited to the preschool-play URL. The price is correctly null: the page gives no fee, and no rental figure ($185 or $95) was borrowed. No registration date is printed, so a null registration is correct. The message leads with the slot by name, attributes the facts with 'their site says', and is plain ASCII with no link and no question. Under page_has_schedule it phrases the gap in the first person ('I could not pin down the price') rather than 'not posted'. With watch true, it correctly makes a first-person keep-watching commitment. Minor quibbles only: it drops 'a.m.' and does not pass on the page's pointer that fees are available at the front desk or by calling reception.",
+    "score": 5
+  }
+}
