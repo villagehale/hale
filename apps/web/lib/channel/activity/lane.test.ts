@@ -455,7 +455,8 @@ describe('failure is named, and tried twice', () => {
     );
 
     expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
-    expect(grounds).toBe(1);
+    // One grounding plus the one read pass (needsReadPass); the whole attempt is not retried.
+    expect(grounds).toBe(2);
     restore.mockRestore();
   });
 
@@ -507,5 +508,57 @@ describe('the ground turn does not use the 50s non-stream path', () => {
     expect(found.found).toBe(true);
     if (!found.found) return;
     expect(found.picks[0]?.name).toBe(WHOLE_PICK.name);
+  });
+});
+
+describe('the read pass: real search results never end empty without reading pages', () => {
+  const composes = (...outs: unknown[]) => {
+    let n = 0;
+    return () => composeResult(outs[Math.min(n++, outs.length - 1)]);
+  };
+  const fetchGranted = (s: Seen) => (s.tools ?? []).some((t) => t.type === 'web_fetch_20260209');
+  const grounds = (seen: Seen[]) => seen.filter((s) => s.toolChoice === 'web_search');
+
+  it('re-grounds once with the page budget when snippets alone gave no picks', async () => {
+    quiet();
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResult(30), compose: composes({ picks: [] }, { picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+    const result = await finder.find(QUERY);
+    expect(result.found).toBe(true);
+    expect(grounds(seen).map(fetchGranted)).toEqual([false, true]);
+  });
+
+  it('pays nothing extra when the first pass already found picks (positive control)', async () => {
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(30), compose: composes({ picks: [WHOLE_PICK] }) }, seen),
+    );
+    expect((await finder.find(QUERY)).found).toBe(true);
+    expect(grounds(seen).map(fetchGranted)).toEqual([false]);
+  });
+
+  it('ends no_picks only after pages were offered, and reads at most once', async () => {
+    quiet();
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(30), compose: composes({ picks: [] }) }, seen),
+    );
+    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'no_picks' });
+    expect(grounds(seen).map(fetchGranted)).toEqual([false, true]);
+  });
+
+  it('a named venue already had its page budget, so no second pass', async () => {
+    quiet();
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient({ ground: groundResult(30), compose: composes({ picks: [] }) }, seen),
+    );
+    await finder.find({ ...QUERY, subject: 'Cartwheels Gym parent and tot' });
+    expect(grounds(seen).map(fetchGranted)).toEqual([true]);
   });
 });

@@ -258,9 +258,9 @@ function namesAVenue(subject) {
     });
 }
 
-function groundTools(subject) {
+function groundTools(subject, readPages = false) {
   const tools = [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }];
-  if (namesAVenue(subject)) {
+  if (readPages || namesAVenue(subject)) {
     tools.push({ name: 'web_fetch', type: 'web_fetch_20260209', max_uses: MAX_INLINE_FETCHES });
   }
   return tools;
@@ -768,7 +768,7 @@ const JUDGE_SYSTEM = [
   'or quietly writes around the gap as though the detail were known.',
   'A LOW score is any of: a venue that looks invented or generic ("your local community',
   'centre"); a directory-style list; a pick whose source is a listings site or an',
-  'aggregator rather than that venue\'s own page (a museum guide or a things-to-do roundup',
+  "aggregator rather than that venue's own page (a museum guide or a things-to-do roundup",
   'is that kind of page; Museums Montréal is an example); a pick for a',
   'different town; a message that presents web-read facts as verified; a message that',
   'WITHHOLDS a find because it is unverified, or hedges instead of naming something (a',
@@ -1027,6 +1027,7 @@ async function main() {
     return;
   }
   console.log(`corpus: ${fixtures.length} searches\n`);
+  let readPasses = 0;
 
   const results = [];
   for (const fixture of fixtures) {
@@ -1048,7 +1049,7 @@ async function main() {
     }
 
     // ── phase 1: GROUND (web_search) ─────────────────────────────────────────
-    const ground = broken
+    let ground = broken
       ? { searchCount: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, notes: '', evidence: '' }
       : await cachedGround({
           tag: evalRunTag(`activity-ground:${fixture.id}`),
@@ -1076,7 +1077,7 @@ async function main() {
     }
 
     // ── phase 2: EXTRACT ─────────────────────────────────────────────────────
-    const extracted = broken
+    let extracted = broken
       ? brokenPicks(fixture)
       : (
           await cachedToolCall({
@@ -1096,6 +1097,47 @@ async function main() {
             cost,
           })
         ).value;
+
+    // ── the read pass — mirrors `needsReadPass` (activity/lane.ts) ─────────────
+    // Real results, no venue named (so no page budget), and nothing kept: the lane grounds
+    // once more with the page budget reserved and extracts again. A fixture whose first
+    // pass found picks never reaches this, so its cache keys are unchanged.
+    if (
+      !broken &&
+      ground.searchCount > 0 &&
+      !namesAVenue(fixture.subject) &&
+      normalizePicks(extracted.picks).kept.length === 0
+    ) {
+      readPasses += 1;
+      ground = await cachedGround({
+        tag: evalRunTag(`activity-ground-read:${fixture.id}`),
+        model,
+        system: skill.instructions,
+        userMessage: groundUserMessage(query),
+        tools: groundTools(fixture.subject, true),
+        cachedOnly,
+        getClient,
+        cost,
+      });
+      extracted = (
+        await cachedToolCall({
+          tag: evalRunTag(`activity-picks-read:${fixture.id}`),
+          model,
+          lane: subjectLane,
+          system: skill.instructions,
+          userMessage: composeUserMessage(query, ground.notes),
+          toolName: 'activity_picks',
+          toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
+          toolDescription: 'Return the concrete programs the search actually found.',
+          maxTokens: picksMaxTokens,
+          toolChoice: candidateModel ? { type: 'auto' } : undefined,
+          strictTool: Boolean(candidateModel),
+          cachedOnly,
+          getClient,
+          cost,
+        })
+      ).value;
+    }
 
     const { kept, dropped } = normalizePicks(extracted.picks);
     if (dropped.length > 0) failures.push(`half_find:${dropped.length}`);
@@ -1291,6 +1333,7 @@ async function main() {
   // What it must never become is invisible - a corpus where the venue fixtures stop
   // opening pages is a corpus scoring the lane this arc replaced.
   const venueFixtures = results.filter((r) => namesAVenue(r.fixture.subject));
+  console.log(`read passes (empty first pass, pages then offered): ${readPasses}  (NOT a gate)`);
   console.log(
     `\npages opened (venue fixtures): ${venueFixtures.filter((r) => r.pagesRead > 0).length}/${venueFixtures.length}  (NOT a gate - a refused fetch is a real shape. Watch it: zero means the fetch budget is buying nothing)`,
   );

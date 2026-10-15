@@ -334,11 +334,29 @@ function field(value: unknown): string {
  * no member for it in `ToolUnion`; the wire shape is live-probed against `claude-sonnet-5`
  * (no beta header required) and the SDK serialises the tool list as given.
  */
-function groundTools(query: ActivityQuery): Anthropic.ToolUnion[] {
+/**
+ * THE READ PASS. A general question's grounding turn has no `web_fetch` (above), so when it
+ * comes back with real search results and the extract keeps none of them, nothing was read:
+ * the turn judged every place on snippets and a 200-character snippet rarely carries a day
+ * or an age. 2026-10-15, r17 `travel-visit-ottawa-month-boundary`: 3 of 3 searches spent,
+ * 30 results naming real museums, 0 pages read, 0 picks. Before the lane ends empty it runs
+ * the grounding turn ONCE more with the page budget reserved, so the empty answer, if it
+ * stands, stands on pages. Only an empty result pays for it; every other request is
+ * unchanged, which keeps the corpus keys of every non-empty find where they were.
+ */
+export function needsReadPass(
+  query: ActivityQuery,
+  evidence: { searchResults: number },
+  picks: readonly unknown[],
+): boolean {
+  return picks.length === 0 && evidence.searchResults > 0 && !namesAVenue(query.subject);
+}
+
+function groundTools(query: ActivityQuery, readPages = false): Anthropic.ToolUnion[] {
   const tools: Anthropic.ToolUnion[] = [
     { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES },
   ];
-  if (namesAVenue(query.subject)) {
+  if (readPages || namesAVenue(query.subject)) {
     tools.push({
       name: 'web_fetch',
       type: 'web_fetch_20260209',
@@ -414,73 +432,83 @@ async function runActivityOnce(
     throw new ActivityUnresolvable('skill_unavailable', message(err));
   }
 
-  // Phase 1 — GROUND. Bounded at MAX_SEARCHES: the provider bills per search, and a cost
-  // nobody can see is the one that runs away.
-  let research: Anthropic.Message;
-  try {
-    // STREAMED. A non-streamed `messages.create` on this web_search turn dies at the
-    // 50s client timeout (ACTIVITY_CLIENT_OPTIONS): the deep lane measured the same
-    // shape at 50,005 ms and 50,021 ms, and the identical request streamed finished
-    // in ~89s with real results (activity/deep.ts, 2026-08-22). Intake's first year
-    // find is that shape — up to three searches, no named venue — and on Linq it
-    // came back `ground_failed`, which the ladder then read as an empty year.
-    // Streaming makes the 50s bound time-to-headers. A throw is still retried once
-    // by {@link createActivityFinder}; a second failure stays `ground_failed`.
-    research = await resolved.messages
-      .stream({
-        model: pickModel(skill.meta.task),
-        max_tokens: GROUND_MAX_TOKENS,
+  // Phase 1 + 2, as one step so the read pass (needsReadPass) can run it again.
+  const groundAndCompose = async (
+    readPages: boolean,
+  ): Promise<{ picks: ActivityPick[]; searchResults: number }> => {
+    // Phase 1 — GROUND. Bounded at MAX_SEARCHES: the provider bills per search, and a cost
+    // nobody can see is the one that runs away.
+    let research: Anthropic.Message;
+    try {
+      // STREAMED. A non-streamed `messages.create` on this web_search turn dies at the
+      // 50s client timeout (ACTIVITY_CLIENT_OPTIONS): the deep lane measured the same
+      // shape at 50,005 ms and 50,021 ms, and the identical request streamed finished
+      // in ~89s with real results (activity/deep.ts, 2026-08-22). Intake's first year
+      // find is that shape — up to three searches, no named venue — and on Linq it
+      // came back `ground_failed`, which the ladder then read as an empty year.
+      // Streaming makes the 50s bound time-to-headers. A throw is still retried once
+      // by {@link createActivityFinder}; a second failure stays `ground_failed`.
+      research = await resolved.messages
+        .stream({
+          model: pickModel(skill.meta.task),
+          max_tokens: GROUND_MAX_TOKENS,
+          system: skill.instructions,
+          tools: groundTools(query, readPages),
+          messages: [{ role: 'user', content: groundUserMessage(query) }],
+        })
+        .finalMessage();
+    } catch (err) {
+      throw new ActivityUnresolvable('ground_failed', message(err));
+    }
+    // `new Date()` here rather than a threaded clock: the only thing freshness feeds in
+    // this lane is the count, and the inline leg makes no claim that rests on it.
+    const evidence = readEvidence(new Date(), research.content);
+    if (evidence.searchResults === 0) throw new ActivityUnresolvable('not_grounded');
+    // SEARCH RESULTS ARE NOT RESEARCH. A grounding turn can spend its whole token budget on
+    // the results themselves and never write the summary — 24 real results and an empty
+    // notes string is a shape the corpus actually produced. The result count is satisfied by
+    // that and the composer is handed "", which leaves it a choice between inventing a venue
+    // and shrugging. Both are the failure this lane exists to end, so an empty research body
+    // is the SAME outcome as no results at all: not grounded, retried once, then said
+    // honestly. The detail is what separates the two causes in the log (rule #11).
+    const researchNotes = evidence.notes;
+    if (researchNotes === '') throw new ActivityUnresolvable('not_grounded', 'empty_research');
+    if (evidence.pagesRefused > 0 && evidence.pagesRead === 0) {
+      // The turn tried to open the venue's pages and was turned away every time, so any gap
+      // in what follows is UNREAD rather than unposted. It is not a failure — the snippets
+      // still carry real finds and the parent still gets them — but it is the condition the
+      // sweep exists to fix, so it is logged rather than lost (rule #11).
+      console.error(
+        { pagesRefused: evidence.pagesRefused },
+        'activity lane: named a venue and opened none of its pages - gaps here are unread',
+      );
+    }
+
+    // Phase 2 — COMPOSE (blind: the de-identified query and the research, never the message).
+    let composed: z.infer<typeof composeSchema>;
+    try {
+      ({ value: composed } = await forceToolJson({
+        client: resolved,
+        lane: pickLane(skill.meta.task),
         system: skill.instructions,
-        tools: groundTools(query),
-        messages: [{ role: 'user', content: groundUserMessage(query) }],
-      })
-      .finalMessage();
-  } catch (err) {
-    throw new ActivityUnresolvable('ground_failed', message(err));
-  }
-  // `new Date()` here rather than a threaded clock: the only thing freshness feeds in
-  // this lane is the count, and the inline leg makes no claim that rests on it.
-  const evidence = readEvidence(new Date(), research.content);
-  if (evidence.searchResults === 0) throw new ActivityUnresolvable('not_grounded');
-  // SEARCH RESULTS ARE NOT RESEARCH. A grounding turn can spend its whole token budget on
-  // the results themselves and never write the summary — 24 real results and an empty
-  // notes string is a shape the corpus actually produced. The result count is satisfied by
-  // that and the composer is handed "", which leaves it a choice between inventing a venue
-  // and shrugging. Both are the failure this lane exists to end, so an empty research body
-  // is the SAME outcome as no results at all: not grounded, retried once, then said
-  // honestly. The detail is what separates the two causes in the log (rule #11).
-  const researchNotes = evidence.notes;
-  if (researchNotes === '') throw new ActivityUnresolvable('not_grounded', 'empty_research');
-  if (evidence.pagesRefused > 0 && evidence.pagesRead === 0) {
-    // The turn tried to open the venue's pages and was turned away every time, so any gap
-    // in what follows is UNREAD rather than unposted. It is not a failure — the snippets
-    // still carry real finds and the parent still gets them — but it is the condition the
-    // sweep exists to fix, so it is logged rather than lost (rule #11).
-    console.error(
-      { pagesRefused: evidence.pagesRefused },
-      'activity lane: named a venue and opened none of its pages - gaps here are unread',
-    );
-  }
+        userMessage: composeUserMessage(query, researchNotes),
+        toolName: 'activity_picks',
+        toolDescription: 'Return the concrete programs the search actually found.',
+        inputJsonSchema: composeJsonSchema,
+        schema: composeSchema,
+        maxTokens: COMPOSE_MAX_TOKENS,
+      }));
+    } catch (err) {
+      throw new ActivityUnresolvable('compose_failed', message(err));
+    }
+    return { picks: toPicks(composed.picks), searchResults: evidence.searchResults };
+  };
 
-  // Phase 2 — COMPOSE (blind: the de-identified query and the research, never the message).
-  let composed: z.infer<typeof composeSchema>;
-  try {
-    ({ value: composed } = await forceToolJson({
-      client: resolved,
-      lane: pickLane(skill.meta.task),
-      system: skill.instructions,
-      userMessage: composeUserMessage(query, researchNotes),
-      toolName: 'activity_picks',
-      toolDescription: 'Return the concrete programs the search actually found.',
-      inputJsonSchema: composeJsonSchema,
-      schema: composeSchema,
-      maxTokens: COMPOSE_MAX_TOKENS,
-    }));
-  } catch (err) {
-    throw new ActivityUnresolvable('compose_failed', message(err));
+  let { picks, searchResults } = await groundAndCompose(false);
+  if (needsReadPass(query, { searchResults }, picks)) {
+    console.error({ searchResults }, 'activity lane: no picks off snippets - reading pages once');
+    ({ picks } = await groundAndCompose(true));
   }
-
-  const picks = toPicks(composed.picks);
   if (picks.length === 0) throw new ActivityUnresolvable('no_picks');
   // The never-a-directory ceiling, enforced after the model rather than asked of it. It
   // TRIMS rather than failing: four good finds is a model being generous, and costing the
