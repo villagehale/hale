@@ -83,8 +83,8 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
  * `handleInboundSms`, `deriveDateOfBirth`, `createRadarComposer`, `selectCivicSessions`,
  * `assertProactiveSendAllowed` (via `buildOutboundGatePorts`), `decideNudge` (via
  * `runNudgeCron`), `matchHealthCheckpoints`, `matchRegistrationWindows`,
- * `buildShortlist`, `draftInlineAction`, `runExecutor`, `matchFastPath` +
- * `resolveApproval` (via `approvalHandler`), `approveDraftedAction`, `isUndoable`,
+ * `buildShortlist`, `draftInlineAction`, `runExecutor`, `approvalHandler`
+ * (a placed reading), `approveDraftedAction`, `isUndoable`,
  * `roleAllows`.
  *
  * What is SUPPLIED is the row SCOPING. The repo's fake database
