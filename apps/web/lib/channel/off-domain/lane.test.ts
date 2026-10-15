@@ -1611,7 +1611,7 @@ describe('the screen reads a reply to an open question first', () => {
       const p = ports({
         pending: PENDING,
         continued: { status: 'composed', reply: 'Sunny in Toronto.', search: 'searched' },
-        read: { lane: 'in_domain', category: null, fallback },
+        read: { lane: 'in_domain', category: null, fallback, language: null },
       });
 
       const verdict = await consider(p, 'Toronto');

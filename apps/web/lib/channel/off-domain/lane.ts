@@ -400,6 +400,8 @@ async function coarseMomentPlace(family: FamilyFacts): Promise<MomentPlace> {
  */
 function withSeenLanguage(verdict: OffDomainVerdict, language: string | null): OffDomainVerdict {
   if (language === null || language.trim() === '') return verdict;
+  // An unwritten moment has no language field. The screen's tag is not invented onto it.
+  if (verdict.status === 'unwritten') return verdict;
   return { ...verdict, language: language.trim() };
 }
 

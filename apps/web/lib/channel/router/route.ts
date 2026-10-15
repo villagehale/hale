@@ -1373,7 +1373,7 @@ async function routeChannelMessageInner(
     // this parent, when it differs. Both doors: an in-domain ask is the one a
     // later follow-up has to answer in that language, and a deflection was still
     // written in it. A timeout verdict has no tag, and a blank one writes nothing.
-    if (typeof verdict.language === 'string') {
+    if (verdict.status !== 'unwritten' && typeof verdict.language === 'string') {
       const wrote = await rememberParentLanguage(
         deps.database,
         turn.parentUserId,

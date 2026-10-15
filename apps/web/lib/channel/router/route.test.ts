@@ -883,6 +883,7 @@ describe('the language the inbound screen read', () => {
         medicalSource: null,
         signal: 'recorded',
         language: 'ar',
+        pendingAsk: null,
       }),
     });
     await parentAt(h.fake, 'en-CA');
@@ -1125,7 +1126,12 @@ describe('the off-domain lane', () => {
       }) as unknown as AgentClient;
     const lane = offDomainLane({
       screen: {
-        read: async () => ({ lane: 'off_domain_general', category: 'weather', fallback: null }),
+        read: async () => ({
+          lane: 'off_domain_general',
+          category: 'weather',
+          fallback: null,
+          language: null,
+        }),
       },
       answer: createGeneralAnswer(client),
       today: async () => 'monday, oct 12, 2026',
@@ -1217,6 +1223,7 @@ describe('the off-domain lane', () => {
           lane: 'off_domain_general',
           category: 'general-knowledge',
           fallback: null,
+          language: null,
         }),
       },
       answer: createGeneralAnswer(client),
