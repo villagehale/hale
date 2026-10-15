@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "French, warm and brief, says links are optional, what they connect, and 15-minute validity. But it omits the required Google unverified-app caution, and the facts give placeholder values for the links ([[calendarLink]]/[[gmailLink]]) while the text shows concrete URLs not in the facts, which is an invented/unverified link risk. Also \"15 minutes\" is stated for both links, which matches the facts."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "live is missing_detail, and the answer correctly asks which country without stating any rate from memory. It is in English, gives no invented specifics and says nothing about the family. The tone is brief and fine, though 'so I need to know which one to check' leans slightly assistant-like. Overall it is a good friend-text answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

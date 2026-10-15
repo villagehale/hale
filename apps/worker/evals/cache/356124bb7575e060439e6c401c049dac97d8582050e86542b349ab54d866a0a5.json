@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy for email sending and replying was turned off this turn, so the confirmation is true. The reply is one plain line in the parent's language that covers the 'ask first' part. It has no greeting, no sign-off and nothing extra.",
+    "score": 5
+  }
+}

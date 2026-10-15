@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes: Vancouver BC is cloudy, 14°C, showers from late evening, low 11°C, per Environment Canada. Vancouver WA is around 64°F and dry, and 'mostly cloudy' is a fair summary of 'clouds and sun early, then cloudy'. Covering both Vancouvers handles the ambiguity without deflecting. The reply is brief and reads like a text back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

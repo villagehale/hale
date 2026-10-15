@@ -57,7 +57,7 @@ export const ACTIVITY_FIXTURES = [
     dropsFromQuery: ['121 maple', '4 year'],
     expectPicks: true,
     watchFor:
-      'A municipal recreation staple. Should find the town or a named club, with a session and a registration date. Must not hand back a listings aggregator as the source.',
+      "A municipal recreation staple. Should find the town or a named club, with a session and a registration date. Each venue's source is that venue's own page, not a listings aggregator.",
   },
   {
     id: 'free-drop-in-georgetown',
@@ -162,21 +162,29 @@ export const ACTIVITY_FIXTURES = [
     expectPicks: true,
     composesOwnText: true,
     watchFor:
-      'A non-GTA Canadian city, a toddler, and the four days after Christmas - when a great many programmes are closed and the honest finds are the ones that are open anyway. Picks must be open in that window rather than "runs Tuesdays in the winter session". French-named venues are fine and expected; an English-only listing site as the SOURCE is not.',
+      'A non-GTA Canadian city, a toddler, and the four days after Christmas - when a great many programmes are closed and the honest finds are the ones that are open anyway. Picks must be open in that window rather than "runs Tuesdays in the winter session". French-named venues are fine and expected. Each venue\'s source_name is that venue\'s own page, not an aggregator or a listings site.',
   },
   {
+    // ID KEPT, INTENT CHANGED (2026-10-15, Sloane): the window is now the 2027 Labour Day
+    // long weekend, Sat Sep 4 to Mon Sep 6, with the year explicit, because "August 30 to
+    // September 2" with no year read as already past and the model searched 2027 hours
+    // that are not posted. These dates do NOT cross a month boundary, so "month-boundary"
+    // in the id no longer describes the fixture; it is kept so the history and the
+    // VIL-413 trail still find it. The year is explicit although `travelWindow`
+    // (lib/travel/query.ts) never composes one: this fixture no longer mirrors the
+    // product's window shape. "September 4 to 6, 2027" survives scrubResidualPii intact.
     id: 'travel-visit-ottawa-month-boundary',
     subject:
       'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
-    window: 'August 30 to September 2',
+    window: 'September 4 to 6, 2027',
     town: 'Ottawa, ON',
     stage: 'preschool',
-    rawSubject: 'Ottawa Aug 30 - Sep 2 with a 4 year old, 1535 Bank St',
+    rawSubject: 'Ottawa Sep 4 - Sep 6 2027 with a 4 year old, 1535 Bank St',
     dropsFromQuery: ['1535 bank', '2026', '4 year'],
     expectPicks: true,
     composesOwnText: true,
     watchFor:
-      'The window `travelWindow` composes when a trip crosses a month boundary, over the Labour Day weekend - which is exactly when the fall registration copy the skill knows about is loudest. A pick whose `when` is a fall session start, or whose value to the parent is a registration date, is wrong here no matter how well sourced. What is right is a museum, a park or a drop-in that is open that weekend.',
+      'A dated window over the 2027 Labour Day long weekend (Sat Sep 4 to Mon Sep 6) - which is exactly when the fall registration copy the skill knows about is loudest. A pick whose `when` is a fall session start, or whose value to the parent is a registration date, is wrong here no matter how well sourced. What is right is a museum, a park or a drop-in that is open that weekend.',
   },
 
   // ── must NOT invent ───────────────────────────────────────────────────────

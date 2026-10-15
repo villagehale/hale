@@ -1,0 +1,11 @@
+{
+  "value": {
+    "language": "en",
+    "clinical_query": "stiff sore neck on one side after sleeping awkwardly, hurts to turn head, no fever, school_age",
+    "age_band": "school_age",
+    "duration": "since waking this morning",
+    "red_flag_sign": "none",
+    "red_flag": "not_emergency"
+  },
+  "latencyMs": 2047
+}

@@ -179,7 +179,7 @@ describe('resolveEvalCommand', () => {
   const workerPkg = {
     scripts: {
       'eval:memory-writeback': 'node evals/run-memory-writeback-eval.mjs --cached-only',
-      'eval:week-summary': 'node evals/run-agent-eval.mjs --cached-only --suite=week-summary',
+      'eval:agents': 'node evals/run-agent-eval.mjs --cached-only --suite=discovery',
     },
   };
 
@@ -190,8 +190,8 @@ describe('resolveEvalCommand', () => {
   });
 
   it('keeps extra flags like --suite while dropping --cached-only', () => {
-    expect(resolveEvalCommand('eval:week-summary', workerPkg)).toBe(
-      'node --env-file=.env evals/run-agent-eval.mjs --suite=week-summary',
+    expect(resolveEvalCommand('eval:agents', workerPkg)).toBe(
+      'node --env-file=.env evals/run-agent-eval.mjs --suite=discovery',
     );
   });
 

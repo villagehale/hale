@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: there is no open Oakville Costco yet, one is coming on Wyecroft Rd near Burloak Dr for fall 2027, the third-party site lists 3180 Laird Rd as serving Oakville, and Burlington has a store with no known address. 'Probably the closest' is a hedge, not a firm claim. It says nothing about the family's street beyond not knowing distances. It reads like a friend's text, if a little careful and caveat-heavy.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

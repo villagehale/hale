@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the Environment Canada notes for Toronto on Tuesday Oct 13: mix of sun and cloud, high 25 with humidex 32, 40% showers and thunderstorm risk late afternoon into the evening, SW wind 20 gusting 40, low 15, and Wednesday's high of 16. It answers directly for the known city without deflecting. Tone reads more like a recited forecast than a casual text from a friend, so it's not top marks.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

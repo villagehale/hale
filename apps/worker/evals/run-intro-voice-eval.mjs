@@ -68,6 +68,7 @@ import {
 import {
   JUDGE_MIN,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -399,7 +400,8 @@ const BROKEN_ASK =
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('intro-voice');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
@@ -414,6 +416,7 @@ async function main() {
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'intro-voice', cachedOnly, getClient, cost);
 
@@ -433,6 +436,7 @@ async function main() {
           await cachedToolCall({
             tag: `intro-voice:${fixture.id}`,
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage,
             toolName: 'ask',

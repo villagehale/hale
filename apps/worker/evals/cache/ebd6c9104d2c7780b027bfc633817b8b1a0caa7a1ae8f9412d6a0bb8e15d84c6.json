@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://tradingeconomics.com/canada/stock-market",
+    "https://money.tmx.com/en/quote/%5ETSX",
+    "https://investing.com/news/stock-market-news/canada-stocks-higher-at-close-of-trade-sptsx-composite-up-090-4947507",
+    "https://sundayguardianlive.com/business/canada-stock-market-tsx-today-october-13-why-is-canadian-stock-market-up-today-sptsx-composite-rises-202-points-to-35867-as-aritzia-surges-2053-shopify-gains-412-top-gainers-losers-305011/amp/",
+    "https://thecanadianvanguard.com/the-canadian-vanguard-stock-market-report-tuesday-october-13-2026-edition",
+    "https://www.msn.com/en-ca/money/indexdetails/tsx-ca-index/fi-ab6drw",
+    "https://en.wikipedia.org/wiki/S%26P/TSX_Composite_Index",
+    "https://ad-hoc-news.de/boerse/news/marktberichte/s-und-p-tsx-composite-heads-into-wednesday-after-0-9-percent-gain/70324389",
+    "https://au.investing.com/news/stock-market-news/tsx-futures-edge-higher-ahead-of-key-us-inflation-data-4689934"
+  ],
+  "notes": "**Notes for Monday, Oct 12, 2026 (TSX)**\n\n- **No trading today.** Monday, Oct 12 is the Canadian Thanksgiving long weekend. One report says Canada's stock market returned from the Thanksgiving long weekend on Tuesday, October 13. I found no TSX trading data for Oct 12 itself.\n- **Last close before today (Friday, Oct 9):** The S&P/TSX Composite closed at 35,664.62, up 519.24 points (+1.48%), per MSN Money. Trading Economics ties the gain to weaker employment data reinforcing expectations that the Bank of Canada will refrain from hiking rates.\n- **Results dated after \"today.\"** Several results describe Tuesday, Oct 13 and Wednesday, Oct 14, which is later than the date I was given. Treat them as possibly mismatched with the stated date.\n  - The TMX quote page shows an Oct 13 close of 35,983.98, up 319.36 (0.895%). Investing.com, Trading Economics and The Canadian Vanguard report the same close, about +0.9%.\n  - One outlet (Sunday Guardian) reports a different Oct 13 close of 35,867.03, up 0.57%. This disagrees with TMX and the other sources. TMX is the exchange's own page.\n  - The Oct 13 move was bolstered by a jump in energy-sector shares and steadying bond yields.\n  - The Canadian Vanguard says the index has now advanced for three consecutive sessions, recovering from last Wednesday's brutal sell-off.\n- **Range:** The 52-week range on the TMX page is 29,530.92 to 37,069.11. Trading Economics puts the index up 18.52% from a year earlier.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 11909
+}

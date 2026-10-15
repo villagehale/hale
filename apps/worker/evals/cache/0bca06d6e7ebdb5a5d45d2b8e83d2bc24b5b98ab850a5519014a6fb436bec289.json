@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and matches the programme page exactly: 12 months to 4 years, Tue/Thu 9:30-11:00 a.m., Sept 8 to Dec 11, cited to the preschool-play URL. Price is correctly null because that page sends you to the front desk. Neither rental figure ($185 party, $95 meeting room) was borrowed. The page prints no registration date, so a null registration and no mention of one is correct. The message leads with the programme by name and attributes it ('their site says'). Under page_has_schedule it puts the price gap on Hale in the first person ('I could not pin down the price') rather than calling it not posted. Because watch is true, 'I'll keep watching and text you' is a real commitment. It is plain ASCII, with no link and no question.",
+    "score": 5
+  }
+}

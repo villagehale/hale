@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { basename, dirname } from 'node:path';
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, estimateCostUsd } from '@hale/agent';
-import { cappedCall, isEstimate } from './spend-cap.mjs';
+import type { AgentClient } from '@hale/agent';
 
 /**
  * REAL CLAUDE, RECORDED ONCE — the apps/worker eval cache, made available to a journey
@@ -56,13 +55,20 @@ function systemKey(system: Anthropic.MessageCreateParams['system']): string {
     .join('');
 }
 
+/**
+ * The thinking mode is part of the question: the structured seam re-asks a turn that spent
+ * its budget thinking with the same model, system and message and thinking OFF, and a key
+ * without the mode hands that re-ask the very truncated turn it is retrying.
+ */
 function keyFor(
   model: string,
   system: Anthropic.MessageCreateParams['system'],
   userMessage: string,
+  thinking: string | undefined,
 ): string {
+  const mode = thinking ? `thinking:${thinking}\n` : '';
   return createHash('sha256')
-    .update(`${model}\n${systemKey(system)}\n${userMessage}`)
+    .update(`${model}\n${mode}${systemKey(system)}\n${userMessage}`)
     .digest('hex');
 }
 
@@ -79,15 +85,6 @@ function write(path: string, recordings: Recordings): void {
 function firstText(params: Anthropic.MessageCreateParams): string {
   const [message] = params.messages;
   return typeof message?.content === 'string' ? message.content : JSON.stringify(message?.content);
-}
-
-/** Per-MTok list input/output rates from the runtime's own table (packages/agent cost.ts). */
-function listRates(model: string): { input: number; output: number } {
-  const zero = { inputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, outputTokens: 0 };
-  return {
-    input: estimateCostUsd(model, { ...zero, inputTokens: 1e6 }),
-    output: estimateCostUsd(model, { ...zero, outputTokens: 1e6 }),
-  };
 }
 
 export interface RecordedModel {
@@ -115,11 +112,38 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
   const requests: string[] = [];
   const misses: string[] = [];
   const recordings = read(path);
+  let capped: AgentClient | null = null;
+
+  /**
+   * A recording spends real money, so it goes through the eval spend cap on the shared
+   * HALE_SPEND_LEDGER, the same ledger and the same ceiling the eval suites book to. With
+   * no ceiling set, record mode refuses rather than call uncapped. Loaded only here, so a
+   * replay never imports the eval harness.
+   */
+  async function liveClient(): Promise<AgentClient> {
+    if (capped) return capped;
+    if (!process.env.HALE_MAX_USD) {
+      throw new Error(
+        'recorded-model: HALE_RECORD=1 needs HALE_MAX_USD (and HALE_SPEND_LEDGER); refusing an uncapped recording',
+      );
+    }
+    // spend-cap.mjs is untyped JS; its inferred options type misses `rates`.
+    const { capSdkClient } = (await import('./spend-cap.mjs')) as unknown as {
+      capSdkClient: (client: AgentClient, opts: { rates: unknown; tag: string }) => AgentClient;
+    };
+    const { priceRates } = await import('../../../worker/evals/lib/harness.mjs');
+    capped = capSdkClient(live(), {
+      rates: priceRates,
+      tag: `journey:${basename(path)}`,
+    });
+    return capped;
+  }
 
   async function create(params: Anthropic.MessageCreateParams) {
     const userMessage = firstText(params);
     requests.push(userMessage);
-    const key = keyFor(params.model, params.system, userMessage);
+    const thinking = (params as { thinking?: { type?: string } }).thinking?.type;
+    const key = keyFor(params.model, params.system, userMessage, thinking);
 
     const hit = recordings[key];
     if (hit) return hit.response as unknown as Anthropic.Message;
@@ -137,24 +161,7 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
       );
     }
 
-    // The spend cap is checked BEFORE the live call (counted input + max_tokens) and the
-    // returned message's real usage is booked after it. A recording spends real money, so
-    // with no ceiling set record mode refuses rather than call uncapped.
-    if (!process.env.HALE_MAX_USD) {
-      throw new Error(
-        'recorded-model: HALE_RECORD=1 needs HALE_MAX_USD (and HALE_SPEND_LEDGER); refusing an uncapped recording',
-      );
-    }
-    const client = live();
-    const response = (await cappedCall({
-      client,
-      request: params,
-      call: () => client.messages.create(params),
-      rates: listRates,
-      tag: `journey:${key.slice(0, 12)}`,
-    })) as Anthropic.Message;
-    // An estimate round answers with a stand-in; it must never become a recording.
-    if (isEstimate()) return response;
+    const response = await (await liveClient()).messages.create(params);
     recordings[key] = {
       key,
       recordedAt: new Date().toISOString(),

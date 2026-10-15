@@ -182,9 +182,6 @@ jobs:
       - name: SMS intake extraction/intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake
 
-      - name: Intake voice composer eval (cached-only)
-        run: pnpm --filter @hale/worker eval:intake-voice
-
       - name: Mid-signup answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake-answer
 
@@ -199,6 +196,9 @@ jobs:
 
       - name: Turn-apology composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:turn-apology
+
+      - name: Holding line composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:holding-line
 
       - name: Follow-up ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:followup-voice

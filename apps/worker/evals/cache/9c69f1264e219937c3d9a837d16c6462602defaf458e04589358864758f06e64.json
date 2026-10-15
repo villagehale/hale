@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "Arrêtez de m'écrire s'il vous plaît",
+    "confirmation": "D'accord, on arrête. Tu peux nous réécrire quand tu veux."
+  },
+  "latencyMs": 1204
+}

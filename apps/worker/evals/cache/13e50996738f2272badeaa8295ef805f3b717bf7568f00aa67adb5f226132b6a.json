@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer correctly asks which city, since the question left it out, and it states no price from memory. It is brief and casual, with no deflect. The second sentence is a little explanatory, but it still reads fine as a text from a friend.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

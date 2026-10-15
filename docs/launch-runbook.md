@@ -6,7 +6,7 @@ Production web is the Vercel project **hale-web**.
 
 ## iMessage onboarding
 
-The parent opens the thread. Each step below is one reply, decided in code. Wording depends on `ONBOARDING_FRIEND_VOICE_ENABLED`.
+The parent opens the thread. Each step below is one reply, decided in code. The model writes every reply (friend voice; #868 removed the fixed ladder copy).
 
 ### Door
 
@@ -39,7 +39,7 @@ Code: `apps/web/lib/channel/intake/session.ts` (read/write the session), `apps/w
 | What the parent does | Hale sends | Code | Session `state` | Rows |
 | --- | --- | --- | --- | --- |
 | Texts the number | Postal-code question. If `FIRST_TOUCH_LOCATION_CARD_ENABLED` is exactly `true` (no trim) and Linq accepts, a location card goes first and the text asks them to tap it. | `openFirstTouch`, `sendPlaceAsk` | `awaiting_place` | `sms_intake_sessions`. Audit `first_touch_location_requested` is written at provisioning, with `outcome`. |
-| Sends a Canadian postal code (or the location share resolves to a city) | Asks only for the kids' ages. No activity list on this step. When `ONBOARDING_FRIEND_VOICE_ENABLED` is not exactly `on`, the locked ladder still sends a this-week list and then the age question. | `friendOnboardingTurn` when friend voice is on; otherwise `sendWeekFindThenAgesOrProvision`, `findThisWeek` in `first-touch-find.ts` | `awaiting_ages` | Same session. Collected place is inside `data_encrypted` (`firstTouch.place`). |
+| Sends a Canadian postal code (or the location share resolves to a city) | Asks only for the kids' ages. No activity list on this step. | `friendOnboardingTurn` | `awaiting_ages` | Same session. Collected place is inside `data_encrypted` (`firstTouch.place`). |
 | Sends the kids' ages | The family is created. Hale sends the first find: age-fit activities for the year. | `provision` → `provisionFromIntake` in `provision.ts`, then `radar.compose` | `awaiting_ladder`, or `awaiting_cold_start` when the cold-start flag is on | See "Family create" below. PostHog `intake_completed`. |
 | Answers the name question | What to call them, and the kids' first names if they want. | `handleLadder` when `ladder_next` is `name` / `name_reply`. Cold-start uses `continueColdStart`. | stays `awaiting_ladder` or `awaiting_cold_start` | `channel_messages`. Name capture writes `audit_log.action_taken = 'parent_name_captured'`. |
 | Next replies | A link to connect Google Calendar, then a link to connect Gmail. Code mints the URL and appends it. | `sendYearConnectorCards` in `connector-offer.ts` | `complete` when the ladder finishes | `channel_messages`, deduped per family. Template keys `intake:calendar_card` and `intake:gmail_card`. |
@@ -63,7 +63,6 @@ PostHog `intake_started` fires on the first reply. `intake_completed` fires when
 
 ### Friend voice
 
-`ONBOARDING_FRIEND_VOICE_ENABLED` is on only when the value is `on` after trim. `true`, `ON`, `1`, and unset stay off. Off keeps the locked sentences in `apps/web/lib/channel/intake/copy.ts` and `cold-start/copy.ts`.
 
 On, the machine still picks the step. The model writes that one reply from `packages/agent/skills/onboarding-friend.md`, via `speakFriend` in `apps/web/lib/channel/intake/friend-voice.ts`. Find lines and connector URLs are appended in code. The model does not choose the next step.
 
@@ -109,7 +108,6 @@ Redeploy steps, same for every flag:
 
 | Flag | Set Production to | What changes |
 | --- | --- | --- |
-| `ONBOARDING_FRIEND_VOICE_ENABLED` | empty | Locked ladder sentences. `on` is the only value that enables friend voice. |
 | `FIRST_TOUCH_LADDER_ENABLED` | empty | Older first text (kids, ages, and postal code in one ask). `on` is the only value that opens the postal-then-ages ladder. |
 | `FIRST_TOUCH_LOCATION_CARD_ENABLED` | empty | Postal-code sentence. The location card is requested only when the value is exactly `true`. |
 | `COLD_START_LADDER_ENABLED` | empty | Name and connector links can leave on the find turn. Exactly `true` parks the session on `awaiting_cold_start`. |

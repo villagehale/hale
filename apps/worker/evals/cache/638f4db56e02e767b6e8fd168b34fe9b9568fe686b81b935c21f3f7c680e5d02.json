@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is null, so only the slots are scored. Both fetches were refused, and the one slot is grounded in the search snippet (Parent & Tot, 4 months to 3 years, Town of Halton Hills), which is a real program that fits a toddler. when, price and registration are null rather than invented. ageFit flags that the age band comes from a snippet only and that the schedule page could not be opened. The notes honestly say no page was opened and make no claim that the schedule is not posted. No figures are borrowed from elsewhere. The sourceUrl points to the page the snippet belongs to, but the slot does not imply that page was read. No pages_read field claims an opened page. This is the correct outcome under no_page_read.",
+    "score": 5
+  }
+}

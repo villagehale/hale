@@ -34,6 +34,7 @@ import {
 } from './deliver';
 import type { PageVerdict } from './evidence';
 import { type FollowUpPick, createFollowUpComposer } from './followup-note';
+import type { EmptySearch } from './lane';
 import { type ActivityFinder, createActivityFinder } from './lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
 import { SLOTS_IN_TEXT } from './share-page';
@@ -162,7 +163,7 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     due: 0,
     sent: 0,
     sentEmptyHanded: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
     unsendable: 0,
     cancelled: 0,
     deferred: 0,
@@ -339,6 +340,7 @@ async function keepOne(
   let picks: FollowUpPick[] = [];
   let held: FollowUpPick[] = [];
   let researched = false;
+  let searched: EmptySearch | undefined;
   const evidence = noEvidence();
   // WHAT THE PAGES LICENSE, and nothing else licenses a sentence about what a page does
   // not carry (evidence.ts `PageVerdict`). It starts at the most restrictive value and is
@@ -408,6 +410,7 @@ async function keepOne(
     } else {
       picks = foundPicks;
     }
+    if (!found.found) searched = found.searched;
   }
   evidence.picks = picks.length;
 
@@ -429,6 +432,7 @@ async function keepOne(
       held,
       pageEvidence,
       evidence,
+      ...(searched ? { searched } : {}),
     },
     now,
   );

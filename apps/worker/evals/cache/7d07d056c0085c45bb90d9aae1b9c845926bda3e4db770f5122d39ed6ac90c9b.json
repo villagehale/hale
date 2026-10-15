@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday, Oct 13: high of 25°C",
+        "from": "Environment Canada (forecast issued 11:00 AM EDT, Oct 13): the high is 25°C"
+      },
+      {
+        "states": "Tuesday: mix of sun and cloud in the afternoon",
+        "from": "Environment Canada: Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "Tuesday afternoon: 40 percent chance of showers late in the afternoon, with a risk of thunderstorms late in the afternoon",
+        "from": "Environment Canada: a 40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon."
+      },
+      {
+        "states": "Tuesday: humidex 32",
+        "from": "Environment Canada: The humidex is 32."
+      },
+      {
+        "states": "Tuesday: wind southwest 20 km/h gusting to 40",
+        "from": "Environment Canada: Wind is southwest 20 km/h gusting to 40"
+      },
+      {
+        "states": "Tuesday night: partly cloudy, 40 percent chance of showers and thunderstorm risk in the evening, low of 15°C",
+        "from": "Environment Canada: Tuesday night is partly cloudy with a 40 percent chance of showers and a thunderstorm risk in the evening, and a low of 15°C."
+      }
+    ],
+    "answer": "Tomorrow in Toronto looks warm, about 25°C with a mix of sun and cloud. Environment Canada has a 40% chance of showers and a risk of thunderstorms late in the afternoon, and it'll feel like 32 with the humidity. It's windy from the southwest, gusting to 40 km/h. Tuesday night drops to 15°C, still with a chance of showers and storms in the evening. Some other forecasts have the showers earlier in the day, so the timing is a bit mixed."
+  },
+  "latencyMs": 5971
+}

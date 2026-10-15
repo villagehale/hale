@@ -4,13 +4,21 @@ import {
   type SQL,
   and,
   asc,
+  eq,
+  exists,
+  gt,
   inArray,
   isNotNull,
   lt,
   ne,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import { TURN_DEADLINE_MS } from '../channel/config.js';
+import { SENT_STATUSES } from '../channel/ledger.js';
+import { isUndefinedTable } from '../channel/linq/roster.js';
 import { removeDocument } from '../docs/storage.js';
 
 /**
@@ -36,7 +44,8 @@ import { removeDocument } from '../docs/storage.js';
  *
  * | Table | Approach | Why |
  * | --- | --- | --- |
- * | `channel_messages` | REDACT `body` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Outbound rows already store no body. |
+ * | `channel_messages` | REDACT `body` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Outbound rows store no body. |
+ * | `channel_pending_asks` | DELETE the row | The question a general answer left open, de-identified, beside its reply's row (migration 0167). The next reply the router sends that parent already deletes it. This sweep deletes one that any newer word from Hale has closed (a holding line included), one whose reply is a year old, and one whose own row is a year old. |
  * | `messages` | DELETE the row | The Ask Hale transcript. Soft-delete leaves `content` in place; the retention promise removes it. Audit rows store the id as text, not a foreign key. |
  * | `chat_attachments` | DELETE the bytes, then the row | The file, its path, and `original_name`. Bytes are purged before the row so a cascade cannot drop the path first. Unlinked uploads are included. |
  * | `sms_intake_sessions` | REDACT `data_encrypted` and `phone_encrypted` | The pre-account transcript, including a group-chat sender who never became a user. The row stays: it is how the funnel counts an arrival, and both columns are NOT NULL. `phone_hash` stays so the same number is still recognised. An open session is closed so a later text starts clean rather than decrypting a tombstone. |
@@ -108,6 +117,7 @@ const MESSAGE_JSON_KEYS = [
 
 export interface MessageRetentionSummary {
   channelMessagesRedacted: number;
+  pendingAsksDeleted: number;
   messagesDeleted: number;
   chatAttachmentsDeleted: number;
   intakeSessionsRedacted: number;
@@ -128,6 +138,7 @@ export interface MessageRetentionOptions {
 
 const EMPTY_SUMMARY: MessageRetentionSummary = {
   channelMessagesRedacted: 0,
+  pendingAsksDeleted: 0,
   messagesDeleted: 0,
   chatAttachmentsDeleted: 0,
   intakeSessionsRedacted: 0,
@@ -169,6 +180,7 @@ export async function sweepMessageRetention(
   const summary = { ...EMPTY_SUMMARY };
 
   summary.channelMessagesRedacted = await redactChannelMessages(database, cutoff, batch);
+  summary.pendingAsksDeleted = await deletePendingAsks(database, cutoff, batch, now);
   const transcripts = await deleteTranscripts(database, cutoff, batch, removeObject);
   summary.messagesDeleted = transcripts.messagesDeleted;
   summary.chatAttachmentsDeleted += transcripts.chatAttachmentsDeleted;
@@ -214,6 +226,96 @@ async function redactChannelMessages(
     )
     .returning({ id: schema.channelMessages.id });
   return updated.length;
+}
+
+/**
+ * How long a newer outbound word, on its own, does not delete a pending ask.
+ *
+ * A turn can send a holding line before it reads the question the line is about, and
+ * the hourly sweep can land in that window. The word counts once it is older than one
+ * inbound turn may run: the turn that sent it is finished, and the reader would no
+ * longer treat the question as open. A year-old reply and a reply that never left do
+ * not wait on this.
+ */
+export const PENDING_ASK_READ_LEASE_MS = TURN_DEADLINE_MS;
+
+/**
+ * A question goes when it is a year old, and also as soon as it is CLOSED: when the reply
+ * that left it is no longer the last thing Hale sent that parent. That is the reader's
+ * own rule (off-domain/lane.ts readPendingAsk), restated here as a join on the ledger
+ * with no state of its own. The router already deletes a question when it next replies
+ * to the parent; a newer word from any other sender (a reminder, a nudge, a holding
+ * line) closes the question for the reader all the same and would otherwise leave the
+ * row until the year was up. A word still inside {@link PENDING_ASK_READ_LEASE_MS} does
+ * not: it can be the holding line of a turn that has not read the question yet. A reply
+ * that never reached a phone is nobody's last word, so its question is closed too, and
+ * that does not wait on the lease. The clock is the reply's, not only this row's: a
+ * question kept beside a reply that is already a year old goes even when this row was
+ * written later, lease or not. The question is the thing the retention promise covers.
+ *
+ * The table arrives with migration 0167, and nothing writes it while the general
+ * answer's search is dark, so this code can run on a database that does not have it yet.
+ * There is then nothing to delete, and the sweep says so by name and carries on with the
+ * other tables (the roster sweep's `not_migrated`, rule #11).
+ */
+async function deletePendingAsks(
+  database: Database,
+  cutoff: Date,
+  batch: number,
+  now: Date,
+): Promise<number> {
+  const asked = schema.channelMessages;
+  const newer = alias(schema.channelMessages, 'newer');
+  const leaseCutoff = new Date(now.getTime() - PENDING_ASK_READ_LEASE_MS);
+  let due: Array<{ id: string }>;
+  try {
+    due = await database
+      .select({ id: schema.channelPendingAsks.channelMessageId })
+      .from(schema.channelPendingAsks)
+      .innerJoin(asked, eq(asked.id, schema.channelPendingAsks.channelMessageId))
+      .where(
+        or(
+          lt(schema.channelPendingAsks.createdAt, cutoff),
+          lt(asked.createdAt, cutoff),
+          notInArray(asked.status, [...SENT_STATUSES]),
+          exists(
+            database
+              .select({ id: newer.id })
+              .from(newer)
+              .where(
+                and(
+                  eq(newer.familyId, asked.familyId),
+                  eq(newer.parentUserId, asked.parentUserId),
+                  eq(newer.direction, 'out'),
+                  inArray(newer.status, [...SENT_STATUSES]),
+                  gt(newer.createdAt, asked.createdAt),
+                  lt(newer.createdAt, leaseCutoff),
+                ),
+              ),
+          ),
+        ),
+      )
+      .orderBy(
+        asc(schema.channelPendingAsks.createdAt),
+        asc(schema.channelPendingAsks.channelMessageId),
+      )
+      .limit(batch);
+  } catch (err) {
+    if (!isUndefinedTable(err)) throw err;
+    console.warn({ outcome: 'not_migrated' }, 'message retention: pending-ask table missing');
+    return 0;
+  }
+  if (due.length === 0) return 0;
+  const deleted = await database
+    .delete(schema.channelPendingAsks)
+    .where(
+      inArray(
+        schema.channelPendingAsks.channelMessageId,
+        due.map((row) => row.id),
+      ),
+    )
+    .returning({ id: schema.channelPendingAsks.channelMessageId });
+  return deleted.length;
 }
 
 async function deleteTranscripts(

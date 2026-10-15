@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific matches the notes: early shower chance with thunderstorm risk, clearing to sun by late morning, highs of 29–30°C, humidex 35, gusts to 60 late morning, UV 6. It answers directly for the right Windsor without asking which city. The tone is casual and texty. 'Bring sunscreen' is friendly advice, not a service offer. It's slightly dense and listy, but reads fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

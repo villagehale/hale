@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Wrong facts: the facts give placeholder links \"[[calendarLink]]\" and \"[[gmailLink]]\", but the text invents two full URLs with tokens, which is fabricated and likely broken. It omits the Google unverified-app caution expected for connector links. It is in French and says the connection is optional and lasts 15 minutes, which is correct, and the purpose is clear. The invented links are the decisive failure."
+  }
+}

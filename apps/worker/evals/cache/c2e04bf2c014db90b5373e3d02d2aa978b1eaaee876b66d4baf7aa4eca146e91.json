@@ -1,0 +1,11 @@
+{
+  "value": {
+    "is_party": true,
+    "title": "Max's birthday",
+    "starts_at": null,
+    "location": "Jump Zone",
+    "child_name": "Max",
+    "confidence": 0.6
+  },
+  "latencyMs": 1174
+}

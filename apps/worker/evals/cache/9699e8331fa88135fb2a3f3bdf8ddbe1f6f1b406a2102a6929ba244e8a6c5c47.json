@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Denver forecast for Tuesday is correct: partly sunny, high around 65, rain possible after 3 pm and rising into the evening, NNE winds at 6-10 mph gusting to 17. The 'mid 40s' low matches Weather Underground (46) and AccuWeather (44), though NWS says low 40s and 30s. It answers directly in English and nothing is invented. It reads more like a weather bulletin than a casual text, packed with forecast detail.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

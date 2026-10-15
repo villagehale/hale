@@ -1,0 +1,26 @@
+{
+  "urls": [
+    "https://www.covers.com/sport/baseball/mlb/teams/main/toronto-blue-jays",
+    "https://en.wikipedia.org/wiki/2026_Baltimore_Orioles_season",
+    "https://www.mlb.com/bluejays/standings",
+    "https://en.wikipedia.org/wiki/2025_American_League_Championship_Series",
+    "https://en.wikipedia.org/wiki/2025_American_League_Division_Series",
+    "https://en.wikipedia.org/wiki/2026_Athletics_season",
+    "https://www.mlb.com/bluejays/standings/wild-card",
+    "https://en.wikipedia.org/wiki/2026_Cleveland_Guardians_season",
+    "https://www.foxsports.com/mlb/toronto-blue-jays-team-schedule",
+    "https://www.espn.com/mlb/game/_/gameId/401817105/reds-blue-jays",
+    "https://www.espn.com/mlb/game/_/gameId/401817075",
+    "https://www.espn.com/mlb/game/_/gameId/401816961/tigers-blue-jays",
+    "https://www.espn.com/mlb/game/_/gameId/401816866/blue-jays-athletics",
+    "https://www.espn.com/mlb/game/_/gameId/401816604/blue-jays-rays",
+    "https://www.espn.com/mlb/game/_/gameId/401816643/blue-jays-yankees",
+    "https://www.espn.com/mlb/game/_/gameId/401816778/blue-jays-guardians",
+    "https://bluejaysnation.com/news/toronto-blue-jays-series-recap-finish-2026-season-positive-note",
+    "https://www.mlb.com/news/trey-yesavage-makes-final-appearance-in-injury-plagued-2026-season"
+  ],
+  "notes": "Research notes (today is Monday, Oct 12, 2026; \"last night\" is Sunday, Oct 11):\n\n- Assuming \"the Jays\" means the Toronto Blue Jays, they did not play last night. Their season is over.\n- ESPN's game page says the Blue Jays' regular season ended on Sunday, Sept 27, 2026, with a 5-1 home win over the Cincinnati Reds. The AP recap calls it the \"season finale.\"\n- Toronto finished 79-83, fifth in the AL East. MLB.com lists them as eliminated, 5 games behind in the wild-card race. They are not in the postseason.\n- The Blue Jays' own \"Next Game\" field on MLB.com's standings pages is blank. The \"Oct 11 vs. LAD\" entry on those pages belongs to the Brewers and Dodgers, not Toronto.\n- Bluejaysnation.com says the Sept 27 game may have been the last for Max Scherzer and George Springer, who were honoured there.\n- I found no Blue Jays result for Oct 11 because there was no game.\n- The question doesn't say which team \"the Jays\" are. I found nothing on other teams with that nickname.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 11346
+}

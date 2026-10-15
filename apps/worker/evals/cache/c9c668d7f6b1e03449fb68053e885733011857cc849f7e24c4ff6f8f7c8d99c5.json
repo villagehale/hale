@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by the research notes: no open Costco in Oakville yet, the Wyecroft Rd site targeting fall 2027, a Burlington location, and the Laird Rd address flagged as unconfirmed. Nothing is invented. The reply reads more like a sourced research summary than a friend texting, with citations and hedges. It also ends by saying it doesn't know where in Oakville they are, right after the parent gave a street address. It should have said it can only go by the town. So it never actually picks a closest store.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

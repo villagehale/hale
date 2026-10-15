@@ -152,7 +152,7 @@ function writerCacheKey(agent, lane, skill, text, fixture) {
   const userMessage = text.autonomyNoticeContext(fixture.context);
   const fields = agent.laneRequestFields(lane);
   const toolChoice =
-    lane.model === agent.SONNET55_MODEL
+    lane.model === agent.SONNET_MODEL
       ? { type: 'auto' }
       : { type: 'tool', name: text.AUTONOMY_NOTICE_TOOL };
   const canonical = JSON.stringify({

@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "IM8 Essentials is well made and third-party tested",
+        "from": "Quality control looks solid. Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "most people find it tastes decent",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "several blends are underdosed",
+        "from": "It also flagged key ingredient amounts hidden in proprietary blends and several underdosed ingredients."
+      },
+      {
+        "states": "no independent clinical evidence for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "about $112 for a one-time 30-serving box and about $89 a month on subscription",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription"
+      },
+      {
+        "states": "one of the most expensive all-in-one supplements on the market",
+        "from": "Live it Up's dietitian (a competing brand, about 57 days old) called it one of the most expensive all-in-one supplements on the market"
+      },
+      {
+        "states": "doubling up on vitamin A, zinc or niacin creates upper limit concerns",
+        "from": "getsupplementreviews.com noted doubling up on vitamin A, zinc or niacin creates real upper limit concerns."
+      },
+      {
+        "states": "reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "reishi and grape seed can interact with blood thinners and blood pressure medication"
+      }
+    ],
+    "answer": "Mostly overrated, I'd say. It's well made, third-party tested, and most people find it tastes decent. But several blends are underdosed, there's no independent clinical evidence for its benefit claims, and at about $112 a box one-time (around $89 on subscription) it's one of the pricier all-in-ones out there. It can make sense if it replaces a few other supplements for you. Heads up: doubling up on vitamin A, zinc or niacin can push you past safe upper limits, and reishi or grape seed can interact with blood thinners or blood pressure meds, so check with a doctor or pharmacist first if you take any of that."
+  },
+  "latencyMs": 16480
+}

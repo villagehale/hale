@@ -60,6 +60,8 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/loop/calendar-invite.ts': 'scoped',
   // joined through activity_bookings.event_id, reads `source` only
   'apps/web/lib/integrations/booking.ts': 'scoped',
+  // already-held check before a coach offer row: household events only
+  'apps/web/lib/integrations/email-alert-offer.ts': 'household',
   // sensitive = true; the mirror writer never sets it
   'apps/web/lib/mcp/read-tools.ts': 'scoped',
   // by id, from a placement or a placement follow-up

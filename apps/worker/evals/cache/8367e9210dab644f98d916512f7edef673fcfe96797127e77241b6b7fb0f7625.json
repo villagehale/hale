@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message correctly says Hale won't add or text them first and that the person must write to Hale directly by SMS. Uses French with tu and accents, no invented name or role, no group mention on SMS. Minor issue: the phrasing 'c'est ce message qui la fera entrer' is slightly unclear, but it stays within the rules.",
+    "score": 4
+  }
+}

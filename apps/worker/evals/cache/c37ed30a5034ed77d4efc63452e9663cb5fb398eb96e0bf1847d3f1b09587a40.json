@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It makes a real pick (Messi) with a reason and sounds fairly casual, which fits an opinion ask. But with live unavailable it states a running count from memory, 'Seven Ballon d'Ors', which watchFor flags as not to be stated as fact. The count is also outdated, since he won an eighth in 2023. The 2022 World Cup is settled and fine. The closing line about not being able to check and 'look at career numbers' comes after the stale count has already been given, and it leans slightly toward look-it-up.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 2
+  }
+}

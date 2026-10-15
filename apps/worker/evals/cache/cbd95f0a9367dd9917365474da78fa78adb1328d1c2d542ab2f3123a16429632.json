@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Llame al 911 ahora. Si tras una convulsión responde mal o está muy adormilado, necesita emergencias. Acuéstelo de lado, sin nada en la boca.",
+    "triage": "Llame al 911 o vaya a urgencias ya; el 811 no es para esto. Quédese con él y, si se pone azul o respira mal, dígaselo al 911.",
+    "sources": [
+      "KidsHealth",
+      "Cleveland Clinic",
+      "Children's Hospital of Philadelphia",
+      "Child Neurology Foundation"
+    ]
+  },
+  "latencyMs": 6147
+}

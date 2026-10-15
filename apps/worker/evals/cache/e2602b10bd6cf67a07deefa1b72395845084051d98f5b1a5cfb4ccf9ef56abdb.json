@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "where's the closest costco in Oakville",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "closest Costco location to them",
+    "needs_search": "yes"
+  },
+  "latencyMs": 1751
+}

@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Kids & Me drop-in neighbourhood groups, Halton Hills Public Library - Acton Branch and St. Andrew's United Church, Georgetown",
+        "age_fit": "families with babies or children up to 6 years of age",
+        "when": "Acton Branch (Halton Hills Public Library): Thursdays 10:30am-12pm. St. Andrew's United Church, Georgetown: Tuesdays 9:30-11am. Follows the school calendar starting the second week of September; closed Dec/Jan holidays, spring/summer breaks and statutory holidays",
+        "price": "Free",
+        "source_name": "Halton Region"
+      },
+      {
+        "name": "EarlyON Child and Family Centres, Links2Care (Acton and Georgetown)",
+        "age_fit": "children from birth to their 6th birthday with a parent or caregiver",
+        "price": "Free",
+        "source_name": "Links2Care"
+      }
+    ]
+  },
+  "latencyMs": 5362
+}

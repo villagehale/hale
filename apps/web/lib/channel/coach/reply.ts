@@ -1,5 +1,5 @@
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
-import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
+import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 import { type NamedActivityLink, activityLinkSuffix } from './activity-links';
@@ -306,11 +306,9 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   }
   const redacted = redactTeenNames(flattened, args.children, args.now);
   if (reachesForTheHealthLine(redacted)) {
-    // Named rather than swapped in silence: this only fires when the screen in front of
-    // the coach did not, so each one is a screen outage worth counting. The body itself
-    // never reaches the log — it can carry back what the parent typed (rule #1).
-    console.error('channel coach: model composed a safety referral; sent the fixed line');
-    return SAFETY_REPLY;
+    // The model wrote a health-line number in its own words. That is the reply. The
+    // log counts the screen miss; the body never reaches it (rule #1).
+    console.error('channel coach: model composed a safety referral; sent what it wrote');
   }
   // The protected tail. Both sources are model-composed and both were accepted by the
   // tool that gated them, so both are appended after the fit rather than trimmed with
@@ -355,9 +353,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   }
 
   const suffix = redactTeenNames(
-    [protectedTail, link]
-      .filter((part) => part.trim() !== '')
-      .join(' '),
+    [protectedTail, link].filter((part) => part.trim() !== '').join(' '),
     args.children,
     args.now,
   );

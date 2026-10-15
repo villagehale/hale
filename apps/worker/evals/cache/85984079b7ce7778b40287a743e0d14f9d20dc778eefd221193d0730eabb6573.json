@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "es",
+    "clinical_query": "infant breathing very fast, ribs pulling in with each breath, grunting",
+    "age_band": "infant",
+    "red_flag_sign": "working hard to breathe: rapid breathing, ribs pulling in, grunting",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 1958
+}

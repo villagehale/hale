@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by the notes: a 6-3 Leafs win at Colorado, dated Oct 10 by ESPN and Yahoo and Oct 11 on the NHL.com clips, with no other game found for Sunday. Oct 10, 2026 is a Saturday, so that is right too. It answers the question directly and is honest about the date mismatch. The tone is close to a friend's text but reads a bit like a source report (ESPN, Yahoo, NHL.com clips) rather than a casual 'yep, beat Colorado 6-3'.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "fr",
+    "clinical_query": "toddler seizure during fever, body stiffened for 1 minute, now floppy and drowsy",
+    "age_band": "toddler",
+    "red_flag_sign": "seizure with fever, now floppy and drowsy",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 2041
+}

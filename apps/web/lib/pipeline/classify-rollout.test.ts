@@ -1,4 +1,4 @@
-import { type AgentClient, SONNET5_MODEL } from '@hale/agent';
+import { type AgentClient, SONNET_MODEL } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { classifyEvent } from './classify';
 
@@ -43,10 +43,10 @@ describe('classifyEvent rollout', () => {
         { messages: { create } } as unknown as AgentClient,
       );
 
-      expect(result.model).toBe(SONNET5_MODEL);
+      expect(result.model).toBe(SONNET_MODEL);
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: SONNET5_MODEL,
+          model: SONNET_MODEL,
         }),
       );
     },
@@ -66,7 +66,7 @@ describe('classifyEvent rollout', () => {
       { modelMode: 'candidate' },
     );
 
-    expect(result.model).toBe(SONNET5_MODEL);
+    expect(result.model).toBe(SONNET_MODEL);
     expect(create).toHaveBeenCalledTimes(2);
   });
 
@@ -82,7 +82,7 @@ describe('classifyEvent rollout', () => {
       { modelMode: 'current' },
     );
 
-    expect(result.model).toBe(SONNET5_MODEL);
+    expect(result.model).toBe(SONNET_MODEL);
     expect(create).toHaveBeenCalledTimes(1);
   });
 });

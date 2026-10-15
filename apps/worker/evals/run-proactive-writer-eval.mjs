@@ -12,19 +12,27 @@
 //   ANTHROPIC_API_KEY=... node evals/run-proactive-writer-eval.mjs   # live, populates the cache
 //   node evals/run-proactive-writer-eval.mjs --cached-only           # CI: replay, zero API calls
 
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import {
   JUDGE_MIN,
+  JUDGE_SCHEMA,
   REPO_ROOT,
+  cacheGet,
+  cacheKey,
   evalRunTag,
+  isVerdict,
   lazyAnthropic,
   makeCost,
   makeJudge,
+  priceRates,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { cachedLaneToolCall } from './lib/lane-tool-call.mjs';
+import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
 import { PROACTIVE_WRITER_FIXTURES } from './proactive-writer-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -63,13 +71,127 @@ function grade(fixture, written, verdict) {
   return failures;
 }
 
-async function main() {
-  const cachedOnly = process.argv.includes('--cached-only');
+function judgeCeiling(model) {
+  return String(model).includes('haiku') ? 4096 : 8192;
+}
+
+/**
+ * Cache misses only. A subject miss prices the judge too: the live run writes,
+ * then grades. The draft lane thinks between tools, so the subject adds no
+ * thinking tokens. The judge is Haiku with thinking off.
+ */
+export async function uncachedWriterCalls(judgeOutputChars) {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const tools = await tsImport(TOOLS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
-  const getClient = lazyAnthropic();
+  const judgeModel = await readJudgeModel();
+  const measured = [];
+  const calls = [];
+  const shortIds = [];
+  for (const fixture of PROACTIVE_WRITER_FIXTURES) {
+    const userMessage = tools.writerContext(fixture.items, fixture.cadenceNote);
+    const key = laneToolCacheKey({
+      agent,
+      lane,
+      tag: evalRunTag(`proactive-writer:${fixture.id}`),
+      system: skill.instructions,
+      userMessage,
+      toolName: tools.WRITER_TOOL,
+      toolSchema: tools.WRITER_TOOL_SCHEMA,
+      maxTokens: tools.WRITER_MAX_TOKENS,
+    });
+    const cached = await cacheGet(key);
+    let message = null;
+    if (cached) {
+      measured.push(JSON.stringify(cached.value).length);
+      const written = tools.readWriterText(cached.value, fixture.items);
+      if ('message' in written) message = written.message;
+    } else {
+      shortIds.push(fixture.id);
+    }
+    if (cached && message === null) continue;
+    const text = message ?? 'A short text about the items.';
+    const judgeUser = JSON.stringify({
+      context: JSON.parse(userMessage),
+      text,
+    });
+    if (message !== null) {
+      const judgeKey = cacheKey(
+        `proactive-writer:judge:${fixture.id}`,
+        `${judgeModel}\n${JUDGE_SYSTEM}\n${judgeUser}`,
+      );
+      const judged = await cacheGet(judgeKey);
+      if (judged && isVerdict(judged.parsed) && !cached) {
+        // subject miss still needs the write; the judge can already be cached
+      } else if (judged && isVerdict(judged.parsed)) {
+        continue;
+      }
+    }
+    if (!cached) {
+      calls.push({
+        model: lane.model,
+        promptCache: false,
+        prefixId: 'proactive-writer',
+        prefix: `${skill.instructions}\n${JSON.stringify(tools.WRITER_TOOL_SCHEMA)}`,
+        user: userMessage,
+        thinkingTokens: 0,
+        group: 'proactive-writer',
+        maxTokens: tools.WRITER_MAX_TOKENS,
+        fixtureId: fixture.id,
+      });
+    }
+    if (message === null || !(await judgeHit(judgeModel, fixture.id, judgeUser))) {
+      calls.push({
+        model: judgeModel,
+        promptCache: true,
+        prefixId: 'proactive-writer-judge',
+        prefix: `${JUDGE_SYSTEM}\n${JSON.stringify(JUDGE_SCHEMA)}`,
+        user: judgeUser,
+        outputChars: judgeOutputChars,
+        thinkingTokens: 0,
+        group: 'proactive-writer',
+        maxTokens: judgeCeiling(judgeModel),
+        fixtureId: fixture.id,
+      });
+    }
+  }
+  const outputChars = measured.length
+    ? [...measured].sort((a, b) => a - b)[Math.ceil(measured.length / 2) - 1]
+    : 400;
+  return {
+    calls: calls.map((call) => (call.outputChars === undefined ? { ...call, outputChars } : call)),
+    shortIds,
+    outputChars,
+    model: lane.model,
+    judgeModel,
+  };
+}
+
+async function judgeHit(judgeModel, id, judgeUser) {
+  const judgeKey = cacheKey(
+    `proactive-writer:judge:${id}`,
+    `${judgeModel}\n${JUDGE_SYSTEM}\n${judgeUser}`,
+  );
+  const judged = await cacheGet(judgeKey);
+  return Boolean(judged && isVerdict(judged.parsed));
+}
+
+async function main() {
+  const cachedOnly = process.argv.includes('--cached-only');
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
+  const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const tools = await tsImport(TOOLS_SRC, import.meta.url);
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const lane = agent.pickLane(skill.meta.task);
+  const rawClient = lazyAnthropic();
+  const getClient = () => capSdkClient(rawClient(), { rates: priceRates, tag: 'proactive-writer' });
   const cost = makeCost();
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(
@@ -131,7 +253,19 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+function runningAsScript() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runningAsScript()) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

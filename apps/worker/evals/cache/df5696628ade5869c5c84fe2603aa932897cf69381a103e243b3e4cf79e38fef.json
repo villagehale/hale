@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Ontario: Tuesday, Oct 13, 2026 (daytime)",
+        "from": "Research notes for Toronto, Ontario, Canada. Today is Monday, Oct 12, 2026, so \"tomorrow\" is Tuesday, Oct 13, 2026."
+      },
+      {
+        "states": "Environment Canada forecast issued 11:00 AM EDT Tuesday, Oct 13, describing that day",
+        "from": "The version the search returned was issued at 11:00 AM EDT on Tuesday, Oct 13, so it describes the day itself."
+      },
+      {
+        "states": "Daytime: mix of sun and cloud, becoming so in the afternoon",
+        "from": "Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "Daytime high of 25 C",
+        "from": "High of 25, with a humidex of 32."
+      },
+      {
+        "states": "Humidex of 32",
+        "from": "High of 25, with a humidex of 32."
+      },
+      {
+        "states": "Daytime wind from the southwest at 20 km/h, gusting to 40",
+        "from": "Wind from the southwest at 20 km/h, gusting to 40."
+      },
+      {
+        "states": "40 percent chance of showers late in the afternoon",
+        "from": "with a 40 percent chance of showers late in the afternoon"
+      },
+      {
+        "states": "Risk of a thunderstorm late in the afternoon",
+        "from": "There is a risk of a thunderstorm late in the afternoon."
+      },
+      {
+        "states": "Overnight low of 15 C",
+        "from": "Low of 15."
+      }
+    ],
+    "answer": "Tuesday in Toronto is warm with some rain later. It's a mix of sun and cloud, with a high of 25 (humidex 32), and wind from the southwest at 20 km/h gusting to 40. From late afternoon there's a 40% chance of showers and a risk of thunderstorms, and it drops to a low of 15 overnight. That's from Environment Canada's forecast from this morning."
+  },
+  "latencyMs": 5629
+}

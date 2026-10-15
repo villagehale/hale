@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { ASSENT_ACK } from '~/lib/channel/intake/copy';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import {
   type IdentityAskRequest,
   MAX_ASK_CHARS,
@@ -28,29 +26,12 @@ describe('the character budget', () => {
    * ask. This is the arithmetic that keeps it one segment, pinned rather than trusted —
    * an edit to either side that pushes it over doubles what every intake costs to send.
    */
-  it('leaves the tail ask exactly what is left of one segment after the ack', () => {
-    expect(ASSENT_ACK.length + 1 + MAX_TAIL_ASK_CHARS).toBe(MAX_ASK_CHARS);
-    expect(smsSegments(`${ASSENT_ACK} ${'a'.repeat(MAX_TAIL_ASK_CHARS)}`)).toBe(1);
-  });
 
   it('gives the standalone intros ask the whole segment', () => {
     expect(askCharCap(INTRO_BOTH)).toBe(MAX_ASK_CHARS);
     expect(askCharCap(START)).toBe(MAX_TAIL_ASK_CHARS);
-    expect(MAX_TAIL_ASK_CHARS).toBeLessThan(MAX_ASK_CHARS);
-  });
-
-  it('refuses a tail ask that would push the consent turn into two segments', () => {
-    // One character past the tail budget, which moves when the consent receipt does.
-    // Still inside a full segment, so the same sentence is a legal intros ask.
-    const lead = 'What name should I use for you, and what should I put on the ';
-    const overrun = `${lead}${'x'.repeat(MAX_TAIL_ASK_CHARS - lead.length + 1)}`;
-    expect(overrun.length).toBe(MAX_TAIL_ASK_CHARS + 1);
-    expect(overrun.length).toBeLessThanOrEqual(MAX_ASK_CHARS);
-    expect(identityAskRefusals(overrun, START)).toContain('over_char_cap');
-    // The SAME sentence is fine as the intros ask, which sends on its own.
-    expect(
-      identityAskRefusals(overrun, { reason: 'introduction', missing: ['name'] }),
-    ).not.toContain('over_char_cap');
+    // #868: the fixed consent ack is gone, so the tail ask gets the whole segment.
+    expect(MAX_TAIL_ASK_CHARS).toBe(MAX_ASK_CHARS);
   });
 });
 

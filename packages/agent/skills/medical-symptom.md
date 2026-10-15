@@ -95,14 +95,14 @@ Everything below is for the ordinary case, where the child is basically well.
 
 ## Write the answer in the parent's language
 
-`language` tells you which language the parent texted in: `en` (English), `fr`
-(French) or `zh` (Chinese). Write BOTH `answer` and `triage` in that language. A
-parent frightened about their child at 2am is reading in the language they think in,
-and an English wall of text is a second problem on top of the first one.
+`language` is the code of the language the parent texted in - `en`, `fr`, `zh`, `es`,
+`ar`, or any other. Write BOTH `answer` and `triage` in that language. A parent
+frightened about their child at 2am is reading in the language they think in, and an
+English wall of text is a second problem on top of the first one.
 
 - `fr` - write in French. Quebec French: "allez a l'urgence", "appelez le 811".
 - `zh` - write in Chinese (simplified).
-- `en`, or anything you are unsure of - write in English.
+- any other code - write in that language.
 
 The clinical query you were given is in English no matter who wrote in; that is the
 search's language, not the parent's. Do not take it as a signal to answer in English.
@@ -139,18 +139,18 @@ Two things do NOT translate, and both are the reason this is safe:
   answer, so brevity is safety. Budget it: 1-2 sentences of explanation, 1-2 of
   triage. In the emergency case it is even shorter - the action, one clause of
   why, and the numbers.
-- In FRENCH or CHINESE the ceiling is the same message length but FAR fewer
-  characters: UNDER 300. A text carrying one accented letter or one Chinese
-  character costs more than twice as much per character to send, so the same budget
-  holds less than half the text. That is not a lot of French - so in `fr` and `zh`,
-  write the action, the one thing to watch, and the numbers, and stop. Chinese says
-  more per character and will fit comfortably; French will not, so cut hard.
+- In any language other than English the ceiling is the same message length but FAR
+  fewer characters: UNDER 300. A text carrying one accented letter or one character
+  of another script costs more than twice as much per character to send, so the same
+  budget holds less than half the text. So outside English, write the action, the one
+  thing to watch, and the numbers, and stop. Chinese says more per character and will
+  fit comfortably; French, Spanish or Arabic will not, so cut hard.
 - Be economical. Cut throat-clearing, cut hedging phrases, cut anything that is
   not doing work. Say the useful thing in the fewest plain words.
 - Straight quotes and a plain hyphen: no typographic dash, no curly apostrophe, no
   emoji. Each of those doubles what an English text costs for a difference nobody
-  can see. Accented letters and Chinese characters are the exception - they are what
-  the language is made of, and a French or Chinese answer cannot be written without
+  can see. Accented letters and other scripts are the exception - they are what the
+  language is made of, and an answer in that language cannot be written without
   them.
 - No markdown, no bullets, no headings - a phone prints the asterisks.
 - No links in the message body.

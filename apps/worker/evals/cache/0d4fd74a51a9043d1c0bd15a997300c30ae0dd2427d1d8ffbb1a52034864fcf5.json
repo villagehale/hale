@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "I'd rather handle this myself",
+    "rationale": "Parent says they'd rather handle it themselves, a clear refusal of Hale's offer to keep an eye on things.",
+    "confidence": 0.93
+  },
+  "latencyMs": 1493
+}

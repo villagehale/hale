@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the useful fact (free outdoor High Park playground meetup Saturday), names the kids from the facts, and includes the 'I looked around' lead the contract requires. The where is null and the message correctly omits any venue rather than inventing one. Registration is null with no absence, but the message stays silent on it rather than padding, which is acceptable. Plain, short, no hype. Minor deduction: the 'for Ada and Noor' phrasing is slightly stilted and the offer question is absent from the reply, though that may be a separate beat.",
+    "score": 4
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "lowest insured (under 20% down) 5-year fixed rate is 4.34%",
+        "from": "Ratehub lists the best high-ratio (insured) 5-year fixed rate in Canada at 4.34%. / Wowa gives the same 4.34% as the lowest insured 5-year fixed rate."
+      },
+      {
+        "states": "lowest uninsured 5-year fixed rate per Wowa is 4.44%, and Wowa's figures do not agree with each other",
+        "from": "Wowa puts the lowest conventional (uninsurable) 5-year fixed rate at 4.44%. That is a different figure from Wowa's own later line quoting 4.64% for uninsurable mortgages"
+      },
+      {
+        "states": "one big bank is at 4.54% on Ratehub's table (not stated as the lowest)",
+        "from": "Ratehub's table (updated October 13) shows a Big 6 bank at 4.54%"
+      },
+      {
+        "states": "Scotiabank is at 4.74%",
+        "from": "Ratehub's table (updated October 13) shows a Big 6 bank at 4.54% and Scotiabank at 4.74%."
+      },
+      {
+        "states": "Big 6 average 5-year fixed is about 5.14% to 5.17%",
+        "from": "Nesto says its own 4.59% compares with a Big 6 average of 5.17% on a 5-year fixed. / An earlier Nesto page (October 8) put the Big 6 average discounted conventional 5-year fixed at 5.14%."
+      },
+      {
+        "states": "fixed rates have been rising since early September",
+        "from": "after all six of the largest banks raised select fixed rates since early September"
+      }
+    ],
+    "answer": "Right now the lowest 5-year fixed I can see is about 4.34% if the mortgage is insured (under 20% down), per Ratehub and Wowa. Uninsured, Wowa has the lowest at 4.44%, but its own numbers don't agree, so take that one loosely. The big banks are higher: one of them is at 4.54% on Ratehub's table, Scotiabank is at 4.74%, and the Big 6 average is around 5.14% to 5.17%. Fixed rates have been climbing since early September, so they're moving up, not down."
+  },
+  "latencyMs": 7336
+}

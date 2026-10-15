@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Blue Jays' last game of the 2026 season was on Sep 27, and no Blue Jays game is listed after that.",
+        "from": "played their last game of the season on Sep 27 (MLB.com schedule, Wikipedia 2026 Toronto Blue Jays season). No Blue Jays game is listed after Sep 27."
+      }
+    ],
+    "answer": "Nope, no game last night. The Jays' season wrapped up on Sep 27, and I don't see any game listed since then, so there's nothing to win or lose right now."
+  },
+  "latencyMs": 3164
+}

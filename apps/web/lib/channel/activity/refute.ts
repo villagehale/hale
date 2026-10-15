@@ -73,11 +73,7 @@ export type SlotRefusalReason =
   | 'no_backed_fact';
 
 /** Why one fact inside a surviving row was dropped. */
-export type FactRefusalReason =
-  | 'no_quote'
-  | 'quote_too_short'
-  | 'quote_absent'
-  | 'source_not_read';
+export type FactRefusalReason = 'no_quote' | 'quote_too_short' | 'quote_absent' | 'source_not_read';
 
 export interface RefutationResult {
   /** The rows that survived, in the shape the composer and the share page already read. */

@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey, I just noticed everything I've sent you so far has been for the weekend. Want me to look at weekday stuff too?"
+  },
+  "stopReason": "tool_use"
+}

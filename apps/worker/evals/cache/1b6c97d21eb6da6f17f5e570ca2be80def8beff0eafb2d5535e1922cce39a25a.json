@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure (high 25°C, humidex 32, 40% showers and thunderstorm risk late afternoon, low 15°C with evening storms) matches the Environment Canada 11am forecast in the notes. It correctly treats \"Toronto\" as the answer to the earlier which-city question and gives tomorrow's forecast directly. The tone reads more like a weather bulletin than a friend texting, especially \"This is Environment Canada's 11am update,\" so it falls short of fully casual.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text is in English, but the parent's language is Chinese. The parent asked in Chinese, so the response should be in Chinese. While the content accurately conveys the required facts (Hale, Village Hale Technologies Inc., Barton Dong, the email and website), the language mismatch is a critical failure for this task."
+  }
+}

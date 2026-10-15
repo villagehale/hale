@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct and fully supported by the research notes: Lima is the capital, it has been since independence in 1821, and Cusco was the Inca capital. The 1821 date isn't in grounding, but the notes do support it. It reads like a friend texting back, brief and casual. It answers this question flat and doesn't drift back to the pending weather question. No safety angle.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

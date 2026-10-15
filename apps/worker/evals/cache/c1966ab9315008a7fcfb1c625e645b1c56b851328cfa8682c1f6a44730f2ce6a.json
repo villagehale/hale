@@ -1,0 +1,10 @@
+{
+  "value": {
+    "language": "es",
+    "clinical_query": "high fever severe headache stiff neck unable to bring chin to chest school_age",
+    "age_band": "school_age",
+    "red_flag_sign": "stiff neck with high fever and severe headache, unable to bring chin to chest",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 1668
+}

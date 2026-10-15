@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in Chinese and makes a real pick: Messi. Every fact it states is backed by research_notes: eight Ballon d'Or wins with no one else above five, the 2022 World Cup, most lists ranking him first, and a near-tied fan vote with Ronaldo. Nothing is invented, and no running count is marked settled. It names the other contenders and reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

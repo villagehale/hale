@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The text plainly states the assistant has no current source for the parent's question about wait times, without guessing a date or providing an invented answer. It's warm and brief, matches the parent's English language, contains no invented facts, and asks nothing unnecessary. It perfectly fulfills the \"no_source\" purpose."
+  }
+}

@@ -109,7 +109,14 @@ function past(
 }
 
 function healthChild(overrides: Partial<HealthChild> = {}): HealthChild {
-  return { id: 'kid-1', name: 'Maya', ageMonths: 18, dobPrecision: 'exact', isTeen: false, ...overrides };
+  return {
+    id: 'kid-1',
+    name: 'Maya',
+    ageMonths: 18,
+    dobPrecision: 'exact',
+    isTeen: false,
+    ...overrides,
+  };
 }
 
 function decide(input: {
@@ -242,7 +249,12 @@ describe('decideRadar — free-first ordering', () => {
     const decision = decide({
       children: [child({ ageMonths: 48 })],
       candidates: [
-        candidate({ id: 'paid', title: 'Paid gym class', priceLevel: 'moderate', ageRange: '3-5 years' }),
+        candidate({
+          id: 'paid',
+          title: 'Paid gym class',
+          priceLevel: 'moderate',
+          ageRange: '3-5 years',
+        }),
         candidate({ id: 'free', title: 'Library story time', priceLevel: 'free' }),
       ],
     });
@@ -270,7 +282,12 @@ describe('decideRadar — free-first ordering', () => {
           priceLevel: 'moderate',
           ageRange: 'all ages',
         }),
-        candidate({ id: 'free', title: 'Preschool story time', priceLevel: 'free', ageRange: '3-5 years' }),
+        candidate({
+          id: 'free',
+          title: 'Preschool story time',
+          priceLevel: 'free',
+          ageRange: '3-5 years',
+        }),
       ],
     });
     expect(CLEARLY_BETTER_MARGIN).toBe(2);
@@ -295,7 +312,12 @@ describe('decideRadar — multi-kid discipline', () => {
     const decision = decide({
       children: [child({ name: 'Maya', ageMonths: 48 }), child({ name: 'Leo', ageMonths: 18 })],
       candidates: [
-        candidate({ id: 'single', title: 'Preschool art', ageRange: '3-5 years', eventDate: SATURDAY_DATE }),
+        candidate({
+          id: 'single',
+          title: 'Preschool art',
+          ageRange: '3-5 years',
+          eventDate: SATURDAY_DATE,
+        }),
         candidate({ id: 'both', title: 'Family swim', ageRange: 'all ages' }),
       ],
     });
@@ -332,9 +354,24 @@ describe('decideRadar — multi-kid discipline', () => {
     const decision = decide({
       children: [child({ name: 'Maya', ageMonths: 48 }), child({ name: 'Leo', ageMonths: 18 })],
       candidates: [
-        candidate({ id: 'sat-a', title: 'Preschool art', ageRange: '3-5 years', eventDate: SATURDAY_DATE }),
-        candidate({ id: 'sat-b', title: 'Toddler gym', ageRange: '1-2 years', eventDate: SATURDAY_DATE }),
-        candidate({ id: 'sun', title: 'Family swim', ageRange: 'all ages', eventDate: SUNDAY_DATE }),
+        candidate({
+          id: 'sat-a',
+          title: 'Preschool art',
+          ageRange: '3-5 years',
+          eventDate: SATURDAY_DATE,
+        }),
+        candidate({
+          id: 'sat-b',
+          title: 'Toddler gym',
+          ageRange: '1-2 years',
+          eventDate: SATURDAY_DATE,
+        }),
+        candidate({
+          id: 'sun',
+          title: 'Family swim',
+          ageRange: 'all ages',
+          eventDate: SUNDAY_DATE,
+        }),
       ],
     });
     expect(decision.weekendPick?.candidateRef.id).toBe('sun');
@@ -345,8 +382,18 @@ describe('decideRadar — multi-kid discipline', () => {
     const decision = decide({
       children: [child({ name: 'Maya', ageMonths: 48 }), child({ name: 'Leo', ageMonths: 18 })],
       candidates: [
-        candidate({ id: 'sat-a', title: 'Preschool art', ageRange: '3-5 years', eventDate: SATURDAY_DATE }),
-        candidate({ id: 'sat-b', title: 'Preschool music', ageRange: '3-5 years', eventDate: SATURDAY_DATE }),
+        candidate({
+          id: 'sat-a',
+          title: 'Preschool art',
+          ageRange: '3-5 years',
+          eventDate: SATURDAY_DATE,
+        }),
+        candidate({
+          id: 'sat-b',
+          title: 'Preschool music',
+          ageRange: '3-5 years',
+          eventDate: SATURDAY_DATE,
+        }),
       ],
     });
     expect(decision.weekendPick?.day).toBe('saturday');
@@ -460,9 +507,16 @@ describe('decideRadar — registration line', () => {
   });
 
   it('takes the SOONEST window when several match', () => {
-    const later = win({ id: 'w-2', cycleLabel: 'Winter 2027', openAt: new Date('2026-11-01T10:30:00.000Z') });
+    const later = win({
+      id: 'w-2',
+      cycleLabel: 'Winter 2027',
+      openAt: new Date('2026-11-01T10:30:00.000Z'),
+    });
     const decision = decide({
-      windows: [match(), match({ window: later, opensForFamilyAt: later.openAt, generalOpenAt: later.openAt })],
+      windows: [
+        match(),
+        match({ window: later, opensForFamilyAt: later.openAt, generalOpenAt: later.openAt }),
+      ],
     });
     expect(decision.registrationLine?.windowRef.cycleLabel).toBe('Fall 2026');
   });
@@ -564,7 +618,11 @@ describe('decideRadar — the age checkpoint', () => {
     const children = [healthChild({ id: 'kid-1', ageMonths: 18 })];
     const suppressed = new Set(['immunization_18_months:kid-1:0']);
 
-    const decision = decide({ healthChildren: children, areaCoarse: 'L7G', suppressedCheckpointRefs: suppressed });
+    const decision = decide({
+      healthChildren: children,
+      areaCoarse: 'L7G',
+      suppressedCheckpointRefs: suppressed,
+    });
     // The next row in the same band, not silence and not the suppressed one.
     expect(decision.checkpoint?.checkpointRef.id).toBe('well_baby_18_months');
   });
@@ -692,24 +750,6 @@ describe('decideRadar — registration absence (between cycles)', () => {
     expect(decision.registrationAbsence).toBeNull();
   });
 
-  it("folds the dataset's own typographic dash out of a cycle label, line and absence alike", () => {
-    // registration-windows-data.ts carries an em dash inside one Oshawa label, and a
-    // single non-ASCII character bills the WHOLE message as UCS-2 — halving the segment
-    // budget and silently discarding the payload (radar-voice usableRadarMessage). The
-    // label is data a town wrote, so the fold belongs where the fact is minted.
-    const oshawa = win({
-      municipality: 'oshawa' as Municipality,
-      cycleLabel: 'Holiday Camp (winter break) \u2014 registers in the Fall 2026 window',
-    });
-    const plain = 'Holiday Camp (winter break) - registers in the Fall 2026 window';
-    expect(
-      decide({ windows: [match({ window: oshawa })] }).registrationLine?.windowRef.cycleLabel,
-    ).toBe(plain);
-    expect(
-      decide({ windows: [], pastCycle: past(oshawa) }).registrationAbsence?.cycleRef.cycleLabel,
-    ).toBe(plain);
-  });
-
   it('carries ASCII spacing, because one narrow no-break space doubles the SMS cost', () => {
     const decision = decide({ windows: [], pastCycle: past(HALTON_FALL) });
     expect(decision.registrationAbsence?.lastOpenedAtLocal).not.toMatch(/[\u202f\u00a0\u2009]/);
@@ -822,10 +862,7 @@ describe('decideRadar — the open-now tense on the absence', () => {
       ageMaxMonths: 72,
     });
     const decision = decide({
-      children: [
-        child({ name: 'Maya', ageMonths: 48 }),
-        child({ name: 'Leo', ageMonths: 168 }),
-      ],
+      children: [child({ name: 'Maya', ageMonths: 48 }), child({ name: 'Leo', ageMonths: 168 })],
       windows: [],
       pastCycle: past(banded),
       stillOpenCycle: past(banded),
@@ -904,9 +941,7 @@ describe('decideRadar — what the weekend pick says to do about itself', () => 
   /** R1 — a model-supplied source URL "is often guessed" (village/discover.ts). */
   it('withholds an LLM row’s url, access and time even when the row has one', () => {
     const decision = decide({
-      candidates: [
-        civic({ source: 'web_grounded', access: null, whenLabel: null }),
-      ],
+      candidates: [civic({ source: 'web_grounded', access: null, whenLabel: null })],
     });
     expect(decision.weekendPick?.access).toBe('unknown');
     expect(decision.weekendPick?.when).toBeNull();

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "b8e4d1f7-6a29-4c05-9d31-3f7c2e08a45b",
+    "polarity": "yes",
+    "confidence": "medium",
+    "reason": "'Add it to my week' is a yes to adding something to their week; the checkup_offer is the one about booking an appointment into their week, but the calendar approval also fits, so confidence is medium"
+  },
+  "latencyMs": 3880
+}

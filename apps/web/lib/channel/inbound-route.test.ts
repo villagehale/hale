@@ -1,19 +1,19 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
-import { STOP_ACK } from '~/lib/channel/intake/copy';
 import {
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeRadar,
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
+import { SCRIPTED_STOP_CONFIRMATION } from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LINQ_TYPING_SHOW_DELAY_MS } from '~/lib/channel/linq/presence';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -61,6 +61,7 @@ function harness(): Harness {
   const state = { intakeBuilds: 0 };
   const intake: IntakeDeps = {
     transport,
+    friendVoice: scriptedFriendVoice,
     // A FakeDb has no `conversations` to resolve, and what this file pins is not the
     // thread — the machine's own suite owns that (intake/machine.test.ts).
     threadMessage: async () => 'conv-1',
@@ -69,7 +70,6 @@ function harness(): Harness {
       { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
     ]),
     radar: fakeRadar,
-    ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
     openQuestions: fakeNoOpenQuestions,
     identityAsk: new FakeIdentityAsk(),
@@ -182,7 +182,7 @@ describe('routing', () => {
 
     expect(outcome).toBe('intake');
     // The CASL path ran, not the attachment notice.
-    expect(h.transport.bodies()).toEqual([STOP_ACK]);
+    expect(h.transport.bodies()).toEqual([SCRIPTED_STOP_CONFIRMATION]);
     const revoked = h.fake.writes.filter(
       (w) => w.op === 'update' && w.table === schema.parentChannels,
     );
@@ -340,6 +340,54 @@ describe('handoff to C1', () => {
         received_at: NOW.toISOString(),
       },
     ]);
+  });
+
+  it("carries the door's own group bit on the job while group onboarding v2 is dark", async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
+    const queued = async (isGroup: boolean) => {
+      const h = harness();
+      enrol(h.fake);
+      closeIntake(h.fake);
+      await routeInboundText(
+        h.deps,
+        {
+          ...inbound({ body: 'can you move swimming to Thursday?' }),
+          transport: 'imessage',
+          chatId: 'chat-1',
+          isGroup,
+        },
+        0,
+      );
+      return h.jobs;
+    };
+
+    expect((await queued(true)).map((queuedJob) => queuedJob.in_group)).toEqual([true]);
+    expect((await queued(false)).map((queuedJob) => queuedJob.in_group)).toEqual([false]);
+  });
+
+  /**
+   * A door that was not told whether the chat is a group says nothing on the job. It used
+   * to say `false`, so a text from a chat Linq did not describe was queued as a 1:1 text
+   * and the router's `group_unknown` skip could never fire.
+   */
+  it('queues no group bit for a text whose door did not say', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    await routeInboundText(
+      h.deps,
+      {
+        ...inbound({ body: 'can you move swimming to Thursday?' }),
+        transport: 'imessage',
+        chatId: 'chat-1',
+      },
+      0,
+    );
+
+    expect(h.jobs).toHaveLength(1);
+    expect(h.jobs[0]).not.toHaveProperty('in_group', false);
+    expect(h.jobs[0]?.in_group).toBeUndefined();
   });
 
   it('NEVER hands a REVOKED number to C1 — an unsubscribed parent cannot be conversed with', async () => {
@@ -673,7 +721,6 @@ describe('iMessage first-touch door', () => {
 
 describe('a first text that got no reply', () => {
   beforeEach(() => {
-    vi.stubEnv('ONBOARDING_FRIEND_VOICE_ENABLED', 'on');
     vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
   });
 
@@ -702,5 +749,98 @@ describe('a first text that got no reply', () => {
 
     expect(outcome).toBe('intake');
     expect(h.transport.bodies()).toHaveLength(1);
+  });
+});
+
+/**
+ * Sloane, #868: an opt-out stops ALL texting at once. Structural only — no reply
+ * copy is matched. After the opt-out the channel row is revoked, the proactive gate
+ * refuses every class, and no onboarding or group turn from that number sends.
+ */
+describe('an opt-out stops all outbound texting immediately', () => {
+  it('revokes the channel, holds every proactive class, and sends nothing after the confirmation', async () => {
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake);
+
+    await routeInboundText(h.deps, inbound({ body: 'STOP', providerId: 'SMstop' }), 0);
+
+    const revoked = h.fake.writes.filter(
+      (w) => w.op === 'update' && w.table === schema.parentChannels,
+    );
+    expect(revoked.length).toBeGreaterThan(0);
+    // At most one confirmation, in the model's or the carrier's words.
+    const afterStop = h.transport.bodies().length;
+    expect(afterStop).toBeLessThanOrEqual(1);
+
+    // Onboarding turn after the opt-out: nothing goes out.
+    await routeInboundText(
+      h.deps,
+      inbound({ body: "what's on this weekend?", providerId: 'SMafter1' }),
+      0,
+    );
+    // Group turn from the same number: nothing goes out.
+    await routeInboundText(
+      h.deps,
+      { ...inbound({ body: 'hey all', providerId: 'SMafter2', budget: 'chat' }), isGroup: true },
+      0,
+    );
+    expect(h.transport.bodies().length).toBe(afterStop);
+
+    // Proactive: a revoked channel is not enrolled, so every class is held.
+    const { assertProactiveSendAllowed } = await import('./outbound-gate');
+    const ports = {
+      // Enrolment follows the revocation the STOP turn actually wrote.
+      channelEnrolled: async () => revoked.length === 0,
+      watchConsentGranted: async () => true,
+      countProactiveSends: async () => 0,
+      proactiveSentSince: async () => false,
+      parentTimeZone: async () => 'America/Toronto',
+    };
+    for (const kind of ['nudge', 'plan_checkin', 'calendar_reminder'] as const) {
+      const verdict = await assertProactiveSendAllowed(
+        { familyId, parentUserId: userId, kind: kind as never, now: NOW, urgent: true },
+        ports,
+      );
+      expect(verdict.allowed).toBe(false);
+    }
+  });
+
+  it('the model reads an opt-out in any wording, revokes, and its own confirmation is the only text', async () => {
+    const h = harness();
+    enrol(h.fake);
+    const said: string[] = [];
+    const intake = h.deps.intake('sms');
+    intake.optOutReader = {
+      read: async ({ text }) => {
+        said.push(text);
+        return { intent: 'stop', confirmation: `model:${text.length}` };
+      },
+    };
+
+    await routeInboundText(h.deps, inbound({ body: 'pls leave me alone', providerId: 'SMx1' }), 0);
+
+    expect(said).toEqual(['pls leave me alone']);
+    const revoked = h.fake.writes.filter(
+      (w) => w.op === 'update' && w.table === schema.parentChannels,
+    );
+    expect(revoked.length).toBeGreaterThan(0);
+    // The one confirmation is exactly what the reader wrote — nothing fixed is added.
+    expect(h.transport.bodies()).toEqual(['model:18']);
+  });
+
+  it('an empty model confirmation still revokes and sends nothing', async () => {
+    const h = harness();
+    enrol(h.fake);
+    h.deps.intake('sms').optOutReader = {
+      read: async () => ({ intent: 'stop', confirmation: '' }),
+    };
+
+    await routeInboundText(h.deps, inbound({ body: 'done with this', providerId: 'SMx2' }), 0);
+
+    const revoked = h.fake.writes.filter(
+      (w) => w.op === 'update' && w.table === schema.parentChannels,
+    );
+    expect(revoked.length).toBeGreaterThan(0);
+    expect(h.transport.bodies()).toEqual([]);
   });
 });

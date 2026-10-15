@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in French and makes a real pick (yes, acceptable) with a reason. The claim that Hawaiian pizza has existed for decades is common knowledge (it dates from the 1960s). The closing 'tout dépend du goût de chacun' softens the pick slightly, and the tone reads a bit like a balanced explanation rather than a quick casual text, but it still sounds like a friend answering.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

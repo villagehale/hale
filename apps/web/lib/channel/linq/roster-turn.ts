@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import {
@@ -89,7 +89,7 @@ export async function takeRosterTurn(
   message: LinqInboundText,
   ports: RosterTurnPorts,
 ): Promise<RosterTurn> {
-  if (matchKeyword(message.text)) return NOT_HANDLED;
+  if ((await optOutIntentOf(message.text)) !== null) return NOT_HANDLED;
   const phone = realHumanPhone(message.senderHandle);
   if (!phone) return NOT_HANDLED;
 

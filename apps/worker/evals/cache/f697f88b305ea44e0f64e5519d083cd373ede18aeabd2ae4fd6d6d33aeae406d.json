@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "redraft",
+    "reason": "The draft says \"Around Toronto\" for the 4.34% insured rate, but the notes give it as the best rate in Canada (Ratehub, Wowa) and say no Toronto- or Ontario-specific rate was found. Describe it as the lowest rate nationally, not a Toronto figure."
+  },
+  "latencyMs": 3671
+}

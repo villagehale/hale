@@ -1,0 +1,13 @@
+{
+  "value": {
+    "language": "en",
+    "answers_pending": "nothing_pending",
+    "question": "Settle it, is pineapple on pizza ok?",
+    "missing_detail": "none",
+    "their_place": "not_needed",
+    "sensitive": "no",
+    "current_fact": "none",
+    "needs_search": "no"
+  },
+  "latencyMs": 1765
+}

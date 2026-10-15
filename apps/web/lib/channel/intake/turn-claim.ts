@@ -57,6 +57,21 @@ export async function claimIntakeTurn(
   return claimed.length > 0;
 }
 
+/**
+ * Gives the provider id back, so a turn that could not be written can be re-driven.
+ * A crash still leaves the claim (completed_at NULL). An unwritten moment is not a
+ * crash: the same text must run again once the model is back, and a claim that
+ * stayed would answer the retry `duplicate`.
+ */
+export async function releaseIntakeTurn(
+  database: Database,
+  providerMessageId: string,
+): Promise<void> {
+  await database
+    .delete(schema.smsIntakeTurnClaims)
+    .where(eq(schema.smsIntakeTurnClaims.providerMessageId, providerMessageId));
+}
+
 /** Stamps the claimed turn finished. A claim whose completed_at stays NULL past the
  * turn's own lifetime is the named crash residue (rule #11) — a text that was claimed
  * and never answered — and it is a row an operator can count, never a silence. */

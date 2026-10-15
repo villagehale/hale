@@ -1509,6 +1509,7 @@ describe('a town that published a date and no hour (VIL-347)', () => {
     expect(result.quiet).toBe(0);
     expect(result.held).toEqual({
       not_enrolled: 0,
+      opt_out_unread: 0,
       no_watch_consent: 0,
       quiet_hours: 0,
     });

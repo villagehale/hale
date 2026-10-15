@@ -21,10 +21,9 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
-import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
-import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
@@ -33,6 +32,7 @@ import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { MessageTransport } from '~/lib/channel/transport-address';
+import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -94,14 +94,13 @@ export function buildIntakeDeps(
       client,
       yearFinder: createActivityFinder(activityClient),
     }),
-    ackComposer: createIntakeAckComposer(client),
     friendVoice: createFriendVoiceComposer(client),
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
+    optOutReader: sharedOptOutReader(),
+    saidLine: createSaidLineWriter(client),
     limiter: new PostgresRateLimiter(database),
-    // The week search stays unwired until friend voice is on. Off, the ladder
-    // still sends the locked empty line (the current production behaviour).
-    ...(onboardingFriendVoiceEnabled() ? { weekFinder: createActivityFinder(activityClient) } : {}),
+    weekFinder: createActivityFinder(activityClient),
   };
 }
 

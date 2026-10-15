@@ -17,7 +17,7 @@ import type { RadarDecision } from './radar-decide';
  *      URL out of `radarVoiceContext` and out of `radarFactSlots` is what makes that
  *      guard load-bearing rather than aspirational.
  *   3. The house already composes link-bearing messages this way and says why:
- *      `intakeConnectorOffer` is "composed here and nowhere else, so no later fitting
+ *      the old connector offer is "composed here and nowhere else, so no later fitting
  *      can split the sentence from the URLs it is about" (intake/copy.ts).
  *   4. There is no warmth to add to a URL. That is what makes this a STATE RECEIPT in
  *      the house's own vocabulary (channel/router/copy.ts) rather than a template

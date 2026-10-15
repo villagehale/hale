@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Answer is well calibrated for a benign-but-testable case: does not send to ER, recommends a swab test via doctor given sibling strep exposure, avoids stating diagnosis as certain, gives clear triage (811/doctor for persistent sore throat, red flags listed), and is in English matching the query language. Minor issues: it mentions 911/ER for severe breathing and purple spots, which is appropriate general triage but slightly broader than needed; no age-specific framing given age is unstated, and it does not reassure with home care measures explicitly.",
+    "score": 4
+  }
+}

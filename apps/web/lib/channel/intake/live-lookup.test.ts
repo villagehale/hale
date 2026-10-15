@@ -1,14 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
 import {
-  AFTER_PROVISION_RETURN_ASK,
-  CHEER_UP_REPLY,
-  NO_CURRENT_SOURCE_YET,
-  afterProvisionFallbackReply,
   afterProvisionReplyFromNotes,
-  cheerUpAfterProvisionReply,
-  cheerUpIntakeReply,
   deidentifyLiveQuery,
   extractLiveLookupAnswer,
   isCheerUpAsk,
@@ -16,13 +8,15 @@ import {
   isLiveLookupAsk,
   isRaisingKidsAsk,
   isTherapistFindAsk,
-  liveLookupFallbackReply,
   liveLookupReplyFromNotes,
   liveLookupReturnLine,
-  namesAMentalCrisis,
   notesGroundACurrentSource,
 } from './live-lookup';
-import { OFFICIAL_PAGE_RETURN_ASK } from './official-page';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
 describe('live-lookup · which inbound needs a current source', () => {
   it('matches raising-kids questions mid-signup', () => {
@@ -74,55 +68,23 @@ describe('live-lookup · which inbound needs a current source', () => {
   });
 });
 
-describe('live-lookup · mental crisis is the reviewed safety door', () => {
-  it('fires on suicide / self-harm and leaves a therapist-find alone', () => {
-    expect(namesAMentalCrisis('I want to die')).toBe(true);
-    expect(namesAMentalCrisis('I have been thinking about suicide')).toBe(true);
-    expect(namesAMentalCrisis('self-harm tonight')).toBe(true);
-    expect(namesAMentalCrisis('I need a therapist')).toBe(false);
-    expect(namesAMentalCrisis('cheer me up')).toBe(false);
-    expect(namesAMentalCrisis('How do I get him to nap?')).toBe(false);
-  });
-});
-
 describe('live-lookup · return ask is never COLD_START_ASK', () => {
   it('asks for names, ages, and postal in different words', () => {
     const line = liveLookupReturnLine(COLD_START_ASK);
-    expect(line).toBe(OFFICIAL_PAGE_RETURN_ASK);
     expect(line).not.toBe(COLD_START_ASK);
-    expect(line.endsWith('?')).toBe(true);
+    // #868: no fixed return line at all; the friend voice asks next turn.
+    expect(line).toBe('');
   });
 
   it('paraphrases the watch offer without copying it', () => {
     const line = liveLookupReturnLine(WATCH_OFFER_ASK);
     expect(line).not.toBe(WATCH_OFFER_ASK);
-    expect(line.endsWith('?')).toBe(true);
+    // #868: no fixed return line at all; the friend voice asks next turn.
+    expect(line).toBe('');
   });
 });
 
 describe('live-lookup · no current source when search cannot ground', () => {
-  it('is the locked fallback, GSM-7, under 300, no URL, no I do not do that', () => {
-    const body = liveLookupFallbackReply(COLD_START_ASK);
-    expect(body.startsWith(NO_CURRENT_SOURCE_YET)).toBe(true);
-    expect(body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(body).not.toContain(COLD_START_ASK);
-    expect(body).not.toContain("I don't do that");
-    expect(body).not.toMatch(/https?:\/\//);
-    expect(body).not.toMatch(/I'?m a therapist/i);
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(smsSegments(body)).toBeLessThanOrEqual(2);
-    expect(body.length).toBeLessThanOrEqual(300);
-  });
-
-  it('after provision still returns to the kids / the week, not trivia', () => {
-    const body = afterProvisionFallbackReply();
-    expect(body.startsWith(NO_CURRENT_SOURCE_YET)).toBe(true);
-    expect(body).toContain(AFTER_PROVISION_RETURN_ASK);
-    expect(body).not.toContain(COLD_START_ASK);
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(body.length).toBeLessThanOrEqual(300);
-  });
-
   it('extracts a restated source sentence and refuses notes that invent nothing', () => {
     const notes =
       'Health Canada says most babies are ready for solids around 6 months. Start with iron-rich foods.';
@@ -138,36 +100,17 @@ describe('live-lookup · no current source when search cannot ground', () => {
       COLD_START_ASK,
     );
     expect(grounded).toContain('United States president');
-    expect(grounded).toContain(OFFICIAL_PAGE_RETURN_ASK);
     expect(grounded).not.toContain(COLD_START_ASK);
 
     const empty = liveLookupReplyFromNotes('NO CURRENT SOURCE', COLD_START_ASK);
-    expect(empty).toBe(liveLookupFallbackReply(COLD_START_ASK));
+    // #868: no fixed fallback; null hands the turn to the model's no_source line.
+    expect(empty).toBeNull();
   });
 
   it('after provision leftover facts get a return-to-Hale line', () => {
     const body = afterProvisionReplyFromNotes('Argentina won the 2022 World Cup.');
     expect(body).toContain('Argentina');
-    expect(body).toContain(AFTER_PROVISION_RETURN_ASK);
     expect(body).not.toContain(COLD_START_ASK);
-  });
-});
-
-describe('live-lookup · cheer-up is warm and not clinical', () => {
-  it('is reviewed warmth, no diagnosis, no therapist claim, then one return ask', () => {
-    const intake = cheerUpIntakeReply(COLD_START_ASK);
-    expect(CHEER_UP_REPLY).toBe("That's a lot to carry. You're doing the hard part.");
-    expect(CHEER_UP_REPLY).not.toContain('by showing up');
-    expect(intake.startsWith(CHEER_UP_REPLY)).toBe(true);
-    expect(intake).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(intake).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
-    expect(intake).not.toContain(COLD_START_ASK);
-    expect(smsEncoding(intake)).toBe('gsm7');
-
-    const after = cheerUpAfterProvisionReply();
-    expect(after.startsWith(CHEER_UP_REPLY)).toBe(true);
-    expect(after).toContain(AFTER_PROVISION_RETURN_ASK);
-    expect(after).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
   });
 });
 

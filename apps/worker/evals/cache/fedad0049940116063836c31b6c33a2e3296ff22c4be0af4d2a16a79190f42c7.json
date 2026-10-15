@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot is grounded in a page it cites. The Tiny Gym ages (1 and walking to 3, with a caregiver) come off programs.php. The Term 1 and Term 2 dates (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) match the schedule PDF that was actually opened. The registration slot carries July 22, 2026 at 8:00am online, from the homepage. No price was invented, which is correct because the site says pricing sits behind the registration login. No figure was borrowed from another program. Hale says honestly that it could not match times to weekdays from the garbled PDF grid. The message leads with Tiny Gym by name, attributes the facts to their site and carries the registration date. Under page_has_schedule it correctly uses the first person ('I could not pin down the day or time or the price') rather than 'not posted'. With watch=true, the first-person 'I'll keep watching and text you' is a real commitment. It is plain ASCII with no link and no question. Minor ding: the Rock n' Roll (0+) slot is a second fitting find that the message drops entirely, a small instance of going quiet about a find.",
+    "score": 4
+  }
+}

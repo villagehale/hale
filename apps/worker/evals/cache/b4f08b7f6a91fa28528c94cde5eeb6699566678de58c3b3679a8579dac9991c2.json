@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific matches the Environment Canada notes for Toronto on Tue Oct 13: mix of sun and cloud, high 25 with humidex 32, 40% showers, thunderstorm risk late afternoon into evening, SW 20 gusting 40, low 15, no alerts, Wednesday high 16. It answers directly without asking for the city. The phrasing reads more like a forecast bulletin than a friend texting back, but it is still a direct answer, not a deflect or a service offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

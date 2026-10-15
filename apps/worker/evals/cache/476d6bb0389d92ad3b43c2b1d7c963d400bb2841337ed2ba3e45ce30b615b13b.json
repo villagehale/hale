@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is plain, short, leads with the useful fact (Fall 2026 registration Aug 11, 6:30 a.m.), and uses only given facts (Markham, Maya, cycle, date/time). The 'I checked' lead-in is mandated and fine. The 'still learning your area... no weekend pick yet' clause is the instructed absence wording for weekendPick null. Minor deduction: 'Markham's calendar' names a source not in the facts, and the registration sentence could be slightly tighter, but nothing is invented in substance.",
+    "score": 4
+  }
+}

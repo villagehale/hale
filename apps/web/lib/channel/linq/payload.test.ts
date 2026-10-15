@@ -44,8 +44,34 @@ describe('parseLinqWebhook', () => {
         mediaCount: 0,
         receivedAt: new Date('2026-02-05T19:31:13.074Z'),
         otherHandles: [],
+        isGroup: false,
       },
     });
+  });
+
+  /**
+   * A payload with no `is_group` is routed as a 1:1 text, as it always was. It is not
+   * RECORDED as one: Linq did not say, and "did not say" must reach the router as that
+   * (the holding line's `group_unknown` skip), not as a no.
+   */
+  it('keeps what Linq said about the group, and says nothing when Linq did not', () => {
+    const unsaid = received();
+    (unsaid.data.chat as { is_group?: boolean }).is_group = undefined;
+    const missing = received();
+    Reflect.deleteProperty(missing.data.chat, 'is_group');
+    const group = received();
+    (group.data.chat as { is_group: boolean }).is_group = true;
+
+    for (const body of [unsaid, missing]) {
+      const parsed = parseLinqWebhook(body, FALLBACK);
+      expect(parsed.kind).toBe('message');
+      if (parsed.kind !== 'message') throw new Error('not a message');
+      expect(parsed.message.isGroup).toBeUndefined();
+    }
+    const said = parseLinqWebhook(received(), FALLBACK);
+    expect(said.kind === 'message' && said.message.isGroup).toBe(false);
+    const parsedGroup = parseLinqWebhook(group, FALLBACK);
+    expect(parsedGroup.kind === 'group' && parsedGroup.message.isGroup).toBe(true);
   });
 
   it('counts a media part and keeps the text beside it', () => {

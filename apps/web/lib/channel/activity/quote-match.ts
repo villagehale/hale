@@ -287,7 +287,12 @@ export function preparePage(text: string): PageEvidence {
  * made entirely of "monday" and "3" from being checkable at all.
  */
 function isDistinctive(anchor: Anchor): boolean {
-  return anchor.kind === 'money' || anchor.kind === 'time' || anchor.kind === 'date' || anchor.kind === 'code';
+  return (
+    anchor.kind === 'money' ||
+    anchor.kind === 'time' ||
+    anchor.kind === 'date' ||
+    anchor.kind === 'code'
+  );
 }
 
 /** The page satisfies the quote's token only if it is the same fact. A quote that named a

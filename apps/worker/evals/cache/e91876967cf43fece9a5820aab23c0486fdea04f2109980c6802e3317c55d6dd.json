@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Sources agree it is well made and third-party tested",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Tastes decent for most people",
+        "from": "Sources agree it is well made, tested and tastes decent for most people."
+      },
+      {
+        "states": "Several blends are underdosed",
+        "from": "getsupplementreviews.com agrees that some blends are underdosed."
+      },
+      {
+        "states": "Dietitian Abby Langer was harshly critical, saying the science is far weaker than consumers are led to believe",
+        "from": "Dietitian Abby Langer (about 88 days old) was harshly critical. She wrote that IM8 is clever marketing wrapped around science that is far weaker than consumers are led to believe."
+      },
+      {
+        "states": "No independent clinical evidence found for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "About $89 a month on subscription",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription, per getsupplementreviews.com and Live it Up."
+      },
+      {
+        "states": "One of the most expensive all-in-one supplements on the market",
+        "from": "Live it Up's dietitian (a competing brand, about 57 days old) called it one of the most expensive all-in-one supplements on the market"
+      }
+    ],
+    "answer": "I'd call it overrated for most people. It's well made, third-party tested, and plenty of people like the taste and how easy it is to drink. But several of the blends are underdosed, the evidence behind the benefit claims is thin, and at about $89 a month on subscription it's one of the pricier all-in-ones. If you already cover the basics with food, you're mostly paying for a long ingredient list that doesn't add much."
+  },
+  "latencyMs": 5966
+}

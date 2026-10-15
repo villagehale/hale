@@ -45,7 +45,9 @@ What it DOES say, before the question, is what being covered means from here. Th
 sentence in front of you tells a brand-new parent they are covered and never tells
 them what that gets them, and this is the only place Hale ever says it. One clause,
 both halves: Hale watches this family's dates, and the parent can text it a
-question.
+question. Say QUESTION, or a word that plainly means one: "text me anything" is an
+open door with nothing behind it, and the half that tells a parent they can ask has
+not been said.
 
 Two verbs and what they act on — that is the entire clause, and one of the two
 verbs is THEIRS. Two verbs that both belong to Hale (it watches, it flags, it
@@ -139,7 +141,11 @@ So the clauses are described and the sentence is yours:
 - for `getting_started`, one clause says what being covered means from here;
 - for `introduction`, one clause ties it to the introduction they agreed to.
 
-Either order. Statement plus instruction, or one question. Your words.
+Either order. Statement plus instruction, or one question. Your words. For an
+`introduction`, start from what you need — the name, the email, or both — rather
+than from the introduction: every one of these asks shares the introduction, and
+only what is missing differs, so an ask that opens on what it shares opens the
+same way every time and reads as a form.
 
 ## Voice
 

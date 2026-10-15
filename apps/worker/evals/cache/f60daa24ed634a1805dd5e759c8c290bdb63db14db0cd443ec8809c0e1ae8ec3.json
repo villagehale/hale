@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://weather.gc.ca/en/location/index.html?coords=43.655%2C-79.383",
+    "https://www.timeanddate.com/weather/canada/toronto/ext",
+    "https://www.timeanddate.com/weather/canada/toronto/hourly",
+    "https://www.easeweather.com/north-america/canada/ontario/toronto/october",
+    "https://www.weather25.com/amp/north-america/canada/ontario/toronto?page=tomorrow",
+    "https://www.weather25.com/north-america/canada/ontario/toronto?page=month&month=October",
+    "https://www.weather25.com/amp/north-america/canada/ontario/toronto?page=14",
+    "https://globalnews.ca/news/6846256/toronto-weather-wind-alert-april-21/amp/",
+    "https://globalnews.ca/news/4873557/special-weather-statement-toronto-snow-freezing-rain/amp/",
+    "https://globalnews.ca/news/8768944/wind-warning-toronto-weather-tuesday-april-19/amp/"
+  ],
+  "notes": "Research notes for Toronto, Ontario, Canada, for tomorrow, Tuesday, Oct 13, 2026:\n\n**Main source:** Environment Canada's Toronto forecast, issued 11:00 AM EDT Monday Oct 12, 2026.\n- Showers are expected to end near noon. After that it should be mainly cloudy, with a 60% chance of showers.\n- There is a risk of a thunderstorm in the morning and afternoon.\n- Local rainfall amounts are 10 to 20 mm.\n- Wind becomes southwest 20 km/h, gusting to 40, near noon.\n- The high is 24°C and the humidex is 28. The UV index is 4 (moderate).\n- Tuesday night is cloudy periods with a 60% chance of showers, and a low of 12°C.\n- For context, Wednesday Oct 14 is forecast as a mix of sun and cloud, with a 30% chance of showers and a high of 19°C.\n\n**Other sources:**\n- Timeanddate's page was updated Tuesday morning and shows isolated thunderstorms with breaks of sun late. It gives 76/61°F (about 24/16°C), an 87% chance of precipitation and 0.37\" of rain. Its hourly table shows light rain and showers in the morning.\n- Weather25 gives a high of 26°C with light rain, and the amount varies by page (6.8 mm and 10.3 mm).\n- Other pages in the results disagree sharply with Environment Canada. One (easeweather) shows about 15°C and overcast, and another (weather25's \"tomorrow\" page) shows about 19°C and mostly sunny. Both look older or less reliable, since their listed dates and ages don't match today.\n\nThe sources agree on a warm day, about 24–26°C, with rain and possible thunderstorms. Environment Canada is the most current and authoritative source.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 18678
+}

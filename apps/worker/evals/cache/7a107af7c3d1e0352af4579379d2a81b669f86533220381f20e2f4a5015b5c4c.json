@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is null, so only the slots are scored. Both fetches were refused and the notes say so plainly. The single slot is grounded in the search snippet: Parent & Tot, 4 months to 3 years, which fits a toddler. Day, price and registration are null rather than invented. The ageFit field openly says it comes from a snippet only and that the schedule page could not be opened. The notes make no claim that the schedule is not posted, and no figures are borrowed from elsewhere. No pages_read field claims an opened page. The sourceUrl points to a page that was not actually opened, but the ageFit caveat makes that clear, so this is attribution rather than a claim to have read it.",
+    "score": 5
+  }
+}

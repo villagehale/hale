@@ -4,6 +4,7 @@ import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isStage } from '~/lib/testing/structured-reply';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
@@ -113,7 +114,10 @@ const EARLYON_RESULT = {
   source_name: 'Links2Care',
 };
 
-describe('the activity question is answered', () => {
+// A recording waits on live model calls, which outlast the 5s default; replay keeps it.
+const RECORD_TIMEOUT = process.env.HALE_RECORD === '1' ? 180_000 : undefined;
+
+describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () => {
   let db: TestDb;
   let database: Database;
   let familyId: string;
@@ -209,13 +213,11 @@ describe('the activity question is answered', () => {
     let call = -1;
     // biome-ignore lint/suspicious/noExplicitAny: a fixture standing in for the web
     async function turn(req: any) {
-      if (req.tool_choice?.name === 'activity_picks') {
+      if (isStage(req, 'activity_picks', 'picks')) {
         return {
-          content: [
-            { type: 'tool_use', name: 'activity_picks', input: { picks: picksByCall[call] ?? [] } },
-          ],
+          content: [{ type: 'text', text: JSON.stringify({ picks: picksByCall[call] ?? [] }) }],
           usage: { input_tokens: 10, output_tokens: 10 },
-          stop_reason: 'tool_use',
+          stop_reason: 'end_turn',
         };
       }
       call += 1;
@@ -317,9 +319,8 @@ describe('the activity question is answered', () => {
       return {
         content: [
           {
-            type: 'tool_use',
-            name: 'activity_deep',
-            input: {
+            type: 'text',
+            text: JSON.stringify({
               pages_read: ['https://cartwheelsgymcentre.example/programs'],
               slots: [
                 {
@@ -341,11 +342,11 @@ describe('the activity question is answered', () => {
                   source_url: 'https://cartwheelsgymcentre.example/programs',
                 },
               ],
-            },
+            }),
           },
         ],
         usage: { input_tokens: 10, output_tokens: 10 },
-        stop_reason: 'tool_use',
+        stop_reason: 'end_turn',
       };
     }
     // The research leg STREAMS in production (deep.ts: a non-streamed turn cannot

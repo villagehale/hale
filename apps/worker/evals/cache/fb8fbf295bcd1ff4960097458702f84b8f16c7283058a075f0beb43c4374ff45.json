@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "ma fille a avalé des pilules de ma mère, elle ne répond plus",
+    "confirmation": "Appelez le 911 tout de suite, ou le numéro d'urgence de votre région. Dites que votre fille a avalé des pilules et ne répond plus."
+  },
+  "latencyMs": 2138
+}

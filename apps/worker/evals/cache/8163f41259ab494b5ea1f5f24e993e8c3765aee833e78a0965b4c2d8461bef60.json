@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Ontario Structured Psychotherapy Program gives adults free, publicly funded CBT for depression and anxiety-related concerns",
+        "from": "gives adults free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns"
+      },
+      {
+        "states": "No Ontario health card or family doctor is needed, and self-referral is accepted",
+        "from": "No Ontario health card or primary care provider is needed, and self-referrals are accepted"
+      },
+      {
+        "states": "Referral is through ontariohealth.ca/osp using the referral form",
+        "from": "find the local network at ontariohealth.ca/osp and fill out the referral form"
+      },
+      {
+        "states": "An intake clinician decides eligibility",
+        "from": "An intake clinician assesses eligibility"
+      },
+      {
+        "states": "Toronto Community Psychotherapy & Counselling Centre offers free counselling through an application that is often income-based",
+        "from": "Toronto Community Psychotherapy & Counselling Centre: offers free counselling through an application process that is often income-based"
+      },
+      {
+        "states": "A supervised training clinic lists about $45 per session (older list, may have changed)",
+        "from": "Centre for Training in Psychotherapy: $45 per session with a supervised student therapist. These fees and waits are old and may have changed."
+      },
+      {
+        "states": "Student-intern clinics advertise about $50 per session",
+        "from": "Student-intern clinics advertise about $50 per session"
+      }
+    ],
+    "answer": "I'm sorry things feel heavy enough that you're looking for a therapist. If it gets urgent at any point, go to the nearest emergency room or call local emergency services right away. The cheapest route I found in Toronto is the Ontario Structured Psychotherapy Program: it's free, you don't need a health card or a family doctor, and you can self-refer at ontariohealth.ca/osp by filling out the referral form. It's mainly for depression and anxiety, and an intake clinician decides if it's a fit. Toronto Community Psychotherapy & Counselling Centre offers free counselling through an application, often based on income. Supervised training clinics run about $45 to $50 a session, though those prices come from older listings and may have changed."
+  },
+  "latencyMs": 10243
+}

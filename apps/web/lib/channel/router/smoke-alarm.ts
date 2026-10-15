@@ -1,43 +1,25 @@
 import Anthropic from '@anthropic-ai/sdk';
-import {
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  namesAMentalCrisis,
-  namesAnEmergency,
-} from '~/lib/channel/off-domain/copy';
+import { namesAMentalCrisis, namesAnEmergency } from '~/lib/channel/off-domain/copy';
+import { logCrisisUnanswered } from '~/lib/channel/voice/said-line';
 
 /**
- * The outage smoke alarm — the one deliberate exception to the always-LLM doctrine
- * (founder-approved 2026-08-12).
+ * The outage smoke alarm.
  *
- * Hale composes everything it says. A compose that fails recomposes or defers; there
- * are no preset bodies waiting to stand in, because a preset body is a sentence nobody
- * reviewed against the situation it lands in. This is the single exception: when the
- * model API is UNREACHABLE and a parent's text carries an unambiguous emergency token,
- * {@link EMERGENCY_REPLY} (`Call 911 now.`) goes out rather than that text waiting on an
- * outage. Mental crisis during the same outage is {@link MENTAL_CRISIS_REPLY}.
+ * When the model API is UNREACHABLE and a parent's text carries an unambiguous
+ * emergency or crisis token, there is no model to write a reply and, since #868
+ * (Barton, 2026-10-14), no fixed crisis line to send instead — the "Call 911 now."
+ * exception is gone. What remains is the alarm itself: an urgent, body-free log so
+ * #ops reaches the parent, claimed once per inbound.
  *
- * IT IS NOT A FALLBACK FOR THE LLM. It fires only when there is no LLM. A turn that
- * broke on a tool, ran out of steps, hit a bug, or was refused by a gate keeps the
- * honesty line it has always had, however alarming the words in it are — which is why
- * {@link modelIsUnreachable} is a POSITIVE list rather than "anything unrecognised".
+ * It fires only when there is no LLM ({@link modelIsUnreachable} is a POSITIVE list).
  *
- * WHY IT HAS TO EXIST, which the doctrine alone does not show. The deterministic
- * safety lane already answers an emergency token with {@link EMERGENCY_REPLY}
- * (off-domain/lane.ts) — but its screen FAILS OPEN by design (screen.ts
- * openTheGate), so during a provider outage the screen cannot classify, and
- * "she's not breathing" falls through to a coach that is also down. The outage
- * disables the one path built for that message, and what the parent receives
- * instead is "Something went wrong on my end". Every minute the model is up,
- * this module is unreachable and the screened lane does the work.
- *
- * PRIVACY. Nothing here logs, stores or transmits the parent's words. It reads the body
- * to answer one boolean and passes on a constant (rule #1).
+ * PRIVACY. Nothing here logs, stores or transmits the parent's words (rule #1).
  */
 
 /** Why the alarm did or did not ring. Four outcomes, none of them silence (rule #11). */
 export type SmokeAlarmOutcome =
-  /** The line went out with no model in the loop. */
+  /** An outage met a crisis token: nothing went out (no line is fixed, #868), the
+   * urgent #ops log fired, and the inbound is claimed so a re-drive pages once. */
   | 'fired'
   /** The turn broke, but the provider was reachable — an ordinary failed turn. */
   | 'not_an_outage'
@@ -141,9 +123,6 @@ export interface SmokeAlarmInput {
   familyId: string;
   parentUserId: string;
   channelMessageId: string;
-  /** Sends and records exactly like any other reply: transport, delivery ledger, audit
-   * row (rule #6), and the parent's thread. The alarm gets no private send path. */
-  say(body: string): Promise<void>;
 }
 
 /**
@@ -169,7 +148,10 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   // reason turned up one notch. A claim written first would turn a send that failed into
   // a text the parent never gets at all: the re-drive would read the claim and stay
   // quiet about an emergency nobody answered.
-  await input.say(namesAnEmergency(input.body) ? EMERGENCY_REPLY : MENTAL_CRISIS_REPLY);
+  // #868 (Barton, 2026-10-14): the fixed "Call 911 now." outage line is gone; there is
+  // no fixed crisis line anywhere. With no model to write one, nothing is sent and #ops
+  // is paged urgently, once per inbound (the claim still dedupes the re-drive).
+  logCrisisUnanswered(namesAnEmergency(input.body) ? 'emergency' : 'mental', 'model_outage');
   await input.claim.recordFired({ familyId, parentUserId, channelMessageId });
   return 'fired';
 }

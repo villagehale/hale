@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in French and gives a real pick (yes, acceptable) with a concrete reason: the sweet-salty ham-pineapple combo, good with strong cheese or chili. That fits the opinion ask, and it states no false or invented specifics. It reads like a friend texting. The closing hedge ('question de goût, ceux qui détestent ont leurs raisons') softens the pick slightly toward fence-sitting, and the phrasing is a touch tidy rather than fully casual.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -27,7 +27,8 @@ const NOTE_CONTEXT = {
   method: 'added' as const,
 };
 
-const GOOD_ASK = "Want this in your real calendar too? Text me your email and I'll send invites there.";
+const GOOD_ASK =
+  "Want this in your real calendar too? Text me your email and I'll send invites there.";
 const GOOD_NOTE = {
   subject: 'Maya — Swim class is on your calendar',
   body: "Maya — Swim class is set for Thu, Jul 23 at 10:30 AM. I've attached the invite so your calendar can add it.",
@@ -45,12 +46,13 @@ function scriptedClient(inputs: unknown[]): {
     client: () =>
       ({
         messages: {
-          async create(request: { messages: Array<{ content: string }>; tools: Array<{ name: string }> }) {
+          async create(request: { messages: Array<{ content: string }> }) {
             turns.push(request.messages[0]?.content ?? '');
             const input = inputs[Math.min(call, inputs.length - 1)];
             call += 1;
             return {
-              content: [{ type: 'tool_use', name: request.tools[0]?.name, input }],
+              content: [{ type: 'text', text: JSON.stringify(input) }],
+              stop_reason: 'end_turn',
               usage: { input_tokens: 10, output_tokens: 5 },
             };
           },
@@ -70,7 +72,9 @@ describe('askViolations — what may never be texted', () => {
    * SECOND question rather than requiring a first (calibrated on the live run). */
   it('passes an offer that asks without a question mark at all', () => {
     expect(
-      askViolations("I can send real calendar invites by email - text me your address and I'll use it."),
+      askViolations(
+        "I can send real calendar invites by email - text me your address and I'll use it.",
+      ),
     ).toEqual([]);
   });
 
@@ -169,7 +173,9 @@ describe('createCalendarVoice — retry, then defer', () => {
 
   it('DEFERS by name after the attempt budget, sending nothing', async () => {
     const restore = quiet();
-    const { client, turns } = scriptedClient([{ text: 'Want invites? Reply with @ your email 24/7!!' }]);
+    const { client, turns } = scriptedClient([
+      { text: 'Want invites? Reply with @ your email 24/7!!' },
+    ]);
 
     const outcome = await createCalendarVoice(client).composeAsk();
 
@@ -224,6 +230,8 @@ describe('createCalendarVoice — retry, then defer', () => {
 
     expect(outcome).toEqual({ status: 'composed', ...GOOD_NOTE, attempts: 1 });
     expect(turns).toEqual([inviteNoteUserMessage(NOTE_CONTEXT)]);
-    expect(turns[0]).toBe('{"summary":"Maya — Swim class","when":"Thu, Jul 23 at 10:30 AM","method":"added"}');
+    expect(turns[0]).toBe(
+      '{"summary":"Maya — Swim class","when":"Thu, Jul 23 at 10:30 AM","method":"added"}',
+    );
   });
 });

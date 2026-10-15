@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer gives a real number of minutes, and research_notes support every figure in it: 12 minutes for a fully set yolk, 10 for a firm yolk that may be a bit soft in the middle, and rubbery past about 14 minutes. It is brief, casual and in the question's language, and it simply answers, with no deflect and no offer of service. This is an everyday cooking question with no health risk, so no safety care was needed.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

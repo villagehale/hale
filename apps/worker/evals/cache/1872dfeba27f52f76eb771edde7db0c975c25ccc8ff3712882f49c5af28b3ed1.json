@@ -1,0 +1,23 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Tiny Gym, Cartwheels Gym Centre",
+        "age_fit": "1 and walking to 3 years, with parent/caregiver",
+        "source_name": "Cartwheels Gym Centre"
+      },
+      {
+        "name": "Rock n' Roll with Miss Kelly, Cartwheels Gym Centre",
+        "age_fit": "0+ years",
+        "source_name": "Cartwheels Gym Centre"
+      },
+      {
+        "name": "Parent and Tot, Halton Hills Gymnastics Centre",
+        "age_fit": "18 months - 3.11 yrs",
+        "when": "Fall 2026 session, September 12 - December 18 (14 weeks, 13 classes)",
+        "source_name": "Halton Hills Gymnastics Centre"
+      }
+    ]
+  },
+  "latencyMs": 5337
+}

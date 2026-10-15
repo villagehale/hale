@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Ontario is the city the notes are for",
+        "from": "Research notes for Toronto, Ontario, Canada"
+      },
+      {
+        "states": "Ontario Structured Psychotherapy gives free, publicly funded CBT for depression and anxiety-related concerns",
+        "from": "The Ontario Structured Psychotherapy Program (OSP) gives adults free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns"
+      },
+      {
+        "states": "No health card or primary care provider is needed, and self-referral is accepted",
+        "from": "No Ontario health card or primary care provider is needed, and self-referrals are accepted."
+      },
+      {
+        "states": "Sign up through ontariohealth.ca/osp by finding the local network and filling out the referral form",
+        "from": "To use it, find the local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "OSP is not suitable for everyone, and an intake clinician assesses eligibility",
+        "from": "An intake clinician assesses eligibility. It is not suitable for everyone, such as people with complex needs or conditions it doesn't treat."
+      },
+      {
+        "states": "Toronto Community Psychotherapy & Counselling Centre offers free counselling through an often income-based application",
+        "from": "Toronto Community Psychotherapy & Counselling Centre: offers free counselling through an application process that is often income-based."
+      },
+      {
+        "states": "Centre for Training in Psychotherapy charged $45 per session with a supervised student therapist, on an older list that may be out of date",
+        "from": "Centre for Training in Psychotherapy: $45 per session with a supervised student therapist. These fees and waits are old and may have changed."
+      },
+      {
+        "states": "Nothing confirms that any listed clinic is currently taking new clients",
+        "from": "Nothing confirms that any listed clinic is currently taking new clients."
+      },
+      {
+        "states": "If things get urgent, reach emergency services right away",
+        "from": "The search did not return a crisis line number"
+      }
+    ],
+    "answer": "In Toronto, the free option is Ontario Structured Psychotherapy. It gives free CBT for depression and anxiety, you don't need a health card, and you can self-refer at ontariohealth.ca/osp. It isn't right for everyone, so an intake clinician checks whether it fits. Other low-cost choices: Toronto Community Psychotherapy & Counselling Centre offers free counselling through an income-based application, and the Centre for Training in Psychotherapy had student-therapist sessions at $45, though that price is from an older list and may have changed. I couldn't confirm any of these are taking new clients right now. If things get urgent, reach emergency services right away."
+  },
+  "latencyMs": 15135
+}

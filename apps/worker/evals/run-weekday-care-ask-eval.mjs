@@ -14,19 +14,27 @@
 //   ANTHROPIC_API_KEY=... node evals/run-weekday-care-ask-eval.mjs   # live, populates the cache
 //   node evals/run-weekday-care-ask-eval.mjs --cached-only           # CI: replay, zero API calls
 
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import {
   JUDGE_MIN,
+  JUDGE_SCHEMA,
   REPO_ROOT,
+  cacheGet,
+  cacheKey,
   evalRunTag,
+  isVerdict,
   lazyAnthropic,
   makeCost,
   makeJudge,
+  priceRates,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { cachedLaneToolCall } from './lib/lane-tool-call.mjs';
+import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
 import { WEEKDAY_CARE_ASK_FIXTURES } from './weekday-care-ask-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -106,14 +114,105 @@ function grade(fixture, written, replyLanguage, verdict) {
   return failures;
 }
 
+function judgeCeiling(model) {
+  return String(model).includes('haiku') ? 4096 : 8192;
+}
+
+/**
+ * Cache misses only. A subject miss prices the judge too. The draft lane thinks
+ * between tools, so the subject adds no thinking tokens.
+ */
+export async function uncachedWeekdayCalls(judgeOutputChars) {
+  const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const tools = await tsImport(TOOLS_SRC, import.meta.url);
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const lane = agent.pickLane(skill.meta.task);
+  const judgeModel = await readJudgeModel();
+  const measured = [];
+  const calls = [];
+  const shortIds = [];
+  for (const fixture of WEEKDAY_CARE_ASK_FIXTURES) {
+    const userMessage = tools.weekdayAskContext(fixture.ask, fixture.language);
+    const key = laneToolCacheKey({
+      agent,
+      lane,
+      tag: evalRunTag(`weekday-care-ask:${fixture.id}`),
+      system: skill.instructions,
+      userMessage,
+      toolName: tools.WEEKDAY_ASK_TOOL,
+      toolSchema: tools.WEEKDAY_ASK_TOOL_SCHEMA,
+      maxTokens: tools.WEEKDAY_ASK_MAX_TOKENS,
+    });
+    const cached = await cacheGet(key);
+    let message = null;
+    if (cached) {
+      measured.push(JSON.stringify(cached.value).length);
+      const written = tools.readWeekdayAsk(cached.value, fixture.ask);
+      if ('message' in written) message = written.message;
+    } else {
+      shortIds.push(fixture.id);
+      calls.push({
+        model: lane.model,
+        promptCache: false,
+        prefixId: 'weekday-care-ask',
+        prefix: `${skill.instructions}\n${JSON.stringify(tools.WEEKDAY_ASK_TOOL_SCHEMA)}`,
+        user: userMessage,
+        thinkingTokens: 0,
+        group: 'weekday-care-ask',
+        maxTokens: tools.WEEKDAY_ASK_MAX_TOKENS,
+        fixtureId: fixture.id,
+      });
+    }
+    if (cached && message === null) continue;
+    const text = message ?? 'A short offer about the week.';
+    const judgeUser = JSON.stringify({ context: JSON.parse(userMessage), text });
+    const judgeKey = cacheKey(
+      `weekday-care-ask:judge:${fixture.id}`,
+      `${judgeModel}\n${JUDGE_SYSTEM}\n${judgeUser}`,
+    );
+    const judged = message === null ? null : await cacheGet(judgeKey);
+    if (judged && isVerdict(judged.parsed)) continue;
+    calls.push({
+      model: judgeModel,
+      promptCache: true,
+      prefixId: 'weekday-care-ask-judge',
+      prefix: `${JUDGE_SYSTEM}\n${JSON.stringify(JUDGE_SCHEMA)}`,
+      user: judgeUser,
+      outputChars: judgeOutputChars,
+      thinkingTokens: 0,
+      group: 'weekday-care-ask',
+      maxTokens: judgeCeiling(judgeModel),
+      fixtureId: fixture.id,
+    });
+  }
+  const outputChars = measured.length
+    ? [...measured].sort((a, b) => a - b)[Math.ceil(measured.length / 2) - 1]
+    : 400;
+  return {
+    calls: calls.map((call) => (call.outputChars === undefined ? { ...call, outputChars } : call)),
+    shortIds,
+    outputChars,
+    model: lane.model,
+    judgeModel,
+  };
+}
+
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const tools = await tsImport(TOOLS_SRC, import.meta.url);
   const { replyLanguage } = await tsImport(LANGUAGE_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
-  const getClient = lazyAnthropic();
+  const rawClient = lazyAnthropic();
+  const getClient = () => capSdkClient(rawClient(), { rates: priceRates, tag: 'weekday-care-ask' });
   const cost = makeCost();
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(
@@ -173,7 +272,19 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+function runningAsScript() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runningAsScript()) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

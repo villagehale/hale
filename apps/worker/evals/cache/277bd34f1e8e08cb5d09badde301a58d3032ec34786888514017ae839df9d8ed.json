@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC Tuesday: cloudy, high of 14°C",
+        "from": "Environment Canada's forecast for Tuesday is cloudy with a high of 14°C"
+      },
+      {
+        "states": "Vancouver, BC Tuesday night: a few showers beginning late in the evening, low of 11°C",
+        "from": "Environment Canada's forecast for Tuesday night is a few showers beginning late in the evening, with a low of 11°C"
+      },
+      {
+        "states": "Vancouver, BC: some sources show rain or showers in the morning, not settled",
+        "from": "The sources differ on the morning. AccuWeather says a brief shower or two in the morning... Wunderground says rain showers in the morning"
+      },
+      {
+        "states": "Vancouver, WA Tuesday: high of 64°F, mostly cloudy, dry",
+        "from": "Wunderground (Hough station) gives a high of 64°F... Precipitation chance is 1%. All of them expect it to stay dry."
+      },
+      {
+        "states": "Vancouver, WA Tuesday night: low of 48°F, partly to mostly cloudy",
+        "from": "Fox Weather says Tuesday night is partly to mostly cloudy with a low of 48°F."
+      }
+    ],
+    "answer": "Tomorrow's Tuesday. Which Vancouver, though? For Vancouver, BC: cloudy, high around 14°C, with a few showers starting late in the evening and a low of 11°C overnight. Some sites have showers in the morning too, so that part isn't confirmed. For Vancouver, WA: high around 64°F (18°C), mostly cloudy and dry, low around 48°F Tuesday night."
+  },
+  "latencyMs": 8448
+}

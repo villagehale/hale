@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "employer_hr_correspondence",
+    "confidence": 0.92,
+    "rationale": "Employer People Ops email confirming parental leave end date and top-up, and asking for a return-to-work date by Aug 1.",
+    "payload": {
+      "sender": "hr@northwind-systems.com",
+      "leave_end_date": "2026-09-08",
+      "top_up_percent": 85,
+      "top_up_weeks": 12,
+      "action_requested": "confirm planned return-to-work date",
+      "deadline": "2026-08-01"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 275,
+    "output": 388
+  }
+}

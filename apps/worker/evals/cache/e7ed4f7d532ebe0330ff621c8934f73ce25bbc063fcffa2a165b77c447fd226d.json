@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "live is missing_detail, and the answer correctly asks for the country without stating any broadcaster or current fact from memory. Adding men's or women's and the year is a fair clarification but piles up questions, so it reads a little more like a form than a quick 'which country?' text. It is still casual, brief and in the question's language.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

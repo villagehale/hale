@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi is the pick for soccer GOAT",
+        "from": "Most recent coverage names Lionel Messi."
+      },
+      {
+        "states": "Ronaldo has more career goals than Messi",
+        "from": "Ronaldo has more career goals, 970 to 906"
+      },
+      {
+        "states": "Messi has 8 Ballon d'Or wins to Ronaldo's 5",
+        "from": "Messi has 8 Ballon d'Or wins to Ronaldo's 5."
+      },
+      {
+        "states": "Messi's World Cup trophy is the 2022 World Cup",
+        "from": "Another source says Messi's trophy is the 2022 World Cup."
+      },
+      {
+        "states": "Tom Brady won seven Super Bowls",
+        "from": "Brady won seven Super Bowls, which is the basis of his case."
+      },
+      {
+        "states": "Tom Brady is the most common NFL GOAT answer",
+        "from": "Tom Brady is the most common answer."
+      },
+      {
+        "states": "Mahomes is the main challenger and fans are still divided",
+        "from": "Patrick Mahomes is the main challenger. A Pro Football Network piece dated September 28, 2026 says fans remain divided on how his career compares with Brady's."
+      }
+    ],
+    "answer": "Messi, if you mean soccer. Ronaldo has more goals, but Messi has 8 Ballon d'Or wins to his 5 and the 2022 World Cup, and that's what settles it for me. If you mean the NFL, I'd go Tom Brady with his seven Super Bowls, though Mahomes is the one people are arguing about now."
+  },
+  "latencyMs": 8752
+}

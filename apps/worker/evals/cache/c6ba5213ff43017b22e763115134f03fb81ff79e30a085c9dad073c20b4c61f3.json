@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011Cg39AqUKxzPq1RenYXBXg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSyQYKEAgSGAI4AUIIdGhpbmtpbmcSDAaqBe1QunDEhbrDAxoMCVeILYPrDmhMcBqiIjC5V6/J5OFm5n2uy2D2RV/SoxfVcKKQFitrgRM06fw+0h+Nc4QWaGRCiB+eBlpy8+Mq5gX26tJuoqMsdfe9NUWhwZHbUB5T61H4zoRKdFNKBlnl2uI43znqvz05qCV0Jx1sNlufvehILpiMHE4z2zPJmZNc79Y2QYmIT/Omz5EeEi8pbYQWFX1GrGvwP0QpDwmIY6REl/Su2jctoqmXb6hdCbpxKcb19ByuaDbZre6PgVEx11jg0KVBceS37gOZxaoa6h2xWubm2Ig+RuqY41OZ8ItiJgZauBXFqBI0AB2tTvfBjmdBIGCpl8w1e595YDLHyhmJM9V/mbQwpmAQhMvtzA+wNxZMM+tBH9lRqxBeSSMoosms0cE79ilP4GhHj4ocDUhDr+d39lxQp8YonsBjV1p81OKn101S/DRPSTGEk5R0SVFXa7DY7DyHL03tKKWbMDjrSj/wVl0W2KAMQx6b7NWVRTfqbodPgLyGfFLmQUkFxWieFk7x++cbWupigCdEScWsmFBYByWDThmt6Er2txmL0X4fHKHViB9RhUeAtSOGRDOqB57s2bD9CZi/B+acYdGdsTjBKRQRQQrFnJe7eTcaV2EykTPYV5gVBNaztu3hfZ2hxkyivO4mZamRtfI2O2cf1hPARDtVajt8tOfI8P0rnTJ3VWRdUNqwdZAmtyEbj82MC9uUTY5RInkqChp6xneJ7zGrLOmaPT5cngHXAwEmgBnt5GoT6XXXCy4UfHVX7mFFinT05Oh+05kj2rVg7XfCVjvbYiW4pSXUEMz1zvIt1T5MsnQsUec1YqED5Lxc5Uoiib0Lx8wxJmYfHWPnRES9T1o65KDwyHEIxdsFKNWfW2Xkgoq8vuHU47cnUCAcTLis3LPF1q9sYTjMWMLKiFu0oPpqMCGGVnuiR4XG3J6Rk+ZhRFJJGFm0GqF8ePElgsHsX9qmyt06RwkwitiRr2jPWSPfNO14RM+w+jYRuw+0LKqzh7ShGvEhnG1RXbJDjeA9gPLHdSUfzv/uPNWpMISsGgbQkeVUZyqkKFY+WErfqqJCIRL5GAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Kn7Qet3Kw52qAM8rUZdgi5",
+        "name": "find_activities",
+        "input": {
+          "subject": "free family events ages 5 to 8 Toronto weekend",
+          "window": "this weekend"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1193,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20754,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 202,
+      "output_tokens_details": {
+        "thinking_tokens": 110
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2269
+}

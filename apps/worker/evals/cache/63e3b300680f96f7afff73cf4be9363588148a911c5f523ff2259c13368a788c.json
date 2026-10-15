@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "M5V 2T6",
+    "rationale": "A postal code is intake detail answering a different question, not a yes or no to this one.",
+    "confidence": 0.97
+  },
+  "latencyMs": 1257
+}

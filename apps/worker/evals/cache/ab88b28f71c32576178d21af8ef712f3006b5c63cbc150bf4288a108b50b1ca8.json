@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Lead sentence opens with the mandatory 'I checked and found' framing, then gives the pick (free outdoor drop-in, Riverdale Farm, Saturday, Maya) and the dry forecast, all traceable to the facts. The one-clause registration statement is the instructed copy for when both registration and registrationAbsence are null. Short, plain, no hype, no invented details. Minor nit: it doesn't offer a follow-up question even though offerQuestion is true, but that is not a fault of voice or faithfulness.",
+    "score": 5
+  }
+}

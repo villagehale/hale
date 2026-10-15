@@ -12,21 +12,9 @@ export const GROUP_WELCOME: Record<ReplyLanguage, string> = {
   fr: "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
 };
 
-/** Sloane, locked. The card is the next line of this same bubble. */
-export const GROUP_CALENDAR_ASK: Record<ReplyLanguage, string> = {
-  en: "{name}, want your calendar in the kids' year too? This link is just for you.",
-  fr: "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Ce lien est juste pour toi.",
-};
-
 export const GROUP_CALENDAR_RECEIPT: Record<ReplyLanguage, string> = {
   en: "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
   fr: 'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
-};
-
-/** Sloane, locked. Its own turn, once, with the card in this same bubble. */
-export const GROUP_GMAIL_ASK: Record<ReplyLanguage, string> = {
-  en: '{name}, want me to catch school and camp emails for you too? This link is just for you. Nothing from your inbox shows up here.',
-  fr: "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Ce lien est juste pour toi. Rien de ta boite ne s'affiche ici.",
 };
 
 export const GROUP_GMAIL_RECEIPT: Record<ReplyLanguage, string> = {
@@ -87,16 +75,8 @@ export function groupWelcome(language: ReplyLanguage): string {
   return GROUP_WELCOME[language];
 }
 
-export function groupCalendarAsk(language: ReplyLanguage, name: string): string {
-  return fill(GROUP_CALENDAR_ASK[language], { name });
-}
-
 export function groupCalendarReceipt(language: ReplyLanguage, name: string): string {
   return fill(GROUP_CALENDAR_RECEIPT[language], { name });
-}
-
-export function groupGmailAsk(language: ReplyLanguage, name: string): string {
-  return fill(GROUP_GMAIL_ASK[language], { name });
 }
 
 export function groupGmailReceipt(language: ReplyLanguage, name: string): string {

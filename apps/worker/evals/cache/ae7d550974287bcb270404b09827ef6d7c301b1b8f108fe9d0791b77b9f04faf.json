@@ -1,0 +1,24 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Preschool swim lessons (Preschool Levels A-E), Town of Oakville Recreation and Culture",
+        "age_fit": "Preschool Levels A - E; children must be the age required for the level by the program start date",
+        "when": "Fall registration opened Tuesday, August 11 at 7 a.m.",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "YMCA Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "3-5 years",
+        "source_name": "YMCA of Oakville"
+      },
+      {
+        "name": "Little Waves swim lessons, Making Waves Swim School Oakville",
+        "age_fit": "2-5 years (Little Waves)",
+        "price": "$33.13 / lesson",
+        "source_name": "Making Waves Swim School"
+      }
+    ]
+  },
+  "latencyMs": 6484
+}

@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Blue Jays final 2026 record 79-83",
+        "from": "Baseball-Reference lists their final record as 79-83"
+      },
+      {
+        "states": "Blue Jays did not make the 2026 postseason",
+        "from": "The Blue Jays did not make the 2026 postseason."
+      },
+      {
+        "states": "no Blue Jays game found on Oct 11, 2026 (last night)",
+        "from": "The results found no Blue Jays game on Oct 11, and I found no score for one."
+      },
+      {
+        "states": "one listing shows a Blue Jays game on Oct 14 vs MIL, treated as unreliable",
+        "from": "MIL. That conflicts with Toronto being eliminated. I could not explain it, and I treat it as unreliable."
+      }
+    ],
+    "answer": "I'm assuming you mean the Blue Jays. They finished 79-83 and missed the playoffs. One listing shows a game on the 14th that doesn't fit, so I can't fully confirm the schedule, but I found no Jays game last night, so they didn't play last night."
+  },
+  "latencyMs": 6441
+}

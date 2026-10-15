@@ -81,7 +81,7 @@ function emptyResult(enabled: boolean): PlanCheckInResult {
     enabled,
     due: 0,
     sent: 0,
-    held: { not_enrolled: 0, no_watch_consent: 0, quiet_hours: 0 },
+    held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
     unsendable: 0,
     deferred: 0,
     failed: 0,

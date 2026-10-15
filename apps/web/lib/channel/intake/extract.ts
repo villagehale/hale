@@ -1,5 +1,5 @@
 import type { AgentClient, LaneConfig } from '@hale/agent';
-import { SONNET55_MODEL, pickLane } from '@hale/agent';
+import { SONNET_MODEL, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
@@ -20,7 +20,7 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 
 const MAX_TOKENS = 512;
 const CANDIDATE_LANE: LaneConfig = {
-  model: SONNET55_MODEL,
+  model: SONNET_MODEL,
   thinking: 'adaptive',
   effort: 'high',
 };

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a state: fever of 39 for three days in a child"
+  },
+  "latencyMs": 1025
+}

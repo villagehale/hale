@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "\"let me ask my partner\" is a deferral, not an answer to either open question; the parent has not decided, so it goes to the coach"
+  },
+  "latencyMs": 1121
+}

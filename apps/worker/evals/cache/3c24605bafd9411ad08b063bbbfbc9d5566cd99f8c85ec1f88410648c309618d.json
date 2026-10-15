@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live was unavailable, and the answer correctly says it can't check last night's Raptors result. It states no score or result from memory, so nothing is wrong or invented. The tone is a bit stiff and over-apologetic for a friend's text (\"so I don't want to guess at it\", \"Sorry I can't give you the score this time\"). It still reads as a plain reply, not a service offer. This is not a health or safety question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

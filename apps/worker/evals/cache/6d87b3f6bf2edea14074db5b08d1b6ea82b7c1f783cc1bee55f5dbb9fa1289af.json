@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lima is the capital of Peru",
+        "from": "Lima is the capital of Peru. Britannica says Lima is the capital of Peru"
+      },
+      {
+        "states": "Lima is not Cusco; Cusco is the old Inca capital, not the current national capital",
+        "from": "Cusco is sometimes confused with the capital. It is the Inca capital in modern Peru. It is not the current national capital."
+      }
+    ],
+    "answer": "Lima! Cusco gets mixed up with it a lot since it was the Inca capital, but Lima has been the capital of Peru for a long time."
+  },
+  "latencyMs": 1756
+}

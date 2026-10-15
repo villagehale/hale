@@ -1,9 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
-import { SITTING_SESSION_REMINDER } from '~/lib/channel/intake/copy';
 import { type FriendVoiceComposer, speakFriend } from '~/lib/channel/intake/friend-voice';
-import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import {
   type IntakeSession,
   appendTranscript,
@@ -160,20 +158,19 @@ export async function runSittingReminderCron(
   const result: SittingReminderResult = { evaluated: 0, sent: 0, skipped: 0, failed: 0 };
   if (!isSittingReminderSlot(now)) return result;
 
-  const friend = onboardingFriendVoiceEnabled();
-  const candidates = await loadSittingCandidates(
-    database,
-    friend
-      ? ['awaiting_details', 'awaiting_place', 'awaiting_ages', 'awaiting_cold_start']
-      : ['awaiting_details'],
-  );
+  const candidates = await loadSittingCandidates(database, [
+    'awaiting_details',
+    'awaiting_place',
+    'awaiting_ages',
+    'awaiting_cold_start',
+  ]);
   for (const row of candidates.slice(0, MAX_SITTING_REMINDERS_PER_RUN)) {
     if (FOUNDER_PAIR_SESSION_IDS.has(row.id)) {
       await claimSittingReminder(database, row.id, now, row.state);
       result.skipped += 1;
       continue;
     }
-    const nudge = friend && (firstTouchNudgeEligible(row, now) || findNudgeEligible(row, now));
+    const nudge = firstTouchNudgeEligible(row, now) || findNudgeEligible(row, now);
     if (!nudge && !sittingSessionEligible(row, now)) {
       result.skipped += 1;
       continue;
@@ -190,14 +187,12 @@ export async function runSittingReminderCron(
         result.skipped += 1;
         continue;
       }
-      const body = friend
-        ? await firstTouchNudgeBody(database, phoneE164, row.state, deps.friendVoice)
-        : SITTING_SESSION_REMINDER;
+      const body = await firstTouchNudgeBody(database, phoneE164, row.state, deps.friendVoice);
       if (body == null) {
         result.skipped += 1;
         continue;
       }
-      if (friend && body.trim().length === 0) {
+      if (body.trim().length === 0) {
         await releaseSittingReminder(database, row.id);
         result.failed += 1;
         console.error({ reason: 'voice_unsent' }, 'sitting reminder: reply not sent');

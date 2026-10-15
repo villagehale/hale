@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Blue Jays (assumed Toronto) did not make the 2026 postseason",
+        "from": "The Blue Jays did not make the 2026 postseason."
+      },
+      {
+        "states": "Blue Jays final 2026 record 79-83, 5th in AL East",
+        "from": "Baseball-Reference lists their final record as 79-83, 5th in the AL East."
+      },
+      {
+        "states": "No Blue Jays game found for Sunday Oct 11, 2026",
+        "from": "The results found no Blue Jays game on Oct 11, and I found no score for one."
+      },
+      {
+        "states": "Toronto is not in the ALCS",
+        "from": "Toronto is not in that series."
+      }
+    ],
+    "answer": "Assuming you mean the Blue Jays: I didn't find a game for them last night. They finished 79-83, 5th in the AL East, and missed the playoffs, so their season looks over. If you meant a different Jays team, I didn't check that one."
+  },
+  "latencyMs": 10221
+}

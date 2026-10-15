@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
+import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -140,7 +141,11 @@ export type ProactiveSendKind =
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
-export type ProactiveHoldReason = 'not_enrolled' | 'no_watch_consent' | 'quiet_hours';
+export type ProactiveHoldReason =
+  | 'not_enrolled'
+  | 'opt_out_unread'
+  | 'no_watch_consent'
+  | 'quiet_hours';
 
 /** A gate hold, or a group send waiting because the co-parent ask stays 1:1. */
 export type DeliveryHoldReason = ProactiveHoldReason | 'coparent_ask';
@@ -173,6 +178,7 @@ export function holdStatus(reason: ProactiveHoldReason): ProactiveHoldStatus {
 const HOLD_STATUS: Record<ProactiveHoldReason, ProactiveHoldStatus> = {
   quiet_hours: 'suppressed_quiet_hours',
   not_enrolled: 'suppressed_consent',
+  opt_out_unread: 'suppressed_consent',
   no_watch_consent: 'suppressed_consent',
 };
 
@@ -362,6 +368,8 @@ export interface OutboundGatePorts {
    * 21:00 floor.
    */
   parentPhone?(parentUserId: string): Promise<string | null>;
+  /** #868 · their last opt-out read failed twice: held until a read succeeds. */
+  optOutUnread?(parentUserId: string): Promise<boolean>;
 }
 
 export interface ProactiveSendRequest {
@@ -391,6 +399,12 @@ export async function assertProactiveSendAllowed(
 ): Promise<ProactiveSendVerdict> {
   if (!(await ports.channelEnrolled(request.parentUserId))) {
     return { allowed: false, reason: 'not_enrolled' };
+  }
+
+  // #868 · a text of theirs could not be read and may have been a stop. Nothing
+  // proactive goes out until a read succeeds; no urgency bypasses this.
+  if (await ports.optOutUnread?.(request.parentUserId)) {
+    return { allowed: false, reason: 'opt_out_unread' };
   }
 
   if (!(await ports.watchConsentGranted(request.parentUserId))) {
@@ -658,5 +672,6 @@ export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
       return row.timezone;
     },
     parentPhone: (parentUserId) => resolveSendablePhone(database, parentUserId),
+    optOutUnread: (parentUserId) => isParentHeld(database, parentUserId),
   };
 }

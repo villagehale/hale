@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real and match the page: Preschool A and B, ages 3-5, Saturdays, the exact times and the Sept 12 to Nov 28 run. Price is correctly null, since the page defers fees to the Recreation Guide. Registration (Aug 11, 7 a.m., browse from Aug 4) is in both slots, and each is cited to the oakville.ca page it was read off. The message leads with Preschool A by name and attributes the facts with 'their site says'. It carries the not-yet-open registration date of Aug 11 at 7am, which is the detail that decides whether the parent sets an alarm. Under page_has_schedule it correctly owns the price gap in the first person ('I could not pin down the price') instead of saying 'not posted'. Watch is true, so the first-person 'I'll keep watching and text you' is correct. It is two plain-ASCII sentences with no link and no question. One small quibble: the page says fees live in the Recreation Guide, a source the message does not mention.",
+    "score": 5
+  }
+}

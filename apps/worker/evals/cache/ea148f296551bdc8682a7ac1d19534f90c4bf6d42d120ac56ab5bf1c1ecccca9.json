@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the notes: no single rate, the 4.34% lowest insured Canada-wide, a Big 6 bank at 4.54% and Scotiabank at 4.74%, and fixed rates climbing since early September. Holding back an uninsured figure is honest, since the notes' uninsured numbers conflict. The watchFor asks for an as-of date, and the answer gives none. The tone is a bit stiff and explanatory for a friend's text, and the closing line is awkward and repeats an earlier point.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

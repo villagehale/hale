@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type ModelId, estimateCostUsd } from '@hale/agent';
+import { type ModelId, estimateCostUsd, forceToolJson, pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { FAMILY_STAGES, type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, isNull, or } from 'drizzle-orm';
@@ -285,25 +285,41 @@ export async function discoverForFamily(
     },
     async (trace) => {
       const startedAt = Date.now();
-      const response = await deps.client.messages.create({
-        model,
-        max_tokens: 4096,
-        system,
-        tools: [
-          {
-            name: DISCOVERY_TOOL,
-            description: 'Return the structured local activity candidates.',
-            input_schema: candidatesJsonSchema,
+      // Through the shared structured seam: Sonnet 5.5 rejects a forced tool_choice with a
+      // 400, so the answer is a JSON output on the converse lane, asked once more when none
+      // comes back. The client is metered so a failed run still records what it billed.
+      const billed = { input: 0, cacheCreation: 0, cacheRead: 0, output: 0 };
+      const metered = {
+        messages: {
+          create: async (body: Anthropic.MessageCreateParamsNonStreaming) => {
+            const reply = await deps.client.messages.create(body);
+            billed.input += reply.usage.input_tokens;
+            billed.cacheCreation += reply.usage.cache_creation_input_tokens ?? 0;
+            billed.cacheRead += reply.usage.cache_read_input_tokens ?? 0;
+            billed.output += reply.usage.output_tokens;
+            return reply;
           },
-        ],
-        tool_choice: { type: 'tool', name: DISCOVERY_TOOL },
-        messages: [{ role: 'user', content: userMessage }],
-      });
+        },
+      } as unknown as DiscoveryAnthropicClient;
+      let parsed: z.infer<typeof candidatesSchema> | null = null;
+      let failure: unknown = null;
+      try {
+        ({ value: parsed } = await forceToolJson({
+          client: metered,
+          lane: pickLane('converse'),
+          system,
+          userMessage,
+          toolName: DISCOVERY_TOOL,
+          toolDescription: 'Return the structured local activity candidates.',
+          inputJsonSchema: candidatesJsonSchema as unknown as Anthropic.Tool.InputSchema,
+          schema: candidatesSchema,
+          maxTokens: 4096,
+        }));
+      } catch (err) {
+        failure = err;
+      }
 
-      const usage = {
-        promptTokens: response.usage.input_tokens,
-        completionTokens: response.usage.output_tokens,
-      };
+      const usage = { promptTokens: billed.input, completionTokens: billed.output };
       trace.recordGeneration('discovery-llm-call', { model, usage });
       const recordRun = (status: 'completed' | 'failed') =>
         recordAgentRun(database, {
@@ -313,35 +329,23 @@ export async function discoverForFamily(
           promptTokens: usage.promptTokens,
           completionTokens: usage.completionTokens,
           costUsd: estimateCostUsd(model, {
-            inputTokens: response.usage.input_tokens,
-            cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
-            cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
-            outputTokens: response.usage.output_tokens,
+            inputTokens: billed.input,
+            cacheCreationTokens: billed.cacheCreation,
+            cacheReadTokens: billed.cacheRead,
+            outputTokens: billed.output,
           }),
           latencyMs: Date.now() - startedAt,
           status,
           langfuseTraceId: trace.traceId,
         });
 
-      const toolUse = response.content.find(
-        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === DISCOVERY_TOOL,
-      );
-      if (!toolUse) {
-        // Rule #8: a forced-tool call that came back without the tool is a failed run —
-        // record it (the model still billed input/output tokens) before surfacing.
-        await recordRun('failed');
-        throw new Error(`discovery: model returned no ${DISCOVERY_TOOL} tool call`);
-      }
-      // Rule #8: a tool payload the contract rejects is a failed run too — record
-      // it (the model billed for it) before letting the error bubble. The caller
-      // that swallows this (`after()` in trigger-discovery) logs to Vercel only,
+      // Rule #8: no answer (a named StructuredOutputError) or one the contract rejects is a
+      // failed run — record it (the model billed for it) before letting the error bubble.
+      // The caller that swallows this (`after()` in trigger-discovery) logs to Vercel only,
       // so without this the failure would be invisible in agent_runs.
-      let parsed: z.infer<typeof candidatesSchema>;
-      try {
-        parsed = candidatesSchema.parse(toolUse.input);
-      } catch (err) {
+      if (parsed === null) {
         await recordRun('failed');
-        throw err;
+        throw failure;
       }
 
       const candidates = parsed.candidates.slice(0, DISCOVERY_LIMIT);

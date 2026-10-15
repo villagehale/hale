@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific is backed by the research notes: no open Oakville Costco, the Wyecroft Rd site with a fall 2027 target, an existing Burlington store with no address, and Laird Rd in Mississauga from a third-party site. Nothing is invented. The weakness is tone. It reads like a sourcing memo ('a third-party deals site lists…', 'couldn't confirm that on Costco's own site', 'I couldn't find its address') rather than a friend texting back. It also says it doesn't know where in Oakville they are, when the parent gave a street address. It could have said it can only go by the town. Correct, but stiff and hedgy.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

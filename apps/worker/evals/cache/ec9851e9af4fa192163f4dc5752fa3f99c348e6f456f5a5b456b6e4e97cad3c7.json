@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Leafs have no game on Monday, Oct 12, 2026 (tonight)",
+        "from": "The Leafs do not play on Monday, Oct 12, 2026."
+      },
+      {
+        "states": "Next game is Tuesday, Oct 13 at the Utah Mammoth, tomorrow",
+        "from": "Their next game is Tuesday, Oct 13, at the Utah Mammoth."
+      },
+      {
+        "states": "Tuesday, Oct 13 game starts at 9 p.m. ET",
+        "from": "It starts at 9 p.m. EST on TSN4. Tom's Guide also lists it at 9pm ET on ESPN+."
+      },
+      {
+        "states": "Tuesday, Oct 13 game is on TSN4 (Canada)",
+        "from": "It starts at 9 p.m. EST on TSN4."
+      },
+      {
+        "states": "Tuesday, Oct 13 game is on ESPN+ (US)",
+        "from": "Tom's Guide also lists it at 9pm ET on ESPN+."
+      }
+    ],
+    "answer": "Nope, no Leafs game tonight. Next one is tomorrow, Tuesday Oct 13, at Utah (the Mammoth) at 9 pm ET. It's on TSN4 in Canada and ESPN+ in the US."
+  },
+  "latencyMs": 14973
+}

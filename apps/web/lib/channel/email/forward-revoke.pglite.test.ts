@@ -17,6 +17,7 @@ import {
 } from '~/lib/channel/router/wiring';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { askWriter, writtenAsk, yesNoReader } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -159,12 +160,14 @@ function deps(
     smokeAlarm: auditSmokeAlarmClaim(db.database),
     turns: auditTurnLedger(db.database),
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
+    holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
     recordPlanOffer: async () => ({ status: 'recorded' }),
     recordActivityPromise: async () => ({
       status: 'recorded',
       commitmentId: '77777777-7777-4777-8777-777777777777',
     }),
     replyResolver,
+    calendarOffers: calendarOffersIdle,
     weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
     disambiguation: createDisambiguationStore(),
     reconcileView: loadReconcileView,

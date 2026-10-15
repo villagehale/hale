@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "unsub pls",
+    "confirmation": "Got it — we'll stop texting you. To start again anytime, just text us back."
+  },
+  "latencyMs": 1186
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes for Windsor, Ontario: mostly sunny, 29–30°C feeling like 35, a 30–40% chance of an early shower, afternoon gusts near 50 km/h, and high UV. It answers directly without asking which city. The sunscreen tip is a nice friendly touch. It reads a little like a weather report ('Those are from this morning's forecasts'), and it leaves out the small early-morning thunderstorm risk. Both are minor, so it is correct and reasonably casual but not quite a friend's quick text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

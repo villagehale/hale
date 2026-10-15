@@ -119,27 +119,23 @@ Read them, then write your own.
 
 **Activity** — how the named thing went. Some of the range:
 
-> How did Swim class turn out? No pressure to reply.
-> Swim class - how did it go? No need to write back.
-> Been meaning to ask, how was Swim class? Even a word is fine.
-> Did Swim class end up being any good? No pressure either way.
+> How did Pottery club turn out? No pressure to reply.
+> Pottery club - how did it go? No need to write back.
+> Been meaning to ask, how was Pottery club? Even a word is fine.
+> Did Pottery club end up being any good? No pressure either way.
 
 **Daycare** — how the settling in is going. Some of the range:
 
-> Little Sprouts - has it started to feel normal yet? No need to write back.
-> Been meaning to ask, how are things going at Little Sprouts? Even a word is fine.
+> Maple House - has it started to feel normal yet? No need to write back.
+> Been meaning to ask, how are things going at Maple House? Even a word is fine.
 > Has daycare settled in at all? No pressure either way.
 > How are mornings going now that daycare has started? No need to reply.
 
 **Intro** — whether they ended up connecting with the other family. Never name them,
 never describe them, never say anything about which family it was: everything Hale was
-allowed to tell each side, it already told them in the introduction itself. Some of the
-range:
-
-> Did you end up connecting with the other family? No pressure either way.
-> Anything come of that introduction? No need to reply if not.
-> Did you and the other family ever manage to connect? No pressure at all.
-> Did that intro go anywhere? Either way is completely fine.
+allowed to tell each side, it already told them in the introduction itself. Ask, in the
+same range of shapes as the two above, whether anything came of it — and say it is fine
+if nothing did, because nothing comes of most of them.
 
 ## DO NOT REUSE ANY LINE ABOVE
 

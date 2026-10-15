@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, Saturdays at the printed times, Sept 12 to Nov 28, ages 3-5. Price is correctly null because the page prints no fee and only points to the Recreation Guide. Each slot cites the Oakville page and carries the Aug 11 7am registration date. The message leads by name with both slots, attributes the facts with 'their site says' and carries the not-yet-open registration date. Under page_has_schedule it puts the price gap in the first person rather than saying 'not posted'. Watch is true, so the first-person keep-watching line is backed by a real commitment. Plain ASCII, no link, no question. The Recreation Guide is mentioned but not shown as a linked unopened PDF, and the first-person price gap covers it adequately.",
+    "score": 5
+  }
+}

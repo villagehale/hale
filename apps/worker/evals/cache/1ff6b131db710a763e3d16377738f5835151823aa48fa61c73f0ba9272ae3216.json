@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "c92f5a13-8d47-4b60-a1e8-59d3b7c04f28",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Clear yes naming the swim one; only one question open and its description matches the swim-related approval"
+  },
+  "latencyMs": 1198
+}

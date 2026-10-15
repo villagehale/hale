@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are accurate and cited to the pages they came from. Tiny Gym's age band and the Term 1 and Term 2 dates match the PDF, which was opened. The July 22 8am registration date is carried in a slot and also appears in the message. The message leads with Tiny Gym by name and attributes the facts with \"their site says\". It correctly uses the first-person \"I could not pin down\" for the page_has_schedule state. With watch TRUE, it properly closes on \"I'll keep watching\". It is plain ASCII, has no link and asks no question. The one gap is that the message leaves out the Rock n' Roll with Miss Kelly find (0+ years), which is in the slots. That is a small amount of withholding.",
+    "score": 4
+  }
+}

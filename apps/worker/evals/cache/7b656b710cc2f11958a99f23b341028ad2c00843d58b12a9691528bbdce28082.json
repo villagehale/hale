@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and sits on the programme page. Its age band, days, times and session dates are as printed, and it is cited to the right URL. Price is correctly null: the page refers to a front-desk fee schedule. The $185 and $95 rental figures were not borrowed. No registration date is printed, so a null registration is correct. The message leads with the programme by name and attributes the facts with 'their site says'. It is plain ASCII, with no link and no question. It uses the correct first-person framing for the price gap ('I could not pin down the price') rather than 'not posted'. Because watch is true, the first-person 'I'll keep watching and text you' is a real commitment.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: x = 5, and it leads with the answer. The two-step working is brief rather than a full lesson, but the phrasing is a bit textbook-neutral, less casual than a friend's text. Grounding as settled is fine for arithmetic.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

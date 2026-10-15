@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Leafs beat Colorado 6-3 in their most recent game",
+        "from": "ESPN's box score lists it as a Maple Leafs 6–3 win over the Avalanche"
+      },
+      {
+        "states": "that game was Saturday, Oct 10, not last night",
+        "from": "ESPN's box score lists it as a Maple Leafs 6–3 win over the Avalanche, dated October 10, 2026; Yahoo Sports' October schedule also shows a win at Colorado, 6–3, on Oct 10"
+      },
+      {
+        "states": "no Leafs game found on Sunday, Oct 11",
+        "from": "No source in the results shows a separate Leafs game on Sunday, Oct 11."
+      }
+    ],
+    "answer": "Not last night, as far as I can find. The Leafs' most recent game was a 6-3 win at Colorado on Saturday, Oct 10. I didn't find any game on Sunday."
+  },
+  "latencyMs": 4520
+}

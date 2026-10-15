@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, that Hale stop sending emails without asking first. Autonomy was turned off this turn for both send_email and reply_to_email. The reply confirms this plainly and accurately in the parent's language. It uses the parent's name from `knows`, asks no questions, and does not send them to the app. It is one complete sentence that does the job and stops. The 'Listo, Sam:' opener is natural, not a greeting blemish.",
+    "score": 5
+  }
+}

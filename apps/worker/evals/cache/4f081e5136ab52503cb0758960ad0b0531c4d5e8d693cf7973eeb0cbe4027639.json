@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message makes three real, local picks, each sourced from the venue's own site: Town of Oakville Preschool Levels A-E, YMCA of Oakville and Making Waves Little Waves. All fit the preschool stage, and it leads with the town program by name. Facts are attributed ('their site says', 'per their sites') rather than presented as confirmed. The registration date and the $33.13 price both match the picks, and nothing is invented. Under no_page_read it uses the earned form ('I could not get into their pages today') rather than 'not posted yet', so the null days, times and prices are named honestly. With watch true, it correctly gives a first-person continuation ('I'll keep watching and text you'). It is plain text with no link and no question.",
+    "score": 5
+  }
+}

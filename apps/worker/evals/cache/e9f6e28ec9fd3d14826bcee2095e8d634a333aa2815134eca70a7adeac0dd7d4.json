@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with the useful checked fact, uses only given facts (Toronto, Fall 2026, Sep 15, Riverdale Farm, Saturday, Maya, free, outdoor, dry forecast), plain and short. Registration absence is stated as the last cycle opened, which matches stillOpenPage true. Minor flaw: 'found' in the second line is fine, but the message omits offerQuestion, which is acceptable here.",
+    "score": 5
+  }
+}

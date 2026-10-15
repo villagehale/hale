@@ -13,9 +13,7 @@ import type {
 } from '~/lib/channel/identity/ask-voice';
 import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
 import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
-import { followUp } from './copy';
 import type { IntakeCollected, IntakeExtractor } from './extract';
-import type { IntakeAck, IntakeAckComposer } from './intake-voice';
 import type { IntentReading, ReplyIntentReader } from './intent';
 import type { RadarComposer } from './radar';
 
@@ -73,23 +71,6 @@ export const fakeRadar: RadarComposer = {
       actionMove: null,
       actionHeld: 'no_move',
       voiceFallback: null,
-    };
-  },
-};
-
-/**
- * An acknowledgment composer that always degrades to the template — the DETERMINISTIC
- * outcome, which is what the machine's routing tests want to assert against. The
- * composed path is not faked with a canned sentence anywhere: its quality is the eval's
- * job against real cached Claude (rule #8), and its guards are unit-tested directly in
- * intake-voice.test.ts.
- */
-export const fakeAckComposer: IntakeAckComposer = {
-  async compose(input): Promise<IntakeAck> {
-    return {
-      body: followUp(input.summary, input.missing),
-      source: 'template',
-      fallback: 'voice_unavailable',
     };
   },
 };
@@ -574,10 +555,29 @@ export function makeFakeDb(): FakeDb {
 
   const handle = {
     select: () => ({ from: selectFrom }),
-    // Retention housekeeping only (turn-claim.ts): rows are kept here — the claim's
-    // exactly-once property is the unique index's (modelled above), never the sweep's,
-    // and the sweep itself is proven against real DDL in the pglite suite.
-    delete: (_table: unknown) => ({ where: () => thenable([]) }),
+    // The retention sweep's `lt(claimedAt, cutoff)` stays unmodelled — that sweep is
+    // proven against real DDL in the pglite suite, and an unrecognised predicate
+    // leaves the rows. Releasing one claim is an equality on provider_message_id
+    // and must remove that row, or a deferred moment answers the retry `duplicate`.
+    delete: (table: unknown) => ({
+      where: (expr: unknown) => {
+        if (table === schema.smsIntakeTurnClaims) {
+          const stored = store.get(table) ?? [];
+          const kept: Record<string, unknown>[] = [];
+          for (const row of stored) {
+            let drop = false;
+            try {
+              drop = matchesWhere(table, expr, row);
+            } catch {
+              drop = false;
+            }
+            if (!drop) kept.push(row);
+          }
+          store.set(table, kept);
+        }
+        return thenable([]);
+      },
+    }),
     insert: (table: unknown) => {
       const chain = thenable([]);
       chain.values = (payload: Record<string, unknown> | Record<string, unknown>[]) => {

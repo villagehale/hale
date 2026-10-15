@@ -41,7 +41,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { ALLOWED_CATEGORIES, LANE_FIXTURES } from './inbound-lane-fixtures.mjs';
-import { cachedToolCall, capped, lazyAnthropic, makeCost, totalUsd } from './lib/harness.mjs';
+import {
+  cachedToolCall,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  spendCappedFetch,
+  totalUsd,
+} from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -58,9 +65,8 @@ const LANE_TOOL_SCHEMA = {
     },
     category: { type: 'string', enum: ALLOWED_CATEGORIES },
     reason: { type: 'string' },
-    language: { type: 'string' },
   },
-  required: ['lane', 'category', 'reason', 'language'],
+  required: ['lane', 'category', 'reason'],
 };
 
 /** Mirrors `laneUserMessage` in screen.ts — the model sees the text and nothing else. */
@@ -220,14 +226,19 @@ async function evaluateJev({ fixture, skill, adapter, runId, cachedOnly, trace }
   const generation = startGeneration(trace, fixture, JEV_MODEL, request);
   const startedAt = performance.now();
   try {
-    const response = await fetch(JEV_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      signal: AbortSignal.timeout(10_000),
+    const response = await spendCappedFetch({
+      tag: 'inbound-jev',
+      request,
+      send: () =>
+        fetch(JEV_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(request),
+          signal: AbortSignal.timeout(10_000),
+        }),
     });
     const result = await response.json();
     const latencyMs = Math.round(performance.now() - startedAt);
@@ -294,12 +305,7 @@ async function evaluateHaiku({ fixture, skill, agent, runId, cachedOnly, getClie
   const generation = startGeneration(trace, fixture, lane.model, request);
   const startedAt = performance.now();
   try {
-    const response = await capped(
-      getClient,
-      request,
-      () => getClient().messages.create(request),
-      `inbound-lane-comparison:${fixture.id}`,
-    );
+    const response = await getClient().messages.create(request);
     const latencyMs = Math.round(performance.now() - startedAt);
     if (response.stop_reason === 'max_tokens') {
       throw new Error(`Haiku tool call truncated for ${fixture.id}`);
@@ -373,14 +379,19 @@ async function evaluateGateway({ fixture, skill, model, runId, cachedOnly, trace
   const generation = startGeneration(trace, fixture, model, request);
   const startedAt = performance.now();
   try {
-    const response = await fetch(GATEWAY_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      signal: AbortSignal.timeout(30_000),
+    const response = await spendCappedFetch({
+      tag: 'inbound-gateway',
+      request,
+      send: () =>
+        fetch(GATEWAY_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(request),
+          signal: AbortSignal.timeout(30_000),
+        }),
     });
     const result = await response.json();
     const latencyMs = Math.round(performance.now() - startedAt);
@@ -589,7 +600,8 @@ async function runComparison() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const adapter = await agent.loadSkill(JEV_ADAPTER_PATH);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('inbound-lane');
   const trace = startEvalTrace(process.argv.includes('--trace'), runId, fixtures.length);
   const jevResults = [];
   const haikuResults = [];
@@ -708,7 +720,8 @@ async function runGatewayComparison() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('inbound-lane');
   const haikuResults = [];
   const candidateResults = new Map(models.map((model) => [model, []]));
 
@@ -797,12 +810,14 @@ async function runGatewayComparison() {
 async function runLegacy() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('inbound-lane');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
+  const subjectLane = agent.pickLane(skill.meta.task);
 
   const results = [];
   for (const fixture of LANE_FIXTURES) {
@@ -812,6 +827,7 @@ async function runLegacy() {
           await cachedToolCall({
             tag: `inbound-lane:${fixture.id}`,
             model,
+            lane: subjectLane,
             system: skill.instructions,
             userMessage: laneUserMessage(fixture),
             toolName: 'lane',

@@ -525,6 +525,7 @@ export type ActionGateReason =
   | 'cross_parent_consent'
   | 'teen_redaction'
   | 'autonomy_not_opted_in'
+  | 'parent_commitment'
   | 'lane_off'
   | 'autonomy_denied_kind'
   | 'autonomy_notice_pending';

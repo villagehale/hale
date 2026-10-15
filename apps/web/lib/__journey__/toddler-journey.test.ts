@@ -18,11 +18,11 @@ import {
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
-import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import type { IntentReading } from '~/lib/channel/intake/intent';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
 import { MAX_PAYLOAD_SEGMENTS } from '~/lib/channel/intake/radar-voice';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { IMPLIED_WATCH_BASIS } from '~/lib/channel/intake/watch-consent';
 import {
@@ -352,7 +352,8 @@ interface Journey {
   /** The one follow-up turn, before any age was given. */
   followUp: { status: string };
   provisionedStatus: string;
-  radarBody: string;
+  /** Parent-facing texts from intake. The friend voice writes these; the find itself is the stored candidate. */
+  sentBodies: string[];
   watch: { status: string; granted: boolean };
   nudge: NudgeRunResult;
   /** The same sweep, one week on, after the parent withdrew the watch consent. */
@@ -474,8 +475,11 @@ async function runToddlerJourney(): Promise<Journey> {
     // Same discipline as the radar above: the REAL composer on the REAL production
     // fallback path (`null` client renders the deterministic follow-up and names the
     // reason), so the journey reads the words a family actually gets when voice is off.
-    ackComposer: createIntakeAckComposer(null),
     answerComposer: fakeSilentAnswerComposer,
+    // Friend voice is the only onboarding path. The scripted stand-in reads the
+    // same texts this journey sends (postal, then both ages) and writes fixture
+    // replies; the assertions below are about what was stored and sent.
+    friendVoice: scriptedFriendVoice,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     consent: {
@@ -500,14 +504,14 @@ async function runToddlerJourney(): Promise<Journey> {
   await text('hi');
   const followUp = await text('Max and Mia, we are at L3R');
   const provisioned = await text('Max is 4, Mia is 18 months');
-  // The year find parks the session. Six replies close the ladder (turtle, name,
-  // a non-name, calendar, Gmail, co-parent) so the grandparent texts below are
-  // not eaten as ladder beats.
-  for (let beat = 0; beat < 6; beat += 1) await text('later');
   const familyId = 'familyId' in provisioned ? (provisioned.familyId as string) : '';
-  // The radar is the message CARRYING THE WATCH OFFER, not "the last thing sent" —
-  // provisioning follows it with the contact-card MMS (intake/welcome-card.ts).
-  const radarBody = transport.bodies().findLast((b) => b.includes('Family Storytime')) as string;
+  // The friend-voice ladder stays open on the name ask. Close the session so
+  // the grandparent texts below are a caregiver turn.
+  await fake.db
+    .update(schema.smsIntakeSessions)
+    .set({ state: 'complete', closedAt: INTAKE_AT })
+    .where(eq(schema.smsIntakeSessions.familyId, familyId));
+  const sentBodies = transport.bodies().slice();
 
   const parentUser = fake.rows(schema.users)[0] as { id: string; externalAuthId: string };
 
@@ -921,7 +925,7 @@ async function runToddlerJourney(): Promise<Journey> {
     externalAuthId: parentUser.externalAuthId,
     followUp,
     provisionedStatus: provisioned.status,
-    radarBody,
+    sentBodies,
     watch: {
       status: 'implied',
       granted: true,
@@ -961,7 +965,7 @@ describe('1 · intake provisions the family the parent actually described', () =
     // The turn that named both children but aged only one wrote NOTHING. An invented
     // date is the one thing this path may never produce: every stage, checkpoint and
     // registration band downstream is computed out of it.
-    expect(journey.followUp.status).toBe('follow_up_asked');
+    expect(journey.followUp).toEqual({ status: 'first_touch', step: 'ages_waiting' });
     expect(journey.provisionedStatus).toBe('provisioned');
     const children = journey.fake.rows(schema.children);
     expect(children).toHaveLength(2);
@@ -985,27 +989,38 @@ describe('1 · intake provisions the family the parent actually described', () =
 
 describe('2 · the first reply names something real', () => {
   it('is not structurally empty — it names a seeded civic session and the matched window', () => {
-    expect(journey.radarBody.toLowerCase()).not.toContain('still learning');
-    expect(journey.radarBody).toContain('Family Storytime');
-    expect(journey.radarBody).not.toMatch(/registration opens|registration opened/i);
-    expect(journey.radarBody).not.toContain('Aug 25');
+    // The friend voice writes the asks. The find is the stored candidate.
+    expect(journey.sentBodies.length).toBeGreaterThan(0);
+    for (const body of journey.sentBodies) {
+      expect(body.toLowerCase()).not.toContain('still learning');
+      expect(body).not.toMatch(/registration opens|registration opened/i);
+      expect(body).not.toContain('Aug 25');
+    }
+    const candidates = journey.fake.rows(schema.villageCandidates);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.title).toBe('Family Storytime');
   });
 
   it('fits the segment budget the whole payload is measured against', () => {
-    expect(journey.radarBody).not.toContain('Want me to keep an eye');
-    expect(smsSegments(journey.radarBody)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
+    for (const body of journey.sentBodies) {
+      expect(body).not.toContain('Want me to keep an eye');
+      expect(smsSegments(body)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
+    }
   });
 
   it('invents no venue, no time and no programme it was not given', () => {
-    // Every fact in the body traces to a seeded row. The two things in this family's
+    // Every fact in the find traces to a seeded row. The two things in this family's
     // catchment that do NOT fit these children are the teen band and the teen club,
-    // and neither may appear.
-    expect(journey.radarBody).not.toContain('Teen Coding Club');
-    expect(journey.radarBody).not.toContain('Aquatic Leadership');
+    // and neither may appear in what was sent or what was stored.
+    for (const body of journey.sentBodies) {
+      expect(body).not.toContain('Teen Coding Club');
+      expect(body).not.toContain('Aquatic Leadership');
+    }
     // The projection dated the drop-in to its next occurrence, so a Saturday-only
     // session can never be offered as a Sunday plan.
     const candidates = journey.fake.rows(schema.villageCandidates);
     expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.title).toBe('Family Storytime');
     expect(candidates[0]?.eventDate).toBe('2026-08-01');
   });
 });
@@ -1055,6 +1070,7 @@ describe('4 · the 48h sweep passes the gate and stays quiet', () => {
     expect(journey.nudge.held).toEqual({
       not_enrolled: 0,
       no_watch_consent: 0,
+      opt_out_unread: 0,
       quiet_hours: 0,
     });
     // Every check ran, against the rows intake wrote — not a stub that said yes.

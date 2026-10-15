@@ -1,24 +1,47 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { domainToASCII } from 'node:url';
+import type Anthropic from '@anthropic-ai/sdk';
+import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import {
-  afterProvisionFallbackReply,
-  afterProvisionReplyFromNotes,
-  cheerUpAfterProvisionReply,
-  groundCurrentSource,
-  isCheerUpAsk,
-  isLiveLookupAsk,
-} from '~/lib/channel/intake/live-lookup';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { forceToolJson } from '~/lib/pipeline/structured';
+import { formatLongDate } from '~/lib/format/datetime';
+import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import {
-  EMERGENCY_REPLY,
-  MENTAL_CRISIS_REPLY,
-  namesAMentalCrisis,
-  namesAnEmergency,
-  reachesForTheHealthLine,
-} from './copy';
+  ANSWER_MAX_TOKENS,
+  CHECK_MAX_TOKENS,
+  type HomePlace,
+  type LiveSearch,
+  type PendingAsk,
+  type SafetyKind,
+  answerJsonSchema,
+  answersPending,
+  checkJsonSchema,
+  generalAnswerCheckUserMessage,
+  generalAnswerRedraftUserMessage,
+  generalAnswerUserMessage,
+  hurtIllOrDanger,
+  needsSearch,
+  preSendReadApplies,
+  questionIsSensitive,
+  questionSanitizeUserMessage,
+  sanitizeJsonSchema,
+  scrubDirectIdentifiers,
+  searchUserMessage,
+  turnsOnTheirPlace,
+  wantsRedraft,
+} from './answer-request';
+import { normalizeLanguage } from './medical';
+import type { Moment } from './moment-reply';
+import { coarsenPlace } from './place';
+import SUFFIXES from './public-suffix/suffixes.json';
+
+export {
+  generalAnswerUserMessage,
+  questionSanitizeUserMessage,
+  scrubDirectIdentifiers,
+  searchUserMessage,
+};
+export type { HomePlace, LiveSearch, PendingAsk };
 
 /**
  * Boundary v3 — the general answer.
@@ -27,50 +50,105 @@ import {
  * was over-applied. A parent who texted "who's the goat in football" got charm and a
  * closed door, and a closed door to a question a friend would just answer reads as a
  * product that cannot, not one that chooses not to. So the `off_domain_general` terminal
- * flips: one good, honest, brief answer, and then done. The other two doors do not move
- * — a symptom still gets 811 and a parent hunting a paediatrician still gets Health Care
- * Connect, both from fixed copy no model touches (see copy.ts).
+ * answers: brief, correct, in the tone of a friend texting back, and then done. Where the
+ * answer turns on something current — a score, a forecast, a price, who holds a job —
+ * Hale looks it up first (founder, 2026-10-12). It never deflects and never sends the
+ * parent off to find out for themselves. The other two doors do not move — a symptom
+ * still gets 811 and a parent hunting a paediatrician still gets Health Care Connect,
+ * both from fixed copy no model touches (see copy.ts).
  *
- * Three properties keep this cheap and safe to put on the hot path:
+ * Three phases, the medical lane's shape (medical.ts) and for its reasons:
  *
- *   IT IS BLIND, DELIBERATELY. The model sees the question and NOTHING else. No family,
- *   no children, no calendar, no transcript — none of it is even loaded. That is rule #1
- *   at its cheapest (a trivia answer needs nothing about the kids, so nothing about the
- *   kids is at risk), and it is also why this stage costs a fraction of a coach turn:
- *   there is no context to assemble and no tool loop to run.
+ *   0. SANITIZE. The one and only stage that sees the parent's raw words. It returns the
+ *      question with the family taken out of it, the language they wrote in, and its
+ *      judgment of whether a correct answer needs something current, or cannot be given
+ *      at all without a detail the question leaves out (which city, for a forecast). The
+ *      deterministic {@link scrubDirectIdentifiers} backstop then runs under it, before
+ *      the question goes anywhere.
  *
- *   IT HAS NO TOOLS AND NO LIVE DATA. Which makes "the weather tomorrow" an honesty
- *   test rather than a lookup, and the skill answers it as one.
+ *   1. SEARCH. Only when the sanitizer judged the answer needs current facts AND
+ *      {@link generalAnswerSearchEnabled} is lit: one STREAMED `web_search` server-tool
+ *      turn on the de-identified question and today's date. The result items actually
+ *      returned are counted, and zero is not a search. A question missing what its
+ *      answer depends on is not searched: no search could answer it. While the flag is
+ *      dark it is not asked about either, because asking for the city is a promise to
+ *      look the forecast up once it is given.
  *
- *   IT CANNOT COST A PARENT THEIR REPLY. Every degraded path — no client, no skill, an
- *   outage, an answer that cannot be sent — comes back NAMED (rule #11) and the lane
- *   sends the fixed deflect line instead. The parent always gets something.
+ *   2. COMPOSE. The skill writes the one reply from the de-identified question, today's
+ *      date and the research when there is any, in the parent's language. Told a detail
+ *      is missing, it asks for it.
  *
- * PRIVACY. The question goes to the model (as it already did to the screen one call
- * earlier) and nowhere else. Nothing here logs it.
+ * NOTHING ABOUT THE CHILDREN IS LOADED. No children, no calendar, no transcript. That is
+ * rule #1 at its cheapest: an off-topic answer needs nothing about the kids, so nothing
+ * about the kids is at risk. Two things are handed in from outside the message, both
+ * worked out by the lane and asked for only once there is a de-identified question to
+ * read them against: today's date where the family is, and the family's own city and
+ * country.
+ *
+ * THE CITY AND THE COUNTRY, AND NOTHING FINER (founder, 2026-10-12). "How's the weather
+ * tomorrow" has one answer for this family, so the search may be told where they are:
+ * a city name and a country name, never the postal code they were worked out from, the
+ * province, a neighbourhood or anything else on the family's row. Code is the only
+ * source of it ({@link FamilyFacts.place}); no model is asked to guess. Whether a
+ * question turns on it at all is the sanitizer's reading, and the place is read only for
+ * a lit turn that reading says needs it. A question that names its own place, or does not
+ * depend on place, carries none. Only the search is sent it; neither the sanitizer nor
+ * the compose is.
+ *
+ * A QUESTION LEFT OPEN IS KEPT FOR THE REPLY. The lane is one text in and one out, so a
+ * parent who answers "Toronto" to "which city?" starts a new turn with no question
+ * attached. A lit turn that could not answer (a detail was missing, or the search came
+ * back with nothing) therefore hands out the question it was working on, de-identified
+ * and scrubbed, with what it was missing ({@link PendingAsk}; the router keeps it beside
+ * the reply's own ledger row). The parent's next text in that thread, once the lane's screen
+ * has read it, is read beside it by the sanitizer, which alone judges whether the text
+ * completes it ({@link GeneralAnswerComposer.continueAsk}). There is no keyword and no
+ * time window. What is kept is never the parent's own words, and nothing is kept or read
+ * while the flag is dark.
+ *
+ * EVERY WAY THE SEARCH DOES NOT HAPPEN IS NAMED ({@link LiveSearch}, rule #11), and none
+ * of them costs the parent a reply or buys them an invented one: the compose is told that
+ * nothing could be checked, and says so.
+ *
+ * A MODEL CANNOT COST A PARENT THEIR REPLY. Every degraded path of the calls made
+ * here — no client, no skill, an outage, an answer that cannot be sent — comes back
+ * NAMED (rule #11) and the lane sends its fixed could-not-get-to-it line instead. The
+ * date is the lane's read, not a model's: when it cannot be made it throws to the
+ * router, as every other database read on the turn does, and it is asked for after the
+ * fixed lines so that none of them waits on it.
+ *
+ * PRIVACY. The raw message reaches ONLY the sanitize call; the search and the compose see
+ * the de-identified question alone. Nothing here logs the question in either form, or
+ * any provider text — only a named reason and a named detail (rule #1).
  */
+
+export const GENERAL_ANSWER_SEARCH_ENABLED_ENV = 'GENERAL_ANSWER_SEARCH_ENABLED';
 
 /**
- * The hard ceiling on what goes out, in SMS segments.
- *
- * Two segments is about two sentences — the same budget the coach's own replies are
- * fitted to (coach/reply.ts MAX_REPLY_SEGMENTS), and what the skill asks for. It is a
- * SEGMENT count rather than a character count on purpose: a parent who texts in French
- * or Chinese gets an answer in kind (general-answer.md), and a non-Latin body is UCS-2,
- * where two segments is 134 characters rather than 306. `smsSegments` counts in the
- * currency the carrier actually bills, so the one ceiling is correct in every language —
- * which is exactly why the older GSM-7-only reject is gone: it fell every accented-French
- * and every Chinese answer closed to the English line.
+ * A question of fact is answered from a search, never from memory, so the live search is
+ * ON by default. The variable is only a kill switch: STRICT equality on the literal
+ * 'false' turns it off, and anything else (unset, 'true', a piped 'false\n') leaves it on.
  */
-export const MAX_ANSWER_SEGMENTS = 2;
+export function generalAnswerSearchEnabled(): boolean {
+  return process.env[GENERAL_ANSWER_SEARCH_ENABLED_ENV] !== 'false';
+}
 
-const MAX_TOKENS = 256;
+/** Bounded because the provider bills per search. The same bound intake/live-lookup.ts
+ * holds for this class of question. */
+const MAX_SEARCHES = 2;
+const SANITIZE_MAX_TOKENS = 512;
+/** The medical GROUND turn's ceiling: thinking and the notes share it. */
+const SEARCH_MAX_TOKENS = 4096;
 
 /**
  * Why the answer did not happen. Deliberately four separate stories and not one:
  * `client_unavailable` is configuration, `skill_unavailable` is a deploy bug,
  * `model_failed` is an outage, and `unsendable` is the model itself writing something
  * that must not go on the wire. Only the last one is a prompt problem.
+ *
+ * A failed SANITIZE rides as a detail of `model_failed` rather than as a fifth reason. It
+ * is that story — a model call that did not come back usable — and these four are
+ * persisted (channel_messages.reply_source) against a vocabulary a migration restates.
  */
 export type GeneralAnswerFallback =
   | 'client_unavailable'
@@ -79,82 +157,430 @@ export type GeneralAnswerFallback =
   | 'unsendable';
 
 export type GeneralAnswerOutcome =
-  | { status: 'composed'; reply: string }
+  /** `search` is set whenever a model wrote the reply. The fixed lines above the model
+   * have no search to name. `pendingAsk` is set when the reply left the question open:
+   * what the parent's next text is read beside. */
+  | { status: 'composed'; reply: string; search?: LiveSearch; pendingAsk?: PendingAsk }
   /**
-   * The question turned out to be about someone hurt or ill, and the model answered it
-   * with a referral of its own (skill audit P0 #3). This branch carries NO reply on
-   * purpose: the words a parent gets in that moment are the reviewed ones in copy.ts,
-   * and a variant with a text field is one an edit could later fill from the model.
+   * The question turned out to describe someone hurt, ill or in danger, and the compose
+   * said so in its own field (skill audit P0 #3; Sloane, 2026-10-12: "the AI reads a
+   * crisis and nothing keys off words or digits"). This branch carries NO reply: the
+   * lane stops the ordinary answer and the moment writer sends one (lane.ts).
+   * `kind` is which of the screen's safety categories the compose read.
    */
-  | { status: 'safety' }
-  | { status: 'unavailable'; reason: GeneralAnswerFallback };
+  | { status: 'safety'; kind: SafetyKind }
+  | { status: 'unavailable'; reason: GeneralAnswerFallback }
+  /** A crisis or emergency stopped the ordinary answer, and the moment reply could not
+   * be written. Nothing preset goes out. */
+  | { status: 'unwritten'; moment: Moment; reason: string };
+
+/**
+ * Why a family's place cannot be named. Each is its own story: no country on the row
+ * (never guessed, not even from a postal code), a country the lane has no postal table
+ * for, no postal code to work a city out from, a postal area the table cannot give one
+ * municipality for, or one that covers more than one town (never resolved to the likelier
+ * one). The last two are the lane's and not the row's: the text arrived in a group thread,
+ * or in one the job does not describe, and a family's home city is said in neither.
+ */
+export type PlaceUnknown =
+  | 'no_country'
+  | 'unsupported_country'
+  | 'no_postal'
+  | 'unmapped'
+  | 'ambiguous'
+  | 'group_thread'
+  | 'thread_unknown';
+
+export type FamilyPlace =
+  | ({ status: 'known' } & HomePlace)
+  | { status: 'unknown'; reason: PlaceUnknown };
+
+/**
+ * The lane's reads about the family, made lazily. Each is called at most once a turn, and
+ * not at all for a text a fixed line answers.
+ */
+export interface FamilyFacts {
+  /** Today's date where the family is (see {@link localDate}). */
+  today(): Promise<string>;
+  /** The family's own city and country, read only for a lit search the sanitizer judged
+   * to depend on where they are. */
+  place(): Promise<FamilyPlace>;
+}
+
+/** A text that is not the reply to the pending ask, or could not be read as one. The
+ * lane routes it as it would any other text. */
+export interface NotAReply {
+  status: 'unrelated';
+}
 
 export interface GeneralAnswerComposer {
-  compose(text: string): Promise<GeneralAnswerOutcome>;
+  compose(text: string, family: FamilyFacts): Promise<GeneralAnswerOutcome>;
+  /**
+   * The parent's next text after a reply that left `pending` open. Answered as the
+   * completed question when the sanitizer judges it completes it; handed back as
+   * `unrelated` otherwise, and also when that judgment could not be made at all, because
+   * the text may be about the kids' week. The lane calls this only for a text its screen
+   * has read and sent to the coach or to the general answer (lane.ts): whether a text is
+   * a crisis is that reading, and no match on words stands in for it here.
+   */
+  continueAsk(
+    text: string,
+    pending: PendingAsk,
+    family: FamilyFacts,
+  ): Promise<GeneralAnswerOutcome | NotAReply>;
 }
 
 /** Parsed loosely, for the reason screen.ts states at length: a strict schema turns a
  * parent's injected field name into a logged ZodError message (rule #1), and zod's
- * default strips unknown keys instead. */
-const answerSchema = z.object({ answer: z.string() });
+ * default strips unknown keys instead. The reading and the language are normalized in
+ * code for the same reason. */
+const sanitizeSchema = z.object({
+  language: z.string().nullish(),
+  answers_pending: z.string().nullish(),
+  question: z.string(),
+  missing_detail: z.string().nullish(),
+  their_place: z.string().nullish(),
+  sensitive: z.string().nullish(),
+  current_fact: z.string().nullish(),
+  needs_search: z.string().nullish(),
+});
 
-const answerJsonSchema = {
-  type: 'object',
-  properties: { answer: { type: 'string' } },
-  required: ['answer'],
-} as const;
+/** The compose's reading of the text and its `answer`, and nothing else. It also writes
+ * its `grounding` (answer-request.ts); zod drops it here, so no line after this one has
+ * it to send, keep or log. The reading is taken loosely, like the sanitizer's. */
+const answerSchema = z.object({ hurt_ill_or_danger: z.unknown(), answer: z.string() });
 
-/** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
-export function generalAnswerUserMessage(text: string): string {
-  return JSON.stringify({ text });
+/** The pre-send reader's verdict, taken loosely: anything but a reasoned `redraft` sends. */
+const checkSchema = z.object({ verdict: z.unknown(), reason: z.unknown() });
+
+/**
+ * Today's date as the search and the compose are told it: the weekday and the full date
+ * in the zone given, so "last night" and "tomorrow" have something to be read against.
+ */
+export function localDate(now: Date, timeZone: string): string {
+  const { weekday, month, day, year } = formatLongDate(now, timeZone);
+  return `${weekday}, ${month} ${day}, ${year}`;
 }
 
-/** The only thing any catch here may log: a provider error can carry the request back,
- * so the message survives and the object does not (rule #1). */
+/** What the two setup catches log. Neither call is passed the question, so the message
+ * cannot hold it; the error object is still never logged (rule #1). */
 function message(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown';
 }
 
+/** What a failed MODEL call logs. Every request here holds the question in one form or
+ * another and a provider error can quote the request back in its message, so this is the
+ * error's name and, for a structured answer that came back unusable, why. Never the
+ * message (rule #1). */
+function failureName(err: unknown): string {
+  if (err instanceof StructuredOutputError) return `${err.name}:${err.outcome}`;
+  return err instanceof Error ? err.name : 'unknown';
+}
+
 function unavailable(reason: GeneralAnswerFallback, detail?: string): GeneralAnswerOutcome {
-  console.error({ reason, detail }, 'off-domain answer: falling back to the fixed line');
+  console.error(
+    { reason, detail },
+    'off-domain answer: no answer composed, the moment writer answers',
+  );
   return { status: 'unavailable', reason };
+}
+
+/** A question that needed a search and went without one, named (rule #11). The reply is
+ * still composed, so this is a warning and not a fallback. */
+function wentWithout<T extends LiveSearch>(search: T, detail?: string): T {
+  console.warn({ search, detail }, 'off-domain answer: no live search this turn');
+  return search;
+}
+
+/**
+ * What became of a text read beside a pending ask, named (rule #11) and never with a word
+ * of either (rule #1): it `completed` the question, it was `unrelated`, or it went
+ * `unread` because the judgment could not be made.
+ */
+function notAReply(detail?: string): NotAReply {
+  if (detail === undefined) {
+    console.info({ pendingAsk: 'unrelated' }, 'off-domain answer: the reply to a pending ask');
+  } else {
+    console.warn({ pendingAsk: 'unread', detail }, 'off-domain answer: the reply to a pending ask');
+  }
+  return { status: 'unrelated' };
+}
+
+/** The question a lit turn could not answer, as it is kept for the parent's reply. A turn
+ * that answered, needed no search, or ran dark keeps nothing. */
+function leftOpen(search: LiveSearch, question: string, missing: string): PendingAsk | null {
+  if (search === 'missing_detail') return { question, missing };
+  if (search === 'search_failed' || search === 'nothing_usable') return { question, missing: '' };
+  return null;
+}
+
+/** A question no search could answer as asked, named (rule #11). Nothing went wrong, so
+ * it is not a warning. */
+function askedInstead(): 'missing_detail' {
+  console.info({ search: 'missing_detail' }, 'off-domain answer: no live search this turn');
+  return 'missing_detail';
+}
+
+/**
+ * The family's city and country for this turn's search, or null with the reason named
+ * (rule #11). The place itself is never logged (rule #1).
+ */
+async function homePlace(family: FamilyFacts): Promise<HomePlace | null> {
+  const place = await family.place();
+  if (place.status === 'known') {
+    return {
+      city: place.city,
+      ...(place.provinceOrState ? { provinceOrState: place.provinceOrState } : {}),
+      country: place.country,
+    };
+  }
+  console.info(
+    { place: 'unknown', reason: place.reason },
+    'off-domain answer: no place for this family',
+  );
+  return null;
+}
+
+interface SearchFindings {
+  /** The URL of every result item the search returned. */
+  urls: readonly string[];
+  /** What the turn wrote down. */
+  notes: string;
+}
+
+const NO_FINDINGS: SearchFindings = { urls: [], notes: '' };
+
+/**
+ * What a search turn returned. A search block that came back as an ERROR carries an
+ * object rather than a list, so it contributes nothing — which is the point (rule #11:
+ * "ran and found nothing" is not "was grounded"). Mirrors medical.ts countSearchResults.
+ */
+function readSearch(content: Anthropic.ContentBlock[]): SearchFindings {
+  const urls: string[] = [];
+  for (const block of content) {
+    if (block.type !== 'web_search_tool_result') continue;
+    if (!Array.isArray(block.content)) continue;
+    for (const result of block.content) urls.push(result.url);
+  }
+  const notes = content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+    .trim();
+  return { urls, notes };
+}
+
+/**
+ * Phase 1. One web_search turn on the de-identified question, through the medical lane's
+ * seam: the same injected client, the same server tool, the model its skill names.
+ *
+ * STREAMED. A server-tool turn runs its searches before the response is complete, and a
+ * non-streamed request gets no headers until it is: activity/deep.ts measured that shape
+ * dying at the client timeout while the identical request streamed finished. Streaming
+ * makes the client's bound time-to-headers.
+ *
+ * Notes with no results under them are what the model remembered, not what it found, so
+ * they are dropped with the rest.
+ */
+async function liveSearch(
+  client: AgentClient,
+  skill: Awaited<ReturnType<typeof loadCronSkill>>,
+  question: string,
+  today: string,
+  place: HomePlace | null,
+): Promise<{ search: LiveSearch; findings: SearchFindings }> {
+  if (!generalAnswerSearchEnabled()) {
+    return { search: wentWithout('search_off'), findings: NO_FINDINGS };
+  }
+  let research: Anthropic.Message;
+  try {
+    research = await client.messages
+      .stream({
+        model: pickModel(skill.meta.task),
+        max_tokens: SEARCH_MAX_TOKENS,
+        system: skill.instructions,
+        tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
+        messages: [{ role: 'user', content: searchUserMessage({ question, today, place }) }],
+      })
+      .finalMessage();
+  } catch (err) {
+    return { search: wentWithout('search_failed', failureName(err)), findings: NO_FINDINGS };
+  }
+  // A turn the provider paused, or cut off at the ceiling, can hold result items and only
+  // its opening sentence: what it wrote is not what it found.
+  if (research.stop_reason !== 'end_turn') {
+    return {
+      search: wentWithout('nothing_usable', `stopped:${research.stop_reason}`),
+      findings: NO_FINDINGS,
+    };
+  }
+  const findings = readSearch(research.content);
+  if (findings.urls.length === 0) {
+    return { search: wentWithout('nothing_usable', 'no_results'), findings: NO_FINDINGS };
+  }
+  if (findings.notes === '') {
+    return { search: wentWithout('nothing_usable', 'empty_notes'), findings: NO_FINDINGS };
+  }
+  // The one line a lit turn leaves when it worked: the count, never the question.
+  console.info(
+    { search: 'searched', results: findings.urls.length },
+    'off-domain answer: live search ran',
+  );
+  return { search: 'searched', findings };
+}
+
+const LINK = /(?:https?:\/\/|www\.)\S+/gi;
+
+/**
+ * A host as it is written with no scheme: parts joined by single dots. A phone makes
+ * `name.tld` tappable as it stands. Every one in the reply is read, the page under a link
+ * included, so no host is passed over for where it stands or what it stands beside.
+ * Whether a public-suffix rule covers it is the list's to say
+ * (public-suffix/README.md): `Node.js` and `7 a.m.` have the shape and are not links.
+ *
+ * A part is either the letters a to z, digits and hyphens, or letters and digits of the
+ * other scripts, never both: a language written without spaces puts its own words
+ * straight against a host on either side, and they are not part of it.
+ */
+const HOST_PART = '(?:[a-z0-9-]+|(?:(?![\\x00-\\x7f])[\\p{L}\\p{M}\\p{N}])+)';
+const HOST_SHAPED = new RegExp(`${HOST_PART}(?:\\.${HOST_PART})+`, 'gu');
+/** Explicit Public Suffix List rules (public-suffix/README.md). The list's default
+ * `*` is not here: a dotted word is a link only when a rule names its suffix. */
+const PUBLIC_SUFFIX: ReadonlySet<string> = new Set(SUFFIXES.exact);
+const PUBLIC_SUFFIX_WILD: ReadonlySet<string> = new Set(SUFFIXES.wild);
+/** An address written as four numbers, and what makes one a link: a page under it. */
+const NUMBERED_ADDRESS = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const PAGE_UNDER_IT = /^(?::\d+)?\//;
+
+/**
+ * Text in the one form a host is read and compared in: each character's compatibility
+ * form (Unicode NFKC, so a full-width dot is a dot), in lower case. A host is the same
+ * host however it was typed.
+ */
+function oneForm(text: string): string {
+  return text.normalize('NFKC').toLowerCase();
+}
+
+/** A label in the form the list uses: an encoded name (`xn--`) for one in another
+ * script, and the label itself when it has no such form. */
+function asciiLabel(label: string): string {
+  const ascii = domainToASCII(label);
+  return ascii === '' ? label : ascii;
+}
+
+/** Whether an explicit public-suffix rule covers this host. A rule matches a trailing
+ * run of labels (`co.uk`, `com`). A wildcard rule (`*.ck`, stored without the star)
+ * matches when at least one label stands in front of it. */
+function underAPublicSuffix(host: string): boolean {
+  const labels = host.split('.').map(asciiLabel);
+  if (labels.length < 2) return false;
+  for (let start = 0; start < labels.length; start++) {
+    if (PUBLIC_SUFFIX.has(labels.slice(start).join('.'))) return true;
+  }
+  for (let start = 1; start < labels.length; start++) {
+    if (PUBLIC_SUFFIX_WILD.has(labels.slice(start).join('.'))) return true;
+  }
+  return false;
+}
+
+/**
+ * A host-shaped run as the host it names: without a leading `www.`, and ending where its
+ * last part meets a hyphen. No ending but an encoded one (`xn--`) has a hyphen in it, and
+ * a dash typed straight after a host arrives here as one (`plainText`).
+ */
+function hostNamed(run: string): string {
+  const host = run.replace(/^www\./, '');
+  const lastPart = host.lastIndexOf('.') + 1;
+  return host.startsWith('xn--', lastPart)
+    ? host
+    : `${host.slice(0, lastPart)}${host.slice(lastPart).replace(/-.*$/, '')}`;
+}
+
+/** The hosts a reply names with no scheme in front, from a reply already in
+ * {@link oneForm}. */
+function bareHosts(reply: string): string[] {
+  const hosts: string[] = [];
+  for (const match of reply.matchAll(HOST_SHAPED)) {
+    const host = hostNamed(match[0]);
+    const numbered =
+      NUMBERED_ADDRESS.test(host) && PAGE_UNDER_IT.test(reply.slice(match.index + match[0].length));
+    if (numbered || underAPublicSuffix(host)) hosts.push(host);
+  }
+  return hosts;
+}
+
+/** Whose site a URL is, as it is compared: the host, without the scheme, a leading
+ * `www.`, the page under it, or whatever punctuation the sentence put after it. Anything
+ * odd in front of the host (a login name, a port) stays in and so matches nothing. */
+function linkHost(url: string): string {
+  return oneForm(url)
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/[/?#].*$/, '')
+    .replace(/[.,;:!?)\]'"]+$/, '');
+}
+
+/**
+ * A URL in a reply is real only when it is on a site this turn's search returned. Before
+ * this stage could search, any URL was one the model invented and all of them were
+ * refused; now one can be the thing the parent asked for, so what is refused is a host the
+ * search did not return. The page is not compared: the front page of a site the search
+ * found a deeper page on is still that site. A host written bare is the same link, and
+ * the run a link is written in is read for bare hosts like the rest of the reply.
+ *
+ * A BARE HOST IS READ ONLY ON A TURN THAT SEARCHED (Sloane, 2026-10-13). A planted link
+ * comes from a search's notes, and a turn with no notes has none: a site named there by
+ * its domain (`Booking.com`) is a name, and main sends it. So on every other turn the
+ * rule is main's, and only a link written with a scheme or `www.` is refused.
+ */
+function carriesUnsearchedLink(
+  body: string,
+  search: LiveSearch,
+  searched: readonly string[],
+): boolean {
+  const known = new Set(searched.map(linkHost));
+  const reply = oneForm(body);
+  return [
+    ...(reply.match(LINK) ?? []).map(linkHost),
+    ...(search === 'searched' ? bareHosts(reply) : []),
+  ].some((host) => !known.has(host));
 }
 
 /**
  * The composed answer, or a named reason it cannot be sent.
  *
- * The cap is a REFUSAL rather than a trim. The coach can trim, because it has an app
- * link to hand the remainder to; this stage has nothing to point at and nothing worth
- * pointing at, so an answer cut mid-clause would just be a worse message than the fixed
- * line it would have replaced. `detail` separates the ways a body can be unsendable in
- * the LOG without splitting the outcome the caller acts on — every one of them means the
- * same thing to the lane.
+ * LENGTH IS NOT A REASON. A correct answer that ran long used to be swapped for the fixed
+ * could-not-get-to-it line, which is a deflect sent in place of an answer. The reply is
+ * bounded where it is written, by the compose call's token budget, and what the model
+ * wrote is what goes out. `detail` separates the ways a body can be unsendable in the
+ * LOG without splitting the outcome the caller acts on.
  *
- * There is no GSM-7 gate. A parent who writes in French or Chinese is answered in kind
- * (general-answer.md), and those bodies are UCS-2 by nature — an em dash or an emoji that
- * a model reaches for gratuitously is still folded to ASCII by `plainText`, but an
- * accented é or a Chinese character is content the answer cannot exist without. The
- * segment budget is what keeps the message cheap, in the currency the carrier bills.
+ * There is no encoding gate either. A parent who writes in French or Chinese is answered
+ * in kind (general-answer.md): a typographic dash or a curly quote is still folded to
+ * ASCII by `plainText`, but an accented é or a Chinese character is content the answer
+ * cannot exist without.
  */
-/** "No links, ever" (general-answer.md), held structurally: a URL this stage composes
- * is a URL it invented — there is no tool it could have gotten one from. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
-
-function sendable(raw: string): GeneralAnswerOutcome {
-  const flattened = plainText(raw);
-  // Before every other gate, because this one SUBSTITUTES where the rest refuse: a
-  // parent who turns out to be describing a hurt child must get the fixed line, never
-  // the "couldn't get to that one" a refusal would send them.
-  if (reachesForTheHealthLine(flattened)) {
-    console.error('off-domain answer: composer reached for a referral; sent the fixed line');
-    return { status: 'safety' };
+function sendable(
+  composed: z.infer<typeof answerSchema>,
+  search: LiveSearch,
+  searched: readonly string[],
+  pendingAsk: PendingAsk | null,
+): GeneralAnswerOutcome {
+  // Before every other gate, because this one STOPS where the rest refuse: a parent
+  // who turns out to be describing a hurt child must not get a could-not-answer. The
+  // lane then asks the moment writer. It is the compose's own reading that decides,
+  // never a word or a digit in what it wrote, and nothing it wrote goes past this line.
+  const kind = hurtIllOrDanger(composed.hurt_ill_or_danger);
+  if (kind !== null) {
+    console.error('off-domain answer: the compose read someone hurt; the safety door answers');
+    return { status: 'safety', kind };
   }
+  const flattened = plainText(composed.answer);
   if (flattened === '') return unavailable('unsendable', 'empty');
-  if (smsSegments(flattened) > MAX_ANSWER_SEGMENTS) {
-    return unavailable('unsendable', 'over_segment_budget');
+  if (carriesUnsearchedLink(flattened, search, searched)) {
+    return unavailable('unsendable', 'link_not_from_search');
   }
-  if (LINK_SHAPE.test(flattened)) return unavailable('unsendable', 'carries_link');
-  return { status: 'composed', reply: flattened };
+  return { status: 'composed', reply: flattened, search, ...(pendingAsk ? { pendingAsk } : {}) };
 }
 
 /**
@@ -166,65 +592,205 @@ function sendable(raw: string): GeneralAnswerOutcome {
  * break approvals — and deferring it buys the honest `client_unavailable` outcome.
  */
 export function createGeneralAnswer(client: () => AgentClient): GeneralAnswerComposer {
-  return {
-    async compose(text) {
-      // VIL-328: physical emergency is Call 911 now., never the 811 Telehealth
-      // line. Mental crisis is the reviewed 988 line, no return ask.
-      if (namesAnEmergency(text)) {
-        return { status: 'composed', reply: EMERGENCY_REPLY };
-      }
-      if (namesAMentalCrisis(text)) {
-        return { status: 'composed', reply: MENTAL_CRISIS_REPLY };
-      }
+  type Skill = Awaited<ReturnType<typeof loadCronSkill>>;
+  interface Stage {
+    client: AgentClient;
+    sanitize: Skill;
+    search: Skill;
+    answer: Skill;
+    check: Skill;
+  }
 
-      if (isCheerUpAsk(text)) {
-        return { status: 'composed', reply: cheerUpAfterProvisionReply() };
-      }
+  /** The client and the three skills, or the name of what is missing. */
+  async function setUp(): Promise<
+    Stage | { missing: 'client_unavailable' | 'skill_unavailable'; detail: string }
+  > {
+    let resolved: AgentClient;
+    try {
+      resolved = client();
+    } catch (err) {
+      return { missing: 'client_unavailable', detail: message(err) };
+    }
+    try {
+      return {
+        client: resolved,
+        sanitize: await loadCronSkill('general-answer-sanitize'),
+        search: await loadCronSkill('general-answer-search'),
+        answer: await loadCronSkill('general-answer'),
+        check: await loadCronSkill('general-answer-check'),
+      };
+    } catch (err) {
+      return { missing: 'skill_unavailable', detail: message(err) };
+    }
+  }
 
-      let resolved: AgentClient;
-      try {
-        resolved = client();
-      } catch (err) {
-        return unavailable('client_unavailable', message(err));
-      }
+  /** Phase 0 — SANITIZE (the family out of the question; the language; the readings).
+   * Throws what the call throws: the two callers name a failure differently. */
+  async function sanitize(
+    stage: Stage,
+    text: string,
+    pending: PendingAsk | null,
+  ): Promise<z.infer<typeof sanitizeSchema>> {
+    const { value } = await forceToolJson({
+      client: stage.client,
+      lane: pickLane(stage.sanitize.meta.task),
+      system: stage.sanitize.instructions,
+      userMessage: questionSanitizeUserMessage(text, pending),
+      toolName: 'sanitize',
+      toolDescription: 'Return the de-identified question.',
+      inputJsonSchema: sanitizeJsonSchema,
+      schema: sanitizeSchema,
+      maxTokens: SANITIZE_MAX_TOKENS,
+    });
+    return value;
+  }
 
-      // Leftover current-source facts and therapist-find: live lookup, then
-      // one line back to the kids / the week. Do not stay in trivia.
-      if (isLiveLookupAsk(text)) {
-        const ground = await groundCurrentSource(resolved, text);
-        if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'off-domain answer: current source not grounded, returned to Hale',
-          );
-          return { status: 'composed', reply: afterProvisionFallbackReply() };
-        }
-        return { status: 'composed', reply: afterProvisionReplyFromNotes(ground.notes) };
-      }
+  /** Phases 1 and 2, from what the sanitizer returned. */
+  async function answer(
+    stage: Stage,
+    sanitized: z.infer<typeof sanitizeSchema>,
+    family: FamilyFacts,
+  ): Promise<GeneralAnswerOutcome> {
+    // Nothing is composed from a question nobody de-identified: the raw text may not go
+    // to the compose, and there is no other question to hand it.
+    if (sanitized.question.trim() === '') {
+      return unavailable('model_failed', 'sanitize_failed:empty_question');
+    }
+    // Deterministic backstop UNDER the sanitizer, before the question goes anywhere.
+    const question = scrubDirectIdentifiers(sanitized.question.trim());
+    // The model may leave it out; it is scrubbed like the question it came with.
+    const missing = scrubDirectIdentifiers((sanitized.missing_detail ?? '').trim());
+    const language = normalizeLanguage(sanitized.language);
+    const today = await family.today();
 
-      let skill: Awaited<ReturnType<typeof loadCronSkill>>;
-      try {
-        skill = await loadCronSkill('general-answer');
-      } catch (err) {
-        return unavailable('skill_unavailable', message(err));
-      }
+    // Phase 1 — SEARCH (only when judged needed, and only when lit). Where the family
+    // is, is read only for a lit search the sanitizer judged to depend on it. A detail
+    // still missing after that is asked for, and only while lit: dark, there is nothing
+    // the answer could be used for.
+    const lit = generalAnswerSearchEnabled();
+    const searching = needsSearch(sanitized.needs_search);
+    const located =
+      lit && searching && turnsOnTheirPlace(sanitized.their_place) ? await homePlace(family) : null;
+    // A place of fewer than 10,000 people is not sent unless the sanitizer read the
+    // question as not sensitive. The reading is the model's; the replacement is this
+    // code (place.ts). A missing or unparseable reading coarsens. The weather stays
+    // the town because the sanitizer reads it as not sensitive.
+    const place =
+      located === null || !questionIsSensitive(sanitized.sensitive)
+        ? located
+        : await coarsenPlace(located, true);
+    const { search, findings } = !searching
+      ? { search: 'not_needed' as const, findings: NO_FINDINGS }
+      : lit && sanitized.needs_search === 'missing_detail' && place === null
+        ? { search: askedInstead(), findings: NO_FINDINGS }
+        : await liveSearch(stage.client, stage.search, question, today, place);
 
-      try {
-        const { value } = await forceToolJson({
-          client: resolved,
-          lane: pickLane(skill.meta.task),
-          system: skill.instructions,
-          userMessage: generalAnswerUserMessage(text),
+    // Phase 2 — COMPOSE (blind: the question and the research, never the raw message).
+    const composeRequest = generalAnswerUserMessage({
+      question,
+      language,
+      today,
+      search,
+      notes: findings.notes,
+      missing,
+    });
+    const draftOnce = async (userMessage: string) =>
+      (
+        await forceToolJson({
+          client: stage.client,
+          lane: pickLane(stage.answer.meta.task),
+          system: stage.answer.instructions,
+          userMessage,
           toolName: 'answer',
           toolDescription: 'Return the one brief answer to this question.',
           inputJsonSchema: answerJsonSchema,
           schema: answerSchema,
-          maxTokens: MAX_TOKENS,
-        });
-        return sendable(value.answer);
-      } catch (err) {
-        return unavailable('model_failed', message(err));
+          maxTokens: ANSWER_MAX_TOKENS,
+        })
+      ).value;
+    try {
+      let value = await draftOnce(composeRequest);
+      // Phase 3 — READ IT AGAINST THE NOTES. A reply written from notes is read against them,
+      // and one written when nothing could be checked is read for counts from memory; a
+      // safety door is not a draft. The reader's verdict is the
+      // model's; a failed or unreadable read sends the first draft, and a redraft is sent
+      // as written: one more draft, never a loop.
+      if (
+        preSendReadApplies(search, findings.notes) &&
+        hurtIllOrDanger(value.hurt_ill_or_danger) === null
+      ) {
+        let reason: string | null = null;
+        try {
+          const { value: verdict } = await forceToolJson({
+            client: stage.client,
+            lane: pickLane(stage.check.meta.task),
+            system: stage.check.instructions,
+            userMessage: generalAnswerCheckUserMessage({
+              question,
+              today,
+              search,
+              notes: findings.notes,
+              draft: value.answer,
+            }),
+            toolName: 'verdict',
+            toolDescription: 'Say whether this draft can be sent as written.',
+            inputJsonSchema: checkJsonSchema,
+            schema: checkSchema,
+            maxTokens: CHECK_MAX_TOKENS,
+          });
+          reason = wantsRedraft(verdict);
+        } catch (err) {
+          console.warn(
+            { reason: failureName(err) },
+            'off-domain answer: the pre-send read failed; sending the first draft',
+          );
+        }
+        if (reason !== null) {
+          console.info(
+            { check: 'redraft' },
+            'off-domain answer: the pre-send read asked for one more draft',
+          );
+          value = await draftOnce(
+            generalAnswerRedraftUserMessage(composeRequest, value.answer, reason),
+          );
+        }
       }
+      return sendable(value, search, findings.urls, leftOpen(search, question, missing));
+    } catch (err) {
+      return unavailable('model_failed', failureName(err));
+    }
+  }
+
+  return {
+    async compose(text, family) {
+      // Whether someone is hurt, ill or in danger is the compose's own reading
+      // (`hurt_ill_or_danger`), made in any language. No English word list stands
+      // in front of the sanitizer.
+      const stage = await setUp();
+      if ('missing' in stage) return unavailable(stage.missing, stage.detail);
+
+      let sanitized: z.infer<typeof sanitizeSchema>;
+      try {
+        sanitized = await sanitize(stage, text, null);
+      } catch (err) {
+        return unavailable('model_failed', `sanitize_failed:${failureName(err)}`);
+      }
+      return answer(stage, sanitized, family);
+    },
+
+    async continueAsk(text, pending, family) {
+      const stage = await setUp();
+      if ('missing' in stage) return notAReply(stage.missing);
+
+      let sanitized: z.infer<typeof sanitizeSchema>;
+      try {
+        sanitized = await sanitize(stage, text, pending);
+      } catch (err) {
+        return notAReply(failureName(err));
+      }
+      if (!answersPending(sanitized.answers_pending)) return notAReply();
+      console.info({ pendingAsk: 'completed' }, 'off-domain answer: the reply to a pending ask');
+      return answer(stage, sanitized, family);
     },
   };
 }

@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is my pick for the GOAT",
+        "from": "settled"
+      },
+      {
+        "states": "Messi won the 2022 World Cup with Argentina",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. He won the 2022 World Cup with Argentina, which is hard to top. Ronaldo and Pelé are the other names people argue for, but Messi's the one I'd pick."
+  },
+  "latencyMs": 4259
+}

@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "programs@riversidecommunity.ca",
+      "subject": "Re: Parent & Baby Swim — Fall registration open",
+      "body": "hi — thanks for letting us know that fall registration is open. could you send the session dates, the fee, and how many spots are left? we'd like to look at those before deciding."
+    },
+    "confidence": 0.7,
+    "rationale": "No parent yes to the offered spot is in the input, so the reply asks for details and does not hold a spot.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  }
+}

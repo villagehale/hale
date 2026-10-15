@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The lead sentence opens with 'I checked Markham's calendar', so the find is attributed to Hale's own look at the town's calendar, and the registration date and kids' names are given facts from the payload. The look itself is not scoped with invented specifics (no postal code, no count of places checked), so it earns the top score.",
+    "score": 5
+  }
+}

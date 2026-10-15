@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "8c4e1a70-2b95-4d16-9f38-71a0c5e24b6d",
+    "polarity": "no",
+    "confidence": "high",
+    "reason": "The Arabic reply 'لا، ليس هذا' means 'No, not this one', rejecting the single open offer for Gymnastics."
+  },
+  "latencyMs": 1856
+}

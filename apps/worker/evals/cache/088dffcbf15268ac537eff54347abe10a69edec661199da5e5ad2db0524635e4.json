@@ -1,0 +1,27 @@
+{
+  "urls": [
+    "https://www.nationwidechildrens.org/conditions/head-injury-concussion",
+    "https://www.sutterhealth.org/health/head-injuries-and-children-when-to-take-your-child-to-the-doctor",
+    "https://www.rch.org.au/kidsinfo/fact_sheets/head_injury/",
+    "https://www.mouwasat.com/en/blogs/warning-signs-after-a-head-injuries-in-kids-and-when-to-go-to-the-er",
+    "https://www.emergencyphysicians.org/article/pediatrics/child-head-injury",
+    "https://www.childrensmn.org/blog/child-bumped-head-when-to-worry/",
+    "https://www.luriechildrens.org/en/blog/what-to-do-if-a-child-hits-their-head/",
+    "https://scarysymptoms.com/2017/07/child-hits-head-feels-fine-vomits-overnight-get-er/",
+    "https://kidsbewell.com/articles/child-head-injury-when-to-see-doctor/",
+    "https://monadnockcommunityhospital.com/services/pediatrics/head-injury-in-children/",
+    "https://cps.ca/en/documents/position/acute-head-trauma",
+    "https://site.utah.gov/bemsp/wp-content/uploads/sites/34/2019/09/ped_plus_tbi_clinical_guideline.pdf",
+    "https://mobile.fpnotebook.com/Neuro/Rad/HdInjryCtIndctnsInChldrn.htm",
+    "https://emergencymedicinecases.com/pediatric-minor-head-injury-concussion/",
+    "https://medicqi.org/Portals/0/Medic/FINAL%20PECARN%20Minor%20HI%20Guideline%20One%20Pager.pdf?ver=kFOez-SbI1tOPgEbI88PxA%3D%3D",
+    "https://clinicaltrials.gov/study/NCT06768710",
+    "https://emedicine.medscape.com/article/907273-workup",
+    "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11983826/",
+    "https://www.nuemblog.com/blog/pecarn"
+  ],
+  "notes": "Research notes (head injury in a child; the child's age and other details are not given in the question):\n\n**Missing details that change the answer:** The child's age, how high the bunk was, and whether he lost consciousness, even briefly. Also whether he is acting normally, has a bad headache, or is unusually sleepy. The question does not say any of these.\n\n**Napping and vomiting after a head injury**\n- Sources conflict on whether napping is fine, depending on symptoms. Nationwide Children's says that for a concussion, a child can rest and nap as needed during the day. Lurie Children's says it's usually safe for babies and children to sleep after they hit their head. Lurie adds that you should monitor them closely for the first few hours for worsening symptoms such as difficulty waking up, confusion or vomiting.\n- Those napping statements are general. They do not address a child who has already thrown up twice after a fall from a bunk.\n- Several sources list vomiting after a head injury as a reason to get medical care.\n  - Children's Minnesota lists vomiting after the injury, especially if vomiting more than once among its reasons to go to the ER.\n  - The American Academy of Pediatrics, as quoted by Sutter Health, recommends immediate care for prolonged nausea or repeated vomiting.\n  - Nationwide Children's says to go to the closest ED or call the child's doctor for instructions if they have repeated or extreme vomiting.\n- The American College of Emergency Physicians says vomiting is common in young children. It advises seeking care only if a child vomits repeatedly in a brief period of time (e.g., more than once or twice within an hour) after a head injury. Two episodes in about an hour sits at or near that threshold.\n- Royal Children's Hospital (Australia) says to call an ambulance if the child injured their head at high speeds or from a height above one metre, loses consciousness, or keeps vomiting. A top bunk is likely near or above that height.\n- Clinical guidelines treat vomiting alone as an intermediate-risk sign, not a high-risk one.\n  - For children 2 and older, a Utah pediatric trauma guideline based on PECARN puts vomiting in the medium risk group, with a 0.9% risk of clinically important brain injury.\n  - A PECARN summary gives CT or observation for 4–6 hours for children with a history of vomiting.\n  - Several sources note that isolated vomiting is associated with a very low prevalence of clinically important brain injury.\n- Warning signs that call for emergency care include trouble waking up or being especially sleepy and unable to stay awake, a severe or worsening headache, seizure, confusion, balance problems and weakness. Others are double vision or one pupil larger than the other and slurred speech.\n- Royal Children's Hospital notes that symptoms often set in right after the injury, but they can take a few hours to develop.\n\n**Bottom line from the sources:** None of them clearly says a nap is fine after a fall from height with two episodes of vomiting. Most advise getting the child medically assessed, or at least calling a doctor or nurse line right away. Several advise that any worsening, or trouble waking him, means the ER or an ambulance.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 12345
+}

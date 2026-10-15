@@ -36,6 +36,7 @@ import {
   parentCallNameVoice,
 } from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
+import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
@@ -47,6 +48,7 @@ import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
+import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
@@ -55,11 +57,13 @@ import { loadOpenCommitment } from '~/lib/commitments/ledger';
 import { childBelongsToFamily } from '~/lib/companion/log-write';
 import { loadOpenCheckupOffer } from '~/lib/health/offer';
 import { defaultHealthReplyDeps } from '~/lib/health/reply';
+import { createCalendarOfferReader } from '~/lib/integrations/calendar-offer-read';
 import {
   emailAlertOfferSubject,
   emailAlertOfferSummary,
   loadOpenEmailAlertOffers,
 } from '~/lib/integrations/email-alert-offer';
+import { createOfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { familyMemoryKindsHandler } from '~/lib/memory/handler';
 import { rememberWorkstreamTurn, workstreamExtractClient } from '~/lib/memory/workstream-extract';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -76,6 +80,7 @@ import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
+import { createHoldingLine } from './holding-line';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
 import {
@@ -446,7 +451,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // owns the daycare check-in's kind and claims nothing.
     daycareFollowupHandler(),
     healthReplyHandler({ ...defaultHealthReplyDeps(), ask }),
-    emailAlertAddHandler(),
+    emailAlertAddHandler({ writeReceipt: createOfferReceiptWriter(screenClient) }),
     planReplyHandler(defaultPlanReplyDeps()),
     // Explicit "sign us up" only. A bare yes is not a signup. Placed before the
     // registration reader, which also claims messages it cannot read.
@@ -711,6 +716,9 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       },
     }),
     replyResolver: createReplyResolver(screenClient),
+    calendarOffers: createCalendarOfferReader(screenClient),
+    saidLine: createSaidLineWriter(screenClient),
+    turnReader: sharedOptOutReader(),
     weekdayCareReader: createWeekdayCareReader(screenClient),
     consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
@@ -723,6 +731,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // The words a broken turn gets, on the same lazy client the screen and the general
     // answer use — one key, one failure story, resolved only by the turn that needs one.
     apology: createTurnApology(screenClient),
+    // The one line a slow answer gets first, on the same lazy client.
+    holdingLine: createHoldingLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "her name is spelled Mya",
+    "rationale": "Intake detail about a name spelling, not an answer to the yes/no question",
+    "confidence": 0.97
+  },
+  "latencyMs": 1237
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Strong, honest message. Hale leads by name with the best pick, Halton Hills Gymnastics Centre. It is real and local, its parent-and-tot and drop-in programs fit a toddler, and the facts come from the centre's own site and are attributed ('their site says'). Session dates, the Tue/Thu times and the $15 price all match the picks, and nothing is invented. With watch=true, the first-person 'I'll keep watching and text you what I find' is a real commitment, which is correct. With pageEvidence=no_page_read, the skating gap is phrased properly as 'I could not get into their page today' rather than 'not posted yet'. There is no question and no link, and there are three picks. Deductions: (1) the skating pick is vague, naming 'Town of Halton Hills arenas' rather than a specific arena; (2) its `when` is null, against watchFor's demand for a day or session start, though the gap is named honestly; (3) the skating price is stated without clear attribution to the Town, since 'their page' is ambiguous, and the message never says which arena or source it comes from.",
+    "score": 4
+  }
+}

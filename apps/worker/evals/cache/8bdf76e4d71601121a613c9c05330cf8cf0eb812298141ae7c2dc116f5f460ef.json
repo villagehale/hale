@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no thanks — can I turn it on later?",
+    "rationale": "Clear 'no thanks' refusal; the follow-up question about turning it on later does not undo the refusal.",
+    "confidence": 0.93
+  },
+  "latencyMs": 1308
+}

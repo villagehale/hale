@@ -1246,10 +1246,11 @@ export const COACH_CHANNEL_FIXTURES = [
     note: 'THE NEGATIVE CONTROL. A complaint about one email is about that email, not a request to stop Hale emailing on its own.',
     expect: {
       mustNotCall: ['turn_off_autonomy'],
-      // The recorded reply says Hale cannot send email, and the judge rightly scores that
-      // 1-2 for a family Hale emails for. The coach is not told what Hale did on its own
-      // and has no verb to correct a sent email; that gap is open for Barton (PR #856).
-      // This fixture controls the verb choice, which it passes.
+      // The skill tells the coach to own an email Hale sent and to offer a fix for the
+      // fact the parent names. The coach is still not shown that email and has no verb
+      // that rewrites a message already gone (open gap, PR #856), so a reply can own the
+      // send and still land under the floor. The waiver stays. This fixture controls the
+      // verb choice.
       voiceFloorWaived:
         'the coach cannot see or correct an email Hale sent on its own (open gap, PR #856)',
     },

@@ -1,16 +1,23 @@
 import { schema } from '@hale/db';
 import { and, asc, eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CoParentInvite } from '~/lib/channel/caregiver/invites';
+import { GENERAL_ANSWER_SEARCH_ENABLED_ENV } from '~/lib/channel/off-domain/answer';
 import { SMS_CONSENT_SCOPE, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { POLICY_VERSION } from '~/lib/consent';
 import { revokeMcpGrant } from '~/lib/mcp/oauth-store';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { CO_PARENT_INVITE_CONSENT_SCOPE, acceptCoParentInvite } from './accept';
 import { departCoParent } from './depart';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * VIL-355 · departure against the REAL DDL, because every promise it makes is a
@@ -231,6 +238,7 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       mcpGrantsRevoked: 0,
       connectorsRevoked: 0,
       teenGrantsRevoked: 0,
+      openQuestionsDeleted: 'search_dark',
       membershipRemoved: true,
       consentWithdrawn: 1,
       threadRetained: 1,
@@ -391,6 +399,7 @@ describe('departCoParent — one actor leaves, the household keeps its record', 
       mcpGrantsRevoked: 0,
       connectorsRevoked: 0,
       teenGrantsRevoked: 0,
+      openQuestionsDeleted: 'search_dark',
       membershipRemoved: true,
       consentWithdrawn: 1,
       threadRetained: 1,
@@ -833,5 +842,257 @@ describe('departCoParent — every standing read into the household ends with th
     } finally {
       await db.exec('drop trigger if exists refuse_departure_audit_trg on audit_log');
     }
+  });
+});
+
+/**
+ * A question a general answer left open is put to ONE parent's phone (migration 0167),
+ * and it is closed by the next thing Hale says to them. Hale says nothing more to a
+ * parent who has left, so the question would stand until the yearly sweep: the departure
+ * takes it out, in its own transaction, and counts it.
+ *
+ * The table is the lit lane's alone. While the search is dark nothing reads it, here
+ * either, so a departure on a database that does not have the table yet is the departure
+ * it was before.
+ */
+describe('departCoParent: the questions Hale left open for the one leaving', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  const lit = () => vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'true');
+
+  /** A reply Hale sent one parent that left a question open. Invented. */
+  async function leaveQuestionOpen(
+    database: TestDb['database'],
+    to: { familyId: string; parentUserId: string },
+  ): Promise<void> {
+    const [reply] = await database
+      .insert(schema.channelMessages)
+      .values({
+        ...to,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status: 'sent',
+      })
+      .returning({ id: schema.channelMessages.id });
+    await database.insert(schema.channelPendingAsks).values({
+      channelMessageId: reply?.id as string,
+      familyId: to.familyId,
+      question: 'hows the weather tomorrow',
+      missing: 'which city',
+    });
+  }
+
+  /** Whose questions are still open, by family and parent. */
+  const openQuestions = (database: TestDb['database']) =>
+    database
+      .select({
+        familyId: schema.channelPendingAsks.familyId,
+        parentUserId: schema.channelMessages.parentUserId,
+      })
+      .from(schema.channelPendingAsks)
+      .innerJoin(
+        schema.channelMessages,
+        eq(schema.channelMessages.id, schema.channelPendingAsks.channelMessageId),
+      );
+
+  it('deletes their open question, counts it, and leaves everyone else’s', async () => {
+    lit();
+    const one = await seedSeatedHousehold();
+    const two = await seedSeatedHousehold();
+    // The same person is a co-parent of a second household, and has a question open there.
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: two.familyId, userId: one.coParentUserId, role: 'co_parent' });
+    const leaver = { familyId: one.familyId, parentUserId: one.coParentUserId };
+    const stayer = { familyId: one.familyId, parentUserId: one.parentUserId };
+    const elsewhere = { familyId: two.familyId, parentUserId: one.coParentUserId };
+    await leaveQuestionOpen(db.database, leaver);
+    await leaveQuestionOpen(db.database, leaver);
+    await leaveQuestionOpen(db.database, stayer);
+    await leaveQuestionOpen(db.database, elsewhere);
+
+    const result = await departCoParent(db.database, {
+      familyId: one.familyId,
+      actorUserId: one.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    expect(result).toMatchObject({ outcome: 'departed', openQuestionsDeleted: 2 });
+    // The parent who stayed keeps theirs, and so does the one who left, in the household
+    // they did not leave: the positive control.
+    expect(await openQuestions(db.database)).toEqual(expect.arrayContaining([stayer, elsewhere]));
+    expect(await openQuestions(db.database)).toHaveLength(2);
+    // The effect is on the departure's own audit row (rule #6), as a count and no more.
+    expect(
+      (await auditRows(one.familyId)).filter((row) => row.actionTaken === 'co_parent_departed'),
+    ).toEqual([
+      expect.objectContaining({
+        after: { role: 'co_parent', threadRetained: 0, openQuestionsDeleted: 2 },
+      }),
+    ]);
+  });
+
+  it('counts none when they had none open', async () => {
+    lit();
+    const household = await seedSeatedHousehold();
+    await leaveQuestionOpen(db.database, {
+      familyId: household.familyId,
+      parentUserId: household.parentUserId,
+    });
+
+    const result = await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    expect(result).toMatchObject({ outcome: 'departed', openQuestionsDeleted: 0 });
+    expect(await openQuestions(db.database)).toHaveLength(1);
+  });
+
+  it('keeps the question when the departure does not commit: it is one transaction', async () => {
+    lit();
+    const household = await seedSeatedHousehold();
+    const leaver = { familyId: household.familyId, parentUserId: household.coParentUserId };
+    await leaveQuestionOpen(db.database, leaver);
+
+    await db.exec(`
+      create or replace function refuse_departure_audit() returns trigger as $$
+      begin raise exception 'audit write refused'; end;
+      $$ language plpgsql;
+      create trigger refuse_departure_audit_trg before insert on audit_log
+        for each row when (new.action_taken = 'co_parent_departed')
+        execute function refuse_departure_audit();
+    `);
+    try {
+      await expect(
+        departCoParent(db.database, {
+          familyId: household.familyId,
+          actorUserId: household.coParentUserId,
+          now: DEPARTED_AT,
+        }),
+      ).rejects.toThrow(/audit write refused/);
+
+      expect(await openQuestions(db.database)).toEqual([leaver]);
+    } finally {
+      await db.exec('drop trigger if exists refuse_departure_audit_trg on audit_log');
+    }
+  });
+
+  it('reads nothing while the search is dark, and says so', async () => {
+    const household = await seedSeatedHousehold();
+    const leaver = { familyId: household.familyId, parentUserId: household.coParentUserId };
+    await leaveQuestionOpen(db.database, leaver);
+
+    const result = await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.coParentUserId,
+      now: DEPARTED_AT,
+    });
+
+    expect(result).toMatchObject({ outcome: 'departed', openQuestionsDeleted: 'search_dark' });
+    expect(await openQuestions(db.database)).toEqual([leaver]);
+  });
+
+  /**
+   * The database as main has it today: every table but this one. A statement that fails
+   * inside a transaction ends the transaction, so a delete against a table that is not
+   * there would take the whole departure, an erasure request, down with it.
+   */
+  describe('on a database without the table', () => {
+    let without: TestDb;
+
+    beforeAll(async () => {
+      without = await createTestDb();
+      await without.exec('drop table channel_pending_asks');
+    });
+
+    afterAll(async () => {
+      await without.close();
+    });
+
+    /** A household with a co-parent seated, by hand: the seat is all this needs. */
+    async function seatedOn(database: TestDb['database']) {
+      const [family] = await database
+        .insert(schema.families)
+        .values({ displayName: 'Ana + kids', provinceOrState: 'ON' })
+        .returning({ id: schema.families.id });
+      households += 1;
+      const [coParent] = await database
+        .insert(schema.users)
+        .values({ externalAuthId: `sms:no-table-${households}`, name: 'Sam' })
+        .returning({ id: schema.users.id });
+      const seat = { familyId: family?.id as string, userId: coParent?.id as string };
+      await database.insert(schema.familyMembers).values({ ...seat, role: 'co_parent' });
+      return seat;
+    }
+
+    const seats = (familyId: string) =>
+      without.database
+        .select({ userId: schema.familyMembers.userId })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId));
+
+    it('departs as before while the search is dark, without touching it', async () => {
+      const seat = await seatedOn(without.database);
+
+      const result = await departCoParent(without.database, {
+        familyId: seat.familyId,
+        actorUserId: seat.userId,
+        now: DEPARTED_AT,
+      });
+
+      expect(result).toMatchObject({ outcome: 'departed', openQuestionsDeleted: 'search_dark' });
+      expect(await seats(seat.familyId)).toEqual([]);
+    });
+
+    it('still departs with the search lit, and names the table as not there', async () => {
+      lit();
+      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const seat = await seatedOn(without.database);
+
+      const result = await departCoParent(without.database, {
+        familyId: seat.familyId,
+        actorUserId: seat.userId,
+        now: DEPARTED_AT,
+      });
+
+      expect(result).toEqual({
+        outcome: 'departed',
+        channelRevoked: 0,
+        mcpGrantsRevoked: 0,
+        connectorsRevoked: 0,
+        teenGrantsRevoked: 0,
+        openQuestionsDeleted: 'not_migrated',
+        membershipRemoved: true,
+        consentWithdrawn: 0,
+        threadRetained: 0,
+        channelRecordRetained: 0,
+        inviteRecordRetained: 0,
+        identityRetained: true,
+      });
+      // The rest of the departure committed: the seat is gone and its audit row is there.
+      expect(await seats(seat.familyId)).toEqual([]);
+      expect(
+        await without.database
+          .select({ after: schema.auditLog.after })
+          .from(schema.auditLog)
+          .where(
+            and(
+              eq(schema.auditLog.familyId, seat.familyId),
+              eq(schema.auditLog.actionTaken, 'co_parent_departed'),
+            ),
+          ),
+      ).toEqual([
+        { after: { role: 'co_parent', threadRetained: 0, openQuestionsDeleted: 'not_migrated' } },
+      ]);
+      expect(warned.mock.calls).toEqual([
+        [{ pendingAsk: 'not_migrated' }, 'co-parent departure: pending-ask table missing'],
+      ]);
+    });
   });
 });

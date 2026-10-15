@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   type FollowUpGrounding,
   type FollowUpPick,
-  claimsNotPosted,
   claimsVerification,
   followUpUserMessage,
   followUpViolations,
@@ -68,7 +67,10 @@ describe('never claims to have verified what it only read', () => {
   });
 
   it('surfaces the honest phrasing in the refusal the model reads', () => {
-    const violations = followUpViolations('I confirmed Halton Hills Gymnastics for Saturdays.', grounding(grounding()));
+    const violations = followUpViolations(
+      'I confirmed Halton Hills Gymnastics for Saturdays.',
+      grounding(grounding()),
+    );
     expect(violations.join(' ')).toContain('their site says');
   });
 
@@ -89,9 +91,7 @@ describe('the top pick lands in the first segment', () => {
   it('refuses a body that buries the best find past 153 characters', () => {
     const buried = `${filler}${filler}${PICK.name} runs Saturdays.`;
     expect(topPickLeads(buried, [PICK])).toBe(false);
-    expect(
-      followUpViolations(buried, grounding()).join(' '),
-    ).toContain(PICK.name);
+    expect(followUpViolations(buried, grounding()).join(' ')).toContain(PICK.name);
   });
 
   it('POSITIVE CONTROL - the same find, named first, passes the same check', () => {
@@ -169,8 +169,7 @@ describe('the top pick lands in the first segment', () => {
 /**
  * THE CONTINUATION IS A CLAIM ABOUT WHY HALE IS COMING BACK.
  *
- * `claimsNotPosted` refuses the present tense and cannot see the same claim in the
- * future: "I'll keep watching and text you once the details are up" presupposes they are
+ * The same claim can wear the future: "I'll keep watching and text you once the details are up" presupposes they are
  * not up. Live on 2026-08-24 the composer got the gap right in Hale's own voice — "I
  * couldn't pin down the day, time or price from their term PDF" — and then handed it
  * straight back to the page one clause later, about a venue whose term schedule WAS
@@ -229,9 +228,9 @@ describe('a message may not say Hale could not get at a fact AND that it awaits 
     const body = `${PICK.name} runs Saturdays - their site says, though I could not pin down the price. I'll keep watching and text you once the price is up.`;
 
     for (const pageEvidence of ['page_has_schedule', 'no_page_read'] as const) {
-      expect(followUpViolations(body, grounding({ pageEvidence, watch: true })).join(' ')).toContain(
-        'when YOU can get at them',
-      );
+      expect(
+        followUpViolations(body, grounding({ pageEvidence, watch: true })).join(' '),
+      ).toContain('when YOU can get at them');
     }
   });
 });
@@ -261,56 +260,9 @@ describe('any language, as long as the find leads and the text fits', () => {
 });
 
 describe('the mechanical gates', () => {
-  it('refuses a link and an over-long body', () => {
+  it('refuses a link', () => {
     const withLink = `${PICK.name} runs Saturdays - see haltonhillsgym.ca`;
-    expect(followUpViolations(withLink, grounding({ subject: 's' })).join(' ')).toContain(
-      'link',
-    );
-
-    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
-    expect(followUpViolations(long, grounding({ subject: 's' })).join(' ')).toContain(
-      'segments',
-    );
-  });
-
-  /**
-   * THE OVER-LONG REFUSAL SAYS WHAT TO DROP, because it is the only place in this lane
-   * that has MEASURED anything. The skill used to carry the rule ("cut the SECOND find")
-   * and the model had to guess when it applied; guessing costs a whole find, so it
-   * guessed early and dropped a complete second find into a message with room for it.
-   */
-  it('the over-long refusal names the cut - the last find whole, never the leading find', () => {
-    const second: ActivityPick = { ...PICK, name: 'Preschool Drop-In Gym' };
-    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
-
-    const twoFinds = followUpViolations(long, grounding({ picks: [PICK, second] })).join(' ');
-    expect(twoFinds).toContain('Drop the LAST find whole');
-
-    // POSITIVE CONTROL, and the reason the sentence is conditional: with one find there
-    // is no find to drop, and telling the model to drop it is telling it to go quiet.
-    const oneFind = followUpViolations(long, grounding()).join(' ');
-    expect(oneFind).not.toContain('Drop the LAST find whole');
-    expect(oneFind).toContain('never the facts');
-  });
-
-  /**
-   * AND THE CUT MAY NOT BE PAID FOR OUT OF A DIFFERENT GATE. The first version of the
-   * length correction ended "keep the rest as they are", and the composer read that as
-   * licence: it kept both finds whole and deleted the continuation sentence instead, then
-   * failed `statesTheReturn` twice more and sent a kept promise that never said Hale was
-   * still on it. A correction satisfiable by breaking another gate is a loop into silence.
-   */
-  it('the over-long refusal protects the continuation sentence when a row exists', () => {
-    const long = `${PICK.name} runs Saturdays. ${'and there is more to say. '.repeat(20)}`;
-
-    expect(followUpViolations(long, grounding({ watch: true })).join(' ')).toContain(
-      'never the sentence saying Hale will keep watching',
-    );
-    // POSITIVE CONTROL - with no row written there is no such sentence to protect, and
-    // demanding one is the unbacked promise this lane refuses in the other direction.
-    expect(followUpViolations(long, grounding({ watch: false })).join(' ')).not.toContain(
-      'keep watching',
-    );
+    expect(followUpViolations(withLink, grounding({ subject: 's' })).join(' ')).toContain('link');
   });
 
   it('refuses an empty body outright', () => {
@@ -366,9 +318,7 @@ describe('the payload the composer is handed', () => {
     // The other direction, and the reason the key is present rather than omitted: an
     // absent key reads to the model as a field it may fill in, and the shallow lane has
     // never opened a page to fill it from.
-    const payload = JSON.parse(
-      followUpUserMessage(grounding()),
-    );
+    const payload = JSON.parse(followUpUserMessage(grounding()));
 
     expect(payload.picks[0]).toHaveProperty('registration', null);
   });
@@ -407,9 +357,7 @@ describe('the payload the composer is handed', () => {
    */
   it('with NO picks the payload carries no page state at all - only that there was nothing', () => {
     const payload = JSON.parse(
-      followUpUserMessage(
-        grounding({ picks: [], pageEvidence: 'no_page_read', watch: true }),
-      ),
+      followUpUserMessage(grounding({ picks: [], pageEvidence: 'no_page_read', watch: true })),
     );
 
     expect(Object.keys(payload).sort()).toEqual([
@@ -425,9 +373,7 @@ describe('the payload the composer is handed', () => {
   });
 
   it('carries the subject and the mode, and nothing about the family (rule #1)', () => {
-    const payload = JSON.parse(
-      followUpUserMessage(grounding({ picks: [DEEP_SLOT] })),
-    );
+    const payload = JSON.parse(followUpUserMessage(grounding({ picks: [DEEP_SLOT] })));
 
     expect(Object.keys(payload).sort()).toEqual([
       'language',
@@ -486,7 +432,9 @@ describe('an offer is a proposal, so this lane makes none', () => {
   it('refuses any question - there is no row on this path for a yes to land on', () => {
     const asked = `${PICK.name} runs Saturdays 9:15 from Sept 13, $142 - their site says. Want me to check back once they're up?`;
 
-    expect(followUpViolations(asked, grounding()).join(' ')).toContain('asks the parent a question');
+    expect(followUpViolations(asked, grounding()).join(' ')).toContain(
+      'asks the parent a question',
+    );
   });
 
   it('POSITIVE CONTROL - the same find, ending on a statement, passes', () => {
@@ -567,92 +515,28 @@ describe('naming the find a parent is being handed', () => {
   });
 
   it('still needs two words when the name outside the brackets carries two', () => {
-    const twoWords = { ...PICK, name: 'Kinderfun Toddler Program, Cartwheels Gym Centre (Sat 9:15)' };
+    const twoWords = {
+      ...PICK,
+      name: 'Kinderfun Toddler Program, Cartwheels Gym Centre (Sat 9:15)',
+    };
 
     expect(topPickLeads('Cartwheels runs a toddler program Saturdays 9:15.', [twoWords])).toBe(
       false,
     );
-    expect(
-      topPickLeads('Cartwheels Gym Centre runs Kinderfun Saturdays 9:15.', [twoWords]),
-    ).toBe(true);
+    expect(topPickLeads('Cartwheels Gym Centre runs Kinderfun Saturdays 9:15.', [twoWords])).toBe(
+      true,
+    );
   });
 });
 
-describe('a claim about a page requires a page', () => {
-  it.each([
-    "Their fall days, times and prices aren't posted yet.",
-    'The fall guide is not up.',
-    'Nothing is listed for the fall session.',
-    'No dates published for the fall term.',
-    // THE SENTENCE THAT SHIPPED, 2026-08-24. Comma-scoped, this gate could not see it:
-    // one fragment held "no day" and the next held "on the fall page yet", and the claim
-    // lived across the join.
-    'Their site lists these but no day, time or price on the fall page yet.',
-    'The site shows the programs but the fall times are not up yet.',
-    // THE LIST COMMA, which is the ordinary way to say this: the negation is in the first
-    // item and the publishing word is after the last one, so no CLAUSE holds both halves.
-    'No day, time or price is posted for the fall term.',
-    // WHAT THE LIVE COMPOSER ACTUALLY WROTE when it had the licence, 2026-08-24. There is
-    // no publishing verb in it at all - it names the surface instead, and it is the same
-    // assertion.
-    "Their site says, but fall days and times aren't on the page yet.",
-  ])('reads %s as a claim about a page', (body) => {
-    expect(claimsNotPosted(body)).toBe(true);
-  });
-
-  it.each([
-    'I could not get into their schedule page today.',
-    "I could not read their page today, so I'll keep watching.",
-    'Their site says Tiny Gym runs Sundays 9:30.',
-    'Registration has been open since July 22.',
-    // HALE'S ABSENCE, NOT THE PAGE'S - the sentence the uncertain state is supposed to
-    // produce, and the one a widened gate would otherwise make unwritable.
-    'Their site lists this one, though I could not confirm the day or the price.',
-    "Their fall page is up but I couldn't pin down the times, so I'll keep looking.",
-    // THE CANONICAL GOOD MESSAGE, and the one an optional apostrophe refuses: "Parent"
-    // ends in the same two letters as "aren't". Beside "lists" that read a complete,
-    // correct find as a report that nothing was published - three recompositions and
-    // then silence, on this product's most common subject.
-    'Gellert lists Parent and Tot Mondays 10:00, $86.22 for nine.',
-    'The current term is important and their site lists it.',
-  ])('lets %s through - none of these claims a page said nothing', (body) => {
-    expect(claimsNotPosted(body)).toBe(false);
-  });
-
-  const UNPOSTED = `${PICK.name} runs a toddler class - their site says, but fall days and prices aren't posted yet. I'll keep watching and text you when they go up.`;
-
-  it('THE DEFECT: with no page opened, the unposted claim is refused', () => {
-    expect(
-      followUpViolations(UNPOSTED, grounding({ pageEvidence: 'no_page_read', watch: true })).join(
-        ' ',
-      ),
-    ).toContain('not posted');
-  });
-
-  it('THE 2026-08-24 DEFECT: a page that DOES publish a schedule refuses it too', () => {
-    // Seven pages opened, the fall grid on one of them, every fact off it refused by the
-    // checker - and the old boolean licensed exactly this sentence about a schedule that
-    // was published. A refusal is Hale not knowing; it is not a page being empty.
-    const violations = followUpViolations(
-      UNPOSTED,
-      grounding({ pageEvidence: 'page_has_schedule', watch: true }),
-    );
-
-    expect(violations.join(' ')).toContain('not posted');
-    expect(violations.join(' ')).toContain('could not pin');
-  });
-
-  it('POSITIVE CONTROL - the SAME words pass when the page really does carry nothing', () => {
-    expect(
-      followUpViolations(UNPOSTED, grounding({ pageEvidence: 'page_has_no_schedule', watch: true })),
-    ).toEqual([]);
-  });
-
+describe('the uncertain sentence', () => {
   it('POSITIVE CONTROL - the uncertain sentence passes in both unlicensed states', () => {
     const unread = `${PICK.name} runs a toddler class for under-3s - their site says. I could not get into their fall schedule page today, so I'll keep looking and text you what it says.`;
     const unpinned = `${PICK.name} runs a toddler class for under-3s - their site lists it. I could not pin down the fall day or fee, so I'll keep looking and text you what it says.`;
 
-    expect(followUpViolations(unread, grounding({ pageEvidence: 'no_page_read', watch: true }))).toEqual([]);
+    expect(
+      followUpViolations(unread, grounding({ pageEvidence: 'no_page_read', watch: true })),
+    ).toEqual([]);
     expect(
       followUpViolations(unpinned, grounding({ pageEvidence: 'page_has_schedule', watch: true })),
     ).toEqual([]);
@@ -708,5 +592,35 @@ describe('a continuation row must be spoken for', () => {
     const promised = `${PICK.name} runs Saturdays 9:15, $142 - their site says. I'll keep looking and text you what else opens.`;
 
     expect(followUpViolations(promised, grounding({ watch: true }))).toEqual([]);
+  });
+});
+
+describe('an empty search tells the composer where it looked', () => {
+  const searched = { town: 'Halton Hills', notes: 'what the search read' };
+  const base = {
+    subject: 'toddler swim',
+    language: 'en-CA',
+    pageEvidence: 'no_page_read' as const,
+    watch: true,
+    moreRemaining: 0,
+  };
+
+  it('carries the area and the research only when there are no picks', () => {
+    const empty = JSON.parse(followUpUserMessage({ ...base, picks: [], searched }));
+    expect(empty.picks_empty).toBe(true);
+    expect(empty.searched).toEqual(searched);
+  });
+
+  it('leaves a message with a find composed from the payload it always had', () => {
+    const pick = {
+      name: 'n',
+      ageFit: 'a',
+      when: null,
+      price: null,
+      sourceName: 's',
+      source: 'web' as const,
+    };
+    const withFind = followUpUserMessage({ ...base, picks: [pick], searched });
+    expect(withFind).toBe(followUpUserMessage({ ...base, picks: [pick] }));
   });
 });

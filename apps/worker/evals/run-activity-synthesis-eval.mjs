@@ -54,6 +54,7 @@ import {
   cachePut,
   evalAnthropicRequest,
   evalRunTag,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   noteUsage,
@@ -454,7 +455,8 @@ async function main() {
   if (minSamples !== null && (!Number.isInteger(minSamples) || minSamples < 1)) {
     throw new Error('--min-samples must be a positive integer');
   }
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('activity-synthesis');
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

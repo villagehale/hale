@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Pineapple on pizza is a matter of taste, with no rule or safety issue against it",
+        "from": "Whether pineapple on pizza is \"ok\" is a matter of taste. The search results contain no rule or safety issue against it."
+      },
+      {
+        "states": "In the newest poll found, YouGov March 2023, about 59% of Americans like or love pineapple on pizza",
+        "from": "YouGov poll, March 2023: 22% of Americans love pineapple on pizza, 37% like it... By this poll, a majority (about 59%) like or love it."
+      },
+      {
+        "states": "In a 2017 Slice app survey, 54% said pineapple does not belong on pizza",
+        "from": "Slice app survey, 2017: 54% of respondents said pineapple does not belong on pizza."
+      }
+    ],
+    "answer": "Totally fine, it's just taste, nothing wrong with it. People are really split on it though. The newest poll I found (YouGov, March 2023) had about 59% of Americans liking or loving it, but a 2017 Slice survey had 54% saying it doesn't belong. So it's a love-it-or-hate-it topping, and you're in good company either way."
+  },
+  "latencyMs": 4234
+}

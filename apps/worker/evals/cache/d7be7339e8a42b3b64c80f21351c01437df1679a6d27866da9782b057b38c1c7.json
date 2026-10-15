@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This matches the required connect shape. It says the link is a text away, quotes the short ask verbatim, and writes out no URL. There is no greeting and no sign-off. One small blemish: \"Yes, Hale can\" refers to itself in the third person while the rest says \"I\", which is a word or two more than it needed.",
+    "score": 4
+  }
+}

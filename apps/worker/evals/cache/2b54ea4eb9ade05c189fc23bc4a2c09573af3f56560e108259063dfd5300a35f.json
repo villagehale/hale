@@ -1,0 +1,11 @@
+{
+  "value": {
+    "language": "en",
+    "clinical_query": "fever with non-blanching dark red pinpoint rash on trunk toddler",
+    "age_band": "toddler",
+    "duration": "since this afternoon",
+    "red_flag_sign": "fever with pinpoint dark red rash that does not fade when pressed with a glass",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 1995
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Right day and place, and it answers directly in a casual tone. The high (~65°F), the NNE wind, the 30% rain chance after 3 p.m. climbing overnight, and the mid-40s low all match the notes. But 'mostly sunny' is not supported: NWS says partly sunny and Weather Underground says partly cloudy. 'Mostly sunny' overstates the clear skies, and it also contradicts the grounding entry. That is a minor but real unsupported fact.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 3
+  }
+}

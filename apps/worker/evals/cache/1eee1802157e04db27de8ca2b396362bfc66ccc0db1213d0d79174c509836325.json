@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "立即拨打911，或马上去最近的急诊。发烧加上按压不褪色的紫色斑点，可能是严重感染的信号，分秒必争，不要等其他症状出现。",
+    "triage": "现在就拨打911或直接去急诊，不要先打811，也不要等着看变化。如果孩子变得嗜睡、软绵绵、叫不醒或呼吸困难，立刻告诉911接线员。",
+    "sources": [
+      "Meningitis Now",
+      "Cleveland Clinic",
+      "Scottish Intercollegiate Guidelines Network (SIGN)"
+    ]
+  },
+  "latencyMs": 2658
+}

@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://www.tradingview.com/symbols/TSX-TSX/",
+    "https://ca.finance.yahoo.com/quote/TS20.TS/",
+    "https://tradingeconomics.com/canada/stock-market",
+    "https://www.cnbc.com/quotes/.GSPTSE-CA",
+    "https://money.tmx.com/en/quote/%5ETSX",
+    "https://www.msn.com/en-ca/money/indexdetails/tsx-ca-index/fi-ab6drw",
+    "https://www.ad-hoc-news.de/boerse/news/marktberichte/s-und-p-tsx-composite-heads-into-tuesday-after-1-5-percent-gain/70300830",
+    "https://bbntimes.com/global-economy/dow-jones-djia-rises-to-51-850-31-as-energy-and-software-gains-offset-a-chip-sell-off",
+    "https://www.ad-hoc-news.de/boerse/news/marktberichte/s-und-p-tsx-composite-heads-into-tuesday-after-jobs-shock-up-519-points/70313838",
+    "https://tr.tradingview.com/news/DJN_DN20250808011193:0-s-p-tsx-composite-index-ends-the-week-2-73-higher-at-27758-68-data-talk"
+  ],
+  "notes": "**Research notes (today is Monday, Oct 12, 2026)**\n\n- The TSX is closed today for Thanksgiving, so there is no trading and no live movement to report. Toronto trading resumes on October 13 at 9:30 a.m. ET after the Thanksgiving closure. A market-wrap article from today also says Toronto was closed for Thanksgiving, leaving the S&P/TSX Composite at Friday's 35,664.62.\n- The most recent close was Friday, Oct 9, 2026. The S&P/TSX Composite Index closed at 35,664.62, up 519.24 points (1.477%). The TMX Money page shows that as the last trade, at 4:00 PM ET on Oct 9.\n- Reasons given for Friday's rise:\n  - Canada's September employment loss of 68,300 jobs, against a forecast gain of 9,200, reduced expectations for a Bank of Canada rate hike, Reuters reported.\n  - Materials rose 2.81 percent, technology gained 2.88 percent and financials advanced 1.21 percent.\n  - Aritzia was the strongest large mover, rising 20.5 percent after beating expectations for second-quarter revenue and profit.\n- Weekly and longer-term context:\n  - The index ended the week 0.46 percent higher after two weekly declines, The Globe and Mail reported.\n  - Over the past month, the index has climbed 0.45% and is up 19.48% compared to the same time last year. That figure comes from Trading Economics. MSN Money instead shows a 1-month return of -0.09%, so the one-month figures differ by source.\n  - The 52-week range is 29,530.92 to 37,069.11. CNBC dates the 52-week high to 08/26/26.\n- Some results were stale or off-topic and were not used. These included a TradingView snippet citing about 24,050 and a Yahoo Finance page showing a different index.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 7895
+}

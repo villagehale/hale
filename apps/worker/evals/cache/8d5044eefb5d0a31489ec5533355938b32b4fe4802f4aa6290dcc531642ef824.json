@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CfwUQ11rhWXiPDqTHf6U6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Theo's at 5 months, so he's about a month out. Most families start around 6 months, once he sits with support and holds his head steady. Until then, milk is all he needs, and you can let him watch you eat."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1423,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20621,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 67,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1120
+}

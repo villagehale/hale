@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The emergency number in the United States is 911",
+        "from": "The emergency number in the United States is 911, the same number the asker says they use."
+      },
+      {
+        "states": "911 reaches police, fire and medical help",
+        "from": "The same number reaches police, fire and medical help."
+      },
+      {
+        "states": "Calling 911 is free",
+        "from": "says calling 911 is free"
+      }
+    ],
+    "answer": "Yep, it's 911 in the US too, same as you're used to. One number for police, fire or an ambulance, and calling it is free. Ambulance rides are what get expensive."
+  },
+  "latencyMs": 6447
+}

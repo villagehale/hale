@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "assent",
+    "verbatim": "yes please, I need all the help I can get",
+    "rationale": "Plain 'yes please' directly answering the question, with no hedge or condition.",
+    "confidence": 0.98
+  },
+  "latencyMs": 1239
+}

@@ -1,8 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
-import { KNOWN_VENUE_HELLO } from '~/lib/channel/intake/cold-start/copy';
-import { FIRST_TOUCH_SMS_BY_LANGUAGE, venueForCode } from '~/lib/channel/intake/copy';
+import { venueForCode } from '~/lib/channel/intake/copy';
 import { placeFromVenue } from '~/lib/channel/intake/first-touch-place';
 import {
   type FriendVoiceComposer,
@@ -12,7 +11,6 @@ import {
   pageOncePerDay,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
-import { onboardingFriendVoiceEnabled } from '~/lib/channel/intake/friend-voice-flag';
 import {
   type FirstTouchPersisted,
   appendTranscript,
@@ -151,7 +149,7 @@ export function firstReplyRecoveryDeps(
   database: Database,
   now: Date = new Date(),
 ): FirstReplyRecoveryDeps {
-  const client = onboardingFriendVoiceEnabled() ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS) : null;
+  const client = budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
   return {
     transport: createOutboundTransport(),
     limiter: new PostgresRateLimiter(database),
@@ -296,11 +294,6 @@ async function firstTouchRecoveryBody(
     lastInbound?: LastInboundFact;
   },
 ): Promise<string> {
-  if (!onboardingFriendVoiceEnabled()) {
-    return input.knownVenue
-      ? KNOWN_VENUE_HELLO[input.language]
-      : FIRST_TOUCH_SMS_BY_LANGUAGE[input.language];
-  }
   const placed = input.place != null;
   const spoken = await speakFriend(
     deps.friendVoice,

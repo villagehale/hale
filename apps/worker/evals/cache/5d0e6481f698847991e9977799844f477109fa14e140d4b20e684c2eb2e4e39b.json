@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The line correctly calls the event day 'tomorrow' (now is Fri Jul 24, events are Sat Jul 25), frames the evening as a whole without naming either child or restating times, and is one short calm sentence, which is what the watchFor asks for. The 'back to back' phrasing is a mild extra detail but is inferable from the two listed times and doesn't restate a clock time.",
+    "score": 4
+  }
+}

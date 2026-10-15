@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM), The Tisch Building, 212 West 83rd Street",
+        "age_fit": "children ages 0-6",
+        "when": "Open Sat Sept 12, Sun Sept 13 and Tue Sept 15, 10 am-5 pm; closed Mon Sept 14",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo, East 64th Street and 5th Avenue",
+        "age_fit": "Child (3 - 12) ticket rate; 2 and under free",
+        "when": "Open daily Sept 12-15: weekends 10 am-5:30 pm, Mon-Fri 10 am-5 pm",
+        "price": "Child (3-12) $16.95; adult $22.95",
+        "source_name": "Central Park Zoo"
+      }
+    ]
+  },
+  "latencyMs": 5807
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact checks out against the notes: closed today for Thanksgiving, Friday's close of 35,664.62, up 519.24 (+1.48%), and the Tuesday reopening. It sensibly leaves out the Oct 13 figures dated after today. It's brief and gives a straight answer. The 'One report says' line is a little stiff for a text, but it's still a friend replying, not an assistant pitch.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

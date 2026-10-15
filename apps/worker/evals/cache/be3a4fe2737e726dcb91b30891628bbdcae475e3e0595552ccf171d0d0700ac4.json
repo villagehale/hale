@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The one slot matches the programme page exactly: name, age band (12 months to 4 years), Tue/Thu 9:30-11:00 a.m., Sept 8 to Dec 11, cited to the right URL. The price is correctly null. Neither rental figure ($185, $95) was borrowed. The page prints no registration date, so the null is right. The message leads with the programme by name, attributes it ('their site says') and states nothing as verified. It is plain ASCII with no link and no question. Under page_has_schedule it puts the price gap in the first person rather than claiming 'not posted', which is the correct form. With watch true, the first-person 'I'll keep watching and text you' is backed by an existing row. It could have mentioned that the page says fees are available at the front desk, but that is minor.",
+    "score": 5
+  }
+}

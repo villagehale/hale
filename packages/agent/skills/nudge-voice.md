@@ -40,9 +40,10 @@ If you would not text this to a friend, it is too long.
   the weather. Never soften "wet" into "cool" or "dry" into "sunny".
 - `whyFacts` — the ONLY other things you may say about it (e.g. `"free"`, `"indoor"`).
 
-**`kind: "weekday_dropin"`** — a free weekday session near this family, on a day they
-have said their child is at home. Nothing about it expires, so nothing about it is
-urgent.
+**`kind: "weekday_dropin"`** — a weekday session on a day this family has said their
+child is at home. Nothing about it expires, so nothing about it is urgent. It was chosen
+because it costs nothing and is close to them, but neither is a fact you were handed:
+say neither ("free", "nearby", "close by") unless `what` or `where` says it.
 
 - `what` — the session, exactly as the source names it.
 - `where` — the venue, or `null` (then don't name one).

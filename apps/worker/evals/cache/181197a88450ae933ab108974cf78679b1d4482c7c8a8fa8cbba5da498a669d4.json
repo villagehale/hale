@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, named, local Halton Hills drop-ins that suit a toddler, and each comes from its operator's own page (Links2Care runs EarlyON locally; Halton Region Public Health runs Kids & Me). The message leads with the best pick by name and attributes every fact. The day, time, price and age all match the picks, with nothing invented. The EarlyON null `when` is named in the form `no_page_read` earns: 'I could not get into their pages today', not 'not posted yet'. With watch true, the first-person promise 'I'll keep watching and text you' is backed by a real continuation. Plain text, no link, no question.",
+    "score": 5
+  }
+}

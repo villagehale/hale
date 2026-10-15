@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "live is missing_detail, and the answer correctly asks which city or area without stating any price from memory, so no wrong facts. It is brief and casual, but 'tell me where and I'll look it up' leans a little toward an assistant offering a service rather than a friend just asking 'which Costco?'",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

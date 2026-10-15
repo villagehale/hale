@@ -1,0 +1,18 @@
+{
+  "urls": [
+    "https://www.denvergazette.com/2026/10/13/denver-weather-cold-front-brings-cooler-temps-and-potential-for-snow/",
+    "https://www.accuweather.com/en/us/denver/80203/10-day-weather-forecast/347810",
+    "https://www.denver7.com/weather",
+    "https://www.wunderground.com/weather/us/co/denver",
+    "https://www.denver7.com/weather/daily-forecast",
+    "https://www.accuweather.com/en/us/denver/80203/weather-forecast/347810",
+    "https://www.9news.com/weather",
+    "https://www.wunderground.com/forecast/us/co/denver",
+    "https://forecast.weather.gov/MapClick.php?lat=39.7385&lon=-104.9849",
+    "https://www.yahoo.com/news/denver-weather-warm-tuesday-ahead-232141802.html"
+  ],
+  "notes": "Notes are for Denver, Colorado. \"Tomorrow\" is Tuesday, October 13, 2026.\n\n- **Daytime:** The National Weather Service in Boulder said to expect partly sunny skies Tuesday, with rain and showers possibly moving in Tuesday evening. The high is expected to reach 65 degrees, about 15 degrees cooler than Monday's high of 80.\n- **Other highs:** Weather Underground has a high of 64°F, partly cloudy. AccuWeather has a high of 67°. 9NEWS has a high of 64.\n- **Wind:** North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon with gusts up to 17 mph.\n- **Rain timing:** The weather service gives a 30% chance of rain after 3 p.m. Hourly data from 9NEWS shows rain chances rising through the evening: 18% at 7 PM, 24% at 8 PM, and 35% at 11 PM. AccuWeather shows rain chances above 40% from 8 PM into the early morning.\n- **Overnight:** Lows are expected in the low 40s and 30s on Tuesday night, with increasing clouds and rain. Weather Underground gives a low of 46°F with rain showers at times. AccuWeather gives a low of 44°.\n- **Wednesday:** The Denver Gazette says showers peak late Wednesday. Weather Underground has Wednesday as rain turning steadier in the afternoon, with a high near 49°F.\n\nThe Denver Gazette article (published Oct 13, 2026) is the newest source. Its figures match the other forecasts closely.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 9714
+}

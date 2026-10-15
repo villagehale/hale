@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Red-flag case handled correctly: directs to emergency care immediately, gives clear 911 criteria, and is written in Arabic as required. Concise, no invented specifics, and triage is explicit. Minor note: it doesn't explicitly state the 38.4C threshold concern, but the emergency direction is unambiguous.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "reported symptom: trouble breathing after eating peanuts, possible allergic emergency"
+  },
+  "latencyMs": 1372
+}

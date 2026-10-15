@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "lowest insured (high-ratio) 5-year fixed is 4.34%",
+        "from": "Wowa gives the same 4.34% as the lowest insured 5-year fixed rate"
+      },
+      {
+        "states": "lowest uninsured (conventional) 5-year fixed is about 4.44%, with other figures up to 4.64% on the same site and sources not agreeing exactly",
+        "from": "Wowa puts the lowest conventional (uninsurable) 5-year fixed rate at 4.44%. That is a different figure from Wowa's own later line quoting 4.64% for uninsurable mortgages"
+      },
+      {
+        "states": "a Big 6 bank's 5-year fixed is 4.54% and Scotiabank's is 4.74%, per the Ratehub table",
+        "from": "Ratehub's table (updated October 13) shows a Big 6 bank at 4.54% and Scotiabank at 4.74%"
+      },
+      {
+        "states": "5-year fixed rates are climbing in October 2026, since early September",
+        "from": "Rates are climbing in October 2026, after all six of the largest banks raised select fixed rates since early September"
+      }
+    ],
+    "answer": "There isn't one number. It depends on the lender and on whether your mortgage is insured (under 20% down) or uninsured. The lowest insured 5-year fixed I can see is 4.34%. Uninsured is a bit higher, around 4.44%, though the sources don't agree exactly on that. Among the big banks, one is at 4.54% and Scotiabank is at 4.74%. Fixed rates have been climbing since early September, so they're moving up."
+  },
+  "latencyMs": 9133
+}

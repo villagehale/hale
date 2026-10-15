@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are real and local, they fit a toddler, and there are three of them. The message leads with Halton Hills Gymnastics Centre by name, attributes it with \"their site says\", and carries no link and no question. The first-person watch promise is correct because watch is TRUE. However, pageEvidence is no_page_read, and the message says the skating program has \"no day posted yet\". That reports on a page nobody opened today. The earned wording is \"I could not get into their page today\" (or a first-person \"I could not pin down the day\"). This is an unearned negative claim, which the rubric scores low. The skating pick also carries no day or session start, which watchFor requires.",
+    "score": 2
+  }
+}

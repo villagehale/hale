@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has three real, named Halton Hills picks (Halton Hills Gymnastics Centre and Gellert Community Centre). All fit toddlers, and each comes from the operator's own site or the Town's recreation listing rather than an aggregator. It leads with the best pick by name and attributes its facts ('their site says', 'Town Recreation lists'). Every day, time and price matches the picks, and nothing is invented. Under no_page_read it uses the correct form for the gap ('I could not get into their pages today'), and it names the missing price for Parent and Tot instead of writing around it. Since watch is true, the first-person 'I'll keep watching and text you' is backed by a real commitment. It is plain text with no link and no question. One small tension: it says 'their site says' while also saying it could not get into the pages. That is acceptable because snippet attribution is allowed.",
+    "score": 5
+  }
+}

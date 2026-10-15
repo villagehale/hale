@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Leafs beat Colorado 6-3",
+        "from": "ESPN's box score lists it as a Maple Leafs 6–3 win over the Avalanche"
+      },
+      {
+        "states": "The game was dated Oct 10",
+        "from": "dated October 10, 2026"
+      },
+      {
+        "states": "NHL.com clips date it Oct 11, so the date is not confirmed",
+        "from": "The NHL.com Leafs highlight clips for the Colorado game are dated Oct 11, 2026"
+      }
+    ],
+    "answer": "Yes, the Leafs beat Colorado 6-3. The sources don't agree on whether it was Saturday or Sunday night, so I can't confirm it was last night."
+  },
+  "latencyMs": 3855
+}

@@ -17,8 +17,9 @@ const MODEL = 'claude-test';
 const SYSTEM = 'STABLE AGENT INSTRUCTIONS';
 const USER = 'VARIABLE PER-RUN PAYLOAD';
 
-function keyFor(model: string, system: string, userMessage: string): string {
-  return createHash('sha256').update(`${model}\n${system}\n${userMessage}`).digest('hex');
+function keyFor(model: string, system: string, userMessage: string, thinking?: string): string {
+  const mode = thinking ? `thinking:${thinking}\n` : '';
+  return createHash('sha256').update(`${model}\n${mode}${system}\n${userMessage}`).digest('hex');
 }
 
 function recording(key: string): string {
@@ -75,6 +76,28 @@ describe('recordedModel cache key', () => {
     };
 
     await expect(recorded.client().messages.create(params)).rejects.toThrow(/no recording/);
+  });
+
+  it('does not answer the thinking-off re-ask with the turn it is re-asking', async () => {
+    // forceToolJson re-asks a turn that spent its budget thinking, same model, system and
+    // message with thinking off. Keyed without the thinking mode, the recorder handed the
+    // re-ask the truncated recording it was retrying.
+    const dir = mkdtempSync(join(tmpdir(), 'recorded-model-'));
+    const path = join(dir, 'recordings.json');
+    writeFileSync(path, recording(keyFor(MODEL, SYSTEM, USER, 'adaptive')));
+
+    const recorded = recordedModel(path, () => ({}) as AgentClient);
+    const ask = (thinking: string) =>
+      recorded.client().messages.create({
+        model: MODEL,
+        max_tokens: 16,
+        system: SYSTEM,
+        messages: [{ role: 'user', content: USER }],
+        thinking: { type: thinking },
+      } as unknown as Anthropic.MessageCreateParams);
+
+    await expect(ask('adaptive')).resolves.toMatchObject({ stop_reason: 'tool_use' });
+    await expect(ask('between_tools')).rejects.toThrow(/no recording/);
   });
 });
 

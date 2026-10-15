@@ -8,17 +8,15 @@ function client(childRelated: boolean): AgentClient {
       create: vi.fn(async () => ({
         content: [
           {
-            type: 'tool_use',
-            id: 'tool_1',
-            name: 'triage',
-            input: {
+            type: 'text',
+            text: JSON.stringify({
               child_related: childRelated,
               confidence: 0.9,
               rationale: 'fixture',
-            },
+            }),
           },
         ],
-        stop_reason: 'tool_use',
+        stop_reason: 'end_turn',
         usage: {
           input_tokens: 100,
           output_tokens: 20,

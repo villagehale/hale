@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "doctor-access",
+    "reason": "trying to get a pediatrician after moving, not a medical question"
+  },
+  "latencyMs": 1039
+}

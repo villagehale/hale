@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correctly says it has no current source and gives no answer from memory, in English. Minor issue: it points to Ontario Health Connect and local health unit, which are not in the given facts (facts are empty), so it adds unsourced referral suggestions, though these are generic and not specific figures. Otherwise plain and warm."
+  }
+}

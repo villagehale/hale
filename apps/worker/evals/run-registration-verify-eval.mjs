@@ -40,9 +40,9 @@ import { tsImport } from 'tsx/esm/api';
 import {
   REPO_ROOT,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
-  readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
 
@@ -164,7 +164,8 @@ const BURLINGTON_STALE = [
 
 /** A date with no year anywhere — the shape a town's banner takes when it assumes
  * you know what year it is. Supplying one would be fabrication. */
-const NO_YEAR = 'Fall Programs & Winter Camps Registration. View programs August 4 and register August 11.';
+const NO_YEAR =
+  'Fall Programs & Winter Camps Registration. View programs August 4 and register August 11.';
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -301,17 +302,26 @@ function check(fixture, value) {
   // A reading production would discard is not a pass here either.
   const confidence = typeof value?.confidence === 'number' ? value.confidence : 0;
   if (confidence < MIN_CONFIDENCE) {
-    problems.push(`CONFIDENCE ${confidence} is below the ${MIN_CONFIDENCE} floor — production discards this`);
+    problems.push(
+      `CONFIDENCE ${confidence} is below the ${MIN_CONFIDENCE} floor — production discards this`,
+    );
   }
 
   // The corroboration gate discards any reading whose quotes are not in the page,
   // so a correct date with an invented quote still reaches nobody.
-  const normalize = (t) => String(t).toLowerCase().replace(/[‐-―−]/g, '-').replace(/\s+/g, ' ').trim();
+  const normalize = (t) =>
+    String(t)
+      .toLowerCase()
+      .replace(/[‐-―−]/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim();
   const page = normalize(fixture.pageText);
   for (const field of ['evidence', 'year_evidence']) {
     const quote = value?.[field];
     if (!quote) {
-      problems.push(`${field.toUpperCase()} missing — production discards an uncorroborated reading`);
+      problems.push(
+        `${field.toUpperCase()} missing — production discards an uncorroborated reading`,
+      );
     } else if (!page.includes(normalize(quote))) {
       problems.push(`${field.toUpperCase()} is not in the page text: "${quote}"`);
     }
@@ -348,7 +358,10 @@ function brokenAnswer(fixture) {
   // Applies the prose rule instead of leaving the unprinted date null.
   const derived =
     want.general_open === null && resident
-      ? { date: `${resident.date.slice(0, 8)}${String(Number(resident.date.slice(8)) + 10).padStart(2, '0')}`, time: resident.time }
+      ? {
+          date: `${resident.date.slice(0, 8)}${String(Number(resident.date.slice(8)) + 10).padStart(2, '0')}`,
+          time: resident.time,
+        }
       : withTime(want.general_open);
 
   return {
@@ -370,11 +383,12 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
-  const models = await readModelIds();
-  // The skill declares task: extract → Sonnet 5. Read from model.ts, never hardcoded.
-  const model = models.sonnet5;
+  // The skill declares its task; the lane comes from model.ts, never hardcoded.
+  const subjectLane = agent.pickLane(skill.meta.task);
+  const model = subjectLane.model;
 
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('registration-verify');
   const cost = makeCost();
 
   console.log(
@@ -393,6 +407,7 @@ async function main() {
       const result = await cachedToolCall({
         tag: `registration-verify:${fixture.id}`,
         model,
+        lane: subjectLane,
         system: skill.instructions,
         userMessage: JSON.stringify({
           municipality: fixture.municipality,
@@ -428,7 +443,9 @@ async function main() {
   if (!broken) {
     const ok = failed === 0;
     console.log(`${FIXTURES.length - failed}/${FIXTURES.length} fixtures exact`);
-    console.log(`real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+    console.log(
+      `real-mode gate (all fixtures must pass): ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    );
     process.exit(ok ? 0 : 1);
   }
 

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the notes for Denver, CO: partly sunny, high around 65 with a 64–67 spread, NNE wind at 6–10 mph gusting to 17, a 30% rain chance after 3 p.m. Tuesday, and lows in the 30s and low 40s. It answers directly without asking for the city. Tone is a bit report-like rather than a casual friend text, with the source-range aside and the stacked stats.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

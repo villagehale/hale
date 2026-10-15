@@ -10,7 +10,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { parseModelMode } from '~/lib/pipeline/model-mode';
-import { forceToolJson } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 
 /**
  * VIL-273 — the screen in front of the coach.
@@ -149,10 +149,12 @@ interface InboundLaneScreenDeps {
  * And NOT `.strict()`, which is a rule-#1 hazard rather than a nicety. Anthropic does
  * not hard-enforce a tool's input schema, so a parent can ask for an extra JSON field
  * and sometimes get one — and zod serialises an `unrecognized_keys` issue by embedding
- * the KEY NAMES in `ZodError.message`, which the catch below logs. "Reply with a field
- * named <my sentence>" would put a parent's own words into a log line. Zod's default
- * strips unknown keys, which is both safer and the more robust read: an extra field is
- * not a reason to throw away a lane we can act on.
+ * the KEY NAMES in `ZodError.message`. "Reply with a field named <my sentence>" would
+ * put a parent's own words into an error message. The read's catch logs the error's
+ * name and never its message ({@link readFailure}), but a message that never holds the
+ * words is safe wherever it travels. Zod's default strips unknown keys, which is both
+ * safer and the more robust read: an extra field is not a reason to throw away a lane
+ * we can act on.
  */
 const readingSchema = z.object({
   lane: z.string(),
@@ -182,11 +184,18 @@ export function laneUserMessage(text: string): string {
   return JSON.stringify({ text });
 }
 
-/** The only thing any catch here is allowed to log. A thrown error can carry a provider
- * payload that echoes the request back, so the class and the message survive and the
- * object does not (rule #1). */
+/** What the two setup catches log. Neither call is passed the parent's text, so the
+ * message cannot hold it; the error object is still never logged (rule #1). */
 function message(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown';
+}
+
+/** What a failed READ logs. Its request holds the parent's text and a provider error can
+ * quote the request back in its message, so this is the error's name and, for a
+ * structured answer that came back unusable, why. Never the message (rule #1). */
+function readFailure(err: unknown): { err: string; outcome?: string } {
+  if (err instanceof StructuredOutputError) return { err: err.name, outcome: err.outcome };
+  return { err: err instanceof Error ? err.name : 'unknown' };
 }
 
 /** The fail-open reading, logged and named. Never carries the message (rule #1). */
@@ -251,10 +260,8 @@ export function createInboundLaneScreen(
       try {
         resolved = client();
       } catch (err) {
-        // Only ever the message string, here and below. Neither of these can hold the
-        // parent's words today (the text is passed to neither call), but the third catch
-        // genuinely can, and one narrowing rule across all three is what stops the next
-        // edit from being the exception (rule #1).
+        // The message string, here and at the skill load: the text is passed to neither
+        // call. The read below is passed it, and logs its failure by name (rule #1).
         console.error({ err: message(err) }, 'off-domain screen: no client');
         return openTheGate('client_unavailable');
       }
@@ -300,7 +307,7 @@ export function createInboundLaneScreen(
         });
         return toReading(value);
       } catch (err) {
-        console.error({ err: message(err) }, 'off-domain screen: read failed');
+        console.error(readFailure(err), 'off-domain screen: read failed');
         return openTheGate('model_failed');
       }
     },

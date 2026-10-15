@@ -20,7 +20,8 @@ import { CACHE_DIR, cacheKey, cachedTextCall, makeCost } from './harness.mjs';
  * gates and the judge can both see — and a reply that said nothing at all is refused.
  */
 describe('the free-text call refuses to record a reply that is not there', () => {
-  const model = 'claude-sonnet-4-6';
+  const model = 'claude-sonnet-5-5';
+  const lane = { model, thinking: 'adaptive', effort: 'high' };
   const system = 'write the text';
   const userMessage = 'swim moved';
 
@@ -29,7 +30,7 @@ describe('the free-text call refuses to record a reply that is not there', () =>
   }
 
   function keyFor(tag) {
-    return cacheKey(tag, JSON.stringify({ model, system, userMessage }));
+    return cacheKey(tag, JSON.stringify({ model, system, userMessage, lane }));
   }
 
   it('throws on a reply with no text and caches nothing', async () => {
@@ -38,7 +39,7 @@ describe('the free-text call refuses to record a reply that is not there', () =>
     await expect(
       cachedTextCall({
         tag,
-        model,
+        lane,
         system,
         userMessage,
         cachedOnly: false,
@@ -60,7 +61,7 @@ describe('the free-text call refuses to record a reply that is not there', () =>
     await expect(
       cachedTextCall({
         tag,
-        model,
+        lane,
         system,
         userMessage,
         cachedOnly: false,
@@ -86,7 +87,7 @@ describe('the free-text call refuses to record a reply that is not there', () =>
 
     const result = await cachedTextCall({
       tag,
-      model,
+      lane,
       system,
       userMessage,
       cachedOnly: false,
@@ -104,5 +105,24 @@ describe('the free-text call refuses to record a reply that is not there', () =>
     expect(existsSync(path)).toBe(true);
     // The committed cache is a corpus, not a scratch directory.
     rmSync(path, { force: true });
+  });
+});
+
+describe('a Claude subject runs on a lane, never a bare model id', () => {
+  it('refuses a live call that names only the model', async () => {
+    // Haiku 5.5 thinks unless told not to, so a bare id records a request no lane sends.
+    await expect(
+      cachedTextCall({
+        tag: `text-guard-bare-${Math.random().toString(36).slice(2)}`,
+        model: 'claude-haiku-5-5',
+        system: 'write the text',
+        userMessage: 'swim moved',
+        cachedOnly: false,
+        getClient: () => {
+          throw new Error('no request may be made');
+        },
+        cost: makeCost(),
+      }),
+    ).rejects.toThrow(/pass the subject's lane/);
   });
 });

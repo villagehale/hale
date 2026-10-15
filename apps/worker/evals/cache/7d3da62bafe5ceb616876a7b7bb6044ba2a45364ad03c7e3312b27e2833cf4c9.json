@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Soccer pick: Lionel Messi, named by the Globe and Mail, Yahoo Sports and Squawka",
+        "from": "Most recent coverage names Lionel Messi. The Globe and Mail ran an opinion piece... It names Messi. A Yahoo Sports comparison piece concludes: \"Lionel Messi.\" Squawka also concludes Messi is the greatest."
+      },
+      {
+        "states": "Messi's World Cup trophy is the proof most point to, 2022 World Cup",
+        "from": "It names Messi and points to his World Cup trophy as the proof. Another source says Messi's trophy is the 2022 World Cup."
+      },
+      {
+        "states": "American football pick: Tom Brady",
+        "from": "Tom Brady is the most common answer. A CBS Sports top-25 all-time NFL list by Bryan DeArdo put Brady first."
+      },
+      {
+        "states": "Brady himself has said Jerry Rice is still the GOAT",
+        "from": "Brady himself has named someone else. In early 2026 he said \"Jerry Rice is still the GOAT.\""
+      },
+      {
+        "states": "Patrick Mahomes is the main challenger, and fans remain divided on how his career compares with Brady's",
+        "from": "Patrick Mahomes is the main challenger. A Pro Football Network piece dated September 28, 2026 says fans remain divided on how his career compares with Brady's."
+      }
+    ],
+    "answer": "Depends which football. Soccer: Messi. Most of the recent coverage says it now, and his World Cup trophy is the clincher people point to. American football: Tom Brady, though Brady himself says Jerry Rice is still the GOAT, and Mahomes is the one coming up behind him. My pick is Messi for soccer and Brady for the NFL."
+  },
+  "latencyMs": 8728
+}

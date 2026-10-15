@@ -22,7 +22,7 @@ function fakeClient(payload: unknown): { client: AgentClient; calls: () => numbe
       create: async () => {
         calls += 1;
         return {
-          content: [{ type: 'tool_use', name: 'weekly_slots', input: payload }],
+          content: [{ type: 'text', text: JSON.stringify(payload) }],
           usage: { input_tokens: 10, output_tokens: 10 },
         };
       },

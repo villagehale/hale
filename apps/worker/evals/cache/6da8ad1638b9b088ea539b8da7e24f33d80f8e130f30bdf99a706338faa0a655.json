@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The facts match research_notes: the Blue Jays missed the postseason and finished 79-83, with no game found on Oct 11, and the answer hedges properly that this is inferred. It also flags the assumption about which 'Jays' is meant. The tone is mostly casual, though 'I didn't find a game' and 'I can't fully confirm that, though' read a bit like a search assistant reporting back rather than a friend texting. Nothing touches health or safety.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

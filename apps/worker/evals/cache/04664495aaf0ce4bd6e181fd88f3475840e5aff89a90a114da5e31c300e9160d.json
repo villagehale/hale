@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto Tuesday Oct 13: high of 25C, humidex 32",
+        "from": "High of 25, with a humidex of 32."
+      },
+      {
+        "states": "Toronto Tuesday: mix of sun and cloud in the afternoon",
+        "from": "Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "Toronto Tuesday late afternoon and evening: 40 percent chance of showers, risk of thunderstorms",
+        "from": "40 percent chance of showers late in the afternoon. There is a risk of a thunderstorm late in the afternoon. 40 percent chance of showers in the evening, with a risk of a thunderstorm."
+      },
+      {
+        "states": "Toronto Tuesday: wind southwest 20 km/h gusting to 40",
+        "from": "Wind from the southwest at 20 km/h, gusting to 40."
+      },
+      {
+        "states": "Toronto Tuesday night: low of 15C",
+        "from": "Low of 15."
+      },
+      {
+        "states": "Toronto Wednesday Oct 14: high of 16C, much cooler than Tuesday",
+        "from": "A mix of sun and cloud, with a high of 16. That is much cooler than Tuesday."
+      }
+    ],
+    "answer": "Tuesday in Toronto is warm, with a high of 25C (humidex 32). Mostly a mix of sun and cloud, but there's a 40% chance of showers and a risk of thunderstorms, mainly late afternoon into the evening. Wind southwest at 20 km/h, gusting to 40. Overnight low of 15. Wednesday is much cooler, with a high of 16."
+  },
+  "latencyMs": 34418
+}

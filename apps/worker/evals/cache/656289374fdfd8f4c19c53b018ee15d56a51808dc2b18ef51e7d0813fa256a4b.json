@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with the useful find, states only given facts (free, outdoor, High Park playground, Saturday, Ada and Noor), and correctly omits a venue since where is null. Includes the mandatory 'I looked around' framing without adding invented scope. Plain and short; no hype. Registration is null with registrationAbsence null, so silence on it is acceptable. Minor nit: 'looked around for this weekend' adds a slight scope but no invented fact, so it is still faithful.",
+    "score": 5
+  }
+}

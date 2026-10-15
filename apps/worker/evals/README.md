@@ -413,15 +413,16 @@ Which Claude model is right per agent role (classify / draft / review). Real (ca
 it `--cached-only`.
 
 ```
-node --env-file=../../.env evals/run-model-matrix-eval.mjs    # live: populate the matrix cache
+node --env-file=../../.env evals/run-model-matrix-eval.mjs    # live: each role on its production lane only
 node evals/run-model-matrix-eval.mjs --cached-only            # replay (never calls the API)
+node ... --models=haiku,sonnet,opus                           # a tier comparison: only when one is asked for by name
 node evals/run-model-matrix-eval.mjs --broken                 # calibration: a uniformly-failing matrix must be REJECTED
 ```
 
 For VIL-376 model comparisons, pass `--min-samples=50` to the active role runner. The
 core matrix and the travel-extract, memory, village-search, coach-plan,
-activity-synthesis, sentinel, general-answer, intake-voice, and coach-channel runners
-all support the flag; inbound-lane already has 63 fixtures. Expansion keeps every base
+activity-synthesis, sentinel, general-answer, and coach-channel runners
+all support the flag; inbound-lane already has 61 fixtures. Expansion keeps every base
 scenario and adds deterministic surface variants with unique IDs and model-visible
 inputs. These are 50 execution samples, not 50 independent failure-mode archetypes.
 The default remains the committed corpus so cached-only CI never creates cache misses.

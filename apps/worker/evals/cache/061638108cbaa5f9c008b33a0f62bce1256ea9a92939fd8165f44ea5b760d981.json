@@ -1,0 +1,31 @@
+{
+  "value": {
+    "fact_updates": [
+      {
+        "fact_type": "logistic",
+        "fact_key": "size_2_diapers_reorder_cadence",
+        "fact_value": {
+          "item": "size 2 diapers",
+          "reorder_qty": 128,
+          "observed_days_between_orders": [
+            14,
+            15
+          ],
+          "approx_rate_per_day": "128/14 ≈ 9.1 and 128/15 ≈ 8.5 (about 8.5-9.1 diapers/day)"
+        },
+        "confidence": 0.7,
+        "rationale": "Two supply_low events name the same item (size 2 diapers) and the same reorder quantity (128), with days since last order of 14 and 15. Both resulting place_supply_order actions were approved. Rate is derived only by dividing the quantity by those day gaps."
+      }
+    ],
+    "episode_summaries": [],
+    "pattern_detections": [
+      {
+        "pattern": "Size 2 diapers reordered at 128 units roughly every 14-15 days",
+        "support": "Two supply_low events with reorder_qty 128 and days_since_last_order of 14 and 15; both place_supply_order actions approved.",
+        "confidence": 0.7
+      }
+    ],
+    "retire_facts": []
+  },
+  "latencyMs": 4502
+}

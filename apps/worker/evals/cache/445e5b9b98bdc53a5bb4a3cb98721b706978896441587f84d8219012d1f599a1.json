@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message opens with a plain 'I looked into' scope-light lead, then leads with the one useful fact: a routine vaccine record check due between ages 14 and 16, which is exactly what the facts carry. It invents nothing, names no kids because kidNames is empty, and does not pad with absent fields like registration or pick. It is short and calm, though 'one thing stood out' is slightly soft and the offerQuestion is not voiced, which is acceptable since the question is implied by the framing.",
+    "score": 4
+  }
+}

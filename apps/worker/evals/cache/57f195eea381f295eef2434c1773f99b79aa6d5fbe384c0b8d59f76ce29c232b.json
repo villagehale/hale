@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "Fragment with no visible context; defaults to in_domain as a follow-up reply"
+  },
+  "latencyMs": 998
+}

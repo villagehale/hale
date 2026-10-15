@@ -1,0 +1,7 @@
+{
+  "urls": [],
+  "notes": "Research notes:\n\n- La capitale de la France est Paris.\n- C'est un fait établi de longue date. Je n'ai pas lancé de recherche, car la réponse ne dépend pas d'une information récente.\n- Rien dans la question ne manque : elle ne dépend ni d'un lieu ni d'une date.",
+  "stopReason": "end_turn",
+  "searchRequests": 0,
+  "latencyMs": 2890
+}

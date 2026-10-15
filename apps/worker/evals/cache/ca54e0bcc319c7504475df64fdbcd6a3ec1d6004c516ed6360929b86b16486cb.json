@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM), 212 West 83rd Street, Upper West Side",
+        "age_fit": "ages 0-6",
+        "when": "10 am - 5 pm, Tuesday-Sunday, so Sat Sept 12, Sun Sept 13 and Tue Sept 15",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Brooklyn Children's Museum, 145 Brooklyn Avenue, Crown Heights",
+        "age_fit": "ages 6 months to 10 years",
+        "when": "Wednesday-Sunday 10 am - 5 pm, so open Sat Sept 12 and Sun Sept 13; closed Mon-Tue",
+        "source_name": "Brooklyn Children's Museum"
+      }
+    ]
+  },
+  "latencyMs": 5407
+}

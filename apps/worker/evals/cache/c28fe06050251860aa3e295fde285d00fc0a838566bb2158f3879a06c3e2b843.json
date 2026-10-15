@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Benign presentation correctly handled: calm plain-language explanation, hedged as a best guess, home comfort measures, not sent to the ER, explicit 811 triage and emergency red flags, English matches the English-language parent. Minor issue: it says call 811 only after a day or two rather than suggesting a GP visit to check the ear as the watchFor asks, and the answer is slightly longer than ideal, but overall well calibrated.",
+    "score": 4
+  }
+}

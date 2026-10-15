@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every point is supported by the research notes: early showers with a possible thunderstorm then clearing, a sunny 29°C afternoon feeling like 35, gusts to about 50 km/h into the evening, a clear evening and showers likely overnight. It is the right Windsor, the right day, and it answers directly. The tone reads more like a forecast readout than a casual text, so it falls a little short of a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

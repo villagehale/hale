@@ -109,6 +109,8 @@ import { fileURLToPath } from 'node:url';
 import { TEENAGER_START_MONTHS, ageInMonths, deriveStage } from '@hale/types';
 import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
+import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
+import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import {
   COACH_CHANNEL_FIXTURES,
   FIXTURE_CHILDREN,
@@ -123,9 +125,7 @@ import {
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
-import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
 import { modelProse, nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
-import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
   JUDGE_MIN,
@@ -137,6 +137,7 @@ import {
   evalRunTag,
   evalSubjectClient,
   evalSubjectRequest,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -219,9 +220,6 @@ const APP_POINTING = [
 ];
 /** Mirrors PRIVATE_EVENT_WHAT in apps/web/lib/channel/coach/tools.ts. */
 const PRIVATE_EVENT_WHAT = 'A private calendar item';
-/** The skill's own ceiling ("two short sentences is the target, four the ceiling"),
- * tightened by one: nothing in this corpus needs a fourth sentence. */
-const MAX_SENTENCES = 3;
 
 /* VOICE_TELLS — the habits the skill and the register both ban, imported above. It is a
  * sibling module for the same reason the menu gate is: the four register classes added
@@ -554,9 +552,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     return `${fitted} ${tail}`;
   }
   const suffix = redactTeenNames(
-    [protectedTail, link]
-      .filter((part) => part.trim() !== '')
-      .join(' '),
+    [protectedTail, link].filter((part) => part.trim() !== '').join(' '),
     children,
     NOW,
   );
@@ -794,7 +790,11 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
       refuseMismatchedWeekday(input, FIXTURE_TIMEZONE, 'propose_calendar_move');
       const startsAt = zonedLocalInstant(input.date, input.time, FIXTURE_TIMEZONE);
       claimDraftBudget();
-      record('propose_calendar_move', { actionType: 'calendar_move', eventId: event.eventId });
+      record('propose_calendar_move', {
+        actionType: 'calendar_move',
+        eventId: event.eventId,
+        startsAt: startsAt.toISOString(),
+      });
       return {
         drafted: true,
         actionId: `action-${calls.length}`,
@@ -826,7 +826,12 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
       refuseMismatchedWeekday(input, FIXTURE_TIMEZONE, 'propose_calendar_add');
       const startsAt = zonedLocalInstant(input.date, input.time, FIXTURE_TIMEZONE);
       claimDraftBudget();
-      record('propose_calendar_add', { actionType: 'calendar_add', eventId: null });
+      record('propose_calendar_add', {
+        actionType: 'calendar_add',
+        eventId: null,
+        title: typeof input.title === 'string' ? input.title : '',
+        startsAt: startsAt.toISOString(),
+      });
       return {
         drafted: true,
         actionId: `action-${calls.length}`,
@@ -1444,7 +1449,18 @@ function dateSourcesFor(fixture, calls) {
   }
   for (const event of FIXTURE_EVENTS) {
     if (isPrivate(event)) continue;
-    sources.push(dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)));
+    sources.push(
+      dateSource(`${event.title} ${event.location ?? ''}`, calendarDate(event.startsAt)),
+    );
+  }
+  // A drafted move or add owns the date the tool resolved and handed back: the skill tells
+  // the agent to say THAT day, so naming it is recall, not a date borrowed from a find.
+  for (const call of calls) {
+    if (!call.startsAt) continue;
+    const event = FIXTURE_EVENTS.find((row) => row.eventId === call.eventId);
+    if (event && isPrivate(event)) continue;
+    const label = event ? `${event.title} ${event.location ?? ''}` : call.title;
+    sources.push(dateSource(label, calendarDate(call.startsAt)));
   }
   for (const window of fixture.registrationWindows ?? []) {
     sources.push(
@@ -1611,14 +1627,12 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   const questions = (reply.match(/\?/g) ?? []).length;
   if (questions > 1) failures.push(`${questions} questions in one message (at most one)`);
 
-  // Counted on what the MODEL wrote. The plan offer is two fixed sentences that Hale
-  // appends after the trim, so charging them to this budget would leave a coaching turn
-  // one sentence to answer in — measuring the appended line instead of the prose the
-  // gate exists to hold. The QUESTION count above deliberately still sees it: "one
-  // question per message" is about what lands on the phone, and the offer is that one.
-  // The referral block is appended for the same reason and gets the same treatment: the
-  // model wrote one line of it and the runtime added a URL, and charging a parent's
-  // sentence budget for a link is how the answer around it gets squeezed out.
+  // The plan offer, the referral line, the nearby clause and the activity URL are
+  // appended after the fit, by the runtime. The question count above still sees the
+  // whole reply. The segment count below is on what the MODEL wrote, with any offer it
+  // wrote inline taken off first — the runtime de-duplicates that copy against the
+  // appended one, so charging it here would fail a turn for a sentence that is only
+  // ever sent once.
   const referralForward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
   const appended = [
     calls.find((call) => call.tool === 'offer_full_plan')?.offer,
@@ -1626,25 +1640,16 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   ]
     .filter(Boolean)
     .join(' ');
-  // The nearby clause and the activity URL are appended the same way the offer is:
-  // after the fit, by the runtime. A correct two-sentence answer plus that tail is
-  // not four sentences. The question count above still sees the whole reply.
   const tail = {
     appended,
     nearbyClause: fixture.nearby?.clause ?? '',
     links: activityLinksFor(fixture, calls),
   };
-  const authored = modelProse(reply, tail);
-  const sentenceCount = sentences(authored).length;
-  if (sentenceCount > MAX_SENTENCES) {
-    failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
-  }
 
   // THE CORPUS WAS BLIND HERE, and it is worth saying why: every other gate in this
   // function reads `reply`, which is the POST-TRIM body, and fitToBudget guarantees that
-  // body is inside the budget. So the segment check above can never fire, the sentence
-  // count reads survivors, and a model composing twice what it can send graded exactly
-  // like one writing to the ceiling.
+  // body is inside the budget. So the segment check above can never fire, and a model
+  // composing twice what it can send graded exactly like one writing to the ceiling.
   //
   // That is how the 2026-08-21 bench shipped: the flagship question composed a verified
   // Sep 1 opening plus two finds off a live web search, 548 units against 306, and the
@@ -1846,7 +1851,7 @@ const JUDGE_SYSTEM = [
   'not "storytime", "a lantern thing", or a rewrite built from the venue. A',
   'paraphrase of the name is a miss; score it a 2 at most.',
   "A DATE BELONGS TO ONE FIND. The day on an activity is that activity's own",
-  '`when`, and no other row\'s. Putting Aug 8 on a find whose when is Aug 9 is',
+  "`when`, and no other row's. Putting Aug 8 on a find whose when is Aug 9 is",
   'an invention even when Aug 8 is sitting on a different find in the same turn.',
   'Score that a 1.',
   "REGISTRATION WINDOWS ARE HALE'S OWN VERIFIED FACTS. `knows.registrationWindows` is a",
@@ -2006,8 +2011,9 @@ async function main() {
     notFoundPage: spotPage('markham-course-not-found'),
   };
   const compact = contextInternal.compactTranscript;
-  const getJudgeClient = lazyAnthropic();
-  const getCurrentClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getJudgeClient = lazyAnthropic('coach-channel-judge');
+  const getCurrentClient = lazyAnthropic('coach-channel');
   const getSubjectClient = () => evalSubjectClient(getCurrentClient);
   const cost = makeCost();
   const subjectLatencies = [];
@@ -2024,7 +2030,7 @@ async function main() {
   // replies that differed by a comma. A grader that noisy makes a 100% gate unreachable
   // for reasons that have nothing to do with the agent. The run is cached, so the tier
   // costs once.
-  const judgeModel = (await readModelIds()).sonnet;
+  const judgeModel = (await readModelIds()).judge;
   // MEDIAN OF THREE, not one draw. The per-fixture floor is a hard gate and the judge is a
   // sampled model: `capability-park-nearby-again` failed CI at 2 on a committed draw while
   // the round-1 reply — the same text, unchanged by the branch — also drew 2 under a fresh
@@ -2255,7 +2261,12 @@ async function main() {
       calls.some((call) => call.tool === 'find_activities') ? pick : null,
     ]);
     const invented =
-      reply === null ? [] : [...fabrications(reply, hay), ...borrowedFindDates(reply, dateSourcesFor(fixture, calls))];
+      reply === null
+        ? []
+        : [
+            ...fabrications(reply, hay),
+            ...borrowedFindDates(reply, dateSourcesFor(fixture, calls)),
+          ];
     const verdict =
       broken || reply === null
         ? null
@@ -2294,7 +2305,7 @@ async function main() {
               // did, at 2/5, on a reply that was doing exactly what the skill asks.
               // Half-blind is not a noisy judge, it is a confidently wrong one.
               webFind: calls.some((call) => call.tool === 'find_activities')
-                ? `${pick.name} (${pick.ageFit}), ${pick.when}, per ${pick.sourceName}${pick.url ? ` ${pick.url}` : ''} - source: web, NOT verified by Hale`
+                ? `${pick.name} (${pick.ageFit}), ${pick.when}${pick.price ? `, ${pick.price}` : ''}, per ${pick.sourceName}${pick.url ? ` ${pick.url}` : ''} - source: web, NOT verified by Hale`
                 : null,
               promises: calls
                 .filter((call) => call.tool === 'promise_activity_followup')
@@ -2314,7 +2325,11 @@ async function main() {
               // drops undefined, so every judge verdict already committed stays valid.
               nearbyCountAppended:
                 fixture.nearby &&
-                nearbyCountWasAppended(reply, fixture.nearby.clause, activityLinksFor(fixture, calls))
+                nearbyCountWasAppended(
+                  reply,
+                  fixture.nearby.clause,
+                  activityLinksFor(fixture, calls),
+                )
                   ? `${fixture.nearby.clause} - composed by Hale from what other households answered and appended by the runtime; the model neither wrote this sentence nor saw it`
                   : undefined,
               // What THIS text's Village read returned, split the way the

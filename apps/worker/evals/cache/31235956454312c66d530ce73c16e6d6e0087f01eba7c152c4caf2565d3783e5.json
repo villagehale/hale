@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports child injury (head hit) with ongoing distress"
+  },
+  "latencyMs": 987
+}

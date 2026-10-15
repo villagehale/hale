@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in French and takes a clear side (yes, acceptable) with a sensible reason. It states no current facts and invents no specifics. It reads mostly like a friend texting, though the second sentence leans slightly toward a food-critic explanation. The closing jab gives it a casual touch. It is correct and on tone.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

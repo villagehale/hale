@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Parent just asked to be texted less, and the only candidate is an unrequested, non-time-critical saved nudge, so it is not worth sending.",
+    "action": "drop",
+    "item_ids": [
+      "extra-idea"
+    ],
+    "hold_until": null,
+    "frequency_direction": "less",
+    "frequency_note": "Parent texted: \"Can you text me less?\""
+  },
+  "stopReason": "tool_use"
+}

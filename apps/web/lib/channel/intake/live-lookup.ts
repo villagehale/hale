@@ -1,12 +1,9 @@
 import { type AgentClient, pickModel } from '@hale/agent';
 import { readEvidence } from '~/lib/channel/activity/evidence';
-import { namesAMentalCrisis } from '~/lib/channel/off-domain/copy';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ExtractedChild } from './extract';
 import { officialPageReturnLine } from './official-page';
-
-export { namesAMentalCrisis };
 
 /**
  * VIL-327 — live lookup for the questions official-page pins do not cover.
@@ -22,17 +19,6 @@ const INTAKE_MAX_REPLY_CHARS = 300;
 const MAX_SEARCHES = 2;
 const GROUND_MAX_TOKENS = 2048;
 
-export const NO_CURRENT_SOURCE_YET = 'I do not have a current source yet.';
-
-/** After provision: one line back to Hale's job, never more trivia. */
-export const AFTER_PROVISION_RETURN_ASK = 'Anything I can watch for the kids this week?';
-
-/**
- * Warm parent, not a clinician. Reviewed copy — a model does not write a
- * method, a diagnosis, or "I'm a therapist."
- */
-export const CHEER_UP_REPLY = "That's a lot to carry. You're doing the hard part.";
-
 const NO_CURRENT_SOURCE_MARK = /no current source/i;
 
 function fold(body: string): string {
@@ -43,7 +29,6 @@ function fold(body: string): string {
 export function isRaisingKidsAsk(body: string): boolean {
   const text = fold(body);
   if (text === '') return false;
-  if (namesAMentalCrisis(text)) return false;
   return /\b(naps?|napping|sleep(?:ing|s)?|bedtime|solids?|potty|toilet|tantrums?|teething|formula|breastfeed(?:ing)?|weaning|colic|reflux|tummy time|picky eater|night wak(?:e|ing)|co-?sleep)\b/.test(
     text,
   );
@@ -56,7 +41,6 @@ export function isRaisingKidsAsk(body: string): boolean {
 export function isLeftoverFactAsk(body: string): boolean {
   const text = fold(body);
   if (text === '') return false;
-  if (namesAMentalCrisis(text)) return false;
   const office =
     /\b(presidents?|prime ministers?|premiers?|mayors?)\b/.test(text) &&
     /\b(who(?:'s| is| was)|current|today)\b/.test(text);
@@ -69,7 +53,6 @@ export function isLeftoverFactAsk(body: string): boolean {
 export function isTherapistFindAsk(body: string): boolean {
   const text = fold(body);
   if (text === '') return false;
-  if (namesAMentalCrisis(text)) return false;
   const care = /\b(therapists?|therapy|counsell?ors?|counsell?ing|psychologists?)\b/.test(text);
   if (!care) return false;
   return /\b(find|finding|need|need a|looking for|get|want|where)\b/.test(text);
@@ -82,7 +65,6 @@ export function isTherapistFindAsk(body: string): boolean {
 export function isCheerUpAsk(body: string): boolean {
   const text = fold(body);
   if (text === '') return false;
-  if (namesAMentalCrisis(text)) return false;
   if (isTherapistFindAsk(text) || isRaisingKidsAsk(text)) return false;
   return (
     /\bcheer(?: me)? up\b/.test(text) ||
@@ -99,22 +81,6 @@ export function isLiveLookupAsk(body: string): boolean {
 
 export function liveLookupReturnLine(pendingAsk: string): string {
   return officialPageReturnLine(pendingAsk);
-}
-
-export function liveLookupFallbackReply(pendingAsk: string): string {
-  return joinLiveLookupAnswer(NO_CURRENT_SOURCE_YET, pendingAsk);
-}
-
-export function afterProvisionFallbackReply(): string {
-  return joinAfterProvisionAnswer(NO_CURRENT_SOURCE_YET);
-}
-
-export function cheerUpIntakeReply(pendingAsk: string): string {
-  return joinLiveLookupAnswer(CHEER_UP_REPLY, pendingAsk);
-}
-
-export function cheerUpAfterProvisionReply(): string {
-  return joinAfterProvisionAnswer(CHEER_UP_REPLY);
 }
 
 function sentences(text: string): string[] {
@@ -147,31 +113,34 @@ export function notesGroundACurrentSource(notes: string): boolean {
   return extractLiveLookupAnswer(notes) !== null;
 }
 
-function sendableJoined(joined: string, fallback: string): string {
-  if (joined.length > INTAKE_MAX_REPLY_CHARS) return fallback;
-  if (smsEncoding(joined) !== 'gsm7') return fallback;
-  if (/https?:\/\/|www\./i.test(joined)) return fallback;
-  if (/\bi('?m| am) a therapists?\b/i.test(joined)) return fallback;
+/** Null when the grounded text cannot go out as one plain SMS; the caller has the
+ * model say it has no current source (#868: no fixed fallback line). */
+function sendableJoined(joined: string): string | null {
+  if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
+  if (smsEncoding(joined) !== 'gsm7') return null;
+  if (/https?:\/\/|www\./i.test(joined)) return null;
+  if (/\bi('?m| am) a therapists?\b/i.test(joined)) return null;
   return joined;
 }
 
-export function joinLiveLookupAnswer(answer: string, pendingAsk: string): string {
+export function joinLiveLookupAnswer(answer: string, pendingAsk: string): string | null {
   const ask = liveLookupReturnLine(pendingAsk);
-  const fallback = `${NO_CURRENT_SOURCE_YET} ${ask}`;
-  return sendableJoined(`${answer} ${ask}`, fallback);
+  return sendableJoined([answer, ask].filter((part) => part.length > 0).join(' '));
 }
 
-export function joinAfterProvisionAnswer(answer: string): string {
-  const fallback = `${NO_CURRENT_SOURCE_YET} ${AFTER_PROVISION_RETURN_ASK}`;
-  return sendableJoined(`${answer} ${AFTER_PROVISION_RETURN_ASK}`, fallback);
+export function joinAfterProvisionAnswer(answer: string): string | null {
+  // #868: no fixed return ask after the answer; the next turn asks in the model's words.
+  return sendableJoined(answer);
 }
 
-export function liveLookupReplyFromNotes(notes: string, pendingAsk: string): string {
-  return joinLiveLookupAnswer(extractLiveLookupAnswer(notes) ?? NO_CURRENT_SOURCE_YET, pendingAsk);
+export function liveLookupReplyFromNotes(notes: string, pendingAsk: string): string | null {
+  const answer = extractLiveLookupAnswer(notes);
+  return answer === null ? null : joinLiveLookupAnswer(answer, pendingAsk);
 }
 
-export function afterProvisionReplyFromNotes(notes: string): string {
-  return joinAfterProvisionAnswer(extractLiveLookupAnswer(notes) ?? NO_CURRENT_SOURCE_YET);
+export function afterProvisionReplyFromNotes(notes: string): string | null {
+  const answer = extractLiveLookupAnswer(notes);
+  return answer === null ? null : joinAfterProvisionAnswer(answer);
 }
 
 /**

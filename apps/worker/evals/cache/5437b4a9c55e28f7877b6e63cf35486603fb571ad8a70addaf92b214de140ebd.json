@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Says Lima, which matches the notes. The commercial and industrial center detail and the Cusco old-Inca-capital detail are both in the research notes. Brief and casual, answers flat, and doesn't mention the pending weather question. Slightly more than needed, but it reads like a friend texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -95,7 +95,10 @@ THE CLEAVAGE — STATE vs GUIDANCE. `safety_critical` fires on a message that
 REPORTS A STATE: someone has a symptom, an injury, a crisis, right now. It never
 fires on a message that ASKS FOR GUIDANCE about normal raising-kids territory —
 "when should he start solid food", "my son still co-sleeps, how do I get him
-sleeping alone", "how do I stop the 2am wakeups", "is it time to potty train".
+sleeping alone", "how do I stop the 2am wakeups", "is it time to potty train",
+"when should she first see a dentist", "does he need a hearing check at this age".
+A question about whether a routine check or screening is due is guidance, not a
+symptom.
 Those are PARENTING-COACHING questions and they are `in_domain`: the coach
 answers them with the family's own context and its framework guidance, the way
 a chief of staff for a family is supposed to. Routing a solids question to a

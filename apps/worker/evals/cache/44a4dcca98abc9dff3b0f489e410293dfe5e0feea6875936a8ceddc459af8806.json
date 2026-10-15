@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is the pick for soccer's greatest, per the most recent sources",
+        "from": "Most recent sources name Lionel Messi."
+      },
+      {
+        "states": "The Week says Messi has established himself as the undisputed greatest after the 2026 World Cup",
+        "from": "The Week, updated 1 Sept 2026, says that after the 2026 World Cup, Messi \"has established himself as the undisputed greatest\"."
+      },
+      {
+        "states": "Messi's 2022 World Cup win and a record eight Ballon d'Or awards support the pick",
+        "from": "It cites his 2022 World Cup win, a record eight Ballon d'Or awards and longevity"
+      },
+      {
+        "states": "Cristiano Ronaldo is the main rival",
+        "from": "Cristiano Ronaldo is the main rival."
+      },
+      {
+        "states": "The debate is not formally settled",
+        "from": "Several outlets note the debate is not formally settled."
+      },
+      {
+        "states": "Tom Brady is the usual answer for American football (NFL)",
+        "from": "Tom Brady is the most common answer."
+      },
+      {
+        "states": "Jerry Rice is the usual alternative in American football",
+        "from": "This shows Rice and Brown are the usual alternatives."
+      }
+    ],
+    "answer": "Messi, for me. The most recent rankings put him first, and The Week calls him the undisputed greatest after the 2026 World Cup, backed by his 2022 World Cup win and a record eight Ballon d'Ors. Ronaldo's fans will argue, and it's not formally settled. If you meant American football, it's Tom Brady, with Jerry Rice the usual alternative."
+  },
+  "latencyMs": 5367
+}

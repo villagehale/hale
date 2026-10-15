@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The empty pick list is correct, since no such program exists, and nothing is invented. The message is two short plain sentences with no link and no question. With watch true, it correctly gives the first-person continuation ('I'll keep watching and text you if that changes'). It makes no negative claim about a page's contents, so no_page_read is not violated. It falls short of fully specific: it names the search subject but not Halton Hills or what sources were checked, which makes 'found nothing' a little vaguer than ideal.",
+    "score": 4
+  }
+}

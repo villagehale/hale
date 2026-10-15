@@ -44,6 +44,7 @@ import {
   JUDGE_SAMPLES_MEDIAN,
   cachedTextCall,
   evalRunTag,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -521,11 +522,13 @@ async function main() {
   }
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const getClient = lazyAnthropic();
+  installEvalSpendCap();
+  const getClient = lazyAnthropic('radar');
   const cost = makeCost();
 
   const skill = await agent.loadSkill(RADAR_SKILL_PATH);
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
+  const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   // MEDIAN OF THREE for voice, and it is this rubric that needs it. The two judges pull
   // against each other on the SAME sentence by construction: attribution wants the few
@@ -577,6 +580,7 @@ async function main() {
       const { text } = await cachedTextCall({
         tag: evalRunTag(`radar:compose:${fixture.id}`),
         model,
+        lane: subjectLane,
         system: `${skill.instructions}\n\n## Context\n\n${JSON.stringify(context)}`,
         userMessage: JSON.stringify(context),
         maxTokens,

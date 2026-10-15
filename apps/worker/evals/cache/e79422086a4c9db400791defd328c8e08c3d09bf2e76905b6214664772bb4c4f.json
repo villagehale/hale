@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "A dark, quiet room can help babies sleep",
+        "from": "Mayo Clinic: A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "Naps work best at the same time each day and for about the same length of time",
+        "from": "Mayo Clinic: Babies get the most out of naps if they take them at the same time each day and for about the same length of time."
+      },
+      {
+        "states": "Put him down drowsy but awake so he learns to fall asleep on his own",
+        "from": "Mayo Clinic: put babies to bed drowsy but awake, since they sleep best when drowsy. Boys Town Hospital: Teach the child to fall asleep on their own"
+      },
+      {
+        "states": "A calm routine, such as a story read in a calming voice, helps",
+        "from": "Ireland's HSE: A consistent daily routine helps... a story read in a calming voice."
+      },
+      {
+        "states": "Nap in his own bed or crib",
+        "from": "Boys Town Hospital: a toddler at home should nap in his own bed or crib."
+      },
+      {
+        "states": "For babies, sleep on their back with no blankets, stuffed toys or soft items in the crib",
+        "from": "Safety (Mayo Clinic, for babies): Put babies to sleep on their backs, with no blankets, stuffed toys or other soft items in the crib or bassinet."
+      }
+    ],
+    "answer": "It depends a lot on his age, but these work for babies and toddlers: nap at the same time each day and for about the same length of time, keep the room dark and quiet, and use a calm routine like a story or a lullaby. Try putting him down drowsy but still awake so he learns to fall asleep on his own, and have him nap in his own bed or crib. If he's a baby, always put him down on his back with nothing soft in the crib. How old is he?"
+  },
+  "latencyMs": 8819
+}

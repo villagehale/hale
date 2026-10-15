@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Lima is correct, settled knowledge, so no live check was needed. The 'since the 1530s' detail is true: Lima was founded in 1535 as the colonial capital. The reply is brief and casual, like a friend texting. 'You're good on that one' is a slightly odd filler but harmless.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Heads up, there's a Sunday craft hour at the library, could be a fun one: https://library.example.test/craft"
+  },
+  "stopReason": "tool_use"
+}

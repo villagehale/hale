@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure checks out against the notes for Denver, Colorado: partly sunny, a high around 65 (64–67 across sources), the N-NE winds and gusts, rain after 3 p.m. building into the evening, and lows in the 30s to low 40s. There are no wrong or invented specifics, and it answers directly without asking for the city. The weak spot is tone. Reciting wind direction and gusts reads more like a forecast readout than a friend's casual text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

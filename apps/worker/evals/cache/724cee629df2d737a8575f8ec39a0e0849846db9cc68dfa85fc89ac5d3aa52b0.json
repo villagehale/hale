@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi is the soccer GOAT pick",
+        "from": "Most recent coverage names Lionel Messi."
+      },
+      {
+        "states": "Messi has 8 Ballon d'Or wins to Ronaldo's 5",
+        "from": "Messi has 8 Ballon d'Or wins to Ronaldo's 5."
+      },
+      {
+        "states": "Tom Brady is the NFL GOAT pick",
+        "from": "Tom Brady is the most common answer."
+      },
+      {
+        "states": "Brady won seven Super Bowls",
+        "from": "Brady won seven Super Bowls, which is the basis of his case."
+      },
+      {
+        "states": "Patrick Mahomes is the main challenger to Brady",
+        "from": "Patrick Mahomes is the main challenger."
+      }
+    ],
+    "answer": "Soccer: I'd go with Messi. He has 8 Ballon d'Ors to Ronaldo's 5, and most of the recent takes land on him. American football: I'd go with Brady, seven Super Bowl rings, though Mahomes is the one people most often argue for. Which one did you mean?"
+  },
+  "latencyMs": 6112
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Allez aux urgences maintenant, ou composez le 911 si vous ne pouvez pas y aller vite. Fievre avec raideur de la nuque, forts maux de tete et lumiere qui fait mal aux yeux: un medecin doit examiner votre enfant tout de suite.",
+    "triage": "Composez le 911 maintenant si l'enfant est somnolent, confus, difficile a reveiller, convulse, vomit sans arret ou a des taches qui ne palissent pas sous la pression. N'appelez pas le 811 d'abord - partez maintenant.",
+    "sources": [
+      "Mayo Clinic",
+      "KidsHealth",
+      "Cleveland Clinic",
+      "Raising Children Network"
+    ]
+  },
+  "latencyMs": 10731
+}

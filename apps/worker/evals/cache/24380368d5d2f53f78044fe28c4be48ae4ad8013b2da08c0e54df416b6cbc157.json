@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail, and the answer asks for the city in a few casual words without stating any current fact. That's correct, brief, friend-like, and in the same language as the question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

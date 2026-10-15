@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event, soccer practice on Saturday, so drafting the move is correct. The reply names the change and asks in an ordinary sentence whether to go ahead, with no YES keyword, no greeting and no padding. It could have said 'from 10' for clarity, but it is complete and correct as it stands.",
+    "score": 5
+  }
+}

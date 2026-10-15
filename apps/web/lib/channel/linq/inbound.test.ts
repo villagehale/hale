@@ -7,13 +7,13 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeNoOpenQuestions,
   fakeRadar,
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -128,8 +128,8 @@ function harness(): {
       { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
     ]),
     radar: fakeRadar,
-    ackComposer: fakeAckComposer,
     answerComposer: fakeSilentAnswerComposer,
+    friendVoice: scriptedFriendVoice,
     openQuestions: fakeNoOpenQuestions,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
@@ -302,8 +302,27 @@ describe('handleLinqInboundRequest', () => {
         channel_message_id: message?.id,
         provider_message_id: MESSAGE_ID,
         received_at: NOW.toISOString(),
+        in_group: false,
       },
     ]);
+  });
+
+  /**
+   * Linq did not say whether the chat is a group. The text is still routed as a 1:1 text
+   * and handed off, and the job says nothing about a group rather than `false`, so the
+   * router's holding line treats it as a chat that might be one (`group_unknown`).
+   */
+  it('hands off a text whose payload has no is_group, and queues no group bit for it', async () => {
+    const h = harness();
+    enrol(h.fake);
+    const body = JSON.parse(messageBody());
+    Reflect.deleteProperty(body.data.chat, 'is_group');
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(body)), h.deps);
+
+    await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
+    expect(h.jobs).toHaveLength(1);
+    expect(h.jobs[0]?.in_group).toBeUndefined();
   });
 
   it('does not claim a group or hand it to the coach until the trigger', async () => {
@@ -387,6 +406,8 @@ describe('handleLinqInboundRequest', () => {
     await expect(res.json()).resolves.toEqual({ outcome: 'handed_off' });
     expect(h.reads).toEqual([]);
     expect(h.jobs).toHaveLength(1);
+    // Group onboarding v2 is dark here, and the job still says the text came from a group.
+    expect(h.jobs[0]?.in_group).toBe(true);
     const message = h.fake
       .rows(schema.channelMessages)
       .find((row) => row.providerMessageId === MESSAGE_ID);
@@ -1123,19 +1144,15 @@ describe('location sharing', () => {
     const opened = await handleLinqInboundRequest(request(hiBody()), h.deps);
     await expect(opened.json()).resolves.toEqual({ outcome: 'intake' });
     expect(h.transport.locationRequests).toEqual([CHAT_ID]);
-    expect(h.transport.bodies()[0]).toBe(
-      "Hey, it's Hale. I find what's on for kids near you. Tap to share where you are and I'll show you what's on this week.",
-    );
+    expect(h.transport.bodies().length).toBeGreaterThan(0); // model-written; no fixed copy
+    const opening = h.transport.bodies().length;
 
     const shared = await handleLinqInboundRequest(
       request(locationBody('location.sharing.started', PHONE)),
       h.deps,
     );
     await expect(shared.json()).resolves.toEqual({ outcome: 'intake' });
-    expect(h.transport.bodies().slice(1)).toEqual([
-      "Nothing on near you this week yet. I'll text you the first good one in a day or two.",
-      'How old are the kids?',
-    ]);
+    expect(h.transport.bodies().length).toBeGreaterThan(opening); // model-written; no fixed copy
     expect(h.transport.locationRequests).toEqual([CHAT_ID]);
   });
 

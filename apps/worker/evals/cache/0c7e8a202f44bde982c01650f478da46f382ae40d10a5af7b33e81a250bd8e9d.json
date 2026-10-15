@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Each tip traces to the research notes: same time and length (Mayo), a dark quiet room (Mayo/HSE), a calm routine with a softly read story (HSE), drowsy but awake (Mayo), and back to sleep with no soft items (Mayo). The safe sleep note is a careful touch. It says nothing about the child, gives real advice and asks his age briefly. Casual and friend-like.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

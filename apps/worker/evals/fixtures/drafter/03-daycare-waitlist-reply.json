@@ -11,11 +11,16 @@
         "subject": "Spot available for September",
         "body": "Good news — a spot has opened for the September intake. Please let us know within 5 business days if you'd like to accept it."
       }
+    },
+    "memorySlice": {
+      "relevantFacts": ["Parent: yes, take it"],
+      "relevantEpisodes": []
     }
   },
   "expect": {
     "requiredPayloadFields": ["to", "subject", "body"],
     "recipientEchoOf": "from",
-    "maxBodyChars": 600
+    "maxBodyChars": 600,
+    "commitsParent": true
   }
 }
