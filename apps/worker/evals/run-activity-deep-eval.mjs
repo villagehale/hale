@@ -229,10 +229,12 @@ function readExtract(raw) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-export function followUpUserMessage(subject, slots, pageEvidence, watch) {
+export function followUpUserMessage(subject, slots, pageEvidence, watch, language = 'en-CA') {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    // `users.locale`, passed through. The composer never sees the parent's words.
+    language,
     ...(slots.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
     watch,
     picks: slots.map((slot) => ({
@@ -1020,7 +1022,13 @@ async function main() {
               lane: composerLane,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, inText, pageEvidence, watch),
+                followUpUserMessage(
+                  fixture.subject,
+                  inText,
+                  pageEvidence,
+                  watch,
+                  fixture.language ?? 'en-CA',
+                ),
                 violations,
               ),
               toolName: 'followup_text',

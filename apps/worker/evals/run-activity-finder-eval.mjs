@@ -179,10 +179,12 @@ function composeUserMessage(q, researchNotes) {
 // Mirrors `EMPTY_SEARCH_NOTES_CAP` (activity/lane.ts).
 const EMPTY_SEARCH_NOTES_CAP = 4_000;
 
-function followUpUserMessage(subject, picks, pageEvidence, watch, searched) {
+function followUpUserMessage(subject, picks, pageEvidence, watch, searched, language = 'en-CA') {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    // `users.locale`, passed through. The composer never sees the parent's words.
+    language,
     // An empty search carries where it looked and what it read (lane.ts `EmptySearch`);
     // a message with a find is composed from exactly the payload it always was.
     ...(picks.length === 0
@@ -1247,10 +1249,17 @@ async function main() {
               lane: subjectLane,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, kept, pageEvidence, watch, {
-                  town: fixture.town,
-                  notes: ground.notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
-                }),
+                followUpUserMessage(
+                  fixture.subject,
+                  kept,
+                  pageEvidence,
+                  watch,
+                  {
+                    town: fixture.town,
+                    notes: ground.notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+                  },
+                  fixture.language ?? 'en-CA',
+                ),
                 violations,
               ),
               toolName: 'followup_text',

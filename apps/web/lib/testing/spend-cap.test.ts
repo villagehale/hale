@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cappedCall, projectUsd, readLedger, usageUsd } from './spend-cap.mjs';
+import { cappedCall, readLedger, usageUsd, worstCaseUsd } from './spend-cap.mjs';
 
 const rates = () => ({ input: 1, output: 5 }); // $ per MTok
 const request = {
@@ -250,7 +250,9 @@ describe('spend cap when tokens cannot be counted', () => {
   it('projects a server-tool call above what the Oct 13 calls really cost', () => {
     for (const [counted, tools, usage] of ground) {
       const req = { ...request, model: 'claude-sonnet-5', max_tokens: 4096, tools: [...tools] };
-      expect(projectUsd(sonnet, req, counted)).toBeGreaterThanOrEqual(
+      // The ceiling charged before the call. Counted input alone is the $0.084 first
+      // turn; a search turn is priced at 250k input tokens plus max_uses × $0.01.
+      expect(worstCaseUsd(sonnet, req, counted)).toBeGreaterThanOrEqual(
         usageUsd(sonnet, req.model, usage),
       );
     }
