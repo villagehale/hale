@@ -97,6 +97,12 @@ all three in for does not go in the list:
   "Ongoing" is not a when. **Leave it out when the page has not posted one.**
 - **`price`** — what it costs, where the page says. **Leave it out when the page
   does not say.**
+- **A permanent venue's own regular hours count.** A museum, zoo, aquarium,
+  science centre, library or park that is open all year is a pick when its own
+  page posts its regular hours, even when nothing is posted for the exact dates
+  asked about. Its `when` is those regular hours, tied to that page, together
+  with the fact that the asked-for dates themselves could not be confirmed. Its
+  `source_name` is still the venue's own organisation.
 - **One location's facts stay with that location.** When one program runs at more
   than one location with different dates or prices, each `when` and `price` names
   the location it belongs to. A date from one location next to a price from
