@@ -150,7 +150,8 @@ const FIXTURES = [
       found: true,
       preview: null,
       resident_open: null,
-      general_open: { date: '2026-10-20', time: '09:00' },
+      general_open: null,
+      unclassified_open: { date: '2026-10-20', time: '09:00' },
       timeZone: 'America/New_York',
     },
   },
@@ -165,7 +166,8 @@ const FIXTURES = [
       found: true,
       preview: null,
       resident_open: null,
-      general_open: { date: '2026-10-20', time: null },
+      general_open: null,
+      unclassified_open: { date: '2026-10-20', time: null },
       timeZone: 'Europe/London',
     },
   },
@@ -180,7 +182,8 @@ const FIXTURES = [
       found: true,
       preview: null,
       resident_open: null,
-      general_open: { date: '2026-10-20', time: '09:00' },
+      general_open: null,
+      unclassified_open: { date: '2026-10-20', time: '09:00' },
       timeZone: 'America/New_York',
     },
   },
@@ -195,7 +198,8 @@ const FIXTURES = [
       found: true,
       preview: { date: '2026-08-03', time: null },
       resident_open: null,
-      general_open: { date: '2026-08-11', time: '06:30' },
+      general_open: null,
+      unclassified_open: { date: '2026-08-11', time: '06:30' },
     },
   },
   {
@@ -209,12 +213,13 @@ const FIXTURES = [
       found: true,
       preview: { date: '2026-02-01', time: null },
       resident_open: null,
-      general_open: { date: '2026-02-24', time: '06:30' },
+      general_open: null,
+      unclassified_open: { date: '2026-02-24', time: '06:30' },
     },
   },
   {
     id: 'toronto-arc-rule-is-not-a-date',
-    why: 'The printed date is the RESIDENT one; the non-resident date exists only as a prose rule. Doing that arithmetic invents a date the city never published.',
+    why: 'The printed opening has no resident label. Keep its applicability unstated; the non-resident delay is prose, not a printed date or evidence of a resident label.',
     municipality: 'toronto',
     programDomain: 'after_school_care',
     cycleLabel: 'After-School Recreation Care (ARC) 2026/2027 school year',
@@ -222,8 +227,9 @@ const FIXTURES = [
     expect: {
       found: true,
       preview: null,
-      resident_open: { date: '2026-06-05', time: '07:00' },
+      resident_open: null,
       general_open: null,
+      unclassified_open: { date: '2026-06-05', time: '07:00' },
     },
   },
   {
@@ -238,6 +244,22 @@ const FIXTURES = [
       preview: { date: '2026-08-12', time: null },
       resident_open: { date: '2026-08-22', time: '09:00' },
       general_open: { date: '2026-08-28', time: '09:00' },
+    },
+  },
+  {
+    id: 'king-cross-year-registration',
+    why: 'Use the printed 2026 registration year. December 7 has no eligibility label; December 11 is explicitly non-resident aquatics, not evidence that December 7 is residents-only.',
+    municipality: 'king',
+    programDomain: 'swim',
+    cycleLabel: 'Winter 2027',
+    pageText:
+      'Winter 2027 Recreation & Aquatic Programs Winter session: January 11 – March 31, 2027 . Programs are viewable online as of November 23, 2026. Registration opens on December 7 at townshipofking.perfectmind.com Aquatics program registration for non-residents opens on December 11, 2026.',
+    expect: {
+      found: true,
+      preview: { date: '2026-11-23', time: null },
+      resident_open: null,
+      general_open: { date: '2026-12-11', time: null },
+      unclassified_open: { date: '2026-12-07', time: null },
     },
   },
   {
@@ -301,13 +323,13 @@ function check(fixture, value) {
     if (!want.reasons.includes(reason)) {
       problems.push(`REASON expected one of [${want.reasons.join(', ')}], got ${reason}`);
     }
-    for (const field of ['preview', 'resident_open', 'general_open']) {
+    for (const field of ['preview', 'resident_open', 'general_open', 'unclassified_open']) {
       if (value?.[field]) problems.push(`NOT-FOUND but ${field} is ${slot(value[field])}`);
     }
     return problems;
   }
 
-  for (const field of ['preview', 'resident_open', 'general_open']) {
+  for (const field of ['preview', 'resident_open', 'general_open', 'unclassified_open']) {
     const got = slot(value?.[field]);
     const expected = slot(want[field]);
     if (got !== expected) problems.push(`${field.toUpperCase()} expected ${expected}, got ${got}`);
@@ -439,7 +461,7 @@ async function main() {
       value = brokenAnswer(fixture);
     } else {
       const result = await cachedToolCall({
-        tag: `registration-verify:${fixture.id}`,
+        tag: `registration-verify:strict:${fixture.id}`,
         model,
         lane: subjectLane,
         system: skill.instructions,
@@ -455,6 +477,7 @@ async function main() {
         toolName: 'published_registration_window',
         toolDescription: 'Return the registration dates this page publishes for the named cycle.',
         toolSchema: TOOL_SCHEMA,
+        strictTool: true,
         maxTokens: 2048,
         cachedOnly,
         getClient,

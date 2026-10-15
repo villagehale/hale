@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
-import { MAX_REPLY_SEGMENTS } from './reply';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 /**
@@ -214,7 +213,7 @@ describe('channelCoachRuntime', () => {
   });
 
   it.each([false, true])(
-    'preserves eligibility on overflow without hiding another draft (draft=%s)',
+    'preserves the full long answer and eligibility beside another draft (draft=%s)',
     async (drafted) => {
       const sourceUrl =
         'https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information';
@@ -250,10 +249,10 @@ describe('channelCoachRuntime', () => {
         return;
       }
       expect(reply).toContain('resident/non-resident eligibility unconfirmed');
-      expect(reply).toContain('Date reminders paused.');
+      expect(reply).toContain('Date reminders are paused.');
       expect(reply).toContain(sourceUrl);
       expect(reply).not.toContain('...');
-      expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+      expect(reply).toContain('Please check the details. '.repeat(5).trim());
     },
   );
 
@@ -285,7 +284,6 @@ describe('channelCoachRuntime', () => {
       );
       expect(reply).toContain('Nov 24, 2026');
       expect(reply.endsWith(sourceUrl)).toBe(true);
-      expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
     },
   );
 
@@ -310,7 +308,7 @@ describe('channelCoachRuntime', () => {
         sourceUrl: sourceUrls[Number(watchId.slice(-1))],
       }),
       runAgent: readThenAnswer(
-        'These registrations open Nov 24, 2026 (America/Toronto).',
+        `These registrations open Nov 24, 2026 (America/Toronto). Sources: ${sourceUrls.join(' ')}. Opening times are unpublished.`,
         sourceUrls.map(
           (_url, index) => `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
         ),
@@ -324,6 +322,7 @@ describe('channelCoachRuntime', () => {
       expect(reply.split(sourceUrl)).toHaveLength(2);
     }
     expect(reply).not.toContain('undefined');
+    expect(reply).toContain('Opening times are unpublished.');
   });
 
   /**
@@ -416,13 +415,14 @@ describe('channelCoachRuntime', () => {
     expect(reply).toBe('your kid has practice Thursday.');
   });
 
-  it('holds a long answer to the segment budget', async () => {
+  it('returns a long answer in full without a segment cap', async () => {
     const long = Array.from({ length: 12 }, (_, i) => `Sentence number ${i} about swim.`).join(' ');
     const p = ports({ runAgent: answering(long) });
 
     const { reply } = await channelCoachRuntime(p).respond(turn(), []);
 
-    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(reply)).toBeGreaterThan(2);
+    expect(reply).toBe(long);
     expect(reply).not.toContain(LINK);
     expect(reply.startsWith('Sentence number 0')).toBe(true);
   });

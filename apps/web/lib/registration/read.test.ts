@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RegistrationSourceState } from '@hale/db';
 import { describe, expect, it } from 'vitest';
+import { registrationPdfFixture } from './pdf-fixture.test-helper';
 import {
   type RegistrationTarget,
   createRegistrationReader,
@@ -36,6 +37,78 @@ const extraction: ExtractedWindow = {
 };
 
 describe('live registration reader', () => {
+  it('keeps binary-fetched HTML on the existing date verification path', async () => {
+    const reader = createRegistrationReader({
+      fetchBody: async () => Buffer.from(`<html><body>${text}</body></html>`),
+      extract: async (_target, pageText) => {
+        expect(pageText).toBe(text);
+        return extraction;
+      },
+    });
+    expect(await reader(target, now)).toMatchObject({ status: 'verified' });
+  });
+  it('uses PDF text for the existing extraction and date/year evidence gates', async () => {
+    const bytes = registrationPdfFixture([text]);
+    let fetches = 0;
+    let calls = 0;
+    const reader = createRegistrationReader({
+      fetchBody: async () => {
+        fetches++;
+        return bytes;
+      },
+      extract: async (_target, pageText) => {
+        calls++;
+        expect(pageText).toContain('[PDF page 1]');
+        expect(pageText).toContain(text);
+        expect(pageText).not.toContain('%PDF-');
+        return extraction;
+      },
+    });
+    expect(await reader(target, now)).toMatchObject({
+      status: 'verified',
+      dates: [{ date: '2026-10-20', time: '09:00' }],
+    });
+    await reader(target, now);
+    expect([fetches, calls]).toEqual([1, 1]);
+    const wrong = createRegistrationReader({
+      fetchBody: async () => bytes,
+      extract: async () => ({ ...extraction, generalOpen: { date: '2027-10-20', time: '09:00' } }),
+    });
+    expect(await wrong(target, now)).toMatchObject({
+      status: 'unverified',
+      reason: 'uncorroborated',
+    });
+  });
+  it('never treats an unlabelled PDF date as eligible just because its city is not a known portal', async () => {
+    const reader = createRegistrationReader({
+      fetchBody: async () => registrationPdfFixture([text]),
+      extract: async () => extraction,
+    });
+    const reading = await reader({ ...target, municipality: 'uxbridge' }, now);
+    expect(reading).toMatchObject({
+      status: 'verified',
+      dates: [{ kind: 'unclassified_open', date: '2026-10-20', time: '09:00' }],
+    });
+    expect(registrationDate(reading, false)).toBeNull();
+    expect(registrationDate(reading, true)).toBeNull();
+  });
+  it('does not send unreadable PDF bytes to the model or fall back to old dates', async () => {
+    for (const [bytes, reason] of [
+      [Buffer.from('%PDF-1.4 broken'), 'pdf_unreadable'],
+      ['%PDF-1.4 already decoded as UTF-8', 'pdf_unreadable'],
+      [registrationPdfFixture(['']), 'pdf_no_text'],
+    ] as const) {
+      const reader = createRegistrationReader({
+        fetchBody: async () => bytes,
+        extract: async () => {
+          throw new Error('must not call model');
+        },
+      });
+      const result = await reader(target, now);
+      expect(result).toMatchObject({ status: 'unreadable', reason });
+      expect(result).not.toHaveProperty('dates');
+    }
+  });
   it('reads a saved PerfectMind page deterministically without AI, in the portal zone', async () => {
     const reader = createRegistrationReader({
       fetchBody: async () =>

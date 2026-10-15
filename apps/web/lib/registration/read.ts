@@ -3,7 +3,7 @@ import { SPOT_PORTAL_HOSTS, portalForMunicipality, sanitizeSpotUrl } from '~/lib
 import { pipelineClient } from '~/lib/pipeline/client';
 import { zonedLocalInstant } from '~/lib/plan/spine';
 import { dayKeyIn } from '~/lib/plan/spine';
-import { type FetchPage, MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
+import { MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
 import {
   type LiveRegistrationDate,
   type LiveRegistrationReading,
@@ -11,7 +11,8 @@ import {
   readCourseRegistration,
 } from './live-reading';
 import { resolveMunicipalities } from './match-registration-windows';
-import { createRegistrationPageFetch, registrationPageUrl } from './page';
+import { createRegistrationPageBytesFetch, registrationPageUrl } from './page';
+import { RegistrationPdfError, registrationPdfText } from './pdf';
 import { type CycleIdentity, type ExtractedWindow, extractPublishedWindow } from './verify-window';
 
 export interface RegistrationTarget extends CycleIdentity {
@@ -27,14 +28,15 @@ export type RegistrationReader = (
 /** Cache only inside one operation. A send uses a new reader, never a stored result. */
 export function createRegistrationReader(
   ports: {
-    fetchBody: FetchPage;
+    fetchBody: (url: string) => Promise<string | Uint8Array>;
     extract: (target: CycleIdentity, text: string) => Promise<ExtractedWindow>;
   } = {
-    fetchBody: createRegistrationPageFetch(),
+    fetchBody: createRegistrationPageBytesFetch(),
     extract: (target, text) => extractPublishedWindow(target, text, { client: pipelineClient() }),
   },
 ): RegistrationReader {
-  const pages = new Map<string, Promise<string>>();
+  const pages = new Map<string, Promise<string | Uint8Array>>();
+  const pdfTexts = new Map<string, Promise<string>>();
   const readings = new Map<string, Promise<LiveRegistrationReading>>();
   let started: number | null = null;
   return (target, now) => {
@@ -47,7 +49,7 @@ export function createRegistrationReader(
       if (readings.size >= 24 || Date.now() - started > 120_000) {
         return { ...source, reader: 'ai', status: 'unreadable', reason: 'read_budget' };
       }
-      let raw: string;
+      let body: string | Uint8Array;
       try {
         registrationPageUrl(target.sourceUrl);
         let pending = pages.get(target.sourceUrl);
@@ -55,25 +57,37 @@ export function createRegistrationReader(
           pending = ports.fetchBody(target.sourceUrl);
           pages.set(target.sourceUrl, pending);
         }
-        raw = await pending;
+        body = await pending;
       } catch {
         return { ...source, reader: 'ai', status: 'unreadable', reason: 'fetch_failed' };
       }
-      const course = sanitizeSpotUrl(target.sourceUrl);
-      if (course.ok) {
-        return validateReadingClock(
-          readCourseRegistration(
-            { ok: true, raw },
-            {
-              ...source,
-              courseId: course.courseId,
-              timeZone: SPOT_PORTAL_HOSTS[course.host]!.timeZone,
-            },
-          ),
-        );
-      }
-      const pageText = stripHtml(raw).slice(0, MAX_PAGE_TEXT_CHARS);
       try {
+        let pageText: string;
+        if (typeof body !== 'string' && Buffer.from(body.subarray(0, 1024)).includes('%PDF-')) {
+          let text = pdfTexts.get(target.sourceUrl);
+          if (!text) {
+            text = registrationPdfText(body);
+            pdfTexts.set(target.sourceUrl, text);
+          }
+          pageText = await text;
+        } else {
+          const raw = typeof body === 'string' ? body : Buffer.from(body).toString('utf8');
+          if (raw.startsWith('%PDF-')) throw new RegistrationPdfError('pdf_unreadable');
+          const course = sanitizeSpotUrl(target.sourceUrl);
+          if (course.ok) {
+            return validateReadingClock(
+              readCourseRegistration(
+                { ok: true, raw },
+                {
+                  ...source,
+                  courseId: course.courseId,
+                  timeZone: SPOT_PORTAL_HOSTS[course.host]!.timeZone,
+                },
+              ),
+            );
+          }
+          pageText = stripHtml(raw).slice(0, MAX_PAGE_TEXT_CHARS);
+        }
         const extracted = await ports.extract(
           { ...target, referenceDate: now.toISOString().slice(0, 10) },
           pageText,
@@ -82,31 +96,19 @@ export function createRegistrationReader(
         const timeZone =
           target.timeZone ??
           (quote && pageText.includes(quote) ? (extracted.timeZone ?? null) : null);
-        const reading = validateReadingClock(
+        return validateReadingClock(
           normalizeExtractedRegistration(
             { ok: true, extracted, pageText },
             { ...source, timeZone },
           ),
         );
-        // Keep a corroborated date for answers without claiming it applies to everyone.
-        if (
-          reading.status === 'verified' &&
-          (target.residentTiers ||
-            /^(?:www\.)?(?:markham|oakville)\.ca$/.test(new URL(target.sourceUrl).hostname) ||
-            new URL(target.sourceUrl).hostname in SPOT_PORTAL_HOSTS) &&
-          !extracted.residentOpen &&
-          !/\b(?:non[- ]?resident|public|general)\s+registration\b/i.test(extracted.evidence ?? '')
-        ) {
-          return {
-            ...reading,
-            dates: reading.dates.map((date) =>
-              date.kind === 'general_open' ? { ...date, kind: 'unclassified_open' as const } : date,
-            ),
-          };
-        }
-        return reading;
-      } catch {
-        return { ...source, reader: 'ai', status: 'unreadable', reason: 'extract_failed' };
+      } catch (error) {
+        return {
+          ...source,
+          reader: 'ai',
+          status: 'unreadable',
+          reason: error instanceof RegistrationPdfError ? error.reason : 'extract_failed',
+        };
       }
     })();
     readings.set(key, read);

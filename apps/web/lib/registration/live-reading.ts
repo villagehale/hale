@@ -50,7 +50,16 @@ export type LiveRegistrationReading = RegistrationReadSource & {
           | 'unknown_time_zone'
           | 'eligibility_unverified';
       }
-    | { status: 'unreadable'; reason: UnreadableReason | 'extract_failed' | 'read_budget' }
+    | {
+        status: 'unreadable';
+        reason:
+          | UnreadableReason
+          | 'extract_failed'
+          | 'read_budget'
+          | 'pdf_unreadable'
+          | 'pdf_no_text'
+          | 'pdf_read_budget';
+      }
     | { status: 'gone'; evidence: readonly string[] }
   );
 
@@ -157,9 +166,12 @@ export function normalizeExtractedRegistration(
   if (!Number.isFinite(extracted.confidence) || extracted.confidence < MIN_VERIFY_CONFIDENCE) {
     return { ...base, status: 'unverified', reason: 'low_confidence' };
   }
-  const publishedDates = [extracted.preview, extracted.residentOpen, extracted.generalOpen].filter(
-    (date): date is PublishedDate => date !== null,
-  );
+  const publishedDates = [
+    extracted.preview,
+    extracted.residentOpen,
+    extracted.generalOpen,
+    extracted.unclassifiedOpen,
+  ].filter((date): date is PublishedDate => date != null);
   if (publishedDates.some((date) => !validPublishedDate(date)))
     return { ...base, status: 'unverified', reason: 'invalid_date' };
   if (
@@ -171,10 +183,19 @@ export function normalizeExtractedRegistration(
     return { ...base, status: 'unverified', reason: 'uncorroborated' };
   }
   const dates: LiveRegistrationDate[] = [];
+  // A model label alone cannot turn an unlabelled opening into public eligibility.
+  const generalKind =
+    !extracted.residentOpen &&
+    !/\b(?:(?:non[- ]?residents?|public|general)\s+registration|registration\s+for\s+non[- ]?residents?)\b/i.test(
+      extracted.evidence,
+    )
+      ? 'unclassified_open'
+      : 'general_open';
   for (const [kind, published] of [
     ['preview', extracted.preview],
     ['resident_open', extracted.residentOpen],
-    ['general_open', extracted.generalOpen],
+    [generalKind, extracted.generalOpen],
+    ['unclassified_open', extracted.unclassifiedOpen],
   ] as const) {
     if (published)
       dates.push({ kind, ...published, evidence: [extracted.evidence, extracted.yearEvidence] });

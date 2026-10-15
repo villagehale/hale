@@ -15,8 +15,6 @@ import { schema } from '@hale/db';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
-import { captureAgentError } from '~/lib/analytics/server-capture';
-import { POLICY_VERSION } from '~/lib/consent';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
@@ -70,8 +68,7 @@ import {
 } from './gmail-draft-tool';
 import type { RegistrationWatchContext, RegistrationWindowContext } from './registration-context';
 import { READ_REGISTRATION_PAGE, readRegistrationPageTool } from './registration-tool';
-import { type ReplyChild, ReplyNeedsShorter, redactTeenNames, replyCharacterRoom, toSmsReply } from './reply';
-import { shortenOverBudgetReply } from './shorten';
+import { type ReplyChild, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
   buildChannelCoachTools,
@@ -88,7 +85,7 @@ import {
  *
  *   NO STREAMING. A carrier takes one body, once. So the loop is `runAgent`, not
  *   `runAgentStreaming`, and the answer is assembled before anything is sent — which
- *   is also why the post-processor can hold a segment budget at all.
+ *   lets the post-processor preserve facts and links in the complete reply.
  *
  *   A TERSER VOICE. The `coach-channel-sms` skill. Same instructions about honesty
  *   and scope, a shorter answer shape, because markdown and a four-paragraph answer
@@ -448,11 +445,6 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             offer === null && share === null
               ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
               : null;
-          // What the trim threw away, reported HERE rather than from inside the string
-          // function: an answer past the two-segment ceiling is work this turn already
-          // paid a model (and sometimes a 50s web search) for, and nothing downstream can
-          // tell a trimmed reply from one that fit. A count makes it a rate.
-          let trimmedOverBy: number | null = null;
           const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
           const spoken =
             gmailNotice !== null && gmailNotice.status === 'ready'
@@ -465,7 +457,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               new GmailDraftNoticeUnsent(),
             );
           }
-          const smsArgs = {
+          const reply = toSmsReply(spoken, {
             children,
             now,
             ...(noticeReady
@@ -489,65 +481,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                       )
                       .join(' ') || undefined,
                   nearby: nearby ?? undefined,
-                  onTrimmed: (overBy: number) => {
-                    trimmedOverBy = overBy;
-                  },
                 }),
-          };
-          // A first sentence that does not fit is not trimmed. One rewrite, from the
-          // shorten skill, then the same fit. A second miss fails the turn: the router
-          // owns the honesty line, and this path never substitutes a fixed sentence.
-          let reply: string;
-          try {
-            reply = toSmsReply(spoken, smsArgs);
-          } catch (err) {
-            if (!(err instanceof ReplyNeedsShorter)) throw err;
-            const suffix = noticeReady
-              ? ''
-              : redactTeenNames(
-                  [offer?.sentence, share ? referralBlock(share) : undefined]
-                    .map((part) => part?.trim() ?? '')
-                    .filter((part) => part !== '')
-                    .join(' '),
-                  children,
-                  now,
-                );
-            let shorter: string | null;
-            try {
-              shorter = await shortenOverBudgetReply(
-                ports.client(),
-                spoken,
-                replyCharacterRoom(suffix),
-              );
-            } catch (cause) {
-              await ports.recordRun(record('failed'));
-              throw failed('channel coach: shorter rewrite failed', cause);
-            }
-            if (!shorter) {
-              await ports.recordRun(record('failed'));
-              throw failed('channel coach: shorter rewrite was empty');
-            }
-            try {
-              reply = toSmsReply(shorter, smsArgs);
-            } catch (again) {
-              await ports.recordRun(record('failed'));
-              throw failed(
-                again instanceof ReplyNeedsShorter
-                  ? 'channel coach: shorter rewrite still had no complete sentence inside the segment budget'
-                  : again instanceof Error
-                    ? again.message
-                    : 'channel coach: shorter rewrite could not be sent',
-                again,
-              );
-            }
-          }
-          if (trimmedOverBy !== null) {
-            await captureAgentError({
-              lane: 'reply_budget',
-              overBy: trimmedOverBy,
-              familyId: turn.familyId,
-            });
-          }
+          });
           await ports.recordRun(record('completed'));
           return { reply, planOffer, activityPromise, spotWatch };
         },

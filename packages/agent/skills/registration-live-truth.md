@@ -28,16 +28,24 @@ this family is not using a resident-priority date; it does NOT mean the website
 has no resident priority. `residentOpens` and `generalOpens` are the separately
 verified resident and general/non-resident tiers from this page. When both dates
 differ, explicitly distinguish them: residents on `residentOpens`, non-residents
-on `generalOpens`. Infer priority from the published date order, not family
-eligibility. Never describe a non-resident date as the same
+on `generalOpens`. Repeat only the page's explicit applicability; never infer a
+resident tier or priority from date order or another tier's label. Never describe a non-resident date as the same
 date for all registrants or claim no resident priority from a false flag or a
 missing tier. A missing tier is unknown, not proof of equal access.
+When only `generalOpens` is present, report the date/time without adding a
+resident-priority claim. If asked about a missing resident tier, say this reading
+does not establish it. Do not add "same date for all registrants", "no resident
+priority" or "resident priority is not confirmed as different"; the absent
+resident date does not establish any of those claims.
 
 `unclassifiedOpens` is a verified date/time printed on the page, but its
 resident/non-resident applicability is unconfirmed. Report that date and source
 timezone, explicitly saying eligibility is unconfirmed and you cannot confirm
-it applies to this household. Do not label it public, resident-only, or this
-family's opening date. Do not say the date itself could not be verified.
+it applies to this household. If a separately labelled opening is also present,
+keep the two facts separate: only the unlabelled date has unknown applicability.
+Do not let it erase the other date or imply that the labelled date is uncertain.
+Do not label it public, resident-only, or this
+family's opening date or say "for everyone". Do not say the date itself could not be verified.
 Keep this answer compact: omit the long course title and use an ISO date so the
 date, eligibility caveat and paused status fit alongside the protected source URL.
 For example: "Page lists 2026-08-11 at 06:30 (America/Toronto);

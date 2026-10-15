@@ -6,10 +6,13 @@ import { productionChannelCoachPorts } from '~/lib/channel/coach/runtime';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { HandlerContext } from '~/lib/channel/router/route';
+import { pipelineClient } from '~/lib/pipeline/client';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { registrationSourceFixture } from '~/lib/testing/registration-source';
 import type { LiveRegistrationReading } from '../live-reading';
+import { createRegistrationPageBytesFetch } from '../page';
 import * as registrationReaderModule from '../read';
+import { type CycleIdentity, extractPublishedWindow } from '../verify-window';
 import { verifyRegistrationDateApproval } from './date-approval';
 import { registrationLinkHandler } from './link-handler';
 import {
@@ -18,7 +21,12 @@ import {
   refreshRegistrationWatch,
   releaseRegistrationSend,
 } from './refresh';
-import { defaultSequenceRunDeps, loadLiveSequences, runRegistrationSequenceCron } from './run';
+import {
+  defaultSequenceRunDeps,
+  loadLiveSequences,
+  registrationTargetFor,
+  runRegistrationSequenceCron,
+} from './run';
 import { openLegWindows } from './schedule';
 import { claimRegistrationWatch } from './watch-storage';
 
@@ -132,6 +140,222 @@ function harness(reading: LiveRegistrationReading, target: Awaited<ReturnType<ty
 }
 
 describe('live registration storage → cron → outbound', () => {
+  it.runIf(process.env.VIL423_LIVE_MINUTE_EVAL === 'true').each([
+    { audience: 'resident', area: 'L7M', date: '2026-08-22', kind: 'resident_open' },
+    { audience: 'non-resident', area: 'L4B', date: '2026-08-28', kind: 'general_open' },
+  ])(
+    'R12 real official timed reminder for $audience',
+    async (sample) => {
+      // Real HTTP/model; historical published dates under a fixture clock, never real SMS.
+      const url = 'https://www.burlington.ca/en/recreation/registering-for-a-program.aspx';
+      const anchor = new Date(`${sample.date}T13:00:00Z`);
+      const setupAt = new Date(anchor.getTime() - 8 * 86_400_000);
+      const target = await watch(`minute-${sample.audience}`, true, setupAt);
+      await db.database.insert(schema.children).values({
+        familyId: target.familyId,
+        name: 'Maya',
+        dateOfBirth: '2022-05-01',
+      });
+      const source = registrationSourceFixture({
+        municipality: 'burlington',
+        programDomain: 'swim',
+        cycleLabel: 'Fall 2026 swimming lessons',
+        sourceUrl: url,
+        residentOpenAt: new Date('2026-08-22T13:00:00Z'),
+        openAt: new Date('2026-08-28T13:00:00Z'),
+      });
+      await db.database
+        .update(schema.families)
+        .set({ areaCoarse: sample.area })
+        .where(eq(schema.families.id, target.familyId));
+      await db.database
+        .update(schema.registrationSequences)
+        .set({
+          sourceContext: source,
+          courseUrl: url,
+          courseOpensAt: anchor,
+          lastReadAt: setupAt,
+          lastReading: {
+            status: 'verified',
+            reader: 'ai',
+            sourceUrl: url,
+            timeZone: 'America/Toronto',
+            checkedAt: setupAt.toISOString(),
+            dates: [
+              {
+                kind: sample.kind,
+                date: '2026-11-26',
+                time: '12:00',
+                evidence: ['deliberately stale test observation'],
+              },
+            ],
+          },
+        })
+        .where(eq(schema.registrationSequences.id, target.sequenceId));
+      let fetches = 0;
+      let extractions = 0;
+      const fetchBody = createRegistrationPageBytesFetch();
+      const ports = {
+        fetchBody: async (sourceUrl: string) => {
+          expect(sourceUrl).toBe(url);
+          fetches++;
+          return fetchBody(sourceUrl);
+        },
+        extract: async (cycle: CycleIdentity, text: string) => {
+          extractions++;
+          return extractPublishedWindow(cycle, text, { client: pipelineClient() });
+        },
+      };
+      const sequence = (await loadLiveSequences(db.database, target.sequenceId))[0]!;
+      const initial = await registrationReaderModule.createRegistrationReader(ports)(
+        registrationTargetFor(sequence),
+        setupAt,
+      );
+      expect(initial).toMatchObject({
+        status: 'verified',
+        dates: expect.arrayContaining([
+          expect.objectContaining({ kind: sample.kind, date: sample.date, time: '09:00' }),
+        ]),
+      });
+      const h = harness(initial, target);
+      const deliveries: Array<{ body: string; fetches: number; extractions: number }> = [];
+      h.deps.transport = {
+        send: async (message) => {
+          deliveries.push({ body: message.body, fetches, extractions });
+          return h.transport.send(message);
+        },
+      };
+      const tick = async (now: Date) => {
+        // Like production default deps, each cron invocation owns a fresh reader/cache.
+        h.deps.live.readForSend = registrationReaderModule.createRegistrationReader(ports);
+        const result = await runRegistrationSequenceCron(db.database, h.deps, now);
+        const saved = await row(target.sequenceId);
+        console.info(
+          JSON.stringify({
+            kind: 'live-minute-tick',
+            audience: sample.audience,
+            now,
+            result,
+            fetches,
+            extractions,
+            anchor: saved.courseOpensAt,
+            pausedAt: saved.pausedAt,
+            pendingChange: saved.pendingChange,
+            lastReading: saved.lastReading,
+          }),
+        );
+        expect(result.failed).toBe(0);
+        return result;
+      };
+      const windows = openLegWindows(anchor, 'America/Toronto');
+      expect((await tick(windows.battle_plan.from)).sent).toBe(1);
+      const beforeGo = { fetches, extractions };
+      await tick(new Date(windows.go.from.getTime() - 60_000));
+      expect(h.transport.sent).toHaveLength(1);
+      expect({ fetches, extractions }).toEqual(beforeGo);
+      expect(windows.go.from.toISOString()).toBe(`${sample.date}T12:45:00.000Z`);
+      expect((await tick(windows.go.from)).sent).toBe(1);
+      expect(h.transport.sent).toHaveLength(2);
+      expect(deliveries[1]).toMatchObject({
+        fetches: beforeGo.fetches + 1,
+        extractions: beforeGo.extractions + 1,
+      });
+      const body = h.transport.bodies()[1]!;
+      expect(body).toContain(`${sample.date} at 09:00 America/Toronto`);
+      expect(body).toContain(url);
+      expect(body).not.toMatch(/2026-11-26|12:00|paused|unconfirmed/);
+      const saved = await row(target.sequenceId);
+      expect(saved.pausedAt).toBeNull();
+      expect(saved.lastReading).toMatchObject({
+        status: 'verified',
+        checkedAt: windows.go.from.toISOString(),
+      });
+      const afterGo = { fetches, extractions };
+      expect((await tick(windows.go.from)).deduped).toBe(1);
+      await tick(anchor);
+      expect(h.transport.sent).toHaveLength(2);
+      expect({ fetches, extractions }).toEqual(afterGo);
+      console.info(
+        JSON.stringify({
+          kind: 'live-minute-eval',
+          audience: sample.audience,
+          sourceUrl: url,
+          simulatedTick: windows.go.from,
+          reading: saved.lastReading,
+          fetches,
+          extractions,
+          deliveries,
+          duplicateAndLateTicksSentNothing: true,
+        }),
+      );
+    },
+    180_000,
+  );
+
+  it('keeps both the explicitly classified and unlabelled page openings for Coach', async () => {
+    const target = await watch('mixed-eligibility');
+    const reading = page(target.url, '2026-10-18');
+    if (reading.status !== 'verified') throw new Error('expected verified fixture');
+    reading.dates.push({
+      kind: 'unclassified_open',
+      date: '2026-10-17',
+      time: null,
+      evidence: ['Earlier opening, eligibility unstated'],
+    });
+    vi.spyOn(registrationReaderModule, 'createRegistrationReader').mockReturnValue(
+      async () => reading,
+    );
+    const context = await productionChannelCoachPorts(db.database).readRegistrationWatch(
+      target.familyId,
+      target.sequenceId,
+      NOW,
+    );
+    expect(context).toMatchObject({
+      generalOpens: '2026-10-18 at 09:00 America/New_York',
+      opensFor: '2026-10-18 at 09:00 America/New_York',
+      unclassifiedOpens: '2026-10-17 (opening time not published) America/New_York',
+      minuteReminderAvailable: true,
+    });
+  });
+  it('a real reader result keeps an unlabelled opening out of the family schedule', async () => {
+    const target = await watch('unlabelled-reader');
+    const actualReader = registrationReaderModule.createRegistrationReader;
+    const text = 'Toronto. Winter registration begins November 10, 2026 at 09:00.';
+    vi.spyOn(registrationReaderModule, 'createRegistrationReader').mockImplementation(() =>
+      actualReader({
+        fetchBody: async () => text,
+        extract: async () => ({
+          found: true,
+          reason: null,
+          cycleOnPage: 'Winter',
+          yearEvidence: '2026',
+          preview: null,
+          residentOpen: null,
+          generalOpen: { date: '2026-11-10', time: '09:00' },
+          evidence: text,
+          confidence: 0.95,
+          timeZone: 'America/Toronto',
+          timeZoneEvidence: 'Toronto.',
+        }),
+      }),
+    );
+    const context = await productionChannelCoachPorts(db.database).readRegistrationWatch(
+      target.familyId,
+      target.sequenceId,
+      NOW,
+    );
+    expect(context).toMatchObject({
+      generalOpens: null,
+      residentOpens: null,
+      unclassifiedOpens: '2026-11-10 at 09:00 America/Toronto',
+      reminderState: 'paused',
+      minuteReminderAvailable: false,
+    });
+    expect(context?.opensFor).toContain('eligibility unconfirmed');
+    expect((await row(target.sequenceId)).courseOpensAt?.toISOString()).toBe(
+      '2026-10-20T13:00:00.000Z',
+    );
+  });
   it('exposes the verified page date to Coach but pauses reminders when eligibility is unknown', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const target = await watch('coach-unknown-eligibility');

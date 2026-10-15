@@ -48,6 +48,49 @@ function variant(overrides: Record<string, unknown>): string {
 }
 
 describe('shared live registration reading', () => {
+  it('preserves an unclassified date without granting public eligibility', () => {
+    expect(
+      extraction({
+        ...EXTRACTED,
+        preview: null,
+        generalOpen: null,
+        unclassifiedOpen: EXTRACTED.generalOpen,
+      }),
+    ).toMatchObject({
+      status: 'verified',
+      dates: [{ kind: 'unclassified_open', date: '2026-08-11', time: '06:30' }],
+    });
+  });
+  it('downgrades a model-mislabelled single date even outside known portal towns', () => {
+    const result = extraction({ ...EXTRACTED, preview: null });
+    expect(result).toMatchObject({
+      status: 'verified',
+      dates: [{ kind: 'unclassified_open' }],
+    });
+  });
+  it('does not weaken date, year or time evidence for unclassified openings', () => {
+    for (const unclassifiedOpen of [
+      { date: '2027-08-11', time: '06:30' },
+      { date: '2026-08-12', time: '06:30' },
+      { date: '2026-08-11', time: '18:30' },
+    ]) {
+      expect(
+        extraction({ ...EXTRACTED, preview: null, generalOpen: null, unclassifiedOpen }),
+      ).toMatchObject({ status: 'unverified', reason: 'uncorroborated' });
+    }
+  });
+  it.each(['Public registration', 'Non-resident registration', 'Registration for non-residents'])(
+    'keeps an explicitly labelled opening classified: %s',
+    (label) => {
+      const page = `Fall 2026. ${label} opens August 11 at 06:30.`;
+      expect(
+        normalizeExtractedRegistration(
+          { ok: true, extracted: { ...EXTRACTED, preview: null, evidence: page }, pageText: page },
+          SOURCE,
+        ),
+      ).toMatchObject({ status: 'verified', dates: [{ kind: 'general_open' }] });
+    },
+  );
   it('accepts a unique weekday year but rejects a weekday mismatch and month/day-only guess', () => {
     const source = { ...SOURCE, checkedAt: new Date('2026-10-10T12:00:00Z') };
     const page = 'Registration opens Tuesday, October 20 at 09:00.';
@@ -111,7 +154,12 @@ describe('shared live registration reading', () => {
       status: 'verified',
       dates: [
         { kind: 'preview', date: '2026-08-03', time: null, evidence: [PAGE, 'Fall 2026'] },
-        { kind: 'general_open', date: '2026-08-11', time: '06:30', evidence: [PAGE, 'Fall 2026'] },
+        {
+          kind: 'unclassified_open',
+          date: '2026-08-11',
+          time: '06:30',
+          evidence: [PAGE, 'Fall 2026'],
+        },
       ],
     });
   });

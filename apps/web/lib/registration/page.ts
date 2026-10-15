@@ -63,7 +63,9 @@ export function registrationPageUrl(raw: string): string {
 
 /** Validate inside socket lookup, not before an unpinned fetch (DNS rebinding).
  * No credentials, redirects, cookies or unbounded response buffering. */
-export function createRegistrationPageFetch(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
+export function createRegistrationPageBytesFetch(
+  timeoutMs = PAGE_FETCH_TIMEOUT_MS,
+): (url: string) => Promise<Buffer> {
   return (raw) =>
     new Promise((resolve, reject) => {
       const url = registrationPageUrl(raw);
@@ -102,7 +104,7 @@ export function createRegistrationPageFetch(timeoutMs = PAGE_FETCH_TIMEOUT_MS): 
           if (size > MAX_PAGE_BYTES) response.destroy(new Error('registration page: size refusal'));
           else chunks.push(chunk);
         });
-        response.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        response.on('end', () => resolve(Buffer.concat(chunks)));
         response.on('error', reject);
       });
       const timer = setTimeout(
@@ -113,4 +115,10 @@ export function createRegistrationPageFetch(timeoutMs = PAGE_FETCH_TIMEOUT_MS): 
       req.on('error', reject);
       req.end();
     });
+}
+
+/** Keep existing HTML consumers on their string contract. */
+export function createRegistrationPageFetch(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
+  const fetchBytes = createRegistrationPageBytesFetch(timeoutMs);
+  return async (url) => (await fetchBytes(url)).toString('utf8');
 }

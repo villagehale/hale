@@ -67,6 +67,8 @@ export interface ExtractedWindow {
   preview: PublishedDate | null;
   residentOpen: PublishedDate | null;
   generalOpen: PublishedDate | null;
+  /** A published opening whose resident/non-resident applicability is not stated. */
+  unclassifiedOpen?: PublishedDate | null;
   evidence: string | null;
   confidence: number;
   timeZone?: string | null;
@@ -183,7 +185,12 @@ export function corroborationFailure(
   if (!page.includes(normalize(yearEvidence))) return 'uncorroborated';
 
   const statedYears = yearsIn(yearEvidence);
-  for (const published of [extracted.preview, extracted.residentOpen, extracted.generalOpen]) {
+  for (const published of [
+    extracted.preview,
+    extracted.residentOpen,
+    extracted.generalOpen,
+    extracted.unclassifiedOpen,
+  ]) {
     if (
       published &&
       !statedYears.has(published.date.slice(0, 4)) &&
@@ -339,7 +346,7 @@ export function withoutInferredEvidence(
 
 // ── the model read ───────────────────────────────────────────────────────────
 
-const publishedDateSchema = z.object({
+const publishedDateSchema = z.strictObject({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z
     .string()
@@ -359,7 +366,7 @@ const nullableWindowDate = z.preprocess(
   publishedDateSchema.nullable(),
 );
 
-const extractionSchema = z.object({
+const extractionSchema = z.strictObject({
   found: z.boolean(),
   reason: z
     .enum(['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published'])
@@ -369,6 +376,7 @@ const extractionSchema = z.object({
   preview: nullableWindowDate,
   resident_open: nullableWindowDate,
   general_open: nullableWindowDate,
+  unclassified_open: nullableWindowDate.optional(),
   evidence: z.string().nullable(),
   confidence: z.number().min(0).max(1),
   time_zone: z.string().nullable().optional(),
@@ -379,11 +387,17 @@ const extractionSchema = z.object({
  * validates what comes back — the same split the civic hours parser uses. */
 export const EXTRACTION_JSON_SCHEMA = {
   type: 'object',
+  additionalProperties: false,
   properties: {
     found: { type: 'boolean' },
     reason: {
-      type: ['string', 'null'],
-      enum: ['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published', null],
+      anyOf: [
+        {
+          type: 'string',
+          enum: ['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published'],
+        },
+        { type: 'null' },
+      ],
     },
     cycle_on_page: { type: ['string', 'null'] },
     year_evidence: {
@@ -393,11 +407,15 @@ export const EXTRACTION_JSON_SCHEMA = {
     preview: { $ref: '#/$defs/publishedDate' },
     resident_open: { $ref: '#/$defs/publishedDate' },
     general_open: { $ref: '#/$defs/publishedDate' },
+    unclassified_open: {
+      $ref: '#/$defs/publishedDate',
+      description: 'Published opening with unstated eligibility; never infer public access.',
+    },
     evidence: {
       type: ['string', 'null'],
       description: 'Verbatim page text the dates were read from.',
     },
-    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    confidence: { type: 'number', description: 'Confidence from 0 to 1; range validated locally.' },
     time_zone: {
       type: ['string', 'null'],
       description:
@@ -416,6 +434,7 @@ export const EXTRACTION_JSON_SCHEMA = {
     'preview',
     'resident_open',
     'general_open',
+    'unclassified_open',
     'evidence',
     'confidence',
     'time_zone',
@@ -424,6 +443,7 @@ export const EXTRACTION_JSON_SCHEMA = {
   $defs: {
     publishedDate: {
       type: ['object', 'null'],
+      additionalProperties: false,
       properties: {
         date: { type: 'string', description: 'YYYY-MM-DD' },
         time: {
@@ -478,6 +498,7 @@ export function toExtractedWindow(value: z.infer<typeof extractionSchema>): Extr
     preview: value.preview,
     residentOpen: value.resident_open,
     generalOpen: value.general_open,
+    ...(value.unclassified_open !== undefined ? { unclassifiedOpen: value.unclassified_open } : {}),
     evidence: value.evidence,
     confidence: value.confidence,
     ...(value.time_zone !== undefined
@@ -509,6 +530,7 @@ export async function extractPublishedWindow(
     inputJsonSchema: EXTRACTION_JSON_SCHEMA,
     schema: extractionSchema,
     maxTokens: MAX_TOKENS,
+    strictTool: true,
   });
   return toExtractedWindow(value);
 }

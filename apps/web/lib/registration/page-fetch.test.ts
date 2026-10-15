@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { RequestOptions } from 'node:https';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_PAGE_BYTES } from './fetch';
-import { createRegistrationPageFetch } from './page';
+import { createRegistrationPageBytesFetch, createRegistrationPageFetch } from './page';
 
 const network = vi.hoisted(() => ({ request: vi.fn(), lookup: vi.fn() }));
 vi.mock('node:https', () => ({ request: network.request }));
@@ -41,6 +41,17 @@ function response(status = 200, length?: string) {
 }
 
 describe('registration HTTPS fetch wiring', () => {
+  it('preserves non-UTF-8 PDF bytes for the registration reader', async () => {
+    const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0xff, 0x80, 0x00]);
+    const pending = createRegistrationPageBytesFetch()('https://example.org/download/123');
+    const res = response();
+    respond(res);
+    res.emit('data', bytes.subarray(0, 4));
+    res.emit('data', bytes.subarray(4));
+    res.emit('end');
+    req.emit('close');
+    expect(await pending).toEqual(bytes);
+  });
   it('validates all DNS answers inside the socket lookup and pins a public address', async () => {
     network.lookup.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
     const pending = createRegistrationPageFetch()('https://example.org/course');

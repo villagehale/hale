@@ -54,21 +54,28 @@ report it as this one.
 
 ## Which date is which
 
-Municipalities publish up to three moments. Fill only the ones this page states
+Fill only the registration moments this page states
 for this cycle; leave the rest null.
 
 - **preview** — when programs become browsable / the guide goes online. Words
   like "preview starting", "program viewable online", "eGuide available",
   "view programs".
-- **resident_open** — when residents/taxpayers may register, where the town runs
-  a head start. In a table this is the column headed "resident".
-- **general_open** — when anyone may register. In a table, the "non-resident"
-  column. On a page with no resident/non-resident split at all, the single
-  published registration moment is `general_open` and `resident_open` is null.
+- **resident_open** — an opening explicitly labelled for residents/taxpayers
+  in its sentence or table column. Never infer a resident label from an earlier
+  date, a later non-resident opening, or a non-resident delay rule.
+- **general_open** — an explicitly labelled public/general/non-resident opening.
+  In a table, the "non-resident" column. Missing resident information is NOT
+  evidence of public access.
+- **unclassified_open** — a published registration date/time whose applicability
+  is unstated. Classify EACH opening by the label attached to that date. An
+  unlabelled opening goes here even when another opening on the same page is
+  explicitly labelled non-resident. The other date's label does not apply to it.
+  The date is still found and can be quoted; do not infer "for everyone" or equal access.
 
-Some towns print only the resident date and state the non-resident rule as prose
-("non-residents may register 10 days later"). Do NOT do that arithmetic. Report
-the printed resident date and leave `general_open` null.
+When the page states a non-resident delay as prose ("non-residents may register
+10 days later"), do NOT do that arithmetic or infer the earlier opening is
+resident-only. Report the printed opening with only its own explicit label;
+if unlabelled, use `unclassified_open`. Leave an unprinted non-resident date null.
 
 ## Output
 
@@ -89,7 +96,8 @@ Answer with a SINGLE JSON object and nothing else — no prose, no code fence.
   "year_evidence": "2026 Fall Programs, Swim Lessons and Winter Break Camps",
   "preview":       { "date": "2026-08-03", "time": null },
   "resident_open": null,
-  "general_open":  { "date": "2026-08-11", "time": "06:30" },
+  "general_open": null,
+  "unclassified_open": { "date": "2026-08-11", "time": "06:30" },
   "evidence": "Register starting Aug. 11 at 6:30 AM",
   "confidence": 0.95,
   "time_zone": null,
@@ -119,8 +127,12 @@ The verbatim run of text from the page that supplies the YEAR for these dates �
 usually the heading or table caption the dates sit under. It must contain a
 four-digit year and must appear in the page text character-for-character. Null
 only when `found` is false.
+Cover the calendar year of EVERY returned date, not just the course/session year.
+For cross-year cycles, quote the registration paragraph with its printed year:
+"Winter 2027" alone cannot back November/December 2026 registration dates.
+Extend the verbatim quote to include that printed registration year; never infer it.
 
-### preview, resident_open, general_open
+### preview, resident_open, general_open, unclassified_open
 Either null, or an object:
 - `date` — `YYYY-MM-DD`. The year comes from `year_evidence`, never from
   anywhere else.

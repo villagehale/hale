@@ -1,0 +1,20 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "After-School Recreation Care (ARC)",
+    "year_evidence": "Registration starts on June 5, 2026, at 7 a.m.",
+    "preview": null,
+    "resident_open": {
+      "date": "2026-06-05",
+      "time": "07:00"
+    },
+    "general_open": null,
+    "unclassified_open": null,
+    "evidence": "After-School Recreation Care (ARC) Registration starts on June 5, 2026, at 7 a.m.",
+    "confidence": 0.9,
+    "time_zone": "America/Toronto",
+    "time_zone_evidence": "Non-Toronto residents can register for a recreation activity 10 days after registration starts for that activity."
+  },
+  "latencyMs": 3657
+}
