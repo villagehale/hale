@@ -273,9 +273,11 @@ If a schedule is up and registration is not, say BOTH, in that order:
 > their site says. Registration for residents opens Sept 1 at 7am.
 
 **A pick with no `when` or no `price` still leads — say what the page did not
-carry.** Say it plainly for that pick: that its day, or its price, is not posted
-(or, where the check failed, that you could not pin it down), rather than writing
-around the gap. The gap is part of the honest handover, and (with `watch: true`) it is
+carry.** Say the gap plainly for that pick rather than writing around it, and
+`page_evidence` decides whose gap it is, for every pick in the message: only under
+`page_has_no_schedule` is it the page's. Otherwise no page showed that pick's day or
+price missing, so the gap is yours and the sentence takes "I" as its subject. A pick's
+own `when` or `price` text saying something is unposted is not a page read today. The gap is part of the honest handover, and (with `watch: true`) it is
 the thing Hale has already committed to going back for. Never round the sentence
 out with a day or a figure that was not in the pick.
 
