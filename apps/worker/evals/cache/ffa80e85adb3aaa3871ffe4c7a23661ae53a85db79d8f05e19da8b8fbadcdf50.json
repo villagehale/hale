@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot matches the page exactly: age band, days, times and session dates are as printed, and it is cited to the program page. Price is null, which is correct because the program page prints no fee and the rental figures ($185, $95) were not borrowed. No registration date is printed, so a null registration is correct. The message leads with the program by name, attributes the facts to their site, and frames the missing price as Hale's gap in the first person ('I could not pin down the price') rather than 'not posted', which fits page_has_schedule. Watch is true, so 'I'll keep watching and text you' is a real commitment. It is plain ASCII with no link and no question. Minor nit: the page directs people to the front desk or reception for fees, and the message could have passed that on, but this is not a fault under the rubric.",
+    "score": 5
+  }
+}

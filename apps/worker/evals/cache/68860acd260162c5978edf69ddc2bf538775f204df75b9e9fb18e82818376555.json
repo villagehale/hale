@@ -1,0 +1,25 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM), 212 West 83rd Street",
+        "age_fit": "children ages 0-6",
+        "when": "10 am-5 pm, Tuesday-Sunday on their plan-your-visit page. Their FAQ lists Monday-Sunday for July-September, so check before going on a Monday.",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo with the Tisch Children's Zoo, East 64th Street and 5th Avenue",
+        "age_fit": "admission includes the Tisch Children's Zoo",
+        "when": "Opens 10 am daily. April-October it closes at 5 pm Monday-Friday and 5:30 pm on weekends. Last entry is 1 hour before closing.",
+        "source_name": "Central Park Zoo"
+      },
+      {
+        "name": "Bronx Zoo, Children's Zoo, 2300 Southern Blvd, Bronx",
+        "age_fit": "Children's Zoo is included in Bronx Zoo admission",
+        "when": "Opens 10 am. April 2-October 31, 2026 hours: closes 5 pm Monday-Friday and 5:30 pm on weekends. Children's Zoo is seasonal and weather permitting.",
+        "source_name": "Bronx Zoo"
+      }
+    ]
+  },
+  "latencyMs": 7221
+}

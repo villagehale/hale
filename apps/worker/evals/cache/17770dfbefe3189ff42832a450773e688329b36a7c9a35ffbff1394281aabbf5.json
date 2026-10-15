@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, the Saturday times, and Sept 12 to Nov 28. Price is correctly null because the page prints no fee and points to the Recreation Guide. Registration (Tue Aug 11, 7 a.m.) is carried in both slots and the message, and each slot cites the Oakville page. The message leads with the named programs and attributes them (\"their site says\"). The price gap is phrased in the first person (\"I could not pin down the price\"), which is right for page_has_schedule. Since watch=true, \"I'll keep watching and text you\" reflects a real continuation. It is plain ASCII with no link and no question. Minor omissions are the resident qualifier and the Aug 4 browse date, which are not material.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are accurate and properly cited. The Tiny Gym age band and Term 1/2 dates (Sept 14-Nov 1, Nov 2-Dec 20, 2026) match the PDF. The July 22, 2026 8:00am registration matches the home page. Price is honestly null, since the site says pricing is only behind the login. The garbled PDF grid is acknowledged rather than guessed at. The message leads with Tiny Gym by name and attributes facts with 'their site says'. It carries the registration date, is plain ASCII with no link and no question. It uses correct first-person 'I could not pin down' under page_has_schedule and a valid first-person watch commitment (watch=true). One gap: the Rock n' Roll with Miss Kelly slot (0+, a fitting find) was dropped from the message entirely, which is mild withholding.",
+    "score": 4
+  }
+}

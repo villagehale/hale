@@ -203,5 +203,125 @@
       },
       "diagnostics": null
     }
+  },
+  "3db59b88b813c8a74bb91ff04a78ecbd2de2737a2def18407baa35f97d6150e9": {
+    "key": "3db59b88b813c8a74bb91ff04a78ecbd2de2737a2def18407baa35f97d6150e9",
+    "recordedAt": "2026-10-15T04:25:23.994Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre's Parent and Tot 1, 2, 3 runs Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons - Town of Halton Hills' site says. Registration opens Tuesday, September 1."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3PSdu8vYun81wHZnKzk",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":false,\"reason\":\"The message gives the day, time, dates, price and registration opening date, citing the Town's site. It never says the venue has not posted or listed any detail.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 447,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 64,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
+  },
+  "44074e1ebc6bb478a4823a0a630b79d90528fb871bb117c3d45f85bf6bc2d67d": {
+    "key": "44074e1ebc6bb478a4823a0a630b79d90528fb871bb117c3d45f85bf6bc2d67d",
+    "recordedAt": "2026-10-15T04:25:36.628Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre has Parent and Tot 1, 2 and 3 swim for 4 months to 3 years - Town of Halton Hills site says registration opens Tuesday, Sept 1. I could not pin down the day or the price, so I'll keep watching and text you when I have them."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3PTafwSfCwGwCvR44U5",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":false,\"reason\":\"The message only says the assistant itself could not pin down the day or price and will keep watching. It does not state that the venue or the Town site has not posted, published or listed those details.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 445,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 70,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
+  },
+  "5e4eb309d90220682a70c624801712bce1818d97436d6408d512faa4d203d7c3": {
+    "key": "5e4eb309d90220682a70c624801712bce1818d97436d6408d512faa4d203d7c3",
+    "recordedAt": "2026-10-15T04:25:48.386Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre runs Parent and Tot swim 1, 2 and 3 for 4 months to 3 years - Town of Halton Hills' site says, though no days, times or prices are posted yet. Registration opens Tuesday, Sept 1. I'll keep watching and text you when the schedule goes up."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg3PUSzMLq2Zx3xZaZgLF",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":true,\"reason\":\"The message states that the Town of Halton Hills' site lists the programs but \\\"no days, times or prices are posted yet,\\\" which says the venue/source has not posted those schedule details, rather than just the assistant being unable to find them.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 454,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 90,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "diagnostics": null
+    }
   }
 }
