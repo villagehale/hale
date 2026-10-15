@@ -4947,6 +4947,9 @@ describe('the reply row, written to a real database', () => {
 
     beforeAll(async () => {
       db = await createTestDb('0163_drop_retired_auth_tables.sql');
+      // 0167 stays unapplied. The reply path now reads inbound media, which
+      // arrives in 0173, so that column is present without the pending-ask table.
+      await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
     });
 
     afterAll(async () => {

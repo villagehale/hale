@@ -59,17 +59,13 @@ describe('forwardViolations', () => {
     ).toEqual([]);
   });
 
-  it('refuses characters that halve the SMS budget', () => {
-    expect(forwardViolations('It keeps the week straight — quietly').join(' ')).toMatch(
-      /doubles the cost to send/,
-    );
+  it('keeps an em dash; another script is not a reason to hold the line', () => {
+    expect(forwardViolations('It keeps the week straight — quietly')).toEqual([]);
   });
 
   it('refuses a line too long to leave the link room beside it', () => {
     const long = `${'a'.repeat(MAX_FORWARD_CHARS + 1)}`;
-    expect(forwardViolations(long).join(' ')).toMatch(
-      new RegExp(`at most ${MAX_FORWARD_CHARS}`),
-    );
+    expect(forwardViolations(long).join(' ')).toMatch(new RegExp(`at most ${MAX_FORWARD_CHARS}`));
   });
 });
 
@@ -117,7 +113,10 @@ describe('shareReferralLinkTool', () => {
     const { shared, tool } = build();
 
     await expect(
-      tool.handler({ forward: 'Referral links live in your account settings in the app.' }, {} as never),
+      tool.handler(
+        { forward: 'Referral links live in your account settings in the app.' },
+        {} as never,
+      ),
     ).rejects.toThrow(/Call share_referral_link again/);
     expect(shared).toEqual([]);
   });
