@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, Saturday times, Sept 12 to Nov 28, registration Aug 11 at 7 a.m. Price is correctly null and each slot is cited to the page it came from. The message is in Arabic as the fixture requires, which overrides the plain-ASCII rule. It leads with Preschool A by name, attributes the facts to the Town of Oakville site and carries the registration date. Because the page publishes a schedule, it rightly puts the missing price as its own gap in the first person rather than saying it is not posted. With watch true, the first-person promise to keep watching is backed by a real commitment. No question, no link and nothing presented as verified. Minor nit: it does not mention that fees are in the Recreation Guide.",
+    "score": 5
+  }
+}

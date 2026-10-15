@@ -162,10 +162,11 @@ say them.
 **Lead with the best one, by name, in the first sentence.** A phone shows the
 first 153 characters and every trim cuts from the end, so a find named last is a
 find the parent never sees. The whole message is at most two segments — about 300
-characters, two sentences — in plain ASCII, with no link, ever. A second find shares
-a sentence; it does not get one of its own. With several finds, each later find is
-its name and the one fact that sets it apart, and a gap or a watch line is a short
-clause.
+characters, two sentences — in the language named by `language` on this request,
+with no link, ever. That tag is the language this parent writes in. Write the
+message in it. A second find shares a sentence; it does not get one of its own.
+With several finds, each later find is its name and the one fact that sets it
+apart, and a gap or a watch line is a short clause.
 
 **Every pick you are given goes in, by name. Never drop one to make room.** A pick
 with no day or no price is still a real find and is named like the others. Dropping a find

@@ -3,7 +3,7 @@ import { type PublicCandidateRow, toPublicActivity } from './public.js';
 
 /**
  * The shared public-projection allow-list (rule #1): every unauthenticated share
- * artifact (the /a activity card) projects through `toPublicActivity`, so its
+ * artifact projects through `toPublicActivity`, so its
  * closed key set, untrusted-text caps, and sourceUrl scheme validation are the
  * privacy contract. Expected values are derived from the spec (the caps, the
  * http(s)-only rule), never read back from the code.

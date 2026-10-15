@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot is real and cited to the page it came from. The Tiny Gym age band comes off programs.php. Both term dates are as printed on the schedule PDF, which was opened and cited. The Term 1/Fall registration date (Wednesday July 22, 2026, 8:00am online) is read off the homepage and carried in a slot. Price is correctly left null, since the site says pricing is only behind the registration login, and no figures are borrowed from elsewhere. The slot is honest that the garbled PDF grid could not be matched to weekdays. The message leads with Tiny Gym by name and attributes the facts with 'their site says'. It carries the registration date. Under page_has_schedule it correctly owns the gap in first person ('I could not pin down the day or the price') rather than saying 'not posted'. With watch=true it correctly makes the first-person continuation promise. It is plain ASCII with no link and no question. One small miss: it could have relayed that the site says pricing is only shown at registration login, but this is not a fault.",
+    "score": 5
+  }
+}

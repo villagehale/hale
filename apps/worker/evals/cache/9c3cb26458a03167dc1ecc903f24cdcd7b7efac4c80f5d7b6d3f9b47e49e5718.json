@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real classes on the page, Preschool A and B. Day, times and session dates match the page exactly, and each slot is cited to the page it was read from. Price is correctly null because the page prints no fee, and no figure was borrowed from elsewhere. Both slots carry the registration window (opens Tue Aug 11, 7 a.m.; browsing from Aug 4). The message leads with the named program, attributes the facts with 'their site says', and carries the not-yet-open registration date. The missing price is framed in the first person ('I could not pin down the price'), which is the right form under page_has_schedule. The watch commitment is stated in the first person and is legitimately backed, since watch is true. The text is plain ASCII with no link and no question. A minor nit: the slots do not note that fees live in a Recreation Guide that was not opened, though the notes record that reference.",
+    "score": 5
+  }
+}

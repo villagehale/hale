@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a child's rash, a symptom; symptom outranks provider access",
+    "language": "en"
+  },
+  "latencyMs": 1277
+}

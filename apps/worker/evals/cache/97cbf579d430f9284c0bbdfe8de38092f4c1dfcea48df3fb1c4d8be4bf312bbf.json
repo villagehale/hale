@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The three picks are real, named Oakville venues that fit the preschool stage, each sourced to its own operator. The message leads with the Town of Oakville program by name and attributes its registration date (\"their site says\"). It is plain text with no link and no question. Under no_page_read, \"I couldn't get into their pages today\" is the earned phrasing, and with watch=true the first-person \"I'll keep watching and text you\" is correct. The $32.50 price appears in the picks. It falls short of a 5 for three reasons: the YMCA and Goldfish facts, including the Goldfish price, are stated flatly (\"has\") rather than attributed; the $30 annual membership fee carried in the pick is dropped, which understates the cost; and the Town's 3-5 age range comes from a third-party brochure but is presented under the Town's attribution.",
+    "score": 4
+  }
+}

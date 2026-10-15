@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Strong pass. The slots are real and correctly cited. The Tiny Gym age band (1 and walking to 3, with a caregiver) comes off programs.php. The Term 1 and Term 2 dates (Sept 14-Nov 1, Nov 2-Dec 20, 2026) are exactly as printed in the schedule PDF, which was opened. The registration slot carries 'Wednesday July 22, 2026 8:00am online' cited to the homepage, where it is printed. Price is correctly null: the site says pricing is only behind the registration login, and no figure was borrowed from elsewhere. The garbled PDF grid is honestly flagged as a day/time Hale could not match, rather than a guess. The message leads with Tiny Gym by name, attributes with 'their site says' and carries the registration date. For page_has_schedule it uses the correct first-person gap wording ('I could not pin down the day or price') rather than 'not posted'. With watch TRUE it correctly gives a first-person keep-watching commitment. It asks no question, has no link and is plain ASCII. Minor deductions: (1) the registration slot asserts 'That date has passed', an inference that is not on the page; (2) the message gives only the Term 1 dates and drops Term 2 (Nov 2-Dec 20), a small omission of a find the slot carried.",
+    "score": 4
+  }
+}

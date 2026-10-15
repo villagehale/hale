@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are three real, named Oakville venues, each sourced from the venue itself, and the message leads with the Town's program by name. It is plain text with no link and no question. 'I couldn't get into their pages today' is the correct form under no_page_read. The first-person watch promise is right because watch is true. Weaknesses: 'their site says' covers only the Town; the YMCA and Goldfish facts, including the $32.50 price, are stated flatly rather than attributed. The Goldfish price leaves out the $30 annual membership fee. The Town's 3-5 age range actually came from a third-party copy of its brochure, so it is not purely off the Town's own site. The message also never names the specific gap that the Town's class times sit behind a registration login. These are minor attribution and completeness slips, not invention.",
+    "score": 4
+  }
+}

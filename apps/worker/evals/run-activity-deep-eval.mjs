@@ -149,8 +149,16 @@ const STRICT_DEEP_TOOL_SCHEMA = {
 
 export const FOLLOWUP_TOOL_SCHEMA = {
   type: 'object',
-  properties: { message: { type: 'string' } },
-  required: ['message'],
+  // Mirrors `noteJsonSchema` in followup-note.ts, description included (it is in the key).
+  properties: {
+    message: { type: 'string' },
+    commits_to_return: {
+      type: 'boolean',
+      description:
+        'true when the message tells the parent Hale will come back to them about this (keep watching, check again, text them later), in whatever language it is written; false otherwise.',
+    },
+  },
+  required: ['message', 'commits_to_return'],
 };
 
 export const RESEARCH_TOOLS = [
@@ -229,10 +237,12 @@ function readExtract(raw) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-export function followUpUserMessage(subject, slots, pageEvidence, watch) {
+export function followUpUserMessage(subject, slots, pageEvidence, watch, language = 'en-CA') {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    // `users.locale`, passed through. The composer never sees the parent's words.
+    language,
     ...(slots.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
     watch,
     picks: slots.map((slot) => ({
@@ -472,13 +482,10 @@ function topPickLeads(body, slots) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
-/** Mirrors `statesTheReturn` and `watchWarranted` — see the same in
+/** Mirrors `watchWarranted` — see the same in
  * run-activity-finder-eval.mjs and in the runtime (followup-note.ts, deliver.ts). */
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
-const STATES_RETURN =
-  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
-
 function watchWarranted(slots) {
   const top = slots[0];
   if (!top) return true;
@@ -521,7 +528,7 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-function followUpViolations(body, slots, pageEvidence, watch) {
+function followUpViolations(body, slots, pageEvidence, watch, commitsToReturn) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (LINK_SHAPE.test(body)) {
@@ -557,18 +564,16 @@ function followUpViolations(body, slots, pageEvidence, watch) {
         'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     });
   }
-  if (watch !== STATES_RETURN.test(body)) {
+  if (watch !== commitsToReturn) {
     violations.push({
       tag: watch ? 'silent_watch' : 'unbacked_promise',
       // The EXAMPLE is page-state-aware or the two corrections fight: under
       // `page_has_schedule` the gate above refuses the very sentence this one used to
       // hand the model as the fix.
       reason: watch
-        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "${
-            pageEvidence === 'page_has_schedule'
-              ? "I'll keep watching and text you when I can get to them."
-              : "I'll keep watching and text you when they post."
-          }"`
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
+            pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
+          }.`
         : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
@@ -780,6 +785,7 @@ function brokenExtract(fixture) {
  */
 function brokenFollowUp(watch) {
   return {
+    commits_to_return: !watch,
     message: watch
       ? 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. Their site lists these but no day, time or price on the fall page yet. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest. Want me to check back once they are up?'
       : 'I went and had a proper look through everything on their website this afternoon and there is quite a lot going on for the little ones at the moment across the nearby towns. I confirmed Tiny Tumblers runs Tuesdays and Thursdays - see riverbendcommunity.ca for the rest, and I will keep looking and text you when the fall schedule lands.',
@@ -1020,20 +1026,26 @@ async function main() {
               lane: composerLane,
               system: finderSkill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, inText, pageEvidence, watch),
+                followUpUserMessage(
+                  fixture.subject,
+                  inText,
+                  pageEvidence,
+                  watch,
+                  fixture.language ?? 'en-CA',
+                ),
                 violations,
               ),
               toolName: 'followup_text',
               toolSchema: FOLLOWUP_TOOL_SCHEMA,
               toolDescription: 'Return the one message to send this parent.',
-              maxTokens: 400,
+              maxTokens: 1000,
               cachedOnly,
               getClient,
               cost,
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, pageEvidence, watch);
+      violations = followUpViolations(body, inText, pageEvidence, watch, composed.commits_to_return === true);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }

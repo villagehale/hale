@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child ingested a potentially toxic substance; immediate medical evaluation needed",
+    "language": "en"
+  },
+  "latencyMs": 1367
+}

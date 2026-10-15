@@ -57,7 +57,7 @@ import { defaultActivityFollowUpDeps, resolveFollowUpRecipient } from './sweep';
 
 export type DeepJobOutcome =
   /** Sent. The parent has both messages. */
-  | { status: 'sent'; watch: boolean; shared: boolean }
+  | { status: 'sent'; watch: boolean }
   /** The promise is no longer open — fulfilled by the sweep, superseded, or this job
    * redelivered after its own send. Nothing owed, nothing sent. */
   | { status: 'dropped'; reason: 'not_open' | 'dark' | 'already_sent' }
@@ -228,11 +228,9 @@ export async function runDeepResearchJob(
       recipient,
       dedupeKey,
       optOut: verdict.optOut,
-      // The text carries the best one or two; everything else goes on a page. Slicing
-      // HERE rather than asking the model for a shortlist is what makes "and the rest is
-      // at this link" true — the remainder is a real list, not a claim.
+      // The text carries the best one or two. The rest stay in the chat until the parent asks.
       picks: run.result.slots.slice(0, SLOTS_IN_TEXT),
-      rest: run.result.slots,
+      held: run.result.slots.slice(SLOTS_IN_TEXT),
       // READ OFF THE PAGES BY THE LANE (deep-lane.ts), not recomputed here from counts:
       // a second reader of "may Hale report an absence" is a second answer waiting to
       // disagree with the first.
@@ -251,7 +249,7 @@ export async function runDeepResearchJob(
       reason: outcome.reason === 'not_configured' ? 'deferred' : 'unsendable',
     };
   }
-  return { status: 'sent', watch: outcome.watch, shared: outcome.shared };
+  return { status: 'sent', watch: outcome.watch };
 }
 
 /**

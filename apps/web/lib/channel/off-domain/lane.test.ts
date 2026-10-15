@@ -65,7 +65,13 @@ const MEDICAL_ANSWER =
   'A fever like this is often viral at this age; fluids and rest usually help. Call 811 any time, or go to the ER / call 911 if she has trouble breathing.';
 
 function reading(overrides: Partial<LaneReading> = {}): LaneReading {
-  return { lane: 'off_domain_general', category: 'weather', fallback: null, ...overrides };
+  return {
+    lane: 'off_domain_general',
+    category: 'weather',
+    fallback: null,
+    language: null,
+    ...overrides,
+  };
 }
 
 interface Recorded {
@@ -604,7 +610,7 @@ describe('the medical stamp is set on the medical branch and nowhere else', () =
 
 describe('in-domain is the fall-through', () => {
   it('hands the turn on without composing, recording, or querying anything', async () => {
-    const p = ports({ read: { lane: 'in_domain', category: null, fallback: null } });
+    const p = ports({ read: { lane: 'in_domain', category: null, fallback: null, language: null } });
 
     const verdict = await consider(p);
 
@@ -621,9 +627,25 @@ describe('in-domain is the fall-through', () => {
     'model_failed',
     'unreadable',
   ] as LaneScreenFallback[])('carries the %s fallback out', async (fallback) => {
-    const p = ports({ read: { lane: 'in_domain', category: null, fallback } });
+    const p = ports({ read: { lane: 'in_domain', category: null, fallback, language: null } });
 
     expect(await consider(p)).toEqual({ status: 'in_domain', fallback });
+  });
+
+  it('carries a language tag onto the verdict and leaves the key off when there is none', async () => {
+    const tagged = await consider(
+      ports({ read: reading({ lane: 'in_domain', category: null, language: 'zh' }) }),
+    );
+    expect(tagged).toEqual({ status: 'in_domain', fallback: null, language: 'zh' });
+
+    const bare = await consider(
+      ports({ read: reading({ lane: 'in_domain', category: null, language: null }) }),
+    );
+    expect(bare).toEqual({ status: 'in_domain', fallback: null });
+    expect(bare).not.toHaveProperty('language');
+
+    const deflected = await consider(ports({ read: reading({ language: 'ar' }) }));
+    expect(deflected).toMatchObject({ status: 'deflected', language: 'ar' });
   });
 });
 
@@ -1589,7 +1611,7 @@ describe('the screen reads a reply to an open question first', () => {
       const p = ports({
         pending: PENDING,
         continued: { status: 'composed', reply: 'Sunny in Toronto.', search: 'searched' },
-        read: { lane: 'in_domain', category: null, fallback },
+        read: { lane: 'in_domain', category: null, fallback, language: null },
       });
 
       const verdict = await consider(p, 'Toronto');

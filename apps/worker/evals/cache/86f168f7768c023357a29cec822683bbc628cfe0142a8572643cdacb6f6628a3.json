@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the place the parent asked about, Cartwheels Gym Centre's Tiny Gym, by name, and attributes the registration date (\"their site says\"). Both picks are real, specific venues in Georgetown that fit the toddler stage, each sourced from its own site. There are only two picks. The text is plain, with no link and no question. Under watch=true, \"I'll keep watching and text you\" is a correct first-person commitment. Under no_page_read, \"I could not get into either page today, so no day or price yet\" is the earned form of the gap, and no day, time or price is invented. The second gym is named as a separate venue rather than passed off as Cartwheels. Its age band and length are stated flatly, though, with no \"listed as\" attribution. That leaves the second pick reading as fact rather than as a reported web find, so the score is slightly short of a 5.",
+    "score": 4
+  }
+}

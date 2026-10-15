@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent wants an indoor activity plan for Saturday because of rain, which is family weekend planning Hale does",
+    "language": "en"
+  },
+  "latencyMs": 5215
+}

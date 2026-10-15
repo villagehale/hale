@@ -32,9 +32,14 @@ Return strict JSON matching this shape (via the forced `lane` tool):
 {
   "lane": "in_domain" | "off_domain_general" | "safety_critical" | "provider_access",
   "category": string,   // one value from the closed list below
-  "reason": string      // one short phrase — what in the text decided it
+  "reason": string,     // one short phrase — what in the text decided it
+  "language": string    // BCP-47 tag of the language this message is written in
 }
 ```
+
+`language` is the BCP-47 tag of the language this message is written in, as you
+judge it. Return that tag. There is no allowed list. Do not translate the
+message, and do not copy the parent's words into this field.
 
 `category` must be one of these exact strings and NOTHING else. It is stored as
 a demand signal — a count of what parents keep asking Hale for — so it is a

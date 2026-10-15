@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The one pick is a real, specific, named venue in Montreal, the Montréal Science Centre at the Old Port. It is something a family can turn up to, not a term or a session, and it is sourced to the venue's own page. The when field quotes the venue's published regular hours and openly says holiday hours for this year couldn't be confirmed, so nothing is invented. A null price is correct. Excluding the Biodôme and Insectarium because their only hours came from aggregators is the right discipline. The weakness is coverage: only one pick, and its availability in the exact Dec 27–30 window is unconfirmed. The City of Montréal's own holiday page saying the Biodôme and Insectarium are open was a municipal source that could arguably have supported a second pick. Nothing is wrong, but the result is thin and not fully confirmed for the dates.",
+    "score": 4
+  }
+}

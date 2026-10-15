@@ -131,8 +131,16 @@ const PICKS_TOOL_SCHEMA = {
 
 const FOLLOWUP_TOOL_SCHEMA = {
   type: 'object',
-  properties: { message: { type: 'string' } },
-  required: ['message'],
+  // Mirrors `noteJsonSchema` in followup-note.ts, description included (it is in the key).
+  properties: {
+    message: { type: 'string' },
+    commits_to_return: {
+      type: 'boolean',
+      description:
+        'true when the message tells the parent Hale will come back to them about this (keep watching, check again, text them later), in whatever language it is written; false otherwise.',
+    },
+  },
+  required: ['message', 'commits_to_return'],
 };
 
 const STRICT_PICKS_TOOL_SCHEMA = {
@@ -179,10 +187,12 @@ function composeUserMessage(q, researchNotes) {
 // Mirrors `EMPTY_SEARCH_NOTES_CAP` (activity/lane.ts).
 const EMPTY_SEARCH_NOTES_CAP = 4_000;
 
-function followUpUserMessage(subject, picks, pageEvidence, watch, searched) {
+function followUpUserMessage(subject, picks, pageEvidence, watch, searched, language = 'en-CA') {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
+    // `users.locale`, passed through. The composer never sees the parent's words.
+    language,
     // An empty search carries where it looked and what it read (lane.ts `EmptySearch`);
     // a message with a find is composed from exactly the payload it always was.
     ...(picks.length === 0
@@ -515,10 +525,6 @@ const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
 
-/** Mirrors `statesTheReturn`. */
-const STATES_RETURN =
-  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
-
 /** Mirrors `watchWarranted` in activity/sweep.ts: nothing found, or a best find whose day
  * or price the answer could not carry. It is what decides both the ledger row and what
  * the copy is allowed to claim, so the eval computes it the same way. */
@@ -570,7 +576,7 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-function followUpViolations(body, picks, pageEvidence, watch) {
+function followUpViolations(body, picks, pageEvidence, watch, commitsToReturn) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (LINK_SHAPE.test(body)) {
@@ -606,18 +612,16 @@ function followUpViolations(body, picks, pageEvidence, watch) {
         'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     });
   }
-  if (watch !== STATES_RETURN.test(body)) {
+  if (watch !== commitsToReturn) {
     violations.push({
       tag: watch ? 'silent_watch' : 'unbacked_promise',
       // The EXAMPLE is page-state-aware or the two corrections fight: under
       // `page_has_schedule` the gate above refuses the very sentence this one used to
       // hand the model as the fix.
       reason: watch
-        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "${
-            pageEvidence === 'page_has_schedule'
-              ? "I'll keep watching and text you when I can get to them."
-              : "I'll keep watching and text you when they post."
-          }"`
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
+            pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
+          }.`
         : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
@@ -902,6 +906,7 @@ function brokenPicks(fixture) {
  */
 function brokenFollowUp(watch) {
   return {
+    commits_to_return: !watch,
     message: watch
       ? 'I had a look around your area this afternoon and went through a whole pile of listings for you, and there is quite a lot going on for the little ones at the moment across the nearby towns. Their site lists these but no day, time or price on the fall page yet. I confirmed Sunnyside Tumbling Academy runs daily - see sunnysidetumbling.ca for the rest. Want me to check back once they are up?'
       : 'I had a look around your area this afternoon and went through a whole pile of listings for you, and there is quite a lot going on for the little ones at the moment across the nearby towns. I confirmed Sunnyside Tumbling Academy runs daily - see sunnysidetumbling.ca for the rest, and I will keep looking and text you when the rest of the fall schedule lands.',
@@ -960,7 +965,7 @@ async function main() {
     .find((arg) => arg.startsWith('--followup-max-tokens='))
     ?.split('=')[1];
   const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);
-  const followupMaxTokens = followupMaxTokensArg === undefined ? 400 : Number(followupMaxTokensArg);
+  const followupMaxTokens = followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
   if (!Number.isInteger(picksMaxTokens) || picksMaxTokens < 1) {
     throw new Error('--picks-max-tokens must be a positive integer');
   }
@@ -1247,10 +1252,17 @@ async function main() {
               lane: subjectLane,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, kept, pageEvidence, watch, {
-                  town: fixture.town,
-                  notes: ground.notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
-                }),
+                followUpUserMessage(
+                  fixture.subject,
+                  kept,
+                  pageEvidence,
+                  watch,
+                  {
+                    town: fixture.town,
+                    notes: ground.notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+                  },
+                  fixture.language ?? 'en-CA',
+                ),
                 violations,
               ),
               toolName: 'followup_text',
@@ -1266,7 +1278,7 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(body, kept, pageEvidence, watch);
+      violations = followUpViolations(body, kept, pageEvidence, watch, composed.commits_to_return === true);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }

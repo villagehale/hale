@@ -12,6 +12,7 @@ import {
   type DeepDispatchOutcome,
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
+import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
@@ -64,6 +65,7 @@ import {
   type ReplySource,
   settlePendingAsks,
 } from '~/lib/channel/off-domain/lane';
+import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
@@ -989,13 +991,17 @@ async function routeChannelMessageInner(
    * is all of them but one.
    */
   const withPassport = async (body: string) => {
-    if (!interestPassportEnabled()) return body;
+    // After the model's text, before anything else is folded in. A venue page named in
+    // the reply is appended here so a later trim cannot cut it, and a read that fails
+    // leaves the reply itself intact.
+    const linked = await foldHeldVenuePages(deps.database, conversationId, body);
+    if (!interestPassportEnabled()) return linked;
     return foldPassportIntoOutbound({
       database: deps.database,
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
       inboundBody: context.body,
-      outboundBody: body,
+      outboundBody: linked,
       now,
     });
   };
@@ -1362,6 +1368,25 @@ async function routeChannelMessageInner(
       );
       await noteUnanswered(deps, job, OFF_DOMAIN_TIMEOUT);
       verdict = { status: 'in_domain', fallback: null };
+    }
+    // The screen already read the parent's words. Store the tag it returned, on
+    // this parent, when it differs. Both doors: an in-domain ask is the one a
+    // later follow-up has to answer in that language, and a deflection was still
+    // written in it. A timeout verdict has no tag, and a blank one writes nothing.
+    if (verdict.status !== 'unwritten' && typeof verdict.language === 'string') {
+      const wrote = await rememberParentLanguage(
+        deps.database,
+        turn.parentUserId,
+        verdict.language,
+      );
+      deps.log.info(
+        {
+          familyId: job.family_id,
+          outcome: wrote.status,
+          ...(wrote.status === 'not_written' ? { reason: wrote.reason } : {}),
+        },
+        'channel router: parent language',
+      );
     }
     if (verdict.status === 'unwritten') {
       deps.log.error(
