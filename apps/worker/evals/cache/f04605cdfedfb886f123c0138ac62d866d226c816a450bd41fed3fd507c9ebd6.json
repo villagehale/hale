@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer matches research_notes: the Jays had no game last night, their season is over at 79-83, and they were eliminated from the playoffs. It's in English, brief, and it IS the answer. Tone is a bit flat, more statement than friend-text, and it doesn't nod to Priya, but it's casual enough and doesn't read like an assistant offering a service. It assumes Toronto, which the notes also assume.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

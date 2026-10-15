@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is, a restaurant booking for two, and ties it to the rule that a dinner or restaurant booking belongs to the parent, matching the adult verdict. It is one short plain clause and invents no facts.",
+    "score": 5
+  }
+}

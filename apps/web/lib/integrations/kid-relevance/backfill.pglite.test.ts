@@ -1,0 +1,726 @@
+import { randomUUID } from 'node:crypto';
+import type { AgentClient } from '@hale/agent';
+import { schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
+import { structuredReply } from '~/lib/testing/structured-reply';
+import { revertKidRelevanceBackfill, runKidRelevanceBackfill } from './backfill';
+import { KID_VERDICT_TOOL, type KidSkillInput } from './skill-contract';
+import { untrackItem } from './untrack';
+
+/**
+ * The one-off backfill (VIL-226 item 5, founder defaults D9/D10). Existing connector
+ * copies are judged; adult ones leave the family calendar with their reminders cancelled
+ * under a named reason and an audit row; an adult parent block loses its kid flag and
+ * title; adult bookings are only counted. A dry run changes no tracking state, and an
+ * apply asks no model: it acts on what a dry run stored. The model is a scripted fake at
+ * the client port - the skill's quality is the eval. Every title here is invented.
+ */
+
+let db: TestDb;
+const INPUT_KEY = Buffer.alloc(32, 7).toString('base64');
+const NOW = new Date('2026-10-11T15:00:00.000Z');
+const NEXT_DAY = new Date('2026-10-12T15:00:00.000Z');
+const NEXT_WEEK = new Date('2026-10-18T15:00:00.000Z');
+const NO_DEADLINE = new Date('2099-01-01T00:00:00.000Z');
+
+let familyId: string;
+let parentUserId: string;
+let gcal: string;
+let gmail: string;
+let modelCalls: number;
+let seenTexts: string[];
+let runId: string;
+
+const ADULT = ['Standup', 'Dentist', 'Team dinner', 'Harbour Inn', 'Pottery for grown-ups'];
+const UNSURE = ['Mystery meetup'];
+
+function scriptedVerdict(text: string) {
+  if (ADULT.some((title) => text.includes(title))) return 'adult';
+  if (UNSURE.some((title) => text.includes(title))) return 'unsure';
+  return 'kid';
+}
+
+const client = {
+  messages: {
+    create: async (request: { messages: { content: string }[] }) => {
+      modelCalls += 1;
+      const input = JSON.parse(request.messages[0]?.content ?? '{}') as KidSkillInput;
+      seenTexts.push(...input.items.map((item) => item.text));
+      return structuredReply(
+        request,
+        KID_VERDICT_TOOL,
+        {
+          verdicts: input.items.map((item) => ({
+            ref: item.ref,
+            reason: 'scripted',
+            verdict: scriptedVerdict(item.text),
+            childName: null,
+          })),
+        },
+        { input_tokens: 1, output_tokens: 1 },
+      );
+    },
+  },
+} as unknown as AgentClient;
+
+beforeAll(async () => {
+  db = await createTestDb();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
+beforeEach(async () => {
+  process.env.APP_ENCRYPTION_KEY = INPUT_KEY;
+  process.env.HALE_LLM_NO_STREAM = '1';
+  modelCalls = 0;
+  seenTexts = [];
+  runId = randomUUID();
+  const family = await seedFamily(db.database);
+  familyId = family.familyId;
+  parentUserId = family.parentUserId;
+  gcal = await seedIntegration(db.database, familyId, parentUserId, 'gcal');
+  gmail = await seedIntegration(db.database, familyId, parentUserId, 'gmail');
+});
+
+async function mirror(googleEventId: string, title: string) {
+  const [row] = await db.database
+    .insert(schema.familyEvents)
+    .values({
+      familyId,
+      title,
+      startsAt: NEXT_WEEK,
+      location: 'Community hall',
+      source: 'parent',
+      createdBy: parentUserId,
+      googleEventId,
+      integrationId: gcal,
+    })
+    .returning({ id: schema.familyEvents.id });
+  if (!row) throw new Error('no mirror');
+  await db.database.insert(schema.eventReminders).values([
+    { familyId, eventRef: row.id, parentUserId, offset: '-P1D', fireAt: NEXT_WEEK },
+    { familyId, eventRef: row.id, parentUserId, offset: '-PT1H', fireAt: NEXT_WEEK },
+  ]);
+  return row.id;
+}
+
+async function acceptedOffer(messageId: string, title: string) {
+  const [event] = await db.database
+    .insert(schema.familyEvents)
+    .values({ familyId, title, startsAt: NEXT_WEEK, source: 'parent' })
+    .returning({ id: schema.familyEvents.id });
+  const [message] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'alert',
+      status: 'sent',
+      sentAt: NOW,
+    })
+    .returning({ id: schema.channelMessages.id });
+  await db.database.insert(schema.emailAlertOffers).values({
+    familyId,
+    parentUserId,
+    integrationId: gmail,
+    messageId,
+    kind: 'event',
+    title,
+    startsAt: NEXT_WEEK,
+    channelMessageId: message?.id ?? '',
+    expiresAt: NEXT_WEEK,
+    eventId: event?.id,
+    resolvedAt: NOW,
+    resolution: 'added',
+    resolvedChannelMessageId: message?.id ?? '',
+  });
+  return event?.id ?? '';
+}
+
+async function seed() {
+  const adultA = await mirror('ev-standup', 'Standup');
+  const adultB = await mirror('ev-dentist', 'Dentist');
+  const kid = await mirror('ev-swim', 'Wren swim');
+  const offer = await acceptedOffer('msg-dinner', 'Team dinner');
+  await db.database.insert(schema.parentCalendarBlocks).values({
+    integrationId: gcal,
+    eventId: 'ev-pottery',
+    familyId,
+    userId: parentUserId,
+    startAt: NEXT_WEEK,
+    kidRelated: true,
+    title: 'Pottery for grown-ups',
+    status: 'confirmed',
+    updatedStamp: 'u1',
+  });
+  await db.database.insert(schema.activityBookings).values({
+    familyId,
+    parentUserId,
+    integrationId: gmail,
+    messageId: 'msg-hotel',
+    providerHost: 'example.test',
+    title: 'Harbour Inn',
+    firstSessionAt: NEXT_WEEK,
+  });
+  return { adultA, adultB, kid, offer };
+}
+
+async function state() {
+  const events = await db.database
+    .select()
+    .from(schema.familyEvents)
+    .where(eq(schema.familyEvents.familyId, familyId));
+  const reminders = await db.database
+    .select()
+    .from(schema.eventReminders)
+    .where(eq(schema.eventReminders.familyId, familyId));
+  const blocks = await db.database
+    .select()
+    .from(schema.parentCalendarBlocks)
+    .where(eq(schema.parentCalendarBlocks.familyId, familyId));
+  const bookings = await db.database
+    .select()
+    .from(schema.activityBookings)
+    .where(eq(schema.activityBookings.familyId, familyId));
+  const audit = await db.database
+    .select()
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.familyId, familyId));
+  const verdicts = await db.database
+    .select()
+    .from(schema.kidRelevanceVerdicts)
+    .where(eq(schema.kidRelevanceVerdicts.familyId, familyId));
+  return { events, reminders, blocks, bookings, audit, verdicts };
+}
+
+/** Only a dry run is handed the model client: an apply takes none. */
+function run(apply: boolean) {
+  return runKidRelevanceBackfill(
+    db.database,
+    { now: NOW, deadline: NO_DEADLINE, familyIds: [familyId], runId },
+    apply ? { apply: true } : { apply: false, client },
+  );
+}
+
+/** The operator's order: a dry run judges and stores, then the apply acts on what it stored. */
+async function dryRunThenApply() {
+  await run(false);
+  return run(true);
+}
+
+describe('runKidRelevanceBackfill', () => {
+  it('a dry run counts what it would do, stores only the verdicts it judged, and changes nothing else', async () => {
+    await seed();
+    const before = await state();
+
+    const counts = await run(false);
+
+    expect(counts).toEqual({
+      apply: false,
+      families: 1,
+      judged: 6,
+      kid: 1,
+      adult: 5,
+      unsure: 0,
+      held: 0,
+      eventsDropped: 3,
+      remindersCancelled: 4,
+      blocksCleared: 1,
+      adultBookings: 1,
+      notInDryRun: 0,
+      skippedDisconnected: 0,
+      skippedFamiliesPendingErasure: 0,
+    });
+    const { verdicts, ...rest } = await state();
+    const { verdicts: verdictsBefore, ...restBefore } = before;
+    expect(verdictsBefore).toEqual([]);
+    expect(verdicts).toHaveLength(counts.judged);
+    expect(rest).toEqual(restBefore);
+  });
+
+  it('counts and skips a copy whose connection is gone, without judging it', async () => {
+    await db.database.insert(schema.activityBookings).values({
+      familyId,
+      parentUserId,
+      integrationId: '00000000-0000-4000-8000-000000000001',
+      messageId: 'msg-gone',
+      providerHost: 'example.test',
+      title: 'Orphaned booking',
+      firstSessionAt: NEXT_WEEK,
+    });
+    await mirror('ev-swim', 'Wren swim');
+    const counts = await run(false);
+    expect(counts).toMatchObject({ judged: 1, kid: 1, skippedDisconnected: 1 });
+    expect(seenTexts.some((text) => text.includes('Orphaned'))).toBe(false);
+  });
+
+  it('counts and skips a copy on a revoked connection, and judges one on an active one', async () => {
+    await mirror('ev-standup', 'Standup');
+    await acceptedOffer('msg-dinner', 'Team dinner');
+    await db.database
+      .update(schema.integrations)
+      .set({ status: 'revoked' })
+      .where(eq(schema.integrations.id, gcal));
+    const counts = await run(false);
+    expect(counts).toMatchObject({ judged: 1, adult: 1, skippedDisconnected: 1 });
+    expect(seenTexts).toEqual(['Team dinner']);
+  });
+
+  it('counts and skips a family whose erasure is scheduled, sending nothing to the model', async () => {
+    await seed();
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: NEXT_WEEK })
+      .where(eq(schema.families.id, familyId));
+    const skipped = { families: 0, judged: 0, eventsDropped: 0, skippedFamiliesPendingErasure: 1 };
+    expect(await run(false)).toMatchObject(skipped);
+    expect(modelCalls).toBe(0);
+    expect(await run(true)).toMatchObject(skipped);
+  });
+
+  it('a run scoped to one family hands the model nothing from another', async () => {
+    await mirror('ev-swim', 'Wren swim');
+    const other = await seedFamily(db.database);
+    const otherGcal = await seedIntegration(
+      db.database,
+      other.familyId,
+      other.parentUserId,
+      'gcal',
+    );
+    await db.database.insert(schema.familyEvents).values({
+      familyId: other.familyId,
+      title: 'Other household standup',
+      startsAt: NEXT_WEEK,
+      source: 'parent',
+      googleEventId: 'ev-other',
+      integrationId: otherGcal,
+    });
+    const counts = await run(false);
+    expect(counts).toMatchObject({ families: 1, judged: 1 });
+    expect(seenTexts).toEqual(['Wren swim at Community hall']);
+  });
+
+  it('apply drops adult copies, cancels their reminders with the reason and audits each', async () => {
+    const ids = await seed();
+
+    const counts = await dryRunThenApply();
+    expect(counts).toMatchObject({ apply: true, eventsDropped: 3, remindersCancelled: 4 });
+
+    const after = await state();
+    const event = (id: string) => after.events.find((row) => row.id === id);
+    expect(event(ids.adultA)?.deletedAt).toEqual(NOW);
+    expect(event(ids.adultB)?.deletedAt).toEqual(NOW);
+    expect(event(ids.offer)?.deletedAt).toEqual(NOW);
+    for (const id of [ids.adultA, ids.adultB, ids.offer]) {
+      expect(event(id)).toMatchObject({ title: '', location: null, dutyOwnerLabel: null });
+    }
+
+    const kid = event(ids.kid);
+    expect(kid?.deletedAt).toBeNull();
+    expect(kid?.title).toBe('Wren swim');
+    expect(kid?.location).toBe('Community hall');
+    expect(kid?.kidVerdictId).not.toBeNull();
+    const kidReminders = after.reminders.filter((row) => row.eventRef === ids.kid);
+    expect(kidReminders.map((row) => row.status)).toEqual(['scheduled', 'scheduled']);
+
+    const dropped = after.reminders.filter((row) => row.eventRef !== ids.kid);
+    expect(dropped).toHaveLength(4);
+    expect(new Set(dropped.map((row) => `${row.status}/${row.suppressReason}`))).toEqual(
+      new Set(['cancelled/kid_relevance_backfill']),
+    );
+
+    const verbs = after.audit.map((row) => row.actionTaken).sort();
+    expect(verbs).toEqual([
+      'kid_relevance_event_dropped',
+      'kid_relevance_event_dropped',
+      'kid_relevance_event_dropped',
+      'kid_relevance_event_dropped',
+      'kid_relevance_reminder_cancelled',
+      'kid_relevance_reminder_cancelled',
+      'kid_relevance_reminder_cancelled',
+      'kid_relevance_reminder_cancelled',
+    ]);
+    const cancelAudit = after.audit.find(
+      (row) => row.actionTaken === 'kid_relevance_reminder_cancelled',
+    );
+    expect(cancelAudit).toMatchObject({
+      actor: 'system',
+      targetTable: 'event_reminders',
+      after: { reason: 'kid_relevance_backfill' },
+    });
+    const dropAudits = after.audit.filter(
+      (row) => row.actionTaken === 'kid_relevance_event_dropped',
+    );
+    expect(
+      dropAudits
+        .map((row) => {
+          const payload = row.after as { verdict: string; source: string };
+          return `${row.targetTable}/${payload.verdict}/${payload.source}`;
+        })
+        .sort(),
+    ).toEqual([
+      'family_events/adult/gmail',
+      'family_events/adult/google_calendar',
+      'family_events/adult/google_calendar',
+      'parent_calendar_blocks/adult/google_calendar',
+    ]);
+    const serialized = JSON.stringify(after.audit);
+    for (const title of ADULT) expect(serialized).not.toContain(title);
+
+    expect(after.blocks).toEqual([
+      expect.objectContaining({ eventId: 'ev-pottery', kidRelated: false, title: null }),
+    ]);
+    expect(after.bookings).toEqual([
+      expect.objectContaining({ title: 'Harbour Inn', cancelledAt: null, eventId: null }),
+    ]);
+  });
+
+  it("apply drops a held alert for an adult item, and keeps a kid item's", async () => {
+    await mirror('ev-standup', 'Standup');
+    await mirror('ev-swim', 'Wren swim');
+    await db.database.insert(schema.calendarEventSnapshots).values(
+      ['ev-standup', 'ev-swim'].map((eventId) => ({
+        integrationId: gcal,
+        eventId,
+        updatedStamp: 'u1',
+        status: 'confirmed',
+        startAt: NEXT_WEEK,
+        pendingSince: NOW,
+        heldTitle: eventId === 'ev-swim' ? 'Wren swim' : 'Standup',
+      })),
+    );
+
+    await dryRunThenApply();
+
+    const snapshots = await db.database
+      .select()
+      .from(schema.calendarEventSnapshots)
+      .where(eq(schema.calendarEventSnapshots.integrationId, gcal));
+    const held = (eventId: string) => snapshots.find((row) => row.eventId === eventId);
+    expect(held('ev-standup')).toMatchObject({ pendingSince: null, heldTitle: null });
+    expect(held('ev-swim')).toMatchObject({ pendingSince: NOW, heldTitle: 'Wren swim' });
+    const { audit } = await state();
+    const drop = audit.find((row) => row.actionTaken === 'kid_relevance_event_dropped');
+    expect(drop?.after).toMatchObject({ heldAlertsCleared: 1, offersWithdrawn: 0 });
+  });
+
+  it('apply writes nothing for a family that scheduled its erasure after the run read it', async () => {
+    await seed();
+    await run(false);
+    // The erasure lands as the apply opens its write: after it read its candidates.
+    const racing: typeof db.database = Object.create(db.database, {
+      transaction: {
+        value: async (...args: Parameters<typeof db.database.transaction>) => {
+          await db.database
+            .update(schema.families)
+            .set({ scheduledDeletionAt: NEXT_WEEK })
+            .where(eq(schema.families.id, familyId));
+          return db.database.transaction(...args);
+        },
+      },
+    });
+    const before = await state();
+    const counts = await runKidRelevanceBackfill(
+      racing,
+      { now: NOW, deadline: NO_DEADLINE, familyIds: [familyId], runId },
+      { apply: true },
+    );
+    expect(counts).toMatchObject({
+      eventsDropped: 0,
+      remindersCancelled: 0,
+      blocksCleared: 0,
+      skippedFamiliesPendingErasure: 1,
+    });
+    expect(await state()).toEqual(before);
+  });
+
+  it('apply acts only on what the dry run stored: a copy added since is counted by name, never judged, never touched', async () => {
+    await seed();
+    await run(false);
+    const calls = modelCalls;
+    const added = await mirror('ev-followup', 'Dentist follow-up');
+
+    const counts = await run(true);
+
+    expect(modelCalls).toBe(calls);
+    expect(seenTexts.some((text) => text.includes('follow-up'))).toBe(false);
+    expect(counts).toMatchObject({
+      judged: 6,
+      adult: 5,
+      notInDryRun: 1,
+      eventsDropped: 3,
+      remindersCancelled: 4,
+    });
+    const after = await state();
+    expect(after.events.find((row) => row.id === added)).toMatchObject({
+      deletedAt: null,
+      title: 'Dentist follow-up',
+      kidVerdictId: null,
+    });
+    expect(
+      after.reminders.filter((row) => row.eventRef === added).map((row) => row.status),
+    ).toEqual(['scheduled', 'scheduled']);
+    expect(after.verdicts).toHaveLength(6);
+  });
+
+  it('apply leaves an unsure copy alone: live, unlinked, its reminders still scheduled', async () => {
+    const unsure = await mirror('ev-mystery', 'Mystery meetup');
+    const counts = await dryRunThenApply();
+    expect(counts).toMatchObject({ unsure: 1, eventsDropped: 0, remindersCancelled: 0 });
+    const after = await state();
+    const event = after.events.find((row) => row.id === unsure);
+    expect(event).toMatchObject({ deletedAt: null, kidVerdictId: null });
+    expect(after.reminders.map((row) => row.status)).toEqual(['scheduled', 'scheduled']);
+    expect(after.audit).toEqual([]);
+  });
+
+  it('stamps every audit row an apply writes with its run id', async () => {
+    await seed();
+    await dryRunThenApply();
+    const { audit } = await state();
+    expect(audit.length).toBeGreaterThan(0);
+    expect(audit.map((row) => (row.after as { runId?: string }).runId)).toEqual(
+      audit.map(() => runId),
+    );
+  });
+
+  it("a revert puts back what an apply dropped, except a calendar copy's cleared title", async () => {
+    const ids = await seed();
+    const before = await state();
+    await dryRunThenApply();
+
+    const reverted = await revertKidRelevanceBackfill(db.database, {
+      runId,
+      now: NOW,
+    });
+    expect(reverted).toEqual({
+      runId,
+      found: true,
+      eventsRestored: 3,
+      remindersRescheduled: 4,
+      verdictsCleared: 3,
+      skippedParentOwned: 0,
+      skippedFamiliesPendingErasure: 0,
+    });
+
+    const after = await state();
+    const dropped = new Set([ids.adultA, ids.adultB, ids.offer]);
+    const shape = (rows: typeof before.events) =>
+      rows
+        .map((row) =>
+          dropped.has(row.id)
+            ? { ...row, title: '', location: null }
+            : row.id === ids.kid
+              ? { ...row, kidVerdictId: null }
+              : row,
+        )
+        .sort((a, b) => a.id.localeCompare(b.id));
+    expect(shape(after.events)).toEqual(shape(before.events));
+    expect(after.events.find((row) => row.id === ids.adultA)).toMatchObject({
+      deletedAt: null,
+      kidVerdictId: null,
+      title: '',
+    });
+    const reminderState = (rows: typeof before.reminders) =>
+      rows
+        .map((row) => ({ id: row.id, status: row.status, suppressReason: row.suppressReason }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+    expect(reminderState(after.reminders)).toEqual(reminderState(before.reminders));
+
+    const restored = after.audit.filter(
+      (row) => row.actionTaken === 'kid_relevance_event_restored',
+    );
+    expect(restored.map((row) => row.targetId).sort()).toEqual([...dropped].sort());
+    for (const row of after.audit) {
+      expect((row.after as { runId?: string }).runId).toBe(runId);
+    }
+    // The next judge asks again: the model verdicts for the restored items are gone.
+    expect(after.verdicts.map((row) => row.verdict).sort()).toEqual(['adult', 'adult', 'kid']);
+
+    const again = await revertKidRelevanceBackfill(db.database, {
+      runId,
+      now: NOW,
+    });
+    expect(again).toMatchObject({ found: true, eventsRestored: 0, remindersRescheduled: 0 });
+  });
+
+  it('a revert gives a Gmail copy back the words of the offer it came from', async () => {
+    const ids = await seed();
+    await dryRunThenApply();
+    await revertKidRelevanceBackfill(db.database, { runId, now: NOW });
+    const [offer] = await db.database
+      .select({ title: schema.emailAlertOffers.title })
+      .from(schema.emailAlertOffers)
+      // The pglite database is not reset between tests, so scope to this seed's connection.
+      .where(
+        and(
+          eq(schema.emailAlertOffers.messageId, 'msg-dinner'),
+          eq(schema.emailAlertOffers.integrationId, gmail),
+        ),
+      );
+    expect(offer).toEqual({ title: 'Team dinner' });
+    const { events } = await state();
+    expect(events.find((row) => row.id === ids.offer)).toMatchObject({
+      deletedAt: null,
+      title: 'Team dinner',
+    });
+  });
+
+  it('a revert leaves dropped what the parent has since said is theirs, and restores the rest', async () => {
+    const ids = await seed();
+    await dryRunThenApply();
+    expect(
+      await untrackItem(db.database, {
+        familyId,
+        actorUserId: parentUserId,
+        target: { kind: 'family_event', id: ids.adultA },
+        now: NEXT_DAY,
+        kind: null,
+      }),
+    ).toMatchObject({ outcome: 'untracked', removedEvents: 0 });
+
+    const reverted = await revertKidRelevanceBackfill(db.database, { runId, now: NEXT_DAY });
+
+    expect(reverted).toEqual({
+      runId,
+      found: true,
+      eventsRestored: 2,
+      remindersRescheduled: 2,
+      verdictsCleared: 2,
+      skippedParentOwned: 1,
+      skippedFamiliesPendingErasure: 0,
+    });
+    const after = await state();
+    const event = (id: string) => after.events.find((row) => row.id === id);
+    const remindersOf = (id: string) =>
+      after.reminders
+        .filter((row) => row.eventRef === id)
+        .map((row) => `${row.status}/${row.suppressReason}`);
+    expect(event(ids.adultA)).toMatchObject({ deletedAt: NOW, title: '' });
+    expect(remindersOf(ids.adultA)).toEqual([
+      'cancelled/kid_relevance_backfill',
+      'cancelled/kid_relevance_backfill',
+    ]);
+    expect(after.verdicts.filter((row) => row.decidedBy === 'parent').map((row) => row.id)).toEqual(
+      [event(ids.adultA)?.kidVerdictId],
+    );
+    // The copy the parent never spoke about comes back.
+    expect(event(ids.adultB)).toMatchObject({ deletedAt: null, kidVerdictId: null });
+    expect(remindersOf(ids.adultB)).toEqual(['scheduled/null', 'scheduled/null']);
+    const restored = after.audit.filter(
+      (row) => row.actionTaken === 'kid_relevance_event_restored',
+    );
+    expect(restored.map((row) => row.targetId).sort()).toEqual([ids.adultB, ids.offer].sort());
+    expect(
+      restored.map((row) => (row.after as { skippedParentOwned?: number }).skippedParentOwned),
+    ).toEqual([1, 1]);
+  });
+
+  it('a revert leaves dropped what the parent said is theirs after Hale learned the copy belongs to a series', async () => {
+    const ids = await seed();
+    await dryRunThenApply();
+    // The apply judged the copy under its own event id. Its series id arrives afterwards,
+    // so the parent's word is stored under the series.
+    await db.database.insert(schema.calendarEventSnapshots).values({
+      integrationId: gcal,
+      eventId: 'ev-standup',
+      recurringEventId: 'standup-series',
+      updatedStamp: 'u1',
+      status: 'confirmed',
+    });
+    expect(
+      await untrackItem(db.database, {
+        familyId,
+        actorUserId: parentUserId,
+        target: { kind: 'family_event', id: ids.adultA },
+        now: NEXT_DAY,
+        kind: null,
+      }),
+    ).toMatchObject({ outcome: 'untracked', removedEvents: 0 });
+
+    const reverted = await revertKidRelevanceBackfill(db.database, { runId, now: NEXT_DAY });
+
+    expect(reverted).toEqual({
+      runId,
+      found: true,
+      eventsRestored: 2,
+      remindersRescheduled: 2,
+      verdictsCleared: 2,
+      skippedParentOwned: 1,
+      skippedFamiliesPendingErasure: 0,
+    });
+    const after = await state();
+    const event = after.events.find((row) => row.id === ids.adultA);
+    expect(event).toMatchObject({ deletedAt: NOW, title: '' });
+    expect(
+      after.reminders
+        .filter((row) => row.eventRef === ids.adultA)
+        .map((row) => `${row.status}/${row.suppressReason}`),
+    ).toEqual(['cancelled/kid_relevance_backfill', 'cancelled/kid_relevance_backfill']);
+    expect(
+      after.verdicts
+        .filter((row) => row.decidedBy === 'parent')
+        .map((row) => `${row.itemKey}/${row.verdict}/${row.id === event?.kidVerdictId}`),
+    ).toEqual(['standup-series/adult/true']);
+  });
+
+  it('a revert of an unknown run id changes nothing and says so', async () => {
+    await seed();
+    await dryRunThenApply();
+    const before = await state();
+    expect(
+      await revertKidRelevanceBackfill(db.database, {
+        runId: 'no-such-run',
+        now: NOW,
+      }),
+    ).toEqual({
+      runId: 'no-such-run',
+      found: false,
+      eventsRestored: 0,
+      remindersRescheduled: 0,
+      verdictsCleared: 0,
+      skippedParentOwned: 0,
+      skippedFamiliesPendingErasure: 0,
+    });
+    expect(await state()).toEqual(before);
+  });
+
+  it('a revert brings nothing back for a family whose erasure is scheduled, and counts it', async () => {
+    await seed();
+    await dryRunThenApply();
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: NEXT_WEEK })
+      .where(eq(schema.families.id, familyId));
+    const before = await state();
+    expect(await revertKidRelevanceBackfill(db.database, { runId, now: NOW })).toEqual({
+      runId,
+      found: true,
+      eventsRestored: 0,
+      remindersRescheduled: 0,
+      verdictsCleared: 0,
+      skippedParentOwned: 0,
+      skippedFamiliesPendingErasure: 1,
+    });
+    expect(await state()).toEqual(before);
+  });
+
+  it('a second apply reuses the verdicts and changes nothing more', async () => {
+    await seed();
+    await dryRunThenApply();
+    const calls = modelCalls;
+    const before = await state();
+
+    const counts = await run(true);
+
+    expect(modelCalls).toBe(calls);
+    expect(counts).toMatchObject({ eventsDropped: 0, remindersCancelled: 0, blocksCleared: 0 });
+    expect(await state()).toEqual(before);
+  });
+});

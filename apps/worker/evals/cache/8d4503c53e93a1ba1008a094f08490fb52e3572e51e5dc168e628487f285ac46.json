@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It says what the item is: an errand block that names no child. It also explains why that supports unsure, since the errands could be the parent's own or a family outing. It invents nothing and matches the verdict. It does partly echo the title, but it still gives the 'what' and the 'why'.",
+    "score": 5
+  }
+}

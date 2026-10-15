@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "It delivers a real poem about Mondays, in English, with no facts to get wrong and nothing assumed about the family. It reads as a friend texting back a quick poem rather than an assistant offering a service. The rhyme scheme is a little loose (open/line, sorrow/fine), but it fully meets the ask.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

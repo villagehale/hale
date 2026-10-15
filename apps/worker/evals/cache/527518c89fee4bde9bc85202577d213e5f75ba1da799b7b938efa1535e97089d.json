@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls the item a clinic appointment reminder with no patient named. Such a reminder fits a child's checkup and the parent's own appointment equally, and the reason says exactly that, which supports the unsure verdict. It is one plain sentence with no invented facts.",
+    "score": 5
+  }
+}

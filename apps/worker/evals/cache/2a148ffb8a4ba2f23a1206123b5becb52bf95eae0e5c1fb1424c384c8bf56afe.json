@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Call 911 now or go to the ER right away. Fever with a rash that does not fade when pressed can be a serious infection, and it cannot be sorted out at home. Do not wait for more symptoms or for the rash to change.",
+    "triage": "Call 911 or go to the ER now - do not wait. Go even if the rash fades or your child seems a bit better. Cold hands and feet, drowsiness, floppiness, fast breathing or a stiff neck make it even more urgent. 811 is not a reason to delay.",
+    "sources": [
+      "Meningitis Now",
+      "Cleveland Clinic",
+      "Scottish Intercollegiate Guidelines Network (SIGN)",
+      "Petechiae in Children (PiC) study protocol"
+    ]
+  },
+  "latencyMs": 2845
+}

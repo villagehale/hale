@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason correctly calls the item a family room booking, notes that it names both children, and draws the kid verdict from that. This matches the trip rule, and it is one short plain clause with no unsupported facts.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Most of the forecast matches the notes: a high of 24–25, feels-like 28–31, early showers, a 60% chance with thunderstorm risk, southwest gusts to 40 km/h near noon, and 2–20 mm of rain across sources. But 'low tonight around 12 to 13°C' puts the Tuesday-night low on Monday night, and the notes give no Monday-night low, so that figure is unsupported. The tone is mostly casual, but the reply reads like a dense weather report ('rain totals vary by source') rather than a quick friend's text.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 3
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Overrated for most people; the pick, given the cost, hidden doses and weak independent evidence",
+        "from": "They also agree it is expensive, uses proprietary blends that hide doses, and has weak independent evidence behind its benefit claims."
+      },
+      {
+        "states": "About $78/month for Base and about $99/month for Pro",
+        "from": "It lists a price of about $78/month for Base and about $99/month for Pro."
+      },
+      {
+        "states": "Proprietary blends hide key doses",
+        "from": "proprietary blends hide key doses"
+      },
+      {
+        "states": "Dietitians are more skeptical than customers",
+        "from": "Dietitians are more skeptical than customers are."
+      },
+      {
+        "states": "NSF Certified for Sport",
+        "from": "NSF Certified for Sport"
+      },
+      {
+        "states": "Trustpilot TrustScore of 4.5 out of 5",
+        "from": "Trustpilot shows a TrustScore of 4.5 out of 5"
+      },
+      {
+        "states": "Worth it only if it replaces 4 or 5 other supplements",
+        "from": "worth it if it replaces 4 or 5 other supplements"
+      }
+    ],
+    "answer": "Assuming you mean IM8, the David Beckham powder, I'd say overrated for most people. It's pricey, about $78 a month for Base and about $99 for Pro, and the proprietary blends hide how much of each ingredient you actually get. Dietitians are mostly skeptical, and I didn't find independent trials showing it beats a normal diet plus a few targeted supplements. It's NSF Certified for Sport, and Trustpilot users rate it 4.5 out of 5 for energy and digestion. One blogger says it's only worth it if it replaces 4 or 5 other supplements for you."
+  },
+  "latencyMs": 7695
+}

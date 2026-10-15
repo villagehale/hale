@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Blue Jays' regular season is over and they finished 79-83",
+        "from": "The Blue Jays' regular season is over. MLB.com's standings show them at 79 wins and 83 losses (.488)."
+      },
+      {
+        "states": "The Blue Jays are eliminated from the postseason",
+        "from": "Both standings pages mark their elimination number as \"E\", meaning eliminated."
+      },
+      {
+        "states": "No Blue Jays game was found for Sunday Oct 11",
+        "from": "None of the results shows a Blue Jays game on Oct 11."
+      }
+    ],
+    "answer": "I couldn't find a Blue Jays game last night, so I've got no result for one. Their season's over: they finished 79-83 and are out of the playoffs."
+  },
+  "latencyMs": 4327
+}

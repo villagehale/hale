@@ -1,0 +1,14 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER, even if your baby looks well. At this age a temperature of 38C or higher can be the only sign of a serious infection. Please don't wait to re-check, and don't give any medicine before they're seen.",
+    "triage": "Go to the ER now. Call 911 right away if there is a seizure, fast or hard breathing, blue or gray lips, a rash that doesn't fade under pressure, or your baby is limp, hard to wake, or can't feed. Call 811 if you need help getting there.",
+    "sources": [
+      "Healthdirect Australia",
+      "Phoenix Children's",
+      "CHOP",
+      "Cleveland Clinic",
+      "Blueberry Pediatrics"
+    ]
+  },
+  "latencyMs": 2697
+}

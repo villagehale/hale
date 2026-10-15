@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The plan is grounded in the playbook. It names the 3-day method, gives one line of why (diapers hide the wet feeling), and covers readiness gating (2 hours dry, notices when going), prep, day 1-3 specifics, the accident script, commando, pull-ups for nights, and weeks 2-4. It sets expectations (prompted pees not done, accidents for weeks, poop lags), gives the bail-out rule with the 4-6 week retry, names the gradual alternative in a clause, and gives the doctor trigger for 3+ days without pooping. No fabrication or medicine. Weaknesses: the check-in 'Thursday' is unanchored and may land before the three days finish, which watchFor flags as wrong. 'Where an intensive start pays off' is a mild stretch. The 'looks like failing' point is only covered by the bail-out rule, and 'how to tell it is working' is thin. The register is slightly compressed and dense.",
+    "score": 4
+  }
+}

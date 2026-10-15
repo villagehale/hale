@@ -1,0 +1,33 @@
+{
+  "value": {
+    "verdicts": [
+      {
+        "ref": "i0",
+        "reason": "a swim outing for Wren, a child named on the item",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i1",
+        "reason": "a book club is an adult social group, not a kid activity",
+        "verdict": "adult",
+        "childName": null
+      },
+      {
+        "ref": "i2",
+        "reason": "a daycare pickup for Wren, a care arrangement for a child",
+        "verdict": "kid",
+        "childName": "Wren"
+      },
+      {
+        "ref": "i3",
+        "reason": "errands after lunch name no child and could be the parent's own or a family errand",
+        "verdict": "unsure",
+        "childName": null
+      }
+    ]
+  },
+  "latencyMs": 1764,
+  "inputTokens": 162,
+  "outputTokens": 204
+}

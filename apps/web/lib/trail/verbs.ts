@@ -258,6 +258,11 @@ export const AUDIT_VERBS = [
   'calendar_mirror_moved',
   'calendar_mirror_removed',
   'reminder_suppressed',
+  // VIL-226 · kid relevance (integrations/kid-relevance/).
+  'kid_relevance_untracked',
+  'kid_relevance_event_dropped',
+  'kid_relevance_reminder_cancelled',
+  'kid_relevance_event_restored',
   'group_decision_sync_sent',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
@@ -975,6 +980,26 @@ const VERBS: Record<AuditVerb, Verb> = {
   // started. The row's `after` is the reason and the offset only — no title, no time.
   reminder_suppressed: {
     sentence: 'Hale skipped a reminder that no longer applied',
+    family: 'note',
+  },
+  // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
+  // said a connector item is theirs, so Hale stopped tracking it.
+  kid_relevance_untracked: {
+    sentence: 'Hale stopped tracking something you said is yours',
+    family: 'done',
+  },
+  // The judge read a connector copy as the parent's own, so it left the family calendar.
+  kid_relevance_event_dropped: {
+    sentence: 'Hale took one of your own events off the family calendar',
+    family: 'note',
+  },
+  kid_relevance_reminder_cancelled: {
+    sentence: 'Hale cancelled a reminder for one of your own events',
+    family: 'note',
+  },
+  // An operator undid a backfill run, so a dropped copy is back on the family calendar.
+  kid_relevance_event_restored: {
+    sentence: 'Hale put one of your events back on the family calendar',
     family: 'note',
   },
   // A decision the parent made in a 1:1 thread, repeated once in the household

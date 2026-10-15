@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "ConnexOntario is reachable 24 hours a day by phone at 1-866-531-2600",
+        "from": "It's reachable 24 hours a day by phone at 1-866-531-2600 or by web chat."
+      },
+      {
+        "states": "The Ontario Structured Psychotherapy program offers free, short-term CBT for adults with depression and anxiety",
+        "from": "The Ontario Structured Psychotherapy program offers free, short-term cognitive behavioural therapy for adults with depression and anxiety."
+      },
+      {
+        "states": "Family Service Toronto has sliding-scale fees based on income",
+        "from": "Family Service Toronto offers counselling for individuals, couples and families. It has sliding-scale fees based on income and several locations."
+      },
+      {
+        "states": "U of T and TMU training clinics offer therapy at reduced rates",
+        "from": "Toronto Metropolitan University and U of T run training clinics where supervised students provide therapy at reduced rates."
+      },
+      {
+        "states": "An employer's Employee Assistance Program may include some free sessions per year",
+        "from": "An employer's Employee Assistance Program may include some free sessions per year."
+      },
+      {
+        "states": "Private therapists are often covered by extended health plans through an employer",
+        "from": "Private therapists often are covered by extended health plans through an employer."
+      },
+      {
+        "states": "Private-practice therapy isn't covered by OHIP",
+        "from": "Private-practice therapy isn't covered by OHIP."
+      }
+    ],
+    "answer": "Glad you reached out. In Toronto, private therapy isn't covered by OHIP, but if you have an employer, its Employee Assistance Program may include some free sessions a year, and private therapists are often covered by extended health plans. For free or cheap options, the Ontario Structured Psychotherapy program offers free short-term CBT for adults with depression and anxiety, Family Service Toronto has sliding-scale fees based on income, and the U of T and TMU training clinics see clients at reduced rates. If things get urgent, ConnexOntario is open 24/7 at 1-866-531-2600."
+  },
+  "latencyMs": 8932
+}

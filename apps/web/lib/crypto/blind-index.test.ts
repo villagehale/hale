@@ -1,7 +1,7 @@
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { encryptString } from './string-cipher';
-import { emailBlindIndex, phoneBlindIndex } from './blind-index';
+import { emailBlindIndex, kidRelevanceInputIndex, phoneBlindIndex } from './blind-index';
 
 const KEY_A = Buffer.alloc(32, 1).toString('base64');
 const KEY_B = Buffer.alloc(32, 2).toString('base64');
@@ -94,5 +94,30 @@ describe('emailBlindIndex', () => {
   it('throws a clear error when APP_ENCRYPTION_KEY is missing', () => {
     process.env.APP_ENCRYPTION_KEY = '';
     expect(() => emailBlindIndex(EMAIL)).toThrow(/APP_ENCRYPTION_KEY/);
+  });
+});
+
+describe('kidRelevanceInputIndex', () => {
+  const prev = process.env.APP_ENCRYPTION_KEY;
+  const INPUT = '{"item":{"text":"Swim"}}';
+  beforeEach(() => {
+    process.env.APP_ENCRYPTION_KEY = KEY_A;
+  });
+  afterEach(() => {
+    process.env.APP_ENCRYPTION_KEY = prev;
+  });
+
+  it('is deterministic under one key and not a plain sha256 of the input', () => {
+    expect(kidRelevanceInputIndex(INPUT)).toBe(kidRelevanceInputIndex(INPUT));
+    expect(kidRelevanceInputIndex(INPUT)).not.toBe(
+      createHash('sha256').update(INPUT).digest('hex'),
+    );
+    expect(kidRelevanceInputIndex(INPUT)).not.toBe(emailBlindIndex(INPUT));
+  });
+
+  it('hashes the same input differently under another key', () => {
+    const withA = kidRelevanceInputIndex(INPUT);
+    process.env.APP_ENCRYPTION_KEY = KEY_B;
+    expect(kidRelevanceInputIndex(INPUT)).not.toBe(withA);
   });
 });

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "clinical_query": "toddler seizure during fever, whole body stiffened for 1 minute, now limp and drowsy",
+    "age_band": "toddler",
+    "duration": "1 minute",
+    "language": "fr"
+  },
+  "latencyMs": 2091
+}

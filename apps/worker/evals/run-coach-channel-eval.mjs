@@ -1462,6 +1462,15 @@ function dateSourcesFor(fixture, calls) {
     const label = event ? `${event.title} ${event.location ?? ''}` : call.title;
     sources.push(dateSource(label, calendarDate(call.startsAt)));
   }
+  // A drafted move or add owns the date the tool resolved and handed back: the skill tells
+  // the agent to say THAT day, so naming it is recall, not a date borrowed from a find.
+  for (const call of calls) {
+    if (!call.startsAt) continue;
+    const event = FIXTURE_EVENTS.find((row) => row.eventId === call.eventId);
+    if (event && isPrivate(event)) continue;
+    const label = event ? `${event.title} ${event.location ?? ''}` : call.title;
+    sources.push(dateSource(label, calendarDate(call.startsAt)));
+  }
   for (const window of fixture.registrationWindows ?? []) {
     sources.push(
       dateSource(

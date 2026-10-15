@@ -1,12 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import type { AgentClient } from '@hale/agent';
+import { describe, expect, it, vi } from 'vitest';
+import { KID_VERDICT_TOOL } from '~/lib/integrations/kid-relevance/skill-contract';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import {
   type KidItemClassifier,
   type KidItemsInput,
   acceptKidItemIds,
+  createKidItemClassifier,
   kidItemsFor,
   kidRelatedAha,
 } from './aha-kids';
 import type { AhaSnapshot } from './aha-read';
+
+/** The skill's answer shape: one verdict per offered ref. */
+function verdicts(kid: readonly string[], others: readonly string[] = []) {
+  return {
+    verdicts: [
+      ...kid.map((ref) => ({ ref, reason: 'a kid item', verdict: 'kid', childName: null })),
+      ...others.map((ref) => ({
+        ref,
+        reason: 'the parent own',
+        verdict: 'adult',
+        childName: null,
+      })),
+    ],
+  };
+}
 
 const context = {
   children: [
@@ -64,11 +83,28 @@ describe('kidItemsFor', () => {
 });
 
 describe('acceptKidItemIds', () => {
-  it('keeps only ids that were offered, and nothing from a malformed answer', () => {
-    expect([...acceptKidItemIds({ kidItemIds: ['c0', 'e9', 'x'] }, ['c0', 'e1'])]).toEqual(['c0']);
-    expect(acceptKidItemIds({ kidItemIds: 'c0' }, ['c0']).size).toBe(0);
+  it('keeps only kid verdicts on ids that were offered, and nothing from a malformed answer', () => {
+    expect([...acceptKidItemIds(verdicts(['c0', 'e9', 'x'], ['e1']), ['c0', 'e1'])]).toEqual([
+      'c0',
+    ]);
+    expect(acceptKidItemIds({ verdicts: 'c0' }, ['c0']).size).toBe(0);
     expect(acceptKidItemIds(null, ['c0']).size).toBe(0);
     expect(acceptKidItemIds('c0', ['c0']).size).toBe(0);
+  });
+
+  it('an unsure or adult verdict is never kept', () => {
+    const answer = {
+      verdicts: [
+        { ref: 'c0', reason: 'could be either', verdict: 'unsure', childName: null },
+        { ref: 'c1', reason: 'a work meeting', verdict: 'adult', childName: null },
+        { ref: 'c2', reason: 'toddler swim', verdict: 'kid', childName: 'Mia' },
+      ],
+    };
+    expect([...acceptKidItemIds(answer, ['c0', 'c1', 'c2'])]).toEqual(['c2']);
+  });
+
+  it('the old id-list answer keeps nothing', () => {
+    expect(acceptKidItemIds({ kidItemIds: ['c0'] }, ['c0']).size).toBe(0);
   });
 });
 
@@ -93,7 +129,7 @@ describe('kidRelatedAha', () => {
         { earlier: 'Mia swim', later: 'Mia birthday party' },
       ],
     };
-    const { classifier, calls } = scripted(() => ({ kidItemIds: ['c0', 'c2'] }));
+    const { classifier, calls } = scripted(() => verdicts(['c0', 'c2'], ['c1', 'c3']));
     const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(calls).toHaveLength(1);
     expect(kept.read).toBe('ok');
@@ -115,7 +151,7 @@ describe('kidRelatedAha', () => {
       ],
       overlaps: [],
     };
-    const { classifier } = scripted(() => ({ kidItemIds: [] }));
+    const { classifier } = scripted(() => verdicts([]));
     const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(kept.read).toBe('none_for_kids');
     expect(kept.kidFilter).toBe('none_for_kids');
@@ -130,13 +166,13 @@ describe('kidRelatedAha', () => {
       email: [email('Music festival with friends')],
       overlaps: [],
     };
-    const { classifier } = scripted(() => ({ kidItemIds: ['e4', 'c0'] }));
+    const { classifier } = scripted(() => verdicts(['e4', 'c0'], ['e0']));
     const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(kept.read).toBe('none_for_kids');
   });
 
   it('a read that already failed or was withheld passes through without a classifier call', async () => {
-    const { classifier, calls } = scripted(() => ({ kidItemIds: [] }));
+    const { classifier, calls } = scripted(() => verdicts([]));
     const failed: AhaSnapshot = {
       provider: 'gmail',
       read: 'failed',
@@ -194,5 +230,48 @@ describe('kidRelatedAha', () => {
     const kept = await kidRelatedAha(snapshot, context, classifier);
     expect(kept.read).toBe('none_for_kids');
     expect(kept.kidFilter).toBe('classifier_failed');
+  });
+});
+
+describe('createKidItemClassifier', () => {
+  /** A scripted AgentClient: the port under the classifier, never the model (rule #8). */
+  function scriptedClient(childName: string | null) {
+    const requests: { output_config: { format: { schema: unknown } } }[] = [];
+    const respond = async (request: { output_config: { format: { schema: unknown } } }) => {
+      requests.push(request);
+      return structuredReply(
+        request,
+        KID_VERDICT_TOOL,
+        { verdicts: [{ ref: 'c0', reason: 'a swim class', verdict: 'kid', childName }] },
+        { input_tokens: 1, output_tokens: 1 },
+      );
+    };
+    const client = {
+      messages: {
+        create: respond,
+        stream: (request: { output_config: { format: { schema: unknown } } }) => ({
+          finalMessage: () => respond(request),
+        }),
+      },
+    } as unknown as AgentClient;
+    return { client, requests };
+  }
+  const input = { ...context, items: [{ id: 'c0', text: 'Swim' }] };
+
+  it("offers the model only this family's children as names, per call", async () => {
+    vi.stubEnv('HALE_LLM_NO_STREAM', '1');
+    const { client, requests } = scriptedClient('Mia');
+    await createKidItemClassifier(client).classify(input);
+    expect(JSON.stringify(requests[0]?.output_config.format.schema)).toContain(
+      '"childName":{"anyOf":[{"type":"string","enum":["Sebastian","Mia"]},{"type":"null"}]}',
+    );
+    vi.unstubAllEnvs();
+  });
+
+  it('a child name the family does not have fails validation', async () => {
+    vi.stubEnv('HALE_LLM_NO_STREAM', '1');
+    const { client } = scriptedClient('Seb');
+    await expect(createKidItemClassifier(client).classify(input)).rejects.toThrow();
+    vi.unstubAllEnvs();
   });
 });

@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Oakville, Ontario has no open Costco yet; the Oakville store is planned for 2027",
+        "from": "The FlamboroughToday headline says the opening is slated for 2027."
+      },
+      {
+        "states": "The planned Oakville store is at 3471 Wyecroft Rd",
+        "from": "The address in the application is 3471 Wyecroft Rd."
+      },
+      {
+        "states": "Burlington warehouse at 1225 Brant St, Burlington, ON L7P 1X7 is open",
+        "from": "Burlington, 1225 Brant St, Burlington, ON L7P 1X7."
+      },
+      {
+        "states": "Laird Rd warehouse in Mississauga at 3180 Laird Rd serves Oakville, per a third-party deals site",
+        "from": "One third-party deals site (yepsavings.com) says the Laird Rd warehouse serves Mississauga and Oakville. It gives the address as 3180 Laird Rd."
+      },
+      {
+        "states": "No driving distances were found, so which of the two is closer is unconfirmed",
+        "from": "The results gave no driving distances or times from Oakville to either warehouse."
+      },
+      {
+        "states": "Burlington's listed hours differ between sites",
+        "from": "Hours are inconsistent."
+      }
+    ],
+    "answer": "Assuming you mean Oakville, Ontario: there's no open Costco there yet. The one planned at 3471 Wyecroft Rd is slated to open in 2027. The closest open ones I found are the Burlington warehouse at 1225 Brant St and the Laird Rd one in Mississauga at 3180 Laird Rd. I couldn't confirm which of those two is closer to you, and Burlington's listed hours differ from site to site."
+  },
+  "latencyMs": 8268
+}

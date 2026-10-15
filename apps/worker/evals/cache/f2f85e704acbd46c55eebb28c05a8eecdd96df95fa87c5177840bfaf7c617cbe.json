@@ -1,0 +1,18 @@
+{
+  "value": {
+    "pages_read": [
+      "https://www.riverbendcommunity.example/preschool-play",
+      "https://www.riverbendcommunity.example/room-rentals"
+    ],
+    "slots": [
+      {
+        "name": "PARENT & TOT PLAYTIME, Riverbend Community Centre (Preschool Play)",
+        "age_fit": "12 months to 4 years",
+        "when": "Tuesdays and Thursdays, 9:30 - 11:00 a.m., September 8 to December 11",
+        "source_name": "Riverbend Community Centre",
+        "source_url": "https://www.riverbendcommunity.example/preschool-play"
+      }
+    ]
+  },
+  "latencyMs": 5013
+}

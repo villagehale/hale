@@ -26,6 +26,8 @@ const BLIND_INDEX_INFO = 'hale-phone-blind-index-v1';
 const EMAIL_BLIND_INDEX_INFO = 'hale-email-blind-index-v1';
 /** Google `sub`, not an email. A separate label so a phone or mail hash cannot collide. */
 const GOOGLE_ACCOUNT_BLIND_INDEX_INFO = 'hale-google-account-blind-index-v1';
+/** The kid-relevance cache key. Its own label: it hashes calendar and mail text. */
+const KID_RELEVANCE_INPUT_INFO = 'hale-kid-relevance-input-v1';
 
 function loadKeyMaterial(): Buffer {
   const raw = process.env.APP_ENCRYPTION_KEY;
@@ -76,4 +78,13 @@ export function googleAccountBlindIndex(sub: string): string {
   return createHmac('sha256', blindIndexKey(GOOGLE_ACCOUNT_BLIND_INDEX_INFO))
     .update(sub)
     .digest('hex');
+}
+
+/**
+ * The kid-relevance verdict cache key for one judge input (its title, place, sender and the
+ * family's children). Keyed so the stored hash is no oracle for a guessed title; a rotated
+ * key changes every hash, so the judge asks again.
+ */
+export function kidRelevanceInputIndex(input: string): string {
+  return createHmac('sha256', blindIndexKey(KID_RELEVANCE_INPUT_INFO)).update(input).digest('hex');
 }

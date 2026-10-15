@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "Go to the ER now - call 911 if you can't get there quickly. Fever with purple spots that don't fade when pressed needs urgent in-person assessment, even if your toddler seems okay. Don't wait to see if it changes.",
+    "triage": "Call 911 now if your child is drowsy, hard to wake, floppy, breathing fast, has a stiff neck or a seizure, or the spots are spreading. Don't call 811 first - go to the ER or call 911 now.",
+    "sources": [
+      "Royal Children's Hospital Melbourne",
+      "Banner Health",
+      "Kingston and Richmond NHS Foundation Trust"
+    ]
+  },
+  "latencyMs": 5220
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single short clause. It correctly calls the item a bare initial with no activity. 'J.' matches neither Wren nor Theo, and no activities or hints settle it. The reason concludes that the item could be either the children's or the parent's, which supports the unsure verdict without inventing anything.",
+    "score": 5
+  }
+}

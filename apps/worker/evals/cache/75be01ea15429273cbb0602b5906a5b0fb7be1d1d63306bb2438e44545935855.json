@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "ConnexOntario gives free referrals for mental health services, reachable 24 hours by phone at 1-866-531-2600",
+        "from": "ConnexOntario gives free information and referrals for mental health, addiction and gambling services. It's reachable 24 hours a day by phone at 1-866-531-2600"
+      },
+      {
+        "states": "Family Service Toronto offers counselling with sliding-scale fees based on income",
+        "from": "Family Service Toronto offers counselling for individuals, couples and families. It has sliding-scale fees based on income"
+      },
+      {
+        "states": "The Ontario Structured Psychotherapy program offers free short-term CBT for adults with depression and anxiety",
+        "from": "The Ontario Structured Psychotherapy program offers free, short-term cognitive behavioural therapy for adults with depression and anxiety"
+      },
+      {
+        "states": "Psychotherapy Referral Service connects people with registered psychotherapists in Toronto",
+        "from": "Psychotherapy Referral Service is a not-for-profit that has connected people to registered psychotherapists in Toronto"
+      },
+      {
+        "states": "First Session offers free consultations",
+        "from": "First Session offers free consultations"
+      },
+      {
+        "states": "A private session in Toronto is about $160, per one source",
+        "from": "One source puts the average private session in Toronto at $160"
+      },
+      {
+        "states": "Private therapists are often covered by employer extended health plans",
+        "from": "Private therapists often are covered by extended health plans through an employer"
+      },
+      {
+        "states": "Distress Centres of Greater Toronto offer free 24/7 support by hotline, online chat and text",
+        "from": "Distress Centres of Greater Toronto offer free 24/7 support for people in crisis or emotional distress by hotline, online chat and text"
+      }
+    ],
+    "answer": "Sorry you're needing one, that's a good step. Here's where to start in Toronto. For free or cheap help, Family Service Toronto has counselling on a sliding scale based on income, and the Ontario Structured Psychotherapy program offers free short-term CBT for depression and anxiety. ConnexOntario is free and open 24 hours at 1-866-531-2600 if you want referrals. For a private therapist, Psychotherapy Referral Service matches you with registered psychotherapists, and First Session offers free consultations. A private session runs about $160, per one source, and many employer extended health plans cover it. If things get urgent, Distress Centres of Greater Toronto offers free 24/7 support by hotline, chat or text."
+  },
+  "latencyMs": 10646
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.9,
+    "rationale": "A teen's private personal note that matches no family-logistics event type and should not be surfaced or acted on.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-kai",
+    "teen_content": true
+  },
+  "latencyMs": 5174
+}

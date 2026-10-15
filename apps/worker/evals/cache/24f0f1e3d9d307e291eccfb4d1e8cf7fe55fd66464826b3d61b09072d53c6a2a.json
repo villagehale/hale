@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is backed by the notes: no Oakville Costco is open yet, one is planned near the QEW for 2027, Burlington is at 1225 Brant St, a deals site says the Laird Rd Mississauga warehouse serves Oakville, there are no drive times, and Monday hours conflict. It invents nothing and says nothing about the family's street. It actually answers, in English, and is fair to hedge on which Oakville is meant. The tone reads a little like a research report ('the closest open ones I found', 'which one deals site says'). That hedging makes it less of a quick friend text, though it never offers a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

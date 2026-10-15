@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason says what the item is (a hotel booking) and why it is unsure: it names no child, shows no family booking and gives no sign of a work trip. That matches the trip rule. It is one plain clause, though slightly long.",
+    "score": 5
+  }
+}

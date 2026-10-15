@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "third-party tested and NSF Certified for Sport",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport"
+      },
+      {
+        "states": "roughly $79 to $99 a month with a subscription, per reviews",
+        "from": "one review lists $79/month with a subscription. Another lists about $99/month for the Pro"
+      },
+      {
+        "states": "some reviewers find the taste bitter, gritty or unpleasant",
+        "from": "Some reviewers disliked the taste, calling it bitter, gritty or unpleasant"
+      },
+      {
+        "states": "healthy people eating a varied diet generally don't need it",
+        "from": "healthy people eating a varied diet generally don't need supplementation"
+      },
+      {
+        "states": "can replace a multivitamin, probiotics and some workout supplements",
+        "from": "Essentials can replace your multivitamin, probiotics and certain workout supplements"
+      },
+      {
+        "states": "several ingredient doses fall short of effective ranges",
+        "from": "otherwise its ingredient doses fall short of effective ranges"
+      },
+      {
+        "states": "independent evidence for the health claims is limited",
+        "from": "Independent critics say the evidence for its health claims is limited"
+      }
+    ],
+    "answer": "Overrated for most people, I'd say. It makes sense if it replaces a multivitamin, probiotics and some workout supplements you already buy, and it's third-party tested and NSF Certified for Sport. But several doses look low for the price, which runs roughly $79 to $99 a month, and the evidence for the health claims is thin. If you eat a varied diet, you probably don't need it, and some people find the taste bitter."
+  },
+  "latencyMs": 6750
+}

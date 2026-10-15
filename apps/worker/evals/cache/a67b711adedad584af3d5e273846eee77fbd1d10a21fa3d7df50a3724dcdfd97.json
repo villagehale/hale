@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Honda Odyssey is the best minivan, 9.3/10 overall (U.S. News, U.S. market)",
+        "from": "It names the 2026 Honda Odyssey the best minivan, with an overall score of 9.3/10."
+      },
+      {
+        "states": "Honda Odyssey is at the top of KBB's list (U.S.)",
+        "from": "KBB currently has the 2026 Honda Odyssey at the top of its list."
+      },
+      {
+        "states": "Honda Odyssey drives most like a car, with responsive steering and a smooth V6",
+        "from": "It drives the most like a car, with responsive steering and a smooth V6."
+      },
+      {
+        "states": "Honda Odyssey is front-wheel drive only",
+        "from": "It is front-wheel drive only."
+      },
+      {
+        "states": "Honda Odyssey gets 22 mpg combined",
+        "from": "KBB lists it at $44,245 starting, 22 mpg combined."
+      },
+      {
+        "states": "Toyota Sienna hybrid gets 35–36 mpg combined",
+        "from": "MSRP is $41,320 to $58,710, with 35–36 mpg combined."
+      }
+    ],
+    "answer": "Honda Odyssey, I'd say. U.S. News has it top at 9.3/10, KBB has it first too, and it drives most like a car, with responsive steering and a smooth V6. The downside is front-wheel drive only and about 22 mpg combined. If fuel economy matters more to you, the Sienna hybrid gets 35–36 mpg combined."
+  },
+  "latencyMs": 7834
+}

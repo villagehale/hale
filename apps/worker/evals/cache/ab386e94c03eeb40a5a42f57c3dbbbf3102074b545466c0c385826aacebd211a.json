@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly says the text is only an order with no activity, but its conclusion, not about the children, argues only against kid. It never says the text is not the parent's own either, which is what makes it unsure rather than adult, so it reads as half-supporting a different verdict.",
+    "score": 3
+  }
+}

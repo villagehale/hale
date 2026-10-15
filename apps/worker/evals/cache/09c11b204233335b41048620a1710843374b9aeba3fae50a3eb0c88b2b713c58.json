@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier names what the item is, a daycare pickup, and correctly treats it as a childcare arrangement, which is enough for kid. It adds no unsupported facts and stays one plain clause, though it repeats the title somewhat.",
+    "score": 5
+  }
+}

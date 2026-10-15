@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ties the ask directly to the introduction the parent agreed to, in plain terms: 'For the introduction you agreed to, send me your name and email and I'll set it up.' It asks for both missing facts (name and email) in one message, uses no question mark, adds no greeting, sign-off, urgency, or invented details, and says nothing about the other household. It is short, concrete, and matches the watchFor shape of a statement ending in an instruction.",
+    "score": 5
+  }
+}

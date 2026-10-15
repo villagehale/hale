@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the notes: closed for Thanksgiving, Friday close of 35,664.62, up 519 points (~1.5%), the jobs report cutting rate-hike odds, and the reopen tomorrow at 9:30 ET. It's brief, casual, in English, and states the answer directly. \"Surprisingly bad\" is a fair gloss of a loss against a forecast gain.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

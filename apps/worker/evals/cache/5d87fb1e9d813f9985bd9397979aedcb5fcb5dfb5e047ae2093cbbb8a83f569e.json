@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://study.com/learn/lesson/prime-ministers-canada-timeline-accomplishments-duties.html",
+    "https://en.wikipedia.org/wiki/Prime_Minister_of_Canada",
+    "https://en.wikipedia.org/wiki/List_of_prime_ministers_of_Canada",
+    "https://www.pm.gc.ca/en/about",
+    "https://www.pm.gc.ca/en/cabinet",
+    "https://en.wikipedia.org/wiki/Mark_Carney",
+    "https://www.pm.gc.ca/en",
+    "https://www.facebook.com/CanadianPM/",
+    "https://www.youtube.com/@CanadianPM"
+  ],
+  "notes": "Notes for the question \"who is the prime minister of canada\" (today: Monday, October 12, 2026):\n\n- Mark Carney is the current prime minister of Canada. He is the 24th and current prime minister and assumed office on 14 March 2025. Wikipedia's Prime Minister of Canada and List of prime ministers pages both say this.\n- The prime minister's official website (pm.gc.ca) also names him. It says he was elected Leader of the Liberal Party of Canada and sworn in as Prime Minister in March 2025.\n- The official site's home page lists his activity as recent as October 11, 2026. That day it published items on his calls with US President Trump and Ukraine's President Zelenskyy. This shows he is still in office as of this week.\n- He succeeded Justin Trudeau as prime minister and as Liberal leader.\n- One result, a study.com lesson page, says Justin Trudeau is the current prime minister. That page is clearly outdated. It also lists Queen Elizabeth II as monarch and David Johnston as governor general. It conflicts with the official government site and Wikipedia, so I am not relying on it.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 5416
+}

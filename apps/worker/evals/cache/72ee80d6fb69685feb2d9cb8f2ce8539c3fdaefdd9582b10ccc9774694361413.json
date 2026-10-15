@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the sender as a federal government domain (canada.ca) and the content as an Employment Insurance maternity benefit processing notice, which matches the ei_correspondence event type. It adds a useful observation that it is one-way correspondence requiring no reply. It could be slightly stronger by referencing the payment-deposit detail, but it is accurate and specific.",
+    "score": 5
+  }
+}

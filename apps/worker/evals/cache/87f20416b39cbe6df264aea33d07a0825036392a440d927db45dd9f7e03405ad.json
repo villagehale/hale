@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC, Canada, Tuesday 13 Oct: mix of sun and cloud, high of 15°C",
+        "from": "Environment Canada, forecast issued 5:00 AM PDT Monday 12 Oct 2026: Tuesday is a mix of sun and cloud, with a high of 15."
+      },
+      {
+        "states": "Vancouver, BC, Canada, Tuesday night: showers, low of 11°C",
+        "from": "Tuesday night brings showers, with a low of 11."
+      },
+      {
+        "states": "Vancouver, WA, USA, Tuesday 13 Oct: mostly sunny, high near 64°F",
+        "from": "National Weather Service point forecast, last updated 9:41 am PDT Oct 11, 2026: Tuesday is mostly sunny with a high near 64°F"
+      },
+      {
+        "states": "Vancouver, WA, USA, Tuesday night: mostly cloudy, low around 48°F",
+        "from": "Tuesday night is mostly cloudy with a low around 48°F."
+      }
+    ],
+    "answer": "Two Vancouvers, so here's both for tomorrow (Tuesday).\n\nVancouver, BC: mix of sun and cloud, high of 15°C, then showers in the evening, low of 11°C overnight.\n\nVancouver, WA: mostly sunny, high near 64°F, mostly cloudy tonight with a low around 48°F."
+  },
+  "latencyMs": 6502
+}

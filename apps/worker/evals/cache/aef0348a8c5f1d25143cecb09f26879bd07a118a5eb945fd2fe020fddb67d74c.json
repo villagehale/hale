@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer names Mark Carney and gives 14 March 2025 as his start date. Both are supported by research_notes. Grounding cites the notes rather than marking anything 'settled'. 'Still in office as of this week' matches the Britannica items from Oct 6 and 8. It's brief and casual, like a friend texting back. Spelling out the exact date is a touch formal, but that's fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

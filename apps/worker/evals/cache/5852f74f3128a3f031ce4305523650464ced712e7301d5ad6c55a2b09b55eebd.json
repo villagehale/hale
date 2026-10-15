@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason holds up. It says what the item is (a 15-month checkup from a doctor) and why that makes it kid (Seb is one of the children, the nickname for Sebastian). That supports the kid verdict in one plain clause with no facts the item doesn't give.",
+    "score": 5
+  }
+}

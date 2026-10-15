@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "Call 911 now. Fast breathing, ribs pulling in and bluish lips mean your baby may not be getting enough oxygen. Stay with your baby and keep them upright and calm while help comes.",
+    "triage": "Call 911 now - do not wait and do not call 811 first. If you cannot get an ambulance quickly, go to the nearest ER right away. 811 is for nurse advice after your baby has been seen.",
+    "sources": [
+      "Seattle Children's Hospital",
+      "Nationwide Children's Hospital",
+      "Connecticut Children's"
+    ]
+  },
+  "latencyMs": 2466
+}

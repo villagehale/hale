@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: in 2006 the Cardinals beat the Tigers 4-1, which is settled knowledge. It reads as a brief, casual text that answers directly.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

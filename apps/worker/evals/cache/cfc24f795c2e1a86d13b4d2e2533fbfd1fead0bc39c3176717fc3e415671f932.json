@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason calls the item a bare 'Hold' block with no detail, which matches the rule that a bare time block is open both ways. It names no child, activity or adult mark and adds no fact the item does not support, so it is one short clause backing the unsure verdict.",
+    "score": 5
+  }
+}

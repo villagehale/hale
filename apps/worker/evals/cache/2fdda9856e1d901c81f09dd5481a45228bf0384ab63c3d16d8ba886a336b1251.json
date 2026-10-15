@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday high about 24°C (Environment Canada) to 25°C (Weather Network)",
+        "from": "The high is 24 ... a high of 25"
+      },
+      {
+        "states": "Tuesday night low about 12°C",
+        "from": "a low of 12"
+      },
+      {
+        "states": "60 percent chance of showers, with the Weather Network at 80% chance of rain",
+        "from": "with a 60 percent chance of showers ... It gives an 80% chance of rain"
+      },
+      {
+        "states": "risk of thunderstorms",
+        "from": "There is a risk of a thunderstorm in the morning and afternoon"
+      },
+      {
+        "states": "10 to 20 mm of rain locally (Environment Canada)",
+        "from": "Local rainfall is 10 to 20 mm"
+      },
+      {
+        "states": "wind gusting to 40 km/h near noon",
+        "from": "Wind becomes southwest 20 km/h gusting to 40 near noon"
+      }
+    ],
+    "answer": "Showery and warm tomorrow in Toronto. High around 24 to 25°C, low around 12. Showers are likely, about a 60 to 80% chance, with a risk of thunderstorms. Rain could reach 10 to 20 mm in spots, and it gets windy near noon with gusts to 40 km/h. That's the forecast as of this morning."
+  },
+  "latencyMs": 5570
+}

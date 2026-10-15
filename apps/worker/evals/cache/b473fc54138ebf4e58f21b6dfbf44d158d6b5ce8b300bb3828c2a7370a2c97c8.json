@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "frontdesk@riverdale-peds.ca",
+      "subject": "Re: Confirm visit",
+      "body": "hi — yes, tuesday june 23 at 5:30 pm works for mira's 18-month visit. please go ahead and book it. thanks for fitting us in."
+    },
+    "confidence": 0.55,
+    "rationale": "Straightforward confirmation, but no calendar context was provided to verify the parent is free June 23 at 5:30 PM, so parent should check before sending.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 3046
+}

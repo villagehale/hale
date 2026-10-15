@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause and matches the unsure verdict. It says what the item is (a hotel reservation) and gives the rule-based why: no child is named and nothing marks it as a family or work booking. It invents no facts.",
+    "score": 5
+  }
+}

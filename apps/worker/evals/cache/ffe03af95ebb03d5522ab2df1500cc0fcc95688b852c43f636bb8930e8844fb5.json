@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It correctly says it can't know what the parent ate and doesn't guess. But it goes beyond the one plain clause watchFor asks for. The meta line about not bringing family details into the thread is unnecessary and touches on the family. 'Wouldn't have had a view on your breakfast anyway' is awkward and reads like a stilted policy explanation rather than a quick, friendly text.",
+    "score": 3
+  }
+}

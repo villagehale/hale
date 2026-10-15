@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Tuesday Oct 13: high 24°C",
+        "from": "The high is 24°C"
+      },
+      {
+        "states": "Toronto, Tuesday: showers end near noon, then mainly cloudy with a 60 percent chance of showers",
+        "from": "A few showers end near noon, then it is mainly cloudy with a 60 percent chance of showers"
+      },
+      {
+        "states": "Toronto, Tuesday: risk of thunderstorm in the morning and afternoon",
+        "from": "There is a risk of a thunderstorm in the morning and afternoon"
+      },
+      {
+        "states": "Toronto, Tuesday: wind southwest 20 km/h gusting to 40 near noon",
+        "from": "The wind becomes southwest 20 km/h gusting to 40 near noon"
+      },
+      {
+        "states": "Toronto, Tuesday night: low 12°C, 60 percent chance of showers",
+        "from": "Tuesday night is cloudy periods with a 60 percent chance of showers, and a low of 12°C"
+      },
+      {
+        "states": "Toronto, Wednesday Oct 14: cooler, high 19°C, 30 percent chance of showers",
+        "from": "The next day, Wednesday, is cooler: a mix of sun and cloud with a 30 percent chance of showers, and a high of 19°C"
+      }
+    ],
+    "answer": "Tomorrow in Toronto looks showery and warm, high of 24°C. Showers end around noon, but there's a 60% chance of them plus a risk of thunderstorms through the morning and afternoon, with southwest wind 20 km/h gusting to 40 near noon. Tuesday night drops to a low of 12°C with a 60% chance of showers. Wednesday is cooler, high 19°C, 30% chance of showers. That's the Environment Canada forecast from 11 am today."
+  },
+  "latencyMs": 6022
+}

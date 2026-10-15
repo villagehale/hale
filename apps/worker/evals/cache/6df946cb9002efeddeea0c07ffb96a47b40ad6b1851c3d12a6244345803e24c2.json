@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes: Carney is current PM, took office March 2025, and Trudeau's government collapsed (Britannica). The grounding is properly sourced and nothing is marked settled. It's brief, a direct answer, and casual enough, though 'still in the job as of this week' is slightly stiff. It reads like a friend texting.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

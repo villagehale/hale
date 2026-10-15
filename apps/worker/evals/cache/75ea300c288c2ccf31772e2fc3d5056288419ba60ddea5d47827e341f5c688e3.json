@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that matches the kid verdict. It says what the item is, a daycare pickup that names Wren, and why that makes it kid, since a child's pickup is a care arrangement. Nothing in it goes beyond what the item says.",
+    "score": 5
+  }
+}

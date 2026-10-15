@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly identifies the item as a flight check-in that names neither child, nor seats for them, nor a work purpose, which is exactly the trip rule for unsure, in one plain clause that matches the verdict.",
+    "score": 5
+  }
+}

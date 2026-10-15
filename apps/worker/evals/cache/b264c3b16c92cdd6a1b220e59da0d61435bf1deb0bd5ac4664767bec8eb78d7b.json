@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that matches the verdict. It names what the item is, a work 1:1, and points to the surname that marks this Mia as an adult colleague rather than the 6-year-old child. That is why it is the parent's own work meeting. Every fact it uses comes from the item.",
+    "score": 5
+  }
+}

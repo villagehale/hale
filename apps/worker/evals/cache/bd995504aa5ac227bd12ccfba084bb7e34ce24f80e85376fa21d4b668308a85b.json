@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause. It names what the item is, an alumni dinner RSVP, and why that makes it adult: it is the parent's own social event. Alumni events are explicitly on the adult list, and the reason adds no unsupported facts.",
+    "score": 5
+  }
+}

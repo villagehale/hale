@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a birthday party named for Lina, who is one of the children, and the rules make that a kid item. The classifier's reason says what the item is, ties it to the rule, supports the kid verdict, invents no facts and is one plain clause.",
+    "score": 5
+  }
+}

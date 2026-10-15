@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a French calendar entry for 'Lina's swimming lessons', and Lina is the 30-month-old child. The classifier's single short clause correctly identifies it as a swim class named for that child, which supports the kid verdict. It adds no unsupported facts.",
+    "score": 5
+  }
+}

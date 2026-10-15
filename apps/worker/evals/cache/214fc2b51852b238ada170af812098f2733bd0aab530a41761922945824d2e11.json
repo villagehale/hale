@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the signal as an automated one-way reminder from a clinic about an existing appointment and notes the STOP line is only an opt-out. It is specific and matches the content, though it could mention the date and provider to be more complete.",
+    "score": 5
+  }
+}

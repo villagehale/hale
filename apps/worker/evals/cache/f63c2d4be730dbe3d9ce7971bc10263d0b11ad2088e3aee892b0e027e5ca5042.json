@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "lab_results_ready",
+    "confidence": 0.96,
+    "rationale": "Known pediatric clinic portal notifies that Mira's bloodwork results are available to view.",
+    "payload": {
+      "child_name": "Mira",
+      "sender": "portal@riverdale-peds.ca",
+      "clinic": "Riverdale Peds",
+      "result_type": "bloodwork",
+      "action_required": "Log in to patient portal to view"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 2359
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly reads 'Call' as a bare entry with no name or activity, which fits a child or the parent equally and supports unsure, all in one plain clause.",
+    "score": 5
+  }
+}

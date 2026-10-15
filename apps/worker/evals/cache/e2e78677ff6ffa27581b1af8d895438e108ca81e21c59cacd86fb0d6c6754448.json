@@ -1,0 +1,13 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.95,
+    "rationale": "Generic promotional spam with no family-relevant signal or known sender.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 1834
+}

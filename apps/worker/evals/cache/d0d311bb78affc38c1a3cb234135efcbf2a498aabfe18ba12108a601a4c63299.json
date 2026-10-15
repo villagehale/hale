@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier correctly identifies the item as a registration for a preschool swim class, which is a program made for young children and so a kid item even though no child is named. It is one short clause and supports the kid verdict. It adds no unsupported facts.",
+    "score": 5
+  }
+}

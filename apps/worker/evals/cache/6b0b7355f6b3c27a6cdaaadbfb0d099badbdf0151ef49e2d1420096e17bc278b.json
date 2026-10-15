@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Red-flag case handled correctly: directs to 911 immediately, gives safe positioning, clear escalation signs, and correctly separates 811 as secondary. Plain language, no invented specifics, no diagnosis stated, English matches parent language. Concise enough.",
+    "score": 5
+  }
+}

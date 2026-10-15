@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The advice is solid and general: drowsy-but-awake, a dark room, a consistent short routine, and catching tired cues early. It invents nothing about the child and asks his age briefly alongside real advice, which the fixture allows. There is no safety concern in a nap question. It reads mostly like a knowledgeable friend, but the tone is a bit polished and list-like, and 'I can get more specific from there' leans slightly toward an assistant offering a service, so it falls short of a perfect friend-text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly calls this a hotel booking, matches it to the 'a hotel stay' notMineHints entry, and notes that no child is named. That is exactly what the rules say makes it adult. It is one short clause, supported by the context, and argues for the given verdict.",
+    "score": 5
+  }
+}

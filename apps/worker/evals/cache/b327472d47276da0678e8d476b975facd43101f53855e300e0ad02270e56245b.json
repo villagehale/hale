@@ -1,0 +1,25 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Centre des sciences de Montréal (Mini Mondo area)",
+        "age_fit": "Mini Mondo is for children under 7",
+        "when": "Holiday schedule lists Dec 27, 28, 29 and 30, 10:00-17:00 (listing shows no year, so confirm before going)",
+        "source_name": "Musées Montréal"
+      },
+      {
+        "name": "Biodôme - Espace pour la vie",
+        "age_fit": "No toddler age band on the listing",
+        "when": "Regular hours Tue-Sun 9:00-17:00, closed Mondays (Dec 28 is a Monday); no holiday exception confirmed",
+        "source_name": "Musées Montréal"
+      },
+      {
+        "name": "Nicolas Noël | Entre deux mondes",
+        "age_fit": "Ages 2 to 12",
+        "when": "December 27 and 28, 2026; no start time or venue given",
+        "source_name": "Tourisme Montréal"
+      }
+    ]
+  },
+  "latencyMs": 12405
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason says the item is a music class, a kid activity, and that it names Theo, one of the children. Both points support the kid verdict. Theo's age of 50 months comes from the context, so nothing is invented. It is one plain clause. The age adds a little but is harmless.",
+    "score": 5
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "value": {
+    "payload": {
+      "item": "size 4 diapers",
+      "vendor": "DiaperCo",
+      "unit_price": "42.99",
+      "quantity": 1,
+      "estimated_total": "42.99",
+      "currency_assumed": "USD",
+      "urgency": "high",
+      "days_remaining_at_signal": 1,
+      "source_event_id": "evt-03",
+      "notes_for_parent": "about 1 day of size 4 diapers left. ordering 1 unit from DiaperCo at $42.99. i didn't have your usual quantity, shipping address, or a preferred shipping speed, so please check those before approving. with only a day left, standard shipping may not get here in time."
+    },
+    "confidence": 0.6,
+    "rationale": "Item, vendor, and price come straight from the low-supply signal, but there's no memory to confirm quantity, address, or shipping speed, so it defaults to 1 unit and needs parent review given the 1-day runway.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 10085
+}

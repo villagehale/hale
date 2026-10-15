@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is short, plain, and leads with the useful fact (Markham Fall 2026 registration for Maya opens Aug 11, 6:30 a.m.). It uses the mandated 'I looked up' lead and the mandated 'still learning your area, no weekend pick yet' clause since weekendPick is null. All specifics (Markham, Fall 2026, Aug 11, 6:30 a.m., Maya) are given in the facts. It omits the 18-month checkpoint, which is acceptable since the message need not cover every fact, and offerQuestion is not something the message is required to voice. Minor nit: 'I'll have one soon' is a slight forward promise, but it is the contract's instructed wording.",
+    "score": 5
+  }
+}

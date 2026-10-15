@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "马上带宝宝去急诊。3个月以下的婴儿发烧38.5度，即使看起来还好，也必须立刻检查，因为发烧可能是严重疾病唯一的信号。",
+    "triage": "现在就去最近的急诊，不要等门诊预约。如果宝宝叫不醒、呼吸费力、嘴唇发紫，或皮疹按压后不褪色，立即拨打911。811不能代替去急诊，只在你需要协助时才打。",
+    "sources": [
+      "Canadian Paediatric Society / AboutKidsHealth (SickKids)",
+      "Quebec.ca",
+      "Alberta Health Services",
+      "Children's Hospital of Philadelphia"
+    ]
+  },
+  "latencyMs": 5168
+}

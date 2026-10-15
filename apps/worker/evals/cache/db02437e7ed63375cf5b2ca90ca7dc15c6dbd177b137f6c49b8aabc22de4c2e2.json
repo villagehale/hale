@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel booking that names no child and has no family package or child seats/rooms, and no notMineHints apply, so the trip rule makes it unsure; the classifier's single clause says exactly what it is and why, with no invented facts.",
+    "score": 5
+  }
+}

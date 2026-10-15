@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a physio session for a shoulder, which the rules list as the parent's own, and nothing ties it to the 18-month-old or the 4-year-old. The classifier's reason says what the item is and why it makes it adult, in one short clause with no invented facts.",
+    "score": 5
+  }
+}

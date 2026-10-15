@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The high of 69–73°F, the sunny Tuesday and the cooler Wednesday all match the notes. But the answer places the low of 46–48 'tonight', which is Monday night, and in that context implies the showers after midnight come tonight too. The notes put both the low and the 60% showers on Tuesday night, so a parent would wrongly expect rain tonight. The tone is fairly friendly and direct, but the mis-dated low and showers are a wrong fact.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 2
+  }
+}

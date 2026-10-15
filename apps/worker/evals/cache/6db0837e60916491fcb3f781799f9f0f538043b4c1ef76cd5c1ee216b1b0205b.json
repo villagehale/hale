@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the signal as a federal EI maternity benefit notice from canada.ca confirming the claim was processed and a payment is imminent. It accurately ties the content to the ei_correspondence event type and gives a sensible reason it should be surfaced. It is specific and matches the signal content, though it could note the time-sensitive payment detail more explicitly.",
+    "score": 4
+  }
+}

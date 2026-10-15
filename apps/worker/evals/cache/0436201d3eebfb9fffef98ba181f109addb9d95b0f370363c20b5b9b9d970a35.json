@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct: Lima is the capital, and the Pacific coast detail is common knowledge. It reads like a friend texting back, answers this question flat and doesn't mention the pending weather question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

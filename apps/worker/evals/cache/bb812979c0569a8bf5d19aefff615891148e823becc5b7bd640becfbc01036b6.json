@@ -1,0 +1,14 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.97,
+    "rationale": "Pure marketing spam from an unknown sender with no family-specific signal.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "teen_content": false,
+    "concerns_child_id": null
+  },
+  "latencyMs": 1361
+}

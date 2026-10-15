@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that names the item as a birthday party for Mia, who is one of the children, and that matches the kid rule for a party named for a child. It supports the kid verdict and adds nothing the item does not say.",
+    "score": 5
+  }
+}

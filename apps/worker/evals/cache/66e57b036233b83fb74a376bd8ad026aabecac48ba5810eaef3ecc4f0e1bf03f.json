@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason is one short, plain clause that names the item as a library hold for an adult novel. That matches the rule's 'library hold for an adult book' and supports the adult verdict without adding any unsupported fact.",
+    "score": 5
+  }
+}

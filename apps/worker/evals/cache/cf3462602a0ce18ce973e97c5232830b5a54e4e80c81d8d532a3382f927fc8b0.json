@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is correct: the capital of France is Paris, which is settled knowledge. It is brief and casual, and it reads as French or language-neutral, so it matches the question. It answers directly with no deflection and no assistant-style offer. It sounds like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

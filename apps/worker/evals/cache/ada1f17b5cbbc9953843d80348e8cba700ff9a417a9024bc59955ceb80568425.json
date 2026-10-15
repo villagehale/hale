@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Well calibrated: benign-leaning case handled with reasonable uncertainty, no ER over-escalation, suggests a doctor swab, gives home care and clear 811/doctor and 911/ER triage. Concise and plain-language; no invented specifics. Minor issue: it mentions a rash and drooling/stiff neck, but these are appropriate watch-fors rather than over-escalation. English matches parent language.",
+    "score": 5
+  }
+}

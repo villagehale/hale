@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the research notes for Denver, Colorado, tomorrow (Tue Oct 13): cooler, partly sunny, high around 65°F, 30% rain chance after 3 p.m., evening showers, lows in the 30s to low 40s, and NNE winds at 6–10 mph. It answers directly in English with no deflect. It reads more like a compressed forecast bulletin than a casual text, packing in wind speeds and overnight lows, but it is still a plain answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

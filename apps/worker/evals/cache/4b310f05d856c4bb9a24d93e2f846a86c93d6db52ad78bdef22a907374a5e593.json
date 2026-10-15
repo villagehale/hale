@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason fits the trip rule well: a check-in notice for a flight names no child, shows no seats for children and no family package, and gives no work or conference sign, so it is open both ways and backs the unsure verdict; it is one plain clause with no invented facts.",
+    "score": 5
+  }
+}

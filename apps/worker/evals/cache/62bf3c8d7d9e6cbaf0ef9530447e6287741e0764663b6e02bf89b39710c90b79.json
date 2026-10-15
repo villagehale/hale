@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The item is a hotel booking confirmation, and the notMineHints include 'a hotel stay'. Under the rules, an item of the same kind as a notMineHints entry is adult unless it plainly names a child, and this one names none. The classifier's reason states exactly that: what the item is (a hotel booking), why it is adult (it matches the hint), and that no child is named. It is one plain clause, supports the verdict and invents no facts.",
+    "score": 5
+  }
+}

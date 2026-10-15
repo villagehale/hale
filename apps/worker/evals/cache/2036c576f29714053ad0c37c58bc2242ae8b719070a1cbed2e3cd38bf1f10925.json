@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the signal as a single bottle feed log (90 ml, 18 minutes, overnight) and accurately notes that one entry cannot establish a pattern, which is a sound basis for a feeding_pattern_signal classification. It could be stronger by explaining why the event was still flagged as a pattern signal rather than discarded, and by referencing the timestamp or duration, but the reasoning is clear and matches the content.",
+    "score": 4
+  }
+}

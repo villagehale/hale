@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "All three figures are backed by the notes: 4.34% insured (Ratehub, Oct 12), 4.44% uninsured (WOWA) and the 5.14% Big 6 average (Nesto). It correctly says the rate depends on whether the mortgage is insured. The only stretch is that 4.44% is dated Oct 9, not Oct 12. It reads as a brief, casual text that actually answers, with no deflect and no service-style offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

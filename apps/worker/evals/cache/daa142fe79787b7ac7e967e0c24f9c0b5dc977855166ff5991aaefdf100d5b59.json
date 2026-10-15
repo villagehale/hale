@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Leads with a plain 'I looked up' that adds no invented scope, states the real registration absence accurately (Fall 2026 opened Sep 1, Winter 2027 not posted, stillOpenPage false so saying so is correct), and includes the firstFindBeat verbatim without padding. Concise and faithful; no invented venue, price or count. Missing the weekendPick absence clause is minor since weekendPick is null but the message is otherwise clean.",
+    "score": 4
+  }
+}

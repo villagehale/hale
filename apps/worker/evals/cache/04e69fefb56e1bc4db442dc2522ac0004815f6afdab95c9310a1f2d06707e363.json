@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named Halton Hills venues (Halton Hills Gymnastics Centre and Gellert Community Centre) that fit a toddler, and each carries a session start or day. The message leads with the best pick by name and attributes each source (\"their site says\", \"town listing says\"). Every price and time it states appears in the picks, and it asks no question. With watch TRUE, the first-person \"I'll keep watching and text you\" is correctly backed. It makes no negative page claim, so no_page_read is not violated. Two deductions: it runs to three sentences rather than one or two short ones, which is dense but within two segments. And it does not name the Parent and Tot price gap (\"I could not pin down the price\"), instead quietly omitting it.",
+    "score": 4
+  }
+}

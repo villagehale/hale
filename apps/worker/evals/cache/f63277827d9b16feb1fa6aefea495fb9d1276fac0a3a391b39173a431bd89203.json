@@ -1,0 +1,49 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Ontario Structured Psychotherapy is free and publicly funded CBT for adults 18 or older in Ontario with depression, anxiety or an anxiety-related condition such as OCD or PTSD",
+        "from": "Adults with depression and anxiety-related concerns can get free, publicly funded cognitive-behavioural therapy through OSP. ... Eligibility includes being 18 or older, living in Ontario, and having depression, anxiety or an anxiety-related condition such as OCD or post-traumatic stress."
+      },
+      {
+        "states": "No Ontario health card or family doctor is needed, and self-referral is accepted",
+        "from": "No Ontario health card or primary care provider is required, and self-referrals are accepted."
+      },
+      {
+        "states": "OSP is available virtually, by phone and in person, referral via ontariohealth.ca/osp",
+        "from": "It is available virtually, by phone and in person. ... find your local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "The local OSP network for the person's part of Toronto was not found",
+        "from": "I did not find which regional network covers the person's part of Toronto."
+      },
+      {
+        "states": "Affordable Therapy Network has a directory of over 500 therapists, most serving Toronto or online across Ontario",
+        "from": "The Affordable Therapy Network says it has a directory of over 500 therapists, most serving Toronto or online across Ontario. Its page is about 357 days old."
+      },
+      {
+        "states": "Affordable Therapy Services offers online sessions from $50 on a sliding scale",
+        "from": "Affordable Therapy Services lists online sessions from $50 on a sliding scale."
+      },
+      {
+        "states": "Get Reconnected offers sessions with supervised student interns at $45 per session",
+        "from": "Get Reconnected offers sessions with supervised student interns at $45 per session."
+      },
+      {
+        "states": "Toronto Community Psychotherapy & Counselling Centre has free counselling by application",
+        "from": "Toronto Community Psychotherapy & Counselling Centre has a free counselling service by application."
+      },
+      {
+        "states": "Psychology Today has a Canadian therapist directory that includes therapists accepting new patients for low-cost therapy",
+        "from": "Psychology Today has a Canadian therapist directory, and its listings include therapists accepting new patients for low-cost therapy."
+      },
+      {
+        "states": "Emergency help is not stated with a number, since no crisis-line details were found",
+        "from": "The third search, on the 988 crisis line, returned nothing, so there are no crisis-line details in these notes."
+      }
+    ],
+    "answer": "Sorry, that's a hard thing to be looking for. If it gets urgent where you are, reach emergency services right away. For free, Ontario Structured Psychotherapy covers adults 18+ in Ontario with depression, anxiety or anxiety-related issues like OCD or PTSD. You don't need a health card or family doctor, you can self-refer at ontariohealth.ca/osp, and it's offered by video, phone or in person. I couldn't find which local network covers your part of Toronto, so that page is where you'd sort it. For paid but cheap options in Toronto or online: Affordable Therapy Services has online sessions from $50 on a sliding scale, Get Reconnected has sessions with supervised student interns at $45, and the Affordable Therapy Network has a directory of 500+ therapists, mostly in Toronto or online. Toronto Community Psychotherapy & Counselling Centre has free counselling by application. Some of these listings are a bit dated, so prices may have moved."
+  },
+  "latencyMs": 11872
+}

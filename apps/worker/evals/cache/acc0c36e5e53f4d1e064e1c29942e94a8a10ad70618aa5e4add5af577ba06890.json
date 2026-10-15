@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason names what the item is, a daily standup, which is a work meeting. It gives the right why: work is the parent's own, which matches the adult verdict and the rules listing standups as adult. It is one short plain clause with no invented facts.",
+    "score": 5
+  }
+}

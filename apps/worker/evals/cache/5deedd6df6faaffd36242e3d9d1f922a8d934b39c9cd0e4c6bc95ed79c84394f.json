@@ -1,0 +1,28 @@
+{
+  "urls": [
+    "https://www.yr.no/en/forecast/daily-table/2-6173331/Canada/British%20Columbia/Metro%20Vancouver%20Regional%20District/Vancouver",
+    "https://weather.gc.ca/en/location/index.html?coords=49.245%2C-123.115",
+    "https://www.theweathernetwork.com/en/city/ca/british-columbia/vancouver/7-days",
+    "https://www.theweather.net/vancouver.htm",
+    "https://www.accuweather.com/en/ca/vancouver/v6c/weather-forecast/53286",
+    "https://www.thomascook.com/holidays/weather/canada/vancouver/forecast/",
+    "https://www.timeanddate.com/weather/canada/vancouver/ext",
+    "https://world-weather.info/forecast/canada/vancouver/14days/",
+    "https://amp.cbc.ca/news/canada/british-columbia/fall-leaves-take-over-vancouver-1.4867779",
+    "https://amp.cbc.ca/news/canada/british-columbia/severe-wind-warning-issued-for-metro-vancouver-vancouver-island-1.3322175",
+    "https://www.weatherbug.com/weather-forecast/10-day-weather/vancouver-wa-98661",
+    "https://www.accuweather.com/en/us/vancouver/98661/weather-forecast/331419",
+    "https://forecast.weather.gov/MapClick.php?lat=45.63&lon=-122.67",
+    "https://www.theweathernetwork.com/en/city/us/washington/vancouver/14-days",
+    "https://www.timeanddate.com/weather/@7174625/ext",
+    "https://www.foxweather.com/local-weather/washington/vancouver",
+    "https://www.timeanddate.com/weather/usa/vancouver/ext",
+    "https://www.myforecast.com/30-day-forecast.php?cwid=32387&metric=false&city_count=&zip_code=&condition=act&data=463376914",
+    "https://www.weather-forecast.com/locations/Vancouver-1/forecasts/latest",
+    "https://weather.metoffice.gov.uk/forecast/c20gdn"
+  ],
+  "notes": "Notes on the weather for tomorrow, Tuesday 13 Oct 2026. The question says only \"Vancouver\" and gives no place. There are two Vancouvers (British Columbia, Canada and Washington, USA), so I looked up both.\n\n**Vancouver, BC, Canada**\n- Environment Canada, forecast issued 5:00 AM PDT Monday 12 Oct 2026: Tuesday is a mix of sun and cloud, with a high of 15. Tuesday night brings showers, with a low of 11. The UV index is moderate (3).\n- yr.no says Tuesday 13 Oct is cloudy through the afternoon with rain in the evening, 14°/10°, 1.3 mm precipitation. The page's age tag is unclear, though it lists Monday 12 Oct as its first day.\n- The Weather Network shows Tuesday morning cloudy with sunny breaks at 8°, afternoon mainly cloudy at 14°. The overnight period has light rain, 80% chance, 2–4 mm. Its age tag is old, so it may not be the current update.\n- Meteored lists Tuesday as light rain with partly cloudy skies, 80%, 0.6 mm, 14°/10°. Its age tag is also old.\n- The sources agree on a high of about 14–15°C and a dry-to-mostly-dry day that turns wet by evening or overnight. They differ on how much sun there is.\n\n**Vancouver, WA, USA**\n- National Weather Service point forecast, last updated 9:41 am PDT Oct 11, 2026: Tuesday is mostly sunny with a high near 64°F, and Tuesday night is mostly cloudy with a low around 48°F. Wind is calm.\n- Fox Weather shows Tuesday 10/13 with times of sun and clouds, a high in the upper 60s and 5% chance of rain.\n- Timeanddate and other sites call it overcast and dry, 64/41°F. These pages carry old age tags, so they may be stale.\n- The sources agree it will be dry, with a high of about 64–68°F.\n\nSeveral of the pages carry old age tags. The Environment Canada and NWS forecasts are the most clearly tied to this week.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 9446
+}

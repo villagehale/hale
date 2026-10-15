@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure matches the research notes. Ratehub's 4.34% high-ratio rate is dated Oct 12. WOWA's 4.44% conventional rate is dated Oct 9. The big-bank average of 5.14% comes from Nesto, and the upward trend this month is also in the notes. Each rate is sourced and dated and is for the 5-year fixed term asked, in Canada, without asking which country. The tone is brief and casual, and it gives the answer outright rather than deflecting. Splitting by down payment is a fair simplification of insured vs uninsured.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

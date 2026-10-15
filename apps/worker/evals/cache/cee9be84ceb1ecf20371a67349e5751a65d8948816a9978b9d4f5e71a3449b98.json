@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one short clause that says what the item is, a child's checkup, and why it is a kid item: it is named for Wren. The 18-month age comes straight from the item text and matches Wren's age, so nothing is invented. It supports the kid verdict.",
+    "score": 5
+  }
+}

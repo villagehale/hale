@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence opens with 'I checked Markham's calendar' and carries the registration fact inside that same sentence, so Hale is clearly the one who went and looked. The look names only facts present in the payload (Markham, Fall 2026, Aug 11, 6:30 a.m., Maya), with no invented scope.",
+    "score": 5
+  }
+}

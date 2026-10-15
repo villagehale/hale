@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "Clear policy violation: the order total of $189.00 exceeds the family's $75 monthly autonomous spending cap, and check_spending_cap returned ok:false. The other checks passed (no duplicate order, no user override set), but the cap failure is sufficient for rejection.",
+    "remediation": "Do not commit as drafted. Either a parent explicitly approves this purchase or raises the monthly autonomous cap, or the Drafter proposes a smaller order that keeps the total under the remaining monthly allowance, then re-run check_spending_cap on the revised action."
+  },
+  "latencyMs": 2811
+}

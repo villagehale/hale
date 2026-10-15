@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is one plain clause that correctly calls this a bare calendar block with no activity or name, and that is exactly why it fits either the parent or a child. It argues for the verdict given and invents no facts.",
+    "score": 5
+  }
+}

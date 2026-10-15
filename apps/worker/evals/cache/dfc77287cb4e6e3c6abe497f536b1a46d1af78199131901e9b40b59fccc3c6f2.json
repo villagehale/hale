@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the useful pick, uses only given facts (free, outdoor, dry forecast, Sunday, Evergreen Brick Works, kids' names), and states plainly that nothing has a registration date coming up, which is the instructed copy when registration and registrationAbsence are both null. The 'I found' lead is mandated. Quiet, plain, short, no hype.",
+    "score": 5
+  }
+}

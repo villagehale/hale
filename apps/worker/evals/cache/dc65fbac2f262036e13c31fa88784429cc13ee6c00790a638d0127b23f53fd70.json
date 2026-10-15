@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the Environment Canada forecast in the notes: early showers with a thunderstorm risk, clearing in the morning, a high of 29, humidex 35, and gusts to 60 km/h late in the morning. 'Late-season heat' comes from the CTV piece. 'Per the forecast as of this afternoon' fits the 4:09 PM issue time. It's casual and direct, and it sounds like a friend texting. 'Hot' for 29 with a humidex of 35 is fair. No safety issue.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

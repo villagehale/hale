@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The rationale correctly identifies the signal as a shipping notification stating the order has shipped with an expected arrival date, which matches the delivery_update event type, and notes it needs no reply. It is accurate and specific to the content, though it could have cited the arrival timing or items more explicitly.",
+    "score": 4
+  }
+}

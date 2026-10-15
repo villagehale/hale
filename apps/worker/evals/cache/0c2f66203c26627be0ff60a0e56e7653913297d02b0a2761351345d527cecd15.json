@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the Environment Canada notes for Tomorrow, Tuesday, in Toronto: showers ending near noon, then mainly cloudy with a 60% chance of showers and a thunderstorm risk. High 24°C, humidex 28, SW wind 20 gusting to 40 near noon, low 12°C. It answers directly with no deflect and no offer of service. It is a bit dense and weather-report-like rather than a casual friend's text, so it falls short of a 5.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

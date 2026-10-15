@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the research notes: 4.34% lowest insured (Ratehub, Oct 12, available in Ontario), 4.44% lowest uninsured (WOWA), 5.14% Big 6 average (Nesto), and rates rising in October. It correctly explains the insured/uninsured split, gives an as-of date, and stays on the 5-year fixed in Canada. Reads like a friend texting back with the actual numbers.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

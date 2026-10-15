@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reason correctly says what the item is, a flight check-in notice. It applies the trip rule accurately: no child is named and nothing marks it as a family or work booking, so it stays unsure. It invents no facts and is one plain clause.",
+    "score": 5
+  }
+}

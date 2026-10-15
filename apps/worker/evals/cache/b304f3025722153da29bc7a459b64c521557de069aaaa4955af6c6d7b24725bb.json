@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The classifier's reason is a single short clause saying the item is a music class (a kid activity) and that it names Theo, one of the children. That is the kind of thing it is and why it is kid. It supports the verdict and adds no unsupported facts. \"Named for\" is slightly loose wording, since it means the item names Theo, but it is not misleading.",
+    "score": 5
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "clinical_query": "toddler seizure with fever, body stiffened for one minute, now limp and drowsy",
+    "age_band": "toddler",
+    "language": "fr",
+    "red_flag_sign": "seizure with fever, now limp and drowsy",
+    "red_flag": "emergency"
+  },
+  "latencyMs": 1786
+}
