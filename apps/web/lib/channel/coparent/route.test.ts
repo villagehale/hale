@@ -317,6 +317,7 @@ describe('co-parent invite · the parent half', () => {
   it('answers a French parent in French, and promises ARRET rather than STOP', async () => {
     const { fake, transport, deps } = harness();
     const { familyId } = await seedFamily(fake);
+    await fake.db.update(schema.families).set({ primaryLanguage: 'fr' });
     armFor(familyId);
 
     await text(fake, transport, deps, PARENT_PHONE, 'add Sam 647-555-0199 as my partner');

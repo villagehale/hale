@@ -10,6 +10,7 @@ import {
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import {
   type ReplyLanguage,
+  acceptReplyLanguage,
   certainLanguageHint,
   copyLanguage,
   localeFor,
@@ -408,6 +409,8 @@ const replySchema = z.object({
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
+  // BCP-47, or null when the model omits it. A sentence is not a tag.
+  language: z.string().nullable().optional().default(null).catch(null),
 });
 
 const replyJsonSchema = {
@@ -467,6 +470,7 @@ const replyJsonSchema = {
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
     ahaMention: { type: ['string', 'null'] },
+    language: { type: ['string', 'null'] },
   },
   required: ['reply'],
 } as const;
@@ -2369,6 +2373,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           calendarLater: value.calendarLater,
           gmailLater: value.gmailLater,
           stopAsking: value.stopAsking,
+          language: acceptReplyLanguage(value.language),
         },
         ahaMention: value.ahaMention,
       };

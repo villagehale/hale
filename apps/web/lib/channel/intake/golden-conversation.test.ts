@@ -84,6 +84,8 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
     scheduleAdds: [],
     parentRole: null,
     parentRoleBasis: null,
+    // The model reports the language it is answering in. This conversation is English.
+    language: input.language ?? 'en',
   };
   const postal = words.match(
     /\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])(?:[ -]?(\d[ABCEGHJ-NPRSTV-Z]\d))?\b/i,

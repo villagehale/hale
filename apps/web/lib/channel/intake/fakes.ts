@@ -350,22 +350,27 @@ export function makeFakeDb(): FakeDb {
     return `00000000-0000-4000-8000-${String(idSeq).padStart(12, '0')}`;
   };
 
-  /** The column DEFAULTS the real schema applies on insert. Only sms_intake_sessions
-   * needs them — it is the one table the machine reads its own writes back from, and a
-   * missing `follow_up_count` would silently read as undefined instead of 0. */
-  const defaultsFor = (table: unknown): Record<string, unknown> =>
-    table === schema.smsIntakeSessions
-      ? {
-          followUpCount: 0,
-          clarifyCount: 0,
-          sittingReminderSentAt: null,
-          firstReplyRecoveredAt: null,
-          sourceCode: null,
-          familyId: null,
-          userId: null,
-          lastProviderId: null,
-        }
-      : {};
+  /** The column DEFAULTS the real schema applies on insert. sms_intake_sessions is
+   * read back by the machine, and a missing `follow_up_count` would read as undefined
+   * instead of 0. families.primary_language defaults to English the same way. */
+  const defaultsFor = (table: unknown): Record<string, unknown> => {
+    if (table === schema.smsIntakeSessions) {
+      return {
+        followUpCount: 0,
+        clarifyCount: 0,
+        sittingReminderSentAt: null,
+        firstReplyRecoveredAt: null,
+        sourceCode: null,
+        familyId: null,
+        userId: null,
+        lastProviderId: null,
+      };
+    }
+    // The column default. A household with no language stored is English, the
+    // same default the real table applies. A French test sets the column.
+    if (table === schema.families) return { primaryLanguage: 'en' };
+    return {};
+  };
 
   const rowsFor = (table: unknown): Record<string, unknown>[] => {
     const all = store.get(table) ?? [];

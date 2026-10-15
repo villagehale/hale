@@ -739,7 +739,7 @@ describe('friend voice onboarding', () => {
     expect(transport3.bodies()).toEqual([]);
   });
 
-  it('always replies on a place miss, including a place outside coverage', async () => {
+  it('accepts a US ZIP and still replies when a city name is not a place', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
     await handleInboundSms(fake.db, inbound(transport, 'thanks'), deps);
@@ -748,14 +748,16 @@ describe('friend voice onboarding', () => {
 
     await handleInboundSms(fake.db, inbound(transport, '10001'), deps);
     const zip = transport.bodies().at(-1) ?? '';
-    expect(zip).toContain('I only cover the Toronto area right now.');
-    expect(zip.trim().endsWith("What's your postal code?")).toBe(true);
-    expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_place');
+    expect(zip).not.toContain("What's your postal code?");
+    expect((await loadOpenSession(fake.db, PHONE))?.state).not.toBe('awaiting_place');
+    expect((await loadOpenSession(fake.db, PHONE))?.firstTouch?.place?.postalCode).toBe('10001');
 
-    await handleInboundSms(fake.db, inbound(transport, 'Chicago'), deps);
-    const city = transport.bodies().at(-1) ?? '';
-    expect(city).toContain('I only cover the Toronto area right now.');
-    expect((await loadOpenSession(fake.db, PHONE))?.firstTouch?.place).toBeNull();
+    const { fake: cityFake, transport: cityTransport, deps: cityDeps } = harness({ voice: true });
+    await handleInboundSms(cityFake.db, inbound(cityTransport, 'hi'), cityDeps);
+    await handleInboundSms(cityFake.db, inbound(cityTransport, 'Chicago'), cityDeps);
+    const city = cityTransport.bodies().at(-1) ?? '';
+    expect(city.trim().endsWith("What's your postal code?")).toBe(true);
+    expect((await loadOpenSession(cityFake.db, PHONE))?.firstTouch?.place).toBeNull();
   });
 
   it('keeps a named child with no age and asks again', async () => {

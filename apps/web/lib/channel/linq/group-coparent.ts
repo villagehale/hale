@@ -146,7 +146,10 @@ export async function considerGroupCoparent(
   if (!owner) {
     const noted = await notedInviteForPhone(database, senderPhone, ports.now);
     if (!noted) return { type: 'none' };
-    return sayUnclaimed(database, message, noted, language, ports);
+    // No claimed chat, so the inviting household's stored language writes the
+    // instruction. The chat owner is absent here, and that null is not a language.
+    const notedLanguage = await familySpeechLanguage(database, noted.familyId);
+    return sayUnclaimed(database, message, noted, notedLanguage, ports);
   }
 
   // V2 asks who they are and seats only on their reply. Flag off keeps today's

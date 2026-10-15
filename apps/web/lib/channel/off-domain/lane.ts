@@ -323,8 +323,10 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // table's miss branch says so instead, which is a correct answer where a guessed
       // registry is a wasted phone call.
       // The stored tag picks an English or French template. Any other tag is the
-      // coach's, not an English sentence guessed from the words.
-      const language = ports.language ? await ports.language(input.familyId) : null;
+      // coach's, not an English sentence guessed from the words. Only the
+      // provider door reads it: a weather reply and a group thread do not.
+      const language =
+        lane === 'provider_access' && ports.language ? await ports.language(input.familyId) : null;
       const providerLine = lane === 'provider_access' ? referralReply(input.text, language) : null;
       if (lane === 'provider_access' && !providerLine) {
         return { status: 'in_domain', fallback: null };
