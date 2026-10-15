@@ -20,6 +20,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import { fetchGmailMessageBody } from '~/lib/sentinel';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordedModel } from '~/lib/testing/recorded-model';
+import { isStage } from '~/lib/testing/structured-reply';
 import { detectTravelBookingsForSweep } from '~/lib/travel/detect';
 import { extractTravelBooking } from '~/lib/travel/extract';
 import { defaultTravelBriefDeps, runTravelBriefSweep } from '~/lib/travel/sweep';
@@ -386,7 +387,10 @@ async function runBrief() {
   const urls = picks.map((_, index) => `https://sources.example/fixture/${index}`);
   liveSourceText.clear();
   picks.forEach((pick, index) =>
-    liveSourceText.set(urls[index]!, `New York, NY. Ongoing program. ${JSON.stringify(pick)}`),
+    liveSourceText.set(
+      urls[index]!,
+      `New York, NY, United States. Ongoing program. ${JSON.stringify(pick)}`,
+    ),
   );
   // The new page-read contract is exercised against public fixture facts from the
   // recording. Booking extraction still uses the content-addressed model recording.
@@ -395,41 +399,39 @@ async function runBrief() {
     const respond = async (req: any) => {
       requests.push(req.messages[0].content);
       return {
-        content:
-          req.tool_choice?.name === 'activity_picks'
-            ? [
-                {
-                  type: 'tool_use',
-                  name: 'activity_picks',
-                  input: {
-                    picks: picks.map((pick, index) => ({
-                      name: pick.name,
-                      age_fit: pick.ageFit,
-                      when: pick.when,
-                      price: pick.price,
-                      source_name: pick.sourceName,
-                      source_url: urls[index],
-                      location_quote: 'New York, NY',
-                      relevance: 'current',
-                      relevance_quote: 'Ongoing program',
-                      when_quote: pick.when,
-                      price_quote: pick.price,
-                    })),
-                  },
-                },
-              ]
-            : [
-                {
-                  type: 'web_search_tool_result',
-                  tool_use_id: 'search',
-                  content: urls.map((url) => ({
-                    type: 'web_search_result',
-                    url,
-                    title: 'Recorded public program',
-                    encrypted_content: 'x',
+        content: isStage(req, 'activity_picks', 'picks')
+          ? [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  picks: picks.map((pick, index) => ({
+                    name: pick.name,
+                    age_fit: pick.ageFit,
+                    when: pick.when,
+                    price: pick.price,
+                    source_name: pick.sourceName,
+                    source_url: urls[index],
+                    location_quote: 'New York, NY',
+                    relevance: 'current',
+                    relevance_quote: 'Ongoing program',
+                    when_quote: pick.when,
+                    price_quote: pick.price,
                   })),
-                },
-              ],
+                }),
+              },
+            ]
+          : [
+              {
+                type: 'web_search_tool_result',
+                tool_use_id: 'search',
+                content: urls.map((url) => ({
+                  type: 'web_search_result',
+                  url,
+                  title: 'Recorded public program',
+                  encrypted_content: 'x',
+                })),
+              },
+            ],
         usage: { input_tokens: 10, output_tokens: 10 },
         stop_reason: 'end_turn',
       };
@@ -445,8 +447,7 @@ async function runBrief() {
     db.database,
     {
       ...defaultTravelBriefDeps(),
-      // THE REAL FINDER over a RECORDED model. An injected fake could never fail on the
-      // lane's behaviour with a travel-shaped query, and that is the only new thing here.
+      // Production Finder over fixture web responses; booking extraction uses a recording.
       finder: createActivityFinder(client),
       buildGate: (database) => buildOutboundGatePorts(database),
       resolvePhone: async () => PHONE,

@@ -266,7 +266,7 @@ describe('what the parent actually gets', () => {
     // The query that crossed the border carried a place, a coarse window with no year and
     // a stage band — and no name.
     expect(h.queries).toHaveLength(1);
-    expect(h.queries[0]?.town).toBe('New York, NY');
+    expect(h.queries[0]?.town).toBe('New York, NY, United States');
     expect(h.queries[0]?.window).toBe('September 12 to 15');
     expect(h.queries[0]?.stage).toBe('preschool');
     expect(JSON.stringify(h.queries[0])).not.toContain('Mia');

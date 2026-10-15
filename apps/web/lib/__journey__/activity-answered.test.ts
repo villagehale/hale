@@ -9,7 +9,6 @@ import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
@@ -41,6 +40,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
+import { isStage } from '~/lib/testing/structured-reply';
 
 /**
  * "I'LL COME BACK TO YOU ON IT" — the 2026-08-20 18:13-18:19 UTC transcript, replayed.
@@ -220,7 +220,17 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     async function turn(req: any) {
       if (isStage(req, 'activity_picks', 'picks')) {
         return {
-          content: [{ type: 'text', text: JSON.stringify({ picks: (picksByCall[call] ?? []).map((pick) => ({ ...pick, source_url: 'https://venue.example/fall' })) }) }],
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                picks: (picksByCall[call] ?? []).map((pick) => ({
+                  ...pick,
+                  source_url: 'https://venue.example/fall',
+                })),
+              }),
+            },
+          ],
           usage: { input_tokens: 10, output_tokens: 10 },
           stop_reason: 'end_turn',
         };
@@ -472,7 +482,9 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
           familyId: turn.familyId,
           reader: {} as never,
           draftPort: {} as never,
-          villageTool: searchVillageTool(database),
+          villageTool: searchVillageTool(database, undefined, {
+            find: async () => ({ found: false, reason: 'no_picks' }),
+          }),
           // The REAL reader over the REAL rows, and the REAL lane over the web port.
           activity: {
             reader: bindActivityReader(database, productionActivityFamilyReader()),
@@ -634,7 +646,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     const transport = new FakeTransport();
     const coach = coachFor(
       [
-        // The radar read still happens first — it is the verified tier and it is free.
+        // Village is empty in this fixture; the activity lane supplies the evidence.
         { tool: 'search_village', input: { query: 'fall' } },
         {
           tool: 'find_activities',
@@ -668,7 +680,10 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
 
     // Rule #1, at the border: the query that left carried a TOWN and a BAND and no child.
     const sent = web.searched[0] ?? '';
-    expect(JSON.parse(sent)).toMatchObject({ town: 'Halton Hills, Ontario, Canada', stage: 'toddler' });
+    expect(JSON.parse(sent)).toMatchObject({
+      town: 'Halton Hills, Ontario, Canada',
+      stage: 'toddler',
+    });
     expect(sent).not.toContain('Noah');
     expect(sent).not.toContain('L7G');
     expect(sent).not.toMatch(/\b18 months\b/);

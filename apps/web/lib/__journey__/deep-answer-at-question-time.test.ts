@@ -576,7 +576,9 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
           familyId: turn.familyId,
           reader: {} as never,
           draftPort: {} as never,
-          villageTool: searchVillageTool(database),
+          villageTool: searchVillageTool(database, undefined, {
+            find: async () => ({ found: false, reason: 'no_picks' }),
+          }),
           activity: {
             reader: bindActivityReader(database, productionActivityFamilyReader()),
             finder: createActivityFinder(client),
