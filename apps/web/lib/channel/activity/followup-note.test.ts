@@ -491,6 +491,8 @@ describe('a claim about a page requires a page', () => {
     // no publishing verb in it at all - it names the surface instead, and it is the same
     // assertion.
     "Their site says, but fall days and times aren't on the page yet.",
+    // A word between the owner and the surface is the same surface (r13, deep-answer).
+    'Town of Halton Hills says, though no day, time or price is on their fall page yet.',
   ])('reads %s as a claim about a page', (body) => {
     expect(claimsNotPosted(body)).toBe(true);
   });

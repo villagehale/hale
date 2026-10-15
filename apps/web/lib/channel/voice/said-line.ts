@@ -228,6 +228,9 @@ export async function writeConnectorLinks(
       gmailLink: linkSlot('gmailLink'),
       minutesValid: LINK_MINUTES,
       why: 'so Hale can spot daycare and school notices',
+      // Both links are Google connect links, and every Google connect link carries the
+      // unverified-app caution once (text-connect.ts).
+      googleCaution: googleUnverifiedAppLine(input.language ?? 'en'),
     },
     links: { calendarLink: input.calendarUrl, gmailLink: input.gmailUrl },
   });

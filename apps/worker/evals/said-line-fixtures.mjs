@@ -24,6 +24,12 @@ const identity = (id, script, language, parentWords) => ({
 });
 
 // Fixed tokens so the cache key is stable. Same shape as a real mint.
+/** GOOGLE_UNVERIFIED_APP_LINE_BY_LANGUAGE in text-connect.ts, key for key. */
+const GOOGLE_CAUTION = {
+  en: 'Google may show an "unverified app" screen. Tap Advanced, then continue.',
+  fr: 'Google peut afficher un ecran "application non verifiee". Touchez Avance, puis continuez.',
+};
+
 const CAL = 'https://app.villagehale.com/connect?t=Q0FGRUJBQkVDQUZFQkFCRQ&to=gcal';
 const GMAIL = 'https://app.villagehale.com/connect?t=R0FGRUJBQkVDQUZFQkFCRg&to=gmail';
 
@@ -39,6 +45,8 @@ const links = (id, language, parentWords) => ({
     gmailLink: '[[gmailLink]]',
     minutesValid: 15,
     why: 'so Hale can spot daycare and school notices',
+    // writeConnectorLinks in said-line.ts carries the same caution, in the parent's language.
+    googleCaution: GOOGLE_CAUTION[language],
   },
   mustInclude: [],
   links: { calendarLink: CAL, gmailLink: GMAIL },

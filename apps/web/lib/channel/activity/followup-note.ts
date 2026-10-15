@@ -368,7 +368,7 @@ const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
  * unlicensed one would write too.
  */
 const PAGE_SURFACE =
-  /\bon (?:their|the|its) (?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
+  /\bon (?:their|the|its) (?:[\w-]+ )?(?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
 /** Hale saying it could not get at something — never the page saying it has nothing. */
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;

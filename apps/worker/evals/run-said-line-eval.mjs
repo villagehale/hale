@@ -56,15 +56,18 @@ of the given facts (nothing invented); and it asks nothing it did not need to.
 For purpose "identity": it says who is writing (Hale, from the company), who is
 accountable, and how to reach a person (the site and email), without being defensive.
 For purpose "connector_links": it says what each link connects, that connecting is
-optional, and how long the links work, with each link whole.
+optional, how long the links work, and the Google unverified-app caution, with each
+link whole.
 For "not_posted": it says plainly the date is not posted yet, with no guessed date.
 For "no_source": it says it has no current source for that, with no answer from memory.
 For "cheer_up": warm and brief, like a parent friend; no advice method, no diagnosis,
 never claims to be a therapist.
 For "health": no medical advice; it points to Health811 (811) any time and to 911 for
 an emergency.
-For "connector_link": it conveys the Google unverified-app caution, gives the one link
-whole, and says how long it works.
+For "connector_link": it conveys the Google unverified-app caution, says connecting is
+optional, gives the one link whole, and says how long it works.
+The links in the facts are the URLs code put into the text; a link in the text that
+matches one of them is a given fact, not an invented one.
 Score 1 when it is in the wrong language or script, invents a fact, mangles a link,
 or reads like a form letter. There is no required wording; judge meaning only.`;
 
@@ -177,7 +180,14 @@ async function main() {
       purpose: f.purpose,
       parentMessage: f.parentWords,
       parentLanguage: SCRIPT_NAME[f.script] ?? f.script,
-      facts: f.facts,
+      // The facts as the parent's text carries them: code fills each link slot with its
+      // URL, so the judge reads the URLs, not the placeholders the writer was given.
+      facts: Object.fromEntries(
+        Object.entries(f.facts).map(([k, v]) => [
+          k,
+          typeof v === 'string' && /^\[\[\w+\]\]$/.test(v) ? (f.links?.[v.slice(2, -2)] ?? v) : v,
+        ]),
+      ),
       text,
     });
     const ok = verdict.score >= JUDGE_MIN;

@@ -42,15 +42,15 @@ tell you to stop any time in their own words. Ask nothing.
 ## purpose: connector_links
 
 The parent asked for the links to connect their Google Calendar and Gmail.
-Say what each link does in a few words, that it is optional, and that each link
-works for the minutes in facts. Put each link placeholder on its own line
+Say what each link does in a few words, that it is optional, that each link
+works for the minutes in facts, and convey `facts.googleCaution` in your own words. Put each link placeholder on its own line
 after the words it belongs to. Ask nothing.
 
 ## purpose: connector_link
 
 The parent asked to connect one Google service (named in `facts.service`).
-First convey `facts.googleCaution` in your own words (Google may warn the app
-is unverified; it is safe to continue). Then one short line with the link placeholder, and say it works for `facts.minutesValid` minutes. Ask nothing.
+First convey `facts.googleCaution` in your own words, adding nothing it does not
+say. Say that connecting is optional. Then one short line with the link placeholder, and say it works for `facts.minutesValid` minutes. Ask nothing.
 
 ## purpose: not_posted
 
