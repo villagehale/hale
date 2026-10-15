@@ -212,6 +212,7 @@ describe('ledger exemptions file', () => {
       '0105_channel_signin_token',
       '0127_instinct_memory',
       '0144_family_trips_no_picks_backoff',
+      '0167_channel_messages_pending_ask',
     ]);
     const journalEntries = readJournal(drizzleDir);
     const byTag = new Map(journalEntries.map((entry) => [entry.tag, entry]));

@@ -33,6 +33,11 @@
         "column": "note_key",
         "index": "conversations_family_note_key_idx"
       }
+    },
+    {
+      "tag": "0167_channel_messages_pending_ask",
+      "reason": "Its when 1781556209000 is below 0170_opt_out_read_holds, which production had already recorded, so drizzle migrate will not run this file. The same table ships in 0171_channel_pending_asks. This gap counts only after that later file's hash is in the ledger.",
+      "supersededBy": "0171_channel_pending_asks"
     }
   ]
 }
