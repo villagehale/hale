@@ -25,6 +25,8 @@ export type SaidLinePurpose =
   | 'connector_links'
   /** One connect link for the one Google service they asked for. */
   | 'connector_link'
+  /** A co-parent in the family group chat, offered their own Google connect link. */
+  | 'group_connect_ask'
   /** They asked for a date the official page has not posted. */
   | 'not_posted'
   /** They asked for a current fact search could not ground. */
@@ -159,6 +161,38 @@ export async function writeConnectorLink(
       service: connectorNoun(language, input.provider),
       link: linkSlot('link'),
       minutesValid: LINK_MINUTES,
+      googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
+    },
+    links: { link: input.url },
+  });
+}
+
+/**
+ * The group chat's connect ask, in the model's words: who it is for, what connecting
+ * does, that the link is theirs alone and optional, and the unverified-app caution as
+ * a fact. Code puts the URL in the slot. Null: the caller sends nothing.
+ */
+export async function writeGroupConnectAsk(
+  writer: SaidLineWriter | null | undefined,
+  input: { language: ReplyLanguage; provider: 'gcal' | 'gmail'; name: string; url: string },
+): Promise<string | null> {
+  if (!writer) {
+    console.error('group connect ask: no line writer - nothing sent');
+    return null;
+  }
+  const gmail = input.provider === 'gmail';
+  return writer.write({
+    purpose: 'group_connect_ask',
+    language: input.language,
+    facts: {
+      name: input.name,
+      service: connectorNoun(input.language, input.provider),
+      why: gmail
+        ? 'Hale would catch school and camp emails for them too'
+        : "their calendar joins the kids' year Hale keeps for the family",
+      linkIsTheirs: 'the link is only for this parent, not the rest of the group',
+      inboxPrivate: gmail ? 'nothing from their inbox is shown in the group chat' : null,
+      link: linkSlot('link'),
       googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
     },
     links: { link: input.url },

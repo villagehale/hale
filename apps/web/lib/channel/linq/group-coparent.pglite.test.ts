@@ -2,7 +2,10 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNEL_SIGNIN_TTL_MS, consumeChannelSigninToken } from '~/lib/auth/channel-signin';
+import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
+import type { SaidLineInput } from '~/lib/channel/voice/said-line';
+import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -17,14 +20,17 @@ import {
   sendCoparentGroupCalendarReceipt,
   steerNotedCoparentOneToOne,
 } from './group-coparent';
-import {
-  GROUP_WELCOME,
-  groupCalendarAsk,
-  groupCalendarReceipt,
-  groupGmailAsk,
-  groupGmailReceipt,
-} from './group-coparent-copy';
+import { GROUP_WELCOME, groupCalendarReceipt, groupGmailReceipt } from './group-coparent-copy';
 import type { LinqInboundText } from './payload';
+
+/**
+ * THE ASK IS MODEL-WRITTEN, so these tests use the scripted line writer: it echoes the
+ * facts it was handed, which is how a test sees that the caution travelled as a fact.
+ * `ASK` is the scripted writer's purpose tag, never copy anyone receives.
+ */
+const saidCalls: SaidLineInput[] = [];
+const saidLine = scriptedSaidLine(saidCalls);
+const ASK = '[group_connect_ask/en]';
 
 /**
  * A noted number speaking in the claimed group becomes the co-parent of the
@@ -244,7 +250,7 @@ describe('group co-parent seating', () => {
     const effect = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-off', senderHandle: COPARENT_PHONE, text: 'hi' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(effect).toEqual({ type: 'none' });
     expect(wire.texts()).toEqual([]);
@@ -266,7 +272,7 @@ describe('group co-parent seating', () => {
         text: LINQ_GROUP_TRIGGER_PHRASE.en,
         otherHandles: [COPARENT_PHONE],
       }),
-      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+      { now: NOW, fetch: linqFetch().fetch, recordInbound, saidLine },
     );
     expect(effect).toMatchObject({
       type: 'claim',
@@ -282,7 +288,7 @@ describe('group co-parent seating', () => {
         text: LINQ_GROUP_TRIGGER_PHRASE.en,
         otherHandles: ['+14165550999', 'not-a-phone'],
       }),
-      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+      { now: NOW, fetch: linqFetch().fetch, recordInbound, saidLine },
     );
     expect(unnoted).toMatchObject({ type: 'claim', familyId: seeded.familyId });
     const claim = await claimHouseholdLinqGroup(db.database, {
@@ -303,7 +309,7 @@ describe('group co-parent seating', () => {
     const bot = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-bot', senderHandle: 'camp-bot@example.com', text: 'hi' }),
-      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+      { now: NOW, fetch: linqFetch().fetch, recordInbound, saidLine },
     );
     expect(bot).toEqual({ type: 'none' });
 
@@ -331,7 +337,7 @@ describe('group co-parent seating', () => {
     const taken = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-taken', senderHandle: COPARENT_PHONE, text: 'hi' }),
-      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+      { now: NOW, fetch: linqFetch().fetch, recordInbound, saidLine },
     );
     expect(taken).toEqual({ type: 'none' });
     const members = await db.database
@@ -352,7 +358,7 @@ describe('group co-parent seating', () => {
     const effect = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-seat', senderHandle: COPARENT_PHONE, text: 'hi there' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(effect).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
     expect(wire.groupTexts()).toEqual([GROUP_WELCOME.en]);
@@ -387,7 +393,7 @@ describe('group co-parent seating', () => {
     const named = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-name', senderHandle: COPARENT_PHONE, text: 'Sam' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(named).toMatchObject({ type: 'done', outcome: 'group_coparent_named' });
     expect(wire.texts().at(-1)).toBe(NAME_CAPTURED_REPLY);
@@ -405,27 +411,30 @@ describe('group co-parent seating', () => {
     const calendar = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-cal', senderHandle: COPARENT_PHONE, text: 'ready' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(calendar).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
     const afterCalendar = wire.groupTexts();
     const calendarBubble = afterCalendar.at(-1) ?? '';
-    expect(calendarBubble.startsWith(groupCalendarAsk('en', 'Sam'))).toBe(true);
+    expect(calendarBubble.startsWith(ASK)).toBe(true);
     expect(
-      afterCalendar.filter((text) => text.startsWith(groupCalendarAsk('en', 'Sam'))),
+      afterCalendar.filter((text) => text.startsWith(ASK) && text.includes('to=gcal')),
     ).toHaveLength(1);
     expect(calendarBubble).toContain('\n');
     expect(calendarBubble).toContain('to=gcal');
+    // The caution reached the writer as a fact for the model to word, never pasted in.
+    expect(saidCalls.at(-1)).toMatchObject({
+      purpose: 'group_connect_ask',
+      facts: { name: 'Sam', googleCaution: GOOGLE_UNVERIFIED_APP_FACT },
+    });
     expect(wire.groupLinks()).toEqual([]);
-    expect(afterCalendar.join('\n')).not.toContain(groupGmailAsk('en', 'Sam'));
-    expect(groupCalendarAsk('en', 'Sam')).not.toContain('/connect?t=');
+    expect(afterCalendar.join('\n')).not.toContain('to=gmail');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
     const calendarToken = new URL(
-      calendarBubble.split('\n').find((line) => line.startsWith('http')) ?? '',
+      calendarBubble.match(/https?:\/\/\S+/)?.[0] ?? '',
     ).searchParams.get('t');
     expect(calendarToken).toBeTruthy();
-    expect(groupCalendarAsk('en', 'Sam')).not.toContain(calendarToken ?? 'missing-token');
     const [afterAsk] = await db.database
       .select({ step: schema.linqGroupOnboarding.step })
       .from(schema.linqGroupOnboarding);
@@ -435,33 +444,31 @@ describe('group co-parent seating', () => {
     const declined = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-no', senderHandle: COPARENT_PHONE, text: 'no thanks' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(declined).toMatchObject({ type: 'done', outcome: 'group_coparent_gmail' });
     const gmailBubbles = wire.groupTexts().slice(groupBeforeGmail);
     expect(gmailBubbles).toHaveLength(1);
-    expect(gmailBubbles[0]?.startsWith(groupGmailAsk('en', 'Sam'))).toBe(true);
+    expect(gmailBubbles[0]?.startsWith(ASK)).toBe(true);
     expect(gmailBubbles[0]).toContain('to=gmail');
     expect(wire.groupLinks()).toEqual([]);
-    expect(groupGmailAsk('en', 'Sam')).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
     const gmailToken = new URL(
-      (gmailBubbles[0] ?? '').split('\n').find((line) => line.startsWith('http')) ?? '',
+      (gmailBubbles[0] ?? '').match(/https?:\/\/\S+/)?.[0] ?? '',
     ).searchParams.get('t');
     expect(gmailToken).toBeTruthy();
-    expect(groupGmailAsk('en', 'Sam')).not.toContain(gmailToken ?? 'missing-token');
 
     const beforeIgnore = wire.groupTexts().length;
     const ignored = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-ignore', senderHandle: COPARENT_PHONE, text: 'maybe later' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(ignored).toMatchObject({ type: 'route_member' });
     expect(wire.groupTexts()).toHaveLength(beforeIgnore);
     expect(
-      wire.groupTexts().filter((text) => text.startsWith(groupGmailAsk('en', 'Sam'))),
+      wire.groupTexts().filter((text) => text.startsWith(ASK) && text.includes('to=gmail')),
     ).toHaveLength(1);
 
     const tokens = await db.database
@@ -532,7 +539,7 @@ describe('group co-parent seating', () => {
     const unclaimed = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-unclaimed', senderHandle: COPARENT_PHONE, text: 'hello' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(unclaimed).toMatchObject({ type: 'done', outcome: 'group_coparent_unclaimed' });
     expect(wire.texts()).toEqual([expected]);
@@ -546,7 +553,7 @@ describe('group co-parent seating', () => {
         senderHandle: COPARENT_PHONE,
         text: 'hello',
       }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(steered).toMatchObject({ type: 'done', outcome: 'group_coparent_steered' });
     expect(wire.texts().at(-1)).toBe(expected);
@@ -566,7 +573,7 @@ describe('group co-parent seating', () => {
     const expired = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-expired', senderHandle: COPARENT_PHONE, text: 'hi' }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(expired).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
     expect(wire.groupTexts()).toEqual([GROUP_WELCOME.en]);
@@ -590,7 +597,7 @@ describe('group co-parent seating', () => {
         senderHandle: COPARENT_PHONE,
         text: 'hi',
       }),
-      { now: NOW, fetch: linqFetch().fetch, recordInbound },
+      { now: NOW, fetch: linqFetch().fetch, recordInbound, saidLine },
     );
     expect(leaked).toEqual({ type: 'none' });
     const members = await db.database
@@ -638,6 +645,7 @@ describe('group co-parent seating', () => {
       connectId: 'connect-primary',
       now: NOW,
       fetch: wire.fetch,
+      saidLine,
     });
     expect(primary).toBe('skipped');
     expect(wire.texts()).toEqual([]);
@@ -649,15 +657,15 @@ describe('group co-parent seating', () => {
       connectId: 'connect-cal',
       now: NOW,
       fetch: wire.fetch,
+      saidLine,
     });
     expect(calendar).toBe('sent');
     expect(wire.groupTexts()[0]).toBe(groupCalendarReceipt('en', 'Sam'));
-    expect(wire.groupTexts()[1]?.startsWith(groupGmailAsk('en', 'Sam'))).toBe(true);
+    expect(wire.groupTexts()[1]?.startsWith(ASK)).toBe(true);
     expect(wire.groupTexts()[1]).toContain('to=gmail');
     expect(wire.groupLinks()).toEqual([]);
     expect(wire.groupTexts()[0]).not.toContain('Gmail link');
     expect(wire.groupTexts()[1]).not.toContain('calendar is connected');
-    expect(groupGmailAsk('en', 'Sam')).not.toContain('/connect?t=');
     expect(wire.createdChats()).toBe(0);
     expect(wire.privateTexts()).toEqual([]);
     const [asked] = await db.database
@@ -672,10 +680,11 @@ describe('group co-parent seating', () => {
       connectId: 'connect-cal-again',
       now: NOW,
       fetch: wire.fetch,
+      saidLine,
     });
     expect(again).toBe('sent');
     expect(
-      wire.groupTexts().filter((text) => text.startsWith(groupGmailAsk('en', 'Sam'))),
+      wire.groupTexts().filter((text) => text.startsWith(ASK) && text.includes('to=gmail')),
     ).toHaveLength(1);
 
     const sent = await sendCoparentGroupCalendarReceipt(db.database, {
@@ -685,12 +694,13 @@ describe('group co-parent seating', () => {
       connectId: 'connect-sam',
       now: NOW,
       fetch: wire.fetch,
+      saidLine,
     });
     expect(sent).toBe('sent');
     expect(wire.groupTexts().at(-1)).toBe(groupGmailReceipt('en', 'Sam'));
     expect(wire.groupTexts().at(-1)).not.toContain('want me to catch');
     expect(
-      wire.groupTexts().filter((text) => text.startsWith(groupGmailAsk('en', 'Sam'))),
+      wire.groupTexts().filter((text) => text.startsWith(ASK) && text.includes('to=gmail')),
     ).toHaveLength(1);
     expect(wire.groupTexts().at(-1)).not.toMatch(/@|subject:|snippet/);
     const [step] = await db.database
@@ -711,18 +721,18 @@ describe('group co-parent seating', () => {
     await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-seat', senderHandle: COPARENT_PHONE, text: 'hi there' }),
-      { now: NOW, fetch: open.fetch, recordInbound },
+      { now: NOW, fetch: open.fetch, recordInbound, saidLine },
     );
     await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-name', senderHandle: COPARENT_PHONE, text: 'Sam' }),
-      { now: NOW, fetch: open.fetch, recordInbound },
+      { now: NOW, fetch: open.fetch, recordInbound, saidLine },
     );
     const refused = linqFetch({ failMessages: true });
     const card = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-cal', senderHandle: COPARENT_PHONE, text: 'ready' }),
-      { now: NOW, fetch: refused.fetch, recordInbound },
+      { now: NOW, fetch: refused.fetch, recordInbound, saidLine },
     );
     expect(card).toMatchObject({ type: 'done', outcome: 'group_coparent_link_held' });
     expect(refused.urls().length).toBeGreaterThan(0);
@@ -742,6 +752,7 @@ describe('group co-parent seating', () => {
       connectId: 'connect-refused',
       now: NOW,
       fetch: receiptWire.fetch,
+      saidLine,
     });
     expect(receipt).toBe('skipped');
     expect(receiptWire.urls()).toEqual([GROUP_MESSAGES]);
@@ -778,7 +789,7 @@ describe('group co-parent seating', () => {
         senderHandle: PARENT_PHONE,
         text: 'connect my calendar',
       }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(asked).toMatchObject({ type: 'done', outcome: 'group_coparent_gcal' });
     expect(wire.groupTexts()).toEqual([]);
@@ -812,7 +823,7 @@ describe('group co-parent seating', () => {
         senderHandle: PARENT_PHONE,
         text: 'when are we both free',
       }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(textOnly).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free' });
     expect(wire.texts()).toHaveLength(1);
@@ -847,7 +858,7 @@ describe('group co-parent seating', () => {
         senderHandle: PARENT_PHONE,
         text: 'when are we both free',
       }),
-      { now: NOW, fetch: wire.fetch, recordInbound },
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(polled).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free' });
     expect(wire.texts()).toEqual(['Which time works for both of you?']);
@@ -864,7 +875,7 @@ describe('group co-parent seating', () => {
         senderHandle: PARENT_PHONE,
         text: 'when are we both free',
       }),
-      { now: NOW, fetch: again.fetch, recordInbound },
+      { now: NOW, fetch: again.fetch, recordInbound, saidLine },
     );
     expect(repeat).toMatchObject({ type: 'done', outcome: 'group_coparent_both_free_none' });
     expect(again.pollOptions()).toEqual([]);

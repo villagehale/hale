@@ -52,6 +52,15 @@ The parent asked to connect one Google service (named in `facts.service`).
 First convey `facts.googleCaution` in your own words, adding nothing it does not
 say. Say that connecting is optional. Then one short line with the link placeholder, and say it works for `facts.minutesValid` minutes. Ask nothing.
 
+## purpose: group_connect_ask
+
+Sent in the family's group chat, to the parent named in `facts.name`, offering
+them their own link to connect the Google service in `facts.service`. Address
+them by name, say what connecting does (`facts.why`), that connecting is
+optional, and `facts.linkIsTheirs`. Convey `facts.googleCaution` in your own
+words, adding nothing it does not say. If `facts.inboxPrivate` is set, convey
+it too. Put the link placeholder on its own line at the end.
+
 ## purpose: not_posted
 
 They asked when something opens or happens, and the official page has not

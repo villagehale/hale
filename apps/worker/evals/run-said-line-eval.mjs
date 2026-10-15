@@ -66,6 +66,9 @@ For "health": no medical advice; it points to Health811 (811) any time and to 91
 an emergency.
 For "connector_link": it conveys the Google unverified-app caution, says connecting is
 optional, gives the one link whole, and says how long it works.
+For "group_connect_ask": it addresses the named parent, says what connecting does, that
+it is optional and the link is theirs alone, conveys the Google unverified-app caution
+(and that their inbox stays out of the group when that fact is given), with the link whole.
 The links in the facts are the URLs code put into the text; a link in the text that
 matches one of them is a given fact, not an invented one.
 Score 1 when it is in the wrong language or script, invents a fact, mangles a link,
