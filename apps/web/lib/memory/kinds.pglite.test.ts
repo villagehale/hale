@@ -177,7 +177,7 @@ describe('family memory kinds', () => {
 
   it('soft-invalidates a forget and audits it, without sending the placeholder', async () => {
     const { familyId, parentUserId } = await seedSwim('one_off');
-    const sendGroup = vi.fn(async () => 'sent' as const);
+    const sendGroup = vi.fn(async (_chatId: string, _body: string) => 'sent' as const);
     await db.database
       .update(schema.families)
       .set({ linqGroupChatId: `group-${familyId}` })
