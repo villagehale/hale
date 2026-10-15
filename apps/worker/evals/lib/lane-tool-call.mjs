@@ -3,7 +3,7 @@
 // structured.ts), all in the request AND the cache key, so a replay grades the model
 // production runs. Truncation is never cached as an answer.
 
-import { cacheGet, cacheKey, cachePut, capped, noteUsage } from './harness.mjs';
+import { cacheGet, cacheKey, cachePut, noteUsage } from './harness.mjs';
 
 /** The cache key `cachedLaneToolCall` reads and writes. Estimators use the same bytes. */
 export function laneToolCacheKey({
@@ -62,20 +62,14 @@ export async function cachedLaneToolCall({
   if (cached) return { value: cached.value, key, cached: true };
   if (cachedOnly) return { value: null, key, cached: false, miss: true };
 
-  const request = {
+  const response = await getClient().messages.create({
     ...fields,
     max_tokens: maxTokens,
     system,
     tools: [{ name: toolName, description: toolDescription, input_schema: toolSchema }],
     tool_choice: toolChoice,
     messages: [{ role: 'user', content: userMessage }],
-  };
-  const response = await capped(
-    getClient,
-    request,
-    () => getClient().messages.create(request),
-    tag,
-  );
+  });
   if (response.stop_reason === 'max_tokens') {
     throw new Error(`${tag}: tool call truncated at max_tokens (${maxTokens}) - nothing cached`);
   }
