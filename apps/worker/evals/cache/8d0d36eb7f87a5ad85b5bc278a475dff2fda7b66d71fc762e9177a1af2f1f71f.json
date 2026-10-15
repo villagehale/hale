@@ -1,0 +1,23 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Preschool Levels A - E swim lessons, Town of Oakville aquatics",
+        "age_fit": "Preschool levels A - E. Children must be the age required for the level by the program start date.",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "YMCA Preschool Swim Lessons, Peter Gilgan Family YMCA (410 Rebecca Street)",
+        "age_fit": "3-5 years",
+        "source_name": "YMCA of Oakville"
+      },
+      {
+        "name": "Group swim lessons, Goldfish Swim School Oakville",
+        "age_fit": "4 months - 12 years",
+        "price": "$32.50 per 30-minute lesson, plus a $30 annual membership fee",
+        "source_name": "Goldfish Swim School"
+      }
+    ]
+  },
+  "latencyMs": 5545
+}

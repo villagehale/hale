@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot matches the programme page: age band, days, times and session dates are as printed, and it cites the right URL. Price is correctly null. No rental figure was borrowed. The page prints no registration date, so the null registration is correct. The message leads with the programme by name and attributes the facts with 'their site says'. The pageEvidence is page_has_schedule, so 'I could not pin down the price' is correctly first person rather than 'not posted'. Watch is true, so the first-person 'I'll keep watching and text you' is a real commitment. The message is plain ASCII, has no link and asks no question. No schedule PDF was linked. A minor quibble: the page says fees are available at the front desk or by phone, which the message could have relayed, but that is not a fault under the rubric.",
+    "score": 5
+  }
+}

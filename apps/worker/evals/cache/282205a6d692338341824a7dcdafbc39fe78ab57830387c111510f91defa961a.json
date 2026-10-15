@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are traceable and correctly cited. Tiny Gym's age band, the Term 1 and Term 2 dates read off the opened PDF, and the July 22, 2026 8:00am registration from the homepage all match what was printed, and no borrowed figures appear. The message leads with Tiny Gym by name and attributes the term dates. It carries the registration date. For page_has_schedule it uses the correct first-person gap ('I could not pin down the day or the price'). With watch true, the first-person continuation is correct. It has no question, no link, and is plain ASCII. Minor deductions: 1) Registration is stored as a standalone pseudo-slot rather than on the Tiny Gym slot. 2) The message drops Term 2 and Rock n' Roll (0+), which also fits a toddler. 3) It does not attribute the registration line. 4) It could have said the site puts pricing behind the registration login instead of only 'could not pin down'.",
+    "score": 4
+  }
+}
