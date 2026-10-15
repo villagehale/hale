@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull, like } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
-import { normalizeKeyword } from '~/lib/channel/intake/keywords';
+import { normalizeToken } from '~/lib/channel/normalize-token';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { writeFact } from '~/lib/memory/facts';
 import { pipelineClient } from '~/lib/pipeline/client';
@@ -32,8 +32,7 @@ import { checkpointToldKeyPrefix, loadToldCheckpointRefs } from './told';
  *             (lib/health/offer.ts) — not an inference from the last checkpoint this
  *             family happened to be told about.
  *
- * Matching is EXACT on the normalized body, the same discipline as the CASL keywords
- * (lib/channel/intake/keywords.ts) and for a sharper reason: "not done yet" contains
+ * Matching is EXACT on the normalized body, and for a sharp reason: "not done yet" contains
  * "done", and a substring match would file the opposite of what the parent said and
  * then go quiet — the single worst failure this feature has.
  */
@@ -75,7 +74,7 @@ const BOOKING_VERBS = new Set(['book it', 'draft it']);
  * family gets once every few months.
  */
 export function matchHealthReply(body: string): HealthReplyIntent | null {
-  const word = normalizeKeyword(body);
+  const word = normalizeToken(body);
   if (DONE_WORDS.has(word)) return 'done';
   if (BOOKING_VERBS.has(word) || readAffirmative(body) === 'yes') return 'booking';
   return null;
@@ -118,11 +117,7 @@ export interface HealthReplyDeps {
    * all, and a marker has no expiry. The offer row is minted only by the message that
    * actually asked, and it lapses on its own week.
    */
-  loadOpenOffer(
-    database: Database,
-    familyId: string,
-    now: Date,
-  ): Promise<OpenCheckupOffer | null>;
+  loadOpenOffer(database: Database, familyId: string, now: Date): Promise<OpenCheckupOffer | null>;
   /**
    * Close the offer once the parent has been told their draft exists. REQUIRED (rule
    * #11): an accepted offer that stays open is a question the resolver keeps asking and
@@ -150,6 +145,8 @@ export interface HealthReplyDeps {
       sourceAnswer: string;
     },
   ): Promise<{ actionId: string }>;
+  /** Writes the receipt. Absence is named and the draft still exists. */
+  ask?: import('~/lib/channel/consent-ask').ConsentAskWriter;
 }
 
 export async function handleHealthCheckpointReply(
@@ -166,7 +163,7 @@ export async function handleHealthCheckpointReply(
      * word match; the exact words still win when they are there, because the handler
      * that reads them runs first and this field is only set once they have declined.
      */
-    resolved?: 'booking' | 'done' | null,
+    resolved?: 'booking' | 'done' | null;
   },
   deps: HealthReplyDeps,
 ): Promise<HealthReplyOutcome> {
@@ -369,10 +366,7 @@ async function loadHandledFacts(
 }
 
 /** Every checkpoint this family has told us is handled. */
-async function loadDoneCheckpointRefs(
-  database: Database,
-  familyId: string,
-): Promise<Set<string>> {
+async function loadDoneCheckpointRefs(database: Database, familyId: string): Promise<Set<string>> {
   return new Set((await loadHandledFacts(database, familyId)).map((row) => row.ref));
 }
 

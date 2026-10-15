@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Gives a real pick for both meanings: Messi for soccer, Brady for the NFL. Every specific is backed by research_notes: Messi tops recent rankings, he is the World Cup's all-time top scorer with 18 goals, Ronaldo is the main rival with the debate unsettled, and Brady named Jerry Rice. Grounding marks nothing as settled. The tone is casual and it reads like a friend's take, not a deflect.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

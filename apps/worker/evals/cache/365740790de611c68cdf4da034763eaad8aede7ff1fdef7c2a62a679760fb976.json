@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Paris is settled common knowledge, so no live check is needed even though search was unavailable. The reply is brief and casual, and as a single word with no extra language it works fine for a French question. It reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

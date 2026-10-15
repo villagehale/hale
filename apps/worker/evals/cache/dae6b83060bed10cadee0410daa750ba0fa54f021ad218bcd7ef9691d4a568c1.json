@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi is the greatest in soccer, per recent sources, as of 1 Sept 2026 coverage",
+        "from": "The Week, updated 1 Sept 2026, says that after the 2026 World Cup, Messi \"has established himself as the undisputed greatest\""
+      },
+      {
+        "states": "Messi's 2022 World Cup win is a reason he ranks first",
+        "from": "Daily Sabah's 2026 ranking puts him first. It cites his 2022 World Cup win"
+      },
+      {
+        "states": "Cristiano Ronaldo is the main rival in soccer",
+        "from": "Cristiano Ronaldo is the main rival."
+      },
+      {
+        "states": "The soccer GOAT debate is not formally settled",
+        "from": "Several outlets note the debate is not formally settled."
+      },
+      {
+        "states": "Tom Brady is the most common NFL answer",
+        "from": "Tom Brady is the most common answer."
+      },
+      {
+        "states": "Brady himself named Jerry Rice as the greatest football player of all time",
+        "from": "In a 2026 AMC documentary on the 49ers, he named former San Francisco receiver Jerry Rice as the greatest football player of all time."
+      }
+    ],
+    "answer": "Soccer: Messi, and I'd go with him too. The Week says that after the 2026 World Cup he's the undisputed greatest, and his 2022 World Cup win is a big part of why. Ronaldo's fans will argue, and it isn't formally settled, but Messi's my pick. If you meant American football, most people say Tom Brady, though Brady himself picked Jerry Rice."
+  },
+  "latencyMs": 5847
+}

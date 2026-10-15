@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "YouGov March 2023 poll: about 59% of Americans like or love pineapple on pizza",
+        "from": "YouGov poll, March 2023: 22% ... love pineapple on pizza, 37% like it ... By this poll, a majority (about 59%) like or love it."
+      },
+      {
+        "states": "Pineapple on pizza is a matter of taste; polls show people split, with no rule against it",
+        "from": "Whether pineapple on pizza is \"ok\" is a matter of taste. The search results contain no rule or safety issue against it. The results show no consensus."
+      }
+    ],
+    "answer": "Yep, it's just taste, and people are split on it. The newest poll I found, a YouGov one from March 2023, has about 59% of Americans liking or loving it, so it's far from a weird pick. Plenty of people will still fight you on it, but my pick is with the 59%. Eat the pizza."
+  },
+  "latencyMs": 6265
+}

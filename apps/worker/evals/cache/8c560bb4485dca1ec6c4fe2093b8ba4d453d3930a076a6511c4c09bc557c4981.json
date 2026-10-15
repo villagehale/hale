@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a real pick, the Sienna, gives a reason, and names the Odyssey as a clear second, which is what the fixture asks for. Every figure is supported by the research notes: Edmunds ranks the Sienna first at 7.8, KBB calls it top-rated, it gets 36 mpg combined, U.S. News gives the Odyssey 9.3, and the Odyssey drives most like a car. Two small gaps: the KBB claim leaves out that KBB's pages contradict each other, and Edmunds' tie with the Carnival Hybrid goes unmentioned. Neither makes a stated fact wrong. The tone is casual enough, though stacking three review-site scores reads a bit like a roundup rather than a friend's quick take.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

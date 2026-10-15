@@ -20,36 +20,13 @@ export const ROLE_LABEL: Record<CaregiverRole, string> = {
   babysitter: 'babysitter',
 };
 
-/** The allow-list, in plain words: schedule + pickup_duty + event_logistics. */
-const GETS_THEY = "the week's schedule, pickup reminders, and the time and address for anything they're helping with";
-const GETS_YOU = "the week's schedule, pickup reminders, and the time and address for anything you're helping with";
-
-/** The never-list, in plain words. Named item by item — "a limited view" tells a
- * person nothing, and the point of saying it is that they can hold us to it. */
-const NEVER =
-  'Never health or appointments, never anything about a teenager, never sign-ups or money, never account settings - the schedule and nothing else.';
-
-/** What Hale asks the parent before ANY number is texted. */
-export function scopeConfirm(name: string, role: CaregiverRole): string {
-  return `Adding ${name} as ${ROLE_LABEL[role]} means they'd get ${GETS_THEY}. ${NEVER} Reply YES and I'll text them - they have to say yes too.`;
-}
-
 /**
- * The invite itself: who asked, exactly what they'd receive, and how to stop. The
- * STOP line is CASL's, and it rides on the FIRST message a stranger ever gets from us.
+ * What Hale asks the parent, and the invite a stranger receives, are written per
+ * send (consent-ask). The scope those texts must carry — the week's schedule,
+ * pickup reminders, the time and address, and the never-list — lives in that
+ * skill. There is no fixed sentence and no token to recite. STOP stays the
+ * carrier opt-out on the first text.
  */
-export function inviteBody(inviterName: string | null, role: CaregiverRole): string {
-  const who = inviterName ? `${inviterName} added you` : 'A parent added you';
-  // The inviter is named FIRST so "their family" has someone to point at. The other
-  // order put the pronoun a whole sentence ahead of its referent, and in the anonymous
-  // branch ahead of nothing at all — on the first message a stranger ever gets.
-  //
-  // IT SAYS WHAT HALE DOES, NOT WHAT HALE IS (docs/voice.md rule 3). "I'm Hale, the
-  // assistant that keeps their family's week straight" spent this stranger's first
-  // sentence on a category, and the next sentence already tells them exactly what they
-  // will get — so the category was the part to cut.
-  return `Hi - ${who} as ${ROLE_LABEL[role]}. I'm Hale - I keep their family's week straight. If you say yes I'll text you ${GETS_YOU}. ${NEVER} Reply YES to accept. Reply STOP anytime.`;
-}
 
 /** Said to the parent once the invite is on its way. */
 export function inviteSentAck(name: string): string {
@@ -66,8 +43,10 @@ export const CAREGIVER_WELCOME =
 
 export const CAREGIVER_DECLINE_ACK = "No problem - I won't text you again.";
 
-/** The one nudge a caregiver gets when their reply was neither yes nor STOP. */
-export const CAREGIVER_ANSWER_PROMPT = "Reply YES to accept, or STOP if you'd rather not.";
+/**
+ * A nudge when the reply was neither yes nor no is written per send
+ * (consent-ask, kind caregiver_nudge). There is no fixed sentence.
+ */
 
 /** The example shown when a parent clearly meant to add someone but we couldn't read
  * it. States the shape AND the three roles, so the next try succeeds. */

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "i can't do this anymore. i want to end it",
+    "confirmation": "I'm glad you told me. Please reach out to the 988 Suicide and Crisis Lifeline right now—call or text 988. If you're in danger now, call 911."
+  },
+  "latencyMs": 1408
+}

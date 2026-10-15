@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "the emergency number in the United States is 911",
+        "from": "The emergency number in the United States is 911"
+      },
+      {
+        "states": "one number reaches police, fire and medical help",
+        "from": "The same number reaches police, fire and medical help."
+      },
+      {
+        "states": "calling 911 is free",
+        "from": "Cities Insider (a relocation guide) says calling 911 is free"
+      }
+    ],
+    "answer": "Yes, it's 911 in the US too. One number covers police, fire and ambulance, and calling it is free. The ambulance ride itself can be expensive, though, often several hundred dollars or more."
+  },
+  "latencyMs": 4669
+}

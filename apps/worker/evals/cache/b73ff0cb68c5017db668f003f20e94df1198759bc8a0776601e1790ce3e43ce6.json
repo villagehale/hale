@@ -1,0 +1,25 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Learn to Swim Parent and Tot / Preschool, Town of Oakville",
+        "age_fit": "Preschool levels (Parent and Tot / Preschool)",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "YMCA Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "3-5 years",
+        "when": "12-week sessions with a one week break between sessions, one class per week",
+        "source_name": "YMCA of Oakville"
+      },
+      {
+        "name": "Little Waves, Making Waves Swim School Oakville",
+        "age_fit": "2-5 years",
+        "when": "Weekly lessons, register anytime",
+        "price": "$33.13 / lesson",
+        "source_name": "Making Waves Swim School"
+      }
+    ]
+  },
+  "latencyMs": 4318
+}

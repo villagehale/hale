@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is missing_detail. The answer correctly asks for the country, which the question left out, and states no current fact, so nothing is wrong or invented. It's in the right language and is an answer, not a deflect. The tone is a little assistant-like, with an explanatory clause and an \"I'll find\" offer, but still reads mostly casual. Not quite a few words.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

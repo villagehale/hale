@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct. The notes support that the market is closed Monday Oct 12 for Thanksgiving. They also support Friday's close of 35,664.62, up 519.24 (+1.48%). The answer correctly leaves out the post-dated Oct 13 data. It's brief and states the fact directly, the way a friend would text it. The tone is a little formal but fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

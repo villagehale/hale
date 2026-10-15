@@ -5,6 +5,7 @@ import { type FamilyMembersView, toFamilyMembersView } from '~/lib/dashboard/fam
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
+import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -21,6 +22,9 @@ import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
  * That is deliberate and is asserted by teen-access-outbound.test.ts: a grant is a
  * time-limited disclosure on the authenticated in-app surface, while an export is a
  * durable file that outlives the window and leaves the app entirely.
+ *
+ * The export does include internal audit verbs History hides. The 7-day unsent
+ * mark is an audit row the parent is owed a copy of, and it is not a History line.
  */
 
 export interface FamilyExportDocument {
@@ -269,7 +273,10 @@ export async function assembleFamilyExport(
   familyId: string,
   deps: AssembleFamilyExportDeps,
 ): Promise<FamilyExportDocument> {
-  const loadTrail = deps.loadTrail ?? loadTrailForFamily;
+  const loadTrail =
+    deps.loadTrail ??
+    ((trailDb: Database, trailFamilyId: string) =>
+      loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, { includeInternal: true }));
   const now = deps.now ?? new Date();
 
   const [familyRow] = await database

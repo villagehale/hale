@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for both send and reply, so saying \"Done\" is true. The reply states the new behaviour plainly in one short line, with no question, no machinery and no app mention. It does the job and stops.",
+    "score": 5
+  }
+}

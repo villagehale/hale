@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "well made and third-party tested, NSF Certified for Sport",
+        "from": "Both formulas are third-party tested and NSF Certified for Sport, with certificates published publicly."
+      },
+      {
+        "states": "several ingredients are underdosed (Innerbody)",
+        "from": "It also flagged key ingredient amounts hidden in proprietary blends and several underdosed ingredients."
+      },
+      {
+        "states": "one of the most expensive all-in-one supplements on the market (Live it Up dietitian)",
+        "from": "called it one of the most expensive all-in-one supplements on the market"
+      },
+      {
+        "states": "about $89 a month on subscription, about $112 one-time",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription, per getsupplementreviews.com and Live it Up."
+      },
+      {
+        "states": "no independent clinical evidence for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "replaces several other supplements, the reason some find it worth the cost",
+        "from": "They said it is expensive but worth it if it replaces 4 or 5 other supplements."
+      }
+    ],
+    "answer": "Honest take: mostly overrated for the price. It's well made, third-party tested, and a lot of people like the taste and the convenience. But the independent reviews I found say several ingredients are underdosed, it's one of the pricier all-in-ones (about $89 a month on subscription, $112 one-time, depending on where you look), and I found no independent clinical evidence for its benefit claims. It only makes sense if it replaces several supplements you're already paying for."
+  },
+  "latencyMs": 5751
+}

@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011Cfwc1A5c5zNxCgkkRknWj",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "ErIECscCCBIYAipA7oxmC+6eFUV6uOciYhQFbgIUdCUcSs+VygqDfWLMXTm7ImqPqL+41maA+9HhWI+RiWtAxRVk1byKlye0+buqZDIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWaAREKD2NsYXVkZS1zb25uZXQtNagBuJ2x1gbCAT0IBRAAGg8BZAkCH4cDTzcFCHEEJq0gAjIEEnHPJToECPGXwEIEIfOhoUoEwoo/WFAMWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiDp6oAylRsDz702GyB4QkuDUvPzHQQM7iesNtm/nxfbhCIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgxs8yLEYKXQi/Y82AwaDCeDyS6R8Fwmy62/HSIwCL3zPSLiy3WffUyimzpK5LDDjEOFRgaPcp0HwcIavgJYJIH4MdxVrsXQ+7fnS2i+KpcBU4AMf2mAx0VPWRXse6eLEDBN+dwhkQFdnxFV1QXsaHJ8B0DW+3SxBUUMeD04wNUPso7Yoyo9NWtlva3NoYSoE4wtZ6xzsBkTtLjb97q7k2xobUq4URnmcBql4dV3OL7KXMCJoqlN2y9GUZMaUSRlWqsTmA2mPUmvNXO7108zg6YQXzXtzRpLOt2I/sUHkJy2YkcCE22ybxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_012qarpkbpLnwQZzSFfBTsLZ",
+        "name": "turn_off_autonomy",
+        "input": {
+          "kinds": [
+            "send_email",
+            "reply_to_email"
+          ],
+          "interpretation": "Le parent demande que Hale arrete d'envoyer des courriels en son nom sans lui demander d'abord."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 391,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21119,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 177,
+      "output_tokens_details": {
+        "thinking_tokens": 48
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2560
+}

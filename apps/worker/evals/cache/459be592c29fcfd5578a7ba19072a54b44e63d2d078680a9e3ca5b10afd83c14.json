@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011Cfwc3wSBBKYi2jLCX5PNS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EpEFCscCCBIYAipAd3qsoe2ggcrJMm2uIpVTXbYh4HMCQnc3BrIhxavIqKZ8VpDh3dBZ3btHdG9xJsU4v4h5z/Vgvl/RYA1vZn8L5jIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiRiMjYwM2FiYS1mMDUyLTQ4NGEtOTNjYy04OWM4ZTExMGRmMmWaAREKD2NsYXVkZS1zb25uZXQtNagB352x1gbCAT0IBRAAGg8BZAkCH4cDTzcFxz0EJq0gAjIEEnHPJToECPGXwEIEIfOhoUoEwoo/WFAMWgTZBeFWYAJoAXAB2gFgChZwcmVmaXhfYmVmb3JlX2Jsb2NrX3YxEiBCrqVDqZKcHAxsiYZZ1RL6XNFq1nqz0b4tEjgkAzagliIAMiDCwBPIapyS4i+Wbz2GF3aPi3pEyQKtzAl7+h4JivtOH0gDEgzoYqV4Bz1op/XkKJMaDD9H7YzJ+5IJu/3wPyIw5wEuGfbFqmxCQUbPUVXE/wzZToDEXfpNktvXkZVuLLNdZyEjW5YAm2Ba6T6xSxyyKvYBi6ZYgcp7U4KkpP7tzI3iu54+/5X8MgXteFTkacGNXuCmzx94QwfLHnrG9F4sveuicrcyMtz8Zj3rEhx49Zjgzyrv8i7pqLR8JH5IB0mpnx4FAIw8es8yNWwFAwDbjBO83B8bL/z2fhMrcSDgkVaq13GVp9ID27zX7BzRN5eMBW02WW/ABnWwU8pGHP7DkPk9msJP0puuH2ZGVfeNBuiMX2sGTcdUyFlMWG4TpqF51qAsGWZi8N1PzfodIKi1zAd0qqgHq/t8ifVNLldZK/Sgt0jw3N+0WWXNGky1HejLawG21vid9wIE6ac/St2Ut7c2pm1GjzKCGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01KqH5zFgZGMJSitidNPgNhR",
+        "name": "turn_off_autonomy",
+        "input": {
+          "kinds": [
+            "send_email",
+            "reply_to_email"
+          ],
+          "interpretation": "Parent asked Hale to stop sending emails on their behalf without asking first."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 390,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21119,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 200,
+      "output_tokens_details": {
+        "thinking_tokens": 84
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3564
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot matches the page exactly: name, the 12 months to 4 years age band, Tue/Thu 9:30-11:00 a.m., and Sept 8 to Dec 11, cited to the programme page. The price is correctly null; the page sends readers to the front desk for fees, and none of the rental figures ($185, $95) were borrowed. Registration is null, which is correct because the page prints no registration date. The message leads with the slot by name, attributes the facts with 'their site says', and asks no question. Under page_has_schedule it puts the missing price and registration on Hale in the first person ('I could not pin down') rather than claiming they are 'not posted'. With watch true, the first-person 'I'll keep watching and text you' is a legitimate commitment. The text is plain ASCII with no link. The only nit is that 'a.m.' was dropped from the times.",
+    "score": 5
+  }
+}

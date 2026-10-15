@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer is in Chinese and gives a real pick, Messi, with reasons the notes back: eight Ballon d'Ors, the 2022 World Cup, and most rankings putting him first. It also covers the other contenders accurately: Pelé's three World Cups, Maradona's 1986 World Cup, Ronaldo as a top scorer, and the near-tied fan vote. Every specific is supported by research_notes, and no running count is marked settled. The tone is casual and opinionated, like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

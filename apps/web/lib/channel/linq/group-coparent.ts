@@ -2,17 +2,22 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
-import { googleUnverifiedAppLine } from '~/lib/channel/connect/text-connect';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
+import {
+  type SaidLineWriter,
+  createSaidLineWriter,
+  writeGroupConnectAsk,
+} from '~/lib/channel/voice/said-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   linqFromE164,
   linqGroupCoparentEnabled,
@@ -26,9 +31,7 @@ import {
   matchLinqGroupTrigger,
 } from './group';
 import {
-  groupCalendarAsk,
   groupCalendarReceipt,
-  groupGmailAsk,
   groupGmailReceipt,
   groupWelcome,
   matchBothFreeAsk,
@@ -83,6 +86,8 @@ export type GroupCoparentEffect =
 export interface GroupCoparentPorts {
   now: Date;
   fetch?: typeof fetch;
+  /** Writes the connect ask. Defaults to the production line writer. */
+  saidLine?: SaidLineWriter;
   recordInbound: (
     message: LinqInboundText,
     owner: { familyId: string; userId: string },
@@ -96,7 +101,7 @@ export async function considerGroupCoparent(
 ): Promise<GroupCoparentEffect> {
   if (!linqGroupCoparentEnabled()) return { type: 'none' };
   // STOP, HELP, and START stay on the door that already answers them.
-  if (matchKeyword(message.text)) return { type: 'none' };
+  if ((await optOutIntentOf(message.text)) !== null) return { type: 'none' };
 
   const senderPhone = normalizePhoneE164(message.senderHandle);
   if (!senderPhone) return { type: 'none' };
@@ -198,7 +203,7 @@ export async function steerNotedCoparentOneToOne(
   ports: GroupCoparentPorts,
 ): Promise<GroupCoparentEffect> {
   if (!linqGroupCoparentEnabled()) return { type: 'none' };
-  if (matchKeyword(message.text)) return { type: 'none' };
+  if ((await optOutIntentOf(message.text)) !== null) return { type: 'none' };
   const senderPhone = normalizePhoneE164(message.senderHandle);
   if (!senderPhone) return { type: 'none' };
   if (await resolveVerifiedChannelByPhone(database, senderPhone)) return { type: 'none' };
@@ -333,6 +338,7 @@ async function advanceSeatedCoparent(
         language,
         now: ports.now,
         fetch: ports.fetch,
+        saidLine: ports.saidLine,
       });
       const outcome = asked === 'not_sent' ? 'group_coparent_link_held' : 'group_coparent_gmail';
       return {
@@ -346,8 +352,9 @@ async function advanceSeatedCoparent(
       familyId: sender.familyId,
       parentUserId: sender.userId,
       groupChatId: message.chatId,
-      text: groupCalendarAsk(language, name),
+      name,
       language,
+      saidLine: ports.saidLine,
       templateKey: CALENDAR_ASK_KEY,
       dedupeKey: `${CALENDAR_ASK_KEY}:${sender.userId}`,
       provider: 'gcal',
@@ -464,10 +471,14 @@ async function answerDoneStep(
   };
 }
 
+function productionSaidLine(): SaidLineWriter {
+  return createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+}
+
 /**
  * The ask and its card, one bubble. Linq refuses a link part beside text, so
- * the URL is the next line of the same text part. The locked sentence itself
- * does not contain the token. Nothing here opens a 1:1.
+ * the URL sits inside the model's words in the same text part. The model never sees
+ * the token; it writes a slot and code fills it. Nothing here opens a 1:1.
  */
 async function sendAskWithLink(
   database: Database,
@@ -475,8 +486,9 @@ async function sendAskWithLink(
     familyId: string;
     parentUserId: string;
     groupChatId: string;
-    text: string;
+    name: string;
     language: ReplyLanguage;
+    saidLine?: SaidLineWriter;
     templateKey: string;
     dedupeKey: string;
     provider: 'gcal' | 'gmail';
@@ -501,11 +513,20 @@ async function sendAskWithLink(
   }
   const url = minted.urls[0];
   if (!url) return 'not_sent';
+  // THE MODEL WRITES THE ASK, caution included, as it does for the 1:1 link; code only
+  // fills the link slot. A failed write sends nothing rather than a canned line.
+  const text = await writeGroupConnectAsk(input.saidLine ?? productionSaidLine(), {
+    language: input.language,
+    provider: input.provider,
+    name: input.name,
+    url,
+  });
+  if (text === null) return 'not_sent';
   return sendLine(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     chatId: input.groupChatId,
-    text: `${input.text}\n${googleUnverifiedAppLine(input.language)}\n${url}`,
+    text,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
     now: input.now,
@@ -581,6 +602,7 @@ export async function sendCoparentGroupCalendarReceipt(
     connectId: string;
     now: Date;
     fetch?: typeof fetch;
+    saidLine?: SaidLineWriter;
   },
 ): Promise<'sent' | 'skipped'> {
   if (!linqGroupCoparentEnabled()) return 'skipped';
@@ -644,6 +666,7 @@ export async function sendCoparentGroupCalendarReceipt(
       language,
       now: input.now,
       fetch: input.fetch,
+      saidLine: input.saidLine,
     });
   }
   return notice === 'sent' ? 'sent' : 'skipped';
@@ -663,14 +686,16 @@ async function sendGmailAskOnce(
     language: ReplyLanguage;
     now: Date;
     fetch?: typeof fetch;
+    saidLine?: SaidLineWriter;
   },
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
   const notice = await sendAskWithLink(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     groupChatId: input.chatId,
-    text: groupGmailAsk(input.language, input.name),
+    name: input.name,
     language: input.language,
+    saidLine: input.saidLine,
     templateKey: GMAIL_ASK_KEY,
     dedupeKey: `${GMAIL_ASK_KEY}:${input.parentUserId}`,
     provider: 'gmail',

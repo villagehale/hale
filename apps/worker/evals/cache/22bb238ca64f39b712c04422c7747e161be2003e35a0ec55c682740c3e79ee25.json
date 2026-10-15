@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC: Tuesday cloudy, high 14°C",
+        "from": "Environment Canada's forecast for Tuesday is cloudy with a high of 14°C"
+      },
+      {
+        "states": "Vancouver, BC: Tuesday night a few showers beginning late in the evening, low 11°C",
+        "from": "Environment Canada's forecast for Tuesday night is a few showers beginning late in the evening, with a low of 11°C"
+      },
+      {
+        "states": "Vancouver, WA: Tuesday high 64°F, mostly cloudy, dry with 1% chance of precipitation",
+        "from": "Wunderground (Hough station) gives a high of 64°F ... Precipitation chance is 1%"
+      }
+    ],
+    "answer": "Tomorrow in Vancouver, BC looks cloudy with a high of 14°C, and a few showers start late in the evening, low 11°C. In Vancouver, Washington it's mostly cloudy with a high around 64°F and should stay dry. Which Vancouver do you mean, BC or Washington?"
+  },
+  "latencyMs": 6050
+}

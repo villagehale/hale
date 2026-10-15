@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real classes from the page. Days, times and the Sep 12 to Nov 28 session dates match exactly, and both are cited to the Oakville page. Price is correctly null because the page prints no fee. Registration (Aug 11, 7 a.m.) is carried in the slots and in the message. The message leads with the named program, attributes the facts with 'their site says' and states that registration opens Aug 11. It uses the first-person 'I could not pin down the price', which is correct under page_has_schedule. Because watch is true, 'I'll keep watching and text you' is a legitimate commitment. The text is plain ASCII, two sentences, with no link and no question. The only nitpick is that the first sentence is dense for an SMS.",
+    "score": 5
+  }
+}

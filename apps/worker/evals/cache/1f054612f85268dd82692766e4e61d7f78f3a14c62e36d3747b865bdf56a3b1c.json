@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Correct per the notes: the market is closed for Canadian Thanksgiving, and the Friday close of 35,664.62, +519.24 (+1.48%), matches them exactly. It ignores the later-dated results, which is right. It reads as a brief, casual text that actually answers the question.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

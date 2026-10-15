@@ -138,13 +138,9 @@ describe('/connected — the done page', () => {
 
 describe('the done page keeps the locked text receipt', () => {
   it('texts the straight-apostrophe receipt and shows the curly one', async () => {
-    const { CONNECTOR_CONNECTED_TEXT } = await import('~/lib/channel/connect/text-connect');
     const { connectedStatus } = await import('~/lib/channel/connect/connect-page-copy');
     const page = connectedStatus('ok', 'gcal');
 
-    expect(CONNECTOR_CONNECTED_TEXT.gcal).toBe(
-      "Calendar's connected. I'll catch class invites and trip dates.",
-    );
     expect(flattenCopy(page.bubble ?? [])).toBe(
       'Calendar’s connected. I’ll catch class invites and trip dates.',
     );

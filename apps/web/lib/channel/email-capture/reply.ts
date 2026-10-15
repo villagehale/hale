@@ -1,15 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { productionChannels } from '~/lib/channel/adapters/production';
 import { parseEmailAddress } from '~/lib/channel/email/address';
 import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import {
   EMAIL_ALREADY_TAKEN_REPLY,
   EMAIL_CAPTURED_FOR_INTRO_REPLY,
   emailCapturedReply,
 } from '~/lib/channel/router/copy';
-import { productionChannels } from '~/lib/channel/adapters/production';
 import { sendPendingInvite } from '~/lib/loop/calendar-invite';
 import { CALENDAR_EMAIL_ASK_TEMPLATE_KEY } from '~/lib/loop/templates/calendar-invite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
@@ -96,10 +95,6 @@ const MAX_SURROUNDING_WORDS = 2;
  * through to the coach rather than being half-read here.
  */
 export function soleEmailAddress(body: string): string | null {
-  // A carrier keyword was already answered upstream (STOP/HELP/START); reading one
-  // again here could only disagree with the first answer.
-  if (matchKeyword(body)) return null;
-
   const words = body.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0 || words.length > MAX_SURROUNDING_WORDS + 1) return null;
 
@@ -222,7 +217,11 @@ async function captureParentEmail(
     actionTaken: 'parent_email_captured',
     targetTable: 'users',
     targetId: input.parentUserId,
-    after: { source: 'sms_reply', consentBasis: 'answered_hales_direct_ask', address: input.address },
+    after: {
+      source: 'sms_reply',
+      consentBasis: 'answered_hales_direct_ask',
+      address: input.address,
+    },
   });
   return 'stored';
 }

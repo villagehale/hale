@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
-import { CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
+import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import {
   ChannelRetryableError,
@@ -18,7 +18,7 @@ import type { LoopMessage, RenderedContent, VoiceOutcome } from './types';
  * VIL-213 · A2 dispatch policy. Deterministic (no LLM) → plain Vitest with Fakes +
  * an injected clock. Proves the AC: policy is per delivery leg (the parent's
  * exchange channel), a ledger row per outcome (suppression OR send), per-channel
- * dedupe + caps, time_sensitive bypass, and the email CASL dual-write.
+ * dedupe, time_sensitive bypass, and the email CASL dual-write.
  */
 
 const TORONTO = 'America/Toronto';
@@ -45,7 +45,6 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     loadParent: async () => ({ email: 'parent@example.com', timezone: TORONTO }),
     emailOptedOut: async () => false,
     smsConsentLive: async () => true,
-    countRecent: async () => 0,
     activeDedupe: async () => false,
     record: async (w) => {
       ledger.push(w);
@@ -88,7 +87,9 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
     const { ports, ledger } = makePorts({ prefs: { catReminder: false } });
     const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_pref' }]);
-    expect(ledger).toEqual([expect.objectContaining({ status: 'suppressed_pref', dedupeKey: null })]);
+    expect(ledger).toEqual([
+      expect.objectContaining({ status: 'suppressed_pref', dedupeKey: null }),
+    ]);
   });
 
   it('suppressed_consent (email opt-out) — refused at the seam, provider never touched', async () => {
@@ -97,7 +98,7 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
       emailOptedOut: async () => true,
       channels: { email: emailChannel },
     });
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_consent' }]);
     expect(ledger[0]).toMatchObject({ status: 'suppressed_consent', channel: 'email' });
     expect(emailChannel.calls).toHaveLength(0);
@@ -131,11 +132,11 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
     expect(ledger[0]?.status).toBe('sent');
   });
 
-  it('suppressed_cap once the category window on that channel is full', async () => {
-    const { ports, ledger } = makePorts({ countRecent: async () => 2 }); // reminder cap is 2/day
+  it('sends a reminder with no per-category count in the way', async () => {
+    const { ports, ledger } = makePorts();
     const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_cap' }]);
-    expect(ledger[0]?.status).toBe('suppressed_cap');
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
+    expect(ledger[0]?.status).toBe('sent');
   });
 });
 
@@ -148,7 +149,7 @@ describe('per-channel dedupe idempotency — a re-drain never double-sends', () 
       channels: { email: emailChannel },
     });
     const result = await dispatchLoopMessage(
-      message({ category: 'weekly_plan', dedupeKey: 'fam-1:2026-W23:weekly' }),
+      message({ category: 'reminder', dedupeKey: 'fam-1:2026-W23:weekly' }),
       ports,
     );
     expect(result.legs).toEqual([{ channel: 'email', outcome: 'deduped' }]);
@@ -160,25 +161,25 @@ describe('per-channel dedupe idempotency — a re-drain never double-sends', () 
 describe('email CASL dual-write + audit', () => {
   it('writes channel_messages + email_sends + an audit row on a real email send', async () => {
     const { ports, ledger, emailSends, audits } = makePorts();
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(ledger.filter((r) => r.channel === 'email' && r.status === 'sent')).toHaveLength(1);
-    expect(emailSends).toEqual([{ emailType: 'weekly_plan', recipient: 'parent@example.com' }]);
+    expect(emailSends).toEqual([{ emailType: 'reminder', recipient: 'parent@example.com' }]);
     expect(audits).toEqual([
       {
         actionTaken: 'channel_sent',
-        after: { channel: 'email', category: 'weekly_plan', templateKey: 'weekly-plan-v1' },
+        after: { channel: 'email', category: 'reminder', templateKey: 'weekly-plan-v1' },
       },
     ]);
   });
 
   it("names a caregiver leg by WHO received it — the trail must not say 'Hale sent you a message'", async () => {
-    // A caregiver's week is a DISCLOSURE of the household to a third party, and the verb
+    // A caregiver's reminder is a DISCLOSURE of the household to a third party, and the verb
     // is how a PIPEDA read finds it later. Pinned here because the templateKey is the
     // only thing that distinguishes the two rows: with the branch collapsed back to
     // `channel_sent`, every other dispatch assertion stays green.
     const { ports, audits } = makePorts({ prefs: { loopChannel: 'sms' } });
     await dispatchLoopMessage(
-      message({ templateKey: CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY, category: 'weekly_plan' }),
+      message({ templateKey: CAREGIVER_REMINDER_TEMPLATE_KEY, category: 'reminder' }),
       ports,
     );
     expect(audits).toEqual([
@@ -186,8 +187,8 @@ describe('email CASL dual-write + audit', () => {
         actionTaken: 'caregiver_schedule_sent',
         after: {
           channel: 'sms',
-          category: 'weekly_plan',
-          templateKey: CAREGIVER_WEEKLY_PLAN_TEMPLATE_KEY,
+          category: 'reminder',
+          templateKey: CAREGIVER_REMINDER_TEMPLATE_KEY,
         },
       },
     ]);
@@ -195,7 +196,7 @@ describe('email CASL dual-write + audit', () => {
 
   it('keeps the generic verb for the same category sent to a parent (positive control)', async () => {
     const { ports, audits } = makePorts({ prefs: { loopChannel: 'sms' } });
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(audits.map((a) => a.actionTaken)).toEqual(['channel_sent']);
   });
 
@@ -208,11 +209,11 @@ describe('email CASL dual-write + audit', () => {
 
 describe("the parent's own text thread", () => {
   it('threads a delivered SMS leg with the body that went on the wire', async () => {
-    // The weekly plan is a thing Hale SAID, and the parent answers it by text.
+    // A loop message is a thing Hale SAID, and the parent answers it by text.
     // `channel_messages` stores no body (rule #1), so this is the only record a coach
     // turn can read the reply against.
     const { ports, threaded } = makePorts({ prefs: { loopChannel: 'sms' } });
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
 
     expect(threaded).toEqual([
       { familyId: 'fam-1', parentUserId: 'user-1', body: 'weekly-plan-v1' },
@@ -222,13 +223,13 @@ describe("the parent's own text thread", () => {
   it('threads the SMS leg only — an email is not a text', async () => {
     // The thread is the SMS thread (channelSmsNoteKey).
     const { ports, threaded } = makePorts({ prefs: { loopChannel: 'sms' } });
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
 
     expect(result.legs.map((l) => `${l.channel}:${l.outcome}`)).toEqual(['sms:sent']);
     expect(threaded).toHaveLength(1);
 
     const viaEmail = makePorts();
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), viaEmail.ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), viaEmail.ports);
     expect(viaEmail.threaded).toEqual([]);
   });
 
@@ -239,7 +240,7 @@ describe("the parent's own text thread", () => {
       prefs: { loopChannel: 'sms' },
       smsConsentLive: async () => false,
     });
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
 
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'suppressed_consent' }]);
     expect(threaded).toEqual([]);
@@ -278,7 +279,9 @@ describe('provider outcomes', () => {
         }),
       },
     });
-    await expect(dispatchLoopMessage(message(), ports)).rejects.toBeInstanceOf(ChannelRetryableError);
+    await expect(dispatchLoopMessage(message(), ports)).rejects.toBeInstanceOf(
+      ChannelRetryableError,
+    );
     expect(ledger).toHaveLength(0);
   });
 
@@ -331,20 +334,30 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
       {
         event: 'loop_message_failed',
         distinctId: 'user-1',
-        properties: { channel: 'email', category: 'reminder', templateKey: 'weekly-plan-v1', reason: 'suppressed_pref' },
+        properties: {
+          channel: 'email',
+          category: 'reminder',
+          templateKey: 'weekly-plan-v1',
+          reason: 'suppressed_pref',
+        },
       },
     ]);
   });
 
   it('a real send writes one ledger row and one loop_message_sent capture, reason = sent', async () => {
     const { ports, ledger, captures } = makePorts();
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(captures).toHaveLength(ledger.length);
     expect(captures).toEqual([
       {
         event: 'loop_message_sent',
         distinctId: 'user-1',
-        properties: { channel: 'email', category: 'weekly_plan', templateKey: 'weekly-plan-v1', reason: 'sent' },
+        properties: {
+          channel: 'email',
+          category: 'reminder',
+          templateKey: 'weekly-plan-v1',
+          reason: 'sent',
+        },
       },
     ]);
   });
@@ -361,7 +374,7 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
       channels: { sms: fakeChannel('sms') },
     });
 
-    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
 
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
     expect(ledger[0]).toMatchObject({ channel: 'sms', status: 'queued' });
@@ -373,16 +386,26 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
 
   it('a permanent provider error writes one ledger row and one loop_message_failed capture', async () => {
     const { ports, ledger, captures } = makePorts({
-      channels: { email: fakeChannel('email', { status: 'error', transient: false, code: 'invalid_recipient', message: 'bad' }) },
+      channels: {
+        email: fakeChannel('email', {
+          status: 'error',
+          transient: false,
+          code: 'invalid_recipient',
+          message: 'bad',
+        }),
+      },
     });
     await dispatchLoopMessage(message(), ports);
     expect(captures).toHaveLength(ledger.length);
-    expect(captures[0]).toMatchObject({ event: 'loop_message_failed', properties: { reason: 'failed' } });
+    expect(captures[0]).toMatchObject({
+      event: 'loop_message_failed',
+      properties: { reason: 'failed' },
+    });
   });
 
   it('a suppressed leg fires its paired capture, one per row', async () => {
     const { ports, ledger, captures } = makePorts({ emailOptedOut: async () => true });
-    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(captures).toHaveLength(ledger.length);
     expect(captures.map((c) => `${c.properties.channel}:${c.event}`)).toEqual([
       'email:loop_message_failed',
@@ -399,9 +422,18 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
 
   it('a transient (retryable) error writes no terminal row and fires no capture', async () => {
     const { ports, ledger, captures } = makePorts({
-      channels: { email: fakeChannel('email', { status: 'error', transient: true, code: 'rate_limited', message: 'later' }) },
+      channels: {
+        email: fakeChannel('email', {
+          status: 'error',
+          transient: true,
+          code: 'rate_limited',
+          message: 'later',
+        }),
+      },
     });
-    await expect(dispatchLoopMessage(message(), ports)).rejects.toBeInstanceOf(ChannelRetryableError);
+    await expect(dispatchLoopMessage(message(), ports)).rejects.toBeInstanceOf(
+      ChannelRetryableError,
+    );
     expect(ledger).toHaveLength(0);
     expect(captures).toHaveLength(0);
   });
@@ -421,7 +453,10 @@ describe('a channel-pinned message', () => {
       channels: { email, sms },
     });
 
-    const result = await dispatchLoopMessage(message({ channel: 'email', category: 'approval' }), ports);
+    const result = await dispatchLoopMessage(
+      message({ channel: 'email', category: 'approval' }),
+      ports,
+    );
 
     expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
     expect(sms.calls).toHaveLength(0);
@@ -450,9 +485,7 @@ describe('a rendered body that claims something no row can back never reaches a 
     });
     const result = await dispatchLoopMessage(message(), ports);
 
-    expect(result.legs).toEqual([
-      { channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' },
-    ]);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
     expect(sms.calls).toEqual([]);
     expect(ledger).toEqual([
       expect.objectContaining({ status: 'failed', errorCode: 'unbacked_claim' }),
@@ -467,7 +500,6 @@ describe('a rendered body that claims something no row can back never reaches a 
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
     expect(sms.calls).toHaveLength(1);
   });
-
 });
 
 /**
@@ -533,7 +565,11 @@ describe('recordAbandonedDispatch — the channel.send dead-letter outcome', () 
  */
 describe('the composed voice slot is reported off the render, never inferred from the body', () => {
   const voicedRenderer = (voice: VoiceOutcome | undefined) => ({
-    render: (m: LoopMessage): RenderedContent => ({ kind: 'sms' as const, text: m.templateKey, voice }),
+    render: (m: LoopMessage): RenderedContent => ({
+      kind: 'sms' as const,
+      text: m.templateKey,
+      voice,
+    }),
   });
 
   it('carries each outcome onto the leg AND onto the immutable audit row', async () => {

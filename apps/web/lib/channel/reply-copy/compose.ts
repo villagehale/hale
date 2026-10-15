@@ -229,6 +229,8 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
           promptTokens: result.usage.promptTokens,
           completionTokens: result.usage.completionTokens,
           costUsd: agentRunCostUsd(modelUsed, result.usage),
+          cacheReadTokens: result.usage.cacheReadTokens,
+          cacheWriteTokens: result.usage.cacheCreationTokens,
           latencyMs: Date.now() - startedAt,
           status: kept ? 'completed' : 'failed',
           langfuseTraceId: trace.traceId,

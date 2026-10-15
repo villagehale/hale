@@ -99,7 +99,7 @@ export type CoParentDeparture =
  * `granted_at` wins, and a row with the same `granted_at` loses to the greater
  * id, so two stamps in the same instant do not depend on scan order. A
  * withdrawal is an APPENDED `granted=false` row, never an update
- * (`revokeSmsChannel`, `sms-consent-core.ts:352`).
+ * (`revokeSmsChannel`, `sms-consent-core.ts:349`).
  */
 async function standingMessagingScopes(
   tx: Database,

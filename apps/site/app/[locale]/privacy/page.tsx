@@ -214,12 +214,12 @@ export default async function PrivacyPage({
         </ul>
         <p>
           <strong>What comes from services you connect.</strong> If you connect a tool (such as
-          email or calendar), we store an encrypted authorization token and the
-          minimum metadata needed to sync, plus the entries that tool records into your
-          family&rsquo;s timeline. You control which integrations are connected and can disconnect
-          them. When a flight, hotel or rental confirmation in a connected mailbox shows that your
-          children are travelling with you, what we keep is the destination city and the dates only;
-          we never store the message, the confirmation number, or what the trip cost.
+          email or calendar), we store an encrypted authorization token and the minimum metadata
+          needed to sync, plus the entries that tool records into your family&rsquo;s timeline. You
+          control which integrations are connected and can disconnect them. When a flight, hotel or
+          rental confirmation in a connected mailbox shows that your children are travelling with
+          you, what we keep is the destination city and the dates only; we never store the message,
+          the confirmation number, or what the trip cost.
         </p>
         <p>
           PIPEDA asks for the purpose to be identified before the collection, and that is per-source
@@ -261,9 +261,8 @@ export default async function PrivacyPage({
         <p>
           <strong>What Hale works out for itself.</strong> A structured memory of facts and patterns
           Hale infers from your family&rsquo;s activity — for example, a stated preference — so it
-          can be more helpful over time. Inferred information about your
-          family is your family&rsquo;s personal information too, and everything in this policy
-          applies to it.
+          can be more helpful over time. Inferred information about your family is your
+          family&rsquo;s personal information too, and everything in this policy applies to it.
         </p>
         <p>
           <strong>What is collected automatically.</strong> Every action Hale takes produces an
@@ -485,10 +484,9 @@ export default async function PrivacyPage({
             <strong>Where the law requires it.</strong> To authorities and in legal process where we
             are required or permitted to, to protect a child or another person from serious harm,
             and to our professional advisers — legal advisers, accountants, insurers — in the course
-            of
-            their work for us. If Hale is ever acquired, merged, or reorganized, your family&rsquo;s
-            data may transfer with the business; this policy keeps applying to it, and we will tell
-            you.
+            of their work for us. If Hale is ever acquired, merged, or reorganized, your
+            family&rsquo;s data may transfer with the business; this policy keeps applying to it,
+            and we will tell you.
           </li>
         </ul>
       </LegalSectionBlock>
@@ -532,15 +530,15 @@ export default async function PrivacyPage({
             data is coarse and non-identifying (no child data, no message content) — we capture only
             a few key product steps. Session replay is on so we can understand and fix problems, but
             every typed value (names, dates of birth, email, address) and all personal data shown on
-            screen — child names and ages, care logs, and Hale conversations
-            — is <strong>masked</strong> before the recording leaves your browser. Product analytics
-            and session replay are kept for 30 days. Error tracking captures unhandled errors (a
-            stack trace, not your data) so we can fix them. Autocapture stays off, and we identify
-            you by an opaque account id, never your name or email. Processed in the United States.
-            On the public website, PostHog analytics and session replay load only after the visitor
-            taps Accept in the cookie banner. If they choose No thanks, or make no choice, neither
-            loads. Visitors can change that choice at any time with Cookie settings in the site
-            footer. On the marketing site, PostHog is configured to write nothing to your device.
+            screen — child names and ages, care logs, and Hale conversations — is{' '}
+            <strong>masked</strong> before the recording leaves your browser. Product analytics and
+            session replay are kept for 30 days. Error tracking captures unhandled errors (a stack
+            trace, not your data) so we can fix them. Autocapture stays off, and we identify you by
+            an opaque account id, never your name or email. Processed in the United States. On the
+            public website, PostHog analytics and session replay load only after the visitor taps
+            Accept in the cookie banner. If they choose No thanks, or make no choice, neither loads.
+            Visitors can change that choice at any time with Cookie settings in the site footer.{' '}
+            {'On the marketing site, PostHog is configured to write nothing to your device.'}
           </li>
           <li>
             <strong>Google Ads</strong> — advertising measurement on the marketing site
@@ -763,8 +761,9 @@ export default async function PrivacyPage({
             .
           </li>
           <li>
-            <strong>Stop the introductions.</strong> Text NO INTROS and Hale will not look for a
-            match for your family or raise it again.
+            <strong>Stop the introductions.</strong> Tell Hale, in your own words, that you do not
+            want introductions. Hale will stop looking for a match for your family and will not
+            raise it again.
           </li>
           <li>
             <strong>Disconnect a tool.</strong> Any integration you connected can be disconnected,

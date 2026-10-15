@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer matches the research notes: the market is closed today for Canadian Thanksgiving, and Friday's close was 35,664.62, up 519.24 (+1.48%). It correctly ignores the mismatched Oct 13 data. It is brief and casual and gives a direct answer in English. The phrasing is slightly formal ('Friday's close was the last one') but still reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

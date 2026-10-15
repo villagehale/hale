@@ -6,16 +6,13 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeSilentAnswerComposer,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
-import { MAX_PAYLOAD_SEGMENTS } from '~/lib/channel/intake/radar-voice';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { YEAR_OPEN_LEAD } from '~/lib/channel/intake/year-open';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { toRegistrationWindowRow } from '~/lib/registration/registration-windows';
@@ -55,7 +52,6 @@ const TORONTO_FALL_2026 = REGISTRATION_WINDOWS.find(
     seed.cycleLabel === 'Fall 2026',
 );
 if (!TORONTO_FALL_2026) throw new Error('fixture drift: the Toronto Fall 2026 seed row is gone');
-const CITY_PAGE = TORONTO_FALL_2026.sourceUrl;
 
 describe('the first reply says what to do about the find', () => {
   let db: TestDb;
@@ -156,8 +152,8 @@ describe('the first reply says what to do about the find', () => {
         now: () => INTAKE_AT,
         timeZone: TZ,
       }),
-      ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),
       // `seedCivic` is DELIBERATELY not injected: the real projectCivicCandidates runs,
       // so this journey pins the write of `access`/`when_label` and not a stand-in.
@@ -170,7 +166,7 @@ describe('the first reply says what to do about the find', () => {
 
   let inboundSeq = 0;
 
-  async function arrive(): Promise<{ familyId: string; radarBody: string }> {
+  async function arrive(): Promise<{ familyId: string }> {
     const transport = new FakeTransport();
     const intakeDeps = deps(transport);
     const text = (body: string) => {
@@ -187,14 +183,12 @@ describe('the first reply says what to do about the find', () => {
     if (outcome.status !== 'provisioned') {
       throw new Error(`fixture drift: intake ended at ${outcome.status}`);
     }
-    const radarBody = transport.sent.map((s) => s.body).find((b) => b.includes(YEAR_OPEN_LEAD));
-    if (radarBody === undefined) throw new Error('fixture drift: no radar message was sent');
-    return { familyId: outcome.familyId, radarBody };
+    return { familyId: outcome.familyId };
   }
 
   it('sends the Saturday drop-in, not the registration morning', async () => {
     vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, 'true');
-    const { familyId, radarBody } = await arrive();
+    const { familyId } = await arrive();
 
     // The projection really wrote the two columns — otherwise the pick below would be
     // 'unknown' and this whole journey would pass by saying nothing.
@@ -220,32 +214,7 @@ describe('the first reply says what to do about the find', () => {
       source: 'civic_registry',
     });
 
-    expect(radarBody).toContain('Saturday family drop-in');
-    expect(radarBody).toContain(YEAR_OPEN_LEAD);
-    expect(radarBody).not.toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
-    expect(radarBody).not.toContain(CITY_PAGE);
-    expect(radarBody).not.toContain('Want me to keep an eye');
-    expect(smsSegments(radarBody)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
-    expect(radarBody).not.toContain('not posted yet');
-    expect(radarBody).not.toContain('no registration date coming up');
-    expect(radarBody).not.toContain('already opened');
-    for (const claim of ['still room', 'spots', 'fills up', 'sign up']) {
-      expect(radarBody.toLowerCase()).not.toContain(claim);
-    }
-  });
-
-  /**
-   * THE DARK HALF. With the flag unset the URL is held — and R10 says the town and the
-   * date survive that, because everything except the link ships unflagged and nothing
-   * Hale states correctly today may be lost to a rung that did not render.
-   */
-  it('still names the Saturday drop-in with the action-line flag unset', async () => {
-    const { radarBody } = await arrive();
-
-    expect(radarBody).toContain('Saturday family drop-in');
-    expect(radarBody).not.toContain('Toronto Fall 2026 registration opened Sep 15, 7:00 a.m.');
-    expect(radarBody).not.toContain(CITY_PAGE);
-    expect(radarBody).not.toContain('Want me to keep an eye');
-    expect(smsSegments(radarBody)).toBeLessThanOrEqual(MAX_PAYLOAD_SEGMENTS);
+    // The reply itself is model-written (friend voice); what the find hands it is
+    // the persisted candidates above. No fixed radar body is asserted.
   });
 });

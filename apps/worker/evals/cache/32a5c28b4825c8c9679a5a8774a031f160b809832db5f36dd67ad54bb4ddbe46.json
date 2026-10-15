@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific is supported by the notes: no open Oakville Costco, the Wyecroft Rd site near Burloak, the fall 2027 target, and the Laird Rd address hedged as coming from a third-party site. It makes no claim about the family's street. It does skip the existing Burlington warehouse the notes mention, so calling Laird Rd \"the closest I found\" is slightly shaky, though it is hedged. Tone is casual and it actually answers, with a bit of a report-like hedge at the end.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

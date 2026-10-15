@@ -19,12 +19,12 @@ import {
  * magic words, and a product that hands out magic words is a product that has decided its
  * user should learn its grammar.
  *
- * THIS STAGE DOES NOT REPLACE ANY OF THAT GRAMMAR. Every keyword still READS. "YES INTRO",
- * "yes 2", "done", a thumbs-up — all of them are claimed by the deterministic handlers
- * exactly as before, for free, before this module is reached. What changed is that nothing
- * PRINTS one. This stage is the floor underneath: it runs only when a parent has said
- * something the closed vocabularies could not read, AND there is an open question for it
- * to be an answer to.
+ * THIS STAGE DOES NOT REPLACE THE REMAINING CLOSED VOCABULARIES. "yes 2", "done", a
+ * thumbs-up are still claimed by the deterministic handlers before this module is
+ * reached. An introduction is not one of those: the intro handler reads the reply with
+ * the consent model, in any wording, and nothing prints a token to recite. This stage
+ * is the floor underneath: it runs only when a parent has said something those handlers
+ * did not claim, AND there is an open question for it to be an answer to.
  *
  * Three properties make a model safe here, and they are the off-domain screen's three
  * (lib/channel/off-domain/screen.ts) applied to a harder job:
@@ -188,10 +188,7 @@ const readingJsonSchema = {
 } as const;
 
 /** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
-export function replyResolverUserMessage(
-  text: string,
-  questions: readonly OpenQuestion[],
-): string {
+export function replyResolverUserMessage(text: string, questions: readonly OpenQuestion[]): string {
   return JSON.stringify({
     text,
     questions: questions.map((q) => ({ id: q.id, kind: q.kind, question: q.description })),

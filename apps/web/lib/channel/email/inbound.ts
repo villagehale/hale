@@ -1,28 +1,28 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
-import { matchKeyword } from '~/lib/channel/intake/keywords';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { parseEmailAddress } from './address';
 import { automationKind } from './automated';
+import { type EmailInboundConfig, emailInboundConfig } from './config';
+import type { InboundContentReader } from './content';
+import { type EmailForwardOutcome, routeEmailForward } from './forward';
 import {
   familyForForwardToken,
   forwardAddress,
   forwardClaimKey,
   forwardRecipient,
 } from './forward-address';
-import { type EmailForwardOutcome, routeEmailForward } from './forward';
-import type { EmailReplyDeps } from './reply-send';
-import { type EmailInboundConfig, emailInboundConfig } from './config';
-import { honourEmailUnsubscribe } from './unsubscribe';
-import type { InboundContentReader } from './content';
 import { resolveEmailSender } from './identity';
 import { type InboundEmailEvent, parseInboundEmailEvent } from './payload';
 import { extractReply } from './reply-extract';
+import type { EmailReplyDeps } from './reply-send';
 import { isValidResendSignature } from './signature';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { assessSenderTrust } from './trust';
+import { honourEmailUnsubscribe } from './unsubscribe';
 
 /**
  * The inbound-email webhook: the OTHER door a parent can reach Hale through, and the
@@ -266,7 +266,7 @@ export async function routeEmailInbound(
   // CASL before the attachment branch — see the module note. The keyword's language is
   // not read here: this path unsubscribes and replies with nothing, so ARRET and STOP
   // have the same one job.
-  if (matchKeyword(body)?.keyword === 'stop') {
+  if ((await optOutIntentOf(body)) === 'stop') {
     return honourEmailUnsubscribe(deps.database, owner);
   }
 

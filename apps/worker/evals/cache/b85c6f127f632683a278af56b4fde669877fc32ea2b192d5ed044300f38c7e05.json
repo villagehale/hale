@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text is in English, but the parent's language is Chinese. The parent asked in Chinese and needs a response in Chinese to understand who is writing and how to reach someone. This fundamental mismatch makes the message ineffective regardless of content quality."
+  }
+}

@@ -17,6 +17,13 @@ const FAMILY = '11111111-1111-4111-8111-111111111111';
 const ACTION = '22222222-2222-4222-8222-222222222222';
 const EVENT = '33333333-3333-4333-8333-333333333333';
 const APPROVER = 'parent-a';
+const POLICY_VERSION = 'test-policy';
+const INPUT = {
+  actionId: ACTION,
+  familyId: FAMILY,
+  approvedBy: APPROVER,
+  policyVersion: POLICY_VERSION,
+};
 
 const SEND_EMAIL_VERDICT = {
   kind: 'approve' as const,
@@ -53,6 +60,7 @@ function makeDeps(
   } = {},
 ): ExecuteApprovedDeps & {
   loadAction: ReturnType<typeof vi.fn>;
+  loadConsent: ReturnType<typeof vi.fn>;
   recordApproval: ReturnType<typeof vi.fn>;
   recordGate: ReturnType<typeof vi.fn>;
   execute: ReturnType<typeof vi.fn>;
@@ -73,7 +81,7 @@ function makeDeps(
     loadConsent: vi.fn(
       async () => overrides.consent ?? { hasCoParent: false, coParentConsentGranted: false },
     ),
-    recordApproval: vi.fn(async () => ({ claimed: true as const })),
+    recordApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
     recordGate: vi.fn(async () => {}),
     execute: vi.fn(async () => {}),
     log: { info: vi.fn(), warn: vi.fn() },
@@ -83,7 +91,7 @@ function makeDeps(
 describe('executeApprovedAction', () => {
   it('drives a valid human-approved action into execution and records who approved', async () => {
     const deps = makeDeps();
-    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+    await executeApprovedAction(INPUT, deps);
 
     expect(deps.execute).toHaveBeenCalledTimes(1);
     const [famArg, evtArg, actionArg, approvedArg] = deps.execute.mock.calls[0] ?? [];
@@ -100,6 +108,7 @@ describe('executeApprovedAction', () => {
       eventId: EVENT,
       actionId: ACTION,
       approvedBy: APPROVER,
+      policyVersion: POLICY_VERSION,
     });
     expect(deps.recordGate).not.toHaveBeenCalled();
   });
@@ -115,7 +124,7 @@ describe('executeApprovedAction', () => {
       typeof executeApprovedAction
     >[1] & { execute: ReturnType<typeof vi.fn> };
 
-    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+    await executeApprovedAction(INPUT, deps);
 
     expect(deps.execute.mock.calls[0]?.[4]).toBe(calendarInvites);
     expect(deps.execute.mock.calls[0]?.[6]).toBe(APPROVER);
@@ -129,7 +138,7 @@ describe('executeApprovedAction', () => {
       typeof executeApprovedAction
     >[1] & { execute: ReturnType<typeof vi.fn> };
 
-    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+    await executeApprovedAction(INPUT, deps);
 
     expect(deps.execute.mock.calls[0]?.[5]).toBe(googleCalendar);
     expect(deps.execute.mock.calls[0]?.[6]).toBe(APPROVER);
@@ -145,7 +154,7 @@ describe('executeApprovedAction', () => {
         verdict: SEND_EMAIL_VERDICT,
       },
     });
-    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+    await executeApprovedAction(INPUT, deps);
 
     expect(deps.execute).not.toHaveBeenCalled();
     expect(deps.recordApproval).not.toHaveBeenCalled();
@@ -161,7 +170,7 @@ describe('executeApprovedAction', () => {
         verdict: null,
       },
     });
-    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+    await executeApprovedAction(INPUT, deps);
 
     expect(deps.execute).not.toHaveBeenCalled();
     expect(deps.recordApproval).not.toHaveBeenCalled();
@@ -169,7 +178,7 @@ describe('executeApprovedAction', () => {
 
   it('drops (no execution) when the action does not exist', async () => {
     const deps = makeDeps({ action: null });
-    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+    await executeApprovedAction(INPUT, deps);
 
     expect(deps.execute).not.toHaveBeenCalled();
     expect(deps.recordApproval).not.toHaveBeenCalled();
@@ -186,8 +195,10 @@ describe('executeApprovedAction', () => {
       },
       consent: { hasCoParent: true, coParentConsentGranted: false },
     });
-    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+    await executeApprovedAction(INPUT, deps);
 
+    // The consent asked about is for this action's own kind, never any grant at all.
+    expect(deps.loadConsent).toHaveBeenCalledWith(FAMILY, 'share_photos_with_family');
     expect(deps.execute).not.toHaveBeenCalled();
     expect(deps.recordApproval).not.toHaveBeenCalled();
     expect(deps.recordGate).toHaveBeenCalledTimes(1);
@@ -212,7 +223,7 @@ describe('executeApprovedAction', () => {
       },
       consent: { hasCoParent: true, coParentConsentGranted: true },
     });
-    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+    await executeApprovedAction(INPUT, deps);
 
     expect(deps.recordGate).not.toHaveBeenCalled();
     expect(deps.execute).toHaveBeenCalledTimes(1);

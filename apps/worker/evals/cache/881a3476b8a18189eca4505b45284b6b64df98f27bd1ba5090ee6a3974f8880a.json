@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "La capitale de la France est Paris",
+        "from": "settled"
+      }
+    ],
+    "answer": "Paris, c'est la capitale de la France 🙂"
+  },
+  "latencyMs": 1671
+}

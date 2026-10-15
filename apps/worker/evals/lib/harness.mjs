@@ -231,7 +231,11 @@ export function installEvalSpendCap() {
 export function lazyAnthropic(tag = 'eval') {
   let client;
   return () => {
-    client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    client ??= new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
+      fetch: globalThis.fetch,
+    });
     return capSdkClient(client, { rates: priceRates, tag });
   };
 }
@@ -723,6 +727,26 @@ export const JUDGE_SCHEMA = {
 };
 
 /**
+ * Score first, then a short reason. A forced tool call is emitted in schema order, so
+ * the number is already on the verdict when a long reason runs out of tokens. The
+ * shared schema above stays reason-first. A suite opts into this one.
+ */
+export function scoreFirstJudgeSchema(maxChars) {
+  return {
+    type: 'object',
+    properties: {
+      score: { type: 'integer', minimum: 1, maximum: 5 },
+      reason: {
+        type: 'string',
+        maxLength: maxChars,
+        description: `At most ${maxChars} characters. Do not quote the text.`,
+      },
+    },
+    required: ['score', 'reason'],
+  };
+}
+
+/**
  * HOW MANY TIMES THE JUDGE IS ASKED, when one draw is not a measurement.
  *
  * THREE, and it is the smallest number that HAS a median. A judge is a sampled model and
@@ -794,6 +818,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
   async function draw(tag, userMessage, index) {
     const sampleTag =
       index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
+    const schema = options?.toolSchema ?? options?.schema ?? JUDGE_SCHEMA;
     const key = cacheKey(
       sampleTag,
       `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}`,
@@ -801,6 +826,30 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     const cached = await cacheGet(key);
     if (cached && isVerdict(cached.parsed)) return cached.parsed;
     if (cachedOnly) failCachedMiss(sampleTag, key);
+
+    // A score-first suite keeps a draw whose reason was cut off. That path reads the
+    // tool call itself: forceToolJson refuses a max_tokens stop before the score can
+    // be kept, and a cap that already booked the call must not be counted again.
+    if (options?.keepTruncatedScore === true) {
+      const response = await getClient().messages.create({
+        model,
+        max_tokens: options?.maxTokens ?? 4096,
+        system: judgeSystem,
+        tools: [{ name: 'score', description: 'Return the score.', input_schema: schema }],
+        tool_choice: { type: 'tool', name: 'score' },
+        messages: [{ role: 'user', content: userMessage }],
+      });
+      const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'score');
+      if (!toolUse) throw new Error(`judge (${sampleTag}) returned no score tool call`);
+      if (!isVerdict(toolUse.input)) {
+        throw new Error(
+          `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
+        );
+      }
+      if (!response.capBooked) noteUsage(cost, model, response.usage);
+      await cachePut(key, { parsed: toolUse.input });
+      return toolUse.input;
+    }
 
     const agent = await loadAgent();
     let result;
@@ -834,7 +883,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
         userMessage,
         toolName: 'score',
         toolDescription: 'Return the score.',
-        inputJsonSchema: options?.schema ?? JUDGE_SCHEMA,
+        inputJsonSchema: schema,
         schema: ANY_INPUT,
       });
     } catch (err) {

@@ -229,6 +229,53 @@ describe('spend cap at the call site', () => {
     expect(ledger.reservedUsd).toBe(0);
   });
 
+  it('estimates a json_schema request without calling the model', async () => {
+    vi.stubEnv('HALE_ESTIMATE', '1');
+    const m = mockClient();
+    const guarded = capSdkClient(m.client, { rates, tag: 'eval' });
+    const schema = {
+      type: 'object',
+      properties: { answer: { type: 'string' } },
+      required: ['answer'],
+    };
+    const message = await guarded.messages.create({
+      ...request,
+      output_config: { format: { type: 'json_schema', schema } },
+    });
+    expect(m.create).not.toHaveBeenCalled();
+    expect(m.countTokens).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(message.content[0].text)).toEqual({ answer: 'estimate' });
+  });
+
+  it('relaxes a forced tool_choice for the free count and sends the original on the call', async () => {
+    vi.stubEnv('HALE_MAX_USD', '2');
+    const m = mockClient();
+    const guarded = capSdkClient(m.client, { rates, tag: 'eval' });
+    const tools = [{ name: 'lane', input_schema: { type: 'object' } }];
+    const forced = {
+      ...request,
+      tools,
+      tool_choice: { type: 'tool', name: 'lane' },
+    };
+    await guarded.messages.create(forced);
+    expect(m.countTokens.mock.calls[0][0].tool_choice).toEqual({ type: 'auto' });
+    expect(m.create.mock.calls[0][0].tool_choice).toEqual({ type: 'tool', name: 'lane' });
+    expect(forced.tool_choice).toEqual({ type: 'tool', name: 'lane' });
+
+    await guarded.messages.create({ ...forced, tool_choice: { type: 'any' } });
+    expect(m.countTokens.mock.calls[1][0].tool_choice).toEqual({ type: 'auto' });
+    expect(m.create.mock.calls[1][0].tool_choice).toEqual({ type: 'any' });
+
+    const auto = { type: 'auto', disable_parallel_tool_use: true };
+    await guarded.messages.create({ ...forced, tool_choice: auto });
+    expect(m.countTokens.mock.calls[2][0].tool_choice).toEqual(auto);
+    expect(m.create.mock.calls[2][0].tool_choice).toEqual(auto);
+
+    await guarded.messages.create({ ...forced, tool_choice: { type: 'none' } });
+    expect(m.countTokens.mock.calls[3][0].tool_choice).toEqual({ type: 'none' });
+    expect(m.create.mock.calls[3][0].tool_choice).toEqual({ type: 'none' });
+  });
+
   it('books the projection when the call fails after it was sent', async () => {
     vi.stubEnv('HALE_MAX_USD', '2');
     const m = mockClient();

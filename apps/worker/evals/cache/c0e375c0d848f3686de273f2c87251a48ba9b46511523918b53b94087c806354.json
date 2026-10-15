@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer gives a 9-0 Leafs win, a score the research notes do not support. The notes put the latest game at 6-3 over Colorado, dated Oct 10 or 11, so the scoreline is wrong. It also tells the parent to check the app or a link, which is a deflect. Its 'no question about it' certainty is unwarranted, since the sources disagree on the date. No safety angle.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 1
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Paris is settled common knowledge, not a current fact, so live being unavailable does not apply. The reply is correct and properly grounded as settled. It is brief, casual, gives the answer directly, and works fine for a question asked in French.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

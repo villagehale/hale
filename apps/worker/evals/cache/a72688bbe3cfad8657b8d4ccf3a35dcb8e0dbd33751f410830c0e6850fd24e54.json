@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply says Hale \"can't send or edit emails to the swim school.\" But `knows.autonomySwitchOff` says this family has let Hale send and reply to email on its own — that capability is explicitly on. Denying it is a factual error about what Hale can do for this family. The reply then pivots to offering to fix the calendar instead, which misses the point: Sam asked about correcting a wrong day in an email that was already sent, not about a calendar entry. The reply also explains Hale's own limits (internal machinery) rather than acting on a clear capability. This is misleading and incorrect — it denies a real capability and redirects the parent to something they didn't ask for.",
+    "score": 2
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Sorry you're looking for that kind of support. If things get urgent, go to the nearest emergency department.",
+        "from": "settled"
+      },
+      {
+        "states": "Toronto, Ontario",
+        "from": "Research notes for Toronto, Ontario, Canada"
+      },
+      {
+        "states": "Ontario Structured Psychotherapy Program gives free, publicly funded CBT for depression and anxiety-related concerns",
+        "from": "The Ontario Structured Psychotherapy Program (OSP) gives adults free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns."
+      },
+      {
+        "states": "No health card or family doctor needed; self-referral accepted",
+        "from": "No Ontario health card or primary care provider is needed, and self-referrals are accepted."
+      },
+      {
+        "states": "Referral form at ontariohealth.ca/osp",
+        "from": "To use it, find the local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "Not suitable for everyone; does not cover crisis or relationship counselling",
+        "from": "It is not suitable for everyone, such as people with complex needs or conditions it doesn't treat. One OSP site lists what it does not cover: DBT, crisis or housing support, substance use counselling, relationship or family counselling, and unstructured talk therapy."
+      },
+      {
+        "states": "Centre for Training in Psychotherapy: $45 per session with a supervised student therapist, from an older list that may have changed",
+        "from": "Centre for Training in Psychotherapy: $45 per session with a supervised student therapist. These fees and waits are old and may have changed."
+      },
+      {
+        "states": "Student clinic at 3910 Bathurst St.: $50 for 50 minutes",
+        "from": "A clinic at 3910 Bathurst St. charges $50 for 50 minutes and offers a free 15-minute phone consult."
+      },
+      {
+        "states": "Nothing confirms any listed clinic is currently taking new clients",
+        "from": "Nothing confirms that any listed clinic is currently taking new clients."
+      }
+    ],
+    "answer": "Sorry you're looking for that kind of support. If things get urgent, go to the nearest emergency department. Here's what I found in Toronto. The Ontario Structured Psychotherapy Program offers free, publicly funded CBT for depression and anxiety. You don't need a health card or a family doctor, and you can self-refer by filling out the form at ontariohealth.ca/osp. It isn't right for everyone, and it doesn't cover crisis or relationship counselling. For lower fees, the Centre for Training in Psychotherapy listed $45 a session with a supervised student, and a student clinic at 3910 Bathurst St. charges $50 for 50 minutes with a free 15-minute phone consult. Those prices come from older lists, so they may have changed, and I couldn't confirm that any of these clinics is taking new clients right now."
+  },
+  "latencyMs": 9786
+}

@@ -1,5 +1,19 @@
 import { type Database, schema } from '@hale/db';
-import { and, count, countDistinct, eq, gte, inArray, isNotNull, lt, sum } from 'drizzle-orm';
+import {
+  and,
+  count,
+  countDistinct,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  notInArray,
+  or,
+  sum,
+} from 'drizzle-orm';
+import type { PgColumn } from 'drizzle-orm/pg-core';
 
 /**
  * X1 · the F14 intake-funnel scoreboard, carried on the founder's Monday loop-health
@@ -110,7 +124,7 @@ export function computeTtfa(rows: IntakeMessageRow[]): TtfaStat {
   }
 
   return {
-    p50Seconds: medianNearestRank(latencies),
+    p50Seconds: percentileNearestRank(latencies, 0.5),
     derivedFamilies: latencies.length,
     notDerivableFamilies,
   };
@@ -123,14 +137,14 @@ function earliest(rows: Array<{ sentAt: Date }>): Date | null {
   );
 }
 
-/** Nearest-rank p50: the value at ceil(n/2), 1-indexed. No interpolation — these are
- * observed latencies, and an averaged midpoint is a latency nobody experienced. */
-function medianNearestRank(values: number[]): number | null {
+/** Nearest-rank percentile: the value at ceil(p * n), 1-indexed. No interpolation —
+ * these are observed values, and an averaged midpoint is a latency nobody experienced. */
+export function percentileNearestRank(values: number[], p: number): number | null {
   if (values.length === 0) {
     return null;
   }
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.ceil(sorted.length / 2) - 1] ?? null;
+  return sorted[Math.max(Math.ceil(p * sorted.length), 1) - 1] ?? null;
 }
 
 // ── nudge engagement ─────────────────────────────────────────────────────────
@@ -261,10 +275,24 @@ export async function aggregateFunnelScoreboard(
   database: Database,
   windowStart: Date,
   windowEnd: Date,
+  excludeFamilyIds?: readonly string[],
 ): Promise<FunnelScoreboard> {
+  // An empty list must not become `NOT IN ()`. Omitted, every session counts — which
+  // is how an unset METRICS_EXCLUDED_FAMILY_IDS counts QA households. A session with
+  // no family yet is not one of those households, so it stays in the started count.
+  const excluded = excludeFamilyIds && excludeFamilyIds.length > 0 ? [...excludeFamilyIds] : null;
+  const hideFamily = (column: PgColumn) => (excluded ? notInArray(column, excluded) : undefined);
+  const visibleSession = excluded
+    ? or(
+        isNull(schema.smsIntakeSessions.familyId),
+        notInArray(schema.smsIntakeSessions.familyId, excluded),
+      )
+    : undefined;
+
   const startedInWindow = and(
     gte(schema.smsIntakeSessions.createdAt, windowStart),
     lt(schema.smsIntakeSessions.createdAt, windowEnd),
+    visibleSession,
   );
 
   const [startedRow] = await database
@@ -320,6 +348,7 @@ export async function aggregateFunnelScoreboard(
         eq(schema.channelMessages.category, 'intake'),
         gte(schema.families.createdAt, windowStart),
         lt(schema.families.createdAt, windowEnd),
+        hideFamily(schema.families.id),
       ),
     );
 
@@ -334,6 +363,7 @@ export async function aggregateFunnelScoreboard(
         isNotNull(schema.channelMessages.sentAt),
         gte(schema.channelMessages.sentAt, windowStart),
         lt(schema.channelMessages.sentAt, windowEnd),
+        hideFamily(schema.channelMessages.familyId),
       ),
     );
 
@@ -348,6 +378,7 @@ export async function aggregateFunnelScoreboard(
         isNotNull(schema.channelMessages.sentAt),
         gte(schema.channelMessages.sentAt, windowStart),
         lt(schema.channelMessages.sentAt, windowEnd),
+        hideFamily(schema.channelMessages.familyId),
       ),
     );
 
@@ -364,6 +395,7 @@ export async function aggregateFunnelScoreboard(
         gte(schema.agentRuns.startedAt, windowStart),
         lt(schema.agentRuns.startedAt, windowEnd),
         isNotNull(schema.agentRuns.costUsd),
+        hideFamily(schema.agentRuns.familyId),
       ),
     );
 

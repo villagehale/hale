@@ -3,7 +3,6 @@ import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { captureAgentError } from '~/lib/analytics/server-capture';
-import { maybeOfferYearRetention } from '~/lib/billing/upgrade-ask';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import type {
   ActivityPromise,
@@ -26,6 +25,8 @@ import {
   TURN_TIMEOUT,
   TURN_UNREACHABLE,
 } from '~/lib/channel/config';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -33,6 +34,7 @@ import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
+import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
 import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
@@ -76,9 +78,15 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import { readWeekdayCare } from '~/lib/channel/weekday-care/reply';
+import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
+import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
+import {
+  parentTimeZoneForOffer,
+  recordCoachCalendarOffer,
+} from '~/lib/integrations/email-alert-offer';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
 import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
 import { interestPassportEnabled } from '~/lib/passport/flag';
@@ -91,7 +99,7 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
-import { FLOOD_REPLY, clarifyWhichQuestion, partialFailureReply } from './copy';
+import { FLOOD_REPLY, clarifyWhichQuestion } from './copy';
 import {
   assertTurnLive,
   isCallTimeout,
@@ -298,10 +306,9 @@ export type HandlerVerdict =
        * `channel_messages` row exactly as a proactive send's is.
        *
        * Most receipts need none: nothing ever reads them back. A lane needs one when its
-       * own reader has to recognise its own voice later. The evening check-in is the
-       * case: whether LESS, NO and DAILY still mean what that lane taught them turns on
-       * whether the last thing this parent heard from Hale was ITS message, and a reply
-       * row with no name on it is indistinguishable from the coach's.
+       * own reader has to recognise its own voice later. The evening check-in still
+       * names `checkin:ask` on the send, so a later text is an answer only while that
+       * ask is Hale's last word. Pace is not a keyword on the reply.
        */
       templateKey?: string;
       /**
@@ -364,6 +371,17 @@ export interface ChannelRouterDeps {
    */
   questions: OpenQuestionReader;
   replyResolver: ReplyResolver;
+  /**
+   * Reads a parent's reply to a calendar offer, and a coach sentence that might be one.
+   * Non-nullable (rule #11): without it a calendar reply falls through to a keyword, which
+   * is the reading this path does not have. An idle reader returns unresolved and calls
+   * no model.
+   */
+  calendarOffers: CalendarOfferPorts;
+  /** #868: writes the lines that used to be fixed (identity disclosure). Absent → nothing sent. */
+  saidLine?: SaidLineWriter;
+  /** #868: the turn reader; decides an identity challenge in any language. */
+  turnReader?: OptOutReader;
   /**
    * The menu Hale last put in front of this parent, and its memory (disambiguation.ts).
    * Non-nullable (rule #11) for the reason the two readers above it are: a router with no
@@ -470,6 +488,17 @@ export interface ChannelRouterDeps {
    * without either would hear "she's home with me" in answer to a question Hale asked
    * yesterday and write nothing, while looking exactly like an ordinary coach turn.
    */
+  /**
+   * Read a parent's reply to a legacy care ask. Non-nullable (rule #11): a router
+   * with no reader would hear the answer and write nothing while looking like an
+   * ordinary coach turn. No client is `nothing_stated`, named in the reader's log.
+   */
+  weekdayCareReader: WeekdayCareReader;
+  /**
+   * Writes the drafts receipt when a turn breaks after drafting. Absence is
+   * named and the parent is not handed a keyword sentence. The drafts remain.
+   */
+  consentAsk?: ConsentAskWriter;
   weekdayCareAnswerTarget(
     database: Database,
     input: {
@@ -1020,9 +1049,16 @@ async function routeChannelMessageInner(
   // it. Ahead of the handlers so "who are you" is not read as consent, and ahead
   // of the coach so a model cannot re-pitch. A menu pick above still wins: "2"
   // is an answer to a list Hale printed, not a challenge.
-  const identityReply = identityChallengeReply(turn.body);
-  if (identityReply) {
-    await answer(identityReply, null, null, IDENTITY_CHALLENGE_TEMPLATE_KEY);
+  const identity = await identityChallengeReply(
+    turn.body,
+    deps.saidLine,
+    await readTextOnce(deps.turnReader, { text: turn.body, language: replyLanguage(turn.body) }),
+  );
+  if (identity.challenge) {
+    // #868: the model writes the disclosure. A failed write sends nothing.
+    if (identity.body) {
+      await answer(identity.body, null, null, IDENTITY_CHALLENGE_TEMPLATE_KEY);
+    }
     return done(deps, job, {
       status: 'handled',
       handler: 'identity_challenge',
@@ -1163,10 +1199,10 @@ async function routeChannelMessageInner(
         'channel router: weekday search declined',
       );
     } else if (outcome?.status === 'unreadable') {
-      // WARN, NOT ERROR. A bare "yes" or "no" to an either/or is ordinary parent
-      // behaviour, not a fault: it is the signal the grammar has drifted, and it is
-      // worth a line only because nothing else makes it visible. Logging it at ERROR
-      // would make a routine turn indistinguishable from the ones that need somebody.
+      // WARN, NOT ERROR. A reply that does not settle the question is ordinary, and
+      // it is worth a line only because nothing else makes it visible. Logging it at
+      // ERROR would make a routine turn indistinguishable from the ones that need
+      // somebody.
       deps.log.warn(
         { familyId: turn.familyId, status: outcome.status },
         'channel router: the weekday-care ask is standing and the reply settles neither side',
@@ -1619,7 +1655,7 @@ async function recordWeekdayCareAnswer(
     return { status: 'unreadable' };
   }
 
-  const reading = readWeekdayCare(turn.body);
+  const reading = await deps.weekdayCareReader.read(turn.body);
   if (reading.status === 'nothing_stated') return { status: 'unreadable' };
 
   await deps.recordWeekdayCare(deps.database, {
@@ -1643,10 +1679,17 @@ async function resolveNaturalReply(
   // every inbound text.
   if (questions.length === 0) return { status: 'carry_on', questions };
 
-  const reading = await deps.replyResolver.read({ text: turn.body, questions });
+  // Calendar offers are read by the calendar model, including when the reply is not
+  // English. Mixed questions stay on the general resolver: it already sees every kind.
+  const emailOnly =
+    questions.length > 0 && questions.every((question) => question.kind === 'email_alert_add');
+  const reading = emailOnly
+    ? await deps.calendarOffers.readParent({ text: turn.body, questions, now: turn.now })
+    : await deps.replyResolver.read({ text: turn.body, questions });
   if (reading.status === 'unresolved') {
     if (questions.length > 1 && warrantsClarifying(reading.reason)) {
-      const word = readAffirmative(turn.body);
+      // A calendar-only ambiguity is not a keyword. The coach asks which one.
+      const word = emailOnly ? 'unclear' : readAffirmative(turn.body);
       return {
         status: 'unplaced',
         questions,
@@ -1740,6 +1783,49 @@ function isOutsiderWeMayAnswer(role: FamilyRole | null): boolean {
  * The real fix for a slow turn is upstream anyway: the pickup delay (cron/kick-drain.ts)
  * and the unbounded model call, not a message about waiting.
  */
+/**
+ * After the coach's sentence has gone out, ask the model whether it offered to add
+ * one occasion, and write that row only when the calendar still allows it.
+ *
+ * Never throws: the parent already has the text, and an exception here would buy a
+ * carrier retry and a duplicate reply. The outcome is named (rule #11).
+ */
+async function recordCoachOfferFromReply(
+  deps: ChannelRouterDeps,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    reply: string;
+    channelMessageId: string;
+    now: Date;
+  },
+): Promise<void> {
+  try {
+    const timeZone = await parentTimeZoneForOffer(deps.database, input.parentUserId);
+    const extracted = await deps.calendarOffers.readCoach({
+      text: input.reply,
+      now: input.now,
+      timeZone,
+    });
+    if (extracted.status !== 'offer') return;
+    const outcome = await recordCoachCalendarOffer(deps.database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channelMessageId: input.channelMessageId,
+      title: extracted.title,
+      startsAt: extracted.startsAt,
+      location: extracted.location,
+      now: input.now,
+    });
+    deps.log.info({ outcome }, 'channel router: coach calendar offer');
+  } catch (err) {
+    deps.log.error(
+      { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+      'channel router: coach calendar offer failed',
+    );
+  }
+}
+
 async function runAgentTurn(
   deps: ChannelRouterDeps,
   args: {
@@ -1789,6 +1875,13 @@ async function runAgentTurn(
       view,
     );
     const channelMessageId = await args.answer(reply);
+    await recordCoachOfferFromReply(deps, {
+      familyId: args.turn.familyId,
+      parentUserId: args.turn.parentUserId,
+      reply,
+      channelMessageId,
+      now: args.turn.now,
+    });
     // THE MENU THE COACH JUST OFFERED (VIL-304). This turn was an answer Hale could not
     // place, so the coach was handed the candidates and asked which — in its own words,
     // which is why nothing here claims a number was printed. Written down against the
@@ -2163,10 +2256,9 @@ async function composeReconciledReply(
  * A composer that cannot produce a sendable sentence defers too: there is no preset left
  * underneath it, and the re-drive may not need an apology at all.
  *
- * The ONE templated line still reachable from here is the drafts receipt, and it is not
- * an apology — it carries a count and the YES/NO grammar that resolves against real rows
- * (copy.ts partialFailureReply), the same reason every other receipt in this router is a
- * template the model never touches.
+ * The drafts receipt is written per send. It names the count. There is no keyword
+ * sentence underneath it. A writer that cannot produce one sends nothing, and the
+ * drafts stay in the queue.
  */
 type FailedTurnDisposition =
   | {
@@ -2238,9 +2330,8 @@ async function disposeOfFailedTurn(
 
   if (classifyTurnFailure(err) === 'model_unreachable') {
     // THE SMOKE ALARM (smoke-alarm.ts), consulted first and only ever from here. During
-    // a provider outage the off-domain screen fails open, so the lane that would write
-    // the moment reply never got to. Nothing preset goes out. The miss is named
-    // `unwritten` and the turn defers until a model can write it.
+    // a provider outage the off-domain screen fails open and no model can write a
+    // crisis reply; since #868 there is no fixed one, so the alarm pages #ops urgently.
     const smokeAlarm = await considerSmokeAlarm({
       claim: deps.smokeAlarm,
       err,
@@ -2248,31 +2339,35 @@ async function disposeOfFailedTurn(
       familyId: args.job.family_id,
       parentUserId: args.job.parent_user_id,
       channelMessageId: args.job.channel_message_id,
-      // The alarm's send IS this text's answer — the one the parent acts on and the one
-      // a re-drive must never repeat — so it claims the turn like every other. Adapted
-      // rather than passed straight through because `answer` now hands back the ledger
-      // row id (a promise is minted against the message that carried it), and the alarm
-      // has no use for one: an outage sends nothing.
-      say: async (body) => {
-        await args.answer(body);
-      },
     });
+    if (smokeAlarm === 'fired') {
+      // No draft notice appended, deliberately. The alarm answers a parent who should be
+      // dialling, and the drafts are still in the approvals queue for the next turn to
+      // surface — a count of pending changes is not what that message is for.
+      return {
+        outcome: 'smoke_alarm_fired',
+        reply: null,
+        reason: 'smoke_alarm',
+        log: { smokeAlarm },
+      };
+    }
     return {
       outcome: 'deferred',
       reason: 'model_unreachable',
-      log: {
-        smokeAlarm,
-        deferred: smokeAlarm === 'unwritten' ? 'moment_unwritten' : 'model_unreachable',
-      },
+      log: { smokeAlarm, deferred: 'model_unreachable' },
     };
   }
 
   if (drafted.length > 0) {
+    const receipt = await writeConsentAsk(deps.consentAsk, {
+      kind: 'partial_failure',
+      draftCount: drafted.length,
+    });
     return {
       outcome: 'agent_failed',
-      reply: partialFailureReply(drafted.length),
+      reply: receipt,
       reason: 'drafts_receipt',
-      log: {},
+      log: { consentAsk: receipt ? 'written' : 'unwritten' },
     };
   }
 
@@ -2528,28 +2623,6 @@ async function sendReply(
   }
 
   await settleOpenAsks(channelMessageId);
-
-  // ENG-1. After the utility reply, maybe the later year-retention ask.
-  // Flag off returns before any read. A failure here must not unsend the
-  // reply the parent already has.
-  if (args.conversationId && args.route.channel === 'imessage') {
-    try {
-      await maybeOfferYearRetention(deps.database, {
-        familyId: args.job.family_id,
-        parentUserId: args.job.parent_user_id,
-        parentChatId: args.route.chatId,
-        channel: 'imessage',
-        templateKey: args.templateKey ?? null,
-        excludeMessageId: channelMessageId,
-        now: deps.now(),
-      });
-    } catch (err) {
-      deps.log.warn(
-        { code: err instanceof Error ? err.name : 'unknown' },
-        'year retention: the reply landed; the upgrade ask did not',
-      );
-    }
-  }
   return channelMessageId;
 }
 

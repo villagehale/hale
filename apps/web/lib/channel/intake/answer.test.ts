@@ -9,9 +9,11 @@ import {
   readPair,
   refusals,
 } from './answer';
-import { COLD_START_ASK, IDENTITY_ACCOUNTABILITY_LINE, WATCH_OFFER_ASK } from './copy';
-import { CHEER_UP_REPLY, NO_CURRENT_SOURCE_YET } from './live-lookup';
-import { NOT_POSTED_YET, OFFICIAL_PAGE_RETURN_ASK } from './official-page';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
 /**
  * The gates around the mid-signup answer. Whether Hale writes a GOOD one is the eval's
@@ -124,7 +126,7 @@ describe('intake answer · reading the pair', () => {
     });
   });
 
-  it('stops on a health-line referral so the moment writer can answer, never a signup question', () => {
+  it('substitutes the reviewed safety line when the composer reaches for a referral', () => {
     // Before every other gate: this parent must never get a signup question instead.
     const outcome = readPair(
       { answer: 'Call 811 if you are worried', returnLine: `${'x'.repeat(200)}?` },
@@ -146,39 +148,6 @@ describe('intake answer · the emergency tripwire', () => {
     vi.useRealTimers();
   });
 
-  it('does not route an English emergency phrase before the model', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model was asked');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-
-    expect(
-      await composer.compose({ ...INPUT, parentWords: "she's not breathing, what do I do" }),
-    ).toEqual({ status: 'unavailable', reason: 'model_failed' });
-  });
-
-  it('answers an identity challenge with the locked line and never calls the model', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model must not have been called');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-
-    expect(
-      await composer.compose({
-        ...INPUT,
-        parentWords: "I'm a Police Officer give your name and address please",
-      }),
-    ).toEqual({ status: 'answered', body: IDENTITY_ACCOUNTABILITY_LINE });
-  });
-
   it('answers a Toronto swim clock question with reviewed copy, no model', async () => {
     const exploding = {
       messages: {
@@ -195,7 +164,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${cityRecLine('toronto', REC_MORNING_NOW)} Still want me watching?`);
+    expect(outcome.body.startsWith(cityRecLine('toronto', REC_MORNING_NOW) as string)).toBe(true);
     expect(outcome.body).toContain('non-residents Friday Sep 25 at 7 a.m.');
     expect(outcome.body.toLowerCase()).not.toContain('activeto');
     expect(outcome.body.toLowerCase()).not.toContain('unofficial');
@@ -221,7 +190,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${cityRecLine('markham', REC_MORNING_NOW)} Still want me watching?`);
+    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
     expect(outcome.body).toContain('Markham');
     expect(outcome.body).not.toContain('7:00');
     expect(outcome.body).not.toMatch(/Sept?\s*15/i);
@@ -246,7 +215,7 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
-    expect(outcome.body).toBe(`${cityRecLine('markham', REC_MORNING_NOW)} Still want me watching?`);
+    expect(outcome.body.startsWith(cityRecLine('markham', REC_MORNING_NOW) as string)).toBe(true);
   });
 
   it("answers adult-learn / I wanna learn swimming with the kids-only door, never I don't do that", async () => {
@@ -266,7 +235,8 @@ describe('intake answer · the emergency tripwire', () => {
     });
     expect(first.status).toBe('answered');
     if (first.status !== 'answered') return;
-    expect(first.body).toBe(`${adultLearnDoor(null)} ${COLD_START_ASK}`);
+    expect(first.body.startsWith(adultLearnDoor(null))).toBe(true);
+    expect(first.body).not.toContain(COLD_START_ASK);
     expect(first.body).toContain("I'm a kids' rec helper, not adult lessons");
     expect(first.body).not.toContain("I don't do that");
     expect(first.body).not.toMatch(/\b(Sept|Sep|Aug|Nov|Dec)\b/);
@@ -299,15 +269,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NOT_POSTED_YET);
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(outcome.body).not.toBe(COLD_START_ASK);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
-    expect(outcome.body).not.toMatch(/I'm an AI/i);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers from official notes when search grounds a date, still no invented clock', async () => {
@@ -347,7 +310,6 @@ describe('intake answer · the emergency tripwire', () => {
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain('September 8');
     expect(outcome.body).toContain('7:00');
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
     expect(outcome.body).not.toMatch(/https?:\/\//);
@@ -369,15 +331,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(outcome.body).not.toBe(COLD_START_ASK);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toContain("I don't do that");
-    expect(outcome.body).not.toMatch(/https?:\/\//);
-    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers a leftover factual question from search notes, never from memory', async () => {
@@ -416,7 +371,6 @@ describe('intake answer · the emergency tripwire', () => {
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
     expect(outcome.body).toContain('United States president');
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
     expect(outcome.body).not.toContain(COLD_START_ASK);
     expect(outcome.body).not.toContain("I don't do that");
     expect(outcome.body).not.toMatch(/https?:\/\//);
@@ -436,13 +390,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(NO_CURRENT_SOURCE_YET);
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-    expect(outcome.body).not.toMatch(/I'?m a therapist/i);
-    expect(outcome.body).not.toMatch(/https?:\/\//);
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'ungrounded' });
   });
 
   it('answers a cheer-up with reviewed warmth, not a clinical method', async () => {
@@ -459,30 +408,8 @@ describe('intake answer · the emergency tripwire', () => {
       pendingAsk: COLD_START_ASK,
       children: [],
     });
-    expect(outcome.status).toBe('answered');
-    if (outcome.status !== 'answered') return;
-    expect(outcome.body).toContain(CHEER_UP_REPLY);
-    expect(outcome.body).toContain(OFFICIAL_PAGE_RETURN_ASK);
-    expect(outcome.body).not.toMatch(/diagnos|treatment plan|I'?m a therapist/i);
-    expect(outcome.body).not.toContain(COLD_START_ASK);
-  });
-
-  it('does not route an English crisis phrase before the model', async () => {
-    const exploding = {
-      messages: {
-        create: () => {
-          throw new Error('the model was asked');
-        },
-      },
-    } as never;
-    const composer = createIntakeAnswerComposer(exploding);
-    expect(
-      await composer.compose({
-        parentWords: 'I want to die',
-        pendingAsk: COLD_START_ASK,
-        children: [],
-      }),
-    ).toEqual({ status: 'unavailable', reason: 'model_failed' });
+    // #868: no fixed line; the machine has the model write it.
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'cheer_up' });
   });
 });
 

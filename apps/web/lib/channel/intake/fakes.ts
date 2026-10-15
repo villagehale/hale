@@ -11,12 +11,9 @@ import type {
   IdentityAskRequest,
   IdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
-import type { MomentWrite } from '~/lib/channel/off-domain/moment-reply';
 import type { IntroAskRequest, IntroVoice, IntroVoiceOutcome } from '~/lib/village/intros/voice';
 import type { IntakeAnswerComposer, IntakeAnswerInput, IntakeAnswerOutcome } from './answer';
-import { followUp } from './copy';
 import type { IntakeCollected, IntakeExtractor } from './extract';
-import type { IntakeAck, IntakeAckComposer } from './intake-voice';
 import type { IntentReading, ReplyIntentReader } from './intent';
 import type { RadarComposer } from './radar';
 
@@ -79,23 +76,6 @@ export const fakeRadar: RadarComposer = {
 };
 
 /**
- * An acknowledgment composer that always degrades to the template — the DETERMINISTIC
- * outcome, which is what the machine's routing tests want to assert against. The
- * composed path is not faked with a canned sentence anywhere: its quality is the eval's
- * job against real cached Claude (rule #8), and its guards are unit-tested directly in
- * intake-voice.test.ts.
- */
-export const fakeAckComposer: IntakeAckComposer = {
-  async compose(input): Promise<IntakeAck> {
-    return {
-      body: followUp(input.summary, input.missing),
-      source: 'template',
-      fallback: 'voice_unavailable',
-    };
-  },
-};
-
-/**
  * An answer composer that always finds nothing to answer — the DETERMINISTIC outcome,
  * which is the script every routing test that predates the escape is asserting against.
  * A fake that composed a canned sentence would make every one of them assert on wording
@@ -105,9 +85,6 @@ export const fakeAckComposer: IntakeAckComposer = {
 export const fakeSilentAnswerComposer: IntakeAnswerComposer = {
   async compose(): Promise<IntakeAnswerOutcome> {
     return { status: 'nothing_to_answer' };
-  },
-  async writeMoment(_text, moment) {
-    return { status: 'written', reply: `moment:${moment}` };
   },
 };
 
@@ -123,13 +100,6 @@ export class FakeAnswerComposer implements IntakeAnswerComposer {
   async compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome> {
     this.calls.push(input);
     return this.outcome;
-  }
-
-  async writeMoment(
-    _text: string,
-    moment: Parameters<IntakeAnswerComposer['writeMoment']>[1],
-  ): Promise<MomentWrite> {
-    return { status: 'written', reply: `moment:${moment}` };
   }
 }
 

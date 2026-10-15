@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer makes a clear pick, the Carnival Hybrid, with reasons, and offers the Sienna as the alternative if mpg matters most. Every figure it gives is backed by the notes: the 32 vs 36 mpg, the 44 cubic feet, the 10-year/100,000-mile warranty, Edmunds' 7.8 tie, U.S. News' 9.3 for the Odyssey and the reported camera recall. The only looseness is that it credits The Weekly Driver with figures drawn from other parts of the notes. That is not a wrong fact. On tone, it is casual and leans the right way. But it is dense with citations (source names, '5 days old', review scores) and reads somewhat like a research summary rather than a quick text from a friend.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

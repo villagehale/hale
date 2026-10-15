@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Correct language, addresses Sam, explains purpose, optional, link is theirs alone, Google caution, and link is whole. Weaknesses: omits the note that their inbox stays out of the group (inboxPrivate was null, so it wasn't given; acceptable). It does not state how long the link works, which the purpose requires for connector_links and the single-link case. Wording is slightly form-like but readable."
+  }
+}

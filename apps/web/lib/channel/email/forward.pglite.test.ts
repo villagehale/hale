@@ -2,13 +2,18 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import type { ResendTransport } from '~/lib/channel/resend-transport';
+import { forwardAddressHandler } from '~/lib/channel/router/handlers';
+import type { HandlerContext } from '~/lib/channel/router/route';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { EmailInboundConfig } from './config';
 import { FakeContentReader } from './content';
+import { type EmailForwardDeps, routeEmailForward } from './forward';
 import {
   familyForForwardToken,
   forwardAddress,
@@ -16,24 +21,16 @@ import {
   mintForwardToken,
   revokeForwardToken,
 } from './forward-address';
-import { type EmailForwardDeps, routeEmailForward } from './forward';
-import {
-  FORWARD_REVOKE_ASK_TEMPLATE_KEY,
-  forwardRevokeAskReply,
-  forwardRevokeReply,
-} from './forward-request';
 import { FORWARD_SUBJECT_MAX } from './forward-copy';
 import { PENDING_FORWARD_TTL_MS, sweepExpiredForwards } from './forward-purge';
-import { UNSUBSCRIBABLE_STREAMS } from './streams';
+import { FORWARD_REVOKE_ASK_TEMPLATE_KEY, forwardRevokeReply } from './forward-request';
 import {
   type EmailInboundDeps,
   type EmailInboundOutcome,
   handleEmailInboundRequest,
   routeEmailInbound,
 } from './inbound';
-import type { ResendTransport } from '~/lib/channel/resend-transport';
-import { forwardAddressHandler } from '~/lib/channel/router/handlers';
-import type { HandlerContext } from '~/lib/channel/router/route';
+import { UNSUBSCRIBABLE_STREAMS } from './streams';
 
 /**
  * THE FORWARDING DOOR against the real DDL, driven through the SHIPPED router.
@@ -362,9 +359,9 @@ describe('the forwarding door · a document from a sender nobody has decided abo
 
   it('a school sending under Precedence: bulk is READ here and refused on the reply door', async () => {
     const bulk = { Precedence: 'bulk' };
-    expect(
-      await route({ to: forwardAddress(token, CONFIG), headers: bulk }),
-    ).toBe('forward_sender_pending');
+    expect(await route({ to: forwardAddress(token, CONFIG), headers: bulk })).toBe(
+      'forward_sender_pending',
+    );
 
     // The same message at the plain reply address: the loop guard still refuses it,
     // because that door answers the SENDER and this one never does.
@@ -469,7 +466,7 @@ describe('the forwarding door · the answer', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('a keyword inside a forwarded DOCUMENT is the school\'s word, not the parent\'s', async () => {
+  it("a keyword inside a forwarded DOCUMENT is the school's word, not the parent's", async () => {
     // The asymmetry the door is built on, pinned: an instruction needs a person, and the
     // body of a forwarded document is written by somebody who is not one. Reading it for
     // keywords would let a one-word school email unsubscribe a household.
@@ -516,9 +513,9 @@ describe('the forwarding door · the answer', () => {
     expect(await held()).toEqual([]);
     expect(sent[1]?.text).toContain("I won't read mail from bcs.on.ca");
 
-    expect(
-      await route({ to: forwardAddress(token, CONFIG), messageId: '<msg-3@bcs.on.ca>' }),
-    ).toBe('forward_sender_blocked');
+    expect(await route({ to: forwardAddress(token, CONFIG), messageId: '<msg-3@bcs.on.ca>' })).toBe(
+      'forward_sender_blocked',
+    );
     expect(sent).toHaveLength(2);
     expect(await refusals()).toEqual([{ reason: 'forward_sender_blocked' }]);
 
@@ -737,8 +734,16 @@ describe('the forwarding door · the ask and the ref it hands out', () => {
     // conflict-tolerant claim the loser raises a unique violation, the webhook 500s, and
     // the ask it already sent names a ref that does not exist.
     const deps = inboundDeps({ to: forwardAddress(token, CONFIG) });
-    const one = routeEmailInbound(deps, CONFIG, inboundEvent({ to: forwardAddress(token, CONFIG), messageId: '<race-a@bcs.on.ca>' }));
-    const two = routeEmailInbound(deps, CONFIG, inboundEvent({ to: forwardAddress(token, CONFIG), messageId: '<race-b@bcs.on.ca>' }));
+    const one = routeEmailInbound(
+      deps,
+      CONFIG,
+      inboundEvent({ to: forwardAddress(token, CONFIG), messageId: '<race-a@bcs.on.ca>' }),
+    );
+    const two = routeEmailInbound(
+      deps,
+      CONFIG,
+      inboundEvent({ to: forwardAddress(token, CONFIG), messageId: '<race-b@bcs.on.ca>' }),
+    );
     const outcomes = (await Promise.all([one, two])).sort();
 
     expect(outcomes).toEqual(['forward_sender_pending', 'forward_sender_pending_again']);
@@ -842,7 +847,7 @@ describe('a parent asking for their forwarding address, in the thread', () => {
       inboundChannelMessageId: randomUUID(),
     };
   }
-  const handler = () => forwardAddressHandler({ error: () => {} });
+  const handler = () => forwardAddressHandler({ error: () => {} }, { ask: askWriter() });
 
   beforeEach(() => {
     vi.stubEnv('RESEND_API_KEY', 're_test');
@@ -856,7 +861,10 @@ describe('a parent asking for their forwarding address, in the thread', () => {
     const fresh = await seedFamily(db.database, 'Fresh Family');
     vi.stubEnv('F14_FAMILY_ALLOWLIST', `${family.familyId},${fresh.familyId}`);
 
-    const verdict = await handler().handle(db.database, turn("what's my forwarding address", fresh.familyId));
+    const verdict = await handler().handle(
+      db.database,
+      turn("what's my forwarding address", fresh.familyId),
+    );
     expect(verdict).toMatchObject({ claimed: true, outcome: 'address_sent' });
 
     const [row] = await db.database
@@ -894,7 +902,7 @@ describe('a parent asking for their forwarding address, in the thread', () => {
     expect(off).toMatchObject({
       claimed: true,
       outcome: 'revoke_ask_sent',
-      reply: forwardRevokeAskReply('en'),
+      reply: writtenAsk({ kind: 'forward_revoke', language: 'en' }),
       templateKey: FORWARD_REVOKE_ASK_TEMPLATE_KEY,
     });
     expect(await familyForForwardToken(db.database, token)).toBe(family.familyId);
@@ -1000,18 +1008,14 @@ describe('the forwarding door · two families, one school', () => {
     const heldBoth = await db.database
       .select({ familyId: schema.emailForwardsPending.familyId })
       .from(schema.emailForwardsPending)
-      .where(
-        inArray(schema.emailForwardsPending.familyId, [family.familyId, other.familyId]),
-      );
+      .where(inArray(schema.emailForwardsPending.familyId, [family.familyId, other.familyId]));
     expect(heldBoth.map((row) => row.familyId).sort()).toEqual(
       [family.familyId, other.familyId].sort(),
     );
     const senderRows = await db.database
       .select({ familyId: schema.familyForwardSenders.familyId })
       .from(schema.familyForwardSenders)
-      .where(
-        inArray(schema.familyForwardSenders.familyId, [family.familyId, other.familyId]),
-      );
+      .where(inArray(schema.familyForwardSenders.familyId, [family.familyId, other.familyId]));
     expect(senderRows).toHaveLength(2);
 
     // And the claim is still a claim: a redelivery of the FIRST family's own message

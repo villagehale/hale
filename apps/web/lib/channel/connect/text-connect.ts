@@ -1,4 +1,3 @@
-import type { ReplyLanguage } from '~/lib/channel/language';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
@@ -54,25 +53,15 @@ export const CONNECTOR_TRUST_LINE: Record<TextConnectProvider, string> = {
 };
 
 /**
- * One plain line before a Google connect link. Google's unverified-app screen
- * is outside Hale's page; this is the only coaching for it. Straight quotes,
- * no emoji, GSM-7.
+ * A FACT, NOT COPY: structured, so there is no sentence to paste. Google's unverified-app screen is outside Hale's page, so a parent
+ * about to open a Google connect link is told about it - by the line writer, in its own
+ * words and the parent's language. Nothing appends or prepends this text to a message.
  */
-export const GOOGLE_UNVERIFIED_APP_LINE_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: 'Google may show an "unverified app" screen. Tap Advanced, then continue.',
-  fr: 'Google peut afficher un ecran "application non verifiee". Touchez Avance, puis continuez.',
-};
-
-export function googleUnverifiedAppLine(language: ReplyLanguage): string {
-  return GOOGLE_UNVERIFIED_APP_LINE_BY_LANGUAGE[language];
-}
-
-/** The coaching line, then the link sentence. Every Google connect link carries it once. */
-export function withGoogleConnectCaution(language: ReplyLanguage, body: string): string {
-  const line = googleUnverifiedAppLine(language);
-  if (body.startsWith(line)) return body;
-  return `${line}\n${body}`;
-}
+export const GOOGLE_UNVERIFIED_APP_FACT = {
+  screen: 'unverified app',
+  shownBy: 'Google',
+  wayPast: ['Advanced', 'continue'],
+} as const;
 
 /** What the link unfurls as. Title is the ask. Description is the trust line. */
 export const CONNECTOR_CARD_TITLE: Record<TextConnectProvider, string> = {
@@ -110,38 +99,4 @@ export function connectorLinkCard(provider: TextConnectProvider | null): Connect
  * sees is Google's consent screen and nothing else on this page explains it. */
 export function textConnectButtonLabel(provider: TextConnectProvider): string {
   return `Connect ${PROVIDER_NOUN[provider]}`;
-}
-
-/**
- * The one text Hale sends once the tokens are stored — confirm what landed, then
- * one kids-year payoff. The trust line (password, disconnect) lives on the card
- * that asked for the tap, not again here.
- */
-/**
- * Design locked (Sloane, 2026-09-24). The receipt is its own turn: no ask rides
- * with it. English is the default. French is the family's primary language.
- */
-export const CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE: Record<
-  ReplyLanguage,
-  Record<TextConnectProvider, string>
-> = {
-  en: {
-    gcal: "Calendar's connected. I'll catch class invites and trip dates.",
-    gmail: "Gmail's connected. I'll flag daycare and school notices.",
-  },
-  fr: {
-    gcal: 'Calendrier connecte. Je note les invitations de cours et les dates de voyage.',
-    gmail: "Gmail connecte. Je flaggue les avis de garderie et d'ecole.",
-  },
-};
-
-/** English receipts. Callers that already hold a language use the map above. */
-export const CONNECTOR_CONNECTED_TEXT: Record<TextConnectProvider, string> =
-  CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE.en;
-
-export function connectorConnectedText(
-  language: ReplyLanguage,
-  provider: TextConnectProvider,
-): string {
-  return CONNECTOR_CONNECTED_TEXT_BY_LANGUAGE[language][provider];
 }

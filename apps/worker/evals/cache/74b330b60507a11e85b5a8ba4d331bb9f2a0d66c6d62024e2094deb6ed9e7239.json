@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific is supported by research_notes for Denver, CO, Tuesday Oct 13: partly sunny, high around 65, NNE winds 6-10 mph, 30% rain chance after 3 p.m. rising into the evening, and overnight lows in the 30s and low 40s. It answers directly without asking for the city, which Hale already had. The tone is a bit like a forecast readout rather than a casual text, but it is brief and gives the answer, with no service offer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

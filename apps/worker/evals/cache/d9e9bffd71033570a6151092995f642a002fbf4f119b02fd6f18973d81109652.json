@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text is in English, but the parent wrote in Arabic and expects a response in Arabic. The purpose requires the family assistant to match the parent's language. Additionally, the text reads like a form letter rather than a warm, friendly message. It does not answer the parent's question about how the assistant got their number."
+  }
+}

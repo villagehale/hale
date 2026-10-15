@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "请不要再给我发短信了",
+    "confirmation": "好的，我不会再给你发短信了。想重新联系的时候，用你自己的话告诉我就行。"
+  },
+  "latencyMs": 2439
+}

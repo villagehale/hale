@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, named, local Halton Hills programmes that fit a toddler: Kids & Me at the Acton library branch and Links2Care EarlyON in Acton and Georgetown. The message leads with the best pick by name, gives only the day, time and price that appear in the picks, and attributes them ('Halton Region's site says'). With no_page_read, the gap on the second pick is correctly worded in the first person as 'I could not get into their page today', not 'not posted yet'. Since watch is false, the message rightly makes no promise to come back. It is two sentences, with no question and no link.",
+    "score": 5
+  }
+}

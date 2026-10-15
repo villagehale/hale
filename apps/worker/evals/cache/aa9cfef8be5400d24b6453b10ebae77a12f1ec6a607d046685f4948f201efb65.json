@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011Cg38x4HeQY3gDvmfjB3D3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2AgKEAgSGAI4AUIIdGhpbmtpbmcSDBkV6RBs/DIZKU2YvRoMbpA0kFcLCYI13ItCIjD7xP4fSuzfsUefAChweEvygOc2qHxqFF17CBanXr52SCw+oLuKK1FoXGfdrLnehXMq9Qevfne2Wxq9/dzhXDr7n2dPgjkiLwifL3AnAGhBhl8RmDzK6G3Hysjvh5MVtcJzILzauGw9EPCw6zBz7xABVGuJWK69KN4yLfwC7DY2QO0XbErXFqtRcZf9Vnlk7n+uiOol9jLOUF0GsWf8pe+uJvVMhESyMF5Nmbsmi8q3aQwVDsMR3ZOFM/1As7w5bI922JA8p6dY7fauJWSnzIGhe7YY7wqvIpV92IL7FiVMlABSIfgN/W6Pu4w0Hk5tqNO+siEyuRJUzaNXQSkJZyV2LQqlTwvEhikAers0oDUzxYC5c0qsGlQ1n9yGR9dwnN9InKTvUSuFUDBO2g2h8+4AjpVnU9epFwFqp1B5byQBZ+jvYDzvGHKvbibrt+y5mpeQi8BrNLNXLL0p0ywsYRZULtoj31KKNd93DRsL4bc30ZfzEFu0VfJ2MSdpNCcQmYm8W0DsG9z+nC/afDkdYdQsgbWcNHFky63BC+LNRtBQ1HILh0BMHkLGwgGGdwoRU/ZWJbArxnB0aCz/XCNQ4hT8j40Uacv05296VZg4z2EWa/cegy8gmRX6qfhkEbzb5icJipDbkGw7XPfD6BTl4ThpQyjIvqnDfoC7r1LUA+hiZiTcqsqwi5F+Hx4YzkTbmGlROmHFOAyMp+2hEGtm9vwajpzsi5ApuKW+C0Es71YGFUH7Zqfo4EJ9ExwNAELYxZUn1kMIsK+w+0kft37hHHksRqGGz94VGARuBWQDwvMAUyd3Vug35O2XkVgVaTtzJDPx4kn5nrpvFIVdOFqH+7wgBaBpSuLEuJc3QtO8CAaY7T788WHAnny4cZNLyGrL0RHS5laE9hhmQjVS/683dRMW0CJHH3lVq0vnsJPPL/LkKEVX26dFyikpE1Hr1nkw7X7FksANxcxanpvPNCTfIo/hxG18Vo46v4up855HvjdirbiZXepYeRYAZtsQV/ZjRIAzx2+/vziZsPU/PPM5hXa9PyhryMmPb2dfRwn4wPiSQJ0Oza+1X1/ek57BDvIVeu3V3a3vq4i1YzlkM1dRlCFsgjDkqxJS/sIWKwaiYCk6T1WjrxzSHo/9u1VF+87boutAweDiusbiFVIXFvSHbNC/p2EDAcC0kW1ADh5eZb7RpHKDGTr/ZZcHbyS5dtxJzYdZLePC8qMlzYIGiZPrvxRRC3Dbi8eHu/dAn75V7oIKa3w8CTibeVc4qqm+B2/lnUWfUa/sa7O60w3qECfDgy5JquC0s0/c3QfCdhELGA72q311ZaRIy8+MrlRPEvp2m699MgDDUzKAtWF8ctA7UcH4Xz6IEPu2tTpQTEHI1bpKhNnRrMhYxy9yVqCA/+pTf5ic7n9BwWCYJhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_015ofE27SX5dTKTCddtkumJT",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Tiny Gym at Cartwheels",
+          "date": "2026-09-13",
+          "time": "09:30"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1321,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20754,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 400,
+      "output_tokens_details": {
+        "thinking_tokens": 266
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3340
+}

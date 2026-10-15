@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Messi has 8 Ballon d'Or wins to Ronaldo's 5",
+        "from": "Messi has 8 Ballon d'Or wins to Ronaldo's 5."
+      },
+      {
+        "states": "Messi has more career assists, 408 to 261",
+        "from": "Messi has more career assists, 408 to 261."
+      },
+      {
+        "states": "Ronaldo has more career goals, 970 to 906",
+        "from": "Ronaldo has more career goals, 970 to 906, and more international goals, 143 to 109."
+      },
+      {
+        "states": "Messi's World Cup trophy is the 2022 World Cup",
+        "from": "settled"
+      },
+      {
+        "states": "Tom Brady won seven Super Bowls",
+        "from": "settled"
+      },
+      {
+        "states": "Brady has said Jerry Rice is still the GOAT",
+        "from": "In early 2026 he said \"Jerry Rice is still the GOAT.\""
+      }
+    ],
+    "answer": "Soccer: Messi, I'd say. He has 8 Ballon d'Or wins to Ronaldo's 5, more assists, and the 2022 World Cup. Ronaldo does have more career goals, so it's a real debate. American football: Tom Brady, with seven Super Bowls. Brady himself has said Jerry Rice is still the GOAT, though."
+  },
+  "latencyMs": 7215
+}

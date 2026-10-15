@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first pick is real, local and fits a toddler: the Kids & Me drop-in at the Acton branch of Halton Hills Public Library. The message leads with it by name, attributes it (\"Halton Region's page says\"), and its day, time, price and age range all match the pick. Halton Region runs the program and Links2Care operates EarlyON locally, so both sources are operator pages rather than aggregators. There are two picks, no link and no question. With watch false, it correctly makes no come-back promise. The EarlyON gap is phrased the way no_page_read requires (\"I could not get into their page today\") and no time is invented. Two small faults stop it scoring a 5. EarlyON is named only by network and town, not a specific site. The second sentence states \"are also free\" without saying it comes from Links2Care.",
+    "score": 4
+  }
+}

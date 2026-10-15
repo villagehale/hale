@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Got it! From now on I'll add things to your calendar without checking with you each time. I won't book, register, or pay for anything — just the calendar. One message from you and I'll stop."
+  },
+  "stopReason": "tool_use"
+}

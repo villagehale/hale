@@ -1,16 +1,16 @@
 import { join } from 'node:path';
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
-import { invokeTool } from '@hale/agent';
+import { invokeTool, pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
+import { z } from 'zod';
 import { cancelActivityPromise } from '~/lib/channel/activity/commitment';
 import { type DeepJobDeps, runDeepResearchJob } from '~/lib/channel/activity/deep-job';
 import type { DeepLaneDeps } from '~/lib/channel/activity/deep-lane';
 import { MAX_PAGE_NOTE_CHARS, boundEvidence } from '~/lib/channel/activity/fanout';
-import { claimsNotPosted, createFollowUpComposer } from '~/lib/channel/activity/followup-note';
+import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import {
@@ -33,9 +33,11 @@ import { searchVillageTool } from '~/lib/coach/tools';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
+import { forceToolJson } from '~/lib/pipeline/structured';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
+import { isStage } from '~/lib/testing/structured-reply';
 
 /**
  * TWO MESSAGES, ONE QUESTION — the whole arc, over real Postgres.
@@ -72,6 +74,44 @@ const APP_KEY = Buffer.alloc(32, 7).toString('base64');
 
 /** Real Claude follow-up turns, recorded once. Re-record with HALE_RECORD=1. */
 const RECORDINGS = join(import.meta.dirname, '__recordings__', 'deep-answer.json');
+const JUDGE_RECORDINGS = join(import.meta.dirname, '__recordings__', 'deep-answer-judge.json');
+
+/**
+ * WHETHER THE MESSAGE TELLS THE PARENT THE VENUE HAS NOT PUBLISHED SOMETHING is a question
+ * about meaning, so a judge answers it, never a word list. The judge reads the message and
+ * nothing else; its verdict is recorded like every other model turn in this journey.
+ */
+const JUDGE_SYSTEM = [
+  'You read one text message a parenting assistant sent a parent about a local activity.',
+  'Decide one fact: does the message tell the parent that the venue has not posted, published or listed some schedule detail (a day, a time, a date or a price)?',
+  'A message that only says the assistant itself could not find, read, confirm or pin down a detail does not say the venue has not posted it.',
+  'Answer with the tool.',
+].join('\n');
+const judgeSchema = z.object({ says_not_posted: z.boolean(), reason: z.string() });
+
+async function saysNotPosted(
+  message: string,
+): Promise<{ says_not_posted: boolean; reason: string }> {
+  const judged = recordedModel(JUDGE_RECORDINGS, pipelineClient);
+  const { value } = await forceToolJson({
+    client: judged.client(),
+    lane: pickLane('review'),
+    system: JUDGE_SYSTEM,
+    userMessage: message,
+    toolName: 'verdict',
+    toolDescription:
+      'Whether the message says the venue has not posted a schedule detail, and why.',
+    inputJsonSchema: {
+      type: 'object',
+      properties: { says_not_posted: { type: 'boolean' }, reason: { type: 'string' } },
+      required: ['says_not_posted', 'reason'],
+      additionalProperties: false,
+    },
+    schema: judgeSchema,
+    maxTokens: 4000,
+  });
+  return value;
+}
 
 const TURN_AT = new Date('2026-08-24T23:40:00.000Z');
 /** The drain tick that picks the job up — the next minute, in practice. */
@@ -90,7 +130,10 @@ const VENUE_TEXT =
 const TOWN_TEXT =
   'Fall registration opens Tuesday, July 22 at 7:00 a.m. for Halton Hills residents.';
 
-describe('the deep answer arrives at question time', () => {
+// A recording waits on live model calls, which outlast the 5s default; replay keeps it.
+const RECORD_TIMEOUT = process.env.HALE_RECORD === '1' ? 180_000 : undefined;
+
+describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }, () => {
   let db: TestDb;
   let database: Database;
   let familyId: string;
@@ -888,7 +931,7 @@ describe('the deep answer arrives at question time', () => {
     expect(second).toMatch(/10|Mon/);
     expect(second).toContain('86');
     // ...and NOT the sentence that went out instead of them.
-    expect(claimsNotPosted(second)).toBe(false);
+    expect(await saysNotPosted(second)).toMatchObject({ says_not_posted: false });
 
     // Nothing was refused, so nothing had to be forgiven: the check now agrees with the
     // page. The audit row is where a lane silently dropping facts becomes visible.
@@ -929,7 +972,7 @@ describe('the deep answer arrives at question time', () => {
     // The unbacked day and fee never reach the wire...
     expect(second).not.toContain('86');
     // ...and neither does the claim that they were never published.
-    expect(claimsNotPosted(second)).toBe(false);
+    expect(await saysNotPosted(second)).toMatchObject({ says_not_posted: false });
     // The registration fact WAS quotable, so the message is not empty-handed.
     expect(second).toMatch(/September 1|registration/i);
     // A RECOMPOSE IS EXPECTED HERE and is the loop working: the first attempt wrote "the
@@ -959,7 +1002,7 @@ describe('the deep answer arrives at question time', () => {
 
     expect(outcome).toMatchObject({ status: 'sent', watch: true });
     const second = transport.bodies()[1] ?? '';
-    expect(claimsNotPosted(second)).toBe(true);
+    expect(await saysNotPosted(second)).toMatchObject({ says_not_posted: true });
   });
 
   // ── THE FALLBACK ───────────────────────────────────────────────────────────

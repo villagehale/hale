@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Both facts match the research notes: markets are closed Monday Oct 12 for Canadian Thanksgiving, and Friday Oct 9 closed at 35,664.62, up 519.24 (+1.48%). The answer correctly ignores the Oct 13 data, which is dated after today. It reads as a brief, direct text and answers the question. It is slightly dry but still friend-like.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

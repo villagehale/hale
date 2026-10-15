@@ -114,7 +114,10 @@ const EARLYON_RESULT = {
   source_name: 'Links2Care',
 };
 
-describe('the activity question is answered', () => {
+// A recording waits on live model calls, which outlast the 5s default; replay keeps it.
+const RECORD_TIMEOUT = process.env.HALE_RECORD === '1' ? 180_000 : undefined;
+
+describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () => {
   let db: TestDb;
   let database: Database;
   let familyId: string;

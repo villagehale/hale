@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The Raptors have no game on Monday, Oct 12",
+        "from": "The Raptors do not appear to play on Monday, Oct 12. Their preseason slate has no game on that date."
+      },
+      {
+        "states": "Next game is Tuesday, Oct 13, vs the Knicks, 7:00 PM ET at Scotiabank Arena in Toronto (preseason)",
+        "from": "The next game is Tuesday, Oct 13. The Knicks and Raptors meet in the NBA preseason, with tipoff at 7:00 p.m. ET at Scotiabank Arena in Toronto."
+      },
+      {
+        "states": "Broadcast on Sportsnet",
+        "from": "Yahoo Sports/Action Network says it will be broadcast live on Sportsnet."
+      }
+    ],
+    "answer": "Nope, no game tonight. Next up is Tuesday, Oct 13 vs the Knicks, 7:00 pm ET at Scotiabank Arena in Toronto. It's a preseason game, and it's on Sportsnet."
+  },
+  "latencyMs": 4212
+}

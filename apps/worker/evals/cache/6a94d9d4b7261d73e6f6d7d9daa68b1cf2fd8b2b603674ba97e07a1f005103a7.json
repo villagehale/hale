@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Windsor, Ontario, tomorrow Tuesday 13 October: early-morning chance of showers, possibly a thunderstorm, then clearing",
+        "from": "The Windsorite gives a 30 percent chance of showers early in the morning with a risk of a thunderstorm, then clearing in the morning"
+      },
+      {
+        "states": "Afternoon sunny, about 29°C at 2 to 5 pm",
+        "from": "Environment Canada's hourly forecast has sunny skies from late morning through the afternoon, with 29°C at 2–5 pm"
+      },
+      {
+        "states": "High of about 29 to 30°C, humidex 35",
+        "from": "The Windsorite gives a high of 29 with a humidex of 35. Global News has a high of 30"
+      },
+      {
+        "states": "West wind 30 km/h gusting to 50 from mid-afternoon into the evening",
+        "from": "Environment Canada's hourly table has west wind of 30 km/h gusting to 50 from mid-afternoon into the evening"
+      },
+      {
+        "states": "UV index 6, high",
+        "from": "The Windsorite lists a UV index of 6 (high)"
+      },
+      {
+        "states": "Showers possible again overnight",
+        "from": "Its 7-day page says showers are likely overnight, with a risk of a thunderstorm"
+      }
+    ],
+    "answer": "Tomorrow in Windsor starts with a chance of a shower, maybe a thunderstorm, early on, then it clears and turns sunny. The afternoon is around 29°C, feeling like 35 with the humidex. Wind picks up from mid-afternoon, west around 30 km/h with gusts to 50. UV is high (6), so sunscreen. Showers are likely again overnight."
+  },
+  "latencyMs": 29144
+}

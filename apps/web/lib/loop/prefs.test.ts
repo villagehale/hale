@@ -7,13 +7,11 @@ import {
   categoryEnabled,
   deliverableNow,
   isValidLoopPrefUpdate,
-  isWeeklyPlanMoment,
   isWithinQuietHours,
   loadLoopPrefsView,
   loopChildName,
   renderChildName,
   resolveChildNameLevel,
-  weeklyPlanWeekday,
   writeLoopPref,
 } from './prefs';
 
@@ -125,83 +123,6 @@ describe('deliverableNow composes quiet hours with the urgent-bypass toggle', ()
   });
 });
 
-describe('weeklyPlanWeekday — identity on 0=Sun…6=Sat, never 7', () => {
-  it('sends the morning the week starts (0=Sunday, 1=Monday)', () => {
-    expect(weeklyPlanWeekday(0)).toBe(0);
-    expect(weeklyPlanWeekday(1)).toBe(1);
-  });
-
-  it('wraps 7 to Sunday — Sunday is 0, not a second Sunday at 7', () => {
-    expect(weeklyPlanWeekday(7)).toBe(0);
-  });
-});
-
-describe('weekly-plan send moment: the morning the week starts, DST-correct', () => {
-  const view: LoopPrefsView = { ...DEFAULT_LOOP_PREFS }; // send 08:00
-  const WEEK_START_SUN = 0; // product default — Sunday week / Sunday send
-  const WEEK_START_MON = 1; // Monday-start week → Monday morning (opt-in)
-
-  it('pins the live default to Sunday — users.weekStartDay 0, not Monday 1', () => {
-    // VIL-319: weeklyPlanWeekday is identity. The column default IS the send
-    // weekday. 0=Sunday per localParts / Date.getUTCDay(), not the plan-spine
-    // WEEKDAYS index (0=Monday).
-    expect(schema.users.weekStartDay.default).toBe(0);
-    expect(weeklyPlanWeekday(schema.users.weekStartDay.default as number)).toBe(0);
-  });
-
-  it('matches the default parent at their own local Sunday 08:00 in winter', () => {
-    // Toronto EST (UTC-5): Sun 08:00 local = Sun 13:00Z. 2026-01-18 is a Sunday.
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-18T13:00:00Z'), 'America/Toronto', WEEK_START_SUN)).toBe(true);
-    // Vancouver PST (UTC-8): Sun 08:00 local = Sun 16:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-18T16:00:00Z'), 'America/Vancouver', WEEK_START_SUN)).toBe(true);
-  });
-
-  it('does not send the default parent on Monday', () => {
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Toronto', WEEK_START_SUN)).toBe(false);
-  });
-
-  // 2026-01-19 and 2026-07-20 are both Mondays (winter EST/PST, summer EDT/PDT).
-  it('matches a Monday-start parent at their own local Monday 08:00 in winter', () => {
-    // Toronto EST (UTC-5): Mon 08:00 local = Mon 13:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Toronto', WEEK_START_MON)).toBe(true);
-    // Vancouver PST (UTC-8): Mon 08:00 local = Mon 16:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T16:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(true);
-  });
-
-  it('matches each parent at their own local Monday 08:00 in summer (DST)', () => {
-    // Toronto EDT (UTC-4): Mon 08:00 local = Mon 12:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-07-20T12:00:00Z'), 'America/Toronto', WEEK_START_MON)).toBe(true);
-    // Vancouver PDT (UTC-7): Mon 08:00 local = Mon 14:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-07-20T15:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(true);
-  });
-
-  it('does not match the same UTC instant for a parent in a different zone', () => {
-    // At Toronto's Mon-07:00 instant, the Vancouver parent is at 04:00 (not due).
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(false);
-  });
-
-  it('sends the morning the week starts — Sunday for a Sunday-start week', () => {
-    // weekStartDay=0 (Sun) → send Sunday morning. 2026-01-18 is a Sunday.
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-18T13:00:00Z'), 'America/Toronto', 0)).toBe(true); // Sun 08:00 EST
-  });
-});
-
-
-describe('default send time vs default quiet hours — the class killer', () => {
-  it('the default weekly-brief send time is OUTSIDE the default quiet-hours window', () => {
-    // Launch-day review P0 (2026-08-11): 0079 set the brief to 07:00 while default
-    // quiet hours end 07:30 — every default family's brief would have been
-    // suppressed forever. This pins send-after-quiet for the DEFAULTS themselves.
-    const minutes = (t: string): number => {
-      const [h = 0, m = 0] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
-    expect(minutes(DEFAULT_LOOP_PREFS.weeklyPlanSendTime)).toBeGreaterThanOrEqual(
-      minutes(DEFAULT_LOOP_PREFS.quietHoursEnd),
-    );
-  });
-});
-
 describe('loadLoopPrefsView + categoryEnabled', () => {
   it('returns the documented default when no row exists', async () => {
     await expect(loadLoopPrefsView('u1', fakeLoopDb(null))).resolves.toEqual(DEFAULT_LOOP_PREFS);
@@ -219,7 +140,6 @@ describe('loadLoopPrefsView + categoryEnabled', () => {
 
   it('maps each loop category to its persisted flag', () => {
     const view: LoopPrefsView = { ...DEFAULT_LOOP_PREFS, catReminder: false, catAlert: false };
-    expect(categoryEnabled(view, 'weekly_plan')).toBe(true);
     expect(categoryEnabled(view, 'reminder')).toBe(false);
     expect(categoryEnabled(view, 'approval')).toBe(true);
     expect(categoryEnabled(view, 'alert')).toBe(false);
@@ -232,7 +152,6 @@ describe('isValidLoopPrefUpdate rejects malformed untrusted input', () => {
     expect(isValidLoopPrefUpdate({ field: 'childNameLevel', value: 'relation' })).toBe(true);
     expect(isValidLoopPrefUpdate({ field: 'catReminder', value: false })).toBe(true);
     expect(isValidLoopPrefUpdate({ field: 'quietHoursStart', value: '21:30' })).toBe(true);
-    expect(isValidLoopPrefUpdate({ field: 'weeklyPlanSendTime', value: '07:00:00' })).toBe(true);
   });
 
   it('rejects out-of-set enums and malformed times', () => {
@@ -240,13 +159,17 @@ describe('isValidLoopPrefUpdate rejects malformed untrusted input', () => {
     expect(isValidLoopPrefUpdate({ field: 'childNameLevel', value: 'full_name' as never })).toBe(false);
     expect(isValidLoopPrefUpdate({ field: 'quietHoursEnd', value: '25:00' })).toBe(false);
     expect(isValidLoopPrefUpdate({ field: 'quietHoursEnd', value: '7:5' })).toBe(false);
-    expect(isValidLoopPrefUpdate({ field: 'weeklyPlanSendTime', value: 'noon' })).toBe(false);
     expect(isValidLoopPrefUpdate({ field: 'catAlert', value: 'yes' as never })).toBe(false);
   });
 
   it('rejects a non-writable field (no reaching userId / timestamps)', () => {
     expect(isValidLoopPrefUpdate({ field: 'userId' as never, value: true })).toBe(false);
     expect(isValidLoopPrefUpdate({ field: 'updatedAt' as never, value: 'now' as never })).toBe(false);
+  });
+
+  it('rejects the retired weekly-plan fields — the columns stay, the edge no longer writes them', () => {
+    expect(isValidLoopPrefUpdate({ field: 'catWeeklyPlan' as never, value: false })).toBe(false);
+    expect(isValidLoopPrefUpdate({ field: 'weeklyPlanSendTime' as never, value: '07:00:00' })).toBe(false);
   });
 });
 
@@ -296,7 +219,7 @@ describe('writeLoopPref upserts and writes an audit row in one transaction', () 
 const _sample: LoopPrefUpdate[] = [
   { field: 'loopChannel', value: 'email' },
   { field: 'urgentBypassQuietHours', value: true },
-  { field: 'weeklyPlanSendTime', value: '19:30' },
+  { field: 'quietHoursEnd', value: '07:30' },
   { field: 'childNameLevel', value: 'generic' },
 ];
 void _sample;

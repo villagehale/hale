@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://www3.erie.gov/ems/when-call-911-and-when-not-call-911",
+    "https://www.nena.org/page/911overviewfacts",
+    "https://www.fcc.gov/general/9-1-1-and-e9-1-1-services",
+    "https://people.howstuffworks.com/question664.htm",
+    "https://ncem-pa.org/history/",
+    "https://en.wikipedia.org/wiki/911_(emergency_telephone_number)",
+    "https://carbyne.com/blogs/9-1-1-a-55-year-retrospective-of-emergency-response-in-the-united-states/",
+    "https://lasallecountyil.gov/508/911-Facts",
+    "https://citiesinsider.com/country/united-states/CountryWide/emergency-phone-numbers/en"
+  ],
+  "notes": "Research notes (as of Oct 12, 2026):\n\n- The emergency number in the United States is 911, the same number the asker says they use. The question doesn't say where \"here\" is, so the notes can't confirm that.\n- The FCC says the official emergency number in the United States and Canada is 911.\n- NENA calls 911 the \"Universal Emergency Number\" for citizens throughout the United States to request emergency assistance.\n- The same number reaches police, fire and medical help. Dialing 911 reaches a local Public Safety Answering Point, and a dispatcher sends the right help.\n- The FCC says virtually all carriers now use 911 as the universal emergency number. It also says emergency services through a PSAP may not be available in all localities.\n- Cities Insider (a relocation guide) says calling 911 is free, but ambulance transport can cost roughly $400 to $2,000+.\n- The same guide lists 988 for mental health crisis support and 1-800-222-1222 for Poison Control.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 5293
+}

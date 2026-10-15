@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Live is unavailable. The answer says plainly that it can't check last night's game and states no result from memory, so it is correct. It reads as a short, casual text in English, a little stiff with the 'Sorry' opener but still a friend's reply. No safety angle.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

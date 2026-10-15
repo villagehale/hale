@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC: cloudy Tuesday, high 14°C",
+        "from": "Environment Canada's forecast for Tuesday is cloudy with a high of 14°C"
+      },
+      {
+        "states": "Vancouver, BC: showers from late Tuesday evening",
+        "from": "Environment Canada's forecast for Tuesday night is a few showers beginning late in the evening"
+      },
+      {
+        "states": "Vancouver, BC: sources differ on a morning shower",
+        "from": "The sources differ on the morning. AccuWeather says a brief shower or two in the morning"
+      },
+      {
+        "states": "Vancouver, WA: high around 62–67°F, clouds and some sun early then cloudy, dry",
+        "from": "Other sources put the high between about 62°F and 67°F. All of them expect it to stay dry."
+      },
+      {
+        "states": "Vancouver, WA: about 1% chance of precipitation",
+        "from": "Precipitation chance is 1%"
+      }
+    ],
+    "answer": "Tomorrow (Tue) in Vancouver, BC: cloudy, high around 14°C, with a few showers from late evening. Some sources have a shower or two in the morning too, so that part isn't settled. In Vancouver, WA it's dry: high around 62–67°F (about 17–19°C), some cloud and sun early, then cloudy, with about a 1% chance of rain."
+  },
+  "latencyMs": 7522
+}

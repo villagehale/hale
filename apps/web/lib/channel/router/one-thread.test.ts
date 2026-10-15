@@ -6,6 +6,7 @@ import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { createDisambiguationStore } from './disambiguation';
@@ -118,6 +119,8 @@ describe('one parent, two doors, one conversation', () => {
       // the deployed router makes.
       questions: { open: async () => [] },
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
+      calendarOffers: calendarOffersIdle,
+      weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       recordStatedState: async () => ({ status: 'nothing_stated' }),

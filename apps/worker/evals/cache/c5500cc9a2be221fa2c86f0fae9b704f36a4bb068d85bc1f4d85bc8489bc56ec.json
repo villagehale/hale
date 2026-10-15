@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text covers the single item (Sunday craft hour at the library) and includes the sourceUrl exactly as given, adding no unsupported time, price, or place. It asks the parent for nothing, so there is no extra ask or reply instruction. It is short, matching the 'text me less' note. The phrasing 'Heads up... could be a fun one' reads casually like a friend passing along a tip rather than a notification template, though it is a bit generic and does not name the 'why' from the item (its one-thing-worth-saying framing is implicit rather than stated, which is fine). No violations found, so it earns a top-tier score with slight deduction for generic tone.",
+    "score": 4
+  }
+}

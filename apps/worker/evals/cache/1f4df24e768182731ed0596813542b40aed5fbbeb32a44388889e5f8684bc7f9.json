@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Today (Mon Oct 12) daytime forecast mentions no rain, mix of sun and cloud",
+        "from": "Today and tonight (Environment Canada, forecast issued 6:26 AM EDT Oct 12, Toronto Pearson): Today is a mix of sun and cloud... The daytime forecast mentions no rain."
+      },
+      {
+        "states": "Tonight (Mon Oct 12 night) 60% chance of showers before morning, risk of a thunderstorm",
+        "from": "Tonight is mainly cloudy, with a 60 percent chance of showers before morning and a risk of a thunderstorm."
+      },
+      {
+        "states": "Tuesday Oct 13 60% chance of showers, per the Oct 12 forecast page",
+        "from": "The same Oct 12 Environment Canada page lists a 60% chance of showers for the Tuesday period"
+      }
+    ],
+    "answer": "Mostly dry during the day today, no rain in the forecast. But tonight there's a 60% chance of showers before morning, with a chance of a thunderstorm. Tuesday also shows a 60% chance of showers, going by the forecast from this morning."
+  },
+  "latencyMs": 5013
+}

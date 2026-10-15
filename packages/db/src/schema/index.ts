@@ -49,6 +49,7 @@ export * from './agent-commitments.js';
 export * from './conversations.js';
 export * from './chat-attachments.js';
 export * from './rate-limits.js';
+export * from './opt-out-read-holds.js';
 export * from './enums.js';
 export * from './family-active-days.js';
 export * from './parent-channels.js';

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The Saturday market find does not fit: Saturday is an all-day family visit, Sunday is an all-day soccer tournament, and there are no free windows, so it is dropped rather than sent on Thursday evening.",
+    "action": "drop",
+    "item_ids": [
+      "market"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The three picks are real, named Oakville venues: Town of Oakville aquatics, the Peter Gilgan Family YMCA at 410 Rebecca St, and Goldfish Swim School. Each is sourced from the venue's own page, not an aggregator, and each fits a preschooler. The message leads with the town program by name and attributes the facts ('their sites say'). It uses the earned no_page_read form ('I could not get into their pages today') rather than claiming nothing is posted. Because watch is true, it correctly makes a first-person promise to keep watching. There is no question, no link, and no invented time; the price comes from the picks. One small nit: it leaves out Goldfish's $30 membership fee.",
+    "score": 5
+  }
+}

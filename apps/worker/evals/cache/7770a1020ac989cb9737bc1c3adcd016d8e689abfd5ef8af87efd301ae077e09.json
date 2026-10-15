@@ -1,0 +1,49 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "No single agreed best minivan; sources split",
+        "from": "There is no single agreed winner."
+      },
+      {
+        "states": "Kia Carnival Hybrid pick",
+        "from": "It calls the 2026 Kia Carnival Hybrid the best overall minivan for most families."
+      },
+      {
+        "states": "Carnival Hybrid is the newest source, 5 days old",
+        "from": "The Weekly Driver (5 days old, the newest source)"
+      },
+      {
+        "states": "Carnival Hybrid 32 mpg combined",
+        "from": "The Hybrid gets 32 mpg combined"
+      },
+      {
+        "states": "Sienna 36 mpg combined",
+        "from": "It gets 36 mpg combined with front-wheel drive"
+      },
+      {
+        "states": "44 more cubic feet of cargo space",
+        "from": "44 more cubic feet of cargo space"
+      },
+      {
+        "states": "10 years/100,000 miles powertrain warranty",
+        "from": "its powertrain warranty is 10 years/100,000 miles"
+      },
+      {
+        "states": "Edmunds ties Carnival Hybrid with Sienna at 7.8",
+        "from": "The Carnival Hybrid got the same 7.8 overall."
+      },
+      {
+        "states": "U.S. News names Odyssey best at 9.3",
+        "from": "It names the 2026 Honda Odyssey the best minivan, with a 9.3/10 score."
+      },
+      {
+        "states": "Odyssey drives most like a car",
+        "from": "It is the one that drives most like a car, with a smooth V6."
+      }
+    ],
+    "answer": "Honestly there's no agreed winner, but I'd go with the 2026 Kia Carnival Hybrid. The Weekly Driver, the newest review I found (5 days old), calls it the best overall for most families: fuel economy close to the Sienna's (32 mpg combined vs 36), 44 more cubic feet of cargo space, and a 10-year/100,000-mile powertrain warranty. Edmunds ties it with the Sienna at 7.8/10. U.S. News rates the Odyssey highest at 9.3, and it's the one that drives most like a car. If mpg matters most, get the Sienna."
+  },
+  "latencyMs": 9170
+}

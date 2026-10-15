@@ -1,0 +1,21 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The St. Louis Cardinals won the 2006 World Series over the Detroit Tigers, 4-1",
+        "from": "settled"
+      },
+      {
+        "states": "The Cardinals clinched in Game 5 at Busch Stadium",
+        "from": "The Cardinals clinched with a 4-2 win in Game 5 at Busch Stadium"
+      },
+      {
+        "states": "David Eckstein was the World Series MVP",
+        "from": "David Eckstein was the World Series MVP."
+      }
+    ],
+    "answer": "The St. Louis Cardinals. They beat the Detroit Tigers 4-1 in 2006, clinching in Game 5 at Busch Stadium. David Eckstein was series MVP."
+  },
+  "latencyMs": 4413
+}

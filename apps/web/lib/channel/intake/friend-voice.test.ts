@@ -11,8 +11,6 @@ import {
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
-import { onboardingFriendVoiceEnabled } from './friend-voice-flag';
-import { YEAR_OPEN_LEAD, YEAR_OPEN_LEAD_FR } from './year-open';
 
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
   return {
@@ -32,20 +30,6 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
     ...over,
   };
 }
-
-describe('ONBOARDING_FRIEND_VOICE_ENABLED', () => {
-  it('is on only for the exact word on, after trim', () => {
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: 'on' })).toBe(true);
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: '  on  ' })).toBe(true);
-  });
-
-  it('stays off when unset, and for true, 1, and ON', () => {
-    expect(onboardingFriendVoiceEnabled({})).toBe(false);
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: 'true' })).toBe(false);
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: 'ON' })).toBe(false);
-    expect(onboardingFriendVoiceEnabled({ ONBOARDING_FRIEND_VOICE_ENABLED: '1' })).toBe(false);
-  });
-});
 
 describe('friend voice brief', () => {
   it('gives the elapsed time for a several-hours-old text and does not flag a two-minute one', () => {
@@ -160,19 +144,6 @@ describe('onboarding friend fixtures', () => {
     }
   });
 
-  it('puts the French find under the model lead, with no question', () => {
-    const french = FRIEND_CONVERSATIONS[1]?.turns[3];
-    expect(french).toBeDefined();
-    if (!french) return;
-    const body = fixtureBody(french);
-    expect(body).toContain('près');
-    expect(body).toContain('1. ');
-    expect(body).not.toContain('?');
-    expect(body).not.toContain(YEAR_OPEN_LEAD);
-    expect(body).not.toContain(YEAR_OPEN_LEAD_FR);
-    expect(body).not.toMatch(/\bpres\b|\bage\b|\badapt\b/);
-  });
-
   it('shows the map with no question when the first text already has everything, then asks the name', () => {
     const [first, second] = FRIEND_CONVERSATIONS[2]?.turns ?? [];
     expect(first).toBeDefined();
@@ -213,18 +184,6 @@ describe('friend-voice judge', () => {
     findLines: ['Swim (ages 3-5) - Saturdays 10am - $12'],
     listKind: 'year',
     language: 'en',
-  });
-
-  it('puts the question after the list, and rejects a question that sits above it', () => {
-    const prose = 'Maya is 4, near M5V. Which of these feels right?';
-    const body = assembleFriendBody(prose, swim);
-    const lines = body.split('\n');
-    expect(lines.at(-1)).toBe('Which of these feels right?');
-    expect(body).not.toContain(YEAR_OPEN_LEAD);
-    expect(body.indexOf('1. ')).toBeLessThan(body.lastIndexOf('?'));
-    expect(judgeFriendReply(body, swim)).toEqual({ ok: true });
-    const buried = `How old are the kids?\n${YEAR_OPEN_LEAD}\n1. Swim (ages 3-5) - Saturdays 10am - $12`;
-    expect(judgeFriendReply(buried, swim)).toEqual({ ok: false, reason: 'question' });
   });
 
   it('rejects a second question, the stock lines, and an invented price', () => {
@@ -284,15 +243,6 @@ describe('friend-voice judge', () => {
     ).toEqual({ ok: true });
   });
 
-  it('rejects French with the ASCII gaps', () => {
-    const ages = blank({ step: 'ages', language: 'fr', parentWords: 'H2X', placeLabel: 'H2X' });
-    expect(judgeFriendReply('Quel age ont les enfants?', ages)).toEqual({
-      ok: false,
-      reason: 'french',
-    });
-    expect(judgeFriendReply('Quel âge ont les enfants?', ages)).toEqual({ ok: true });
-  });
-
   it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
     expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({
@@ -342,6 +292,7 @@ describe('friend-voice judge', () => {
       step: 'kids_names',
       placeLabel: 'Burlington',
       parentWords: 'wait who is this? is this free?',
+      identityAsked: true,
     });
     expect(
       judgeFriendReply(
@@ -812,5 +763,31 @@ describe('repairedProse', () => {
     expect(trimmed.length).toBeLessThanOrEqual(220);
     expect(trimmed).toContain('Google shares your whole inbox');
     expect(trimmed.endsWith('Want to connect?')).toBe(true);
+  });
+});
+
+describe('#868 question marks in any script', () => {
+  it('counts the CJK and Arabic question marks as the one ask', () => {
+    const base = {
+      step: 'place',
+      language: 'en',
+      address: 'tu',
+      introduce: true,
+      recentTurns: [],
+      placeLabel: null,
+      agesLabel: null,
+      ageMonths: [],
+      findLines: [],
+      listKind: 'none',
+      activity: null,
+      day: null,
+      parentName: null,
+    } as const;
+    expect(
+      judgeFriendReply('你好！我是Hale。你住在哪个邮编？', { ...base, parentWords: '你好' }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('مرحبا! أنا Hale. ما هو رمزك البريدي؟', { ...base, parentWords: 'مرحبا' }),
+    ).toEqual({ ok: true });
   });
 });

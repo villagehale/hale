@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "ambiguous",
+    "polarity": "yes",
+    "confidence": "medium",
+    "reason": "Bare agreement 'yes' names no offer. The first Gymnastics offer started 2026-10-01T20:15Z, before now (2026-10-02T15:00Z), so it cannot receive the yes; the second is upcoming, but with two offers and a bare agreement the reply cannot be safely attributed to one."
+  },
+  "latencyMs": 5019
+}

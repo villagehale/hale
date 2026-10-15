@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real on the page, with day, time, dates and age band exactly as printed, cited to the Oakville URL. The price is correctly null because fees are deferred to the Recreation Guide, and no figure was borrowed. The registration date (Aug 11, 7am, residents) is in both slots and the message. The message leads with the named program, attributes the facts ('their site says') and claims no verification. It uses the correct first-person 'I could not pin down the price' under page_has_schedule and gives the first-person keep-watching line, which is correct since watch is true. It is plain ASCII with no link and no question. Minor nits: the watch line could say it will text when there is news, and the message omits the 3-5 age fit.",
+    "score": 5
+  }
+}

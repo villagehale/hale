@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are for the venue the parent named, Cartwheels Gym Centre. Each is a specific program that fits a toddler: Tiny Gym (1 and walking to 3, with a parent) and Rock n' Roll with Miss Kelly. The message leads with the venue and its best program by name and attributes the details with \"their site says\". It carries only the ages and 45-minute length that appear in the picks, with no invented day, time or price. Under page_has_schedule it names the gap in first person (\"I could not pin down the days or the prices\") rather than saying \"not posted yet\". Since watch is true, it states the existing commitment in first person (\"I'll keep watching and text you\"). It is two short sentences of plain text with no link and no question.",
+    "score": 5
+  }
+}

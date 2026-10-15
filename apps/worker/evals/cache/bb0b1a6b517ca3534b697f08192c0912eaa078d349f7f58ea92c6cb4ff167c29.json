@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011Cg1JM9Td3aKc1vgHY5xsu",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9QYKEAgSGAI4AUIIdGhpbmtpbmcSDN654rVUuuo3xjfx1xoMxyHZAPbBUXLnJ/aTIjAT/wFW4RgiCGJFSrFboNKf7t8lBE8w8gCLDMAQCgDvFlOxIjQdo43g2huah5iw1XcqkgZmuFXhozIDQu++k+bv34KIkbVqAlinR1+w1hwQ0nK1zJeWgsTibubu6LTHuhhH8M0DTZ3Rcwd5tNR+Q3wVZFW7z4pA9URfbXMbG0btk7rNCqN061qP4hACE79PzZsoHBu8kmNv0RXihqOV+a5OctL2nr8HX3VJnMTvboloKd1CVPh3ROeP817mSgH6FPVJB1xhguQ6QWtIuKVoLBagQ8+rjZhdvwotUv3EbfAGTrU3xB8c8u7wfhtIezC2DIw+9oVJGFpJFKsCPBwIXTrmBUpzPSdZbXQIDC/4tL1D+AqiYw/YmuRBoOGc2+FnzGim7Ebj2HzrSK184P50WxnPWnOtBQ2DxyhZxNSI0k6ZeEoZhCmk9cQ3lxEedtQJvfeOzYy+ahB2kcA1CIsLBBuRy4Ef8Xa1WSpAllHBL6CFWPsSNuJWUnm4WS8TYyrhaK29Ae3PPRgXgehcNoUWsRXVpoI1MSr8ohCLCJZ1ZHfroKLTCY5Z0aPDsKjob0us9n+o8CIIFNwGnPITm2EcICjjx1AR7hZvQwGtH3hnNUiWyAcjNRKszIcx67lmiGnYrTuSzXUGT1UlCkOGoABPdpxVSg1EtXzC174ny/RnwjkySE88zt2NLxaOVPXqTNj+3EEMb4tQnLUSe8XkmmfhGkpyKH3y7miGDcyxo8LxJHKWWw/ZEhY6TxLZedq3jZQpTExhDiPBK5puhVeUXT41H2uSnrS6UP3IwmDGvQwZNaWqrqSC7h+64ApLDGLn+5wVx2h8DJ7xsMFIQxnP4JrfX0v2R1f3xr8SUWI3nNPqSL/EiKvF09BuvX6IVi1Ogcn+HYP3yxDvVLGvyi4f/qtws/29EesmN0RecUmMEv7aSxca74CqIwKZ43FP/hPx1YVgmGZzkMPw8HqVB3xd0SE95Yh6WZACpeni//PzDrAd3T9nDJFsBBjZ5hNomYTQbHEC/oig0lt/tAeB/pVUTdF+q6CX3lc9pnLsO4TwOpFKU0aLD9UtvE8b8PycYTdLhORzcIKnvrR984Wc2uLC9iJKmdjkKC05lL4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XiBxc96aoZv8eG9cXwHXyg",
+        "name": "turn_off_autonomy",
+        "input": {
+          "kinds": [
+            "send_email",
+            "reply_to_email"
+          ],
+          "interpretation": "They want Hale to stop sending or replying to emails on their behalf without asking first."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 389,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21175,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 237,
+      "output_tokens_details": {
+        "thinking_tokens": 119
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3107
+}

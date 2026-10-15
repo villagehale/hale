@@ -1,0 +1,37 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Windsor, Ontario, for tomorrow, Tuesday 13 October",
+        "from": "Notes are for Windsor, Ontario, for tomorrow, Tuesday 13 October 2026."
+      },
+      {
+        "states": "early-morning chance of showers, 30 percent",
+        "from": "The Windsorite's forecast for the day has a 30 percent chance of showers early in the morning"
+      },
+      {
+        "states": "sunny from late morning through the afternoon",
+        "from": "Environment Canada's hourly forecast has sunny skies from late morning through the afternoon"
+      },
+      {
+        "states": "29°C at 2–5 pm",
+        "from": "with 29°C at 2–5 pm"
+      },
+      {
+        "states": "high of 29 to 30",
+        "from": "The Windsorite gives a high of 29 with a humidex of 35. Global News has a high of 30 and a low of 15"
+      },
+      {
+        "states": "humidex of 35",
+        "from": "The Windsorite gives a high of 29 with a humidex of 35."
+      },
+      {
+        "states": "west wind of 30 km/h gusting to 50 from mid-afternoon",
+        "from": "Environment Canada's hourly table has west wind of 30 km/h gusting to 50 from mid-afternoon into the evening"
+      }
+    ],
+    "answer": "Tomorrow in Windsor looks hot and sunny. There's a chance of a shower early in the morning, then it clears to sunshine from late morning. Highs are around 29 to 30°C, feeling like about 35 with the humidex. Expect gusty west wind from mid-afternoon, gusts to around 50 km/h."
+  },
+  "latencyMs": 5961
+}

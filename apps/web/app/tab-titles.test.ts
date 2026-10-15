@@ -76,7 +76,6 @@ describe('portal title template', () => {
       ['./(authed)/settings/privacy/page.tsx', 'Privacy & data · Hale'],
       ['./(authed)/settings/texts/page.tsx', 'Texts · Hale'],
       ['./(authed)/settings/plan/page.tsx', 'Plan · Hale'],
-      ['./(authed)/approvals/page.tsx', 'Approvals · Hale'],
       ['./(authed)/trail/page.tsx', 'History · Hale'],
       ['./(authed)/plan/page.tsx', 'Week · Hale'],
       ['./unsubscribe/page.tsx', 'Unsubscribe · Hale'],

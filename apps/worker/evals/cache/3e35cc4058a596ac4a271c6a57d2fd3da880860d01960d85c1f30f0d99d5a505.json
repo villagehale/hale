@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Denver, Tuesday October 13: partly sunny skies (National Weather Service)",
+        "from": "The National Weather Service in Boulder said to expect partly sunny skies Tuesday"
+      },
+      {
+        "states": "Denver Tuesday high around 65 degrees (National Weather Service), other forecasts 64 to 67",
+        "from": "The high is expected to reach 65 degrees; Weather Underground has a high of 64°F; AccuWeather has a high of 67°; 9NEWS has a high of 64"
+      },
+      {
+        "states": "Denver Tuesday rain chance 30% after 3 p.m. (National Weather Service)",
+        "from": "The weather service gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "Denver Tuesday evening rain chance above 40% from 8 PM into early morning (AccuWeather)",
+        "from": "AccuWeather shows rain chances above 40% from 8 PM into the early morning"
+      },
+      {
+        "states": "Denver Tuesday night lows in the 30s to low 40s, rain at times (Weather Underground low 46°F, AccuWeather low 44°)",
+        "from": "Lows are expected in the low 40s and 30s on Tuesday night, with increasing clouds and rain. Weather Underground gives a low of 46°F with rain showers at times. AccuWeather gives a low of 44°."
+      },
+      {
+        "states": "Denver Tuesday winds north-northeast 6 to 10 mph, becoming east to northeast in the afternoon, gusts up to 17 mph",
+        "from": "North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon with gusts up to 17 mph."
+      }
+    ],
+    "answer": "Tomorrow in Denver looks mostly partly sunny, with a high around 65. Winds are north-northeast at 6 to 10 mph, becoming east to northeast in the afternoon, with gusts up to 17 mph. Rain and showers may move in Tuesday evening, about a 30% chance after 3 pm, and rain chances climb past 40% from 8 PM into the early morning. Overnight lows are in the 30s to low 40s with rain at times."
+  },
+  "latencyMs": 5746
+}

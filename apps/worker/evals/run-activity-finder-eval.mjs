@@ -19,7 +19,7 @@
 // rather than importing it, for the reason the medical eval replicates: that module sits
 // behind the web app's `~/` alias, which the tsx loader here cannot resolve. The SKILL body
 // and the model routing ARE imported live from packages/agent, so a skill edit or a
-// re-tiering re-keys the cache and shows up as a miss. `smsSegments` is imported real.
+// re-tiering re-keys the cache and shows up as a miss.
 //
 // THE REPLICA INCLUDES THE TOOL LIST, and that is not decoration. The lane now hands
 // `web_fetch` to any subject that NAMES A PLACE (groundTools/namesAVenue), and this harness
@@ -58,12 +58,9 @@
 //   · asks for permission - the follow-up ends on a question. An offer is a PROPOSAL and
 //     every proposal is a row; nothing on this path can write one, so a parent's yes has
 //     nowhere to land (2026-08-22: it landed on an unrelated approvals queue).
-//   · unearned absence - the text says a page does not carry something, and `page_evidence`
-//     does not license it: either nobody opened a page today, or one was opened and it DOES
-//     publish times and prices (a refused fact is Hale not knowing, never a page being empty).
 //   · unbacked promise / silent watch - the text and the ledger disagree about whether
 //     Hale is coming back.
-//   · links a URL / unsendable - Hale never texts a link, and the follow-up is two segments.
+//   · links a URL / unsendable - Hale never texts a link, and an empty follow-up is unsendable.
 // Everything else is the judge's bar (JUDGE_MIN): are these real, local, age-fitting things
 // a parent could turn up to, and is the message honest about where the facts came from?
 
@@ -71,6 +68,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { ACTIVITY_FIXTURES } from './activity-finder-fixtures.mjs';
+import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -98,14 +96,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const ACTIVITY_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 const TRAVEL_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'query.ts');
 
 // Mirrors the lane's own constants (activity/lane.ts, activity/followup-note.ts).
 const MAX_PICKS = 3;
 const MAX_SEARCHES = 3;
 const MAX_INLINE_FETCHES = 3;
-const MAX_FOLLOWUP_SEGMENTS = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
 const FIRST_SEGMENT_CHARS = 153;
 
@@ -180,11 +176,18 @@ function composeUserMessage(q, researchNotes) {
  * pages: a model that never sees a page fact cannot blame a page for a programme that does
  * not exist ("I could not get into any pages today for toddler underwater basket weaving",
  * 2026-08-24). */
-function followUpUserMessage(subject, picks, pageEvidence, watch) {
+// Mirrors `EMPTY_SEARCH_NOTES_CAP` (activity/lane.ts).
+const EMPTY_SEARCH_NOTES_CAP = 4_000;
+
+function followUpUserMessage(subject, picks, pageEvidence, watch, searched) {
   return JSON.stringify({
     mode: 'followup_text',
     subject,
-    ...(picks.length === 0 ? { picks_empty: true } : { page_evidence: pageEvidence }),
+    // An empty search carries where it looked and what it read (lane.ts `EmptySearch`);
+    // a message with a find is composed from exactly the payload it always was.
+    ...(picks.length === 0
+      ? { picks_empty: true, ...(searched ? { searched } : {}) }
+      : { page_evidence: pageEvidence }),
     watch,
     picks: picks.map((pick) => ({
       name: pick.name,
@@ -263,9 +266,9 @@ function namesAVenue(subject) {
     });
 }
 
-function groundTools(subject) {
+function groundTools(subject, readPages = false) {
   const tools = [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }];
-  if (namesAVenue(subject)) {
+  if (readPages || namesAVenue(subject)) {
     tools.push({ name: 'web_fetch', type: 'web_fetch_20260209', max_uses: MAX_INLINE_FETCHES });
   }
   return tools;
@@ -508,44 +511,9 @@ function topPickLeads(body, picks) {
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
-/**
- * Mirrors `claimsNotPosted` in followup-note.ts, regex for regex.
- *
- * SENTENCE-SCOPED, AND IT USED TO BE CLAUSE-SCOPED — which is how the 2026-08-24 message
- * went out with this gate green. The sentence was "their site lists these but no day, time
- * or price on the fall page yet", and splitting it on commas tore the negation off the
- * thing negated: one fragment held "no day", the next held "time or price on the fall page
- * yet", and neither carried both halves of the claim.
- *
- * WHOSE ABSENCE IS IT — the page's, or Hale's? "no day or price on the fall page yet" is a
- * claim about the PAGE; "I could not confirm the day or the price" is Hale saying what it
- * could not get at, and is the sentence this lane must be able to write. Both carry a
- * negation and a publishing word, so only {@link SELF_LIMITED} tells them apart.
- */
-const UNPUBLISHED_WORD =
-  /\b(?:post(?:ed|s|ing)?|list(?:ed|s|ing)?|publish(?:ed|es|ing)?|announced|available|shown|out|up)\b/i;
-/** `n'?t\b` deliberately has no LEADING boundary: the contraction that carries this claim
- * in practice is "aren't", and its "n" is glued to the stem. */
-const ABSENCE = /\b(?:not|no|nothing|none|yet to)\b|n['’]t\b/i;
-/** Naming the surface is the same claim without the verb. "The fall times aren't on their
- * page yet" carries no publishing word at all and is the identical assertion. */
-const PAGE_SURFACE =
-  /\bon (?:their|the|its) (?:site|website|web ?page|page|pages|schedule|calendar|listing)\b|\bthere yet\b/i;
 /** Hale saying it could not get at something — never the page saying it has nothing. */
 const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
-const SENTENCE_BOUNDARY = /[.!?\n]/;
-
-function claimsNotPosted(body) {
-  return body
-    .split(SENTENCE_BOUNDARY)
-    .some(
-      (sentence) =>
-        ABSENCE.test(sentence) &&
-        (UNPUBLISHED_WORD.test(sentence) || PAGE_SURFACE.test(sentence)) &&
-        !SELF_LIMITED.test(sentence),
-    );
-}
 
 /** Mirrors `statesTheReturn`. */
 const STATES_RETURN =
@@ -576,7 +544,7 @@ function watchWarranted(picks) {
  * whether "free" means anything - hence the `kind`.
  */
 function carriesFact(field, kind) {
-  if (!field || String(field).trim() === '' || claimsNotPosted(String(field))) return false;
+  if (!field || String(field).trim() === '') return false;
   if (kind === 'price' && statesNoCost(String(field))) return true;
   return statesAFigure(String(field));
 }
@@ -602,28 +570,9 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-/** Mirrors the length correction's protected list (followup-note.ts). A cut that can be
- * satisfied by deleting the continuation sentence is a recompose loop ending in silence,
- * so what may NOT go is named beside what may. */
-function keepUnderTrim(watch) {
-  return watch
-    ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
-    : 'never the facts of the find you led with';
-}
-
-function followUpViolations(body, picks, smsSegments, pageEvidence, watch) {
+function followUpViolations(body, picks, pageEvidence, watch) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
-  if (smsSegments(body) > MAX_FOLLOWUP_SEGMENTS) {
-    violations.push({
-      tag: 'over_segment_cap',
-      reason: `The message is ${smsSegments(body)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
-        picks.length > 1
-          ? `Drop the LAST find whole - ${keepUnderTrim(watch)}.`
-          : `Shorten the wording around the facts, never the facts themselves - ${keepUnderTrim(watch)}.`
-      }`,
-    });
-  }
   if (LINK_SHAPE.test(body)) {
     violations.push({
       tag: 'links_a_url',
@@ -648,19 +597,6 @@ function followUpViolations(body, picks, smsSegments, pageEvidence, watch) {
       tag: 'asks_for_permission',
       reason:
         'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
-    });
-  }
-  // THE ABSENCE CLAIM NEEDS POSITIVE EVIDENCE. Two ways to be wrong about a page and they
-  // need two different corrections: nobody opened it, or somebody opened it and it plainly
-  // does publish a schedule this run could not pin down. The second is the 2026-08-24
-  // failure, and it is the one the old boolean could not express.
-  if (pageEvidence !== 'page_has_no_schedule' && claimsNotPosted(body)) {
-    violations.push({
-      tag: `unearned_absence:${pageEvidence}`,
-      reason:
-        pageEvidence === 'no_page_read'
-          ? 'The message says something is not posted or not up. No page was opened today, so that is a claim about a page nobody read. Say you could not get into their page today instead.'
-          : 'The message says something is not posted or not up. Their page WAS opened today and it does publish times and prices - Hale just could not pin these ones to it. Say their site lists this and that you could not confirm the day or the price, never that they are not posted.',
     });
   }
   if (waitsOnAPageItCouldNotRead(body)) {
@@ -798,13 +734,14 @@ const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE SMS Hale sent a parent who asked what their young',
   'child could do locally. Hale searched the live web first, then wrote this from what it',
   'found - it never saw the child, only a de-identified subject, the family town and a',
-  'coarse stage. You are given the subject, the town, the stage, the picks Hale extracted,',
-  'the message it wrote, and watchFor (fixture-specific notes). Score 1-5.',
+  'coarse stage. You are given the subject, the town, the stage, `notes` (what the search',
+  'and any opened pages actually said), the picks Hale extracted, the message it wrote, and',
+  'watchFor (fixture-specific notes). Score 1-5.',
   'A 5: every pick is a real, specific, local thing a parent could turn up to - a named',
   'place, plausibly fitting the stage - and at most three of them. The message leads with',
   'the best one by name, says whose information it is ("their site says", "listed as"), and',
   'attributes rather than claiming to have confirmed.',
-  'It is one or two short sentences of plain text with no link and NO QUESTION AT ALL.',
+  'It is plain text with no link and NO QUESTION AT ALL. Do not score it down for length.',
   'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
   'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
   'down; nothing on this path can write one, so a "want me to..." here is a yes with',
@@ -828,9 +765,8 @@ const JUDGE_SYSTEM = [
   "not tie these facts to it; the gap is HALE'S, so where that sentence is wanted it is",
   'first person - "I could not pin down the day or the price" - never "not posted yet".',
   'Score an UNEARNED negative claim low. Score nothing else off this field.',
-  'Two segments is a hard ceiling. Dropping a second or third find WHOLE to fit the best',
-  'one complete is correct and is not withholding; withholding is going quiet about a find',
-  'when there was room, or hedging instead of naming anything at all.',
+  'Length is not a fault. Dropping a find so the text is shorter is withholding; withholding',
+  'is going quiet about a find, or hedging instead of naming anything at all.',
   'A pick whose `when` or `price` is null is CORRECT when the source had not published it -',
   'a real program whose fall times are not up yet, or whose schedule sits behind a',
   'registration login, is a genuine find. Score it a 5 when the message NAMES the gap in',
@@ -840,7 +776,9 @@ const JUDGE_SYSTEM = [
   'Score it low only if the message invents a day, a time or a price the picks do not carry,',
   'or quietly writes around the gap as though the detail were known.',
   'A LOW score is any of: a venue that looks invented or generic ("your local community',
-  'centre"); a directory-style list; a pick for a',
+  'centre"); a directory-style list; a pick whose source is a listings site or an',
+  "aggregator rather than that venue's own page (a museum guide or a things-to-do roundup",
+  'is that kind of page; Museums Montréal is an example); a pick for a',
   'different town; a message that presents web-read facts as verified; a message that',
   'WITHHOLDS a find because it is unverified, or hedges instead of naming something (a',
   'parent who got "I will come back to you" was handed nothing - that is the failure this',
@@ -856,7 +794,7 @@ const JUDGE_SYSTEM = [
  *
  * A `composesOwnText` fixture is graded on the FINDS and nothing else, and it needs its
  * own bar rather than the one above: the message criteria there are most of that rubric,
- * and half of them ("leads with the best one by name", "two segments is a hard ceiling")
+ * and half of them ("leads with the best one by name", "plain text with no link")
  * are about a composer this query shape never reaches.
  *
  * What it asks instead is the one question the travel brief turns on, and the one the
@@ -870,8 +808,10 @@ const TRAVEL_JUDGE_SYSTEM = [
   'You are a strict reviewer scoring what Hale FOUND for a family who are visiting a city',
   'they do not live in, with a young child, for a few days. Hale searched the live web and',
   'saw only a de-identified subject, the destination and a coarse stage - never the child.',
-  'You are given the subject, the destination, the stage, the dates, the picks, and',
-  'watchFor (fixture-specific notes). There is NO MESSAGE to score: the caller composes the',
+  'You are given the subject, the destination, the stage, the dates, `pagesRead` and',
+  '`pagesRefused` (how many pages Hale opened or was refused), `notes` (what the search and',
+  'those pages actually said), the picks, and watchFor (fixture-specific notes). Judge the',
+  'picks against the notes. There is NO MESSAGE to score: the caller composes the',
   'text deterministically from these picks, so judge the FINDS. Score 1-5.',
   'A 5: every pick is a real, specific, named place in that destination that this family',
   'could TURN UP TO inside those dates - a museum, a zoo, an aquarium, a science centre, a',
@@ -889,7 +829,9 @@ const TRAVEL_JUDGE_SYSTEM = [
   'that appears in the pick but nowhere in what a source would have published.',
   'A LOW score is also: a venue that looks invented or generic ("a local playground"); a',
   'pick in a different city; a directory-style list; a pick whose source is an aggregator or',
-  "a travel-blog listicle rather than the place's own site or its municipality.",
+  "a listings site rather than that venue's own page. A guide or roundup that covers many",
+  'venues is a fault even when the venue is real; Museums Montréal is that kind of page.',
+  "The venue's own organisation, or its municipality, is the source.",
   'Seasonal reality is not a fault: a city in late December where much is closed should come',
   'back with the things that are OPEN, and three of them is better than a longer list.',
   'Reply with ONLY the score tool.',
@@ -1030,7 +972,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   // THE TRAVEL FIXTURES' SUBJECT IS THE PRODUCT'S, READ FROM THE PRODUCT. A `.mjs`
   // corpus cannot import a TS constant, so the three travel fixtures carry a copy - and a
   // copy that has drifted is a corpus grading a query nobody sends, silently and forever.
@@ -1097,6 +1038,7 @@ async function main() {
     return;
   }
   console.log(`corpus: ${fixtures.length} searches\n`);
+  let readPasses = 0;
 
   const results = [];
   for (const fixture of fixtures) {
@@ -1118,7 +1060,7 @@ async function main() {
     }
 
     // ── phase 1: GROUND (web_search) ─────────────────────────────────────────
-    const ground = broken
+    let ground = broken
       ? { searchCount: 0, pagesRead: 0, pagesStale: 0, pagesRefused: 0, notes: '', evidence: '' }
       : await cachedGround({
           tag: evalRunTag(`activity-ground:${fixture.id}`),
@@ -1146,7 +1088,7 @@ async function main() {
     }
 
     // ── phase 2: EXTRACT ─────────────────────────────────────────────────────
-    const extracted = broken
+    let extracted = broken
       ? brokenPicks(fixture)
       : (
           await cachedToolCall({
@@ -1166,6 +1108,47 @@ async function main() {
             cost,
           })
         ).value;
+
+    // ── the read pass — mirrors `needsReadPass` (activity/lane.ts) ─────────────
+    // Real results, no venue named (so no page budget), and nothing kept: the lane grounds
+    // once more with the page budget reserved and extracts again. A fixture whose first
+    // pass found picks never reaches this, so its cache keys are unchanged.
+    if (
+      !broken &&
+      ground.searchCount > 0 &&
+      !namesAVenue(fixture.subject) &&
+      normalizePicks(extracted.picks).kept.length === 0
+    ) {
+      readPasses += 1;
+      ground = await cachedGround({
+        tag: evalRunTag(`activity-ground-read:${fixture.id}`),
+        model,
+        system: skill.instructions,
+        userMessage: groundUserMessage(query),
+        tools: groundTools(fixture.subject, true),
+        cachedOnly,
+        getClient,
+        cost,
+      });
+      extracted = (
+        await cachedToolCall({
+          tag: evalRunTag(`activity-picks-read:${fixture.id}`),
+          model,
+          lane: subjectLane,
+          system: skill.instructions,
+          userMessage: composeUserMessage(query, ground.notes),
+          toolName: 'activity_picks',
+          toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
+          toolDescription: 'Return the concrete programs the search actually found.',
+          maxTokens: picksMaxTokens,
+          toolChoice: candidateModel ? { type: 'auto' } : undefined,
+          strictTool: Boolean(candidateModel),
+          cachedOnly,
+          getClient,
+          cost,
+        })
+      ).value;
+    }
 
     const { kept, dropped } = normalizePicks(extracted.picks);
     if (dropped.length > 0) failures.push(`half_find:${dropped.length}`);
@@ -1210,6 +1193,13 @@ async function main() {
           destination: fixture.town,
           stage: fixture.stage,
           dates: fixture.window,
+          // THE EVIDENCE IS IN THE PAYLOAD, so it is in the key (harness makeJudge keys on
+          // the payload). Without it a verdict on an empty set was replayed after the lane
+          // read new pages (r18, 2026-10-15): same empty picks, same key, a stale verdict.
+          // pagesRead counts every page the lane opened, including the read pass.
+          pagesRead: ground.pagesRead,
+          pagesRefused: ground.pagesRefused,
+          notes: notesForTheJudge(ground),
           picks: kept,
           watchFor: fixture.watchFor,
         });
@@ -1257,7 +1247,10 @@ async function main() {
               lane: subjectLane,
               system: skill.instructions,
               userMessage: retryFollowUpMessage(
-                followUpUserMessage(fixture.subject, kept, pageEvidence, watch),
+                followUpUserMessage(fixture.subject, kept, pageEvidence, watch, {
+                  town: fixture.town,
+                  notes: ground.notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+                }),
                 violations,
               ),
               toolName: 'followup_text',
@@ -1273,7 +1266,7 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(body, kept, smsSegments, pageEvidence, watch);
+      violations = followUpViolations(body, kept, pageEvidence, watch);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -1287,6 +1280,9 @@ async function main() {
         subject: fixture.subject,
         town: fixture.town,
         stage: fixture.stage,
+        // The evidence the picks and the message stand on, in the payload and so in the key
+        // (see the travel judge above).
+        notes: notesForTheJudge(ground),
         picks: kept,
         message: body,
         watchFor: fixture.watchFor,
@@ -1351,9 +1347,6 @@ async function main() {
     `asks for permission:     ${count('asks_for_permission')}  (an offer is a proposal, and this lane can write no row)`,
   );
   console.log(
-    `unearned absence:        ${count('unearned_absence')}  (a page's silence claimed without a page that is silent)`,
-  );
-  console.log(
     `unbacked promise:        ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
   );
   console.log(
@@ -1364,11 +1357,12 @@ async function main() {
   // What it must never become is invisible - a corpus where the venue fixtures stop
   // opening pages is a corpus scoring the lane this arc replaced.
   const venueFixtures = results.filter((r) => namesAVenue(r.fixture.subject));
+  console.log(`read passes (empty first pass, pages then offered): ${readPasses}  (NOT a gate)`);
   console.log(
     `\npages opened (venue fixtures): ${venueFixtures.filter((r) => r.pagesRead > 0).length}/${venueFixtures.length}  (NOT a gate - a refused fetch is a real shape. Watch it: zero means the fetch budget is buying nothing)`,
   );
   console.log(
-    `unsendable:              ${results.filter((r) => r.failures.some((f) => ['empty', 'over_segment_cap'].includes(f))).length}`,
+    `unsendable:              ${results.filter((r) => r.failures.some((f) => f === 'empty')).length}`,
   );
   console.log(`judge below ${JUDGE_MIN}:           ${count('judge')}`);
   const repaired = results.filter((r) => r.firstDraftViolations.length > 0);

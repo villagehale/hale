@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful to what the pages printed. Tiny Gym's ages (1 and walking to 3, with a parent) come off the programs page. The term dates (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) are cited to the PDF that was actually opened. The registration date (Wednesday July 22, 2026, 8:00am online) is cited to the homepage. Price is correctly left null, since the site says pricing sits behind the registration login. Hale also states honestly that it could not tie the garbled grid times to weekdays. The message leads with Tiny Gym by name and attributes every fact ('their site says'). It carries the registration date. Under page_has_schedule it correctly uses the first-person 'I could not pin down the day or price' rather than 'not posted'. With watch=true it properly gives a first-person continuation. It is ASCII, has no link and asks no question. Small deductions: the message drops the Rock n' Roll (0+) find that the slots carried, which is mild withholding. It also implies prices may be posted later, when the site says they will only ever appear behind the registration login.",
+    "score": 4
+  }
+}

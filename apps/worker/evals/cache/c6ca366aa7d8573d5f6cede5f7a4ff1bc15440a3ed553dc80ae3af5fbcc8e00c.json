@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, named local programs fitting a toddler. Kids & Me at the Acton library is sourced from Halton Region, its operator. EarlyON comes from Links2Care, which runs those centres. The message leads with the best pick by name and attributes it ('Halton Region's page says'). The day, time and price all match the picks. The EarlyON gap is named in the first person ('I could not pin down their days'), which is the correct form under no_page_read, and no 'not posted yet' claim is made. There is no question, no link and no coming-back promise, which is right since watch is false. One deduction: the EarlyON facts ('free for birth to 6') are stated without saying whose information it is, so that pick reads closer to confirmed fact than attributed web-read.",
+    "score": 4
+  }
+}

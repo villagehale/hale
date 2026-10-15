@@ -1,28 +1,29 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CANNOT_TEXT_THAT_NUMBER, CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
+import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import {
-  FakeExtractor,
   type FakeDb,
+  FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
-  fakeAckComposer,
   fakeRadar,
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
+import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { CANNOT_TEXT_THAT_NUMBER, CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
-import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import { JOIN_ACCEPTED_ACK, joinWelcome } from '~/lib/channel/join/copy';
 import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { askWriter } from '~/lib/testing/consent-double';
 import {
   CO_PARENT_OWN_NUMBER_BY_LANGUAGE,
-  INVITE_EXPIRED_BY_LANGUAGE,
   CO_PARENT_SEAT_TAKEN_BY_LANGUAGE,
+  INVITE_EXPIRED_BY_LANGUAGE,
   PREVIOUSLY_DECLINED_BY_LANGUAGE,
   REFERRER_UNNAMED_BY_LANGUAGE,
 } from './copy';
@@ -92,10 +93,23 @@ function harness(
         { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
       ]),
       radar: fakeRadar,
-      ackComposer: fakeAckComposer,
       answerComposer: fakeSilentAnswerComposer,
+      friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
+      consent: {
+        read: async ({ text }) => {
+          const folded = text.trim().toLowerCase();
+          if (['yes', 'oui', 'yes please', 'sounds good', '👍', 'yeah'].includes(folded)) {
+            return { verdict: 'yes' as const, target: 'none' as const };
+          }
+          if (['no', 'non', 'nope', 'no thanks'].includes(folded)) {
+            return { verdict: 'no' as const, target: 'none' as const };
+          }
+          return { verdict: 'neither' as const, target: 'none' as const };
+        },
+      },
+      consentAsk: askWriter(),
       now,
     },
   };
@@ -238,9 +252,9 @@ describe('co-parent invite · the parent half', () => {
     // The words the ROUTE emitted, not the constant — see the module note.
     const asked = transport.sent.at(-1);
     expect(asked?.to).toBe(PARENT_PHONE);
-    expect(asked?.body).toContain('Adding Sam as your co-parent');
+    expect(asked?.body).toContain('Texting Sam as a co-parent');
     expect(asked?.body).toContain('everything I show you');
-    expect(asked?.body).toContain('approve things with me');
+    expect(asked?.body).toContain('approve things');
     expect(toPartner(transport)).toHaveLength(0);
     expect(inserts(fake, schema.consentRecords)).toHaveLength(0);
     expect(auditActions(fake)).toContain('co_parent_invite_started');
@@ -263,11 +277,11 @@ describe('co-parent invite · the parent half', () => {
     expect(grant[0]).toMatchObject({ granted: true, consentScope: 'family_role:co_parent' });
     const evidence = grant[0]?.evidence as Record<string, unknown>;
     expect(evidence.verbatimReply).toBe('yes');
-    expect(evidence.question).toContain('Adding Sam as your co-parent');
+    expect(evidence.question).toContain('Texting Sam as a co-parent');
 
     const invite = toPartner(transport);
     expect(invite).toHaveLength(1);
-    expect(invite[0]?.body).toContain('Ana added you as their co-parent');
+    expect(invite[0]?.body).toContain('Ana added you as a co-parent');
     expect(invite[0]?.body).toContain('Reply STOP anytime');
     expect(transport.sent.at(-1)?.to).toBe(PARENT_PHONE);
     expect(transport.sent.at(-1)?.body).toContain("I've texted Sam");
@@ -307,7 +321,7 @@ describe('co-parent invite · the parent half', () => {
 
     await text(fake, transport, deps, PARENT_PHONE, 'add Sam 647-555-0199 as my partner');
     const asked = transport.sent.at(-1)?.body as string;
-    expect(asked).toContain('Adding Sam');
+    expect(asked).toContain('Texting Sam');
 
     // The authorising reply is the French evidence, and the invite rides its language:
     // the invitee has written nothing yet, so there is nothing else to read.
@@ -406,7 +420,7 @@ describe('co-parent invite · the refusals', () => {
       'add Alex 647-555-0188 as my partner',
     );
     expect(fresh).toEqual({ status: 'co_parent_invite_started' });
-    expect(transport.sent.at(-1)?.body).toContain('Adding Alex as your co-parent');
+    expect(transport.sent.at(-1)?.body).toContain('Texting Alex as a co-parent');
   });
 
   /**
@@ -572,11 +586,7 @@ describe('co-parent invite · the invitee half', () => {
     // first link in the chain. The INVITEE's are not: they have consented to nothing, and
     // what they decided lives in the invite's state and in their own consent row.
     const inbound = ledgered.filter((r) => r.direction === 'in');
-    expect(inbound.map((r) => r.body)).toEqual([
-      'add Sam 647-555-0199 as my partner',
-      'yes',
-      null,
-    ]);
+    expect(inbound.map((r) => r.body)).toEqual(['add Sam 647-555-0199 as my partner', 'yes', null]);
   });
 
   it('tells the inviting parent NOTHING when the invitee says no', async () => {
@@ -693,7 +703,7 @@ describe('co-parent invite · whose conversation is whose', () => {
     // knows how many there should be can see one arrive.
     expect(threaded).toHaveLength(3);
     expect(threaded.every((t) => t.parentUserId !== undefined)).toBe(true);
-    expect(threaded[0]?.body).toContain('Adding Sam as your co-parent');
+    expect(threaded[0]?.body).toContain('Texting Sam as a co-parent');
     expect(threaded[1]?.body).toContain("I've texted Sam");
     expect(threaded[2]?.body).toBe(JOIN_ACCEPTED_ACK);
     // And nothing Hale said to the person being invited — the cold text itself, or the
@@ -901,7 +911,7 @@ describe('co-parent invite · a yes that arrives after the 72h bound', () => {
       'hi, I heard about you from a friend',
     );
 
-    expect(outcome).toEqual({ status: 'greeted' });
+    expect(outcome).toMatchObject({ status: 'first_touch' });
     expect(transport.sent.slice(beforeReply).map((s) => s.body)).not.toContain(
       INVITE_EXPIRED_BY_LANGUAGE.en,
     );

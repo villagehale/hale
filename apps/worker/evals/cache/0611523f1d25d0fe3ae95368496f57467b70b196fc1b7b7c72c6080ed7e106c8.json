@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific checks out against the research notes: the Carnival Hybrid pick, the newest-review claim, 32 mpg, the 10-year/100k-mile warranty, Sienna as the money pick for high-mileage drivers, and Odyssey as the most car-like drive. It makes a real pick with reasons and adds brief alternatives. The tone is casual and friend-like, though \"the newest review I found\" sounds a little like a research report. That is minor.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

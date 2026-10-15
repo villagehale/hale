@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "live is missing_detail, so asking for the country is the correct answer, and the reply states no current fact. It's slightly wordy and a bit formal ('I need that before I can say'), but still reads like a friend asking a quick clarifying question rather than an assistant offering a service.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific matches the Environment Canada forecast in the notes: 25°C high, mix of sun and cloud, 40% chance of late-afternoon showers with a thunderstorm risk, and a 15°C low. It correctly reads 'Toronto' as the answer to the city question and gives tomorrow's forecast directly. The tone is brief and casual, though slightly formal with the source attribution. Nothing is invented, and there is no safety concern.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

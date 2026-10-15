@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply is in French and takes a real side (yes, it's fine) with a reason. Ham plus pineapple being the Hawaiian pizza is common knowledge, so no fact is wrong or invented. It reads like a friend texting back. Dinged slightly because the closing 'question de goût, pas une règle' hedges a bit and the tone is a touch formal-explanatory, but it is still a clear pick.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

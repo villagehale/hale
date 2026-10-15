@@ -344,6 +344,20 @@ describe('propose_calendar_cancel', () => {
 });
 
 describe('propose_calendar_add', () => {
+  it('drafts nothing for an occasion that has already started', async () => {
+    const h = harness();
+
+    await expect(
+      h.call('propose_calendar_add', {
+        title: 'Gymnastics',
+        date: '2026-07-29',
+        time: '16:15',
+        weekday: 'wed',
+      }),
+    ).rejects.toThrow(/already started/i);
+    expect(h.port.drafts).toEqual([]);
+  });
+
   it('drafts an add from a family-local date and time', async () => {
     const h = harness();
 

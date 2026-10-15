@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Monday daytime in Toronto: mainly cloudy with no rain, high of 23°C (Environment Canada 11:00 AM EDT forecast)",
+        "from": "Daytime: Environment Canada's 11:00 AM EDT forecast calls for mainly cloudy skies and a high of 23°C... That forecast has no rain for the daytime."
+      },
+      {
+        "states": "No rain reported at noon at Pearson Airport",
+        "from": "Observed at 12:00 PM EDT (Pearson Airport): Cloudy, 18°C... The notes record no rain being reported."
+      },
+      {
+        "states": "Rain likely to start tonight, after dark or overnight, with a few showers and a risk of a thunderstorm before morning",
+        "from": "Rain is likely to start after dark or overnight... a few showers beginning before morning and a risk of a thunderstorm before morning."
+      },
+      {
+        "states": "Sources differ on exactly when the rain starts",
+        "from": "The sources differ on exactly when the rain starts."
+      }
+    ],
+    "answer": "Daytime looks dry. Environment Canada's 11 AM forecast has Toronto mainly cloudy with no rain through the day, high 23°C. Rain looks likely to start tonight, after dark or overnight, with a chance of a thunderstorm. The sources don't agree on exactly when it starts, so the timing isn't firm."
+  },
+  "latencyMs": 6309
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact matches the notes: Carney is PM, he took office March 14, 2025, and Trudeau's government had collapsed (Britannica). Grounding sources the current PM to the notes rather than marking it settled. It reads like a brief, casual friend's text that just gives the answer. No safety angle.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

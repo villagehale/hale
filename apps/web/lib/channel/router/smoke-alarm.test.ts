@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { EMERGENCY_TOKENS, namesAnEmergency } from '~/lib/channel/off-domain/copy';
 import { ChannelTurnFailed } from './coach-runtime';
 import {
@@ -219,7 +219,6 @@ function alarm(
     err?: unknown;
     body?: string;
     claim?: SmokeAlarmClaim;
-    say?: (body: string) => Promise<void>;
   } = {},
 ): { run: () => Promise<SmokeAlarmOutcome>; sent: string[]; claim: SmokeAlarmClaim } {
   const sent: string[] = [];
@@ -235,27 +234,35 @@ function alarm(
         familyId: FAMILY,
         parentUserId: PARENT,
         channelMessageId: MESSAGE,
-        say:
-          options.say ??
-          (async (body: string) => {
-            sent.push(body);
-          }),
       }),
   };
 }
 
 describe('the smoke alarm', () => {
-  it('names an emergency during an outage and sends nothing', async () => {
+  it('sends nothing and logs urgently when the model is gone and the text is an emergency', async () => {
     const a = alarm();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(await a.run()).toBe('unwritten');
+    expect(await a.run()).toBe('fired');
     expect(a.sent).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'emergency', where: 'model_outage' }),
+      expect.stringContaining('URGENT'),
+    );
+    log.mockRestore();
   });
 
-  it('names a crisis during an outage and sends nothing', async () => {
+  it('logs a suicide crisis during an outage urgently, as mental, and sends nothing', async () => {
     const a = alarm({ body: 'I want to die' });
-    expect(await a.run()).toBe('unwritten');
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(await a.run()).toBe('fired');
     expect(a.sent).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'mental' }),
+      expect.stringContaining('URGENT'),
+    );
+    log.mockRestore();
   });
 
   /** Both conditions, independently insufficient. Either one alone is an ordinary
@@ -274,35 +281,18 @@ describe('the smoke alarm', () => {
     expect(a.sent).toEqual([]);
   });
 
-  it('does not record the alarm, so a later attempt can still write the reply', async () => {
+  it('records the alarm so the same message cannot set it off twice', async () => {
     const claim = fakeClaim();
     const first = alarm({ claim });
-    expect(await first.run()).toBe('unwritten');
-    expect(claim.recorded).toEqual([]);
+    expect(await first.run()).toBe('fired');
+    expect(claim.recorded).toEqual([
+      { familyId: FAMILY, parentUserId: PARENT, channelMessageId: MESSAGE },
+    ]);
 
     const retry = alarm({ claim });
-    expect(await retry.run()).toBe('unwritten');
+    expect(await retry.run()).toBe('already_fired');
     expect(retry.sent).toEqual([]);
-    expect(claim.recorded).toEqual([]);
-  });
-
-  /**
-   * Ordering, and it is the whole of the dedupe's correctness: the claim is written
-   * AFTER the send. A claim written first would mean a send that failed is never
-   * retried — the parent gets silence and the ledger says the alarm rang.
-   */
-  it('does not call say, so a send failure cannot be what keeps the reply unwritten', async () => {
-    const claim = fakeClaim();
-    const failing = alarm({
-      claim,
-      say: async () => {
-        throw new Error('provider is down too');
-      },
-    });
-
-    expect(await failing.run()).toBe('unwritten');
-    expect(failing.sent).toEqual([]);
-    expect(claim.recorded).toEqual([]);
+    expect(claim.recorded).toHaveLength(1);
   });
 
   /** The claim read is a query. It must not be spent on the overwhelmingly common

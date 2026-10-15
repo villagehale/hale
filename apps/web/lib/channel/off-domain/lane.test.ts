@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   type GeneralAnswerFallback,
@@ -29,6 +29,12 @@ import {
 } from './lane';
 import type { MedicalReply } from './medical';
 import { type LaneReading, type LaneScreenFallback, createInboundLaneScreen } from './screen';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * VIL-273 / boundary v3 — the lane's decisions, with no model and no database.
@@ -814,6 +820,9 @@ describe("today's date", () => {
                 needs_search: 'no',
               });
             }
+            if (system.includes('Read the draft against the notes')) {
+              return structured({ verdict: 'send', reason: '' });
+            }
             composePayloads.push(request.messages[0]?.content ?? '');
             return structured({ answer: 'Lima.' });
           },
@@ -1150,6 +1159,10 @@ describe('the screen reads a reply to an open question first', () => {
                 current_fact: 'the forecast',
                 needs_search: 'yes',
               });
+            }
+            if (system.includes('# Read the draft against the notes before it goes')) {
+              calls.push('check');
+              return structured({ verdict: 'send', reason: '' });
             }
             calls.push('compose');
             return structured(script.composed ?? { answer: 'Sunny in Toronto, high of 14.' });
@@ -1533,7 +1546,7 @@ describe('the screen reads a reply to an open question first', () => {
 
     const verdict = await run('Toronto');
 
-    expect(turn.calls).toEqual(['screen', 'sanitize', 'search', 'compose']);
+    expect(turn.calls).toEqual(['screen', 'sanitize', 'search', 'compose', 'check']);
     expect(turn.searched.map((content) => JSON.parse(content).question)).toEqual([
       'hows the weather tomorrow in Toronto',
     ]);

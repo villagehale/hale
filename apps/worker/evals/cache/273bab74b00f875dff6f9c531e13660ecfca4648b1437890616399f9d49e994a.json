@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and `turnedOffThisTurn` shows the switch was flipped for both sending and replying. The reply confirms this in one plain sentence, in the parent's language, with no greeting and no machinery talk. It says 'send' (发邮件) and does not mention replies, but that matches what the parent asked for. Accurate, short, complete.",
+    "score": 5
+  }
+}

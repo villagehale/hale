@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, Saturday times, and Sept 12 to Nov 28. Price is correctly null because the page defers fees to the Recreation Guide. No PDF is linked and nothing is invented. Each slot carries the Aug 11 7 a.m. registration date and cites the page it came from. The message leads with the named programs and attributes the facts with 'their site says'. It carries the registration date, which has not opened yet. The missing price is stated in the first person rather than as 'not posted'. With watch true, it correctly makes the first-person 'I'll keep watching' commitment. Plain ASCII, no link, no question.",
+    "score": 5
+  }
+}

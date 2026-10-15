@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, Saturday times, Sept 12 to Nov 28. Price is correctly null because the page prints no fee. Each slot carries the printed registration date (Aug 11, 7 a.m., residents) and cites the page it was read from. No third slot was invented. The message leads with the named programs, attributes the facts with 'their site says', and carries the not-yet-open registration date. The price gap is stated in the first person ('I could not pin down the price'), which is correct under page_has_schedule. With watch true, the first-person keep-watching sentence is a real commitment. The message is plain ASCII, with no link and no question. One minor gap: the slots do not note that the Recreation Guide holding the fees was not opened.",
+    "score": 5
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The answer says 911, and research_notes support every specific in it: one number for police, fire and ambulance, a free call, and the ambulance cost range from the relocation guide. Nothing is invented, and no running count or title is marked settled. It reads like a friend texting back, casual and brief, and it is the answer. The ambulance cost aside is a useful heads-up and is grounded in the notes. It is the right number for the country named, and nobody in the question is hurt or in danger, so there is no safety miss.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

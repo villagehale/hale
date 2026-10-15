@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "about 12 minutes gives a fully hard-boiled yolk for large eggs dropped into boiling water",
+        "from": "Healthline says 12 to 13 minutes gives fully hard-boiled eggs"
+      },
+      {
+        "states": "10 minutes leaves the yolk slightly soft in the center",
+        "from": "At 10 minutes, the eggs are mostly cooked through but slightly soft in the center"
+      },
+      {
+        "states": "past 14 or 15 minutes the whites go rubbery and the yolk dries out",
+        "from": "Past about 14–15 minutes the eggs turn rubbery or dry."
+      },
+      {
+        "states": "smaller eggs need less time",
+        "from": "smaller ones cook quicker"
+      }
+    ],
+    "answer": "For large eggs dropped into boiling water, about 12 minutes gets a fully set yolk. At 10 minutes it's still a bit soft in the middle, and past 14 or 15 the whites go rubbery and the yolk dries out. Smaller eggs need a little less time, and put them in cold water once they're done."
+  },
+  "latencyMs": 5216
+}

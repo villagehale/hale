@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The text violates the core instruction not to require \"a line that the sender never books, registers, or pays.\" The second paragraph (\"说明一下我能做的和不会做的：我会以你的名义发邮件，但不会帮你预订、报名或付款\") explicitly states what the sender will not do. This is explicitly forbidden: \"Do not require a line that the sender never books, registers, or pays, and do not mark the text down for leaving that out.\" By including this unnecessary disclaimer, the text reads like a template or system notification rather than a friend texting casually. While the first paragraph correctly conveys the armed occasion in first person (\"以后遇到需要帮你给学校发邮件这类事，我就直接帮你发了\") and the stop fact (\"发一条消息告诉我就行\"), the addition of the unrequired standing.never list marks this as over-explaining and template-like, appropriate for a score of 2."
+  }
+}

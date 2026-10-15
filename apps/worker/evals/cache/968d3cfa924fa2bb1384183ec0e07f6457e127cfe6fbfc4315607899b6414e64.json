@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday daytime high about 65 degrees in Denver (National Weather Service), about 15 degrees cooler than Monday's 80",
+        "from": "The high is expected to reach 65 degrees, about 15 degrees cooler than Monday's high of 80."
+      },
+      {
+        "states": "Tuesday daytime skies partly sunny in Denver",
+        "from": "expect partly sunny skies Tuesday"
+      },
+      {
+        "states": "Rain and showers possibly moving in Tuesday evening",
+        "from": "with rain and showers possibly moving in Tuesday evening"
+      },
+      {
+        "states": "30% chance of rain after 3 p.m. Tuesday",
+        "from": "The weather service gives a 30% chance of rain after 3 p.m."
+      },
+      {
+        "states": "Wind north-northeast 6 to 10 mph, becoming east to northeast in the afternoon, gusts up to 17 mph",
+        "from": "North-northeast winds of 6 to 10 mph are expected, becoming east to northeast in the afternoon with gusts up to 17 mph."
+      },
+      {
+        "states": "Tuesday night lows in the low 40s and 30s, with increasing clouds and rain",
+        "from": "Lows are expected in the low 40s and 30s on Tuesday night, with increasing clouds and rain."
+      }
+    ],
+    "answer": "Tomorrow in Denver: partly sunny, high around 65, a good bit cooler than today's 80. Wind north-northeast at 6 to 10 mph, gusts up to 17 mph. Rain and showers could move in Tuesday evening, with about a 30% chance after 3 p.m., and the chance climbs overnight. Lows Tuesday night in the low 40s and 30s."
+  },
+  "latencyMs": 32257
+}

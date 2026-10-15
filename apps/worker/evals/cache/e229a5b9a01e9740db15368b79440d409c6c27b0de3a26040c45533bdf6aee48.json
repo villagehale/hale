@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is supported by the research notes: 4.34% as the lowest insured rate, a Big 6 bank at 4.54%, Scotiabank at 4.74%, and fixed rates climbing since early September. It is right to say the uninsured figure is unclear, since the notes conflict. It doesn't say these are Canadian rates or give an 'as of' date, though 'right now' covers the timing loosely. It reads like a fairly natural text back, if a little dense.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

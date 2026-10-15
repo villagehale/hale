@@ -1,0 +1,27 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM), 212 West 83rd Street",
+        "age_fit": "children ages 0-6",
+        "when": "Tuesday-Sunday, 10am-5pm; daily Circle Time 10:30am and Messy with Art in the afternoon",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo (includes Tisch Children's Zoo)",
+        "age_fit": "Child (3-12); Child (2 & under) free",
+        "when": "Mon-Fri 10:00am-5:00pm, weekends 10:00am-5:30pm; penguin feeding 10:40am and 2:30pm, sea lion feeding 11:30am and 3:30pm",
+        "price": "Child (3-12) $16.95; adult $22.95",
+        "source_name": "Central Park Zoo (Wildlife Conservation Society)"
+      },
+      {
+        "name": "New York Aquarium, Coney Island",
+        "age_fit": "Child (3-12); Child (2 & Under) free",
+        "when": "Daily 10:00am-5:00pm, September 8 to October 31, 2026; last entry 4:00pm",
+        "price": "Child (3-12) $25.95 off-peak, $27.95 peak",
+        "source_name": "New York Aquarium (Wildlife Conservation Society)"
+      }
+    ]
+  },
+  "latencyMs": 14744
+}

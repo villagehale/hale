@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "With live set to missing_detail, the right move is to ask for the city in a few casual words, and that is exactly what the answer does. It states no forecast and invents nothing. It reads like a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

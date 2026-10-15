@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correctly says it has no current source and gives no answer from memory, in English. Points to local clinic or Ontario health information line, which is reasonable. Slight issue: \"Ontario's health information line\" is vague and not a given fact (Health811 is the health line in the rubric), and it doesn't name a specific place to check. Otherwise plain and warm."
+  }
+}

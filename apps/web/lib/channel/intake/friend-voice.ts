@@ -8,7 +8,7 @@ import {
   ahaWhenLabel,
 } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import {
@@ -21,7 +21,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import { HALE_IDENTITY, NAMES_HALE_COMPANY, isIdentityChallenge } from './identity-challenge';
+import { HALE_IDENTITY, NAMES_HALE_COMPANY } from './identity-challenge';
 import {
   ONBOARDING_ORDER,
   type OnboardingCapture,
@@ -169,6 +169,8 @@ export interface FriendVoiceInput {
   /** 1:1 is tu. A group thread is vous. */
   address: 'tu' | 'vous';
   introduce: boolean;
+  /** The turn reader read this inbound as "who is this / is this real" (#868). */
+  identityAsked?: boolean;
   parentWords: string;
   recentTurns: readonly FriendTurn[];
   placeLabel: string | null;
@@ -506,9 +508,6 @@ function priceTalk(text: string, input: FriendVoiceInput): string[] {
   return given.some((line) => PRICE_WORD.test(line)) ? [] : ['price'];
 }
 
-/** ASCII stand-ins for accented words. A following letter (é in adapté) is not a gap. */
-const FRENCH_ASCII_GAP = /\b(?:pres|age|adapt|prenoms?|ecole|ca|numero|reponds)(?![\p{L}])/iu;
-
 /** A connector spoken of as already on, before the parent has tapped its link. */
 const CONNECTED_CLAIM =
   /^\s*(?:all )?done\b|\b(?:you['’]re|you are|we['’]re|we are) (?:all )?set\b|\ball set\b|\b(?:is|['’]s) (?:now )?(?:set|done|live)\b|\b(?:got|have|has|is|are|now|already|i['’]ve)\b[^.?!]{0,25}\b(?:connected|linked|hooked up|synced|set up|access to)\b|\bi['’]m (?:now )?(?:connected|watching)\b/i;
@@ -641,8 +640,10 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     : null;
   return {
     step: input.step,
-    language: input.language,
-    address: input.address,
+    // A hint only when certain; the parent's words decide the reply's language (#868).
+    languageHint: certainLanguageHint(input.language),
+    // tu/vous is French-only; sent bare it pulled English and Chinese hellos into French.
+    ...(certainLanguageHint(input.language) === 'fr' ? { address: input.address } : {}),
     introduce: input.introduce,
     parentWords: input.parentWords,
     // A message Hale sends on its own (after a connect, a card) answers nothing.
@@ -695,7 +696,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       coparentGroup: input.coparentGroup ?? null,
       // Who runs Hale is for when they ask; otherwise the founder's name is
       // one more name the model could take for the parent's.
-      identity: input.introduce || isIdentityChallenge(input.parentWords) ? HALE_IDENTITY : null,
+      identity: input.introduce || input.identityAsked ? HALE_IDENTITY : null,
       access:
         input.step === 'email' || input.step === 'calendar'
           ? { true: ACCESS_FACTS[input.step], untrue: ACCESS_UNTRUE }
@@ -1067,9 +1068,12 @@ export function assembleFriendBody(
   return body;
 }
 
+/** Question marks in every script the parent may write in: ? (Latin), ？ (CJK full-width), ؟ (Arabic). */
+const QUESTION_MARKS = new Set(['?', '\uFF1F', '\u061F']);
+
 function questionMarks(text: string): number {
   const prose = text.replace(/https?:\/\/\S+/g, '');
-  return [...prose].filter((char) => char === '?').length;
+  return [...prose].filter((char) => QUESTION_MARKS.has(char)).length;
 }
 
 function questionsBeyondFacts(body: string, facts: readonly string[]): number {
@@ -1285,7 +1289,6 @@ export type FriendJudgeFailure =
   | 'banned'
   | 'compliance'
   | 'invented'
-  | 'french'
   | 'link'
   | 'registration_claim'
   | 'identity'
@@ -1321,7 +1324,7 @@ export function judgeFriendReply(
     return { ok: false, reason: 'question' };
   }
   // The question may sit anywhere in the prose, but never above a list it asks about.
-  if (asked === 1 && /\?[\s\S]*\n\s*\d+\.\s/u.test(trimmed))
+  if (asked === 1 && /[?\uFF1F\u061F][\s\S]*\n\s*\d+\.\s/u.test(trimmed))
     return { ok: false, reason: 'question' };
   if (NAME_ASK.test(trimmed) && !NAME_STEPS.has(input.step)) {
     return { ok: false, reason: 'question' };
@@ -1333,7 +1336,7 @@ export function judgeFriendReply(
   if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
   if (REGISTRATION_CLAIM.test(trimmed)) return { ok: false, reason: 'registration_claim' };
   // Who is behind this number is a disclosure: when they asked, the company is named.
-  if (isIdentityChallenge(input.parentWords) && !NAMES_HALE_COMPANY.test(trimmed)) {
+  if (input.identityAsked && !NAMES_HALE_COMPANY.test(trimmed)) {
     return { ok: false, reason: 'identity' };
   }
   // Asked about price: Hale does not quote one, it points to the site.
@@ -1364,16 +1367,6 @@ export function judgeFriendReply(
   if (/https?:\/\//i.test(trimmed)) {
     const allowed = options.link && trimmed.includes(options.link);
     if (!allowed) return { ok: false, reason: 'invented' };
-  }
-
-  if (input.language === 'fr') {
-    if (FRENCH_ASCII_GAP.test(trimmed)) return { ok: false, reason: 'french' };
-    if (input.address === 'tu' && /\b(vous|votre|vos)\b/i.test(trimmed)) {
-      return { ok: false, reason: 'french' };
-    }
-    if (input.address === 'vous' && /\b(tu|toi|ton|ta|tes)\b/i.test(trimmed)) {
-      return { ok: false, reason: 'french' };
-    }
   }
 
   // "The link" is true only when a link rides this bubble, or when the card is

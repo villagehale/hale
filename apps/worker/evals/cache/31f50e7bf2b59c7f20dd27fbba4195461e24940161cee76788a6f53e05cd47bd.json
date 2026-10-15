@@ -1,0 +1,41 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Hard to be looking for one. If things get urgent, go to the nearest emergency department.",
+        "from": "When their text says they need help, a friend meets that first in a few words."
+      },
+      {
+        "states": "Ontario Structured Psychotherapy gives adults free CBT for depression and anxiety, with no health card needed and self-referral accepted",
+        "from": "The Ontario Structured Psychotherapy Program (OSP) gives adults free, publicly funded cognitive-behavioural therapy for depression and anxiety-related concerns. No Ontario health card or primary care provider is needed, and self-referrals are accepted."
+      },
+      {
+        "states": "Referral is through ontariohealth.ca/osp",
+        "from": "To use it, find the local network at ontariohealth.ca/osp and fill out the referral form."
+      },
+      {
+        "states": "OSP is not suitable for everyone and does not cover unstructured talk therapy",
+        "from": "It is not suitable for everyone, such as people with complex needs or conditions it doesn't treat. One OSP site lists what it does not cover: DBT, crisis or housing support, substance use counselling, relationship or family counselling, and unstructured talk therapy."
+      },
+      {
+        "states": "CAMH, the Gerstein Centre and neighbourhood community health centres offer low-cost or free counselling in Toronto",
+        "from": "A 2026 Theralist guide says CAMH, the Gerstein Centre, and neighbourhood community health centres all offer low-cost or free counselling."
+      },
+      {
+        "states": "University training clinics provide supervised student therapy at reduced rates",
+        "from": "It adds that Toronto Metropolitan University and U of T run training clinics where supervised students provide therapy at reduced rates."
+      },
+      {
+        "states": "Some student-intern clinics charge about $50 per session",
+        "from": "Student-intern clinics advertise about $50 per session"
+      },
+      {
+        "states": "Fika Low-Fee Therapy Program is $65 per session and online only",
+        "from": "Fika Low-Fee Therapy Program, on Psychology Today: $65 per session, with a free 15-minute consult. That listing shows both Toronto and Stoney Creek addresses and says it is online only."
+      }
+    ],
+    "answer": "Hard that you're looking for one. If things get urgent, go to the nearest emergency department. The free option is the Ontario Structured Psychotherapy program: free CBT for depression and anxiety, no health card needed, and you can refer yourself at ontariohealth.ca/osp. It isn't a fit for everyone, and it doesn't cover unstructured talk therapy. For low-cost options in Toronto, CAMH, the Gerstein Centre and community health centres offer low-cost or free counselling, and the university training clinics run supervised student therapy at reduced rates, some around $50 a session. Fika's low-fee program is $65 a session and online only."
+  },
+  "latencyMs": 8752
+}

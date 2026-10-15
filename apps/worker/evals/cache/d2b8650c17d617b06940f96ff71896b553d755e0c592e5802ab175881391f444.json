@@ -1,0 +1,53 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Toronto, Ontario",
+        "from": "Research notes for Toronto, Ontario, Canada"
+      },
+      {
+        "states": "Tuesday, Oct 13, 2026",
+        "from": "\"tomorrow\" is Tuesday, Oct 13, 2026"
+      },
+      {
+        "states": "mix of sun and cloud in the afternoon",
+        "from": "Becoming a mix of sun and cloud in the afternoon"
+      },
+      {
+        "states": "high of 25",
+        "from": "High of 25, with a humidex of 32"
+      },
+      {
+        "states": "humidex of 32",
+        "from": "High of 25, with a humidex of 32"
+      },
+      {
+        "states": "40 percent chance of showers late in the afternoon and in the evening",
+        "from": "with a 40 percent chance of showers late in the afternoon ... 40 percent chance of showers in the evening"
+      },
+      {
+        "states": "risk of thunderstorms late in the afternoon into the evening",
+        "from": "There is a risk of a thunderstorm late in the afternoon ... with a risk of a thunderstorm"
+      },
+      {
+        "states": "southwest wind at 20 km/h, gusting to 40 km/h",
+        "from": "Wind from the southwest at 20 km/h, gusting to 40"
+      },
+      {
+        "states": "low of 15 overnight",
+        "from": "Low of 15"
+      },
+      {
+        "states": "no weather alerts in effect",
+        "from": "Environment Canada's hourly page showed no alerts in effect"
+      },
+      {
+        "states": "Wednesday, Oct 14 high of 16, much cooler than Tuesday",
+        "from": "Following day (Wed, Oct 14): A mix of sun and cloud, with a high of 16. That is much cooler than Tuesday."
+      }
+    ],
+    "answer": "Tuesday in Toronto is warm with some stormy weather. Expect a mix of sun and cloud, a high of 25 (humidex 32), and a 40% chance of showers with a risk of thunderstorms from late afternoon into the evening. Wind is southwest at 20 km/h, gusting to 40. It drops to a low of 15 overnight. No weather alerts are in effect. Wednesday turns much cooler, with a high of 16."
+  },
+  "latencyMs": 6470
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot matches the page: the name, age band, days, times and dates are exactly as printed and cited to the right URL. Price is correctly null, and no rental figure ($185 or $95) was borrowed. No registration date is printed, so a null registration is fine, and no schedule PDF is linked. The message leads with the program by name, attributes the facts (\"their site says\"), is plain ASCII, has no link and asks no question. Watch is true, so the first-person \"I'll keep watching and text you\" is a real commitment. With pageEvidence page_has_schedule, the first-person \"I could not pin down the price\" is the correct framing rather than a \"not posted\" claim. One small gap: the page says fees are available at the front desk or by calling reception, and the message could have passed that on, but this is minor. No fabrication.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Correct language, says links are optional, names what each does, and gives 15-minute validity. But the Google unverified-app caution is missing, which the connector_links purpose does not require but the connector_link purpose would. The text does state both links whole. The facts list had placeholder values for the links, yet the text uses concrete URLs not in the facts, which may be invented. The text also reads somewhat formal and list-like rather than friendly."
+  }
+}

@@ -13,6 +13,7 @@ import {
   TURN_DEADLINE_MS,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
+import { POLICY_VERSION } from '~/lib/consent';
 import {
   DRAINABLE_QUEUES,
   type DrainBoss,
@@ -55,7 +56,7 @@ function validChannelSend() {
     templateKey: 'weekly-plan-v1',
     familyId: FAMILY,
     parentUserId: PARENT,
-    category: 'weekly_plan' as const,
+    category: 'reminder' as const,
     urgency: 'normal' as const,
     payload: {},
     dedupeKey: 'fam:2026-W23:weekly',
@@ -183,6 +184,7 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
       channelSendDead: vi.fn(async () => undefined),
       channelMessage: vi.fn(async () => undefined),
       deepResearch: vi.fn(async () => undefined),
+      autonomyNotices: vi.fn(async () => undefined),
       ...overrides,
     },
     log: { info: vi.fn(), error: vi.fn() },
@@ -347,7 +349,7 @@ describe('drainHotQueues', () => {
 
     expect(deps.handlers.channelSend).toHaveBeenCalledTimes(1);
     expect(deps.handlers.channelSend).toHaveBeenCalledWith(
-      expect.objectContaining({ category: 'weekly_plan', parentUserId: PARENT }),
+      expect.objectContaining({ category: 'reminder', parentUserId: PARENT }),
     );
     expect(completed(CHANNEL)).toEqual(['c1']);
     expect(summary.processed).toBe(1);
@@ -363,6 +365,19 @@ describe('drainHotQueues', () => {
 
     expect(deps.handlers.channelSend).not.toHaveBeenCalled();
     expect(completed(CHANNEL)).toEqual(['bad']);
+    expect(summary.dropped).toBe(1);
+  });
+
+  it('DROPS a weekly_plan job queued before the weekly plan was retired', async () => {
+    const { boss, completed } = makeFakeBoss({
+      [CHANNEL]: [{ id: 'stale', data: { ...validChannelSend(), category: 'weekly_plan' } }],
+    });
+    const deps = makeDeps(boss);
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.handlers.channelSend).not.toHaveBeenCalled();
+    expect(completed(CHANNEL)).toEqual(['stale']);
     expect(summary.dropped).toBe(1);
   });
 
@@ -394,6 +409,8 @@ describe('drainHotQueues', () => {
     expect(deps.handlers.runOrchestrator).toHaveBeenCalledWith(
       expect.objectContaining({ family_id: FAMILY, source: 'village' }),
     );
+    expect(deps.handlers.autonomyNotices).toHaveBeenCalledTimes(1);
+    expect(deps.handlers.autonomyNotices).toHaveBeenCalledWith(FAMILY);
     expect(completed(EVENTS)).toEqual(['e1']);
     expect(failed(EVENTS)).toEqual([]);
     expect(summary).toEqual({ processed: 1, failed: 0, dropped: 0 });
@@ -411,6 +428,7 @@ describe('drainHotQueues', () => {
       actionId: ACTION,
       familyId: FAMILY,
       approvedBy: 'user-1',
+      policyVersion: POLICY_VERSION,
     });
     expect(completed(ACTIONS)).toEqual(['a1']);
     expect(summary.processed).toBe(1);
@@ -430,6 +448,7 @@ describe('drainHotQueues', () => {
 
     expect(failed(EVENTS)).toEqual(['e1']);
     expect(completed(EVENTS)).toEqual([]);
+    expect(deps.handlers.autonomyNotices).not.toHaveBeenCalled();
     expect(summary).toEqual({ processed: 0, failed: 1, dropped: 0 });
   });
 

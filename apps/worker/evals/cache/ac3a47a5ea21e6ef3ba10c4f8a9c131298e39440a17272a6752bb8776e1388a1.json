@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Just sent that pickup email to school@example.com for you! One text from you and I'll stop doing this on my own."
+  },
+  "stopReason": "tool_use"
+}

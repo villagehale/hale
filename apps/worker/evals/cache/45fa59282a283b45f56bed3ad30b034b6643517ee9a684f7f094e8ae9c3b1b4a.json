@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is backed by the notes: the 4.34% insured rate at Ratehub and Wowa, the uninsured sources disagreeing, a Big 6 bank at 4.54% and Scotiabank at 4.74% per Ratehub, and fixed rates rising since early September. It stays on the 5-year fixed in Canada. 'Ratehub has one at 4.54%' is a bit clumsy, and 'the sources I found… can't give you that figure' reads slightly like a research report rather than a friend's text. It also gives no 'as of' date, though 'right now' covers that well enough.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

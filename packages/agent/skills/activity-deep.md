@@ -72,6 +72,13 @@ have read. If the fetch is refused, or the budget runs out before you reach it,
 say in the notes which document it was and that you could not read it, and leave
 `when` and `price` out. Do not fill either from a page that does not print them.
 
+**The text of a schedule you fetched is a page you read.** Days and times in that
+text are posted, and they go on `when`. A login the same site names for
+availability or for price covers only availability or price. It does not cover
+the day or the time, and it is not a reason to leave `when` empty when the
+schedule text shows them. Do not write that days and times are only available
+after a login when that text shows them.
+
 **Credit a date only to a page whose text you opened.** A day, a session date or
 a registration date goes on a slot only when that page's text contains it, and
 `source_url` is that page. A search snippet is not the page. If you did not fetch
@@ -133,13 +140,23 @@ Return what you READ, as structured rows. Never a paragraph, never a guess.
   you read carried one.
 - **`registration`** — when it opens, when it closes, or that it is open now.
   This is the fact that decides whether a parent acts today, and it is the one
-  most often sitting in plain sight while Hale says nothing about it.
+  most often sitting in plain sight while Hale says nothing about it. It is the
+  term, the weekday, the date and the time the page prints, including that it is
+  online when the page says so, cited to that page. A page that prints a term's
+  registration as a weekday, a date and a clock time is stating this fact, and
+  the whole of it goes on the slot.
 - **`source_name`** — whose page. The organisation, never a URL.
 - **`source_url`** — THE PAGE THIS ROW WAS READ OFF. Not the home page unless you
   opened the home page and the fact is in its text, and not the search result:
   the page that actually printed these facts. A date this page does not contain
-  does not go on the row. A row you cannot point at a page for is a row you
-  invented, and it does not go in the list.
+  does not go on the row. A row has one page, so when the class times are on one
+  page and the registration date is on another (a home page notice that covers
+  every program, say), that date does not ride along on the class rows. It goes on
+  its own row, cited to the page that printed it, with `when` left out, and named
+  for the programs it covers. Only the first few rows reach the parent's text, so
+  that row goes straight after the best class row it covers, where it travels with
+  that class into the text instead of being left behind. A row you
+  cannot point at a page for is a row you invented, and it does not go in the list.
 
 `pages_read` is every URL you actually opened. Leave it empty if you opened none
 — that is a true and useful thing for Hale to know, and it is far better than a

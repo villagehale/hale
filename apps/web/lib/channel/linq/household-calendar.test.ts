@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   GROUP_BOTH_FREE,
-  GROUP_CALENDAR_ASK,
   GROUP_CALENDAR_RECEIPT,
   GROUP_CONFLICT,
-  GROUP_GMAIL_ASK,
   GROUP_GMAIL_RECEIPT,
   GROUP_HANDOFF,
   GROUP_KID_EVENT,
@@ -104,31 +102,6 @@ describe('kidMailboxSubject', () => {
     expect(kidMailboxSubject({ subject: 'Quarterly budget review', childNames: ['Maya'] })).toBe(
       null,
     );
-  });
-});
-
-describe('group ask strings', () => {
-  it('matches the locked in-group asks, and drops the private-link line', () => {
-    expect(GROUP_CALENDAR_ASK.en).toBe(
-      "{name}, want your calendar in the kids' year too? This link is just for you.",
-    );
-    expect(GROUP_CALENDAR_ASK.fr).toBe(
-      "{name}, tu veux ajouter ton calendrier a l'annee des enfants? Ce lien est juste pour toi.",
-    );
-    expect(GROUP_GMAIL_ASK.en).toBe(
-      '{name}, want me to catch school and camp emails for you too? This link is just for you. Nothing from your inbox shows up here.',
-    );
-    expect(GROUP_GMAIL_ASK.fr).toBe(
-      "{name}, tu veux que je repere aussi les courriels de l'ecole et des camps? Ce lien est juste pour toi. Rien de ta boite ne s'affiche ici.",
-    );
-    for (const line of [
-      GROUP_CALENDAR_ASK.en,
-      GROUP_CALENDAR_ASK.fr,
-      GROUP_GMAIL_ASK.en,
-      GROUP_GMAIL_ASK.fr,
-    ]) {
-      expect(line).not.toMatch(/one-to-one|en prive/i);
-    }
   });
 });
 

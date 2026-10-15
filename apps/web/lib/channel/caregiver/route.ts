@@ -1,9 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
 import { acceptCoParentInvite } from '~/lib/channel/coparent/accept';
 import {
-  CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE,
   CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
   CO_PARENT_REFUSAL_COPY,
   CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE,
@@ -33,7 +34,6 @@ import {
   ADD_EXAMPLE,
   ALREADY_INVITED,
   CANNOT_TEXT_THAT_NUMBER,
-  CAREGIVER_ANSWER_PROMPT,
   CAREGIVER_DECLINE_ACK,
   CAREGIVER_WELCOME,
   CO_PARENT_REDIRECT,
@@ -76,16 +76,9 @@ import { looksLikeAddCommand, parseAddCaregiver } from './parse';
  * third party is a surface that can be talked into answering about a child, and no
  * amount of prompt care makes that safe enough to ship as a side effect of M6.
  *
- * The parent's confirmation is likewise a KEYWORD, not a reading. It authorises
- * disclosing a family's week to someone outside the household, and a probabilistic
- * "that sounded like a yes" is not a basis for that (deliberate deviation from M2's
- * model-read intent, which decides only whether Hale may watch).
- *
- * WHICH keywords is no longer this module's own list (VIL-260). It held nine words while
- * C1's approval grammar held eleven, and every word on one list and not the other was an
- * answer one of the two surfaces silently dropped — "yes please" was unclear here, and
- * an invite the parent had already agreed to was left to lapse. `readAffirmative` is the
- * one table now; the reading it makes is the same exact, whole-string, keyword-only one.
+ * The parent's confirmation is a model read of what they meant, in whatever
+ * words they used. A failed read assents to nothing and texts nobody. STOP never
+ * reaches this lane: the keyword branch upstream closes the invite first.
  */
 
 /**
@@ -111,6 +104,10 @@ export interface CaregiverDeps {
    * caregiver's side deliberately does not. */
   threadMessage: typeof threadProactiveMessage;
   openQuestions: OpenQuestionsForParent;
+  /** Reads assent. Absence is named and assents to nothing. */
+  consent?: ConsentReader;
+  /** Writes the ask. Absence is named and sends no keyword sentence. */
+  ask?: ConsentAskWriter;
 }
 
 /**
@@ -143,6 +140,10 @@ export type CaregiverOutcome =
   | { status: 'caregiver_accepted' }
   | { status: 'caregiver_declined' }
   | { status: 'caregiver_prompted' }
+  /** The reply was not a yes or a no, and the nudge could not be written. Nothing was sent. */
+  | { status: 'caregiver_reply_unreadable' }
+  /** The scope question or the invite could not be written. Nobody new was texted. */
+  | { status: 'caregiver_ask_unwritten' }
   | { status: 'caregiver_scoped_reply' };
 
 /**
@@ -187,7 +188,11 @@ export type CoParentOutcome =
   | { status: 'co_parent_assent_already_claimed' }
   /** Also the answer to a LOST race for one invite: nobody was seated twice, and the
    * loser is answered with the same one nudge any unreadable reply gets. */
-  | { status: 'co_parent_prompted' };
+  | { status: 'co_parent_prompted' }
+  /** The reply was not a yes or a no, and the nudge could not be written. Nothing was sent. */
+  | { status: 'co_parent_reply_unreadable' }
+  /** The scope question or the invite could not be written. Nobody new was texted. */
+  | { status: 'co_parent_ask_unwritten' };
 
 /**
  * Which lane a message belongs to, which decides its `channel_messages.category` and its
@@ -306,7 +311,7 @@ async function reply(
  * A parent who has finished intake has no open session, so every ordinary text they
  * write arrives here first and falls through to C1 the moment this route has nothing to
  * say (inbound-route.ts). That makes this module the last thing that spoke before a
- * coach turn, and `scopeConfirm` is an open question — "Reply YES and I'll text them".
+ * coach turn, and the scope question is an open question the model wrote.
  * Unthreaded, the coach reads the answer with nothing above it, which is the state
  * lib/channel/thread.ts exists to end.
  *
@@ -486,7 +491,11 @@ async function handleCaregiverInviteReply(
     now,
   });
 
-  const answer = readAffirmative(inbound.body);
+  const reading = await readConsent(deps.consent, {
+    question: 'caregiver_invite',
+    text: inbound.body,
+  });
+  const answer = reading?.verdict ?? 'neither';
 
   if (answer === 'yes') {
     const { caregiverUserId } = await acceptInvite(database, {
@@ -518,9 +527,11 @@ async function handleCaregiverInviteReply(
     return { status: 'caregiver_declined' };
   }
 
+  const nudge = await writeConsentAsk(deps.ask, { kind: 'caregiver_nudge' });
+  if (!nudge) return { status: 'caregiver_reply_unreadable' };
   await reply(database, deps, {
     to: args.phoneE164,
-    body: CAREGIVER_ANSWER_PROMPT,
+    body: nudge,
     familyId: invite.familyId,
     parentUserId: invite.invitedByUserId,
     lane: 'caregiver',
@@ -564,7 +575,11 @@ async function handleCoParentInviteReply(
     now,
   });
 
-  const answer = readAffirmative(inbound.body);
+  const reading = await readConsent(deps.consent, {
+    question: 'coparent_invite',
+    text: inbound.body,
+  });
+  const answer = reading?.verdict ?? 'neither';
 
   if (answer === 'yes') {
     // Both read BEFORE the transaction, while the inviting parent is still the only
@@ -649,9 +664,11 @@ async function handleCoParentInviteReply(
     return { status: 'co_parent_declined' };
   }
 
+  const nudge = await writeConsentAsk(deps.ask, { kind: 'coparent_nudge', language });
+  if (!nudge) return { status: 'co_parent_reply_unreadable' };
   await reply(database, deps, {
     to: args.phoneE164,
-    body: CO_PARENT_ANSWER_PROMPT_BY_LANGUAGE[language],
+    body: nudge,
     familyId: invite.familyId,
     parentUserId: invite.invitedByUserId,
     lane: 'co_parent',
@@ -722,7 +739,11 @@ export async function handleKnownNumberInbound(
 
   const pending = await loadPendingAssent(database, owner.userId, now);
   if (pending) {
-    const answer = readAffirmative(inbound.body);
+    const reading = await readConsent(deps.consent, {
+      question: pending.role === 'co_parent' ? 'coparent_scope' : 'caregiver_scope',
+      text: inbound.body,
+    });
+    const answer = reading?.verdict ?? 'neither';
     const claimable =
       pending.role !== 'co_parent' ||
       (await coParentAssentIsSoleQuestion(database, owner, now, deps));
@@ -820,22 +841,24 @@ async function sendCoParentInvite(
     );
   }
 
-  const body = await recordCoParentAssent(database, {
+  const sent = await recordCoParentAssent(database, {
     invite: pending,
     inviterName,
     language,
     verbatimReply: inbound.body,
     channelMessageId,
     now,
+    ask: deps.ask,
   });
-  // Null means another turn already claimed this assent and already sent the one message.
-  // Nothing to send here, and deliberately nothing said: the parent's own ack went out on
-  // the turn that won, and a second one would read as a second invite.
-  if (body === null) return { status: 'co_parent_assent_already_claimed' };
+  // already_claimed means another turn already sent the one message. Nothing to
+  // send here. unwritten means the invite text could not be written, and the
+  // state was not advanced.
+  if (sent.status === 'unwritten') return { status: 'co_parent_ask_unwritten' };
+  if (sent.status === 'already_claimed') return { status: 'co_parent_assent_already_claimed' };
 
   await reply(database, deps, {
     to: pending.phoneE164,
-    body,
+    body: sent.body,
     familyId: owner.familyId,
     parentUserId: owner.userId,
     lane: 'co_parent',
@@ -966,17 +989,19 @@ async function sendInvite(
     now,
   });
 
-  const body = await recordParentAssent(database, {
+  const sent = await recordParentAssent(database, {
     invite: pending,
     inviterName: await userName(database, owner.userId),
     verbatimReply: inbound.body,
     channelMessageId,
     now,
+    ask: deps.ask,
   });
+  if (sent.status !== 'ready') return { status: 'caregiver_ask_unwritten' };
 
   await reply(database, deps, {
     to: pending.phoneE164,
-    body,
+    body: sent.body,
     familyId: owner.familyId,
     parentUserId: owner.userId,
     lane: 'caregiver',
@@ -1098,7 +1123,9 @@ async function startFromCommand(
       parsed,
       language,
       now,
+      ask: deps.ask,
     });
+    if (opened.status === 'ask_unwritten') return { status: 'co_parent_ask_unwritten' };
     return opened.status === 'refused'
       ? answer(CO_PARENT_REFUSAL_COPY[opened.reason][language], {
           status: 'co_parent_add_refused',
@@ -1113,6 +1140,7 @@ async function startFromCommand(
     inviterPhoneE164: args.parentPhoneE164,
     parsed,
     now,
+    ask: deps.ask,
   });
 
   if (started.status === 'own_number') {
@@ -1136,5 +1164,6 @@ async function startFromCommand(
       reason: 'previously_declined',
     });
   }
+  if (started.status === 'ask_unwritten') return { status: 'caregiver_ask_unwritten' };
   return answer(started.reply, { status: 'caregiver_invite_started' });
 }

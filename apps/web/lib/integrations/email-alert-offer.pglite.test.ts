@@ -6,12 +6,14 @@ import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
+  COACH_CALENDAR_INTEGRATION_ID,
   EMAIL_ALERT_EVENT_DURATION_MS,
   EMAIL_ALERT_OFFER_TTL_MS,
   handleEmailAlertOfferReply,
   loadOpenEmailAlertOffers,
+  recordCoachCalendarOffer,
   recordEmailAlertOffer,
 } from './email-alert-offer';
 
@@ -160,8 +162,21 @@ async function turn(
   };
 }
 
+/** The receipt echoes the facts. The test reads the title and the instant, never a template. */
+function handler() {
+  return emailAlertAddHandler({
+    writeReceipt: {
+      write: async (facts) => `${facts.happened}|${facts.title}|${facts.when}`,
+    },
+  });
+}
+
+function reading(offerId: string, polarity: 'yes' | 'no'): ResolvedAnswer {
+  return { kind: 'email_alert_add', questionId: offerId, polarity, confidence: 'high' };
+}
+
 function reply(body: string, over?: Parameters<typeof turn>[1]): Promise<HandlerVerdict> {
-  return turn(body, over).then((ctx) => emailAlertAddHandler().handle(db.database, ctx));
+  return turn(body, over).then((ctx) => handler().handle(db.database, ctx));
 }
 
 /** A drafted change waiting for this family's approval — the other open question. */
@@ -202,15 +217,13 @@ function offers() {
 
 describe('a YES puts the occasion on the family week', () => {
   it('writes ONE family_events row at the offered instant, and answers with it', async () => {
-    await seedOffer();
+    const offerId = await seedOffer();
 
-    const verdict = await reply('yes');
+    const verdict = await reply('yes', { resolved: reading(offerId, 'yes') });
 
     expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
     if (!verdict.claimed) throw new Error('unreachable');
-    expect(verdict.reply).toBe(
-      "Added - Picture day on Saturday, Sep 19 at 9:00 a.m. It's on your week; say remove it anytime.",
-    );
+    expect(verdict.reply).toBe('added|Picture day|Saturday, Sep 19 at 9:00 a.m.');
 
     const rows = await events();
     expect(rows).toHaveLength(1);
@@ -253,7 +266,12 @@ describe('a YES puts the occasion on the family week', () => {
     const integrationId = randomUUID();
     const messageId = randomUUID();
     const channelMessageId = await sentAlert();
-    await seedOffer({ integrationId, messageId, kind: 'booking_confirmation', channelMessageId });
+    const offerId = await seedOffer({
+      integrationId,
+      messageId,
+      kind: 'booking_confirmation',
+      channelMessageId,
+    });
     await db.database.insert(schema.activityBookings).values({
       familyId: family.familyId,
       parentUserId: family.parentUserId,
@@ -265,7 +283,10 @@ describe('a YES puts the occasion on the family week', () => {
       channelMessageId,
     });
 
-    await expect(reply('yes')).resolves.toMatchObject({ claimed: true, outcome: 'added' });
+    await expect(reply('yes', { resolved: reading(offerId, 'yes') })).resolves.toMatchObject({
+      claimed: true,
+      outcome: 'added',
+    });
 
     const [placed] = await events();
     const [booking] = await db.database
@@ -282,7 +303,12 @@ describe('a YES puts the occasion on the family week', () => {
     const integrationId = randomUUID();
     const messageId = randomUUID();
     const channelMessageId = await sentAlert();
-    await seedOffer({ integrationId, messageId, kind: 'booking_confirmation', channelMessageId });
+    const offerId = await seedOffer({
+      integrationId,
+      messageId,
+      kind: 'booking_confirmation',
+      channelMessageId,
+    });
     await db.database.insert(schema.activityBookings).values({
       familyId: family.familyId,
       parentUserId: family.parentUserId,
@@ -294,7 +320,10 @@ describe('a YES puts the occasion on the family week', () => {
       channelMessageId,
     });
 
-    await expect(reply('no')).resolves.toMatchObject({ claimed: true, outcome: 'declined' });
+    await expect(reply('no', { resolved: reading(offerId, 'no') })).resolves.toMatchObject({
+      claimed: true,
+      outcome: 'declined',
+    });
 
     await expect(events()).resolves.toHaveLength(0);
     const rows = await db.database
@@ -312,9 +341,12 @@ describe('a YES puts the occasion on the family week', () => {
     // is exactly the kind of silence rule #11 forbids. Never a throw: the parent's event
     // is already placed and the receipt is already owed.
     const logged = vi.spyOn(console, 'error');
-    await seedOffer({ kind: 'booking_confirmation' });
+    const offerId = await seedOffer({ kind: 'booking_confirmation' });
 
-    await expect(reply('yes')).resolves.toMatchObject({ claimed: true, outcome: 'added' });
+    await expect(reply('yes', { resolved: reading(offerId, 'yes') })).resolves.toMatchObject({
+      claimed: true,
+      outcome: 'added',
+    });
 
     await expect(events()).resolves.toHaveLength(1);
     expect(logged).toHaveBeenCalledWith(
@@ -327,9 +359,12 @@ describe('a YES puts the occasion on the family week', () => {
     // Without this, the assertion above passes on an implementation that logs for every
     // placement, which would make the inconsistency invisible in the noise.
     const logged = vi.spyOn(console, 'error');
-    await seedOffer();
+    const offerId = await seedOffer();
 
-    await expect(reply('yes')).resolves.toMatchObject({ claimed: true, outcome: 'added' });
+    await expect(reply('yes', { resolved: reading(offerId, 'yes') })).resolves.toMatchObject({
+      claimed: true,
+      outcome: 'added',
+    });
 
     expect(logged).not.toHaveBeenCalled();
   });
@@ -337,9 +372,9 @@ describe('a YES puts the occasion on the family week', () => {
   it('closes the offer only once the receipt has actually gone', async () => {
     // The MEM-10 discipline. A turn that placed the event and then failed to answer must
     // leave the question standing, so the redrive finds it.
-    await seedOffer();
+    const offerId = await seedOffer();
 
-    const verdict = await reply('yes');
+    const verdict = await reply('yes', { resolved: reading(offerId, 'yes') });
     if (!verdict.claimed) throw new Error('unreachable');
     await expect(offers()).resolves.toMatchObject([{ resolvedAt: null, resolution: null }]);
 
@@ -352,10 +387,10 @@ describe('a YES puts the occasion on the family week', () => {
   it('places nothing twice when the turn is re-driven before the receipt landed', async () => {
     // The event insert is CLAIMED against the offer, so the second pass conflicts on the
     // primary key instead of putting a second Saturday on the week.
-    await seedOffer();
+    const offerId = await seedOffer();
 
-    await reply('yes');
-    const secondPass = await reply('yes');
+    await reply('yes', { resolved: reading(offerId, 'yes') });
+    const secondPass = await reply('yes', { resolved: reading(offerId, 'yes') });
 
     expect(secondPass).toMatchObject({ claimed: true, outcome: 'added' });
     await expect(events()).resolves.toHaveLength(1);
@@ -368,92 +403,61 @@ describe('a YES puts the occasion on the family week', () => {
   });
 
   it('answers a NO by resolving the offer as declined, and writes no event', async () => {
-    await seedOffer();
+    const offerId = await seedOffer();
 
-    const verdict = await reply('no');
+    const verdict = await reply('no', { resolved: reading(offerId, 'no') });
 
     expect(verdict).toMatchObject({ claimed: true, outcome: 'declined' });
     if (!verdict.claimed) throw new Error('unreachable');
-    expect(verdict.reply).toBe('Okay - left it off.');
+    expect(verdict.reply).toBe('declined|Picture day|Saturday, Sep 19 at 9:00 a.m.');
     await expect(events()).resolves.toHaveLength(0);
 
     await verdict.afterSend?.(await receipt());
     await expect(offers()).resolves.toMatchObject([{ resolution: 'declined', eventId: null }]);
   });
 
-  it('answers a SECOND yes with what is already there, and adds nothing', async () => {
+  it('does not claim a second yes once the offer is closed', async () => {
     const offerId = await seedOffer();
-    const first = await reply('yes');
+    const first = await reply('yes', { resolved: reading(offerId, 'yes') });
     if (!first.claimed) throw new Error('unreachable');
     await first.afterSend?.(await receipt());
 
-    // The offer is closed now, so nothing is listed and `soleOpenKind` is vacuously true
-    // — which is exactly why the repeat branch has to find a row of its own.
-    const repeat = await reply('yes');
+    // The offer is closed. A reading of that same id is not an invitation to place it
+    // again, and there is no repeat-window phrase that answers for the parent.
+    const repeat = await reply('yes', { resolved: reading(offerId, 'yes') });
 
-    expect(repeat).toMatchObject({ claimed: true, outcome: 'already_added' });
-    if (!repeat.claimed) throw new Error('unreachable');
-    expect(repeat.reply).toBe('Already on your week - Picture day on Saturday, Sep 19 at 9:00 a.m.');
+    expect(repeat).toEqual({ claimed: false });
     await expect(events()).resolves.toHaveLength(1);
-    expect(offerId).toBeTruthy();
   });
 
-  it('lets the word go to the coach once the repeat window has passed', async () => {
-    // The POSITIVE CONTROL for the test above: the same state, read eleven minutes later,
-    // claims nothing. Without this the repeat branch could be claiming every bare "yes" a
-    // household ever sends and the test above would still be green.
+  it('does not read a bare yes while the offer is still open', async () => {
+    // The keyword path is gone. A word with no reading places nothing, even when this
+    // family has exactly one offer and the word is "yes".
     await seedOffer();
-    const first = await reply('yes');
-    if (!first.claimed) throw new Error('unreachable');
-    await first.afterSend?.(await receipt());
-
-    const late = await turn('yes');
-    const verdict = await emailAlertAddHandler().handle(db.database, {
-      ...late,
-      now: new Date(NOW.getTime() + 11 * 60 * 1000),
-    });
-
-    expect(verdict).toEqual({ claimed: false });
-  });
-
-  it('lets the word go to the coach once Hale has said something else', async () => {
-    // The SECOND bound on the repeat branch, and the one the window alone cannot give: a
-    // bare affirmative belongs to Hale's LAST word (the registration ladder's own rule).
-    // Two minutes after the receipt, with one unrelated text in between, "yes" is an
-    // answer to THAT — a coach question asked in the window must not lose its answer to a
-    // second copy of a receipt the parent already has.
-    await seedOffer();
-    const first = await reply('yes');
-    if (!first.claimed) throw new Error('unreachable');
-    await first.afterSend?.(await receipt());
-    await sentOut(new Date(NOW.getTime() + 60 * 1000));
-
-    const ctx = await turn('yes');
-    const verdict = await emailAlertAddHandler().handle(db.database, {
-      ...ctx,
-      now: new Date(NOW.getTime() + 2 * 60 * 1000),
-    });
-
-    expect(verdict).toEqual({ claimed: false });
-  });
-
-  it('does not claim a yes for an EXPIRED offer', async () => {
-    await seedOffer({ expiresAt: new Date(NOW.getTime() - 1000) });
 
     await expect(reply('yes')).resolves.toEqual({ claimed: false });
     await expect(events()).resolves.toHaveLength(0);
   });
 
+  it('does not claim a yes for an EXPIRED offer', async () => {
+    const offerId = await seedOffer({ expiresAt: new Date(NOW.getTime() - 1000) });
+
+    await expect(reply('yes', { resolved: reading(offerId, 'yes') })).resolves.toEqual({
+      claimed: false,
+    });
+    await expect(events()).resolves.toHaveLength(0);
+  });
+
   it('does not claim a yes for a CO-PARENT who never saw the text', async () => {
-    await seedOffer();
+    const offerId = await seedOffer();
     const [coParent] = await db.database
       .insert(schema.users)
       .values({ email: `${randomUUID()}@example.test`, name: 'Co Parent' })
       .returning({ id: schema.users.id });
     if (!coParent) throw new Error('no co-parent');
-    const ctx = await turn('yes');
+    const ctx = await turn('yes', { resolved: reading(offerId, 'yes') });
 
-    const verdict = await emailAlertAddHandler().handle(db.database, {
+    const verdict = await handler().handle(db.database, {
       ...ctx,
       parentUserId: coParent.id,
     });
@@ -481,7 +485,7 @@ describe('a bare YES is never stolen from another open question', () => {
       'email_alert_add',
     ]);
 
-    await expect(emailAlertAddHandler().handle(db.database, ctx)).resolves.toEqual({
+    await expect(handler().handle(db.database, ctx)).resolves.toEqual({
       claimed: false,
     });
     await expect(events()).resolves.toHaveLength(0);
@@ -692,8 +696,8 @@ describe('an offer never outlives the occasion it is about (VIL-410)', () => {
     expect(open.map((offer) => offer.title)).toEqual([TITLE]);
   });
 
-  it('answers a bare YES after the start with no_open_offer, and places nothing', async () => {
-    await seedOffer({
+  it('answers a named yes after the start with no_open_offer, and places nothing', async () => {
+    const offerId = await seedOffer({
       startsAt: new Date(NOW.getTime() - AN_HOUR),
       expiresAt: new Date(NOW.getTime() + 20 * AN_HOUR),
     });
@@ -702,9 +706,9 @@ describe('an offer never outlives the occasion it is about (VIL-410)', () => {
       handleEmailAlertOfferReply(db.database, {
         familyId: family.familyId,
         parentUserId: family.parentUserId,
-        offerId: null,
+        offerId,
         polarity: 'yes',
-        language: 'en',
+        parentReply: 'yes',
         now: NOW,
       }),
     ).resolves.toEqual({ status: 'no_open_offer' });
@@ -718,8 +722,8 @@ describe('what the week does with it', () => {
     // only ever saw in an email. Driven through `defaultReminderRunDeps`, because the gate
     // is a source filter inside `loadHorizonEvents` and no fake of it can be asked
     // whether the real filter admits this row.
-    await seedOffer();
-    await reply('yes');
+    const offerId = await seedOffer();
+    await reply('yes', { resolved: reading(offerId, 'yes') });
     const [event] = await events();
     if (!event) throw new Error('no event');
 
@@ -743,8 +747,8 @@ describe('what the week does with it', () => {
     // The composer excludes `placement`, the scheduler admits only `placement` and
     // `parent`. `parent` is the intersection, and this pins it: change the source and one
     // of these two tests goes red.
-    await seedOffer();
-    await reply('yes');
+    const offerId = await seedOffer();
+    await reply('yes', { resolved: reading(offerId, 'yes') });
 
     const { listFamilyEventsInWindow } = await import('~/lib/loop/queries');
     const inWindow = await listFamilyEventsInWindow(
@@ -754,5 +758,196 @@ describe('what the week does with it', () => {
       new Date(NOW.getTime() + 8 * 86_400_000),
     );
     expect(inWindow.map((row) => row.title)).toEqual([TITLE]);
+  });
+});
+
+/**
+ * A coach sentence is not parsed here. The model names a title and an instant; this
+ * recorder refuses a start that has passed and an occasion the calendar already holds.
+ */
+describe('a coach offer is the calendar, not the sentence', () => {
+  const SUNDAY = new Date('2026-10-04T13:00:00.000Z');
+  const THURSDAY = new Date('2026-10-01T20:15:00.000Z');
+  const OCTOBER_SECOND = new Date('2026-10-02T15:00:00.000Z');
+
+  function coach(over: {
+    title: string;
+    startsAt: Date;
+    channelMessageId: string;
+    now?: Date;
+    location?: string | null;
+  }) {
+    return recordCoachCalendarOffer(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      location: null,
+      now: NOW,
+      ...over,
+    });
+  }
+
+  it('writes no row when the occasion has already started', async () => {
+    await expect(
+      coach({
+        title: 'Gymnastics',
+        startsAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+        channelMessageId: await sentOut(NOW),
+      }),
+    ).resolves.toBe('event_started');
+    await expect(offers()).resolves.toEqual([]);
+  });
+
+  it('writes no row for an empty title', async () => {
+    await expect(
+      coach({
+        title: '   ',
+        startsAt: SUNDAY,
+        channelMessageId: await sentOut(NOW),
+      }),
+    ).resolves.toBe('unreadable');
+    await expect(offers()).resolves.toEqual([]);
+  });
+
+  it('refuses an occasion the household week already holds', async () => {
+    await db.database.insert(schema.familyEvents).values({
+      familyId: family.familyId,
+      title: '  gymnastics ',
+      startsAt: SUNDAY,
+      source: 'parent',
+      createdBy: family.parentUserId,
+    });
+
+    await expect(
+      coach({
+        title: 'Gymnastics',
+        startsAt: SUNDAY,
+        channelMessageId: await sentOut(NOW),
+      }),
+    ).resolves.toBe('already_held');
+    await expect(offers()).resolves.toEqual([]);
+  });
+
+  it('does not treat one parent Google mirror as the household holding it', async () => {
+    const integrationId = await seedIntegration(db.database, family.familyId, family.parentUserId);
+    await db.database.insert(schema.familyEvents).values({
+      familyId: family.familyId,
+      title: 'Gymnastics',
+      startsAt: SUNDAY,
+      source: 'parent',
+      googleEventId: 'gcal-gymnastics',
+      integrationId,
+    });
+
+    await expect(
+      coach({
+        title: 'Gymnastics',
+        startsAt: SUNDAY,
+        channelMessageId: await sentOut(NOW),
+      }),
+    ).resolves.toBe('recorded');
+  });
+
+  it('refuses an occasion already on this parent kid-related calendar', async () => {
+    const integrationId = await seedIntegration(db.database, family.familyId, family.parentUserId);
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId,
+      eventId: 'evt-gymnastics',
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      startAt: SUNDAY,
+      kidRelated: true,
+      title: 'Gymnastics',
+      status: 'confirmed',
+      updatedStamp: '1',
+    });
+
+    await expect(
+      coach({
+        title: 'Gymnastics',
+        startsAt: SUNDAY,
+        channelMessageId: await sentOut(NOW),
+      }),
+    ).resolves.toBe('already_held');
+    await expect(offers()).resolves.toEqual([]);
+  });
+
+  it('records a future offer, expires the older one, and stops at the start', async () => {
+    const older = await seedOffer();
+    const channelMessageId = await sentOut(NOW);
+
+    await expect(coach({ title: 'Gymnastics', startsAt: SUNDAY, channelMessageId })).resolves.toBe(
+      'recorded',
+    );
+
+    const rows = await offers();
+    expect(rows.find((row) => row.id === older)?.expiresAt.toISOString()).toBe(NOW.toISOString());
+    const created = rows.find((row) => row.id !== older);
+    expect(created).toMatchObject({
+      title: 'Gymnastics',
+      integrationId: COACH_CALENDAR_INTEGRATION_ID,
+      messageId: `coach:${channelMessageId}`,
+      resolution: null,
+    });
+    expect(created?.startsAt.toISOString()).toBe(SUNDAY.toISOString());
+    expect(created?.expiresAt.toISOString()).toBe(
+      new Date(Math.min(NOW.getTime() + EMAIL_ALERT_OFFER_TTL_MS, SUNDAY.getTime())).toISOString(),
+    );
+  });
+
+  it('a bare yes on Oct 2 does not add the Thursday gymnastics that already started', async () => {
+    // VIL-410. The Thursday offer is still inside a flat day, which is how a bare yes
+    // placed Gymnastics Thu Oct 1 4:15pm. It is not an open offer on Oct 2, and a bare
+    // yes has no reading to bind.
+    await seedOffer({
+      title: 'Gymnastics',
+      startsAt: THURSDAY,
+      expiresAt: new Date(OCTOBER_SECOND.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+    });
+    const sundayId = await seedOffer({
+      title: 'Gymnastics',
+      startsAt: SUNDAY,
+      expiresAt: new Date(OCTOBER_SECOND.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+    });
+
+    const open = await loadOpenEmailAlertOffers(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: OCTOBER_SECOND,
+    });
+    expect(open.map((offer) => offer.id)).toEqual([sundayId]);
+
+    const ctx = await turn('yes');
+    const verdict = await handler().handle(db.database, { ...ctx, now: OCTOBER_SECOND });
+
+    expect(verdict).toEqual({ claimed: false });
+    await expect(events()).resolves.toEqual([]);
+  });
+
+  it('places the Sunday the reading named, not the Thursday that already started', async () => {
+    await seedOffer({
+      title: 'Gymnastics',
+      startsAt: THURSDAY,
+      expiresAt: new Date(OCTOBER_SECOND.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+    });
+    const sundayId = await seedOffer({
+      title: 'Gymnastics',
+      startsAt: SUNDAY,
+      expiresAt: new Date(OCTOBER_SECOND.getTime() + EMAIL_ALERT_OFFER_TTL_MS),
+    });
+
+    const open = await loadOpenEmailAlertOffers(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: OCTOBER_SECOND,
+    });
+    expect(open.map((offer) => offer.id)).toEqual([sundayId]);
+
+    const ctx = await turn('好的，就周日的体操', { resolved: reading(sundayId, 'yes') });
+    const verdict = await handler().handle(db.database, { ...ctx, now: OCTOBER_SECOND });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    const rows = await events();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.startsAt.toISOString()).toBe(SUNDAY.toISOString());
   });
 });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Three real, named Oakville venues (Town of Oakville aquatics, Peter Gilgan Family YMCA, Goldfish Swim School), each sourced from its own site and fitting the preschool stage. The message leads with the Town program by name, attributes with \"their sites say\", has no link and no question, and uses the first-person continuation correctly since watch is true. Under no_page_read it names the gap correctly (\"I could not get into their pages today for days or times\") rather than claiming the details are not posted, and it invents no days or times. One flaw: the Goldfish price is given as $32.50 a lesson without the $30 annual membership fee that the pick carries, which understates the cost a parent would actually pay.",
+    "score": 4
+  }
+}

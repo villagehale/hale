@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Oakville, Ontario has no open Costco today",
+        "from": "Oakville, Ontario has no open Costco today (Oct 12, 2026)"
+      },
+      {
+        "states": "A new Costco is coming on Wyecroft Road near Burloak Drive",
+        "from": "says an \"Opening Soon\" sign is up at the Costco site on Wyecroft Road near Burloak Drive"
+      },
+      {
+        "states": "The new Oakville Costco is targeted to open in fall 2027",
+        "from": "the target opening is fall 2027"
+      },
+      {
+        "states": "The Laird Rd warehouse at 3180 Laird Rd is listed as serving Oakville, per a third-party deals site",
+        "from": "A Costco deals site (yepsavings.com, a third-party page) describes the Laird Rd warehouse as serving Mississauga and Oakville. It gives the address as 3180 Laird Rd."
+      },
+      {
+        "states": "Burlington has an existing Costco, address not known",
+        "from": "Burlington already has a Costco. BurlingtonToday refers to \"the existing Burlington location\""
+      }
+    ],
+    "answer": "Assuming you mean Oakville, Ontario: there's no open Costco there yet. One is coming on Wyecroft Rd near Burloak Dr, and the latest reports say fall 2027. For now the closest one is probably the Laird Rd warehouse at 3180 Laird Rd in Mississauga, which a deals site says also serves Oakville. Burlington has one too, but I don't have its address. I can't tell how far any of them is from you."
+  },
+  "latencyMs": 5837
+}

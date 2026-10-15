@@ -1,0 +1,6 @@
+{
+  "value": {
+    "text": "Voici les deux liens, facultatifs, pour connecter votre agenda et votre Gmail afin que Hale repère les avis de garderie et d'école. Chaque lien fonctionne pendant 15 minutes.\n\nAgenda : [[calendarLink]]\nGmail : [[gmailLink]]\n\nSi Google affiche un écran \"application non vérifiée\", c'est normal : cliquez sur \"Paramètres avancés\", puis sur \"Continuer\" pour finir la connexion."
+  },
+  "latencyMs": 1818
+}

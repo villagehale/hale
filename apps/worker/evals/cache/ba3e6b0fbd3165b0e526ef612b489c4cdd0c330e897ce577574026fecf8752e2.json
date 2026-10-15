@@ -1,0 +1,13 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "The capital of Peru is Lima.",
+        "from": "settled"
+      }
+    ],
+    "answer": "Lima. It's been the capital since the 1500s, so you're good."
+  },
+  "latencyMs": 2032
+}

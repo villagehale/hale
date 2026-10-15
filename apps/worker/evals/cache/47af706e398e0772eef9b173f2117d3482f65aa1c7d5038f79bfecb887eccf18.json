@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey! From now on I'll add things to your calendar without checking with you first — you've okayed it enough times that I've got it.\n\nJust so you know, I'll never book, register, or pay for anything on my own. One text from you is all it takes to turn this off anytime."
+  },
+  "stopReason": "tool_use"
+}

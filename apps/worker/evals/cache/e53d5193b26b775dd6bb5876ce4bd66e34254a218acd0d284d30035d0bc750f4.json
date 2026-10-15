@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "live is missing_detail, and the answer correctly asks which country without stating any rate from memory. It's brief and in the same language. 'I'll look it up' is a slight service-offer note, and 'depend a lot on where you live' is a bit explanatory, but it still reads like a friend asking a clarifying question. No wrong facts, no safety issue.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

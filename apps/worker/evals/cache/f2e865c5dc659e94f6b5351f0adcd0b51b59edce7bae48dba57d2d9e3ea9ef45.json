@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC, Tuesday: cloudy, high of 14°C",
+        "from": "Environment Canada's forecast for Tuesday is cloudy with a high of 14°C"
+      },
+      {
+        "states": "Vancouver, BC, Tuesday night: a few showers starting late in the evening, low of 11°C",
+        "from": "Environment Canada's forecast for Tuesday night is a few showers beginning late in the evening, with a low of 11°C"
+      },
+      {
+        "states": "Vancouver, WA, Tuesday: high of 64°F, cloudy in the afternoon, dry",
+        "from": "Wunderground (Hough station) gives a high of 64°F, a mix of clouds and sun early, then cloudy in the afternoon. Precipitation chance is 1%."
+      },
+      {
+        "states": "Vancouver, WA, Tuesday night: low of 48°F, partly to mostly cloudy",
+        "from": "Fox Weather says Tuesday night is partly to mostly cloudy with a low of 48°F."
+      }
+    ],
+    "answer": "Tomorrow (Tue) in Vancouver, BC: cloudy, high of 14°C, with a few showers starting late in the evening, low of 11°C. If you mean Vancouver, Washington, it's dry and cloudy, high of 64°F, low of 48°F Tuesday night."
+  },
+  "latencyMs": 5998
+}

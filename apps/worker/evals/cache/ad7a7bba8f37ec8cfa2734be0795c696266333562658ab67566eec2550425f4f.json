@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Vancouver, BC, Tuesday Oct 13: cloudy, high of 14°C, showers from late evening (Environment Canada)",
+        "from": "Environment Canada's forecast for Tuesday is cloudy with a high of 14°C; Environment Canada's forecast for Tuesday night is a few showers beginning late in the evening"
+      },
+      {
+        "states": "Vancouver, WA, Tuesday Oct 13: dry, mostly cloudy, high around 64°F",
+        "from": "Wunderground (Hough station) gives a high of 64°F, a mix of clouds and sun early, then cloudy in the afternoon. Precipitation chance is 1%. Timeanddate gives 64/41°F, overcast, 0% chance of precipitation. All of them expect it to stay dry."
+      }
+    ],
+    "answer": "Which Vancouver do you mean, the one in BC or the one in Washington? For BC, Tuesday looks cloudy with a high of 14°C and a few showers starting late in the evening. For Vancouver, WA, it looks dry and mostly cloudy with a high around 64°F. Which one did you mean?"
+  },
+  "latencyMs": 6775
+}

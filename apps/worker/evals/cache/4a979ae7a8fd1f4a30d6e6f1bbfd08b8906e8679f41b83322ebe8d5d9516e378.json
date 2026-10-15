@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The facts match research_notes: dry and cloudy through the afternoon, showers likely after dark or overnight, a thunderstorm risk before morning, and disagreement over timing. Nothing is invented, and the reply leaves the school and family out. It answers the 3pm pickup question directly. The tone is slightly formal for a text but still reads as a friend. 'Mostly no' hedges a bit, though the notes support that.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every forecast detail matches the research notes. For Vancouver, BC: cloudy, high 14°C, a few showers from late evening, and the sources disagree about the morning. For Vancouver, WA: a high of 62-67°F (the Celsius conversion is right), some sun early then cloudy, 1% chance of rain, dry. The question didn't say which Vancouver, and covering both briefly is a reasonable way to handle that. It answers directly and states nothing about the family. The tone reads a little like a forecast report ('Some sources have...', 'that part isn't settled') rather than a quick casual text, but it is still a direct answer.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

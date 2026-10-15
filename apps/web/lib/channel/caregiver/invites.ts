@@ -1,17 +1,15 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, isNull } from 'drizzle-orm';
-import {
-  coParentInviteBody,
-  coParentScopeConfirm,
-  inviterNameIsAffordable,
-} from '~/lib/channel/coparent/copy';
+import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { writeConsentAsk } from '~/lib/channel/consent-ask';
+import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { CO_PARENT_GRANT_SCOPE, type CaregiverRole } from '~/lib/channel/role-scope';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
-import { ROLE_LABEL, inviteBody, scopeConfirm } from './copy';
+import { ROLE_LABEL } from './copy';
 import type { AddRole, ParsedCaregiverAdd, ParsedCoParentAdd } from './parse';
 
 /**
@@ -321,7 +319,9 @@ export type StartInviteResult =
   | { status: 'already_invited' }
   | { status: 'too_many' }
   /** This number has already told Hale no, on either lane. See {@link priorRefusal}. */
-  | { status: 'previously_declined' };
+  | { status: 'previously_declined' }
+  /** The scope question could not be written. Nobody was asked, and no row was opened. */
+  | { status: 'ask_unwritten' };
 
 /**
  * Open an invite and state the scope back to the parent. NOTHING is sent to the
@@ -335,6 +335,7 @@ export async function startCaregiverInvite(
     inviterPhoneE164: string;
     parsed: ParsedCaregiverAdd;
     now: Date;
+    ask?: ConsentAskWriter;
   },
 ): Promise<StartInviteResult> {
   const { parsed, now } = input;
@@ -376,6 +377,13 @@ export async function startCaregiverInvite(
     return { status: 'too_many' };
   }
 
+  const reply = await writeConsentAsk(input.ask, {
+    kind: 'caregiver_scope',
+    name: parsed.name,
+    role: parsed.role,
+  });
+  if (!reply) return { status: 'ask_unwritten' };
+
   // Describing a second caregiver before confirming the first ABANDONS the first — that
   // is what happened in the conversation, so it is what the rows say. Superseding here
   // is why "yes" can only ever mean one thing (see loadPendingAssent).
@@ -408,7 +416,7 @@ export async function startCaregiverInvite(
     },
   });
 
-  return { status: 'started', invite, reply: scopeConfirm(parsed.name, parsed.role) };
+  return { status: 'started', invite, reply };
 }
 
 /** Why Hale will not open a CO-PARENT invite. Every one of them is answered with its own
@@ -438,7 +446,9 @@ export type CoParentRefusal =
 
 export type StartCoParentResult =
   | { status: 'started'; invite: CoParentInvite; reply: string }
-  | { status: 'refused'; reason: CoParentRefusal };
+  | { status: 'refused'; reason: CoParentRefusal }
+  /** The scope question could not be written. Nobody was asked, and no row was opened. */
+  | { status: 'ask_unwritten' };
 
 /**
  * Whether this household already holds its one co-parent seat.
@@ -581,6 +591,7 @@ export async function startCoParentInvite(
      * uses this: the parent makes the group, and a cold text is not the invite.
      */
     notedOnly?: boolean;
+    ask?: ConsentAskWriter;
   },
 ): Promise<StartCoParentResult> {
   const { parsed, now } = input;
@@ -642,6 +653,18 @@ export async function startCoParentInvite(
     return refuse(openOnThisNumber.familyId === input.familyId ? 'already_invited' : 'unavailable');
   }
 
+  // A noted number is stored, not asked about. There is no scope question to write.
+  let reply = '';
+  if (!input.notedOnly) {
+    const written = await writeConsentAsk(input.ask, {
+      kind: 'coparent_scope',
+      name: parsed.name,
+      language: input.language,
+    });
+    if (!written) return { status: 'ask_unwritten' };
+    reply = written;
+  }
+
   const superseded = open.find(
     (r) => r.invitedByUserId === input.invitedByUserId && r.state === 'awaiting_parent_assent',
   );
@@ -682,7 +705,7 @@ export async function startCoParentInvite(
     },
   });
 
-  return { status: 'started', invite, reply: coParentScopeConfirm(parsed.name, input.language) };
+  return { status: 'started', invite, reply };
 }
 
 /** The `caregiver_invites` row itself, with nobody texted yet. Shared by both start
@@ -771,9 +794,20 @@ export async function recordCoParentAssent(
      * the line they were shown.
      */
     asked?: { question: string; interpretation: string };
+    ask?: ConsentAskWriter;
+    /** The text already written for this send. Skips a second draft of the same invite. */
+    prepared?: string;
   },
-): Promise<string | null> {
+): Promise<InviteBodyResult> {
   const { invite, now } = input;
+  const body =
+    input.prepared ??
+    (await writeConsentAsk(input.ask, {
+      kind: 'coparent_invite',
+      inviterName: input.inviterName,
+      language: input.language,
+    }));
+  if (!body) return { status: 'unwritten' };
   const claimed = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     const advanced = await tx
@@ -801,7 +835,7 @@ export async function recordCoParentAssent(
       consentScope: CO_PARENT_GRANT_SCOPE,
       policyVersion: POLICY_VERSION,
       evidence: {
-        question: input.asked?.question ?? coParentScopeConfirm(invite.displayName, input.language),
+        question: input.asked?.question ?? `Texting ${invite.displayName} as a co-parent`,
         verbatimReply: input.verbatimReply,
         interpretation:
           input.asked?.interpretation ??
@@ -822,8 +856,13 @@ export async function recordCoParentAssent(
     return true;
   });
 
-  return claimed ? coParentInviteBody(input.inviterName, input.language) : null;
+  return claimed ? { status: 'ready', body } : { status: 'already_claimed' };
 }
+
+export type InviteBodyResult =
+  | { status: 'ready'; body: string }
+  | { status: 'already_claimed' }
+  | { status: 'unwritten' };
 
 /**
  * The parent's confirmation: the authorisation row, then the state advance, in one
@@ -839,9 +878,17 @@ export async function recordParentAssent(
     verbatimReply: string;
     channelMessageId: string | null;
     now: Date;
+    ask?: ConsentAskWriter;
   },
-): Promise<string> {
+): Promise<InviteBodyResult> {
   const { invite, now } = input;
+  const who = input.inviterName ?? 'A parent';
+  const body = await writeConsentAsk(input.ask, {
+    kind: 'caregiver_invite',
+    who,
+    role: invite.role,
+  });
+  if (!body) return { status: 'unwritten' };
   await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     await tx.insert(schema.consentRecords).values({
@@ -852,7 +899,7 @@ export async function recordParentAssent(
       consentScope: `caregiver:${invite.role}`,
       policyVersion: POLICY_VERSION,
       evidence: {
-        question: scopeConfirm(invite.displayName, invite.role),
+        question: `Adding ${invite.displayName} as ${ROLE_LABEL[invite.role]}`,
         verbatimReply: input.verbatimReply,
         interpretation: `parent confirmed disclosing the ${ROLE_LABEL[invite.role]} scope to ${invite.displayName}`,
         channelMessageId: input.channelMessageId,
@@ -879,7 +926,7 @@ export async function recordParentAssent(
     });
   });
 
-  return inviteBody(input.inviterName, invite.role);
+  return { status: 'ready', body };
 }
 
 /** Close an invite in a terminal state, with its audit row. */
@@ -1002,7 +1049,7 @@ export async function acceptInvite(
         consentScope: `caregiver:${invite.role}`,
         policyVersion: POLICY_VERSION,
         evidence: {
-          question: inviteBody(null, invite.role),
+          question: `Joining as ${ROLE_LABEL[invite.role]}`,
           verbatimReply: input.verbatimReply,
           interpretation: `caregiver accepted the ${ROLE_LABEL[invite.role]} scope from the number itself`,
         },

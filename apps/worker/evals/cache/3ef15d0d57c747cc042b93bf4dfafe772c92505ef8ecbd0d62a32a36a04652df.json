@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cg38u6BRAkzzRN9BpSFBh",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlwUKEAgSGAI4AUIIdGhpbmtpbmcSDADMGRKueI6Euzwe3BoML1I5WqbHMX8gb/DtIjCNkEGcKICiJF+4aKYYZ79zHiDQuCdgZ/r6j4QYlpEi2oE26xbJFqTaM2JQrESuBPkqtAQlK9wUjDxGExXc/aRR2j/YH/NrFX+JPJqazco1Bs0l2krx7ChFkaBx7ifyoue08Uzu5GGY6gkq4b7yPYKkdTCxcl9dKtd6NrjOtygpipBV632UCKzWiY8YbfQDCHqD6cWAA3TwJ1sqzGWkBY4BZfb3gJ/wIlRuFyls2NOtba7PElsLeh0BSj3sR+Xg6YgxFFHTPunE4d0Ut1avdiyVu3QhI49jSl9QLW3lXGcuwbKS1UBtSOffZmdNs5usx+PTTzyOwuHjjE8IP/lFWm2ukIbFY3g5nNjKVNSzDVjhnYhOKIDUeOu64qP7/mLIJzD2C1GGM1/LGoC7NdeWGeDoCFnPFJ5e/xVOaE+Yk6djjAqP1AB8JC/NGpzu59gbI5DTBXYZbjzSvPuJ9D7HDwRnRRMVZUkiUDjjJ0P/MerxJzKVjEXbLiuht5SAVa9rs2oVUpFkK60nHU4+X0bfOSuCMLnhm6gkchTSFfxRceU3Dq2AbRZxusaf5YuRrLdPdfn2YU2BOnnyhdMnqCx4xYRSX23nhQ4tQdt9Cb2VFOeepibN1EITjKPvVat+9TpWe/Shva6a4Lap3cSE3c2TfOLyrHpFr0NZzW0lcsAwMhDwzjLFp4EEAGqEIFC7K5LBDRyUNOXQto7Qwlo7mcXBBSkElNnf/aJ7w5jEqAtGErA3RDsueoQhU4V0dckuryUX3m8Zk+e7WKkJQxvDEcSNILfPctKv8gcGn/P3HvuIIrTFFW92bFh/ADIYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents and I'm on it. For Remy, there's Tiny Tumblers parent & tot, Saturday mornings this fall, and the venue's own program page says so."
+      }
+    ],
+    "usage": {
+      "input_tokens": 813,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20754,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 113,
+      "output_tokens_details": {
+        "thinking_tokens": 30
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 1469
+}

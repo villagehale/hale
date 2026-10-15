@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey, just letting you know I went ahead and sent that email on your behalf. I'll do that for you whenever you need it — just say the word anytime you want me to stop."
+  },
+  "stopReason": "tool_use"
+}

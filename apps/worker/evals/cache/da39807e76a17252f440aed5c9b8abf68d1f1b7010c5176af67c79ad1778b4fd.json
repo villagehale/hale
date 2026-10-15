@@ -1,0 +1,25 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Tuesday 13 October, Windsor: high of about 29-30°C",
+        "from": "The Windsorite gives a high of 29 with a humidex of 35. Global News has a high of 30 and a low of 15, partly cloudy."
+      },
+      {
+        "states": "Tuesday afternoon, Windsor: sunny, 29°C at 2-5 pm",
+        "from": "Environment Canada's hourly forecast has sunny skies from late morning through the afternoon, with 29°C at 2–5 pm."
+      },
+      {
+        "states": "Tuesday early morning, Windsor: 30-40% chance of showers, possible thunderstorm, clearing in the morning",
+        "from": "The Weather Network has a chance of a shower in the morning (18°C, 40%). The Windsorite's forecast for the day has a 30 percent chance of showers early in the morning with a risk of a thunderstorm, then clearing in the morning."
+      },
+      {
+        "states": "Tuesday mid-afternoon: west wind gusting to about 50 km/h",
+        "from": "Environment Canada's hourly table has west wind of 30 km/h gusting to 50 from mid-afternoon into the evening"
+      }
+    ],
+    "answer": "Tuesday in Windsor looks sunny and hot, about 29°C in the afternoon (feels like 35 with the humidex). There's a 30-40% chance of a shower or thunderstorm early in the morning, but it should clear up by late morning. The wind picks up mid-afternoon, with gusts to around 50 km/h."
+  },
+  "latencyMs": 5068
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact here is supported by the research notes: the 6-3 win at Colorado, and the date conflict between ESPN/Yahoo (Oct 10) and NHL.com (Oct 11). Flagging the conflict is honest. But the closing \"Want me to check anything else for you?\" reads like an assistant offering a service, not a friend texting back, which caps the score below 4. The \"sources don't agree\" line is also a bit stiff.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

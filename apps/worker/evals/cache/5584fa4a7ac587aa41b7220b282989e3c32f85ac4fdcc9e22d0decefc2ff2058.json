@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message makes three real, local picks: Halton Hills Gymnastics Centre's Parent and Tot and Pre-school Drop In, and Tiny Dancers at Gellert Community Centre. Each fits a toddler, comes from the venue's own or the operator's site, and carries a session start or day. It leads with the best pick by name and attributes rather than claims confirmation ('their site says', 'Town Recreation lists'). Every time and price matches the picks, and nothing is invented. With pageEvidence=no_page_read, it names the null price correctly ('I could not get into their pages today'). With watch=true, it makes the first-person keep-watching commitment. There is no link and no question.",
+    "score": 5
+  }
+}

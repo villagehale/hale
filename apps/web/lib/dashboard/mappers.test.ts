@@ -64,7 +64,7 @@ describe('toTrailView — the honest frame', () => {
   it('turns the target table into a domain noun + a deep link, never a bare id', () => {
     const view = trail({ targetTable: 'actions', targetId: 'act-9' });
     expect(view.noun).toBe('draft');
-    expect(view.link).toBe('/approvals');
+    expect(view.link).toBeNull();
     // W5: the action id IS carried, structurally — it is the anchor a channel link
     // targets and the key the timeline folds a lifecycle by, the same role the audit
     // row's own `id` has always had. What must never happen is a parent READING it,
@@ -94,6 +94,68 @@ describe('toTrailView — the honest frame', () => {
     expect(trail({ actionTaken: 'action.executed', after: { kind: 'email_sent' } }).reversalKept).toBe(false);
   });
 
+  it("shows an email Hale sent on its own as Hale's executed row, never its decision payload", () => {
+    const view = trail({
+      actor: 'system',
+      actionTaken: 'action.executed',
+      targetTable: 'actions',
+      targetId: 'act-9',
+      after: {
+        kind: 'email_sent',
+        messageId: 'pm-1',
+        recipientDomain: 'example.test',
+        decision: { source: 'autonomous', reason: 'all checks green' },
+      },
+    });
+    expect(view.actor).toBe('hale');
+    expect(view.summary).toBe('Hale did this for you on its own');
+    expect(view.tone).toBe('done');
+    expect(view.link).toBeNull();
+    expect(JSON.stringify(view)).not.toContain('all checks green');
+  });
+
+  it('keeps the plain executed sentence for an action a parent approved, and for a row with no decision', () => {
+    const approved = trail({
+      actionTaken: 'action.executed',
+      after: { kind: 'email_sent', decision: { source: 'human', reason: 'a parent approved it' } },
+    });
+    expect(approved.summary).toBe('carried out the action');
+    expect(trail({ actionTaken: 'action.executed', after: null }).summary).toBe(
+      'carried out the action',
+    );
+    // Only an execution says it: a failed autonomous run keeps the failure sentence.
+    const failed = trail({
+      actionTaken: 'action.execution_failed',
+      after: { error: 'x', decision: { source: 'autonomous', reason: 'all checks green' } },
+    });
+    expect(failed.summary).toBe('an action could not be completed');
+  });
+
+  it('a parent switching autonomy off for a kind reads as their own act', () => {
+    const view = trail({
+      actor: PRIMARY,
+      actionTaken: 'autonomous_action_class.revoked',
+      targetTable: 'consent_records',
+      targetId: 'consent-1',
+    });
+    expect(view.actor).toBe('you');
+    expect(view.summary).toBe('you stopped Hale doing this on its own');
+  });
+
+  it('a kind turning autonomous is the approving parent’s row, and names how many approvals it took', () => {
+    const view = trail({
+      actor: PRIMARY,
+      actionTaken: 'autonomous_action_class.granted',
+      targetTable: 'consent_records',
+      targetId: 'consent-2',
+    });
+    expect(view.actor).toBe('you');
+    expect(view.summary).toBe(
+      "You've approved this 5 times, so Hale will handle it on its own from now on",
+    );
+    expect(view.tone).toBe('done');
+  });
+
   it('shows a noun with no link when the target has no viewable surface', () => {
     const view = trail({ targetTable: 'events', targetId: 'evt-1' });
     expect(view.noun).toBe('signal');
@@ -103,7 +165,6 @@ describe('toTrailView — the honest frame', () => {
   it('derives the row tone from the verb family — a failure never reads done', () => {
     expect(trail({ actionTaken: 'action.executed' }).tone).toBe('done');
     expect(trail({ actionTaken: 'action.execution_failed' }).tone).not.toBe('done');
-    expect(trail({ actionTaken: 'event.dropped.spend_ceiling' }).tone).not.toBe('done');
   });
 
   // The hard guarantee (defect: /trail leaked `families · family_created · <uuid>`):

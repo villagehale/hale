@@ -1,0 +1,27 @@
+{
+  "urls": [
+    "https://www.edmunds.com/minivan/",
+    "https://www.cartalk.com/car-reviews/best-minivans",
+    "https://qz.com/best-minivans-2026-ranked",
+    "https://www.truecar.com/best-cars-trucks/minivans/",
+    "https://www.kbb.com/van-minivan/",
+    "https://www.edmunds.com/car-news/best-minivans-2026.html",
+    "https://cars.usnews.com/cars-trucks/rankings/minivans",
+    "https://theweeklydriver.com/2026/04/best-minivan-2026-comparison-sienna-carnival-odyssey-pacifica/",
+    "https://kbb.com/most-popular-cars/van-minivan/1992",
+    "https://www.edmunds.com/minivan/",
+    "https://www.cargurus.com/research/articles/best-minivans",
+    "https://www.cars.com/research/van/mpg/",
+    "https://tractionlife.com/best-minivans-on-the-market-right-now/",
+    "https://www.edmunds.com/toyota/sienna/2027/",
+    "https://cars.usnews.com/cars-trucks/rankings/minivans",
+    "https://www.yahoo.com/news/videos/why-minivan-best-choice-families-005012307.html",
+    "https://greencarjournal.com/dont-miss/2027-chrysler-pacifica-evolving-a-family-favorite/",
+    "https://www.kbb.com/chrysler/pacifica/2027",
+    "https://www.kbb.com/van-minivan/best-minivans/2025"
+  ],
+  "notes": "Research notes (searched Oct 12, 2026). The question doesn't give a country. These results are all U.S. market, and I have not assumed a country beyond that.\n\n**There is no single agreed winner.** The sources split between the Toyota Sienna, Honda Odyssey, Kia Carnival Hybrid and Chrysler Pacifica.\n\n- **Edmunds:**\n  - Its ranking is 1) 2026 Toyota Sienna, 2) 2026 Kia Carnival Hybrid, 3) 2027 Honda Odyssey, 4) 2027 Kia Carnival, 5) 2027 Chrysler Pacifica.\n  - The Sienna scores 7.8/10.\n  - The Carnival Hybrid got the same 7.8 overall.\n  - The page was listed as about 250 days old.\n- **Kelley Blue Book (KBB):**\n  - Its 2026 page calls the Sienna its top-rated minivan, citing the hybrid powertrain and flexible interior.\n  - It also lists the 2026 Honda Odyssey as #1 in minivans, with a 4.6 rating.\n  - The KBB pages are inconsistent with each other. They are about 188 days old.\n- **U.S. News:**\n  - It names the 2026 Honda Odyssey the best minivan, with a 9.3/10 score.\n  - The 2027 Chrysler Pacifica and 2026 Kia Carnival tie for #2, each at 8.8.\n  - It was about 41 days old.\n- **Car Talk:** It says the Odyssey consistently came out as the best overall minivan in its tests. Ray's personal pick is the Sienna, because of its standard hybrid engine and 36 mpg.\n- **The Weekly Driver (5 days old, the newest source):** It calls the 2026 Kia Carnival Hybrid the best overall minivan for most families. Its reasons are near-Sienna fuel economy, 44 more cubic feet of cargo space, and the segment's best warranty. It says the Sienna is the smarter financial pick for high-mileage families and the Odyssey is the enthusiast's choice.\n- **CarGurus (26 days old):** It ranks the Chrysler Pacifica #1 and notes the 2027 refresh mostly changes the front end.\n\n**Strengths by model**\n- **Toyota Sienna:**\n  - It gets 36 mpg combined with front-wheel drive, the best in the segment, and is the only minivan sold only as a hybrid.\n  - All-wheel drive is available.\n  - Edmunds lists its MSRP at $41,320–$58,710.\n- **Kia Carnival / Carnival Hybrid:**\n  - The 2026 Carnival starts at $36,990, the lowest base price among minivans.\n  - The Hybrid gets 32 mpg combined, and its powertrain warranty is 10 years/100,000 miles.\n  - For 2027, Cars.com lists the Hybrid at a $41,490 starting MSRP and 33 mpg combined.\n- **Honda Odyssey:**\n  - It is the one that drives most like a car, with a smooth V6.\n  - It has the largest maximum cargo figure, 155.8 cubic feet.\n  - It gets about 22 mpg combined, and Cars.com lists the 2027 model from $43,195.\n  - KBB's page carries a headline about another Odyssey rearview camera recall.\n- **Chrysler Pacifica:**\n  - It has Stow 'n Go seating that no rival has matched.\n  - It had 34.9% of U.S. minivan sales in Q2 2026, per GoodCarBadCar.\n  - Edmunds notes the plug-in hybrid version has been discontinued.\n  - The 2027 Pacifica LX replaces the Voyager as the entry trim.\n- **Volkswagen ID. Buzz:** It is the only fully electric minivan on the U.S. market. It skipped the 2026 model year and returns for 2027.",
+  "stopReason": "end_turn",
+  "searchRequests": 2,
+  "latencyMs": 13644
+}

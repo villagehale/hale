@@ -1,5 +1,4 @@
 import { smsEncoding } from '~/lib/channel/sms-segments';
-import { COLD_START_ASK, WATCH_OFFER_ASK } from './copy';
 import type { ExtractedChild } from './extract';
 
 /**
@@ -12,13 +11,6 @@ import type { ExtractedChild } from './extract';
  */
 
 const INTAKE_MAX_REPLY_CHARS = 300;
-
-export const NOT_POSTED_YET = "That date isn't posted yet.";
-
-/** Paraphrase of COLD_START_ASK — names, ages, and postal, never the verbatim lock. */
-export const OFFICIAL_PAGE_RETURN_ASK = "Kids' names, ages, and a postal when you have them?";
-
-export const OFFICIAL_PAGE_WATCH_ASK = 'Still want me watching?';
 
 const DATE_OR_CLOCK =
   /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b|\b\d{1,2}:\d{2}\b/i;
@@ -50,18 +42,10 @@ export function notesGroundADate(notes: string): boolean {
 }
 
 export function officialPageReturnLine(pendingAsk: string): string {
-  const ask = pendingAsk.trim();
-  if (ask === WATCH_OFFER_ASK || /keep an eye/i.test(ask)) {
-    return OFFICIAL_PAGE_WATCH_ASK;
-  }
-  if (ask === COLD_START_ASK || /postal/i.test(ask)) {
-    return OFFICIAL_PAGE_RETURN_ASK;
-  }
-  return 'What did you want to tell me first?';
-}
-
-export function officialPageFallbackReply(pendingAsk: string): string {
-  return joinOfficialAnswer(NOT_POSTED_YET, pendingAsk);
+  // #868: the fixed watch / cold-start asks are gone as pending-ask text. The one
+  // live caller passes no pending ask; the friend voice asks the next thing itself.
+  void pendingAsk;
+  return '';
 }
 
 function sentences(text: string): string[] {
@@ -89,19 +73,20 @@ export function extractOfficialAnswer(notes: string): string | null {
   return answer;
 }
 
-export function joinOfficialAnswer(answer: string, pendingAsk: string): string {
+/** Null when the grounded answer cannot go out as one plain SMS: the caller has the
+ * model say the date is not posted (#868: no fixed fallback line). */
+export function joinOfficialAnswer(answer: string, pendingAsk: string): string | null {
   const ask = officialPageReturnLine(pendingAsk);
-  const fallback = `${NOT_POSTED_YET} ${ask}`;
-  const joined = `${answer} ${ask}`;
-  if (joined.length > INTAKE_MAX_REPLY_CHARS) return fallback;
-  if (smsEncoding(joined) !== 'gsm7') return fallback;
-  if (/https?:\/\/|www\./i.test(joined)) return fallback;
+  const joined = [answer, ask].filter((part) => part.length > 0).join(' ');
+  if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
+  if (smsEncoding(joined) !== 'gsm7') return null;
+  if (/https?:\/\/|www\./i.test(joined)) return null;
   return joined;
 }
 
-export function officialPageReplyFromNotes(notes: string, pendingAsk: string): string {
+export function officialPageReplyFromNotes(notes: string, pendingAsk: string): string | null {
   const answer = extractOfficialAnswer(notes);
-  return joinOfficialAnswer(answer ?? NOT_POSTED_YET, pendingAsk);
+  return answer === null ? null : joinOfficialAnswer(answer, pendingAsk);
 }
 
 /**

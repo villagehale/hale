@@ -1,10 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
-import { CO_PARENT_ASK_BY_LANGUAGE } from '~/lib/channel/intake/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import {
   configuredOutboundChannel,
   readSendRefusal,
@@ -37,27 +36,9 @@ export type FamilyOutboundTarget =
   | { channel: 'legacy'; reason?: GroupHoldReason };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const WEEK_MS = 7 * DAY_MS;
 const SETTLE_MS = 10 * 60 * 1000;
-const SYNC_LINE_MAX = 3;
-export const GROUP_DISCRETIONARY_DAY_MAX = 1;
-export const GROUP_DISCRETIONARY_WEEK_MAX = 3;
-export const GROUP_HARD_DAY_MAX = 2;
 const QUIET_START = '21:00:00';
 const QUIET_END = '08:00:00';
-
-/** Kid-event, conflict, handoff, post-event, both-free, who-takes. The 1/day and 3/week budget. */
-const DISCRETIONARY_TEMPLATES = [
-  'linq:group_kid_event',
-  'linq:group_conflict',
-  'linq:group_handoff',
-  'linq:group_followup',
-  'linq:group_both_free',
-  'linq:group_who_takes',
-  // VIL-382 · night-before duty confirmation. The Sunday overview is folded into
-  // the weekly nudge and does not take a template of its own.
-  'linq:group_duty_night_before',
-] as const;
 
 const SYNC_TEMPLATE = 'linq:group_sync';
 
@@ -65,16 +46,11 @@ const SYNC_TEMPLATE = 'linq:group_sync';
 const DECISION_SYNC_CLASS: ContentClass = 'schedule';
 
 /**
- * How a group send spends the household budget.
+ * Whether quiet hours apply. There is no count.
  *
  * `uncapped` is a reply, a receipt, or an onboarding turn the parent is already
- * in. `ceiling` is any other proactive bubble: at most two a day, quiet hours
- * included. `discretionary` is the narrower 1/day and 3/week list, and it also
- * counts toward that ceiling. `rec_morning` is the registration-morning nudge:
- * exempt from the narrow list, still under the ceiling, and the one kind that
- * still leaves when the ceiling is already met (it outranks the others).
- * `weekly_followup` and `sync` are exempt from the narrow list and stop at the
- * ceiling.
+ * in, and it may cross quiet hours. `rec_morning` is the registration ladder,
+ * which opens before 08:00 and may cross quiet hours. Every other kind waits.
  */
 export type GroupBubbleKind =
   | 'uncapped'
@@ -132,93 +108,6 @@ export async function familyOutboundTargetForUser(
   return familyOutboundTarget(database, seat.familyId);
 }
 
-export interface GroupSpend {
-  discretionaryDay: number;
-  discretionaryWeek: number;
-  ceilingToday: number;
-  /** Instants inside each window, oldest-first is not required. */
-  discretionaryDayAt: Date[];
-  discretionaryWeekAt: Date[];
-  ceilingTodayAt: Date[];
-}
-
-export async function readGroupBubbleSpend(
-  database: Database,
-  input: { familyId: string; chatId: string; now: Date },
-): Promise<GroupSpend> {
-  if (typeof database.select !== 'function') {
-    return {
-      discretionaryDay: 0,
-      discretionaryWeek: 0,
-      ceilingToday: 0,
-      discretionaryDayAt: [],
-      discretionaryWeekAt: [],
-      ceilingTodayAt: [],
-    };
-  }
-  const since = new Date(input.now.getTime() - WEEK_MS);
-  const rows = await database
-    .select({
-      createdAt: schema.channelMessages.createdAt,
-      status: schema.channelMessages.status,
-      templateKey: schema.channelMessages.templateKey,
-      category: schema.channelMessages.category,
-      providerChatId: schema.channelMessages.providerChatId,
-      familyId: schema.channelMessages.familyId,
-    })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.familyId, input.familyId),
-        eq(schema.channelMessages.providerChatId, input.chatId),
-        gte(schema.channelMessages.createdAt, since),
-      ),
-    );
-  const sent = rows.filter(
-    (row) =>
-      row.familyId === input.familyId &&
-      row.providerChatId === input.chatId &&
-      (SENT_STATUSES as readonly string[]).includes(row.status),
-  );
-  const dayAgo = input.now.getTime() - DAY_MS;
-  const discretionary = sent.filter(
-    (row) =>
-      (DISCRETIONARY_TEMPLATES as readonly string[]).includes(row.templateKey ?? '') ||
-      row.category === 'followup' ||
-      row.category === 'activity_followup' ||
-      row.category === 'calendar_alert',
-  );
-  const ceiling = sent.filter(
-    (row) => row.category !== 'reply' || row.templateKey === SYNC_TEMPLATE,
-  );
-  const discretionaryDayRows = discretionary.filter((row) => row.createdAt.getTime() >= dayAgo);
-  const ceilingTodayRows = ceiling.filter((row) => row.createdAt.getTime() >= dayAgo);
-  return {
-    discretionaryDay: discretionaryDayRows.length,
-    discretionaryWeek: discretionary.length,
-    ceilingToday: ceilingTodayRows.length,
-    discretionaryDayAt: discretionaryDayRows.map((row) => row.createdAt),
-    discretionaryWeekAt: discretionary.map((row) => row.createdAt),
-    ceilingTodayAt: ceilingTodayRows.map((row) => row.createdAt),
-  };
-}
-
-/**
- * One discretionary bubble a day and three a week, and never a third proactive
- * bubble in a day. Household calendar notices use this before they speak.
- */
-export async function groupProactiveCapReached(
-  database: Database,
-  input: { familyId: string; chatId: string; now: Date },
-): Promise<boolean> {
-  const spend = await readGroupBubbleSpend(database, input);
-  return (
-    spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX ||
-    spend.discretionaryWeek >= GROUP_DISCRETIONARY_WEEK_MAX ||
-    spend.ceilingToday >= GROUP_HARD_DAY_MAX
-  );
-}
-
 async function householdQuiet(database: Database, familyId: string, now: Date): Promise<boolean> {
   if (typeof database.select !== 'function') return false;
   const members = await database
@@ -245,55 +134,6 @@ async function householdQuiet(database: Database, familyId: string, now: Date): 
   return isWithinQuietHours(now, timeZone, QUIET_START, QUIET_END);
 }
 
-/**
- * When a rolling cap releases. The pivot is the message that has to age out
- * before the count drops below the max (`inWindow[count - max]`). Several
- * caps can bind at once; the send stays held until the latest of them.
- * `+ 1ms` is the first instant `createdAt >= now - window` no longer holds.
- */
-function windowResetsAt(timestamps: readonly Date[], max: number, windowMs: number): Date | null {
-  if (max <= 0 || timestamps.length < max) return null;
-  const ordered = [...timestamps].sort((a, b) => a.getTime() - b.getTime());
-  const pivot = ordered[ordered.length - max];
-  if (!pivot) return null;
-  return new Date(pivot.getTime() + windowMs + 1);
-}
-
-export function groupCapResetsAt(kind: GroupBubbleKind, spend: GroupSpend, now: Date): Date {
-  const resets: Date[] = [];
-  const push = (at: Date | null) => {
-    if (at) resets.push(at);
-  };
-  if (kind !== 'uncapped' && kind !== 'rec_morning' && spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
-    push(windowResetsAt(spend.ceilingTodayAt, GROUP_HARD_DAY_MAX, DAY_MS));
-  }
-  if (kind === 'discretionary') {
-    if (spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX) {
-      push(windowResetsAt(spend.discretionaryDayAt, GROUP_DISCRETIONARY_DAY_MAX, DAY_MS));
-    }
-    if (spend.discretionaryWeek >= GROUP_DISCRETIONARY_WEEK_MAX) {
-      push(windowResetsAt(spend.discretionaryWeekAt, GROUP_DISCRETIONARY_WEEK_MAX, WEEK_MS));
-    }
-  }
-  if (resets.length === 0) return new Date(now.getTime() + DAY_MS + 1);
-  return resets.reduce((latest, at) => (at.getTime() > latest.getTime() ? at : latest));
-}
-
-function kindHeld(kind: GroupBubbleKind, spend: GroupSpend): 'group_cap' | null {
-  if (kind === 'uncapped') return null;
-  const ceiling = spend.ceilingToday >= GROUP_HARD_DAY_MAX;
-  if (kind === 'rec_morning') return null;
-  if (ceiling) return 'group_cap';
-  if (kind !== 'discretionary') return null;
-  if (
-    spend.discretionaryDay >= GROUP_DISCRETIONARY_DAY_MAX ||
-    spend.discretionaryWeek >= GROUP_DISCRETIONARY_WEEK_MAX
-  ) {
-    return 'group_cap';
-  }
-  return null;
-}
-
 export type FamilyOutboundDelivery =
   | {
       status: 'sent';
@@ -302,7 +142,6 @@ export type FamilyOutboundDelivery =
       chatId: string | null;
       linkOmitted?: 'link_on_new_chat';
     }
-  | { status: 'held'; reason: 'group_cap'; until: Date }
   | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' }
   | { status: 'skipped'; reason: string };
 
@@ -316,8 +155,6 @@ function skippedRefusal(familyId: string, err: unknown): FamilyOutboundDelivery 
 
 function isCoparentAsk(body: string): boolean {
   return (
-    body.includes(CO_PARENT_ASK_BY_LANGUAGE.en) ||
-    body.includes(CO_PARENT_ASK_BY_LANGUAGE.fr) ||
     body.includes("Want the other parent on the kids' year") ||
     body.includes("l'autre parent sur l'ann") ||
     body.includes(`send: ${LINQ_GROUP_TRIGGER_PHRASE.en}`) ||
@@ -330,9 +167,10 @@ function isCoparentAsk(body: string): boolean {
  * `linq_group_chat_id` and does not call the legacy transport. No group uses
  * the legacy transport unchanged.
  *
- * `shareGroupCap` false is the uncapped door (a reply the parent is already
- * in, or a spot they asked to hear about). Pass `bubbleKind` when the send
- * has a named budget. The co-parent ask never leaves into a claimed group.
+ * `shareGroupCap` false is the quiet-hours door for a reply the parent is
+ * already in, or a spot they asked to hear about. Pass `bubbleKind` when the
+ * send has a named quiet-hours class. The co-parent ask never leaves into a
+ * claimed group. There is no count.
  */
 export async function deliverFamilyOutbound(
   database: Database,
@@ -373,25 +211,6 @@ export async function deliverFamilyOutbound(
         'family outbound: quiet hours — not sent, and not retried on SMS',
       );
       return { status: 'held', reason: 'quiet_hours' };
-    }
-    const spend = await readGroupBubbleSpend(database, {
-      familyId: input.familyId,
-      chatId: target.chatId,
-      now,
-    });
-    const held = kindHeld(kind, spend);
-    if (held) {
-      console.warn(
-        { familyId: input.familyId, kind },
-        'family outbound: group cap reached — not sent, and not retried on SMS',
-      );
-      return { status: 'held', reason: held, until: groupCapResetsAt(kind, spend, now) };
-    }
-    if (kind === 'rec_morning' && spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
-      console.warn(
-        { familyId: input.familyId },
-        'family outbound: ceiling already met — rec-morning still sent',
-      );
     }
     try {
       const sent = await sendLinqChatMessage({
@@ -648,9 +467,9 @@ export async function noteGroupSyncConversation(
 }
 
 /**
- * Send the waiting decisions whose 1:1 has been quiet. One bubble, at most
- * three lines, never a second bubble for the same sitting. Quiet hours hold
- * the bubble; the rows stay queued. A row about a child who is 13+ by now is
+ * Send the waiting decisions whose 1:1 has been quiet. One bubble, every due
+ * line, never a second bubble for the same sitting. Quiet hours hold the
+ * bubble; the rows stay queued. A row about a child who is 13+ by now is
  * withheld: marked flushed and never said.
  */
 export async function flushGroupDecisionSyncs(
@@ -718,20 +537,10 @@ export async function flushGroupDecisionSyncs(
       held += 1;
       continue;
     }
-    const spend = await readGroupBubbleSpend(database, {
-      familyId,
-      chatId: target.chatId,
-      now: input.now,
-    });
-    if (spend.ceilingToday >= GROUP_HARD_DAY_MAX) {
-      held += 1;
-      continue;
-    }
     rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const speech = await familySpeech(database, familyId, rows[0]?.parentUserId ?? '');
     const lines: string[] = [];
     for (const row of rows) {
-      if (lines.length >= SYNC_LINE_MAX) break;
       const name = speech.name ?? (speech.language === 'fr' ? 'Un parent' : 'A parent');
       if (row.decision === 'picked' && row.day && row.time) {
         lines.push(

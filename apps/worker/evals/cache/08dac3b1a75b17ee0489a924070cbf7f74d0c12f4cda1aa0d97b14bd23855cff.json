@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "start",
+    "verbatim": "ok I changed my mind, you can text me again",
+    "confirmation": "Hey! Glad to have you back. Talk soon 👋"
+  },
+  "latencyMs": 1129
+}

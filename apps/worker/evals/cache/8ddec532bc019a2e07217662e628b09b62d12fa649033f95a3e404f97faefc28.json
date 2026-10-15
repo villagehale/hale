@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly hands Sam the appended referral link and tells them to forward it themselves, with a short forwardable blurb. The extra clause explaining Hale won't text the friend first is a word more than needed.",
+    "score": 4
+  }
+}

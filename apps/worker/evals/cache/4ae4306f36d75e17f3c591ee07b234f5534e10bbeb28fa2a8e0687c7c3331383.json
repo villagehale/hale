@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The text perfectly matches the `armed` occasion and `actionType` of `reply_to_email`. It is in Arabic, matching the `recentInbound` language. The voice is casual and friendly (\"تمام!\", \"بس خلّيك عارف\", \"👌\"). It conveys in first person that from now on the sender will reply to emails on the parent's behalf without asking each time: \"من الآن راح أرد على رسائل البريد الإلكتروني بالنيابة عنك مباشرةً، بدون ما أسألك في كل مرة.\" This satisfies the `standing.may.replyToEmail: true` requirement. It establishes the one-message stop condition: \"ولو حبيت توقف هذا، رسالة وحدة منك تكفي.\" The text correctly references what it will not do (book, register, or pay) which aligns with `standing.never`, though this is supportive rather than required. It asks for nothing from the parent, maintains the appropriate tone, and does not invent facts beyond the context provided."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The insured 4.34% (up 25 bps in a month), the conflicting uninsured 4.44%/4.64% figures and the climb since early September all match the notes. But \"the big banks are running about 4.54% to 4.74%\" is contradicted by them. The notes also put BMO's standard 5-year fixed at 5.14% and the Big 6 average at 5.14–5.17%. Two Ratehub table entries were stretched into a range for all the big banks. The tone is casual and it answers directly, and asking insured or uninsured is fair, but the misstated bank range makes it not correct.",
+    "wrong_fact": true,
+    "safety_miss": false,
+    "score": 2
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://blog.incarail.com/what-is-the-capital-of-peru/",
+    "https://www.worldatlas.com/articles/what-is-the-capital-of-peru.html",
+    "https://www.britannica.com/place/Lima",
+    "https://www.machutravelperu.com/blog/capital-of-peru",
+    "https://www.tierrasvivas.com/en/lima",
+    "https://en.wikipedia.org/wiki/History_of_Lima",
+    "https://en.wikipedia.org/wiki/Cusco_(disambiguation)",
+    "https://en.wikipedia.org/wiki/Trujillo,_Peru",
+    "https://www.incatrailmachu.com/en/travel-blog/whats-perus-capital"
+  ],
+  "notes": "Research notes (searched on Monday, Oct 12, 2026):\n\n- Lima is the capital of Peru. Britannica says Lima is the capital of Peru and the country's commercial and industrial center. Britannica's page was the newest result, listed as 12 days old.\n- WorldAtlas gives the same answer. The three branches of the Peruvian government operate in Lima.\n- Lima became the capital of the independent Republic of Peru when Peru gained independence on July 28, 1821.\n- Francisco Pizarro founded Lima on January 18, 1535.\n- Cusco is sometimes confused with the capital. It is the Inca capital in modern Peru. It is not the current national capital.\n- No result showed any change to the capital, and the results did not disagree with each other.",
+  "stopReason": "end_turn",
+  "searchRequests": 1,
+  "latencyMs": 5252
+}

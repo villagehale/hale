@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "well made and third-party tested",
+        "from": "Sources agree it is well made, tested and tastes decent for most people"
+      },
+      {
+        "states": "tastes decent for most people",
+        "from": "Sources agree it is well made, tested and tastes decent for most people"
+      },
+      {
+        "states": "several ingredients are underdosed",
+        "from": "It also flagged key ingredient amounts hidden in proprietary blends and several underdosed ingredients"
+      },
+      {
+        "states": "no independent clinical evidence for its benefit claims",
+        "from": "I found no independent clinical evidence for its benefit claims."
+      },
+      {
+        "states": "about $89 a month on subscription",
+        "from": "About $112 for a one-time 30-serving box and about $89 a month on subscription, per getsupplementreviews.com and Live it Up."
+      },
+      {
+        "states": "reishi and grape seed can interact with blood thinners and blood pressure medication",
+        "from": "noted reishi and grape seed can interact with blood thinners and blood pressure medication"
+      }
+    ],
+    "answer": "Mostly overrated, I'd say. It's well made and tested, and most people find it tastes decent. But the critics have a point: several ingredients are underdosed, I couldn't find independent clinical evidence for the benefit claims, and at about $89 a month on subscription it's pricey for what you get. If you take blood thinners or blood pressure medication, the reishi and grape seed in it can interact, so check with your doctor or pharmacist first."
+  },
+  "latencyMs": 6924
+}

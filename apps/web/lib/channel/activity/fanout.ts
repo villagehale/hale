@@ -148,7 +148,9 @@ export function angleUserMessage(query: ActivityQuery, angle: DeepAngle): string
  * The lane's model and reasoning knobs, narrowed to the one field the pinned SDK (0.41.0)
  * types — the same blocker and the same tactic as `wireLane` in deep.ts.
  */
-function wireLane(task: Parameters<typeof pickLane>[0]): Pick<Anthropic.MessageCreateParams, 'model'> {
+function wireLane(
+  task: Parameters<typeof pickLane>[0],
+): Pick<Anthropic.MessageCreateParams, 'model'> {
   return laneRequestFields(pickLane(task)) as Pick<Anthropic.MessageCreateParams, 'model'>;
 }
 

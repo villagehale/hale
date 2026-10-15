@@ -182,9 +182,6 @@ jobs:
       - name: SMS intake extraction/intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake
 
-      - name: Intake voice composer eval (cached-only)
-        run: pnpm --filter @hale/worker eval:intake-voice
-
       - name: Mid-signup answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake-answer
 
@@ -274,6 +271,9 @@ jobs:
       # here BEFORE the pass that calls it ships.
       - name: Travel-booking extraction eval (cached-only)
         run: pnpm --filter @hale/worker eval:travel-extract
+
+      - name: Autonomy notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:autonomy-notice
 
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a

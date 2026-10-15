@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful to the pages. Tiny Gym's age band comes off the programs page. The Term 1 and Term 2 dates come off the PDF, which was opened and is cited. The July 22, 2026 8:00am registration date comes off the home page and is cited. No figures are borrowed from elsewhere, and price is correctly left null because the site says pricing is only behind the registration login. The slot is honest that weekdays could not be matched in the garbled grid. The message leads with Tiny Gym by name and attributes the facts. Under page_has_schedule it correctly uses the first-person gap ('I could not pin down the day or the price') rather than 'not posted'. It carries the registration date, makes the first-person keep-watching commitment that watch=true requires, and is plain ASCII with no link or question. Minor deduction: it drops the Rock n' Roll (0+) find entirely, which is a second fitting program. It also does not mention that the site puts pricing behind the registration login, which is a small withholding of finds.",
+    "score": 4
+  }
+}

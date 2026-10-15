@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Mini Mondo, Centre des sciences de Montréal (Montréal Science Centre)",
+        "age_fit": "For children under 7",
+        "when": "Dec 27, 28, 29 and 30, 10:00 - 17:00",
+        "source_name": "Museums Montréal"
+      },
+      {
+        "name": "Biodôme - Espace pour la vie",
+        "age_fit": "Children of all ages",
+        "when": "Regular winter hours Tuesday to Sunday 9:00 - 17:00, so open Dec 27, 29 and 30; closed Monday Dec 28",
+        "source_name": "Museums Montréal"
+      }
+    ]
+  },
+  "latencyMs": 5570
+}

@@ -1,0 +1,17 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Lionel Messi",
+        "from": "settled"
+      },
+      {
+        "states": "Messi won the 2022 World Cup with Argentina",
+        "from": "settled"
+      }
+    ],
+    "answer": "Messi, for me. He won the 2022 World Cup with Argentina, and he stayed at the top of the game for well over a decade, which is the bit that makes it hard to pick anyone else. Pelé has a strong case too, but Messi's run feels more complete."
+  },
+  "latencyMs": 4352
+}

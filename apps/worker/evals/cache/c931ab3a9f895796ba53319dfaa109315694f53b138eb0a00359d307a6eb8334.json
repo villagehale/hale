@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text matches the occasion (`armed`) and voice—casual, first-person, friendly. It covers all three required facts: (1) Fact one—what the sender may do: \"I'll go ahead and email the school for you without checking first\" conveys sendEmail correctly. (2) Fact two—the never list: \"I won't book, register, or pay for anything\" directly states the three required restrictions. (3) Fact three—the stop condition: \"if you ever want me to stop, just send me one message saying so\" conveys that one message turns this off. The tone is appropriate—casual and friendly (\"Got it\") without sounding like a notification or offer of service. No invented facts, no template structure, no more than one ask. All three facts are present and clearly stated.",
+    "score": 5
+  }
+}

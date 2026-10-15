@@ -1,13 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { localDaysBetween } from '~/lib/channel/checkin/cadence';
-import {
-  POOL_EPOCH,
-  assertPoolSize,
-  nightlyOccasion,
-  pickVariant,
-  weeklyOccasion,
-} from './variant';
+import { POOL_EPOCH, assertPoolSize, nightlyOccasion, pickVariant } from './variant';
 
 /**
  * THE SELECTOR, tested as the three properties it exists for rather than as its output.
@@ -135,17 +129,6 @@ describe('the two occasion formulas', () => {
     expect(nightlyOccasion(justPastMidnight, toronto)).toBe(
       nightlyOccasion(justPastMidnight, 'America/Vancouver') + 1,
     );
-  });
-
-  it('advances the weekly occasion by exactly one per Monday', () => {
-    const mondays = ['2026-06-29', '2026-07-06', '2026-07-13', '2026-07-20'];
-    const occasions = mondays.map(weeklyOccasion);
-    for (let i = 1; i < occasions.length; i++) {
-      expect((occasions[i] as number) - (occasions[i - 1] as number), mondays[i]).toBe(1);
-    }
-    // Before the epoch it still steps by one rather than folding at zero.
-    expect(weeklyOccasion('2025-12-29') + 1).toBe(weeklyOccasion('2026-01-05'));
-    expect(() => weeklyOccasion('not-a-date')).toThrow(/week key/);
   });
 });
 

@@ -1,0 +1,27 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Parent and Tot, Halton Hills Gymnastics Centre (36 Armstrong Avenue, Georgetown)",
+        "age_fit": "18 months - 3.11 yrs",
+        "when": "Fall 2026 session Sept 12 - Dec 18 (30-minute classes)",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Pre-school Drop In, Halton Hills Gymnastics Centre (36 Armstrong Avenue, Georgetown)",
+        "age_fit": "Pre-school age children under 4, with a parent",
+        "when": "Tuesdays and Thursdays 9:30am - 12:00pm, during the school year (Sept - Jun)",
+        "price": "$15 for one parent and up to 4 children",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Tiny Dancers, Gellert Community Centre (10241 8 Line, Georgetown)",
+        "age_fit": "2-3 yrs",
+        "when": "Saturdays 8:30 AM - 9:00 AM, Sep 26 - Dec 12",
+        "price": "$117.00 for 12 classes",
+        "source_name": "Town of Halton Hills Recreation"
+      }
+    ]
+  },
+  "latencyMs": 7325
+}

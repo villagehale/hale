@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "my son isn't breathing right, his lips are blue",
+    "confirmation": "Call your local emergency number now (911 in the US and Canada). Tell them your son isn't breathing right and his lips are blue."
+  },
+  "latencyMs": 1347
+}

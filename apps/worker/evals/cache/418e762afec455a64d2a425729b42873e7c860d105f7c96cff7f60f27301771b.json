@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The reply gives tomorrow's Toronto forecast directly, and every figure is supported by the Environment Canada notes: the 25°C high, the 40% chance of showers late in the afternoon with a thunderstorm risk, and the 15°C low Tuesday night. The note that other sites have the showers earlier also matches the research notes. It doesn't re-ask for the city. The tone is casual and brief, and the aside about the official source is a little wordy but fine.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 5
+  }
+}

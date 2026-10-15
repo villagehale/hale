@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "my son isn't breathing right, his lips are blue",
+    "confirmation": "Call 911 now. Your son needs help right away."
+  },
+  "latencyMs": 1216
+}

@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every figure is backed by the research notes: 4.34% lowest insured from Ratehub and Wowa, a Big 6 bank at 4.54%, Scotiabank at 4.74%, and fixed rates climbing since early September. Nothing is invented, and it gives a real number instead of deflecting. It falls short of a 5 because it gives no as-of date, which watchFor asks for. The closing caveats about Toronto, insured versus uninsured, and purchase versus renewal also read a bit like a research report rather than a casual text.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

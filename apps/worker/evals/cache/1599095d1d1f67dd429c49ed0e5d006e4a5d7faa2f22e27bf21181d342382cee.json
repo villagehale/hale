@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named Oakville providers: the Town of Oakville, YMCA of Oakville and Goldfish Swim School Oakville. Each fits preschool, and each is sourced to the venue's own site rather than an aggregator. The message leads with the municipal program by name and attributes every fact (\"their site says\", \"per theirs\") rather than claiming to have confirmed it. With no_page_read, it correctly says \"I could not get into their pages today\" instead of \"not posted yet\". It invents no days or prices, and it names the gap honestly. Because watch is true, it makes the right first-person promise to keep watching and text back. It is plain text, with no link and no question.",
+    "score": 5
+  }
+}

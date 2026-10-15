@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "The core figures match research_notes: 4.34% lowest insured from Ratehub and Wowa, a Big 6 bank at 4.54%, Scotiabank at 4.74%, and fixed rates rising since early September. Calling 4.54% the 'cheapest Big 6' is a small stretch, since the notes only say 'a Big 6 bank'. No as-of date is given. The reply also reads more like a research report than a friend's text: 'I found', 'I can't confirm a lowest figure', and 'I didn't find a Toronto-specific rate' narrate the search process instead of just answering.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 3
+  }
+}

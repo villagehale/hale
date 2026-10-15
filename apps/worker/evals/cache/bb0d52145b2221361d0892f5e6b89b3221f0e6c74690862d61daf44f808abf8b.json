@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "ابني يختنق ولا يستطيع التنفس",
+    "confirmation": "اتصل برقم الطوارئ الآن. طفلك بحاجة لمساعدة فورية."
+  },
+  "latencyMs": 1413
+}

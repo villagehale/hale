@@ -1,35 +1,32 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { namesAMentalCrisis, namesAnEmergency } from '~/lib/channel/off-domain/copy';
+import { logCrisisUnanswered } from '~/lib/channel/voice/said-line';
 
 /**
  * The outage smoke alarm.
  *
- * Hale composes everything it says, including a crisis or emergency reply
- * (moment-reply.ts). There is no preset body to stand in when the model is
- * unreachable. This module still notices that the text is an emergency or a crisis
- * during that outage, and names the miss (`unwritten`) so the turn defers instead of
- * sending a canned line or falling through to the honesty template. When the model is
- * back, the screened lane writes the reply.
+ * When the model API is UNREACHABLE and a parent's text carries an unambiguous
+ * emergency or crisis token, there is no model to write a reply and, since #868
+ * (Barton, 2026-10-14), no fixed crisis line to send instead — the "Call 911 now."
+ * exception is gone. What remains is the alarm itself: an urgent, body-free log so
+ * #ops reaches the parent, claimed once per inbound.
  *
- * IT IS NOT A FALLBACK FOR THE LLM. It runs only when there is no LLM. A turn that
- * broke on a tool, ran out of steps, hit a bug, or was refused by a gate keeps the
- * honesty line it has always had — which is why {@link modelIsUnreachable} is a
- * POSITIVE list rather than "anything unrecognised".
+ * It fires only when there is no LLM ({@link modelIsUnreachable} is a POSITIVE list).
  *
- * PRIVACY. Nothing here logs, stores or transmits the parent's words. It reads the body
- * to answer one boolean (rule #1).
+ * PRIVACY. Nothing here logs, stores or transmits the parent's words (rule #1).
  */
 
-/** Why the alarm did or did not ring. None of them is silence (rule #11). */
+/** Why the alarm did or did not ring. Four outcomes, none of them silence (rule #11). */
 export type SmokeAlarmOutcome =
-  /** Kept for a claim recorded before preset bodies were removed. Nothing is sent. */
-  | 'already_fired'
-  /** The model is down and the text is an emergency or a crisis. Nothing preset goes out. */
-  | 'unwritten'
+  /** An outage met a crisis token: nothing went out (no line is fixed, #868), the
+   * urgent #ops log fired, and the inbound is claimed so a re-drive pages once. */
+  | 'fired'
   /** The turn broke, but the provider was reachable — an ordinary failed turn. */
   | 'not_an_outage'
   /** An outage, and nothing in the text is an unambiguous emergency. */
-  | 'no_emergency_token';
+  | 'no_emergency_token'
+  /** This same inbound already rang it: a queue re-drive, not a second emergency. */
+  | 'already_fired';
 
 /**
  * The alarm's memory — one row per text that rang it.
@@ -126,9 +123,6 @@ export interface SmokeAlarmInput {
   familyId: string;
   parentUserId: string;
   channelMessageId: string;
-  /** Sends and records exactly like any other reply: transport, delivery ledger, audit
-   * row (rule #6), and the parent's thread. The alarm gets no private send path. */
-  say(body: string): Promise<void>;
 }
 
 /**
@@ -145,16 +139,19 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   if (!namesAnEmergency(input.body) && !namesAMentalCrisis(input.body)) {
     return 'no_emergency_token';
   }
-  const { familyId, channelMessageId } = input;
+  const { familyId, parentUserId, channelMessageId } = input;
   if (await input.claim.alreadyFired({ familyId, channelMessageId })) {
     return 'already_fired';
   }
 
-  // The model writes this reply, and the model is unreachable. Nothing preset goes out,
-  // and the claim is not recorded, so a later attempt can still write it.
-  console.error(
-    { outcome: 'unwritten' },
-    'smoke alarm: emergency during an outage; moment reply unwritten',
-  );
-  return 'unwritten';
+  // SEND, THEN CLAIM — the router's own ordering rule (route.ts sendReply), for the same
+  // reason turned up one notch. A claim written first would turn a send that failed into
+  // a text the parent never gets at all: the re-drive would read the claim and stay
+  // quiet about an emergency nobody answered.
+  // #868 (Barton, 2026-10-14): the fixed "Call 911 now." outage line is gone; there is
+  // no fixed crisis line anywhere. With no model to write one, nothing is sent and #ops
+  // is paged urgently, once per inbound (the claim still dedupes the re-drive).
+  logCrisisUnanswered(namesAnEmergency(input.body) ? 'emergency' : 'mental', 'model_outage');
+  await input.claim.recordFired({ familyId, parentUserId, channelMessageId });
+  return 'fired';
 }

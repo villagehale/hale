@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5, Saturday times, and Sept 12-Nov 28 dates. Price is correctly null because the page prints no fee, and each slot carries the registration date and cites the page it was read from. The message leads with the program by name, attributes the facts to their site, and includes the registration window (Tue Aug 11, 7am, residents). With the schedule on the page, it puts the price gap in the first person ('I could not pin down the price') rather than claiming it is not posted. Because watch is true, the first-person 'I'll keep watching and text you' is a real commitment. It asks no question, contains no link and is plain ASCII. Minor omissions that do not cost a point: the Aug 4 browse date and the note that fees are in the Recreation Guide.",
+    "score": 5
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "naps at the same time each day and for about the same length",
+        "from": "Babies get the most out of naps if they take them at the same time each day and for about the same length of time."
+      },
+      {
+        "states": "a dark, quiet room helps a baby sleep",
+        "from": "A dark, quiet room can help babies sleep."
+      },
+      {
+        "states": "put a baby down drowsy but awake",
+        "from": "put babies to bed drowsy but awake"
+      },
+      {
+        "states": "a consistent daily routine helps, with a calming story",
+        "from": "A consistent daily routine helps. ... a story read in a calming voice."
+      },
+      {
+        "states": "a toddler naps in his own bed or crib",
+        "from": "a toddler at home should nap in his own bed or crib"
+      }
+    ],
+    "answer": "Depends a lot on his age, but for a baby or toddler: nap at the same time and for about the same length each day, keep the room dark and quiet, put him down drowsy but awake, and do a calm routine like a story or a lullaby first. Having him nap in his own bed helps too. How old is he?"
+  },
+  "latencyMs": 65428
+}

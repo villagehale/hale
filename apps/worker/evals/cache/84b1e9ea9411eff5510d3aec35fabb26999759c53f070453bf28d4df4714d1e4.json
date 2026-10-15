@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly acknowledges the parent's complaint and confirms that autonomy for email has been turned off this turn (as shown in `autonomySwitchOff.turnedOffThisTurn`). It tells Sam plainly that Hale will ask before each send going forward. The reply is in French matching the parent's language, has no greeting or sign-off, no markdown, no unnecessary detail, and is exactly one question-free, action-confirming sentence pair. This is the job done cleanly.",
+    "score": 5
+  }
+}

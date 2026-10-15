@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickModel } from '@hale/agent';
 import { UNMET_INTENT_CATEGORIES } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type FamilyFacts,
   type FamilyPlace,
@@ -16,10 +16,14 @@ import {
   searchUserMessage,
 } from './answer';
 import {
+  ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION,
+  ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT,
   ANSWER_ENDS_ON_THE_ANSWER,
   ANSWER_KEEPS_THE_NOTES_DAY,
   ANSWER_MAX_TOKENS,
+  ANSWER_MEDICATION_CAVEAT,
   ANSWER_RECENT_RESULT_FROM_THE_NOTES,
+  ANSWER_RESPECTS_PAGE_AGE,
   ANSWER_WITH_NOTHING_CHECKED,
   SAFETY_KINDS,
   answerJsonSchema,
@@ -27,6 +31,12 @@ import {
   safetyDoorFor,
 } from './answer-request';
 import { COMPOSE_MAX_TOKENS } from './medical';
+
+// The live search is on by default in production. These tests describe the kill switch
+// (dark) unless a test lights it, so each starts dark.
+beforeEach(() => {
+  vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
+});
 
 /**
  * The general answer's MECHANICS. Not its judgement.
@@ -98,15 +108,21 @@ interface Script {
   /** How the search turn stopped. A finished turn unless a test says otherwise. */
   searchStop?: string;
   answer?: unknown;
+  /** The pre-send read's verdict. A plain send unless a test says otherwise. */
+  check?: unknown;
 }
 
 interface Seen {
   sanitize: Captured[];
   search: Captured[];
   compose: Captured[];
+  check: Captured[];
 }
 
-const seenNothing = (): Seen => ({ sanitize: [], search: [], compose: [] });
+const seenNothing = (): Seen => ({ sanitize: [], search: [], compose: [], check: [] });
+
+/** The pre-send read is told apart by its skill, like the sanitizer. */
+const CHECK_HEADING = '# Read the draft against the notes before it goes';
 
 const reading = (overrides: Record<string, unknown> = {}) => ({
   language: 'en',
@@ -132,8 +148,13 @@ function scripted(script: Script, seen: Seen = seenNothing()): () => AgentClient
       messages: {
         async create(request: Captured) {
           const sanitizing = systemText(request.system).includes(SANITIZE_HEADING);
-          (sanitizing ? seen.sanitize : seen.compose).push(request);
-          const payload = sanitizing ? (script.sanitize ?? reading()) : script.answer;
+          const checking = systemText(request.system).includes(CHECK_HEADING);
+          (sanitizing ? seen.sanitize : checking ? seen.check : seen.compose).push(request);
+          const payload = sanitizing
+            ? (script.sanitize ?? reading())
+            : checking
+              ? (script.check ?? { verdict: 'send', reason: '' })
+              : script.answer;
           if (payload instanceof Error) throw payload;
           return structured(payload);
         },
@@ -314,19 +335,21 @@ describe('localDate', () => {
 });
 
 describe('GENERAL_ANSWER_SEARCH_ENABLED', () => {
-  it('is dark by default', () => {
-    expect(generalAnswerSearchEnabled()).toBe(false);
-  });
-
-  it('is lit by exactly true', () => {
-    lit();
+  it('is on by default', () => {
+    vi.unstubAllEnvs();
+    delete process.env[GENERAL_ANSWER_SEARCH_ENABLED_ENV];
     expect(generalAnswerSearchEnabled()).toBe(true);
   });
 
-  /** A piped `vercel env add` stores 'true\n'. No trim, so that stays dark. */
-  it.each(['True', 'true\n', ' true', '1', 'on', ''])('stays dark for %j', (value) => {
-    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, value);
+  it('is turned off by exactly false', () => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, 'false');
     expect(generalAnswerSearchEnabled()).toBe(false);
+  });
+
+  /** Only the exact kill switch turns it off: a piped 'false\n' leaves it on. */
+  it.each(['true', 'True', 'false\n', ' false', '0', 'off', ''])('stays on for %j', (value) => {
+    vi.stubEnv(GENERAL_ANSWER_SEARCH_ENABLED_ENV, value);
+    expect(generalAnswerSearchEnabled()).toBe(true);
   });
 });
 
@@ -413,7 +436,7 @@ describe('createGeneralAnswer', () => {
               states: {
                 type: 'string',
                 description:
-                  'the specific as the notes qualify it, with the class, group or date they attach to it. The day or night the notes attach to a forecast figure is part of the specific, and the answer uses that day or night label, not a nearer one.',
+                  'the specific as the notes qualify it, with the class, group or date they attach to it. The day or night the notes attach to a forecast figure is part of the specific, and the answer uses that day or night label, not a nearer one. A page the notes mark as old is part of the specific: a forecast from it is not a current reading.',
               },
               from: {
                 type: 'string',
@@ -427,7 +450,7 @@ describe('createGeneralAnswer', () => {
         },
         answer: {
           type: 'string',
-          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES}`,
+          description: `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES} ${ANSWER_RESPECTS_PAGE_AGE} ${ANSWER_MEDICATION_CAVEAT} ${ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT} ${ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION}`,
         },
       },
       required: ['hurt_ill_or_danger', 'grounding', 'answer'],
@@ -468,8 +491,20 @@ describe('createGeneralAnswer', () => {
     expect(ANSWER_RECENT_RESULT_FROM_THE_NOTES).toBe(
       'A recent result, whether they played and how it went, is stated only as the research notes give it. When the notes say they did not play, that is the answer, and a score or a winner the notes do not carry is not added from memory.',
     );
+    expect(ANSWER_RESPECTS_PAGE_AGE).toBe(
+      "A page the notes mark as old is not a current reading. A forecast from it is not stated as today's or this morning's; the answer keeps the age the notes give, or leaves that figure out.",
+    );
+    expect(ANSWER_MEDICATION_CAVEAT).toBe(
+      'When the notes flag a medication interaction, the reply includes a check with a doctor or a pharmacist.',
+    );
+    expect(ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT).toBe(
+      'A review or publication status the notes do not settle is not asserted. A dose the notes mention is not advice to take it, and no amount is recommended.',
+    );
+    expect(ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION).toBe(
+      'A delay, traffic, or a border the notes do not mention is not added.',
+    );
     expect(answerJsonSchema.properties.answer.description).toBe(
-      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES}`,
+      `${ANSWER_ENDS_ON_THE_ANSWER} ${ANSWER_WITH_NOTHING_CHECKED} ${ANSWER_KEEPS_THE_NOTES_DAY} ${ANSWER_RECENT_RESULT_FROM_THE_NOTES} ${ANSWER_RESPECTS_PAGE_AGE} ${ANSWER_MEDICATION_CAVEAT} ${ANSWER_DOES_NOT_SETTLE_WHAT_THE_NOTES_DO_NOT} ${ANSWER_DOES_NOT_ADD_A_TRIP_CONDITION}`,
     );
   });
 

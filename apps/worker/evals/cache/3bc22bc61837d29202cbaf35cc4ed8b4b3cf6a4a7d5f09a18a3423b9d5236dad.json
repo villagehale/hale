@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every fact is supported by research_notes: Messi is the pick, and the 8 vs 5 Ballon d'Or, assists lead, 970 vs 906 goals and Brady's Rice quote are all there. The changing Squawka figures are dated in the answer rather than marked settled. The 2022 World Cup and Brady's seven rings (he is retired) can no longer change, so 'settled' is fair. It handles the soccer/NFL ambiguity by covering both and gives a real pick for each, which meets watchFor. Docked a point because it reads stat-heavy: citing 'Squawka's career table from about May 2026' sounds more like a report than a friend texting back.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

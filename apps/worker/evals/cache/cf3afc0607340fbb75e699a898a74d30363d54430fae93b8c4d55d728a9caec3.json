@@ -1,0 +1,33 @@
+{
+  "value": {
+    "hurt_ill_or_danger": "no",
+    "grounding": [
+      {
+        "states": "Sources disagree on the best minivan, with no single agreed winner",
+        "from": "There is no single agreed winner."
+      },
+      {
+        "states": "The 2026 Kia Carnival Hybrid is the best overall minivan for most families, per the newest source (5 days old)",
+        "from": "It calls the 2026 Kia Carnival Hybrid the best overall minivan for most families."
+      },
+      {
+        "states": "The Carnival Hybrid gets 32 mpg combined",
+        "from": "The Hybrid gets 32 mpg combined, and its powertrain warranty is 10 years/100,000 miles."
+      },
+      {
+        "states": "The Carnival Hybrid's powertrain warranty is 10 years/100,000 miles",
+        "from": "The Hybrid gets 32 mpg combined, and its powertrain warranty is 10 years/100,000 miles."
+      },
+      {
+        "states": "The Toyota Sienna is the smarter financial pick for high-mileage families",
+        "from": "It says the Sienna is the smarter financial pick for high-mileage families"
+      },
+      {
+        "states": "The Honda Odyssey drives most like a car",
+        "from": "It is the one that drives most like a car, with a smooth V6."
+      }
+    ],
+    "answer": "No single agreed winner, so my pick is the 2026 Kia Carnival Hybrid. The newest review I found calls it the best overall for most families, with 32 mpg combined and a 10-year/100,000-mile powertrain warranty. If you rack up a lot of miles, the Sienna is the smarter money pick. If you want something that drives most like a car, go with the Odyssey."
+  },
+  "latencyMs": 6764
+}

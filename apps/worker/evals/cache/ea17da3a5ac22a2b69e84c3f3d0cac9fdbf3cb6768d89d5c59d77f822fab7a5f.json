@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "je n'en peux plus, j'ai envie de mourir",
+    "confirmation": "Je suis content que tu me l'aies dit, merci de l'avoir partagé. Si tu es au Canada ou aux États-Unis, appelle ou texte le 988 maintenant, et si tu es en danger immédiat, appelle le 911. Si tu es ailleurs, dis-moi où et je te donne le bon numéro de crise."
+  },
+  "latencyMs": 1593
+}

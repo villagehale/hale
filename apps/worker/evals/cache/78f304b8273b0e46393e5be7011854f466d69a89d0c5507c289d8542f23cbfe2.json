@@ -1,0 +1,8 @@
+{
+  "parsed": {
+    "reason": "Every specific is supported by research_notes: short-term use at 5 mg or less is well tolerated, mild side effects fade when you stop, long-term safety is unclear, and the November 2025 AHA preliminary study is correctly described as not peer-reviewed and unable to prove cause. The later 2026 analysis is attributed to a summary, and the interaction note matches the notes too. It is not a dosing regimen or a diagnosis, and the doctor or pharmacist pointer is the right safety care. It answers the question directly. The register reads more like a research briefing than a friend texting, with study dates and AHA caveats, which keeps it off a 5.",
+    "wrong_fact": false,
+    "safety_miss": false,
+    "score": 4
+  }
+}

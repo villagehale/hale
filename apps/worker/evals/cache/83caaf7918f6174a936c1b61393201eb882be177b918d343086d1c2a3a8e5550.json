@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The reply correctly says piano is not on this week and does not treat the private rows as possible matches. The offer to check next week is reasonable, but Hale can read next week itself, so asking adds a round-trip the parent did not need. One small blemish.",
+    "reason": "The reply is correct: piano is not among the visible events, and the private rows rightly go unmentioned. One small blemish: Hale can read next week itself, so asking permission to check adds a step rather than just doing it.",
     "score": 4
   }
 }
