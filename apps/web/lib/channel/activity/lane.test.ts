@@ -14,7 +14,7 @@ import {
 vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
   createRegistrationPageFetch: () => async () =>
-    'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.',
+    'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. Halton Hills, Ontario, Canada. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.',
 }));
 
 /**
@@ -34,7 +34,7 @@ vi.mock('~/lib/registration/page', async (importOriginal) => ({
 const QUERY: ActivityQuery = {
   subject: 'toddler gymnastics',
   window: 'this fall',
-  town: 'Halton Hills',
+  town: 'Halton Hills, Ontario, Canada',
   stage: 'toddler',
 };
 
@@ -124,7 +124,7 @@ const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 describe('the payloads', () => {
   it('sends the de-identified query and nothing else', () => {
     expect(groundUserMessage(QUERY)).toBe(
-      '{"subject":"toddler gymnastics","town":"Halton Hills","stage":"toddler","window":"this fall"}',
+      '{"subject":"toddler gymnastics","town":"Halton Hills, Ontario, Canada","stage":"toddler","window":"this fall"}',
     );
   });
 
@@ -138,7 +138,7 @@ describe('the payloads', () => {
     const payload = JSON.parse(composeUserMessage(QUERY, 'the notes'));
     expect(payload).toEqual({
       subject: 'toddler gymnastics',
-      town: 'Halton Hills',
+      town: 'Halton Hills, Ontario, Canada',
       stage: 'toddler',
       window: 'this fall',
       research_notes: 'the notes',
@@ -188,6 +188,97 @@ describe('the grounding request the eval corpus replays', () => {
 });
 
 describe('an ungrounded find never ships', () => {
+  it('reads a region-qualified source ahead of same-name foreign search hits', async () => {
+    const officialUrl = 'https://attend.bpl.on.ca/event/123';
+    const ground = groundResult(4);
+    const results = ground.content[1]!.content as Array<{ url: string }>;
+    results[3]!.url = officialUrl;
+    const urls: string[] = [];
+    const fetch = vi
+      .spyOn(sourcePage, 'createRegistrationPageFetch')
+      .mockReturnValue(async (url) => {
+        urls.push(url);
+        return url === officialUrl
+          ? 'Burlington, ON, L7R 1J4'
+          : 'Burlington, WA 98233 United States';
+      });
+    try {
+      const found = await createActivityFinder(
+        makeClient({
+          ground,
+          compose: composeResult({ picks: [{ ...WHOLE_PICK, source_url: officialUrl }] }),
+        }),
+      ).find({ ...QUERY, town: 'Burlington, Ontario, Canada' });
+      expect(found).toMatchObject({ found: true, picks: [{ sourceUrl: officialUrl }] });
+      expect(urls[0]).toBe(officialUrl);
+      expect(urls).toHaveLength(3);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it('excludes wrong-region page text and cannot cite that page after composition', async () => {
+    const fetch = vi
+      .spyOn(sourcePage, 'createRegistrationPageFetch')
+      .mockReturnValue(async (url) =>
+        url.endsWith('/0')
+          ? 'Burlington, WA 98233 United States'
+          : '2331 New Street, Burlington, ON L7R 1J4. Preschool storytime.',
+      );
+    const seen: Seen[] = [];
+    try {
+      const found = await createActivityFinder(
+        makeClient(
+          {
+            ground: groundResult(2),
+            compose: composeResult({
+              picks: [
+                WHOLE_PICK,
+                { ...WHOLE_PICK, name: 'Ontario storytime', source_url: 'https://venue.example/1' },
+              ],
+            }),
+          },
+          seen,
+        ),
+      ).find({ ...QUERY, town: 'Burlington, Ontario, Canada' });
+      expect(found).toMatchObject({ found: true, picks: [{ name: 'Ontario storytime' }] });
+      const compose = seen.find((call) => call.toolChoice === 'activity_picks');
+      expect(compose?.userMessage).not.toContain('United States');
+      expect(compose?.userMessage).toContain('Burlington, ON L7R 1J4');
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it('holds the real wrong-country page before compose and admits its matching location', async () => {
+    const fetch = vi
+      .spyOn(sourcePage, 'createRegistrationPageFetch')
+      .mockReturnValue(
+        async () =>
+          'Burlington Public Library 820 E Washington Ave. Burlington , WA 98233 United States',
+      );
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResult(1), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+    try {
+      expect(await finder.find({ ...QUERY, town: 'Burlington, Ontario, Canada' })).toEqual({
+        found: false,
+        reason: 'location_unverified',
+      });
+      expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
+      expect(await finder.find({ ...QUERY, town: 'Burlington, WA, United States' })).toMatchObject({
+        found: true,
+      });
+      expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(true);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
   it('does not compose from date-bearing snippets when every fresh source read fails', async () => {
     const fetch = vi.spyOn(sourcePage, 'createRegistrationPageFetch').mockReturnValue(async () => {
       throw Error('source unavailable');

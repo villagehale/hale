@@ -7,6 +7,7 @@ import {
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
+import { qualifyActivityLocation } from '~/lib/channel/activity/location';
 import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
 import { activityClient } from '~/lib/pipeline/client';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
@@ -101,7 +102,9 @@ export async function findFamilyActivities(
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
   const towns = area ? resolveMunicipalities(area) : [];
-  const storedCity = families?.city?.trim() || '';
+  const storedCity = families?.city
+    ? qualifyActivityLocation(families.city, families.province, families.country)
+    : '';
   const city = storedCity && scrubResidualPii(storedCity).trim() === storedCity ? storedCity : null;
   if (towns.length !== 1 && !city) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(

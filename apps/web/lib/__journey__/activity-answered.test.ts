@@ -226,7 +226,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         };
       }
       call += 1;
-      liveSourceText = JSON.stringify(picksByCall[call] ?? []);
+      liveSourceText = `${JSON.stringify(picksByCall[call] ?? [])}\nHalton Hills, Ontario, Canada`;
       searched.push(req.messages?.[0]?.content as string);
       return {
         content: [
@@ -668,7 +668,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
 
     // Rule #1, at the border: the query that left carried a TOWN and a BAND and no child.
     const sent = web.searched[0] ?? '';
-    expect(JSON.parse(sent)).toMatchObject({ town: 'Halton Hills', stage: 'toddler' });
+    expect(JSON.parse(sent)).toMatchObject({ town: 'Halton Hills, Ontario, Canada', stage: 'toddler' });
     expect(sent).not.toContain('Noah');
     expect(sent).not.toContain('L7G');
     expect(sent).not.toMatch(/\b18 months\b/);
@@ -856,7 +856,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     expect(sweepTransport.bodies()[0]).toContain('Halton Hills Gymnastics Centre');
     expect(JSON.parse(sweepWeb.searched[0] ?? '{}')).toMatchObject({
       subject: 'Cartwheel Gym fall spots and other toddler fall programs',
-      town: 'Halton Hills',
+      town: 'Halton Hills, Ontario, Canada',
     });
 
     // The debt is discharged, and stops standing.

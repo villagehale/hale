@@ -9,6 +9,7 @@ import { stripHtml } from '~/lib/registration/fetch';
 import { createRegistrationPageFetch, registrationPageUrl } from '~/lib/registration/page';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
+import { activityLocationMatches, activitySourceLocationScore } from './location';
 import { namesRetiredRecPortal } from './retired-portal';
 
 /**
@@ -191,6 +192,7 @@ export type ActivityFailure =
   | 'skill_unavailable'
   | 'ground_failed'
   | 'not_grounded'
+  | 'location_unverified'
   | 'compose_failed'
   | 'no_picks'
   /**
@@ -513,27 +515,41 @@ async function runActivityOnce(
     if (evidence.searchResults === 0) throw new ActivityUnresolvable('not_grounded');
     // Search locates sources; facts come from fresh, bounded, DNS-pinned page reads.
     const sourceUrls = new Set(evidence.urlsRead);
+    const sourceTitles = new Map<string, string>();
     for (const block of research.content) {
       if (block.type !== 'web_search_tool_result' || !Array.isArray(block.content)) continue;
       for (const result of block.content) {
-        if (result.type === 'web_search_result') sourceUrls.add(result.url);
+        if (result.type === 'web_search_result') {
+          sourceUrls.add(result.url);
+          sourceTitles.set(result.url, result.title);
+        }
       }
     }
     const fetchPage = createRegistrationPageFetch();
-    const pages = (
+    const readablePages = (
       await Promise.all(
-        [...sourceUrls].slice(0, MAX_INLINE_FETCHES).map(async (raw) => {
-          try {
-            const url = registrationPageUrl(raw);
-            const text = stripHtml(await fetchPage(url)).slice(0, 20_000);
-            return text.trim() ? { url, text } : null;
-          } catch {
-            return null;
-          }
-        }),
+        [...sourceUrls]
+          .sort(
+            (a, b) =>
+              activitySourceLocationScore(query.town, b, sourceTitles.get(b) ?? '') -
+              activitySourceLocationScore(query.town, a, sourceTitles.get(a) ?? ''),
+          )
+          .slice(0, MAX_INLINE_FETCHES)
+          .map(async (raw) => {
+            try {
+              const url = registrationPageUrl(raw);
+              const text = stripHtml(await fetchPage(url)).slice(0, 20_000);
+              return text.trim() ? { url, text } : null;
+            } catch {
+              return null;
+            }
+          }),
       )
     ).filter((page): page is { url: string; text: string } => page !== null);
-    if (pages.length === 0) throw new ActivityUnresolvable('not_grounded', 'sources_unreadable');
+    if (readablePages.length === 0)
+      throw new ActivityUnresolvable('not_grounded', 'sources_unreadable');
+    const pages = readablePages.filter((page) => activityLocationMatches(query.town, page.text));
+    if (pages.length === 0) throw new ActivityUnresolvable('location_unverified');
     const researchNotes = pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n');
     if (evidence.pagesRefused > 0 && evidence.pagesRead === 0) {
       // The turn tried to open the venue's pages and was turned away every time, so any gap

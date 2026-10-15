@@ -33,6 +33,39 @@ const pick = {
 };
 
 describe('live recommendations without a catalog', () => {
+  it('passes the known Ontario municipality with its province and country', async () => {
+    const familyId = await family(36, 'Burlington');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: 'L7M', province: 'ON', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(find.mock.calls[0]![0].town).toBe('Burlington, Ontario, Canada');
+  });
+
+  it('keeps the stored province and country for a non-GTA city', async () => {
+    const familyId = await family(36, 'Victoria');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: null, province: 'BC', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(find.mock.calls[0]![0].town).toBe('Victoria, British Columbia, Canada');
+  });
+
+  it('preserves an explicit foreign country rather than defaulting the city to Canada', async () => {
+    const familyId = await family(36, 'Burlington');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: null, province: 'VT', country: 'US' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(find.mock.calls[0]![0].town).toBe('Burlington, VT, United States');
+  });
+
   it('keeps a known venue identity for review ranking, never an ambiguous shared URL', async () => {
     const familyId = await family();
     const venueId = randomUUID();
