@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child ingested bathroom cleaner, reported as happening now",
+    "language": "en"
+  },
+  "latencyMs": 2031
+}

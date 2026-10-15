@@ -5,7 +5,6 @@ import {
   claimsVerification,
   followUpUserMessage,
   followUpViolations,
-  statesTheReturn,
   topPickLeads,
   waitsOnAPageItCouldNotRead,
 } from './followup-note';
@@ -33,6 +32,15 @@ const PICK: ActivityPick = {
  * with nothing left to come back for. Every case that cares about one of the two states
  * it, and no case gets the permissive reading by omission.
  */
+/** The composer's own `commits_to_return`, defaulting to the honest reading (it matches the row). */
+function gates(
+  body: string,
+  g: FollowUpGrounding,
+  commitsToReturn: boolean = g.watch,
+): string[] {
+  return followUpViolations(body, g, commitsToReturn);
+}
+
 function grounding(over: Partial<FollowUpGrounding> = {}): FollowUpGrounding {
   return {
     subject: 'toddler gymnastics',
@@ -67,7 +75,7 @@ describe('never claims to have verified what it only read', () => {
   });
 
   it('surfaces the honest phrasing in the refusal the model reads', () => {
-    const violations = followUpViolations(
+    const violations = gates(
       'I confirmed Halton Hills Gymnastics for Saturdays.',
       grounding(grounding()),
     );
@@ -81,7 +89,7 @@ describe('never claims to have verified what it only read', () => {
     // which was always the point of this case.
     const honest =
       'Halton Hills Gymnastics has parent & tot Saturdays 9:15 from Sept 13, $142 - their site says.';
-    expect(followUpViolations(honest, grounding())).toEqual([]);
+    expect(gates(honest, grounding())).toEqual([]);
   });
 });
 
@@ -91,7 +99,7 @@ describe('the top pick lands in the first segment', () => {
   it('refuses a body that buries the best find past 153 characters', () => {
     const buried = `${filler}${filler}${PICK.name} runs Saturdays.`;
     expect(topPickLeads(buried, [PICK])).toBe(false);
-    expect(followUpViolations(buried, grounding()).join(' ')).toContain(PICK.name);
+    expect(gates(buried, grounding()).join(' ')).toContain(PICK.name);
   });
 
   it('POSITIVE CONTROL - the same find, named first, passes the same check', () => {
@@ -112,7 +120,7 @@ describe('the top pick lands in the first segment', () => {
       'Halton Hills Gymnastics Centre has a Kinderfun toddler program (18 months - 3 years) running Sept 10 - Dec 16 - their site says.';
 
     expect(topPickLeads(real, [composite])).toBe(true);
-    expect(followUpViolations(real, grounding({ picks: [composite] }))).toEqual([]);
+    expect(gates(real, grounding({ picks: [composite] }))).toEqual([]);
   });
 
   it('POSITIVE CONTROL - the Oakville answer, which names the find in its first six words', () => {
@@ -132,7 +140,7 @@ describe('the top pick lands in the first segment', () => {
 
     expect(topPickLeads(real, [oakville])).toBe(true);
     expect(
-      followUpViolations(
+      gates(
         real,
         grounding({ subject: 'preschool swim lessons', picks: [oakville], watch: true }),
       ),
@@ -158,7 +166,7 @@ describe('the top pick lands in the first segment', () => {
       true,
     );
     expect(
-      followUpViolations(
+      gates(
         'I went through the fall listings and nothing is open yet.',
         grounding({ picks: [] }),
       ),
@@ -217,7 +225,7 @@ describe('a message may not say Hale could not get at a fact AND that it awaits 
 
     expect(waitsOnAPageItCouldNotRead(honest)).toBe(false);
     expect(
-      followUpViolations(
+      gates(
         honest,
         grounding({ picks: [oakville], pageEvidence: 'page_has_schedule', watch: true }),
       ),
@@ -229,7 +237,7 @@ describe('a message may not say Hale could not get at a fact AND that it awaits 
 
     for (const pageEvidence of ['page_has_schedule', 'no_page_read'] as const) {
       expect(
-        followUpViolations(body, grounding({ pageEvidence, watch: true })).join(' '),
+        gates(body, grounding({ pageEvidence, watch: true })).join(' '),
       ).toContain('when YOU can get at them');
     }
   });
@@ -247,7 +255,7 @@ describe('any language, as long as the find leads and the text fits', () => {
   ])('lets a %s follow-up through when the day and the price are already in hand', (label, body) => {
     expect(label.length).toBeGreaterThan(0);
     expect(
-      followUpViolations(
+      gates(
         body,
         grounding({
           watch: false,
@@ -262,11 +270,11 @@ describe('any language, as long as the find leads and the text fits', () => {
 describe('the mechanical gates', () => {
   it('refuses a link', () => {
     const withLink = `${PICK.name} runs Saturdays - see haltonhillsgym.ca`;
-    expect(followUpViolations(withLink, grounding({ subject: 's' })).join(' ')).toContain('link');
+    expect(gates(withLink, grounding({ subject: 's' })).join(' ')).toContain('link');
   });
 
   it('refuses an empty body outright', () => {
-    expect(followUpViolations('   ', grounding({ subject: 's' }))).toEqual([
+    expect(gates('   ', grounding({ subject: 's' }))).toEqual([
       'The message was empty.',
     ]);
   });
@@ -432,7 +440,7 @@ describe('an offer is a proposal, so this lane makes none', () => {
   it('refuses any question - there is no row on this path for a yes to land on', () => {
     const asked = `${PICK.name} runs Saturdays 9:15 from Sept 13, $142 - their site says. Want me to check back once they're up?`;
 
-    expect(followUpViolations(asked, grounding()).join(' ')).toContain(
+    expect(gates(asked, grounding()).join(' ')).toContain(
       'asks the parent a question',
     );
   });
@@ -440,7 +448,7 @@ describe('an offer is a proposal, so this lane makes none', () => {
   it('POSITIVE CONTROL - the same find, ending on a statement, passes', () => {
     const told = `${PICK.name} runs Saturdays 9:15 from Sept 13, $142 - their site says.`;
 
-    expect(followUpViolations(told, grounding())).toEqual([]);
+    expect(gates(told, grounding())).toEqual([]);
   });
 });
 
@@ -535,43 +543,27 @@ describe('the uncertain sentence', () => {
     const unpinned = `${PICK.name} runs a toddler class for under-3s - their site lists it. I could not pin down the fall day or fee, so I'll keep looking and text you what it says.`;
 
     expect(
-      followUpViolations(unread, grounding({ pageEvidence: 'no_page_read', watch: true })),
+      gates(unread, grounding({ pageEvidence: 'no_page_read', watch: true })),
     ).toEqual([]);
     expect(
-      followUpViolations(unpinned, grounding({ pageEvidence: 'page_has_schedule', watch: true })),
+      gates(unpinned, grounding({ pageEvidence: 'page_has_schedule', watch: true })),
     ).toEqual([]);
   });
 });
 
 describe('a continuation row must be spoken for', () => {
-  it.each([
-    "I'll keep watching and text you when they post.",
-    'I will check back once the fall guide goes up.',
-    "I'll go back through it and let you know.",
-  ])('reads %s as Hale committing to come back', (body) => {
-    expect(statesTheReturn(body)).toBe(true);
-  });
-
-  it.each([
-    'Their site says Saturdays 9:15.',
-    'Registration opens Sept 1 at 7am.',
-    'The fall guide goes up soon.',
-  ])('does not read %s as a commitment', (body) => {
-    expect(statesTheReturn(body)).toBe(false);
-  });
-
   it('THE DEFECT MIRRORED: a watch row with no sentence claiming it is refused', () => {
     const silent = `${PICK.name} runs a toddler class for under-3s - their site says.`;
 
-    expect(followUpViolations(silent, grounding({ watch: true })).join(' ')).toContain(
-      "I'll keep watching",
+    expect(gates(silent, grounding({ watch: true }), false).join(' ')).toContain(
+      'Hale has already committed to going back',
     );
   });
 
   it('POSITIVE CONTROL - with no watch row, the same silent message is fine', () => {
     const silent = `${PICK.name} runs a toddler class for under-3s - their site says.`;
 
-    expect(followUpViolations(silent, grounding({ watch: false }))).toEqual([]);
+    expect(gates(silent, grounding({ watch: false }))).toEqual([]);
   });
 
   /**
@@ -583,7 +575,7 @@ describe('a continuation row must be spoken for', () => {
   it('refuses a coming-back sentence when NO row was written for it', () => {
     const promised = `${PICK.name} runs Saturdays 9:15, $142 - their site says. I'll keep looking and text you what else opens.`;
 
-    expect(followUpViolations(promised, grounding({ watch: false })).join(' ')).toContain(
+    expect(gates(promised, grounding({ watch: false }), true).join(' ')).toContain(
       'no such promise has been written down',
     );
   });
@@ -591,7 +583,43 @@ describe('a continuation row must be spoken for', () => {
   it('POSITIVE CONTROL - the SAME sentence passes once the row exists', () => {
     const promised = `${PICK.name} runs Saturdays 9:15, $142 - their site says. I'll keep looking and text you what else opens.`;
 
-    expect(followUpViolations(promised, grounding({ watch: true }))).toEqual([]);
+    expect(gates(promised, grounding({ watch: true }))).toEqual([]);
+  });
+});
+
+describe('the coming-back fact is the model\'s, in any language', () => {
+  const zhWatch = `${PICK.name} 有幼儿课，周六上午，他们网站上这么写。秋季时间还没公布，我会继续关注，一有消息就发短信告诉你。`;
+  const arWatch = `${PICK.name} لديه صف للأطفال الصغار أيام السبت، حسب موقعهم. لم يُنشر جدول الخريف بعد، وسأواصل المتابعة وأراسلك عندما يُنشر.`;
+
+  it.each([
+    ['zh', zhWatch],
+    ['ar', arWatch],
+  ])('a %s message that commits to coming back passes when the row exists', (_label, body) => {
+    expect(gates(body, grounding({ watch: true }), true)).toEqual([]);
+  });
+
+  it.each([
+    ['zh', zhWatch],
+    ['ar', arWatch],
+  ])('a %s message the model says commits to nothing is refused when the row exists', (_label, body) => {
+    expect(gates(body, grounding({ watch: true }), false).join(' ')).toContain(
+      'Hale has already committed to going back',
+    );
+  });
+
+  it.each([
+    ['zh', zhWatch],
+    ['ar', arWatch],
+  ])('a %s promise with no row behind it is refused', (_label, body) => {
+    expect(gates(body, grounding({ watch: false }), true).join(' ')).toContain(
+      'no such promise has been written down',
+    );
+  });
+
+  it('reads no words: the same English body is judged only by the fact it is handed', () => {
+    const body = `${PICK.name} runs Saturdays - their site says. I'll keep watching and text you when they post.`;
+    expect(gates(body, grounding({ watch: true }), true)).toEqual([]);
+    expect(gates(body, grounding({ watch: true }), false)).not.toEqual([]);
   });
 });
 

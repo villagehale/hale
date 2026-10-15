@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is plain text with no link and no question, and it has three real, named Oakville picks that fit the preschool stage. It leads with the Town of Oakville program by name and attributes its registration date (\"their site says\"). With watch TRUE, the first-person \"I'll keep watching and text you what I find\" is correct. With no_page_read, \"I couldn't get into their pages today\" is the earned form, and it invents no times or prices. Weaknesses: the YMCA and Goldfish facts, including the $32.50 price, are stated flatly without attribution, so they read as verified. The Town's \"3-5\" age range came from a third-party brochure copy but sits under the Town's attribution. The gap is not named specifically as missing days and times.",
+    "score": 4
+  }
+}

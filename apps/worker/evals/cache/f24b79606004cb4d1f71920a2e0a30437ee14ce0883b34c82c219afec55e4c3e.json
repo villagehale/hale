@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a fever of 39 lasting three days — a symptom in a child, stated as current state",
+    "language": "en"
+  },
+  "latencyMs": 1570
+}

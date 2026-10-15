@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "reads as a follow-up or complaint about Hale's own messaging; no world or safety trigger",
+    "language": "en"
+  },
+  "latencyMs": 1811
+}

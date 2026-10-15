@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "guidance question about routine child development/screening, not a reported symptom or provider-access request",
+    "language": "en"
+  },
+  "latencyMs": 2877
+}

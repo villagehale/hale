@@ -58,7 +58,7 @@ const FIRST_SEGMENT_CHARS = 153;
  * three tries will not fix it on the fourth. */
 export const MAX_FOLLOWUP_ATTEMPTS = 3;
 
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 1000;
 
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
@@ -157,12 +157,25 @@ export interface FollowUpComposer {
   compose(grounding: FollowUpGrounding): Promise<FollowUpComposeOutcome>;
 }
 
-const noteSchema = z.object({ message: z.string() });
+const noteSchema = z.object({ message: z.string(), commits_to_return: z.boolean() });
 
+/**
+ * `commits_to_return` is the model's own reading of what it wrote: does this message tell
+ * the parent Hale will come back to them about it? Code checks that fact against `watch`
+ * (the row the sweep did or did not write). A word list cannot read that sentence in every
+ * language a parent writes in; the model that wrote it can say what it says.
+ */
 const noteJsonSchema = {
   type: 'object',
-  properties: { message: { type: 'string' } },
-  required: ['message'],
+  properties: {
+    message: { type: 'string' },
+    commits_to_return: {
+      type: 'boolean',
+      description:
+        'true when the message tells the parent Hale will come back to them about this (keep watching, check again, text them later), in whatever language it is written; false otherwise.',
+    },
+  },
+  required: ['message', 'commits_to_return'],
 } as const;
 
 /**
@@ -367,20 +380,6 @@ const SELF_LIMITED =
   /\b(?:i|we)\b[^.!?]{0,40}?\b(?:could\s?n[o']?t|could not|can\s?n[o']?t|cannot|ca\s?n't|was\s?n[o']?t able|were\s?n[o']?t able|failed to)\b/i;
 
 /**
- * Whether the body says HALE will come back — the sentence the continuation row pays for.
- *
- * First person and future: "I'll keep watching and text you when they post". A row
- * written with no sentence claiming it is a sweep that texts a parent in a week about
- * something they were never told Hale was still on.
- */
-const STATES_RETURN =
-  /\b(?:i'?ll|i will|i'?m going to)\b[^.!?\n]*\b(?:watch|watching|check|checking|look|looking|text|message|come back|circle back|let you know|go back|keep an eye|keep on)\b/i;
-
-export function statesTheReturn(body: string): boolean {
-  return STATES_RETURN.test(body);
-}
-
-/**
  * WHETHER THE COMING-BACK SENTENCE IS WAITING ON A PAGE THAT HAS ALREADY POSTED.
  *
  * The same claim can wear the future. "I'll keep watching and text you
@@ -436,7 +435,11 @@ export function asksTheParent(body: string): boolean {
  * Everything wrong with this follow-up, phrased for the model that will rewrite it. An
  * empty array means it may be sent.
  */
-export function followUpViolations(body: string, grounding: FollowUpGrounding): string[] {
+export function followUpViolations(
+  body: string,
+  grounding: FollowUpGrounding,
+  commitsToReturn: boolean,
+): string[] {
   const violations: string[] = [];
   const text = plainText(body);
 
@@ -509,18 +512,16 @@ export function followUpViolations(body: string, grounding: FollowUpGrounding): 
       'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     );
   }
-  if (grounding.watch !== statesTheReturn(text)) {
+  if (grounding.watch !== commitsToReturn) {
     // THE EXAMPLE IS PAGE-STATE-AWARE OR THE TWO CORRECTIONS FIGHT: under
     // `page_has_schedule` the page contradicts the very sentence this one used to hand
     // the model as the remedy, and a composer bounced between two contradictory fixes
     // spends its three attempts and sends nothing.
     violations.push(
       grounding.watch
-        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person and as a statement - "${
-            grounding.pageEvidence === 'page_has_schedule'
-              ? "I'll keep watching and text you when I can get to them."
-              : "I'll keep watching and text you when they post."
-          }"`
+        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
+            grounding.pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
+          }.`
         : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     );
   }
@@ -565,7 +566,7 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
           return deferred('model_failed', [message(err)]);
         }
 
-        violations = followUpViolations(value.message, grounding);
+        violations = followUpViolations(value.message, grounding, value.commits_to_return);
         if (violations.length === 0) {
           return { status: 'composed', message: plainText(value.message) };
         }

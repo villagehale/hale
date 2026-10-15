@@ -47,7 +47,7 @@ const LAST_EXTRACT_OUTPUT = {
 };
 const FOLLOWUP_OUTPUT_CHARS = 280;
 const JUDGE_OUTPUT_CHARS = 1100;
-const FOLLOWUP_MAX_TOKENS = 400;
+const FOLLOWUP_MAX_TOKENS = 1000;
 
 function queryOf(fixture) {
   return {

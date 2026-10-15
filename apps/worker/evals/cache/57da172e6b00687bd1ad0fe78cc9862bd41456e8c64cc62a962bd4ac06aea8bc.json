@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "Finding a local place to go is part of the family-activities work the coach owns, and the text is ambiguous enough to default in domain.",
+    "language": "en"
+  },
+  "latencyMs": 3009
+}

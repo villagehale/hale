@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot traces to a page that was actually read and is cited to it. The Tiny Gym term dates (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) come off the opened schedule PDF, and the slot honestly says the garbled grid could not be matched to weekdays. The ages (1 and walking to 3; 0+) come from the programs page. The registration date (Wed July 22, 2026, 8:00am online) comes from the home page and is carried in a slot. No price was borrowed from elsewhere; the page itself says pricing is only behind the registration login. The message leads with Tiny Gym by name and attributes the facts ('their site says'). Under page_has_schedule it correctly uses the first person ('I could not pin down the day or price') rather than claiming nothing is posted. It carries the registration date, contains no link and no question, and with watch TRUE its first-person 'I'll keep watching and text you' is a commitment that exists. The only quibble is that Term 2 dates are left out of the message, which is minor.",
+    "score": 5
+  }
+}

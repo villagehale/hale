@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: the Saturday times, Sept 12 to Nov 28, ages 3-5, and the Aug 11 7 a.m. resident registration, all cited to the Oakville page. Price is correctly null since the page prints no fee, and there is no invented third level. The message leads with the named programs and attributes the facts with 'their site says'. It carries the not-yet-open registration date and uses the first-person 'I could not pin down the price', which is the correct form under page_has_schedule. The first-person 'I'll keep watching and text you' is backed by watch=true. It is plain ASCII with no link and no question. Minor omissions: the Aug 4 browse date, and the page's note that fees appear in the Recreation Guide.",
+    "score": 5
+  }
+}
