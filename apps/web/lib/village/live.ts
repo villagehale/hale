@@ -7,11 +7,10 @@ import {
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
-import { qualifyActivityLocation } from '~/lib/channel/activity/location';
-import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
+import { readActivityLocation } from '~/lib/channel/activity/reader';
 import { activityClient } from '~/lib/pipeline/client';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
-import { readActiveArea, resolveActiveAreaCoarse } from './areas';
+import { resolveActiveAreaCoarse } from './areas';
 
 /** Identity only, never facts to answer with. A new dated occurrence is a new offer. */
 export function activityRecommendationKey(pick: {
@@ -86,8 +85,8 @@ export async function findFamilyActivities(
   } = {},
 ): Promise<{ picks: ActivityPick[]; reason: string | null }> {
   const now = options.now ?? new Date();
-  const [families, children, area, parents] = await Promise.all([
-    readActiveArea(database, familyId),
+  const [city, children, area, parents] = await Promise.all([
+    readActivityLocation(database, familyId),
     database
       .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
       .from(schema.children)
@@ -102,10 +101,6 @@ export async function findFamilyActivities(
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
   const towns = area ? resolveMunicipalities(area) : [];
-  const storedCity = families?.city
-    ? qualifyActivityLocation(families.city, families.province, families.country)
-    : '';
-  const city = storedCity && scrubResidualPii(storedCity).trim() === storedCity ? storedCity : null;
   if (towns.length !== 1 && !city) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
@@ -114,6 +109,7 @@ export async function findFamilyActivities(
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
     municipality: towns.length === 1 ? towns[0]! : null,
+    location: city,
     stage: deriveStage(youngest.dateOfBirth, now),
     householdNames: [...children, ...parents].flatMap(({ name }) =>
       name ? [name, name.trim().split(/\s+/)[0]!] : [],
@@ -123,7 +119,6 @@ export async function findFamilyActivities(
   // A stored city is coarse context, not a postal code or precise home address.
   const found = await (options.finder ?? createActivityFinder(activityClient)).find({
     ...query.query,
-    town: query.query.town ?? city,
     stages: [...new Set(eligible.map((child) => deriveStage(child.dateOfBirth, now)))],
   });
   if (found.found) {

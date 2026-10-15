@@ -164,8 +164,8 @@ export function searchVillageTool(
   return defineTool({
     name: 'search_village',
     description:
-      'Find current local activities from live web sources for THIS family. Unknown times remain unknown. Never answer from saved history.',
-    inputSchema: z.object({ query: z.string().optional() }),
+      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
+    inputSchema: z.object({ query: z.string().optional(), window: z.string().optional() }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
     inputExamples: [{ query: 'swim' }, {}],
@@ -175,6 +175,7 @@ export function searchVillageTool(
       const now = new Date();
       const found = await findFamilyActivities(database, ctx.familyId, {
         subject: input.query,
+        window: input.window,
         finder,
         now,
       });

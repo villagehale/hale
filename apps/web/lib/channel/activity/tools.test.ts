@@ -60,6 +60,25 @@ const call = (tool: ReturnType<typeof findActivitiesTool>, input: unknown) =>
   invokeTool(tool, input, { familyId: FAMILY, actor: PARENT }, guardDeps());
 
 describe('find_activities', () => {
+  it('keeps a non-GTA city, operator and requested month in the same query', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader({
+        municipality: async () => null,
+        location: async () => 'London, Ontario, Canada',
+      }),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+    await call(tool, { subject: 'London Public Library storytimes', window: 'October 2026' });
+    expect(seen[0]).toEqual({
+      subject: 'London Public Library storytimes',
+      window: 'October 2026',
+      town: 'London, Ontario, Canada',
+      stage: 'toddler',
+    });
+  });
+
   it('attaches the town and the age band from the record, never from the model', async () => {
     const seen: unknown[] = [];
     const tool = findActivitiesTool({

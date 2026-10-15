@@ -162,6 +162,8 @@ function gateFreeText(
 export function deidentifyActivityQuery(input: {
   subject: string;
   window?: string | null;
+  /** Qualified coarse location from the family reader, never model-supplied. */
+  location?: string | null;
   municipality: Municipality | null;
   stage: FamilyStage | null;
   householdNames: readonly string[];
@@ -192,7 +194,7 @@ export function deidentifyActivityQuery(input: {
     query: {
       subject: subject.value,
       window,
-      town: input.municipality === null ? null : townFor(input.municipality),
+      town: input.municipality === null ? (input.location ?? null) : townFor(input.municipality),
       stage: input.stage,
     },
   };

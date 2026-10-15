@@ -37,16 +37,35 @@ async function search(
   familyId: string,
   finder: ActivityFinder,
   recorder?: (rows: readonly unknown[]) => void,
+  input: unknown = {},
 ) {
   return invokeTool(
     searchVillageTool(db.database, recorder, finder),
-    {},
+    input,
     { familyId, actor: 'test' },
     { writeAudit: async () => {} },
   ) as Promise<{ candidates: { title: string; when: string; url?: string }[]; liveRead: string }>;
 }
 
 describe('search_village uses this operation’s live evidence', () => {
+  it('forwards the requested operator and month rather than defaulting to this year', async () => {
+    const familyId = await household(false, 'London');
+    await db.database
+      .update(schema.families)
+      .set({ province: 'ON', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({ found: true, picks: [pick] });
+    await search(familyId, { find }, undefined, {
+      query: 'London Public Library storytimes',
+      window: 'October 2026',
+    });
+    expect(find.mock.calls[0]?.[0]).toMatchObject({
+      subject: 'London Public Library storytimes',
+      window: 'October 2026',
+      town: 'London, Ontario, Canada',
+    });
+  });
+
   it('offers fresh facts and records exactly the offered receipt, never an old schedule', async () => {
     const familyId = await household();
     await db.database.insert(schema.familyActivityHistory).values({

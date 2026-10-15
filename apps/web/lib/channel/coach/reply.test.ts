@@ -66,6 +66,17 @@ describe('redactTeenNames', () => {
 });
 
 describe('toSmsReply', () => {
+  it('restores the exact sourced London URL when the model drops its query and fragment', () => {
+    const source =
+      'https://www.lpl.ca/whats-on?field_event_audience_target_id=42&date=2026-10#events';
+    const reply = toSmsReply('London Public Library lists storytimes: lpl.ca/whats-on.', {
+      children: [],
+      now: NOW,
+      activityLinks: [{ title: 'STEAM Storytime', venue: 'London Public Library', url: source }],
+    });
+    expect(reply).toBe(`London Public Library lists storytimes: ${source}.`);
+  });
+
   it('keeps an official URL once when it already appears before other facts', () => {
     const sourceUrl = 'https://www.king.ca/recreation';
     const raw = `Source: ${sourceUrl}. Opening time is not published.`;

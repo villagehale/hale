@@ -62,6 +62,42 @@ function sameLink(a: NamedActivityLink, b: NamedActivityLink): boolean {
   return a.url === b.url && a.title === b.title;
 }
 
+function exactUrl(url: string): RegExp {
+  const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[\\s(])${escaped}(?=$|\\s|[.,;!)](?=\\s|$))`, 'g');
+}
+
+/** Restore a shortened source only when its page identifies one exact offered URL. */
+export function restoreActivityLinks(
+  body: string,
+  links: readonly NamedActivityLink[] | undefined,
+): string {
+  let reply = body;
+  const pages = new Map<string, Set<string>>();
+  for (const link of links ?? []) {
+    let url: URL;
+    try {
+      url = new URL(link.url);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') continue;
+    for (const host of new Set([url.host, url.host.replace(/^www\./, '')])) {
+      for (const base of [`${url.protocol}//${host}${url.pathname}`, `${host}${url.pathname}`]) {
+        const sources = pages.get(base) ?? new Set<string>();
+        sources.add(link.url);
+        pages.set(base, sources);
+      }
+    }
+  }
+  for (const [base, sources] of pages) {
+    if (sources.size !== 1) continue;
+    const source = [...sources][0]!;
+    reply = reply.replace(exactUrl(base), (_match, before: string) => `${before}${source}`);
+  }
+  return reply;
+}
+
 function wordsOf(title: string): string[] {
   return [
     ...new Set(
@@ -135,11 +171,10 @@ export function activityLinkSuffix(
   links: readonly NamedActivityLink[] | undefined,
 ): string {
   if (!links || links.length === 0) return '';
-  const hay = body.toLowerCase();
   const seen = new Set<string>();
   const out: string[] = [];
   for (const link of links) {
-    if (seen.has(link.url) || hay.includes(link.url.toLowerCase())) continue;
+    if (seen.has(link.url) || exactUrl(link.url).test(body)) continue;
     if (!replyNamesActivity(body, link, links)) continue;
     seen.add(link.url);
     out.push(link.url);

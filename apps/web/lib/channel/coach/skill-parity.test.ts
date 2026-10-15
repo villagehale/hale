@@ -16,6 +16,14 @@ import { buildChannelCoachTools } from './tools';
  * directions are asserted against the real skill file.
  */
 describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
+  it('keeps the named operator and requested window on both activity tools', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(prose).toContain('`search_village.query` and `find_activities.subject`');
+    expect(prose).toContain('requested month, year or date range in `window` on BOTH tools');
+    expect(prose).toContain('Do not broaden a specific month to "this year"');
+  });
+
   const registered = () =>
     buildChannelCoachTools({
       familyId: 'f',
