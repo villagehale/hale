@@ -30,6 +30,7 @@ import { readConsent } from '~/lib/channel/consent-reply';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
+import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
@@ -222,6 +223,8 @@ export interface InboundContext {
    * a flood line goes 1:1 rather than into the group.
    */
   inGroup: boolean;
+  /** Linq parts stored on the inbound row. Empty when the turn was text only. */
+  media?: readonly InboundMediaPart[];
 }
 
 /**
@@ -971,6 +974,7 @@ async function routeChannelMessageInner(
     parentUserId: job.parent_user_id,
     conversationId,
     body: context.body,
+    ...(context.media && context.media.length > 0 ? { inboundMedia: context.media } : {}),
     // A handler that answers for itself sends on the SAME route this turn resolved, and
     // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {

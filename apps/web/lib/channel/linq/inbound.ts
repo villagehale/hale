@@ -369,19 +369,15 @@ async function handleLinqLocation(
   }
   const providerId =
     location.eventId ?? `location:${location.chatId}:${location.beganAt ?? 'open'}`;
-  const outcome = await routeInboundText(
-    deps,
-    {
-      from: phone,
-      transport: 'imessage',
-      body: shared.locality,
-      providerId,
-      receivedAt: deps.now?.() ?? new Date(),
-      chatId: location.chatId,
-      isGroup: false,
-    },
-    0,
-  );
+  const outcome = await routeInboundText(deps, {
+    from: phone,
+    transport: 'imessage',
+    body: shared.locality,
+    providerId,
+    receivedAt: deps.now?.() ?? new Date(),
+    chatId: location.chatId,
+    isGroup: false,
+  });
   deps.log.info({ outcome }, 'linq inbound: location share continued the ladder');
   await deps.countOutcome(outcome);
   return json({ outcome });
@@ -409,20 +405,17 @@ async function routeOneToOne(
       );
     }
   }
-  return routeInboundText(
-    deps,
-    {
-      from: message.senderHandle,
-      transport: 'imessage',
-      body: message.text,
-      providerId: message.messageId,
-      receivedAt: message.receivedAt,
-      chatId: message.chatId,
-      isGroup: message.isGroup,
-      providerAnsweredKeyword: null,
-    },
-    message.mediaCount,
-  );
+  return routeInboundText(deps, {
+    from: message.senderHandle,
+    transport: 'imessage',
+    body: message.text,
+    providerId: message.messageId,
+    receivedAt: message.receivedAt,
+    chatId: message.chatId,
+    isGroup: message.isGroup,
+    providerAnsweredKeyword: null,
+    media: message.media,
+  });
 }
 
 type LinqDoorDeps = Parameters<typeof handleLinqInboundRequest>[1];
@@ -676,21 +669,18 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       budget = 'chat';
     }
   }
-  const outcome = await routeInboundText(
-    deps,
-    {
-      from: message.senderHandle,
-      transport: 'imessage',
-      body: message.text,
-      providerId: message.messageId,
-      receivedAt: message.receivedAt,
-      chatId: message.chatId,
-      isGroup: true,
-      providerAnsweredKeyword: null,
-      budget,
-    },
-    message.mediaCount,
-  );
+  const outcome = await routeInboundText(deps, {
+    from: message.senderHandle,
+    transport: 'imessage',
+    body: message.text,
+    providerId: message.messageId,
+    receivedAt: message.receivedAt,
+    chatId: message.chatId,
+    isGroup: true,
+    providerAnsweredKeyword: null,
+    budget,
+    media: message.media,
+  });
   deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group routed');
   await deps.countOutcome(outcome);
   return json({ outcome });
@@ -1038,19 +1028,15 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         );
         outcome = recorded ? 'poll_none' : 'duplicate';
       } else {
-        outcome = await routeInboundText(
-          deps,
-          {
-            from: signal.senderHandle,
-            transport: 'imessage',
-            body: option.text,
-            providerId,
-            receivedAt: deps.now?.() ?? new Date(),
-            chatId: signal.chatId,
-            providerAnsweredKeyword: null,
-          },
-          0,
-        );
+        outcome = await routeInboundText(deps, {
+          from: signal.senderHandle,
+          transport: 'imessage',
+          body: option.text,
+          providerId,
+          receivedAt: deps.now?.() ?? new Date(),
+          chatId: signal.chatId,
+          providerAnsweredKeyword: null,
+        });
       }
     } finally {
       try {

@@ -18,6 +18,11 @@ import { recordAgentRun } from '~/lib/agent-run';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import {
+  type InboundMediaPart,
+  type ReadInboundMedia,
+  readInboundMedia,
+} from '~/lib/channel/inbound-media';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
@@ -210,6 +215,11 @@ export interface ChannelCoachPorts {
    * approvals". Deferring it means the key is only required by the turn that needs one.
    */
   client(): AgentClient;
+  /**
+   * Fetch this turn's images into content blocks. Absent is a named gap: the
+   * parts are still told to the model as unwatched, and nothing is fetched.
+   */
+  readInboundMedia?(parts: readonly InboundMediaPart[]): Promise<ReadInboundMedia>;
   runAgent(args: RunAgentArgs): Promise<RunAgentResult>;
   recordRun(run: ChannelRunRecord): Promise<void>;
   now(): Date;
@@ -313,6 +323,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // outside the covered set — and then the skill has nothing to claim.
         registrationWindows,
       };
+      const media = await mediaForTurn(turn, ports);
+      if (media.unwatched.length > 0) {
+        Object.assign(context, { arrivedMedia: media.unwatched });
+      }
 
       return traceAgentRun(
         {
@@ -360,6 +374,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               maxTokens: MAX_TOKENS,
               toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
               guardDeps: ports.guardDeps,
+              ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
             })
             .catch((err: unknown) => {
               throw failed(
@@ -577,7 +592,24 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       });
     },
     now: () => new Date(),
+    readInboundMedia,
   };
+}
+
+async function mediaForTurn(
+  turn: ChannelTurn,
+  ports: ChannelCoachPorts,
+): Promise<ReadInboundMedia> {
+  const parts = turn.inboundMedia ?? [];
+  if (parts.length === 0) return { blocks: [], unwatched: [] };
+  if (!ports.readInboundMedia) {
+    console.info(
+      { reason: 'not_configured', count: parts.length },
+      'channel coach: inbound media unread',
+    );
+    return { blocks: [], unwatched: parts.map((part) => ({ kind: part.kind })) };
+  }
+  return ports.readInboundMedia(parts);
 }
 
 async function loadReplyChildren(database: Database, familyId: string): Promise<ReplyChild[]> {

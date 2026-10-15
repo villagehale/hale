@@ -12,7 +12,6 @@ import {
   forwardRevokeReply,
   matchForwardAddressRequest,
 } from '~/lib/channel/email/forward-request';
-import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { replyLanguage } from '~/lib/channel/language';
 import {
@@ -86,7 +85,6 @@ const SMS_COPY_SOURCES = [
   'lib/channel/join/copy.ts',
   'lib/channel/connect/copy.ts',
   'lib/channel/connect/text-connect.ts',
-  'lib/channel/inbound-copy.ts',
   'lib/channel/founder/copy.ts',
   'lib/health/copy.ts',
   'lib/registration/sequence/copy.ts',
@@ -518,7 +516,6 @@ describe('nothing Hale texts sends a parent to the app', () => {
       ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email'],
       false,
     ),
-    mediaUnsupportedReply: mediaUnsupportedReply(),
     CO_PARENT_REDIRECT,
   };
 

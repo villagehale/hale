@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readInboundMedia } from '~/lib/channel/inbound-media';
 import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
@@ -143,6 +144,39 @@ describe('channelCoachRuntime', () => {
         question: 'move swim to tuesday',
       }),
     );
+  });
+
+  it('reads a photo into the loop and names a video it did not watch', async () => {
+    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
+    const p = ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(jpeg, { status: 200 })) as unknown as typeof fetch,
+        ),
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Got the flyer.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn(''),
+        inboundMedia: [
+          { kind: 'image', url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+          { kind: 'video', url: 'https://cdn.example/clip.mp4', mime: 'video/mp4' },
+        ],
+      },
+      [],
+    );
+
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(seen[0]?.context.arrivedMedia).toEqual([{ kind: 'video' }]);
   });
 
   it('tells the loop it is in the family group, and leaves a 1:1 context byte-identical', async () => {

@@ -369,7 +369,6 @@ function conversation(options?: {
           now: () => NOW,
         },
         inbound,
-        0,
       );
       return {
         bodies: transport.bodies().slice(sentFrom),

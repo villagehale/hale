@@ -36,6 +36,7 @@ import {
   parentCallNameVoice,
 } from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
+import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
@@ -154,6 +155,7 @@ export async function loadInboundContext(
       channel: schema.channelMessages.channel,
       providerMessageId: schema.channelMessages.providerMessageId,
       providerChatId: schema.channelMessages.providerChatId,
+      inboundMedia: schema.channelMessages.inboundMedia,
     })
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.id, job.channel_message_id))
@@ -163,7 +165,11 @@ export async function loadInboundContext(
   // family re-check is the rule #1 backstop: the job is the only thing asserting whose
   // message this is, and a mismatch must fail closed rather than answer the wrong
   // household.
-  if (!message?.body || message.familyId !== job.family_id) return null;
+  const media = inboundMediaFromStored(message?.inboundMedia);
+  // A photo-only turn has an empty body and still routes. A row with neither
+  // words nor a part does not.
+  if (!message || message.familyId !== job.family_id) return null;
+  if (!message.body && media.length === 0) return null;
 
   const [role, primaryParentName, reply, inGroup] = await Promise.all([
     memberRole(database, job.family_id, job.parent_user_id),
@@ -178,7 +184,14 @@ export async function loadInboundContext(
     arrivedInFamilyGroup(database, job.family_id, message.channel, message.providerChatId),
   ]);
 
-  return { body: message.body, role, primaryParentName, reply, inGroup };
+  return {
+    body: message.body ?? '',
+    role,
+    primaryParentName,
+    reply,
+    inGroup,
+    ...(media.length > 0 ? { media } : {}),
+  };
 }
 
 /**
