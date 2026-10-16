@@ -1,7 +1,13 @@
 import { ageInMonths } from '@hale/types';
 import { z } from 'zod';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
-import { type BookMe4Model, fragment, readCourseModel } from '~/lib/channel/spots/availability';
+import {
+  type BookMe4Model,
+  type SpotReading,
+  fragment,
+  readCourseModel,
+  readSpot,
+} from '~/lib/channel/spots/availability';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 
@@ -541,6 +547,7 @@ export type UnreadableReason =
 
 /** What every verdict that actually read a page carries. */
 export interface CoursePage {
+  availability?: SpotReading;
   facts: CourseFacts;
   backed: readonly string[];
   clocks: CourseClocks;
@@ -597,6 +604,7 @@ export function readCoursePrep(input: PrepInput, ctx: PrepContext): PrepVerdict 
   const clocks = courseClocks(facts, ctx.timeZone);
   const clock = applicableClock(clocks, ctx.isResidentWindow);
   const page: CoursePage = {
+    availability: readSpot(input.raw, ctx.courseId),
     facts,
     backed,
     clocks,

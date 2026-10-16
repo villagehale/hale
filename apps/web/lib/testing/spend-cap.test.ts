@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cappedCall, readLedger, usageUsd, worstCaseUsd } from './spend-cap.mjs';
+import { capSdkClient, cappedCall, readLedger, usageUsd, worstCaseUsd } from './spend-cap.mjs';
 
 const rates = () => ({ input: 1, output: 5 }); // $ per MTok
 const request = {
@@ -43,6 +43,17 @@ afterEach(() => {
 });
 
 describe('spend cap at the call site', () => {
+  it('disables unaccounted SDK retries and preserves request options for create and stream', async () => {
+    vi.stubEnv('HALE_MAX_USD', '1');
+    const m = mockClient();
+    const wrapped = capSdkClient(m.client, { rates });
+    const signal = new AbortController().signal;
+    await wrapped.messages.create(request, { signal, maxRetries: 2 });
+    expect(m.create).toHaveBeenCalledWith(request, { signal, maxRetries: 0 });
+    await wrapped.messages.stream(request, { signal }).finalMessage();
+    expect(m.stream).toHaveBeenCalledWith(request, { signal, maxRetries: 0 });
+    expect(readLedger().calls).toBe(2);
+  });
   it('is exactly the call when no cap is set', async () => {
     const m = mockClient();
     await cappedCall({

@@ -26,6 +26,11 @@ what the parent reported, never an account check. For an unreadable/gone/closed 
 age-ineligible course, say that rather than encouraging a registration we cannot
 back up. Never offer automatic registration, payment or a held place.
 
+When `course.availability` says full or waitlist_full, report that current state,
+not an invitation to claim an available place. Unreadable availability is unknown,
+not full. Its evidence belongs to this course-page read; no capacity is inferred
+from registration dates or opening/closing flags alone.
+
 Check_in asks how registration went; the reply reader accepts got in, waitlisted
 with an optional position, or missed it. Waitlist messages attribute positions and
 deadlines to the parent's report; no invented response deadline.

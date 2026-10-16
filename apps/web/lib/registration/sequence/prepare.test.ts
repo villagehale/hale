@@ -69,6 +69,25 @@ const MODEL_PAGES = [
   ['markham-course', MARKHAM],
 ] as const;
 
+it('preserves the existing full-state reader and its evidence in the preparation result', () => {
+  const raw = fixture('open-window-markham');
+  const spot = readSpot(raw, CHESS);
+  expect(spot.state).toBe('full');
+  const result = readCoursePrep(
+    { ok: true, raw },
+    {
+      courseId: CHESS,
+      timeZone: TZ,
+      isResidentWindow: false,
+      anchor: new Date('2026-08-11T10:30:00Z'),
+      now: new Date('2026-08-11T10:30:00Z'),
+      children: [],
+      readinessReady: null,
+    },
+  );
+  expect(result).toMatchObject({ availability: spot });
+});
+
 function readingOf(name: string, courseId: string) {
   const read = readCourseModel(fixture(name), courseId);
   if (!read.ok) throw new Error(`${name}: expected a model, got ${read.reason}`);

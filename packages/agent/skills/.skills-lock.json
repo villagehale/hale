@@ -231,13 +231,17 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "registration-link-reply.md": {
+    "file": "registration-link-reply.md",
+    "sha256": "3b314d0fb171e92c447d94340e7e7f87b9aa66aefc8e9a1c1b36bd0184408999"
+  },
   "registration-live-truth.md": {
     "file": "registration-live-truth.md",
     "sha256": "190e8c75a42ab8ec42a0c644a37bc06cfcd3c8cfe1e9fca68d4f5945b5a66d1c"
   },
   "registration-reminder.md": {
     "file": "registration-reminder.md",
-    "sha256": "be6af31c5300ffcdf8dd3c7f6553b5e8f190849f64d8980030f90fb4b455ef1d"
+    "sha256": "b2ac4f66e72c74c26a64c42920fef1f0fc957fdfb59bc0610904b3154ab6800c"
   },
   "registration-request-read.md": {
     "file": "registration-request-read.md",

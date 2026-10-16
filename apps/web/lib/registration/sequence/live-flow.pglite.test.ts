@@ -8,7 +8,10 @@ import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { HandlerContext } from '~/lib/channel/router/route';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { registrationReminderFixture } from '~/lib/testing/registration-reminder';
+import {
+  registrationLinkReplyFixture,
+  registrationReminderFixture,
+} from '~/lib/testing/registration-reminder';
 import { registrationSourceFixture } from '~/lib/testing/registration-source';
 import type { LiveRegistrationReading } from '../live-reading';
 import { createRegistrationPageBytesFetch } from '../page';
@@ -1038,6 +1041,68 @@ describe('live registration storage → cron → outbound', () => {
 });
 
 describe('course link entry', () => {
+  it('holds a failed writer with no English fallback and no reminder approval', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const family = await seedFamily(db.database, 'writer failure');
+    const url = `https://example.org/${randomUUID()}`;
+    const draft = vi.fn();
+    const approve = vi.fn();
+    const compose = vi.fn(async () => null);
+    const handler = registrationLinkHandler({
+      compose,
+      readRequest: async () => ({ intent: 'remind', confidence: 'high', needsLocation: false }),
+      reader: () => async () => page(url),
+      draft,
+      approve,
+    });
+    const response = await handler.handle(db.database, {
+      ...family,
+      body: `Préviens-moi. ${url}`,
+      now: NOW,
+    } as HandlerContext);
+    expect(response).toEqual({
+      claimed: true,
+      outcome: 'registration_link_reply_unavailable',
+      reply: null,
+    });
+    expect(draft).not.toHaveBeenCalled();
+    expect(approve).not.toHaveBeenCalled();
+    expect(compose).toHaveBeenCalledWith(
+      expect.objectContaining({ parentWords: 'Préviens-moi. [link]', sourceUrl: url }),
+    );
+  });
+
+  it('uses the stored language and never passes rejected credentials to the writer', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const family = await seedFamily(db.database, 'unsafe course');
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'ar' })
+      .where(eq(schema.users.id, family.parentUserId));
+    const compose = vi.fn(registrationLinkReplyFixture);
+    const handler = registrationLinkHandler({
+      compose,
+      readRequest: async () => {
+        throw new Error('unsafe source must not be read');
+      },
+      reader: () => async () => {
+        throw new Error('must not fetch');
+      },
+      draft: vi.fn(),
+      approve: vi.fn(),
+    });
+    const response = await handler.handle(db.database, {
+      ...family,
+      body: 'أريد التسجيل https://private:secret@example.org/course',
+      now: NOW,
+    } as HandlerContext);
+    expect(response).toMatchObject({ claimed: true, outcome: 'unsafe_registration_url' });
+    expect(compose).toHaveBeenCalledWith(
+      expect.objectContaining({ language: 'ar', sourceUrl: null, reading: null }),
+    );
+    expect(JSON.stringify(compose.mock.calls)).not.toContain('secret');
+  });
+
   it('keeps an unclassified date in the course-link reply and proposal, without promising scheduled reminders', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const family = await seedFamily(db.database, 'link eligibility');
@@ -1047,6 +1112,7 @@ describe('course link entry', () => {
     reading.dates[0]!.kind = 'unclassified_open';
     let summary = '';
     const handler = registrationLinkHandler({
+      compose: registrationLinkReplyFixture,
       readRequest: async () => ({ intent: 'inspect', confidence: 'high', needsLocation: false }),
       reader: () => async () => reading,
       draft: async (_database, input) => {
@@ -1088,6 +1154,7 @@ describe('course link entry', () => {
       const url = `https://example.org/${zone}`;
       let approvals = 0;
       const handler = registrationLinkHandler({
+        compose: registrationLinkReplyFixture,
         readRequest: vi
           .fn()
           .mockResolvedValueOnce({ intent: 'inspect', confidence: 'high', needsLocation: false })
@@ -1133,6 +1200,7 @@ describe('course link entry', () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const family = await seedFamily(db.database, 'unrelated');
     const handler = registrationLinkHandler({
+      compose: registrationLinkReplyFixture,
       readRequest: async () => ({ intent: 'none', confidence: 'high', needsLocation: false }),
       reader: () => async () => {
         throw new Error('must not read');
@@ -1171,6 +1239,7 @@ describe('course link entry', () => {
     }));
     const approve = vi.fn(async () => {});
     const handler = registrationLinkHandler({
+      compose: registrationLinkReplyFixture,
       readRequest,
       reader: () => async () => page(url),
       draft: async () => action(family.familyId, false),
@@ -1203,6 +1272,7 @@ describe('course link entry', () => {
       const approve = vi.fn(async () => {});
       const reader = vi.fn(async () => page(url));
       const handler = registrationLinkHandler({
+        compose: registrationLinkReplyFixture,
         readRequest: async () => ({ intent, confidence, needsLocation: false }),
         reader: () => reader,
         draft: async () => action(family.familyId, false),

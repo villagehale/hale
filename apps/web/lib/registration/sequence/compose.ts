@@ -43,6 +43,15 @@ export function registrationReminderContext(input: RegistrationReminderInput) {
       ? {
           status: prep.kind,
           ...('facts' in prep ? { facts: prep.facts, ageFit: prep.age.fit } : {}),
+          ...('availability' in prep && prep.availability
+            ? {
+                availability: {
+                  state: prep.availability.state,
+                  reason: 'reason' in prep.availability ? prep.availability.reason : null,
+                  evidence: 'evidence' in prep.availability ? prep.availability.evidence : [],
+                },
+              }
+            : {}),
           sourceUrl: copy.prep!.courseUrl,
           signInUrl: courseSignInUrl(copy.prep!.courseUrl),
         }

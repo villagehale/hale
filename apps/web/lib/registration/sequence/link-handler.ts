@@ -7,16 +7,16 @@ import { SPOT_PORTAL_HOSTS, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
+import type { LiveRegistrationReading } from '../live-reading';
 import { registrationPageUrl } from '../page';
 import {
   type RegistrationReader,
   createRegistrationReader,
   registrationDate,
   registrationHasOpened,
-  registrationWhen,
-  unclassifiedRegistrationDate,
 } from '../read';
 import { type RegistrationRequestReader, createRegistrationRequestReader } from '../request-read';
+import { type RegistrationLinkReplyInput, composeRegistrationLinkReply } from './link-reply';
 import { loadPreparingSequence } from './prepare-reply';
 import {
   claimRegistrationSend,
@@ -35,6 +35,7 @@ export function registrationLinkIn(body: string): string | null {
 export function registrationLinkHandler(
   ports: {
     readRequest: RegistrationRequestReader;
+    compose: typeof composeRegistrationLinkReply;
     reader(): RegistrationReader;
     draft(
       database: Database,
@@ -46,6 +47,7 @@ export function registrationLinkHandler(
     ): Promise<void>;
   } = {
     readRequest: createRegistrationRequestReader(pipelineClient),
+    compose: composeRegistrationLinkReply,
     reader: createRegistrationReader,
     draft: async (database, input) =>
       (
@@ -56,7 +58,6 @@ export function registrationLinkHandler(
             intentKind: 'registration_shortlist',
             childId: null,
             sourceAnswer: input.summary,
-            title: 'Registration reminder plan',
             sourceUrl: input.sourceUrl,
             origin: 'ask_hale',
             contentProvenance: 'hale_authored',
@@ -77,8 +78,9 @@ export function registrationLinkHandler(
       const pasted = registrationLinkIn(ctx.body);
       if (!pasted || !f14EnabledFor(ctx.familyId)) return { claimed: false };
       const [member] = await database
-        .select({ role: schema.familyMembers.role })
+        .select({ role: schema.familyMembers.role, language: schema.users.locale })
         .from(schema.familyMembers)
+        .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
         .where(
           and(
             eq(schema.familyMembers.familyId, ctx.familyId),
@@ -87,16 +89,32 @@ export function registrationLinkHandler(
         );
       if (member?.role !== 'primary_parent' && member?.role !== 'co_parent')
         return { claimed: false };
-      let sourceUrl: string;
+      let sourceUrl: string | null = null;
+      let reading: LiveRegistrationReading | null = null;
+      const reply = async (outcome: RegistrationLinkReplyInput['outcome']) => {
+        const body = await ports.compose({
+          outcome,
+          language: member.language,
+          parentWords: ctx.body.replace(/https?:\/\/[^\s<>"']+/g, '[link]'),
+          sourceUrl,
+          reading,
+        });
+        if (!body)
+          console.error(
+            { outcome },
+            'registration link: reply held, writer unavailable or ungrounded',
+          );
+        return {
+          claimed: true as const,
+          outcome: body ? outcome : 'registration_link_reply_unavailable',
+          reply: body,
+        };
+      };
       try {
         const spot = sanitizeSpotUrl(pasted);
         sourceUrl = registrationPageUrl(spot.ok ? spot.url : pasted);
       } catch {
-        return {
-          claimed: true,
-          outcome: 'unsafe_registration_url',
-          reply: 'Please send a public HTTPS course page without login credentials.',
-        };
+        return reply('unsafe_registration_url');
       }
       const request = await ports.readRequest({ text: ctx.body, sourceUrl, location: null });
       if (!request || request.intent === 'none' || request.confidence !== 'high')
@@ -118,7 +136,7 @@ export function registrationLinkHandler(
       } catch {
         timeZone = null;
       }
-      const reading = await ports.reader()(
+      reading = await ports.reader()(
         {
           sourceUrl,
           municipality: new URL(sourceUrl).hostname,
@@ -129,15 +147,10 @@ export function registrationLinkHandler(
         ctx.now,
       );
       const date = registrationDate(reading, false);
-      const unclassified = unclassifiedRegistrationDate(reading);
       if (date && registrationHasOpened(reading, date, ctx.now)) {
         // The existing PerfectMind spot flow owns courses already open.
         if (sanitizeSpotUrl(sourceUrl).ok) return { claimed: false };
-        return {
-          claimed: true,
-          outcome: 'registration_already_open',
-          reply: `The page lists ${registrationWhen(reading, date)}, already past. Check current registration here: ${sourceUrl}`,
-        };
+        return reply('registration_already_open');
       }
       const claimed = await claimRegistrationWatch(database, {
         familyId: ctx.familyId,
@@ -146,12 +159,7 @@ export function registrationLinkHandler(
         now: ctx.now,
       });
       const lease = await claimRegistrationSend(database, claimed.sequenceId, ctx.now);
-      if (lease === null)
-        return {
-          claimed: true,
-          outcome: 'registration_watch_busy',
-          reply: 'I am checking this course. Please try again shortly.',
-        };
+      if (lease === null) return reply('registration_watch_busy');
       try {
         await refreshRegistrationWatch(database, {
           sequenceId: claimed.sequenceId,
@@ -168,15 +176,6 @@ export function registrationLinkHandler(
               eq(schema.registrationSequences.familyId, ctx.familyId),
             ),
           );
-        const fact = date
-          ? `The page says ${registrationWhen(reading, date)}.`
-          : unclassified
-            ? `The page lists ${registrationWhen(reading, unclassified)}; resident/non-resident eligibility is unconfirmed. I can't confirm this applies to you. Date reminders are paused.`
-            : reading.status === 'unverified' && reading.reason === 'unknown_time_zone'
-              ? 'Please resend the link with the venue timezone (for example America/New_York or Europe/London).'
-              : reading.status === 'unverified'
-                ? 'I could not verify a published registration date yet.'
-                : 'I could not read the registration page right now.';
         let actionId = watch?.actionId ?? null;
         const previous = actionId
           ? (
@@ -189,20 +188,17 @@ export function registrationLinkHandler(
             )[0]
           : null;
         if (previous?.revertedAt && !wantsReminder) {
-          return {
-            claimed: true,
-            outcome: 'registration_reminder_declined',
-            reply: `${fact} This reminder plan was declined. You can ask for a new plan with this course link. ${sourceUrl}`,
-          };
+          return reply('registration_reminder_declined');
         }
+        let proposalReply: Awaited<ReturnType<typeof reply>> | null = null;
         if (!actionId || previous?.revertedAt) {
+          proposalReply = await reply('registration_reminder_proposed');
+          if (!proposalReply.reply) return proposalReply;
           actionId = await ports.draft(database, {
             familyId: ctx.familyId,
             parentUserId: ctx.parentUserId,
             sourceUrl,
-            summary: unclassified
-              ? `${fact} Approve to keep watching; date reminders stay paused until an applicable date is verified. Dates are checked on the page before sending. Hale never registers or pays for you.`
-              : `${fact} Approve to receive a reminder a week ahead and the evening before${date?.time ? ', plus fifteen minutes before opening' : '; no minute-specific reminder unless the page publishes an opening time'}. Dates are checked on the page before sending. Hale never registers or pays for you.`,
+            summary: proposalReply.reply,
           });
           const attached = await database.transaction(async (tx) => {
             const [updated] = await tx
@@ -241,13 +237,7 @@ export function registrationLinkHandler(
             });
             return true;
           });
-          if (!attached)
-            return {
-              claimed: true,
-              outcome: 'registration_proposal_changed',
-              reply:
-                'This reminder proposal changed while I checked it. Please resend the course link.',
-            };
+          if (!attached) return reply('registration_proposal_changed');
         }
         if (wantsReminder) {
           const [action] = await database
@@ -263,17 +253,9 @@ export function registrationLinkHandler(
               actionId,
               approvedBy: ctx.parentUserId,
             });
-          return {
-            claimed: true,
-            outcome: 'registration_reminder_requested',
-            reply: `${fact} Your reminder request is recorded and goes through the approval checks. ${sourceUrl}`,
-          };
+          return reply('registration_reminder_requested');
         }
-        return {
-          claimed: true,
-          outcome: 'registration_reminder_proposed',
-          reply: `${fact} I saved this course and its reminder proposal; the full reminders need your confirmation in approvals. ${sourceUrl}`,
-        };
+        return proposalReply ?? reply('registration_reminder_proposed');
       } finally {
         await releaseRegistrationSend(database, claimed.sequenceId, lease);
       }

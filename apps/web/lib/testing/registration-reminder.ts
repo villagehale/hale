@@ -1,7 +1,18 @@
 import { registrationDate, registrationWhen } from '~/lib/registration/read';
 import type { RegistrationReminderInput } from '~/lib/registration/sequence/compose';
 import { readinessClause, renderSequenceLeg } from '~/lib/registration/sequence/copy';
+import {
+  type RegistrationLinkReplyInput,
+  registrationLinkReplyContext,
+} from '~/lib/registration/sequence/link-reply';
 import { registrationChangeBody } from '~/lib/registration/sequence/refresh';
+
+/** Structured facts only: a handler-mechanics double, never real AI wording. */
+export async function registrationLinkReplyFixture(
+  input: RegistrationLinkReplyInput,
+): Promise<string> {
+  return JSON.stringify(registrationLinkReplyContext(input));
+}
 
 /** Legacy wording makes cron-mechanics fixtures stable, not an AI-copy quality claim. */
 export async function registrationReminderFixture({
