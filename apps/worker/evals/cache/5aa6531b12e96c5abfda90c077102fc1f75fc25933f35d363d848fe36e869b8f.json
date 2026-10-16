@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Children's Museum of Manhattan (CMOM)",
+        "age_fit": "children ages 0-6",
+        "when": "Tuesday–Sunday, 10 am–5 pm (regular posted hours; Circle Time 10:30 am, then Mural Wall or Messy with Art 11:15 am). An older FAQ page lists Monday–Sunday for July–September, so I could not confirm whether it is open Monday Sept 14, and Sept 12 to 15 itself is not confirmed.",
+        "source_name": "Children's Museum of Manhattan"
+      },
+      {
+        "name": "Central Park Zoo (includes the Tisch Children's Zoo)",
+        "age_fit": "Child (3 - 12); Child (2 & under) free",
+        "when": "April 2 to October 31, 2026: Mon-Fri 10:00 AM - 5:00 PM, weekends 10:00 AM - 5:30 PM; last entry 1 hour before closing (regular posted hours, Sept 12 to 15 itself not confirmed)",
+        "price": "Child (3 - 12) $16.95; Child (2 & under) free",
+        "source_name": "Central Park Zoo (Wildlife Conservation Society)"
+      }
+    ]
+  },
+  "latencyMs": 6607
+}

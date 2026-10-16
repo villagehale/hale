@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, Saturday times, Sept 12 to Nov 28, ages 3-5 with no parent in the water. Each is cited to the Town of Oakville page. Price is correctly null because the page prints no fee. Both slots carry the registration date (Aug 11, 7 a.m., residents). The message names Preschool A first and attributes the facts to the Town's site. It carries the not-yet-open registration date. With page_has_schedule, the first-person 'I could not pin down the price' is the right framing rather than a false 'not posted'. Because watch is true, 'I'll keep watching for it' is a legitimate first-person commitment. The message is plain ASCII with no link and no question. Minor nit: neither the slots nor the message point to the Recreation Guide, which the page names as where fees are published, but it is not shown as a linked schedule PDF.",
+    "score": 5
+  }
+}

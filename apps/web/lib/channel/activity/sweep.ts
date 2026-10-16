@@ -24,7 +24,7 @@ import {
   defaultActivityPromisePorts,
   recordActivityPromise,
 } from './commitment';
-import { type DeepResearcher, type DeepSlot, createDeepResearcher } from './deep';
+import { type DeepResearcher, createDeepResearcher } from './deep';
 import { deidentifyActivityQuery } from './deidentify';
 import {
   type FollowUpDelivery,
@@ -37,7 +37,7 @@ import { type FollowUpPick, createFollowUpComposer } from './followup-note';
 import type { EmptySearch } from './lane';
 import { type ActivityFinder, createActivityFinder } from './lane';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
-import { SLOTS_IN_TEXT, defaultActivitySharePorts, mintActivitySharePage } from './share-page';
+import { SLOTS_IN_TEXT } from './share-page';
 
 /**
  * THE SWEEP THAT KEEPS THE PROMISE.
@@ -155,8 +155,6 @@ export interface ActivityFollowUpResult {
    * parent has been told Hale is on it and nothing in the system knows.
    */
   watchUnrecorded: number;
-  /** Follow-ups that carried a link to the rest of the schedule. */
-  shared: number;
 }
 
 function emptyResult(enabled: boolean): ActivityFollowUpResult {
@@ -176,7 +174,6 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     deepUnavailable: 0,
     watching: 0,
     watchUnrecorded: 0,
-    shared: 0,
   };
 }
 
@@ -343,7 +340,7 @@ async function keepOne(
   // them to `ActivityPick` here compiled fine, kept the field at runtime, and made it
   // invisible to every reader downstream — which is exactly how it got dropped.
   let picks: FollowUpPick[] = [];
-  let rest: readonly DeepSlot[] = [];
+  let held: FollowUpPick[] = [];
   let researched = false;
   let searched: EmptySearch | undefined;
   const evidence = noEvidence();
@@ -362,11 +359,11 @@ async function keepOne(
       evidence.pagesRead = deep.pagesRead;
       evidence.pagesRefused = deep.pagesRefused;
       pageEvidence = deep.pageVerdict;
-      // The text carries the best one or two; everything else goes on a page. Slicing
-      // HERE rather than asking the model for a shortlist is what makes "and the rest is
-      // at this link" true — the remainder is a real list, not a claim.
+      // The text carries the best one or two. The rest stay in the chat until the parent
+      // asks. Slicing here, rather than asking the model for a shortlist, is what makes
+      // "there are more" true of a real remainder.
       picks = deep.slots.slice(0, SLOTS_IN_TEXT);
-      rest = deep.slots;
+      held = deep.slots.slice(SLOTS_IN_TEXT);
     } else if (deep.status === 'unread') {
       // It reached the web and could not open one page — every fetch refused or
       // unreachable, which the live probe showed is a real and common shape. It knows
@@ -406,7 +403,15 @@ async function keepOne(
       );
       return;
     }
-    picks = found.found ? [...found.picks] : [];
+    const foundPicks = found.found ? [...found.picks] : [];
+    // Same cut as the deep pass, and only when there is an overflow, so a one- or
+    // two-pick message stays the message it already was.
+    if (foundPicks.length > SLOTS_IN_TEXT) {
+      picks = foundPicks.slice(0, SLOTS_IN_TEXT);
+      held = foundPicks.slice(SLOTS_IN_TEXT);
+    } else {
+      picks = foundPicks;
+    }
     if (!found.found) searched = found.searched;
   }
   evidence.picks = picks.length;
@@ -426,7 +431,7 @@ async function keepOne(
       dedupeKey,
       optOut: verdict.optOut,
       picks,
-      rest,
+      held,
       pageEvidence,
       evidence,
       ...(searched ? { searched } : {}),
@@ -444,7 +449,6 @@ async function keepOne(
   if (outcome.status === 'skipped') return;
   result.sent += 1;
   if (outcome.emptyHanded) result.sentEmptyHanded += 1;
-  if (outcome.shared) result.shared += 1;
   if (outcome.watchRecorded === true) result.watching += 1;
   if (outcome.watchRecorded === false) result.watchUnrecorded += 1;
 }
@@ -460,12 +464,21 @@ export async function resolveFollowUpRecipient(
     .select({
       parentUserId: schema.channelMessages.parentUserId,
       conversationId: schema.channelMessages.relatedConversationId,
+      language: schema.users.locale,
     })
     .from(schema.channelMessages)
+    .innerJoin(schema.users, eq(schema.users.id, schema.channelMessages.parentUserId))
     .where(eq(schema.channelMessages.id, channelMessageId))
     .limit(1);
-  if (!row?.parentUserId) return null;
-  return { parentUserId: row.parentUserId, conversationId: row.conversationId ?? null };
+  // No user row means there is nobody to write to, and no locale means there is no
+  // language to write in. Both are the same outcome the sweep already names: the
+  // recipient no longer resolves. A default language here would be a language nobody stored.
+  if (!row?.parentUserId || row.language.trim() === '') return null;
+  return {
+    parentUserId: row.parentUserId,
+    conversationId: row.conversationId ?? null,
+    language: row.language,
+  };
 }
 
 export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
@@ -479,8 +492,6 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
     // past the pipeline client's patience (see ACTIVITY_CLIENT_OPTIONS).
     deep: createDeepResearcher(activityClient),
     composer: createFollowUpComposer(pipelineClient),
-    sharePage: (database, input) =>
-      mintActivitySharePage(database, input, defaultActivitySharePorts()),
     buildGate: buildOutboundGatePorts,
     dedupeActive,
     resolveSendablePhone,

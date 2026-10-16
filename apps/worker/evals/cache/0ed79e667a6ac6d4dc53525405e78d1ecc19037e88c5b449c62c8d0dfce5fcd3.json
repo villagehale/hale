@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, local and fit a toddler: Parent and Tot and the Pre-school Drop In at Halton Hills Gymnastics Centre, and drop-in swim at Gellert Community Centre. Each is sourced from the operator's own site or the Town's own page, and there are no more than three. The message leads with the gymnastics centre by name and attributes its facts ('their site says', 'per the Town') rather than claiming to have verified them. Every time and price it gives appears in the picks, and nothing is invented. The missing class day and swim price are stated in first person ('I couldn't confirm'), which is the correct form under no_page_read; it does not say 'not posted'. The conflicting drop-in start date is left out rather than guessed. Because watch is true, 'I'll keep watching' is a valid first-person commitment, though it could have said Hale will text when the details post. Plain text, no link, no question.",
+    "score": 5
+  }
+}

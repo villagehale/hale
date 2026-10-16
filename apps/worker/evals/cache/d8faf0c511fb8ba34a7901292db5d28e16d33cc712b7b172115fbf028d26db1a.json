@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is NULL, so the scoring rules say to score the slots alone and ignore everything about the message composition. Evaluating the slots: Both fetches were refused (url_not_accessible / url_not_allowed), so pageEvidence is effectively `no_page_read`. The slot correctly carries null for when, price, and registration — no invented dates or fees from unread pages. The program name (\"Parent & Tot Swimming Lessons, Gellert Community Centre\") and age band (\"4 months to 3 years, with a parent\") are grounded in the search-result snippet, which is the only evidence available. The sourceUrl is the page Hale was turned away from, which is acceptable as an attribution target (it identifies the operator's own URL without claiming the page was read). No unearned negative schedule claim is made — the nulls are silent, not assertive. The slot does not claim \"not posted yet,\" which would be unearned under no_page_read. The watch flag is TRUE, but since the message is NULL there is no message to carry the continuation promise, and the rules say to ignore message-level criteria entirely. The slot list is appropriately minimal and honest given the access failure. This is the correct, defensible output for a research pass where both pages were refused.",
+    "score": 5
+  }
+}

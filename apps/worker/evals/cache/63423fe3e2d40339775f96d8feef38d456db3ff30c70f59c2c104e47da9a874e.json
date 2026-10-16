@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with Cartwheels Gym Centre, the gym the parent asked about, and attributes its detail with 'their site says'. The second pick is a different venue, named distinctly, so it is not passed off as Cartwheels. There are two real local picks, both stage-appropriate, with no link and no question. watch is TRUE and the message correctly carries a first-person 'I'll keep watching and text you'. Under no_page_read it uses the earned form 'I could not get into either page today' rather than 'not posted yet'. No day, time or price is invented. Minor faults: the Halton Hills Gymnastics Centre facts are stated without attribution ('has Parent & Tot'), which reads as confirmed. Cartwheels' 'walking' requirement for 1-year-olds is also dropped.",
+    "score": 4
+  }
+}

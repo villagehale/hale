@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Saturday times, the Sept 12 to Nov 28 dates and the 3-5 age band, with no invented third level. Price is correctly null because the page prints no fee, and both slots carry the registration window and cite the page. The message names both levels up front and attributes them with 'their site says'. It carries the not-yet-open registration date (Tue, Aug 11 at 7 a.m.). Under page_has_schedule it correctly uses the first-person 'I could not pin down the price' rather than 'not posted'. With watch=true, 'I'll keep watching and text you' is a valid first-person commitment. The text is plain ASCII, with no link and no question. Minor nit: neither the slots nor the message note that fees are published in the Recreation Guide.",
+    "score": 5
+  }
+}

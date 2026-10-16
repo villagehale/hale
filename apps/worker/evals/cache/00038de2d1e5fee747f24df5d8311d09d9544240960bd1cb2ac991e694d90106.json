@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "guidance question about introducing a food at a developmental stage; how/when-should on routine parenting, not a symptom report",
+    "language": "en"
+  },
+  "latencyMs": 1875
+}

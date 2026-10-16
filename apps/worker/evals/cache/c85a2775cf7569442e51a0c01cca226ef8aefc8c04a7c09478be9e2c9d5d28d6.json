@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "parent asks to find a specific practitioner (optometrist), a named specialty",
+    "language": "en"
+  },
+  "latencyMs": 1236
+}

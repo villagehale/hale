@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, named Halton Hills/Georgetown venues that fit a toddler, and each comes from the operator's own page (the gym, or the Town for its own Gellert program). The message leads with the gymnastics centre by name and attributes everything ('their site says', 'per the Town'), with no verification claims. It has no link and no question. Every day, time and price matches the picks. The gaps are named in the first person ('I couldn't confirm the class day or swim price'), which is the right form under no_page_read, with no 'not posted yet' claim. Since watch is true, the first-person 'I'll keep watching' is earned. The conflicting drop-in start date is correctly left out. Small nit: the closing could say Hale will text when it learns more, but it is acceptable.",
+    "score": 5
+  }
+}

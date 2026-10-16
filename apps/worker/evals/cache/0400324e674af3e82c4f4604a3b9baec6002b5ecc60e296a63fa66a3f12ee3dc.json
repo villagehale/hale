@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot matches the programme page exactly: name, age band (12 months to 4 years), days, time and session dates (Sept 8 to Dec 11), cited to the right URL. The price is correctly null and none of the room-rental figures ($185, $95) were borrowed. The page prints no registration date, so a null registration is right. The message leads with the program by name, attributes the facts to their site and uses the first-person 'I could not pin down the price', which fits page_has_schedule. Since watch is true, the 'I'll keep watching' line is backed by a real commitment. It is plain ASCII with no link and no question. One small miss: it could have relayed the page's note that fees are at the front desk or by calling reception.",
+    "score": 5
+  }
+}

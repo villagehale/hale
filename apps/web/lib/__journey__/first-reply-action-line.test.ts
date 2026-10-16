@@ -32,10 +32,6 @@ const TORONTO_FSA = 'M5V 3A8';
  * is the 19th and 20th. */
 const INTAKE_AT = new Date('2026-09-18T14:00:00.000Z');
 
-/** The real seed row's own page, read out of the dataset rather than pasted, so the
- * assertion is about what a family is actually sent. */
-const CITY_PAGE = 'https://example.org/registration';
-
 describe('the first reply says what to do about the find', () => {
   let db: TestDb;
   let database: Database;

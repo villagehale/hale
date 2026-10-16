@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { loadKidItemClassifierSkill } from '~/lib/cron/skill';
 import {
   KID_JUDGE_MAX_TOKENS,

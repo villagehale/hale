@@ -6,7 +6,7 @@ import { useEffect, useId, useState } from 'react';
  * The "links you have shared" list with a per-link Revoke (rules #1, #6). Fetches
  * the family-scoped list from /api/village/shares on mount; each row reveals an
  * inline confirm, then POSTs the revoke to /api/village/shares/revoke. On success
- * the token is nulled server-side (the public page then fails closed) and the row
+ * the token is nulled server-side and the row
  * leaves the list. Honest states: a load error and a per-row revoke error surface
  * calmly — never a silent failure.
  */

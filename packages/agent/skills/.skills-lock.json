@@ -5,7 +5,7 @@
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "5cce65d6bc08f7ac71f8b7c1689e89f162082075cb7e3d9152a746d486ac9a7e"
+    "sha256": "319f2bb36e10c9bcff84f0d013c6cc3c1ec6f076ff22122f075cc7d0af4fdf8a"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
@@ -141,7 +141,7 @@
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
-    "sha256": "139c345496c998954fd3b09d9649d6b7fd73d5fdb07d95d425c5d6ca73ad728f"
+    "sha256": "18976791b8e75b73993815253621573bba04a492865b7720bc13adcc003a0ec3"
   },
   "infer-memory.md": {
     "file": "infer-memory.md",

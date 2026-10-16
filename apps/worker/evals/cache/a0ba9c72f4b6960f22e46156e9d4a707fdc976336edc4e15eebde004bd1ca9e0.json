@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "child-safety",
+    "reason": "child is missing and unaccounted for — immediate danger",
+    "language": "en"
+  },
+  "latencyMs": 1345
+}

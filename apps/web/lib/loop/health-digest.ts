@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import {
-  type SQL,
   and,
   count,
   countDistinct,

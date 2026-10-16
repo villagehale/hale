@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "weather",
+    "reason": "asks about current weather, a fact about the world not the family's week",
+    "language": "en"
+  },
+  "latencyMs": 1030
+}

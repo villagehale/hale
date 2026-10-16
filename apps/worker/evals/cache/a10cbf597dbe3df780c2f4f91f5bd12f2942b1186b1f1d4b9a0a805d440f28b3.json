@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks are real, local and fit a toddler: two at Halton Hills Gymnastics Centre and Gellert swim run by the Town, each sourced from the operator's own page. The message leads with the gymnastics centre by name and attributes ('their site says', 'per the Town'). Every time and price matches the picks, with nothing invented. It is plain text with no link and no question. Under no_page_read, the gap is correctly put in the first person ('I couldn't confirm the class day or swim price') rather than 'not posted yet'. With watch=true, 'I'll keep watching' is an appropriate first-person commitment, though vaguer than ideal. Minor shortfall: the Parent and Tot price is also null, but the message names only the swim price gap and quietly writes around that one.",
+    "score": 4
+  }
+}

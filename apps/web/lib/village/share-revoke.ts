@@ -3,14 +3,13 @@ import { and, desc, eq, isNotNull } from 'drizzle-orm';
 
 /**
  * The "links you have shared" list and its Revoke action (rule #1, #6). A share
- * token is the ONLY handle to a public artifact; the schema makes it revocable by
- * construction — the column is nullable, and every public loader resolves
- * `WHERE share_token = :token`, so nulling it makes the token resolve nothing and
- * the public page falls to its calm "no longer active" state. Revoke is therefore
- * a single UPDATE to NULL, family-scoped, writing one immutable audit row (rule #6).
+ * token is the ONLY handle a public artifact used to have. The column is nullable,
+ * so nulling it makes the token resolve nothing. The public activity page is gone,
+ * so an old link is the app's ordinary missing page. Revoke is a single UPDATE to
+ * NULL, family-scoped, writing one immutable audit row (rule #6).
  *
- * One token-bearing table carries a shareable link:
- *   - family_activity_history.share_token → one endorsed activity card (/a).
+ * One token-bearing table still carries a share token:
+ *   - family_activity_history.share_token → one historical activity receipt.
  * (The week-plan/picks token died with routine_proposals — F13's leg.)
  */
 

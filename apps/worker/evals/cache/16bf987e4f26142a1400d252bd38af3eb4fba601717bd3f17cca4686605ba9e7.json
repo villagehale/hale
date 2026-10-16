@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "mental-health",
+    "reason": "report of suicidal ideation in a child — immediate crisis",
+    "language": "en"
+  },
+  "latencyMs": 1412
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot is a real item from a page Hale actually read, and each is cited to that page. Term 1 (Sept 14-Nov 1, 2026) and Term 2 (Nov 2-Dec 20, 2026) are taken exactly from the schedule PDF, which was opened. The registration slot carries 'Wednesday July 22, 2026 8:00am online' exactly as the homepage prints it, and the message carries it too. Tiny Gym's age band (1 and walking to 3, with a caregiver) matches the programs page. Price is correctly left null, since the site says pricing is only behind the registration login, and no figure was borrowed from elsewhere. Hale honestly notes it could not tie the garbled grid times to weekdays. The message leads with Tiny Gym by name and attributes the facts ('their site says'). Under page_has_schedule it phrases the gap in the first person ('I could not pin down the day or the price') rather than claiming 'not posted'. Watch is true, so the first-person 'I'll keep watching and text you' is backed by a real commitment. It is plain ASCII with no link and no question. One minor miss: the message could have said pricing sits behind their registration login.",
+    "score": 5
+  }
+}

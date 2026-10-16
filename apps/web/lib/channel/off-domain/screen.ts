@@ -41,8 +41,10 @@ import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured'
  *   possibly in-domain, and the skill says so.
  *
  * PRIVACY. The message goes to the model (as it already does on every coach turn) and
- * to nowhere else. Nothing in this module logs it, and the only thing persisted is a
- * bucket from a closed vocabulary — see {@link UnmetIntentCategory}.
+ * to nowhere else. Nothing in this module logs it, and nothing in this module writes
+ * it. The lane and the category stay a closed vocabulary — see {@link UnmetIntentCategory}.
+ * `language` is the one open field: a BCP-47 tag the model judges, with no allowlist
+ * here. The router stores that tag on `users.locale`. This module only returns it.
  */
 
 const MAX_TOKENS = 128;
@@ -120,6 +122,12 @@ export interface LaneReading {
   category: UnmetIntentCategory | null;
   /** Null exactly when the screen actually ran and answered. */
   fallback: LaneScreenFallback | null;
+  /**
+   * The BCP-47 tag the model read off this message, trimmed, otherwise null.
+   * Null on every fail-open path: a screen that did not read a language must not
+   * invent one (rule #11). Not an allowlist — whatever tag the model returned.
+   */
+  language: string | null;
 }
 
 export interface InboundLaneScreen {
@@ -152,6 +160,9 @@ const readingSchema = z.object({
   lane: z.string(),
   category: z.string(),
   reason: z.string(),
+  // Optional here on purpose. The tool schema asks for it, but a missing or null tag
+  // must not throw away a lane we can act on. A blank tag becomes null in toReading.
+  language: z.string().nullish(),
 });
 
 const readingJsonSchema = {
@@ -163,8 +174,9 @@ const readingJsonSchema = {
     },
     category: { type: 'string', enum: [...CATEGORIES, 'none'] },
     reason: { type: 'string' },
+    language: { type: 'string' },
   },
-  required: ['lane', 'category', 'reason'],
+  required: ['lane', 'category', 'reason', 'language'],
 } as const;
 
 /** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
@@ -189,7 +201,19 @@ function readFailure(err: unknown): { err: string; outcome?: string } {
 /** The fail-open reading, logged and named. Never carries the message (rule #1). */
 function openTheGate(fallback: LaneScreenFallback): LaneReading {
   console.error({ fallback }, 'off-domain screen: fell through to the coach');
-  return { lane: 'in_domain', category: null, fallback };
+  return { lane: 'in_domain', category: null, fallback, language: null };
+}
+
+/**
+ * The tag the model returned, or null when it returned none.
+ *
+ * Trim only. No allowlist, no case-fold, no pattern: a padded tag is the same tag,
+ * and an empty one is the absence the router must not write (rule #11).
+ */
+function seenLanguage(raw: { language?: string | null }): string | null {
+  if (typeof raw.language !== 'string') return null;
+  const tag = raw.language.trim();
+  return tag === '' ? null : tag;
 }
 
 /**
@@ -201,12 +225,19 @@ function openTheGate(fallback: LaneScreenFallback): LaneReading {
  * founder's weekly count lands in. So it becomes `other` rather than throwing away a
  * correct deflection over a mislabelled tally.
  */
-export function toReading(raw: { lane: string; category: string }): LaneReading {
+export function toReading(raw: {
+  lane: string;
+  category: string;
+  language?: string | null;
+}): LaneReading {
+  // An unreadable lane fails open and keeps no tag. A language from a reading we
+  // cannot act on is not evidence of what this parent writes.
   if (!LANES.has(raw.lane)) return openTheGate('unreadable');
+  const language = seenLanguage(raw);
   const lane = raw.lane as InboundLane;
-  if (lane === 'in_domain') return { lane, category: null, fallback: null };
+  if (lane === 'in_domain') return { lane, category: null, fallback: null, language };
   const category = (CATEGORIES.has(raw.category) ? raw.category : 'other') as UnmetIntentCategory;
-  return { lane, category, fallback: null };
+  return { lane, category, fallback: null, language };
 }
 
 /**

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reported fever (39°) persisting for three days is a symptom state requiring immediate medical guidance",
+    "language": "en"
+  },
+  "latencyMs": 1477
+}

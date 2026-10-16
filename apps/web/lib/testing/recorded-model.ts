@@ -92,6 +92,13 @@ export interface RecordedModel {
   client: () => AgentClient;
   /** Every user message that reached the wire — the real projections, in order. */
   requests: string[];
+  /**
+   * Every key that had no recording. A miss throws, but production code that catches its
+   * model errors (the activity lane turns any ground throw into `ground_failed`, which the
+   * travel sweep counts as `searchFailed`) swallows that throw, and the test then fails on
+   * a count with the real cause gone. Asserting this is empty names the stale recording.
+   */
+  misses: string[];
 }
 
 /**
@@ -103,6 +110,7 @@ export interface RecordedModel {
  */
 export function recordedModel(path: string, live: () => AgentClient): RecordedModel {
   const requests: string[] = [];
+  const misses: string[] = [];
   const recordings = read(path);
   let capped: AgentClient | null = null;
 
@@ -141,6 +149,7 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
     if (hit) return hit.response as unknown as Anthropic.Message;
 
     if (process.env.HALE_RECORD !== '1') {
+      misses.push(key);
       throw new Error(
         [
           `recorded-model: no recording for key ${key} in ${path}.`,
@@ -174,5 +183,5 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
     },
   } as unknown as AgentClient;
 
-  return { client: () => client, requests };
+  return { client: () => client, requests, misses };
 }

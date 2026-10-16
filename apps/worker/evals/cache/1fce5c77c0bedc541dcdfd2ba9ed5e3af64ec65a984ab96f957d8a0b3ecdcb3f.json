@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child ingested allergen and is experiencing respiratory distress—requires immediate emergency response",
+    "language": "en"
+  },
+  "latencyMs": 1394
+}

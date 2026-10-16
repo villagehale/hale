@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Saturday times, Sept 12 to Nov 28, ages 3-5, each cited to the Oakville page. Price is correctly null because fees are deferred to the Recreation Guide. The registration date is in the slots and the message. The message is in Arabic as required, leads with Preschool A by name and attributes the facts (\"according to the Town of Oakville site\"). It states the price gap in the first person, which suits page_has_schedule. With watch=true it correctly commits in the first person to keep watching. No link and no question. The August 4 browse date is a minor omission.",
+    "score": 5
+  }
+}

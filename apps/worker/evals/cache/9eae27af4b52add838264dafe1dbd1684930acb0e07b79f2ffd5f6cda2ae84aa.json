@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and read off the programme page. Its age band, days, times and session dates match exactly what is printed. Price is correctly null because the page only says to see the front desk. Neither rental figure ($185 birthday package, $95 meeting room) is attached to the class. No registration date is printed, so its absence is correct. The message leads with the program by name and attributes the facts to their site. The negative statement is in the first person ('I could not pin down the price'), which is correct under page_has_schedule. Because watch is true, the first-person promise to keep watching is a real commitment. The message is plain ASCII, with no link and no question.",
+    "score": 5
+  }
+}

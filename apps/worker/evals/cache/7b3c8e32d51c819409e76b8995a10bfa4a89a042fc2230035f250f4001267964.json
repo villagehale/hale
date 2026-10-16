@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctness: The page was opened (page_has_schedule), the notes explicitly state \"Our youngest program starts at age 8. We do not offer preschool or toddler classes.\" The empty slots list is correct and honest. The message accurately reports this negative finding — this is an earned negative claim because pageEvidence is page_has_schedule and the page itself plainly states no toddler offering exists. No invented facts, no borrowed figures, no age-band stretching. The message does not report a schedule as \"not posted\" (it correctly says they don't offer it). Tone: Calm, specific, keeps the parent's promise without hedging or inflating. The message names the venue, attributes the finding to the site, and delivers a clear, grounded statement. Watch: watch=TRUE and the message contains \"I'll keep watching and text you if that changes\" — the commitment is present, in English (matching language tag en-CA), and in first person. This is correct. Language: Written in English (en-CA). Correct. No question asked — correct. No link — correct. One sentence of finding plus one sentence of commitment — within the two-segment ceiling. This is a textbook correct response: empty slots, earned negative claim, watch sentence present. Score: 5.",
+    "score": 5
+  }
+}

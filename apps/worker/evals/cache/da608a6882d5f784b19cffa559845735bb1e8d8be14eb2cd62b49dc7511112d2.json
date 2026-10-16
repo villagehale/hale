@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot is real and cited to the programme page. The day, times and dates match exactly as printed, and the age band 12 months to 4 years fits a toddler. Price is correctly null: the page refers fees to the front desk, and the $185 and $95 rental figures were not borrowed. The page prints no registration date, so a null registration is correct. The message leads with the slot by name, attributes the facts with 'their site says', is plain ASCII with no link and no question. Because watch is true, the first-person 'I'll keep watching and text you' is a real commitment. Under page_has_schedule the gap is stated in the first person ('I could not pin down the price'), not as 'not posted'. No schedule PDF was linked, so nothing went unmentioned. Minor nit: the slot could have recorded the page's 'see front desk' note for the fee.",
+    "score": 5
+  }
+}

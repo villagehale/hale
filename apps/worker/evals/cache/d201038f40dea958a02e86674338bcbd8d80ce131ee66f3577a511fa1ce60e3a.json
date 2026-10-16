@@ -1,0 +1,24 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Learn to Swim Preschool A–E, Town of Oakville",
+        "age_fit": "Preschool levels A, B, C, D, E, 3 - 5 years",
+        "when": "Fall registration opened Tuesday, August 11 at 7 a.m.",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "YMCA Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "3-5 years",
+        "source_name": "YMCA of Oakville"
+      },
+      {
+        "name": "Junior (Beginner - Intermediate) group swim lessons, Goldfish Swim School - Oakville",
+        "age_fit": "3-4 Years",
+        "price": "$32.50 per 30-minute group lesson, plus a $30 annual membership fee, billed monthly",
+        "source_name": "Goldfish Swim School"
+      }
+    ]
+  },
+  "latencyMs": 8780
+}

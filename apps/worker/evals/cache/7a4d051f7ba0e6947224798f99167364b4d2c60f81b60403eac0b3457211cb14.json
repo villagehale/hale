@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctness: Every fact in the message is directly supported by the page notes and slots. Tiny Gym is correctly named; Sundays 9:30–10:15am is exact; Sept 14–Oct 26 is exact; $124 is exact; \"walking to 3.5 yrs with a parent\" is exact; the $25 membership note is included; registration opened July 22 and runs until classes fill is carried — the watchFor specifically flags this as critical and it is present. Attribution is \"their site says,\" which is appropriate for a page-read fact rather than a verified confirmation. pageEvidence is page_has_schedule and the message makes no negative claim about the schedule, so that field is neutral. watch is FALSE, and there is no coming-back sentence, which is correct. Tone: calm, specific, keeping a promise — reads like a person relaying what the venue's own page says, not overclaiming. No question is asked, which is correct. Language: written in Canadian English as required. Two-sentence structure is within the hard ceiling. The second slot (Kinderfun) is correctly dropped to keep the message to one complete best fit. All facts are attributed to the venue's page rather than presented as personally confirmed. No fabricated figures. No unearned negative claim. This is a clean 5.",
+    "score": 5
+  }
+}

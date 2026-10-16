@@ -1,0 +1,9 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a physical symptom (rash) and asks if it is normal, a state rather than routine guidance",
+    "language": "en"
+  },
+  "latencyMs": 3019
+}
