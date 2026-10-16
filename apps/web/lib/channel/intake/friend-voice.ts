@@ -64,8 +64,6 @@ import {
  */
 const MAX_TOKENS = 1000;
 const SHORT_MAX_TOKENS = 600;
-/** A text bubble. Longer than this reads as a letter, not a text. */
-export const MAX_PROSE_CHARS = 220;
 const MAP_OPENER_CHARS = 120;
 
 /** What a worried parent wants to hear and Hale cannot say: Google shares all of it. */
@@ -1881,20 +1879,6 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('join') },
         };
       }
-      if (
-        prose.length > MAX_PROSE_CHARS &&
-        repairedProse(prose, judgeInput.step, input.children).length === 0
-      ) {
-        console.error(
-          { reason: 'long', chars: prose.length, step: input.step, prompt },
-          'onboarding-friend: unusable reply',
-        );
-        return {
-          fail: 'unusable',
-          capture,
-          retry: { draft, problem: retryProblem('long') },
-        };
-      }
       const { linkFollows, ...rest } = options;
       const judgeOptions = {
         ...rest,
@@ -1917,35 +1901,21 @@ export async function speakFriend(
           judgedText: assembleFriendBody(text, input, options.link, options.trailer),
         };
       };
-      // A good draft with one fixable slip (a second question mark, a line too
-      // many) is repaired by code and judged again rather than dropped.
-      if (prose.length <= MAX_PROSE_CHARS) {
-        const assembled = bubblesFor(prose);
-        if (!assembled) return { fail: 'unusable', capture };
-        const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
-        if (judged.ok) return { prose, bubbles: assembled.bubbles, capture, step: judgeInput.step };
-        const repaired = repairedProse(prose, judgeInput.step, input.children);
-        const again = repaired.length > 0 ? bubblesFor(repaired) : null;
-        if (
-          again &&
-          (judged.reason === 'question' || judged.reason === 'link') &&
-          judgeFriendReply(again.judgedText, judgeInput, judgeOptions).ok
-        ) {
-          console.error(
-            { repaired: judged.reason, step: input.step, prompt },
-            'onboarding-friend: draft repaired',
-          );
-          return { prose: repaired, bubbles: again.bubbles, capture, step: judgeInput.step };
-        }
-        return reject(judged);
-      }
-      const repaired = repairedProse(prose, judgeInput.step, input.children);
-      const again = bubblesFor(repaired);
-      if (!again) return { fail: 'unusable', capture };
-      const judged = judgeFriendReply(again.judgedText, judgeInput, judgeOptions);
-      if (judged.ok) {
+      // A good draft with one fixable slip (a second question mark) is repaired
+      // by code and judged again rather than dropped. Length is not a reason.
+      const assembled = bubblesFor(prose);
+      if (!assembled) return { fail: 'unusable', capture };
+      const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
+      if (judged.ok) return { prose, bubbles: assembled.bubbles, capture, step: judgeInput.step };
+      const repaired = repairedProse(prose, judgeInput.step);
+      const again = repaired.length > 0 ? bubblesFor(repaired) : null;
+      if (
+        again &&
+        (judged.reason === 'question' || judged.reason === 'link') &&
+        judgeFriendReply(again.judgedText, judgeInput, judgeOptions).ok
+      ) {
         console.error(
-          { repaired: 'long', step: input.step, prompt },
+          { repaired: judged.reason, step: input.step, prompt },
           'onboarding-friend: draft repaired',
         );
         return { prose: repaired, bubbles: again.bubbles, capture, step: judgeInput.step };
@@ -2066,13 +2036,11 @@ function carriesJoin(prose: string, join: { line: string; phrase: string }): boo
 
 /** What the retry is told about the draft that was not sent. Plain words for the model. */
 function retryProblem(
-  reason: FriendJudgeFailure | 'long' | 'schedule' | 'join',
+  reason: FriendJudgeFailure | 'schedule' | 'join',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
-    case 'long':
-      return `Too long. Keep the reply under ${MAX_PROSE_CHARS} characters.`;
     case 'join':
       return linqGroupOnboardingV2Enabled()
         ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Say it is below and do not write the digits or a phrase to text. When it is new, say you will start the group. A plain yes leaves coparentGroupMode null.'
@@ -2182,14 +2150,9 @@ const COPARENT_WORDS = /\b(?:group (?:chat|text)|other parent|co-?parent)\b/i;
  * Code's repair of a draft that broke one countable rule. Two or three
  * questions offering choices become one: an earlier question that only opens
  * ("Which of these would help?") is dropped, any other earlier one becomes a
- * statement. A draft over the length limit loses its leading statements until
- * it fits. Empty when there is nothing safe to repair.
+ * statement. Empty when there is nothing safe to repair. Length is not repaired.
  */
-export function repairedProse(
-  prose: string,
-  step: FriendStep,
-  children?: readonly { name?: string | null }[],
-): string {
+export function repairedProse(prose: string, step: FriendStep): string {
   if (ZERO_QUESTION_STEPS.has(step)) return '';
   let sentences = sentencesOf(prose);
   const asks = sentences.filter((sentence) => sentence.includes('?'));
@@ -2206,23 +2169,8 @@ export function repairedProse(
     });
     if (sentences.includes('\u0000')) return '';
   }
-  // Too long: filler goes first; who Hale is and the trust line stay longest.
-  // A sentence naming a kid is content (the schedule ask's per-kid picks), never filler.
-  const keeps = /village ?hale|google shares|\bkeep|disconnect/i;
-  const kids = (children ?? [])
-    .map((kid) => kid.name?.trim().split(/\s+/u)[0]?.toLowerCase() ?? '')
-    .filter((name) => name.length > 1);
-  const namesKid = (sentence: string) =>
-    kids.some((name) => sentence.toLowerCase().includes(name.slice(0, 3)));
-  while (sentences.join(' ').length > MAX_PROSE_CHARS && sentences.length > 1) {
-    const drop = sentences.findIndex(
-      (sentence) => !sentence.includes('?') && !keeps.test(sentence) && !namesKid(sentence),
-    );
-    if (drop < 0) break;
-    sentences.splice(drop, 1);
-  }
   const repaired = sentences.join(' ');
-  if (repaired === prose.trim() || repaired.length > MAX_PROSE_CHARS) return '';
+  if (repaired === prose.trim()) return '';
   return repaired.includes('?') ? repaired : '';
 }
 
@@ -2238,8 +2186,7 @@ function sentencesOf(text: string): string[] {
  * Code may take words out of a model reply, never put any in. On a step that
  * asks nothing (the map, a wow line, a receipt) a question the model added is
  * dropped rather than failing the whole reply; on a wow line a sentence about
- * the other connector (the next step rides its own bubble) goes too; a map
- * opener or wow line that runs long keeps its leading sentences.
+ * the other connector (the next step rides its own bubble) goes too.
  */
 export function tidyProse(
   reply: string,
@@ -2275,20 +2222,6 @@ export function tidyProse(
         sentence.split(/\s+/u).length >= 3,
     );
     sentences = opener ? [opener] : [];
-  }
-  // A wow line over the limit keeps the sentence with the item (it has its
-  // date or time) and loses the filler around it ("I'm watching your inbox.").
-  if (input.step === 'connected' && sentences.join(' ').length > MAX_PROSE_CHARS) {
-    const facts = sentences.filter((sentence) => /\d/u.test(sentence));
-    if (facts.length > 0) sentences = facts;
-  }
-  if (input.step === 'find_show' || input.step === 'connected') {
-    const kept: string[] = [];
-    for (const sentence of sentences) {
-      if ([...kept, sentence].join(' ').length > MAX_PROSE_CHARS) break;
-      kept.push(sentence);
-    }
-    sentences = kept;
   }
   return ZERO_QUESTION_STEPS.has(judgedStep) || input.step === 'connected' || asksNothing
     ? sentences.join(' ')

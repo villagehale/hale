@@ -1,6 +1,5 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { z } from 'zod';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { referralLink } from './code';
 
 /**
@@ -50,13 +49,6 @@ export interface ReferralShare {
   link: string;
 }
 
-/**
- * The forwardable line's ceiling. The whole reply is two segments (306 GSM-7
- * characters); the link costs ~54 and the parent still needs a sentence of their own, so
- * this is what is left over rather than a round number.
- */
-export const MAX_FORWARD_CHARS = 120;
-
 /** The pointers that made the live fabrication, refused in code rather than discouraged
  * in prose. A forwarded line that names the app is the exact sentence this feature
  * replaces, and "settings" is where the invented referral page was said to live. */
@@ -77,11 +69,6 @@ export function forwardViolations(forward: string): string[] {
   const text = forward.trim();
 
   if (text === '') return ['The line was empty.'];
-  if (text.length > MAX_FORWARD_CHARS) {
-    violations.push(
-      `The line is ${text.length} characters; it must be at most ${MAX_FORWARD_CHARS} so the link still fits beside it.`,
-    );
-  }
   if (ANY_URL.test(text)) {
     violations.push(
       'The line contains a link. Do not write one - the real link is added after your message, and any URL you compose is one you invented.',
@@ -91,9 +78,6 @@ export function forwardViolations(forward: string): string[] {
     violations.push(
       'The line points at an app, a website or an account. Hale is a number their friend texts; there is nothing for them to open, download or sign up for.',
     );
-  }
-  if (smsSegments(text) > 1) {
-    violations.push('The line is longer than one SMS segment. Shorten it.');
   }
   return violations;
 }

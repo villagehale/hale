@@ -20,13 +20,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { askWriter } from '~/lib/testing/consent-double';
-import {
-  CO_PARENT_OWN_NUMBER_BY_LANGUAGE,
-  CO_PARENT_SEAT_TAKEN_BY_LANGUAGE,
-  INVITE_EXPIRED_BY_LANGUAGE,
-  PREVIOUSLY_DECLINED_BY_LANGUAGE,
-  REFERRER_UNNAMED_BY_LANGUAGE,
-} from './copy';
+import { coParentInviteExpired, coParentRefusal } from './copy';
 
 /**
  * VIL-355 · the co-parent invite driven end to end through the ONE inbound entry point,
@@ -351,7 +345,7 @@ describe('co-parent invite · the refusals', () => {
     );
 
     expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'referrer_unnamed' });
-    expect(transport.sent.at(-1)?.body).toBe(REFERRER_UNNAMED_BY_LANGUAGE.en);
+    expect(transport.sent.at(-1)?.body).toBe(await coParentRefusal('referrer_unnamed', 'en'));
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 
@@ -376,7 +370,7 @@ describe('co-parent invite · the refusals', () => {
     );
 
     expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'co_parent_seat_taken' });
-    expect(transport.sent.at(-1)?.body).toBe(CO_PARENT_SEAT_TAKEN_BY_LANGUAGE.en);
+    expect(transport.sent.at(-1)?.body).toBe(await coParentRefusal('co_parent_seat_taken', 'en'));
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 
@@ -410,7 +404,7 @@ describe('co-parent invite · the refusals', () => {
       'add Sam 647-555-0199 as my partner',
     );
     expect(refused).toEqual({ status: 'co_parent_add_refused', reason: 'previously_declined' });
-    expect(transport.sent.at(-1)?.body).toBe(PREVIOUSLY_DECLINED_BY_LANGUAGE.en);
+    expect(transport.sent.at(-1)?.body).toBe(await coParentRefusal('previously_declined', 'en'));
     expect(auditActions(fake)).toContain('co_parent_invite_blocked_prior_refusal');
 
     const fresh = await text(
@@ -504,7 +498,7 @@ describe('co-parent invite · the refusals', () => {
     );
 
     expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'own_number' });
-    expect(transport.sent.at(-1)?.body).toBe(CO_PARENT_OWN_NUMBER_BY_LANGUAGE.en);
+    expect(transport.sent.at(-1)?.body).toBe(await coParentRefusal('own_number', 'en'));
     expect(transport.sent.at(-1)?.body).not.toContain('STOP');
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
@@ -881,7 +875,7 @@ describe('co-parent invite · a yes that arrives after the 72h bound', () => {
 
     expect(outcome).toEqual({ status: 'invite_expired_answered', role: 'co_parent' });
     expect(transport.sent.slice(beforeReply).map((s) => s.body)).toEqual([
-      INVITE_EXPIRED_BY_LANGUAGE.en,
+      await coParentInviteExpired('en'),
     ]);
     // The greeting is what this replaces — it must not be anywhere in the reply.
     expect(transport.sent.at(-1)?.body).not.toContain('Hale');
@@ -914,7 +908,7 @@ describe('co-parent invite · a yes that arrives after the 72h bound', () => {
 
     expect(outcome).toMatchObject({ status: 'first_touch' });
     expect(transport.sent.slice(beforeReply).map((s) => s.body)).not.toContain(
-      INVITE_EXPIRED_BY_LANGUAGE.en,
+      await coParentInviteExpired('en'),
     );
   });
 });

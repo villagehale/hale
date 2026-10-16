@@ -10,7 +10,7 @@
 /** A BCP-47 language tag (`en`, `fr`, `zh`, `ar`, `fr-ca`). */
 export type ReplyLanguage = string;
 
-/** The two languages that still have a fixed template. Anything else is the model's. */
+/** English or French, for tu/vous and the leftover 1:1 memory frames. A sentence is not chosen here. */
 export type CopyLanguage = 'en' | 'fr';
 
 const TAG = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/;
@@ -44,15 +44,6 @@ export function copyLanguage(language: ReplyLanguage | null | undefined): CopyLa
   if (tag === 'fr' || tag.startsWith('fr-')) return 'fr';
   if (tag === 'en' || tag.startsWith('en-')) return 'en';
   return null;
-}
-
-/** The template for this tag, or null when the tag is not English or French. */
-export function copyFor<T>(
-  table: Record<CopyLanguage, T>,
-  language: ReplyLanguage | null | undefined,
-): T | null {
-  const key = copyLanguage(language);
-  return key ? table[key] : null;
 }
 
 /**

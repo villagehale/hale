@@ -750,7 +750,7 @@ describe('repairedProse', () => {
     ).toMatch(/^Village Hale Technologies Inc\. made Hale/);
   });
 
-  it('never folds in another step, never repairs a no-question step, and trims a long draft from the front', () => {
+  it('never folds in another step, never repairs a no-question step, and does not cut a long draft', () => {
     expect(
       repairedProse(
         'Want the swim on your calendar? Would a group chat with the other parent help?',
@@ -759,10 +759,8 @@ describe('repairedProse', () => {
     ).toBe('');
     expect(repairedProse('Saw picture day. Want a reminder?', 'connected')).toBe('');
     const long = `${'Gmail helps me catch registration confirmations and activity updates for the kids. '.repeat(2)}Google shares your whole inbox with me, and I keep only what is about the kids. Want to connect?`;
-    const trimmed = repairedProse(long, 'email');
-    expect(trimmed.length).toBeLessThanOrEqual(220);
-    expect(trimmed).toContain('Google shares your whole inbox');
-    expect(trimmed.endsWith('Want to connect?')).toBe(true);
+    expect(repairedProse(long, 'email')).toBe('');
+    expect(long.length).toBeGreaterThan(220);
   });
 });
 

@@ -4,7 +4,7 @@ import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
-import { type ReplyLanguage, acceptReplyLanguage, copyFor } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
@@ -26,8 +26,8 @@ import {
   linqGroupOnboardingV2Enabled,
 } from './config';
 import {
-  LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
+  linqGroupLineMissing,
   linqGroupMakeInstruction,
   matchLinqGroupTrigger,
 } from './group';
@@ -184,7 +184,7 @@ export async function considerGroupCoparent(
     familyId: owner.familyId,
     parentUserId: seated.userId,
     chatId: message.chatId,
-    text: groupWelcome(language),
+    text: await groupWelcome(language),
     templateKey: WELCOME_KEY,
     dedupeKey: `linq:coparent_welcome:${seated.userId}`,
     now: ports.now,
@@ -217,8 +217,8 @@ export async function steerNotedCoparentOneToOne(
   const language = await familySpeechLanguage(database, noted.familyId);
   const from = linqFromE164();
   const text = from
-    ? linqGroupMakeInstruction(formatLinqLineForParent(from), language)
-    : copyFor(LINQ_GROUP_LINE_MISSING_TEXT, language);
+    ? await linqGroupMakeInstruction(formatLinqLineForParent(from), language)
+    : await linqGroupLineMissing(language);
   const notice = await sendLine(database, {
     familyId: noted.familyId,
     parentUserId: noted.invitedByUserId,
@@ -648,7 +648,9 @@ export async function sendCoparentGroupCalendarReceipt(
     familyId: input.familyId,
     parentUserId: input.userId,
     chatId: family.linqGroupChatId,
-    text: gmail ? groupGmailReceipt(language, name) : groupCalendarReceipt(language, name),
+    text: gmail
+      ? await groupGmailReceipt(language, name)
+      : await groupCalendarReceipt(language, name),
     templateKey,
     dedupeKey: `${templateKey}:${input.connectId}`,
     now: input.now,
@@ -720,8 +722,8 @@ async function sayUnclaimed(
 ): Promise<GroupCoparentEffect> {
   const from = linqFromE164();
   const text = from
-    ? linqGroupMakeInstruction(formatLinqLineForParent(from), language)
-    : copyFor(LINQ_GROUP_LINE_MISSING_TEXT, language);
+    ? await linqGroupMakeInstruction(formatLinqLineForParent(from), language)
+    : await linqGroupLineMissing(language);
   const notice = await sendLine(database, {
     familyId: noted.familyId,
     parentUserId: noted.invitedByUserId,
@@ -1009,8 +1011,8 @@ async function sendLine(
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
   if (!input.text) {
     console.info(
-      { familyId: input.familyId, templateKey: input.templateKey, reason: 'language' },
-      'linq group coparent: no template for this language',
+      { familyId: input.familyId, templateKey: input.templateKey, reason: 'model_unreachable' },
+      'linq group coparent: spoken line unreachable',
     );
     return 'not_sent';
   }

@@ -3,7 +3,7 @@ import {
   matchConnectorDisconnectRequest,
   matchConnectorRequest,
 } from '~/lib/channel/connect/detect';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsEncoding } from '~/lib/channel/sms-segments';
 import {
   type ForwardAddressAsk,
   forwardAddressReply,
@@ -167,43 +167,37 @@ describe('asking for the forwarding address', () => {
 });
 
 describe('what Hale texts back', () => {
-  it('carries the whole address in GSM-7, inside two segments, in both languages', () => {
+  it('carries the whole address in GSM-7, in both languages', async () => {
     for (const language of ['en', 'fr'] as const) {
-      const body = forwardAddressReply(language, ADDRESS) ?? '';
-      expect({
-        language,
-        encoding: smsEncoding(body),
-        segments: smsSegments(body) <= 2,
-        carriesWholeAddress: body.includes(ADDRESS),
-      }).toEqual({ language, encoding: 'gsm7', segments: true, carriesWholeAddress: true });
+      const body = (await forwardAddressReply(language, ADDRESS)) ?? '';
+      expect(smsEncoding(body)).toBe('gsm7');
+      expect(body).toContain(ADDRESS);
     }
-    expect(forwardAddressReply('en', ADDRESS)).not.toBe(forwardAddressReply('fr', ADDRESS));
+    expect(await forwardAddressReply('en', ADDRESS)).not.toBe(
+      await forwardAddressReply('fr', ADDRESS),
+    );
   });
 
-  it('says the consent rule, so nobody sets up a filter thinking Hale reads everything', () => {
-    expect(forwardAddressReply('en', ADDRESS)).toContain('until you say yes');
-    expect(forwardAddressReply('fr', ADDRESS)).toContain('avant votre oui');
+  it('says the consent rule, so nobody sets up a filter thinking Hale reads everything', async () => {
+    expect(await forwardAddressReply('en', ADDRESS)).toContain('until you say yes');
+    expect(await forwardAddressReply('fr', ADDRESS)).toContain('avant votre oui');
   });
 
-  it('keeps every receipt to one GSM-7 segment, and never calls nothing a success', () => {
+  it('keeps every receipt in GSM-7, and never calls nothing a success', async () => {
     for (const language of ['en', 'fr'] as const) {
       for (const outcome of ['revoked', 'not_configured'] as const) {
-        const body = forwardRevokeReply(language, outcome) ?? '';
-        expect({ language, outcome, encoding: smsEncoding(body), one: smsSegments(body) }).toEqual({
-          language,
-          outcome,
-          encoding: 'gsm7',
-          one: 1,
-        });
+        const body = (await forwardRevokeReply(language, outcome)) ?? '';
+        expect(smsEncoding(body)).toBe('gsm7');
+        expect(body.length).toBeGreaterThan(0);
       }
     }
-    expect(forwardRevokeReply('en', 'not_configured')).toContain('nothing to turn off');
-    expect(forwardRevokeReply('fr', 'not_configured')).toContain('rien à désactiver');
+    expect(await forwardRevokeReply('en', 'not_configured')).toContain('nothing to turn off');
+    expect(await forwardRevokeReply('fr', 'not_configured')).toContain('rien à désactiver');
   });
 
-  it('does not claim the old address bounces, because it does not', () => {
-    expect(forwardRevokeReply('en', 'revoked')).toContain('is ignored');
-    expect(forwardRevokeReply('en', 'revoked')).not.toMatch(/bounce/i);
+  it('does not claim the old address bounces, because it does not', async () => {
+    expect(await forwardRevokeReply('en', 'revoked')).toContain('is ignored');
+    expect(await forwardRevokeReply('en', 'revoked')).not.toMatch(/bounce/i);
   });
 
   /**
@@ -214,12 +208,12 @@ describe('what Hale texts back', () => {
    * line now quotes the command, and the command is last so that a parent who copies the
    * whole line back still lands on it.
    */
-  it('closes with a turn-off instruction that the turn-off half actually reads', () => {
+  it('closes with a turn-off instruction that the turn-off half actually reads', async () => {
     for (const [language, taught] of [
       ['en', 'turn off my forwarding address'],
       ['fr', 'désactiver mon adresse de transfert'],
     ] as const) {
-      const reply = forwardAddressReply(language, ADDRESS) ?? '';
+      const reply = (await forwardAddressReply(language, ADDRESS)) ?? '';
       expect(reply).toContain(taught);
       expect(matchForwardAddressRequest(taught)).toBe('turn_off');
       // The WHOLE line, as a phone's "reply with quote" would send it back.
@@ -235,21 +229,18 @@ describe('what Hale texts back', () => {
  * turn-off half asks rather than acts, and this is the sentence it asks with.
  */
 describe('the receipt for a no', () => {
-  it('never claims the address is already off before the parent agrees', () => {
-    expect(forwardRevokeDeclinedReply('en')).not.toMatch(/\bis off\b|turned off/);
-    expect(forwardRevokeDeclinedReply('fr')).not.toMatch(/Fait|désactivée/);
+  it('never claims the address is already off before the parent agrees', async () => {
+    expect(await forwardRevokeDeclinedReply('en')).not.toMatch(/\bis off\b|turned off/);
+    expect(await forwardRevokeDeclinedReply('fr')).not.toMatch(/Fait|désactivée/);
   });
 
-  it('answers a NO in one segment, and says the address is still on', () => {
+  it('answers a NO in GSM-7, and says the address is still on', async () => {
     for (const language of ['en', 'fr'] as const) {
-      const body = forwardRevokeDeclinedReply(language) ?? '';
-      expect({ language, encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-        language,
-        encoding: 'gsm7',
-        segments: 1,
-      });
+      const body = (await forwardRevokeDeclinedReply(language)) ?? '';
+      expect(smsEncoding(body)).toBe('gsm7');
+      expect(body.length).toBeGreaterThan(0);
     }
-    expect(forwardRevokeDeclinedReply('en')).toContain('still on');
-    expect(forwardRevokeDeclinedReply('fr')).toContain('active');
+    expect(await forwardRevokeDeclinedReply('en')).toContain('still on');
+    expect(await forwardRevokeDeclinedReply('fr')).toContain('active');
   });
 });

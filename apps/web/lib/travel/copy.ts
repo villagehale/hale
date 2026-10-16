@@ -183,12 +183,15 @@ export interface TravelBriefRender {
  * is not tidiness: a cut that lands inside "USD 2" publishes a wrong price. A second pick
  * that would push past the ceiling is dropped entire.
  */
-export function renderTravelBrief(input: TravelBriefInput): TravelBriefRender {
+export async function renderTravelBrief(input: TravelBriefInput): Promise<TravelBriefRender> {
   const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
   const kids = childPhrase([...input.childNames]);
   const opening = input.forGroup
-    ? groupTravelBriefOpening(input.city, dayPhrase, kids)
+    ? await groupTravelBriefOpening(input.city, dayPhrase, kids)
     : `You're in ${input.city} ${dayPhrase}. A couple of things on for ${kids}:`;
+  if (!opening) {
+    throw new Error('travel brief copy refused: model_unreachable');
+  }
 
   const rendered: ActivityPick[] = [];
   let body = opening;

@@ -327,7 +327,8 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // provider door reads it: a weather reply and a group thread do not.
       const language =
         lane === 'provider_access' && ports.language ? await ports.language(input.familyId) : null;
-      const providerLine = lane === 'provider_access' ? referralReply(input.text, language) : null;
+      const providerLine =
+        lane === 'provider_access' ? await referralReply(input.text, language) : null;
       if (lane === 'provider_access' && !providerLine) {
         return { status: 'in_domain', fallback: null };
       }

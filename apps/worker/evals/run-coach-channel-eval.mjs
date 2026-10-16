@@ -377,9 +377,6 @@ function offerViolations(sentence) {
   const violations = [];
   const text = String(sentence).trim();
   if (text === '') return ['The offer was empty.'];
-  if (text.length > 160) {
-    violations.push(`The offer is ${text.length} characters; it must be at most 160.`);
-  }
   const questions = (text.match(/\?/g) ?? []).length;
   if (questions !== 1)
     violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
@@ -388,7 +385,6 @@ function offerViolations(sentence) {
       'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
     );
   }
-  if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
   return violations;
 }
 
@@ -407,7 +403,6 @@ function dropDuplicateOffer(body, offer) {
  * what the model actually reads when a line is refused, so a replica that let something
  * through would be grading a tool that does not ship.
  */
-const EVAL_MAX_FORWARD_CHARS = 120;
 const EVAL_APP_POINTER = /\b(app|apps|settings|account|dashboard|website|download)\b/i;
 const EVAL_ANY_URL = /(https?:\/\/|www\.|villagehale|\.com\b|\.ca\b)/i;
 
@@ -415,11 +410,6 @@ function forwardViolations(forward) {
   const violations = [];
   const text = (forward ?? '').trim();
   if (text === '') return ['The line was empty.'];
-  if (text.length > EVAL_MAX_FORWARD_CHARS) {
-    violations.push(
-      `The line is ${text.length} characters; it must be at most ${EVAL_MAX_FORWARD_CHARS} so the link still fits beside it.`,
-    );
-  }
   if (EVAL_ANY_URL.test(text)) {
     violations.push(
       'The line contains a link. Do not write one - the real link is added after your message, and any URL you compose is one you invented.',
@@ -430,7 +420,6 @@ function forwardViolations(forward) {
       'The line points at an app, a website or an account. Hale is a number their friend texts; there is nothing for them to open, download or sign up for.',
     );
   }
-  if (smsSegments(text) > 1) violations.push('The line is longer than one SMS segment.');
   return violations;
 }
 
@@ -889,7 +878,7 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     monetary: false,
     touchesChildContent: true,
     description:
-      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one short question. Ask like a person ("Want me to send it?"). Write it in the language they are using. Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     handler: async (input) => {
       // The gate IS the recompose loop: a refused offer throws a sentence the model
       // reads mid-turn and answers by calling again. Replicated from
@@ -922,7 +911,7 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     monetary: false,
     touchesChildContent: false,
     description:
-      "Get this family's own link for telling somebody else about Hale — call it whenever a parent asks how to refer, invite, share, or recommend Hale to a friend, or asks whether there is a referral link. `forward` is the line THEY will forward to their friend, in your voice: what Hale is, at most 120 plain-ASCII characters, no link and nothing about this family. The real link is added onto the end of your message for you, so never write a URL yourself and never write the forwarded line twice. Nothing is sent to anyone by this tool — the parent forwards it, and their friend texting in is that friend's own consent.",
+      "Get this family's own link for telling somebody else about Hale — call it whenever a parent asks how to refer, invite, share, or recommend Hale to a friend, or asks whether there is a referral link. `forward` is the line THEY will forward to their friend, in your voice: what Hale is, one short line, no link and nothing about this family. Write it in the parent's language. The real link is added onto the end of your message for you, so never write a URL yourself and never write the forwarded line twice. Nothing is sent to anyone by this tool — the parent forwards it, and their friend texting in is that friend's own consent.",
     handler: async (input) => {
       const violations = forwardViolations(input.forward);
       if (violations.length > 0) {

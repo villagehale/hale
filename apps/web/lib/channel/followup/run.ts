@@ -460,7 +460,7 @@ async function sendFollowup(
 
   const composed =
     input.ask.kind === 'activity'
-      ? lockedActivityFollowup(input.ask.activity)
+      ? await lockedActivityFollowup(input.ask.activity)
       : await deps.voice.compose(input.ask);
   if (composed.status === 'deferred') {
     return { status: 'compose_deferred', reason: composed.reason };
@@ -483,7 +483,7 @@ async function sendFollowup(
   let spoken = composed.body;
   if (target.channel === 'group' && input.ask.kind === 'activity') {
     const speech = await familySpeech(database, input.familyId, input.parentUserId);
-    const groupLine = groupActivityHowItWent(speech.language, speech.name, input.ask.activity);
+    const groupLine = await groupActivityHowItWent(speech.language, speech.name, input.ask.activity);
     if (groupLine) spoken = groupLine;
   }
   const body = withOptOut(spoken, verdict.optOut);
@@ -1095,7 +1095,7 @@ export async function howItWentLinesForGroupWeekly(
       ) {
         continue;
       }
-      const text = groupActivityHowItWent(speech.language, speech.name, event.title);
+      const text = await groupActivityHowItWent(speech.language, speech.name, event.title);
       if (!text) continue;
       lines.push({
         text,

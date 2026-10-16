@@ -513,7 +513,7 @@ export function connectorDisconnectHandler(
       return {
         claimed: true,
         outcome: outcome.status,
-        reply: connectorRevokeReply(
+        reply: await connectorRevokeReply(
           await familySpeechLanguage(database, ctx.familyId),
           provider,
           outcome.status,
@@ -581,7 +581,7 @@ export function forwardAddressHandler(
         return {
           claimed: true,
           outcome: 'revoke_declined',
-          reply: forwardRevokeDeclinedReply(language),
+          reply: await forwardRevokeDeclinedReply(language),
           // The name that tells the ledger this question was ANSWERED rather than merely
           // spoken past. Drop it and a no leaves the confirm standing for the rest of its
           // window (forward-request.ts `forwardRevokeAsk`).
@@ -594,7 +594,7 @@ export function forwardAddressHandler(
         return {
           claimed: true,
           outcome,
-          reply: forwardRevokeReply(language, outcome),
+          reply: await forwardRevokeReply(language, outcome),
           templateKey: FORWARD_REVOKE_TEMPLATE_KEY,
         };
       }
@@ -610,7 +610,7 @@ export function forwardAddressHandler(
           return {
             claimed: true,
             outcome: 'not_configured',
-            reply: forwardRevokeReply(language, 'not_configured'),
+            reply: await forwardRevokeReply(language, 'not_configured'),
           };
         }
         const ask = await writeConsentAsk(ports.ask, { kind: 'forward_revoke', language });
@@ -658,7 +658,7 @@ export function forwardAddressHandler(
       return {
         claimed: true,
         outcome: 'address_sent',
-        reply: forwardAddressReply(language, forwardAddress(token, config)),
+        reply: await forwardAddressReply(language, forwardAddress(token, config)),
       };
     },
   };

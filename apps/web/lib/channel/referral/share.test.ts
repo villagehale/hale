@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { referralLink } from './code';
 import {
-  MAX_FORWARD_CHARS,
   type ReferralShare,
   forwardViolations,
   referralBlock,
@@ -63,9 +62,9 @@ describe('forwardViolations', () => {
     expect(forwardViolations('It keeps the week straight — quietly')).toEqual([]);
   });
 
-  it('refuses a line too long to leave the link room beside it', () => {
-    const long = `${'a'.repeat(MAX_FORWARD_CHARS + 1)}`;
-    expect(forwardViolations(long).join(' ')).toMatch(new RegExp(`at most ${MAX_FORWARD_CHARS}`));
+  it('keeps a long line; length is not a reason to refuse it', () => {
+    const long = `${'It keeps the family week straight. '.repeat(12)}`;
+    expect(forwardViolations(long)).toEqual([]);
   });
 });
 

@@ -1,28 +1,14 @@
-import {
-  type CopyLanguage,
-  type ReplyLanguage,
-  copyFor,
-  copyLanguage,
-} from '~/lib/channel/language';
-import { failureReply } from '~/lib/channel/router/copy';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { speak } from '~/lib/channel/spoken-line';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import type { ConnectorRevokeOutcome } from './revoke';
 
-/** What each connector is called to a parent, per language. 'Google Agenda' is the
- * product's own French name, not a translation choice. */
-const PROVIDER_NOUN: Record<CopyLanguage, Record<ConnectorProvider, string>> = {
-  en: { gcal: 'Google Calendar', gmail: 'Gmail', gdrive: 'Google Drive' },
-  fr: { gcal: 'Google Agenda', gmail: 'Gmail', gdrive: 'Google Drive' },
-};
-
-/** A connector's name to a parent, as a fact for the model-written link text (#868:
- * the fixed single-provider offer is gone). */
+/** A connector's name to a parent, written with the rest of the line. */
 export function connectorNoun(
   language: ReplyLanguage | null,
   provider: ConnectorProvider,
-): string | null {
-  const nouns = copyFor(PROVIDER_NOUN, language);
-  return nouns ? nouns[provider] : null;
+): Promise<string | null> {
+  return speak({ purpose: 'connector_noun', language, facts: { provider } });
 }
 
 /**
@@ -46,37 +32,20 @@ export function connectorNoun(
  * GSM-7 and one segment, both twins, asserted in sms-copy-encoding.test.ts — including
  * that the removal URL survives any later edit.
  */
-const REVOKE_BY_LANGUAGE: Record<
-  CopyLanguage,
-  Record<ConnectorRevokeOutcome['status'], (noun: string) => string>
-> = {
-  en: {
-    revoked: (noun) =>
-      `Done - your ${noun} is disconnected and Hale deleted its keys. Google still lists Hale until you remove it at myaccount.google.com/permissions`,
-    not_connected: (noun) =>
-      `Hale has no keys for your ${noun} - nothing to disconnect. Ask in this thread if you want to link it.`,
-    revoke_failed: () => failureReply(),
-  },
-  fr: {
-    revoked: (noun) =>
-      `Fait - votre ${noun} est déconnecté, Hale a supprimé ses clés. Google garde Hale jusqu'à ce que vous l'enleviez sur myaccount.google.com/permissions`,
-    not_connected: (noun) =>
-      `Hale n'a pas de clés pour votre ${noun} - rien à déconnecter. Demandez dans ce fil si vous voulez le lier.`,
-    revoke_failed: () =>
-      `Quelque chose s'est mal passé chez moi - rien n'a changé. Réessayez dans une minute.`,
-  },
-};
+const REMOVAL_URL = 'myaccount.google.com/permissions';
 
-/** The whole disconnect reply, per outcome — one place, so the three ways this turn can
- * end cannot drift into three different tones. */
-export function connectorRevokeReply(
+/** The whole disconnect reply. The removal URL, when this outcome names it, is verbatim. */
+export async function connectorRevokeReply(
   language: ReplyLanguage | null,
   provider: ConnectorProvider,
   outcome: ConnectorRevokeOutcome['status'],
-): string | null {
-  const key = copyLanguage(language);
-  const nouns = copyFor(PROVIDER_NOUN, language);
-  const replies = copyFor(REVOKE_BY_LANGUAGE, language);
-  if (!key || !nouns || !replies) return null;
-  return replies[outcome](nouns[provider]);
+): Promise<string | null> {
+  const noun = await connectorNoun(language, provider);
+  if (!noun) return null;
+  return speak({
+    purpose: 'connector_revoke',
+    language,
+    facts: { noun, outcome, provider },
+    verbatim: outcome === 'revoked' ? [REMOVAL_URL, noun] : [noun],
+  });
 }

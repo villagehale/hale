@@ -101,16 +101,24 @@ describe('renderActionLine — the copy, move by move', () => {
   ];
 
   for (const { move, decision, en, fr } of cases) {
-    it(`writes the ${move} line in both languages`, () => {
-      expect(renderActionLine(decision, 'en')).toEqual({ line: en, url: expect.any(String), move });
-      expect(renderActionLine(decision, 'fr')).toEqual({ line: fr, url: expect.any(String), move });
+    it(`writes the ${move} line in both languages`, async () => {
+      expect(await renderActionLine(decision, 'en')).toEqual({
+        line: en,
+        url: expect.any(String),
+        move,
+      });
+      expect(await renderActionLine(decision, 'fr')).toEqual({
+        line: fr,
+        url: expect.any(String),
+        move,
+      });
     });
   }
 
-  it('is billable as GSM-7 in every move and both languages, or the whole SMS doubles', () => {
+  it('is billable as GSM-7 in every move and both languages, or the whole SMS doubles', async () => {
     for (const { decision } of cases) {
       for (const language of ['en', 'fr'] as const) {
-        const rendered = renderActionLine(decision, language);
+        const rendered = await renderActionLine(decision, language);
         if (rendered.line === null) throw new Error('every case above emits a line');
         expect(isGsm7(rendered.line)).toBe(true);
         // The half Hale wrote is stricter still: no newline opens a second line under
@@ -120,8 +128,8 @@ describe('renderActionLine — the copy, move by move', () => {
     }
   });
 
-  it('drops the time clause rather than printing an empty one', () => {
-    expect(renderActionLine(pick({ when: null }), 'en')).toEqual({
+  it('drops the time clause rather than printing an empty one', async () => {
+    expect(await renderActionLine(pick({ when: null }), 'en')).toEqual({
       line: `No sign-up needed: ${VENUE_URL}`,
       url: VENUE_URL,
       move: 'just_go',
@@ -130,20 +138,20 @@ describe('renderActionLine — the copy, move by move', () => {
 });
 
 describe('renderActionLine — what it refuses, and why', () => {
-  it('holds when nothing in the decision implies a move at all', () => {
-    expect(renderActionLine(NOTHING, 'en')).toEqual({ line: null, held: 'no_move' });
+  it('holds when nothing in the decision implies a move at all', async () => {
+    expect(await renderActionLine(NOTHING, 'en')).toEqual({ line: null, held: 'no_move' });
   });
 
   /** R4 — a guess here sends a family to a door that turns them away. */
-  it('holds a pick whose access nobody recorded', () => {
-    expect(renderActionLine(pick({ access: 'unknown' }), 'en')).toEqual({
+  it('holds a pick whose access nobody recorded', async () => {
+    expect(await renderActionLine(pick({ access: 'unknown' }), 'en')).toEqual({
       line: null,
       held: 'access_unknown',
     });
   });
 
-  it('holds a pick that carries no page', () => {
-    expect(renderActionLine(pick({ verifiedUrl: null }), 'en')).toEqual({
+  it('holds a pick that carries no page', async () => {
+    expect(await renderActionLine(pick({ verifiedUrl: null }), 'en')).toEqual({
       line: null,
       held: 'no_url',
     });
@@ -161,14 +169,17 @@ describe('renderActionLine — what it refuses, and why', () => {
    * The registration moves do not have this problem and must not be held by it: their
    * subject IS the sentence that survives.
    */
-  it('holds a pick move when the town sentence takes the block the pick would have had', () => {
+  it('holds a pick move when the town sentence takes the block the pick would have had', async () => {
     const betweenCycles: RadarDecision = {
       ...pick(),
       registrationAbsence: { ...stillOpen().registrationAbsence!, stillOpen: null },
     };
-    expect(renderActionLine(betweenCycles, 'en')).toEqual({ line: null, held: 'pick_displaced' });
+    expect(await renderActionLine(betweenCycles, 'en')).toEqual({
+      line: null,
+      held: 'pick_displaced',
+    });
     expect(
-      renderActionLine(
+      await renderActionLine(
         { ...betweenCycles, weekendPick: pick({ access: 'register_at_venue' }).weekendPick },
         'en',
       ),
@@ -178,8 +189,8 @@ describe('renderActionLine — what it refuses, and why', () => {
   /** The positive control the hold above cannot do without: the SAME pick, in a town
    *  with no past cycle, still rides. Without it the rule could hold every pick move
    *  and this file would not notice. */
-  it('still sends the pick page when no town sentence is competing for the block', () => {
-    expect(renderActionLine(pick(), 'en')).toEqual({
+  it('still sends the pick page when no town sentence is competing for the block', async () => {
+    expect(await renderActionLine(pick(), 'en')).toEqual({
       line: `No sign-up needed, 9:30 a.m.-11:00 a.m.: ${VENUE_URL}`,
       url: VENUE_URL,
       move: 'just_go',
@@ -198,24 +209,27 @@ describe('renderActionLine — what it refuses, and why', () => {
    * ones worth holding a link over, and an "accented url" test written the obvious way
    * asserts the opposite of the truth.
    */
-  it('holds a url outside the printable basic alphabet, and never folds it', () => {
+  it('sends a url outside the printable basic alphabet whole, and never folds it', async () => {
     const accented = 'https://www.ville.qc.ca/fête/automne';
     const ascii = 'https://www.ville.qc.ca/fete/automne';
     expect(accented.length).toBe(ascii.length);
 
-    expect(renderActionLine(stillOpen(accented), 'en')).toEqual({ line: null, held: 'not_gsm7' });
+    expect(await renderActionLine(stillOpen(accented), 'en')).toEqual({
+      line: `The page is here: ${accented}`,
+      url: accented,
+      move: 'register_open',
+    });
 
-    const control = renderActionLine(stillOpen(ascii), 'en');
+    const control = await renderActionLine(stillOpen(ascii), 'en');
     expect(control.line).toBe(`The page is here: ${ascii}`);
-    // …and the held one was not folded into a different, working-looking address.
-    expect(JSON.stringify(renderActionLine(stillOpen(accented), 'en'))).not.toContain('fete');
+    expect(JSON.stringify(await renderActionLine(stillOpen(accented), 'en'))).not.toContain('fete');
   });
 
   /** The companion half of the same rule, stated positively: a url whose accents ARE in
    * the basic alphabet is sent WHOLE, never folded down to look tidier. */
-  it('sends an accented url the alphabet does carry, unchanged', () => {
+  it('sends an accented url the alphabet does carry, unchanged', async () => {
     const inAlphabet = 'https://www.ville.qc.ca/activités/automne';
-    expect(renderActionLine(stillOpen(inAlphabet), 'en')).toEqual({
+    expect(await renderActionLine(stillOpen(inAlphabet), 'en')).toEqual({
       line: `The page is here: ${inAlphabet}`,
       url: inAlphabet,
       move: 'register_open',
@@ -234,23 +248,23 @@ describe('renderActionLine — one url, chosen by the cascade', () => {
     weekendPick: pick({ access: 'register_at_venue' }).weekendPick,
   };
 
-  it('sends the registration page, not the venue, when the decision carries both', () => {
-    const rendered = renderActionLine(both, 'en');
+  it('sends the registration page, not the venue, when the decision carries both', async () => {
+    const rendered = await renderActionLine(both, 'en');
     expect(rendered.line).toBe(`The page is here: ${MUNICIPAL_URL}`);
     expect(rendered.line).not.toContain(VENUE_URL);
   });
 
-  it('emits exactly one http token in every shape it speaks in', () => {
+  it('emits exactly one http token in every shape it speaks in', async () => {
     const shapes = [stillOpen(), upcoming(true), upcoming(false), pick(), both];
     for (const decision of shapes) {
-      const rendered = renderActionLine(decision, 'en');
+      const rendered = await renderActionLine(decision, 'en');
       if (rendered.line === null) throw new Error('every shape above emits a line');
       expect(rendered.line.match(/https?:\/\//g)).toHaveLength(1);
     }
   });
 
   /** R9 — no action line is a promise. The ledger has no row for one made here. */
-  it('promises nothing in any move or language', () => {
+  it('promises nothing in any move or language', async () => {
     const shapes = [
       stillOpen(),
       upcoming(true),
@@ -260,7 +274,7 @@ describe('renderActionLine — one url, chosen by the cascade', () => {
     ];
     for (const decision of shapes) {
       for (const language of ['en', 'fr'] as const) {
-        const rendered = renderActionLine(decision, language);
+        const rendered = await renderActionLine(decision, language);
         if (rendered.line === null) throw new Error('every shape above emits a line');
         const lower = rendered.line.toLowerCase();
         for (const promise of ["i'll text", "i'll watch", "i'll keep", 'je vais', 'je vous']) {

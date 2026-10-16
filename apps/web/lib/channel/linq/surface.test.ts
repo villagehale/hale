@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import { linqContactCardShareBlocked } from '~/lib/channel/intake/session';
+import { speak } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import {
@@ -21,9 +22,6 @@ import {
 import { linkPreviewUrl, sendLinqLinkPreview } from './link-preview';
 import { considerLinqReply } from './moments';
 import {
-  SANDBOX_YEAR_FIND_TITLES,
-  YEAR_FIND_POLL_NONE,
-  YEAR_FIND_POLL_PROMPT,
   offerSandboxYearFindPoll,
   offerYearFindPoll,
   sandboxYearFindPollOptions,
@@ -1043,13 +1041,13 @@ describe('Linq polls', () => {
     });
     expect(off).toEqual({ status: 'skipped', reason: 'flag_off' });
     expect(quiet).not.toHaveBeenCalled();
-    expect(yearFindPollOptions('en', ['Only one'])).toBeNull();
-    expect(yearFindPollOptions('en', [])).toBeNull();
-    expect(yearFindPollOptions('fr', ['Nage', 'Conte', 'Zoo', 'Fourth'])).toEqual([
-      'Nage',
-      'Conte',
-      'Zoo',
-      YEAR_FIND_POLL_NONE.fr,
+    expect(await yearFindPollOptions('en', ['Only one'])).toBeNull();
+    expect(await yearFindPollOptions('en', [])).toBeNull();
+    expect(await yearFindPollOptions('fr', ['Nage', 'Conte', 'Zoo', 'Fourth'])).toEqual([
+      { text: 'Nage' },
+      { text: 'Conte' },
+      { text: 'Zoo' },
+      { text: 'Aucun de ceux-la', choiceKind: 'none' },
     ]);
 
     vi.stubEnv('LINQ_POLLS', 'on');
@@ -1067,13 +1065,15 @@ describe('Linq polls', () => {
     });
     expect(sent.status).toBe('sent');
     const question = JSON.parse(String(sending.mock.calls[0]?.[1]?.body));
-    expect(question.message.parts[0].value).toBe(YEAR_FIND_POLL_PROMPT.en);
+    expect(question.message.parts[0].value).toBe(
+      await speak({ purpose: 'year_find_prompt', language: 'en' }),
+    );
     const poll = JSON.parse(String(sending.mock.calls[1]?.[1]?.body));
     expect(poll.poll.options.map((option: { text: string }) => option.text)).toEqual([
       'Parent and tot swim',
       'Story time',
       'U12 soccer tryouts',
-      YEAR_FIND_POLL_NONE.en,
+      'None of these',
     ]);
     expect(String(sending.mock.calls[1]?.[0])).toContain(`/chats/${CHAT}/polls`);
     expect(fake.rows(schema.linqPollOptions)).toHaveLength(4);
@@ -1091,12 +1091,14 @@ describe('Linq polls', () => {
     });
     expect(sentFr.status).toBe('sent');
     const questionFr = JSON.parse(String(french.mock.calls[0]?.[1]?.body));
-    expect(questionFr.message.parts[0].value).toBe(YEAR_FIND_POLL_PROMPT.fr);
+    expect(questionFr.message.parts[0].value).toBe(
+      await speak({ purpose: 'year_find_prompt', language: 'fr' }),
+    );
     const pollFr = JSON.parse(String(french.mock.calls[1]?.[1]?.body));
     expect(pollFr.poll.options.map((option: { text: string }) => option.text)).toEqual([
       'Nage',
       'Conte',
-      YEAR_FIND_POLL_NONE.fr,
+      'Aucun de ceux-la',
     ]);
   });
 
@@ -1104,14 +1106,15 @@ describe('Linq polls', () => {
     process.env.APP_ENCRYPTION_KEY = ENC_KEY;
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    expect(sandboxYearFindPollOptions('en')).toEqual([
-      ...SANDBOX_YEAR_FIND_TITLES.en,
-      YEAR_FIND_POLL_NONE.en,
+    expect(await sandboxYearFindPollOptions('en')).toEqual([
+      { text: 'Swim at the rec centre' },
+      { text: 'Library storytime' },
+      { text: 'None of these', choiceKind: 'none' },
     ]);
-    expect(sandboxYearFindPollOptions('fr')).toEqual([
-      'Nage au centre recreatif',
-      'Heure du conte a la bibliotheque',
-      'Aucun de ceux-la',
+    expect(await sandboxYearFindPollOptions('fr')).toEqual([
+      { text: 'Nage au centre recreatif' },
+      { text: 'Heure du conte a la bibliotheque' },
+      { text: 'Aucun de ceux-la', choiceKind: 'none' },
     ]);
     const fake = makeFakeDb();
     const sending = pollFetch();

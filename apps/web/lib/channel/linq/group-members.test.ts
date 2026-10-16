@@ -1,14 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { linqGroupMembersEnabled } from './config';
 import { holdUnknownGroupSender } from './group';
-import {
-  GROUP_MEMBER_WELCOME_NO_ADDER,
-  GROUP_MEMBER_WELCOME_WITH_ADDER,
-  GROUP_STRANGER_HOLD,
-  classifyParticipantAdd,
-  groupMemberWelcome,
-  groupStrangerHold,
-} from './group-members';
+import { classifyParticipantAdd, groupMemberWelcome, groupStrangerHold } from './group-members';
 
 describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
   afterEach(() => {
@@ -76,46 +69,37 @@ describe('classifyParticipantAdd', () => {
 });
 
 describe('group member copy', () => {
-  it('keeps each welcome and hold byte for byte, with no family detail and no opt-out', () => {
-    expect(GROUP_MEMBER_WELCOME_WITH_ADDER.en).toBe(
-      "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
-    );
-    expect(GROUP_MEMBER_WELCOME_WITH_ADDER.fr).toBe(
-      "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-    );
-    expect(GROUP_MEMBER_WELCOME_NO_ADDER.en).toBe(
-      "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
-    );
-    expect(GROUP_MEMBER_WELCOME_NO_ADDER.fr).toBe(
-      "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
-    );
-    expect(GROUP_STRANGER_HOLD.en).toBe(
-      'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. {parentA}, say "add them" if they share the load.',
-    );
-    expect(GROUP_STRANGER_HOLD.fr).toBe(
-      'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. {parentA}, dis "ajoute cette personne" si elle partage la charge.',
-    );
-    expect(groupMemberWelcome('en', 'Sam')).toBe(
+  it('keeps each welcome and hold byte for byte, with no family detail and no opt-out', async () => {
+    const withAdderEn = await groupMemberWelcome('en', 'Sam');
+    const withAdderFr = await groupMemberWelcome('fr', 'Sam');
+    const noAdderEn = await groupMemberWelcome('en', null);
+    const noAdderFr = await groupMemberWelcome('fr', '  ');
+    const holdEn = await groupStrangerHold('en', 'Sam');
+    const holdFr = await groupStrangerHold('fr', 'Sam');
+    expect(withAdderEn).toBe(
       "Hi, I'm Hale. Sam added you so the family can sort the week in one place. What should I call you?",
     );
-    expect(groupMemberWelcome('fr', 'Sam')).toBe(
+    expect(withAdderFr).toBe(
       "Bonjour, c'est Hale. Sam vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
     );
-    expect(groupMemberWelcome('en', null)).toBe(GROUP_MEMBER_WELCOME_NO_ADDER.en);
-    expect(groupMemberWelcome('fr', '  ')).toBe(GROUP_MEMBER_WELCOME_NO_ADDER.fr);
-    expect(groupStrangerHold('en', 'Sam')).toBe(
+    expect(noAdderEn).toBe(
+      "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
+    );
+    expect(noAdderFr).toBe(
+      "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
+    );
+    expect(withAdderEn).toContain('Sam');
+    expect(withAdderFr).toContain('Sam');
+    expect(withAdderFr).not.toBe(withAdderEn);
+    expect(holdEn).toBe(
       'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. Sam, say "add them" if they share the load.',
     );
-    expect(groupStrangerHold('fr', 'Sam')).toBe(
+    expect(holdFr).toBe(
       'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. Sam, dis "ajoute cette personne" si elle partage la charge.',
     );
-    for (const line of [
-      ...Object.values(GROUP_MEMBER_WELCOME_WITH_ADDER),
-      ...Object.values(GROUP_MEMBER_WELCOME_NO_ADDER),
-      ...Object.values(GROUP_STRANGER_HOLD),
-      groupMemberWelcome('en', 'Sam'),
-      groupStrangerHold('fr', 'Sam'),
-    ]) {
+    expect(holdEn).toContain('Sam');
+    expect(holdFr).toContain('Sam');
+    for (const line of [withAdderEn, withAdderFr, noAdderEn, noAdderFr, holdEn, holdFr]) {
       expect(line ?? '').toMatch(/^[\x20-\x7E]+$/);
       expect((line ?? '').toLowerCase()).not.toContain('stop');
       expect(line ?? '').not.toMatch(/\b(swim|postal|birthday|calendar)\b/i);

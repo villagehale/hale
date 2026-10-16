@@ -194,8 +194,8 @@ function deferred(reason: ComposeDeferral, detail?: string): FollowupVoiceOutcom
  * same refusals, or that blows one GSM-7 segment with the full opt-out on it,
  * defers — the claim stays unspent. The model is not called either way.
  */
-export function lockedActivityFollowup(activity: string): FollowupVoiceOutcome {
-  const body = howItWentAsk(activity);
+export async function lockedActivityFollowup(activity: string): Promise<FollowupVoiceOutcome> {
+  const body = await howItWentAsk(activity);
   if (!body) return deferred('gate_exhausted', 'language');
   const problems = refusals(body, { kind: 'activity', activity });
   if (problems.length > 0 || smsSegments(withOptOut(body, 'full')) !== 1) {

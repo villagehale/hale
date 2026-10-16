@@ -2,13 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   acceptReplyLanguage,
   certainLanguageHint,
-  copyFor,
   copyLanguage,
   localeFor,
   replyLanguage,
 } from './language';
-
-const TABLE = { en: 'hello', fr: 'bonjour' };
 
 describe('reply language is a stored tag', () => {
   it.each(['en', 'fr', 'zh', 'ar', 'es', 'pt', 'fr-ca', 'zh-hant'])('keeps %s', (tag) => {
@@ -48,7 +45,7 @@ describe('reply language is a stored tag', () => {
   });
 });
 
-describe('fixed templates only for English and French', () => {
+describe('English and French address form', () => {
   it('maps the Canadian region tags onto the two templates', () => {
     expect(copyLanguage('en')).toBe('en');
     expect(copyLanguage('en-ca')).toBe('en');
@@ -60,9 +57,6 @@ describe('fixed templates only for English and French', () => {
     expect(copyLanguage('zh')).toBeNull();
     expect(copyLanguage('ar')).toBeNull();
     expect(copyLanguage('bonjour')).toBeNull();
-    expect(copyFor(TABLE, 'zh')).toBeNull();
-    expect(copyFor(TABLE, null)).toBeNull();
-    expect(copyFor(TABLE, 'fr')).toBe('bonjour');
   });
 });
 

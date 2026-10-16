@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { type ReplyLanguage, copyFor } from '~/lib/channel/language';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -22,7 +22,7 @@ import {
 import { failedSendPatch, readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
+import { coParentDepartedNotice } from './copy';
 
 /**
  * VIL-355 follow-up · the parent who STAYED is told, once.
@@ -64,7 +64,7 @@ export type DepartureNoticeOutcome =
   | 'no_staying_parent'
   | 'no_send_target'
   | 'send_failed'
-  | 'language'
+  | 'model_unreachable'
   | `gate_refused:${ProactiveHoldReason}`;
 
 export interface DepartureNoticePorts {
@@ -183,17 +183,17 @@ export async function tellStayingParent(
   if (target.channel === 'group') {
     const speech = await familySpeech(database, familyId, departedUserId);
     language = speech.language;
-    message = groupDepartureNotice(language, speech.name);
+    message = await groupDepartureNotice(language, speech.name);
   } else {
     language = await parentLanguage(database, parentUserId);
-    message = copyFor(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE, language);
+    message = await coParentDepartedNotice(language);
   }
   if (!message) {
     console.info(
-      { familyId, reason: 'language' },
-      'co-parent departure notice: no template for this language',
+      { familyId, reason: 'model_unreachable' },
+      'co-parent departure notice: spoken line unreachable',
     );
-    return 'language';
+    return 'model_unreachable';
   }
 
   // CLAIM FIRST, by the insert rather than by the read above: two erasure requests

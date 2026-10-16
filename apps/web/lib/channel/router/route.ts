@@ -38,7 +38,6 @@ import {
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
 import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
-import { copyFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { linqFromE164 } from '~/lib/channel/linq/config';
@@ -50,9 +49,9 @@ import {
   queueGroupActivityDecision,
 } from '~/lib/channel/linq/family-outbound';
 import {
-  LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
   linqCoParentAsk,
+  linqGroupLineMissing,
 } from '~/lib/channel/linq/group';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
@@ -2176,12 +2175,12 @@ async function composeReconciledReply(
         const language = await familySpeechLanguage(deps.database, args.turn.familyId);
         const from = linqFromE164();
         const instruction = from
-          ? linqCoParentAsk(formatLinqLineForParent(from), language)
-          : copyFor(LINQ_GROUP_LINE_MISSING_TEXT, language);
+          ? await linqCoParentAsk(formatLinqLineForParent(from), language)
+          : await linqGroupLineMissing(language);
         if (!instruction) {
           deps.log.error(
-            { reason: 'language' },
-            'channel router: no co-parent ask for this language - nothing sent',
+            { reason: 'model_unreachable' },
+            'channel router: co-parent ask unreachable - nothing sent',
           );
           return { ...composed, reply: '', spotWatch: null, mints: [] };
         }

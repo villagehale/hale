@@ -9,11 +9,11 @@ import {
 } from '~/lib/channel/caregiver/invites';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
-import { CO_PARENT_REFUSAL_COPY, coParentInviteSentAck } from '~/lib/channel/coparent/copy';
+import { coParentInviteSentAck, coParentReferrerUnnamed, coParentRefusal } from '~/lib/channel/coparent/copy';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
-import { type ReplyLanguage, copyFor, copyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
@@ -178,7 +178,7 @@ export async function deliverCoParentNumberInvite(
   if (await priorSmsInvite(database, input.familyId)) {
     return {
       status: 'sent',
-      reply: coParentInviteSentAck(label, language),
+      reply: await coParentInviteSentAck(label, language),
       templateKey: COPARENT_NUMBER_ACK_TEMPLATE_KEY,
     };
   }
@@ -210,7 +210,7 @@ export async function deliverCoParentNumberInvite(
   }
 
   const name = await parentName(database, input.parentUserId);
-  const unnamed = copyFor(CO_PARENT_REFUSAL_COPY.referrer_unnamed, language);
+  const unnamed = await coParentReferrerUnnamed(language);
   if (!name) {
     if (!unnamed) return { status: 'ask_unwritten', reply: null };
     return held(unnamed);
@@ -239,7 +239,7 @@ export async function deliverCoParentNumberInvite(
   });
   if (started.status === 'ask_unwritten') return { status: 'ask_unwritten', reply: null };
   if (started.status === 'refused') {
-    const line = copyFor(CO_PARENT_REFUSAL_COPY[started.reason], language);
+    const line = await coParentRefusal(started.reason, language);
     if (!line) return { status: 'ask_unwritten', reply: null };
     return held(line);
   }
@@ -274,7 +274,7 @@ export async function deliverCoParentNumberInvite(
 
   return {
     status: 'sent',
-    reply: coParentInviteSentAck(label, language),
+    reply: await coParentInviteSentAck(label, language),
     templateKey: COPARENT_NUMBER_ACK_TEMPLATE_KEY,
   };
 }
