@@ -48,6 +48,39 @@ async function search(
 }
 
 describe('search_village uses this operation’s live evidence', () => {
+  it('keeps checked links for unconfirmed references without offering or persisting candidates', async () => {
+    const familyId = await household();
+    const url = 'https://example.org/archived?program=swim#schedule';
+    const checked: unknown[] = [];
+    const offered: unknown[] = [];
+    const tool = searchVillageTool(
+      db.database,
+      (rows) => offered.push(...rows),
+      {
+        find: async () => ({
+          found: false,
+          reason: 'no_picks',
+          searched: { town: 'New York', notes: '', checkedSources: [url], references: [] },
+        }),
+      },
+      (links) => checked.push(...links),
+    );
+    const output = await invokeTool(
+      tool,
+      { query: 'Archived swim' },
+      { familyId, actor: 'test' },
+      { writeAudit: async () => {} },
+    );
+    expect(output).toMatchObject({ candidates: [], references: [], checkedSources: [url] });
+    expect(offered).toEqual([]);
+    expect(checked).toEqual([{ title: 'Archived swim', url }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.familyActivityHistory)
+        .where(eq(schema.familyActivityHistory.familyId, familyId)),
+    ).toEqual([]);
+  });
   it('forwards the requested operator and month rather than defaulting to this year', async () => {
     const familyId = await household(false, 'London');
     await db.database

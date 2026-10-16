@@ -92,6 +92,10 @@ export type ActivityDeidRefusal =
  * "the raw message never crosses the border" is not a discipline anybody has to keep.
  */
 export interface ActivityQuery {
+  /** Code-supplied calendar zone; not forwarded to the search query. */
+  timeZone?: string | null;
+  /** Exact dates from an existing trip; not forwarded to web search. */
+  dateRange?: { start: string; end: string };
   subject: string;
   window: string | null;
   /** The family's town, in the words a search engine understands. Null when the postal
@@ -160,6 +164,7 @@ function gateFreeText(
  * thing somebody has to remember, but "there is nowhere for unscrubbed text to enter".
  */
 export function deidentifyActivityQuery(input: {
+  timeZone?: string | null;
   subject: string;
   window?: string | null;
   /** Qualified coarse location from the family reader, never model-supplied. */
@@ -192,6 +197,7 @@ export function deidentifyActivityQuery(input: {
   return {
     ok: true,
     query: {
+      ...(input.timeZone ? { timeZone: input.timeZone } : {}),
       subject: subject.value,
       window,
       town: input.municipality === null ? (input.location ?? null) : townFor(input.municipality),

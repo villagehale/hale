@@ -226,6 +226,11 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
               text: JSON.stringify({
                 picks: (picksByCall[call] ?? []).map((pick) => ({
                   ...pick,
+                  name_evidence: pick.name,
+                  age_evidence: pick.age_fit,
+                  when_evidence: pick.when,
+                  price_evidence: pick.price,
+                  schedule_kind: 'recurring',
                   source_url: 'https://venue.example/fall',
                 })),
               }),

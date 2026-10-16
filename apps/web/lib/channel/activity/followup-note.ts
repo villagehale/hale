@@ -182,9 +182,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     ...(grounding.picks.length === 0
       ? {
           picks_empty: true,
-          ...(grounding.searched
-            ? { searched: { town: grounding.searched.town, notes: grounding.searched.notes } }
-            : {}),
+          ...(grounding.searched ? { searched: grounding.searched } : {}),
         }
       : { page_evidence: grounding.pageEvidence }),
     watch: grounding.watch,
@@ -196,6 +194,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
       registration: pick.registration ?? null,
       source_name: pick.sourceName,
       source: pick.source,
+      ...(pick.evidence ? { evidence: pick.evidence } : {}),
     })),
   });
 }
@@ -397,7 +396,9 @@ export function waitsOnAPageItCouldNotRead(body: string): boolean {
  * which is the 2026-08-22 defect surviving its own fix one layer down.
  */
 export function asksTheParent(body: string): boolean {
-  return plainText(body).includes('?');
+  return plainText(body)
+    .replace(/https?:\/\/\S+/g, '')
+    .includes('?');
 }
 
 /**

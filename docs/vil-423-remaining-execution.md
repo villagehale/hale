@@ -3,6 +3,12 @@
 2026-10-12. Branch: `codex/vil-423-live-truth`.
 Historical implementation and live-validation checkpoints follow; the latest main-integration status is below. Production cutover is not authorized or performed.
 
+## Latest checkpoint — 2026-10-16
+
+Since `03b5d1e53`, source/session evidence and date gates now feed the actual Coach and shallow follow-up paths; historical/unconfirmed results retain links. Extraction receives only Step 2. Saved family/trip date bounds, safe source-link delivery, tests/fixtures and 26 appended journey recordings are included. No model, budget, dependency or DB-schema change.
+
+Fresh English checks: 3 source-supported answers; RBG still fails before extraction. Three initial extraction truncations recovered via the existing retry. Current Web is 10,443 passed / 14 skipped; Agent 157, Worker 437 / 1 skipped, typecheck and staged-source build pass. Broader acceptance, latency and the coordinated production cutover remain open. [Actual replies, evidence and full checkpoint](vil-423-step3-live-validation-2026-10-16.md).
+
 ## Step 1: integrate current main — 2026-10-15
 
 Replayed all eight VIL-423 commits onto `origin/main` at `e782558e8`, which includes merged #861 and its migration hotfix. The pre-rebase state remains on `backup/vil-423-pre-rebase-20261015-a18f568f`. User-owned Next/dev edits were stashed separately for restoration; landing documents are excluded.

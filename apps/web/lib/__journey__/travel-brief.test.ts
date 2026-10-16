@@ -406,9 +406,14 @@ async function runBrief() {
                 text: JSON.stringify({
                   picks: picks.map((pick, index) => ({
                     name: pick.name,
+                    name_evidence: pick.name,
                     age_fit: pick.ageFit,
+                    age_evidence: pick.ageFit,
                     when: pick.when,
+                    when_evidence: pick.when,
+                    schedule_kind: 'hours',
                     price: pick.price,
+                    price_evidence: pick.price,
                     source_name: pick.sourceName,
                     source_url: urls[index],
                     location_quote: 'New York, NY',

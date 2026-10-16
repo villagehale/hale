@@ -9,7 +9,15 @@ import {
   topPickLeads,
   waitsOnAPageItCouldNotRead,
 } from './followup-note';
+import { asksTheParent } from './followup-note';
 import type { ActivityPick } from './lane';
+
+it('does not mistake a checked source URL query for an approval question', () => {
+  expect(
+    asksTheParent('Current dates remain unconfirmed. https://example.org/events?topic=kids#dates'),
+  ).toBe(false);
+  expect(asksTheParent('Would you like that? https://example.org/events?topic=kids')).toBe(true);
+});
 
 /**
  * THE TWO GATES THE FOLLOW-UP TEXT CANNOT SHIP WITHOUT PASSING.

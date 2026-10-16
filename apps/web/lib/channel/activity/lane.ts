@@ -9,6 +9,14 @@ import { stripHtml } from '~/lib/registration/fetch';
 import { createRegistrationPageFetch, registrationPageUrl } from '~/lib/registration/page';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
+import {
+  type ActivityFactEvidence,
+  type ActivityReference,
+  activityCalendarDate,
+  activityDateRange,
+  activityPicksJsonSchema,
+  bindActivityFacts,
+} from './facts';
 import { activityLocationMatches, activitySourceLocationScore } from './location';
 import { namesRetiredRecPortal } from './retired-portal';
 
@@ -178,6 +186,7 @@ export interface ActivityPick {
   access?: 'drop_in' | 'register_at_venue';
   placeId?: string;
   civicVenueId?: string;
+  evidence?: ActivityFactEvidence;
 }
 
 /**
@@ -212,13 +221,20 @@ export type ActivityFailure =
 export interface EmptySearch {
   town: string | null;
   notes: string;
+  references?: ActivityReference[];
+  checkedSources?: string[];
 }
 
 /** The research handed to an empty-result composer is bounded, like every other payload. */
 export const EMPTY_SEARCH_NOTES_CAP = 4_000;
 
 export type ActivityFindResult =
-  | { found: true; picks: ActivityPick[] }
+  | {
+      found: true;
+      picks: ActivityPick[];
+      references?: ActivityReference[];
+      checkedSources?: string[];
+    }
   | { found: false; reason: ActivityFailure; searched?: EmptySearch };
 
 export interface ActivityFinder {
@@ -281,8 +297,24 @@ const composeSchema = z.object({
     z.array(
       z.object({
         name: z.string().nullish(),
+        name_evidence: z.string().nullish(),
         age_fit: z.string().nullish(),
+        age_evidence: z.string().nullish(),
         when: z.string().nullish(),
+        when_evidence: z.string().nullish(),
+        schedule_kind: z.enum(['hours', 'recurring', 'term']).nullish(),
+        historical_evidence: z.string().nullish(),
+        sessions: z
+          .array(
+            z.object({
+              evidence: z.string(),
+              date: z.string(),
+              start_time: z.string().nullish(),
+              end_time: z.string().nullish(),
+              timezone: z.string().nullish(),
+            }),
+          )
+          .nullish(),
         price_evidence: z.string().nullish(),
         price: z.string().nullish(),
         source_name: z.string().nullish(),
@@ -298,45 +330,7 @@ const composeSchema = z.object({
   ),
 });
 
-const composeJsonSchema: Anthropic.Tool.InputSchema = {
-  type: 'object',
-  properties: {
-    picks: {
-      type: 'array',
-      maxItems: MAX_PICKS,
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          age_fit: { type: 'string' },
-          when: { type: 'string' },
-          price_evidence: { type: 'string' },
-          price: { type: 'string' },
-          source_name: { type: 'string' },
-          source_url: {
-            type: 'string',
-            description: 'The exact source URL from this research, never guess one.',
-          },
-          event_date: {
-            type: 'string',
-            description: 'YYYY-MM-DD only when the source dates this session. Omit if unknown.',
-          },
-          indoor_outdoor: { type: 'string', enum: ['indoor', 'outdoor', 'both'] },
-          access: {
-            type: 'string',
-            enum: ['drop_in', 'register_at_venue'],
-            description: 'Only the published attendance requirement. Omit if unknown.',
-          },
-        },
-        // `when` and `price` are OMITTED from required for the reason ActivityPick states:
-        // a required field a page never published is a field the model can only satisfy by
-        // inventing or by dropping the whole find, and it chose dropping.
-        required: ['name', 'age_fit', 'source_name', 'source_url'],
-      },
-    },
-  },
-  required: ['picks'],
-};
+const composeJsonSchema = activityPicksJsonSchema;
 
 /**
  * The search payload — the de-identified query and nothing that could identify the child.
@@ -355,8 +349,26 @@ export function groundUserMessage(query: ActivityQuery): string {
 /** The compose payload: the same de-identified query plus what the search read. It never
  * carries the parent's message — this stage is blind, which is what makes it structurally
  * unable to echo a name back into a pick. */
-export function composeUserMessage(query: ActivityQuery, researchNotes: string): string {
-  return JSON.stringify({ ...JSON.parse(groundUserMessage(query)), research_notes: researchNotes });
+export function composeUserMessage(
+  query: ActivityQuery,
+  researchNotes: string,
+  now?: Date,
+): string {
+  return JSON.stringify({
+    ...JSON.parse(groundUserMessage(query)),
+    research_notes: researchNotes,
+    ...(now
+      ? {
+          today: activityCalendarDate(now, query.timeZone),
+          requested_date_range: activityDateRange(
+            query.window,
+            now,
+            query.timeZone,
+            query.dateRange,
+          ),
+        }
+      : {}),
+  });
 }
 
 /** The one thing any catch may keep. A provider error can echo the request, so the object
@@ -467,7 +479,8 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
 async function runActivityOnce(
   client: () => AgentClient,
   query: ActivityQuery,
-): Promise<ActivityPick[]> {
+): Promise<{ picks: ActivityPick[]; references: ActivityReference[]; checkedSources: string[] }> {
+  const now = new Date();
   let resolved: AgentClient;
   try {
     resolved = client();
@@ -485,7 +498,13 @@ async function runActivityOnce(
   // Phase 1 + 2, as one step so the read pass (needsReadPass) can run it again.
   const groundAndCompose = async (
     readPages: boolean,
-  ): Promise<{ picks: ActivityPick[]; searchResults: number; notes: string }> => {
+  ): Promise<{
+    picks: ActivityPick[];
+    references: ActivityReference[];
+    checkedSources: string[];
+    searchResults: number;
+    notes: string;
+  }> => {
     // Phase 1 — GROUND. Bounded at MAX_SEARCHES: the provider bills per search, and a cost
     // nobody can see is the one that runs away.
     let research: Anthropic.Message;
@@ -569,11 +588,12 @@ async function runActivityOnce(
       ({ value: composed } = await forceToolJson({
         client: resolved,
         lane: pickLane(skill.meta.task),
-        // SMS-writing examples belong only to the follow-up composer.
+        // Extraction needs neither search instructions nor follow-up SMS examples.
         system: skill.instructions
+          .replace(/^[\s\S]*?(?=## Step 2 — EXTRACT)/, '')
           .replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '')
           .trimEnd(),
-        userMessage: composeUserMessage(query, researchNotes),
+        userMessage: composeUserMessage(query, researchNotes, now),
         toolName: 'activity_picks',
         toolDescription: 'Return the concrete programs the search actually found.',
         inputJsonSchema: composeJsonSchema,
@@ -583,30 +603,42 @@ async function runActivityOnce(
     } catch (err) {
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
-    const pageUrls = new Set(pages.map((page) => page.url));
-    const cited = toPicks(composed.picks).filter((pick) => {
-      const raw = composed.picks.find((item) => field(item.name) === pick.name)?.source_url;
-      if (typeof raw !== 'string' || !pageUrls.has(raw)) return false;
-      pick.sourceUrl = raw;
-      pick.url = raw;
-      return true;
-    });
+    const bound = bindActivityFacts(
+      composed.picks,
+      pages,
+      query.window,
+      now,
+      query.timeZone,
+      query.dateRange,
+    );
+    const cited = bound.picks.flatMap((raw) =>
+      toPicks([raw]).map((pick) => ({
+        ...pick,
+        sourceUrl: raw.source_url!,
+        url: raw.source_url!,
+        evidence: raw.evidence,
+      })),
+    );
     return {
       picks: cited,
+      references: bound.references,
+      checkedSources: pages.map((page) => page.url),
       searchResults: evidence.searchResults,
       notes: researchNotes,
     };
   };
 
-  let { picks, searchResults, notes } = await groundAndCompose(false);
-  if (needsReadPass(query, { searchResults }, picks)) {
+  let { picks, references, checkedSources, searchResults, notes } = await groundAndCompose(false);
+  if (references.length === 0 && needsReadPass(query, { searchResults }, picks)) {
     console.error({ searchResults }, 'activity lane: no picks off snippets - reading pages once');
-    ({ picks, notes } = await groundAndCompose(true));
+    ({ picks, references, checkedSources, notes } = await groundAndCompose(true));
   }
   if (picks.length === 0) {
     throw new ActivityUnresolvable('no_picks', undefined, {
       town: query.town,
       notes: notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+      references,
+      checkedSources,
     });
   }
   // The never-a-directory ceiling, enforced after the model rather than asked of it. It
@@ -618,9 +650,13 @@ async function runActivityOnce(
       { returned: picks.length, kept: MAX_PICKS },
       'activity lane: more picks than the ceiling - trimmed',
     );
-    return picks.slice(0, MAX_PICKS);
+    return {
+      picks: picks.slice(0, MAX_PICKS),
+      references: references.slice(0, MAX_PICKS),
+      checkedSources,
+    };
   }
-  return picks;
+  return { picks, references: references.slice(0, MAX_PICKS), checkedSources };
 }
 
 function logActivityFailure(err: unknown, attempt: number): void {
@@ -647,7 +683,7 @@ export function createActivityFinder(client: () => AgentClient): ActivityFinder 
     async find(query) {
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
-          return { found: true, picks: await runActivityOnce(client, query) };
+          return { found: true, ...(await runActivityOnce(client, query)) };
         } catch (err) {
           logActivityFailure(err, attempt);
           if (err instanceof ActivityUnresolvable && err.reason === 'no_picks') {

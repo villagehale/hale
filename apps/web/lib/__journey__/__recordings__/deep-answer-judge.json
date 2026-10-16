@@ -563,5 +563,169 @@
       },
       "diagnostics": null
     }
+  },
+  "013a3326612678bbb2666ba004787ca17c029be5bc6633649ea7170458f99c59": {
+    "key": "013a3326612678bbb2666ba004787ca17c029be5bc6633649ea7170458f99c59",
+    "recordedAt": "2026-10-16T02:18:39.934Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre has Parent and Tot swim levels 1, 2 and 3 for 4 months to 3 years - Town of Halton Hills' site says, and registration opens Tuesday, September 1. I could not pin down the day or the price, so I'll keep watching and text you when I do."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg57b1ZF1LeMqaUH7M7qR",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":false,\"reason\":\"The message only says the assistant itself could not pin down the day or price and will keep watching. It does not claim that the venue or the Town of Halton Hills site has not posted, published or listed those details.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 447,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 78,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "9018b3ea0435490cd41630534fd0a61b82a45177249ddfc0b44848cb73bd2834": {
+    "key": "9018b3ea0435490cd41630534fd0a61b82a45177249ddfc0b44848cb73bd2834",
+    "recordedAt": "2026-10-16T02:18:47.547Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre has Parent and Tot 1, 2 and 3 swim classes for 4 months to 3 years - Town of Halton Hills' site says, and registration opens Tuesday, Sept 1. Their page has no days, times or prices posted yet. I'll keep watching and text you when they post them."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg57bbnn8mKzKWZ4HA5uX",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":true,\"reason\":\"The message states that the venue's page has no days, times or prices posted yet, which says the venue has not posted those schedule details, rather than just saying the assistant couldn't find them.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 453,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 73,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "04daab749359ee804d5afb3141abaa09fd9a606120c11d707c4c4a6f0d34c96a": {
+    "key": "04daab749359ee804d5afb3141abaa09fd9a606120c11d707c4c4a6f0d34c96a",
+    "recordedAt": "2026-10-16T02:25:03.573Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Gellert Community Centre has Parent and Tot 1, 2 and 3 swim for ages 4 months to 3 years - Town of Halton Hills' site says, and registration opens Tuesday, September 1. I could not pin down the day, time or price, but I'll keep watching and text you when I do."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg585LbFZj4z9r7B9Whct",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":false,\"reason\":\"The message only says the assistant could not pin down the day, time or price and will keep watching. It does not claim that the venue or the Town of Halton Hills has not posted those details, so this is the assistant's own limitation.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 448,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 85,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "4d183071faca4462cd776b54d07d1388293d16eeaff8300d2741e9530ff2ecc1": {
+    "key": "4d183071faca4462cd776b54d07d1388293d16eeaff8300d2741e9530ff2ecc1",
+    "recordedAt": "2026-10-16T02:25:10.644Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "Parent and Tot 1, 2, 3 at Gellert Community Centre is for 4 months to 3 years - Town of Halton Hills' site says, and registration opens Tuesday, September 1, though no day, time or price is posted on their page yet. I'll keep watching and text you when they post them."
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg585qkCoTQ36QbmSZ2fY",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"says_not_posted\":true,\"reason\":\"The message states that no day, time or price is posted on the Town of Halton Hills' page yet, which says the venue has not posted those schedule details, rather than just the assistant being unable to find them.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 447,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 78,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
   }
 }

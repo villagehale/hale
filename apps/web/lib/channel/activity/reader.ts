@@ -16,6 +16,19 @@ export async function readActivityLocation(
   return location && scrubResidualPii(location).trim() === location ? location : null;
 }
 
+export async function readActivityTimeZone(
+  database: Database,
+  familyId: string,
+): Promise<string | null> {
+  const [parent] = await database
+    .select({ timeZone: schema.users.timezone })
+    .from(schema.familyMembers)
+    .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+    .where(eq(schema.familyMembers.familyId, familyId))
+    .limit(1);
+  return parent?.timeZone ?? null;
+}
+
 /**
  * THE THREE FACTS THE ACTIVITY LANE READS FROM THE DATABASE — and the whole reason it
  * reads them rather than accepting them from the model.
@@ -31,6 +44,7 @@ export async function readActivityLocation(
  * with them, they are what a query is REFUSED for containing (deidentify.ts).
  */
 export interface ActivityFamilyReader {
+  timeZone?(database: Database, familyId: string): Promise<string | null>;
   location?(database: Database, familyId: string): Promise<string | null>;
   municipality(database: Database, familyId: string): Promise<Municipality | null>;
   stage(database: Database, familyId: string, childId: string | null): Promise<FamilyStage | null>;
@@ -40,6 +54,7 @@ export interface ActivityFamilyReader {
 /** The same three reads with the database already closed over — the shape a coach tool
  * wants, since a tool handler is handed a family and not a connection. */
 export interface BoundActivityReader {
+  timeZone?(familyId: string): Promise<string | null>;
   location?(familyId: string): Promise<string | null>;
   municipality(familyId: string): Promise<Municipality | null>;
   stage(familyId: string, childId: string | null): Promise<FamilyStage | null>;
@@ -51,7 +66,9 @@ export function bindActivityReader(
   reader: ActivityFamilyReader,
 ): BoundActivityReader {
   const location = reader.location;
+  const timeZone = reader.timeZone;
   return {
+    ...(timeZone ? { timeZone: (familyId: string) => timeZone(database, familyId) } : {}),
     ...(location ? { location: (familyId: string) => location(database, familyId) } : {}),
     municipality: (familyId) => reader.municipality(database, familyId),
     stage: (familyId, childId) => reader.stage(database, familyId, childId),
@@ -62,6 +79,7 @@ export function bindActivityReader(
 export function productionActivityFamilyReader(): ActivityFamilyReader {
   return {
     location: readActivityLocation,
+    timeZone: readActivityTimeZone,
     /**
      * The ONE municipality this family's postal code names, or null.
      *

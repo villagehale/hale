@@ -6,6 +6,7 @@ import type { OptOutForm } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import type { fulfillCommitment } from '~/lib/commitments/ledger';
+import { safeHttpUrl } from '~/lib/format/http-url';
 import {
   ACTIVITY_WATCH_DUE_HOURS,
   type ActivityPromise,
@@ -275,6 +276,13 @@ export async function deliverFollowUp(
   // So the model never sees a URL, and the one link Hale sends is built from a token this
   // process just minted (share-page.ts `withSharePage`, the same shape as `withOptOut`).
   let message = composed.message;
+  // Source links come only from this read, never from model-written URLs.
+  const sources = [...new Set(input.searched?.checkedSources ?? [])].flatMap((source) => {
+    const url = safeHttpUrl(source);
+    return url ? [url] : [];
+  });
+  if (sources.length)
+    message = [message, ...sources.filter((url) => !message.includes(url))].join(' ');
   let shared = false;
   if (input.rest.length > SLOTS_IN_TEXT) {
     const page = await deps.sharePage(database, {

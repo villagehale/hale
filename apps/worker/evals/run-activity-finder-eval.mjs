@@ -107,28 +107,12 @@ const FIRST_SEGMENT_CHARS = 153;
 
 // ── the lane's request shapes, replicated from lane.ts ───────────────────────
 
-const PICKS_TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    picks: {
-      type: 'array',
-      maxItems: MAX_PICKS,
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          age_fit: { type: 'string' },
-          when: { type: 'string' },
-          price_evidence: { type: 'string' },
-          price: { type: 'string' },
-          source_name: { type: 'string' },
-        },
-        required: ['name', 'age_fit', 'source_name'],
-      },
-    },
-  },
-  required: ['picks'],
-};
+const {
+  activityPicksJsonSchema: PICKS_TOOL_SCHEMA,
+  bindActivityFacts,
+  activityDateRange,
+} = await tsImport(join(REPO_ROOT, 'apps/web/lib/channel/activity/facts.ts'), import.meta.url);
+const EVAL_NOW = new Date('2026-10-15T12:00:00Z');
 
 const FOLLOWUP_TOOL_SCHEMA = {
   type: 'object',
@@ -159,7 +143,12 @@ function groundUserMessage(q) {
 }
 
 function composeUserMessage(q, researchNotes) {
-  return JSON.stringify({ ...JSON.parse(groundUserMessage(q)), research_notes: researchNotes });
+  return JSON.stringify({
+    ...JSON.parse(groundUserMessage(q)),
+    research_notes: researchNotes,
+    today: EVAL_NOW.toISOString().slice(0, 10),
+    requested_date_range: activityDateRange(q.window, EVAL_NOW),
+  });
 }
 
 /** Mirrors `followUpUserMessage` in activity/followup-note.ts, INCLUDING `registration` —
@@ -198,6 +187,7 @@ function followUpUserMessage(subject, picks, pageEvidence, watch, searched) {
       registration: pick.registration ?? null,
       source_name: pick.sourceName,
       source: 'web',
+      ...(pick.evidence ? { evidence: pick.evidence } : {}),
     })),
   });
 }
@@ -667,10 +657,21 @@ function decodePicks(value) {
   return value;
 }
 
-function normalizePicks(raw) {
+function normalizePicks(raw, ground, query) {
   const kept = [];
   const dropped = [];
-  const decoded = decodePicks(raw);
+  let decoded = decodePicks(raw);
+  let references = [];
+  if (ground && query) {
+    const bound = bindActivityFacts(
+      Array.isArray(decoded) ? decoded : [],
+      ground.pages ?? [],
+      query.window,
+      EVAL_NOW,
+    );
+    decoded = bound.picks;
+    references = bound.references;
+  }
   for (const item of Array.isArray(decoded) ? decoded : []) {
     const pick = {
       name: flatten(item?.name),
@@ -678,11 +679,12 @@ function normalizePicks(raw) {
       when: flatten(item?.when) || null,
       price: flatten(item?.price) || null,
       sourceName: flatten(item?.source_name),
+      ...(item?.evidence ? { evidence: item.evidence } : {}),
     };
     if (pick.name && pick.ageFit && pick.sourceName) kept.push(pick);
     else dropped.push(pick);
   }
-  return { kept, dropped };
+  return { kept, dropped, references };
 }
 
 /**
@@ -978,7 +980,10 @@ async function main() {
   // copy that has drifted is a corpus grading a query nobody sends, silently and forever.
   // The runner holds the seam instead: the strings are compared byte for byte before any
   // call is made, cached or live, and a drift is a hard exit rather than a warning.
-  const { TRAVEL_SUBJECT } = await tsImport(TRAVEL_QUERY_SRC, import.meta.url);
+  const { TRAVEL_SUBJECT } = await tsImport(TRAVEL_QUERY_SRC, {
+    parentURL: import.meta.url,
+    tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+  });
   for (const fixture of ACTIVITY_FIXTURES) {
     if (fixture.id.startsWith('travel-') && fixture.subject !== TRAVEL_SUBJECT) {
       console.error(
@@ -1097,9 +1102,13 @@ async function main() {
             model,
             lane: subjectLane,
             system: skill.instructions
+              .replace(/^[\s\S]*?(?=## Step 2 — EXTRACT)/, '')
               .replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '')
               .trimEnd(),
-            userMessage: composeUserMessage(query, ground.notes),
+            userMessage: composeUserMessage(
+              query,
+              (ground.pages ?? []).map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n'),
+            ),
             toolName: 'activity_picks',
             toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
             toolDescription: 'Return the concrete programs the search actually found.',
@@ -1120,7 +1129,8 @@ async function main() {
       !broken &&
       ground.searchCount > 0 &&
       !namesAVenue(fixture.subject) &&
-      normalizePicks(extracted.picks).kept.length === 0
+      normalizePicks(extracted.picks, ground, query).kept.length === 0 &&
+      normalizePicks(extracted.picks, ground, query).references.length === 0
     ) {
       readPasses += 1;
       ground = await cachedGround({
@@ -1139,9 +1149,13 @@ async function main() {
           model,
           lane: subjectLane,
           system: skill.instructions
+            .replace(/^[\s\S]*?(?=## Step 2 — EXTRACT)/, '')
             .replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '')
             .trimEnd(),
-          userMessage: composeUserMessage(query, ground.notes),
+          userMessage: composeUserMessage(
+            query,
+            (ground.pages ?? []).map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n'),
+          ),
           toolName: 'activity_picks',
           toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
           toolDescription: 'Return the concrete programs the search actually found.',
@@ -1154,7 +1168,11 @@ async function main() {
         })
       ).value;
     }
-    const { kept, dropped } = normalizePicks(extracted.picks);
+    const { kept, dropped, references } = normalizePicks(
+      extracted.picks,
+      broken ? undefined : ground,
+      query,
+    );
     if (dropped.length > 0) failures.push(`half_find:${dropped.length}`);
     if (kept.length > MAX_PICKS) failures.push(`directory:${kept.length}`);
     const evidence = `${ground.notes}\n${ground.evidence}`;
@@ -1254,6 +1272,8 @@ async function main() {
                 followUpUserMessage(fixture.subject, kept, pageEvidence, watch, {
                   town: fixture.town,
                   notes: ground.notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+                  references,
+                  checkedSources: (ground.pages ?? []).map((page) => page.url),
                 }),
                 violations,
               ),

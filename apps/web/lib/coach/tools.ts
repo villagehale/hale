@@ -160,6 +160,7 @@ export function searchVillageTool(
    */
   onOffered?: (offers: readonly OfferedCandidate[]) => void,
   finder?: ActivityFinder,
+  onLinks?: (links: readonly { title: string; url: string }[]) => void,
 ): RegisteredTool {
   return defineTool({
     name: 'search_village',
@@ -179,6 +180,10 @@ export function searchVillageTool(
         finder,
         now,
       });
+      if (found.checkedSources?.length)
+        onLinks?.(
+          found.checkedSources.map((url) => ({ title: input.query ?? 'Activity source', url })),
+        );
       const offerable: OfferableEntry[] = found.picks.map((pick) => ({
         pick,
         candidate: {
@@ -189,6 +194,7 @@ export function searchVillageTool(
           when: pick.when ?? 'Current time could not be verified',
           sourceUrl: pick.sourceUrl,
           url: pick.sourceUrl,
+          ...(pick.evidence ? { evidence: pick.evidence } : {}),
         },
         offer: {
           title: pick.name,
@@ -234,6 +240,8 @@ export function searchVillageTool(
         inVerification: 0,
         standingOption: null,
         liveRead: found.reason ?? 'verified',
+        ...(found.references ? { references: found.references } : {}),
+        ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
       };
     },
   });

@@ -11,10 +11,12 @@ import {
   toPicks,
 } from './lane';
 
+const PROGRAM_TEXT =
+  'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.';
+
 vi.mock('~/lib/registration/page', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/registration/page')>()),
-  createRegistrationPageFetch: () => async () =>
-    'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. Halton Hills, Ontario, Canada. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.',
+  createRegistrationPageFetch: () => async () => `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
 }));
 
 /**
@@ -73,9 +75,14 @@ const composeResult = (input: unknown) => ({
 });
 
 const WHOLE_PICK = {
+  name_evidence: 'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre.',
   name: 'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre',
+  age_evidence: '18 months - 3 years.',
   age_fit: '18 months - 3 years',
+  when_evidence: 'Saturdays 9:15am, fall session from Sept 13.',
+  schedule_kind: 'recurring' as const,
   when: 'Saturdays 9:15am, fall session from Sept 13',
+  price_evidence: '$142 for 12 weeks.',
   price: '$142 for 12 weeks',
   source_name: 'Halton Hills Gymnastics Centre',
   source_url: 'https://venue.example/0',
@@ -129,6 +136,14 @@ function makeClient(
 const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 
 describe('the payloads', () => {
+  it('keeps stored trip dates out of web search and uses them only for fact extraction', () => {
+    const query = { ...QUERY, dateRange: { start: '2026-10-16', end: '2026-10-17' } };
+    expect(groundUserMessage(query)).toBe(groundUserMessage(QUERY));
+    expect(
+      JSON.parse(composeUserMessage(query, 'the notes', new Date('2026-10-15T12:00:00Z')))
+        .requested_date_range,
+    ).toEqual(query.dateRange);
+  });
   it('sends the de-identified query and nothing else', () => {
     expect(groundUserMessage(QUERY)).toBe(
       '{"subject":"toddler gymnastics","town":"Halton Hills, Ontario, Canada","stage":"toddler","window":"this fall"}',
@@ -152,7 +167,7 @@ describe('the payloads', () => {
     });
   });
 
-  it('omits SMS-writing instructions only from the extraction request', async () => {
+  it('sends only Step 2 to extraction and leaves the search prompt intact', async () => {
     const seen: Seen[] = [];
     await createActivityFinder(
       makeClient(
@@ -162,11 +177,21 @@ describe('the payloads', () => {
     ).find(QUERY);
     const ground = seen.find((call) => !call.toolChoice)?.system;
     const compose = seen.find((call) => call.toolChoice === 'activity_picks')?.system;
+    expect(ground).toContain('## Step 1 — RESEARCH');
     expect(ground).toContain('## Step 3 — THE FOLLOW-UP TEXT');
     expect(ground).toContain('Tiny Gym Sundays 9:30');
-    expect(compose).toBe(ground?.split('\n## Step 3 — THE FOLLOW-UP TEXT')[0]?.trimEnd());
+    const extractStart = ground?.indexOf('## Step 2 — EXTRACT') ?? -1;
+    expect(extractStart).toBeGreaterThan(0);
+    expect(compose).toBe(
+      ground?.slice(extractStart).split('\n## Step 3 — THE FOLLOW-UP TEXT')[0]?.trimEnd(),
+    );
     expect(compose).toContain('## Step 2 — EXTRACT');
+    expect(compose).toContain('a verbatim');
+    expect(compose).toContain('quote the exact text');
+    expect(compose).toContain('Dated occurrences use `sessions`');
     expect(compose).toContain('never invent a');
+    expect(compose).not.toContain('## Step 1');
+    expect(compose).not.toContain('Search NOW');
     expect(compose).not.toContain('## Step 3');
     expect(compose).not.toContain('Tiny Gym Sundays 9:30');
     expect(compose).not.toContain('about 300');
@@ -257,7 +282,7 @@ describe('an ungrounded find never ships', () => {
       .mockReturnValue(async (url) => {
         urls.push(url);
         return url === officialUrl
-          ? 'Burlington, ON, L7R 1J4'
+          ? `Burlington, ON, L7R 1J4. ${PROGRAM_TEXT}`
           : 'Burlington, WA 98233 United States';
       });
     try {
@@ -281,7 +306,7 @@ describe('an ungrounded find never ships', () => {
       .mockReturnValue(async (url) =>
         url.endsWith('/0')
           ? 'Burlington, WA 98233 United States'
-          : '2331 New Street, Burlington, ON L7R 1J4. Preschool storytime.',
+          : `2331 New Street, Burlington, ON L7R 1J4. Preschool storytime. ${PROGRAM_TEXT}`,
       );
     const seen: Seen[] = [];
     try {
@@ -313,7 +338,7 @@ describe('an ungrounded find never ships', () => {
       .spyOn(sourcePage, 'createRegistrationPageFetch')
       .mockReturnValue(
         async () =>
-          'Burlington Public Library 820 E Washington Ave. Burlington , WA 98233 United States',
+          `Burlington Public Library 820 E Washington Ave. Burlington , WA 98233 United States. ${PROGRAM_TEXT}`,
       );
     const seen: Seen[] = [];
     const finder = createActivityFinder(
@@ -486,7 +511,15 @@ describe('a pick is whole or it is not a pick', () => {
     );
 
     const result = await finder.find(QUERY);
-    expect(result.found && result.picks[0]).toMatchObject({ name: WHOLE_PICK.name });
+    if (_l === 'WHEN') {
+      expect(result).toMatchObject({
+        found: false,
+        reason: 'no_picks',
+        searched: { references: [{ name: WHOLE_PICK.name, status: 'unconfirmed', when: null }] },
+      });
+    } else {
+      expect(result.found && result.picks[0]).toMatchObject({ name: WHOLE_PICK.name });
+    }
   });
 
   it('carries the unpublished detail as null rather than as a guess', async () => {
@@ -498,7 +531,11 @@ describe('a pick is whole or it is not a pick', () => {
     );
 
     const result = await finder.find(QUERY);
-    expect(result.found && result.picks[0]).toMatchObject({ when: null, price: null });
+    expect(result).toMatchObject({
+      found: false,
+      reason: 'no_picks',
+      searched: { references: [{ name: WHOLE_PICK.name, when: null, price: null }] },
+    });
   });
 
   it('keeps the whole ones and drops the broken one from the same list', async () => {

@@ -60,6 +60,49 @@ const call = (tool: ReturnType<typeof findActivitiesTool>, input: unknown) =>
   invokeTool(tool, input, { familyId: FAMILY, actor: PARENT }, guardDeps());
 
 describe('find_activities', () => {
+  it('hands historical references and exact source links to Coach without recommending them', async () => {
+    const url = 'https://venue.example/old?program=kids#details';
+    const reference = {
+      name: 'Past workshop',
+      sourceName: 'Example',
+      sourceUrl: url,
+      ageFit: 'ages 2-5',
+      when: null,
+      price: null,
+      status: 'historical' as const,
+      evidence: {
+        program: 'Past workshop',
+        age: 'ages 2-5',
+        sessions: ['October 2020'],
+        schedule: null,
+        price: null,
+        history: 'October 2020',
+        windowConfirmed: false,
+      },
+    };
+    const links: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader(),
+      onPromise: () => {},
+      onLinks: (value) => links.push(...value),
+      finder: {
+        find: async () => ({
+          found: false,
+          reason: 'no_picks',
+          searched: {
+            town: 'Halton Hills',
+            notes: '',
+            references: [reference],
+            checkedSources: [url],
+          },
+        }),
+      },
+    });
+    const output = await call(tool, { subject: 'workshop', window: 'October 2026' });
+    expect(output).toMatchObject({ found: false, references: [reference], checkedSources: [url] });
+    expect(output).not.toHaveProperty('picks');
+    expect(links).toEqual([{ title: 'workshop', url }]);
+  });
   it('keeps a non-GTA city, operator and requested month in the same query', async () => {
     const seen: unknown[] = [];
     const tool = findActivitiesTool({

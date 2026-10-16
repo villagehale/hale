@@ -227,6 +227,35 @@ describe('a promise with finds', () => {
 });
 
 describe('the promise is kept when the news is bad', () => {
+  it('appends only checked HTTP sources to an unconfirmed follow-up, without treating URL queries as questions', async () => {
+    armed();
+    const url = 'https://venue.example/programs?topic=kids#dates';
+    const h = harness({
+      find: {
+        found: false,
+        reason: 'no_picks',
+        searched: {
+          town: 'Halton Hills',
+          notes: 'The current session could not be established.',
+          checkedSources: [url, url, 'javascript:alert(1)'],
+          references: [],
+        },
+      },
+      compose: {
+        status: 'composed',
+        message: 'I could not establish a current session from the page. I will keep looking.',
+      },
+    });
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    expect(result.sent).toBe(1);
+    expect(h.transport.sent[0]?.body).toContain(url);
+    expect(h.transport.sent[0]?.body.split(url)).toHaveLength(2);
+    expect(h.transport.sent[0]?.body).not.toContain('javascript:');
+    expect(h.composed[0]).toMatchObject({
+      searched: { checkedSources: [url, url, 'javascript:alert(1)'] },
+    });
+  });
+
   it('sends the empty-handed message and STILL closes the row', async () => {
     armed();
     const h = harness({

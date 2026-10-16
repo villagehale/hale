@@ -2,12 +2,13 @@ import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
+import type { ActivityReference } from '~/lib/channel/activity/facts';
 import {
   type ActivityFinder,
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
-import { readActivityLocation } from '~/lib/channel/activity/reader';
+import { readActivityLocation, readActivityTimeZone } from '~/lib/channel/activity/reader';
 import { activityClient } from '~/lib/pipeline/client';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { resolveActiveAreaCoarse } from './areas';
@@ -83,9 +84,14 @@ export async function findFamilyActivities(
     finder?: ActivityFinder;
     excludePreviouslyOffered?: boolean;
   } = {},
-): Promise<{ picks: ActivityPick[]; reason: string | null }> {
+): Promise<{
+  picks: ActivityPick[];
+  reason: string | null;
+  references?: ActivityReference[];
+  checkedSources?: string[];
+}> {
   const now = options.now ?? new Date();
-  const [city, children, area, parents] = await Promise.all([
+  const [city, children, area, parents, timeZone] = await Promise.all([
     readActivityLocation(database, familyId),
     database
       .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
@@ -97,6 +103,7 @@ export async function findFamilyActivities(
       .from(schema.familyMembers)
       .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
       .where(eq(schema.familyMembers.familyId, familyId)),
+    readActivityTimeZone(database, familyId),
   ]);
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
@@ -106,6 +113,7 @@ export async function findFamilyActivities(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
   )[0]!;
   const query = deidentifyActivityQuery({
+    timeZone,
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
     municipality: towns.length === 1 ? towns[0]! : null,
@@ -154,8 +162,19 @@ export async function findFamilyActivities(
           ? await unofferedActivityPicks(database, familyId, found.picks)
           : found.picks,
         reason: null,
+        ...(found.references ? { references: found.references } : {}),
+        ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
       }
-    : { picks: [], reason: found.reason };
+    : {
+        picks: [],
+        reason: found.reason,
+        ...(found.searched
+          ? {
+              references: found.searched.references ?? [],
+              checkedSources: found.searched.checkedSources ?? [],
+            }
+          : {}),
+      };
 }
 
 /** Persist only the picks returned to a family, for saves, shares and offer provenance. */
