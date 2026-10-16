@@ -1,12 +1,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane, pickModel, withoutThinking } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { stripHtml } from '~/lib/registration/fetch';
-import { createRegistrationPageFetch, registrationPageUrl } from '~/lib/registration/page';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
 import {
@@ -18,6 +17,7 @@ import {
   bindActivityFacts,
 } from './facts';
 import { activityLocationMatches, activitySourceLocationScore } from './location';
+import { createActivityPageFetch } from './page';
 import { namesRetiredRecPortal } from './retired-portal';
 
 /**
@@ -213,7 +213,7 @@ export type ActivityFailure =
   | 'over_budget';
 
 /**
- * WHAT AN EMPTY SEARCH LOOKED AT. Carried on `no_picks` only, so the follow-up text that
+ * WHAT AN EMPTY SEARCH LOOKED AT. Also retained when location cannot be verified, so the follow-up text that
  * reports nothing can say where Hale looked and what it did turn up (r19, 2026-10-15: the
  * judge scored an honest empty message 3 because the composer had been handed neither).
  * `notes` is the grounding turn's own research, from a de-identified query, capped.
@@ -545,7 +545,7 @@ async function runActivityOnce(
         }
       }
     }
-    const fetchPage = createRegistrationPageFetch();
+    const fetchPage = createActivityPageFetch();
     const readablePages = (
       await Promise.all(
         [...sourceUrls]
@@ -557,8 +557,8 @@ async function runActivityOnce(
           .slice(0, MAX_INLINE_FETCHES)
           .map(async (raw) => {
             try {
-              const url = registrationPageUrl(raw);
-              const text = stripHtml(await fetchPage(url)).slice(0, 20_000);
+              const { url, text: html } = await fetchPage(raw);
+              const text = stripHtml(html).slice(0, 20_000);
               return text.trim() ? { url, text } : null;
             } catch {
               return null;
@@ -569,7 +569,14 @@ async function runActivityOnce(
     if (readablePages.length === 0)
       throw new ActivityUnresolvable('not_grounded', 'sources_unreadable');
     const pages = readablePages.filter((page) => activityLocationMatches(query.town, page.text));
-    if (pages.length === 0) throw new ActivityUnresolvable('location_unverified');
+    if (pages.length === 0)
+      throw new ActivityUnresolvable('location_unverified', undefined, {
+        town: query.town,
+        notes:
+          'The source pages were read, but their location could not be verified. These links are unverified references, not activity recommendations or evidence of current dates.',
+        references: [],
+        checkedSources: [...new Set(readablePages.map((page) => page.url))],
+      });
     const researchNotes = pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n');
     if (evidence.pagesRefused > 0 && evidence.pagesRead === 0) {
       // The turn tried to open the venue's pages and was turned away every time, so any gap
@@ -587,7 +594,8 @@ async function runActivityOnce(
     try {
       ({ value: composed } = await forceToolJson({
         client: resolved,
-        lane: pickLane(skill.meta.task),
+        // Use the already-successful retry shape first, without spending output on thinking.
+        lane: withoutThinking(pickLane(skill.meta.task)) ?? pickLane(skill.meta.task),
         // Extraction needs neither search instructions nor follow-up SMS examples.
         system: skill.instructions
           .replace(/^[\s\S]*?(?=## Step 2 — EXTRACT)/, '')
@@ -686,10 +694,13 @@ export function createActivityFinder(client: () => AgentClient): ActivityFinder 
           return { found: true, ...(await runActivityOnce(client, query)) };
         } catch (err) {
           logActivityFailure(err, attempt);
-          if (err instanceof ActivityUnresolvable && err.reason === 'no_picks') {
+          if (
+            err instanceof ActivityUnresolvable &&
+            (err.reason === 'no_picks' || err.reason === 'location_unverified')
+          ) {
             return {
               found: false,
-              reason: 'no_picks',
+              reason: err.reason,
               ...(err.searched ? { searched: err.searched } : {}),
             };
           }

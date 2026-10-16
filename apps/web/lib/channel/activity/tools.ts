@@ -146,6 +146,9 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         return {
           found: false as const,
           reason: result.reason,
+          ...(result.reason === 'location_unverified'
+            ? { sourceCaveat: result.searched?.notes }
+            : {}),
           ...(result.searched
             ? {
                 references: result.searched.references ?? [],

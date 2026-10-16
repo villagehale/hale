@@ -45,10 +45,10 @@ import {
   createRegistrationReader,
   registrationDate,
   registrationHasOpened,
-  registrationWhen,
   windowReadTarget,
 } from '../read';
-import { headsUpPromisesPlan, readinessClause, renderSequenceLeg, windowPhrase } from './copy.js';
+import { composeRegistrationReminder } from './compose';
+import { headsUpPromisesPlan, windowPhrase } from './copy.js';
 import {
   GO_FETCH_TIMEOUT_MS,
   type PrepInput,
@@ -178,6 +178,7 @@ export interface SequenceAuditRow {
 }
 
 export interface SequenceRunDeps {
+  compose: typeof composeRegistrationReminder;
   /** Required even in fixtures: a cached scheduling anchor can never authorize a send. */
   live: {
     read: RegistrationReader;
@@ -750,15 +751,19 @@ async function runLegForSequence(
             ),
     },
   };
-  const body = notice
-    ? registrationChangeBody(notice)
-    : renderLiveSequenceLeg(leg, sequence, reading, isResidentWindow, copyInput);
+  const body = await deps.compose({
+    leg,
+    reading,
+    resident: isResidentWindow,
+    copy: copyInput,
+    change: notice,
+  });
+  if (!body) throw new Error('registration reminder: writer unavailable or ungrounded');
 
   // ONE COMPOSED LEG, TWO ENVELOPES. The sentence is about the household's morning and
   // is rendered once, on the LADDER's clock (the sequence row's), so both parents read
-  // the same time for the same registration. Only the CASL line differs per recipient:
-  // whether this parent has been texted first before is a fact about them, and the gate
-  // answered it for each of them above.
+  // the same time for the same registration. Each recipient still has their own
+  // consent and dedupe gates; no opt-out footer is appended.
   let sent = 0;
   let refused = 0;
   let wireProvider: { id: string; chatId: string | null } | null = null;
@@ -1149,40 +1154,6 @@ function urlShortlist(sequence: LiveSequence, anchor: Date): Shortlist {
   return courseShortlist(sequence.sequenceId, sequence.courseUrl, anchor);
 }
 
-function renderLiveSequenceLeg(
-  leg: SequenceLeg,
-  sequence: LiveSequence,
-  reading: LiveRegistrationReading,
-  resident: boolean,
-  input: import('./copy').LegCopyInput,
-): string {
-  if (leg === 'waitlist_half' || leg === 'waitlist_final') return renderSequenceLeg(leg, input);
-  const date = registrationDate(reading, resident);
-  if (!date) throw new Error('registration: no send evidence');
-  const when = registrationWhen(reading, date);
-  const source = reading.sourceUrl;
-  // Retain the portal's age/setup/closed-page verdicts; only the verified source owns its clock.
-  if (
-    date.time !== null &&
-    input.portal !== null &&
-    (leg === 'readiness' || leg === 'battle_plan' || leg === 'go')
-  ) {
-    return `${renderSequenceLeg(leg, { ...input, timeZone: reading.timeZone!, shortlist: { ...input.shortlist, sourceUrl: source } })} (${reading.timeZone})`;
-  }
-  if (leg === 'heads_up')
-    return `The registration page says ${when}. ${sequence.optIn === 'opted_in' ? "I'll send a reminder the evening before." : 'Confirm the reminder plan in your approvals to get the full reminders.'} ${source}`;
-  if (leg === 'readiness' || leg === 'battle_plan')
-    return `Registration is ${when}. Have your login and this page ready. ${input.portal ? readinessClause(sequence.readinessReady, 'evening') : ''} ${source}`;
-  if (leg === 'go') return `Registration opens at ${when}. Your link: ${source}`;
-  if (leg === 'check_in')
-    return 'How did registration go? Reply "got in", "waitlisted #12" or "missed it".';
-  const deadline =
-    sequence.waitlistStartedAt && sequence.window
-      ? waitlistDeadline(sequence.waitlistStartedAt, sequence.window.waitlistResponseHours)
-      : null;
-  return `Your reported waitlist offer${deadline ? ` deadline is ${deadline.toISOString()}` : ' has no verified response deadline'}. Check the offer before it expires. ${source}`;
-}
-
 export async function runRegistrationSequenceCron(
   database: Database,
   deps: SequenceRunDeps = defaultSequenceRunDeps(),
@@ -1376,6 +1347,7 @@ function optInOf(row: {
 export function defaultSequenceRunDeps(): SequenceRunDeps {
   const read = createRegistrationReader();
   return {
+    compose: composeRegistrationReminder,
     live: {
       read,
       readForSend: createRegistrationReader(),

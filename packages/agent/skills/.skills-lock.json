@@ -235,6 +235,10 @@
     "file": "registration-live-truth.md",
     "sha256": "190e8c75a42ab8ec42a0c644a37bc06cfcd3c8cfe1e9fca68d4f5945b5a66d1c"
   },
+  "registration-reminder.md": {
+    "file": "registration-reminder.md",
+    "sha256": "17a064da911fdd6673c58a9af1cfb9bd3723fd47ede3ac9e8f47ba257fc271ca"
+  },
   "reminder-voice.md": {
     "file": "reminder-voice.md",
     "sha256": "b7a348d73cddfe88451da8818bc1b4ee26e5424a246ce9030cbbfb30549cc261"

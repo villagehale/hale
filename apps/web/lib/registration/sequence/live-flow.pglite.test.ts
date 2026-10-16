@@ -8,6 +8,7 @@ import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { HandlerContext } from '~/lib/channel/router/route';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { registrationReminderFixture } from '~/lib/testing/registration-reminder';
 import { registrationSourceFixture } from '~/lib/testing/registration-source';
 import type { LiveRegistrationReading } from '../live-reading';
 import { createRegistrationPageBytesFetch } from '../page';
@@ -111,6 +112,7 @@ async function row(id: string) {
 function harness(reading: LiveRegistrationReading, target: Awaited<ReturnType<typeof watch>>) {
   vi.stubEnv('F14_ENABLED', 'true');
   const deps = defaultSequenceRunDeps();
+  deps.compose = registrationReminderFixture;
   const transport = new FakeTransport();
   let reads = 0;
   deps.transport = transport;

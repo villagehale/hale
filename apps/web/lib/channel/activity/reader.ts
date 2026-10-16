@@ -2,6 +2,7 @@ import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
+import { readFamilyPlace } from '~/lib/channel/off-domain/place';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 import { readActiveArea, resolveActiveAreaCoarse } from '~/lib/village/areas';
 import { qualifyActivityLocation } from './location';
@@ -11,8 +12,20 @@ export async function readActivityLocation(
   familyId: string,
 ): Promise<string | null> {
   const area = await readActiveArea(database, familyId);
-  if (!area?.city) return null;
-  const location = qualifyActivityLocation(area.city, area.province, area.country);
+  let location: string | null;
+  if (!area?.city || !area.country) {
+    const place = await readFamilyPlace(database, familyId);
+    location =
+      place.status === 'known' && place.city
+        ? qualifyActivityLocation(
+            place.city,
+            place.provinceOrState ?? area?.province,
+            place.country,
+          )
+        : area?.city
+          ? qualifyActivityLocation(area.city, area.province, area.country)
+          : null;
+  } else location = qualifyActivityLocation(area.city, area.province, area.country);
   return location && scrubResidualPii(location).trim() === location ? location : null;
 }
 

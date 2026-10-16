@@ -94,6 +94,7 @@ interface Seen {
   userMessage?: string;
   system?: string;
   outputSchema?: unknown;
+  thinking?: unknown;
 }
 
 type PhaseResponse = unknown | (() => unknown) | Error;
@@ -111,6 +112,7 @@ function makeClient(
           tools: req.tools,
           toolChoice: isCompose ? 'activity_picks' : undefined,
           outputSchema: req.output_config?.format?.schema,
+          thinking: req.thinking,
           userMessage: req.messages?.[0]?.content,
           system:
             typeof req.system === 'string'
@@ -271,6 +273,33 @@ describe('the grounding request the eval corpus replays', () => {
 });
 
 describe('an ungrounded find never ships', () => {
+  it('extracts from the canonical moved page without first spending a call on thinking', async () => {
+    const current = 'https://venue.example/current';
+    const fetch = vi
+      .spyOn(sourcePage, 'createRegistrationPageFetch')
+      .mockReturnValue(async (url) => {
+        if (url !== current) throw new sourcePage.RegistrationPageRedirect(current);
+        return `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`;
+      });
+    const seen: Seen[] = [];
+    try {
+      const result = await createActivityFinder(
+        makeClient(
+          {
+            ground: groundResult(1),
+            compose: composeResult({ picks: [{ ...WHOLE_PICK, source_url: current }] }),
+          },
+          seen,
+        ),
+      ).find(QUERY);
+      expect(result).toMatchObject({ found: true, picks: [{ sourceUrl: current }] });
+      expect(seen).toHaveLength(2);
+      expect(seen[1]?.thinking).toEqual({ type: 'between_tools' });
+      expect(seen[1]?.userMessage).toContain(`SOURCE: ${current}`);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
   it('reads a region-qualified source ahead of same-name foreign search hits', async () => {
     const officialUrl = 'https://attend.bpl.on.ca/event/123';
     const ground = groundResult(4);
@@ -348,9 +377,10 @@ describe('an ungrounded find never ships', () => {
       ),
     );
     try {
-      expect(await finder.find({ ...QUERY, town: 'Burlington, Ontario, Canada' })).toEqual({
+      expect(await finder.find({ ...QUERY, town: 'Burlington, Ontario, Canada' })).toMatchObject({
         found: false,
         reason: 'location_unverified',
+        searched: { references: [], checkedSources: [expect.stringContaining('https://')] },
       });
       expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
       expect(await finder.find({ ...QUERY, town: 'Burlington, WA, United States' })).toMatchObject({

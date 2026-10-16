@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, type Municipality, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
@@ -10,7 +10,7 @@ import {
 } from '~/lib/channel/activity/lane';
 import { readActivityLocation, readActivityTimeZone } from '~/lib/channel/activity/reader';
 import { activityClient } from '~/lib/pipeline/client';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
+import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 import { resolveActiveAreaCoarse } from './areas';
 
 /** Identity only, never facts to answer with. A new dated occurrence is a new offer. */
@@ -107,7 +107,9 @@ export async function findFamilyActivities(
   ]);
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
-  const towns = area ? resolveMunicipalities(area) : [];
+  const towns = area
+    ? municipalitiesForFsa(area.replace(/\s+/g, '').toUpperCase().slice(0, 3))
+    : [];
   if (towns.length !== 1 && !city) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
@@ -116,7 +118,7 @@ export async function findFamilyActivities(
     timeZone,
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
-    municipality: towns.length === 1 ? towns[0]! : null,
+    municipality: towns.length === 1 ? (towns[0]! as Municipality) : null,
     location: city,
     stage: deriveStage(youngest.dateOfBirth, now),
     householdNames: [...children, ...parents].flatMap(({ name }) =>

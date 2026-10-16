@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import type { RegistrationSourceState } from '@hale/db';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,9 +8,12 @@ import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { FetchPage } from '~/lib/registration/fetch';
+import { registrationReminderFixture } from '~/lib/testing/registration-reminder';
+import { structuredReply } from '~/lib/testing/structured-reply';
 import { resolveFamilyOpen } from '../match-registration-windows';
 import { createRegistrationReader } from '../read';
 import type { RegistrationReader } from '../read';
+import { composeRegistrationReminder } from './compose';
 import { decideRegistrationRefresh } from './refresh';
 import {
   type LiveSequence,
@@ -195,6 +199,7 @@ function harness(
   };
 
   const deps: SequenceRunDeps = {
+    compose: registrationReminderFixture,
     live: {
       read,
       readForSend: read,
@@ -347,6 +352,48 @@ describe('the D21 dark-launch flag', () => {
 });
 
 describe('the legs', () => {
+  it('sends the actual structured writer output after its live read, without a template', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()] });
+    const create = vi.fn(async (request: { messages: { content: string }[] }) => {
+      const context = JSON.parse(request.messages[0]!.content);
+      return structuredReply(request, 'registration_reminder', {
+        message: `Freshly checked: ${context.when}. I'll send your evening-before plan.`,
+      });
+    });
+    const client = { messages: { create } } as unknown as AgentClient;
+    h.deps.compose = (input) => composeRegistrationReminder(input, client);
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(result.sent).toBe(1);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(h.transport.bodies()[0]).toBe(
+      `Freshly checked: 2026-09-15 at 06:30 America/Toronto. I'll send your evening-before plan.\n${win().sourceUrl}`,
+    );
+  });
+  it('defers a failed writer without a send, ledger write or deterministic fallback', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()] });
+    h.deps.compose = async () => null;
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(result.sent).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.writes).toEqual([]);
+    expect(h.promised).toEqual([]);
+  });
+
+  it('rechecks withdrawal after AI writing, before transport', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const sequence = live();
+    const h = harness({ sequences: [sequence] });
+    h.deps.compose = async () => {
+      sequence.optIn = 'declined';
+      return 'Generated reminder';
+    };
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(result.sent).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+  });
   it('sends the heads-up without an opt-out line', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ sequences: [live({ optIn: 'pending' })] });

@@ -2,7 +2,11 @@ import { EventEmitter } from 'node:events';
 import type { RequestOptions } from 'node:https';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_PAGE_BYTES } from './fetch';
-import { createRegistrationPageBytesFetch, createRegistrationPageFetch } from './page';
+import {
+  RegistrationPageRedirect,
+  createRegistrationPageBytesFetch,
+  createRegistrationPageFetch,
+} from './page';
 
 const network = vi.hoisted(() => ({ request: vi.fn(), lookup: vi.fn() }));
 vi.mock('node:https', () => ({ request: network.request }));
@@ -41,6 +45,17 @@ function response(status = 200, length?: string) {
 }
 
 describe('registration HTTPS fetch wiring', () => {
+  it('exposes a validated redirect target but does not follow it automatically', async () => {
+    const pending = createRegistrationPageFetch()('https://example.org/old');
+    const res = response(301);
+    Object.assign(res.headers, { location: '/current?program=kids' });
+    respond(res);
+    await expect(pending).rejects.toMatchObject({
+      location: 'https://example.org/current?program=kids',
+    });
+    expect(network.request).toHaveBeenCalledTimes(1);
+    expect(RegistrationPageRedirect.prototype).toBeInstanceOf(Error);
+  });
   it('preserves non-UTF-8 PDF bytes for the registration reader', async () => {
     const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0xff, 0x80, 0x00]);
     const pending = createRegistrationPageBytesFetch()('https://example.org/download/123');

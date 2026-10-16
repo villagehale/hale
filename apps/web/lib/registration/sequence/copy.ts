@@ -17,10 +17,11 @@ import type { SequenceLeg, SequenceOptIn } from './schedule.js';
 import type { FitNote, Shortlist } from './shortlist.js';
 
 /**
- * VIL-242 · M7 — every sentence the sequence can send, rendered deterministically.
+ * Legacy wording retained for solicited acknowledgements and cron-mechanics fixtures.
+ * Scheduled reminders now use compose.ts; this file is not their writer or fallback.
  *
- * NO MODEL RUNS IN THIS FILE, and unlike M4's nudge that is not a fallback path — it is
- * the whole design. Two reasons, and the second is the one that settles it:
+ * NO MODEL RUNS IN THIS FILE. The original template design is documented below for
+ * the remaining acknowledgement callers and the historical fixture baseline:
  *
  *   1. There is nothing here for a model to add. Every leg is a time, a link and a list
  *      of names; the warmth a composer buys on a weekend suggestion is worth very little

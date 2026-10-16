@@ -491,36 +491,13 @@ function readAge(
   return { fit: 'unknown', outsideBandChildIds };
 }
 
-const NON_RESIDENT = /non[- ]?resident/i;
-
-/**
- * What the page says the course costs, or nothing.
- *
- * The non-resident test runs FIRST because "Resident" is a substring of "Non-Resident"
- * on both Markham's rows and Newmarket's. A pair BOUNDS the cost and never asserts
- * which rate this household pays: `CanSelect` is false for an anonymous reader on every
- * sampled tenant, because the portal picks the rate from the account's own address.
- * Anything that is not a clean pair or a single row is omitted — a page printing four
- * member/non-member rows is a price question Hale cannot answer in one clause.
- */
+/** Preserve each published label/amount pair; never classify rates with a regex. */
 export function priceClause(prices: CourseFacts['Prices']): string | null {
   const rows = (prices ?? []).filter(
     (row): row is { Name: string; DisplayAmount: string } =>
       typeof row.Name === 'string' && typeof row.DisplayAmount === 'string',
   );
-  const [first, second] = rows;
-  if (first === undefined) return null;
-  if (rows.length === 1) return `the page lists ${first.DisplayAmount}`;
-  // The COUNT is the check. Markham's four-row paint-and-play page opens with a member
-  // non-resident/resident pair, so a clause that classified the first two rows and let
-  // the rest go would quote the member rate to a household the page charges $83.
-  if (rows.length !== 2 || second === undefined) return null;
-
-  const pair = [first, second];
-  const nonResident = pair.find((row) => NON_RESIDENT.test(row.Name));
-  const resident = pair.find((row) => !NON_RESIDENT.test(row.Name));
-  if (nonResident === undefined || resident === undefined) return null;
-  return `${resident.DisplayAmount} / ${nonResident.DisplayAmount} non-resident`;
+  return rows.length ? rows.map((row) => `${row.Name}: ${row.DisplayAmount}`).join('; ') : null;
 }
 
 /**

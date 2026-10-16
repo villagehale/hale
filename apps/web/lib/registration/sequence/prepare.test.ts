@@ -646,17 +646,19 @@ describe('the age band', () => {
 });
 
 describe('the price clause', () => {
-  it('prints the pair a two-row page names, non-resident second', () => {
-    expect(priceClause(factsOf('oakville-course', OAKVILLE).Prices)).toBe(
-      '$6.51 / $16.51 non-resident',
-    );
-    expect(priceClause(factsOf('open-window-open-markham', LEGO).Prices)).toBe(
-      '$121.16 / $139.36 non-resident',
-    );
+  it('preserves every published label and amount in page order, without classifying residency', () => {
+    for (const prices of [
+      factsOf('oakville-course', OAKVILLE).Prices,
+      factsOf('open-window-open-markham', LEGO).Prices,
+    ]) {
+      expect(priceClause(prices)).toBe(
+        prices!.map((row) => `${row.Name}: ${row.DisplayAmount}`).join('; '),
+      );
+    }
   });
 
   it('prints a single row as the one figure the page lists', () => {
-    expect(priceClause(factsOf('nvrc-course', NVRC).Prices)).toBe('the page lists $51.21');
+    expect(priceClause(factsOf('nvrc-course', NVRC).Prices)).toContain(': $51.21');
   });
 
   /**
@@ -665,9 +667,9 @@ describe('the price clause', () => {
    * body in the order the page serialises them. Its FIRST TWO rows are a clean
    * non-resident/resident pair, so a clause that classifies two rows and ignores the
    * rest prints the MEMBER rates — $74.70 to a household this page charges $83.00.
-   * Four rows is a price question one clause cannot answer, so it answers nothing.
+   * Preserve all four labels rather than selecting a household rate.
    */
-  it('omits the real four-row page rather than printing its first two rows', () => {
+  it('preserves all four rows rather than selecting the first pair', () => {
     const gallery = '25/26 Culture: Gallery Children/Teen/Pre-teen Program';
     const paintAndPlay = [
       { Name: `${gallery} - Member Non Resident`, DisplayAmount: '$85.91' },
@@ -676,23 +678,25 @@ describe('the price clause', () => {
       { Name: `${gallery} - Resident`, DisplayAmount: '$83.00' },
     ];
 
-    expect(priceClause(paintAndPlay as never)).toBeNull();
+    expect(priceClause(paintAndPlay as never)).toBe(
+      paintAndPlay.map((row) => `${row.Name}: ${row.DisplayAmount}`).join('; '),
+    );
   });
 
-  /** The count is the check, not the order: three rows whose first two ARE a pair are
-   * still three rows, and the pair alone still prints. */
-  it('omits a third row instead of dropping it', () => {
+  it('keeps a third row instead of dropping or reclassifying it', () => {
     const three = [
       { Name: 'Resident', DisplayAmount: '$10.00' },
       { Name: 'Non-Resident', DisplayAmount: '$20.00' },
       { Name: 'Senior', DisplayAmount: '$5.00' },
     ];
 
-    expect(priceClause(three as never)).toBeNull();
-    expect(priceClause(three.slice(0, 2) as never)).toBe('$10.00 / $20.00 non-resident');
+    expect(priceClause(three as never)).toBe(
+      'Resident: $10.00; Non-Resident: $20.00; Senior: $5.00',
+    );
+    expect(priceClause(three.slice(0, 2) as never)).toBe('Resident: $10.00; Non-Resident: $20.00');
   });
 
-  it('omits a page whose two rows are not a resident pair', () => {
+  it('leaves missing prices unknown and preserves labels even when they are not a resident pair', () => {
     expect(priceClause([] as never)).toBeNull();
     expect(priceClause(null)).toBeNull();
     expect(
@@ -700,7 +704,7 @@ describe('the price clause', () => {
         { Name: 'A - Non-Resident', DisplayAmount: '$1' },
         { Name: 'B - Non-Resident', DisplayAmount: '$2' },
       ] as never),
-    ).toBeNull();
+    ).toBe('A - Non-Resident: $1; B - Non-Resident: $2');
   });
 });
 
@@ -1022,7 +1026,8 @@ describe('readCoursePrep — the seven questions, in order', () => {
     expect(verdict.facts.StartTime).toBe('10:15 AM');
     expect(verdict.facts.RegFormId).toBeNull();
     expect(verdict.facts.PrerequisiteEvents).toBe(false);
-    expect(priceClause(verdict.facts.Prices)).toBe('$121.16 / $139.36 non-resident');
+    expect(priceClause(verdict.facts.Prices)).toContain('$121.16');
+    expect(priceClause(verdict.facts.Prices)).toContain('$139.36');
     expect(verdict.clocks.public).toEqual(new Date('2026-08-12T06:30:00-04:00'));
   });
 

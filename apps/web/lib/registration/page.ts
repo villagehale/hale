@@ -61,6 +61,12 @@ export function registrationPageUrl(raw: string): string {
   return url.toString();
 }
 
+export class RegistrationPageRedirect extends Error {
+  constructor(readonly location: string) {
+    super('registration page: status or size refusal');
+  }
+}
+
 /** Validate inside socket lookup, not before an unpinned fetch (DNS rebinding).
  * No credentials, redirects, cookies or unbounded response buffering. */
 export function createRegistrationPageBytesFetch(
@@ -89,6 +95,22 @@ export function createRegistrationPageBytesFetch(
         },
       };
       const req = request(url, options, (response) => {
+        if (
+          [301, 302, 303, 307, 308].includes(response.statusCode ?? 0) &&
+          response.headers.location
+        ) {
+          response.destroy();
+          try {
+            reject(
+              new RegistrationPageRedirect(
+                registrationPageUrl(new URL(response.headers.location, url).toString()),
+              ),
+            );
+          } catch (error) {
+            reject(error);
+          }
+          return;
+        }
         if (
           response.statusCode !== 200 ||
           Number(response.headers['content-length']) > MAX_PAGE_BYTES

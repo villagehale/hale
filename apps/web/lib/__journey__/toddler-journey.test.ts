@@ -58,6 +58,7 @@ import {
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
 import { askWriter } from '~/lib/testing/consent-double';
+import { registrationReminderFixture } from '~/lib/testing/registration-reminder';
 import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -658,6 +659,7 @@ async function runToddlerJourney(): Promise<Journey> {
     publishedTime: true,
   } as never);
   const sequenceDeps: SequenceRunDeps = {
+    compose: registrationReminderFixture,
     live: {
       read: async (target, now) => ({
         sourceUrl: target.sourceUrl,

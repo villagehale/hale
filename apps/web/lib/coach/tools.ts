@@ -240,6 +240,12 @@ export function searchVillageTool(
         inVerification: 0,
         standingOption: null,
         liveRead: found.reason ?? 'verified',
+        ...(found.reason === 'location_unverified'
+          ? {
+              sourceCaveat:
+                'These pages were read, but the requested city/province/country could not be verified. Preserve the links as unverified references, not local recommendations or confirmed dates.',
+            }
+          : {}),
         ...(found.references ? { references: found.references } : {}),
         ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
       };
