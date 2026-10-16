@@ -79,6 +79,18 @@ describe('AI registration reminders (mechanics, not model quality)', () => {
     const text = `${when}. ${'Preparation information. '.repeat(35)}${source}`;
     expect(await composeRegistrationReminder(input, fake(text).client)).toBe(text);
   });
+  it.each([
+    'Les inscriptions ouvrent le 2026-10-23 à 06:30 (America/Toronto).',
+    'يفتح التسجيل 2026-10-23 الساعة 06:30 بتوقيت America/Toronto.',
+  ])('preserves live facts without requiring the English word at: %s', async (text) => {
+    expect(await composeRegistrationReminder(input, fake(text).client)).toBe(`${text}\n${source}`);
+  });
+  it.each(['2026-10-23 America/Toronto', '2026-10-23 06:30', '2026-10-24 06:30 America/Toronto'])(
+    'still holds missing or changed date/time/zone facts: %s',
+    async (text) => {
+      expect(await composeRegistrationReminder(input, fake(text).client)).toBeNull();
+    },
+  );
   it('preserves date-only precision and does not resurrect the cached anchor after an unavailable read', () => {
     const reading = {
       ...input.reading,

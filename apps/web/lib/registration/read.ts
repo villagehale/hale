@@ -205,6 +205,21 @@ export function registrationWhen(
   return `${date.date}${date.time === null ? ' (opening time not published)' : ` at ${date.time}`} ${reading.timeZone}`;
 }
 
+/** Protect published values, not the formatter's English connecting words. */
+export function registrationDateRetained(
+  message: string,
+  date: LiveRegistrationDate | null,
+  timeZone: string | null,
+): boolean {
+  return (
+    !date ||
+    (message.includes(date.date) &&
+      (date.time === null || message.includes(date.time)) &&
+      timeZone !== null &&
+      message.includes(timeZone))
+  );
+}
+
 export function registrationHasOpened(
   reading: LiveRegistrationReading,
   date: LiveRegistrationDate,

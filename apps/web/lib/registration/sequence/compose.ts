@@ -4,7 +4,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { LiveRegistrationReading } from '../live-reading';
-import { registrationDate, registrationWhen } from '../read';
+import { registrationDate, registrationDateRetained, registrationWhen } from '../read';
 import type { LegCopyInput } from './copy';
 import { courseSignInUrl } from './prepare';
 import type { RegistrationChange } from './refresh';
@@ -91,7 +91,9 @@ export async function composeRegistrationReminder(
     });
     const body = value.message;
     // Preserve exact published precision and verified links, without a character/segment cap.
-    if (context.when && !body.includes(context.when)) return null;
+    const date = input.change ? input.change.date : registrationDate(input.reading, input.resident);
+    const zone = input.change ? input.change.timeZone : input.reading.timeZone;
+    if (!registrationDateRetained(body, date, zone)) return null;
     if (/\b(?:reply\s+)?STOP\s+to\b/i.test(body)) return null;
     const allowed = new Set([
       context.sourceUrl,

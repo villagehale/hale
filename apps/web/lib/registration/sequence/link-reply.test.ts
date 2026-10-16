@@ -65,6 +65,20 @@ describe('registration-link AI wording (mechanics, not language quality)', () =>
     expect(context.when).not.toContain('00:00');
     expect(context.reminderPlan.minutesBeforeOpening).toBeNull();
   });
+  it.each([
+    'Les inscriptions ouvrent le 2026-11-10 à 09:00 (America/Toronto).',
+    'يفتح التسجيل 2026-11-10 الساعة 09:00 بتوقيت America/Toronto.',
+  ])('retains published facts when connecting words are translated: %s', async (text) => {
+    expect(await composeRegistrationLinkReply(input, fake(text).client)).toBe(
+      `${text}\n${sourceUrl}`,
+    );
+  });
+  it.each(['2026-11-10 America/Toronto', '2026-11-10 09:00', '2026-11-11 09:00 America/Toronto'])(
+    'still refuses missing or changed date/time/zone facts: %s',
+    async (text) => {
+      expect(await composeRegistrationLinkReply(input, fake(text).client)).toBeNull();
+    },
+  );
   it.each(['A date is coming soon.', `${when} https://invented.example/`])(
     'refuses unsupported wording, no fixed fallback: %s',
     async (message) => {

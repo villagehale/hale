@@ -4,7 +4,12 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { LiveRegistrationReading } from '../live-reading';
-import { registrationDate, registrationWhen, unclassifiedRegistrationDate } from '../read';
+import {
+  registrationDate,
+  registrationDateRetained,
+  registrationWhen,
+  unclassifiedRegistrationDate,
+} from '../read';
 
 const NEXT_STEP = {
   unsafe_registration_url: 'send_public_https_course_url',
@@ -77,7 +82,11 @@ export async function composeRegistrationLinkReply(
       schema: z.object({ message: z.string().trim().min(1) }),
       maxTokens: 2048,
     });
-    if (context.when && !value.message.includes(context.when)) return null;
+    const date = input.reading
+      ? (registrationDate(input.reading, false) ?? unclassifiedRegistrationDate(input.reading))
+      : null;
+    if (!registrationDateRetained(value.message, date, input.reading?.timeZone ?? null))
+      return null;
     const urls = value.message.match(/https?:\/\/[^\s<>]+/g) ?? [];
     if (urls.some((url) => url.replace(/[.,;!?]+$/, '') !== context.sourceUrl)) return null;
     return context.sourceUrl && !value.message.includes(context.sourceUrl)
