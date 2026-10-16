@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { findActivitiesTool } from '~/lib/channel/activity/tools';
-import { smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { MAX_REPLY_SEGMENTS } from './reply';
+import { plainText, toSmsReply } from './reply';
 import { buildChannelCoachTools } from './tools';
 
 /**
@@ -62,25 +61,23 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   });
 
   /**
-   * ONE reader of "how long may a reply be".
-   *
-   * There were two, and they disagreed by a factor of nearly two: the skill stated the
-   * ceiling in SENTENCES ("four is the ceiling") while `toSmsReply` enforces it in
-   * SEGMENTS. On 2026-08-21 a model obeying the skill exactly wrote 548 units of a
-   * registration date plus two web-grounded finds against a 306-unit budget, and the
-   * whole second paragraph — the part the web search was paid for — was dropped from a
-   * message that opened "Two things worth flagging here."
-   *
-   * So the skill now states the number this function enforces, and this asserts they are
-   * the same number. Raising MAX_REPLY_SEGMENTS turns this red until the writer is told.
+   * VIL-434. The skill may still ask for a short reply. `toSmsReply` does not enforce
+   * that number: a body past it goes out whole, including through "St.".
    */
-  it('tells the model the same character ceiling toSmsReply enforces', async () => {
+  it('does not cut a reply the skill would have called over its length target', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
-    // GSM-7, because the skill forbids everything else — and smsUnitsBudget answers in
-    // the encoding of the body it is handed, so it has to be handed a plain one.
-    const budget = smsUnitsBudget('plain ascii', MAX_REPLY_SEGMENTS);
+    const long = plainText(
+      "Nothing's on the calendar today. The Kids & Me drop-in at St. Lawrence Community Centre runs this afternoon and the rest of this note is here so two segments cannot hold it. ".repeat(
+        4,
+      ),
+    );
 
-    expect(skill.instructions).toContain(`${budget} characters`);
+    expect(skill.instructions).toContain('Two short sentences is the target');
+    expect(skill.instructions).not.toContain('gets cut off');
+    expect(toSmsReply(long, { children: [], now: new Date('2026-10-12T14:07:00.000Z') })).toBe(
+      long,
+    );
+    expect(long.length).toBeGreaterThan(306);
   });
 
   /**
@@ -131,7 +128,7 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain('Do not tell them to reply with a keyword');
     expect(skill.instructions).not.toContain('YES to confirm');
     expect(skill.instructions).not.toContain('Reply YES');
-    expect(skill.instructions).toContain('Under 200 characters');
+    expect(skill.instructions).not.toContain('Under 200 characters');
     expect(skill.instructions).not.toContain("what I've got verified");
     expect(skill.instructions).toContain('not them asking that nearby question again');
     expect(skill.instructions).toContain('Do not search instead of asking');

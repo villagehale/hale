@@ -307,7 +307,6 @@ export async function runOnboardingReplay(
         now: () => now,
       },
       inbound,
-      0,
     );
     const bubbles = transport.bodies().slice(from);
     turns.push({ inbound: body, bubbles, ms: Date.now() - started, outcome });

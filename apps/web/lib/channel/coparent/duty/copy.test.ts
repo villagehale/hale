@@ -1,9 +1,8 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  COPARENT_DUTY_COPY_LOCKED_ENV,
   DUTY_BOTH_CLAIMED_COPY,
   DUTY_BOTH_CLAIMED_COPY_FR,
   DUTY_COPY_TEMPLATES,
@@ -28,7 +27,6 @@ import {
   absorbDutyLine,
   dutyClockLabel,
   dutyCopy,
-  dutyCopyLocked,
   dutyCopyMayLeave,
   dutyWeekList,
   dutyWeekdayName,
@@ -63,23 +61,7 @@ const OWNED = {
 };
 
 describe('duty copy lock', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it('stays unlocked unless the value is exactly true', () => {
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, '');
-    expect(dutyCopyLocked()).toBe(false);
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'TRUE');
-    expect(dutyCopyLocked()).toBe(false);
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true\n');
-    expect(dutyCopyLocked()).toBe(false);
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
-    expect(dutyCopyLocked()).toBe(true);
-  });
-
-  it('does not let an unrendered template leave, even when the lock flag is on', () => {
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
+  it('does not let an unrendered template leave', () => {
     for (const line of DUTY_COPY_TEMPLATES) {
       expect(line.includes('TODO-Design')).toBe(false);
       expect(dutyCopyMayLeave(line)).toBe(false);
@@ -199,7 +181,6 @@ describe('duty copy lock', () => {
     expect(() => dutyCopy('night_before', 'en', { name: 'Sam' })).toThrow(DutyCopyError);
     expect(() => dutyCopy('which_kid', 'en', { name: 'Sam' })).toThrow(DutyCopyError);
     expect(() => dutyCopy('week_overview', 'en', {})).toThrow(DutyCopyError);
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     const ready = dutyCopy('silent_parent', 'en', { name: 'Sam', event: 'swim', day: 'Monday' });
     expect(ready).not.toMatch(/\{[a-zA-Z]+\}/);
     expect(dutyCopyMayLeave(ready)).toBe(true);

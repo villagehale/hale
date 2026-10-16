@@ -70,8 +70,8 @@ function ledgered<C extends { messages: { create: (...a: never[]) => unknown } }
 const HELLOS = [
   { id: 'en', parentWords: 'hi', language: 'en' },
   { id: 'fr', parentWords: 'bonjour', language: 'fr' },
-  { id: 'zh', parentWords: '你好', language: 'en' },
-  { id: 'ar', parentWords: 'مرحبا', language: 'en' },
+  { id: 'zh', parentWords: '你好', language: 'zh' },
+  { id: 'ar', parentWords: 'مرحبا', language: 'ar' },
 ] as const;
 
 function input(hello: (typeof HELLOS)[number]): FriendVoiceInput {

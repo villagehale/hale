@@ -1,7 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull, like } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import { normalizeToken } from '~/lib/channel/normalize-token';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { writeFact } from '~/lib/memory/facts';
@@ -76,7 +75,7 @@ const BOOKING_VERBS = new Set(['book it', 'draft it']);
 export function matchHealthReply(body: string): HealthReplyIntent | null {
   const word = normalizeToken(body);
   if (DONE_WORDS.has(word)) return 'done';
-  if (BOOKING_VERBS.has(word) || readAffirmative(body) === 'yes') return 'booking';
+  if (BOOKING_VERBS.has(word)) return 'booking';
   return null;
 }
 

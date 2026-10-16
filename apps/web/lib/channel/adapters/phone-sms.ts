@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { copyLanguage } from '~/lib/channel/language';
 import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import {
   type FamilyOutboundTarget,
@@ -79,8 +80,15 @@ export function createSmsChannel(deps: SmsChannelDeps): Channel {
         if (target.channel === 'group') {
           const database = deps.database ?? ({} as Database);
           const speech = await familySpeech(database, target.familyId, userId);
-          const body =
-            speech.language === 'fr' ? groupBothReaderFrench(rendered.text) : rendered.text;
+          const key = copyLanguage(speech.language);
+          if (!key) {
+            console.error(
+              { familyId: target.familyId },
+              'sms adapter: no group line for this language - nothing sent',
+            );
+            return { status: 'skipped', reason: 'disabled' };
+          }
+          const body = key === 'fr' ? groupBothReaderFrench(rendered.text) : rendered.text;
           const delivered = await deliverFamilyOutbound(database, {
             familyId: target.familyId,
             body,

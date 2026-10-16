@@ -42,6 +42,7 @@ describe('parseLinqWebhook', () => {
         senderHandle: '+12025559876',
         text: 'Hello!',
         mediaCount: 0,
+        media: [],
         receivedAt: new Date('2026-02-05T19:31:13.074Z'),
         otherHandles: [],
         isGroup: false,
@@ -86,6 +87,25 @@ describe('parseLinqWebhook', () => {
     if (parsed.kind !== 'message') return;
     expect(parsed.message.text).toBe('see this');
     expect(parsed.message.mediaCount).toBe(1);
+    expect(parsed.message.media).toEqual([{ kind: 'file', url: null, mime: null }]);
+  });
+
+  it('classifies an image url and a video, and drops a non-https url', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [
+      { type: 'media', url: 'https://cdn.example/flyer.jpg', mime_type: 'image/jpeg' },
+      { type: 'media', url: 'https://cdn.example/clip.mp4', mime_type: 'video/mp4' },
+      { type: 'media', url: 'http://cdn.example/plain.png', mime_type: 'image/png' },
+    ];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.media).toEqual([
+      { kind: 'image', url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+      { kind: 'video', url: 'https://cdn.example/clip.mp4', mime: 'video/mp4' },
+      { kind: 'image', url: null, mime: 'image/png' },
+    ]);
   });
 
   it('names a group, an outbound echo, another event, and the old payload version', () => {

@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { speak } from '~/lib/channel/spoken-line';
 
 /**
  * ASKING FOR THE FORWARDING ADDRESS, IN THE THREAD — the door that opens the door
@@ -311,38 +312,28 @@ export function matchForwardAddressRequest(body: string): ForwardAddressAsk | nu
  * the end of the line so that a parent who copies the whole line back still lands on it:
  * {@link ENDS_THE_ASK} is satisfied by the full stop, and by nothing that would follow.
  */
-const ADDRESS_BY_LANGUAGE: Record<ReplyLanguage, (address: string) => string> = {
-  en: (address) =>
-    `Forward mail to ${address} and I'll read it. From a sender you haven't okayed, I ask you first - nothing is read until you say yes. Any time, text turn off my forwarding address.`,
-  fr: (address) =>
-    `Transférez votre courrier à ${address} et je le lirai. D'un expéditeur que vous n'avez pas approuvé, je vous demande d'abord - rien n'est lu avant votre oui. Quand vous voulez, textez désactiver mon adresse de transfert.`,
-};
-
-/** The whole reply, address included — composed here and nowhere else, so the sentence
- * and the credential cannot be split by any later fitting. */
-export function forwardAddressReply(language: ReplyLanguage, address: string): string {
-  return ADDRESS_BY_LANGUAGE[language](address);
+/** The whole reply, address included. The address must survive unchanged. */
+export function forwardAddressReply(
+  language: ReplyLanguage | null,
+  address: string,
+): Promise<string | null> {
+  return speak({
+    purpose: 'forward_address',
+    language,
+    facts: { address },
+    verbatim: [address],
+  });
 }
 
 /** Whether there was a live address to turn off. `not_configured` is never dressed up as
  * a success: nothing of theirs was revoked, and the reply says so (rule #11). */
 export type ForwardRevokeOutcome = 'revoked' | 'not_configured';
 
-const REVOKE_BY_LANGUAGE: Record<ReplyLanguage, Record<ForwardRevokeOutcome, string>> = {
-  en: {
-    revoked:
-      'Done - your forwarding address is off. Mail sent to it from now on is ignored. Text forwarding address if you ever want a new one.',
-    not_configured: `You don't have a forwarding address set up, so there is nothing to turn off. Text forwarding address if you want one.`,
-  },
-  fr: {
-    revoked:
-      'Fait - votre adresse de transfert est désactivée. Le courrier qui y arrive est ignoré. Textez adresse de transfert si vous en voulez une autre.',
-    not_configured: `Vous n'avez pas d'adresse de transfert, il n'y a donc rien à désactiver. Textez adresse de transfert si vous en voulez une.`,
-  },
-};
-
-export function forwardRevokeReply(language: ReplyLanguage, outcome: ForwardRevokeOutcome): string {
-  return REVOKE_BY_LANGUAGE[language][outcome];
+export function forwardRevokeReply(
+  language: ReplyLanguage | null,
+  outcome: ForwardRevokeOutcome,
+): Promise<string | null> {
+  return speak({ purpose: 'forward_revoke', language, facts: { outcome } });
 }
 
 /**
@@ -363,13 +354,8 @@ export function forwardRevokeReply(language: ReplyLanguage, outcome: ForwardRevo
  * unrelated "yeah, sounds good" would land on a revoke they had just declined. Saying
  * this one sentence, under its own template key, is what closes it.
  */
-const REVOKE_DECLINED_BY_LANGUAGE: Record<ReplyLanguage, string> = {
-  en: 'Okay - your forwarding address is still on.',
-  fr: 'Entendu - votre adresse de transfert reste active.',
-};
-
-export function forwardRevokeDeclinedReply(language: ReplyLanguage): string {
-  return REVOKE_DECLINED_BY_LANGUAGE[language];
+export function forwardRevokeDeclinedReply(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'forward_revoke_declined', language });
 }
 
 // ── the confirm question, derived from the ledger ────────────────────────────

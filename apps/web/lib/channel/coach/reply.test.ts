@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import {
-  MAX_REPLY_SEGMENTS,
-  ReplyNeedsShorter,
-  plainText,
-  redactTeenNames,
-  toSmsReply,
-} from './reply';
+import { plainText, redactTeenNames, toSmsReply } from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -105,13 +99,11 @@ describe('toSmsReply', () => {
   });
 
   /**
-   * The trim drops whole sentences from the END and stops there. It used to append
-   * "More in the app: <url>", which fired precisely when the answer was too long to
-   * send — the app-point on the message that mattered most (skill audit P0 #4). What
-   * survives is the FIRST sentence, which is where the skill puts the answer, and what
-   * the trim must never do is exceed the budget it exists to enforce.
+   * VIL-434. A reply longer than two segments goes out whole. Code used to drop
+   * sentences from the end until two segments remained, and it used to append an app
+   * link when it did. Neither happens now.
    */
-  it('trims an over-budget reply to whole sentences, and points nowhere', () => {
+  it('sends an over-budget reply whole, and points nowhere', () => {
     const raw = [
       'Swim is on Tuesday at four thirty and Thursday at five fifteen this week.',
       'The Thursday one is at the east pool rather than the usual west pool.',
@@ -122,66 +114,47 @@ describe('toSmsReply', () => {
 
     const out = toSmsReply(raw, { children: [], now: NOW });
 
-    expect(smsSegments(raw)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
-    expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(raw)).toBeGreaterThan(2);
+    expect(out).toBe(raw);
     expect(out).not.toContain(LINK);
     expect(out).not.toMatch(/\bthe app\b/i);
-    expect(out.startsWith('Swim is on Tuesday')).toBe(true);
-    // Whole sentences only — the trim never lands mid-word.
-    expect(out).not.toMatch(/\w\.\.\.\s/);
   });
 
   /**
-   * "1-2:30 p.m." is not the end of a sentence, and treating it as one is how a trim
-   * lands INSIDE a fact.
-   *
-   * Live probe, 2026-08-21: the coach composed "Kids & Me drop-in runs free Thursdays
-   * 1-2:30 p.m. at Acton Library - both from their own sites, not yet confirmed" and the
-   * parent received it cut at the "p.m." — a find stripped of its venue and of the source
-   * attribution the skill requires of every web find, which reads as a fact Hale stands
-   * behind rather than one somebody's site claims. The trim's whole promise is that it
-   * drops WHOLE sentences, and an abbreviation it mistakes for a full stop makes that
-   * promise false.
-   *
-   * So the find below does not fit, and the right outcome is that it does not go: a
-   * drop-in with no address is not a shorter answer, it is an unusable one.
+   * VIL-434 live bug. "St." is not the end of a sentence. The coach sent
+   * "Nothing's on Sebby's calendar today, Mon Oct 12. The Kids & Me drop-in at St."
+   * because a period before a capital letter was treated as a sentence end and the
+   * rest was dropped to fit two segments.
    */
-  it('drops a find whole rather than cutting it at an abbreviated time', () => {
-    const schedule =
-      'Swim is on Tuesday at four thirty and Thursday at five fifteen this week, and the ' +
-      'Thursday one is at the east pool rather than the usual west pool, so give yourself ' +
-      'a few extra minutes to get across town before the lesson starts.';
-    const find =
-      'Kids and Me drop-in runs free Thursdays 1-2:30 p.m. at Acton Library - their site ' +
-      'says so.';
+  it('sends a long reply that names St. Lawrence whole, past two segments', () => {
+    const raw = [
+      "Nothing's on Sebby's calendar today, Mon Oct 12.",
+      'The Kids & Me drop-in at St. Lawrence Community Centre runs this afternoon from 1-2:30 p.m. and their own page says it is free for under-sixes.',
+      'Dr. Chen is the host this week, and the entrance is on Ave. Road beside the library.',
+      'I can add it once you say you want it on the week.',
+    ].join(' ');
 
-    const out = toSmsReply(`${schedule} ${find}`, { children: [], now: NOW });
+    const out = toSmsReply(raw, { children: [], now: NOW });
 
-    expect(smsSegments(`${schedule} ${find}`)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
-    expect(out).toBe(schedule);
-    // The specific mutilation: the time without the place it is at.
-    expect(out).not.toContain('1-2:30 p.m.');
+    expect(smsSegments(raw)).toBeGreaterThan(2);
+    expect(out).toBe(raw);
+    expect(out).toContain('St. Lawrence Community Centre');
+    expect(out).toContain('1-2:30 p.m. and their own page');
+    expect(out).toContain('Dr. Chen');
+    expect(out).toContain('Ave. Road');
+    expect(out.endsWith('at St.')).toBe(false);
   });
 
-  it('refuses to cut a single over-budget sentence in half', () => {
+  it('sends a single long sentence whole', () => {
     const raw = `${'swim '.repeat(80)}now`;
 
-    expect(() => toSmsReply(raw, { children: [], now: NOW })).toThrow(ReplyNeedsShorter);
-    try {
-      toSmsReply(raw, { children: [], now: NOW });
-    } catch (err) {
-      expect((err as Error).message).toMatch(/budget/i);
-      expect((err as Error).message).not.toContain('swim');
-    }
+    expect(toSmsReply(raw, { children: [], now: NOW })).toBe(raw);
+    expect(smsSegments(raw)).toBeGreaterThan(2);
   });
 
-  /** No complete sentence of a single 300-character token fits. The throw is the
-   * signal to ask for a shorter rewrite — not a stump, and not a sentence this
-   * function invented. */
-  it('refuses a body with no complete sentence inside the budget', () => {
-    expect(() => toSmsReply('x'.repeat(400), { children: [], now: NOW })).toThrow(
-      ReplyNeedsShorter,
-    );
+  it('sends a long unbroken token whole', () => {
+    const raw = 'x'.repeat(400);
+    expect(toSmsReply(raw, { children: [], now: NOW })).toBe(raw);
   });
 
   it('refuses to emit an empty body', () => {
@@ -190,22 +163,8 @@ describe('toSmsReply', () => {
 });
 
 /**
- * WHAT A TRIM COSTS, on the turn Hale is built around — the 2026-08-21 answer-quality
- * bench, seq 5. A Halton Hills family asked what was on for their toddler Sept-Dec; the
- * turn spent ~50s on a live web search, came back holding a hand-verified Sep 1 opening
- * AND two grounded finds, and composed 548 units against a 306-unit budget.
- *
- * Both tests below run the SAME two facts through the SAME function. The only difference
- * is how they were composed, which is the whole finding: the trim is not what is broken.
- * It drops from the end, whole sentences, exactly as designed — and no policy it could
- * adopt would fit 548 units into 306 without cutting a price or a date in half and
- * putting a fact on the wire that is not true. What has to change is the writing, so the
- * skill now states the ceiling in the unit this function enforces (skill-parity.test.ts)
- * and asks for the date as one clause rather than a paragraph of its own.
- *
- * What this function owes in the meantime is to stop doing it in silence: nothing
- * downstream could tell an answer that fit from one amputated to fit, which is why the
- * defect had to be found by a human reading a graded bench run.
+ * VIL-434. The 2026-08-21 bench composed 548 units and the send path dropped the second
+ * paragraph. Both facts now leave whole. Length stays the model's judgment in the skill.
  */
 describe('an over-budget composition', () => {
   /** Verbatim from bench-calls-adv-verify.json seq 5. Do not reflow: its length IS the
@@ -226,42 +185,26 @@ describe('an over-budget composition', () => {
     'meanwhile the Acton EarlyON on Wallace St is free drop-in for under-sixes, their ' +
     'site says to check the seasonal schedule.';
 
-  it('says out loud that it dropped a paragraph, so the loss is countable', () => {
+  it('sends the long bench reply whole, including both finds', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const out = toSmsReply(BENCH_SEQ5, { children: [], now: NOW });
 
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(`past the ${MAX_REPLY_SEGMENTS}-segment budget`),
-    );
-    // The body itself never reaches the log — it can carry back what the parent typed
-    // (rule #1). Only how far over the line it ran.
-    expect(warn.mock.calls[0]?.[0]).not.toContain('Halton Hills');
-    expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    // The cost, asserted rather than described: the registration lead survives and BOTH
-    // web finds are gone, on a message that opened by promising two things.
+    expect(smsSegments(plainText(BENCH_SEQ5))).toBeGreaterThan(2);
     expect(out).toContain('Sep 1');
-    expect(out).not.toContain('EarlyON');
-    expect(out).not.toContain('Toddler Dance');
+    expect(out).toContain('EarlyON');
+    expect(out).toContain('Toddler Dance');
+    expect(warn).not.toHaveBeenCalled();
 
     warn.mockRestore();
   });
 
-  it('carries the same two facts whole when they were written to fit', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+  it('carries a short composition whole as well', () => {
     const out = toSmsReply(COMPOSED_TO_BUDGET, { children: [], now: NOW });
 
-    // The positive control for the two absences above: the same path, the same budget,
-    // the find intact. Without it "does not contain EarlyON" would also pass on a
-    // function that dropped everything.
     expect(out).toBe(COMPOSED_TO_BUDGET);
     expect(out).toContain('Sep 1');
     expect(out).toContain('Acton EarlyON');
-    expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    expect(warn).not.toHaveBeenCalled();
-
-    warn.mockRestore();
   });
 });
 
@@ -326,10 +269,7 @@ describe('the plan offer line', () => {
     expect(reply).toBe('Try a gradual fade over two weeks. Want me to send the full plan?');
   });
 
-  it('trims the ANSWER to make room, never the offer', () => {
-    // The bug this exists to prevent: a coaching answer plus the offer runs past two
-    // segments, the trim takes from the end, and the parent gets "Want the full plan?"
-    // with the question cut off — an offer they cannot accept.
+  it('keeps a long answer and the offer, and never cuts either', () => {
     const long = `${'A gradual fade works well here. '.repeat(9)}One last background clause.`;
 
     const reply = toSmsReply(long, {
@@ -338,8 +278,9 @@ describe('the plan offer line', () => {
       planOffer: OFFER_LINE,
     });
 
+    expect(reply.startsWith(long)).toBe(true);
     expect(reply.endsWith(OFFER_LINE)).toBe(true);
-    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(reply)).toBeGreaterThan(2);
   });
 
   it('does not append when the turn offered nothing', () => {
@@ -391,15 +332,14 @@ describe('the referral block', () => {
     expect(reply).toBe(`Forward this to them - when they text me, that is their yes. ${BLOCK}`);
   });
 
-  it('trims the ANSWER, never the link — a truncated URL is a broken referral', () => {
-    // Sharper than the offer case: the trim takes from the END, and the last thing in
-    // this block is the only part of the message that does any work.
+  it('keeps a long answer and the link, and never cuts the URL', () => {
     const long = `${'Happy to pass this along whenever you like. '.repeat(8)}One trailing clause.`;
 
     const reply = toSmsReply(long, { children: [child], now, referral: BLOCK });
 
+    expect(reply.startsWith(long)).toBe(true);
     expect(reply.endsWith('https://www.villagehale.com/text?s=friend-0123456789ab')).toBe(true);
-    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(reply)).toBeGreaterThan(2);
   });
 
   it('redacts a teen name inside the forwarded line (rule #1 — a parent sends this OUT)', () => {
@@ -491,32 +431,15 @@ describe('the nearby count', () => {
     expect(reply).toBe('I will look into it.');
   });
 
-  /** The clause is protected from the trim, not from the BUDGET: an answer that fits on
-   * its own and no longer fits with the count is trimmed to make room, exactly as it is
-   * for a plan offer. A message going out as three segments is the alternative. */
-  it('never sends the answer and the count past the two-segment ceiling', () => {
+  it('sends a long answer and the count, both whole', () => {
     const body =
       `Riverdale storytime runs Saturdays at 10. ${'They have a craft table and a singalong too. '.repeat(5)}`.trim();
-    // The control on the setup itself: the answer ALONE is inside the ceiling, so only
-    // the appended clause can push it over.
-    expect(smsSegments(body)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
 
     const reply = toSmsReply(body, { children: [], now, nearby: NEARBY });
 
-    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(reply.startsWith(body)).toBe(true);
     expect(reply.endsWith(NEARBY.clause)).toBe(true);
-  });
-
-  /** After the fit, and un-trimmed at the ceiling: the whole reason it travels
-   * separately from the answer. */
-  it('survives the two-segment trim that takes the end off the answer', () => {
-    const long = `Riverdale storytime runs Saturdays at 10. ${'They also have a craft table and a singalong. '.repeat(6)}`;
-    const reply = toSmsReply(long, { children: [], now, nearby: NEARBY });
-
-    expect(reply.endsWith(NEARBY.clause)).toBe(true);
-    // The control: the answer itself WAS trimmed, so the clause survived a real trim
-    // rather than a message that happened to fit.
-    expect(reply.length).toBeLessThan(long.length + NEARBY.clause.length);
+    expect(smsSegments(reply)).toBeGreaterThan(2);
   });
 
   it('keeps the count when the only suffix is the find URL', () => {
@@ -539,7 +462,6 @@ describe('the nearby count', () => {
 
     expect(reply).toContain('3 families near you say Riverdale Library is worth it.');
     expect(reply).toContain('https://www.torontopubliclibrary.ca/programs-and-classes/');
-    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
   });
 
   it('still drops the count when a plan offer is the suffix', () => {
@@ -567,8 +489,7 @@ describe('plain ASCII folding', () => {
     const body = `${'Up at 2 is common at eight. '.repeat(4)}One quiet check, then back to bed\u2011same as last week.\u200b`;
     const folded = plainText(body);
     expect(folded).not.toMatch(/[\u2011\u200b]/);
-    expect(smsSegments(folded)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    expect(smsSegments(body)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(body)).toBeGreaterThan(smsSegments(folded));
   });
 });
 

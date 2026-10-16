@@ -1,3 +1,4 @@
+import { type InboundMediaPart, mediaPartFromLinq } from '~/lib/channel/inbound-media';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { lineStatusToken } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -84,8 +85,10 @@ export interface LinqInboundText {
   /** The sender handle as Linq sent it. Not yet validated as E.164. */
   senderHandle: string;
   text: string;
-  /** Parts that are not text. The SMS door's media rule still applies. */
+  /** Parts that are not text. Counted so older callers can still see that one arrived. */
   mediaCount: number;
+  /** The same parts, classified. Absent on a literal that only counted them. */
+  media?: InboundMediaPart[];
   receivedAt: Date;
   /** Other participants when the payload carried them. Empty means the webhook
    * did not list them — message.received does not — not that the chat is empty. */
@@ -230,16 +233,16 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
 
   const parts = Array.isArray(data.parts) ? data.parts : [];
   const texts: string[] = [];
-  let mediaCount = 0;
+  const media: InboundMediaPart[] = [];
   for (const part of parts) {
     if (!isRecord(part)) continue;
     if (part.type === 'text' && typeof part.value === 'string' && part.value.trim()) {
       texts.push(part.value);
     } else if (part.type && part.type !== 'text') {
-      mediaCount += 1;
+      media.push(mediaPartFromLinq(part));
     }
   }
-  if (texts.length === 0 && mediaCount === 0) {
+  if (texts.length === 0 && media.length === 0) {
     return { kind: 'ignored', reason: 'malformed' };
   }
 
@@ -253,7 +256,8 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
       chatId,
       senderHandle,
       text: texts.join('\n'),
-      mediaCount,
+      mediaCount: media.length,
+      media,
       receivedAt,
       otherHandles: otherHandles(data.chat),
       isGroup: saidGroup,

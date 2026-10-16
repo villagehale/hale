@@ -41,8 +41,6 @@ import { type OneToOneSend, resumeConnectLink } from './connect-link-1to1';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
   LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
-  LINQ_GROUP_CLAIM_REFUSED_TEXT,
-  LINQ_GROUP_LINE_MISSING_TEXT,
   LINQ_GROUP_OPEN_TEXT,
   LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY,
   claimHouseholdLinqGroup,
@@ -50,6 +48,8 @@ import {
   familyOwnsLinqGroupChat,
   formatLinqLineForParent,
   holdUnknownGroupSender,
+  linqGroupClaimRefused,
+  linqGroupLineMissing,
   linqGroupTriggerInOneToOne,
   mapGroupHandlesToFamily,
   matchLinqGroupTrigger,
@@ -368,19 +368,15 @@ async function handleLinqLocation(
   }
   const providerId =
     location.eventId ?? `location:${location.chatId}:${location.beganAt ?? 'open'}`;
-  const outcome = await routeInboundText(
-    deps,
-    {
-      from: phone,
-      transport: 'imessage',
-      body: shared.locality,
-      providerId,
-      receivedAt: deps.now?.() ?? new Date(),
-      chatId: location.chatId,
-      isGroup: false,
-    },
-    0,
-  );
+  const outcome = await routeInboundText(deps, {
+    from: phone,
+    transport: 'imessage',
+    body: shared.locality,
+    providerId,
+    receivedAt: deps.now?.() ?? new Date(),
+    chatId: location.chatId,
+    isGroup: false,
+  });
   deps.log.info({ outcome }, 'linq inbound: location share continued the ladder');
   await deps.countOutcome(outcome);
   return json({ outcome });
@@ -408,20 +404,17 @@ async function routeOneToOne(
       );
     }
   }
-  return routeInboundText(
-    deps,
-    {
-      from: message.senderHandle,
-      transport: 'imessage',
-      body: message.text,
-      providerId: message.messageId,
-      receivedAt: message.receivedAt,
-      chatId: message.chatId,
-      isGroup: message.isGroup,
-      providerAnsweredKeyword: null,
-    },
-    message.mediaCount,
-  );
+  return routeInboundText(deps, {
+    from: message.senderHandle,
+    transport: 'imessage',
+    body: message.text,
+    providerId: message.messageId,
+    receivedAt: message.receivedAt,
+    chatId: message.chatId,
+    isGroup: message.isGroup,
+    providerAnsweredKeyword: null,
+    media: message.media,
+  });
 }
 
 type LinqDoorDeps = Parameters<typeof handleLinqInboundRequest>[1];
@@ -675,21 +668,18 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       budget = 'chat';
     }
   }
-  const outcome = await routeInboundText(
-    deps,
-    {
-      from: message.senderHandle,
-      transport: 'imessage',
-      body: message.text,
-      providerId: message.messageId,
-      receivedAt: message.receivedAt,
-      chatId: message.chatId,
-      isGroup: true,
-      providerAnsweredKeyword: null,
-      budget,
-    },
-    message.mediaCount,
-  );
+  const outcome = await routeInboundText(deps, {
+    from: message.senderHandle,
+    transport: 'imessage',
+    body: message.text,
+    providerId: message.messageId,
+    receivedAt: message.receivedAt,
+    chatId: message.chatId,
+    isGroup: true,
+    providerAnsweredKeyword: null,
+    budget,
+    media: message.media,
+  });
   deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group routed');
   await deps.countOutcome(outcome);
   return json({ outcome });
@@ -733,9 +723,9 @@ async function claimGroupFromTrigger(
     now,
   });
   const accepted = claim.status === 'claimed' || claim.status === 'already_this';
-  const refused =
+  const claimWasRefused =
     claim.status === 'claimed_by_other_family' || claim.status === 'already_other_chat';
-  if (!accepted && !refused) {
+  if (!accepted && !claimWasRefused) {
     deps.log.info({ outcome: claim.status }, 'linq inbound: group claim did not land');
     await deps.countOutcome('ignored');
     return json({ outcome: 'group_claim_refused', claim: claim.status });
@@ -783,11 +773,17 @@ async function claimGroupFromTrigger(
       now,
     });
     if (seated.status === 'seated') {
+      const welcome = await groupWelcome(language);
+      if (!welcome) {
+        deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: welcome unreachable');
+        await deps.countOutcome('intake');
+        return json({ outcome: 'group_claimed', claim: claim.status, notice: 'not_sent' });
+      }
       const notice = await deliverLinqGroupNotice(deps.database, {
         familyId: mapped.familyId,
         parentUserId: seated.userId,
         chatId: message.chatId,
-        text: groupWelcome(language),
+        text: welcome,
         templateKey: 'linq:coparent_welcome',
         now,
         send: deps.sendGroupText,
@@ -801,11 +797,17 @@ async function claimGroupFromTrigger(
     }
   }
 
+  const claimReply = accepted ? LINQ_GROUP_OPEN_TEXT : await linqGroupClaimRefused(language);
+  if (!claimReply) {
+    deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: claim reply unreachable');
+    await deps.countOutcome('intake');
+    return json({ outcome: 'group_claim_refused', claim: claim.status, notice: 'not_sent' });
+  }
   const notice = await deliverLinqGroupNotice(deps.database, {
     familyId: mapped.familyId,
     parentUserId: mapped.userId,
     chatId: message.chatId,
-    text: accepted ? LINQ_GROUP_OPEN_TEXT : LINQ_GROUP_CLAIM_REFUSED_TEXT[language],
+    text: claimReply,
     templateKey: accepted ? LINQ_GROUP_CLAIMED_TEMPLATE_KEY : LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
     now,
     send: deps.sendGroupText,
@@ -831,8 +833,12 @@ async function answerGroupTriggerInOneToOne(
 
   const from = linqFromE164();
   const text = from
-    ? linqGroupTriggerInOneToOne(formatLinqLineForParent(from), language)
-    : LINQ_GROUP_LINE_MISSING_TEXT[language];
+    ? await linqGroupTriggerInOneToOne(formatLinqLineForParent(from), language)
+    : await linqGroupLineMissing(language);
+  if (!text) {
+    deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: group instruction unreachable');
+    return { count: 'ignored', body: { outcome: 'group_trigger_in_1to1', notice: 'not_sent' } };
+  }
   const notice = await deliverLinqGroupNotice(deps.database, {
     familyId: mapped.familyId,
     parentUserId: mapped.userId,
@@ -1011,7 +1017,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
           });
           outcome = vote === 'ignored' ? 'ignored' : 'poll_logistics';
         }
-      } else if (isYearFindPollNone(option.text)) {
+      } else if (option.choiceKind === 'none' || isYearFindPollNone(option.text)) {
         const recorded = await recordHandledInbound(
           deps,
           {
@@ -1027,19 +1033,15 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         );
         outcome = recorded ? 'poll_none' : 'duplicate';
       } else {
-        outcome = await routeInboundText(
-          deps,
-          {
-            from: signal.senderHandle,
-            transport: 'imessage',
-            body: option.text,
-            providerId,
-            receivedAt: deps.now?.() ?? new Date(),
-            chatId: signal.chatId,
-            providerAnsweredKeyword: null,
-          },
-          0,
-        );
+        outcome = await routeInboundText(deps, {
+          from: signal.senderHandle,
+          transport: 'imessage',
+          body: option.text,
+          providerId,
+          receivedAt: deps.now?.() ?? new Date(),
+          chatId: signal.chatId,
+          providerAnsweredKeyword: null,
+        });
       }
     } finally {
       try {
@@ -1222,11 +1224,17 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         now,
       });
       if (seated.status === 'seated') {
+        const welcome = await groupWelcome('en');
+        if (!welcome) {
+          deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: welcome unreachable');
+          await deps.countOutcome('intake');
+          return json({ outcome: 'group_coparent_seated', notice: 'not_sent' });
+        }
         const notice = await deliverLinqGroupNotice(deps.database, {
           familyId,
           parentUserId: seated.userId,
           chatId: signal.chatId,
-          text: groupWelcome('en'),
+          text: welcome,
           templateKey: 'linq:coparent_welcome',
           now,
           send: deps.sendGroupText,

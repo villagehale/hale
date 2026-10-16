@@ -20,7 +20,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `COLD_START_LADDER_COPY_LOCKED` | `true` | unconfirmed, verify in Vercel env | `false` | Sloane |
 | `COLD_START_INTENT_CLASSIFIER_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Eugene |
 | `COPARENT_DUTY_SENDS_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
-| `COPARENT_DUTY_COPY_LOCKED` | `true` | unconfirmed, verify in Vercel env | `false` | Sloane |
 | `SAME_ACTIVITY_MEET_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
 | `BOOKED_DETECTION_ENABLED` | `true` | unconfirmed, verify in Vercel env | `false` | Noah |
@@ -47,7 +46,6 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | `true` | off | `false` | Sloane |
 | `COPARENT_DUTY_BURDEN_SURFACE_ENABLED` | `true` | off | `false` | Sloane |
 | `FAMILY_MEMORY_KINDS_ENABLED` | `true` | off | `false` | Noah |
-| `FAMILY_MEMORY_KINDS_COPY_LOCKED` | `true` | off | `false` | Sloane |
 | `FIRST_REPLY_ACTION_LINE` | `true` | off | `false` | Sloane |
 | `FIRST_TOUCH_LADDER_ENABLED` | `on` | off | empty, or `off` | Sloane |
 | `FIRST_TOUCH_LOCATION_CARD_ENABLED` | `true` | off | `false` | Noah |
@@ -127,8 +125,7 @@ These are the flags the brief says are on. Confirm the Vercel value before treat
 | `COLD_START_LADDER_ENABLED` | A new parent gets the short ladder (find, name, calendar, email, signup offer) instead of the old hello. | Ladder sends in `channel_messages` for families still on the first session. | `false` | Noah |
 | `COLD_START_LADDER_COPY_LOCKED` | The locked ladder sentences are allowed to leave. | A ladder turn with no outbound body. | `false` | Sloane |
 | `COLD_START_INTENT_CLASSIFIER_ENABLED` | A model classifies the parent's reply on that ladder. | Turn latency on ladder replies, and classifier errors in the web logs. | `false` | Eugene |
-| `COPARENT_DUTY_SENDS_ENABLED` | Hale may send duty questions in the co-parent group. | `channel_messages.category` = `duty_ask` with status `failed`, and more than two `duty_ask` rows for one family in 24 hours. | `false` | Noah |
-| `COPARENT_DUTY_COPY_LOCKED` | Duty sentences are allowed to leave. | `audit_log` action `reply_copy_fallback` (the fixed line went out instead of the model line). | `false` | Sloane |
+| `COPARENT_DUTY_SENDS_ENABLED` | Hale may send duty questions in the co-parent group. The model writes the sentence. A miss holds the send (`model_unsent`) and writes `reply_copy_fallback`. | `channel_messages.category` = `duty_ask` with status `failed`, and more than two `duty_ask` rows for one family in 24 hours. | `false` | Noah |
 | `SAME_ACTIVITY_MEET_ENABLED` | When a caller reaches this code, a meet reply is prepared only after both households opt in. `deliverSameActivityReply` returns `skipped: 'not_configured'`, so the line stays in process. Nothing in the inbound router calls this path today. | A `channel_messages` row that carries a meet line, or an audit row `same_activity_opt_in_recorded`. | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | The nudge cron runs the sweep. A due ask is counted and not texted. The log line is `mid-activity ask: copy may leave but no sender is wired`. | That log line, and any `channel_messages` row with template key `mid-activity:ask`. | `false` | Noah |
 | `BOOKED_DETECTION_ENABLED` | A booking confirmation is stored as a held spot. | `activity_booking_recorded` rows, and parent alerts that fire for mail the backfill should have stayed quiet on. | `false` | Noah |
@@ -155,8 +152,7 @@ Code is merged. The repo still has these off. Flip one at a time, during a week 
 | `COPARENT_DUTY_ASKS_ENABLED` | Duty replies are parsed. This flag does not send. | `coparent duty shadow` log lines, and parse misses against the duty fixtures. | `false` | Noah |
 | `COPARENT_DUTY_MEMORY_ENABLED` | A recorded duty is written onto the family calendar and the ICS feed. | A duty on the calendar the parent did not confirm. | `false` | Noah |
 | `COPARENT_DUTY_LOPSIDED_ENABLED` | A parent can be told the split looks lopsided. | More than one such note to the same family in a month. | `false` | Sloane |
-| `FAMILY_MEMORY_KINDS_ENABLED` | Memory reads start using kind and expiry. | A "what do you know" reply while `FAMILY_MEMORY_KINDS_COPY_LOCKED` is still off (it should stay quiet). | `false` | Noah |
-| `FAMILY_MEMORY_KINDS_COPY_LOCKED` | Parent-facing memory sentences may leave. | `reply_copy_fallback` on a memory turn. | `false` | Sloane |
+| `FAMILY_MEMORY_KINDS_ENABLED` | Memory reads start using kind and expiry. The model writes the parent reply. A miss holds it. | A "what do you know" reply that leaves while the model did not write it. | `false` | Noah |
 | `FOLLOWUP_ASKS_ENABLED` | Hale may check back after an introduction. | A second follow-up to the same family the same day. | `false` | Noah |
 | `GOING_COUNT_ENABLED` | A sweep may count how many others are going. | A count that does not match the booking rows. | `false` | Noah |
 | `GOOGLE_PUSH_SYNC_ENABLED` | Gmail and Calendar can sync from push, not only the 15-minute poll. | Log lines `google push: skipped, flag_off` after the flip, and webhook failures. | `false` | Noah |

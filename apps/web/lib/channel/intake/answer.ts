@@ -4,7 +4,6 @@ import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
-import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -47,12 +46,10 @@ import {
  *
  * FOUR THINGS MAKE IT SAFE TO PUT ON A STRANGER'S THIRD TEXT:
  *
- *   AN EMERGENCY NEVER REACHES A MODEL. `namesAnEmergency` is checked first, before the
- *   client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` — the
- *   machine then sends the model-written crisis reply (#868: routed and written by the turn reader), with no return-to-script
- *   tacked onto it. Intake has never had the screened safety lane the router has
- *   (off-domain/lane.ts), so this is the whole of it, and it works during a provider
- *   outage because it is a substring test.
+ *   A CRISIS IS JUDGED BY THE MODEL. A word list does not stop the turn before the
+ *   client is resolved. The machine sends the model-written crisis reply (#868), with
+ *   no return-to-script tacked onto it. When the model cannot write one, nothing preset
+ *   goes out.
  *
  *   NOTHING IS AGREED TO YET, and the gates say so in code. Consent is the question
  *   still outstanding on the seam that calls this, so a composed line claiming Hale is
@@ -255,7 +252,6 @@ export function refusals(
   const found: IntakeAnswerRefusal[] = [];
   const joined = `${answer} ${returnLine}`;
   if (joined.length > MAX_REPLY_CHARS) found.push('over_char_cap');
-  if (smsEncoding(joined) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(joined)) found.push('carries_link');
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');

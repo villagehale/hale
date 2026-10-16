@@ -3,33 +3,67 @@ import { describe, expect, it } from 'vitest';
 import {
   deriveDateOfBirth,
   intakeFamilyName,
-  parseCanadianPostal,
+  parseIntakePostal,
   summarizeChildren,
 } from './derive';
 
-describe('parseCanadianPostal', () => {
-  it('canonicalizes a full code to "A1A 1A1" and carries its FSA', () => {
-    expect(parseCanadianPostal('m5v2t6')).toEqual({ postalCode: 'M5V 2T6', areaCoarse: 'M5V' });
-    expect(parseCanadianPostal(' M5V 2T6 ')).toEqual({ postalCode: 'M5V 2T6', areaCoarse: 'M5V' });
-    expect(parseCanadianPostal('l7g-4s8')).toEqual({ postalCode: 'L7G 4S8', areaCoarse: 'L7G' });
+describe('parseIntakePostal', () => {
+  it('canonicalizes a full Canadian code to "A1A 1A1" and carries its FSA', () => {
+    expect(parseIntakePostal('m5v2t6')).toMatchObject({
+      postalCode: 'M5V 2T6',
+      areaCoarse: 'M5V',
+      country: 'Canada',
+      countryCode: 'CA',
+      timezone: 'America/Toronto',
+    });
+    expect(parseIntakePostal(' M5V 2T6 ')).toMatchObject({
+      postalCode: 'M5V 2T6',
+      areaCoarse: 'M5V',
+    });
+    expect(parseIntakePostal('l7g-4s8')).toMatchObject({
+      postalCode: 'L7G 4S8',
+      areaCoarse: 'L7G',
+    });
   });
 
   it('accepts a bare FSA as sufficient postal context, storing no full code (D2)', () => {
-    expect(parseCanadianPostal('L3R')).toEqual({ postalCode: null, areaCoarse: 'L3R' });
-    expect(parseCanadianPostal('l3r')).toEqual({ postalCode: null, areaCoarse: 'L3R' });
-    expect(parseCanadianPostal(' l6c ')).toEqual({ postalCode: null, areaCoarse: 'L6C' });
+    expect(parseIntakePostal('L3R')).toMatchObject({ postalCode: null, areaCoarse: 'L3R' });
+    expect(parseIntakePostal('l3r')).toMatchObject({ postalCode: null, areaCoarse: 'L3R' });
+    expect(parseIntakePostal(' l6c ')).toMatchObject({ postalCode: null, areaCoarse: 'L6C' });
   });
 
-  it('returns null for anything that is not a Canadian postal token (the region gate)', () => {
-    expect(parseCanadianPostal('10001')).toBeNull(); // US ZIP
-    expect(parseCanadianPostal('90210-1234')).toBeNull();
-    expect(parseCanadianPostal('SW1A 1AA')).toBeNull(); // UK outward+inward
-    expect(parseCanadianPostal('W1A')).toBeNull(); // a London outward code shaped like an FSA
-    expect(parseCanadianPostal('the Danforth')).toBeNull();
-    expect(parseCanadianPostal('L3')).toBeNull(); // too short to be an FSA
-    expect(parseCanadianPostal('3LR')).toBeNull(); // right length, wrong shape
-    expect(parseCanadianPostal('L3R 5')).toBeNull(); // half an LDU is not a code
-    expect(parseCanadianPostal(null)).toBeNull();
+  it('derives country and timezone for a US ZIP and for other Canadian regions', () => {
+    expect(parseIntakePostal('10001')).toMatchObject({
+      postalCode: '10001',
+      areaCoarse: '100',
+      country: 'United States',
+      countryCode: 'US',
+      timezone: 'America/New_York',
+    });
+    expect(parseIntakePostal('90210-1234')).toMatchObject({
+      postalCode: '90210-1234',
+      areaCoarse: '902',
+      timezone: 'America/Los_Angeles',
+    });
+    expect(parseIntakePostal('V6B')).toMatchObject({
+      timezone: 'America/Vancouver',
+      countryCode: 'CA',
+    });
+    expect(parseIntakePostal('B3H')).toMatchObject({ timezone: 'America/Halifax' });
+    expect(parseIntakePostal('T2P 1J9')).toMatchObject({
+      timezone: 'America/Edmonton',
+      areaCoarse: 'T2P',
+    });
+  });
+
+  it('returns null for a code that is neither Canadian nor US', () => {
+    expect(parseIntakePostal('SW1A 1AA')).toBeNull();
+    expect(parseIntakePostal('W1A')).toBeNull();
+    expect(parseIntakePostal('the Danforth')).toBeNull();
+    expect(parseIntakePostal('L3')).toBeNull();
+    expect(parseIntakePostal('3LR')).toBeNull();
+    expect(parseIntakePostal('L3R 5')).toBeNull();
+    expect(parseIntakePostal(null)).toBeNull();
   });
 });
 

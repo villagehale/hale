@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { speak } from '~/lib/channel/spoken-line';
 import { closeFacts, writeFact } from '~/lib/memory/facts';
 import type { PollOptionWrite } from './poll';
 
@@ -16,39 +17,11 @@ import type { PollOptionWrite } from './poll';
  * "We'll figure it out" / "On verra" stores no taker.
  */
 
-/** Design locked. The one who-takes bubble. Day and time are in the prompt. */
-export const WHO_TAKES_PROMPT: Record<ReplyLanguage, string> = {
-  en: "Who's taking {kid}'s {event}, {day} at {time}?",
-  fr: "Qui s'occupe de {event} pour {kid}, {day} a {time}?",
-};
+/** In-flight taps. A new poll stores `choiceKind: 'figure_it_out'`. */
+const FIGURE_OPTIONS = new Set<string>(["we'll figure it out", 'on verra']);
 
-/** Design locked. Always the last who-takes option. Not a named taker. */
-export const FIGURE_IT_OUT: Record<ReplyLanguage, string> = {
-  en: "We'll figure it out",
-  fr: 'On verra',
-};
-
-/** Design locked. Replaces the both-free sentence when a parent asked and there are 2+ slots. */
-export const BOTH_FREE_PROMPT: Record<ReplyLanguage, string> = {
-  en: 'Which time works for both of you?',
-  fr: 'Quel creneau vous arrange tous les deux?',
-};
-
-/** Design locked. Always the last both-free option. Ends the ask. Not a chosen slot. */
-export const BOTH_FREE_NONE: Record<ReplyLanguage, string> = {
-  en: 'None of these',
-  fr: 'Aucun de ceux-la',
-};
-
-const FIGURE_OPTIONS = new Set<string>([
-  FIGURE_IT_OUT.en.toLowerCase(),
-  FIGURE_IT_OUT.fr.toLowerCase(),
-]);
-
-const NONE_OPTIONS = new Set<string>([
-  BOTH_FREE_NONE.en.toLowerCase(),
-  BOTH_FREE_NONE.fr.toLowerCase(),
-]);
+/** In-flight taps. A new poll stores `choiceKind: 'none'`. */
+const NONE_OPTIONS = new Set<string>(['none of these', 'aucun de ceux-la']);
 
 const SPEAKER_TAKES =
   /^(?:i(?:'ll| will) take(?: it)?|i(?:'ve| have) got(?: it)?|je m(?:'en|en) occupe|c(?:'est|est) moi)\b/i;
@@ -97,15 +70,15 @@ interface LogisticsFactValue {
   source: 'poll' | 'text';
 }
 
-function fill(pattern: string, slots: Record<string, string>): string {
-  return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
+export function whoTakesPrompt(
+  language: ReplyLanguage | null,
+  input: { kid: string; event: string; day: string; time: string },
+): Promise<string | null> {
+  return speak({ purpose: 'who_takes_prompt', language, facts: input });
 }
 
-export function whoTakesPrompt(
-  language: ReplyLanguage,
-  input: { kid: string; event: string; day: string; time: string },
-): string {
-  return fill(WHO_TAKES_PROMPT[language], input);
+export function bothFreePrompt(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'both_free_prompt', language });
 }
 
 /** The locked pass line, either language. Not a parent name. */
@@ -148,12 +121,13 @@ export function bothFreeDay(now: Date, timeZone: string): string {
  * distinct labels is no poll. A blank name is dropped. Two parents with the
  * same name cannot be told apart, so that is no poll either.
  */
-export function whoTakesPollOptions(
-  language: ReplyLanguage,
+export async function whoTakesPollOptions(
+  language: ReplyLanguage | null,
   parents: readonly LogisticsParent[],
   subjectKey: string,
-): readonly PollOptionWrite[] | null {
-  const trailing = FIGURE_IT_OUT[language];
+): Promise<readonly PollOptionWrite[] | null> {
+  const trailing = await speak({ purpose: 'figure_it_out', language });
+  if (!trailing) return null;
   const seen = new Set<string>();
   const options: PollOptionWrite[] = [];
   let collided = false;
@@ -188,12 +162,13 @@ export function whoTakesPollOptions(
  * Up to three slot labels, then the trailing none line. One slot is not a
  * poll. A label that is itself the none line is dropped.
  */
-export function bothFreePollOptions(
-  language: ReplyLanguage,
+export async function bothFreePollOptions(
+  language: ReplyLanguage | null,
   slots: readonly LogisticsSlot[],
   subjectKey: string,
-): readonly PollOptionWrite[] | null {
-  const trailing = BOTH_FREE_NONE[language];
+): Promise<readonly PollOptionWrite[] | null> {
+  const trailing = await speak({ purpose: 'both_free_none', language });
+  if (!trailing) return null;
   const seen = new Set<string>();
   const options: PollOptionWrite[] = [];
   for (const slot of slots) {

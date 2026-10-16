@@ -2,16 +2,12 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { type CoachingPlaybook, type FamilyStage, goDeeperNames } from '@hale/types';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { smsEncoding, smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
+import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
+import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import {
-  type PlanCheckInDays,
-  type PlanTopic,
-  isPlanCheckInDays,
-} from './topics';
+import { type PlanCheckInDays, type PlanTopic, isPlanCheckInDays } from './topics';
 
 /**
  * THE PLAN — the only place in this arc a model writes at length, and the only one that
@@ -259,11 +255,6 @@ export function planViolations(
         `Message ${stage} is ${units} characters, ${units - limit} over the ${limit} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`,
       );
     }
-    if (smsEncoding(body) !== 'gsm7') {
-      violations.push(
-        `Message ${stage} contains a character that doubles the cost to send (a curly quote, a dash, or an emoji). Use plain ASCII.`,
-      );
-    }
     if (LINK_SHAPE.test(body)) {
       violations.push(`Message ${stage} contains a link or a web address. Never send one.`);
     }
@@ -304,7 +295,10 @@ export function planViolations(
   const allowed = goDeeperNames(grounding.topic).map((name) => name.toLowerCase());
   const cited = [...whole.matchAll(NAMED_PERSON)].map((match) => match[0]);
   const unvetted = cited.filter(
-    (name) => !allowed.some((ok) => ok.includes(name.replace(/^(Dr\.?|Doctor|Professor|Prof\.?)\s+/i, '').toLowerCase())),
+    (name) =>
+      !allowed.some((ok) =>
+        ok.includes(name.replace(/^(Dr\.?|Doctor|Professor|Prof\.?)\s+/i, '').toLowerCase()),
+      ),
   );
   if (unvetted.length > 0) {
     violations.push(
@@ -345,7 +339,10 @@ function playbookSanctionsTheHealthLine(playbook: CoachingPlaybook): boolean {
  * Hubbard", "doctors bjorkman" from the parenthesised full form. Matching on the whole
  * curated string would miss every natural way a sentence introduces someone. */
 function firstNameToken(name: string): string {
-  const bare = name.replace(/\s*\(.*\)\s*$/, '').trim().toLowerCase();
+  const bare = name
+    .replace(/\s*\(.*\)\s*$/, '')
+    .trim()
+    .toLowerCase();
   return bare.startsWith('the ') ? bare.slice(4) : bare;
 }
 

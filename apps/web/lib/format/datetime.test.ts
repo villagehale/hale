@@ -228,7 +228,7 @@ describe('formatDurationMinutes', () => {
 });
 
 describe('DEFAULT_TIMEZONE', () => {
-  it('matches the users.timezone schema default', () => {
+  it('is the render fallback, not the users.timezone column default', () => {
     expect(DEFAULT_TIMEZONE).toBe('America/Toronto');
   });
 });

@@ -14,7 +14,8 @@
       "**/build/**",
       "**/.turbo/**",
       "**/drizzle/**",
-      "**/coverage/**"
+      "**/coverage/**",
+      "**/postal-cities/coarsen.json"
     ]
   },
   "formatter": {

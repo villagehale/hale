@@ -2,8 +2,8 @@
 // code only checks the facts (mustInclude verbatim, no other link). Wording is graded
 // by a judge model: nothing here is a required or banned phrase.
 //
-// `language` is what production passes (replyLanguage(): 'en' unless the text proves
-// French), so the ZH and AR rows send 'en' and the parent's own script must win.
+// `language` is the tag production stored for the family. The parent's own
+// words still win when they are writing in another language.
 
 export const IDENTITY_FACTS = {
   assistant: 'Hale',
