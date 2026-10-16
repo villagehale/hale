@@ -35,6 +35,10 @@ Recording must use the committed #872 tree, without the separate uncommitted
 VIL-337 watch-control work or user-local Next/landing changes. Further prompt
 changes invalidate this checkpoint and require an updated estimate before calls.
 
+Keyless verification of that isolated source: full Web **10,485 passed, 14 skipped,
+9 missing-recording failures**; related 673 passed / 2 live skips, Agent 157,
+typecheck, production build, root lint and 74 prompt hashes pass. No paid calls.
+
 ## One run, approximately US$12 expected / US$15 total ceiling
 
 These are planning allowances, not a provider quote or approval:
