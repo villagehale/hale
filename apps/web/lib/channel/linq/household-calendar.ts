@@ -160,9 +160,7 @@ export interface NoticePlanInput {
  * At most one bubble. Conflict, then an evening-before handoff, then up to
  * three new kid-event lines, then one how-it-went. Anything else is omitted.
  */
-export async function planHouseholdNotices(
-  input: NoticePlanInput,
-): Promise<HouseholdNotice[]> {
+export async function planHouseholdNotices(input: NoticePlanInput): Promise<HouseholdNotice[]> {
   // A named handoff the evening before beats "who's taking it?": someone
   // already said, or the event is on exactly one calendar.
   const handoff = await soonestHandoff(input);
@@ -1329,7 +1327,11 @@ export async function planBothFreeAsk(
   });
   if (slots.length < 2) return { mode: 'none' };
   if (!linqPollsEnabled()) {
-    const text = await groupBothFreeText(input.language, slots[0]?.label ?? '', slots[1]?.label ?? '');
+    const text = await groupBothFreeText(
+      input.language,
+      slots[0]?.label ?? '',
+      slots[1]?.label ?? '',
+    );
     if (!text) return { mode: 'none' };
     return { mode: 'text', text };
   }

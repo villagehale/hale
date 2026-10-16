@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { speak } from '~/lib/channel/spoken-line';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { speak } from '~/lib/channel/spoken-line';
 
 /**
  * ASKING FOR THE FORWARDING ADDRESS, IN THE THREAD — the door that opens the door
@@ -354,9 +354,7 @@ export function forwardRevokeReply(
  * unrelated "yeah, sounds good" would land on a revoke they had just declined. Saying
  * this one sentence, under its own template key, is what closes it.
  */
-export function forwardRevokeDeclinedReply(
-  language: ReplyLanguage | null,
-): Promise<string | null> {
+export function forwardRevokeDeclinedReply(language: ReplyLanguage | null): Promise<string | null> {
   return speak({ purpose: 'forward_revoke_declined', language });
 }
 

@@ -279,9 +279,7 @@ async function tellRedeemerTheSeatIsGone(
     body: null,
     now,
   });
-  const body = await coParentSeatTakenLate(
-    await familySpeechLanguage(database, invite.familyId),
-  );
+  const body = await coParentSeatTakenLate(await familySpeechLanguage(database, invite.familyId));
   if (!body) {
     console.info(
       { familyId: invite.familyId, reason: 'model_unreachable' },

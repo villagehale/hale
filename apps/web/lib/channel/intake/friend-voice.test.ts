@@ -747,7 +747,7 @@ describe('repairedProse', () => {
         `Village Hale Technologies Inc. made Hale, and villagehale.com has the details. ${'It texts you the kids things that fit. '.repeat(3)}What are your kids names?`,
         'kids_names',
       ),
-    ).toMatch(/^Village Hale Technologies Inc\. made Hale/);
+    ).toBe('');
   });
 
   it('never folds in another step, never repairs a no-question step, and does not cut a long draft', () => {

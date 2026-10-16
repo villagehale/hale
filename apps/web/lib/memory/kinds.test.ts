@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { renderMemoryGroupSync } from './group-sync';
 import {
   MEMORY_KIND_COPY,
   MEMORY_KIND_LINES,
@@ -17,7 +18,6 @@ import {
   temporaryExpiry,
   toFamilyMemoryExportFact,
 } from './kinds';
-import { renderMemoryGroupSync } from './group-sync';
 
 const NOW = new Date('2026-09-30T15:00:00.000Z');
 

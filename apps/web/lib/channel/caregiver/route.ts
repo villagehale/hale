@@ -9,8 +9,8 @@ import {
   coParentInviteDroppedAck,
   coParentInviteExpired,
   coParentInviteSentAck,
-  coParentRefusal,
   coParentReferrerUnnamed,
+  coParentRefusal,
   coParentSeatTakenLate,
   coParentWelcome,
   inviterNameIsAffordable,
@@ -471,9 +471,7 @@ export async function handleLapsedInviteReply(
   });
   await reply(database, deps, {
     to: args.phoneE164,
-    body: await coParentInviteExpired(
-      await familySpeechLanguage(database, invite.familyId),
-    ),
+    body: await coParentInviteExpired(await familySpeechLanguage(database, invite.familyId)),
     familyId: invite.familyId,
     parentUserId: invite.invitedByUserId,
     lane,

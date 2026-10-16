@@ -8,10 +8,11 @@
  * What this branch changes that misses a cache:
  *   - coach-channel-sms.md (length is advice; code no longer cuts). The subject
  *     prefix is the skill, so every coach-channel fixture misses.
- *   - onboarding-friend.md (US ZIP as well as a Canadian postal code). Friend
- *     voice loads that skill. There is no separate recorded suite; the live
- *     path pays one compose per onboarding step, estimated below as a single
- *     cold prefix plus one reply.
+ *   - onboarding-friend.md (US ZIP as well as a Canadian postal code) and
+ *     onboarding-friend-short.md (no character cap). Friend voice loads the
+ *     long skill. There is no separate recorded suite; each is one cold compose.
+ *   - spoken-line.md is new. Every parent-facing line loads it. There is no
+ *     recorded suite; one cold compose prices the new prefix.
  *   - Six judge-graded cases (zh, ar, US ZIP, photo, video, crisis) are not
  *     in the coach corpus. The photo case adds image input tokens. The
  *     Chinese autonomy fixture inside the coach corpus is a different call.
@@ -54,6 +55,8 @@ function skillChars(name) {
 export function vil413Estimate() {
   const coachSkill = skillChars('coach-channel-sms.md');
   const friendSkill = skillChars('onboarding-friend.md');
+  const friendShortSkill = skillChars('onboarding-friend-short.md');
+  const spokenSkill = skillChars('spoken-line.md');
   const fixtures = COACH_CHANNEL_FIXTURES.length;
   const userChars = 1_500;
   const answerChars = 600;
@@ -81,6 +84,9 @@ export function vil413Estimate() {
   const friendOut = tokens(280);
   const friendInput = friendPrefix * 1.25 + friendUser;
   const friendOutput = friendOut;
+  const friendShortInput = tokens(friendShortSkill) * 1.25 + friendUser;
+  const spokenInput = tokens(spokenSkill) * 1.25 + tokens(600);
+  const spokenOutput = tokens(200);
 
   const added = VIL413_JUDGE_CASES.length;
   const addedCalls = added * SUBJECT_CALLS_PER_FIXTURE;
@@ -113,6 +119,18 @@ export function vil413Estimate() {
       why: 'onboarding-friend.md now accepts a US ZIP; one cold step',
       calls: 1,
       usd: usd(SUBJECT, friendInput, friendOutput),
+    },
+    {
+      suite: 'onboarding-friend-short compose',
+      why: 'onboarding-friend-short.md no longer states a character cap',
+      calls: 1,
+      usd: usd(SUBJECT, friendShortInput, friendOutput),
+    },
+    {
+      suite: 'spoken-line cold compose',
+      why: 'spoken-line.md is new; one cold compose, no recorded suite',
+      calls: 1,
+      usd: usd(SUBJECT, spokenInput, spokenOutput),
     },
     {
       suite: 'vil413 judge cases subject',

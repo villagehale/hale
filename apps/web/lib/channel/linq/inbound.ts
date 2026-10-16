@@ -797,8 +797,8 @@ async function claimGroupFromTrigger(
     }
   }
 
-  const refused = accepted ? LINQ_GROUP_OPEN_TEXT : await linqGroupClaimRefused(language);
-  if (!refused) {
+  const claimReply = accepted ? LINQ_GROUP_OPEN_TEXT : await linqGroupClaimRefused(language);
+  if (!claimReply) {
     deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: claim reply unreachable');
     await deps.countOutcome('intake');
     return json({ outcome: 'group_claim_refused', claim: claim.status, notice: 'not_sent' });
@@ -807,7 +807,7 @@ async function claimGroupFromTrigger(
     familyId: mapped.familyId,
     parentUserId: mapped.userId,
     chatId: message.chatId,
-    text: refused,
+    text: claimReply,
     templateKey: accepted ? LINQ_GROUP_CLAIMED_TEMPLATE_KEY : LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
     now,
     send: deps.sendGroupText,

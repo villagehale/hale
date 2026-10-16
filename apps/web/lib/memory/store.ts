@@ -9,9 +9,9 @@ import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { promptKind, readDisposition } from './classify-write';
 import { writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
+import { renderMemoryGroupSync } from './group-sync';
 import {
   type MemoryKindEnv,
-  type MemoryKindLanguage,
   type MemoryRecallItem,
   type MemorySource,
   type PromotionSignal,
@@ -30,7 +30,6 @@ import {
   renderMemoryForgotten,
   toFamilyMemoryExportFact,
 } from './kinds';
-import { renderMemoryGroupSync } from './group-sync';
 import { isReceiptKey } from './lexicon';
 import { SYNTHESIS_WRITERS } from './synthesis';
 

@@ -1,4 +1,4 @@
-import { type AgentClient, type LaneConfig, HAIKU_MODEL, pickLane } from '@hale/agent';
+import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -44,7 +44,9 @@ export function acceptSpokenLine(
 
 function smallerLane(lane: LaneConfig): LaneConfig {
   if (lane.model === HAIKU_MODEL) {
-    return lane.thinking === 'disabled' ? lane : { ...lane, thinking: 'disabled', effort: 'medium' };
+    return lane.thinking === 'disabled'
+      ? lane
+      : { ...lane, thinking: 'disabled', effort: 'medium' };
   }
   return { model: HAIKU_MODEL, thinking: 'adaptive', effort: 'medium' };
 }

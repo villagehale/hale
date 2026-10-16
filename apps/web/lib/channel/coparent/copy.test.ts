@@ -4,8 +4,8 @@ import {
   coParentDeclineAck,
   coParentDepartedNotice,
   coParentInviteExpired,
-  coParentRefusal,
   coParentReferrerUnnamed,
+  coParentRefusal,
   coParentWelcome,
   inviterNameIsAffordable,
 } from './copy';

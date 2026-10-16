@@ -6,9 +6,8 @@ import {
   TOO_MANY_INVITES,
 } from '~/lib/channel/caregiver/copy';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
-import { asksAboutEyeCare } from '~/lib/channel/off-domain/copy';
 import { joinWelcome } from '~/lib/channel/join/copy';
-import { failureReply } from '~/lib/channel/router/copy';
+import { asksAboutEyeCare } from '~/lib/channel/off-domain/copy';
 import {
   type SpokenLineRequest,
   type SpokenLineWriter,
@@ -208,9 +207,17 @@ function render(
         "Ce numéro m'a déjà dit non une fois, donc je ne lui écrirai plus. Si les choses ont changé, il peut m'écrire en premier.",
       );
     case 'coparent_own_number':
-      return pick(language, OWN_NUMBER, "C'est votre propre numéro - vous avez déjà votre place ici.");
+      return pick(
+        language,
+        OWN_NUMBER,
+        "C'est votre propre numéro - vous avez déjà votre place ici.",
+      );
     case 'coparent_already_invited':
-      return pick(language, ALREADY_INVITED, "Je leur ai déjà écrit - je vous dis dès qu'ils répondent.");
+      return pick(
+        language,
+        ALREADY_INVITED,
+        "Je leur ai déjà écrit - je vous dis dès qu'ils répondent.",
+      );
     case 'coparent_too_many':
       return pick(
         language,
@@ -266,7 +273,11 @@ function render(
         facts,
       );
     case 'year_find_prompt':
-      return pick(language, 'Which of these should I look at first?', 'Lequel je regarde en premier?');
+      return pick(
+        language,
+        'Which of these should I look at first?',
+        'Lequel je regarde en premier?',
+      );
     case 'year_find_none':
       return pick(language, 'None of these', 'Aucun de ceux-la');
     case 'year_find_sandbox_title':
@@ -285,7 +296,11 @@ function render(
     case 'figure_it_out':
       return pick(language, "We'll figure it out", 'On verra');
     case 'both_free_prompt':
-      return pick(language, 'Which time works for both of you?', 'Quel creneau vous arrange tous les deux?');
+      return pick(
+        language,
+        'Which time works for both of you?',
+        'Quel creneau vous arrange tous les deux?',
+      );
     case 'both_free_none':
       return pick(language, 'None of these', 'Aucun de ceux-la');
     case 'forward_address':
@@ -319,8 +334,8 @@ function render(
       const noun = facts.noun ?? '';
       if (facts.outcome === 'revoke_failed') {
         return fr(language)
-          ? `Quelque chose s'est mal passé chez moi - rien n'a changé. Réessayez dans une minute.`
-          : failureReply();
+          ? `Quelque chose s'est mal passé chez moi avec votre ${noun} - rien n'a changé. Réessayez dans une minute.`
+          : `Something went wrong on my end with your ${noun} - nothing was changed. Try me again in a minute.`;
       }
       if (facts.outcome === 'not_connected') {
         return fr(language)

@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { speak } from '~/lib/channel/spoken-line';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { speak } from '~/lib/channel/spoken-line';
 import { linqPollsEnabled } from './config';
 import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
 
@@ -52,10 +52,7 @@ export async function yearFindPollOptions(
   }
   const none = await speak({ purpose: 'year_find_none', language });
   if (cleaned.length < 2 || !none) return null;
-  return [
-    ...cleaned.map((text) => ({ text })),
-    { text: none, choiceKind: 'none' },
-  ];
+  return [...cleaned.map((text) => ({ text })), { text: none, choiceKind: 'none' }];
 }
 
 /** The sandbox options. Two titles plus the none line, all model-written. */
@@ -70,11 +67,7 @@ export async function sandboxYearFindPollOptions(
   });
   const none = await speak({ purpose: 'year_find_none', language });
   if (!first || !second || !none) return null;
-  return [
-    { text: first },
-    { text: second },
-    { text: none, choiceKind: 'none' },
-  ];
+  return [{ text: first }, { text: second }, { text: none, choiceKind: 'none' }];
 }
 
 export type LinqPollOffer =

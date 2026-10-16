@@ -483,7 +483,11 @@ async function sendFollowup(
   let spoken = composed.body;
   if (target.channel === 'group' && input.ask.kind === 'activity') {
     const speech = await familySpeech(database, input.familyId, input.parentUserId);
-    const groupLine = await groupActivityHowItWent(speech.language, speech.name, input.ask.activity);
+    const groupLine = await groupActivityHowItWent(
+      speech.language,
+      speech.name,
+      input.ask.activity,
+    );
     if (groupLine) spoken = groupLine;
   }
   const body = withOptOut(spoken, verdict.optOut);
