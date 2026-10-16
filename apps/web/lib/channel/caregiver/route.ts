@@ -5,13 +5,13 @@ import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
 import { acceptCoParentInvite } from '~/lib/channel/coparent/accept';
 import {
-  CO_PARENT_DECLINE_ACK_BY_LANGUAGE,
-  CO_PARENT_REFUSAL_COPY,
-  CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE,
-  INVITE_EXPIRED_BY_LANGUAGE,
-  REFERRER_UNNAMED_BY_LANGUAGE,
+  coParentDeclineAck,
   coParentInviteDroppedAck,
+  coParentInviteExpired,
   coParentInviteSentAck,
+  coParentRefusal,
+  coParentReferrerUnnamed,
+  coParentSeatTakenLate,
   coParentWelcome,
   inviterNameIsAffordable,
 } from '~/lib/channel/coparent/copy';
@@ -20,7 +20,6 @@ import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/tran
 import { JOIN_ACCEPTED_ACK } from '~/lib/channel/join/copy';
 import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
-import { copyFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { openHouseholdLinqGroup } from '~/lib/channel/linq/group';
@@ -296,8 +295,8 @@ async function reply(
 ): Promise<void> {
   if (!input.body) {
     console.info(
-      { familyId: input.familyId, lane: input.lane, reason: 'language' },
-      'caregiver reply: no template for this language',
+      { familyId: input.familyId, lane: input.lane, reason: 'model_unreachable' },
+      'caregiver reply: spoken line unreachable',
     );
     return;
   }
@@ -472,9 +471,9 @@ export async function handleLapsedInviteReply(
   });
   await reply(database, deps, {
     to: args.phoneE164,
-    body:
-      copyFor(INVITE_EXPIRED_BY_LANGUAGE, await familySpeechLanguage(database, invite.familyId)) ??
-      '',
+    body: await coParentInviteExpired(
+      await familySpeechLanguage(database, invite.familyId),
+    ),
     familyId: invite.familyId,
     parentUserId: invite.invitedByUserId,
     lane,
@@ -611,7 +610,7 @@ async function handleCoParentInviteReply(
     if (seated.outcome === 'seat_taken') {
       await reply(database, deps, {
         to: args.phoneE164,
-        body: copyFor(CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE, language),
+        body: await coParentSeatTakenLate(language),
         familyId: invite.familyId,
         parentUserId: invite.invitedByUserId,
         lane: 'co_parent',
@@ -621,7 +620,7 @@ async function handleCoParentInviteReply(
     }
     await reply(database, deps, {
       to: args.phoneE164,
-      body: coParentWelcome(inviter.name, language),
+      body: await coParentWelcome(inviter.name, language),
       familyId: invite.familyId,
       parentUserId: seated.coParentUserId,
       lane: 'co_parent',
@@ -666,7 +665,7 @@ async function handleCoParentInviteReply(
     await declineInvite(database, { invite, by: 'caregiver', now });
     await reply(database, deps, {
       to: args.phoneE164,
-      body: copyFor(CO_PARENT_DECLINE_ACK_BY_LANGUAGE, language),
+      body: await coParentDeclineAck(language),
       familyId: invite.familyId,
       parentUserId: invite.invitedByUserId,
       lane: 'co_parent',
@@ -848,7 +847,7 @@ async function sendCoParentInvite(
       {
         ...args,
         reason: 'referrer_unnamed',
-        body: copyFor(REFERRER_UNNAMED_BY_LANGUAGE, language),
+        body: await coParentReferrerUnnamed(language),
       },
       deps,
     );
@@ -879,7 +878,7 @@ async function sendCoParentInvite(
   });
   await replyToParent(database, deps, {
     to: args.parentPhoneE164,
-    body: coParentInviteSentAck(pending.displayName, language),
+    body: await coParentInviteSentAck(pending.displayName, language),
     familyId: owner.familyId,
     parentUserId: owner.userId,
     lane: 'co_parent',
@@ -971,7 +970,7 @@ async function dropCoParentInvite(
   await declineInvite(database, { invite: pending, by: 'parent', now });
   await replyToParent(database, deps, {
     to: args.parentPhoneE164,
-    body: coParentInviteDroppedAck(pending.displayName, language),
+    body: await coParentInviteDroppedAck(pending.displayName, language),
     familyId: owner.familyId,
     parentUserId: owner.userId,
     lane: 'co_parent',
@@ -1140,7 +1139,7 @@ async function startFromCommand(
     });
     if (opened.status === 'ask_unwritten') return { status: 'co_parent_ask_unwritten' };
     if (opened.status === 'refused') {
-      return answer(copyFor(CO_PARENT_REFUSAL_COPY[opened.reason], language), {
+      return answer(await coParentRefusal(opened.reason, language), {
         status: 'co_parent_add_refused',
         reason: opened.reason,
       });

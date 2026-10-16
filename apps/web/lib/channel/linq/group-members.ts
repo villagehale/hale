@@ -1,11 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import {
-  type CopyLanguage,
-  type ReplyLanguage,
-  acceptReplyLanguage,
-  copyFor,
-} from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
+import { speak } from '~/lib/channel/spoken-line';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -28,42 +24,32 @@ type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver'
  */
 
 /**
- * VIL-398. One welcome when a newcomer is seated, and one hold when a stranger
- * speaks. Nothing else about the family goes into the thread until a parent
- * approves. French is ASCII. No opt-out wording.
+ * One welcome when a newcomer is seated, and one hold when a stranger speaks.
+ * The model writes both. Nothing else about the family goes into the thread
+ * until a parent approves.
  */
-export const GROUP_MEMBER_WELCOME_WITH_ADDER: Record<CopyLanguage, string> = {
-  en: "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
-  fr: "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-};
-
-export const GROUP_MEMBER_WELCOME_NO_ADDER: Record<CopyLanguage, string> = {
-  en: "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
-  fr: "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
-};
-
-export const GROUP_STRANGER_HOLD: Record<CopyLanguage, string> = {
-  en: 'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. {parentA}, say "add them" if they share the load.',
-  fr: 'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. {parentA}, dis "ajoute cette personne" si elle partage la charge.',
-};
-
-function fillSlots(pattern: string, slots: Record<string, string>): string {
-  return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
-}
-
 export function groupMemberWelcome(
   language: ReplyLanguage | null,
   adder: string | null,
-): string | null {
+): Promise<string | null> {
   const name = adder?.trim() ?? '';
-  if (!name) return copyFor(GROUP_MEMBER_WELCOME_NO_ADDER, language);
-  const pattern = copyFor(GROUP_MEMBER_WELCOME_WITH_ADDER, language);
-  return pattern ? fillSlots(pattern, { adder: name }) : null;
+  return speak({
+    purpose: 'group_member_welcome',
+    language,
+    facts: name ? { adder: name } : {},
+  });
 }
 
-export function groupStrangerHold(language: ReplyLanguage | null, parentA: string): string | null {
-  const pattern = copyFor(GROUP_STRANGER_HOLD, language);
-  return pattern ? fillSlots(pattern, { parentA }) : null;
+export function groupStrangerHold(
+  language: ReplyLanguage | null,
+  parentA: string,
+): Promise<string | null> {
+  return speak({
+    purpose: 'group_stranger_hold',
+    language,
+    facts: { parentA },
+    verbatim: [parentA],
+  });
 }
 
 async function familyReplyLanguage(
@@ -335,8 +321,8 @@ async function sendOnce(
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
   if (!input.text) {
     console.info(
-      { familyId: input.familyId, templateKey: input.templateKey, reason: 'language' },
-      'linq group member: no template for this language',
+      { familyId: input.familyId, templateKey: input.templateKey, reason: 'model_unreachable' },
+      'linq group member: spoken line unreachable',
     );
     return 'not_sent';
   }
@@ -520,7 +506,7 @@ export async function seatParticipantAdded(
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: groupMemberWelcome(language, adder),
+    text: await groupMemberWelcome(language, adder),
     templateKey: WELCOME_TEMPLATE,
     dedupeKey: `${WELCOME_TEMPLATE}:${input.chatId}:${hash}`,
     now: input.now,
@@ -614,7 +600,7 @@ export async function holdTrueStrangerOnce(
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: groupStrangerHold(language, parentA),
+    text: await groupStrangerHold(language, parentA),
     templateKey: HOLD_TEMPLATE,
     dedupeKey: `${HOLD_TEMPLATE}:${input.chatId}:${hash}`,
     now: input.now,

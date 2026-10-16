@@ -931,7 +931,7 @@ describe('a parent asking for their forwarding address, in the thread', () => {
     expect(nothing).toMatchObject({
       claimed: true,
       outcome: 'not_configured',
-      reply: forwardRevokeReply('en', 'not_configured'),
+      reply: await forwardRevokeReply('en', 'not_configured'),
     });
     expect((nothing as { templateKey?: string }).templateKey).toBeUndefined();
   });

@@ -1,11 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import {
-  type CopyLanguage,
-  type ReplyLanguage,
-  copyFor,
-  copyLanguage,
-} from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage } from '~/lib/channel/language';
+import { speak } from '~/lib/channel/spoken-line';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -71,28 +67,37 @@ export const LINQ_GROUP_TRIGGER_PHRASE: Record<CopyLanguage, string> = {
 export function linqGroupMakeInstruction(
   line: string,
   language: ReplyLanguage | null,
-): string | null {
-  const key = copyLanguage(language);
-  const phrase = copyFor(LINQ_GROUP_TRIGGER_PHRASE, language);
-  if (!key || !phrase) return null;
-  return key === 'fr'
-    ? `Ouvre un groupe iMessage avec eux et ce numero: ${line}. Dans ce groupe, envoie: ${phrase}.`
-    : `Start an iMessage group with them and this number: ${line}. In that group, send: ${phrase}.`;
+): Promise<string | null> {
+  const phrase =
+    language === 'fr' || (language ?? '').startsWith('fr-')
+      ? LINQ_GROUP_TRIGGER_PHRASE.fr
+      : LINQ_GROUP_TRIGGER_PHRASE.en;
+  return speak({
+    purpose: 'linq_group_make',
+    language,
+    facts: { line, phrase },
+    verbatim: [line, phrase],
+  });
 }
 
 /**
  * Design locked (Sloane, 2026-09-25). The co-parent ask on Linq, one bubble.
  * `{line}` is Hale's number. No "text me their number", no invite promise.
  */
-export function linqCoParentAsk(line: string, language: ReplyLanguage | null): string | null {
-  const key = copyLanguage(language);
-  const instruction = linqGroupMakeInstruction(line, language);
-  if (!key || !instruction) return null;
-  const lead =
-    key === 'fr'
-      ? "Tu veux l'autre parent sur l'annee des enfants aussi?"
-      : "Want the other parent on the kids' year too?";
-  return `${lead} ${instruction}`;
+export function linqCoParentAsk(
+  line: string,
+  language: ReplyLanguage | null,
+): Promise<string | null> {
+  const phrase =
+    language === 'fr' || (language ?? '').startsWith('fr-')
+      ? LINQ_GROUP_TRIGGER_PHRASE.fr
+      : LINQ_GROUP_TRIGGER_PHRASE.en;
+  return speak({
+    purpose: 'linq_coparent_ask',
+    language,
+    facts: { line, phrase },
+    verbatim: [line, phrase],
+  });
 }
 
 /**
@@ -102,20 +107,23 @@ export function linqCoParentAsk(line: string, language: ReplyLanguage | null): s
 export function linqGroupTriggerInOneToOne(
   line: string,
   language: ReplyLanguage | null,
-): string | null {
-  const key = copyLanguage(language);
-  const phrase = copyFor(LINQ_GROUP_TRIGGER_PHRASE, language);
-  if (!key || !phrase) return null;
-  return key === 'fr'
-    ? `Cette phrase va dans le groupe. Ouvrez un groupe iMessage avec eux et ${line}, puis envoyez: ${phrase}.`
-    : `That phrase belongs in the group. Start an iMessage group with them and ${line}, then send: ${phrase}.`;
+): Promise<string | null> {
+  const phrase =
+    language === 'fr' || (language ?? '').startsWith('fr-')
+      ? LINQ_GROUP_TRIGGER_PHRASE.fr
+      : LINQ_GROUP_TRIGGER_PHRASE.en;
+  return speak({
+    purpose: 'linq_group_trigger_1to1',
+    language,
+    facts: { line, phrase },
+    verbatim: [line, phrase],
+  });
 }
 
-/** Design locked (2026-09-24, #706). This chat cannot become the household thread. */
-export const LINQ_GROUP_CLAIM_REFUSED_TEXT: Record<CopyLanguage, string> = {
-  en: "I can't use this thread as your kids' year.",
-  fr: "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
-};
+/** This chat cannot become the household thread. The model writes the sentence. */
+export function linqGroupClaimRefused(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_claim_refused', language });
+}
 
 /** Ack after a claim. The body is {@link LINQ_GROUP_OPEN_TEXT}. */
 export const LINQ_GROUP_CLAIMED_TEMPLATE_KEY = 'linq:group_claimed';
@@ -124,11 +132,10 @@ export const LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY = 'linq:group_claim_refused';
 /** The trigger arrived in the 1:1. The body is {@link linqGroupTriggerInOneToOne}. */
 export const LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY = 'linq:group_trigger_1to1';
 
-/** Design locked (2026-09-24, #706). Hale has no line to tell the parent to add. */
-export const LINQ_GROUP_LINE_MISSING_TEXT: Record<CopyLanguage, string> = {
-  en: "I don't have a number for you to add to a group yet.",
-  fr: "Je n'ai pas encore de numero a ajouter a un groupe.",
-};
+/** Hale has no line to tell the parent to add. The model writes the sentence. */
+export function linqGroupLineMissing(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_line_missing', language });
+}
 
 /** A parent-facing rendering of Hale's E.164. NANP numbers read as a phone. */
 export function formatLinqLineForParent(e164: string): string {

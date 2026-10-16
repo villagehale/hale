@@ -9,12 +9,7 @@ import {
   type PendingAsk,
   createGeneralAnswer,
 } from './answer';
-import {
-  DIRECT_ACCESS_EYE_REPLY,
-  PROVIDER_ACCESS_REPLY,
-  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
-  UNPLACEABLE_PROVIDER_REPLY,
-} from './copy';
+import { referralReply } from './copy';
 import {
   type InboundThread,
   type OffDomainPorts,
@@ -276,13 +271,20 @@ describe('what each lane says', () => {
     // The TEXT now decides which of the table's rows answers, so this fixture has to say
     // what it is asking for. It used to read 'anything' and still get the registry —
     // which is the defect the table replaced, sitting inside the test that guarded it.
-    const verdict = await consider(p, 'we just moved and need a family doctor');
+    const text = 'we just moved and need a family doctor';
+    const verdict = await consider(p, text);
 
-    expect(verdict).toMatchObject({ status: 'deflected', reply: PROVIDER_ACCESS_REPLY });
-    expect(PROVIDER_ACCESS_REPLY).toContain('Health Care Connect');
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: await referralReply(text, null),
+    });
+    expect(verdict).toMatchObject({ status: 'deflected' });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).toContain('Health Care Connect');
+    expect(reply).toContain('811');
     // No clinic names and no links: a wrong one sends a family across the city, and a
     // mistyped URL in a text cannot be corrected.
-    expect(PROVIDER_ACCESS_REPLY).not.toMatch(/https?:|\.ca\b|\.com\b/);
+    expect(reply).not.toMatch(/https?:|\.ca\b|\.com\b/);
   });
 
   /**
@@ -298,19 +300,26 @@ describe('what each lane says', () => {
       read: reading({ lane: 'provider_access', category: 'specialist-access' }),
     });
 
-    const verdict = await consider(p, 'find me an optometrist');
+    const text = 'find me an optometrist';
+    const verdict = await consider(p, text);
 
-    expect(verdict).toMatchObject({ status: 'deflected', reply: DIRECT_ACCESS_EYE_REPLY });
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('Health Care Connect');
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('811');
+    expect(verdict).toMatchObject({ status: 'deflected', reply: await referralReply(text, null) });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).toContain('FindAnEyeDoctor.ca');
+    expect(reply).not.toContain('Health Care Connect');
+    expect(reply).not.toContain('811');
   });
 
   it('leaves the family-doctor ask on the registry line it was always right for', async () => {
     const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
 
-    const verdict = await consider(p, 'we just moved and need a pediatrician');
+    const text = 'we just moved and need a pediatrician';
+    const verdict = await consider(p, text);
 
-    expect(verdict).toMatchObject({ status: 'deflected', reply: PROVIDER_ACCESS_REPLY });
+    expect(verdict).toMatchObject({ status: 'deflected', reply: await referralReply(text, null) });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).toContain('Health Care Connect');
+    expect(reply).toContain('811');
   });
 
   /**
@@ -328,11 +337,15 @@ describe('what each lane says', () => {
       read: reading({ lane: 'provider_access', category: 'specialist-access' }),
     });
 
-    const verdict = await consider(p, 'we need an ophthalmologist for her');
+    const text = 'we need an ophthalmologist for her';
+    const verdict = await consider(p, text);
+    const eye = await referralReply('find me an optometrist', null);
 
-    expect(verdict).toMatchObject({ reply: UNPLACEABLE_PROVIDER_REPLY });
-    expect(verdict).not.toMatchObject({ reply: DIRECT_ACCESS_EYE_REPLY });
-    expect(UNPLACEABLE_PROVIDER_REPLY).not.toContain('Health Care Connect');
+    expect(verdict).toMatchObject({ reply: await referralReply(text, null) });
+    expect(verdict).not.toMatchObject({ reply: eye });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).not.toContain('Health Care Connect');
+    expect(reply).not.toContain('811');
   });
 
   /**
@@ -340,17 +353,17 @@ describe('what each lane says', () => {
    * docblock, plus the one link it is allowed. "Per calendar year" is a different and
    * wrong promise from "every 12 months", so the wording is pinned.
    */
-  it('carries the verified eye-care facts and exactly one address', () => {
-    expect(DIRECT_ACCESS_EYE_REPLY).toContain('no referral needed');
-    expect(DIRECT_ACCESS_EYE_REPLY).toContain('every 12 months');
-    expect(DIRECT_ACCESS_EYE_REPLY).toContain('19 and under');
-    expect(DIRECT_ACCESS_EYE_REPLY).toContain('FindAnEyeDoctor.ca');
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('calendar year');
+  it('carries the verified eye-care facts and exactly one address', async () => {
+    const reply = (await referralReply('find me an optometrist', 'en')) ?? '';
+    expect(reply).toContain('no referral needed');
+    expect(reply).toContain('every 12 months');
+    expect(reply).toContain('19 and under');
+    expect(reply).toContain('FindAnEyeDoctor.ca');
+    expect(reply).not.toContain('calendar year');
+    expect(reply).not.toContain('811');
     // One address, and no scheme — a bare domain is shorter and every phone links it.
-    expect(DIRECT_ACCESS_EYE_REPLY.match(/[\w-]+\.(?:ca|com|org)\b/g)).toEqual([
-      'FindAnEyeDoctor.ca',
-    ]);
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toMatch(/https?:/);
+    expect(reply.match(/[\w-]+\.(?:ca|com|org)\b/g)).toEqual(['FindAnEyeDoctor.ca']);
+    expect(reply).not.toMatch(/https?:/);
   });
 
   /**
@@ -611,7 +624,9 @@ describe('the medical stamp is set on the medical branch and nowhere else', () =
 
 describe('in-domain is the fall-through', () => {
   it('hands the turn on without composing, recording, or querying anything', async () => {
-    const p = ports({ read: { lane: 'in_domain', category: null, fallback: null, language: null } });
+    const p = ports({
+      read: { lane: 'in_domain', category: null, fallback: null, language: null },
+    });
 
     const verdict = await consider(p);
 
@@ -1332,14 +1347,18 @@ describe('the screen reads a reply to an open question first', () => {
     });
     const { p, run } = laneWith(turn);
 
-    const verdict = await run('Toronto. can you find us a family doctor there');
+    const text = 'Toronto. can you find us a family doctor there';
+    const verdict = await run(text);
 
     expect(verdict).toMatchObject({
       status: 'deflected',
       lane: 'provider_access',
-      reply: PROVIDER_ACCESS_REPLY,
+      reply: await referralReply(text, null),
       replySource: 'fixed',
     });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).toContain('Health Care Connect');
+    expect(reply).toContain('811');
     expect(turn.calls).toEqual(['screen']);
     expect(p.pendingAskedFor).toEqual([]);
   });
@@ -1653,14 +1672,22 @@ describe('the lane answers in the language the question was asked in', () => {
       language: async () => 'fr',
     });
 
-    const fr = await consider(p, 'Je cherche un medecin de famille pour mes enfants');
-    expect(fr).toMatchObject({ reply: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr });
+    const frenchText = 'Je cherche un medecin de famille pour mes enfants';
+    const fr = await consider(p, frenchText);
+    expect(fr).toMatchObject({ reply: await referralReply(frenchText, 'fr') });
+    const frenchReply = 'reply' in fr ? fr.reply : '';
+    expect(frenchReply).toContain('811');
 
     const english = ports({
       read: reading({ lane: 'provider_access', category: 'doctor-access' }),
     });
-    const en = await consider(english, 'we just moved and need a family doctor');
-    expect(en).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
+    const englishText = 'we just moved and need a family doctor';
+    const en = await consider(english, englishText);
+    expect(en).toMatchObject({ reply: await referralReply(englishText, null) });
+    const englishReply = 'reply' in en ? en.reply : '';
+    expect(englishReply).toContain('Health Care Connect');
+    expect(englishReply).toContain('811');
+    expect(frenchReply).not.toBe(englishReply);
   });
 
   it('hands a French could-not-answer to the moment writer', async () => {

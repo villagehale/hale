@@ -162,12 +162,13 @@ export async function writeConnectorLink(
     console.error('connector link: no line writer - nothing sent');
     return null;
   }
-  const language = input.language ?? 'en';
+  const service = await connectorNoun(input.language, input.provider);
+  if (!service) return null;
   return writer.write({
     purpose: 'connector_link',
     language: input.language,
     facts: {
-      service: connectorNoun(language, input.provider),
+      service,
       link: linkSlot('link'),
       minutesValid: LINK_MINUTES,
       googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
@@ -190,8 +191,8 @@ export async function writeGroupConnectAsk(
     return null;
   }
   const gmail = input.provider === 'gmail';
-  const service =
-    connectorNoun(input.language, input.provider) ?? (gmail ? 'Gmail' : 'Google Calendar');
+  const service = await connectorNoun(input.language, input.provider);
+  if (!service) return null;
   return writer.write({
     purpose: 'group_connect_ask',
     language: input.language,

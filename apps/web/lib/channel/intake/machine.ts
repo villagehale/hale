@@ -33,7 +33,7 @@ import {
 import { type ParentRoleGuess, storeParentRole } from '~/lib/channel/identity/parent-role';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
-import { type ReplyLanguage, copyFor, localeFor } from '~/lib/channel/language';
+import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
@@ -1372,8 +1372,10 @@ function coparentJoinFor(ctx: SendContext, language: ReplyLanguage | null) {
   if (ctx.pipe.channel !== 'imessage') return null;
   const from = linqFromE164();
   if (!from) return null;
-  const phrase = copyFor(LINQ_GROUP_TRIGGER_PHRASE, language);
-  if (!phrase) return null;
+  const phrase =
+    language === 'fr' || (language ?? '').startsWith('fr-')
+      ? LINQ_GROUP_TRIGGER_PHRASE.fr
+      : LINQ_GROUP_TRIGGER_PHRASE.en;
   return { line: formatLinqLineForParent(from), phrase };
 }
 

@@ -550,7 +550,7 @@ export async function flushGroupDecisionSyncs(
       const name =
         speech.name ?? (copyLanguage(speech.language) === 'fr' ? 'Un parent' : 'A parent');
       if (row.decision === 'picked' && row.day && row.time) {
-        const line = groupPickedSyncLine(speech.language, {
+        const line = await groupPickedSyncLine(speech.language, {
           name,
           activity: row.activity,
           kid: row.kid,
@@ -559,7 +559,7 @@ export async function flushGroupDecisionSyncs(
         });
         if (line) lines.push(line);
       } else if (row.decision === 'passed') {
-        const line = groupPassedSyncLine(speech.language, {
+        const line = await groupPassedSyncLine(speech.language, {
           name,
           activity: row.activity,
           kid: row.kid,

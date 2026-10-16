@@ -383,7 +383,7 @@ describe('only a YES to the question Hale asked revokes', () => {
     expect(yes.handler).toBe('forward_address');
     expect(transport.bodies()).toEqual([
       writtenAsk({ kind: 'forward_revoke', language: 'en' }),
-      forwardRevokeReply('en', 'revoked'),
+      await forwardRevokeReply('en', 'revoked'),
     ]);
     expect(await tokenOf(seeded.familyId)).toBeNull();
     const trail = await verbs(seeded.familyId);
@@ -400,7 +400,7 @@ describe('only a YES to the question Hale asked revokes', () => {
     const no = await text(seeded, 'no', ANSWERED_AT);
 
     expect(no.handler).toBe('forward_address');
-    expect(transport.bodies().at(-1)).toBe(forwardRevokeDeclinedReply('en'));
+    expect(transport.bodies().at(-1)).toBe(await forwardRevokeDeclinedReply('en'));
     expect(await tokenOf(seeded.familyId)).toBe(seeded.token);
     expect(await verbs(seeded.familyId)).not.toContain('email_forward_address_revoked');
     expect(await openKinds(seeded, ANSWERED_AT)).toEqual([]);
@@ -440,7 +440,7 @@ describe('only a YES to the question Hale asked revokes', () => {
     const result = await text(seeded, 'turn off my forwarding address', ASKED_AT);
 
     expect(result.handler).toBe('forward_address');
-    expect(transport.bodies()).toEqual([forwardRevokeReply('en', 'not_configured')]);
+    expect(transport.bodies()).toEqual([await forwardRevokeReply('en', 'not_configured')]);
     // A question nobody can answer usefully would make every bare affirmative in the
     // household ambiguous for a quarter of an hour, for nothing.
     expect(await openKinds(seeded, ANSWERED_AT)).toEqual([]);
@@ -586,7 +586,7 @@ describe('the confirm survives Hale s own clarifying turn', () => {
     });
 
     expect(pick.handler).toBe('forward_address');
-    expect(transport.bodies().at(-1)).toBe(forwardRevokeReply('en', 'revoked'));
+    expect(transport.bodies().at(-1)).toBe(await forwardRevokeReply('en', 'revoked'));
     expect(await tokenOf(seeded.familyId)).toBeNull();
     const trail = await verbs(seeded.familyId);
     expect(trail.filter((verb) => verb === 'email_forward_address_revoke_asked')).toHaveLength(1);
@@ -613,7 +613,7 @@ describe('the confirm survives Hale s own clarifying turn', () => {
     await text(seeded, 'turn off my forwarding address', ASKED_AT);
     const askId = await askMessageId(seeded);
     await text(seeded, 'no', ANSWERED_AT);
-    expect(transport.bodies().at(-1)).toBe(forwardRevokeDeclinedReply('en'));
+    expect(transport.bodies().at(-1)).toBe(await forwardRevokeDeclinedReply('en'));
     // Something else open, so the resolver stage runs at all (route.ts GATE 2b).
     await seedApprovalDraft(seeded);
 
@@ -709,7 +709,7 @@ describe('the confirm survives Hale s own clarifying turn', () => {
     });
 
     expect(named.handler).toBe('forward_address');
-    expect(transport.bodies().at(-1)).toBe(forwardRevokeReply('en', 'revoked'));
+    expect(transport.bodies().at(-1)).toBe(await forwardRevokeReply('en', 'revoked'));
     expect(await tokenOf(seeded.familyId)).toBeNull();
     const trail = await verbs(seeded.familyId);
     expect(trail.filter((verb) => verb === 'email_forward_address_revoke_asked')).toHaveLength(2);

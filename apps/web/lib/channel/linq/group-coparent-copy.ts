@@ -1,132 +1,72 @@
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
-import {
-  type CopyLanguage,
-  type ReplyLanguage,
-  copyFor,
-  copyLanguage,
-} from '~/lib/channel/language';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { speak } from '~/lib/channel/spoken-line';
 
 /**
- * Design-locked lines for the Linq household group (Sloane).
- * French twins are ASCII. `{name}` is the parent. The calendar card and the
- * name ack stay in their own modules.
+ * Household-group lines. The model writes every one of them, in the family's
+ * language. A miss holds the send.
  */
 
-export const GROUP_WELCOME: Record<CopyLanguage, string> = {
-  en: "Hi, I'm Hale. This thread is your kids' year — both of you, and me. What should I call you?",
-  fr: "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
-};
-
-export const GROUP_CALENDAR_RECEIPT: Record<CopyLanguage, string> = {
-  en: "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
-  fr: 'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
-};
-
-export const GROUP_GMAIL_RECEIPT: Record<CopyLanguage, string> = {
-  en: "{name}'s Gmail is connected. I'll pull out the kids' dates; the inbox stays private.",
-  fr: 'Le Gmail de {name} est connecte. Je garde les dates des enfants; la boite reste privee.',
-};
-
-/**
- * Sloane, locked. A 1:1 activity decision, told to the group. Templated only.
- * The line never says Hale booked anything.
- */
 export function groupPickedSyncLine(
   language: ReplyLanguage | null,
   input: { name: string; activity: string; kid: string; day: string; time: string },
-): string | null {
-  if (copyLanguage(language) === 'fr') {
-    return `Pour info: ${input.name} a choisi ${input.activity} pour ${input.kid}, ${input.day} a ${input.time}.`;
-  }
-  if (copyLanguage(language) === 'en') {
-    return `Quick sync: ${input.name} picked ${input.activity} for ${input.kid}, ${input.day} at ${input.time}.`;
-  }
-  return null;
+): Promise<string | null> {
+  return speak({ purpose: 'group_picked', language, facts: input });
 }
 
-/** Sloane, locked. The passed twin. No day and no time, because nothing was chosen. */
 export function groupPassedSyncLine(
   language: ReplyLanguage | null,
   input: { name: string; activity: string; kid: string },
-): string | null {
-  if (copyLanguage(language) === 'fr') {
-    return `Pour info: ${input.name} a laisse tomber ${input.activity} pour ${input.kid}.`;
-  }
-  if (copyLanguage(language) === 'en') {
-    return `Quick sync: ${input.name} passed on ${input.activity} for ${input.kid}.`;
-  }
-  return null;
+): Promise<string | null> {
+  return speak({ purpose: 'group_passed', language, facts: input });
 }
 
-export const GROUP_KID_EVENT: Record<CopyLanguage, string> = {
-  en: "Heads up: {name} added {kid}'s {event}, {day} at {time}.",
-  fr: 'Pour info: {name} a ajoute {event} pour {kid}, {day} a {time}.',
-};
-
-export const GROUP_CONFLICT: Record<CopyLanguage, string> = {
-  en: "{kid}'s {event} is {day} at {time}, and you're both busy then. Who's taking it?",
-  fr: "{event} pour {kid}, {day} a {time}, et vous etes pris tous les deux. Qui s'en occupe?",
-};
-
-export const GROUP_HANDOFF: Record<CopyLanguage, string> = {
-  en: "Tomorrow: {name} has {kid}'s {event} at {time}.",
-  fr: "Demain: {name} s'occupe de {event} pour {kid} a {time}.",
-};
-
-export const GROUP_BOTH_FREE: Record<CopyLanguage, string> = {
-  en: "You're both free {slot1} or {slot2}. Want the sign-up page for one?",
-  fr: "Vous etes libres tous les deux {slot1} ou {slot2}. Vous voulez la page d'inscription pour l'un des deux?",
-};
-
-function fill(pattern: string, slots: Record<string, string>): string {
-  return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
+export function groupWelcome(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'group_welcome', language });
 }
 
-export function groupWelcome(language: ReplyLanguage | null): string | null {
-  return copyFor(GROUP_WELCOME, language);
+export function groupCalendarReceipt(
+  language: ReplyLanguage | null,
+  name: string,
+): Promise<string | null> {
+  return speak({ purpose: 'group_calendar_receipt', language, facts: { name } });
 }
 
-export function groupCalendarReceipt(language: ReplyLanguage | null, name: string): string | null {
-  const pattern = copyFor(GROUP_CALENDAR_RECEIPT, language);
-  return pattern ? fill(pattern, { name }) : null;
-}
-
-export function groupGmailReceipt(language: ReplyLanguage | null, name: string): string | null {
-  const pattern = copyFor(GROUP_GMAIL_RECEIPT, language);
-  return pattern ? fill(pattern, { name }) : null;
+export function groupGmailReceipt(
+  language: ReplyLanguage | null,
+  name: string,
+): Promise<string | null> {
+  return speak({ purpose: 'group_gmail_receipt', language, facts: { name } });
 }
 
 export function groupKidEventText(
   language: ReplyLanguage | null,
   input: { name: string; kid: string; event: string; day: string; time: string },
-): string | null {
-  const pattern = copyFor(GROUP_KID_EVENT, language);
-  return pattern ? fill(pattern, input) : null;
+): Promise<string | null> {
+  return speak({ purpose: 'group_kid_event', language, facts: input });
 }
 
 export function groupConflictText(
   language: ReplyLanguage | null,
   input: { kid: string; event: string; day: string; time: string },
-): string | null {
-  const pattern = copyFor(GROUP_CONFLICT, language);
-  return pattern ? fill(pattern, input) : null;
+): Promise<string | null> {
+  return speak({ purpose: 'group_conflict', language, facts: input });
 }
 
 export function groupHandoffText(
   language: ReplyLanguage | null,
   input: { name: string; kid: string; event: string; time: string },
-): string | null {
-  const pattern = copyFor(GROUP_HANDOFF, language);
-  return pattern ? fill(pattern, input) : null;
+): Promise<string | null> {
+  return speak({ purpose: 'group_handoff', language, facts: input });
 }
 
 /** `{name}, ` then the locked how-it-went line, with the next letter lowercased. */
-export function groupPostEventText(
+export async function groupPostEventText(
   language: ReplyLanguage | null,
   name: string,
   activity: string,
-): string | null {
-  const line = howItWentAsk(activity, language);
+): Promise<string | null> {
+  const line = await howItWentAsk(activity, language);
   return line ? groupAddressedLine(name, line) : null;
 }
 
@@ -142,11 +82,11 @@ export function groupAddressedLine(name: string, line: string): string {
  * How-it-went in the group. A known parent is named. An unknown parent keeps
  * the English line and uses the French line, which has no tu.
  */
-export function groupActivityHowItWent(
+export async function groupActivityHowItWent(
   language: ReplyLanguage | null,
   name: string | null,
   activity: string,
-): string | null {
+): Promise<string | null> {
   if (name) return groupPostEventText(language, name, activity);
   return howItWentAsk(activity, language);
 }
@@ -155,8 +95,12 @@ export function groupActivityHowItWent(
  * Sloane, locked. The group does not guess who is travelling.
  * `Trip: {city}, {days}. A couple of things on for {kids}:`
  */
-export function groupTravelBriefOpening(city: string, days: string, kids: string): string {
-  return `Trip: ${city}, ${days}. A couple of things on for ${kids}:`;
+export function groupTravelBriefOpening(
+  city: string,
+  days: string,
+  kids: string,
+): Promise<string | null> {
+  return speak({ purpose: 'group_travel_opening', language: null, facts: { city, days, kids } });
 }
 
 /**
@@ -166,17 +110,12 @@ export function groupTravelBriefOpening(city: string, days: string, kids: string
 export function groupDepartureNotice(
   language: ReplyLanguage | null,
   name: string | null,
-): string | null {
-  const copy = copyLanguage(language);
-  if (copy === 'fr') {
-    const who = name ?? 'Votre co-parent';
-    return `${who} a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.`;
-  }
-  if (copy === 'en') {
-    const who = name ?? 'Your co-parent';
-    return `${who} left Hale. Nothing in the kids' year changed, and I'm still here.`;
-  }
-  return null;
+): Promise<string | null> {
+  return speak({
+    purpose: 'group_departure',
+    language,
+    facts: { name: name ?? '' },
+  });
 }
 
 /**
@@ -209,9 +148,8 @@ export function groupBothFreeText(
   language: ReplyLanguage | null,
   slot1: string,
   slot2: string,
-): string | null {
-  const pattern = copyFor(GROUP_BOTH_FREE, language);
-  return pattern ? fill(pattern, { slot1, slot2 }) : null;
+): Promise<string | null> {
+  return speak({ purpose: 'group_both_free', language, facts: { slot1, slot2 } });
 }
 
 /**

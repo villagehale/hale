@@ -55,7 +55,6 @@ export const MEMORY_KIND_COPY = {
     nothing:
       'I didn\'t find anything to forget there. Text "what do you know" to see what I have, then "forget <key>".',
     refused: 'I keep that one, it\'s a record. Text "what do you know" to see what can be changed.',
-    groupSync: '{who} asked me to forget something.',
   },
   fr: {
     recall:
@@ -64,7 +63,6 @@ export const MEMORY_KIND_COPY = {
     corrected: "C'est corrige : {key} est maintenant {value}.",
     nothing: 'Rien a oublier de ce cote. "que sais-tu" montre ce que j\'ai, puis "oublie <cle>".',
     refused: 'Celle-la reste, c\'est un dossier. "que sais-tu" montre ce qui peut changer.',
-    groupSync: "{who} m'a demande d'oublier quelque chose.",
   },
 } as const;
 
@@ -78,7 +76,6 @@ export const MEMORY_KIND_LINES = {
     termLasting: 'lasting',
     termTemporary: 'for now',
     forgottenMany: 'Done, I forgot {n} things.',
-    groupSyncCorrect: '{who} corrected something.',
   },
   fr: {
     recallEmpty: "Je n'ai encore rien note sur la famille.",
@@ -88,7 +85,6 @@ export const MEMORY_KIND_LINES = {
     termLasting: 'durable',
     termTemporary: "pour l'instant",
     forgottenMany: "C'est oublie : {n} elements.",
-    groupSyncCorrect: '{who} a corrige quelque chose.',
   },
 } as const;
 
@@ -282,21 +278,6 @@ export function renderMemoryCorrected(
     ['key', 'value'],
     language,
   );
-}
-
-/** A statement. No value, no question. */
-export function renderMemoryGroupSync(
-  language: MemoryKindLanguage,
-  change: 'forget' | 'correct',
-  who: string,
-): string {
-  const template =
-    change === 'correct'
-      ? MEMORY_KIND_LINES[language].groupSyncCorrect
-      : MEMORY_KIND_COPY[language].groupSync;
-  const text = fillMemory(template, { who }, ['who'], language);
-  if (text.includes('?') || text.includes(who) === false) throw new MemoryKindCopyError('group');
-  return text;
 }
 
 export function memoryKindCopy(language: MemoryKindLanguage, key: MemoryKindCopyKey): string {

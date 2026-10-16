@@ -1,7 +1,6 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -32,8 +31,6 @@ export type ConsentAsk =
 export interface ConsentAskWriter {
   write(ask: ConsentAsk): Promise<string | null>;
 }
-
-const MAX_SEGMENTS = 2;
 
 export const CONSENT_ASK_MAX_TOKENS = 256;
 
@@ -83,10 +80,9 @@ function unwritten(reason: string, detail?: string): null {
   return null;
 }
 
-/** A draft that can go on the wire: no keyword instruction. */
+/** A draft that can go on the wire: no keyword instruction. Length is not a hold. */
 export function acceptConsentAsk(text: string): string | null {
   if (instructsConsentKeyword(text)) return unwritten('instructs_keyword');
-  if (smsSegments(text) > MAX_SEGMENTS) return unwritten('over_segment_cap');
   return text;
 }
 

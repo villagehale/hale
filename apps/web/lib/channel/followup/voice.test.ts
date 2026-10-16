@@ -166,7 +166,7 @@ describe('createFollowupVoice', () => {
 
     expect(await voice.compose(ACTIVITY)).toEqual({
       status: 'composed',
-      body: howItWentAsk('Swim class'),
+      body: await howItWentAsk('Swim class'),
     });
     expect(seen).toEqual([]);
   });
@@ -189,7 +189,7 @@ describe('createFollowupVoice', () => {
     restore.mockRestore();
     expect(outcome).toEqual({ status: 'deferred', reason: 'gate_exhausted' });
     expect(seen).toEqual([]);
-    expect(lockedActivityFollowup('x'.repeat(200)).status).toBe('deferred');
+    expect((await lockedActivityFollowup('x'.repeat(200))).status).toBe('deferred');
   });
 
   /**

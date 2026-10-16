@@ -14,7 +14,7 @@ import { handleLapsedInviteReply } from '~/lib/channel/caregiver/route';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { askWriter } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { INVITE_EXPIRED_BY_LANGUAGE } from './copy';
+import { coParentInviteExpired } from './copy';
 
 /**
  * VIL-355 follow-up · item 1 — the YES that arrives on day four.
@@ -164,7 +164,9 @@ describe('a late answer to an invitation that has lapsed', () => {
     );
 
     expect(outcome).toEqual({ status: 'invite_expired_answered', role: 'co_parent' });
-    expect(transport.sent).toEqual([{ to: PARTNER_PHONE, body: INVITE_EXPIRED_BY_LANGUAGE.en }]);
+    expect(transport.sent).toEqual([
+      { to: PARTNER_PHONE, body: await coParentInviteExpired('en') },
+    ]);
     // Not the inviting parent's conversation — a third party's answer is never threaded.
     expect(threaded).toEqual([]);
     // No seat, and the invite is left expired rather than reopened.
@@ -214,7 +216,7 @@ describe('a late answer to an invitation that has lapsed', () => {
       deps(transport).deps,
     );
 
-    expect(transport.sent[0]?.body).toBe(INVITE_EXPIRED_BY_LANGUAGE.fr);
+    expect(transport.sent[0]?.body).toBe(await coParentInviteExpired('fr'));
   });
 
   it('says nothing to a number that pressed STOP, and still answers one that did not', async () => {

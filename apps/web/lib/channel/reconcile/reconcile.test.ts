@@ -428,8 +428,8 @@ describe('reconcile — a co-parent invite the model did not send', () => {
     expect(reconcileViolations(verdict)[0]).toContain('Only the co-parent invite path');
   });
 
-  it('does not refuse the ack the invite path actually sends', () => {
-    const ack = coParentInviteSentAck('them', 'en') ?? '';
+  it('does not refuse the ack the invite path actually sends', async () => {
+    const ack = (await coParentInviteSentAck('them', 'en')) ?? '';
     const verdict = verdictFor(ack, view());
     expect(verdict.refused).toEqual([]);
     expect(withoutRefusedClaims(ack, verdict)).toBe(ack);

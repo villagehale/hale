@@ -1,7 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { PLAN_OFFER_TTL_HOURS, PLAN_TOPICS, type PlanTopic, planOfferSummary } from './topics';
@@ -47,17 +46,12 @@ export interface PlanOffer {
   sentence: string;
 }
 
-/** The offer sentence's own ceiling. One short SMS on top of an answer that already
- * costs two segments — anything longer and the answer is what gives way. */
-export const MAX_OFFER_CHARS = 160;
-
 /**
  * Everything wrong with a proposed offer sentence, phrased for the model that has to
  * rewrite it. An empty array means it may be sent.
  *
- * It must ASK (exactly one question). It must not instruct a keyword. The parent
- * answers in their own words, and the shared affirmative table reads yes, sure,
- * please do, no thanks, and not now. Exported so the eval holds the same bar.
+ * It must ASK (exactly one question). It must not instruct a keyword. Tone is graded
+ * by the judge. Length is not a reason to refuse.
  */
 const KEYWORD_INSTRUCTION = /\b(reply|say|text)\s+(yes|no)\b/i;
 
@@ -66,11 +60,6 @@ export function offerViolations(sentence: string): string[] {
   const text = sentence.trim();
 
   if (text === '') return ['The offer was empty.'];
-  if (text.length > MAX_OFFER_CHARS) {
-    violations.push(
-      `The offer is ${text.length} characters; it must be at most ${MAX_OFFER_CHARS} so the answer still fits.`,
-    );
-  }
   const questions = (text.match(/\?/g) ?? []).length;
   if (questions !== 1) {
     violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
@@ -79,9 +68,6 @@ export function offerViolations(sentence: string): string[] {
     violations.push(
       'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
     );
-  }
-  if (smsSegments(text) > 1) {
-    violations.push('The offer is longer than one SMS segment. Shorten it.');
   }
   return violations;
 }

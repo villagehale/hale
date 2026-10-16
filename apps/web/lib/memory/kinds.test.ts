@@ -12,12 +12,12 @@ import {
   parseMemoryParentIntent,
   renderMemoryCorrected,
   renderMemoryForgotten,
-  renderMemoryGroupSync,
   renderMemoryRecall,
   sendMemoryKindReply,
   temporaryExpiry,
   toFamilyMemoryExportFact,
 } from './kinds';
+import { renderMemoryGroupSync } from './group-sync';
 
 const NOW = new Date('2026-09-30T15:00:00.000Z');
 
@@ -173,7 +173,7 @@ describe('parent intent', () => {
 describe('copy gate', () => {
   it('keeps every locked sentence ASCII and free of opt-out or booking claims', () => {
     const bodies = memoryKindBodies();
-    expect(bodies.length).toBe(28);
+    expect(bodies.length).toBe(24);
     for (const body of bodies) {
       expect(body.includes('TODO-Design')).toBe(false);
       expect([...body].every((char) => char.charCodeAt(0) <= 0x7f)).toBe(true);
@@ -204,10 +204,6 @@ describe('copy gate', () => {
     expect(MEMORY_KIND_COPY.fr.refused).toBe(
       'Celle-la reste, c\'est un dossier. "que sais-tu" montre ce qui peut changer.',
     );
-    expect(MEMORY_KIND_COPY.en.groupSync).toBe('{who} asked me to forget something.');
-    expect(MEMORY_KIND_COPY.fr.groupSync).toBe("{who} m'a demande d'oublier quelque chose.");
-    expect(MEMORY_KIND_LINES.en.groupSyncCorrect).toBe('{who} corrected something.');
-    expect(MEMORY_KIND_LINES.fr.groupSyncCorrect).toBe('{who} a corrige quelque chose.');
     expect(MEMORY_KIND_LINES.en.recallEmpty).toBe(
       "I don't have anything saved about your family yet.",
     );
@@ -252,7 +248,8 @@ describe('copy gate', () => {
     const env = {
       FAMILY_MEMORY_KINDS_ENABLED: 'true',
     };
-    const body = renderMemoryGroupSync('fr', 'forget', 'Sam');
+    const body = await renderMemoryGroupSync('fr', 'forget', 'Sam');
+    if (!body) throw new Error('spoken line missing');
     const result = await sendMemoryKindReply(send, body, env);
     expect(result).toEqual({ sent: true, skipped: null });
     expect(send).toHaveBeenCalledTimes(1);
@@ -262,7 +259,7 @@ describe('copy gate', () => {
 });
 
 describe('recall bubbles', () => {
-  it('pages ten lines, labels inferred facts, and keeps the header and footer at the ends', () => {
+  it('pages ten lines, labels inferred facts, and keeps the header and footer at the ends', async () => {
     expect(renderMemoryRecall('en', [])).toEqual([
       "I don't have anything saved about your family yet.",
     ]);
@@ -302,8 +299,8 @@ describe('recall bubbles', () => {
     expect(renderMemoryCorrected('en', 'district', 'midtown')).toBe(
       'Got it. district is now midtown.',
     );
-    expect(renderMemoryGroupSync('en', 'correct', 'Sam')).toBe('Sam corrected something.');
-    expect(renderMemoryGroupSync('en', 'correct', 'Sam')).not.toContain('midtown');
+    expect(await renderMemoryGroupSync('en', 'correct', 'Sam')).toBe('Sam corrected something.');
+    expect(await renderMemoryGroupSync('en', 'correct', 'Sam')).not.toContain('midtown');
   });
 });
 
