@@ -753,6 +753,10 @@ async function runLegForSequence(
   };
   const body = await deps.compose({
     leg,
+    language:
+      recipients.find((recipient) => recipient.parentUserId === sequence.parentUserId)?.language ??
+      recipients[0]?.language ??
+      'en',
     reading,
     resident: isResidentWindow,
     copy: copyInput,

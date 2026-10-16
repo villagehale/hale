@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RegistrationReader } from '~/lib/registration/read';
+import { isStage, structuredReply } from '~/lib/testing/structured-reply';
 import { adultLearnDoor } from './adult-learn';
 import {
   type IntakeAnswerInput,
@@ -32,15 +33,24 @@ const RETURN = 'Still want me watching the registration dates?';
 function officialClient(url: string) {
   return {
     messages: {
-      create: async () => ({
-        content: [
-          {
-            type: 'web_search_tool_result',
-            tool_use_id: 'search',
-            content: [{ type: 'web_search_result', url, title: 'Official registration page' }],
-          },
-        ],
-      }),
+      create: async (request: unknown) =>
+        isStage(request, 'registration_request', 'needsLocation')
+          ? structuredReply(request, 'registration_request', {
+              intent: 'inspect',
+              confidence: 'high',
+              needsLocation: false,
+            })
+          : {
+              content: [
+                {
+                  type: 'web_search_tool_result',
+                  tool_use_id: 'search',
+                  content: [
+                    { type: 'web_search_result', url, title: 'Official registration page' },
+                  ],
+                },
+              ],
+            },
     },
   } as never;
 }
@@ -249,7 +259,11 @@ describe('intake answer · the emergency tripwire', () => {
       },
     } as never;
     const reader = vi.fn();
-    const outcome = await createIntakeAnswerComposer(exploding, reader).compose({
+    const outcome = await createIntakeAnswerComposer(exploding, reader, async () => ({
+      intent: 'inspect',
+      confidence: 'high',
+      needsLocation: true,
+    })).compose({
       ...INPUT,
       postalCode: null,
       parentWords: 'When does swim registration open near me?',
@@ -258,6 +272,66 @@ describe('intake answer · the emergency tripwire', () => {
       status: 'answered',
       body: 'Which city or course link should I check?',
     });
+    expect(reader).not.toHaveBeenCalled();
+  });
+
+  it('lets the model require a location without near-me keywords', async () => {
+    const client = { messages: { create: vi.fn() } } as never;
+    const reader = vi.fn();
+    const readRequest = vi.fn(async () => ({
+      intent: 'inspect' as const,
+      confidence: 'high' as const,
+      needsLocation: true,
+    }));
+    const outcome = await createIntakeAnswerComposer(client, reader, readRequest).compose({
+      ...INPUT,
+      parentWords: 'When does swim registration open within walking distance?',
+      postalCode: null,
+    });
+    expect(outcome).toEqual({
+      status: 'answered',
+      body: 'Which city or course link should I check?',
+    });
+    expect(readRequest).toHaveBeenCalledOnce();
+    expect(reader).not.toHaveBeenCalled();
+  });
+
+  it('does not override a model-grounded explicit city just because near-me words occur', async () => {
+    const url = 'https://www.hamilton.ca/recreation';
+    const readRequest = vi.fn(async () => ({
+      intent: 'inspect' as const,
+      confidence: 'high' as const,
+      needsLocation: false,
+    }));
+    const outcome = await createIntakeAnswerComposer(
+      officialClient(url),
+      published,
+      readRequest,
+    ).compose({
+      ...INPUT,
+      parentWords:
+        'When does swim registration open in Hamilton? My area was the previous question.',
+      postalCode: null,
+    });
+    expect(readRequest).toHaveBeenCalledOnce();
+    expect(outcome.status).toBe('answered');
+    if (outcome.status === 'answered') expect(outcome.body).toContain(url);
+  });
+
+  it('does not search or infer a city when the request model cannot establish search scope', async () => {
+    const create = vi.fn();
+    const reader = vi.fn();
+    const outcome = await createIntakeAnswerComposer(
+      { messages: { create } } as never,
+      reader,
+      async () => null,
+    ).compose({
+      ...INPUT,
+      parentWords: 'When does swim registration open?',
+      postalCode: null,
+    });
+    expect(outcome.status).toBe('answered');
+    expect(create).not.toHaveBeenCalled();
     expect(reader).not.toHaveBeenCalled();
   });
 
@@ -295,7 +369,7 @@ describe('intake answer · the emergency tripwire', () => {
     expect(mid.body).not.toContain("I don't do that");
   });
 
-  it('answers a rec/camp question that misses the city pins without a model', async () => {
+  it('asks for the location when the model reads an unresolved local registration request', async () => {
     // VIL-326: "When does swim registration open near me?" is not Toronto /
     // Markham / YMCA, so the 544/548/555 pins miss. The old path invented a
     // clock (refused) or returned unavailable, and greet sent the ask alone.
@@ -306,7 +380,11 @@ describe('intake answer · the emergency tripwire', () => {
         },
       },
     } as never;
-    const composer = createIntakeAnswerComposer(exploding);
+    const composer = createIntakeAnswerComposer(exploding, published, async () => ({
+      intent: 'inspect',
+      confidence: 'high',
+      needsLocation: true,
+    }));
     const outcome = await composer.compose({
       parentWords: 'When does swim registration open near me?',
       pendingAsk: COLD_START_ASK,
@@ -327,6 +405,12 @@ describe('intake answer · the emergency tripwire', () => {
     const client = {
       messages: {
         create: async (req: { tools?: Array<{ type?: string }> }) => {
+          if (isStage(req, 'registration_request', 'needsLocation'))
+            return structuredReply(req, 'registration_request', {
+              intent: 'inspect',
+              confidence: 'high',
+              needsLocation: false,
+            });
           if (req.tools?.[0]?.type === 'web_search_20250305') {
             return {
               content: [

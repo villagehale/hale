@@ -3,8 +3,11 @@
 Draft PR: [#872](https://github.com/villagehale/hale/pull/872). Not merge-ready.
 
 Superseded integration/approval status: see [current-main integration](vil-423-main-sync-2026-10-16.md).
-The earlier US$30 proposal was not approved. Sloane explicitly holds paid recording
-until #871, final integration/prompt freeze and a revised ~US$12/$15-cap estimate.
+The earlier US$30 proposal was not approved. Corrected order: #872 first, #871
+paused and rebasing later. Keep this branch's US ZIP code; no additional rebase is
+requested. Paid recording waits for prompt freeze and Barton's approval of a
+revised ~US$12/$15-cap estimate. The historical remaining-gates section below is
+superseded by the current-main integration report.
 
 ## Changes and concrete examples
 

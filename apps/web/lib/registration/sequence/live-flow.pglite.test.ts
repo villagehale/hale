@@ -142,6 +142,22 @@ function harness(reading: LiveRegistrationReading, target: Awaited<ReturnType<ty
 }
 
 describe('live registration storage → cron → outbound', () => {
+  it('passes the watch owner stored language to the household reminder writer', async () => {
+    const target = await watch(`language-${randomUUID()}`);
+    const h = harness(page(target.url), target);
+    h.deps.loadRecipients = async () => [
+      {
+        parentUserId: target.parentUserId,
+        role: 'primary_parent',
+        timeZone: 'America/Toronto',
+        language: 'fr-CA',
+      },
+    ];
+    const compose = vi.fn(registrationReminderFixture);
+    h.deps.compose = compose;
+    await runRegistrationSequenceCron(db.database, h.deps, new Date('2026-10-13T14:00:00Z'));
+    expect(compose).toHaveBeenCalledWith(expect.objectContaining({ language: 'fr-CA' }));
+  });
   it.runIf(process.env.VIL423_LIVE_MINUTE_EVAL === 'true').each([
     { audience: 'resident', area: 'L7M', date: '2026-08-22', kind: 'resident_open' },
     { audience: 'non-resident', area: 'L4B', date: '2026-08-28', kind: 'general_open' },
@@ -1031,6 +1047,7 @@ describe('course link entry', () => {
     reading.dates[0]!.kind = 'unclassified_open';
     let summary = '';
     const handler = registrationLinkHandler({
+      readRequest: async () => ({ intent: 'inspect', confidence: 'high', needsLocation: false }),
       reader: () => async () => reading,
       draft: async (_database, input) => {
         summary = input.summary;
@@ -1071,6 +1088,10 @@ describe('course link entry', () => {
       const url = `https://example.org/${zone}`;
       let approvals = 0;
       const handler = registrationLinkHandler({
+        readRequest: vi
+          .fn()
+          .mockResolvedValueOnce({ intent: 'inspect', confidence: 'high', needsLocation: false })
+          .mockResolvedValueOnce({ intent: 'remind', confidence: 'high', needsLocation: false }),
         reader: () => async () => page(url, '2026-10-20', '09:00', zone),
         draft: async () => action(family.familyId, false),
         approve: async () => {
@@ -1112,6 +1133,7 @@ describe('course link entry', () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const family = await seedFamily(db.database, 'unrelated');
     const handler = registrationLinkHandler({
+      readRequest: async () => ({ intent: 'none', confidence: 'high', needsLocation: false }),
       reader: () => async () => {
         throw new Error('must not read');
       },
@@ -1133,4 +1155,75 @@ describe('course link entry', () => {
       ).claimed,
     ).toBe(false);
   });
+
+  it.each([
+    'Préviens-moi à l’ouverture des inscriptions.',
+    'Avísame cuando se abran las inscripciones.',
+    'ذكرني عند فتح التسجيل.',
+  ])('uses model-read reminder intent rather than English/Chinese words: %s', async (text) => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const family = await seedFamily(db.database, 'model intent');
+    const url = `https://example.org/${randomUUID()}`;
+    const readRequest = vi.fn(async () => ({
+      intent: 'remind' as const,
+      confidence: 'high' as const,
+      needsLocation: false,
+    }));
+    const approve = vi.fn(async () => {});
+    const handler = registrationLinkHandler({
+      readRequest,
+      reader: () => async () => page(url),
+      draft: async () => action(family.familyId, false),
+      approve,
+    });
+    const response = await handler.handle(db.database, {
+      ...family,
+      body: `${text} ${url}`,
+      now: NOW,
+    } as HandlerContext);
+    expect(response).toMatchObject({ claimed: true, outcome: 'registration_reminder_requested' });
+    expect(readRequest).toHaveBeenCalledOnce();
+    expect(approve).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      text: 'remind me when it opens, but actually do not set any reminders',
+      intent: 'inspect',
+      confidence: 'high',
+    },
+    { text: 'remind me? I have not decided', intent: 'remind', confidence: 'low' },
+    { text: 'register this birthday invitation', intent: 'none', confidence: 'high' },
+  ] as const)(
+    'does not approve from suggestive words when the model reads $intent/$confidence',
+    async ({ text, intent, confidence }) => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      const family = await seedFamily(db.database, 'no implicit consent');
+      const url = `https://example.org/${randomUUID()}`;
+      const approve = vi.fn(async () => {});
+      const reader = vi.fn(async () => page(url));
+      const handler = registrationLinkHandler({
+        readRequest: async () => ({ intent, confidence, needsLocation: false }),
+        reader: () => reader,
+        draft: async () => action(family.familyId, false),
+        approve,
+      });
+      const response = await handler.handle(db.database, {
+        ...family,
+        body: `${text} ${url}`,
+        now: NOW,
+      } as HandlerContext);
+      expect(approve).not.toHaveBeenCalled();
+      if (intent === 'none' || confidence === 'low') {
+        expect(response.claimed).toBe(false);
+        expect(reader).not.toHaveBeenCalled();
+        expect(await loadLiveSequences(db.database, undefined, family.familyId)).toHaveLength(0);
+      } else {
+        expect(response).toMatchObject({
+          claimed: true,
+          outcome: 'registration_reminder_proposed',
+        });
+      }
+    },
+  );
 });

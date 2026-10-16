@@ -15,6 +15,10 @@ import {
   registrationDate,
   unclassifiedRegistrationDate,
 } from '~/lib/registration/read';
+import {
+  type RegistrationRequestReader,
+  createRegistrationRequestReader,
+} from '~/lib/registration/request-read';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
 import {
@@ -334,6 +338,7 @@ async function groundOfficialPages(
   client: AgentClient,
   input: IntakeAnswerInput,
   reader: RegistrationReader,
+  readRequest: RegistrationRequestReader,
 ): Promise<OfficialGround> {
   const query = deidentifyOfficialQuery(input.parentWords, input.children);
   const urls: string[] = input.parentWords.match(/https:\/\/[^\s<>]+/g) ?? [];
@@ -342,8 +347,10 @@ async function groundOfficialPages(
       const skill = await loadCronSkill('intake-official-ground');
       const cities = input.postalCode ? resolveMunicipalities(input.postalCode) : [];
       const location = cities.length === 1 ? townLabel(cities[0]!) : null;
-      if (!location && /\b(near me|my area|around here)\b/i.test(query)) {
-        return { status: 'ungrounded', reason: 'location_required' };
+      if (!location) {
+        const request = await readRequest({ text: query, sourceUrl: null, location });
+        if (!request || request.confidence !== 'high' || request.needsLocation)
+          return { status: 'ungrounded', reason: 'location_required' };
       }
       const research = await client.messages.create({
         model: pickModel(skill.meta.task),
@@ -391,6 +398,7 @@ async function groundOfficialPages(
 export function createIntakeAnswerComposer(
   client: AgentClient,
   reader: RegistrationReader = createRegistrationReader(),
+  readRequest: RegistrationRequestReader = createRegistrationRequestReader(client),
 ): IntakeAnswerComposer {
   return {
     async compose(input) {
@@ -418,7 +426,7 @@ export function createIntakeAnswerComposer(
       // official pages; if a date is not on them, say so. Never invent a clock,
       // and never return unavailable — that was the greet/ask-alone leak.
       if (isOfficialPageAsk(input.parentWords)) {
-        const ground = await groundOfficialPages(client, input, reader);
+        const ground = await groundOfficialPages(client, input, reader, readRequest);
         if (ground.status === 'ungrounded') {
           console.error(
             { reason: ground.reason },

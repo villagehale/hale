@@ -237,7 +237,11 @@
   },
   "registration-reminder.md": {
     "file": "registration-reminder.md",
-    "sha256": "17a064da911fdd6673c58a9af1cfb9bd3723fd47ede3ac9e8f47ba257fc271ca"
+    "sha256": "be6af31c5300ffcdf8dd3c7f6553b5e8f190849f64d8980030f90fb4b455ef1d"
+  },
+  "registration-request-read.md": {
+    "file": "registration-request-read.md",
+    "sha256": "c0cb5b024a52d3a042e7eca105bf4ce7a36b6d7189fac64495c6b2bf2aa06550"
   },
   "reminder-voice.md": {
     "file": "reminder-voice.md",

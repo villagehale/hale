@@ -1,13 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { registrationSourceState, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
-import { createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { legDedupeKey, loadLiveSequences } from './run';
 
 describe('registration catalog retirement', () => {
+  let db: TestDb;
+
+  beforeAll(async () => {
+    // Cold migration replay belongs under the existing database setup timeout.
+    db = await createTestDb('0172_registration_live_watch_storage.sql');
+  });
+
   it('preserves approved watch, outcome clock and delivered identity while dropping unused catalog rows', async () => {
-    const db = await createTestDb('0172_registration_live_watch_storage.sql');
     try {
       const family = await seedFamily(db.database, 'Imported watch');
       const ids = [randomUUID(), randomUUID()];

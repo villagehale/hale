@@ -16,6 +16,7 @@ export interface RegistrationReminderInput {
   resident: boolean;
   copy: LegCopyInput;
   change: RegistrationChange | null;
+  language?: string;
 }
 
 /** Live facts only; no family IDs, names, birthdays, postal codes or cached window dates. */
@@ -27,6 +28,7 @@ export function registrationReminderContext(input: RegistrationReminderInput) {
   const prep = copy.prep?.verdict;
   return {
     leg: input.leg,
+    language: input.language ?? 'en',
     now: copy.now.toISOString(),
     parentTimeZone: copy.timeZone,
     when,

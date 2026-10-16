@@ -49,6 +49,16 @@ function fake(message: string) {
 }
 
 describe('AI registration reminders (mechanics, not model quality)', () => {
+  it.each(['en', 'fr-CA', 'ar'])(
+    'passes the stored language tag unchanged: %s',
+    async (language) => {
+      const text = `${when}. ${source}`;
+      const { client, create } = fake(text);
+      expect(await composeRegistrationReminder({ ...input, language }, client)).toBe(text);
+      const request = create.mock.calls[0]![0] as { messages: { content: string }[] };
+      expect(JSON.parse(request.messages[0]!.content)).toMatchObject({ language });
+    },
+  );
   it('sends generated wording, preserves the exact live time and appends its verified source', async () => {
     const text = `Just checked: ${when}. I'll send the evening-before plan.`;
     const { client, create } = fake(text);

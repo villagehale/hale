@@ -3,19 +3,20 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { DeterministicHandler } from '~/lib/channel/router/route';
-import { sanitizeSpotUrl, SPOT_PORTAL_HOSTS } from '~/lib/channel/spots/url';
+import { SPOT_PORTAL_HOSTS, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { registrationPageUrl } from '../page';
 import {
+  type RegistrationReader,
   createRegistrationReader,
-  registrationHasOpened,
   registrationDate,
+  registrationHasOpened,
   registrationWhen,
   unclassifiedRegistrationDate,
-  type RegistrationReader,
 } from '../read';
+import { type RegistrationRequestReader, createRegistrationRequestReader } from '../request-read';
 import { loadPreparingSequence } from './prepare-reply';
 import {
   claimRegistrationSend,
@@ -30,16 +31,10 @@ export function registrationLinkIn(body: string): string | null {
   return urls[0]!.replace(/[.,;)]+$/, '');
 }
 
-export function explicitlyRequestsRegistrationReminder(body: string): boolean {
-  return (
-    /^(?:please\s+)?(?:remind me|watch (?:this|registration)|提醒我|帮我提醒)/i.test(body.trim()) &&
-    !/\b(?:don't|do not|not|stop|cancel)\b|不要|不用/.test(body.toLowerCase())
-  );
-}
-
 /** Creates only a watch + reviewed approval. A paste is never subscription consent. */
 export function registrationLinkHandler(
   ports: {
+    readRequest: RegistrationRequestReader;
     reader(): RegistrationReader;
     draft(
       database: Database,
@@ -50,6 +45,7 @@ export function registrationLinkHandler(
       input: { familyId: string; actionId: string; approvedBy: string },
     ): Promise<void>;
   } = {
+    readRequest: createRegistrationRequestReader(pipelineClient),
     reader: createRegistrationReader,
     draft: async (database, input) =>
       (
@@ -80,13 +76,6 @@ export function registrationLinkHandler(
     async handle(database, ctx) {
       const pasted = registrationLinkIn(ctx.body);
       if (!pasted || !f14EnabledFor(ctx.familyId)) return { claimed: false };
-      if (
-        ctx.body.trim() !== pasted &&
-        !/\b(register|registration|signup|sign.?up|course|class|swim|camp|remind|watch)\b|报名|课程|提醒/i.test(
-          ctx.body,
-        )
-      )
-        return { claimed: false };
       const [member] = await database
         .select({ role: schema.familyMembers.role })
         .from(schema.familyMembers)
@@ -109,6 +98,10 @@ export function registrationLinkHandler(
           reply: 'Please send a public HTTPS course page without login credentials.',
         };
       }
+      const request = await ports.readRequest({ text: ctx.body, sourceUrl, location: null });
+      if (!request || request.intent === 'none' || request.confidence !== 'high')
+        return { claimed: false };
+      const wantsReminder = request.intent === 'remind';
       const spot = sanitizeSpotUrl(sourceUrl);
       if (spot.ok) {
         const preparing = await loadPreparingSequence(database, ctx.familyId, ctx.now);
@@ -195,11 +188,11 @@ export function registrationLinkHandler(
                 )
             )[0]
           : null;
-        if (previous?.revertedAt && !explicitlyRequestsRegistrationReminder(ctx.body)) {
+        if (previous?.revertedAt && !wantsReminder) {
           return {
             claimed: true,
             outcome: 'registration_reminder_declined',
-            reply: `${fact} This reminder plan was declined. Send "remind me" with this link to request a new plan. ${sourceUrl}`,
+            reply: `${fact} This reminder plan was declined. You can ask for a new plan with this course link. ${sourceUrl}`,
           };
         }
         if (!actionId || previous?.revertedAt) {
@@ -237,17 +230,15 @@ export function registrationLinkHandler(
                 );
               return false;
             }
-            await tx
-              .insert(schema.auditLog)
-              .values({
-                familyId: ctx.familyId,
-                actor: ctx.parentUserId,
-                actionTaken: 'registration_reminder_proposed',
-                targetTable: 'registration_sequences',
-                targetId: claimed.sequenceId,
-                after: { actionId },
-                occurredAt: ctx.now,
-              });
+            await tx.insert(schema.auditLog).values({
+              familyId: ctx.familyId,
+              actor: ctx.parentUserId,
+              actionTaken: 'registration_reminder_proposed',
+              targetTable: 'registration_sequences',
+              targetId: claimed.sequenceId,
+              after: { actionId },
+              occurredAt: ctx.now,
+            });
             return true;
           });
           if (!attached)
@@ -258,7 +249,7 @@ export function registrationLinkHandler(
                 'This reminder proposal changed while I checked it. Please resend the course link.',
             };
         }
-        if (explicitlyRequestsRegistrationReminder(ctx.body)) {
+        if (wantsReminder) {
           const [action] = await database
             .select({
               executedAt: schema.actions.executedAt,
