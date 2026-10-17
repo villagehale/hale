@@ -19,6 +19,21 @@ const ROBOTICS = {
 };
 
 describe('activityLinkSuffix', () => {
+  it('retains an unconfirmed source without a title match, without adding unrelated recommendations', () => {
+    const source = {
+      title: 'preschool library storytimes Burlington VT',
+      url: 'https://fletcherfree.org/',
+      sourceReference: true,
+    };
+    expect(
+      activityLinkSuffix('I could not confirm these pages are for your area.', [
+        source,
+        source,
+        FANOUS,
+      ]),
+    ).toBe(source.url);
+    expect(activityLinkSuffix(`I could not confirm it. ${source.url}`, [source])).toBe('');
+  });
   it('does not treat a different case-sensitive query value as the exact source', () => {
     const link = { title: 'STEAM Storytime', url: 'https://www.lpl.ca/whats-on?audience=Kids' };
     expect(

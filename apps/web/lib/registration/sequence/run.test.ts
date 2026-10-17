@@ -9,7 +9,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { FetchPage } from '~/lib/registration/fetch';
 import { registrationReminderFixture } from '~/lib/testing/registration-reminder';
-import { structuredReply } from '~/lib/testing/structured-reply';
+import { isStage, structuredReply } from '~/lib/testing/structured-reply';
 import { resolveFamilyOpen } from '../match-registration-windows';
 import { createRegistrationReader } from '../read';
 import type { RegistrationReader } from '../read';
@@ -356,16 +356,42 @@ describe('the legs', () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ sequences: [live()] });
     const create = vi.fn(async (request: { messages: { content: string }[] }) => {
+      if (isStage(request, 'registration_message_dates', 'openings')) {
+        return structuredReply(request, 'registration_message_dates', {
+          openings: [
+            {
+              date: '2026-09-15',
+              time: '06:30',
+              timeZone: 'America/Toronto',
+              weekday: null,
+              confidence: 'high',
+              evidence: {
+                date: '2026-09-15',
+                time: '06:30',
+                timeZone: 'America/Toronto',
+                weekday: null,
+              },
+            },
+          ],
+        });
+      }
       const context = JSON.parse(request.messages[0]!.content);
+      expect(context.opening).toEqual({
+        date: '2026-09-15',
+        time: '06:30',
+        timeZone: 'America/Toronto',
+        timePublished: true,
+      });
       return structuredReply(request, 'registration_reminder', {
-        message: `Freshly checked: ${context.when}. I'll send your evening-before plan.`,
+        message:
+          "Freshly checked: 2026-09-15 at 06:30 America/Toronto. I'll send your evening-before plan.",
       });
     });
     const client = { messages: { create } } as unknown as AgentClient;
     h.deps.compose = (input) => composeRegistrationReminder(input, client);
     const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
     expect(result.sent).toBe(1);
-    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(2);
     expect(h.transport.bodies()[0]).toBe(
       `Freshly checked: 2026-09-15 at 06:30 America/Toronto. I'll send your evening-before plan.\n${win().sourceUrl}`,
     );

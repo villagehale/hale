@@ -953,6 +953,39 @@ async function cachedGround(opts) {
   return value;
 }
 
+/** Same source URL budget and pinned reader as production, without trusting research prose. */
+export async function readSourcePages(ground, fetchPage, stripHtml) {
+  const urls = [
+    ...new Set([
+      ...(ground.pages ?? []).map((page) => page.url),
+      ...String(ground.evidence)
+        .split('\n')
+        .filter((line) => /^https?:\/\//.test(line)),
+    ]),
+  ].slice(0, MAX_INLINE_FETCHES);
+  const pages = (
+    await Promise.all(
+      urls.map(async (raw) => {
+        try {
+          const { url, text: html } = await fetchPage(raw);
+          const text = stripHtml(html).slice(0, 20_000);
+          return text.trim() ? { url, text } : null;
+        } catch {
+          return null;
+        }
+      }),
+    )
+  ).filter(Boolean);
+  return {
+    pages,
+    pagesRead: pages.length,
+    pagesRefused: urls.length - pages.length,
+    pagesStale: 0,
+    checkedAt: new Date().toISOString(),
+    notes: pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n'),
+  };
+}
+
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -967,8 +1000,9 @@ async function main() {
   const followupMaxTokensArg = process.argv
     .find((arg) => arg.startsWith('--followup-max-tokens='))
     ?.split('=')[1];
-  const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);
-  const followupMaxTokens = followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
+  const picksMaxTokens = picksMaxTokensArg === undefined ? 2000 : Number(picksMaxTokensArg);
+  const followupMaxTokens =
+    followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
   if (!Number.isInteger(picksMaxTokens) || picksMaxTokens < 1) {
     throw new Error('--picks-max-tokens must be a positive integer');
   }
@@ -980,6 +1014,32 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const { createActivityPageFetch } = await tsImport(
+    join(REPO_ROOT, 'apps/web/lib/channel/activity/page.ts'),
+    { parentURL: import.meta.url, tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json') },
+  );
+  const { stripHtml } = await tsImport(join(REPO_ROOT, 'apps/web/lib/registration/fetch.ts'), {
+    parentURL: import.meta.url,
+    tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+  });
+  const fetchPage = createActivityPageFetch();
+  const withSourcePages = async (ground) => {
+    const key = cacheKey(
+      'activity-official-pages',
+      JSON.stringify({
+        evidence: ground.evidence,
+        urls: (ground.pages ?? []).map((page) => page.url),
+      }),
+    );
+    let pages = await cacheGet(key);
+    if (!pages) {
+      if (cachedOnly)
+        throw new Error(`official-page cache miss ${key}; record real page reads before replay`);
+      pages = await readSourcePages(ground, fetchPage, stripHtml);
+      await cachePut(key, pages);
+    }
+    return { ...ground, ...pages };
+  };
   // THE TRAVEL FIXTURES' SUBJECT IS THE PRODUCT'S, READ FROM THE PRODUCT. A `.mjs`
   // corpus cannot import a TS constant, so the three travel fixtures carry a copy - and a
   // copy that has drifted is a corpus grading a query nobody sends, silently and forever.
@@ -1086,6 +1146,7 @@ async function main() {
           getClient,
           cost,
         });
+    if (!broken) ground = await withSourcePages(ground);
     // Mirrors the lane's grounding invariant, BOTH halves of it (lane.ts): zero results is
     // ungrounded, and so is a turn that searched and wrote nothing down. The second half
     // exists because the corpus produced it - 24 real results and an empty notes string,
@@ -1149,6 +1210,7 @@ async function main() {
         getClient,
         cost,
       });
+      ground = await withSourcePages(ground);
       extracted = (
         await cachedToolCall({
           tag: evalRunTag(`activity-picks-read:${fixture.id}`),
@@ -1303,7 +1365,13 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(body, kept, pageEvidence, watch, composed.commits_to_return === true);
+      violations = followUpViolations(
+        body,
+        kept,
+        pageEvidence,
+        watch,
+        composed.commits_to_return === true,
+      );
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -1429,7 +1497,9 @@ async function main() {
   process.exit(calibrated ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error('activity-finder eval harness error:', err);
-  process.exit(2);
-});
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error('activity-finder eval harness error:', err);
+    process.exit(2);
+  });
+}

@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { activityLinkSuffix } from '~/lib/channel/coach/activity-links';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
 
@@ -73,7 +74,12 @@ describe('search_village uses this operation’s live evidence', () => {
     );
     expect(output).toMatchObject({ candidates: [], references: [], checkedSources: [url] });
     expect(offered).toEqual([]);
-    expect(checked).toEqual([{ title: 'Archived swim', url }]);
+    expect(checked).toEqual([{ title: 'Archived swim', url, sourceReference: true }]);
+    expect(
+      activityLinkSuffix('I could not confirm a current date.', [
+        { title: 'Archived swim', url, sourceReference: true },
+      ]),
+    ).toBe(url);
     expect(
       await db.database
         .select()

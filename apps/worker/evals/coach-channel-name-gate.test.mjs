@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { inventedName } from './coach-channel-name-gate.mjs';
+import { inventedName, inventedNames } from './coach-channel-name-gate.mjs';
 
 // The hay the coach-channel gate builds: this family's children, parent and town,
 // lowercased and flattened (groundedHay in run-coach-channel-eval.mjs).
 const HAY = 'remy theo sam toronto swim lesson thu';
 
 describe('inventedName', () => {
+  it('recognises a new sentence after closing quotes, without exempting names inside it', () => {
+    expect(
+      inventedNames('Say "If you come in, I will walk you back." Then walk him back.', HAY),
+    ).toEqual([]);
+    expect(
+      inventedNames('Say "If you come in, I will walk you back." Then ask Marcus.', HAY),
+    ).toEqual(['Marcus']);
+    expect(
+      inventedNames('Say “If you come in, I will walk you back.” Then ask Marcus.', HAY),
+    ).toEqual(['Marcus']);
+  });
   it('catches a name this family was never handed', () => {
     expect(inventedName('Marcus', HAY)).toBe('Marcus');
   });

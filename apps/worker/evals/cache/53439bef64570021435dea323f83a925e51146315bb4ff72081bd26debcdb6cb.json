@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are on the page exactly as printed: Saturdays, times, Sept 12 to Nov 28, and ages 3-5. Each is cited to the oakville.ca page. Price is correctly null because the page prints no fee, and there is no invented third level. Both slots carry the Aug 11, 7am registration date. The message leads with the programs by name, attributes the facts ('their site says') and carries the not-yet-open registration date. It owns the price gap in the first person ('I couldn't pin down the price'), which is the correct framing under page_has_schedule rather than 'not posted'. With watch true, it correctly states the first-person keep-watching commitment. It is plain ASCII, with no link and no question. Minor nit: the Recreation Guide the page cites for fees is not noted as unread, but the message already owns the price gap.",
+    "score": 5
+  }
+}

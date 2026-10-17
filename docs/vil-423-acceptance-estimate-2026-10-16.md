@@ -1,9 +1,71 @@
 # VIL-423 — corrected order and one paid acceptance request
 
 **Barton approved one run, hard cap US$15**, confirmed in [Sloane's 16:07 note](https://linear.app/villagehale/issue/VIL-423#comment-52281b88).
-No paid calls made at this prompt checkpoint. #872 merges first; #871 follows.
+No paid calls had been made at that original prompt checkpoint. #872 merges first; #871 follows.
 Main is already integrated at `e3450b8eb`; no further rebase is requested.
 Keep the US ZIP implementation and migration numbers in this branch.
+
+## Hold audit, regeneration approval and ONE remaining-work estimate
+
+Sloane's [19:06 hold](https://linear.app/villagehale/issue/VIL-423#comment-6162a367)
+and [21:44 review](https://linear.app/villagehale/issue/VIL-423#comment-2f48b7d7)
+superseded the original recording permission for further calls. Barton subsequently
+[approved regeneration at 21:53](https://linear.app/villagehale/issue/VIL-423#comment-3ecfb375),
+inside the SAME $15 ledger: first push structured dates/semantic guard/no STOP regex
+and post the spend breakdown; then eight reminders, then EN/FR/Arabic links.
+No regeneration has started at this source checkpoint. The same original ledger
+stands at **$10.360551255 / $15, 422 calls**, reserved $0. It is an estimate from
+returned usage/tool counts, not a provider invoice; it has not been reset.
+
+| Covered work | Calls | Ledger USD |
+| --- | ---: | ---: |
+| Reminders, links, intent and sample judges | 26 | 0.199572355 |
+| Missing journey subjects and judge recordings | 11 | 0.062031100 |
+| Coach subjects and judges, including harness-alignment continuation | 272 | 3.270094200 |
+| Legacy Finder search, extraction, judges, including truncated/failed attempts | 61 | 4.258458400 |
+| Four fresh Finder → Coach conversations | 22 | 2.089006100 |
+| Deep-answer subjects, repairs and judges | 30 | 0.481389100 |
+| Total | **422** | **10.360551255** |
+
+**Yes, calls ran after the 19:06 hold was posted.** I did not refresh the review
+promptly enough. Batch order/log times identify the Finder batches, Coach alignment,
+four fresh conversations and deep eval as later work: **143 calls / $7.341192700**.
+The ledger has no per-call timestamps, so this is batch-level attribution, not an
+invented timestamp audit. The last batch finished around 21:39 ET, before I read
+and acknowledged the hold. Nothing paid has run since that acknowledgement.
+
+**One re-estimate covering all remaining paid acceptance: $4.10 expected**, inside
+the **$4.639448745 remaining** on the SAME ledger:
+
+| Remaining work | USD allowance |
+| --- | ---: |
+| Legacy Finder eight cases, real official-page inputs, extraction and judges | 3.30 |
+| Regenerate eight reminders and EN/FR/Arabic links; existing-model voice/fact judges | 0.30 |
+| Independent natural-date parser checks on those eleven messages | 0.05 |
+| Repairs, HTTP/page-input variability and one Burlington ownership check/sample | 0.45 |
+| Expected additional / cumulative | **4.10 / 14.460551255** |
+
+This is a planning estimate based on this session's usage, not a guarantee that
+all cases fit. The $15 gate reserves worst-case call costs; stop and report if it
+refuses, even if the expected cost would fit. No reroll-until-pass, new ledger or
+additional run is authorized. Unchanged Coach/deep/journey replay costs $0.
+
+The new writer input is `{date, time, timeZone, timePublished}`. A separate existing
+Haiku `screen` call sees only the generated message and clock, parses its expressed
+values, then code compares them with the source facts. No new API/provider. This
+adds one validation call per generated reply; real quality/latency is **unverified
+while held**. The prior multilingual samples do not accept this changed prompt.
+
+Current keyless prompt checkpoint (not permission to regenerate):
+
+| File | SHA-256 |
+| --- | --- |
+| registration-reminder.md | 1be0e78d90a85bfa6bc2d08fb9e1e8c5a2b8488c6c6385013cfb1da265e23475 |
+| registration-link-reply.md | 52d72c4358bbe106dc2cd42e8b2dbbaa1b94021aa6507b44cd80fa38fee45f33 |
+| registration-message-dates.md | 2fb8889cc325391c1d7934af2762a1ee23eea4e260fbc70501606cc9f59ada24 |
+
+The original checkpoint below is retained as the audit for the earlier calls;
+the reminder/link hashes are superseded by the three above.
 
 ## Keyless changes before recording
 
@@ -30,6 +92,16 @@ Keep the US ZIP implementation and migration numbers in this branch.
 The word-list change is limited to the three reviewed sites. It is not a claim
 that every older intake module is keyword-free. The English evidence/time regex
 follow-up remains outside this change, as Sloane marked it non-blocking.
+
+Acceptance-session correction, without changing the frozen product prompts or model:
+the evidence/session JSON exceeded the former 1,024-token extraction output budget.
+The production Finder and eval now both allow 2,000 tokens for that one step.
+The extra maximum output allowance is under $0.01 per extraction at the same model
+rate; it stays inside the same US$15 shared total cap, not an additional spend run.
+The Coach eval also now offers the real `read_registration_page` tool and watch-only
+context, instead of pre-injected dates with a required tool missing. Judge context
+receives the existing spot policy only on a spot-watch turn. No voice/factual floor
+or assertion is relaxed; valid cached outputs remain unchanged.
 
 ## Prompt checkpoint
 

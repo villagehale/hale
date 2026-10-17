@@ -141,6 +141,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
             result.searched.checkedSources.map((url) => ({
               title: deidentified.query.subject,
               url,
+              sourceReference: true,
             })),
           );
         return {

@@ -384,6 +384,7 @@ function refuseMismatchedWeekday(
 export interface NamedLink {
   title: string;
   url: string;
+  sourceReference?: boolean;
 }
 
 export interface TurnOfferLedger {

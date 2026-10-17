@@ -271,6 +271,8 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
   const cap = readCapUsd() ?? Number.POSITIVE_INFINITY;
   const before = readLedger();
   if (before.halted) throw new Error(`spend-cap: round halted (${before.halted}); refusing ${tag}`);
+  if (before.refused > 0)
+    throw new Error(`spend-cap: previous refusal; stop this round before ${tag}`);
 
   const search = webSearchTool(request);
   let inputTokens = 0;

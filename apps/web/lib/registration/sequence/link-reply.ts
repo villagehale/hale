@@ -4,12 +4,8 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { LiveRegistrationReading } from '../live-reading';
-import {
-  registrationDate,
-  registrationDateRetained,
-  registrationWhen,
-  unclassifiedRegistrationDate,
-} from '../read';
+import { registrationDate, unclassifiedRegistrationDate } from '../read';
+import { openingFact, verifyMessageDates } from './message-dates';
 
 const NEXT_STEP = {
   unsafe_registration_url: 'send_public_https_course_url',
@@ -41,7 +37,7 @@ export function registrationLinkReplyContext(input: RegistrationLinkReplyInput) 
     sourceUrl: input.sourceUrl,
     sourceStatus: input.reading?.status ?? null,
     sourceReason: input.reading && 'reason' in input.reading ? input.reading.reason : null,
-    when: date && input.reading ? registrationWhen(input.reading, date) : null,
+    opening: openingFact(date, input.reading?.timeZone ?? null),
     eligibility: date?.kind ?? null,
     dateRemindersPaused: unclassified || (input.reading !== null && !date),
     nextStep:
@@ -82,13 +78,23 @@ export async function composeRegistrationLinkReply(
       schema: z.object({ message: z.string().trim().min(1) }),
       maxTokens: 2048,
     });
+    const urls = value.message.match(/https?:\/\/[^\s<>]+/g) ?? [];
+    if (urls.some((url) => url.replace(/[.,;!?]+$/, '') !== context.sourceUrl)) return null;
     const date = input.reading
       ? (registrationDate(input.reading, false) ?? unclassifiedRegistrationDate(input.reading))
       : null;
-    if (!registrationDateRetained(value.message, date, input.reading?.timeZone ?? null))
+    if (
+      !(await verifyMessageDates(
+        value.message,
+        input.reading?.checkedAt ?? new Date(),
+        openingFact(date, input.reading?.timeZone ?? null),
+        input.reading?.status === 'verified'
+          ? input.reading.dates.map((date) => openingFact(date, input.reading!.timeZone)!)
+          : [],
+        client ?? pipelineClient(),
+      ))
+    )
       return null;
-    const urls = value.message.match(/https?:\/\/[^\s<>]+/g) ?? [];
-    if (urls.some((url) => url.replace(/[.,;!?]+$/, '') !== context.sourceUrl)) return null;
     return context.sourceUrl && !value.message.includes(context.sourceUrl)
       ? `${value.message}\n${context.sourceUrl}`
       : value.message;

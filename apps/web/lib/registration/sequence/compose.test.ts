@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { structuredReply } from '~/lib/testing/structured-reply';
+import { isStage, structuredReply } from '~/lib/testing/structured-reply';
 import {
   type RegistrationReminderInput,
   composeRegistrationReminder,
@@ -41,14 +41,74 @@ const input: RegistrationReminderInput = {
   },
 };
 const when = '2026-10-23 at 06:30 America/Toronto';
-function fake(message: string) {
+function fake(message: string, parsed?: unknown[]) {
+  // ASCII parser stand-in for request/guard mechanics only, not language quality.
+  const date = message.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+  const time = message.match(/\b\d{2}:\d{2}\b/)?.[0] ?? null;
+  const timeZone = message.match(/(?:America|Europe)\/[A-Za-z_]+/)?.[0] ?? null;
   const create = vi.fn(async (request) =>
-    structuredReply(request, 'registration_reminder', { message }),
+    isStage(request, 'registration_message_dates', 'openings')
+      ? structuredReply(request, 'registration_message_dates', {
+          openings:
+            parsed ??
+            (date
+              ? [
+                  {
+                    date,
+                    time,
+                    timeZone,
+                    weekday: null,
+                    confidence: 'high',
+                    evidence: { date, time, timeZone, weekday: null },
+                  },
+                ]
+              : []),
+        })
+      : structuredReply(request, 'registration_reminder', { message }),
   );
   return { client: { messages: { create } } as unknown as AgentClient, create };
 }
 
 describe('AI registration reminders (mechanics, not model quality)', () => {
+  it('gives change notices the current opening, not the old scheduling anchor as a publishable fact', () => {
+    const date = input.reading.status === 'verified' ? input.reading.dates[0]! : null;
+    const context = registrationReminderContext({
+      ...input,
+      change: {
+        kind: 'earlier',
+        key: 'change',
+        sourceUrl: source,
+        previousAt: '2026-10-25T10:30:00Z',
+        candidateAt: '2026-10-23T10:30:00Z',
+        date,
+        timeZone: 'America/Toronto',
+        status: 'verified',
+        notified: false,
+      },
+    });
+    expect(context.change).toEqual({ kind: 'earlier' });
+    expect(context.opening?.date).toBe('2026-10-23');
+    expect(JSON.stringify(context)).not.toContain('2026-10-25');
+  });
+  it('sends naturally localized words when the independent parsed values match', async () => {
+    const message = 'Ouverture vendredi 23 octobre à 6 h 30, heure de Toronto.';
+    const parsed = {
+      date: '2026-10-23',
+      time: '06:30',
+      timeZone: 'America/Toronto',
+      weekday: 5,
+      confidence: 'high',
+      evidence: {
+        date: '23 octobre',
+        time: '6 h 30',
+        timeZone: 'heure de Toronto',
+        weekday: 'vendredi',
+      },
+    };
+    expect(await composeRegistrationReminder(input, fake(message, [parsed]).client)).toBe(
+      `${message}\n${source}`,
+    );
+  });
   it.each(['en', 'fr-CA', 'ar'])(
     'passes the stored language tag unchanged: %s',
     async (language) => {
@@ -66,15 +126,18 @@ describe('AI registration reminders (mechanics, not model quality)', () => {
     const request = create.mock.calls[0]![0] as { messages: { content: string }[] };
     expect(request.messages[0]!.content).not.toContain('private-sequence-id');
     expect(request.messages[0]!.content).not.toContain('opensForFamilyAt');
-    expect(JSON.parse(request.messages[0]!.content)).toMatchObject({ when, optIn: 'opted_in' });
+    expect(JSON.parse(request.messages[0]!.content)).toMatchObject({
+      opening: { date: '2026-10-23', time: '06:30', timeZone: 'America/Toronto' },
+      optIn: 'opted_in',
+    });
+    expect(JSON.parse(request.messages[0]!.content)).not.toHaveProperty('when');
   });
-  it.each([
-    `Registration is soon. ${source}`,
-    `${when}. https://evil.example/`,
-    `${when}. Reply STOP to opt out.`,
-  ])('defers unsupported output instead of using a template: %s', async (text) => {
-    expect(await composeRegistrationReminder(input, fake(text).client)).toBeNull();
-  });
+  it.each([`Registration is soon. ${source}`, `${when}. https://evil.example/`])(
+    'defers unsupported output instead of using a template: %s',
+    async (text) => {
+      expect(await composeRegistrationReminder(input, fake(text).client)).toBeNull();
+    },
+  );
   it('does not clip or reject a generated message based on character count', async () => {
     const text = `${when}. ${'Preparation information. '.repeat(35)}${source}`;
     expect(await composeRegistrationReminder(input, fake(text).client)).toBe(text);
@@ -104,14 +167,18 @@ describe('AI registration reminders (mechanics, not model quality)', () => {
         },
       ],
     };
-    expect(registrationReminderContext({ ...input, reading }).when).toContain('2026-10-23');
-    expect(registrationReminderContext({ ...input, reading }).when).not.toContain('00:00');
+    expect(registrationReminderContext({ ...input, reading }).opening).toEqual({
+      date: '2026-10-23',
+      time: null,
+      timeZone: 'America/Toronto',
+      timePublished: false,
+    });
     const unavailable = {
       ...input.reading,
       status: 'unreadable' as const,
       reason: 'fetch_failed' as const,
     };
-    expect(registrationReminderContext({ ...input, reading: unavailable }).when).toBeNull();
+    expect(registrationReminderContext({ ...input, reading: unavailable }).opening).toBeNull();
   });
   it('defers on provider failure, without a deterministic fallback', async () => {
     const client = {

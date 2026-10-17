@@ -95,6 +95,7 @@ interface Seen {
   system?: string;
   outputSchema?: unknown;
   thinking?: unknown;
+  maxTokens?: number;
 }
 
 type PhaseResponse = unknown | (() => unknown) | Error;
@@ -113,6 +114,7 @@ function makeClient(
           toolChoice: isCompose ? 'activity_picks' : undefined,
           outputSchema: req.output_config?.format?.schema,
           thinking: req.thinking,
+          maxTokens: req.max_tokens,
           userMessage: req.messages?.[0]?.content,
           system:
             typeof req.system === 'string'
@@ -295,6 +297,7 @@ describe('an ungrounded find never ships', () => {
       expect(result).toMatchObject({ found: true, picks: [{ sourceUrl: current }] });
       expect(seen).toHaveLength(2);
       expect(seen[1]?.thinking).toEqual({ type: 'between_tools' });
+      expect(seen[1]?.maxTokens).toBe(2000);
       expect(seen[1]?.userMessage).toContain(`SOURCE: ${current}`);
     } finally {
       fetch.mockRestore();

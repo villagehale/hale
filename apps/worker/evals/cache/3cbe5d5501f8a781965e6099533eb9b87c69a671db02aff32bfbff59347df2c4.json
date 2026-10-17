@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cg6jMX83QKWvWo9no4vd8",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Two wakings at 19 months is really common, and it's often a habit rather than a problem. Tonight, when Remy wakes, wait a few minutes before going in. If you go in, keep it boring: low light, a few quiet words, a hand on his back, and no picking up, feeding or playing. Do the same thing each time. Toddlers learn to settle on their own when the response is predictable. If he's sick, in pain, or teething badly, comfort him first and start this once he's well."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1137,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 154,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2559
+}

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cg6jCTp7mGxUYg8W6hZAC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShAkKEAgSGAI4AUIIdGhpbmtpbmcSDLT1aA2HYCBK8HgaYxoM/EnPKyi0RbNsQ3cFIjAILytG+0+bWrglMIf0WzE4vUr1eTaklx/uuwJqNMTETnatlrAkB28sDVkogHo8+O0qoQiLHc/UzfYPjbIpfIDpZUz7LXGhNZmnEAgJ4ucegXJ9wh90HBEcLTd7sGCXDxrCrbGbo60/T7/uFLcvnbOsBi4rzYFr6UaRqWIMdiMPBNcZ/5uiObB0/r3pShNClHlDf0D9H+1lQYJzleaQB5dJLFth4p5JLZ4i0lRUgsV5AEHtM4o4kZe0VkMQEbROsJ+AFP4k1rZ/IRDcFzVYkV52p/swSqFNSN04XOb0hDftMsheIHA3vX6/TVSTn+dW4Ez70ik7djU0vAqAH4gpAMNjeEHOTzKYPAUmwVr40jE7cntBL6vcxPZ9Ig7Y/+9lIgZ1CzBzldO0O3s4RIa8zJ+dg7yJDMI+JW9rGWCA0bPimv6vwvFBQSkPO3TLiQhuKjQuUVupGBTrBkThxedMMB4TEEbShMmv+msqug1BOFzFt2yQyCPBdbOx4YIOCKhszHJL81INGuCg/oPnPtz1cKf8lHtLBg4hNdXOwVHnsM6P0yXWBXo/MnSoO6pQ1i1LRkwnXxjRKOQslL3eTxtmjjToIzYdmVTQ0abdn9Hc6Wla7AzYc18/ky2iV/MHfsG2K/lin14JTE/rTo04x4nBDr/vecA2Zl5wsRX1jNkIuutc/wPnI5F1ti+NXb27cRAEANUs+fQQODFwHMBsKorfXy+dw0EnEPbM6pFqmVWI3nVvrRuYnhayZbNM4eoUGTQjQlQrpf0P+TdyhiYaDIDqtBSmC/0qkR3Fq1MzRlQjwCqPAsCNJo7WE/EWO6RQjQIRKDiQFqFoWlpG7/p1gKzsCBnteJrHB2JzVgqV1weI1p+r2hVP+pZHISjkkiFrsjC9vURHU6MDEKgOZCdht9bvymNuPlTi6SpmBR8LSGqbj9FmtA8SG1GEm+qNWOpenpjV84GsauptzBZRxm+H5gA4jNTl1kcbJpbnRJIdhks+2AwoUTZdR7LZwmiBBXgcpP6BQp8NJecTtSL2ZDI74NIdw97NKLGnoQqyyYuBiDNMW4+TTZyjHC22+tmer2Tr/H+pnMd5c6Tsi5EeReqI81gzWpmmFq0/0AzpGN/uE1074cZyunp4VYZMHc3/eP6PQMxgKsb/mFnR9dgeO6MQsL0+Qe/M5L04nONUiJowKwDa/YOYc19UiGdoDkrGg32QOD0G7LlO48wQ9Q+IknLITyX+Xbx5YU88LVdSFqjXPBxqQzTKgJqbZoTx2DEg2YspuEXcJEwKu9IdrjzXBhQRovZ7VV445hgHdP8qxP4RQ2KezTg1x4KbuXPYRO55stKQdfjELwmu7KnccsMogPyszokFgf8HzSJ2dpG2Qt5AuxkV+uQbjICugy0kCvhMQloK5Ot1Q3vk7U/Vhjn0jFG6bfJ1ZHNYsV3h7eBcLnc6e+BN/QW3/YH9LugHNIupgwopi1YRoJDbisjGGAE="
+      },
+      {
+        "type": "text",
+        "text": "Saturday already has soccer practice at 10:00am at Cedarvale Park. For after that, High Park in the west end (Bloor St W / Parkside Dr) has the Jamie Bell Adventure Playground, a free animal display with bison, llamas and peacocks, wading pool and splash pads, and trails. The park is open daily year-round, and the water play and train are seasonal. I didn't find a dated Saturday event that fits both kids' ages."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1939,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 327,
+      "output_tokens_details": {
+        "thinking_tokens": 177
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3169
+}

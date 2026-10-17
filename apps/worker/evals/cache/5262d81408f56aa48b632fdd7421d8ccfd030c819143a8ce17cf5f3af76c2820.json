@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own. Knows records that the switch was turned off this turn for send_email and reply_to_email. The reply confirms the change in one plain sentence, in the parent's language, with nothing invented. No greeting, no extra question, no machinery.",
+    "score": 5
+  }
+}

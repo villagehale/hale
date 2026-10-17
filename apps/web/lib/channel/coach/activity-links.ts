@@ -16,6 +16,8 @@ export interface NamedActivityLink {
   url: string;
   /** A place the title does not already name, when the offer has one. */
   venue?: string;
+  /** A read but unconfirmed source must survive even when no activity was recommended. */
+  sourceReference?: boolean;
 }
 
 const GENERIC_TITLE_WORDS = new Set([
@@ -175,7 +177,7 @@ export function activityLinkSuffix(
   const out: string[] = [];
   for (const link of links) {
     if (seen.has(link.url) || exactUrl(link.url).test(body)) continue;
-    if (!replyNamesActivity(body, link, links)) continue;
+    if (!link.sourceReference && !replyNamesActivity(body, link, links)) continue;
     seen.add(link.url);
     out.push(link.url);
   }

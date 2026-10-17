@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot matches the programme page exactly: age band, Tue/Thu 9:30-11:00, Sept 8 to Dec 11, cited to the preschool-play URL. Price is correctly null because the page prints no fee, and neither rental figure ($185 or $95) is borrowed. The page prints no registration date, so the null is correct. The message leads with the programme by name and attributes it ('their site says'). Under page_has_schedule the gap is stated in the first person ('I could not pin down the price') rather than 'not posted'. With watch=true, the first-person keep-watching commitment is correct. The message is plain ASCII, with no link and no question.",
+    "score": 5
+  }
+}

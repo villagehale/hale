@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly confirms that autonomous email sending has stopped, which matches turnedOffThisTurn, and answers in the parent's language. It is short, accurate and asks nothing. One small blemish: 'Je ne enverrai' should be 'Je n'enverrai'.",
+    "score": 4
+  }
+}

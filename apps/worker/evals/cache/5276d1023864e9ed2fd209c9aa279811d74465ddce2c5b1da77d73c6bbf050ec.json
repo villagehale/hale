@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so saying 'Done' is accurate. The reply states the new behaviour plainly in one short line and stops. There is no greeting, no machinery and nothing invented.",
+    "score": 5
+  }
+}

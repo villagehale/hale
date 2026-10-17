@@ -95,6 +95,15 @@ describe('spend cap at the call site', () => {
     ).rejects.toThrow(/refusing/);
     expect(m.create).not.toHaveBeenCalled();
     expect(readLedger().refused).toBe(1);
+    await expect(
+      cappedCall({
+        client: m.client,
+        request: { ...request, max_tokens: 1 },
+        call: () => m.client.messages.create(request),
+        rates,
+      }),
+    ).rejects.toThrow(/previous refusal/);
+    expect(m.create).not.toHaveBeenCalled();
   });
 
   it('counts what is already spent against the next projection', async () => {

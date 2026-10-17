@@ -1,5 +1,6 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
+import { type NamedActivityLink, activityLinkSuffix } from '~/lib/channel/coach/activity-links';
 import type { ActivityPromise } from './commitment';
 import type { ActivityFinder, ActivityPick } from './lane';
 import type { BoundActivityReader } from './reader';
@@ -80,7 +81,7 @@ describe('find_activities', () => {
         windowConfirmed: false,
       },
     };
-    const links: unknown[] = [];
+    const links: NamedActivityLink[] = [];
     const tool = findActivitiesTool({
       reader: reader(),
       onPromise: () => {},
@@ -101,7 +102,8 @@ describe('find_activities', () => {
     const output = await call(tool, { subject: 'workshop', window: 'October 2026' });
     expect(output).toMatchObject({ found: false, references: [reference], checkedSources: [url] });
     expect(output).not.toHaveProperty('picks');
-    expect(links).toEqual([{ title: 'workshop', url }]);
+    expect(links).toEqual([{ title: 'workshop', url, sourceReference: true }]);
+    expect(activityLinkSuffix('I could not confirm a current date.', links)).toBe(url);
   });
   it('keeps a non-GTA city, operator and requested month in the same query', async () => {
     const seen: unknown[] = [];

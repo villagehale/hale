@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cg6vq19ZNg31FGSKCcPKG",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Halton Hills fall recreation registration opens Sep 1 at 7:00 a.m. (America/Toronto) for residents, and Sep 8 at 7:00 a.m. for everyone else. That's the page's current reading. I'm not watching it yet, since that reminder is still waiting on your go-ahead. Want me to text you before Sep 1 opens, so you're ready for Milo's swim?\n\nhttps://example.org/registration"
+      }
+    ],
+    "usage": {
+      "input_tokens": 786,
+      "cache_creation_input_tokens": 22216,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 22216,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 143,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 14688
+}

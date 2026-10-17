@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { structuredReply } from '~/lib/testing/structured-reply';
+import { isStage, structuredReply } from '~/lib/testing/structured-reply';
 import {
   type RegistrationLinkReplyInput,
   composeRegistrationLinkReply,
@@ -30,14 +30,55 @@ const input: RegistrationLinkReplyInput = {
   },
 };
 const when = '2026-11-10 at 09:00 America/Toronto';
-function fake(message: string) {
+function fake(message: string, parsed?: unknown[]) {
+  // ASCII parser stand-in for request/guard mechanics only, not language quality.
+  const date = message.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+  const time = message.match(/\b\d{2}:\d{2}\b/)?.[0] ?? null;
+  const timeZone = message.match(/(?:America|Europe)\/[A-Za-z_]+/)?.[0] ?? null;
   const create = vi.fn(async (request) =>
-    structuredReply(request, 'registration_link_reply', { message }),
+    isStage(request, 'registration_message_dates', 'openings')
+      ? structuredReply(request, 'registration_message_dates', {
+          openings:
+            parsed ??
+            (date
+              ? [
+                  {
+                    date,
+                    time,
+                    timeZone,
+                    weekday: null,
+                    confidence: 'high',
+                    evidence: { date, time, timeZone, weekday: null },
+                  },
+                ]
+              : []),
+        })
+      : structuredReply(request, 'registration_link_reply', { message }),
   );
   return { client: { messages: { create } } as unknown as AgentClient, create };
 }
 
 describe('registration-link AI wording (mechanics, not language quality)', () => {
+  it('preserves natural date and zone wording rather than appending an English fact string', async () => {
+    const message =
+      'Ouverture mardi 10 novembre à 9 h, heure de Toronto ; admissibilité à confirmer.';
+    const parsed = {
+      date: '2026-11-10',
+      time: '09:00',
+      timeZone: 'America/Toronto',
+      weekday: 2,
+      confidence: 'high',
+      evidence: {
+        date: '10 novembre',
+        time: '9 h',
+        timeZone: 'heure de Toronto',
+        weekday: 'mardi',
+      },
+    };
+    expect(await composeRegistrationLinkReply(input, fake(message, [parsed]).client)).toBe(
+      `${message}\n${sourceUrl}`,
+    );
+  });
   it.each(['en', 'fr-CA', 'ar'])(
     'supplies facts and language without a parent-facing template: %s',
     async (language) => {
@@ -49,7 +90,7 @@ describe('registration-link AI wording (mechanics, not language quality)', () =>
       expect(JSON.parse(request.messages[0]!.content)).toMatchObject({
         language,
         outcome: input.outcome,
-        when,
+        opening: { date: '2026-11-10', time: '09:00', timeZone: 'America/Toronto' },
         eligibility: 'unclassified_open',
         dateRemindersPaused: true,
         nextStep: 'confirm_plan_in_approvals',
@@ -62,7 +103,12 @@ describe('registration-link AI wording (mechanics, not language quality)', () =>
       ...input,
       reading: { ...input.reading, dates: [{ ...input.reading.dates[0]!, time: null }] },
     });
-    expect(context.when).not.toContain('00:00');
+    expect(context.opening).toEqual({
+      date: '2026-11-10',
+      time: null,
+      timeZone: 'America/Toronto',
+      timePublished: false,
+    });
     expect(context.reminderPlan.minutesBeforeOpening).toBeNull();
   });
   it.each([

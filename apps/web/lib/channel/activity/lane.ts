@@ -140,7 +140,7 @@ export const MAX_INLINE_FETCHES = 3;
 const GROUND_MAX_TOKENS = 4096;
 /** Generous on purpose: `forceToolJson` throws on a max_tokens cutoff, and a pick cut in
  * half is a venue name a parent cannot search for. */
-const COMPOSE_MAX_TOKENS = 1024;
+const COMPOSE_MAX_TOKENS = 2000;
 
 /** Where a fact came from. Stamped by CODE, never by a model — see the module note. */
 export type ActivitySource = 'web';

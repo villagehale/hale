@@ -1,0 +1,55 @@
+{
+  "response": {
+    "id": "msg_011Cg6jBxhQBcwfL3cwwMiZd",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSigoKEAgSGAI4AUIIdGhpbmtpbmcSDBqQrFYjNXNTabY8FhoMjk+aBXLkMdUpqzgbIjDafKEcpXLS4hJuFKEwt3gTRNtCfgJe3teKiUDlHmwIQQUCux6xJFqxS0AXl6u3bI8qpwnm/fC7C4XaKUxUwtp/p5ejJaZgieGKaw5B/RM8q2eD8N1uoOynC4Dp8DiQateHJ0rAe0wSZsccZMZqaNtrI5MHDdlwhyFCAdiJK0GCpWT9TifzaJOmwUoigdg10x+9vAQaQzyirQMNk1rbS4nnfNx79Y8JN5g+Hba5pyZuE5PI2qHjpV0LulN+yr/n8NQ3wQk2lqEl8TZ38DHB9631d0spDEDSEvbtEq/9U8jWP0wErNSpbUI5fdCHrGw7AkPI2MYlxRYuz1kAP2yRby6tcuYWYivIB0CPvraxT8F3JZgpMw/lMfd4jf3qOMOix4A86IDJeRzM/A/daiqL6/S0JUiXoYmBudqwgirbwVYavgbkW/UcnCGorRz8jZAkHXj85vA1va0Ok61Y4r6vjqPLaIQKl9dSTM6WyfT4+BX4B7InsI0TkttzieAWJTPkKZw/9XiH9g+Nb/WzwzqjO+rkrcKElUtUNVuyP2SRHcwKj3EsUIdU36/quGECC/STAU6hpG9M0OIXdqDwRAYcpM2Q/dt6Vs6ZUetNQo90Fr2/UNK9h9oDypQrQrdCHmewh2TYM93hp4Hfml9H7mU3zdMgEVxAcWK/Fv3KHH/38ffoMRBxq+jGg2ZuFEAEMmjAGaKXT7RlWFjSxT7ki5sYz0h1ZxTY/9WadL8R5b97yg2eFH4p3KBBRSZPHw39/wBVq6KLpfjyWau0p5BBFCoW3V+4iHRmz0ddDJoIuV6bO2GvawWJaUcp1Rx1Y8kIMfjMSYwHPtNqIP8HCRnZQz+bXalek43lOMHFg9Re7PTLnHgD85LXD3L0hosK7ki0gKuiDX3ZO0VUiAzKyUnPj1NS+t3Jh9H8721hQiYZQwr9mij0ULw06boIpD4W5hRDBQk9vydWjUwdHfKqjH+njIDWu5NTxwafGA6m5ep6TIV5emXK+1Qra0CZhBFFww6HaL5icxSrWKhyu5D/nCYuHwCzde1slVf3PNErwHt19o1uLv5xPoRWJ3YZOOXhlrus/gM4isA+01cgS5tzemjY2WqYMSn9JyGHLsRAKkm7YKDZ60CdhmAIqmsEE/8CnYX5bqrUmpkeW4N/tm5cL9HxFdaio939v5Doim6qDlTSdq3N88acusvc+Dl2NDbUUwbtBEpR7tHtoio/nTvSnYGZjPS8ibTiHhe5pDVqHrr2N4Mr6aCj8T6hcklkRLYPI1L2NHhSZxNBIJhwZC1RAdwihwDRgD/6LkxousmWKWUXkoBa2O34rScixH7wJ8i6b+ukMgIH/2G/eDE18Y2FrWZdtLU0AWys5mL5nunK92oHqHqtWXqeeDU02VYYe/qBJVZH/MhtR8OT8pErwgDNUf5ob/HHhzFQ4SWfeCMeAO25PV7llRwr15PtaLT5RvAHV6mCO3btFsh6UwDK6N2xQVddHpr3zvD31pFYM/Wcq2USObHDz7yxKI3TkNV2B2bLFBrUFH/hMTReefzbY7GeffeS/ND5koMzLzuPlS4r3nwvx2Mc5/NYhFzJbCoidp6NouPE1Tuqbs/iKgJ/UXMRaSMaw8PhAuqmPcykCRsZIqsuSizVBUJVAKqtwQYSY2X4z0YYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01ENv7gPQzV7HPZMVeydvYgT",
+        "name": "search_village",
+        "input": {
+          "query": "family activities for kids",
+          "window": "Saturday, August 8, 2026"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XCfxQemhTQm6h561SUxAgB",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 380,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 354,
+      "output_tokens_details": {
+        "thinking_tokens": 244
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3563
+}

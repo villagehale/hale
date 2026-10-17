@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly confirms the switch that was actually turned off this turn, matching the parent's language, and it stops there. One small blemish: \"Je ne enverrai\" should be \"Je n'enverrai\".",
+    "score": 4
+  }
+}

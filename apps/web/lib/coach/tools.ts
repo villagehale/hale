@@ -182,7 +182,11 @@ export function searchVillageTool(
       });
       if (found.checkedSources?.length)
         onLinks?.(
-          found.checkedSources.map((url) => ({ title: input.query ?? 'Activity source', url })),
+          found.checkedSources.map((url) => ({
+            title: input.query ?? 'Activity source',
+            url,
+            ...(found.picks.length === 0 ? { sourceReference: true } : {}),
+          })),
         );
       const offerable: OfferableEntry[] = found.picks.map((pick) => ({
         pick,

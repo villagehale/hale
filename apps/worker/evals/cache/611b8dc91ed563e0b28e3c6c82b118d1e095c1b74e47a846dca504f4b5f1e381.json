@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot matches the page exactly: name, age band (12 months to 4 years), days, times and session dates, all cited to the preschool-play page. Price is correctly null. None of the room-rental figures ($185, $95) were borrowed. Registration is null, which is right because the page prints no registration date. The message leads with the program by name and attributes the facts with \"their site says\". It is plain ASCII with no link and no question. Under page_has_schedule it correctly owns the price gap in the first person rather than saying \"not posted\". Watch is true, so the first-person \"I'll keep watching and text you\" reflects a real commitment. One small gap: it could have passed on the page's note that fees are available at the front desk.",
+    "score": 5
+  }
+}

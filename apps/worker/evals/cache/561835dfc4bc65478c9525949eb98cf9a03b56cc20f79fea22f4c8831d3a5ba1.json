@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cg6jfbaBnAYxz3EJzHkvi",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxggKEAgSGAI4AUIIdGhpbmtpbmcSDNX5wcnA0IeKVC4JyxoMEA4LML7gEMtBE8ndIjD5LHsyBjhMc9sDGSlymBkq/s7wRYtbmBAoRb9rM3dx1V706bU35ZVIGyYvj+cq4lYq4wcVrwddTuQ99ahvjmuSaOqM2OsfTmIPoqEIhndlEPH+DOaY5o3YIMfSsSCcOXXtMOFrc/Y5ZQXQSvLjJ/TZAFsVJiSzwmCF/m1JAwuTZZZRhg37tvUWBOPZhRrH+6Nhe+Z4PVOw8RzG0j9QXcTpUNBTWrguHGAz8AfVvHIrSu0Xf8Y1nf/KcqGM8FYgawx27qyCrNpVoRw5ufCDgixhLpri+f6ZUucyNnT4GCXkWWmVEKXxvE/abfT6AwCSlTAzE7USRSBPPnHQudTckprpTydOEBtlm5i9mla6+6V59aSQ9klRiZSWQGghsPPkRpt39urSI3PdJWP4wYk3IQUHt85lbJQRpVYUXEfurQjxiMTmkeSY1L+YPwZPmOkpjFZ3wG/KC8GFi+CV3qSitM6HnSp8leX3auUlEBXWhIEUPIKW39qBJWbiX5xlTL4li7dRKm4izEV2eqhGTNxGa+2qInWHspEb8OUykaHIIZyMmO38vhec1BCrYEo32wgTVVoJIxJ/nMaS6k+P0ndOY8Yu94Y88+LuxE+6C+gy+anvdcbG2Af7pkQRyEUR1OnMvRWRfjqAB02NRsNJ03YbVWSG64OebZeRkAVU+G4r2ZTo1GxXCz5Aq30RaG5+A49iZi5MPtWq/wlD1hSrvtncaz/pUwUghfSDz+pcVCBQgthilVqHqpwD6kilXPTqLdc4vll3QpXWd9nHfTYJVMor6JlSXhZ9PnTVEUmtGrZ3hNiFvNdPFr2E8L+7x64XskW1RNF3Xt1Hg7o9drFxvVglJ1d5UUQ30YRcW/pfOXjDHAJWf7Jila0r+YKaQeBL49riZVBHg4plqWkux4IFcnPzrWTvaqgUFJbDM1EUwnS/mOGf13DVn64yQ9rbk1DCZqPJiesCq79U3DDzDMqLMQalA6nNw5U8PfU+2iOMYsx2e1hddMXiyoHbW98V4teyHlBhA3VBuS9aX5lUC8Lzx1sTeiUU2vAhu/pdv3zEIFNEnTXZjo7N2YZ2W4O/iI0HS9F+J6G4ulB776wDRp8dxeqXIJ2zRN3gPdp6fjq71Fvnmk9nT4jmSQhFb0oMvugtoDj0l6MOVJGDtw+TpcMyuXVa5PCVW4H4OiFyRM9yyLr7M1fllWleBlA7F4SwAum2cbmssPPubMVLU9WDTl94OjyjCVrXx8uOLHtEbWM8OzqoWILqhR6pImbPsBCLQyvUyRDMPn5nkQYQ1MQlUGvNT4cA7tHrmJrQUVHFJfJJKf9V1L81iGAyTgYbgU9uGrkAy3hbQpvpP5OHDoJ36BDrasAO4v8pQ2M3xv49Cg+amgFANmePwUFyoHH6ahgB"
+      },
+      {
+        "type": "text",
+        "text": "I said Tiny Gym at Cartwheels is $124 for the term, Sundays at 9:30. That's from earlier in our thread, and I haven't rechecked it today."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1546,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 244,
+      "output_tokens_details": {
+        "thinking_tokens": 185
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3529
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for both send_email and reply_to_email, so 'Done' is a true claim, not an invention. The reply confirms the change plainly, states the new behaviour in the parent's own terms, and stops: no greeting, no sign-off, no machinery, no app referral.",
+    "score": 5
+  }
+}

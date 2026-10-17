@@ -124,7 +124,7 @@ import {
   REFUSAL_MARKERS,
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
-import { inventedName } from './coach-channel-name-gate.mjs';
+import { inventedNames } from './coach-channel-name-gate.mjs';
 import { nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
@@ -1109,11 +1109,22 @@ function channelContext(fixture, compact, severed = false) {
     // Empty is the ordinary case and means Hale is waiting on nothing — which is exactly
     // the state a "yes" that matches nothing arrives in.
     standingQuestions: fixture.standingQuestions ?? [],
-    // The radar's hand-verified municipal open dates, as channel/coach/runtime.ts hands
-    // them over. Empty for every fixture that is not about one, which is also the
-    // production shape for a family outside the covered set.
-    registrationWindows: fixture.registrationWindows ?? [],
+    // Match production: watch metadata first; only the read tool returns current dates.
+    ...(fixture.registrationWindows
+      ? { registrationWatches: registrationWatchesFor(fixture) }
+      : { registrationWindows: [] }),
   };
+}
+
+function registrationWatchesFor(fixture) {
+  return (fixture.registrationWindows ?? []).map((reading, index) => ({
+    id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    town: reading.town,
+    programs: reading.programs,
+    sourceUrl: reading.sourceUrl ?? 'https://example.org/registration',
+    optIn: reading.watching ? 'opted_in' : 'pending',
+    outcome: null,
+  }));
 }
 
 // ── cached client for the REAL runAgent loop ────────────────────────────────
@@ -1393,17 +1404,7 @@ function fabrications(reply, hay, allowedUrls) {
       offenders.push(`day "${full}" is on no event and in no message`);
     }
   }
-  for (const sentence of reply.split(/(?<=[.!?])\s+|\n+/)) {
-    // A slash JOINS two words, it does not make one. "Bloor/Parkside" was flagged as an
-    // invented name while both halves sat in the hay verbatim ("Bloor St W / Parkside
-    // Dr"), which is the gate failing a faithful contraction of a fact Hale was handed.
-    const words = sentence.trim().split(/[\s/]+/);
-    for (const [index, word] of words.entries()) {
-      if (index === 0) continue;
-      const invented = inventedName(word, hay);
-      if (invented !== null) offenders.push(`name "${invented}" is in no fact`);
-    }
-  }
+  offenders.push(...inventedNames(reply, hay).map((name) => `name "${name}" is in no fact`));
   return [...new Set(offenders)];
 }
 
@@ -1939,6 +1940,10 @@ async function main() {
   const { _internal: contextInternal } = await tsImport(CONTEXT_SRC, import.meta.url);
   const { sanitizeSpotUrl } = await tsImport(SPOTS_URL_SRC, import.meta.url);
   const { readSpot } = await tsImport(SPOTS_READ_SRC, import.meta.url);
+  const { readRegistrationPageTool, READ_REGISTRATION_PAGE } = await tsImport(
+    join(REPO_ROOT, 'apps/web/lib/channel/coach/registration-tool.ts'),
+    import.meta.url,
+  );
   const spots = {
     sanitizeSpotUrl,
     readSpot,
@@ -2039,6 +2044,7 @@ async function main() {
     const children = childrenFor(fixture);
     /** What the companion handed back this turn — grounding the audit row cannot carry. */
     const guidance = [];
+    const registrationReadings = [];
     let reply;
     let toolResults = [];
     /** One entry per model call this turn — see makeCachedAgentClient. */
@@ -2070,6 +2076,24 @@ async function main() {
           toolOutputs,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
+        ...(fixture.registrationWindows
+          ? [
+              readRegistrationPageTool({
+                watches: registrationWatchesFor(fixture),
+                read: async (watchId) => {
+                  calls.push({ tool: READ_REGISTRATION_PAGE, watchId });
+                  const index = registrationWatchesFor(fixture).findIndex(
+                    (watch) => watch.id === watchId,
+                  );
+                  return fixture.registrationWindows[index] ?? null;
+                },
+                onRead: (reading) => {
+                  registrationReadings.push(reading);
+                  toolOutputs.push(reading);
+                },
+              }),
+            ]
+          : []),
         ...(fixture.autonomy
           ? [recordingSwitchOffTool(turnOffAutonomyTool, calls, fixture.text)]
           : []),
@@ -2088,6 +2112,7 @@ async function main() {
           fixture.registrationWindows
             ? {
                 ...skill,
+                meta: { ...skill.meta, tools: [...skill.meta.tools, READ_REGISTRATION_PAGE] },
                 instructions: `${skill.instructions}\n\n${registrationPolicy.instructions}`,
               }
             : skill,
@@ -2122,7 +2147,6 @@ async function main() {
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
       const offerSentence = calls.find((call) => call.tool === 'offer_full_plan')?.offer;
       const referralBlock = forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined;
-      composed = run.answer;
       reply = toSmsReply(
         run.answer,
         children,
@@ -2138,9 +2162,19 @@ async function main() {
     }
 
     const pick = webPickFor(fixture);
-    const hay = groundedHay(fixture, [
+    const readFixture = fixture.registrationWindows
+      ? { ...fixture, registrationWindows: registrationReadings }
+      : fixture;
+    const hay = groundedHay(readFixture, [
       toolResults,
       toolOutputs,
+      calls.some((call) => call.tool === 'lookup_week')
+        ? weekDaysFrom(FIXTURE_WEEK_START, FIXTURE_TIMEZONE).flatMap(({ weekday, date }) => [
+            weekday,
+            WEEKDAY_FULL[weekday],
+            date,
+          ])
+        : null,
       FIXTURE_EVENTS.filter((e) => !isPrivate(e)).map((e) => ({
         what: e.title,
         where: e.location,
@@ -2168,7 +2202,7 @@ async function main() {
         ? []
         : [
             ...fabrications(reply, hay),
-            ...borrowedFindDates(reply, dateSourcesFor(fixture, calls)),
+            ...borrowedFindDates(reply, dateSourcesFor(readFixture, calls)),
           ];
     const verdict =
       broken || reply === null
@@ -2261,7 +2295,10 @@ async function main() {
               // them the judge grades a verified Sep 1 opening as an invention and
               // "I'm on it" as a capability Hale does not have — which is precisely
               // what it did on the first run of these two fixtures.
-              registrationWindows: fixture.registrationWindows ?? [],
+              registrationWindows: registrationReadings,
+              spotWatchPolicy: calls.some((call) => call.tool === 'watch_for_opening')
+                ? skill.instructions.split('## Watching one class for a spot')[1]?.split('\n## ')[0]
+                : undefined,
               // What Hale is holding an answer for, as the model was told it. Empty
               // means Hale is waiting on nothing, which is what makes a bare "yes"
               // unplaceable from state alone.

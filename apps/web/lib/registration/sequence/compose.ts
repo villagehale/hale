@@ -4,8 +4,9 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { LiveRegistrationReading } from '../live-reading';
-import { registrationDate, registrationDateRetained, registrationWhen } from '../read';
+import { registrationDate } from '../read';
 import type { LegCopyInput } from './copy';
+import { openingFact, verifyMessageDates } from './message-dates';
 import { courseSignInUrl } from './prepare';
 import type { RegistrationChange } from './refresh';
 import type { SequenceLeg } from './schedule';
@@ -24,20 +25,19 @@ export function registrationReminderContext(input: RegistrationReminderInput) {
   const { reading, copy, change } = input;
   const date = change ? change.date : registrationDate(reading, input.resident);
   const timeZone = change ? change.timeZone : reading.timeZone;
-  const when = date ? registrationWhen({ timeZone } as LiveRegistrationReading, date) : null;
   const prep = copy.prep?.verdict;
   return {
     leg: input.leg,
     language: input.language ?? 'en',
     now: copy.now.toISOString(),
     parentTimeZone: copy.timeZone,
-    when,
+    opening: openingFact(date, timeZone),
     sourceUrl: change?.sourceUrl ?? reading.sourceUrl,
     sourceStatus: reading.status,
     eligibility: date?.kind ?? null,
     optIn: copy.optIn,
     readinessReportedByParent: copy.readinessReady,
-    change: change ? { kind: change.kind, previousAt: change.previousAt } : null,
+    change: change ? { kind: change.kind } : null,
     waitlistReportedByParent: copy.waitlist ?? null,
     course: prep
       ? {
@@ -90,11 +90,6 @@ export async function composeRegistrationReminder(
       maxTokens: 2048,
     });
     const body = value.message;
-    // Preserve exact published precision and verified links, without a character/segment cap.
-    const date = input.change ? input.change.date : registrationDate(input.reading, input.resident);
-    const zone = input.change ? input.change.timeZone : input.reading.timeZone;
-    if (!registrationDateRetained(body, date, zone)) return null;
-    if (/\b(?:reply\s+)?STOP\s+to\b/i.test(body)) return null;
     const allowed = new Set([
       context.sourceUrl,
       context.course?.sourceUrl,
@@ -102,6 +97,21 @@ export async function composeRegistrationReminder(
     ]);
     const urls = body.match(/https?:\/\/[^\s<>]+/g) ?? [];
     if (urls.some((url) => !allowed.has(url.replace(/[.,;!?]+$/, '')))) return null;
+    // Compare independently parsed values, not a prescribed parent-facing date string.
+    const date = input.change ? input.change.date : registrationDate(input.reading, input.resident);
+    const zone = input.change ? input.change.timeZone : input.reading.timeZone;
+    if (
+      !(await verifyMessageDates(
+        body,
+        input.copy.now,
+        openingFact(date, zone),
+        input.reading.status === 'verified'
+          ? input.reading.dates.map((date) => openingFact(date, input.reading.timeZone)!)
+          : [],
+        client ?? pipelineClient(),
+      ))
+    )
+      return null;
     return body.includes(context.sourceUrl) ? body : `${body}\n${context.sourceUrl}`;
   } catch (error) {
     console.error(

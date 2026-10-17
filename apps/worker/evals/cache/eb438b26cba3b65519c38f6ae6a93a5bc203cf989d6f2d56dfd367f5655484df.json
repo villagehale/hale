@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real and match the page exactly: Preschool A and B, ages 3-5, the Saturday times, Sept 12 to Nov 28. Price is correctly null because the page prints no fee. Each slot carries the Aug 11 7am registration date and cites the Town of Oakville page. The message leads with the programs by name, says 'their site says' and carries the Aug 11 registration date. It handles the missing fee in the first person ('I couldn't pin down the price'), which is the right sentence for page_has_schedule rather than a 'not posted' claim. Since watch is true, the first-person 'I'll keep watching and text you' is correct. It is plain ASCII, with no link and no question. Minor omissions only: the Aug 4 browse date and that fees live in the Recreation Guide.",
+    "score": 5
+  }
+}

@@ -233,15 +233,19 @@
   },
   "registration-link-reply.md": {
     "file": "registration-link-reply.md",
-    "sha256": "3b314d0fb171e92c447d94340e7e7f87b9aa66aefc8e9a1c1b36bd0184408999"
+    "sha256": "52d72c4358bbe106dc2cd42e8b2dbbaa1b94021aa6507b44cd80fa38fee45f33"
   },
   "registration-live-truth.md": {
     "file": "registration-live-truth.md",
     "sha256": "190e8c75a42ab8ec42a0c644a37bc06cfcd3c8cfe1e9fca68d4f5945b5a66d1c"
   },
+  "registration-message-dates.md": {
+    "file": "registration-message-dates.md",
+    "sha256": "2fb8889cc325391c1d7934af2762a1ee23eea4e260fbc70501606cc9f59ada24"
+  },
   "registration-reminder.md": {
     "file": "registration-reminder.md",
-    "sha256": "b2ac4f66e72c74c26a64c42920fef1f0fc957fdfb59bc0610904b3154ab6800c"
+    "sha256": "1be0e78d90a85bfa6bc2d08fb9e1e8c5a2b8488c6c6385013cfb1da265e23475"
   },
   "registration-request-read.md": {
     "file": "registration-request-read.md",

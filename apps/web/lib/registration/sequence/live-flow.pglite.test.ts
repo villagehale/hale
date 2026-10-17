@@ -1134,8 +1134,13 @@ describe('course link entry', () => {
       send: async () => ({ channel: 'sms', channelMessageId: null, providerMessageId: 'test' }),
     });
     expect(response.claimed).toBe(true);
-    if (!response.claimed) throw new Error('expected claimed link');
-    expect(response.reply).toContain('2026-10-18 at 09:00 America/New_York');
+    if (!response.claimed || response.reply === null) throw new Error('expected link reply');
+    expect(JSON.parse(response.reply).opening).toEqual({
+      date: '2026-10-18',
+      time: '09:00',
+      timeZone: 'America/New_York',
+      timePublished: true,
+    });
     expect(response.reply).toContain('eligibility');
     expect(response.reply).toContain(url);
     expect(summary).toContain('eligibility');
