@@ -42,6 +42,7 @@ function matches(actual: ParsedOpening, expected: OpeningFact): boolean {
   )
     return false;
   if (
+    actual.evidence.weekday !== null &&
     actual.weekday !== null &&
     new Date(`${expected.date}T12:00:00Z`).getUTCDay() !== actual.weekday
   )
@@ -69,11 +70,13 @@ export function messageDatesMatch(
     openings.every(
       (actual) =>
         actual.confidence === 'high' &&
-        (['date', 'time', 'timeZone', 'weekday'] as const).every((key) =>
-          actual[key] === null
+        (['date', 'time', 'timeZone', 'weekday'] as const).every((key) => {
+          // An optional derived weekday without a quote is not a claim in the message.
+          if (key === 'weekday' && actual.evidence.weekday === null) return true;
+          return actual[key] === null
             ? actual.evidence[key] === null
-            : Boolean(actual.evidence[key] && message.includes(actual.evidence[key]!)),
-        ) &&
+            : Boolean(actual.evidence[key] && message.includes(actual.evidence[key]!));
+        }) &&
         backed.some((expected) => matches(actual, expected)),
     ) &&
     openings.some((actual) => matches(actual, required))

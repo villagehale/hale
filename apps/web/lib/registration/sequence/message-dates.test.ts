@@ -44,6 +44,17 @@ describe('natural registration date validation (mechanics, not model language qu
       ),
     ).toBe(true);
   });
+  it('does not treat an unquoted, calendar-derived weekday as a weekday written to the parent', () => {
+    const message = '12 août à 6 h 30, heure de Toronto';
+    expect(
+      messageDatesMatch(
+        message,
+        [{ ...parsed, evidence: { ...parsed.evidence, weekday: null } }],
+        expected,
+      ),
+    ).toBe(true);
+    expect(messageDatesMatch(text, [{ ...parsed, weekday: 4 }], expected)).toBe(false);
+  });
   it.each([
     { ...parsed, date: '2026-08-13' },
     { ...parsed, time: '07:30' },
