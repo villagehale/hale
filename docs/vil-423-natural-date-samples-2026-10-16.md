@@ -70,7 +70,7 @@ Parser openings: `[]`
 ### link-en — sent-shaped; judge 5/5
 
 > Registration opens on Wednesday, August 12, 2026 at 6:30 AM Toronto time (Eastern). I verified this on the City of Markham registration page, which is here: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928
-> 
+>
 > That date is listed as open to the general public. I've put together a proposed reminder plan: a heads-up one week before, a note the evening before, and a reminder 15 minutes before opening. Nothing is scheduled yet. The plan needs your confirmation in approvals first, so please review it there. Keep in mind that I never sign up, pay, or hold a place for you. Registration itself is something you'd do on the website, and a published opening time doesn't guarantee spaces will be available.
 
 Parser openings: `[{"date":"2026-08-12","time":"06:30","timeZone":"America/Toronto","weekday":3,"confidence":"high","evidence":{"date":"Wednesday, August 12, 2026","time":"6:30 AM","timeZone":"Toronto time (Eastern)","weekday":"Wednesday"}}]`
@@ -78,7 +78,7 @@ Parser openings: `[{"date":"2026-08-12","time":"06:30","timeZone":"America/Toron
 ### link-fr-CA — sent-shaped; judge 5/5
 
 > Bonjour! J'ai bien trouvé la page d'inscription et la date d'ouverture a été vérifiée : les inscriptions ouvrent le 12 août 2026 à 6 h 30, heure de Toronto (heure de l'Est). Selon les informations publiées, l'ouverture est générale. Voici la page : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928
-> 
+>
 > Je vous propose un plan de rappels, mais il n'est pas encore actif : il faut d'abord le confirmer dans la section des approbations. Une fois confirmé, il comprendrait un rappel une semaine avant l'ouverture, un rappel la veille au soir et un dernier rappel 15 minutes avant l'ouverture. Je ne vous inscris pas moi-même, je ne paie rien et je ne réserve aucune place : l'inscription et le paiement restent entièrement de votre côté, sur le site.
 
 Parser openings: `[{"date":"2026-08-12","time":"06:30","timeZone":"America/Toronto","weekday":3,"confidence":"high","evidence":{"date":"12 août 2026","time":"6 h 30","timeZone":"heure de Toronto (heure de l'Est)","weekday":null}}]`
@@ -86,9 +86,9 @@ Parser openings: `[{"date":"2026-08-12","time":"06:30","timeZone":"America/Toron
 ### link-ar — sent-shaped; judge 5/5
 
 > تم تجهيز خطة تذكير مقترحة لموعد فتح التسجيل. بحسب الصفحة التي أرسلتها (وقد جرى التحقق منها)، يبدأ التسجيل يوم 12 أغسطس 2026 الساعة 6:30 صباحًا بتوقيت تورنتو (المنطقة الزمنية الشرقية لكندا). الصفحة تشير إلى أن التسجيل مفتوح للجميع. الرابط: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928
-> 
+>
 > الخطة المقترحة تتضمن ثلاث تذكيرات: تذكير قبل الموعد بأسبوع، وتذكير مساء اليوم السابق، وتذكير قبل فتح التسجيل بـ 15 دقيقة. هذه الخطة لم تُعتمد بعد، وتحتاج إلى تأكيدك من قسم الموافقات قبل أن تصبح فعّالة.
-> 
+>
 > وللتوضيح: هيل لا يسجّل ولا يدفع ولا يحجز مكانًا نيابةً عنك، فالتسجيل والدفع يبقيان بيدك أنت عند فتح التسجيل.
 
 Parser openings: `[{"date":"2026-08-12","time":"06:30","timeZone":"America/Toronto","weekday":3,"confidence":"high","evidence":{"date":"12 أغسطس 2026","time":"6:30 صباحًا","timeZone":"تورنتو (المنطقة الزمنية الشرقية لكندا)","weekday":null}}]`
