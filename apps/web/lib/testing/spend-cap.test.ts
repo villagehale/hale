@@ -95,6 +95,7 @@ describe('spend cap at the call site', () => {
     ).rejects.toThrow(/refusing/);
     expect(m.create).not.toHaveBeenCalled();
     expect(readLedger().refused).toBe(1);
+    expect(readLedger().log.at(-1)).toMatchObject({ refused: true, projected: expect.any(Number) });
     await expect(
       cappedCall({
         client: m.client,

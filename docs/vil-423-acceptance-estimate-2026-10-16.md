@@ -13,9 +13,27 @@ superseded the original recording permission for further calls. Barton subsequen
 [approved regeneration at 21:53](https://linear.app/villagehale/issue/VIL-423#comment-3ecfb375),
 inside the SAME $15 ledger: first push structured dates/semantic guard/no STOP regex
 and post the spend breakdown; then eight reminders, then EN/FR/Arabic links.
-No regeneration has started at this source checkpoint. The same original ledger
-stands at **$10.360551255 / $15, 422 calls**, reserved $0. It is an estimate from
+Approved reminder/link regeneration has now run: **10 usable / 1 safely held**,
+not full acceptance. [Verbatim samples and parsed values](https://linear.app/villagehale/issue/VIL-423#comment-74a22840)
+were posted before committing their recordings. Including the requested wrong-weekday
+negative control, this added **34 calls / $0.22427706**.
+The same original ledger now stands at **$10.584828315 / $15, 456 calls**, reserved $0;
+**$4.415171685 remains**. One zero-spend token-count wrapper failure remains in the
+audit; no budget refusal or ledger reset. It is an estimate from
 returned usage/tool counts, not a provider invoice; it has not been reset.
+
+The table below is the **pre-regeneration $10.360551255 checkpoint**, preserved
+for the requested spend/hold audit. The $4.10 estimate below is the ONE prior
+estimate, not a new allowance: $0.22427706 of it has now been consumed.
+
+The [22:01/22:02 clarification](https://linear.app/villagehale/issue/VIL-423#comment-5d7d8eb0)
+limits the new authorization to reminders/links/date checks. Finder re-record and
+Burlington still await confirmation. Current CI additionally stops at a missing
+`registration-verify:strict:us-course-source-zone` recording, confirmed keyless;
+this also needs explicit inclusion before a paid repair. It may use the existing
+repair contingency if authorized, not a second cap. One French sample contains
+mojibake and is held because its parser quote is not in the actual message; its
+targeted recovery also awaits confirmation. No further paid calls are running.
 
 | Covered work | Calls | Ledger USD |
 | --- | ---: | ---: |
@@ -53,8 +71,9 @@ additional run is authorized. Unchanged Coach/deep/journey replay costs $0.
 The new writer input is `{date, time, timeZone, timePublished}`. A separate existing
 Haiku `screen` call sees only the generated message and clock, parses its expressed
 values, then code compares them with the source facts. No new API/provider. This
-adds one validation call per generated reply; real quality/latency is **unverified
-while held**. The prior multilingual samples do not accept this changed prompt.
+adds one validation call per generated reply. Real regeneration yielded ten usable
+messages and one held French failure; it is **not full acceptance**. The earlier
+multilingual samples do not accept this changed prompt.
 
 Current keyless prompt checkpoint (not permission to regenerate):
 

@@ -1,15 +1,15 @@
 # VIL-423 — acceptance checkpoint, October 16
 
 **Not merge-ready.** Barton [approved regeneration at 21:53](https://linear.app/villagehale/issue/VIL-423#comment-3ecfb375)
-within the SAME $15 ledger, after source push and spend disclosure. No regeneration
-has started at this source checkpoint. #872 goes first, #871 stays paused. No rebase, deployment,
+within the SAME $15 ledger, after source push and spend disclosure. It has now
+produced **10 usable messages / 1 held French failure**. #872 goes first, #871 stays paused. No rebase, deployment,
 remote migration, real watch edit, carrier SMS, registration or payment.
 
 ## Actual examples and changes
 
 | Observed example | Change / current status |
 | --- | --- |
-| French/Arabic registration replies contained `2026-08-12 at 06:30 America/Toronto` | Writer now receives structured date/time/zone/precision, not that English string. A separate parser reads the resulting message; code compares normalized values. Local French fixtures such as `mercredi 12 août à 6 h 30, heure de Toronto` pass; wrong day/time/zone are held. **New real AI generation is still held.** |
+| French/Arabic registration replies contained `2026-08-12 at 06:30 America/Toronto` | Writer now receives structured date/time/zone/precision. Actual French link: `12 août 2026 à 6 h 30, heure de Toronto (heure de l'Est)`; parser returns Aug 12 / 06:30 / America/Toronto. Actual Arabic link also uses natural date/zone words. No fixed English fact string. |
 | Full Chess course | Existing parser reads the same official HTML bytes: full, zero seats, waitlist available. Actual English output says `the class as full (0 spots left), though a waitlist appears to be available`. It does not promise a seat. |
 | Unreadable course | Actual output: `we couldn't read the official course page this time, so we can't verify the registration date ... date reminders are paused`, with official link; no old DB date fallback. |
 | US Burlington / French Montreal unverified results | Tool payload retained source URLs, but final Coach reply omitted them. A structured `sourceReference` flag now makes the send formatter retain those safe links even with no recommended title, and deduplicate them. No city/language word list or AI reroll. |
@@ -43,9 +43,10 @@ No new Burlington AI sample was generated during the hold.
 - Before recording: isolated Web 10,497 pass / 14 skip / nine missing-recording failures.
 - Those missing authentic journey recordings were filled; affected two files: 15/15 pass.
 - Recorded Web before the latest natural-date change: **10,516 pass / 14 skip**.
+- Recorded-test-inclusive full Web: **10,545 pass / 14 skip**, 180.10s. The subsequent additional wrong-weekday case passes in the 13-case recorded replay.
 - Coach **47/47 pass**, mean voice 4.47; cached replay uses zero API calls.
 - Deep **8/8 pass**, including existing repair path; cached replay uses zero API calls.
-- Latest natural-date writer/parser mechanics: **42 pass**; broader registration/spend/Finder/formatter/local-DB regression **761 pass / 2 opt-in skip**. Final full replay pending.
+- Broader registration/spend/Finder/formatter/local-DB regression: **761 pass / 2 opt-in skip** before the final recorded tests. Genuine localized writer/parser replay **13 pass**: ten send-shaped cases, held corrupted French, injected wrong date and wrong weekday. These are delivery/guard outcomes, NOT thirteen language-quality passes. Spend-cap tests **16 pass**, including logged budget projection and next-call stop.
 - Worker mechanics after page-reader alignment: **441 pass / 1 skip**.
 - Typecheck, isolated production build, isolated lint and 76 skill hashes pass; lint retains existing warnings. Root lint also sees three errors in the ignored local `.corepack` tool launcher, which is not release source.
 - Actual captured US/Montreal AI bodies replay unchanged through the final send formatter: all checked links survive and are deduplicated, zero API calls. This is formatter replay, not a new full AI conversation.
@@ -67,14 +68,25 @@ simulated August 12 clock, not future dates as of today. Closing-soon is the exi
 **parent-reported waitlist-offer deadline**, not a scraped registration-closing date.
 Their automated grades 4–5 do not override Sloane's later natural-language blocker.
 
-The same ledger stands at **$10.360551255 / $15 (422 calls, no reservations)**.
+The same ledger stands at **$10.584828315 / $15 (456 calls, no reservations)**.
 The hold was read late; post-hold batches and the ONE revised $4.10 remaining-work
 estimate are disclosed in [the estimate](vil-423-acceptance-estimate-2026-10-16.md).
-Regeneration must follow Barton's newly approved order above and reserve every call
-under the same $15 total. Original reminder failures remain in the audit.
+The latest [verbatim regenerated samples](https://linear.app/villagehale/issue/VIL-423#comment-74a22840)
+were posted before recording commits. Ten usable messages scored 4–5; one French
+waitlist message contains mojibake and remains safely held because the parser's
+corrected-accent quote is absent from the actual text. No encoding repair or reroll.
+The original writer/parser answers replay unchanged after ignoring an unstated,
+unquoted derived weekday; quoted wrong weekdays still fail. Deliberately changing
+the captured English Aug 12 opening to Aug 13 produces a real parsed Aug 13 and a
+hold against the official Aug 12 fact. A French negative control `jeudi 12 août`
+produces quoted weekday 4 and is held against Wednesday (3); this is injected
+test text, not a writer hallucination. Recorded delivery/guard replay now has
+**13 passing tests**: ten positive, corrupted French, wrong date, wrong weekday.
+Original failures remain in the audit.
 
-Still required: approved regeneration/semantic-parser acceptance, legacy Finder
-recording and CI, current-instance eligibility evidence for Burlington, and final
+Still required: confirmation for the one held French sample's recovery, legacy
+Finder recording, missing US source-zone registration-verify recording and CI,
+current-instance eligibility evidence for Burlington, and final
 Sloane review. Location false negatives and measured slow replies remain visible.
 Older live-reader English/time regex → extractor is a separate non-blocking follow-up.
 Remote destructive catalog cutover needs its own backup/maintenance approval.

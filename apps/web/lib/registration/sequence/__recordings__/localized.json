@@ -1,0 +1,986 @@
+{
+  "3229d2b9f54c7e262bb9b4f9b09d02e1073a15cf0b625a3397bb8504f530c814": {
+    "key": "3229d2b9f54c7e262bb9b4f9b09d02e1073a15cf0b625a3397bb8504f530c814",
+    "recordedAt": "2026-10-17T02:02:21.600Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"leg\":\"go\",\"language\":\"en\",\"now\":\"2026-08-12T10:30:00.000Z\",\"parentTimeZone\":\"America/Toronto\",\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"verified\",\"eligibility\":\"general_open\",\"optIn\":\"opted_in\",\"readinessReportedByParent\":null,\"change\":null,\"waitlistReportedByParent\":null,\"course\":{\"status\":\"prepared\",\"facts\":{\"EventName\":\"LEGO: Preschool\",\"CourseId\":\"344301\",\"StartDay\":\"Sunday\",\"StartTime\":\"10:15 AM\",\"StartDateValue\":\"2026-09-27T10:15:00\",\"MinAge\":4,\"MaxAge\":6,\"MinAgeMonths\":null,\"MaxAgeMonths\":null,\"AgeRestrictions\":\"4 to 6\",\"RegFormId\":null,\"PrerequisiteEvents\":false,\"Prices\":[{\"Name\":\"REC: Programs - Variety 1 - Non-Resident\",\"DisplayAmount\":\"$139.36\"},{\"Name\":\"REC: Programs - Variety 1 - Resident\",\"DisplayAmount\":\"$121.16\"}],\"PublicRegistrationStartDateValue\":\"2026-08-12T06:30:00\",\"ResidentsRegistrationDateValue\":\"2026-08-11T06:30:00\",\"MembersRegistrationDateValue\":\"2026-08-12T06:30:00\",\"IsRegistrationClosed\":false,\"OnlineRegistration\":true},\"ageFit\":\"unknown\",\"availability\":{\"state\":\"open\",\"reason\":null,\"evidence\":[\"\\\"IsFull\\\":false\",\"\\\"SpotsLeft\\\":2\",\"\\\"CanNotBook\\\":false\",\"\\\"StartDay\\\":\\\"Sunday\\\"\",\"\\\"StartTime\\\":\\\"10:15 AM\\\"\"]},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"signInUrl\":\"https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928\"},\"setup\":null}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6z9go8ZvMxgeNPxKAxv",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"Registration for LEGO: Preschool (Sundays at 10:15 AM, starting September 27, 2026) is listed as opening today, August 12, 2026, at 6:30 AM Toronto time. The course page currently shows the class as open, with 2 spots left, but that can change quickly. It's listed for ages 4 to 6, and I can't confirm from here whether your child fits that range. Prices shown: $121.16 for residents, $139.36 for non-residents. Here's the course page to register: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 If you need to sign in first, use this link: https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928 Good luck!\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1033,
+        "cache_creation_input_tokens": 1087,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 1087,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 459,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "2d1fcab5531ecc9a9c4914ab8454219d5f59d8ae97be71c6f370368d6545078d": {
+    "key": "2d1fcab5531ecc9a9c4914ab8454219d5f59d8ae97be71c6f370368d6545078d",
+    "recordedAt": "2026-10-17T02:02:24.501Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Registration for LEGO: Preschool (Sundays at 10:15 AM, starting September 27, 2026) is listed as opening today, August 12, 2026, at 6:30 AM Toronto time. The course page currently shows the class as open, with 2 spots left, but that can change quickly. It's listed for ages 4 to 6, and I can't confirm from here whether your child fits that range. Prices shown: $121.16 for residents, $139.36 for non-residents. Here's the course page to register: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 If you need to sign in first, use this link: https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928 Good luck!\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6z9yHKWwzWxjLYicjX7",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"today, August 12, 2026\",\"time\":\"6:30 AM\",\"timeZone\":\"Toronto time\",\"weekday\":null}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 484,
+        "cache_creation_input_tokens": 1108,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 1108,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 103,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "bcb2e83cf76726e1c8c5119bc09afcad038d8b63b65a43d16def3f5667dd7bb2": {
+    "key": "bcb2e83cf76726e1c8c5119bc09afcad038d8b63b65a43d16def3f5667dd7bb2",
+    "recordedAt": "2026-10-17T02:02:28.821Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"leg\":\"go\",\"language\":\"fr-CA\",\"now\":\"2026-08-12T10:30:00.000Z\",\"parentTimeZone\":\"America/Toronto\",\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"verified\",\"eligibility\":\"general_open\",\"optIn\":\"opted_in\",\"readinessReportedByParent\":null,\"change\":null,\"waitlistReportedByParent\":null,\"course\":{\"status\":\"prepared\",\"facts\":{\"EventName\":\"LEGO: Preschool\",\"CourseId\":\"344301\",\"StartDay\":\"Sunday\",\"StartTime\":\"10:15 AM\",\"StartDateValue\":\"2026-09-27T10:15:00\",\"MinAge\":4,\"MaxAge\":6,\"MinAgeMonths\":null,\"MaxAgeMonths\":null,\"AgeRestrictions\":\"4 to 6\",\"RegFormId\":null,\"PrerequisiteEvents\":false,\"Prices\":[{\"Name\":\"REC: Programs - Variety 1 - Non-Resident\",\"DisplayAmount\":\"$139.36\"},{\"Name\":\"REC: Programs - Variety 1 - Resident\",\"DisplayAmount\":\"$121.16\"}],\"PublicRegistrationStartDateValue\":\"2026-08-12T06:30:00\",\"ResidentsRegistrationDateValue\":\"2026-08-11T06:30:00\",\"MembersRegistrationDateValue\":\"2026-08-12T06:30:00\",\"IsRegistrationClosed\":false,\"OnlineRegistration\":true},\"ageFit\":\"unknown\",\"availability\":{\"state\":\"open\",\"reason\":null,\"evidence\":[\"\\\"IsFull\\\":false\",\"\\\"SpotsLeft\\\":2\",\"\\\"CanNotBook\\\":false\",\"\\\"StartDay\\\":\\\"Sunday\\\"\",\"\\\"StartTime\\\":\\\"10:15 AM\\\"\"]},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"signInUrl\":\"https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928\"},\"setup\":null}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zABhvyvPSxnhjz1BWY",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"Bonjour! C'est aujourd'hui, le 12 août 2026, que les inscriptions ouvrent pour « LEGO: Preschool » (cours pour les 4 à 6 ans, les dimanches à 10 h 15, à partir du 27 septembre 2026). Selon la page officielle, l'ouverture est à 6 h 30, heure de Toronto. D'après la page, il reste actuellement 2 places, mais cela peut changer vite. Les tarifs publiés sont de 121,16 $ pour les résidents et de 139,36 $ pour les non-résidents. Je n'ai pas pu confirmer si l'âge de votre enfant correspond à la tranche 4 à 6 ans; c'est à vous de le vérifier. Page du cours : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 Pour vous connecter : https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928 Bonne chance!\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1037,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1087,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 555,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "2f6290d640d990b0f813f294a413d01554e8e63ea696565de2383dc5f4b51820": {
+    "key": "2f6290d640d990b0f813f294a413d01554e8e63ea696565de2383dc5f4b51820",
+    "recordedAt": "2026-10-17T02:02:30.458Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Bonjour! C'est aujourd'hui, le 12 août 2026, que les inscriptions ouvrent pour « LEGO: Preschool » (cours pour les 4 à 6 ans, les dimanches à 10 h 15, à partir du 27 septembre 2026). Selon la page officielle, l'ouverture est à 6 h 30, heure de Toronto. D'après la page, il reste actuellement 2 places, mais cela peut changer vite. Les tarifs publiés sont de 121,16 $ pour les résidents et de 139,36 $ pour les non-résidents. Je n'ai pas pu confirmer si l'âge de votre enfant correspond à la tranche 4 à 6 ans; c'est à vous de le vérifier. Page du cours : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 Pour vous connecter : https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928 Bonne chance!\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zAWJdFNs8iPqKbbRJB",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"aujourd'hui, le 12 août 2026\",\"time\":\"6 h 30\",\"timeZone\":\"heure de Toronto\",\"weekday\":null}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 580,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 111,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "73e455ccdb669f6d2054e918e716ea975ec3c7bed8378161856e66796db9a654": {
+    "key": "73e455ccdb669f6d2054e918e716ea975ec3c7bed8378161856e66796db9a654",
+    "recordedAt": "2026-10-17T02:02:34.148Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"leg\":\"go\",\"language\":\"en\",\"now\":\"2026-08-12T10:30:00.000Z\",\"parentTimeZone\":\"America/Toronto\",\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180\",\"sourceStatus\":\"verified\",\"eligibility\":\"general_open\",\"optIn\":\"opted_in\",\"readinessReportedByParent\":null,\"change\":null,\"waitlistReportedByParent\":null,\"course\":{\"status\":\"prepared\",\"facts\":{\"EventName\":\"Chess: Preschool\",\"CourseId\":\"348424\",\"StartDay\":\"Monday\",\"StartTime\":\"05:00 PM\",\"StartDateValue\":\"2026-09-21T17:00:00\",\"MinAge\":4,\"MaxAge\":6,\"MinAgeMonths\":null,\"MaxAgeMonths\":null,\"AgeRestrictions\":\"4 to 6\",\"RegFormId\":null,\"PrerequisiteEvents\":false,\"Prices\":[{\"Name\":\"REC: Programs - Specialty 1 - Non-Resident\",\"DisplayAmount\":\"$175.32\"},{\"Name\":\"REC: Programs - Specialty 1 - Resident\",\"DisplayAmount\":\"$152.40\"}],\"PublicRegistrationStartDateValue\":\"2026-08-12T06:30:00\",\"ResidentsRegistrationDateValue\":\"2026-08-11T06:30:00\",\"MembersRegistrationDateValue\":\"2026-08-12T06:30:00\",\"IsRegistrationClosed\":false,\"OnlineRegistration\":true},\"ageFit\":\"unknown\",\"availability\":{\"state\":\"full\",\"reason\":null,\"evidence\":[\"\\\"IsFull\\\":true\",\"\\\"SpotsLeft\\\":0\",\"\\\"IsWaitListAvailable\\\":true\",\"\\\"WaitListSpotsLeft\\\":100\",\"\\\"StartDay\\\":\\\"Monday\\\"\",\"\\\"StartTime\\\":\\\"05:00 PM\\\"\"]},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180\",\"signInUrl\":\"https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D85770d4d-bce9-4e53-b969-cf7e88775180\"},\"setup\":null}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zAdC7F76LqwXvpqDVZ",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"Hi! Registration for Chess: Preschool (Mondays at 5:00 PM, starting September 21, 2026) opened today, August 12, 2026, at 6:30 AM Toronto time, per the official page. One important note: the page currently shows this course as full with 0 spots left, though a waitlist is listed as available (100 waitlist spots). Prices listed are $152.40 for residents and $175.32 for non-residents. The course is listed for ages 4 to 6, and I haven't confirmed whether your child fits that range, so please check that. Here is the course page: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180 and here is the sign-in link: https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D85770d4d-bce9-4e53-b969-cf7e88775180\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1056,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1087,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 475,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "1e914f44f870a2a42cb4a8eaf772e3efb4012f235d3ee215d02cfc316df6916e": {
+    "key": "1e914f44f870a2a42cb4a8eaf772e3efb4012f235d3ee215d02cfc316df6916e",
+    "recordedAt": "2026-10-17T02:02:35.778Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Hi! Registration for Chess: Preschool (Mondays at 5:00 PM, starting September 21, 2026) opened today, August 12, 2026, at 6:30 AM Toronto time, per the official page. One important note: the page currently shows this course as full with 0 spots left, though a waitlist is listed as available (100 waitlist spots). Prices listed are $152.40 for residents and $175.32 for non-residents. The course is listed for ages 4 to 6, and I haven't confirmed whether your child fits that range, so please check that. Here is the course page: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180 and here is the sign-in link: https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D85770d4d-bce9-4e53-b969-cf7e88775180\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zAtx9djf88x5a6ggz2",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"August 12, 2026\",\"time\":\"6:30 AM\",\"timeZone\":\"Toronto time\",\"weekday\":null}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 500,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 101,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "83aba754db952db1de732a10570cec1d4cc63b4177668007250b0ac04f34708e": {
+    "key": "83aba754db952db1de732a10570cec1d4cc63b4177668007250b0ac04f34708e",
+    "recordedAt": "2026-10-17T02:02:41.555Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"leg\":\"go\",\"language\":\"ar\",\"now\":\"2026-08-12T10:30:00.000Z\",\"parentTimeZone\":\"America/Toronto\",\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180\",\"sourceStatus\":\"verified\",\"eligibility\":\"general_open\",\"optIn\":\"opted_in\",\"readinessReportedByParent\":null,\"change\":null,\"waitlistReportedByParent\":null,\"course\":{\"status\":\"prepared\",\"facts\":{\"EventName\":\"Chess: Preschool\",\"CourseId\":\"348424\",\"StartDay\":\"Monday\",\"StartTime\":\"05:00 PM\",\"StartDateValue\":\"2026-09-21T17:00:00\",\"MinAge\":4,\"MaxAge\":6,\"MinAgeMonths\":null,\"MaxAgeMonths\":null,\"AgeRestrictions\":\"4 to 6\",\"RegFormId\":null,\"PrerequisiteEvents\":false,\"Prices\":[{\"Name\":\"REC: Programs - Specialty 1 - Non-Resident\",\"DisplayAmount\":\"$175.32\"},{\"Name\":\"REC: Programs - Specialty 1 - Resident\",\"DisplayAmount\":\"$152.40\"}],\"PublicRegistrationStartDateValue\":\"2026-08-12T06:30:00\",\"ResidentsRegistrationDateValue\":\"2026-08-11T06:30:00\",\"MembersRegistrationDateValue\":\"2026-08-12T06:30:00\",\"IsRegistrationClosed\":false,\"OnlineRegistration\":true},\"ageFit\":\"unknown\",\"availability\":{\"state\":\"full\",\"reason\":null,\"evidence\":[\"\\\"IsFull\\\":true\",\"\\\"SpotsLeft\\\":0\",\"\\\"IsWaitListAvailable\\\":true\",\"\\\"WaitListSpotsLeft\\\":100\",\"\\\"StartDay\\\":\\\"Monday\\\"\",\"\\\"StartTime\\\":\\\"05:00 PM\\\"\"]},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180\",\"signInUrl\":\"https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D85770d4d-bce9-4e53-b969-cf7e88775180\"},\"setup\":null}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zB1ssKpJhhR9cdTufb",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"تذكير: يبدأ التسجيل في برنامج «Chess: Preschool» (الشطرنج لمرحلة ما قبل المدرسة) اليوم، الأربعاء 12 أغسطس 2026، الساعة 6:30 صباحًا بتوقيت تورنتو (وهو التوقيت المنشور في الصفحة الرسمية). رابط التسجيل: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180 — ورابط تسجيل الدخول: https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D85770d4d-bce9-4e53-b969-cf7e88775180 . تنبيه مهم: تُظهر الصفحة حاليًا أن البرنامج ممتلئ (لا توجد أماكن متبقية)، لكن قائمة الانتظار متاحة وفيها 100 مكان شاغر بحسب قراءتنا للصفحة. معلومات البرنامج المنشورة: الفئة العمرية من 4 إلى 6 سنوات، ويبدأ يوم الاثنين 21 سبتمبر 2026 الساعة 5:00 مساءً، والسعر 152.40 دولارًا للمقيمين و175.32 دولارًا لغير المقيمين. هذه المعلومات منشورة في الصفحة ولا تؤكد أن طفلكم تنطبق عليه الشروط، فيُرجى التحقق من العمر قبل التسجيل.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1057,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1087,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 718,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "f2d09a924e6d41eb5073f35858ca0f3fe55976f76f0dbff4b7914be195798031": {
+    "key": "f2d09a924e6d41eb5073f35858ca0f3fe55976f76f0dbff4b7914be195798031",
+    "recordedAt": "2026-10-17T02:02:43.444Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"تذكير: يبدأ التسجيل في برنامج «Chess: Preschool» (الشطرنج لمرحلة ما قبل المدرسة) اليوم، الأربعاء 12 أغسطس 2026، الساعة 6:30 صباحًا بتوقيت تورنتو (وهو التوقيت المنشور في الصفحة الرسمية). رابط التسجيل: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=85770d4d-bce9-4e53-b969-cf7e88775180 — ورابط تسجيل الدخول: https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D85770d4d-bce9-4e53-b969-cf7e88775180 . تنبيه مهم: تُظهر الصفحة حاليًا أن البرنامج ممتلئ (لا توجد أماكن متبقية)، لكن قائمة الانتظار متاحة وفيها 100 مكان شاغر بحسب قراءتنا للصفحة. معلومات البرنامج المنشورة: الفئة العمرية من 4 إلى 6 سنوات، ويبدأ يوم الاثنين 21 سبتمبر 2026 الساعة 5:00 مساءً، والسعر 152.40 دولارًا للمقيمين و175.32 دولارًا لغير المقيمين. هذه المعلومات منشورة في الصفحة ولا تؤكد أن طفلكم تنطبق عليه الشروط، فيُرجى التحقق من العمر قبل التسجيل.\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zBSedDoA8CBJj2zRgQ",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"اليوم، الأربعاء 12 أغسطس 2026\",\"time\":\"الساعة 6:30 صباحًا\",\"timeZone\":\"بتوقيت تورنتو\",\"weekday\":\"الأربعاء\"}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 744,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 137,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "438ecad4939fa35c29fc54f8777ac813412353fc64fd3fc1bd5da6b933dad79a": {
+    "key": "438ecad4939fa35c29fc54f8777ac813412353fc64fd3fc1bd5da6b933dad79a",
+    "recordedAt": "2026-10-17T02:02:55.936Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"leg\":\"waitlist_final\",\"language\":\"en\",\"now\":\"2026-08-12T10:30:00.000Z\",\"parentTimeZone\":\"America/Toronto\",\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"verified\",\"eligibility\":\"general_open\",\"optIn\":\"opted_in\",\"readinessReportedByParent\":null,\"change\":null,\"waitlistReportedByParent\":{\"position\":2,\"deadlineAt\":\"2026-08-12T11:00:00.000Z\"},\"course\":{\"status\":\"prepared\",\"facts\":{\"EventName\":\"LEGO: Preschool\",\"CourseId\":\"344301\",\"StartDay\":\"Sunday\",\"StartTime\":\"10:15 AM\",\"StartDateValue\":\"2026-09-27T10:15:00\",\"MinAge\":4,\"MaxAge\":6,\"MinAgeMonths\":null,\"MaxAgeMonths\":null,\"AgeRestrictions\":\"4 to 6\",\"RegFormId\":null,\"PrerequisiteEvents\":false,\"Prices\":[{\"Name\":\"REC: Programs - Variety 1 - Non-Resident\",\"DisplayAmount\":\"$139.36\"},{\"Name\":\"REC: Programs - Variety 1 - Resident\",\"DisplayAmount\":\"$121.16\"}],\"PublicRegistrationStartDateValue\":\"2026-08-12T06:30:00\",\"ResidentsRegistrationDateValue\":\"2026-08-11T06:30:00\",\"MembersRegistrationDateValue\":\"2026-08-12T06:30:00\",\"IsRegistrationClosed\":false,\"OnlineRegistration\":true},\"ageFit\":\"unknown\",\"availability\":{\"state\":\"open\",\"reason\":null,\"evidence\":[\"\\\"IsFull\\\":false\",\"\\\"SpotsLeft\\\":2\",\"\\\"CanNotBook\\\":false\",\"\\\"StartDay\\\":\\\"Sunday\\\"\",\"\\\"StartTime\\\":\\\"10:15 AM\\\"\"]},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"signInUrl\":\"https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928\"},\"setup\":null}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zCFm4y4e8wVWBGpPFw",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"Hi! A quick check-in on the LEGO: Preschool course (Sundays at 10:15 AM, starting September 27, 2026). Registration opened on August 12, 2026 at 6:30 AM Toronto time. You mentioned you're number 2 on the waitlist, with a deadline around 7:00 AM Toronto time today (August 12, 2026). The page currently shows 2 spots left, but I can't confirm whether that applies to your waitlist spot, and Hale hasn't checked your account. Course page: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 . Once you know how it turned out, just reply: got in, waitlisted (with your position, if you have one), or missed it.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1069,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1087,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 318,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "e29edfe7ea3c17b99e61009a462490c3768083e59b8b422aa344ccd20324fff3": {
+    "key": "e29edfe7ea3c17b99e61009a462490c3768083e59b8b422aa344ccd20324fff3",
+    "recordedAt": "2026-10-17T02:02:57.265Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Hi! A quick check-in on the LEGO: Preschool course (Sundays at 10:15 AM, starting September 27, 2026). Registration opened on August 12, 2026 at 6:30 AM Toronto time. You mentioned you're number 2 on the waitlist, with a deadline around 7:00 AM Toronto time today (August 12, 2026). The page currently shows 2 spots left, but I can't confirm whether that applies to your waitlist spot, and Hale hasn't checked your account. Course page: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 . Once you know how it turned out, just reply: got in, waitlisted (with your position, if you have one), or missed it.\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zCW6morVcWzfKgRsxk",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"Registration opened on August 12, 2026\",\"time\":\"6:30 AM\",\"timeZone\":\"Toronto time\",\"weekday\":null}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 344,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 107,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "7955e39a49b474a8979e267f1f5f465e9045a122ec92505bd5a616e32cd3e058": {
+    "key": "7955e39a49b474a8979e267f1f5f465e9045a122ec92505bd5a616e32cd3e058",
+    "recordedAt": "2026-10-17T02:03:02.833Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"leg\":\"waitlist_final\",\"language\":\"fr-CA\",\"now\":\"2026-08-12T10:30:00.000Z\",\"parentTimeZone\":\"America/Toronto\",\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"verified\",\"eligibility\":\"general_open\",\"optIn\":\"opted_in\",\"readinessReportedByParent\":null,\"change\":null,\"waitlistReportedByParent\":{\"position\":2,\"deadlineAt\":\"2026-08-12T11:00:00.000Z\"},\"course\":{\"status\":\"prepared\",\"facts\":{\"EventName\":\"LEGO: Preschool\",\"CourseId\":\"344301\",\"StartDay\":\"Sunday\",\"StartTime\":\"10:15 AM\",\"StartDateValue\":\"2026-09-27T10:15:00\",\"MinAge\":4,\"MaxAge\":6,\"MinAgeMonths\":null,\"MaxAgeMonths\":null,\"AgeRestrictions\":\"4 to 6\",\"RegFormId\":null,\"PrerequisiteEvents\":false,\"Prices\":[{\"Name\":\"REC: Programs - Variety 1 - Non-Resident\",\"DisplayAmount\":\"$139.36\"},{\"Name\":\"REC: Programs - Variety 1 - Resident\",\"DisplayAmount\":\"$121.16\"}],\"PublicRegistrationStartDateValue\":\"2026-08-12T06:30:00\",\"ResidentsRegistrationDateValue\":\"2026-08-11T06:30:00\",\"MembersRegistrationDateValue\":\"2026-08-12T06:30:00\",\"IsRegistrationClosed\":false,\"OnlineRegistration\":true},\"ageFit\":\"unknown\",\"availability\":{\"state\":\"open\",\"reason\":null,\"evidence\":[\"\\\"IsFull\\\":false\",\"\\\"SpotsLeft\\\":2\",\"\\\"CanNotBook\\\":false\",\"\\\"StartDay\\\":\\\"Sunday\\\"\",\"\\\"StartTime\\\":\\\"10:15 AM\\\"\"]},\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"signInUrl\":\"https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928\"},\"setup\":null}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zCbj7RN4mjoFSmvWjT",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"Bonjour! Voici un petit suivi pour la liste d'attente du cours « LEGO: Preschool » (dimanche 27 septembre 2026, 10 h 15). D'aprĆØs ce que vous nous avez indiquĆ©, vous ĆÆtes en position 2 sur la liste d'attente, avec une date limite Ć  7 h aujourd'hui, le 12 aoĆ»t 2026 (heure de Toronto). Nous n'avons pas vĆ©rifiĆ© votre compte, donc ces renseignements viennent uniquement de vous. La page officielle du cours indique qu'il reste actuellement 2 places; pour la consulter : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 . Les inscriptions ont ouvert aujourd'hui, le 12 aoĆ»t 2026, Ć  6 h 30 (heure de Toronto). Les tarifs publiĆ©s sont de 121,16 $ pour les rĆ©sidents et de 139,36 $ pour les non-rĆ©sidents. Le cours s'adresse aux enfants de 4 Ć  6 ans; nous n'avons pas pu confirmer si votre enfant correspond Ć  cette tranche d'Ć¢ge. Pour vous connecter : https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928 . Dites-nous comment cela se passe : avez-vous obtenu une place, ĆŖtes-vous toujours sur la liste d'attente (et Ć  quelle position), ou avez-vous manquĆ© la date limite?\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 1073,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1087,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 779,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "b43c8ecdf4703ebfc5a0c15deecc9cbe61cc69ae77cfcc6c634de8650fbe9d32": {
+    "key": "b43c8ecdf4703ebfc5a0c15deecc9cbe61cc69ae77cfcc6c634de8650fbe9d32",
+    "recordedAt": "2026-10-17T02:03:04.693Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Bonjour! Voici un petit suivi pour la liste d'attente du cours « LEGO: Preschool » (dimanche 27 septembre 2026, 10 h 15). D'aprĆØs ce que vous nous avez indiquĆ©, vous ĆÆtes en position 2 sur la liste d'attente, avec une date limite Ć  7 h aujourd'hui, le 12 aoĆ»t 2026 (heure de Toronto). Nous n'avons pas vĆ©rifiĆ© votre compte, donc ces renseignements viennent uniquement de vous. La page officielle du cours indique qu'il reste actuellement 2 places; pour la consulter : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 . Les inscriptions ont ouvert aujourd'hui, le 12 aoĆ»t 2026, Ć  6 h 30 (heure de Toronto). Les tarifs publiĆ©s sont de 121,16 $ pour les rĆ©sidents et de 139,36 $ pour les non-rĆ©sidents. Le cours s'adresse aux enfants de 4 Ć  6 ans; nous n'avons pas pu confirmer si votre enfant correspond Ć  cette tranche d'Ć¢ge. Pour vous connecter : https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928 . Dites-nous comment cela se passe : avez-vous obtenu une place, ĆŖtes-vous toujours sur la liste d'attente (et Ć  quelle position), ou avez-vous manquĆ© la date limite?\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zD1h1Qs4yrV53EpE5C",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"aujourd'hui, le 12 août 2026\",\"time\":\"6 h 30\",\"timeZone\":\"heure de Toronto\",\"weekday\":null}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 804,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 111,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "9b650b03a6a9f1a040102766dbce575af59fc9c0bbf49c2a0238fa725740ffb8": {
+    "key": "9b650b03a6a9f1a040102766dbce575af59fc9c0bbf49c2a0238fa725740ffb8",
+    "recordedAt": "2026-10-17T02:03:07.098Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"leg\":\"heads_up\",\"language\":\"en\",\"now\":\"2026-08-12T10:30:00.000Z\",\"parentTimeZone\":\"America/Toronto\",\"opening\":null,\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"unreadable\",\"eligibility\":null,\"optIn\":\"opted_in\",\"readinessReportedByParent\":null,\"change\":{\"kind\":\"unavailable\"},\"waitlistReportedByParent\":null,\"course\":null,\"setup\":null}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zD9Z2fchsEfBq9C1PH",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"Hi, it's Hale with a heads-up on your course registration. I can't read the official course page right now, so I can't verify the registration opening date or confirm whether this course is open, closed, or still listed. Because of that, date reminders are paused while we recheck, and I won't send the evening-before plan until we have a verified date. Nothing here confirms that you qualify for the course or that a place is available. You can look at the official page yourself here: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 257,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1087,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 245,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "d77a84c86a32d97a1d1a9a23bec0e912803d46a2e1b77239e51541dc310c10fc": {
+    "key": "d77a84c86a32d97a1d1a9a23bec0e912803d46a2e1b77239e51541dc310c10fc",
+    "recordedAt": "2026-10-17T02:03:08.354Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Hi, it's Hale with a heads-up on your course registration. I can't read the official course page right now, so I can't verify the registration opening date or confirm whether this course is open, closed, or still listed. Because of that, date reminders are paused while we recheck, and I won't send the evening-before plan until we have a verified date. Nothing here confirms that you qualify for the course or that a place is available. You can look at the official page yourself here: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zDKr9rnc9gBca1i83A",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 270,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 9,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "f8ac8b316420b9874c734f0366268cca5763f813be3bce1569776bb7dc788863": {
+    "key": "f8ac8b316420b9874c734f0366268cca5763f813be3bce1569776bb7dc788863",
+    "recordedAt": "2026-10-17T02:03:14.114Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"leg\":\"heads_up\",\"language\":\"ar\",\"now\":\"2026-08-12T10:30:00.000Z\",\"parentTimeZone\":\"America/Toronto\",\"opening\":null,\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"unreadable\",\"eligibility\":null,\"optIn\":\"opted_in\",\"readinessReportedByParent\":null,\"change\":{\"kind\":\"unavailable\"},\"waitlistReportedByParent\":null,\"course\":null,\"setup\":null}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zDcJsBC6VbJH4AfmQd",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"مرحبًا، هذا تذكير بخصوص التسجيل في الدورة. لم نتمكن حاليًا من قراءة الصفحة الرسمية للدورة، ولذلك لم نستطع التحقق من موعد فتح التسجيل أو من حالة الدورة. لهذا السبب أوقفنا مؤقتًا تذكيرات المواعيد، وسنعيد التحقق ونراسلك عندما يتوفر موعد مؤكد. لا نعرف إن كانت الدورة متاحة أو مغلقة أو تغيّرت. يمكنك الاطلاع على الصفحة الرسمية بنفسك هنا: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 258,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1087,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 340,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "b5b2f19d6c855a9b3088b60eb49c7c1c2247c4a832de074977532a63cb48b333": {
+    "key": "b5b2f19d6c855a9b3088b60eb49c7c1c2247c4a832de074977532a63cb48b333",
+    "recordedAt": "2026-10-17T02:03:15.380Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"مرحبًا، هذا تذكير بخصوص التسجيل في الدورة. لم نتمكن حاليًا من قراءة الصفحة الرسمية للدورة، ولذلك لم نستطع التحقق من موعد فتح التسجيل أو من حالة الدورة. لهذا السبب أوقفنا مؤقتًا تذكيرات المواعيد، وسنعيد التحقق ونراسلك عندما يتوفر موعد مؤكد. لا نعرف إن كانت الدورة متاحة أو مغلقة أو تغيّرت. يمكنك الاطلاع على الصفحة الرسمية بنفسك هنا: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zDqnUVdE7QLgLDjDyN",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 365,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 9,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "f167c6b0eff08a4ca8ccab032cb26c997a9f8e8e3a05a8ca87fb5580c7536aee": {
+    "key": "f167c6b0eff08a4ca8ccab032cb26c997a9f8e8e3a05a8ca87fb5580c7536aee",
+    "recordedAt": "2026-10-17T02:03:27.931Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"outcome\":\"registration_reminder_proposed\",\"language\":\"en\",\"parentWords\":\"When does registration open? [link]\",\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"verified\",\"sourceReason\":null,\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"eligibility\":\"general_open\",\"dateRemindersPaused\":false,\"nextStep\":\"confirm_plan_in_approvals\",\"reminderPlan\":{\"weekAhead\":true,\"eveningBefore\":true,\"minutesBeforeOpening\":15,\"requiresApproval\":true,\"automaticRegistrationOrPayment\":false}}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zEbTY754eUKxTGEUda",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"Registration opens on Wednesday, August 12, 2026 at 6:30 AM Toronto time (Eastern). I verified this on the City of Markham registration page, which is here: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\\n\\nThat date is listed as open to the general public. I've put together a proposed reminder plan: a heads-up one week before, a note the evening before, and a reminder 15 minutes before opening. Nothing is scheduled yet. The plan needs your confirmation in approvals first, so please review it there. Keep in mind that I never sign up, pay, or hold a place for you. Registration itself is something you'd do on the website, and a published opening time doesn't guarantee spaces will be available.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 329,
+        "cache_creation_input_tokens": 837,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 837,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 322,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "94e23ce308e181aca375f8cb04257c25c1d253abd5205360d932167548f56c2a": {
+    "key": "94e23ce308e181aca375f8cb04257c25c1d253abd5205360d932167548f56c2a",
+    "recordedAt": "2026-10-17T02:03:29.215Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Registration opens on Wednesday, August 12, 2026 at 6:30 AM Toronto time (Eastern). I verified this on the City of Markham registration page, which is here: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\\n\\nThat date is listed as open to the general public. I've put together a proposed reminder plan: a heads-up one week before, a note the evening before, and a reminder 15 minutes before opening. Nothing is scheduled yet. The plan needs your confirmation in approvals first, so please review it there. Keep in mind that I never sign up, pay, or hold a place for you. Registration itself is something you'd do on the website, and a published opening time doesn't guarantee spaces will be available.\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zEs8rzvQ6CsRHS4CUH",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"Wednesday, August 12, 2026\",\"time\":\"6:30 AM\",\"timeZone\":\"Toronto time (Eastern)\",\"weekday\":\"Wednesday\"}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 348,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 119,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "1bdd10f3a2f3a5f2411d70bda1430d7cea30fc4c69f8d4b3a48aea72f7f1eeed": {
+    "key": "1bdd10f3a2f3a5f2411d70bda1430d7cea30fc4c69f8d4b3a48aea72f7f1eeed",
+    "recordedAt": "2026-10-17T02:03:37.772Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"outcome\":\"registration_reminder_proposed\",\"language\":\"fr-CA\",\"parentWords\":\"Préviens-moi quand les inscriptions ouvrent. [link]\",\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"verified\",\"sourceReason\":null,\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"eligibility\":\"general_open\",\"dateRemindersPaused\":false,\"nextStep\":\"confirm_plan_in_approvals\",\"reminderPlan\":{\"weekAhead\":true,\"eveningBefore\":true,\"minutesBeforeOpening\":15,\"requiresApproval\":true,\"automaticRegistrationOrPayment\":false}}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zFHMtt3KNxen5pxy6z",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"Bonjour! J'ai bien trouvé la page d'inscription et la date d'ouverture a été vérifiée : les inscriptions ouvrent le 12 août 2026 à 6 h 30, heure de Toronto (heure de l'Est). Selon les informations publiées, l'ouverture est générale. Voici la page : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\\n\\nJe vous propose un plan de rappels, mais il n'est pas encore actif : il faut d'abord le confirmer dans la section des approbations. Une fois confirmé, il comprendrait un rappel une semaine avant l'ouverture, un rappel la veille au soir et un dernier rappel 15 minutes avant l'ouverture. Je ne vous inscris pas moi-même, je ne paie rien et je ne réserve aucune place : l'inscription et le paiement restent entièrement de votre côté, sur le site.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 348,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 837,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 397,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "694c27e363b1b0b7399fa79804e17db715cf4c00b6a3a5c58d1d41dcb9f175c4": {
+    "key": "694c27e363b1b0b7399fa79804e17db715cf4c00b6a3a5c58d1d41dcb9f175c4",
+    "recordedAt": "2026-10-17T02:03:39.560Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Bonjour! J'ai bien trouvé la page d'inscription et la date d'ouverture a été vérifiée : les inscriptions ouvrent le 12 août 2026 à 6 h 30, heure de Toronto (heure de l'Est). Selon les informations publiées, l'ouverture est générale. Voici la page : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\\n\\nJe vous propose un plan de rappels, mais il n'est pas encore actif : il faut d'abord le confirmer dans la section des approbations. Une fois confirmé, il comprendrait un rappel une semaine avant l'ouverture, un rappel la veille au soir et un dernier rappel 15 minutes avant l'ouverture. Je ne vous inscris pas moi-même, je ne paie rien et je ne réserve aucune place : l'inscription et le paiement restent entièrement de votre côté, sur le site.\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zFb12knyD8HbzQJmPr",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"12 août 2026\",\"time\":\"6 h 30\",\"timeZone\":\"heure de Toronto (heure de l'Est)\",\"weekday\":null}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 423,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 110,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "115825b4e960f7564939e0d805ed0e5ecab7a93d24c898dfdb9171bf2726b730": {
+    "key": "115825b4e960f7564939e0d805ed0e5ecab7a93d24c898dfdb9171bf2726b730",
+    "recordedAt": "2026-10-17T02:03:44.568Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"outcome\":\"registration_reminder_proposed\",\"language\":\"ar\",\"parentWords\":\"ذكرني عندما يبدأ التسجيل [link]\",\"sourceUrl\":\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\",\"sourceStatus\":\"verified\",\"sourceReason\":null,\"opening\":{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"timePublished\":true},\"eligibility\":\"general_open\",\"dateRemindersPaused\":false,\"nextStep\":\"confirm_plan_in_approvals\",\"reminderPlan\":{\"weekAhead\":true,\"eveningBefore\":true,\"minutesBeforeOpening\":15,\"requiresApproval\":true,\"automaticRegistrationOrPayment\":false}}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cg6zFieQcsL4bKEi7dRK8",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"message\":\"تم تجهيز خطة تذكير مقترحة لموعد فتح التسجيل. بحسب الصفحة التي أرسلتها (وقد جرى التحقق منها)، يبدأ التسجيل يوم 12 أغسطس 2026 الساعة 6:30 صباحًا بتوقيت تورنتو (المنطقة الزمنية الشرقية لكندا). الصفحة تشير إلى أن التسجيل مفتوح للجميع. الرابط: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\\n\\nالخطة المقترحة تتضمن ثلاث تذكيرات: تذكير قبل الموعد بأسبوع، وتذكير مساء اليوم السابق، وتذكير قبل فتح التسجيل بـ 15 دقيقة. هذه الخطة لم تُعتمد بعد، وتحتاج إلى تأكيدك من قسم الموافقات قبل أن تصبح فعّالة.\\n\\nوللتوضيح: هيل لا يسجّل ولا يدفع ولا يحجز مكانًا نيابةً عنك، فالتسجيل والدفع يبقيان بيدك أنت عند فتح التسجيل.\"}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 342,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 837,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 510,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "eda5bd8db8a7cccc85f8d9311ceb8887d9cc0bf141612f69e97d332319f59421": {
+    "key": "eda5bd8db8a7cccc85f8d9311ceb8887d9cc0bf141612f69e97d332319f59421",
+    "recordedAt": "2026-10-17T02:03:46.063Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"تم تجهيز خطة تذكير مقترحة لموعد فتح التسجيل. بحسب الصفحة التي أرسلتها (وقد جرى التحقق منها)، يبدأ التسجيل يوم 12 أغسطس 2026 الساعة 6:30 صباحًا بتوقيت تورنتو (المنطقة الزمنية الشرقية لكندا). الصفحة تشير إلى أن التسجيل مفتوح للجميع. الرابط: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\\n\\nالخطة المقترحة تتضمن ثلاث تذكيرات: تذكير قبل الموعد بأسبوع، وتذكير مساء اليوم السابق، وتذكير قبل فتح التسجيل بـ 15 دقيقة. هذه الخطة لم تُعتمد بعد، وتحتاج إلى تأكيدك من قسم الموافقات قبل أن تصبح فعّالة.\\n\\nوللتوضيح: هيل لا يسجّل ولا يدفع ولا يحجز مكانًا نيابةً عنك، فالتسجيل والدفع يبقيان بيدك أنت عند فتح التسجيل.\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zG68jtz3s9gjZL8yRd",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":3,\"confidence\":\"high\",\"evidence\":{\"date\":\"12 أغسطس 2026\",\"time\":\"6:30 صباحًا\",\"timeZone\":\"تورنتو (المنطقة الزمنية الشرقية لكندا)\",\"weekday\":null}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 536,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 128,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "d31b47ef29b5c5c1668d4ef0dd2492b1d7672f946126013fd1a25a3cc5465986": {
+    "key": "d31b47ef29b5c5c1668d4ef0dd2492b1d7672f946126013fd1a25a3cc5465986",
+    "recordedAt": "2026-10-17T02:05:08.591Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Registration for LEGO: Preschool (Sundays at 10:15 AM, starting September 27, 2026) is listed as opening August 13, 2026, at 6:30 AM Toronto time. The course page currently shows the class as open, with 2 spots left, but that can change quickly. It's listed for ages 4 to 6, and I can't confirm from here whether your child fits that range. Prices shown: $121.16 for residents, $139.36 for non-residents. Here's the course page to register: https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 If you need to sign in first, use this link: https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928 Good luck!\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zNBQR6B8eD8QU58677",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-13\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":4,\"confidence\":\"high\",\"evidence\":{\"date\":\"August 13, 2026\",\"time\":\"6:30 AM\",\"timeZone\":\"Toronto time\",\"weekday\":null}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 482,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 101,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "885265226ddcb72c472c143e4cb58c37d10587fd5636284ac6e6c520254e6407": {
+    "key": "885265226ddcb72c472c143e4cb58c37d10587fd5636284ac6e6c520254e6407",
+    "recordedAt": "2026-10-17T02:09:48.195Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"message\":\"Les inscriptions ouvrent jeudi 12 août 2026 à 6 h 30, heure de Toronto.\",\"now\":\"2026-08-12T10:30:00.000Z\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cg6zimpQtdYc2tWEhfT6y",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"openings\":[{\"date\":\"2026-08-12\",\"time\":\"06:30\",\"timeZone\":\"America/Toronto\",\"weekday\":4,\"confidence\":\"high\",\"evidence\":{\"date\":\"jeudi 12 août 2026\",\"time\":\"6 h 30\",\"timeZone\":\"heure de Toronto\",\"weekday\":\"jeudi\"}}]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 73,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 1108,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 111,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  }
+}
