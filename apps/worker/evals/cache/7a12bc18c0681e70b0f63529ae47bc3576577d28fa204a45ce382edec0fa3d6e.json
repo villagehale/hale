@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the opening date and time as a flat fact from `knows.registrationWindows` (not hedged as \"their site says\"), confirms watching is active, and promises to text before it opens — all of which are true per the rules. It names the city. One small blemish: the timezone \"(America/Toronto)\" is a technical string the parent doesn't need; \"Eastern time\" or just omitting it would be cleaner. Otherwise the reply is concise, no greeting, no sign-off, no invented detail, no app referral, no markdown. Very close to a 5 but that raw timezone string is a minor awkward detail.",
+    "score": 4
+  }
+}

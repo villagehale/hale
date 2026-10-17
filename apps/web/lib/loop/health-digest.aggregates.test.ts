@@ -2,7 +2,6 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   aggregateFamilyEngagement,
@@ -27,10 +26,6 @@ import { METRICS_EXCLUDED_FAMILIES_ENV } from './metrics-scope';
 /** The digest runs Monday 14:00 UTC over the preceding 7 days. */
 const WINDOW_END = new Date('2026-08-10T14:00:00Z');
 const WINDOW_START = new Date('2026-08-03T14:00:00Z');
-/** The sweep it reports on: LAST Monday's, whose claim + run rows are stamped with a
- * week start that falls just BEFORE this window opens. */
-const SWEPT_WEEK = new Date('2026-08-03T00:00:00Z');
-
 let db: TestDb;
 
 beforeEach(async () => {
@@ -41,74 +36,40 @@ afterEach(async () => {
   await db.close();
 });
 
-async function claimSweptWeek(weekStart = SWEPT_WEEK): Promise<void> {
-  await db.database
-    .insert(schema.rateLimits)
-    .values({ identifier: 'weekly-sweep', route: REGISTRATION_VERIFY_ROUTE, windowStart: weekStart, count: 1 });
-}
-
-describe('aggregateRadarVerification — the sweep\'s own tally, not an inference', () => {
-  it('reads back the split the run recorded', async () => {
-    await claimSweptWeek();
+describe('aggregateRadarVerification — latest live watch observations', () => {
+  async function observation(status: 'verified' | 'unverified', at: Date, changed = false) {
+    const family = await seedFamily(db.database, 'Source observation');
+    await db.database.insert(schema.registrationSequences).values({
+      ...family,
+      courseUrl: 'https://example.org/registration',
+      lastReadAt: at,
+      lastReading: { status },
+      pendingChange: changed ? { kind: 'earlier' } : null,
+    });
+  }
+  it('counts live observations, including verified changed dates, instead of historical sweep runs', async () => {
+    await observation('verified', WINDOW_START, true);
+    await observation('verified', new Date('2026-08-09T12:00:00Z'));
+    await observation('unverified', new Date('2026-08-09T12:00:00Z'));
+    await observation('verified', new Date('2026-08-01T12:00:00Z'));
+    await observation('verified', WINDOW_END);
     await db.database.insert(schema.registrationVerifyRuns).values({
-      weekStart: SWEPT_WEEK,
-      checked: 20,
-      confirmed: 17,
-      discrepancies: 1,
-      unverified: 2,
+      weekStart: WINDOW_START,
+      checked: 99,
+      confirmed: 99,
+      discrepancies: 0,
+      unverified: 0,
     });
-
-    const radar = await aggregateRadarVerification(db.database, WINDOW_START, WINDOW_END);
-
-    expect(radar.sweptThisWeek).toBe(true);
-    expect(radar.outcomes).toEqual({
-      checked: 20,
-      confirmed: 17,
-      discrepancies: 1,
-      unverified: 2,
+    expect(await aggregateRadarVerification(db.database, WINDOW_START, WINDOW_END)).toEqual({
+      checkedThisWeek: true,
+      outcomes: { checked: 3, verified: 2, changed: 1, unverified: 1 },
     });
   });
-
-  /** A week claimed and then left with no tally — the sweep died mid-run, or it ran
-   * before the ledger existed. Distinct from "did not run", and the scorecard grades
-   * neither. */
-  it('reports a claimed week with no recorded run as swept with no outcomes', async () => {
-    await claimSweptWeek();
-
-    const radar = await aggregateRadarVerification(db.database, WINDOW_START, WINDOW_END);
-
-    expect(radar.sweptThisWeek).toBe(true);
-    expect(radar.outcomes).toBeNull();
-  });
-
-  it('sees neither a claim nor a run in a week nothing swept', async () => {
-    const radar = await aggregateRadarVerification(db.database, WINDOW_START, WINDOW_END);
-
-    expect(radar.sweptThisWeek).toBe(false);
-    expect(radar.outcomes).toBeNull();
-  });
-
-  /** The predicate spans two Mondays (a week claimed before the window opens is the one
-   * this digest reports on), so it can match more than one run. The LATEST is this
-   * week's news; the older row is last week's, already reported. */
-  it('takes the most recent run when two fall inside the predicate', async () => {
-    await claimSweptWeek();
-    for (const [weekStart, checked] of [
-      [new Date('2026-07-27T12:00:00Z'), 9],
-      [SWEPT_WEEK, 20],
-    ] as const) {
-      await db.database.insert(schema.registrationVerifyRuns).values({
-        weekStart,
-        checked,
-        confirmed: checked,
-        discrepancies: 0,
-        unverified: 0,
-      });
-    }
-
-    const radar = await aggregateRadarVerification(db.database, WINDOW_START, WINDOW_END);
-
-    expect(radar.outcomes?.checked).toBe(20);
+  it('does not call an empty watch database a missing weekly job', async () => {
+    expect(await aggregateRadarVerification(db.database, WINDOW_START, WINDOW_END)).toEqual({
+      checkedThisWeek: false,
+      outcomes: null,
+    });
   });
 });
 
@@ -401,7 +362,7 @@ describe('aggregateW4Retention — the cohort grid', () => {
    * family Hale answered would retain itself, and the row would grade Hale's outbound
    * volume. The week-5 inbound is the positive control.
    */
-  it('does not count Hale\'s outbound reply, while counting the parent\'s own', async () => {
+  it("does not count Hale's outbound reply, while counting the parent's own", async () => {
     const family = await provisioned(SIX_WEEKS_AGO);
     await message(family, { direction: 'out', category: 'reply', createdAt: IN_WEEK_4 });
     await texted(family, IN_WEEK_5);

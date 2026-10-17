@@ -310,9 +310,7 @@ export function toDeepSlots(raw: z.infer<typeof extractSchema>['slots']): DeepSl
  * rather than casting the whole request keeps max_tokens, system, tools and messages
  * type-checked.
  */
-function wireLane(
-  task: Parameters<typeof pickLane>[0],
-): Pick<Anthropic.MessageCreateParams, 'model'> {
+function wireLane(task: Parameters<typeof pickLane>[0]): Pick<Anthropic.MessageCreateParams, 'model'> {
   return laneRequestFields(pickLane(task)) as Pick<Anthropic.MessageCreateParams, 'model'>;
 }
 

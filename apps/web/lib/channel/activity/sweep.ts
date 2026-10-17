@@ -304,10 +304,11 @@ async function keepOne(
   // Searched only AFTER the gate and the dedupe: a family who is over their budget or has
   // already been answered must not cost a web search (the per-search provider bill is the
   // reason this ordering is not merely tidy).
-  const [municipality, stage, householdNames] = await Promise.all([
+  const [municipality, stage, householdNames, location] = await Promise.all([
     deps.reader.municipality(database, commitment.familyId),
     deps.reader.stage(database, commitment.familyId, commitment.subjectChildId),
     deps.reader.householdNames(database, commitment.familyId),
+    deps.reader.location?.(database, commitment.familyId),
   ]);
   // Phase 0 AGAIN, a day later. The subject cleared it when the promise was made, but the
   // household can have changed since — a child added this morning is a name that must not
@@ -316,6 +317,7 @@ async function keepOne(
   const deidentified = deidentifyActivityQuery({
     subject,
     municipality,
+    location,
     stage,
     householdNames,
   });

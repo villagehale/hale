@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is accurate and grounded, with a few small blemishes. The registration dates match the reading: residents Sep 1 and everyone else Sep 8, both at 7:00 a.m. with the America/Toronto zone kept. The reminder promise is backed by `reminderState: active`. The webFind fits Remy at 19 months, carries its own URL, and is attributed to the venue's page without being dressed up as verified. The blemishes: the attribution is stated twice, and \"It doesn't publish an exact time or a price\" is an inference the webFind does not support. The title is close but not quoted whole (\"for ages walking to 3 years\" reworded), and the closing question adds length.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a held reading, and the reply handles it correctly. It uses the required wording, does not repeat the earlier Sep 1 date, states that reminders are paused, and includes the provided official source URL. There is no greeting, no extra machinery and no invented time. It is short and exact.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots trace to pages Hale actually read. Tiny Gym's age band (1 and walking to 3, with a caregiver) comes off programs.php, and the Term 1 and Term 2 dates (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) come off the schedule PDF that was opened. The July 22, 2026 8:00am online registration comes off the homepage and is cited there. Price is correctly left null: the site says pricing is only behind the registration login, and no figure was borrowed from elsewhere. Hale could not match the garbled PDF grid to weekdays and says so plainly instead of guessing. The message leads with Tiny Gym by name, attributes the facts with 'their site says' and carries the registration date. Under page_has_schedule it puts the gap in the first person: 'I could not pin down the day or the price'. With watch true, 'I'll keep watching and text you' is a real commitment. It is plain ASCII with no link and no question. The only minor gap is that it does not mention Rock n' Roll as a second option, which is not a fault.",
+    "score": 5
+  }
+}

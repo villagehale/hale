@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, registrationSourceState, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { normalizeToken } from '~/lib/channel/normalize-token';
 import { portalForMunicipality } from '~/lib/channel/spots/url';
@@ -13,7 +13,7 @@ import {
   awaitingOutcome,
   waitlistDeadline,
 } from './schedule.js';
-import { type Shortlist, buildShortlist } from './shortlist.js';
+import { type Shortlist, buildShortlist, courseShortlist } from './shortlist.js';
 
 /**
  * VIL-242 · M7 — what a parent's answer to "how did it go?" is allowed to do.
@@ -326,7 +326,7 @@ export async function recordRegistrationOutcome(
 /** The instant a sequence's registration morning actually ran on, as SQL: the bound
  * course's own clock where there is one, the M1 row's otherwise. Written once because
  * the horizon and the ordering have to agree with each other and with the ladder. */
-const anchorAt = sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`;
+const anchorAt = sql`coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz)`;
 
 /**
  * The one open window this family could be answering about: the newest sequence whose
@@ -341,28 +341,26 @@ export async function loadAwaitingSequence(
   const horizonStart = new Date(
     now.getTime() - (CHECK_IN_LEAD_HOURS + CHECK_IN_REPLY_WINDOW_HOURS) * 3_600_000,
   );
-  const [row] = await database
+  const [stored] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
       parentUserId: schema.registrationSequences.parentUserId,
       reaskedAt: schema.registrationSequences.reaskedAt,
       actionId: schema.registrationSequences.actionId,
-      window: schema.registrationWindows,
+      window: schema.registrationSequences.sourceContext,
       timezone: schema.users.timezone,
       areaCoarse: schema.families.areaCoarse,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
+      courseUrl: schema.registrationSequences.courseUrl,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
-      schema.registrationWindows,
-      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
-    )
     .innerJoin(schema.users, eq(schema.users.id, schema.registrationSequences.parentUserId))
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .where(
       and(
         eq(schema.registrationSequences.familyId, familyId),
         isNull(schema.registrationSequences.outcome),
+        isNull(schema.registrationSequences.pausedAt),
         // THE SAME ANCHOR THE LADDER RAN ON, in SQL. The check-in goes out four hours
         // after the bound course's morning, so a horizon measured from the M1 row hears
         // a reply for only `72h − drift` after it — and a course bound three days off
@@ -372,7 +370,8 @@ export async function loadAwaitingSequence(
     )
     .orderBy(desc(anchorAt))
     .limit(1);
-  if (!row) return null;
+  if (!stored) return null;
+  const row = { ...stored, window: registrationSourceState(stored.window) };
 
   const children = await database
     .select({
@@ -388,21 +387,27 @@ export async function loadAwaitingSequence(
   // THIS family's open instant — the same one the ladder was anchored on. A resident
   // household registers a week before the general date, so reading the general one
   // would refuse the answer to a question Hale had already asked them.
-  const open = resolveFamilyOpen(row.window, row.areaCoarse);
-  const shortlist = buildShortlist(
-    {
-      window: row.window,
-      // A reply re-renders the ONE cycle the sequence claimed.
-      cycleWindows: [row.window],
-      matchedChildAgesMonths: [],
-      ageApproximate: false,
-      isResidentWindow: open.isResidentWindow,
-      opensForFamilyAt: open.opensForFamilyAt,
-      generalOpenAt: row.window.openAt,
-    },
-    children,
-    now,
-  );
+  const open = row.window
+    ? resolveFamilyOpen(row.window, row.areaCoarse)
+    : { isResidentWindow: false, opensForFamilyAt: row.courseOpensAt ?? now };
+  const shortlist = row.window
+    ? buildShortlist(
+        {
+          window: row.window,
+          // A reply re-renders the ONE cycle the sequence claimed.
+          cycleWindows: [row.window],
+          matchedChildAgesMonths: [],
+          ageApproximate: false,
+          isResidentWindow: open.isResidentWindow,
+          opensForFamilyAt: open.opensForFamilyAt,
+          generalOpenAt: row.window.openAt,
+        },
+        children,
+        now,
+      )
+    : row.courseUrl && row.courseOpensAt
+      ? courseShortlist(row.sequenceId, row.courseUrl, row.courseOpensAt)
+      : null;
   if (!shortlist) return null;
 
   return {
@@ -422,11 +427,11 @@ export async function loadAwaitingSequence(
       optIn,
       outcome: null,
       waitlistStartedAt: null,
-      waitlistResponseHours: row.window.waitlistResponseHours,
+      waitlistResponseHours: row.window?.waitlistResponseHours ?? null,
       // Read from the registry rather than passed as null: this state answers
       // `awaitingOutcome` today, which never looks at it, and a placeholder here would
       // be the wrong answer the first time somebody asks it which leg is due.
-      portal: portalForMunicipality(row.window.municipality),
+      portal: row.window ? portalForMunicipality(row.window.municipality) : null,
     },
   };
 }

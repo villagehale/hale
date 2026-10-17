@@ -1,0 +1,20 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "London Swim",
+    "year_evidence": "Registration opens 20 October 2026",
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "date": "2026-10-20",
+      "time": null
+    },
+    "evidence": "Registration opens 20 October 2026. Opening time has not been announced.",
+    "confidence": 0.85,
+    "time_zone": "Europe/London",
+    "time_zone_evidence": "London Swim, London, England."
+  },
+  "latencyMs": 3940
+}

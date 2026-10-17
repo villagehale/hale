@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply has two serious problems. First, `opensFor` says \"Current date could not be verified. Do not use a cached date.\" — so Hale correctly cannot state a date. But rather than saying it cannot confirm the date right now and that it will text Sam as soon as the window is confirmed (which is true — watching is true), it sends the parent to the official page URL. Sending a parent to a URL is the job handed back; the rules say \"HALE NEVER SENDS A PARENT TO THE APP\" and more broadly that the thread is the whole product. Routing to an external URL for information Hale is supposed to hold is the same failure pattern. Second, the reply writes out the sourceUrl (https://example.org/registration), which is a link Hale is not supposed to produce (the only link Hale can send is the referral link, and `referralLinkAppended` is null here). That alone caps the score at 2. The correct reply would be: Hale cannot confirm the date right now (data issue), the watch is still active, and it will text Sam before it opens — no URL needed.",
+    "score": 2
+  }
+}

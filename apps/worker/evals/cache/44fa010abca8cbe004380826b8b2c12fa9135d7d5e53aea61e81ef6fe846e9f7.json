@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply has two serious failures. First, `opensFor` says \"Current date could not be verified. Do not use a cached date.\" — so Hale correctly cannot state a date. But instead of just saying the date is temporarily unverifiable and that it will update Sam when confirmed, it sends Sam to the official URL. Sending a parent to a URL is sending them to the app (or equivalent external destination) — handing the job back. The rules explicitly say \"HALE NEVER SENDS A PARENT TO THE APP\" and scoring a 2 at most for any reply that does it. Second, the URL in the reply comes from `knows.registrationWindows[0].sourceUrl`, which is an internal source URL, not a referralLink — and `knows.referralLinkAppended` is null. Writing out any URL when referralLinkAppended is null scores a 2 at most. The reply also says \"date reminders are paused\" which exposes internal machinery (reminderState), and it never reassures Sam that the watch is still active — the most useful thing it could say given that `watching` is true. Both the URL and the external send-off independently cap this at 2.",
+    "score": 2
+  }
+}

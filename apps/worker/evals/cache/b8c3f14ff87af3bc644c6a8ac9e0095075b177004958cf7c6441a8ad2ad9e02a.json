@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is correct and well grounded. It separates the resident (Sep 1) and general (Sep 8) registration dates with the source timezone. The reminder promise is backed because reminderState is active. It hands over the webFind by its title, says it fits Remy's age, attributes it to the venue's page, and carries the program's own URL. It asks one question. Blemishes: it runs long, with redundant hedging ('That's from their site, and I haven't confirmed it' repeats 'the venue's own program page lists'). The line 'doesn't publish an exact time or a price' slightly overstates what the webFind actually says.",
+    "score": 4
+  }
+}

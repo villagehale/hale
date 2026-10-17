@@ -1,10 +1,14 @@
 import { join } from 'node:path';
+let liveSourceText = '';
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async () => liveSourceText,
+}));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
@@ -36,6 +40,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
+import { isStage } from '~/lib/testing/structured-reply';
 
 /**
  * "I'LL COME BACK TO YOU ON IT" — the 2026-08-20 18:13-18:19 UTC transcript, replayed.
@@ -215,12 +220,28 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     async function turn(req: any) {
       if (isStage(req, 'activity_picks', 'picks')) {
         return {
-          content: [{ type: 'text', text: JSON.stringify({ picks: picksByCall[call] ?? [] }) }],
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                picks: (picksByCall[call] ?? []).map((pick) => ({
+                  ...pick,
+                  name_evidence: pick.name,
+                  age_evidence: pick.age_fit,
+                  when_evidence: pick.when,
+                  price_evidence: pick.price,
+                  schedule_kind: 'recurring',
+                  source_url: 'https://venue.example/fall',
+                })),
+              }),
+            },
+          ],
           usage: { input_tokens: 10, output_tokens: 10 },
           stop_reason: 'end_turn',
         };
       }
       call += 1;
+      liveSourceText = `${JSON.stringify(picksByCall[call] ?? [])}\nHalton Hills, Ontario, Canada`;
       searched.push(req.messages?.[0]?.content as string);
       return {
         content: [
@@ -433,7 +454,8 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
           tools: [],
         },
       }),
-      loadRegistrationWindows: async () => [],
+      loadRegistrationWatches: async () => [],
+      readRegistrationWatch: async () => null,
       loadTranscript: async () => [],
       // The context assembly is the app coach's own, tested where it lives; what this
       // journey is about is the verbs, so it is the minimum shape the runtime reads.
@@ -465,7 +487,9 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
           familyId: turn.familyId,
           reader: {} as never,
           draftPort: {} as never,
-          villageTool: searchVillageTool(database),
+          villageTool: searchVillageTool(database, undefined, {
+            find: async () => ({ found: false, reason: 'no_picks' }),
+          }),
           // The REAL reader over the REAL rows, and the REAL lane over the web port.
           activity: {
             reader: bindActivityReader(database, productionActivityFamilyReader()),
@@ -627,7 +651,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     const transport = new FakeTransport();
     const coach = coachFor(
       [
-        // The radar read still happens first — it is the verified tier and it is free.
+        // Village is empty in this fixture; the activity lane supplies the evidence.
         { tool: 'search_village', input: { query: 'fall' } },
         {
           tool: 'find_activities',
@@ -661,7 +685,10 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
 
     // Rule #1, at the border: the query that left carried a TOWN and a BAND and no child.
     const sent = web.searched[0] ?? '';
-    expect(JSON.parse(sent)).toMatchObject({ town: 'Halton Hills', stage: 'toddler' });
+    expect(JSON.parse(sent)).toMatchObject({
+      town: 'Halton Hills, Ontario, Canada',
+      stage: 'toddler',
+    });
     expect(sent).not.toContain('Noah');
     expect(sent).not.toContain('L7G');
     expect(sent).not.toMatch(/\b18 months\b/);
@@ -849,7 +876,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     expect(sweepTransport.bodies()[0]).toContain('Halton Hills Gymnastics Centre');
     expect(JSON.parse(sweepWeb.searched[0] ?? '{}')).toMatchObject({
       subject: 'Cartwheel Gym fall spots and other toddler fall programs',
-      town: 'Halton Hills',
+      town: 'Halton Hills, Ontario, Canada',
     });
 
     // The debt is discharged, and stops standing.

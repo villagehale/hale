@@ -1,0 +1,19 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "New York City swim registration",
+    "year_evidence": "Tuesday, October 20",
+    "preview": null,
+    "resident_open": null,
+    "general_open": {
+      "date": "2026-10-20",
+      "time": "09:00"
+    },
+    "evidence": "New York City swim registration opens Tuesday, October 20 at 9 a.m.",
+    "confidence": 0.75,
+    "time_zone": "America/New_York",
+    "time_zone_evidence": "New York City swim registration"
+  },
+  "latencyMs": 2833
+}

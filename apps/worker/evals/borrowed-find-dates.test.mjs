@@ -18,6 +18,20 @@ describe('clausesOf', () => {
 });
 
 describe('borrowedFindDates', () => {
+  it('matches a published ISO date to the same natural-language date, not a neighbouring date', () => {
+    const source = dateSource(
+      'London registration',
+      '2026-10-20 (opening time not published) Europe/London',
+    );
+    expect(borrowedFindDates('London registration opens October 20.', [source])).toEqual([]);
+    expect(
+      borrowedFindDates('London registration opens 2026-10-21.', [source]).length,
+    ).toBeGreaterThan(0);
+    const invalid = dateSource('London registration', '2026-02-31');
+    expect(
+      borrowedFindDates('London registration opens February 31.', [invalid]).length,
+    ).toBeGreaterThan(0);
+  });
   it('allows Aug 8 and Aug 9 when each sits in its own find clause', () => {
     const reply =
       'Central Library story time is Saturday, Aug 8, and Riverdale Farm visit is Sunday, Aug 9.';
@@ -31,8 +45,8 @@ describe('borrowedFindDates', () => {
 
   it('allows a find its own date', () => {
     expect(borrowedFindDates('Riverdale Farm is open Sunday Aug 9.', [STORY, FARM])).toEqual([]);
-    expect(
-      borrowedFindDates('Central Library story time is Sat, Aug 8.', [STORY, FARM]),
-    ).toEqual([]);
+    expect(borrowedFindDates('Central Library story time is Sat, Aug 8.', [STORY, FARM])).toEqual(
+      [],
+    );
   });
 });

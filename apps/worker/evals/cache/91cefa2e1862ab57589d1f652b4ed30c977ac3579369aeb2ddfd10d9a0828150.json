@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly covers both pieces of relevant information: the registration window (stated as a verified fact, noting it is already being watched — correct since watching is true) and the webFind (Tiny Tumblers, attributed to the venue's own program page, with the honest note that price isn't posted yet — exactly what the webFind rule requires). offerable is empty and stillBeingChecked is 0, so there is nothing else to surface. No URL is written out, no app referral, no greeting or sign-off, no markdown, no invented detail. The webFind attribution (\"Their own program page\") is present. The age fit for Remy (19 months, walking-to-3 range) is noted. The only small imperfection is the reply doesn't mention Milo or Ada, but there's nothing in the webFind or offerable for older children, so silence is correct. The reply is tight, accurate, and complete for what Hale knows.",
+    "score": 5
+  }
+}

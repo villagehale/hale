@@ -1,14 +1,17 @@
 import type { CandidateAccess } from '@hale/db';
-import type { CIVIC_SOURCE } from '~/lib/civic/project';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
-import { nextWatchedCycle } from '~/lib/registration/discovery-targets';
 import type {
   PastRegistrationCycle,
   RegistrationMatch,
 } from '~/lib/registration/match-registration-windows';
 import { AGE_TOLERANCE_MONTHS, inBand } from '~/lib/registration/match-registration-windows';
+import {
+  type LiveRegistrationWindow,
+  registrationDate,
+  registrationWhen,
+} from '~/lib/registration/read';
 import { type Season, seasonOf } from '~/lib/village/visibility';
 import { type DailyOutlook, isOutdoorFriendly } from '~/lib/weather/open-meteo';
 
@@ -50,13 +53,8 @@ export const CLEARLY_BETTER_MARGIN = 2;
  * phone; a fourth clause is cost without comprehension. */
 const MAX_WHY_FACTS = 3;
 
-/** The one `village_candidates.source` whose url and time are the VENUE's own words.
- * Spelled here rather than imported from lib/civic/project so the decision stage does
- * not pull the whole projection (and its database client) into its graph — but PINNED
- * to the projection's own literal by the type annotation, which is erased at build and
- * costs the graph nothing. A projection that renames its source no longer silently
- * turns every civic pick into an unknown one: this file stops compiling. */
-const CIVIC_REGISTRY_SOURCE: typeof CIVIC_SOURCE = 'civic_registry';
+/** Historical offered-source tag, not an active civic ingestion dependency. */
+const CIVIC_REGISTRY_SOURCE = 'civic_registry';
 
 export interface RadarChild {
   /** Set by the nudge roster so Saturday occupancy can tell siblings apart. Absent on
@@ -70,7 +68,7 @@ export interface RadarChild {
   dobPrecision: 'exact' | 'derived';
 }
 
-/** The village_candidates fields a decision can rest on. Titles and venues are PUBLIC
+/** The public live-activity fields a decision can rest on. Titles and venues are PUBLIC
  * places; nothing here is a family's own location. */
 export interface RadarCandidate {
   id: string;
@@ -84,17 +82,17 @@ export interface RadarCandidate {
   childId: string | null;
   confidence: number;
   /**
-   * The discovery layer that wrote the row (`village_candidates.source`), or null
+   * The source provenance for this operation, or a historical receipt tag
    * on a row that predates the column being set. `decideRadar` ignores it; the
    * weekday drop-in reads it, because a TIME claim about a weekday session may
-   * only rest on the civic sweep's verified feed (civic/project.ts CIVIC_SOURCE)
+   * only rest on historical civic-source evidence or a fresh live reading
    * and never on an LLM-discovered row.
    */
   source: string | null;
   /** The row's own page, or null. Only ever RENDERED from a `civic_registry` row — see
    * {@link WeekendPick.verifiedUrl} for the rule and the reason. */
   sourceUrl: string | null;
-  /** What a parent DOES about this one (village_candidates.access, a
+  /** What a parent DOES about this one (the published access, a
    * {@link CandidateAccess}), or null on a row whose source was never asked. */
   access: string | null;
   /** When it runs, in the source's own words, already ASCII-folded. Null on every
@@ -130,6 +128,12 @@ export interface WeekendPick {
   verifiedUrl: string | null;
 }
 
+function liveWindowWhen(window: RegistrationMatch['window'], resident: boolean): string | null {
+  const reading = (window as Partial<LiveRegistrationWindow>).reading;
+  const date = reading ? registrationDate(reading, resident) : null;
+  return reading && date ? registrationWhen(reading, date) : null;
+}
+
 export interface RegistrationLine {
   windowRef: { municipality: string; programDomain: string; cycleLabel: string };
   /** When THIS family can first register, in their own zone. */
@@ -142,7 +146,7 @@ export interface RegistrationLine {
   /** The municipal page, from the matched window's `source_url` (NOT NULL alongside a
    * NOT NULL `verified_at`, so a row can never be a guess). */
   registerUrl: string;
-  /** Whether the listings are up. `registration_windows.preview_at` is "when programs
+  /** Whether the listings are up. The live preview date is "when programs
    * become browsable", so this is the difference between a page worth opening today and
    * a date to set an alarm for. Most rows publish no preview, so false is the common
    * path — never a guess that they are up. */
@@ -540,7 +544,10 @@ function decideRegistration(input: DecideRadarInput): RegistrationLine | null {
       programDomain: match.window.programDomain,
       cycleLabel: asciiCopy(match.window.cycleLabel),
     },
-    opensAtLocal: asciiSpaces(formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now)),
+    opensAtLocal: asciiSpaces(
+      liveWindowWhen(match.window, match.isResidentWindow) ??
+        formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now),
+    ),
     kidNames,
     residentNote:
       match.isResidentWindow && match.window.residentOpenAt !== null
@@ -569,11 +576,6 @@ function decideRegistrationAbsence(
   const stillOpen = input.stillOpenCycle;
   const past = stillOpen ?? input.pastCycle;
   if (past === null) return null;
-  const next = nextWatchedCycle(
-    past.window.municipality,
-    past.window.programDomain,
-    past.knownCycleLabels,
-  );
 
   return {
     cycleRef: {
@@ -582,9 +584,10 @@ function decideRegistrationAbsence(
       cycleLabel: asciiCopy(past.window.cycleLabel),
     },
     lastOpenedAtLocal: asciiSpaces(
-      formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
+      liveWindowWhen(past.window, true) ??
+        formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
     ),
-    nextCycleLabel: next === null ? null : asciiCopy(next),
+    nextCycleLabel: null,
     stillOpen:
       stillOpen === null
         ? null
@@ -730,7 +733,9 @@ export function decideYearFinds(input: DecideRadarInput): WeekendPick[] {
 function accessFor(
   candidate: RadarCandidate,
 ): Pick<WeekendPick, 'access' | 'when' | 'verifiedUrl'> {
-  const civic = candidate.source === CIVIC_REGISTRY_SOURCE;
+  const civic =
+    candidate.source === CIVIC_REGISTRY_SOURCE ||
+    (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate);
   return {
     access:
       candidate.access === 'drop_in' || candidate.access === 'register_at_venue'

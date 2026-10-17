@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slot list is correctly empty. The page was opened and says the youngest program starts at age 8 and that no toddler classes are offered. Hale did not stretch the 8-12 foil class to fit a toddler. The message is plain ASCII, has no link and asks no question. With watch TRUE, the first-person \"I'll keep watching and text you\" is a real commitment and is correct. The negative claim is earned, since the page explicitly says there are no toddler classes. The message falls short of a 5 on specificity and attribution. It says \"there is nothing running for that age\" as Hale's own finding instead of attributing it (\"their site says\"). It does not give the concrete detail the page printed, that their youngest program starts at age 8, which would have made the empty result plain and specific. \"What I could find\" is also vaguer than the page warrants.",
+    "score": 4
+  }
+}

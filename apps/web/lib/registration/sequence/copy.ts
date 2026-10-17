@@ -17,10 +17,11 @@ import type { SequenceLeg, SequenceOptIn } from './schedule.js';
 import type { FitNote, Shortlist } from './shortlist.js';
 
 /**
- * VIL-242 · M7 — every sentence the sequence can send, rendered deterministically.
+ * Legacy wording retained for solicited acknowledgements and cron-mechanics fixtures.
+ * Scheduled reminders now use compose.ts; this file is not their writer or fallback.
  *
- * NO MODEL RUNS IN THIS FILE, and unlike M4's nudge that is not a fallback path — it is
- * the whole design. Two reasons, and the second is the one that settles it:
+ * NO MODEL RUNS IN THIS FILE. The original template design is documented below for
+ * the remaining acknowledgement callers and the historical fixture baseline:
  *
  *   1. There is nothing here for a model to add. Every leg is a time, a link and a list
  *      of names; the warmth a composer buys on a weekend suggestion is worth very little
@@ -739,7 +740,7 @@ function bindAck(input: CourseBindAckInput, decorated: boolean): string {
     const price = priceClause(facts.Prices);
     if (price !== null) parts.push(`${price}.`);
     // The human barcode Markham's phone-registration line asks for, days early and with
-    // room to write it down. No phone number is printed: registration_windows holds none.
+    // room to write it down. No phone number is printed: watch source metadata holds none.
     const barcode = printable(facts.CourseId, backed);
     if (barcode !== null) parts.push(`Course ${barcode}.`);
   }
@@ -846,9 +847,10 @@ export function renderShortlistRationale(
   timeZone: string,
   now: Date,
   portal: SpotPortal | null,
+  published?: { when: string; hasTime: boolean },
 ): string {
   const lines = [
-    `${windowPhrase(shortlist)} registration opens ${when(shortlist.opensForFamilyAt, timeZone, now)}.`,
+    `${windowPhrase(shortlist)} registration opens ${published?.when ?? when(shortlist.opensForFamilyAt, timeZone, now)}.`,
     `Register here: ${shortlist.sourceUrl}`,
   ];
   if (shortlist.isResidentWindow && shortlist.residentPriorityDays !== null) {
@@ -879,7 +881,13 @@ export function renderShortlistRationale(
   // arrives, and the thirteen others read the sentence that shipped, byte for byte.
   // "I never register for you" is verbatim on both, and stays that way: it is asserted
   // in the toddler journey and mirrored in the capability table's CANNOT row.
-  lines.push(portal == null ? CONSENT_THREE_TEXTS : CONSENT_FOUR_TEXTS);
+  lines.push(
+    published?.hasTime === false
+      ? 'Approve to get a heads-up a week ahead and a plan the evening before. No minute-specific reminder unless the page publishes an opening time. I never register for you.'
+      : portal == null
+        ? CONSENT_THREE_TEXTS
+        : CONSENT_FOUR_TEXTS,
+  );
   if (portal != null) {
     // The one place a parent learns how to bind a course, and it belongs here rather
     // than in an SMS leg: this is read on a screen, where a longer sentence fits, and

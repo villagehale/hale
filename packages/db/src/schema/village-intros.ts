@@ -1,7 +1,6 @@
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { children } from './children.js';
-import { civicSessions } from './civic.js';
 import { families } from './families.js';
 
 /**
@@ -56,13 +55,8 @@ export const villageIntroProposals = pgTable(
     status: text('status').notNull().$type<VillageIntroStatus>(),
     /** The FamilyStage band the two families overlap on, as derived at match time. */
     stage: text('stage').notNull(),
-    /** The free civic session both families could be at, when one exists in the area
-     * they were matched across. Null is the normal case and means the card carries no
-     * activity anchor. ON DELETE SET NULL: a superseded session must not delete a live
-     * proposal. */
-    civicSessionId: uuid('civic_session_id').references(() => civicSessions.id, {
-      onDelete: 'set null',
-    }),
+    /** Opaque historical identity, never a source of current activity facts. */
+    civicSessionId: uuid('civic_session_id'),
 
     familyAId: uuid('family_a_id')
       .notNull()
@@ -101,7 +95,10 @@ export const villageIntroProposals = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    orderedPair: check('village_intro_proposals_ordered_pair', sql`${table.familyAId} < ${table.familyBId}`),
+    orderedPair: check(
+      'village_intro_proposals_ordered_pair',
+      sql`${table.familyAId} < ${table.familyBId}`,
+    ),
     openPairUniq: uniqueIndex('village_intro_proposals_open_pair_idx')
       .on(table.familyAId, table.familyBId)
       .where(sql`${table.closedAt} IS NULL`),

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the verified registration date (2026-10-20) from knows.registrationWindows as a flat fact — no hedging, no \"their site says.\" It correctly notes the opening time hasn't been published (matching `opensFor` which says \"opening time not published\"). It correctly states Hale is watching it (watching: true, reminderState: active). However, the reply slightly misstates what the watch does — it says \"will text you as soon as a time or spot shows up,\" but the watch is a registration ladder (texts a week out, evening before, fifteen minutes before it opens), not a spot-watch. Also, `minuteReminderAvailable` is false, so the fifteen-minute reminder may not apply, but that's a nuance. The bigger issue: the reply describes the watch as notifying \"as soon as a time or spot shows up\" which is inaccurate — it will text before the window opens, not when a spot shows. This misrepresents the feature slightly but doesn't hand work back, invent details, or send the parent elsewhere. It's a small inaccuracy in describing what the reminders do. Overall it's close to correct and actionable — the parent knows the date and that Hale is on it — but the description of the watch behavior is slightly off. That's a minor blemish, putting it at a 4.",
+    "score": 4
+  }
+}

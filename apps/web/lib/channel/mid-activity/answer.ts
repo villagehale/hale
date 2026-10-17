@@ -265,15 +265,15 @@ async function captureAsk(
 
   const [candidate] = await database
     .select({
-      familyId: schema.villageCandidates.familyId,
-      placeId: schema.villageCandidates.placeId,
-      civicVenueId: schema.villageCandidates.civicVenueId,
+      familyId: schema.familyActivityHistory.familyId,
+      placeId: schema.familyActivityHistory.placeId,
+      civicVenueId: schema.familyActivityHistory.civicVenueId,
     })
-    .from(schema.villageCandidates)
+    .from(schema.familyActivityHistory)
     .where(
       and(
-        eq(schema.villageCandidates.id, offer.activityKey),
-        eq(schema.villageCandidates.familyId, ask.familyId),
+        eq(schema.familyActivityHistory.id, offer.activityKey),
+        eq(schema.familyActivityHistory.familyId, ask.familyId),
       ),
     )
     .limit(1);

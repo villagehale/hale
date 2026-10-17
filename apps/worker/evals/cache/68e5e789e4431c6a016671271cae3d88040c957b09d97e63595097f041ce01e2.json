@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text matches two swim lessons, so asking which one and drafting nothing is the correct handling. The reply gives both times, which trace to the week, and asks a single question. It is short and exact.",
+    "score": 5
+  }
+}

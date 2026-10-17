@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the verified date (2026-10-20) as a flat fact from knows.registrationWindows — no hedging with \"their site says.\" It correctly notes the opening time is not published (matching `opensFor` saying \"opening time not published\"). It correctly states it is watching and will text — matching `watching: true` and `reminderState: active`. The reply is concise, no greeting, no sign-off, no markdown, no app referral, no invented details. One small issue: `minuteReminderAvailable` is false, so the \"fifteen minutes before\" reminder is not available, but the reply says \"will text you as soon as a time or spot shows up\" rather than promising the specific 15-min reminder — that's fine and accurate. The reply accurately covers what it knows and what it's doing. Essentially perfect execution.",
+    "score": 5
+  }
+}

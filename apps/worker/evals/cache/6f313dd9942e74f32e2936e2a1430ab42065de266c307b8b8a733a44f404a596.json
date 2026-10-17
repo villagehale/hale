@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011Cg6vuHTSfqZuaZo6zWkSk",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6AUKEAgSGAI4AUIIdGhpbmtpbmcSDG4UyKDtq9j5ciAM1hoMtyS7Clnm65h/jIXuIjCk1xCWtRq8hdk0/E5sMMQFOp4/YFwlMAZgRApQPkMFxgLw8GELTE6OZgqD6zJU/qMqhQX9engh5nNLPKOrMHgUWZl/JvXP+5bkjG3+OtWs+AQWQe/1EHr/P/9nRfb+pUIHeN1+HA6HNUKEMjU2lxjV+txauMaRgsUKByQQR8v1TKIWWqEh9ul4Fp9OHS835LJPhrksGUde3IJa0af5wwvUIzyRjluXwgg9HT5zmFsuphifg/ZNyzdnjsq/wRhlTbtaup0NoZUWGTsc4kAIf4VhuVtjvGgJWJC52FrdTvydDA9HQ7gGj+aEfey198dn21bpFbN+9Tp4zq5Fjyr0rBbfEKHU1qgMDKGj0zk9VtgN56kdTOZVJgUV4iCvjyuaNwJp0oELvgj0uUAJCXlgMv1T8MxW1+rRq1jB9aCLLr5KVdgjop5CIjy4VyvIXjFw388NOtNphFh+GU40eg4/pKkZeHMIxQ9V9XefY4Rp1s+VzWjDspSofZeVWg0pZDiFToyHAjVXaPNr31SkoOkKTwn1vkyJM+V3BYg+uRXuoOoEk4rXNP2FK990T4zzw1DoBgLT+9yNIYJ4X7gawVZA8XyjqSlcUNZZsPdCSlUgdEaVUVYx/pG7RmaAHIE9wtSKYMxV4H0bBzy/l6bFBqoc/Lza0Ia+DLPAsXwmKftSqEnJ1YuwI83MGUWq/HxFjK0h2CV7DF4gZrfvNpjLwUrWTs/Mgq3T1sKPDWl4EufQ3EPTMy41DMKo9fVzp7QS60lCrai2mCmjA9ZZ3N6YNXWc2JogRqeZ0/GuGeVmqM0iuGq5hEJrVyvGicynn/bDA0gST8efs2YHlQHtBKKacEAKKXOpS8oQPImNyfg6zAipdaQLHSK1lLUmgb8YUOsJVZSNgN4USitnTNNQRBUJ/gn2USGuO4trZBCVyIsYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Psn44dRg5yxZPDSv1KqzsV",
+        "name": "read_registration_page",
+        "input": {
+          "watchId": "00000000-0000-4000-8000-000000000001"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01RzWhB8i7476jpRfqArZEFa",
+        "name": "search_village",
+        "input": {
+          "query": "fall programs for kids",
+          "window": "fall 2026"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 512,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22217,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 195,
+      "output_tokens_details": {
+        "thinking_tokens": 51
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1889
+}

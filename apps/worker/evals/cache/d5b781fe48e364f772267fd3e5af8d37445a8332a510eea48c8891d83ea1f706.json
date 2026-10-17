@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The empty slot list is correct. The page was opened and explicitly says the youngest program starts at age 8 and that there are no toddler or preschool classes. Hale did not stretch the 8-12 foil class to fit a toddler. The message is plain ASCII with no link and no question. With watch=true, the first-person 'I'll keep watching and text you' sentence is correct. The negative claim is earned by the page. The message falls short of the 'plain and specific' bar for an empty result in two ways. It does not attribute ('their site says') or name the concrete fact that their youngest program starts at age 8. 'What I could find' also reads vaguer than what the page actually said.",
+    "score": 4
+  }
+}

@@ -1,6 +1,6 @@
 import { inspect } from 'node:util';
 import { schema } from '@hale/db';
-import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
+import type { Municipality, ProgramDomain, RegistrationSourceState } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
@@ -73,7 +73,7 @@ function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
   };
 }
 
-function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
+function win(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
   return {
     id: 'w-1',
     municipality: 'richmond_hill' as Municipality,
@@ -89,7 +89,7 @@ function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
     createdAt: FRIDAY_10AM,
     updatedAt: FRIDAY_10AM,
     ...overrides,
-  } as RegistrationWindow;
+  } as RegistrationSourceState;
 }
 
 /** 6 months old on FRIDAY_10AM — squarely inside M8's 6-month checkpoint. */
@@ -124,7 +124,7 @@ function harness(
   options: {
     families?: NudgeFamily[];
     candidates?: RadarCandidate[];
-    windows?: RegistrationWindow[];
+    windows?: RegistrationSourceState[];
     weather?: DailyOutlook[];
     enrolled?: boolean;
     consented?: boolean;
@@ -272,6 +272,11 @@ function harness(
     recordCheckupOffer: async (_db, input) => {
       offers.push({ ref: input.ref, channelMessageId: input.channelMessageId });
       return { status: 'not_an_offer' };
+    },
+    recordActivityOffers: async (_db, familyId, picks) => {
+      for (const pick of picks)
+        writes.push({ table: schema.familyActivityHistory, payload: { familyId, ...pick } });
+      return [];
     },
     threadMessage: async (_db, input) => {
       threaded.push(input);
@@ -1048,7 +1053,11 @@ describe('runNudgeCron — the weekday drop-in', () => {
     const h = harness({
       families: NO_REGION,
       children: SIX_MONTH_OLD,
-      candidates: CIVIC,
+      candidates: CIVIC.map((pick) => ({
+        ...pick,
+        source: 'web',
+        sourceUrl: 'https://venue.example/dropin',
+      })),
       weekdayCare: AT_HOME,
     });
 
@@ -1062,6 +1071,29 @@ describe('runNudgeCron — the weekday drop-in', () => {
     // family's find would have been deduped against a swap and vanished.
     expect(String(write?.payload.dedupeKey)).toContain(':weekday_dropin:');
     expect(String(write?.payload.dedupeKey)).not.toContain('weather_swap');
+    expect(h.writes.filter((w) => w.table === schema.familyActivityHistory)).toHaveLength(1);
+  });
+
+  it('does not consume the live recommendation when delivery fails', async () => {
+    armed();
+    const h = harness({
+      families: NO_REGION,
+      children: SIX_MONTH_OLD,
+      candidates: CIVIC.map((pick) => ({
+        ...pick,
+        source: 'web',
+        sourceUrl: 'https://venue.example/dropin',
+      })),
+      weekdayCare: AT_HOME,
+    });
+    h.deps.transport = {
+      send: async () => {
+        throw new Error('delivery failed');
+      },
+    };
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.sent).toBe(0);
+    expect(h.writes.filter((w) => w.table === schema.familyActivityHistory)).toHaveLength(0);
   });
 
   it('a second fire in the same week sends nothing a second time', async () => {

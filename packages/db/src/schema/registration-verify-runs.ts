@@ -5,7 +5,7 @@ import { integer, pgTable, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-c
  * the end of the run.
  *
  * The sweep's per-row outcomes used to leave no trace a query could read. A confirmation
- * bumps `registration_windows.verified_at`; a moved date and an unreadable page both
+ * used to update the retired catalog's verification timestamp; a moved date and an unreadable page both
  * deliberately write NOTHING, which is the sweep's honesty design — an unconfirmed row
  * must stay visibly stale rather than look freshly checked. Correct for the dataset, and
  * it left the founder scorecard able to count the stale rows but never to say which of

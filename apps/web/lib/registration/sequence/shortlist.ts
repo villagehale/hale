@@ -86,6 +86,25 @@ export interface Shortlist {
   ageApproximate: boolean;
 }
 
+export function courseShortlist(sequenceId: string, sourceUrl: string, anchor: Date): Shortlist {
+  return {
+    windowRef: {
+      id: sequenceId,
+      municipality: new URL(sourceUrl).hostname,
+      programDomain: 'rec_program',
+      cycleLabel: 'course',
+    },
+    cyclePhrase: 'course',
+    opensForFamilyAt: anchor,
+    sourceUrl,
+    isResidentWindow: false,
+    residentPriorityDays: null,
+    waitlistResponseHours: null,
+    fitNotes: [],
+    ageApproximate: false,
+  };
+}
+
 /** How each M1 program domain reads to a parent. Reviewed copy, not a prettified
  * enum: "rec_program" is our word for it, "recreation programs" is theirs. Exported
  * for the coach's registration context, which names the same cycles in a texted answer
@@ -135,10 +154,10 @@ function joinLabels(labels: readonly string[]): string {
  * single published cycle name — the source prints one row per cycle — so it names the
  * DOMAINS that open together, deduped, and lets the date carry the season.
  */
-function cyclePhraseOf(cycleWindows: readonly { programDomain: ProgramDomain; cycleLabel: string }[]): string {
-  const domainLabels = [
-    ...new Set(cycleWindows.map((w) => PROGRAM_DOMAIN_LABEL[w.programDomain])),
-  ];
+function cyclePhraseOf(
+  cycleWindows: readonly { programDomain: ProgramDomain; cycleLabel: string }[],
+): string {
+  const domainLabels = [...new Set(cycleWindows.map((w) => PROGRAM_DOMAIN_LABEL[w.programDomain]))];
   const only = cycleWindows.length === 1 ? cycleWindows[0] : null;
   if (!only) return joinLabels(domainLabels);
   return namesAProgram(only.cycleLabel)
@@ -163,7 +182,11 @@ export function buildShortlist(
   const { window } = match;
   const fitNotes: FitNote[] = [];
   for (const child of children) {
-    const fit = fitOf(ageInMonths(child.dateOfBirth, now), window.ageMinMonths, window.ageMaxMonths);
+    const fit = fitOf(
+      ageInMonths(child.dateOfBirth, now),
+      window.ageMinMonths,
+      window.ageMaxMonths,
+    );
     if (fit === null) continue;
     const isTeen = deriveStage(child.dateOfBirth, now) === 'teenager';
     fitNotes.push({ childId: child.id, name: isTeen ? null : child.name, fit });

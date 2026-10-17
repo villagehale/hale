@@ -19,7 +19,8 @@ export type ActionIntentKind =
   | 'book_checkup'
   | 'set_reminder'
   | 'create_plan'
-  | 'registration_shortlist';
+  | 'registration_shortlist'
+  | 'registration_date_review';
 
 export interface ActionIntent {
   kind: ActionIntentKind;
@@ -81,6 +82,12 @@ const INTENT_RULES: readonly IntentRule[] = [
     // no new ActionType — it asks the executor for nothing it cannot already do.
     kind: 'registration_shortlist',
     label: 'Approve the registration shortlist',
+    actionType: 'add_to_digest_only',
+    patterns: [],
+  },
+  {
+    kind: 'registration_date_review',
+    label: 'Confirm the changed registration date',
     actionType: 'add_to_digest_only',
     patterns: [],
   },

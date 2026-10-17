@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurate and grounded. It separates the resident date (Sep 1, 7:00 a.m., America/Toronto) from the general date (Sep 8). It treats awaiting_confirmation honestly as not yet watching. It asks one natural consent question, which minuteReminderAvailable supports, and keeps the official source URL. Small blemishes: 'That's the page's current reading' is redundant, and the message runs a bit long.",
+    "score": 4
+  }
+}

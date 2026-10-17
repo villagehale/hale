@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is Tiny Gym, which suits the toddler stage, and the day, time, session dates and $124 fee match the page exactly. It is cited to programs.php. The $25 annual membership is correctly presented as a separate site-wide fee rather than as the class price. The slot carries the July 22 registration fact, and the message does too. The message leads with the slot by name and attributes the facts with 'their site says'. It is plain ASCII with no link and no question. With watch false, it correctly makes no promise to follow up. Because it makes no negative claim, the page_has_schedule state has nothing to penalize.",
+    "score": 5
+  }
+}

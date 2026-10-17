@@ -12,13 +12,12 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { civicVenues } from './civic.js';
 import { families } from './families.js';
 
 /**
  * VIL-378 — hidden-social discovery for the kids' year planner.
  *
- * Family-agnostic public reference data, same class as civic_venues: a curated
+ * Family-agnostic public source metadata: a curated
  * list of professional accounts that post kid activities, plus the spots parsed
  * out of their public captions. A parent forward is the exception — that row
  * carries family_id so erasure takes it with the household (rule #1).
@@ -120,7 +119,8 @@ export const watchedSources = pgTable(
     geoFsa: text('geo_fsa'),
     lat: doublePrecision('lat'),
     lng: doublePrecision('lng'),
-    civicVenueId: uuid('civic_venue_id').references(() => civicVenues.id, { onDelete: 'set null' }),
+    /** Opaque historical venue identity; retiring a catalog must not erase the watch. */
+    civicVenueId: uuid('civic_venue_id'),
     languages: text('languages').array().notNull().default(['en']),
     /** 1 = poll often (sell-out and weekly schedules). */
     priority: integer('priority').notNull().default(2),

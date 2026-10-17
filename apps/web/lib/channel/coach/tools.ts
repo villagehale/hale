@@ -384,6 +384,7 @@ function refuseMismatchedWeekday(
 export interface NamedLink {
   title: string;
   url: string;
+  sourceReference?: boolean;
 }
 
 export interface TurnOfferLedger {
@@ -669,7 +670,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         childId: input.childId ?? null,
         privacySensitive: false,
         ...(matched.outcome === 'offered_this_turn'
-          ? { sourceRef: { table: 'village_candidates', id: matched.candidateId } }
+          ? { sourceRef: { table: 'family_activity_history', id: matched.candidateId } }
           : {}),
       };
       const actionId = await mint({

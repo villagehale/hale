@@ -1130,7 +1130,7 @@ describe('VIL-338 · the course bind ack', () => {
   it('states precisely what it read, and nothing it did not', () => {
     const body = renderCourseBindAck(ackInput());
     expect(body).toContain("Oakville's portal: Preschool Sports and Games, Wednesday 10:30 AM.");
-    expect(body).toContain('$280.60 / $290.60 non-resident');
+    expect(body).toContain('2026 Program Fee: $280.60; 2026 Program Fee Non-Resident: $290.60');
     expect(body).toContain('Course 00028147');
     expect(body).toContain('Opens Sep 15, 10:30 a.m.');
     expect(body).toContain('public date');

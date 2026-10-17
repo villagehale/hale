@@ -24,20 +24,15 @@ export {
 export type {
   Municipality,
   ProgramDomain,
-  RegistrationWindow,
-  NewRegistrationWindow,
-} from './schema/registration-windows.js';
+  RegistrationSourceState,
+} from './schema/registration-state.js';
+export { registrationSourceState } from './schema/registration-state.js';
+export { REGISTRATION_COURSE_URL_MAX_CHARS } from './schema/registration-sequences.js';
 export type {
   GtaRegion,
   SocialCategory,
   SocialPlatform,
 } from './schema/social-watchlist.js';
-export type {
-  CivicExtraction,
-  CivicRecurrence,
-  CivicSystem,
-  CivicVenueKind,
-} from './schema/civic.js';
 export type { CandidateAccess } from './schema/village.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
 export type {

@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011Cg6jCDsULLMR9UJx7KHY8",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlgcKEAgSGAI4AUIIdGhpbmtpbmcSDNr3oG3xYQUxQUxIXxoMq9fnFuvZ30eeLKJZIjAQiWQElEMSVdRBvOo6+Y2fUDa3rPL0xZOPbbioFHyceeVWh0Jsdo19VZ4je+NZ0fEqswYPRmOcJbccQiUpKkjQjRSRr02yl2YybHTMaUom+MmI+oBtdlcMV27nvVdoy+o5E8QX7nYmOqZzWFlwWej5sAYB1OOVkZCVSQWUgfVtC3AjpadC6C6f31pAG27v2CzNebGXV/D9y63WlxRFDsCWeuRCaqUgjT4XiJbbPujgVdl+fIl+kSIEhG53D57KW7cLcbC/SM/cbfY3Yee9WodW2hD+rtPB2lbAcJr8UPqxAx8bE40rmynj9KMK3B4Q6A+hVeVUfpH4Lz0VpGOcEDkfRMjwQPb+XeHE9OghoOBRNmPFPpLFEwV31zJuzZC0HX+uPzyNpkGTwbRM/sq290uUxTr4KoF40fshmQBuoKPQ9TOquWKSgjiQ42rbMkhQuBaFA02AYTkqJVPig7gYBIUFFMyfSkkubx3VpBnvLN4guX2Nz5Ze2JTRm9VGq63WcKA5nCdnxRwqtq6rhWSnWEzu57V1etj/GaClFl5DQHotjcr0wV/0l3uXqDPizxGrl9AFB2YOoQXKE88FX9IFHZY9Megazd7L4Yg/eegZ8+zimyl4c0i8Y0BfK6nE3qqJrtO6z8LjyUQ/gujmRFi5vE7azWM12IbKBJJvyahY/+0nvXdLqwMGvHMkYB3IjtPV8Va9Grm5aY3rKX1bfxcZt1ILDN5ugBCJjQzcrnAtMT9Hn7gqlk+f9HsbIXFVYyrm0VQW3bvzr9BFuqMqGqJvEj9GsYqM96jPKbD4ZQ8EJ7nIjNKrJ+bBQ9nihljPqfCNwTWVvcjDxAmuI+2FDJkjZ5hVZOTB9lNfMvqs1EYtawNXklhGgtk/965Vk1OmBdZL7mmjIHVqPrc3L/qOV4nzW8RmIsB4nqD7ggdlU0OjiWLOh8l4Nswt8gRZ/USin9uhQezEQgnSpyxiLxT7eT39RhZD03RLSNkzy0R0ms5Ud3J9Bo3Hc4B2CJEyja85Pu4NoasJBJzeKskW0IHaF9NT7GqQQrR1HSebs6X6WuMRiuigA+4Xrv8mmSLGuSL23qKLQfBRlp+gXsbEbZ2W9y3VpeEGQ+OfEHjzvmHP2p1TbynWf+c9lwN1bAsjlY2wHU8bFA5W0Fh1NbgYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01G2anaRjHwH5zFS8Fk5LcNa",
+        "name": "find_activities",
+        "input": {
+          "subject": "kids activities ages 5 and 8",
+          "window": "Saturday, August 8, 2026"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1361,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 178,
+      "output_tokens_details": {
+        "thinking_tokens": 85
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1654
+}

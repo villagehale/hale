@@ -59,7 +59,6 @@ describe('the /onboarding surface is gone', () => {
     'lib/onboarding/persist.ts',
     'lib/onboarding/children.ts',
     'lib/onboarding/founding.ts',
-    'lib/onboarding/trigger-discovery.ts',
   ])('%s survives — it was never the wizard’s', (rel) => {
     expect(existsSync(webPath(rel))).toBe(true);
   });

@@ -127,7 +127,7 @@ export interface RecommendationMemoryFact {
 }
 
 /**
- * The memory signal rank-recommendations reads. Flag off returns every live
+ * The memory signal available to recommendation consumers. Flag off returns every live
  * row (the previous query). Flag on drops `one_off` and expired `temporary`.
  * Expiry is a read-time filter: no sweep, so a clock skew cannot delete a row.
  */

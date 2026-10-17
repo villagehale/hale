@@ -245,9 +245,6 @@ jobs:
       - name: Coaching plan composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-plan
 
-      - name: Civic hours parser eval (cached-only)
-        run: pnpm --filter @hale/worker eval:civic-hours
-
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify
 

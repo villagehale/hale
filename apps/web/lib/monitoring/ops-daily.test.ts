@@ -69,7 +69,7 @@ const SAMPLE: OpsDailyReport = {
   medical: { answered: 4, fallbacks: 1 },
   reverify: {
     ran: true,
-    outcomes: { checked: 20, confirmed: 17, discrepancies: 1, unverified: 2 },
+    outcomes: { checked: 20, verified: 18, changed: 1, unverified: 2 },
   },
   linqChatIds: 47,
 };
@@ -134,7 +134,7 @@ describe('composeOpsDailyPost', () => {
         'Intake (7d): 5 started | 4 provisioned | median first answer 1m15s (4 families)',
         'Promises: 6 open | 2 overdue (1 family)',
         'Medical (7d): 1 of 4 answers used the fixed 811/911 line',
-        'Re-verify (7d): ran | checked 20 | confirmed 17 | discrepancies 1 | unverified 2',
+        'Registration checks (7d): checked 20 | verified 18 | changed 1 | unverified 2',
         'Linq chat IDs (DB): 47 of 200',
       ].join('\n'),
     );
@@ -155,7 +155,7 @@ describe('composeOpsDailyPost', () => {
         'Intake (7d): no sessions started',
         'Promises: ledger empty',
         'Medical (7d): no medical answers',
-        'Re-verify (7d): did not run',
+        'Registration checks (7d): no watch observations',
         'Linq chat IDs (DB): 0 of 200',
       ].join('\n'),
     );
@@ -178,7 +178,7 @@ describe('composeOpsDailyPost', () => {
       'Intake (7d): 2 started | 2 provisioned | median first answer n/a (0 families) | 2 not derivable',
     );
     expect(text).toContain('Promises: 4 open | none overdue');
-    expect(text).toContain('Re-verify (7d): ran | no tally');
+    expect(text).toContain('Registration checks (7d): no watch observations');
     expect(text).not.toContain('ledger empty');
     expect(text).not.toContain('did not run');
   });

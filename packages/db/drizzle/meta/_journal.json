@@ -1170,6 +1170,34 @@
       "when": 1781556212000,
       "tag": "0171_channel_pending_asks",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1781556213000,
+      "tag": "0172_registration_live_watch_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1781556214000,
+      "tag": "0173_drop_registration_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1781556215000,
+      "tag": "0174_activity_history_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1781556216000,
+      "tag": "0175_retire_civic_catalog",
+      "breakpoints": true
     }
   ]
 }

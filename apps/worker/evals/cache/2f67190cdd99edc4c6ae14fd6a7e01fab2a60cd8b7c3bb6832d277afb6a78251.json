@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the registration date (2026-10-20) as a flat fact from knows.registrationWindows — no hedging, no \"their site says.\" It correctly notes the opening time is not published, which is accurate per the window data. It correctly states it is watching and will text Sam — this is true, watching: true and reminderState: active. The claim \"will text you as soon as a time or spot shows up\" is slightly off: the actual reminders fire a week out, the evening before, and fifteen minutes before it opens — not \"as soon as a time shows up.\" The opening time may never be published, but the reminders are on a schedule, not conditional on a time being published. This is a minor inaccuracy in describing the watching behavior. Otherwise the reply is clean: no greeting, no sign-off, no markdown, no app referral, no invented details, correctly handles the watched window. The small mischaracterization of when Hale texts (implying it waits for a time to be published rather than firing on schedule) is a blemish but not a serious one.",
+    "score": 4
+  }
+}
