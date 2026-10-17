@@ -106,6 +106,28 @@ describe('spend cap at the call site', () => {
     expect(m.create).not.toHaveBeenCalled();
   });
 
+  it('can retry a repaired token-count preflight without clearing its zero-spend failure audit', async () => {
+    vi.stubEnv('HALE_MAX_USD', '1');
+    const m = mockClient();
+    m.countTokens.mockRejectedValueOnce(new Error('preflight unavailable'));
+    const args = {
+      client: m.client,
+      request,
+      call: () => m.client.messages.create(request),
+      rates,
+    };
+    await expect(cappedCall(args)).rejects.toThrow(/could not count/);
+    expect(m.create).not.toHaveBeenCalled();
+    expect(readLedger().spentUsd).toBe(0);
+    await cappedCall(args);
+    expect(readLedger().refused).toBe(1);
+    expect(readLedger().calls).toBe(1);
+    expect(readLedger().log[0]).toMatchObject({
+      refused: true,
+      countError: 'preflight unavailable',
+    });
+  });
+
   it('counts what is already spent against the next projection', async () => {
     vi.stubEnv('HALE_MAX_USD', '0.0075');
     const m = mockClient();
