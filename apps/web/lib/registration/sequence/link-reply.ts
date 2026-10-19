@@ -14,7 +14,7 @@ const NEXT_STEP = {
   registration_reminder_declined: 'request_a_new_plan_if_wanted',
   registration_proposal_changed: 'resend_course_link',
   registration_reminder_requested: 'approval_checks_apply',
-  registration_reminder_proposed: 'confirm_plan_in_approvals',
+  registration_reminder_proposed: 'confirm_by_reply_in_this_chat',
 } as const;
 
 export interface RegistrationLinkReplyInput {

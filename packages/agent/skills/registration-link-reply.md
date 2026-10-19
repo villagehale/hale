@@ -28,7 +28,9 @@ unverified is not evidence that the website published no dates. A missing source
 timezone needs the venue timezone, not the parent's timezone or a guessed zone.
 
 For a proposed plan, explain its confirmation step and allowed reminder stages;
-do not claim approval or scheduled full reminders. For a requested plan, explain
+invite the parent to confirm by replying in this chat in their own words, not by
+visiting an approvals page or repeating a prescribed answer. Do not claim approval
+or scheduled full reminders. For a requested plan, explain
 that the request is recorded and uses approval checks, not that it is approved.
 A declined plan is not reactivated by a question. Busy/changed proposals need a
 retry, not a success claim. An unsafe link needs a public HTTPS page without login

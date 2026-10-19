@@ -1,5 +1,9 @@
 # VIL-423 — corrected order and one paid acceptance request
 
+**Latest checkpoint (October 19):** [review fixes and ONE remaining estimate](vil-423-review-checkpoint-2026-10-19.md).
+It supersedes the remaining-work estimates and reminder/link prompt hashes below.
+Paid calls are held pending Barton's approval; the historical spend audit below is retained.
+
 **Barton approved one run, hard cap US$15**, confirmed in [Sloane's 16:07 note](https://linear.app/villagehale/issue/VIL-423#comment-52281b88).
 No paid calls had been made at that original prompt checkpoint. #872 merges first; #871 follows.
 Main is already integrated at `e3450b8eb`; no further rebase is requested.

@@ -15,13 +15,21 @@ export const registrationAcceptanceCases = [
   ['closing-soon', 'fr-CA'],
   ['unconfirmed', 'en'],
   ['unconfirmed', 'ar'],
+  ['pending', 'en'],
+  ['check-in', 'en'],
 ] as const;
 
 export function registrationAcceptanceInput(
   state: string,
   language: string,
 ): RegistrationReminderInput {
-  const now = new Date('2026-08-12T10:30:00Z');
+  const now = new Date(
+    state === 'pending'
+      ? '2026-08-01T14:00:00Z'
+      : state === 'check-in'
+        ? '2026-08-12T15:30:00Z'
+        : '2026-08-12T10:30:00Z',
+  );
   const timeZone = 'America/Toronto';
   const full = state === 'full';
   const courseId = full
@@ -56,7 +64,14 @@ export function registrationAcceptanceInput(
   const unavailable = state === 'unconfirmed';
   return {
     language,
-    leg: state === 'closing-soon' ? 'waitlist_final' : unavailable ? 'heads_up' : 'go',
+    leg:
+      state === 'closing-soon'
+        ? 'waitlist_final'
+        : state === 'check-in'
+          ? 'check_in'
+          : unavailable || state === 'pending'
+            ? 'heads_up'
+            : 'go',
     resident: false,
     reading: unavailable
       ? {
@@ -85,7 +100,7 @@ export function registrationAcceptanceInput(
       shortlist: courseShortlist('local-test-watch', sourceUrl, now),
       now,
       timeZone,
-      optIn: 'opted_in',
+      optIn: state === 'pending' ? 'pending' : 'opted_in',
       anchor: now,
       portal: null,
       readinessReady: null,

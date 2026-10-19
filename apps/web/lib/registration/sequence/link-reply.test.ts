@@ -93,7 +93,7 @@ describe('registration-link AI wording (mechanics, not language quality)', () =>
         opening: { date: '2026-11-10', time: '09:00', timeZone: 'America/Toronto' },
         eligibility: 'unclassified_open',
         dateRemindersPaused: true,
-        nextStep: 'confirm_plan_in_approvals',
+        nextStep: 'confirm_by_reply_in_this_chat',
       });
     },
   );
