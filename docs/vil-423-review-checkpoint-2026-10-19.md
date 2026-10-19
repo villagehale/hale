@@ -10,7 +10,7 @@ remote migration, production watch edit or carrier SMS.
 | Before | Current code / verification |
 | --- | --- |
 | CI expected the retired `eval:civic-hours` job | Removed that stale expectation; repo-script tests 64/64 pass. |
-| Seven opaque Civic-hours cassettes remained | Reconstructed their exact keys from the deleted runner, skill and lane at `98686395f^`; removed only those seven. They are recoverable in Git. No Civic runner, command or workflow remains. |
+| Opaque Civic-hours cassettes remained | Reconstructed keys from the deleted runner/skill and both historical harness contracts: seven Sonnet 5.5 lane cassettes and seven older Sonnet 5 non-lane cassettes. Removed only those 14, recoverable in Git. No Civic runner, command or workflow remains. |
 | Link writer received `confirm_plan_in_approvals` | Now receives `confirm_by_reply_in_this_chat`; writer instructions ask for a natural chat reply, not an approvals webpage or prescribed answer. |
 | Reminder skill described reply options | Pending/moved-date confirmation points to chat. Check-in asks how registration went, without a menu or response keywords. |
 | Chat-confirm path was assumed | A local PGlite test runs a model-resolved, non-fast-path reply through the real approval handler/spine and verifies approval plus enqueue. Link/approval mechanics: 23/23 pass. This is not a new model-language test. |
