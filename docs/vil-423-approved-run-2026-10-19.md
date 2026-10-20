@@ -19,6 +19,7 @@ were posted **before** any recording commit. Tests/grades have not been weakened
 | Fresh Burlington | Full real Coach path exercised; geography, future dates and unknown price survive, but age/source-instance ownership is **not accepted**. |
 | Full Web cached replay | **10,549 pass / 14 skip / 1 fail**. No localized missing-key failures; English held-message positive test still fails. |
 | Root build / repo scripts | **7/7 build tasks**, **64/64 script tests** pass. Root lint passes with existing warnings; **76/76** prompt hashes match. |
+| Site public-surface checks | **447/447 pass** after omitting unrelated venue contacts from the explanatory Burlington excerpt. Recorded inputs/replies and source-evidence offsets are unchanged. |
 
 Registration inputs are fixed page text (including controlled new contract cases);
 reminder/link inputs are saved official HTML with historical clocks. Those model
@@ -120,7 +121,11 @@ All 24 historical localized records are unchanged; 26 genuine entries were added
 ## Handoff
 
 Recordings and evidence are committed as failures where appropriate, not relabeled
-green. Re-run Actions after push; the unchanged English and King assertions are
+green. The initial cloud replay stopped first on three public library phone-number
+occurrences in the new explanatory JSON, not a model failure. Those unrelated
+contacts were omitted without changing recordings, picks or the actual reply;
+the complete Site suite passes. Cloud Worker confirms the real King omission.
+Re-run Actions after the artifact-only follow-up; the unchanged English and King assertions are
 expected to remain red, so Build/repo-scripts cannot be claimed cloud-green if
 skipped behind Test. Local root build/scripts results above are separate evidence.
 
