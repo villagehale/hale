@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the date (2026-10-20) as a flat fact from registrationWindows — that is recall, not hedging. It correctly notes the opening time hasn't been published, which is what `opensFor` says (\"opening time not published\"). It correctly says Hale is watching it, because `watching` is true. However, it slightly overpromises: the reminder ladder texts a week out, the evening before, and fifteen minutes before it opens — not \"as soon as a time or spot shows up.\" That last clause about texting when a time shows up is an unbacked promise; the watch is on the registration window itself, not a scrape for a published time. It also says \"a time or spot\" which conflates two different things (the time of opening is unknown but the window date is set; spot-watching is a different feature). This is a small but real inaccuracy in what the watching will do. Otherwise the reply is clean: no greeting, no sign-off, no markdown, correct date, correct state of the watch. The inaccuracy is a 4-level blemish rather than a 3-level shape problem.",
+    "score": 4
+  }
+}

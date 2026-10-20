@@ -1,0 +1,39 @@
+{
+  "response": {
+    "id": "msg_011Cg6vpiC5dEftnwQxqketh",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuQoKEAgSGAI4AUIIdGhpbmtpbmcSDFBpmxOrdpL2z5aXmhoMkp4ZfJ/vU0XJibANIjDB80MTiNpZKeHWaWYzMYq5RkSZ6n0adAIjuIbFGJp3+bZQ8eG5msNKah7fp/Nil4Yq1glR4WTbfYpA6t3ud6x0f/2H1Ssc62Y4KgugY+uPEfLVj0ehXdsFfohnY1Hxrf7WNZCIs5JTz/i3w67Hll41A/caN7sVzoWTw96RAf12FEVgeXj96xa+VLT9gi+U1n20fAxH0oOAuqmPGM2iVaBeQvozVgNdlb0x3r3+dQdzOlQFgB3unkbLLET41vRcqvfDpeTk5cfVaB39j93NaJpOhawo90Xy+YmKtMmDH1a1m6lV6Nu4CsymzGa1f5PrD0lj97HElqWzODpLCFevS1VnvIaGv6GzPNOgIrdKDlxjT6iB9VCMIZuXoGqNB7Bblu4TYyD8xHdegdYDgg5JR4PH65JhIwyIrbn7Vqr3J4MOiBmB5Jipo4U78yH2luCYcdl/zytLdVvsvjAgaPR2ktU13K6LLYEUjmjjqdqwldAD9wwSmcUCtrMe/s/Cq9yMj1IjuWzie23BqhGlG2ie+JNwHHS7IcLXWjkplTniFHnXUjMMGmPuNNBCBnpJ7FKm/fn6Ok56EUrppbafttPoUVQallYl4ao/B7Jl1c5csUeUbILXwYWmtuJtxlIthdgTh2NpBO42FOFP6K39M73LIdMydRctFCIdVo6enmqr8CbCfIOPVI8vcmzjfRMG2nYad/aSa1E0MIXPCxcBA1MKlCLbYXoZw9Fhlmrr9czPbmc/LdFQZLhvMT4kH3tLCDT4fHMn2asBrfz+AU9sGktIookQB9YkTl+n3vt5Eh/3giEROqascYYG8OukCvWFQ0I5HHdKHkfpBqyxa6l0NCl4bFeYbyKhIbWsz2Qai6Ro6NaA+pVBqbQGxtQH6yL/+byqX6gERuibAIOHcy3ACbUtghDhjhV7dLj5T1pc+q2aVyT8t0Jrmw8Och7LEZfgC5OTRQSowQplfCX+gKoXrv0dodVdJ+f2eAeA21h2ZSC+Hq/6Bb/rvL+GXmW/P5vgkYIqokXXRfEPAAz5/XdepfthGOEpaVbqNhEkVXdst315M+h/78Tw8Eyj/r2RbHSkW+ePFlmNYthBinlybtNoryvKk8wYXCf00XI8Tlqzq3F6c4vE6G4xxdSt9809glXgeeM4Xfr7Z5E1s7X7aOfo7nxUCdIv+VDgPyhiHkTqF90QUErhaLuG0fjTUWjgK1UPd0jCool8XfKkTq0Uh92YQooUg4r9DYijk4llSO9JbSuqCOx5XISq/Ue7RIg5xiHGJh+qAVoZREQkx9fvOdxqscwTNlDmD+YeQYcwOJwfrcqGOnWhTy90s6D/g1LTwjfLglzIFyxdBvy6JZHYsZge+ilC3KICYB44OT8ljsvmWjWq30UQfObS0Iov1ev2tm4QmRaClp/Lz72kz6P/cKu15WjhnxTPigD2kkjo3PN720OwjRXELAIdnBp4FcqDE2tlgu6GEkGux15q2cxaZ6kHcCZ8ng5qCCJVBzRqVUgq+5pErOa35vxkRYNmPTQgNckF0SVMaL6LbgJjcLAQlVblGzG90orXlykbxZMJ+z4EFHEMZ8CYG1K1yB7w5ioLSuqjMhYX2DB7v78EXplhFw7CCmZQaApFiLbdx15BxQ7/H4mc3cFci8hz5CUr1JQ2s3Ao8NOwk+W14Pzk553PUch+yNGFSw+6XCunTYSY1JnWupSLV7lhLbFdM7wIBqWNzBgB"
+      },
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjggKEQgSGAI4AUIJbmFycmF0aW9uEgwwlrT5ALBc1pLY/swaDMAsasZLY03p4E7lYSIwFble146qxMA9MW7YYu7XTU0AqnrfMyoAkNy5bdEKxxLVmftcfmsXkta5qHry3ByrKqoHT+tZRZeuRaz3se4D1PDwp5M9FUb+CQzQjNaBIH035NJbTP2cmf8jXSwVmBxTaICFKShtiDDlk+RKG3zbk/j+zbbGNUaxocdgTBybcd7ORvwa0XycSdMMmnUzBY69fpzSaPkapugD3OKgTQ5ybSINNgtLc4ZKCPShwubBCco2yNClBOMm+EXAt+fvZJnp/Zm+oCmFQxtYg6WMvD9PE00RkrpnD7NnO4cx7SLPefkIcWvUM4AFObqaoFsXPkT96ccxAb5nM9xk02JlywqJeLmU7fHGalWigmIpLo2dxwL0qH8Ieav2HzasHWlBEL1i3iiNs2q2Ae8Llqj3/HmoNQE58FMvcMlGfq7K/lPZwQxT0I0DICd+AfcEumpBp6tYhPrtDr+UIuvP2gxndpa9KRxYKgIG3vyOcGT4CNMr1jTQlQPBlqjplHf11V2jcPbFexK+1Jd8koU1nHjEkRJ1Id97RkKcQ4GrbINNW2XoQnabT9atzRK4IFRbTUlL1ZvZht1JL3t2zaZ9NdNdbh4FOfEFjZA6CvY8W6DFo088CZlU6u6gFoWr2yjW22Z/k22LVNvjSKmyBikzZQUB9O9a+/5vILVJppsCFfzzaG9XQtmPwGDTdUQjASM/BCc5uYEr0Sf1fbv98lZEEeN73QBJNnz2oiUbO96meDo1CL9F1qa83uF1fhyUPkfPK1nzC/QEJTmOJdHtZESDtrDwEToEAkSoeNjbnSRt99gCkY34CM1fFVwEPgfTV+g1wVAxyfvAO38AZzFKQHV7m7AZZl7ce2GKuo0iAk9GXXNy8VdDJBCBiLC4SiAsphd4QHe/ZhC1ewjyBNXHw+zVviZxljd9VN4gVW5AaOc2SSqpCvgGghyScylGB2fLkHicRIvZUN7+OmhcDKqOSoW33oM11YHXjRRkP4/8I3X5XZBbSsML/eMuy/Gp0dNGQ5EqPeWPFwpNs/XpRTFe57BX71HF8h+dd9dSHNn6qjVYSv9I9IvjtUMv3nXfdropwo45dDfmGSdVkIbYY5kQ18K2WG6xMorTYToU5EhXLJYJ5Nc1xGyni74gTwsjeRLP1y/vgZbqLGUxZcKZWaQt9FcxMM7iEk5Fiuy6dwkYS2gZO8QeQpq0pntHLv1DYOe/vxo6Arb/0709HLkbGA5d4UiV7/fp2oWT5YtfEYQrxWYF7/rTwnmzEDEeyQueqKLiKvfQoOlrftcKAbwzuH5dMTCySVcfM+axBMBT1RxTTmOev/n1OoQYAQ=="
+      }
+    ],
+    "usage": {
+      "input_tokens": 786,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22217,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 400,
+      "output_tokens_details": {
+        "thinking_tokens": 400
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4012
+}

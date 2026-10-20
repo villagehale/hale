@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own and to ask first. `turnedOffThisTurn` shows the switch was flipped for both send_email and reply_to_email, so the confirmation is accurate. The reply is one plain sentence in the parent's language with no greeting, no machinery and no question, and it says exactly what will happen from now on.",
+    "score": 5
+  }
+}

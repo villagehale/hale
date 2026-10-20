@@ -1,6 +1,6 @@
 /**
  * The GTA municipalities the registration radar tracks by name — every one backed
- * by verified registration_windows rows in prod.
+ * by the supported municipal source readers; published dates are read live.
  *
  * One list, one count. The landing renders the names and derives its heading count
  * from `length`; the FAQ and the landing's radar lede name the same number in

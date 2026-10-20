@@ -28,7 +28,7 @@ import { users } from './users.js';
  * occasion does not have: the token that addresses it, and whether it is still on.
  *
  * `publicToken` is 18 random bytes (144 bits) base64url — the same shape and the same
- * reasoning as the village share tokens (`village_candidates.share_token`). Not an
+ * reasoning as the activity receipt share tokens (`family_activity_history.share_token`). Not an
  * HMAC of the id: an HMAC is recomputable from the id by anything holding the key, and
  * carries the id's structure into a value strangers paste into group chats. Random has
  * no structure to leak and no key to rotate. It identifies no child and no parent, and

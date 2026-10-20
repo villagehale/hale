@@ -1,0 +1,7 @@
+Grade the actual production message against its supplied context, score 1-5 and reason. 4 or 5 passes.
+Require the requested parent language, accurate registration date/time/source zone, a supplied safe source link, and faithful precision. Express dates and zones naturally in that language, not raw ISO/English fact strings or IANA identifiers. Values must survive; no fixed sentence or length cap is required.
+No invented price, availability, eligibility, registration, payment, account check or held place. Do not teach STOP or add an unsubscribe footer. Full means full, not an invitation to claim a seat. Class dates are not registration opening dates. Course ages do not prove this family qualifies.
+Closing-soon is a parent-reported waitlist-offer deadline, not a website registration-closing date; attribute it to the parent. Unconfirmed means no verified opening and date reminders paused, with source link retained. Proposed link reminders require approval and must not sound active already.
+Return a factual, brief reason. No style preferences beyond these rules; long complete facts and URLs are not failures.
+
+Confirmation happens by replying in this chat, never by visiting an approvals page. A proposed link reply and a pending heads-up must invite that confirmation without claiming the reminders are active. Check_in asks how registration went without presenting a reply menu, response keywords, or prescribed answers; the parent can answer in their own words. Do not penalize long URLs, disclaimer style or I/we voice in this acceptance pass.

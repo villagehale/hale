@@ -9,6 +9,7 @@ import {
   loadWeekdayCareContext,
   recordWeekdayCare,
 } from '~/lib/care/weekday';
+import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import {
   FOLLOWUP_ASKS_ENABLED_ENV,
   type FollowupSweepDeps,
@@ -23,7 +24,6 @@ import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/chan
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { channelRouterDeps } from '~/lib/channel/router/wiring';
 import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
-import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { loadAgentContext } from '~/lib/coach/context';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -60,6 +60,25 @@ const AREA = null;
 const FRIDAY = new Date('2026-08-07T14:00:00.000Z');
 /** The Tuesday after it, in the family's own zone. */
 const TUESDAY_KEY = '2026-08-11';
+const weekdayFinder: ActivityFinder = {
+  find: async () => ({
+    found: true,
+    picks: [
+      {
+        name: 'EarlyON drop-in',
+        ageFit: 'ages 0-6',
+        when: 'Tuesday 9:30-11 AM',
+        price: 'free',
+        sourceName: 'Armour Heights',
+        source: 'web',
+        sourceUrl: 'https://example.org/weekday',
+        eventDate: TUESDAY_KEY,
+        indoorOutdoor: 'indoor',
+        access: 'drop_in',
+      },
+    ],
+  }),
+};
 const PHONE = '+15551230000';
 /** The weekday-care ask, written by real Claude once and replayed (hard rule #8). */
 const ASK_RECORDINGS = join(import.meta.dirname, '__recordings__', 'weekday-care-ask.json');
@@ -89,6 +108,7 @@ beforeEach(async () => {
     .insert(schema.families)
     .values({
       displayName: 'Ana + kids',
+      city: 'Toronto',
       provinceOrState: 'ON',
       onboardingStage: 'sms_active',
       createdAt: new Date('2026-07-01T00:00:00.000Z'),
@@ -120,12 +140,12 @@ beforeEach(async () => {
 
   // THE FEED THE WEEKEND RULE THROWS AWAY: one civic Tuesday morning, already in this
   // family's rows, projected by the weekly sweep exactly as production writes them.
-  await db.database.insert(schema.villageCandidates).values({
+  await db.database.insert(schema.familyActivityHistory).values({
     familyId,
     title: 'EarlyON drop-in',
     kind: 'drop_in',
     summary: 'Free drop-in at Armour Heights - 9:30 a.m.-11:00 a.m.',
-    source: CIVIC_SOURCE,
+    source: 'legacy',
     runType: 'civic',
     eventDate: TUESDAY_KEY,
     venueName: 'Armour Heights',
@@ -163,6 +183,8 @@ function nudgeDeps(transport: FakeTransport, client: AgentClient | null = null):
       },
     ],
     loadRecipients: async () => [{ parentUserId, timeZone: TZ, role: 'primary_parent' as const }],
+    loadCandidates: (database, familyId, now) =>
+      readCandidates(database, familyId, { now, finder: weekdayFinder }),
     resolveSendablePhone: async () => PHONE,
     weather: { getDailyOutlook: async () => [] },
     buildGate: openGate,
@@ -559,12 +581,15 @@ describe('the weekday-care arc', () => {
   });
 
   it('keeps every claim it makes about the session on a row it can point at', async () => {
-    // The whole weekday branch rests on `village_candidates.source`, and the reader is
+    // The whole weekday branch rests on `family_activity_history.source`, and the reader is
     // the only thing that carries it off the row. If the column stopped being selected,
     // the find would refuse forever and nothing else in this file would notice.
-    const candidates = await readCandidates(db.database, familyId);
+    const candidates = await readCandidates(db.database, familyId, {
+      now: FRIDAY,
+      finder: weekdayFinder,
+    });
     expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.source).toBe(CIVIC_SOURCE);
+    expect(candidates[0]?.source).toBe('web');
     expect(candidates[0]?.eventDate).toBe(TUESDAY_KEY);
 
     // ...and the teen holds no fact and no candidate of her own, in either direction.

@@ -1,0 +1,59 @@
+{
+  "response": {
+    "id": "msg_011Cg6jHf4AzKCqmc69fxrkG",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSywUKEAgSGAI4AUIIdGhpbmtpbmcSDOYCbOeNZzxcwpAbxRoMpKaGOE0+5Mj77gFnIjCU42VgPAPPxBA03LfcOfHfI6kZNlLdzEX9vtXe1DY+OofcK9htLmxqM6PaRIsrTCkq6AQ4wniJvc91KIwKUgqRdu0pgzXZaR5Y7d3QGO+G+LOcKPihH17c5Om3k6KZPnri9/C0X1GY+CfJRWa2/U5n+Bfc/fPHQACqN2SCMz3pV+QSUYIilmMLL6c0e724+8m4hyw2lHb5MNREdPh0TFAmInRYTXgUDMDWV/Gh2vrK8yRfs0j2ZErZx6SDqO8nbl2pWB5utCkFrsMRim/KNL/DOIOp2RnZQWc1S63LS/TiAG4Ycs778HY+1QsL1uJOHcJXrOpYXK5Y7Mk9HX5eXfqO+gmcVkBFcfKK0P2Ctrf8Y/e1nCCSeKfKq+twstwl5F9qbGC5eJcummUVug4c3MX+COZNxjyY+80z7wW35qrPhHrBls+r5hgM1x0PXnI/FYzAsuRbl3YHQDtIurnWEIi4lSXH8mt5MQnRHvHz4bInrAPMaGfl+QRNrvH5jbFMTDlK2S4p79YMtIL+cT0dGSip2fQhUr2OVDL0Ag/d4qehpGRFmTKLO5d8rGam67DcA8wOMNWzwvcB1HErDGQ2TCagLfPhS8q84T2too/mN3WAgdxZIZSVRP+1K2jk3DXJalvs6t6Fjnk+bezpaaKKzhEQkGiAkVjjNsBMWkswxMnL+2puw7TvVtKKO7gsFlrjeMroTx39YK57pQplzOWptLyDKjcMKmG/kFFS1s3n8b3p4E2bdSDkJ3igcUm3K0pzgidSiZB+Hew/jPvM09cIFy9qWiYFosyvRYMJsbCppO3uo56slfzhgTP7fRO6uCexUn2Po5fGYZYHNyepjhb1RAMZcKEZLc57Aw8zSCP0jnmTQEnGETWe/M5sIem/GAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_016JYzv7d699kL5KSR9ZhT8f",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01D7EN1sz66WE8qocRVpysfH",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "solids",
+          "childId": "kid-theo",
+          "offer": "Want me to send the full first-foods plan for Theo?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 424,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 257,
+      "output_tokens_details": {
+        "thinking_tokens": 61
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2117
+}

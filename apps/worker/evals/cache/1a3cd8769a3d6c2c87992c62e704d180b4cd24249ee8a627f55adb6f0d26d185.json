@@ -1,0 +1,16 @@
+{
+  "value": {
+    "found": false,
+    "reason": "different_cycle_only",
+    "cycle_on_page": null,
+    "year_evidence": null,
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "evidence": null,
+    "confidence": 0.9,
+    "time_zone": null,
+    "time_zone_evidence": null
+  },
+  "latencyMs": 2341
+}

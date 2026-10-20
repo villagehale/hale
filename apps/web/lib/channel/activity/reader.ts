@@ -1,7 +1,46 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
+import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
+import { readFamilyPlace } from '~/lib/channel/off-domain/place';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
+import { readActiveArea, resolveActiveAreaCoarse } from '~/lib/village/areas';
+import { qualifyActivityLocation } from './location';
+
+export async function readActivityLocation(
+  database: Database,
+  familyId: string,
+): Promise<string | null> {
+  const area = await readActiveArea(database, familyId);
+  let location: string | null;
+  if (!area?.city || !area.country) {
+    const place = await readFamilyPlace(database, familyId);
+    location =
+      place.status === 'known' && place.city
+        ? qualifyActivityLocation(
+            place.city,
+            place.provinceOrState ?? area?.province,
+            place.country,
+          )
+        : area?.city
+          ? qualifyActivityLocation(area.city, area.province, area.country)
+          : null;
+  } else location = qualifyActivityLocation(area.city, area.province, area.country);
+  return location && scrubResidualPii(location).trim() === location ? location : null;
+}
+
+export async function readActivityTimeZone(
+  database: Database,
+  familyId: string,
+): Promise<string | null> {
+  const [parent] = await database
+    .select({ timeZone: schema.users.timezone })
+    .from(schema.familyMembers)
+    .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+    .where(eq(schema.familyMembers.familyId, familyId))
+    .limit(1);
+  return parent?.timeZone ?? null;
+}
 
 /**
  * THE THREE FACTS THE ACTIVITY LANE READS FROM THE DATABASE — and the whole reason it
@@ -18,6 +57,8 @@ import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
  * with them, they are what a query is REFUSED for containing (deidentify.ts).
  */
 export interface ActivityFamilyReader {
+  timeZone?(database: Database, familyId: string): Promise<string | null>;
+  location?(database: Database, familyId: string): Promise<string | null>;
   municipality(database: Database, familyId: string): Promise<Municipality | null>;
   stage(database: Database, familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(database: Database, familyId: string): Promise<string[]>;
@@ -26,6 +67,8 @@ export interface ActivityFamilyReader {
 /** The same three reads with the database already closed over — the shape a coach tool
  * wants, since a tool handler is handed a family and not a connection. */
 export interface BoundActivityReader {
+  timeZone?(familyId: string): Promise<string | null>;
+  location?(familyId: string): Promise<string | null>;
   municipality(familyId: string): Promise<Municipality | null>;
   stage(familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(familyId: string): Promise<string[]>;
@@ -35,7 +78,11 @@ export function bindActivityReader(
   database: Database,
   reader: ActivityFamilyReader,
 ): BoundActivityReader {
+  const location = reader.location;
+  const timeZone = reader.timeZone;
   return {
+    ...(timeZone ? { timeZone: (familyId: string) => timeZone(database, familyId) } : {}),
+    ...(location ? { location: (familyId: string) => location(database, familyId) } : {}),
     municipality: (familyId) => reader.municipality(database, familyId),
     stage: (familyId, childId) => reader.stage(database, familyId, childId),
     householdNames: (familyId) => reader.householdNames(database, familyId),
@@ -44,6 +91,8 @@ export function bindActivityReader(
 
 export function productionActivityFamilyReader(): ActivityFamilyReader {
   return {
+    location: readActivityLocation,
+    timeZone: readActivityTimeZone,
     /**
      * The ONE municipality this family's postal code names, or null.
      *
@@ -53,12 +102,7 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
      * town is not a failure — the search runs without one and the skill says so.
      */
     municipality: async (database, familyId) => {
-      const [family] = await database
-        .select({ areaCoarse: schema.families.areaCoarse })
-        .from(schema.families)
-        .where(eq(schema.families.id, familyId))
-        .limit(1);
-      const postal = family?.areaCoarse ?? null;
+      const postal = await resolveActiveAreaCoarse(database, familyId);
       if (postal === null) return null;
       const municipalities = municipalitiesForFsa(postal);
       return municipalities.length === 1 ? (municipalities[0] as Municipality) : null;

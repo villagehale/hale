@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are real offerings on the Oakville page. Days, times and session dates (Sept 12 to Nov 28) match the page exactly, ages are 3-5, and each slot is cited to the page. Price is correctly null, since the page defers fees to the Recreation Guide. The registration window (Aug 11, 7 a.m., residents) is in the slots and in the message. The message is in Arabic as watchFor requires. It leads with Preschool A by name and attributes the facts to the Town of Oakville site. The missing price is framed in the first person ('I could not determine the price'), which is correct for page_has_schedule. With watch=true, it makes the first-person follow-up commitment. There is no question and no link. One small gap: the slots could have noted that fees are in the Recreation Guide.",
+    "score": 5
+  }
+}

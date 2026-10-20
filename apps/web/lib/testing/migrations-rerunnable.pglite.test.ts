@@ -21,7 +21,7 @@ describe('migrations after the ledger watermark survive a second pass', () => {
   let db: TestDb;
 
   beforeAll(async () => {
-    db = await createTestDb();
+    db = await createTestDb('0172_registration_live_watch_storage.sql');
   });
 
   afterAll(async () => {
@@ -29,7 +29,7 @@ describe('migrations after the ledger watermark survive a second pass', () => {
   });
 
   it('re-applies every migration after 0097 on the already-migrated schema without throwing', async () => {
-    const rerun = migrationFiles().filter((file) => file > LAST_LEDGERED_FILE);
+    const rerun = migrationFiles().filter((file) => file > LAST_LEDGERED_FILE && file < '0173_');
     expect(rerun.length).toBeGreaterThan(0);
 
     const failures: string[] = [];
@@ -42,6 +42,19 @@ describe('migrations after the ledger watermark survive a second pass', () => {
     }
 
     expect(failures, failures.join('\n')).toEqual([]);
+  });
+
+  it('retirement migrations preserve their final state on reapplication', async () => {
+    await db.applyMigration('0173_drop_registration_catalog.sql');
+    await db.applyMigration('0174_activity_history_only.sql');
+    await db.applyMigration('0175_retire_civic_catalog.sql');
+    await db.applyMigration('0173_drop_registration_catalog.sql');
+    await db.applyMigration('0174_activity_history_only.sql');
+    await db.applyMigration('0175_retire_civic_catalog.sql');
+    const rows = await db.client.query<{ old: string | null; history: string | null }>(
+      "select to_regclass('registration_windows')::text as old, to_regclass('family_activity_history')::text as history",
+    );
+    expect(rows.rows[0]).toEqual({ old: null, history: 'family_activity_history' });
   });
 
   it('positive control: a bare ADD CONSTRAINT on an existing UNIQUE really does raise on a second pass', async () => {

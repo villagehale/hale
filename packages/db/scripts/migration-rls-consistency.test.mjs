@@ -20,8 +20,6 @@ const drizzleDir = path.resolve(scriptDir, '..', 'drizzle');
 /** Tables created before the gap was found, still unprotected. Never add to this list. */
 const KNOWN_UNPROTECTED = [
   'caregiver_invites',
-  'civic_sessions',
-  'civic_venues',
   'party_invites',
   'party_rsvps',
   'sms_intake_sessions',
@@ -47,6 +45,10 @@ describe('migration ↔ RLS consistency', () => {
       const sql = fs.readFileSync(path.join(drizzleDir, `${tag}.sql`), 'utf8');
       for (const table of createdTables(sql)) created.add(table);
       for (const table of rlsEnabledTables(sql)) protectedTables.add(table);
+      for (const match of sql.matchAll(/DROP TABLE (?:IF EXISTS )?"([a-z_0-9]+)"/gi)) {
+        created.delete(match[1]);
+        protectedTables.delete(match[1]);
+      }
     }
 
     const unprotected = [...created].filter((table) => !protectedTables.has(table)).sort();

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is the held-reading case: the current date could not be verified and reminders are paused. The reply uses the required wording almost verbatim and does not repeat the earlier Sep 1 date anywhere. It includes the provided official source URL, which counts as evidence rather than an app handback, and it promises no reminder. It is short and exact, with no greeting or sign-off.",
+    "score": 5
+  }
+}

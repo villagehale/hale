@@ -51,7 +51,7 @@ export type WatchedSpotReleaseReason = (typeof WATCHED_SPOT_RELEASE_REASONS)[num
  * A parent pastes the link to a full class and asks to be told if a spot opens. That
  * sentence has nowhere to live today: `agent_commitments` permits ONE open promise of a
  * kind per family, so a household watching two classes cannot be two rows there, and
- * `registration_windows` is family-agnostic reference data keyed on a CYCLE with no
+ * Imported registration source metadata is keyed on a CYCLE with no
  * class-level identity — its cascade would delete a parent's watch when a window is
  * retired. So the WATCH is a row here and the PROMISE stays on the ledger.
  *

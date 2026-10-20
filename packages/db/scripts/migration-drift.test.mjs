@@ -1,5 +1,37 @@
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { computeDrift } from './migration-drift.mjs';
+import { computeDrift, readJournalWithHashes, requiresCatalogCutover } from './migration-drift.mjs';
+
+it('keeps all VIL-423 migrations pending after the current main watermark', () => {
+  const journal = readJournalWithHashes(fileURLToPath(new URL('../drizzle/', import.meta.url)));
+  const base = journal.find((entry) => entry.tag === '0171_channel_pending_asks');
+  expect(base).toBeDefined();
+  expect(computeDrift(journal, base.when).pending.map((entry) => entry.tag)).toEqual([
+    '0172_registration_live_watch_storage',
+    '0173_drop_registration_catalog',
+    '0174_activity_history_only',
+    '0175_retire_civic_catalog',
+  ]);
+});
+
+describe('catalog retirement cutover guard', () => {
+  const retirement = [
+    { tag: '0173_drop_registration_catalog', hash: 'registration' },
+    { tag: '0174_activity_history_only', hash: 'activity' },
+    { tag: '0175_retire_civic_catalog', hash: 'civic' },
+  ];
+  it('blocks uncoordinated retirement while previous catalogs exist', () => {
+    expect(requiresCatalogCutover(retirement, [], true)).toBe(true);
+    expect(requiresCatalogCutover(retirement, ['registration'], true)).toBe(true);
+    expect(requiresCatalogCutover(retirement, ['registration', 'activity'], true)).toBe(true);
+  });
+  it('allows a fresh database and normal later builds after retirement is recorded', () => {
+    expect(requiresCatalogCutover(retirement, [], false)).toBe(false);
+    expect(requiresCatalogCutover(retirement, ['registration', 'activity', 'civic'], true)).toBe(
+      false,
+    );
+  });
+});
 
 // Journal `when` values are strictly increasing (as drizzle-kit emits them).
 // Expected verdicts are derived from drizzle's own apply rule — a journal entry

@@ -776,7 +776,10 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // that imports a drain constant. The runtime entrypoint is the only place that
   // needs the real handler, so the import stays scoped to it.
   const { db } = await import('~/lib/db');
-  const { upsertFeedRank } = await import('~/lib/village/rank/upsert');
+  // Drain pre-migration queued rank jobs without rebuilding a retired catalog.
+  const upsertFeedRank = async (_database: unknown, familyId: string) => {
+    console.info({ familyId }, 'retired village rerank job: skipped');
+  };
 
   // The channel seam pulls the loop dispatch + adapters (and the db-backed ports);
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.

@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { buildDistillTools, buildInferenceTools } from '~/lib/cron/inference-tools';
-import { buildRankTools } from '~/lib/village/rank/rank-tools';
 import { searchVillageTool } from './tools';
 
 /**
@@ -91,7 +90,6 @@ function everyRegisteredTool(): Array<{ surface: string; tool: RegisteredTool }>
     ['buildChannelCoachTools', channelTools()],
     ['buildInferenceTools', buildInferenceTools(NO_DB, NOW)],
     ['buildDistillTools', buildDistillTools(NO_DB, NOW)],
-    ['buildRankTools', buildRankTools(NO_DB)],
   ];
   return surfaces.flatMap(([surface, tools]) => tools.map((tool) => ({ surface, tool })));
 }

@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011Cg6k3WDLNdVSt6AfdXLGz",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "C'est noté, Sam. Je ne enverrai plus de courriels en votre nom sans vous demander d'abord."
+      }
+    ],
+    "usage": {
+      "input_tokens": 556,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20989,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 42,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2433
+}

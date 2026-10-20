@@ -94,7 +94,6 @@ const SMS_COPY_SOURCES = [
   'lib/party/guest-copy.ts',
   'lib/party/tally.ts',
   'lib/village/intros/copy.ts',
-  'lib/channel/rec-morning/copy.ts',
   // The travel brief - the LONGEST deterministic proactive text in the product, at four
   // segments against the full opt-out form. It is also the one whose body concatenates
   // strings a VENUE wrote, so the composer's own words have the least headroom of any

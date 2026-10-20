@@ -1,0 +1,59 @@
+{
+  "response": {
+    "id": "msg_011Cg6jhypTcthK3tVT7hT8x",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnQYKEAgSGAI4AUIIdGhpbmtpbmcSDFZWMzauFVh7M0IWOBoMDZhwAbI2LzbNghWmIjDYnVP02u6RTZcAhmLbIjMXsNK93gcGIM0y4I5PYDibvXBBPOGX9mwItREqdlOcIH0qugVLLQy5SbB+oR6pzQY5k2oNnW/S9Qc80cXpy+a16iWoV1G6pct5JnavzNPaKqb6JqeMqT212DsBCwWa7Bv9Ak23pesWDHnkT0LWVksZPxeaH7nPTQUsNqszYpgRNGbj19TSn+gvqIQqQhtWvaheNGqlQ/zc7WDnE+QC1PZzeHvnG5rmKY+ijfqUEb9FUGf+vf+rmgGpU4Uzzmiy/CfTLptYu4+k0/DogozGZBvjEVfPRXt5vfOZSSlpuMtWVvrtBBkItsyDMWlIhGQIJy7FvzxOEFjGubZgqqF52Je+Ke+4O5F/HvcCjy2E5HJn16P+3+MSWgkLpIm5CVKquHN8IZBbS6ev2StJB/T6D9rHDvNbcqnNW8kYDwMahv/tL7CMXFYwqpLu9YFWzXmmSQ0htqmnhbmAPDzK8vSKA7Pyz/zoC6CPY9AGWSpNWLzqn9suZraxpyK+qFXNp6TakFZgf94v1YQWhGTn60fryIZgQHkHasuzUWoq5ijWS54WfZPnyCGb0/cyNW3vlG0rzq5gzqbNx2U1eaierJZcLFPLZkMbvEno4bRYba3fK0RmplvkAK5y56DtSVViotjDuVVSKgIkX1xWaH6s8zk1dkAati+ZsezxPs0GjsAX6JTKV5IJhNT2+Hd9SlWOZ+PmUTAd6P8G403sxv5fI6+pK3rmkRlC6EIyQ19VxEcWurU4qtQHsln9KGB7cgn9GADUsrdCuYQ0qTMsabKheHBfOLkwHX93qc3aia6zApBEnocFGn3ITWNEdbK0Ict0vCAa/ZdohkokO7ve6BxYEJDIg7KYXe5q47CjCQl9eq9BC2LrIQ33JLDPjtv70m7pBIKRUJ18b0CR4ok2vBE/QJS27tsIvOYGaMK5mJoo3vSO6BU+T3K6PeiG+gZm00/Dd8YnHGl39uOdVjeg2ZULlzw7EhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GzAWvm15DRNj5Je4kEuug5",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Qgqqi6BgEatZojoQpHugPW",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-milo",
+          "offer": "Want me to send the full plan for getting Milo to stay in his own bed?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 390,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 284,
+      "output_tokens_details": {
+        "thinking_tokens": 83
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3095
+}

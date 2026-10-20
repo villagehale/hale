@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the question accurately. It gives the verified date with the source timezone verbatim, says plainly that no opening time is published, and invents no clock time. The official source link is allowed, and 'I'm watching it' is backed by the active reminder state. One small blemish: the sentence about not promising a minute-specific reminder explains its own limits, which the parent didn't need.",
+    "score": 4
+  }
+}

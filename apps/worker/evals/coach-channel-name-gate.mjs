@@ -69,3 +69,16 @@ export function inventedName(word, hay) {
   if (ALLOWED_CAPS.has(bare) || CITEABLE_AUTHORITIES.has(bare)) return null;
   return hay.includes(bare.toLowerCase()) ? null : bare;
 }
+
+export function inventedNames(reply, hay) {
+  const names = [];
+  for (const sentence of reply.split(/(?<=[.!?])["'”’]?\s+|\n+/)) {
+    const words = sentence.trim().split(/[\s/]+/);
+    for (const [index, word] of words.entries()) {
+      if (index === 0) continue;
+      const name = inventedName(word, hay);
+      if (name !== null) names.push(name);
+    }
+  }
+  return [...new Set(names)];
+}

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cappedCall, readLedger, usageUsd, worstCaseUsd } from './spend-cap.mjs';
+import { capSdkClient, cappedCall, readLedger, usageUsd, worstCaseUsd } from './spend-cap.mjs';
 
 const rates = () => ({ input: 1, output: 5 }); // $ per MTok
 const request = {
@@ -43,6 +43,17 @@ afterEach(() => {
 });
 
 describe('spend cap at the call site', () => {
+  it('disables unaccounted SDK retries and preserves request options for create and stream', async () => {
+    vi.stubEnv('HALE_MAX_USD', '1');
+    const m = mockClient();
+    const wrapped = capSdkClient(m.client, { rates });
+    const signal = new AbortController().signal;
+    await wrapped.messages.create(request, { signal, maxRetries: 2 });
+    expect(m.create).toHaveBeenCalledWith(request, { signal, maxRetries: 0 });
+    await wrapped.messages.stream(request, { signal }).finalMessage();
+    expect(m.stream).toHaveBeenCalledWith(request, { signal, maxRetries: 0 });
+    expect(readLedger().calls).toBe(2);
+  });
   it('is exactly the call when no cap is set', async () => {
     const m = mockClient();
     await cappedCall({
@@ -84,6 +95,38 @@ describe('spend cap at the call site', () => {
     ).rejects.toThrow(/refusing/);
     expect(m.create).not.toHaveBeenCalled();
     expect(readLedger().refused).toBe(1);
+    expect(readLedger().log.at(-1)).toMatchObject({ refused: true, projected: expect.any(Number) });
+    await expect(
+      cappedCall({
+        client: m.client,
+        request: { ...request, max_tokens: 1 },
+        call: () => m.client.messages.create(request),
+        rates,
+      }),
+    ).rejects.toThrow(/previous refusal/);
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('can retry a repaired token-count preflight without clearing its zero-spend failure audit', async () => {
+    vi.stubEnv('HALE_MAX_USD', '1');
+    const m = mockClient();
+    m.countTokens.mockRejectedValueOnce(new Error('preflight unavailable'));
+    const args = {
+      client: m.client,
+      request,
+      call: () => m.client.messages.create(request),
+      rates,
+    };
+    await expect(cappedCall(args)).rejects.toThrow(/could not count/);
+    expect(m.create).not.toHaveBeenCalled();
+    expect(readLedger().spentUsd).toBe(0);
+    await cappedCall(args);
+    expect(readLedger().refused).toBe(1);
+    expect(readLedger().calls).toBe(1);
+    expect(readLedger().log[0]).toMatchObject({
+      refused: true,
+      countError: 'preflight unavailable',
+    });
   });
 
   it('counts what is already spent against the next projection', async () => {

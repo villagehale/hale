@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are real and correctly cited. Tiny Gym's age band comes from programs.php, and the Term 1 and Term 2 dates (Sept 14-Nov 1, Nov 2-Dec 20, 2026) come from the PDF, which was actually opened. The July 22, 2026 8:00am registration date comes from the homepage and is carried into the message. Price is correctly left null because the page says pricing is only on the registration site, and Hale honestly notes it could not map the garbled grid times to weekdays. The message leads with Tiny Gym by name and attributes with 'their site says'. It carries the registration date and uses the first-person 'I could not pin down the day or the price', which is right for page_has_schedule. With watch=true, 'I'll keep watching' is legitimate, and the message has no question and no link. Two minor gaps keep it off a 5. First, the message drops the Rock n' Roll (0+) find even though it fits a toddler. Second, it could have said pricing is only behind the registration login, which is more specific than 'could not pin down the price'.",
+    "score": 4
+  }
+}

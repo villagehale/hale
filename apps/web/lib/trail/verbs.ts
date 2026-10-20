@@ -422,6 +422,15 @@ export const AUDIT_VERBS = [
   'party_rsvp_submitted',
   'party_guest_message_sent',
   // ── the registration radar ──────────────────────────────────────────────
+  'registration_reminder_proposed',
+  'registration_watch_refreshed',
+  'registration_change_notified',
+  'registration_watch_read',
+  'registration_watch_created',
+  'registration_watch_reused',
+  'registration_date_review_proposed',
+  'registration_date_review_obsolete',
+  'activity.offered',
   'registration_shortlist_drafted',
   'registration_sequence_leg_sent',
   'registration_outcome_recorded',
@@ -1490,6 +1499,36 @@ const VERBS: Record<AuditVerb, Verb> = {
   party_rsvp_submitted: { sentence: 'a guest replied to your party invite', family: 'done' },
   party_guest_message_sent: { sentence: 'Hale texted a party guest', family: 'note' },
   // ── the registration radar ──────────────────────────────────────────────
+  registration_reminder_proposed: {
+    sentence: 'Hale offered a registration reminder for your approval',
+    family: 'note',
+  },
+  registration_watch_refreshed: {
+    sentence: 'Hale checked your watched registration source',
+    family: 'note',
+  },
+  registration_change_notified: {
+    sentence: 'Hale told you about a registration date change',
+    family: 'note',
+  },
+  registration_watch_read: { sentence: 'Hale read your registration source', family: 'note' },
+  registration_watch_created: {
+    sentence: 'you asked Hale to watch a registration page',
+    family: 'done',
+  },
+  registration_watch_reused: {
+    sentence: 'Hale kept your existing registration watch',
+    family: 'note',
+  },
+  registration_date_review_proposed: {
+    sentence: 'Hale asked you to approve a changed registration date',
+    family: 'note',
+  },
+  registration_date_review_obsolete: {
+    sentence: 'Hale withdrew an outdated registration date approval',
+    family: 'note',
+  },
+  'activity.offered': { sentence: 'Hale showed you current activity findings', family: 'note' },
   registration_shortlist_drafted: {
     sentence: 'Hale put together a registration shortlist',
     family: 'note',
@@ -1857,7 +1896,8 @@ const TARGET_NOUNS: Record<string, string> = {
   family_invites: 'invite',
   family_memory_episodes: 'logged moment',
   family_memory_facts: 'something I remembered',
-  village_candidates: 'village suggestion',
+  family_activity_history: 'village suggestion',
+  village_candidates: 'village suggestion', // Historical audit rows retain this key.
   consent_records: 'consent',
   activity_bookings: 'a class you signed up for',
   // A BARE noun, like every value here ('draft', 'plan', 'child'): an article baked into

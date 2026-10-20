@@ -8,7 +8,7 @@ import {
 } from '~/lib/loop/founder-counts';
 import { aggregateFunnelScoreboard, percentileNearestRank } from '~/lib/loop/funnel-scoreboard';
 import { resolveMetricsExclusions, resolveOpsExclusions } from '~/lib/loop/metrics-scope';
-import { RETENTION_GRADED_WEEK } from '~/lib/loop/scorecard-rubric';
+import { RETENTION_GRADED_WEEK, type VerifyRunOutcomes } from '~/lib/loop/scorecard-rubric';
 import { alertCode } from '~/lib/monitoring/delivery-health';
 import {
   DEAD_LETTER_PAGE_ROUTE,
@@ -124,17 +124,10 @@ export interface OpsDailyReport {
   promises: { open: number; overdue: number; overdueFamilies: number };
   /** Medical answers in the trailing 7 days, and how many were the fixed 811/911 line. */
   medical: { answered: number; fallbacks: number };
-  /** Whether a re-verify sweep's week overlapped the trailing 7 days, and the tally
-   * that run recorded. A sweep that did not run has no outcomes; a sweep that died
-   * mid-run has `ran` and no outcomes. Neither is zero discrepancies. */
+  /** Latest observations of watched registration sources in the trailing 7 days. */
   reverify: {
     ran: boolean;
-    outcomes: {
-      checked: number;
-      confirmed: number;
-      discrepancies: number;
-      unverified: number;
-    } | null;
+    outcomes: VerifyRunOutcomes | null;
   };
   /** Distinct chat ids the database has recorded, canary excluded. Not the live Linq total. */
   linqChatIds: number;
@@ -488,7 +481,7 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
       overdueFamilies: debt.overdueFamilies,
     },
     medical,
-    reverify: { ran: radar.sweptThisWeek, outcomes: radar.outcomes },
+    reverify: { ran: radar.checkedThisWeek, outcomes: radar.outcomes },
     linqChatIds,
   };
 }
@@ -534,10 +527,10 @@ function medicalLine(medical: OpsDailyReport['medical']): string {
 }
 
 function reverifyLine(reverify: OpsDailyReport['reverify']): string {
-  if (!reverify.ran) return 'Re-verify (7d): did not run';
-  if (!reverify.outcomes) return 'Re-verify (7d): ran | no tally';
+  if (!reverify.ran) return 'Registration checks (7d): no watch observations';
+  if (!reverify.outcomes) return 'Registration checks (7d): no watch observations';
   const o = reverify.outcomes;
-  return `Re-verify (7d): ran | checked ${o.checked} | confirmed ${o.confirmed} | discrepancies ${o.discrepancies} | unverified ${o.unverified}`;
+  return `Registration checks (7d): checked ${o.checked} | verified ${o.verified} | changed ${o.changed} | unverified ${o.unverified}`;
 }
 
 /** The #ops text. ASCII, counts and closed-vocabulary reasons only. */

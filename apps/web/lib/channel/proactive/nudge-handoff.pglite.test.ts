@@ -3,7 +3,8 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WEEKDAY_CARE_ENABLED_ENV, recordWeekdayCare } from '~/lib/care/weekday';
-import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/radar';
+import type { ActivityPick } from '~/lib/channel/activity/lane';
+import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, readCandidates } from '~/lib/channel/intake/radar';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import {
   type NudgeRunDeps,
@@ -14,7 +15,6 @@ import {
 } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -52,6 +52,7 @@ const DROPIN_TEMPLATE = 'proactive_nudge:weekday_dropin';
 let db: TestDb;
 let familyId: string;
 let parentUserId: string;
+let livePicks: ActivityPick[];
 
 beforeAll(async () => {
   db = await createTestDb();
@@ -73,6 +74,9 @@ beforeEach(async () => {
     .values({
       displayName: 'Rowan + kids',
       provinceOrState: 'ON',
+      city: 'Toronto',
+      province: 'ON',
+      country: 'Canada',
       onboardingStage: 'sms_active',
       createdAt: new Date('2026-07-01T00:00:00.000Z'),
     })
@@ -91,20 +95,20 @@ beforeEach(async () => {
     .values({ familyId, name: 'Pip', dateOfBirth: '2024-06-01' })
     .returning({ id: schema.children.id });
 
-  await db.database.insert(schema.villageCandidates).values({
-    familyId,
-    title: 'Toddler drop-in',
-    kind: 'drop_in',
-    summary: 'Free drop-in at Maple Hall - 9:30 a.m.-11:00 a.m.',
-    source: CIVIC_SOURCE,
-    runType: 'civic',
-    eventDate: TUESDAY_KEY,
-    venueName: 'Maple Hall',
-    priceLevel: 'free',
-    indoorOutdoor: 'indoor',
-    confidence: 0.9,
-    discoveredAt: new Date('2026-08-03T15:57:00.000Z'),
-  });
+  livePicks = [
+    {
+      name: 'Toddler drop-in',
+      ageFit: 'Ages 0-5',
+      when: 'Tuesday 9:30 a.m.-11:00 a.m.',
+      price: 'Free',
+      sourceName: 'Maple Hall',
+      source: 'web',
+      sourceUrl: 'https://example.org/toddler-dropin',
+      eventDate: TUESDAY_KEY,
+      indoorOutdoor: 'indoor',
+      access: 'drop_in',
+    },
+  ];
   await db.database.insert(schema.channelMessages).values({
     familyId,
     parentUserId,
@@ -136,6 +140,11 @@ const openGate = (): OutboundGatePorts => ({
 function deps(transport: FakeTransport): NudgeRunDeps {
   return {
     ...defaultNudgeRunDeps(),
+    loadCandidates: (database, id, now) =>
+      readCandidates(database, id, {
+        now,
+        finder: { find: async () => ({ found: true, picks: livePicks }) },
+      }),
     selectFamilies: async () => [
       {
         familyId,
@@ -503,9 +512,7 @@ describe('no health checkpoint from the sweep', () => {
 
   it('says nothing to a family whose only news is the checkpoint', async () => {
     expect(await insideSixMonthWindow()).toEqual(['immunization_6_months']);
-    await db.database
-      .delete(schema.villageCandidates)
-      .where(eq(schema.villageCandidates.familyId, familyId));
+    livePicks = [];
     vi.stubEnv(WEEKDAY_CARE_ENABLED_ENV, 'false');
     const transport = new FakeTransport();
 

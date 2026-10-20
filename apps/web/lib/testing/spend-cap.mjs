@@ -271,6 +271,9 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
   const cap = readCapUsd() ?? Number.POSITIVE_INFINITY;
   const before = readLedger();
   if (before.halted) throw new Error(`spend-cap: round halted (${before.halted}); refusing ${tag}`);
+  // A budget refusal ends the round; a repaired zero-spend counting failure keeps its audit.
+  if (before.log.some((entry) => entry.refused && entry.projected !== undefined))
+    throw new Error(`spend-cap: previous refusal; stop this round before ${tag}`);
 
   const search = webSearchTool(request);
   let inputTokens = 0;
@@ -371,7 +374,12 @@ export function isSpendCapStop(err) {
 
 const CAPPED = Symbol.for('hale.spendCap');
 
-export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
+/**
+ * @param {any} client
+ * @param {{ rates?: (model: string) => { input: number, output: number }, tag?: string }} [options]
+ */
+export function capSdkClient(client, options = {}) {
+  const { rates, tag = 'eval' } = options;
   const raw = client?.[CAPPED]?.raw ?? client;
   if (!capEnabled()) return raw;
   // A suite that wraps the harness client again keeps one check and the outer tag.
@@ -381,20 +389,20 @@ export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
   const wrapped = {
     messages: {
       countTokens: (req) => messages.countTokens(req),
-      create: (request) =>
+      create: (request, options) =>
         cappedCall({
           client,
           request,
-          call: () => messages.create(request),
+          call: () => messages.create(request, { ...options, maxRetries: 0 }),
           rates,
           tag: webSearchTool(request) ? `${tag}:search` : tag,
         }),
-      stream: (request) => ({
+      stream: (request, options) => ({
         finalMessage: () =>
           cappedCall({
             client,
             request,
-            call: () => messages.stream(request).finalMessage(),
+            call: () => messages.stream(request, { ...options, maxRetries: 0 }).finalMessage(),
             rates,
             tag: webSearchTool(request) ? `${tag}:search` : tag,
           }),

@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011Cg6jPEWy6AQwt6Q4opH9S",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "I'll offer general coaching since this isn't covered for her age: a 10-minute \"download\" routine before bed to jot down worries can help with the nightly waking, with the idea that she rolls over at 2am instead of seeking you out. If it persists a couple weeks or she seems anxious or tired during the day, I'd suggest mentioning it to her doctor.\n\n",
+        "signature": "CAQSnwkKEQgSGAI4AUIJbmFycmF0aW9uEgw9t1qic7YJ+3M8PPsaDLLurcWCaBntWThwnCIw1oUdzYo3K2LihDWJWfrrRo5m4eCN+gLQco5YZt6rNsC4neq+DiynNbfaqATOcfqoKrsIBnds0Umqc5nJWOd19JYJhSHiysclZyptvfWO1G12nr3RfbA6EirF4hnsJJcTsyL3TJQpuzvGgCiycl+6qwFLMWdCIMh00u0c5FIG/X09fDEKSzXO6Akm4W2DBGbh4izXjjqWPPDNEqOtaqKRCsj3vxzfQP9AzBcBbdOca/AAO7ZC2p5f9jw2p9EPN3PuRMF7kFqsjO4bEOOCO21G+yau9v7iqpEqN6ihVxLbb93th5ZZerX8kyJgLRj2LikrI7ZEui2Ynad89Sqda+5O4BShrdFxeWwDj0x1teAsqXFB45A9xWY3ZxzwRRqRnSjXVV6WdVyFcpEa5mCv6WBVhbhkhbjBZkgj7WTJc0Gapc874gf/BAdN54RjbL1VRED1dsq61o+Ev+5+7i/h7gSnXMzBT46MpfepAsNo/4bnuphvODn6A5/xWAgBRLlEShK1UVmXVeR1EYkXddDeK9icGVm61Cw9nSfXsIBCYCiL1wIUACdWV2Uqn/q+R+BPi2vojr4mLf/FsScX/peU60wM8gzU9q63FpM48/RPt4mxdm4KvGiM1zPW51exweIpluu+LVZI+1JGU6cNe+6MH84+U5jhHMm+RNf3naQRLSFTg7WGJXqdjuCdU16aFVKf0Nw0Udn4IzLnyFHeNkbt6F7gJ2RhLPhA6+aIIOW/joN5jB31FqKxW1bjBKiMkqwwAJJGjqYS7XWfNVMpyOLQj5BIOboHVgOyPVuiAxqYRxRzDxf7GCYXAwQDYGlXEmeNdqeCPz5anM2qDtHVG9Sgm90Nlq6jIrw7d9VOsypA6r32xuOL01TmK1yOscwYvfvTU2q+L395iD2haI6VF4j0fA5xWcxsY9AehEIuEXQz2J3EGT4x1LR21QHGIN6+q7Pe0Er9ZK4vZLVwE26BZLcgIJosCsgiHpjeqQgTG46EwhRBsrPSVgXjfgZOOqDuC+VDratkNtu60kNIrSZKJdnxOQa0Y3+gvyGi0ry1MMijAL9PU+eapucFB67k+2AHM9CyuXYcZ+sWSodsjrB6HOSU4B5FQsVLSwSzN74jPipwJ9m7nSapMEwYAyf3SC2Xam5zhSAZ/7mb0tRt1bnU5nz11m3TxtJk6SYDJWHCWBL90pBqQ7jCHA2w5tiOgvw2bP5cvjTIL/WK/uUwDwVpLa/s1bAS1tUfVV89Vnese2MW6/EIgKOKw2lIKwGL9s0vdO+edC/IAhcAvi/CMCMiSFbOiTpULsThr8+SO6YkH9iMPDQAvM62t1QKvyMsUnXBfcP7MzRxb4raFpRSSyUAWXEldDjkk6RITcJUk4KLU8Tyk82cyp8QGGFdnuXiizoxoq9ECDZ7L89SbWTy7QIwkBbmccrIFaFo/z17s4wG27ZTGmOP50r79sR45mTs5oNWDKy+7PdeJGFiRd6wxMZDXQeBNG0xiDWW/05YhGTVU7TEQ4oTGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01TnS7KyCcfmEgs9bABk4kUu",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full plan for getting Ada sleeping through?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 857,
+      "cache_creation_input_tokens": 20434,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 20434,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 325,
+      "output_tokens_details": {
+        "thinking_tokens": 204
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 18651
+}

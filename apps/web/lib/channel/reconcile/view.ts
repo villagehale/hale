@@ -1,12 +1,9 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { ageInMonths } from '@hale/types';
-import { and, asc, eq, gte, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
-import { readWindows } from '~/lib/channel/intake/radar';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { loadOpenCommitments } from '~/lib/commitments/ledger';
 import { loadStatedBookings } from '~/lib/health/reply';
-import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import type { ReconcileView } from './reconcile';
 
 /**
@@ -41,17 +38,16 @@ export async function loadReconcileView(
   input: { familyId: string; now: Date },
 ): Promise<ReconcileView> {
   const { familyId, now } = input;
-  const [openCommitments, laddered, scheduled, mintableWindow, statedBookings] =
-    await Promise.all([
-      loadOpenCommitments(database, familyId, now),
-      hasLiveSequence(database, familyId),
-      loadScheduledTitles(database, familyId, now),
-      loadMintableWindow(database, familyId, now),
-      // VIL-294. The parent's own statements, read from the SAME rows the health sweep
-      // reads to decide whether to raise a checkpoint again — one reader per question, so
-      // a turn cannot acknowledge a booking the sweep is about to ask about.
-      loadStatedBookings(database, familyId, now),
-    ]);
+  const [openCommitments, laddered, scheduled, mintableWindow, statedBookings] = await Promise.all([
+    loadOpenCommitments(database, familyId, now),
+    hasLiveSequence(database, familyId),
+    loadScheduledTitles(database, familyId, now),
+    loadMintableWindow(database, familyId, now),
+    // VIL-294. The parent's own statements, read from the SAME rows the health sweep
+    // reads to decide whether to raise a checkpoint again — one reader per question, so
+    // a turn cannot acknowledge a booking the sweep is about to ask about.
+    loadStatedBookings(database, familyId, now),
+  ]);
   return {
     openKinds: new Set(openCommitments.map((commitment) => commitment.kind)),
     // Nothing is pending from a background lane: a sweep composes one message and the
@@ -73,12 +69,17 @@ export async function loadReconcileView(
  * has legs to send, which is what makes "I'm on that morning" a true sentence.
  */
 async function hasLiveSequence(database: Database, familyId: string): Promise<boolean> {
+  if (!f14EnabledFor(familyId)) return false;
   const rows = await database
     .select({ id: schema.registrationSequences.id })
     .from(schema.registrationSequences)
+    .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
     .where(
       and(
         eq(schema.registrationSequences.familyId, familyId),
+        isNotNull(schema.actions.executedAt),
+        isNull(schema.actions.revertedAt),
+        isNull(schema.registrationSequences.pausedAt),
         or(
           isNull(schema.registrationSequences.outcome),
           eq(schema.registrationSequences.outcome, 'waitlisted'),
@@ -126,30 +127,36 @@ async function loadMintableWindow(
 ): Promise<ReconcileView['mintableWindow']> {
   if (!f14EnabledFor(familyId)) return null;
 
-  const [family] = await database
-    .select({ areaCoarse: schema.families.areaCoarse })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId));
-  const areaCoarse = family?.areaCoarse ?? null;
-  if (areaCoarse === null) return null;
-
-  const [children, windows] = await Promise.all([
-    database
-      .select({ dateOfBirth: schema.children.dateOfBirth })
-      .from(schema.children)
-      .where(eq(schema.children.familyId, familyId)),
-    readWindows(database, areaCoarse),
-  ]);
-
-  const [match] = matchRegistrationWindows({
-    windows,
-    postal: areaCoarse,
-    childrenAgesMonths: children.map((child) => ageInMonths(child.dateOfBirth, now)),
-    now,
-  });
-  if (!match) return null;
+  const [watch] = await database
+    .select({
+      anchor: schema.registrationSequences.courseOpensAt,
+      courseUrl: schema.registrationSequences.courseUrl,
+      municipality: sql<
+        string | null
+      >`${schema.registrationSequences.sourceContext}->>'municipality'`,
+    })
+    .from(schema.registrationSequences)
+    .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
+    .where(
+      and(
+        eq(schema.registrationSequences.familyId, familyId),
+        isNull(schema.registrationSequences.outcome),
+        isNull(schema.registrationSequences.pausedAt),
+        isNotNull(schema.actions.executedAt),
+        isNull(schema.actions.revertedAt),
+        gt(schema.registrationSequences.courseOpensAt, now),
+        sql`${schema.registrationSequences.lastReading}->>'status' = 'verified'`,
+      ),
+    )
+    .orderBy(schema.registrationSequences.courseOpensAt)
+    .limit(1);
+  if (!watch?.anchor) return null;
   return {
-    town: townLabel(match.window.municipality),
-    opensForFamilyAt: match.opensForFamilyAt,
+    town: watch.municipality
+      ? townLabel(watch.municipality)
+      : watch.courseUrl
+        ? new URL(watch.courseUrl).hostname
+        : 'the course',
+    opensForFamilyAt: watch.anchor,
   };
 }

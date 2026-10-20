@@ -126,6 +126,21 @@ describe('categoriesForAges', () => {
 });
 
 describe('collectActivityMap', () => {
+  it('does not show the same occurrence twice across categories', async () => {
+    const same = pick('Workshop', {
+      sourceUrl: 'https://example.org/program',
+      eventDate: '2026-10-17',
+    });
+    const { finder } = finderWith({ learning_sports_arts: [same], swimming: [same] });
+    const map = await collectActivityMap({
+      finder,
+      children: [{ name: null, ageMonths: 50 }],
+      areaCoarse: 'M5V',
+      civic: [],
+      familyId: FAMILY,
+    });
+    expect(map.titles).toEqual(['Workshop']);
+  });
   const kids = [{ name: 'Maya', ageMonths: 50 }];
 
   it('runs one real search per fitting category and keeps two or three results each', async () => {

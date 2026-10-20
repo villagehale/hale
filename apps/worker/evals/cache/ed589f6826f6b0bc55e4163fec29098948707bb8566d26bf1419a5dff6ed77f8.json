@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The registration window has `watching: true` and `reminderState: \"paused\"`, but the `opensFor` date is explicitly flagged as unreadable/unverifiable. The reply correctly acknowledges it could not verify the date and that reminders are paused while it checks. This is honest and accurate — it doesn't invent a date, doesn't send the parent to the app, doesn't claim a date it was told not to use. However, the reply is slightly flat: it says \"I couldn't verify\" (first person lowercase, slightly informal) and mentions reminders are paused, but it doesn't tell Sam what happens next or that it will come back when the date is confirmed. Still, the core obligation is met: no invented date, no false promise, honest about the pause. The shape is acceptably short. A small deduction for not telling Sam that it will text them once the date is confirmed — the parent is left slightly hanging without knowing what to expect — but there's no outright error. This is a 4 rather than a 5 because it leaves the parent without a clear sense of what comes next after the pause resolves.",
+    "score": 4
+  }
+}

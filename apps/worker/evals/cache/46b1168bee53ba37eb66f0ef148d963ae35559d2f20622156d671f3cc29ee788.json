@@ -1,0 +1,55 @@
+{
+  "response": {
+    "id": "msg_011Cg6jvkSAUQrdMbVU233AK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSowgKEAgSGAI4AUIIdGhpbmtpbmcSDH+TM3rJ94zfBO0oPRoMHeomZmy4/i6juq4OIjBcw2yz6S+YOGZS6wIpsmrGoFhLMJEs6MAwZMIZKWAW/RRH2KV1HEam5+o3xSCZbQMqwAdRSvzAI5uGyGa/UEGIvtK7Y1892x1CMWqFSD/WrkrxIEIAioPQ/lyRmicUhAyhQg8TD4b9O8I6hG+IR09qrLItSVPNWANDZakagGIWjaQ5NqbiXfGrGC1+h3X0BlUfWdVBd6pvIgj0J2a3E/8OVFtWEnLWw7eBdygewUomoje9ALDukaCfFmWD4yA3ELovdMfsCrrumrJHf2I7zptADRpqJ+szIRU1nHf4XPLrOEN97sOm28yVQNGQW6UXZDExqfi3iifnGng1d5VD2bqehMhwPi02zq1nYyyI494VCjsO85wqXwCdqnVToAs2C5IwEOU9/AJZxww2AT8NblnTJrPAomutAaCnOshZgg/OSjV5xObjCNwnmQos9xbar8S+1OifBsU9CYWrL8Lea8Awp+pHOiNhMpWEGwgVIldQIjEntpHh39p29pPh4ygU9BisxKHe+PiRLrSe8rP2ZmoiiJG6UFXx+mAN4L33xNpC7nZe2dYYHEqnfrsGp72s/niFGbLn5BBcGzzaZh5nPmlknUszRezlHqQFitSueLqChy16LXMeTserkix4UqwqLcv67GqmuncbsdiivXH6jG7HPpSgcjk66fFE/q+EmN1ckHLM4zsdSVOfh0hDbuQbZ4LsR1/h7gF18mw6F/DTM4Q76gDuIZ07X5oAfixCR+gjFM/2BdcOEeiGA148KLLMPH3vAmTBh+GNZs6kFSPjPuTD/HrWeTSx0Nmcg749zHDPW22affKMBGEARuYU+j4aPO5UNGGCSPjX8sg+9vfC/3+KXINGUh3L5BpjWnuyqkfH06Yh3WOSvd+gEdbOAUDySDzyfeYuY1UxqQmwHBhFXCUdOcdiOJoZ6eFd8H/wpK7osWCP8bSt8Y8PZEzSrZIls761kJoHfwpzVWqRj9QRwlxxIL66QtPKYzaa3lZcj5EJh6dmeF/YrRrm3SIlQV39VIMtSLLeKV5WvpqV+BM2J5yAEiD5rigbzy9o8LR4zePWFAI2VKgOD73H6L7KeI6syA+VrPyHKqxUce1NHQu3cOMKRbuRNwTjLUj03ZxH7KOKjFKxhhy11PCRTaj21JHTZH0V9XPmyV5k8OTPgSBcbrMaQENi9hNqVUldXIZoUUsun52Or7nkvGptNvXV9EJmO5BR32vjjytUtGPsdqhvq0cJTPau9bE6GfPiVxGcleeu0n+lSgSFzTY4q+NzjtAZIiYY8GSfCdlhPkeoX8IJC2+iEJJ9wNumogQbr34QBmi15M7KAgXUH7oKOW9bzhyKUKRAKsIYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01P6Q51rDn3wQ8jWP7r6nHEe",
+        "name": "search_village",
+        "input": {
+          "query": "family activities for kids",
+          "window": "weekend of Aug 8-9, 2026"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01SzBNvbMCE9Wg1R49sryAw8",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 382,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 292,
+      "output_tokens_details": {
+        "thinking_tokens": 179
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2529
+}

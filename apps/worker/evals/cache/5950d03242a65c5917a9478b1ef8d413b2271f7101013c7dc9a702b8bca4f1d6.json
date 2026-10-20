@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the verified registration window date and time (Sep 1, 7:00 a.m. for residents), correctly confirms that watching is already active (`watching: true`), and correctly promises to text before it opens — which matches the described ladder (a week out, evening before, fifteen minutes before). However, the registration live-truth override rules require including the source URL when reporting a date, and pausing reminder promises when `reminderState: paused`. There's no `reminderState` or `sourceUrl` explicitly shown here, so the live-truth override may not fully apply — the base rules say `watching: true` means \"I am already on it, and I will text you before\" is TRUE and the whole point of the feature. The reply is short, correct, no greeting, no sign-off, no markdown, names the exact date and time, confirms the watch is live, and promises the texts. This is exactly the correct shape for a watching:true registration window. Very minor: it could mention Milo by name to feel slightly more personal, but that's not required. Overall this is a clean, correct, complete reply.",
+    "score": 5
+  }
+}

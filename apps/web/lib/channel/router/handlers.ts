@@ -53,7 +53,6 @@ import {
 } from '~/lib/channel/linq/coparent-invite';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
-import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
@@ -1458,48 +1457,6 @@ async function preOpenReply(
     deps,
   );
   return { claimed: true, outcome: outcome.status, reply: outcome.reply };
-}
-
-/**
- * Rec-morning clock and portal. Reviewed copy, no model.
- *
- * AFTER registration: "waitlisted #3" is M7's to file, and a FAQ matcher that ran
- * first would steal the report. BEFORE name capture: that handler claims a bare
- * word, which is broader than a rec-morning question.
- *
- * A watch ask is deliberately not claimed — watching is the coach's job. This
- * handler answers which morning and which login, which is the GTM miss.
- */
-async function loadFamilyRecWhere(
-  database: Database,
-  familyId: string,
-): Promise<{ city: string | null; postal: string | null } | null> {
-  const [row] = await database
-    .select({
-      city: schema.families.city,
-      postalCode: schema.families.postalCode,
-      areaCoarse: schema.families.areaCoarse,
-    })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
-  if (!row) return null;
-  return { city: row.city, postal: row.postalCode ?? row.areaCoarse };
-}
-
-export function recMorningHandler(): DeterministicHandler {
-  return {
-    name: 'rec_morning',
-    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = recMorningReply(ctx.body, ctx.now);
-      if (named !== null) return { claimed: true, outcome: 'rec_morning', reply: named };
-      if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
-      const where = await loadFamilyRecWhere(database, ctx.familyId);
-      const reply = recMorningReply(ctx.body, ctx.now, where);
-      if (reply === null) return { claimed: false };
-      return { claimed: true, outcome: 'rec_morning', reply };
-    },
-  };
 }
 
 /**

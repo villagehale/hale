@@ -1,0 +1,68 @@
+{
+  "approvedSourceCommit": "36392678ac564716163686c74c836c49ddb9e50b",
+  "note": "Actual decompressed HTTP response bytes captured by Response.clone().arrayBuffer before SDK JSON parsing; synthetic saved-page acceptance only, no carrier or real family data. Valid UTF-8 is NOT proof of valid French.",
+  "audit": {
+    "frenchResponses": [
+      {
+        "case": "go",
+        "language": "fr-CA",
+        "sdkMatchesWire": true,
+        "validUtf8": true,
+        "oldMojibakePresent": false,
+        "alternateMojibakePresent": false,
+        "sha256": "6a46d766dc00ac0d53848d80b604144b0a888ac4d3b6f51e348835e8091f114e",
+        "message": "Bonjour! L'inscription publique au cours « LEGO: Preschool » (code 344301, pour les 4 à 6 ans, dimanches à 10 h 15 à partir du 27 septembre 2026) ouvre aujourd'hui, le 12 août 2026, à 6 h 30, heure de Toronto. D'après la page du cours, il reste actuellement 2 places, mais cela peut changer rapidement. Les tarifs publiés sont de 121,16 $ pour les résidents et de 139,36 $ pour les non-résidents. Je ne peux pas confirmer si votre enfant respecte la tranche d'âge : veuillez vérifier. Voici la page d'inscription : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 — et si vous devez d'abord vous connecter : https://cityofmarkham.perfectmind.com/Clients/MemberRegistration/MemberSignIn?returnUrl=https%3A%2F%2Fcityofmarkham.perfectmind.com%2FClients%2FBookMe4LandingPages%2FCoursesLandingPage%3FwidgetId%3Dbfd08479-60d6-43d9-b586-5b4c8305a003%26courseId%3D961140fe-0866-460f-9973-7c42cbe0a928"
+      },
+      {
+        "case": "waitlist_final",
+        "language": "fr-CA",
+        "sdkMatchesWire": true,
+        "validUtf8": true,
+        "oldMojibakePresent": false,
+        "alternateMojibakePresent": true,
+        "sha256": "b0609464b81838138e3534904511e024bab1f8b2eab1fab792623cba8c3f71b6",
+        "message": "Bonjour! Petit rappel concernant la liste d'attente pour le cours « LEGO: Preschool » (Ville de Markham, dĂ©but le dimanche 27 septembre 2026 Ă  10 h 15). D'aprĂšs ce que vous nous avez indiquĂ©, vous ĂȘtes en 2e position sur la liste d'attente et la date limite pour confirmer votre place est aujourd'hui, 12 aoĂ»t 2026, Ă  7 h (heure de Toronto). Je ne peux pas vĂ©rifier votre compte ni votre position moi-mĂȘme. La page officielle indique actuellement que le cours n'est pas complet (il resterait 2 places), mais cette information pourrait changer d'un instant Ă  l'autre. Les inscriptions publiques ont ouvert aujourd'hui Ă  6 h 30 (heure de Toronto). Les tarifs affichĂ©s sont de 121,16 $ pour les rĂ©sidents et 139,36 $ pour les non-rĂ©sidents. Le cours s'adresse aux enfants de 4 Ă  6 ans; Ă  vous de confirmer que cela convient Ă  votre enfant. Page officielle du cours : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928 Bonne chance!"
+      },
+      {
+        "case": "registration_reminder_proposed",
+        "language": "fr-CA",
+        "sdkMatchesWire": true,
+        "validUtf8": true,
+        "oldMojibakePresent": false,
+        "alternateMojibakePresent": false,
+        "sha256": "90c37af8d919440674d6c0cd774455320664276a6403253ea84729aa6d8c9e56",
+        "message": "Bonjour! J'ai bien repéré la date d'ouverture des inscriptions sur la page de la Ville de Markham : le 12 août 2026 à 6 h 30, heure de Toronto (heure de l'Est). Voici la page source : https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928\n\nJe vous propose un plan de rappels en trois temps : un rappel une semaine avant l'ouverture, un autre la veille au soir, puis un dernier 15 minutes avant l'ouverture. Rien n'est encore en place : il me faut d'abord votre confirmation. Si ce plan vous convient, répondez simplement ici, dans cette conversation, avec vos propres mots.\n\nPrécision importante : Hale n'inscrit personne, ne paie rien et ne réserve aucune place. Les rappels servent seulement à vous prévenir à temps pour faire l'inscription vous-même."
+      }
+    ],
+    "conclusion": "All three French bodies are valid UTF-8 and match SDK content. The waitlist-final body ALREADY CONTAINS a different mojibake pattern on the wire (dĂ©but, aoĂ»t). The old-pattern-only check was insufficient. This French sample is NOT accepted despite its model judge score of 4. No text repair or extra model call was made; old uncaptured wire origin remains unknown."
+  },
+  "wire": [
+    {
+      "kind": "http-response-bytes",
+      "at": "2026-10-20T02:46:49.990Z",
+      "status": 200,
+      "requestId": "req_011CgCiy4RrJ5ekFgTgQ6CnR",
+      "contentType": "application/json",
+      "sha256": "6a46d766dc00ac0d53848d80b604144b0a888ac4d3b6f51e348835e8091f114e",
+      "base64": "eyJtb2RlbCI6ImNsYXVkZS1zb25uZXQtNS01IiwiaWQiOiJtc2dfMDExQ2dDaXk0ZVZZcGM4bml0bkcxOE1ZIiwidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoiYXNzaXN0YW50IiwiY29udGVudCI6W3sidHlwZSI6InRleHQiLCJ0ZXh0Ijoie1wibWVzc2FnZVwiOlwiQm9uam91ciEgTCdpbnNjcmlwdGlvbiBwdWJsaXF1ZSBhdSBjb3VycyDCqyBMRUdPOiBQcmVzY2hvb2wgwrsgKGNvZGUgMzQ0MzAxLCBwb3VyIGxlcyA0IMOgIDYgYW5zLCBkaW1hbmNoZXMgw6AgMTAgaCAxNSDDoCBwYXJ0aXIgZHUgMjcgc2VwdGVtYnJlIDIwMjYpIG91dnJlIGF1am91cmQnaHVpLCBsZSAxMiBhb8O7dCAyMDI2LCDDoCA2IGggMzAsIGhldXJlIGRlIFRvcm9udG8uIEQnYXByw6hzIGxhIHBhZ2UgZHUgY291cnMsIGlsIHJlc3RlIGFjdHVlbGxlbWVudCAyIHBsYWNlcywgbWFpcyBjZWxhIHBldXQgY2hhbmdlciByYXBpZGVtZW50LiBMZXMgdGFyaWZzIHB1Ymxpw6lzIHNvbnQgZGUgMTIxLDE2ICQgcG91ciBsZXMgcsOpc2lkZW50cyBldCBkZSAxMzksMzYgJCBwb3VyIGxlcyBub24tcsOpc2lkZW50cy4gSmUgbmUgcGV1eCBwYXMgY29uZmlybWVyIHNpIHZvdHJlIGVuZmFudCByZXNwZWN0ZSBsYSB0cmFuY2hlIGQnw6JnZSA6IHZldWlsbGV6IHbDqXJpZmllci4gVm9pY2kgbGEgcGFnZSBkJ2luc2NyaXB0aW9uIDogaHR0cHM6Ly9jaXR5b2ZtYXJraGFtLnBlcmZlY3RtaW5kLmNvbS9DbGllbnRzL0Jvb2tNZTRMYW5kaW5nUGFnZXMvQ291cnNlc0xhbmRpbmdQYWdlP3dpZGdldElkPWJmZDA4NDc5LTYwZDYtNDNkOS1iNTg2LTViNGM4MzA1YTAwMyZjb3Vyc2VJZD05NjExNDBmZS0wODY2LTQ2MGYtOTk3My03YzQyY2JlMGE5Mjgg4oCUIGV0IHNpIHZvdXMgZGV2ZXogZCdhYm9yZCB2b3VzIGNvbm5lY3RlciA6IGh0dHBzOi8vY2l0eW9mbWFya2hhbS5wZXJmZWN0bWluZC5jb20vQ2xpZW50cy9NZW1iZXJSZWdpc3RyYXRpb24vTWVtYmVyU2lnbkluP3JldHVyblVybD1odHRwcyUzQSUyRiUyRmNpdHlvZm1hcmtoYW0ucGVyZmVjdG1pbmQuY29tJTJGQ2xpZW50cyUyRkJvb2tNZTRMYW5kaW5nUGFnZXMlMkZDb3Vyc2VzTGFuZGluZ1BhZ2UlM0Z3aWRnZXRJZCUzRGJmZDA4NDc5LTYwZDYtNDNkOS1iNTg2LTViNGM4MzA1YTAwMyUyNmNvdXJzZUlkJTNEOTYxMTQwZmUtMDg2Ni00NjBmLTk5NzMtN2M0MmNiZTBhOTI4XCJ9In1dLCJjb250YWluZXIiOm51bGwsInN0b3BfcmVhc29uIjoiZW5kX3R1cm4iLCJzdG9wX3NlcXVlbmNlIjpudWxsLCJzdG9wX2RldGFpbHMiOm51bGwsInVzYWdlIjp7ImlucHV0X3Rva2VucyI6MTAzNywiY2FjaGVfY3JlYXRpb25faW5wdXRfdG9rZW5zIjowLCJjYWNoZV9yZWFkX2lucHV0X3Rva2VucyI6MTExMywiY2FjaGVfY3JlYXRpb24iOnsiZXBoZW1lcmFsXzVtX2lucHV0X3Rva2VucyI6MCwiZXBoZW1lcmFsXzFoX2lucHV0X3Rva2VucyI6MH0sIm91dHB1dF90b2tlbnMiOjUzMSwib3V0cHV0X3Rva2Vuc19kZXRhaWxzIjp7InRoaW5raW5nX3Rva2VucyI6MH0sInNlcnZpY2VfdGllciI6InN0YW5kYXJkIiwiaW5mZXJlbmNlX2dlbyI6Imdsb2JhbCIsInNwZWVkIjoic3RhbmRhcmQifSwiZGlhZ25vc3RpY3MiOm51bGx9"
+    },
+    {
+      "kind": "http-response-bytes",
+      "at": "2026-10-20T02:47:36.752Z",
+      "status": 200,
+      "requestId": "req_011CgCj2XJxJHkDGHVfb4t5t",
+      "contentType": "application/json",
+      "sha256": "b0609464b81838138e3534904511e024bab1f8b2eab1fab792623cba8c3f71b6",
+      "base64": "eyJtb2RlbCI6ImNsYXVkZS1zb25uZXQtNS01IiwiaWQiOiJtc2dfMDExQ2dDajJYWGJBQkxkY3BKaUpDS2Y0IiwidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoiYXNzaXN0YW50IiwiY29udGVudCI6W3sidHlwZSI6InRleHQiLCJ0ZXh0Ijoie1wibWVzc2FnZVwiOlwiQm9uam91ciEgUGV0aXQgcmFwcGVsIGNvbmNlcm5hbnQgbGEgbGlzdGUgZCdhdHRlbnRlIHBvdXIgbGUgY291cnMgwqsgTEVHTzogUHJlc2Nob29sIMK7IChWaWxsZSBkZSBNYXJraGFtLCBkxILCqWJ1dCBsZSBkaW1hbmNoZSAyNyBzZXB0ZW1icmUgMjAyNiDEgiAgMTAgaCAxNSkuIEQnYXByxILFoXMgY2UgcXVlIHZvdXMgbm91cyBhdmV6IGluZGlxdcSCwqksIHZvdXMgxILImHRlcyBlbiAyZSBwb3NpdGlvbiBzdXIgbGEgbGlzdGUgZCdhdHRlbnRlIGV0IGxhIGRhdGUgbGltaXRlIHBvdXIgY29uZmlybWVyIHZvdHJlIHBsYWNlIGVzdCBhdWpvdXJkJ2h1aSwgMTIgYW/EgsK7dCAyMDI2LCDEgiAgNyBoIChoZXVyZSBkZSBUb3JvbnRvKS4gSmUgbmUgcGV1eCBwYXMgdsSCwqlyaWZpZXIgdm90cmUgY29tcHRlIG5pIHZvdHJlIHBvc2l0aW9uIG1vaS1txILImG1lLiBMYSBwYWdlIG9mZmljaWVsbGUgaW5kaXF1ZSBhY3R1ZWxsZW1lbnQgcXVlIGxlIGNvdXJzIG4nZXN0IHBhcyBjb21wbGV0IChpbCByZXN0ZXJhaXQgMiBwbGFjZXMpLCBtYWlzIGNldHRlIGluZm9ybWF0aW9uIHBvdXJyYWl0IGNoYW5nZXIgZCd1biBpbnN0YW50IMSCICBsJ2F1dHJlLiBMZXMgaW5zY3JpcHRpb25zIHB1YmxpcXVlcyBvbnQgb3V2ZXJ0IGF1am91cmQnaHVpIMSCICA2IGggMzAgKGhldXJlIGRlIFRvcm9udG8pLiBMZXMgdGFyaWZzIGFmZmljaMSCwqlzIHNvbnQgZGUgMTIxLDE2ICQgcG91ciBsZXMgcsSCwqlzaWRlbnRzIGV0IDEzOSwzNiAkIHBvdXIgbGVzIG5vbi1yxILCqXNpZGVudHMuIExlIGNvdXJzIHMnYWRyZXNzZSBhdXggZW5mYW50cyBkZSA0IMSCICA2IGFuczsgxIIgIHZvdXMgZGUgY29uZmlybWVyIHF1ZSBjZWxhIGNvbnZpZW50IMSCICB2b3RyZSBlbmZhbnQuIFBhZ2Ugb2ZmaWNpZWxsZSBkdSBjb3VycyA6IGh0dHBzOi8vY2l0eW9mbWFya2hhbS5wZXJmZWN0bWluZC5jb20vQ2xpZW50cy9Cb29rTWU0TGFuZGluZ1BhZ2VzL0NvdXJzZXNMYW5kaW5nUGFnZT93aWRnZXRJZD1iZmQwODQ3OS02MGQ2LTQzZDktYjU4Ni01YjRjODMwNWEwMDMmY291cnNlSWQ9OTYxMTQwZmUtMDg2Ni00NjBmLTk5NzMtN2M0MmNiZTBhOTI4IEJvbm5lIGNoYW5jZSFcIn0ifV0sImNvbnRhaW5lciI6bnVsbCwic3RvcF9yZWFzb24iOiJlbmRfdHVybiIsInN0b3Bfc2VxdWVuY2UiOm51bGwsInN0b3BfZGV0YWlscyI6bnVsbCwidXNhZ2UiOnsiaW5wdXRfdG9rZW5zIjoxMDczLCJjYWNoZV9jcmVhdGlvbl9pbnB1dF90b2tlbnMiOjAsImNhY2hlX3JlYWRfaW5wdXRfdG9rZW5zIjoxMTEzLCJjYWNoZV9jcmVhdGlvbiI6eyJlcGhlbWVyYWxfNW1faW5wdXRfdG9rZW5zIjowLCJlcGhlbWVyYWxfMWhfaW5wdXRfdG9rZW5zIjowfSwib3V0cHV0X3Rva2VucyI6NTQ4LCJvdXRwdXRfdG9rZW5zX2RldGFpbHMiOnsidGhpbmtpbmdfdG9rZW5zIjowfSwic2VydmljZV90aWVyIjoic3RhbmRhcmQiLCJpbmZlcmVuY2VfZ2VvIjoiZ2xvYmFsIiwic3BlZWQiOiJzdGFuZGFyZCJ9LCJkaWFnbm9zdGljcyI6bnVsbH0="
+    },
+    {
+      "kind": "http-response-bytes",
+      "at": "2026-10-20T02:48:48.858Z",
+      "status": 200,
+      "requestId": "req_011CgCj7skuidg79KkG9mfnY",
+      "contentType": "application/json",
+      "sha256": "90c37af8d919440674d6c0cd774455320664276a6403253ea84729aa6d8c9e56",
+      "base64": "eyJtb2RlbCI6ImNsYXVkZS1zb25uZXQtNS01IiwiaWQiOiJtc2dfMDExQ2dDajdzeVlSTE1lN05pdWlkQ04yIiwidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoiYXNzaXN0YW50IiwiY29udGVudCI6W3sidHlwZSI6InRleHQiLCJ0ZXh0Ijoie1wibWVzc2FnZVwiOlwiQm9uam91ciEgSidhaSBiaWVuIHJlcMOpcsOpIGxhIGRhdGUgZCdvdXZlcnR1cmUgZGVzIGluc2NyaXB0aW9ucyBzdXIgbGEgcGFnZSBkZSBsYSBWaWxsZSBkZSBNYXJraGFtIDogbGUgMTIgYW/Du3QgMjAyNiDDoCA2IGggMzAsIGhldXJlIGRlIFRvcm9udG8gKGhldXJlIGRlIGwnRXN0KS4gVm9pY2kgbGEgcGFnZSBzb3VyY2UgOiBodHRwczovL2NpdHlvZm1hcmtoYW0ucGVyZmVjdG1pbmQuY29tL0NsaWVudHMvQm9va01lNExhbmRpbmdQYWdlcy9Db3Vyc2VzTGFuZGluZ1BhZ2U/d2lkZ2V0SWQ9YmZkMDg0NzktNjBkNi00M2Q5LWI1ODYtNWI0YzgzMDVhMDAzJmNvdXJzZUlkPTk2MTE0MGZlLTA4NjYtNDYwZi05OTczLTdjNDJjYmUwYTkyOFxcblxcbkplIHZvdXMgcHJvcG9zZSB1biBwbGFuIGRlIHJhcHBlbHMgZW4gdHJvaXMgdGVtcHMgOiB1biByYXBwZWwgdW5lIHNlbWFpbmUgYXZhbnQgbCdvdXZlcnR1cmUsIHVuIGF1dHJlIGxhIHZlaWxsZSBhdSBzb2lyLCBwdWlzIHVuIGRlcm5pZXIgMTUgbWludXRlcyBhdmFudCBsJ291dmVydHVyZS4gUmllbiBuJ2VzdCBlbmNvcmUgZW4gcGxhY2UgOiBpbCBtZSBmYXV0IGQnYWJvcmQgdm90cmUgY29uZmlybWF0aW9uLiBTaSBjZSBwbGFuIHZvdXMgY29udmllbnQsIHLDqXBvbmRleiBzaW1wbGVtZW50IGljaSwgZGFucyBjZXR0ZSBjb252ZXJzYXRpb24sIGF2ZWMgdm9zIHByb3ByZXMgbW90cy5cXG5cXG5QcsOpY2lzaW9uIGltcG9ydGFudGUgOiBIYWxlIG4naW5zY3JpdCBwZXJzb25uZSwgbmUgcGFpZSByaWVuIGV0IG5lIHLDqXNlcnZlIGF1Y3VuZSBwbGFjZS4gTGVzIHJhcHBlbHMgc2VydmVudCBzZXVsZW1lbnQgw6Agdm91cyBwcsOpdmVuaXIgw6AgdGVtcHMgcG91ciBmYWlyZSBsJ2luc2NyaXB0aW9uIHZvdXMtbcOqbWUuXCJ9In1dLCJjb250YWluZXIiOm51bGwsInN0b3BfcmVhc29uIjoiZW5kX3R1cm4iLCJzdG9wX3NlcXVlbmNlIjpudWxsLCJzdG9wX2RldGFpbHMiOm51bGwsInVzYWdlIjp7ImlucHV0X3Rva2VucyI6MzUxLCJjYWNoZV9jcmVhdGlvbl9pbnB1dF90b2tlbnMiOjAsImNhY2hlX3JlYWRfaW5wdXRfdG9rZW5zIjo4ODMsImNhY2hlX2NyZWF0aW9uIjp7ImVwaGVtZXJhbF81bV9pbnB1dF90b2tlbnMiOjAsImVwaGVtZXJhbF8xaF9pbnB1dF90b2tlbnMiOjB9LCJvdXRwdXRfdG9rZW5zIjozOTksIm91dHB1dF90b2tlbnNfZGV0YWlscyI6eyJ0aGlua2luZ190b2tlbnMiOjB9LCJzZXJ2aWNlX3RpZXIiOiJzdGFuZGFyZCIsImluZmVyZW5jZV9nZW8iOiJnbG9iYWwiLCJzcGVlZCI6InN0YW5kYXJkIn0sImRpYWdub3N0aWNzIjpudWxsfQ=="
+    }
+  ]
+}

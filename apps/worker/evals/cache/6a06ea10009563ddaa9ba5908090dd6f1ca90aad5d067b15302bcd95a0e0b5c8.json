@@ -1,0 +1,19 @@
+{
+  "value": {
+    "published_registration_window": {
+      "found": false,
+      "reason": "no_year_stated",
+      "cycle_on_page": "Fall Programs & Winter Camps Registration",
+      "year_evidence": null,
+      "preview": null,
+      "resident_open": null,
+      "general_open": null,
+      "unclassified_open": null,
+      "evidence": null,
+      "confidence": 0.3,
+      "time_zone": null,
+      "time_zone_evidence": null
+    }
+  },
+  "latencyMs": 1566
+}

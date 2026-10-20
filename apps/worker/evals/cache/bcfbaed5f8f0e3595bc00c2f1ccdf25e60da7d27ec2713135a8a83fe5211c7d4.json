@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the verified resident opening date (Sep 1, 7:00 a.m.) as a flat fact (no hedging, no \"their site says\"), confirms the watch is already active, and promises to text before it opens — all of which is exactly right per the rules for `watching: true`. It does not invent anything, does not send the parent to the app, does not ask a clarifying question, and stops cleanly. The one tiny blemish is that it does not mention Milo by name (the parent asked specifically about Milo), but that is a very minor omission that doesn't affect correctness. Otherwise it is a near-perfect shape.",
+    "score": 4
+  }
+}

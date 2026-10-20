@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly confirms the switch that `autonomySwitchOff` shows was turned off this turn for both send_email and reply_to_email. It is short, in the parent's language, and stops after one line. One small blemish: \"Je ne enverrai\" should be elided to \"Je n'enverrai\".",
+    "score": 4
+  }
+}

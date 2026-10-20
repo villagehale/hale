@@ -458,6 +458,20 @@ export function makeFakeDb(): FakeDb {
   /** A SELECT's rows. See the module note for which predicates are evaluated. */
   const selectFrom = (table: unknown) => {
     const rows = rowsFor(table);
+    if (table === schema.familyMembers) {
+      const chain = thenable(rows);
+      chain.innerJoin = (joined: unknown) => {
+        if (joined !== schema.users) throw new Error('fake member join: unexpected table');
+        return scopedSelect(
+          table,
+          rows.map((member) => ({
+            ...member,
+            name: rowsFor(schema.users).find((user) => user.id === member.userId)?.name ?? null,
+          })),
+        );
+      };
+      return chain;
+    }
     if (!selectsAreScoped(table)) return thenable(rows);
     return scopedSelect(table, rows);
   };

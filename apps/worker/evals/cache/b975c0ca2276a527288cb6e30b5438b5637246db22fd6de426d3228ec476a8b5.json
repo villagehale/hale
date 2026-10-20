@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cg6vnzGAewMLzVtPUJjUm",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvggKEAgSGAI4AUIIdGhpbmtpbmcSDE8Hy4P68quwemg1zhoMG0OD/SZZS+BDjHfWIjBJlekc2/b4OI5gR/6wQ0Ansimzkeq6yYn7p5RdtmdjAp9FRCDo38dMX/Yun4iCMdEq2weEU37WdwkuspcXkFtFNBRKLE/ZLJbtvXl+P72qiVoUiksZWiwG+PnXGKqZz9A/Ig5/HSw+zWS710A2Xp1YYMRvmoMuap6m80/Vyn0yn9Y4xsliwVjLzmNiBWt/jtrgndp0ipryG4UPExl28IDuuQhM6ia4Tq/LKDo04ZwfMo7r6n2QSAE7+erjkXmN/2VDambZpMMXR5oteTCuvC2+SZlD/CHuT+cjECqa0LMey+2YTQp7X4rfsV97UXj2R8md1xksSo/0PFwdHMkiHP9TCUBwkw4NNGIxDBHPGYY6wQiP1Jl9dBTkwgo+myL2rREaz4L5oExQlFraiaISw9cLlJrr2b28ejbdYFqmhOaVtDrFQ+pGpNaGkP1c6rdldwijb7JeZ6Epj4u1FqPyk6aYtQrLqHeC8Yy9hCw0FORMMQlq8y0amgXFDXioOrjNfqPaA/Aij+BgSLQVE6Jh8tp6q6vJjpt/Z9m8UTVXBnGG//p6WT96xMBYqXsNDfGJjN5govf04vUbYCiPUvsXt1LXoTxUpIXvUx+xO0DHwlOBCAp4QkHIA7qTUPiDbwgNg8zS6aUvBco1zZRhbyLLjaTFEy2ba6u8B6Wz98bGB4j/gGbMgcrH7KAAOhmANeWijy+KvIe61yVSGCTWsuJoitSwnNCYZQvqiNEWAmoqLTmE3GxWmX0bdQWpuIrFZ04P/sziNESLJMAAQflMXA/4KwsNpvwLf864J5M7gevg/yMxEYQG7Uu4wNtHrUxHe7b2iShbri+yMkuFfQvS94ivDYxW/SxuG+CtqWNj0t3zGuCYKzm2Kd9s9MDp9qQesAdB4wmHWTr6aRV8FWa0DqBtOzkLFA1qWmI6i+8gVWC5gv94pq3Im6sMouusaZPCIqBUSJnvyRFu9LJpKGb/1GjgH9rI7y3eTW9feyJy6hPttNr13KpzqOzS36SE4yqxjwMkczASLfhog4XkbjNSzseBzXX8r7nLXc0LA73lDS10ApLCgJMnTv19LbreMaDmMQ2WFDWfPYugMn253dACUFGg3gRLfQ7DjbNcfIDMWQPHkdjrUQUVvlJgAVCZbbCgWIxuS3/hPBjkZK12GKrQ9VA/AVSO4y/HMaJFIu1KHiXrtgLRFBwIYqXDHxRzadKq97n85YqnrC0cFpe49ROVZsZJCmJx3gOMmxldskRspyaDghxnfV3n3xI9xkKsGZxiULvdwThRaOgjqSCm9f2TWowCpRQS9x/9AWVNx2P/gTDAXTJGadlChYBQHG0/PG/TmKrijrDaXoXVcmQninyBHxyCNBSTzUhtP5LuCZdcTYgE3qEYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Yes. Halton Hills fall registration opens Sep 1 at 7:00 a.m. (America/Toronto) for you, and general registration opens Sep 8 at 7:00 a.m. I'm watching the fall recreation programs page and will text you when the Sep 1 opening gets close. That covers swim along with everything else on that page. Their page is https://example.org/registration\n\nDo you want me to look for a specific swim level or time for Milo before then?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 772,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22217,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 326,
+      "output_tokens_details": {
+        "thinking_tokens": 177
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3685
+}

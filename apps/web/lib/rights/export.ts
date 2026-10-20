@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { type FamilyBasicsView, toFamilyBasics } from '~/lib/dashboard/family-basics';
 import { type FamilyMembersView, toFamilyMembersView } from '~/lib/dashboard/family-members';
 import type { TrailView } from '~/lib/dashboard/mappers';
@@ -73,12 +73,16 @@ export interface FamilyExportDocument {
    * this" from "Hale did not look".
    */
   registrationPreparation: {
-    municipality: string;
-    cycleLabel: string;
+    municipality: string | null;
+    cycleLabel: string | null;
     courseHost: string | null;
     courseOpensAt: string | null;
     /** What the parent TOLD Hale about their portal setup. Null is unanswered. */
     readinessReady: boolean | null;
+    lastReadAt: string | null;
+    nextCheckAt: string | null;
+    pausedAt: string | null;
+    hasPendingChange: boolean;
     /** When this ROW last changed — not when the link was pasted, which is a dated line
      * in the trail below. Later reads refresh the anchor on the same row. */
     updatedAt: string;
@@ -335,13 +339,13 @@ export async function assembleFamilyExport(
 
   const saveRows = await database
     .select({
-      title: schema.villageCandidates.title,
+      title: schema.familyActivityHistory.title,
       savedAt: schema.villageSaves.createdAt,
     })
     .from(schema.villageSaves)
     .innerJoin(
-      schema.villageCandidates,
-      eq(schema.villageSaves.candidateId, schema.villageCandidates.id),
+      schema.familyActivityHistory,
+      eq(schema.villageSaves.candidateId, schema.familyActivityHistory.id),
     )
     .where(eq(schema.villageSaves.familyId, familyId))
     .orderBy(schema.villageSaves.createdAt);
@@ -392,18 +396,20 @@ export async function assembleFamilyExport(
 
   const preparationRows = await database
     .select({
-      municipality: schema.registrationWindows.municipality,
-      cycleLabel: schema.registrationWindows.cycleLabel,
+      municipality: sql<
+        string | null
+      >`${schema.registrationSequences.sourceContext}->>'municipality'`,
+      cycleLabel: sql<string | null>`${schema.registrationSequences.sourceContext}->>'cycleLabel'`,
       courseUrl: schema.registrationSequences.courseUrl,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       readinessReady: schema.registrationSequences.readinessReady,
+      lastReadAt: schema.registrationSequences.lastReadAt,
+      nextCheckAt: schema.registrationSequences.nextCheckAt,
+      pausedAt: schema.registrationSequences.pausedAt,
+      pendingChange: schema.registrationSequences.pendingChange,
       updatedAt: schema.registrationSequences.updatedAt,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
-      schema.registrationWindows,
-      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
-    )
     .where(eq(schema.registrationSequences.familyId, familyId))
     .orderBy(schema.registrationSequences.createdAt);
   // A claimed window nobody has pasted a link for or answered about holds nothing this
@@ -416,6 +422,10 @@ export async function assembleFamilyExport(
       courseHost: hostOf(row.courseUrl),
       courseOpensAt: row.courseOpensAt?.toISOString() ?? null,
       readinessReady: row.readinessReady,
+      lastReadAt: row.lastReadAt?.toISOString() ?? null,
+      nextCheckAt: row.nextCheckAt?.toISOString() ?? null,
+      pausedAt: row.pausedAt?.toISOString() ?? null,
+      hasPendingChange: row.pendingChange != null,
       updatedAt: row.updatedAt.toISOString(),
     }));
 

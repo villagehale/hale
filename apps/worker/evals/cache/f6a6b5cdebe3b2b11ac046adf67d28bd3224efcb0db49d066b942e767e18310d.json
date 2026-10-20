@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own and to ask first. Both send_email and reply_to_email autonomy were turned off this turn, so the reply's promise to ask before every email is backed by state. It is one plain sentence in the parent's language and confirms the change accurately. There is no greeting, sign-off or extra question, and every detail is grounded. This is the short, exact reply the product calls for.",
+    "score": 5
+  }
+}

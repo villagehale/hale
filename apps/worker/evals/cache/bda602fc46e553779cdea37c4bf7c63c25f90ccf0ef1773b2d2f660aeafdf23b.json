@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that `watching` is already true for Halton Hills fall 2026 recreation programs, states the resident-priority opening (Sep 1, 7:00 a.m.) as a flat recalled fact (correct — no hedging, no \"their site says\"), confirms the watch is already active, and promises the pre-opening texts (a week out, evening before, fifteen minutes before). This is exactly right per the rules: `watching: true` means the sweep is already claiming the window and the texts are real, so \"I'm already on it, and I'll text you before it opens\" is the complete and correct answer. No greeting, no sign-off, no markdown, no app handback, no URL invented. The reply is short, actionable, and does the job in the required shape.",
+    "score": 5
+  }
+}

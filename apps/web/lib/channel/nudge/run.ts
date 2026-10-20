@@ -1,9 +1,10 @@
 import type { AgentClient } from '@hale/agent';
-import { type Database, type RegistrationWindow, schema } from '@hale/db';
+import { type Database, type RegistrationSourceState, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, lte } from 'drizzle-orm';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
+import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { dutyOverviewForWeeklyBubble } from '~/lib/channel/coparent/duty/asks';
 import { absorbDutyLine } from '~/lib/channel/coparent/duty/copy';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
@@ -21,10 +22,7 @@ import {
   loadParentCallName,
 } from '~/lib/channel/identity/parent-call-name';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
-import {
-  readWindows as readRegistrationWindows,
-  readCandidates as readVillageCandidates,
-} from '~/lib/channel/intake/radar';
+import { readCandidates as readVillageCandidates } from '~/lib/channel/intake/radar';
 import {
   type RadarCandidate,
   type RadarChild,
@@ -84,6 +82,7 @@ import { addDaysToKey, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
+import { recordActivityOffers } from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
 import { composeNudgeMessage } from './nudge-voice';
@@ -195,8 +194,12 @@ export interface NudgeAuditRow {
 export interface NudgeRunDeps {
   selectFamilies(database: Database, now: Date): Promise<NudgeFamily[]>;
   loadChildren(database: Database, familyId: string): Promise<NudgeChildRow[]>;
-  loadCandidates(database: Database, familyId: string): Promise<RadarCandidate[]>;
-  loadWindows(database: Database, areaCoarse: string): Promise<RegistrationWindow[]>;
+  loadCandidates(database: Database, familyId: string, now?: Date): Promise<RadarCandidate[]>;
+  loadWindows(
+    database: Database,
+    areaCoarse: string,
+    now?: Date,
+  ): Promise<RegistrationSourceState[]>;
   /** Health checkpoints this family must not be raised about again (VIL-243 · M8). */
   loadSuppressedCheckpoints(database: Database, familyId: string): Promise<Set<string>>;
   /** Registration windows an M7 sequence (VIL-242) is already preparing this family
@@ -250,6 +253,7 @@ export interface NudgeRunDeps {
    * the same question, never the thing that makes this one safe. */
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(database: Database, write: NudgeLedgerWrite): Promise<string>;
+  recordActivityOffers: typeof recordActivityOffers;
   audit(database: Database, row: NudgeAuditRow): Promise<void>;
   /**
    * MEM-10 · close the open-loops promise this sweep exists to make good on. REQUIRED
@@ -558,7 +562,7 @@ async function decideForFamily(
   family: NudgeFamily,
   deps: NudgeRunDeps,
   now: Date,
-): Promise<NudgeDecision> {
+): Promise<NudgeDecision & { offeredPick?: ActivityPick }> {
   const childRows = await deps.loadChildren(database, family.familyId);
   const { children, teenChildIds, healthChildren } = splitByStage(childRows, now);
   // A family with no children on file has nothing any nudge class could rest on.
@@ -583,8 +587,10 @@ async function decideForFamily(
     saturdayPlans,
     householdBias,
   ] = await Promise.all([
-    weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
-    area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
+    weekendPossible ? deps.loadCandidates(database, family.familyId, now) : Promise.resolve([]),
+    area && weekendPossible
+      ? deps.loadWindows(database, family.familyId, now)
+      : Promise.resolve([]),
     // Weather is an input, never a blocker: the port swallows its own failures.
     area && weekendPossible
       ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
@@ -609,7 +615,7 @@ async function decideForFamily(
       })
     : [];
 
-  return decideNudge({
+  const decision = decideNudge({
     children,
     candidates,
     windows,
@@ -625,6 +631,27 @@ async function decideForFamily(
     now,
     timeZone: family.timeZone,
   });
+  if (decision.nudge?.kind !== 'weather_swap' && decision.nudge?.kind !== 'weekday_dropin')
+    return decision;
+  const selectedId = decision.nudge.candidateRef.id;
+  const selected = candidates.find((candidate) => candidate.id === selectedId);
+  return {
+    ...decision,
+    offeredPick: selected?.sourceUrl
+      ? {
+          name: selected.title,
+          ageFit: selected.ageRange ?? '',
+          when: selected.whenLabel,
+          price: selected.priceLevel === 'free' ? 'free' : null,
+          sourceName: selected.venueName ?? '',
+          source: 'web',
+          sourceUrl: selected.sourceUrl,
+          eventDate: selected.eventDate ?? undefined,
+          placeId: selected.placeId ?? undefined,
+          civicVenueId: selected.civicVenueId ?? undefined,
+        }
+      : undefined,
+  };
 }
 
 /**
@@ -1018,6 +1045,8 @@ async function runForFamily(
   // ONCE PER HOUSEHOLD, not once per number: both ledgers below record a fact about the
   // FAMILY, and a second write would be Hale asserting twice what happened once.
   if (firstMessageId !== null) {
+    if (decision.offeredPick)
+      await deps.recordActivityOffers(database, family.familyId, [decision.offeredPick], now);
     await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
   }
   return { quiet: false, sent, deduped, queued: 0, shadowUnqueued, held, skips: decision.skips };
@@ -1174,8 +1203,10 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
   return {
     selectFamilies: selectNudgeFamilies,
     loadChildren: readNudgeChildren,
-    loadCandidates: (database, familyId) => readVillageCandidates(database, familyId),
-    loadWindows: (database, areaCoarse) => readRegistrationWindows(database, areaCoarse),
+    recordActivityOffers,
+    loadCandidates: (database, familyId, now) =>
+      readVillageCandidates(database, familyId, { window: 'this coming weekend', now }),
+    loadWindows: async () => [],
     loadSuppressedCheckpoints: (database, familyId) =>
       loadSuppressedCheckpointRefs(database, familyId),
     loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),

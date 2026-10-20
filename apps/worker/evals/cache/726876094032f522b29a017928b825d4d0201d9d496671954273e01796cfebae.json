@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply has two serious problems. First, `opensFor` is flagged as unverifiable (\"Current date could not be verified. Do not use a cached date.\") — so the previous thread message stating \"Sep 1 at 7:00 a.m.\" was already in error, and now Hale is correctly noting it cannot verify the date. However, the rules say HALE NEVER SENDS A PARENT TO THE APP, and more broadly never hands the parent a URL to go check themselves. Sending the parent to https://example.org/registration is exactly that — handing the job back. That caps the score at 2. Second, the reply explains its own internal machinery (\"date reminders are paused while I check again\"), which is self-absorbed explanation of limits. The correct reply would acknowledge the date cannot be confirmed right now and that it will text Sam when it has the verified date — without sending them anywhere.",
+    "score": 2
+  }
+}

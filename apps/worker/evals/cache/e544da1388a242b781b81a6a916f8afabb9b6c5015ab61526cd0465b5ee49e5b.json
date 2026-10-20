@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The empty slot list is correct. The page was opened, and it says the youngest program starts at age 8 and that there are no preschool or toddler classes. Nothing from the 8-12 foil class was stretched to fit a toddler, and none of the other programs' figures leaked in. The message is plain ASCII with no link and no question, and the watchFor licenses \"there is nothing running\". Because watch is true, the first-person \"I'll keep watching and text you\" correctly reports a commitment that already exists. It falls short of a 5 on specificity and attribution. It never says the club's own page states the youngest program starts at age 8, and it never says the club offers no toddler classes. \"What I could find\" is vaguer than the page's explicit statement warrants.",
+    "score": 4
+  }
+}

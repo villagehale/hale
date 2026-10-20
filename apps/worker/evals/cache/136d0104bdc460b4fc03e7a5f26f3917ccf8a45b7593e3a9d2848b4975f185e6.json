@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011Cg6jxXycTdNVUcoX3zi46",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5QcKEAgSGAI4AUIIdGhpbmtpbmcSDFyR9Mx5ICYNxljBRBoMFQqIyvGjDQy6Yyj3IjBahh7vJ9CE/A4GX3MqUUFgqXl8/tW3mKPldNOX2mtEH7DzZjOYBtPJR1OAqqK01o4qggeG0ko2eNvB3P2JCtqGhYp3YJJJtv6Pd7r001/kY4UhuZC1h+iaTM7pzs8HtBZz+jDrZcN9NxzHtMBC3bMenJnzqzFOnq3GLJIRgtYciDNVpZ9MoyUVcwbs7AihMwpvplXEOWanLYp9DIga3Q1/JxJ7SB2z1Y9dj4Tfl3O/U/5A43ZxsMRrIAdRTen7787OAYDpw8wO0QpQFfl49cGDrAzidSzLwL7QHYxROOcHuGAEBkGdwtAGDQo12Xd1OY0pEC8MydaFJ8LVAsYOKkcNFxX/7MqzE9kr5ooH1fFhI6qnYvQxIwwqyYC0ZTFl1NEgNu3uNPvCReqjjDPNtzbeJ4N724oIlYiYdx88H8D0WZnxxQVbvCTar84LPztMgeAwbZ6irA6tDR1o/QNG4FK5J5KFV8SaNhLf41APrLvc5ziSCOXoU/ca2aS7ww8eNYKNApWsNQUV+munu4uzwwlWcXDrug5ps4GpzOFkcnj/D6erEvsiA52284vMxqlkNZIULkmLproMeLbQ4OqIfZyPYZPckcfGlFQ/OaolqtgPebqmG0rOm/qX4Ci/GrvToi9ygS5lMO0UqdX3zMHPBZf0c7Bye72+yziqjQKA53WCZeTQp8Y/rHMSMUAwuZpDo/1iXiPXtZDouni3K3TEYyfD2ePHobdC/7g6Hdtph11AS8hQjZfeB1rZ+hZk0Fe5mEeD8OvlzBDXgX9fmpuQWp+Z7NzKKlZBW5R0t5W8wxzxl8zWK561aA5Bj+RQLUU9DhrzHQMdW7skO9zu/J43fQWV+BDVjwEZib4NtAM6xLeV3lEZJJuAhtJ+LKhLw3VBsA/sYPbPLmkP2/fuoNSzoS9scB5x8pyhJtF1Xqbpgt8VwpCMO6odt2xtCiYz9+uLyfgUc2Rn4DcR/QZoaigsqQl+jns2eE3qKFr2YNivtt70YqZmKjoCcG8KWWeMDchbM65rcQsKsZTuXTicruI/nOiv71E1UlKqJ7Vx0wKEmLOYPw+Alw+c1Jwe8Rmo7I1ZwHgRm6SbMpSaJW4mHrJJdBqefmXAn+tGjPPQnJW0N8dSlPe83WqJ2ghNXwVptDy8G2F5JNjHar23iMtct49xv+502rKkfsaq7GaHnbZoT3v6+pFiSWfx+VEbeiAU8aDGSS8s8MQ65xuH62cECsviTxFctnWrOsWz7rrWneIPKLU17+AQinbuGAE="
+      },
+      {
+        "type": "text",
+        "text": "Soccer practice is Sat 10:00am at Cedarvale Park. After that, Toronto Public Library's program page lists Fanous lantern craft for Saturday afternoon. It's free, and the page gives ages 6-12, so it suits Ada but Milo is just under. The page doesn't give a time or branch, and it's the library's own listing rather than something I've confirmed. Want me to add it to Saturday?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 1343,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 290,
+      "output_tokens_details": {
+        "thinking_tokens": 152
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3496
+}

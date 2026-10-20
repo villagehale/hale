@@ -1,7 +1,7 @@
 import type { schema } from '@hale/db';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 
-export type VillageCandidate = typeof schema.villageCandidates.$inferSelect;
+export type VillageCandidate = typeof schema.familyActivityHistory.$inferSelect;
 
 /**
  * Pure row → view-shape mappers for the read-only village page. Like the
@@ -135,6 +135,7 @@ export function toVillageCandidateView(
   candidate: VillageCandidate,
   teenAttributed: boolean,
   engagement: CandidateEngagement = NO_ENGAGEMENT,
+  historical = candidate.offeredAt === null,
 ): VillageCandidateView {
   // The aggregate count is identity-free, so it is safe even on a teen row (rule #1).
   const { endorsementCount, endorsedByFamily, accepted, saved } = engagement;
@@ -173,11 +174,15 @@ export function toVillageCandidateView(
     childId: candidate.childId,
     title: candidate.title,
     kind: candidate.kind,
-    cadence: effectiveCadence(candidate.cadence, candidate.eventDate, candidate.seasons),
-    eventDate: candidate.eventDate,
-    seasons: candidate.seasons,
+    cadence: historical
+      ? null
+      : effectiveCadence(candidate.cadence, candidate.eventDate, candidate.seasons),
+    eventDate: historical ? null : candidate.eventDate,
+    seasons: historical ? null : candidate.seasons,
     discoveredAt: candidate.discoveredAt.toISOString(),
-    summary: candidate.summary,
+    summary: historical
+      ? 'Saved from an earlier find. Check the source for current dates and availability.'
+      : candidate.summary,
     coverageNote: candidate.coverageNote,
     sourceUrl: candidate.sourceUrl,
     endorsementCount,
@@ -189,9 +194,9 @@ export function toVillageCandidateView(
     venueName: candidate.venueName,
     // The numeric rating column reads back as a fixed-point STRING; parse it to a
     // number for the view, or null when Places never returned one.
-    rating: parseRating(candidate.rating),
-    ratingCount: candidate.ratingCount,
-    priceLevel: candidate.priceLevel,
+    rating: historical ? null : parseRating(candidate.rating),
+    ratingCount: historical ? null : candidate.ratingCount,
+    priceLevel: historical ? null : candidate.priceLevel,
     ageRange: candidate.ageRange,
     indoorOutdoor: candidate.indoorOutdoor,
     teenAttributed: false,

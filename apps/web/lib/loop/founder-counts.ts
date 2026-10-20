@@ -1,19 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import {
-  type SQL,
-  and,
-  count,
-  desc,
-  eq,
-  gt,
-  gte,
-  isNotNull,
-  lt,
-  notInArray,
-  sql,
-} from 'drizzle-orm';
+import { type SQL, and, count, eq, gte, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
-import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import { resolveMetricsExclusions } from './metrics-scope';
 import type { MedicalAnswers, RadarVerification, RetentionCohort } from './scorecard-rubric';
 
@@ -32,8 +19,6 @@ const RETENTION_TIME_ZONE = 'America/Toronto';
  * side of it are what make that number checkable — a W4 of 0% under a W1 of 90% is a
  * churn problem, under a W1 of 0% it is a broken reader. */
 const RETENTION_CURVE_WEEKS = 8;
-
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** `notInArray` over an empty list is not a no-op on every Drizzle version. Omit it. */
 function omitExcluded(column: PgColumn, ids: readonly string[] | undefined): SQL | undefined {
@@ -128,63 +113,25 @@ export async function aggregateW4Retention(
   );
 }
 
-/**
- * The radar row, read from the two rows the re-verify sweep leaves behind: the claim it
- * takes BEFORE the work ("a sweep owned this week") and the tally it writes AFTER ("this
- * is what it found"). Two questions, two rows, and the pair is what lets a sweep that
- * died mid-run read as neither a clean week nor a missing cron.
- *
- * The counts are the SWEEP'S OWN. They were inferred here once — due windows counted off
- * `registration_windows`, confirmations off the `verified_at` it bumps — and that reading
- * could never split the failures, because a moved date and an unreadable page both
- * deliberately write nothing (the sweep's honesty design). Inferring it a second way
- * beside the recorded one would just be two answers to one question.
- *
- * WHY THE WEEK IS TESTED FOR OVERLAP, NOT CONTAINMENT. The sweep claims a MONDAY-ALIGNED
- * week, and the Monday digest runs Monday 14:00 UTC — two hours BEFORE that same Monday's
- * sweep (16:00). So the sweep that digest reports on is LAST Monday's, whose rows are
- * stamped with a week start that falls just before the digest window opens. A containment
- * test would report every single week as "the sweep did not run". A claimed week
- * [monday, monday+7d) overlaps this window when its start is after windowStart − 7d and
- * before windowEnd, which is what the predicate below says — and because that spans two
- * Mondays, the tally is taken newest-first.
- *
- * Family-agnostic: the sweep's tally has no family id. A sweep that did not run is not
- * zero discrepancies.
- */
+/** Latest source observation per owned watch in the reporting window. */
 export async function aggregateRadarVerification(
   database: Database,
   windowStart: Date,
   windowEnd: Date,
 ): Promise<RadarVerification> {
-  const sweptWeek = (column: PgColumn) =>
-    and(gt(column, new Date(windowStart.getTime() - WEEK_MS)), lt(column, windowEnd));
-
-  const [claimRow] = await database
-    .select({ count: count() })
-    .from(schema.rateLimits)
-    .where(
-      and(
-        eq(schema.rateLimits.route, REGISTRATION_VERIFY_ROUTE),
-        sweptWeek(schema.rateLimits.windowStart),
-      ),
-    );
-
-  const [run] = await database
+  const watches = schema.registrationSequences;
+  const [observations] = await database
     .select({
-      checked: schema.registrationVerifyRuns.checked,
-      confirmed: schema.registrationVerifyRuns.confirmed,
-      discrepancies: schema.registrationVerifyRuns.discrepancies,
-      unverified: schema.registrationVerifyRuns.unverified,
+      checked: sql<number>`count(*)::int`,
+      verified: sql<number>`count(*) filter (where ${watches.lastReading}->>'status' = 'verified')::int`,
+      changed: sql<number>`count(*) filter (where ${watches.pendingChange}->>'kind' in ('earlier', 'later'))::int`,
+      unverified: sql<number>`count(*) filter (where ${watches.lastReading}->>'status' is distinct from 'verified')::int`,
     })
-    .from(schema.registrationVerifyRuns)
-    .where(sweptWeek(schema.registrationVerifyRuns.weekStart))
-    .orderBy(desc(schema.registrationVerifyRuns.weekStart))
-    .limit(1);
-
+    .from(watches)
+    .where(and(gte(watches.lastReadAt, windowStart), lt(watches.lastReadAt, windowEnd)));
   return {
-    sweptThisWeek: (claimRow?.count ?? 0) > 0,
-    outcomes: run ?? null,
+    checkedThisWeek: (observations?.checked ?? 0) > 0,
+    outcomes: observations?.checked ? observations : null,
   };
 }
 

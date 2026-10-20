@@ -23,5 +23,5 @@ export async function loadClaimedWindowIds(
     .select({ windowId: schema.registrationSequences.windowId })
     .from(schema.registrationSequences)
     .where(eq(schema.registrationSequences.familyId, familyId));
-  return new Set(rows.map((row) => row.windowId));
+  return new Set(rows.flatMap((row) => (row.windowId === null ? [] : [row.windowId])));
 }

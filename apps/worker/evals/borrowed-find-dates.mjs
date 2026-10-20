@@ -40,10 +40,17 @@ function monthDayToken(month, day) {
 
 function monthDaysIn(text) {
   const pattern = new RegExp(`\\b(${MONTH})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'gi');
-  return [...String(text).matchAll(pattern)].map((match) => ({
+  const mentions = [...String(text).matchAll(pattern)].map((match) => ({
     token: monthDayToken(match[1], match[2]),
     index: match.index ?? 0,
   }));
+  for (const match of String(text).matchAll(/\b\d{4}-\d{2}-\d{2}\b/g)) {
+    const day = new Date(`${match[0]}T00:00:00Z`);
+    if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== match[0]) continue;
+    const month = new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' }).format(day);
+    mentions.push({ token: monthDayToken(month, day.getUTCDate()), index: match.index ?? 0 });
+  }
+  return mentions.sort((a, b) => a.index - b.index);
 }
 
 export function dateSource(label, when) {

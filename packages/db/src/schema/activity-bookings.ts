@@ -77,8 +77,7 @@ export const activityBookings = pgTable(
     providerHost: text('provider_host').notNull(),
     /** The extraction's own title, through the same fold the wire uses. */
     title: text('title').notNull(),
-    /** The FIRST session. v1 records one instant; the recurring series is a later
-     * ticket, and `civic_sessions` already exists for that job. */
+    /** The FIRST session. Recurring booking receipts are outside this v1 schema. */
     firstSessionAt: timestamp('first_session_at', { withTimezone: true }).notNull(),
     location: text('location'),
     /**

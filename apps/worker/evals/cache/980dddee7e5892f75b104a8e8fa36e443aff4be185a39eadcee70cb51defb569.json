@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies the registration window from `knows.registrationWindows`, states the resident-first opening time (Sep 1, 7:00 a.m.) as a flat fact (not hedged with \"their site says\"), confirms that `watching` is already true and that Hale will text before it opens — exactly what the feature does. It does not invent a clock time, does not tell Sam to set their own alarm, does not send them to the app, and does not overclaim by promising a specific spot. One small gap: it doesn't mention the general-opens date (Sep 8), but that's optional detail and the parent only asked about watching, which is already happening. The reply is concise, correct in shape, and stops where it should.",
+    "score": 5
+  }
+}

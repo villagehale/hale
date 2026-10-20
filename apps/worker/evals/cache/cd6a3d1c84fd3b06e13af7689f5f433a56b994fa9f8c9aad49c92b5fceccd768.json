@@ -1,0 +1,22 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Canadian Museum of Nature: Entry Ticket",
+        "name": "Canadian Museum of Nature, 240 McLeod Street, Ottawa",
+        "age_evidence": "Children under 3 are free",
+        "age_fit": "Children under 3 are free; children must be accompanied by an adult (live owls, marine life and insects, dinosaur skeletons and a blue whale skeleton on view)",
+        "when": "Wed-Mon 9:30-16:00 (Thursday until 20:00), closed Tuesday; seasonal hours vary and the requested September 4-6, 2027 dates could not be confirmed",
+        "when_evidence": "Wednesday: Start time: 09:30 - End Time: 16:00. Thursday : Start time: 09:30 - End Time: 20:00. Friday : Start time: 09:30 - End Time: 16:00. Saturday : Start time: 09:30 - End Time: 16:00. Sunday : Start time: 09:30 - End Time: 16:00. Monday : Start time: 09:30 - End Time: 16:00. Tuesday : Closed.",
+        "schedule_kind": "hours",
+        "price_evidence": "From USD 21.03",
+        "price": "From USD 21.03 (about CA$26-28 per ticket via resellers); children under 3 free",
+        "source_name": "Canadian Museum of Nature",
+        "source_url": "https://www.pelago.com/en/activity/pgvzn-canadian-museum-of-nature-ottawa/",
+        "indoor_outdoor": "both",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 4267
+}

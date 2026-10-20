@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own. `autonomySwitchOff` shows send_email and reply_to_email were turned off this turn, so saying \"Done\" is true, not a claim about an unmade change. The reply then states plainly what happens next, with no greeting, no sign-off and no machinery talk. Short, exact and complete.",
+    "score": 5
+  }
+}

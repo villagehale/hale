@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly states the date (October 20, 2026) with the IANA timezone (Europe/London), correctly notes the opening time hasn't been published (minuteReminderAvailable is false), and correctly states Hale is watching it. However, the live-truth policy requires a source URL to be included when reporting registration info, and no source URL is included here. Additionally, the reminderState is \"active\" (not \"paused\"), so promising to text when a time or spot shows up is appropriate — but the promise to text \"as soon as a spot shows up\" conflates the registration watch (which texts before the window opens) with a class-spot watch, which is a different feature. The core answer is accurate and correctly shaped, but the missing source URL is a required element per the registration live truth override rules, which is a meaningful gap.",
+    "score": 3
+  }
+}

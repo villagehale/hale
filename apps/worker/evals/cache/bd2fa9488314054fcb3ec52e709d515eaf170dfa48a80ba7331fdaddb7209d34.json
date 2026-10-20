@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly recalls the verified registration window date and time (Oct 18, 2026 at 9:00 a.m.) as a flat fact — no hedging, no \"their site says.\" It correctly confirms watching is active and that reminders will come before it opens, which is exactly what `watching: true` and `reminderState: active` require. No app referral, no invented details, no URL (the sourceUrl is not written out). The one small blemish: including the timezone parenthetical \"(America/Toronto)\" is a slightly clunky technical detail that a parent doesn't need — \"9:00 a.m. ET\" or just \"9:00 a.m.\" would have been cleaner. Otherwise this is the complete and correct answer in the right shape.",
+    "score": 4
+  }
+}

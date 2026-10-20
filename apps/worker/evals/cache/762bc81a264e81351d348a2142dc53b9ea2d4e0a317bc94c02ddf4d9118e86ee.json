@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, Saturdays at the printed times, Sept 12 to Nov 28, ages 3-5, and each is cited to the Oakville page. Price is correctly null because the page refers fees to the Recreation Guide, and the registration line is carried verbatim. The message is in Arabic as watchFor requires. That overrides the ASCII rule here. It leads with Preschool A by name and attributes the facts to the Town of Oakville site. It carries the Aug 11, 7 a.m. resident registration date. The missing price is handled in the first person ('I could not pin down the price'), which is correct for page_has_schedule. With watch true, it closes on a first-person promise to keep following and text when the price is available. There is no question and no link. Small omissions: the Aug 4 browse date is not in the message, and the slots do not note that fees are in the Recreation Guide.",
+    "score": 5
+  }
+}
