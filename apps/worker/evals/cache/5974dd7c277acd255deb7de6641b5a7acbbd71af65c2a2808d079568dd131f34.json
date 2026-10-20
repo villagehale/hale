@@ -1,0 +1,23 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "Winter 2027 Recreation & Aquatic Programs",
+    "year_evidence": "Programs are viewable online as of November 23, 2026. Registration opens on December 7 at townshipofking.perfectmind.com Aquatics program registration for non-residents opens on December 11, 2026.",
+    "preview": {
+      "date": "2026-11-23",
+      "time": null
+    },
+    "resident_open": null,
+    "general_open": {
+      "date": "2026-12-11",
+      "time": null
+    },
+    "unclassified_open": null,
+    "evidence": "Programs are viewable online as of November 23, 2026. Registration opens on December 7 at townshipofking.perfectmind.com Aquatics program registration for non-residents opens on December 11, 2026.",
+    "confidence": 0.7,
+    "time_zone": null,
+    "time_zone_evidence": null
+  },
+  "latencyMs": 6418
+}

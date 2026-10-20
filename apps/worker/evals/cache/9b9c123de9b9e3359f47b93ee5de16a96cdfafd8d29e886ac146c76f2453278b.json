@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in natural fr-CA and gives the public registration opening correctly: today, 12 août 2026, 6 h 30, heure de Toronto. That matches the source and the current clock (10:30Z is 6:30 in Toronto). Prices and the 2 remaining places come from the supplied facts and are attributed to the course page, with a note that availability can change. The 27 September date is clearly presented as the class start, not the registration date. Age fit is explicitly left for the parent to check. Both links are the supplied course and sign-in URLs. There is no STOP or unsubscribe text and no invented eligibility, held place or account claim.",
+    "score": 5
+  }
+}

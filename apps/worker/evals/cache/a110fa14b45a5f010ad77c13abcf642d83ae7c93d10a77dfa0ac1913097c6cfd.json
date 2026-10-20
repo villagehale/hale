@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Passes. The message is in Arabic and gives the correct opening: 12 August 2026 at 6:30 AM Toronto time, expressed naturally. It includes the supplied official course link and sign-in link. It reports the class as full with no open spots, mentions the waitlist without inviting the parent to claim a seat, and keeps the 21 September class start separate from registration. The prices come from the published facts, and the 4–6 age range carries a caveat that it does not prove eligibility. There is no STOP or unsubscribe text and no claimed registration, payment or held place. One minor precision drift: it says the waitlist has 'up to 100 places', while the evidence shows 100 waitlist spots remaining.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Meets the unconfirmed heads-up rules. It is in English and says the official page was unreadable, no opening is verified, and date reminders are paused. It keeps the supplied official link and invents no date, price, eligibility, availability or registration status. The parent is already opted in, so the future evening-before plan is presented as conditional on verification rather than active now. Minor issue: 'verified again' implies an earlier verification that the context (opening null) does not show.",
+    "score": 4
+  }
+}

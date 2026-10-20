@@ -1,5 +1,9 @@
 # VIL-423 — review fixes and one remaining recording estimate
 
+**Subsequent outcome:** Barton approved this frozen checklist; the one pass is now
+finished. See [actual results, failures and final spend](vil-423-approved-run-2026-10-19.md).
+The pre-approval checkpoint below is preserved as the scope/freeze audit, not current authorization.
+
 October 19, 2026. PR #872 stays draft; #872 first, #871 paused. Main is already
 integrated. This checkpoint spends **$0 / 0 new model calls**. Paid calls remain
 held until Barton approves this consolidated checklist. No merge, deployment,

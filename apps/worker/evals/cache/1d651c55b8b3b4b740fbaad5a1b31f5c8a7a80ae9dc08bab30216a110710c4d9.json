@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in Arabic and gives the correct opening date (12 August 2026), time (6:30 AM) and zone (Toronto time). It includes the supplied verified link. It presents the three reminders as a proposal that needs approval and asks the parent to confirm by replying in this chat in their own words. It does not invent price, eligibility, registration, payment or a held place.",
+    "score": 5
+  }
+}
