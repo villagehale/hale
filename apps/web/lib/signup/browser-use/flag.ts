@@ -17,3 +17,12 @@ export function browserUseSignupEnabled(
 ): boolean {
   return env[BROWSER_USE_SIGNUP_ENABLED_ENV] === 'true';
 }
+
+export const BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV = 'BROWSER_USE_SIGNUP_PAYMENT_ENABLED';
+
+/** Agent payment through the Stripe Link wallet. Off unless exactly `true`. */
+export function browserUseSignupPaymentEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV] === 'true';
+}

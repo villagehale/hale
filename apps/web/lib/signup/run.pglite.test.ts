@@ -973,6 +973,8 @@ describe('authorized signup runner', () => {
       holdExpiresAt: new Date('2026-10-05T12:10:00.000Z'),
       cartTotalCents: 9800,
       confirmationNumber: null,
+      opensAt: null,
+      amountChargedCents: null,
       runId: 'run-fixture',
       sessionId: 'bu-session-fixture',
       costUsd: '0.0243',
@@ -1036,6 +1038,111 @@ describe('authorized signup runner', () => {
       expect(log).toContain('browser_use');
       expect(log).not.toContain('fixture-live-view-token');
       expect(log).not.toContain('Ada');
+    });
+
+    it('passes the Link wallet only after the spending cap, and records a paid sign-up', async () => {
+      vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+      const seeded = await familyWithOffer({
+        ageMonths: 36,
+        url: TORONTO,
+        approvedPriceCents: 9800,
+      });
+      await withProviderSession(seeded);
+      const wallet = {
+        kind: 'stripe_link' as const,
+        connectionId: 'link-conn',
+        approvalWindowMinutes: 5,
+      };
+      const checkSpendingCap = vi.fn(async () => ({ ok: true, reason: 'within cap' }));
+      const run = vi.fn(async () => ({
+        ...CHECKOUT,
+        outcome: 'completed' as const,
+        liveViewUrl: null,
+        confirmationNumber: 'R-55120',
+        amountChargedCents: 9800,
+      }));
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-pay'), {
+        browserUseSignup: { run },
+        paymentWallet: { forFamily: async () => ({ wallet, skipped: null }) },
+        checkSpendingCap,
+      });
+      expect(result.outcome).toBe('completed');
+      expect(checkSpendingCap).toHaveBeenCalledWith(seeded.familyId, {
+        amountUsd: expect.any(Number),
+        category: 'registration',
+      });
+      const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
+      expect(engineInput.payment).toEqual(wallet);
+      const [offer] = await db.database
+        .select({ status: schema.authorizedSignupOffers.status })
+        .from(schema.authorizedSignupOffers)
+        .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
+      expect(offer?.status).toBe('completed');
+      const log = await audits(seeded.familyId);
+      expect(log).toContain('"confirmed":true');
+      expect(log).not.toContain('link-conn');
+    });
+
+    it('stops at checkout with no wallet when the spending cap rejects', async () => {
+      vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+      const seeded = await familyWithOffer({
+        ageMonths: 36,
+        url: TORONTO,
+        approvedPriceCents: 9800,
+      });
+      await withProviderSession(seeded);
+      const forFamily = vi.fn();
+      const run = vi.fn(async () => CHECKOUT);
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-cap'), {
+        browserUseSignup: { run },
+        paymentWallet: { forFamily },
+        checkSpendingCap: async () => ({ ok: false, reason: 'over cap' }),
+      });
+      const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
+      expect(engineInput.payment).toBeNull();
+      expect(forFamily).not.toHaveBeenCalled();
+      expect(await audits(seeded.familyId)).toContain('"paymentSkipped":"spending_cap"');
+    });
+
+    it('keeps payment off without its own flag', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      const forFamily = vi.fn();
+      const run = vi.fn(async () => CHECKOUT);
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-noflag'), {
+        browserUseSignup: { run },
+        paymentWallet: { forFamily },
+        checkSpendingCap: async () => ({ ok: true, reason: 'within cap' }),
+      });
+      const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
+      expect(engineInput.payment).toBeNull();
+      expect(forFamily).not.toHaveBeenCalled();
+    });
+
+    it('hands a Browser Use rush to the parent with the open time, the link and the prefill', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      const run = vi.fn(async () => ({
+        ...CHECKOUT,
+        outcome: 'rush' as const,
+        detail: 'waiting_room' as const,
+        liveViewUrl: null,
+        checkoutUrl: null,
+        holdExpiresAt: null,
+        cartTotalCents: null,
+        opensAt: '7:00 AM',
+      }));
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-rush'), {
+        browserUseSignup: { run },
+      });
+      expect(result.outcome).toBe('rush');
+      expect(result.rush).toMatchObject({
+        signal: 'waiting_room',
+        opensAt: '7:00 AM',
+        link: TORONTO,
+      });
+      expect(result.rush?.prefill).toContainEqual({ slot: 'child_first_name', value: 'Ada' });
+      expect(await audits(seeded.familyId)).not.toContain('Ada');
     });
 
     it('does not start the engine on a bare yes', async () => {

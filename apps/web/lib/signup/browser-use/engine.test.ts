@@ -102,6 +102,7 @@ function setup(
 function input(overrides: Partial<BrowserUseSignupInput> = {}): BrowserUseSignupInput {
   return {
     correlationId: 'offer-fixture',
+    payment: null,
     registrationUrl: 'https://anc.ca.apm.activecommunities.com/toronto/activity/search/detail/123',
     identity: IDENTITY,
     fieldsAllowed: ['child_first_name', 'child_last_name', 'child_dob', 'session'],

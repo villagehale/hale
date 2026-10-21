@@ -59,7 +59,7 @@ describe('browser use client', () => {
 
 describe('browser use outcome', () => {
   it('requires every field in the schema', () => {
-    expect(BROWSER_USE_SIGNUP_OUTPUT_SCHEMA.required).toHaveLength(6);
+    expect(BROWSER_USE_SIGNUP_OUTPUT_SCHEMA.required).toHaveLength(9);
     expect(parseSignupOutput({ outcome: 'reached_checkout' })).toBeNull();
     expect(
       parseSignupOutput({

@@ -17,14 +17,19 @@ import {
 } from './outcome';
 import type { ProviderSessionSeeder } from './seed';
 import type { ProviderStorageState } from './vault';
+import type { SignupPaymentWallet } from './wallet';
 
 /**
- * T8 — drives a provider's real registration site with Browser Use Cloud, up to
- * checkout, and stops. One generic agent task for every provider, no per-site
- * script. The parent pays on the live browser this returns.
+ * T8 — drives a provider's real registration site with Browser Use Cloud
+ * through the parent's saved sign-in. One generic agent task for every
+ * provider, no per-site script. With a Stripe Link wallet the agent pays the
+ * exact cart total after the parent approves in Link; without one, or when
+ * approval times out, it stops at checkout and the parent pays on the live
+ * browser this returns. A queue or timed open comes back as `rush`.
  *
- * Never sent: a password, a card, `secretBindings`, a 1Password vault, or a
- * Stripe Link connection. AgentMail is off. The browser keeps the cart alive for
+ * Never sent: a password, a card number, `secretBindings` or a 1Password
+ * vault. The Link connection id is the only payment input; Link issues the
+ * one-time card. AgentMail is off. The browser keeps the cart alive for
  * `CHECKOUT_KEEP_ALIVE_SECONDS` after the run stops, which is the parent's
  * window to pay; provider cart holds are usually shorter, so the hold the page
  * states wins when it is shorter.
@@ -51,6 +56,7 @@ export type BrowserUseEngineDetail =
   | 'unreadable_output'
   | 'no_live_view'
   | 'payment_boundary'
+  | 'charge_mismatch'
   | 'api_error';
 
 export interface BrowserUseSignupInput {
@@ -68,6 +74,8 @@ export interface BrowserUseSignupInput {
     seatingNote?: string | null;
   };
   approvedPriceCents: number | null;
+  /** Null keeps the run at checkout: the parent pays on the live view. */
+  payment: SignupPaymentWallet | null;
   providerSession: { storageState: ProviderStorageState; browserUseProfileId: string | null };
   /** Persists a newly created profile id so the 48h sweep can delete it. */
   onProfileCreated: (profileId: string) => Promise<void>;
@@ -81,8 +89,12 @@ export interface BrowserUseSignupResult {
   checkoutUrl: string | null;
   holdExpiresAt: Date | null;
   cartTotalCents: number | null;
-  /** Always null here. Read later with `readBrowserUseConfirmation`. */
-  confirmationNumber: null;
+  /** Set when the agent paid; otherwise read later with `readBrowserUseConfirmation`. */
+  confirmationNumber: string | null;
+  /** The open time a rush page states, as written. */
+  opensAt: string | null;
+  /** What the one-time Link card was charged. Equals the cart total. */
+  amountChargedCents: number | null;
   runId: string | null;
   /** Browser Use session id, for the confirmation follow-up. */
   sessionId: string | null;
@@ -117,6 +129,8 @@ function failure(
     holdExpiresAt: null,
     cartTotalCents: null,
     confirmationNumber: null,
+    opensAt: null,
+    amountChargedCents: null,
     runId: run.runId ?? null,
     sessionId: run.sessionId ?? null,
     costUsd: run.costUsd ?? null,
@@ -152,6 +166,16 @@ export function signupFacts(input: BrowserUseSignupInput): Record<string, unknow
       email: pick('parent_email', identity.parentEmail),
       postal_code: pick('postal_code', identity.postalCode),
     },
+  };
+}
+
+/** The agent may pay only with a wallet and an approved ceiling. */
+function paymentFacts(input: BrowserUseSignupInput): Record<string, unknown> | null {
+  if (!input.payment || input.approvedPriceCents === null) return null;
+  return {
+    method: 'stripe_link',
+    max_total_cents: input.approvedPriceCents,
+    approval_window_minutes: input.payment.approvalWindowMinutes,
   };
 }
 
@@ -241,7 +265,10 @@ export async function runBrowserUseSignup(
     const profile = await ensureProfile(input, deps);
     if (!profile.ok) return failure('error', profile.detail);
 
-    const task = taskWithFacts(await deps.loadTask(SIGNUP_SKILL), signupFacts(input));
+    const task = taskWithFacts(await deps.loadTask(SIGNUP_SKILL), {
+      ...signupFacts(input),
+      payment: paymentFacts(input),
+    });
     const run = await deps.api.createRun({
       task,
       outputSchema: BROWSER_USE_SIGNUP_OUTPUT_SCHEMA,
@@ -249,6 +276,7 @@ export async function runBrowserUseSignup(
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
       maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
+      ...(input.payment ? { stripeLinkConnectionId: input.payment.connectionId } : {}),
     });
     runId = run.id;
     sessionId = run.sessionId;
@@ -262,10 +290,36 @@ export async function runBrowserUseSignup(
 
     const output = parseSignupOutput(summary.output);
     if (!output) return failure('error', 'unreadable_output', ids);
-    if (output.payment_details_entered) return failure('error', 'payment_boundary', ids);
+    const paid = output.payment_details_entered || output.outcome === 'completed';
+    if (paid && !input.payment) return failure('error', 'payment_boundary', ids);
 
     const live = waited.liveViewUrl;
-    if (output.outcome === 'reached_checkout') {
+    if (output.outcome === 'completed') {
+      const total = output.cart_total_cents;
+      const charged = output.amount_charged_cents;
+      const exact =
+        total !== null &&
+        charged === total &&
+        (input.approvedPriceCents === null || charged <= input.approvedPriceCents);
+      if (!exact) {
+        return {
+          ...failure('needs_human', 'charge_mismatch', ids),
+          liveViewUrl: live,
+          cartTotalCents: total,
+          amountChargedCents: charged,
+        };
+      }
+      return {
+        ...failure('completed', output.detail, ids),
+        cartTotalCents: total,
+        amountChargedCents: charged,
+        confirmationNumber: output.confirmation_number,
+      };
+    }
+    if (output.outcome === 'rush') {
+      return { ...failure('rush', output.detail, ids), opensAt: output.opens_at };
+    }
+    if (output.outcome === 'reached_checkout' || output.outcome === 'payment_not_approved') {
       const total = output.cart_total_cents;
       if (input.approvedPriceCents !== null && total !== null && total > input.approvedPriceCents) {
         return {
@@ -280,7 +334,7 @@ export async function runBrowserUseSignup(
         CHECKOUT_KEEP_ALIVE_SECONDS / 60,
       );
       return {
-        ...failure('reached_checkout', output.detail, ids),
+        ...failure(output.outcome, output.detail, ids),
         liveViewUrl: live,
         checkoutUrl: sameProviderHttpsUrl(output.checkout_url, input.registrationUrl),
         holdExpiresAt: new Date(deps.now().getTime() + holdMinutes * 60_000),

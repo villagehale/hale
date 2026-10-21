@@ -1,11 +1,17 @@
 import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { buildGuardDeps } from '~/lib/coach/guards';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
 import type { BrowserUseSignupResult } from './browser-use/engine';
-import { browserUseSignupEnabled } from './browser-use/flag';
-import { type BrowserUseSignupRunner, browserUseSignupRunnerFromEnv } from './browser-use/runner';
+import { browserUseSignupEnabled, browserUseSignupPaymentEnabled } from './browser-use/flag';
+import {
+  type BrowserUseSignupRunner,
+  browserUseSignupRunnerFromEnv,
+  signupWalletFromEnv,
+} from './browser-use/runner';
 import { loadProviderSession, recordBrowserUseProfile } from './browser-use/vault';
+import type { SignupPaymentWallet, SignupWalletSource } from './browser-use/wallet';
 import { bookingConnectors } from './connectors/registry';
 import { connectorBookingSlots } from './connectors/slots';
 import {
@@ -54,6 +60,13 @@ export interface SignupRunDeps {
    * that absence is returned as `not_configured`.
    */
   browserUseSignup?: BrowserUseSignupRunner | null;
+  /** Stripe Link wallet. Undefined reads the env; null names it absent. */
+  paymentWallet?: SignupWalletSource | null;
+  /** Rule #7. Undefined uses the coach guard's per-action cap. */
+  checkSpendingCap?: (
+    familyId: string,
+    cost: { amountUsd: number; category: string },
+  ) => Promise<{ ok: boolean; reason: string }>;
 }
 
 export interface SignupRunResult {
@@ -80,6 +93,8 @@ export type BrowserUseHandoff =
       holdExpiresAt: null;
       cartTotalCents: null;
       confirmationNumber: null;
+      opensAt: null;
+      amountChargedCents: null;
       runId: null;
       sessionId: null;
       costUsd: null;
@@ -484,6 +499,8 @@ function browserUseAbsent(
     holdExpiresAt: null,
     cartTotalCents: null,
     confirmationNumber: null,
+    opensAt: null,
+    amountChargedCents: null,
     runId: null,
     sessionId: null,
     costUsd: null,
@@ -492,8 +509,11 @@ function browserUseAbsent(
 
 /**
  * T8 — the parent's yes, the session, the price and the consent grant were all
- * checked above. Browser Use drives the provider's site to checkout and stops;
- * the parent pays on the live browser. No parent copy is written here.
+ * checked above. Browser Use drives the provider's site through the saved
+ * session. With a Link wallet that passed the spending cap, it pays the exact
+ * total once the parent approves in Link; otherwise, or when approval times
+ * out, it stops at checkout and the parent pays on the live browser. A rush
+ * page comes back as a handoff. No parent copy is written here.
  */
 async function runBrowserUseBranch(
   database: Database,
@@ -516,9 +536,12 @@ async function runBrowserUseBranch(
     approvedPriceCents: number | null;
   },
 ): Promise<SignupRunResult> {
-  const done = async (handoff: BrowserUseHandoff): Promise<SignupRunResult> => {
-    // The offer is handed back either way: at checkout the parent pays.
-    await finish(database, input, ctx.offerId, 'handed_back');
+  const done = async (
+    handoff: BrowserUseHandoff,
+    paymentSkipped: SignupPaymentSkipped | null = null,
+  ): Promise<SignupRunResult> => {
+    const paid = handoff.outcome === 'completed';
+    await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
     await writeAudit(database, input, ctx.offerId, {
       step: 'browser_use',
       outcome: handoff.outcome,
@@ -526,15 +549,29 @@ async function runBrowserUseBranch(
       runId: handoff.runId,
       holdExpiresAt: handoff.holdExpiresAt?.toISOString() ?? null,
       cartTotalCents: handoff.cartTotalCents,
+      amountChargedCents: handoff.amountChargedCents,
+      confirmed: handoff.confirmationNumber !== null,
+      paymentSkipped,
+      rushOpensAt: handoff.opensAt,
       costUsd: handoff.costUsd,
       host: ctx.host,
     });
+    const rush: RushHandoff | null =
+      handoff.outcome === 'rush'
+        ? {
+            signal: handoff.detail === 'timed_open' ? 'timed_open' : 'waiting_room',
+            opensAt: handoff.opensAt,
+            link: ctx.href,
+            prefill: signupInfoPack(ctx.identity),
+          }
+        : null;
     return {
       claimed: true,
       outcome: handoff.outcome,
       reply: null,
       deliverOnThread: false,
       browserUse: handoff,
+      ...(rush ? { rush } : {}),
     };
   };
 
@@ -556,6 +593,14 @@ async function runBrowserUseBranch(
   });
   if (!stored) return done(browserUseAbsent('needs_login', 'no_provider_session'));
 
+  const payment = await signupPayment(database, input, deps, ctx.approvedPriceCents);
+  if (payment.skipped && payment.skipped !== 'payment_flag_off') {
+    console.warn(
+      { familyId: input.familyId, offerId: ctx.offerId, paymentSkipped: payment.skipped },
+      'authorized signup: agent payment skipped, stopping at checkout',
+    );
+  }
+
   let result: BrowserUseSignupResult;
   try {
     result = await runner.run({
@@ -565,6 +610,7 @@ async function runBrowserUseBranch(
       fieldsAllowed: ctx.fieldsAllowed,
       session: ctx.session,
       approvedPriceCents: ctx.approvedPriceCents,
+      payment: payment.wallet,
       providerSession: {
         storageState: stored.storageState,
         browserUseProfileId: stored.browserUseProfileId,
@@ -581,9 +627,41 @@ async function runBrowserUseBranch(
       },
       'authorized signup: browser use engine threw',
     );
-    return done(browserUseAbsent('error', 'engine_threw'));
+    return done(browserUseAbsent('error', 'engine_threw'), payment.skipped);
   }
-  return done(result);
+  return done(result, payment.skipped);
+}
+
+export type SignupPaymentSkipped =
+  | 'payment_flag_off'
+  | 'no_approved_price'
+  | 'spending_cap'
+  | 'not_configured'
+  | 'not_connected';
+
+/** Rule #7: the spending cap runs before any wallet reaches the agent. */
+async function signupPayment(
+  database: Database,
+  input: SignupRunInput,
+  deps: SignupRunDeps,
+  approvedPriceCents: number | null,
+): Promise<{ wallet: SignupPaymentWallet | null; skipped: SignupPaymentSkipped | null }> {
+  if (!browserUseSignupPaymentEnabled()) return { wallet: null, skipped: 'payment_flag_off' };
+  if (approvedPriceCents === null) return { wallet: null, skipped: 'no_approved_price' };
+  const check = deps.checkSpendingCap ?? buildGuardDeps(database).checkSpendingCap;
+  if (!check) return { wallet: null, skipped: 'spending_cap' };
+  const verdict = await check(input.familyId, {
+    amountUsd: approvedPriceCents / 100,
+    category: 'registration',
+  });
+  if (!verdict.ok) return { wallet: null, skipped: 'spending_cap' };
+  const source =
+    deps.paymentWallet !== undefined ? deps.paymentWallet : signupWalletFromEnv().source;
+  if (!source) return { wallet: null, skipped: 'not_configured' };
+  const lookup = await source.forFamily(input.familyId);
+  return lookup.wallet
+    ? { wallet: lookup.wallet, skipped: null }
+    : { wallet: null, skipped: lookup.skipped };
 }
 
 async function resolveBrowser(deps: SignupRunDeps): Promise<SignupRuntimeAcquire> {

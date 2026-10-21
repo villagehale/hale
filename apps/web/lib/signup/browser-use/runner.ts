@@ -8,6 +8,7 @@ import {
 } from './engine';
 import { playwrightSessionSeeder } from './seed';
 import type { RemoteProfileDeleter } from './vault';
+import { type SignupWalletSource, browserUseStripeLinkWallet } from './wallet';
 
 export interface BrowserUseSignupRunner {
   run(input: BrowserUseSignupInput): Promise<BrowserUseSignupResult>;
@@ -21,6 +22,20 @@ export type BrowserUseSignupRunnerFromEnv =
       skipped: 'not_configured';
       missing: [typeof BROWSER_USE_API_KEY_ENV];
     };
+
+export type SignupWalletFromEnv =
+  | { source: SignupWalletSource; skipped: null }
+  | { source: null; skipped: 'not_configured' };
+
+/** The Stripe Link wallet through Browser Use. Named absence without a key. */
+export function signupWalletFromEnv(
+  env: Record<string, string | undefined> = process.env,
+  fetchImpl?: FetchLike,
+): SignupWalletFromEnv {
+  const configured = browserUseApiFromEnv(env, fetchImpl);
+  if (!configured.api) return { source: null, skipped: 'not_configured' };
+  return { source: browserUseStripeLinkWallet(configured.api), skipped: null };
+}
 
 /** Real wiring. Named absence when BROWSER_USE_API_KEY is unset (rule #11). */
 export function browserUseSignupRunnerFromEnv(
