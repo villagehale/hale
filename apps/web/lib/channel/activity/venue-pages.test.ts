@@ -65,6 +65,23 @@ describe('venue pages', () => {
     expect(ACTIVITY_HELD_TOPIC).toBe('activity_held');
   });
 
+  it('keeps source evidence in the private held-options note', () => {
+    const evidence = {
+      program: 'Mini Gym',
+      age: 'ages 2-5',
+      sessions: ['October 23 at 10:30'],
+      schedule: null,
+      price: null,
+      history: null,
+      windowConfirmed: true,
+    };
+    const note = heldOptionsNote([pick({ sourceUrl: CA, evidence })]);
+    expect(JSON.parse(note ?? '{}').unsent_activity_options[0]).toMatchObject({
+      source_url: CA,
+      evidence,
+    });
+  });
+
   it('appends a venue page only when the reply names that option in full', () => {
     const held = [
       { name: 'Mini Gym, Cartwheels Gym Centre', source_url: CA },

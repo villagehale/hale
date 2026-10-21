@@ -16,6 +16,8 @@ import { families } from './families.js';
 import { registrationWindows } from './registration-windows.js';
 import { users } from './users.js';
 
+export const REGISTRATION_COURSE_URL_MAX_CHARS = 2048;
+
 /**
  * VIL-242 · M7 — one row per (family, registration window) that Hale has taken the
  * morning over for. The row IS the claim: while it exists, M4's proactive nudge defers

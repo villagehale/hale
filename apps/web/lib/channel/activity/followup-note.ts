@@ -212,9 +212,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     ...(grounding.picks.length === 0
       ? {
           picks_empty: true,
-          ...(grounding.searched
-            ? { searched: { town: grounding.searched.town, notes: grounding.searched.notes } }
-            : {}),
+          ...(grounding.searched ? { searched: grounding.searched } : {}),
         }
       : { page_evidence: grounding.pageEvidence }),
     watch: grounding.watch,
@@ -231,6 +229,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     registration: pick.registration ?? null,
     source_name: pick.sourceName,
     source: pick.source,
+    ...(pick.evidence ? { evidence: pick.evidence } : {}),
   }));
   return JSON.stringify(payload);
 }
@@ -418,7 +417,9 @@ export function waitsOnAPageItCouldNotRead(body: string): boolean {
  * a question to the parent, so those addresses are set aside before the check.
  */
 export function asksTheParent(body: string): boolean {
-  return plainText(body).replace(/https?:\/\/\S+/gi, '').includes('?');
+  return plainText(body)
+    .replace(/https?:\/\/\S+/gi, '')
+    .includes('?');
 }
 
 /**
@@ -477,7 +478,9 @@ export function followUpViolations(
     violations.push(
       grounding.watch
         ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
-            grounding.pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
+            grounding.pageEvidence === 'page_has_schedule'
+              ? 'it can get to the details'
+              : 'the details post'
           }.`
         : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     );
