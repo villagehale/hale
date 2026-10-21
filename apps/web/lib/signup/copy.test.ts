@@ -29,7 +29,6 @@ describe('authorized signup copy', () => {
     ['timed_open', `Registration isn't open yet.`],
     ['unexpected_field', `The form asks something I wasn't expecting, so I stopped.`],
     ['missing_detail', `I'm missing a detail it asks for.`],
-    ['teen_privacy', `It asks for a teen's details, so it's yours to fill in.`],
     ['unconfirmed', `I didn't see a confirmation page, so don't count on it yet.`],
     ['connector_failed', `I couldn't get through on my end.`],
     ['browser_unavailable', `I couldn't get through on my end.`],

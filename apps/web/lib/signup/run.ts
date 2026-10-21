@@ -18,13 +18,15 @@ import type { ShareableSignupField } from './consent';
 import { signupCompletedLine, signupHandbackLine } from './copy';
 import { type ReportDoor, chooseReportDoor } from './door';
 import { authorizedSignupEnabled } from './flag';
+import { type RushSignal, rushOpensAt } from './forms/rush';
 import { collapseSignupFact } from './handoff';
 import { inspectRegistrationPage } from './inspect';
+import { type InfoPackSlot, signupInfoPack } from './pack';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import { loadBusy, loadPendingOffer, loadSignupIdentity, markOffer } from './store';
-import type { SignupBrowser, SignupPage, SignupStopReason } from './types';
+import type { SignupBrowser, SignupIdentity, SignupPage, SignupStopReason } from './types';
 import { registrationUrlAllowed } from './url';
 
 export interface SignupRunInput {
@@ -55,6 +57,8 @@ export interface SignupRunDeps {
 }
 
 export interface SignupRunResult {
+  /** Present when a rush signal handed the sign-up to the parent. */
+  rush?: RushHandoff | null;
   claimed: boolean;
   outcome: string;
   reply: string | null;
@@ -92,11 +96,12 @@ const UNCLAIMED: SignupRunResult = {
  * Parent-authorized booking for anything a parent needs signed up. A connector
  * from the registry runs first when one matches the host. A connector failure
  * returns connector_failed and does not open the browser. Otherwise the sandbox
- * browser opens that provider's own page and follows at most three steps.
+ * browser opens that provider's own page and follows it until it submits or
+ * a page repeats unchanged.
  * Any provider host may take the browser. A rush signal (queue,
- * captcha, resident or identity check, timed open-at) hands back with no
- * submit. The browser opens only after the gate accepts one activity, one
- * session, and the price, the result has a door, the child is not a teen, and
+ * resident or identity check, timed open-at) hands back with no submit and a
+ * `rush` handoff: the open time, the link, and the parent's prefilled info. The browser opens only after the gate accepts one activity, one
+ * session, and the price, the result has a door, and
  * a consent row from this yes covers every slot about to be typed or packed.
  */
 export async function runAuthorizedSignup(
@@ -165,17 +170,6 @@ export async function runAuthorizedSignup(
       offerId: offer.id,
       outcome: 'missing_detail',
       reason: 'missing_detail',
-      link: offer.registrationUrl,
-      prefilled: [],
-      host,
-    });
-  }
-  if (identity.teenager) {
-    await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
-      offerId: offer.id,
-      outcome: 'teen_privacy',
-      reason: 'teen_privacy',
       link: offer.registrationUrl,
       prefilled: [],
       host,
@@ -363,8 +357,12 @@ export async function runAuthorizedSignup(
     const origin = new URL(allowed.href).origin;
     const chosen = offer.sessions.find((item) => item.id === decision.sessionId);
     let sessionSelected = false;
-    for (let step = 0; step < 3; step += 1) {
+    let previous: string | null = null;
+    for (;;) {
       const snapshot = await page.snapshot();
+      const fingerprint = JSON.stringify([snapshot.href, snapshot.formText, snapshot.controls]);
+      if (fingerprint === previous) break;
+      previous = fingerprint;
       const inspection = inspectRegistrationPage({
         snapshot,
         identity,
@@ -385,6 +383,7 @@ export async function runAuthorizedSignup(
           link: offer.registrationUrl,
           prefilled: filled,
           host,
+          rush: rushHandoff(inspection.reason, snapshot.formText, offer.registrationUrl, identity),
         });
       }
       if (
@@ -652,6 +651,37 @@ interface ReplyFacts {
   sessionLabel?: string;
   /** Named reason the runtime handed back no browser. Absent when a browser ran. */
   runtimeSkipped?: SignupRuntimeSkipped | null;
+  /** Set when a rush signal stopped the run. Prefill values stay out of the audit. */
+  rush?: RushHandoff | null;
+}
+
+/** A rush sign-up is the parent's: hand over the open time, the link and the prefill. */
+export interface RushHandoff {
+  signal: RushSignal;
+  opensAt: string | null;
+  link: string;
+  prefill: InfoPackSlot[];
+}
+
+const RUSH_STOPS: ReadonlySet<string> = new Set<RushSignal>([
+  'waiting_room',
+  'resident_verification',
+  'timed_open',
+]);
+
+function rushHandoff(
+  reason: SignupStopReason,
+  pageText: string,
+  link: string,
+  identity: SignupIdentity,
+): RushHandoff | null {
+  if (!RUSH_STOPS.has(reason)) return null;
+  return {
+    signal: reason as RushSignal,
+    opensAt: rushOpensAt(pageText),
+    link,
+    prefill: signupInfoPack(identity),
+  };
 }
 
 async function replyFor(
@@ -678,9 +708,11 @@ async function replyFor(
     host: facts.host,
     fieldsFilled: facts.prefilled,
     ...(facts.runtimeSkipped ? { runtimeSkipped: facts.runtimeSkipped } : {}),
+    ...(facts.rush ? { rushSignal: facts.rush.signal, rushOpensAt: facts.rush.opensAt } : {}),
   });
+  const rush = facts.rush ? { rush: facts.rush } : {};
   if (door.kind === 'held') {
-    return { claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
+    return { ...rush, claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
   }
   if (door.kind === 'group') {
     const send =
@@ -694,17 +726,29 @@ async function replyFor(
       now: input.now,
     });
     if (status === 'sent' || status === 'already_sent') {
-      return { claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
+      return {
+        ...rush,
+        claimed: true,
+        outcome: facts.outcome,
+        reply: null,
+        deliverOnThread: false,
+      };
     }
     console.warn(
       { familyId: input.familyId, offerId: facts.offerId, outcome: facts.outcome },
       'authorized signup: group door failed, replying on the thread the parent opened',
     );
     if (!input.existingThread) {
-      return { claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
+      return {
+        ...rush,
+        claimed: true,
+        outcome: facts.outcome,
+        reply: null,
+        deliverOnThread: false,
+      };
     }
   }
-  return { claimed: true, outcome: facts.outcome, reply: line, deliverOnThread: true };
+  return { ...rush, claimed: true, outcome: facts.outcome, reply: line, deliverOnThread: true };
 }
 
 async function writeAudit(

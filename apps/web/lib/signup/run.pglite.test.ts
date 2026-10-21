@@ -242,7 +242,7 @@ describe('authorized signup runner', () => {
     expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
 
-  it('does not enroll a teenager', async () => {
+  it("enrolls a teenager on the parent's yes", async () => {
     const seeded = await familyWithOffer({ ageMonths: 14 * 12 });
     const { browser, calls } = browserFor(SAFE);
     const result = await runAuthorizedSignup(
@@ -251,14 +251,14 @@ describe('authorized signup runner', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: null,
+        inboundChannelMessageId: 'msg-teen',
         existingThread: true,
         now: NOW,
       },
       { browser },
     );
-    expect(result.outcome).toBe('teen_privacy');
-    expect(calls.opened).toBe(0);
+    expect(result.outcome).not.toBe('teen_privacy');
+    expect(calls.opened).toBe(1);
     expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
 
@@ -933,6 +933,37 @@ describe('authorized signup runner', () => {
       vi.unstubAllGlobals();
     }
   });
+  it('hands a timed open to the parent with the open time, the link and the prefill', async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    const { browser } = browserFor({
+      ...SAFE,
+      timedOpen: true,
+      formText: 'Registration opens on Monday, January 5 at 7:00 AM',
+    });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-rush',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser },
+    );
+    expect(result.outcome).toBe('timed_open');
+    expect(result.rush).toMatchObject({
+      signal: 'timed_open',
+      opensAt: 'Monday, January 5 at 7:00 AM',
+      link: `${ORIGIN}/register`,
+    });
+    expect(result.rush?.prefill).toContainEqual({ slot: 'child_first_name', value: 'Ada' });
+    const log = await audits(seeded.familyId);
+    expect(log).toContain('Monday, January 5 at 7:00 AM');
+    expect(log).not.toContain('Ada');
+  });
+
   describe('browser use engine (T8)', () => {
     const CHECKOUT = {
       outcome: 'reached_checkout' as const,

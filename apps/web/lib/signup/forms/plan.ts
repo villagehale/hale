@@ -40,7 +40,8 @@ const UNAVAILABLE = /\b(full|waitlist|sold out)\b/i;
  * Adapters classify the controls. This plans the step: continue when the page
  * is only the date of a ticket cart, submit when the authorized slot is on the
  * page or a later page is the cart review. Rush signals (queue, captcha,
- * resident or identity verification, a timed open-at), payment, login, a
+ * resident or identity verification, a timed open-at), payment, a required
+ * login, a
  * waiver, medical or allergy content, a waitlist, a price change, and a
  * required field Hale does not know are stops. Optional unknown fields are
  * left blank.
@@ -49,12 +50,15 @@ export function planBookingStep(input: BookingStepInput): Inspection {
   const stopped = pageStops(input.snapshot, input.expectedOrigin, input.approvedPriceCents);
   if (stopped) return stop(stopped);
 
-  const controls = input.snapshot.controls.filter((control) => !ignored(control));
-  if (
-    controls.some((control) => control.type === 'password' || classifyField(control) === 'login')
-  ) {
+  const loginControl = (control: PageControl) =>
+    control.type === 'password' || classifyField(control) === 'login';
+  // A header sign-in box is not a wall: only a required login field stops the run.
+  if (input.snapshot.controls.some((control) => loginControl(control) && control.required)) {
     return stop('login_wall');
   }
+  const controls = input.snapshot.controls.filter(
+    (control) => !ignored(control) && !loginControl(control),
+  );
   if (controls.some((control) => classifyField(control) === 'payment')) return stop('payment');
   if (controls.some((control) => waitlistControl(control))) return stop('session_full');
 
