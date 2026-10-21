@@ -486,9 +486,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
           familyId: turn.familyId,
           reader: {} as never,
           draftPort: {} as never,
-          villageTool: searchVillageTool(database, undefined, {
-            find: async () => ({ found: false, reason: 'no_picks' }),
-          }),
+          villageTool: searchVillageTool(database),
           // The REAL reader over the REAL rows, and the REAL lane over the web port.
           activity: {
             reader: bindActivityReader(database, productionActivityFamilyReader()),
