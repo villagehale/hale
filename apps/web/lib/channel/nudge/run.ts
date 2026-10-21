@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { type Database, type RegistrationWindow, schema } from '@hale/db';
+import { type Database, type RegistrationSourceState, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, lte } from 'drizzle-orm';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
@@ -196,7 +196,7 @@ export interface NudgeRunDeps {
   selectFamilies(database: Database, now: Date): Promise<NudgeFamily[]>;
   loadChildren(database: Database, familyId: string): Promise<NudgeChildRow[]>;
   loadCandidates(database: Database, familyId: string): Promise<RadarCandidate[]>;
-  loadWindows(database: Database, areaCoarse: string): Promise<RegistrationWindow[]>;
+  loadWindows(database: Database, areaCoarse: string): Promise<RegistrationSourceState[]>;
   /** Health checkpoints this family must not be raised about again (VIL-243 · M8). */
   loadSuppressedCheckpoints(database: Database, familyId: string): Promise<Set<string>>;
   /** Registration windows an M7 sequence (VIL-242) is already preparing this family

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EXTRACTION_JSON_SCHEMA,
   type ExtractedWindow,
   type StoredWindow,
   type VerifyField,
@@ -218,9 +219,9 @@ describe('withoutInferredEvidence', () => {
   });
 
   it('drops an inferred field from the evidence, keeping what the page really said', () => {
-    expect(withoutInferredEvidence(confirmed('previewAt', 'residentOpenAt'), ['residentOpenAt'])).toEqual(
-      confirmed('previewAt'),
-    );
+    expect(
+      withoutInferredEvidence(confirmed('previewAt', 'residentOpenAt'), ['residentOpenAt']),
+    ).toEqual(confirmed('previewAt'));
   });
 
   it('is not a confirmation at all when the inference was the only evidence', () => {
@@ -360,6 +361,17 @@ describe('compareWindow — a guess is never a verification', () => {
 });
 
 describe('parseExtraction — {date:null} is the same absence as null', () => {
+  it('closes every object in the strict wire schema and keeps range validation locally', () => {
+    expect(EXTRACTION_JSON_SCHEMA.additionalProperties).toBe(false);
+    expect(EXTRACTION_JSON_SCHEMA.$defs.publishedDate.additionalProperties).toBe(false);
+    expect(EXTRACTION_JSON_SCHEMA.properties.confidence).not.toHaveProperty('minimum');
+    expect(EXTRACTION_JSON_SCHEMA.properties.confidence).not.toHaveProperty('maximum');
+    expect(() => parseExtraction({ ...RAW, confidence: 1.1 })).toThrow();
+    expect(() => parseExtraction({ ...RAW, extra: 'unwanted' })).toThrow();
+    expect(() =>
+      parseExtraction({ ...RAW, preview: { date: '2026-08-03', time: null, extra: true } }),
+    ).toThrow();
+  });
   // A full, valid model answer; each case overrides only the `preview` field.
   const RAW = {
     found: true,
@@ -385,6 +397,20 @@ describe('parseExtraction — {date:null} is the same absence as null', () => {
   it('keeps a real published date (positive control)', () => {
     const parsed = parseExtraction({ ...RAW, preview: { date: '2026-08-03', time: null } });
     expect(parsed.preview).toEqual({ date: '2026-08-03', time: null });
+  });
+  it('keeps an unlabelled opening separate from a public/non-resident date', () => {
+    const parsed = parseExtraction({
+      ...RAW,
+      unclassified_open: { date: '2026-08-11', time: '06:30' },
+    });
+    expect(parsed.unclassifiedOpen).toEqual({ date: '2026-08-11', time: '06:30' });
+    expect(parsed.generalOpen).toBeNull();
+    expect(
+      corroborationFailure('2026 Fall Programs. Register starting Aug. 11 at 6:30 AM', {
+        ...parsed,
+        unclassifiedOpen: { date: '2027-08-11', time: '06:30' },
+      }),
+    ).toBe('uncorroborated');
   });
 
   it('still rejects a malformed date — the collapse is not a catch-all', () => {
@@ -423,9 +449,9 @@ describe('corroborationFailure — the anti-fabrication gate', () => {
   });
 
   it('rejects year evidence that is not on the page', () => {
-    expect(
-      corroborationFailure(PAGE, extracted({ yearEvidence: '2026 Winter Programs' })),
-    ).toBe('uncorroborated');
+    expect(corroborationFailure(PAGE, extracted({ yearEvidence: '2026 Winter Programs' }))).toBe(
+      'uncorroborated',
+    );
   });
 
   it('tolerates whitespace and dash differences the HTML strip introduces', () => {

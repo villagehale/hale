@@ -1,14 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import {
-  and,
-  count,
-  countDistinct,
-  eq,
-  gte,
-  inArray,
-  isNotNull,
-  lt,
-} from 'drizzle-orm';
+import { and, count, countDistinct, eq, gte, inArray, isNotNull, lt } from 'drizzle-orm';
 import { type CommitmentDebt, aggregateCommitmentDebt } from '~/lib/commitments/ledger';
 import { LOOP_EMAIL_TYPES } from '~/lib/cron/email-compliance';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
@@ -118,8 +109,7 @@ export interface LoopHealthSummary {
    * rather than over `[windowStart, windowEnd)`.
    */
   w4Retention: RetentionCohort[];
-  /** The scorecard's radar row: whether the weekly re-verify sweep ran, and how much
-   * of the actionable dataset it re-confirmed at source. */
+  /** Latest watch source observations checked in this reporting window. */
   radar: RadarVerification;
   /** The scorecard's other safety input: medical-symptom texts Hale answered, and how
    * many of those answers fell back to the fixed 811/911 line. */

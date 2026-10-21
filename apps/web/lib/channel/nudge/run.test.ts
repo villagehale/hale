@@ -1,6 +1,10 @@
 import { inspect } from 'node:util';
 import { schema } from '@hale/db';
-import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
+import type {
+  Municipality,
+  ProgramDomain,
+  RegistrationSourceState as RegistrationWindow,
+} from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';

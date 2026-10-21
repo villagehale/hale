@@ -109,16 +109,16 @@ export interface RunAgentResult {
   /** True iff the loop stopped because it hit maxSteps rather than finishing. */
   hitMaxSteps: boolean;
   /**
-   * How many steps had to be re-asked because the completion was truncated before it
-   * emitted any text. Zero on an ordinary turn. Named rather than absorbed into `steps`
-   * (rule #11): a turn that bought its answer twice is a different, slower, dearer event
+   * How many steps had to be re-asked because the completion was truncated without
+   * a complete answer or dispatchable tool call. Zero on an ordinary turn. Named rather
+   * than absorbed into `steps` (rule #11): a turn that bought its answer twice is a
+   * different, slower, dearer event
    * than one that did not, and a recovery nobody can see is one nobody can budget for.
    */
   truncatedRetries: number;
   /**
-   * The final completion hit `max_tokens` before saying anything dispatchable, and the
-   * re-ask (if the lane had one) did not recover it. Distinct from `hitMaxSteps`, which
-   * is a loop that ran out of turns — this is a turn that ran out of ceiling (rule #11).
+   * An unrecovered token-ceiling failure, distinct from `hitMaxSteps`. Non-streaming
+   * runs discard clipped answers; streaming can only flag this before emitting text.
    */
   truncated: boolean;
   usage: AgentUsage;
@@ -285,9 +285,7 @@ const DEFAULT_MAX_TOKENS = 2048;
  * unaffected either way.
  */
 function buildSystem(skill: Skill): Anthropic.TextBlockParam[] {
-  return [
-    { type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } },
-  ];
+  return [{ type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } }];
 }
 
 /**
@@ -384,9 +382,7 @@ function wireLane(task: AgentTask, lane?: LaneConfig): WireLaneFields {
 /**
  * Did this completion hit the token ceiling before producing anything usable?
  *
- * Text means the budget went where it was supposed to — a clipped sentence is still an
- * answer the post-processor can trim, and re-asking there would pay twice for something
- * already in hand.
+ * Partial text is not a complete answer. Re-ask it before any text reaches the parent.
  *
  * A tool call counts only if EVERY call in the completion PARSES. Under `max_tokens` the
  * last tool_use block is the one that was cut, and the API returns whatever JSON it had:
@@ -402,11 +398,11 @@ function wireLane(task: AgentTask, lane?: LaneConfig): WireLaneFields {
  * An unknown tool NAME is left alone: handleToolUses throws loudly on it, and a re-ask
  * would turn a skill-config bug into a silent retry.
  */
-function isTruncatedBeforeSpeaking(
+function needsTruncationRetry(
   response: Anthropic.Message,
   toolByName: Map<string, RegisteredTool>,
 ): boolean {
-  if (response.stop_reason !== 'max_tokens' || textFrom(response.content) !== null) return false;
+  if (response.stop_reason !== 'max_tokens') return false;
   const toolUses = response.content.filter(
     (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
   );
@@ -551,9 +547,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
-  const messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: initialUserContent(args) },
-  ];
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: initialUserContent(args) }];
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
@@ -581,7 +575,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     });
     meter(response.usage);
 
-    // THE STEP THAT SAID NOTHING, ASKED AGAIN WITH THINKING OFF, AT THE SAME BUDGET.
+    // THE INCOMPLETE STEP, ASKED AGAIN WITH THINKING OFF, AT THE SAME BUDGET.
     //
     // `max_tokens` is the ceiling on thinking PLUS text, and on a thinking lane the model
     // spends it in that order. So a hard turn can hit the ceiling having produced one
@@ -594,8 +588,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     // sitting in the thread.
     //
     // RE-ASKED, not continued: the messages are byte-identical, so this is the same step
-    // in a different SHAPE rather than a new turn — the model has nothing to continue
-    // FROM, since it never said anything.
+    // in a different SHAPE rather than a new turn. Discard any partial text so it
+    // cannot be mistaken for an answer already delivered to the parent.
     //
     // Thinking off, not a bigger number. Sonnet 5 has no field that bounds the thinking
     // half (`budget_tokens` is a 400), so more room is the same bet with more chips: the
@@ -626,7 +620,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     // reason its way past its second tool (see the note on MAX_TOKENS in
     // apps/web/lib/channel/coach/runtime.ts). The room belongs to the turn that proved
     // it needed it.
-    if (isTruncatedBeforeSpeaking(response, toolByName)) {
+    if (needsTruncationRetry(response, toolByName)) {
       if (reaskLane !== null) {
         truncatedRetries += 1;
         response = await args.client.messages.create({
@@ -638,7 +632,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         });
         meter(response.usage);
       }
-      if (reaskLane === null || isTruncatedBeforeSpeaking(response, toolByName)) {
+      if (reaskLane === null || needsTruncationRetry(response, toolByName)) {
         return {
           answer: null,
           steps,
@@ -665,8 +659,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
       };
     }
 
-    const said = textFrom(response.content);
-    const { allOk } = await handleToolUses(args, toolByName, messages, response.content, toolUses);
+    // Keep completed tool effects, but not clipped prose the parent never received.
+    const content =
+      response.stop_reason === 'max_tokens'
+        ? response.content.filter((block) => block.type !== 'text')
+        : response.content;
+    const said = textFrom(content);
+    const { allOk } = await handleToolUses(args, toolByName, messages, content, toolUses);
 
     // THE FINISHED ANSWER, KEPT. A turn whose every call was a `registersOnly` tool has
     // nothing left to read: the results are `{promised:true}`-shaped acknowledgements,
@@ -718,9 +717,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
-  const messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: initialUserContent(args) },
-  ];
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: initialUserContent(args) }];
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
@@ -766,8 +763,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         // reported honestly rather than hidden in a null answer (rule #11) — the re-ask
         // itself is a separate change.
         truncatedRetries: 0,
-        truncated:
-          response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
+        truncated: response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }

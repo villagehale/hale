@@ -1,4 +1,8 @@
-import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
+import type {
+  Municipality,
+  ProgramDomain,
+  RegistrationSourceState as RegistrationWindow,
+} from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { WeekdayCareFact } from '~/lib/care/weekday';
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';

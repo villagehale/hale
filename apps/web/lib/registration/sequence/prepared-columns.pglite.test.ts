@@ -2,6 +2,8 @@ import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { registrationSourceFixture } from '~/lib/testing/registration-source';
+import type { LiveRegistrationReading } from '../live-reading';
 import { loadAwaitingSequence } from './reply.js';
 import { defaultSequenceRunDeps } from './run.js';
 
@@ -10,8 +12,8 @@ import { defaultSequenceRunDeps } from './run.js';
  *
  * Everything this migration is for lives in the database and nowhere else: three
  * nullable columns whose nullability IS the semantics (NULL = unasked, not false), a
- * paired CHECK that makes "bound to a course with no clock to anchor on" unrepresentable,
- * and RLS. A Drizzle chain fake can observe none of it — it returns whatever rows it was
+ * source CHECK that refuses an anchor without a URL, and RLS. A Drizzle chain fake can
+ * observe none of it — it returns whatever rows it was
  * handed and would pass just as happily against a table that never grew the columns.
  *
  * Each test names the mutation it exists to catch.
@@ -36,17 +38,14 @@ afterAll(async () => {
 let windowSeq = 0;
 async function seedWindow(): Promise<string> {
   windowSeq += 1;
-  const [row] = await db.database
-    .insert(schema.registrationWindows)
-    .values({
-      municipality: 'markham',
-      programDomain: 'rec_program',
-      cycleLabel: `Fall 2026 #${windowSeq}`,
-      openAt: new Date('2026-08-11T10:30:00.000Z'),
-      sourceUrl: 'https://example.test/window',
-      verifiedAt: new Date('2026-09-01T00:00:00.000Z'),
-    })
-    .returning({ id: schema.registrationWindows.id });
+  const row = registrationSourceFixture({
+    municipality: 'markham',
+    programDomain: 'rec_program',
+    cycleLabel: `Fall 2026 #${windowSeq}`,
+    openAt: new Date('2026-08-11T10:30:00.000Z'),
+    sourceUrl: 'https://example.test/window',
+    verifiedAt: new Date('2026-09-01T00:00:00.000Z'),
+  });
   if (!row) throw new Error('seedWindow: insert returned no row');
   return row.id;
 }
@@ -96,22 +95,15 @@ describe('registration_sequences · the prepared-registration columns', () => {
     ]);
   });
 
-  it('refuses a bound course with no clock, and a clock with no bound course', async () => {
-    // Kills: dropping the paired CHECK. A course_url without course_opens_at is a
-    // sequence the scheduler believes is bound and has nothing to anchor its legs on;
-    // a clock without a URL is an anchor no send-time read can re-verify.
-    await expect(insertSequence(COURSE_URL, null)).rejects.toThrow(
-      /registration_sequences_course_check/,
-    );
+  it('accepts a URL before its date is published, but refuses a clock without a source', async () => {
+    await expect(insertSequence(COURSE_URL, null)).resolves.toBeDefined();
     await expect(insertSequence(null, '2026-08-12T10:30:00Z')).rejects.toThrow(
       /registration_sequences_course_check/,
     );
   });
 
   it('accepts the unbound row, and round-trips a bound one through the Drizzle columns', async () => {
-    // The positive control the pair of refusals above needs: the CHECK must not be
-    // refusing everything. Kills a CHECK written as `IS NOT NULL AND IS NOT NULL`,
-    // which would make today's unbound sequences uninsertable.
+    // The legacy unbound shape must still be insertable after the watch migration.
     await expect(insertSequence(null, null)).resolves.toBeDefined();
 
     // The bound row goes in through the table object rather than raw SQL, because the
@@ -163,9 +155,24 @@ describe('registration_sequences · the prepared-registration columns', () => {
  * which page, and only when the clock actually differs — and a Drizzle chain fake
  * returns whatever it was handed, so the guard can only be proven here.
  */
-describe('defaultSequenceRunDeps().refreshCourseAnchor · the guard', () => {
+describe('live refresh · later clock review and source guards', () => {
   const AT = new Date('2026-08-11T10:30:00.000Z');
   const MOVED = new Date('2026-08-12T10:30:00.000Z');
+  const reading = (now: Date): LiveRegistrationReading => ({
+    sourceUrl: COURSE_URL,
+    timeZone: 'America/Toronto',
+    checkedAt: now,
+    reader: 'ai',
+    status: 'verified',
+    dates: [
+      {
+        kind: 'general_open',
+        date: '2026-08-12',
+        time: '06:30',
+        evidence: ['Public registration August 12, 2026 at 06:30'],
+      },
+    ],
+  });
 
   async function seedBound(): Promise<string> {
     const windowId = await seedWindow();
@@ -184,31 +191,39 @@ describe('defaultSequenceRunDeps().refreshCourseAnchor · the guard', () => {
     return row?.course_opens_at;
   }
 
-  it('moves the clock once, and says so only the first time', async () => {
-    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+  it('pauses a later clock for approval instead of silently moving the old anchor', async () => {
+    const { refresh } = defaultSequenceRunDeps().live;
     const sequenceId = await seedBound();
 
-    const first = await refreshCourseAnchor(db.database, {
+    const first = await refresh(db.database, {
       sequenceId,
-      courseUrl: COURSE_URL,
-      courseOpensAt: MOVED,
+      reading: reading(new Date()),
+      resident: false,
       now: new Date(),
     });
-    const second = await refreshCourseAnchor(db.database, {
+    const second = await refresh(db.database, {
       sequenceId,
-      courseUrl: COURSE_URL,
-      courseOpensAt: MOVED,
+      reading: reading(new Date()),
+      resident: false,
       now: new Date(),
     });
 
     // Kills dropping `IS DISTINCT FROM`: every one of the battle plan's ticks would
     // report a move, and `anchorMovedMinutes` would be a receipt for nothing.
-    expect([first, second]).toEqual([true, false]);
-    expect(new Date(String(await anchorOf(sequenceId))).toISOString()).toBe(MOVED.toISOString());
+    expect([first, second]).toEqual([true, true]);
+    expect(new Date(String(await anchorOf(sequenceId))).toISOString()).toBe(AT.toISOString());
+    const [paused] = await rows(
+      `SELECT paused_at, pending_change FROM registration_sequences WHERE id = '${sequenceId}'`,
+    );
+    expect(paused?.paused_at).not.toBeNull();
+    expect(paused?.pending_change).toMatchObject({
+      kind: 'later',
+      candidateAt: MOVED.toISOString(),
+    });
   });
 
   it('refuses to move a row that now holds a DIFFERENT course', async () => {
-    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+    const { refresh } = defaultSequenceRunDeps().live;
     const sequenceId = await seedBound();
     // The parent pasted a second link while the six-second read was in flight: the row
     // is a different class now, with its own clock. Kills a guard on the id alone, which
@@ -218,10 +233,10 @@ describe('defaultSequenceRunDeps().refreshCourseAnchor · the guard', () => {
       `UPDATE registration_sequences SET course_url = '${rebound}' WHERE id = '${sequenceId}'`,
     );
 
-    const moved = await refreshCourseAnchor(db.database, {
+    const moved = await refresh(db.database, {
       sequenceId,
-      courseUrl: COURSE_URL,
-      courseOpensAt: MOVED,
+      reading: reading(new Date()),
+      resident: false,
       now: new Date(),
     });
 
@@ -230,20 +245,19 @@ describe('defaultSequenceRunDeps().refreshCourseAnchor · the guard', () => {
   });
 
   it('says nothing moved for a sequence that is gone', async () => {
-    const { refreshCourseAnchor } = defaultSequenceRunDeps();
+    const { refresh } = defaultSequenceRunDeps().live;
     // Kills returning true unconditionally: a deleted household would be audited as
     // having had its morning moved.
-    const moved = await refreshCourseAnchor(db.database, {
+    const moved = await refresh(db.database, {
       sequenceId: '00000000-0000-0000-0000-000000000000',
-      courseUrl: COURSE_URL,
-      courseOpensAt: MOVED,
+      reading: reading(new Date()),
+      resident: false,
       now: new Date(),
     });
 
     expect(moved).toBe(false);
   });
 });
-
 
 /**
  * VIL-338 · the check-in listens for as long after the BOUND course's morning as it
@@ -269,27 +283,23 @@ describe('loadAwaitingSequence · the horizon and the ordering', () => {
 
   async function seedSequenceOn(openAt: Date, courseOpensAt: Date | null): Promise<void> {
     windowSeq += 1;
-    const [window] = await db.database
-      .insert(schema.registrationWindows)
-      .values({
-        municipality: 'markham',
-        programDomain: 'rec_program',
-        cycleLabel: `Fall 2026 horizon #${windowSeq}`,
-        openAt,
-        ageMinMonths: 36,
-        ageMaxMonths: 84,
-        sourceUrl: 'https://example.test/window',
-        verifiedAt: new Date('2026-09-01T00:00:00.000Z'),
-      })
-      .returning({ id: schema.registrationWindows.id });
+    const window = registrationSourceFixture({
+      municipality: 'markham',
+      programDomain: 'rec_program',
+      cycleLabel: `Fall 2026 horizon #${windowSeq}`,
+      openAt,
+      ageMinMonths: 36,
+      ageMaxMonths: 84,
+      sourceUrl: 'https://example.test/window',
+      verifiedAt: new Date('2026-09-01T00:00:00.000Z'),
+    });
     if (!window) throw new Error('seedSequenceOn: insert returned no window');
     await db.database.insert(schema.registrationSequences).values({
       familyId: horizonFamilyId,
-      windowId: window.id,
+      windowId: window!.id,
+      sourceContext: window,
       parentUserId: horizonParentUserId,
-      ...(courseOpensAt === null
-        ? {}
-        : { courseUrl: COURSE_URL, courseOpensAt }),
+      ...(courseOpensAt === null ? {} : { courseUrl: COURSE_URL, courseOpensAt }),
     });
   }
 

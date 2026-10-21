@@ -36,7 +36,7 @@ const NO_ENGAGEMENT: FamilyEngagement = { families: 0, contacted: 0 };
 const NO_RETENTION: RetentionCohort[] = [];
 
 /** No re-verify sweep overlapped the window. */
-const NO_RADAR: RadarVerification = { sweptThisWeek: false, outcomes: null };
+const NO_RADAR: RadarVerification = { checkedThisWeek: false, outcomes: null };
 
 /** No parent brought Hale a symptom this week. */
 const NO_MEDICAL: MedicalAnswers = { answered: 0, fallbacks: 0 };
@@ -260,8 +260,8 @@ afterEach(() => {
 describe('createLoopHealthDigestSender', () => {
   it('posts the body to Slack #ops', async () => {
     vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
-    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response('ok', { status: 200 }),
+    const fetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('ok', { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchImpl);
 
@@ -478,8 +478,8 @@ describe('formatLoopHealthDigest — the scorecard', () => {
     engagement: { families: 20, contacted: 16 },
     w4Retention: [{ signupWeek: '2026-07-06', weekN: 4, cohortSize: 20, retained: 3 }],
     radar: {
-      sweptThisWeek: true,
-      outcomes: { checked: 20, confirmed: 19, discrepancies: 1, unverified: 0 },
+      checkedThisWeek: true,
+      outcomes: { checked: 20, verified: 19, changed: 1, unverified: 0 },
     },
     medicalAnswers: { answered: 4, fallbacks: 0 },
     unmetIntents: [
@@ -528,7 +528,7 @@ describe('formatLoopHealthDigest — the scorecard', () => {
     expect(lines[3]).toContain(
       '3/10 · 3 of 20 families texted back in week 4 (15%) · north star is W2 40%',
     );
-    expect(lines[4]).toContain('10/10 · 19 of 20 due windows re-confirmed');
+    expect(lines[4]).toContain('10/10 · 19 of 20 latest watch observations verified at source');
     expect(lines[5]).toContain('6/10 · 96% reached of 100 · 2 failed, 2 suppressed');
     expect(lines[6]).toContain(
       '6/10 · 3 fixed doors (3 safety-lane deflections, 0 medical fallbacks) · 0 of 4 medical answers',

@@ -4,7 +4,6 @@ import type { Database } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
-import { cityRecLine } from '~/lib/channel/rec-morning';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
@@ -23,7 +22,6 @@ import type { ApprovalSpine, PendingAction } from './approval';
 import {
   approvalHandler,
   healthReplyHandler,
-  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
@@ -509,56 +507,13 @@ describe('the village intro lane and the lanes behind it', () => {
   });
 });
 
-describe('recMorningHandler', () => {
-  it("answers a Toronto swim clock question with the dataset's Toronto dates", async () => {
-    const verdict = await recMorningHandler().handle(
-      DB,
-      turn('When does Toronto swim registration open?'),
-    );
-    expect(verdict.claimed).toBe(true);
-    if (!verdict.claimed || verdict.reply === null) return;
-    const body = verdict.reply;
-    expect(body).toBe(cityRecLine('toronto', TURN_NOW));
-    expect(body).toContain('residents Tuesday Sep 15 at 7 a.m.');
-    expect(body).toContain('toronto.ca/OnlineReg');
-    expect(body.toLowerCase()).not.toContain('activeto');
-    expect(body.toLowerCase()).not.toContain('unofficial');
-    expect(body.toLowerCase()).not.toContain('efun');
-    expect(body).not.toMatch(/I'm an AI/i);
-    expect(body).not.toMatch(/https?:\/\//i);
-  });
-
-  it("answers a named Markham rec ask with Markham's own cycle, not Toronto", async () => {
-    const verdict = await recMorningHandler().handle(DB, turn('Markham fall rec dates?'));
-    expect(verdict.claimed).toBe(true);
-    if (!verdict.claimed || verdict.reply === null) return;
-    expect(verdict.reply).toBe(cityRecLine('markham', TURN_NOW));
-    expect(verdict.reply).toContain('Tuesday Aug 11 at 6:30 a.m.');
-    expect(verdict.reply).not.toContain('7:00');
-    expect(verdict.reply).not.toMatch(/Sept?\s*15/i);
-    expect(verdict.reply.toLowerCase()).not.toContain('activeto');
-  });
-
-  it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
-    expect((await recMorningHandler().handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
-    expect(
-      (
-        await recMorningHandler().handle(
-          DB,
-          turn('can you watch swim registration for Milo this fall?'),
-        )
-      ).claimed,
-    ).toBe(false);
-  });
-});
-
 /**
  * The order production actually ships. The tests above drive each handler directly, so
  * without this one the whole ordering argument could hold while `defaultHandlers`
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -617,8 +572,8 @@ describe('the shipped order', () => {
       // Exact memory phrases only, and only with the kinds flag on. Flag off
       // claims nothing, so a bare yes never lands here.
       'family_memory_kinds',
+      'registration_link',
       'registration',
-      'rec_morning',
       // Immediately before the bare-word capture, so "yes" to "Can I call you Bea?"
       // is the confirm and not a name, while "Bea" answering the open ask still
       // falls through to the capture.

@@ -352,7 +352,12 @@ function clippedToolUseMessage(u: Anthropic.Usage): Anthropic.Message {
     stop_sequence: null,
     content: [
       { type: 'thinking', thinking: '', signature: 'sig' } as Anthropic.ContentBlock,
-      { type: 'tool_use', id: 'call-1', name: 'get_child_profile', input: {} } as Anthropic.ToolUseBlock,
+      {
+        type: 'tool_use',
+        id: 'call-1',
+        name: 'get_child_profile',
+        input: {},
+      } as Anthropic.ToolUseBlock,
     ],
     usage: u,
   };
@@ -364,7 +369,7 @@ interface WireShape {
   output_config?: { effort: string };
 }
 
-describe('runAgent when a step is truncated before it says anything', () => {
+describe('runAgent when a step is truncated', () => {
   function capturing(script: Anthropic.Message[]) {
     const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
     /** The messages AS SENT. `runAgent` mutates one array across the loop and the
@@ -523,9 +528,7 @@ describe('runAgent when a step is truncated before it says anything', () => {
     expect(result.truncatedRetries).toBe(0);
   });
 
-  it('does not retry a step that was truncated AFTER it had started speaking', async () => {
-    // Text present means the budget was spent on the answer, not swallowed by thinking.
-    // Re-asking there would pay twice for a reply the post-processor can already trim.
+  it('re-asks partial text instead of returning a clipped answer', async () => {
     const clipped: Anthropic.Message = {
       id: 'msg-clipped',
       type: 'message',
@@ -533,16 +536,62 @@ describe('runAgent when a step is truncated before it says anything', () => {
       model: 'claude-sonnet-4-6',
       stop_reason: 'max_tokens',
       stop_sequence: null,
-      content: [{ type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock],
+      content: [
+        { type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock,
+      ],
       usage: usage(1_000, 400),
     };
-    const { client, requests } = capturing([clipped]);
+    const { client, requests, sent } = capturing([
+      clipped,
+      textMessage('Around 18 months, once he is walking outside.', usage(1_000, 40)),
+    ]);
 
     const result = await runAgent(args(client));
 
-    expect(requests).toHaveLength(1);
-    expect(result.answer).toBe('Around 18 months, once he');
-    expect(result.truncatedRetries).toBe(0);
+    expect(requests).toHaveLength(2);
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
+    expect(sent[1]).toEqual(sent[0]);
+    expect(result.answer).toBe('Around 18 months, once he is walking outside.');
+    expect(result.truncatedRetries).toBe(1);
+    expect(result.truncated).toBe(false);
+    expect(result.usage.completionTokens).toBe(440);
+  });
+
+  it.each(['converse', 'draft'] as const)(
+    'never returns partial text when the %s lane cannot recover',
+    async (task) => {
+      const clipped = {
+        ...textMessage('Registration opens Dec 1, exact time', usage(1_000, 400)),
+        stop_reason: 'max_tokens' as const,
+      };
+      const { client, requests } = capturing([clipped, clipped]);
+      const result = await runAgent({
+        ...args(client),
+        skill: { ...skill, meta: { ...skill.meta, task } },
+      });
+      expect(requests).toHaveLength(task === 'converse' ? 2 : 1);
+      expect(result.answer).toBeNull();
+      expect(result.truncated).toBe(true);
+      expect(result.truncatedRetries).toBe(task === 'converse' ? 1 : 0);
+    },
+  );
+
+  it('re-asks an invalid tool call even when it has partial text beside it', async () => {
+    const read: string[] = [];
+    const clipped = clippedToolUseMessage(usage(1_000, 400));
+    clipped.content.unshift({
+      type: 'text',
+      text: 'Let me check',
+      citations: null,
+    } as Anthropic.TextBlock);
+    const { client } = capturing([
+      clipped,
+      textMessage('Please provide the child profile.', usage(1_000, 40)),
+    ]);
+    const result = await runAgent(args(client, [recordingProfileTool(read)]));
+    expect(read).toEqual([]);
+    expect(result.truncatedRetries).toBe(1);
+    expect(result.answer).toBe('Please provide the child profile.');
   });
 
   it('gives up after one re-ask rather than escalating forever', async () => {
@@ -628,6 +677,37 @@ describe('runAgent keeps the answer written beside a registering tool call', () 
     expect(result.truncated).toBe(false);
   });
 
+  it('finishes clipped text without dispatching the completed registering tool twice', async () => {
+    const clipped = {
+      ...textAndToolUseMessage(
+        'I will remind you when',
+        'tu-1',
+        'promise_followup',
+        { subject: 'registration' },
+        usage(100, 400),
+      ),
+      stop_reason: 'max_tokens' as const,
+    };
+    const client = fakeClient([clipped, textMessage('Your reminder is saved.', usage(120, 20))]);
+    const promised: string[] = [];
+    const result = await runAgent({
+      skill: promiseSkill,
+      context: {},
+      tools: [profileTool, promiseTool(promised)],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: guardDeps().deps,
+    });
+    expect(promised).toEqual(['registration']);
+    expect(result.answer).toBe('Your reminder is saved.');
+    expect(result.steps).toBe(2);
+    expect(result.truncatedRetries).toBe(0);
+    const nextMessages = (client.messages.create as unknown as Mock).mock.calls[1]?.[0].messages;
+    expect(JSON.stringify(nextMessages)).not.toContain('I will remind you when');
+    expect(JSON.stringify(nextMessages)).toContain('tool_result');
+  });
+
   it('takes another turn when the registering tool REFUSED, so the fix reaches the parent', async () => {
     const client = fakeClient([
       textAndToolUseMessage(
@@ -670,7 +750,7 @@ describe('runAgent keeps the answer written beside a registering tool call', () 
   it('still discards the preamble written before a tool it is about to READ', async () => {
     const client = fakeClient([
       textAndToolUseMessage(
-        "Let me pull up the profile and check.",
+        'Let me pull up the profile and check.',
         'tu-1',
         'get_child_profile',
         { childId: 'kid-1' },
@@ -982,7 +1062,12 @@ describe('runAgentStreaming', () => {
     expect(events).toEqual([
       { hook: 'step', step: 1 },
       { hook: 'tool_call', name: 'get_child_profile' },
-      { hook: 'tool_result', name: 'get_child_profile', ok: true, preview: 'Ran get_child_profile' },
+      {
+        hook: 'tool_result',
+        name: 'get_child_profile',
+        ok: true,
+        preview: 'Ran get_child_profile',
+      },
       { hook: 'step', step: 2 },
     ]);
 
@@ -1032,7 +1117,10 @@ describe('runAgentStreaming', () => {
       instructions: 'You answer.',
     };
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)) },
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)),
+      },
       { chunks: ['found ', 'it.'], final: textMessage('found it.', usage(60, 15)) },
     ]);
     const { deps } = guardDeps();
@@ -1105,7 +1193,10 @@ describe('runAgentStreaming', () => {
       instructions: 'You answer.',
     };
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)) },
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)),
+      },
       { chunks: ['found ', 'it.'], final: textMessage('found it.', usage(60, 15)) },
     ]);
     const { deps } = guardDeps();
@@ -1158,7 +1249,10 @@ describe('runAgentStreaming', () => {
       handler: async () => ({ card: { kind: 'evil', payload: 'leak-me' } }),
     });
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('t', 'get_child_profile', { childId: 'k' }, usage(10, 5)) },
+      {
+        chunks: [],
+        final: toolUseMessage('t', 'get_child_profile', { childId: 'k' }, usage(10, 5)),
+      },
       { chunks: ['ok.'], final: textMessage('ok.', usage(10, 5)) },
     ]);
     const { deps } = guardDeps();
@@ -1519,10 +1613,10 @@ describe('prompt cache prefix', () => {
   const FAMILY_SECRET = 'Ella naps at 12:30';
 
   function systemsFrom(client: AgentClient): unknown[] {
-    const mock = (client.messages as unknown as {
+    const mock = client.messages as unknown as {
       create?: { mock: { calls: Array<[{ system: unknown }]> } };
       stream?: { mock: { calls: Array<[{ system: unknown }]> } };
-    });
+    };
     const calls = (mock.create ?? mock.stream)?.mock.calls ?? [];
     return calls.map(([params]) => params.system);
   }

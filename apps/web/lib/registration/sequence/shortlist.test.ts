@@ -1,4 +1,4 @@
-import type { RegistrationWindow } from '@hale/db';
+import type { RegistrationSourceState } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { type SequenceChild, buildShortlist } from './shortlist.js';
@@ -19,7 +19,7 @@ import { type SequenceChild, buildShortlist } from './shortlist.js';
 
 const NOW = new Date('2026-09-05T12:00:00.000Z');
 
-function window(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
+function window(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
   return {
     id: 'win-1',
     municipality: 'toronto',
@@ -38,7 +38,7 @@ function window(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
-  } as RegistrationWindow;
+  } as RegistrationSourceState;
 }
 
 function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {
@@ -103,11 +103,7 @@ describe('buildShortlist', () => {
 
   it('leaves out a child the band does not admit at all', () => {
     // 10 years old against a 3–6 band: outside even the tolerance.
-    const shortlist = buildShortlist(
-      match(),
-      [child('c1', 'Max', 4), child('c2', 'Ada', 10)],
-      NOW,
-    );
+    const shortlist = buildShortlist(match(), [child('c1', 'Max', 4), child('c2', 'Ada', 10)], NOW);
     expect(shortlist?.fitNotes.map((note) => note.name)).toEqual(['Max']);
   });
 
@@ -158,7 +154,10 @@ describe('buildShortlist', () => {
   });
 
   it('carries the resident head start only where the family actually has one', () => {
-    const residentWindow = window({ residentOpenAt: new Date('2026-09-08T10:30:00.000Z'), residentPriorityDays: 7 });
+    const residentWindow = window({
+      residentOpenAt: new Date('2026-09-08T10:30:00.000Z'),
+      residentPriorityDays: 7,
+    });
     const resident = buildShortlist(
       match({
         window: residentWindow,
@@ -182,7 +181,9 @@ describe('buildShortlist', () => {
   });
 
   it('carries the age hedge straight off the matcher', () => {
-    expect(buildShortlist(match({ ageApproximate: true }), [child('c1', 'Max', 4)], NOW)?.ageApproximate).toBe(true);
+    expect(
+      buildShortlist(match({ ageApproximate: true }), [child('c1', 'Max', 4)], NOW)?.ageApproximate,
+    ).toBe(true);
   });
 
   it('labels the program domain in words a parent uses', () => {
@@ -191,11 +192,8 @@ describe('buildShortlist', () => {
     );
     const care = window({ programDomain: 'after_school_care' });
     expect(
-      buildShortlist(
-        match({ window: care, cycleWindows: [care] }),
-        [child('c1', 'Max', 4)],
-        NOW,
-      )?.cyclePhrase,
+      buildShortlist(match({ window: care, cycleWindows: [care] }), [child('c1', 'Max', 4)], NOW)
+        ?.cyclePhrase,
     ).toBe('Fall 2026 before-and-after-school care');
   });
 
@@ -252,9 +250,9 @@ describe('buildShortlist — what the source did and did not publish', () => {
   });
 
   it('adds the domain in a parent’s words when the cycle label is a bare season', () => {
-    expect(
-      buildShortlist(match(), [child('c1', 'Max', 4)], NOW)?.cyclePhrase,
-    ).toBe('Fall 2026 recreation programs');
+    expect(buildShortlist(match(), [child('c1', 'Max', 4)], NOW)?.cyclePhrase).toBe(
+      'Fall 2026 recreation programs',
+    );
   });
 
   it('names every domain that opens together, deduped, for a collapsed event', () => {
@@ -263,7 +261,11 @@ describe('buildShortlist — what the source did and did not publish', () => {
       programDomain: 'rec_program',
       cycleLabel: 'Fall 2026 and Winter 2027 youth programs',
     });
-    const swim = window({ id: 'swim', programDomain: 'swim', cycleLabel: 'Fall 2026 swimming lessons' });
+    const swim = window({
+      id: 'swim',
+      programDomain: 'swim',
+      cycleLabel: 'Fall 2026 swimming lessons',
+    });
     const leadership = window({
       id: 'leadership',
       programDomain: 'swim',

@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RegisteredTool, Skill } from '@hale/agent';
+import { type RegisteredTool, type Skill, invokeTool } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
-import { MAX_REPLY_SEGMENTS } from './reply';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 /**
@@ -25,6 +24,24 @@ const PARENT = '22222222-2222-4222-8222-222222222222';
 const CONVERSATION = '33333333-3333-4333-8333-333333333333';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 const LINK = 'https://app.villagehale.com';
+const WATCH = {
+  id: '44444444-4444-4444-8444-444444444444',
+  town: 'King',
+  programs: 'Winter 2027',
+  sourceUrl: 'https://www.king.ca/recreation',
+  optIn: 'opted_in' as const,
+  outcome: null,
+};
+
+function readThenAnswer(answer: string, ids = [WATCH.id]): ChannelCoachPorts['runAgent'] {
+  return async (args) => {
+    const tool = args.tools.find((tool) => tool.name === 'read_registration_page');
+    if (!tool) throw new Error('registration read tool missing');
+    for (const watchId of ids)
+      await invokeTool(tool, { watchId }, args.toolContext, args.guardDeps);
+    return answering(answer)(args);
+  };
+}
 
 /** 16y at NOW → teenager, derived from the @hale/types boundary, not from output. */
 const TEEN = { name: 'Nora', gender: 'girl', dateOfBirth: '2010-03-04' };
@@ -75,7 +92,8 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
       return { question: input.question, transcript: input.transcript } as never;
     },
     loadChildren: async () => [TEEN],
-    loadRegistrationWindows: async () => [],
+    loadRegistrationWatches: async () => [],
+    readRegistrationWatch: async () => null,
     buildTools: () => [] as RegisteredTool[],
     // Nothing nearby by default: the surface flag is off for months, so silence is the
     // ordinary answer and the cases that exercise it override this.
@@ -99,10 +117,249 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
 }
 
 describe('channelCoachRuntime', () => {
+  it('loads watch metadata on every turn, without reading pages before the model chooses', async () => {
+    let reads = 0;
+    let lists = 0;
+    let instructions = '';
+    const p = ports({
+      loadRegistrationWatches: async () => {
+        lists++;
+        return [WATCH];
+      },
+      readRegistrationWatch: async () => {
+        reads++;
+        return null;
+      },
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        expect(args.context).toHaveProperty('registrationWatches', [WATCH]);
+        expect(args.context).not.toHaveProperty('registrationWindows');
+        expect(args.skill.meta.tools).toContain('read_registration_page');
+        expect(reads).toBe(0);
+        return answering('Thanks.')(args);
+      },
+    });
+    const ordinary = await channelCoachRuntime(p).respond(turn('How do I help with bedtime?'), []);
+    expect(ordinary.reply).toBe('Thanks.');
+    await channelCoachRuntime(p).respond(turn('Cancel Thursday swim'), []);
+    expect(reads).toBe(0);
+    expect(lists).toBe(2);
+    await channelCoachRuntime(p).respond(turn('When does registration open?'), []);
+    expect(reads).toBe(0);
+    expect(lists).toBe(3);
+    expect(instructions).toContain('Registration live truth');
+  });
+  it.each(['When do registrations open?', 'When can I enroll?', 'What time now?'])(
+    'lets the model read a tracked page for %s without a keyword gate',
+    async (question) => {
+      let reads = 0;
+      const p = ports({
+        loadTranscript: async () => [{ role: 'assistant', content: 'Registration opens Sep 1.' }],
+        loadRegistrationWatches: async () => [WATCH],
+        readRegistrationWatch: async (familyId, watchId) => {
+          expect(familyId).toBe(FAMILY);
+          expect(watchId).toBe(WATCH.id);
+          reads++;
+          return {
+            town: WATCH.town,
+            programs: WATCH.programs,
+            opensFor: '2026-11-24 (opening time not published) America/Toronto',
+            residentsFirst: false,
+            generalOpens: null,
+            ageApproximate: false,
+            watching: true,
+            sourceUrl: WATCH.sourceUrl,
+          };
+        },
+        runAgent: readThenAnswer('Registration opens Nov 24, 2026 (America/Toronto).'),
+      });
+      const result = await channelCoachRuntime(p).respond(turn(question), []);
+      expect(reads).toBe(1);
+      expect(result.reply).toContain(WATCH.sourceUrl);
+    },
+  );
   it('answers a turn with the post-processed reply', async () => {
     const { reply } = await channelCoachRuntime(ports()).respond(turn(), []);
 
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
+  });
+
+  it('a held registration answer retains the source even when the model omits its link', async () => {
+    const sourceUrl = 'https://www.king.ca/recreation';
+    const p = ports({
+      loadRegistrationWatches: async () => [WATCH],
+      readRegistrationWatch: async () => ({
+        town: 'King',
+        programs: 'Winter 2027',
+        opensFor: 'Current date could not be verified. Do not use a cached date.',
+        residentsFirst: false,
+        generalOpens: null,
+        ageApproximate: false,
+        watching: true,
+        reminderState: 'paused',
+        sourceUrl,
+      }),
+      runAgent: readThenAnswer(
+        "I couldn't verify the current date. Date reminders are paused while I check again.",
+      ),
+    });
+    const { reply } = await channelCoachRuntime(p).respond(
+      turn('When does registration open?'),
+      [],
+    );
+    expect(reply).toContain("couldn't verify");
+    expect(reply).toContain(sourceUrl);
+    expect(reply).not.toMatch(/\b(?:2026|2027|midnight|09:00)\b/);
+  });
+
+  it('keeps a freshly read partial registration date, note and source in the final reply', async () => {
+    const sourceUrl = 'https://example.org/register';
+    const note = 'The registration year is not established by this page.';
+    const p = ports({
+      loadRegistrationWatches: async () => [{ ...WATCH, sourceUrl }],
+      readRegistrationWatch: async () => ({
+        town: 'Course operator',
+        programs: 'Swim registration',
+        opensFor: 'The full date could not be verified.',
+        residentsFirst: false,
+        generalOpens: null,
+        ageApproximate: false,
+        watching: true,
+        reminderState: 'paused',
+        minuteReminderAvailable: false,
+        sourceUrl,
+        partialDates: [
+          {
+            kind: 'unclassified_open',
+            dateText: 'December 7',
+            note,
+            evidence: ['Registration opens December 7.'],
+          },
+        ],
+      }),
+      runAgent: readThenAnswer('The full date is unconfirmed; precise date reminders are paused.'),
+    });
+    const { reply } = await channelCoachRuntime(p).respond(
+      turn('When does registration open?'),
+      [],
+    );
+    expect(reply).toContain('December 7');
+    expect(reply).toContain(note);
+    expect(reply).toContain(sourceUrl);
+    expect(reply).not.toContain('2026-12-07');
+  });
+
+  it.each([false, true])(
+    'preserves the full long answer and eligibility beside another draft (draft=%s)',
+    async (drafted) => {
+      const sourceUrl =
+        'https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information';
+      const p = ports({
+        buildTools: (_turn, onDraft) => {
+          if (drafted) onDraft('another-action');
+          return [];
+        },
+        loadRegistrationWatches: async () => [WATCH],
+        readRegistrationWatch: async () => ({
+          town: 'Markham',
+          programs: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
+          opensFor: 'No opening date confirmed for this household (eligibility unconfirmed).',
+          residentsFirst: false,
+          generalOpens: null,
+          unclassifiedOpens: '2026-08-11 at 06:30 America/Toronto',
+          ageApproximate: false,
+          watching: true,
+          reminderState: 'paused',
+          sourceUrl,
+        }),
+        runAgent: readThenAnswer(
+          `Swim change drafted for approval. The page lists 2026-08-11 at 06:30 America/Toronto for Fall Programs, Swim Lessons and Winter Break Camps. ${'Please check the details. '.repeat(5)} Resident/non-resident eligibility is unconfirmed. Date reminders are paused.`,
+        ),
+      });
+      const { reply } = await channelCoachRuntime(p).respond(turn('When can I register?'), []);
+      expect(reply).toContain('2026-08-11 at 06:30 America/Toronto');
+      if (drafted) {
+        expect(reply).toContain('Swim change drafted for approval.');
+        expect(reply).toContain('Markham:');
+        expect(reply).toContain('resident/non-resident eligibility unconfirmed.');
+        expect(reply).toContain(sourceUrl);
+        return;
+      }
+      expect(reply).toContain('resident/non-resident eligibility unconfirmed');
+      expect(reply).toContain('Date reminders are paused.');
+      expect(reply).toContain(sourceUrl);
+      expect(reply).not.toContain('...');
+      expect(reply).toContain('Please check the details. '.repeat(5).trim());
+    },
+  );
+
+  it.each(['active', 'awaiting_confirmation'] as const)(
+    'a verified registration answer retains its source when the watch is %s',
+    async (reminderState) => {
+      const sourceUrl =
+        'https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx';
+      const p = ports({
+        loadRegistrationWatches: async () => [{ ...WATCH, sourceUrl }],
+        readRegistrationWatch: async () => ({
+          town: 'Richmond Hill',
+          programs: 'Winter 2026-2027',
+          opensFor: '2026-11-24 (opening time not published) America/Toronto',
+          residentsFirst: true,
+          generalOpens: null,
+          ageApproximate: false,
+          watching: reminderState === 'active',
+          reminderState,
+          sourceUrl,
+        }),
+        runAgent: readThenAnswer(
+          'Resident registration opens Nov 24, 2026 (America/Toronto). Opening time not published.',
+        ),
+      });
+      const { reply } = await channelCoachRuntime(p).respond(
+        turn('Could you recheck the official page for resident registration?'),
+        [],
+      );
+      expect(reply).toContain('Nov 24, 2026');
+      expect(reply.endsWith(sourceUrl)).toBe(true);
+    },
+  );
+
+  it('retains all live registration sources once, not just the first watch', async () => {
+    const sourceUrls = ['https://www.king.ca/recreation', 'https://www.richmondhill.ca/recreation'];
+    const p = ports({
+      loadRegistrationWatches: async () =>
+        sourceUrls.map((sourceUrl, index) => ({
+          ...WATCH,
+          id: `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+          sourceUrl,
+        })),
+      readRegistrationWatch: async (_familyId, watchId) => ({
+        town: 'tracked course',
+        programs: 'Winter 2027',
+        opensFor: '2026-11-24 (opening time not published) America/Toronto',
+        residentsFirst: false,
+        generalOpens: null,
+        ageApproximate: false,
+        watching: true,
+        reminderState: 'active',
+        sourceUrl: sourceUrls[Number(watchId.slice(-1))],
+      }),
+      runAgent: readThenAnswer(
+        `These registrations open Nov 24, 2026 (America/Toronto). Sources: ${sourceUrls.join(' ')}. Opening times are unpublished.`,
+        sourceUrls.map(
+          (_url, index) => `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+        ),
+      ),
+    });
+    const { reply } = await channelCoachRuntime(p).respond(
+      turn('When does registration open for these courses?'),
+      [],
+    );
+    for (const sourceUrl of sourceUrls) {
+      expect(reply.split(sourceUrl)).toHaveLength(2);
+    }
+    expect(reply).not.toContain('undefined');
+    expect(reply).toContain('Opening times are unpublished.');
   });
 
   /**
@@ -195,23 +452,19 @@ describe('channelCoachRuntime', () => {
     expect(reply).toBe('your kid has practice Thursday.');
   });
 
-  it('holds a long answer to the segment budget', async () => {
+  it('returns a long answer in full without a segment cap', async () => {
     const long = Array.from({ length: 12 }, (_, i) => `Sentence number ${i} about swim.`).join(' ');
     const p = ports({ runAgent: answering(long) });
 
     const { reply } = await channelCoachRuntime(p).respond(turn(), []);
 
-    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(reply)).toBeGreaterThan(2);
+    expect(reply).toBe(long);
     expect(reply).not.toContain(LINK);
     expect(reply.startsWith('Sentence number 0')).toBe(true);
   });
 
-  /**
-   * One sentence that does not fit is not cut off. The runtime asks once for a
-   * shorter rewrite and sends that. The rewrite comes from the model; this test
-   * only checks that the call happens and that its text is what leaves.
-   */
-  it('asks for a shorter rewrite when no complete sentence fits', async () => {
+  it('keeps a long complete answer without spending a shorter-rewrite call', async () => {
     const long = `${'Please sit with him through a boring bedtime '.repeat(8)}tonight`;
     const created: unknown[] = [];
     const p = ports({
@@ -229,14 +482,14 @@ describe('channelCoachRuntime', () => {
 
     const { reply } = await channelCoachRuntime(p).respond(turn(), []);
 
-    expect(reply).toBe('Sit with him until he is quiet.');
-    expect(created).toHaveLength(1);
+    expect(reply).toBe(long);
+    expect(created).toHaveLength(0);
     expect(p.recorded).toEqual([
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'completed' }),
     ]);
   });
 
-  it('fails the turn when the shorter rewrite still does not fit', async () => {
+  it('does not fail a turn solely because the answer is long', async () => {
     const long = `${'Please sit with him through a boring bedtime '.repeat(8)}tonight`;
     const p = ports({
       runAgent: answering(long),
@@ -248,14 +501,10 @@ describe('channelCoachRuntime', () => {
         }) as never,
     });
 
-    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(/budget/i);
-    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(
-      /shorter rewrite/i,
-    );
-    expect(p.recorded).toEqual([
-      expect.objectContaining({ status: 'failed' }),
-      expect.objectContaining({ status: 'failed' }),
-    ]);
+    await expect(channelCoachRuntime(p).respond(turn(), [])).resolves.toMatchObject({
+      reply: long,
+    });
+    expect(p.recorded).toEqual([expect.objectContaining({ status: 'completed' })]);
   });
 
   /** A throw is what the router turns into the honesty template. A runtime that
@@ -291,7 +540,7 @@ describe('channelCoachRuntime', () => {
     });
 
     await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(
-      'channel coach: agent truncated before speaking (1 re-ask)',
+      'channel coach: agent truncated without a complete answer (1 re-ask)',
     );
     expect(p.recorded).toEqual([
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'failed' }),

@@ -57,6 +57,14 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'proactive_nudge_sent',
     'evening_check_in_sent',
   ],
+  'apps/web/lib/registration/sequence/run.ts': [
+    'registration_date_review_proposed',
+    'registration_date_review_obsolete',
+  ],
+  'apps/web/lib/registration/sequence/watch-storage.ts': [
+    'registration_watch_created',
+    'registration_watch_reused',
+  ],
   // One helper writes every passport verb. The "both kids" copy in actions.ts
   // also writes interest_stamp_confirmed as a literal.
   'apps/web/lib/passport/store.ts': [

@@ -6,7 +6,6 @@ import {
   fsasForMunicipality,
   municipalitiesForFsa,
 } from './fsa-municipalities';
-import { REGISTRATION_WINDOWS } from './registration-windows-data';
 
 /**
  * The table is data, so the tests are the SHAPE of the data, not a second copy of it —
@@ -162,17 +161,5 @@ describe('fsasForMunicipality', () => {
     const oshawa = fsasForMunicipality('oshawa');
     expect(oshawa).toEqual([...oshawa].sort());
     expect(oshawa.length).toBeGreaterThan(1);
-  });
-});
-
-describe('coverage against the seeded registration windows', () => {
-  it('maps every municipality that has a registration window on file', () => {
-    // A seeded municipality with no FSAs is a town Hale holds dates for and can never
-    // match a family to — the coverage hole this table exists to close.
-    const seeded = new Set(REGISTRATION_WINDOWS.map((w) => w.municipality));
-    const unmapped = [...seeded]
-      .filter((m) => m !== 'toronto')
-      .filter((m) => fsasForMunicipality(m).length === 0);
-    expect(unmapped).toEqual([]);
   });
 });

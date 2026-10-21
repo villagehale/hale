@@ -15,8 +15,6 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { toRegistrationWindowRow } from '~/lib/registration/registration-windows';
-import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -43,16 +41,6 @@ const TORONTO_FSA = 'M5V 3A8';
  * is the 19th and 20th. */
 const INTAKE_AT = new Date('2026-09-18T14:00:00.000Z');
 
-/** The real seed row's own page, read out of the dataset rather than pasted, so the
- * assertion is about what a family is actually sent. */
-const TORONTO_FALL_2026 = REGISTRATION_WINDOWS.find(
-  (seed) =>
-    seed.municipality === 'toronto' &&
-    seed.programDomain === 'rec_program' &&
-    seed.cycleLabel === 'Fall 2026',
-);
-if (!TORONTO_FALL_2026) throw new Error('fixture drift: the Toronto Fall 2026 seed row is gone');
-
 describe('the first reply says what to do about the find', () => {
   let db: TestDb;
   let database: Database;
@@ -61,10 +49,6 @@ describe('the first reply says what to do about the find', () => {
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
-
-    await database
-      .insert(schema.registrationWindows)
-      .values(toRegistrationWindowRow(TORONTO_FALL_2026) as never);
 
     // A real EarlyON centre with a Saturday drop-in, which is what makes the pick a
     // civic row carrying an access mode and a time of its own.

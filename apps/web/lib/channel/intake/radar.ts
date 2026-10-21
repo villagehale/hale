@@ -1,14 +1,13 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { activityClient } from '~/lib/pipeline/client';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type ActivityMapGroup, collectActivityMap, renderActivityMapBody } from './activity-map';
 import type { ExtractedChild } from './extract';
@@ -361,16 +360,12 @@ export async function readCandidates(
   return rows;
 }
 
-/** The registration windows this family's FSA can act on. An FSA outside the covered
- * set resolves to no municipality — and then to no query and no claim (M1's rule: a
- * neighbouring town's dates are worse than silence). */
-export async function readWindows(database: Database, areaCoarse: string) {
-  const municipalities = resolveMunicipalities(areaCoarse);
-  if (municipalities.length === 0) return [];
-  return database
-    .select()
-    .from(schema.registrationWindows)
-    .where(inArray(schema.registrationWindows.municipality, municipalities));
+/** Registration reminders are owned by explicit watches, never a city-date catalog. */
+export async function readWindows(
+  _database: Database,
+  _areaCoarse: string,
+): Promise<import('@hale/db').RegistrationSourceState[]> {
+  return [];
 }
 
 export function createRadarComposer(deps: RadarDeps): RadarComposer {

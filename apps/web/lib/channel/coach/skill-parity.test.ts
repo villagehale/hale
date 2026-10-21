@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { findActivitiesTool } from '~/lib/channel/activity/tools';
-import { smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { MAX_REPLY_SEGMENTS } from './reply';
 import { buildChannelCoachTools } from './tools';
 
 /**
@@ -61,26 +59,16 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.meta.task).toBe('converse');
   });
 
-  /**
-   * ONE reader of "how long may a reply be".
-   *
-   * There were two, and they disagreed by a factor of nearly two: the skill stated the
-   * ceiling in SENTENCES ("four is the ceiling") while `toSmsReply` enforces it in
-   * SEGMENTS. On 2026-08-21 a model obeying the skill exactly wrote 548 units of a
-   * registration date plus two web-grounded finds against a 306-unit budget, and the
-   * whole second paragraph — the part the web search was paid for — was dropped from a
-   * message that opened "Two things worth flagging here."
-   *
-   * So the skill now states the number this function enforces, and this asserts they are
-   * the same number. Raising MAX_REPLY_SEGMENTS turns this red until the writer is told.
-   */
-  it('tells the model the same character ceiling toSmsReply enforces', async () => {
+  it('prioritizes complete facts rather than a fixed reply-length ceiling', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
-    // GSM-7, because the skill forbids everything else — and smsUnitsBudget answers in
-    // the encoding of the body it is handed, so it has to be handed a plain one.
-    const budget = smsUnitsBudget('plain ascii', MAX_REPLY_SEGMENTS);
+    expect(skill.instructions).toContain('No fixed character, segment or sentence limit');
+    expect(skill.instructions).not.toContain('306 characters');
+  });
 
-    expect(skill.instructions).toContain(`${budget} characters`);
+  it('uses explicit page applicability rather than a date-order inference', async () => {
+    const policy = await loadCronSkill('registration-live-truth');
+    expect(policy.instructions).toContain("Repeat only the page's explicit applicability");
+    expect(policy.instructions).not.toContain('Infer priority from the published date order');
   });
 
   /**
@@ -131,7 +119,9 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).toContain('Do not tell them to reply with a keyword');
     expect(skill.instructions).not.toContain('YES to confirm');
     expect(skill.instructions).not.toContain('Reply YES');
-    expect(skill.instructions).toContain('Under 200 characters');
+    expect(skill.instructions).not.toContain('Under 200 characters');
+    expect(skill.instructions).not.toContain('under 120 characters');
+    expect(skill.instructions).toContain('There is no character or segment cap.');
     expect(skill.instructions).not.toContain("what I've got verified");
     expect(skill.instructions).toContain('not them asking that nearby question again');
     expect(skill.instructions).toContain('Do not search instead of asking');
