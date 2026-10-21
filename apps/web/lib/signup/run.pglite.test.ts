@@ -5,6 +5,7 @@ import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/
 import { storeProviderSession } from './browser-use/vault';
 import { SHAREABLE_SIGNUP_FIELDS } from './consent';
 import { authorizedSignupHandler } from './handler';
+import type { LinkWalletApi } from './link/client';
 import { runAuthorizedSignup } from './run';
 import { recordSignupOffer } from './store';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
@@ -1049,8 +1050,8 @@ describe('authorized signup runner', () => {
       });
       await withProviderSession(seeded);
       const wallet = {
-        kind: 'stripe_link' as const,
-        connectionId: 'link-conn',
+        kind: 'stripe_link_agent_wallet' as const,
+        api: linkApiStub(),
         approvalWindowMinutes: 5,
       };
       const checkSpendingCap = vi.fn(async () => ({ ok: true, reason: 'within cap' }));
@@ -1063,7 +1064,7 @@ describe('authorized signup runner', () => {
       }));
       const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-pay'), {
         browserUseSignup: { run },
-        paymentWallet: { forFamily: async () => ({ wallet, skipped: null }) },
+        paymentWallet: { forParent: async () => ({ wallet, skipped: null }) },
         checkSpendingCap,
       });
       expect(result.outcome).toBe('completed');
@@ -1080,7 +1081,6 @@ describe('authorized signup runner', () => {
       expect(offer?.status).toBe('completed');
       const log = await audits(seeded.familyId);
       expect(log).toContain('"confirmed":true');
-      expect(log).not.toContain('link-conn');
     });
 
     it('stops at checkout with no wallet when the spending cap rejects', async () => {
@@ -1091,32 +1091,76 @@ describe('authorized signup runner', () => {
         approvedPriceCents: 9800,
       });
       await withProviderSession(seeded);
-      const forFamily = vi.fn();
+      const forParent = vi.fn();
       const run = vi.fn(async () => CHECKOUT);
       await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-cap'), {
         browserUseSignup: { run },
-        paymentWallet: { forFamily },
+        paymentWallet: { forParent },
         checkSpendingCap: async () => ({ ok: false, reason: 'over cap' }),
       });
       const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
       expect(engineInput.payment).toBeNull();
-      expect(forFamily).not.toHaveBeenCalled();
+      expect(forParent).not.toHaveBeenCalled();
       expect(await audits(seeded.familyId)).toContain('"paymentSkipped":"spending_cap"');
+    });
+
+    it('caps a sign-up payment at the approved price and never above $500', async () => {
+      vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+      const seeded = await familyWithOffer({
+        ageMonths: 36,
+        url: TORONTO,
+        approvedPriceCents: 60000,
+      });
+      await withProviderSession(seeded);
+      const forParent = vi.fn();
+      const run = vi.fn(async () => CHECKOUT);
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-ceiling'), {
+        browserUseSignup: { run },
+        paymentWallet: { forParent },
+      });
+      const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
+      expect(engineInput.payment).toBeNull();
+      expect(forParent).not.toHaveBeenCalled();
+      expect(await audits(seeded.familyId)).toContain('"paymentSkipped":"spending_cap"');
+    });
+
+    it('asks the yes-saying parent for their own Link wallet, not a shared one', async () => {
+      vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+      const seeded = await familyWithOffer({
+        ageMonths: 36,
+        url: TORONTO,
+        approvedPriceCents: 9800,
+      });
+      await withProviderSession(seeded);
+      const forParent = vi.fn(async () => ({ wallet: null, skipped: 'not_linked' as const }));
+      const run = vi.fn(async () => CHECKOUT);
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-own'), {
+        browserUseSignup: { run },
+        paymentWallet: { forParent },
+      });
+      expect(forParent).toHaveBeenCalledWith({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        now: NOW,
+      });
+      const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
+      expect(engineInput.payment).toBeNull();
+      expect(await audits(seeded.familyId)).toContain('"paymentSkipped":"not_linked"');
     });
 
     it('keeps payment off without its own flag', async () => {
       const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
       await withProviderSession(seeded);
-      const forFamily = vi.fn();
+      const forParent = vi.fn();
       const run = vi.fn(async () => CHECKOUT);
       await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-noflag'), {
         browserUseSignup: { run },
-        paymentWallet: { forFamily },
+        paymentWallet: { forParent },
         checkSpendingCap: async () => ({ ok: true, reason: 'within cap' }),
       });
       const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
       expect(engineInput.payment).toBeNull();
-      expect(forFamily).not.toHaveBeenCalled();
+      expect(forParent).not.toHaveBeenCalled();
     });
 
     it('hands a Browser Use rush to the parent with the open time, the link and the prefill', async () => {
@@ -1193,3 +1237,12 @@ describe('authorized signup runner', () => {
     });
   });
 });
+
+function linkApiStub(): LinkWalletApi {
+  return {
+    createSpendRequest: vi.fn(),
+    retrieveSpendRequest: vi.fn(),
+    retrieveCard: vi.fn(),
+    cancelSpendRequest: vi.fn(),
+  };
+}

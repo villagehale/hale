@@ -7,8 +7,6 @@ import { z } from 'zod';
  */
 export const BROWSER_USE_SIGNUP_OUTCOMES = [
   'reached_checkout',
-  'completed',
-  'payment_not_approved',
   'rush',
   'waitlist',
   'sold_out',
@@ -44,8 +42,15 @@ const signupOutput = z.object({
   hold_minutes: z.number().int().positive().nullable(),
   payment_details_entered: z.boolean(),
   opens_at: z.string().trim().min(1).max(120).nullable().default(null),
-  confirmation_number: z.string().trim().min(1).max(100).nullable().default(null),
-  amount_charged_cents: z.number().int().nonnegative().nullable().default(null),
+  cart_currency: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z]{3}$/)
+    .nullable()
+    .catch(null)
+    .default(null),
+  payment_hosts: z.array(z.string()).max(40).catch([]).default([]),
 });
 
 export type BrowserUseSignupOutput = z.infer<typeof signupOutput>;
@@ -61,8 +66,8 @@ export const BROWSER_USE_SIGNUP_OUTPUT_SCHEMA: Record<string, unknown> = {
     'hold_minutes',
     'payment_details_entered',
     'opens_at',
-    'confirmation_number',
-    'amount_charged_cents',
+    'cart_currency',
+    'payment_hosts',
   ],
   properties: {
     outcome: { type: 'string', enum: [...BROWSER_USE_SIGNUP_OUTCOMES] },
@@ -72,14 +77,64 @@ export const BROWSER_USE_SIGNUP_OUTPUT_SCHEMA: Record<string, unknown> = {
     hold_minutes: { type: ['integer', 'null'], minimum: 1 },
     payment_details_entered: { type: 'boolean' },
     opens_at: { type: ['string', 'null'] },
-    confirmation_number: { type: ['string', 'null'] },
-    amount_charged_cents: { type: ['integer', 'null'], minimum: 0 },
+    cart_currency: { type: ['string', 'null'] },
+    payment_hosts: { type: 'array', items: { type: 'string' } },
   },
 };
 
 export function parseSignupOutput(raw: unknown): BrowserUseSignupOutput | null {
   const parsed = signupOutput.safeParse(raw);
   return parsed.success ? parsed.data : null;
+}
+
+export const BROWSER_USE_PAYMENT_OUTCOMES = ['paid', 'declined', 'needs_human', 'error'] as const;
+
+export const BROWSER_USE_PAYMENT_DETAILS = [
+  'none',
+  'amount_changed',
+  'verification_code',
+  'waiver',
+  'medical',
+  'unexpected_field',
+  'page_error',
+] as const;
+
+const paymentOutput = z.object({
+  outcome: z.enum(BROWSER_USE_PAYMENT_OUTCOMES),
+  detail: z.enum(BROWSER_USE_PAYMENT_DETAILS),
+  confirmation_number: z.string().trim().min(1).max(100).nullable(),
+  amount_charged_cents: z.number().int().nonnegative().nullable(),
+});
+
+export type BrowserUsePaymentOutput = z.infer<typeof paymentOutput>;
+
+export const BROWSER_USE_PAYMENT_OUTPUT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['outcome', 'detail', 'confirmation_number', 'amount_charged_cents'],
+  properties: {
+    outcome: { type: 'string', enum: [...BROWSER_USE_PAYMENT_OUTCOMES] },
+    detail: { type: 'string', enum: [...BROWSER_USE_PAYMENT_DETAILS] },
+    confirmation_number: { type: ['string', 'null'] },
+    amount_charged_cents: { type: ['integer', 'null'], minimum: 0 },
+  },
+};
+
+export function parsePaymentOutput(raw: unknown): BrowserUsePaymentOutput | null {
+  const parsed = paymentOutput.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
+const HOSTNAME = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/**
+ * Where the card may be typed: the provider's own host first, then the payment
+ * hosts the checkout page showed. Bare hostnames only, at most 20.
+ */
+export function cardAllowedDomains(registrationUrl: string, reported: readonly string[]): string[] {
+  const home = new URL(registrationUrl).hostname.toLowerCase();
+  const hosts = [home, ...reported.map((host) => host.trim().toLowerCase())];
+  return [...new Set(hosts.filter((host) => HOSTNAME.test(host)))].slice(0, 20);
 }
 
 const confirmationOutput = z.object({

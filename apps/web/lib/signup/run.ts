@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
-import { buildGuardDeps } from '~/lib/coach/guards';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
 import type { BrowserUseSignupResult } from './browser-use/engine';
@@ -11,7 +10,6 @@ import {
   signupWalletFromEnv,
 } from './browser-use/runner';
 import { loadProviderSession, recordBrowserUseProfile } from './browser-use/vault';
-import type { SignupPaymentWallet, SignupWalletSource } from './browser-use/wallet';
 import { bookingConnectors } from './connectors/registry';
 import { connectorBookingSlots } from './connectors/slots';
 import {
@@ -27,6 +25,8 @@ import { authorizedSignupEnabled } from './flag';
 import { type RushSignal, rushOpensAt } from './forms/rush';
 import { collapseSignupFact } from './handoff';
 import { inspectRegistrationPage } from './inspect';
+import { LINK_SPEND_CEILING_CENTS } from './link/client';
+import type { SignupPaymentWallet, SignupWalletSkipped, SignupWalletSource } from './link/wallet';
 import { type InfoPackSlot, signupInfoPack } from './pack';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
@@ -60,9 +60,9 @@ export interface SignupRunDeps {
    * that absence is returned as `not_configured`.
    */
   browserUseSignup?: BrowserUseSignupRunner | null;
-  /** Stripe Link wallet. Undefined reads the env; null names it absent. */
+  /** Each parent's own Link wallet. Undefined reads the env; null names it absent. */
   paymentWallet?: SignupWalletSource | null;
-  /** Rule #7. Undefined uses the coach guard's per-action cap. */
+  /** Rule #7. Undefined uses `signupSpendingCap`: the approved price, at most $500. */
   checkSpendingCap?: (
     familyId: string,
     cost: { amountUsd: number; category: string },
@@ -510,9 +510,9 @@ function browserUseAbsent(
 /**
  * T8 — the parent's yes, the session, the price and the consent grant were all
  * checked above. Browser Use drives the provider's site through the saved
- * session. With a Link wallet that passed the spending cap, it pays the exact
- * total once the parent approves in Link; otherwise, or when approval times
- * out, it stops at checkout and the parent pays on the live browser. A rush
+ * session to checkout. With the parent's own Link wallet and the spending cap
+ * passed, it pays the exact total once that parent approves in Link; otherwise,
+ * or when approval times out, the parent pays on the live browser. A rush
  * page comes back as a handoff. No parent copy is written here.
  */
 async function runBrowserUseBranch(
@@ -637,7 +637,30 @@ export type SignupPaymentSkipped =
   | 'no_approved_price'
   | 'spending_cap'
   | 'not_configured'
-  | 'not_connected';
+  | SignupWalletSkipped;
+
+/** Rule #7 for sign-ups: the cap is the price the parent approved, never above $500. */
+export function signupSpendingCap(approvedPriceCents: number) {
+  return async (
+    _familyId: string,
+    cost: { amountUsd: number; category: string },
+  ): Promise<{ ok: boolean; reason: string }> => {
+    const cents = Math.round(cost.amountUsd * 100);
+    if (cents > approvedPriceCents) {
+      return {
+        ok: false,
+        reason: `amount ${cents} exceeds the approved price ${approvedPriceCents}`,
+      };
+    }
+    if (cents > LINK_SPEND_CEILING_CENTS) {
+      return {
+        ok: false,
+        reason: `amount ${cents} exceeds the ${LINK_SPEND_CEILING_CENTS} ceiling`,
+      };
+    }
+    return { ok: true, reason: 'within the approved price and the sign-up ceiling' };
+  };
+}
 
 /** Rule #7: the spending cap runs before any wallet reaches the agent. */
 async function signupPayment(
@@ -648,17 +671,20 @@ async function signupPayment(
 ): Promise<{ wallet: SignupPaymentWallet | null; skipped: SignupPaymentSkipped | null }> {
   if (!browserUseSignupPaymentEnabled()) return { wallet: null, skipped: 'payment_flag_off' };
   if (approvedPriceCents === null) return { wallet: null, skipped: 'no_approved_price' };
-  const check = deps.checkSpendingCap ?? buildGuardDeps(database).checkSpendingCap;
-  if (!check) return { wallet: null, skipped: 'spending_cap' };
+  const check = deps.checkSpendingCap ?? signupSpendingCap(approvedPriceCents);
   const verdict = await check(input.familyId, {
     amountUsd: approvedPriceCents / 100,
     category: 'registration',
   });
   if (!verdict.ok) return { wallet: null, skipped: 'spending_cap' };
   const source =
-    deps.paymentWallet !== undefined ? deps.paymentWallet : signupWalletFromEnv().source;
+    deps.paymentWallet !== undefined ? deps.paymentWallet : signupWalletFromEnv(database).source;
   if (!source) return { wallet: null, skipped: 'not_configured' };
-  const lookup = await source.forFamily(input.familyId);
+  const lookup = await source.forParent({
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+  });
   return lookup.wallet
     ? { wallet: lookup.wallet, skipped: null }
     : { wallet: null, skipped: lookup.skipped };

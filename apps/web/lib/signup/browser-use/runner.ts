@@ -1,4 +1,7 @@
+import type { Database } from '@hale/db';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { linkOAuthApi, linkOAuthConfigFromEnv, linkWalletApi } from '../link/client';
+import { type SignupWalletSource, linkWalletSource } from '../link/wallet';
 import { type BROWSER_USE_API_KEY_ENV, type FetchLike, browserUseApiFromEnv } from './client';
 import {
   type BrowserUseEngineDeps,
@@ -8,7 +11,6 @@ import {
 } from './engine';
 import { playwrightSessionSeeder } from './seed';
 import type { RemoteProfileDeleter } from './vault';
-import { type SignupWalletSource, browserUseStripeLinkWallet } from './wallet';
 
 export interface BrowserUseSignupRunner {
   run(input: BrowserUseSignupInput): Promise<BrowserUseSignupResult>;
@@ -27,14 +29,21 @@ export type SignupWalletFromEnv =
   | { source: SignupWalletSource; skipped: null }
   | { source: null; skipped: 'not_configured' };
 
-/** The Stripe Link wallet through Browser Use. Named absence without a key. */
+/** Each parent's own Link wallet. Named absence until the Link OAuth client is set. */
 export function signupWalletFromEnv(
+  database: Database,
   env: Record<string, string | undefined> = process.env,
-  fetchImpl?: FetchLike,
+  fetchImpl: FetchLike = fetch,
 ): SignupWalletFromEnv {
-  const configured = browserUseApiFromEnv(env, fetchImpl);
-  if (!configured.api) return { source: null, skipped: 'not_configured' };
-  return { source: browserUseStripeLinkWallet(configured.api), skipped: null };
+  const configured = linkOAuthConfigFromEnv(env);
+  if (!configured.config) return { source: null, skipped: 'not_configured' };
+  return {
+    source: linkWalletSource(database, {
+      oauth: linkOAuthApi(configured.config, fetchImpl),
+      walletApi: (accessToken) => linkWalletApi(accessToken, fetchImpl),
+    }),
+    skipped: null,
+  };
 }
 
 /** Real wiring. Named absence when BROWSER_USE_API_KEY is unset (rule #11). */

@@ -31,15 +31,15 @@ export interface BrowserUseRunRequest {
   keepAlive?: number;
   agentmail: false;
   maxCostUsd: number;
-  /** Opts this run into the project's Stripe Link wallet. */
-  stripeLinkConnectionId?: string;
+  /** Run-scoped secrets the agent types by alias. Never logged. */
+  secretBindings?: BrowserUseSecretBinding[];
 }
 
-/** The project's Stripe Link wallet connection. The Link email is not kept. */
-export interface BrowserUseStripeLink {
-  isConnected: boolean;
-  connectionId: string | null;
-  mode: 'test' | 'live' | null;
+/** A credential typed by alias, only into fields on `allowedDomains`. */
+export interface BrowserUseSecretBinding {
+  alias: string;
+  source: { type: 'inline'; value: string };
+  allowedDomains: string[];
 }
 
 export interface BrowserUseRunSummary {
@@ -66,7 +66,6 @@ export interface BrowserUseApi {
   }>;
   stopBrowser(browserId: string): Promise<void>;
   createRun(input: BrowserUseRunRequest): Promise<{ id: string; sessionId: string }>;
-  getStripeLink(): Promise<BrowserUseStripeLink>;
   getRunStatus(runId: string): Promise<BrowserUseRunStatus>;
   getRun(runId: string): Promise<BrowserUseRunSummary>;
   getRunEvents(
@@ -131,18 +130,6 @@ export function browserUseApi(options: {
     async createRun(input) {
       const run = await call<{ id: string; sessionId: string }>('POST', '/runs', input);
       return { id: run.id, sessionId: run.sessionId };
-    },
-    async getStripeLink() {
-      const link = await call<{
-        isConnected?: boolean;
-        connectionId?: string | null;
-        mode?: 'test' | 'live' | null;
-      }>('GET', '/stripe-link');
-      return {
-        isConnected: link.isConnected === true,
-        connectionId: link.connectionId ?? null,
-        mode: link.mode ?? null,
-      };
     },
     async getRunStatus(runId) {
       const status = await call<{ status: BrowserUseRunStatus }>(
