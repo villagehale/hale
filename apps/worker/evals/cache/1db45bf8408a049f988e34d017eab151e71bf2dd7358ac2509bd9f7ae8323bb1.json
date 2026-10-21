@@ -1,0 +1,52 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Kids & Me is a free weekly 1.5-hour parenting and early learning drop-in program for families with babies or children up to 6 years of age.",
+        "name": "Kids & Me Drop-In Neighbourhood Group, St. Andrew's United Church, Georgetown (Halton Region Public Health)",
+        "age_evidence": "free weekly 1.5-hour parenting and early learning drop-in program for families with babies or children up to 6 years of age",
+        "age_fit": "babies and children up to 6 years of age",
+        "when": "Tuesdays from 9:30 to 11 a.m., following the school calendar; closed during the December/January holidays, spring/summer breaks and all statutory holidays",
+        "when_evidence": "St. Andrew\\u2019s United Church, Georgetown (Google Maps link) Tuesdays from 9:30 to 11 a.m.",
+        "schedule_kind": "recurring",
+        "price_evidence": "A free weekly 1.5-hour parenting and early learning drop-in program",
+        "price": "Free",
+        "source_name": "Halton Region Public Health",
+        "source_url": "https://www.halton.ca/for-residents/children-and-parenting/parenting-supports",
+        "indoor_outdoor": "indoor",
+        "access": "drop_in"
+      },
+      {
+        "name_evidence": "Halton Hills Halton Hills Public Library \\u2013 Acton Branch (Google Maps link) Thursdays from 10:30 a.m. to 12 p.m.",
+        "name": "Kids & Me Drop-In Neighbourhood Group, Halton Hills Public Library \\u2013 Acton Branch (Halton Region Public Health)",
+        "age_evidence": "free weekly 1.5-hour parenting and early learning drop-in program for families with babies or children up to 6 years of age",
+        "age_fit": "babies and children up to 6 years of age",
+        "when": "Thursdays from 10:30 a.m. to 12 p.m., following the school calendar; closed during the December/January holidays, spring/summer breaks and all statutory holidays",
+        "when_evidence": "Halton Hills Public Library \\u2013 Acton Branch (Google Maps link) Thursdays from 10:30 a.m. to 12 p.m.",
+        "schedule_kind": "recurring",
+        "price_evidence": "A free weekly 1.5-hour parenting and early learning drop-in program",
+        "price": "Free",
+        "source_name": "Halton Region Public Health",
+        "source_url": "https://www.halton.ca/for-residents/children-and-parenting/parenting-supports",
+        "indoor_outdoor": "indoor",
+        "access": "drop_in"
+      },
+      {
+        "name_evidence": "Halton Hills Links2Care - Acton Community Hub - EarlyON Child and Family Centre (Google Maps link) Mondays from 10 a.m. to 11:30 a.m.",
+        "name": "Parenting Support Group, Links2Care - Acton Community Hub - EarlyON Child and Family Centre (Halton Region Public Health)",
+        "age_evidence": "The group is open to parents and caregivers with babies from birth until they begin to crawl. Pregnant participants are also welcome.",
+        "age_fit": "babies from birth until they begin to crawl (pregnant participants also welcome)",
+        "when": "Mondays from 10 a.m. to 11:30 a.m. (weekly; does not run one week during March school break, the last week of August, two weeks over December/January holidays, and statutory holidays)",
+        "when_evidence": "Halton Hills Links2Care - Acton Community Hub - EarlyON Child and Family Centre (Google Maps link) Mondays from 10 a.m. to 11:30 a.m.",
+        "schedule_kind": "recurring",
+        "price_evidence": "Free weekly parenting support group for parents and caregivers with infants from birth until crawling age",
+        "price": "Free",
+        "source_name": "Halton Region Public Health",
+        "source_url": "https://www.halton.ca/for-residents/children-and-parenting/parenting-supports",
+        "indoor_outdoor": "indoor",
+        "access": "drop_in"
+      }
+    ]
+  },
+  "latencyMs": 7890
+}

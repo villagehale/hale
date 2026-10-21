@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is well formed. It leads with a named venue and attributes it to Halton Region Public Health's site. It names the price gap in the first person, which suits page_has_schedule. Watch is true, so the first-person 'I'll keep watching' is earned. There is no question and no link. The pick itself is the problem: the parent asked about a free drop-in play group for a toddler, and this group is explicitly for babies from birth until they begin to crawl. That is a clear stage mismatch. The notes also show a better fit Hale passed over: Halton Region's Kids & Me Drop-In, which is free, needs no registration and covers ages up to 6. The 'could not pin down the price' line also sits oddly next to the Public Health program listing that says fees: none. The pick is real and local, but it does not plausibly fit the stage.",
+    "score": 2
+  }
+}
