@@ -73,3 +73,4 @@ export {
   WATCHED_SPOT_RELEASE_REASONS,
   WATCHED_SPOT_STATES,
 } from './schema/watched-spots.js';
+export { REGISTRATION_COURSE_URL_MAX_CHARS } from './schema/registration-sequences.js';

@@ -1,13 +1,24 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane, pickModel } from '@hale/agent';
+import { type AgentClient, pickLane, pickModel, withoutThinking } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { stripHtml } from '~/lib/registration/fetch';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
+import {
+  type ActivityFactEvidence,
+  type ActivityReference,
+  activityCalendarDate,
+  activityDateRange,
+  activityPicksJsonSchema,
+  bindActivityFacts,
+} from './facts';
+import { activityLocationMatches, activitySourceLocationScore } from './location';
+import { createActivityPageFetch } from './page';
+import { namesRetiredRecPortal } from './retired-portal';
 
 /**
  * THE WEB-GROUNDED ACTIVITY LANE — what a parent gets when they ask what their child can
@@ -129,7 +140,7 @@ export const MAX_INLINE_FETCHES = 3;
 const GROUND_MAX_TOKENS = 4096;
 /** Generous on purpose: `forceToolJson` throws on a max_tokens cutoff, and a pick cut in
  * half is a venue name a parent cannot search for. */
-const COMPOSE_MAX_TOKENS = 1024;
+const COMPOSE_MAX_TOKENS = 2000;
 
 /** Where a fact came from. Stamped by CODE, never by a model — see the module note. */
 export type ActivitySource = 'web';
@@ -168,12 +179,14 @@ export interface ActivityPick {
   source: ActivitySource;
   /** The page the pick was read off, when that page is an absolute http(s) URL. */
   url?: string;
+  /** A URL observed in this operation's web evidence, never an invented link. */
   sourceUrl?: string;
   eventDate?: string;
   indoorOutdoor?: 'indoor' | 'outdoor' | 'both' | null;
   access?: 'drop_in' | 'register_at_venue' | null;
   placeId?: string;
   civicVenueId?: string;
+  evidence?: ActivityFactEvidence;
 }
 
 /**
@@ -188,6 +201,7 @@ export type ActivityFailure =
   | 'skill_unavailable'
   | 'ground_failed'
   | 'not_grounded'
+  | 'location_unverified'
   | 'compose_failed'
   | 'no_picks'
   /**
@@ -199,7 +213,7 @@ export type ActivityFailure =
   | 'over_budget';
 
 /**
- * WHAT AN EMPTY SEARCH LOOKED AT. Carried on `no_picks` only, so the follow-up text that
+ * WHAT AN EMPTY SEARCH LOOKED AT. Also retained when location cannot be verified, so the follow-up text that
  * reports nothing can say where Hale looked and what it did turn up (r19, 2026-10-15: the
  * judge scored an honest empty message 3 because the composer had been handed neither).
  * `notes` is the grounding turn's own research, from a de-identified query, capped.
@@ -207,13 +221,20 @@ export type ActivityFailure =
 export interface EmptySearch {
   town: string | null;
   notes: string;
+  references?: ActivityReference[];
+  checkedSources?: string[];
 }
 
 /** The research handed to an empty-result composer is bounded, like every other payload. */
 export const EMPTY_SEARCH_NOTES_CAP = 4_000;
 
 export type ActivityFindResult =
-  | { found: true; picks: ActivityPick[] }
+  | {
+      found: true;
+      picks: ActivityPick[];
+      references?: ActivityReference[];
+      checkedSources?: string[];
+    }
   | { found: false; reason: ActivityFailure; searched?: EmptySearch };
 
 export interface ActivityFinder {
@@ -276,41 +297,40 @@ const composeSchema = z.object({
     z.array(
       z.object({
         name: z.string().nullish(),
+        name_evidence: z.string().nullish(),
         age_fit: z.string().nullish(),
-        source_url: z.string().nullish(),
+        age_evidence: z.string().nullish(),
         when: z.string().nullish(),
+        when_evidence: z.string().nullish(),
+        schedule_kind: z.enum(['hours', 'recurring', 'term']).nullish(),
+        historical_evidence: z.string().nullish(),
+        sessions: z
+          .array(
+            z.object({
+              evidence: z.string(),
+              date: z.string(),
+              start_time: z.string().nullish(),
+              end_time: z.string().nullish(),
+              timezone: z.string().nullish(),
+            }),
+          )
+          .nullish(),
+        price_evidence: z.string().nullish(),
         price: z.string().nullish(),
         source_name: z.string().nullish(),
+        source_url: z.string().nullish(),
+        event_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullish(),
+        indoor_outdoor: z.enum(['indoor', 'outdoor', 'both']).nullish(),
+        access: z.enum(['drop_in', 'register_at_venue']).nullish(),
       }),
     ),
   ),
 });
 
-const composeJsonSchema: Anthropic.Tool.InputSchema = {
-  type: 'object',
-  properties: {
-    picks: {
-      type: 'array',
-      maxItems: MAX_PICKS,
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          age_fit: { type: 'string' },
-          when: { type: 'string' },
-          price: { type: 'string' },
-          source_name: { type: 'string' },
-          source_url: { type: 'string' },
-        },
-        // `when` and `price` are OMITTED from required for the reason ActivityPick states:
-        // a required field a page never published is a field the model can only satisfy by
-        // inventing or by dropping the whole find, and it chose dropping.
-        required: ['name', 'age_fit', 'source_name'],
-      },
-    },
-  },
-  required: ['picks'],
-};
+const composeJsonSchema = activityPicksJsonSchema;
 
 /**
  * The search payload — the de-identified query and nothing that could identify the child.
@@ -329,8 +349,26 @@ export function groundUserMessage(query: ActivityQuery): string {
 /** The compose payload: the same de-identified query plus what the search read. It never
  * carries the parent's message — this stage is blind, which is what makes it structurally
  * unable to echo a name back into a pick. */
-export function composeUserMessage(query: ActivityQuery, researchNotes: string): string {
-  return JSON.stringify({ ...JSON.parse(groundUserMessage(query)), research_notes: researchNotes });
+export function composeUserMessage(
+  query: ActivityQuery,
+  researchNotes: string,
+  now?: Date,
+): string {
+  return JSON.stringify({
+    ...JSON.parse(groundUserMessage(query)),
+    research_notes: researchNotes,
+    ...(now
+      ? {
+          today: activityCalendarDate(now, query.timeZone),
+          requested_date_range: activityDateRange(
+            query.window,
+            now,
+            query.timeZone,
+            query.dateRange,
+          ),
+        }
+      : {}),
+  });
 }
 
 /** The one thing any catch may keep. A provider error can echo the request, so the object
@@ -421,6 +459,9 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
       source: 'web',
       ...(url === null ? {} : { url }),
     };
+    if (item.event_date) pick.eventDate = item.event_date;
+    if (item.indoor_outdoor) pick.indoorOutdoor = item.indoor_outdoor;
+    if (item.access) pick.access = item.access;
     if (
       namesRetiredRecPortal(
         `${pick.name} ${pick.ageFit} ${pick.when ?? ''} ${pick.price ?? ''} ${pick.sourceName}`,
@@ -438,7 +479,8 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
 async function runActivityOnce(
   client: () => AgentClient,
   query: ActivityQuery,
-): Promise<ActivityPick[]> {
+): Promise<{ picks: ActivityPick[]; references: ActivityReference[]; checkedSources: string[] }> {
+  const now = new Date();
   let resolved: AgentClient;
   try {
     resolved = client();
@@ -456,7 +498,13 @@ async function runActivityOnce(
   // Phase 1 + 2, as one step so the read pass (needsReadPass) can run it again.
   const groundAndCompose = async (
     readPages: boolean,
-  ): Promise<{ picks: ActivityPick[]; searchResults: number; notes: string }> => {
+  ): Promise<{
+    picks: ActivityPick[];
+    references: ActivityReference[];
+    checkedSources: string[];
+    searchResults: number;
+    notes: string;
+  }> => {
     // Phase 1 — GROUND. Bounded at MAX_SEARCHES: the provider bills per search, and a cost
     // nobody can see is the one that runs away.
     let research: Anthropic.Message;
@@ -485,15 +533,51 @@ async function runActivityOnce(
     // this lane is the count, and the inline leg makes no claim that rests on it.
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) throw new ActivityUnresolvable('not_grounded');
-    // SEARCH RESULTS ARE NOT RESEARCH. A grounding turn can spend its whole token budget on
-    // the results themselves and never write the summary — 24 real results and an empty
-    // notes string is a shape the corpus actually produced. The result count is satisfied by
-    // that and the composer is handed "", which leaves it a choice between inventing a venue
-    // and shrugging. Both are the failure this lane exists to end, so an empty research body
-    // is the SAME outcome as no results at all: not grounded, retried once, then said
-    // honestly. The detail is what separates the two causes in the log (rule #11).
-    const researchNotes = evidence.notes;
-    if (researchNotes === '') throw new ActivityUnresolvable('not_grounded', 'empty_research');
+    // Search locates sources; facts come from fresh, bounded, DNS-pinned page reads.
+    const sourceUrls = new Set(evidence.urlsRead);
+    const sourceTitles = new Map<string, string>();
+    for (const block of research.content) {
+      if (block.type !== 'web_search_tool_result' || !Array.isArray(block.content)) continue;
+      for (const result of block.content) {
+        if (result.type === 'web_search_result') {
+          sourceUrls.add(result.url);
+          sourceTitles.set(result.url, result.title);
+        }
+      }
+    }
+    const fetchPage = createActivityPageFetch();
+    const readablePages = (
+      await Promise.all(
+        [...sourceUrls]
+          .sort(
+            (a, b) =>
+              activitySourceLocationScore(query.town, b, sourceTitles.get(b) ?? '') -
+              activitySourceLocationScore(query.town, a, sourceTitles.get(a) ?? ''),
+          )
+          .slice(0, MAX_INLINE_FETCHES)
+          .map(async (raw) => {
+            try {
+              const { url, text: html } = await fetchPage(raw);
+              const text = stripHtml(html).slice(0, 20_000);
+              return text.trim() ? { url, text } : null;
+            } catch {
+              return null;
+            }
+          }),
+      )
+    ).filter((page): page is { url: string; text: string } => page !== null);
+    if (readablePages.length === 0)
+      throw new ActivityUnresolvable('not_grounded', 'sources_unreadable');
+    const pages = readablePages.filter((page) => activityLocationMatches(query.town, page.text));
+    if (pages.length === 0)
+      throw new ActivityUnresolvable('location_unverified', undefined, {
+        town: query.town,
+        notes:
+          'The source pages were read, but their location could not be verified. These links are unverified references, not activity recommendations or evidence of current dates.',
+        references: [],
+        checkedSources: [...new Set(readablePages.map((page) => page.url))],
+      });
+    const researchNotes = pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n');
     if (evidence.pagesRefused > 0 && evidence.pagesRead === 0) {
       // The turn tried to open the venue's pages and was turned away every time, so any gap
       // in what follows is UNREAD rather than unposted. It is not a failure — the snippets
@@ -510,9 +594,14 @@ async function runActivityOnce(
     try {
       ({ value: composed } = await forceToolJson({
         client: resolved,
-        lane: pickLane(skill.meta.task),
-        system: skill.instructions,
-        userMessage: composeUserMessage(query, researchNotes),
+        // Use the already-successful retry shape first, without spending output on thinking.
+        lane: withoutThinking(pickLane(skill.meta.task)) ?? pickLane(skill.meta.task),
+        // Extraction needs neither search instructions nor follow-up SMS examples.
+        system: skill.instructions
+          .replace(/^[\s\S]*?(?=## Step 2 — EXTRACT)/, '')
+          .replace(/\n## Step 3 — THE FOLLOW-UP TEXT[\s\S]*$/, '')
+          .trimEnd(),
+        userMessage: composeUserMessage(query, researchNotes, now),
         toolName: 'activity_picks',
         toolDescription: 'Return the concrete programs the search actually found.',
         inputJsonSchema: composeJsonSchema,
@@ -522,22 +611,42 @@ async function runActivityOnce(
     } catch (err) {
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
+    const bound = bindActivityFacts(
+      composed.picks,
+      pages,
+      query.window,
+      now,
+      query.timeZone,
+      query.dateRange,
+    );
+    const cited = bound.picks.flatMap((raw) =>
+      toPicks([raw]).map((pick) => ({
+        ...pick,
+        sourceUrl: raw.source_url!,
+        url: raw.source_url!,
+        evidence: raw.evidence,
+      })),
+    );
     return {
-      picks: toPicks(composed.picks),
+      picks: cited,
+      references: bound.references,
+      checkedSources: pages.map((page) => page.url),
       searchResults: evidence.searchResults,
       notes: researchNotes,
     };
   };
 
-  let { picks, searchResults, notes } = await groundAndCompose(false);
-  if (needsReadPass(query, { searchResults }, picks)) {
+  let { picks, references, checkedSources, searchResults, notes } = await groundAndCompose(false);
+  if (references.length === 0 && needsReadPass(query, { searchResults }, picks)) {
     console.error({ searchResults }, 'activity lane: no picks off snippets - reading pages once');
-    ({ picks, notes } = await groundAndCompose(true));
+    ({ picks, references, checkedSources, notes } = await groundAndCompose(true));
   }
   if (picks.length === 0) {
     throw new ActivityUnresolvable('no_picks', undefined, {
       town: query.town,
       notes: notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+      references,
+      checkedSources,
     });
   }
   // The never-a-directory ceiling, enforced after the model rather than asked of it. It
@@ -549,9 +658,13 @@ async function runActivityOnce(
       { returned: picks.length, kept: MAX_PICKS },
       'activity lane: more picks than the ceiling - trimmed',
     );
-    return picks.slice(0, MAX_PICKS);
+    return {
+      picks: picks.slice(0, MAX_PICKS),
+      references: references.slice(0, MAX_PICKS),
+      checkedSources,
+    };
   }
-  return picks;
+  return { picks, references: references.slice(0, MAX_PICKS), checkedSources };
 }
 
 function logActivityFailure(err: unknown, attempt: number): void {
@@ -578,13 +691,16 @@ export function createActivityFinder(client: () => AgentClient): ActivityFinder 
     async find(query) {
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
-          return { found: true, picks: await runActivityOnce(client, query) };
+          return { found: true, ...(await runActivityOnce(client, query)) };
         } catch (err) {
           logActivityFailure(err, attempt);
-          if (err instanceof ActivityUnresolvable && err.reason === 'no_picks') {
+          if (
+            err instanceof ActivityUnresolvable &&
+            (err.reason === 'no_picks' || err.reason === 'location_unverified')
+          ) {
             return {
               found: false,
-              reason: 'no_picks',
+              reason: err.reason,
               ...(err.searched ? { searched: err.searched } : {}),
             };
           }
