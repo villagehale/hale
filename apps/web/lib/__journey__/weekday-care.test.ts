@@ -53,8 +53,8 @@ import { recordedModel } from '~/lib/testing/recorded-model';
  */
 
 const TZ = 'America/Toronto';
-/** NO FSA on purpose. With no area the registration and weather legs read nothing, so
- * every tick of this journey is decided by the two weekday rungs it is about. */
+/** The nudge selector supplies no area so registration/weather stay out of this arc.
+ * The stored FSA below is only the existing Finder's coarse search context. */
 const AREA = null;
 /** 10:00 Toronto on Friday 2026-08-07 — inside the nudge's local send hour. */
 const FRIDAY = new Date('2026-08-07T14:00:00.000Z');
@@ -109,6 +109,7 @@ beforeEach(async () => {
     .values({
       displayName: 'Ana + kids',
       city: 'Toronto',
+      areaCoarse: 'M5V',
       provinceOrState: 'ON',
       onboardingStage: 'sms_active',
       createdAt: new Date('2026-07-01T00:00:00.000Z'),
