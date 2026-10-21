@@ -1,1216 +1,251 @@
-import { SONNET_MODEL } from '@hale/agent';
+import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
-import { ageInMonths } from '@hale/types';
-import { describe, expect, it, vi } from 'vitest';
-import { structuredReply } from '~/lib/testing/structured-reply';
-import {
-  type DiscoverDeps,
-  type DiscoveryAnthropicClient,
-  discoverForFamily,
-  selectDiscoveryInputs,
-} from './discover.js';
+import { eq } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { readCandidates } from '~/lib/channel/intake/radar';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { discoverForFamily } from './discover';
+import { findFamilyActivities } from './live';
 
-const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
-
-/** A fixed "now" so DOB → stage is deterministic across machines/dates. */
-const NOW = new Date('2026-06-17T00:00:00Z');
-
-// DOBs relative to NOW (2026-06): stage boundaries are [12, 48, 156] months.
-const TODDLER_DOB = '2024-06-01'; // ~24mo → toddler
-const PRESCHOOL_DOB = '2021-12-01'; // ~54mo → preschool
-const CHILD_DOB = '2018-06-01'; // ~96mo → child
-const TEEN_DOB = '2010-06-01'; // ~192mo → teenager
-
-interface ChildRow {
-  dateOfBirth: string;
-  interests: string[];
-}
-
-interface InsertCapture {
-  villageCandidates: unknown[];
-  auditLog: unknown[];
-  agentRuns: Record<string, unknown>[];
-  /** Each supersede UPDATE run in the transaction, capturing its `.set(...)`
-   * payload so a test can assert the prior run was soft-retired (superseded_at
-   * stamped) and nothing else (shareToken never cleared). */
-  supersededUpdates: Record<string, unknown>[];
-}
-
-/**
- * Fakes the exact Drizzle chains discoverForFamily runs, with NO real db, routed by
- * TABLE identity (order-independent):
- *   1. resolveActiveAreaCoarse:
- *        select(...).from(familyAreas).where().limit(1) → [`activeArea`] | []
- *        (fallback) select(area).from(families).where().limit(1) → [{ areaCoarse }]
- *   2. select(...).from(children).where()             → child rows
- *   3. transaction(cb) where tx.insert(table).values(rows) captures by table.
- * `activeArea` present → the ACTIVE saved area drives content; absent → the legacy
- * families.area_coarse is used (back-compat).
- */
-function fakeDb(args: {
-  areaCoarse: string | null;
-  children: ChildRow[];
-  capture: InsertCapture;
-  activeArea?: { city: string; province: string | null; postalCode: string | null };
-}) {
-  const select = vi.fn().mockImplementation(() => {
-    let tbl: unknown;
-    return {
-      from: (table: unknown) => {
-        tbl = table;
-        if (tbl === schema.children) {
-          // children lookup: .from().where() → rows (no .limit)
-          return { where: async () => args.children };
-        }
-        // familyAreas (active row) + families (legacy) both: .where().limit(1).
-        return {
-          where: () => ({
-            limit: async () => {
-              if (tbl === schema.familyAreas) return args.activeArea ? [args.activeArea] : [];
-              return [{ areaCoarse: args.areaCoarse }];
-            },
-          }),
-        };
-      },
-    };
-  });
-
-  function tableName(table: unknown): keyof InsertCapture | null {
-    if (table === schema.villageCandidates) return 'villageCandidates';
-    if (table === schema.auditLog) return 'auditLog';
-    return null;
-  }
-
-  const tx = {
-    insert: (table: unknown) => ({
-      values: async (rows: unknown) => {
-        const name = tableName(table);
-        if (!name) throw new Error('unexpected insert target');
-        const list = Array.isArray(rows) ? rows : [rows];
-        args.capture[name].push(...list);
-      },
-    }),
-    // The supersede step: .update(villageCandidates).set({supersededAt}).where(...).
-    // Capture the `.set` payload; `.where` is a no-op thenable (nothing to delete
-    // in the fake — the point is to prove the prior set is SOFT-retired, not
-    // removed, so an endorsed/shared row would survive).
-    update: (table: unknown) => {
-      if (tableName(table) !== 'villageCandidates') {
-        throw new Error('unexpected update target');
-      }
-      return {
-        set: (payload: Record<string, unknown>) => {
-          args.capture.supersededUpdates.push(payload);
-          return { where: async () => undefined };
-        },
-      };
-    },
-  };
-
-  const transaction = vi.fn().mockImplementation(async (cb: (t: typeof tx) => Promise<void>) => {
-    return cb(tx);
-  });
-
-  // The agent_runs telemetry insert runs at the top level (outside the candidate
-  // transaction), so route it here by table identity.
-  const insert = vi.fn().mockImplementation((table: unknown) => {
-    if (table === schema.agentRuns) {
-      return {
-        values: (row: Record<string, unknown>) => ({
-          returning: async () => {
-            args.capture.agentRuns.push(row);
-            return [{ id: 'run-1' }];
-          },
-        }),
-      };
-    }
-    throw new Error('unexpected insert target');
-  });
-
-  // families needs an areaCoarse=null row to exist for the no_area path; an
-  // absent family row is a thrown error, so we always return one row when
-  // areaCoarse is provided OR explicitly null (vs. a truly missing family).
-  return { select, transaction, insert } as never;
-}
-
-/** A fake Anthropic client answering submit_candidates in the shape the seam asked for. */
-function fakeClient(candidates: unknown[]) {
-  const create = vi.fn(async (request: { messages: { content: unknown }[] }) =>
-    structuredReply(
-      request,
-      'submit_candidates',
-      { candidates },
-      { input_tokens: 10, output_tokens: 20 },
-    ),
-  );
-  const client = { messages: { create } } as unknown as DiscoveryAnthropicClient;
-  return { client, create };
-}
-
-function deps(
-  client: DiscoveryAnthropicClient,
-  geocode: DiscoverDeps['geocode'] = async () => null,
-  geocodeArea: DiscoverDeps['geocodeArea'] = async () => null,
-): DiscoverDeps {
-  return {
-    client,
-    loadPrompt: async () => 'DISCOVERY SYSTEM PROMPT',
-    loadModel: async () => SONNET_MODEL,
-    geocode,
-    geocodeArea,
-  };
-}
-
-const SAMPLE_CANDIDATES = [
-  {
-    title: 'Parent-and-tot swim',
-    description: 'A water-comfort class for toddlers at a municipal pool.',
-    confidence: 0.65,
-    coverageNote: 'municipal pools commonly offer this; sessions are seasonal.',
-  },
-  {
-    title: 'Neighbourhood park and playground',
-    description: 'Unstructured outdoor play at a local park.',
-    sourceUrl: 'https://toronto.ca/parks',
-    confidence: 0.8,
-    coverageNote: 'public parks exist in essentially every area.',
-  },
-];
-
-describe('selectDiscoveryInputs — teen exclusion (rule #1)', () => {
-  it('drops teenagers, keeps non-teen stages childhood-ordered and deduped', () => {
-    const { stages, interests } = selectDiscoveryInputs(
-      [
-        { dateOfBirth: CHILD_DOB, interests: ['soccer'] },
-        { dateOfBirth: TODDLER_DOB, interests: ['water', 'soccer'] },
-        { dateOfBirth: TEEN_DOB, interests: ['driving'] },
-      ],
-      NOW,
-    );
-
-    expect(stages).toEqual(['toddler', 'child']);
-    // The teen's "driving" interest must NOT enter the pool.
-    expect(interests).not.toContain('driving');
-    expect([...interests].sort()).toEqual(['soccer', 'water']);
-  });
-
-  it('returns no stages for a teen-only family', () => {
-    const { stages } = selectDiscoveryInputs([{ dateOfBirth: TEEN_DOB, interests: ['x'] }], NOW);
-    expect(stages).toEqual([]);
-  });
-
-  /**
-   * VIL-266 — a four-year-old is a preschooler, and the run carries their exact
-   * age alongside the band. `ageMonths` is the age of the child in the PRIMARY
-   * (youngest) stage, so it never describes a different child than `stages[0]`.
-   */
-  it('derives preschool for a four-year-old and reports their age in months', () => {
-    const { stages, ageMonths } = selectDiscoveryInputs(
-      [{ dateOfBirth: PRESCHOOL_DOB, interests: ['music'] }],
-      NOW,
-    );
-    expect(stages).toEqual(['preschool']);
-    expect(ageMonths).toBe(54);
-  });
-
-  it('reports the age of the youngest non-teen child, ignoring teens', () => {
-    const { stages, ageMonths } = selectDiscoveryInputs(
-      [
-        { dateOfBirth: CHILD_DOB, interests: [] },
-        { dateOfBirth: PRESCHOOL_DOB, interests: [] },
-        { dateOfBirth: TEEN_DOB, interests: [] },
-      ],
-      NOW,
-    );
-    expect(stages).toEqual(['preschool', 'child']);
-    // The age belongs to stages[0]'s child, not the teen and not the 8-year-old.
-    expect(ageMonths).toBe(54);
-  });
-
-  it('has no age to report for a teen-only family', () => {
-    const { ageMonths } = selectDiscoveryInputs([{ dateOfBirth: TEEN_DOB, interests: [] }], NOW);
-    expect(ageMonths).toBeNull();
-  });
+let db: TestDb;
+beforeAll(async () => {
+  db = await createTestDb();
 });
+afterAll(async () => {
+  await db.close();
+});
+async function family(age = 36, city = 'Toronto') {
+  const { familyId } = await seedFamily(db.database);
+  await db.database
+    .update(schema.families)
+    .set({ city, areaCoarse: city ? 'M5V' : null })
+    .where(eq(schema.families.id, familyId));
+  await seedChild(db.database, familyId, 'PrivateChildName', age);
+  return familyId;
+}
+const pick = {
+  name: 'Live art workshop',
+  ageFit: 'ages 2-5',
+  when: 'October 18, 2026 at 10am',
+  price: 'Free',
+  sourceName: 'Public museum',
+  source: 'web' as const,
+  sourceUrl: 'https://museum.org/art',
+  eventDate: '2026-10-18',
+  indoorOutdoor: 'indoor' as const,
+};
 
-describe('discoverForFamily', () => {
-  it('inserts candidates scoped to the family with the right shape + ONE audit row', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    const result = await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    expect(result).toEqual({ status: 'discovered', insertedCount: 2 });
-
-    // Exactly one model call (spend bound).
-    expect(c.create).toHaveBeenCalledTimes(1);
-
-    // Candidate insert shape: family-scoped, child-agnostic, honest source/kind.
-    expect(capture.villageCandidates).toEqual([
-      expect.objectContaining({
-        familyId: FAMILY_ID,
-        childId: null,
-        title: 'Parent-and-tot swim',
-        kind: 'activity',
-        summary: 'A water-comfort class for toddlers at a municipal pool.',
-        source: 'llm_only',
-        confidence: 0.65,
-        coverageNote: 'municipal pools commonly offer this; sessions are seasonal.',
-      }),
-      expect.objectContaining({
-        familyId: FAMILY_ID,
-        childId: null,
-        title: 'Neighbourhood park and playground',
-        kind: 'activity',
-        // No Places website in this test → the sane model url is kept.
-        sourceUrl: 'https://toronto.ca/parks',
-      }),
-    ]);
-
-    // Rule #6: exactly one immutable audit row for the discovery transition.
-    expect(capture.auditLog).toEqual([
-      expect.objectContaining({
-        familyId: FAMILY_ID,
-        actor: 'system',
-        actionTaken: 'village.discovery.recorded',
-        targetTable: 'village_candidates',
-        after: { areaCoarse: 'L7G', provider: 'llm_only', count: 2 },
-      }),
-    ]);
-
-    // Exactly one agent_runs row, family-scoped, real model + token counts +
-    // latency, marked completed (observability gap closed).
-    expect(capture.agentRuns).toHaveLength(1);
-    const run = capture.agentRuns[0] as Record<string, unknown>;
-    expect(run.familyId).toBe(FAMILY_ID);
-    expect(run.agentName).toBe('discovery');
-    expect(run.modelUsed).toBe(SONNET_MODEL);
-    expect(run.promptTokens).toBe(10);
-    expect(run.completionTokens).toBe(20);
-    // Sonnet 5.5 $2 in / $10 out per MTok: 10 * 2e-6 + 20 * 10e-6 = $0.00022.
-    expect(run.costUsd).toBe('0.000220');
-    expect(typeof run.latencyMs).toBe('number');
-    expect(run.status).toBe('completed');
+describe('live recommendations without a catalog', () => {
+  it('accepts the current main Finder URL without inventing a dated session', async () => {
+    const familyId = await family();
+    const legacy = { name: pick.name, ageFit: pick.ageFit, when: null, price: null,
+      sourceName: pick.sourceName, source: 'web' as const, url: pick.sourceUrl };
+    const finder = { find: async () => ({ found: true as const, picks: [legacy] }) };
+    const result = await findFamilyActivities(db.database, familyId, { finder });
+    expect(result.picks[0]?.sourceUrl).toBe(pick.sourceUrl);
+    expect(result.picks[0]?.eventDate).toBeUndefined();
+    expect(await readCandidates(db.database, familyId, { finder })).toEqual([]);
+  });
+  it('passes the existing Finder municipality without leaking the postal prefix', async () => {
+    const familyId = await family(36, 'Burlington');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: 'L7M', province: 'ON', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(find.mock.calls[0]![0].town).toBe('Burlington');
+    expect(JSON.stringify(find.mock.calls)).not.toContain('L7M');
   });
 
-  it('asks Sonnet 5.5 through the shared seam: no forced tool_choice, a JSON output on the converse lane', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    const sent = c.create.mock.calls[0]?.[0] as Record<string, unknown> & {
-      output_config?: { effort?: string; format?: { type?: string } };
-    };
-    expect(sent.model).toBe(SONNET_MODEL);
-    // Sonnet 5.5 rejects tool_choice `tool` and `any` with a 400.
-    expect(sent.tool_choice).toBeUndefined();
-    expect(sent.thinking).toEqual({ type: 'adaptive' });
-    expect(sent.output_config?.effort).toBe('high');
-    expect(sent.output_config?.format?.type).toBe('json_schema');
-    expect(sent.max_tokens).toBe(4096);
+  it('keeps main’s no-area boundary for an unmapped city', async () => {
+    const familyId = await family(36, 'Victoria');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: null, province: 'BC', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
+      'no_area',
+    );
+    expect(find).not.toHaveBeenCalled();
   });
 
-  it('asks once more when no structured answer came back, and bills both calls to the run', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
+  it('does not guess an Ontario municipality for an unmapped foreign family', async () => {
+    const familyId = await family(36, 'Burlington');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: null, province: 'VT', country: 'US' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
+      'no_area',
+    );
+    expect(find).not.toHaveBeenCalled();
+  });
+
+  it('keeps a known venue identity for review ranking, never an ambiguous shared URL', async () => {
+    const familyId = await family();
+    const venueId = randomUUID();
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId,
+      title: 'Earlier receipt',
+      kind: 'activity',
+      summary: 'Not current facts',
+      source: 'web',
+      confidence: 1,
+      civicVenueId: venueId,
+      sourceUrl: pick.sourceUrl,
     });
-    const create = vi
+    const finder = { find: async () => ({ found: true as const, picks: [{ ...pick }] }) };
+    expect(
+      (await findFamilyActivities(db.database, familyId, { finder })).picks[0]?.civicVenueId,
+    ).toBe(venueId);
+    // Multiple receipts for one identity are not an ambiguous shared venue URL.
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId,
+      title: 'Another receipt',
+      kind: 'activity',
+      summary: 'Not current facts',
+      source: 'web',
+      confidence: 1,
+      civicVenueId: venueId,
+      sourceUrl: pick.sourceUrl,
+    });
+    expect(
+      (await findFamilyActivities(db.database, familyId, { finder })).picks[0]?.civicVenueId,
+    ).toBe(venueId);
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId,
+      title: 'Different venue',
+      kind: 'activity',
+      summary: 'Not current facts',
+      source: 'web',
+      confidence: 1,
+      civicVenueId: randomUUID(),
+      sourceUrl: pick.sourceUrl,
+    });
+    expect(
+      (await findFamilyActivities(db.database, familyId, { finder })).picks[0]?.civicVenueId,
+    ).toBeUndefined();
+  });
+  it('does not use another family receipt to identify a fresh result', async () => {
+    const owner = await family();
+    const other = await family();
+    await db.database.insert(schema.familyActivityHistory).values({
+      familyId: other,
+      title: 'Private receipt',
+      kind: 'activity',
+      summary: 'Not current facts',
+      source: 'web',
+      confidence: 1,
+      civicVenueId: randomUUID(),
+      sourceUrl: pick.sourceUrl,
+    });
+    const finder = { find: async () => ({ found: true as const, picks: [{ ...pick }] }) };
+    const found = await findFamilyActivities(db.database, owner, { finder });
+    expect(found.picks[0]?.civicVenueId).toBeUndefined();
+    expect(found.picks[0]?.name).toBe(pick.name);
+  });
+  it('researches each operation, returns only fresh picks, and preserves offered receipts', async () => {
+    const familyId = await family();
+    const find = vi
       .fn()
+      .mockResolvedValueOnce({ found: true, picks: [pick] })
       .mockResolvedValueOnce({
-        content: [],
-        stop_reason: 'end_turn',
-        usage: { input_tokens: 10, output_tokens: 20 },
-      })
-      .mockImplementationOnce(async (request: unknown) =>
-        structuredReply(
-          request,
-          'submit_candidates',
-          { candidates: SAMPLE_CANDIDATES },
-          { input_tokens: 10, output_tokens: 20 },
-        ),
-      );
-    const client = { messages: { create } } as unknown as DiscoveryAnthropicClient;
-
-    const result = await discoverForFamily(FAMILY_ID, db, deps(client));
-
-    expect(result).toEqual({ status: 'discovered', insertedCount: 2 });
-    expect(create).toHaveBeenCalledTimes(2);
-    const run = capture.agentRuns[0] as Record<string, unknown>;
-    expect(run.status).toBe('completed');
-    expect(run.promptTokens).toBe(20);
-    expect(run.completionTokens).toBe(40);
-  });
-
-  it('honors the ACTIVE saved area over the legacy family field (region switch drives content)', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    // The family's ACTIVE saved area is Ottawa (K1P …); the legacy families field is
-    // a DIFFERENT area (L7G). Discovery must use the active area's coarse prefix.
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      activeArea: { city: 'Ottawa', province: 'ON', postalCode: 'K1P 1J1' },
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    // The model receives the ACTIVE area's coarse prefix, not the legacy 'L7G'.
-    const sentUser = c.create.mock.calls[0]?.[0]?.messages?.[0]?.content as string;
-    expect(JSON.parse(sentUser).area_coarse).toBe('K1P');
-    // And the audit records the active coarse area.
-    expect(capture.auditLog[0]).toEqual(
-      expect.objectContaining({
-        after: { areaCoarse: 'K1P', provider: 'llm_only', count: 2 },
-      }),
+        found: true,
+        picks: [{ ...pick, when: 'October 25, 2026 at 11am', eventDate: '2026-10-25' }],
+      });
+    const first = await discoverForFamily(familyId, db.database, { finder: { find } });
+    const second = await discoverForFamily(
+      familyId,
+      db.database,
+      { finder: { find } },
+      { searchSeason: 'fall' },
     );
-  });
-
-  it('REPLACES the active set: soft-supersedes the prior run BEFORE inserting the new one', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    // Exactly one supersede UPDATE runs for the run, and it stamps ONLY
-    // superseded_at — never clears shareToken (rule: shared/endorsed rows keep
-    // their share token) and never touches any other column.
-    expect(capture.supersededUpdates).toHaveLength(1);
-    const setPayload = capture.supersededUpdates[0] as Record<string, unknown>;
-    expect(Object.keys(setPayload)).toEqual(['supersededAt']);
-    expect(setPayload.supersededAt).toBeInstanceOf(Date);
-
-    // The new run's candidates land with superseded_at unset (they ARE the active
-    // set now) — the insert never carries a supersededAt value.
-    for (const row of capture.villageCandidates as Record<string, unknown>[]) {
-      expect(row).not.toHaveProperty('supersededAt');
-    }
-  });
-
-  it('persists event_date and seasons the model supplied (freshness fields), null when absent', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient([
-      {
-        // A dated one-time event → event_date set, seasons null.
-        title: 'Library author visit',
-        description: 'a one-day author reading',
-        cadence: 'one-time',
-        eventDate: '2026-09-12',
-        confidence: 0.7,
-        coverageNote: 'a grounded listing named the date',
-      },
-      {
-        // A seasonal activity → seasons set, event_date null.
-        title: 'Summer splash-pad drop-in',
-        description: 'outdoor water play in the warm months',
-        cadence: 'seasonal',
-        seasons: ['summer'],
-        confidence: 0.6,
-        coverageNote: 'splash pads run in summer',
-      },
-      {
-        // An ongoing option with neither → both null (graceful default).
-        title: 'Library storytime',
-        description: 'weekly rolling storytime',
-        cadence: 'ongoing',
-        confidence: 0.65,
-        coverageNote: 'libraries run rolling storytimes',
-      },
-    ]);
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    const rows = capture.villageCandidates as Record<string, unknown>[];
-    expect(rows[0]?.eventDate).toBe('2026-09-12');
-    expect(rows[0]?.seasons).toBeNull();
-    expect(rows[1]?.eventDate).toBeNull();
-    expect(rows[1]?.seasons).toEqual(['summer']);
-    expect(rows[2]?.eventDate).toBeNull();
-    expect(rows[2]?.seasons).toBeNull();
-  });
-
-  it('persists the VERIFIED Places rating/count/place_id (fixed-point string), null when absent', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient([
-      { title: 'Rated venue', description: 'x', confidence: 0.6, coverageNote: 'serves area' },
-      { title: 'Unrated venue', description: 'y', confidence: 0.5, coverageNote: 'serves area' },
-    ]);
-    // First venue has a real Places rating; second resolves coords but no rating.
-    const geocode: DiscoverDeps['geocode'] = async (title) =>
-      title === 'Rated venue'
-        ? {
-            lat: 43.6,
-            lng: -79.4,
-            venueName: 'Rated venue',
-            venueAddress: '1 Rd',
-            placeId: 'places/ABC',
-            rating: 4.6,
-            ratingCount: 128,
-          }
-        : { lat: 43.7, lng: -79.5, venueName: 'Unrated venue', venueAddress: '2 Rd' };
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
-
-    const rows = capture.villageCandidates as Record<string, unknown>[];
-    // numeric(2,1) takes a fixed-point STRING on insert (mirrors costUsd).
-    expect(rows[0]?.rating).toBe('4.6');
-    expect(rows[0]?.ratingCount).toBe(128);
-    expect(rows[0]?.placeId).toBe('places/ABC');
-    // No Places rating → null (the card renders NO stars, never a fabricated 0).
-    expect(rows[1]?.rating).toBeNull();
-    expect(rows[1]?.ratingCount).toBeNull();
-    expect(rows[1]?.placeId).toBeNull();
-  });
-
-  it('persists the honest model attribute hints (price/age/indoor), null when the model omitted them', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient([
-      {
-        title: 'Free outdoor splash pad',
-        description: 'x',
-        priceBand: 'free',
-        ageRange: '2–6 years',
-        indoorOutdoor: 'outdoor',
-        confidence: 0.7,
-        coverageNote: 'serves area',
-      },
-      {
-        // The model expressed unknown as explicit null — must persist as null, not error.
-        title: 'Unclassified group',
-        description: 'y',
-        priceBand: null,
-        ageRange: null,
-        indoorOutdoor: null,
-        confidence: 0.5,
-        coverageNote: 'serves area',
-      },
-    ]);
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    const rows = capture.villageCandidates as Record<string, unknown>[];
-    expect(rows[0]?.priceLevel).toBe('free');
-    expect(rows[0]?.ageRange).toBe('2–6 years');
-    expect(rows[0]?.indoorOutdoor).toBe('outdoor');
-    expect(rows[1]?.priceLevel).toBeNull();
-    expect(rows[1]?.ageRange).toBeNull();
-    expect(rows[1]?.indoorOutdoor).toBeNull();
-  });
-
-  it('persists a candidate whose coverage note the model omitted — the note is lost, never the family', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    // Exactly what production returned on 2026-09-18: the forced tool came back
-    // with candidates carrying no coverageNote at all, plus the explicit-null
-    // spelling of the same thing. Neither may cost the family its first village.
-    const c = fakeClient([
-      {
-        title: 'Parent-and-tot swim',
-        description: 'A water-comfort class for toddlers at a municipal pool.',
-        confidence: 0.65,
-      },
-      {
-        title: 'Neighbourhood park and playground',
-        description: 'Unstructured outdoor play at a local park.',
-        confidence: 0.8,
-        coverageNote: null,
-      },
-    ]);
-
-    const result = await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    expect(result).toEqual({ status: 'discovered', insertedCount: 2 });
-    const rows = capture.villageCandidates as Record<string, unknown>[];
+    expect(first.status).toBe('discovered');
+    expect(second.status).toBe('discovered');
+    expect(find).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(find.mock.calls)).not.toContain('PrivateChildName');
+    expect(find.mock.calls[0]![0].town).toBe('Toronto');
+    const rows = await db.database
+      .select()
+      .from(schema.familyActivityHistory)
+      .where(eq(schema.familyActivityHistory.familyId, familyId));
     expect(rows).toHaveLength(2);
-    expect(rows[0]?.title).toBe('Parent-and-tot swim');
-    expect(rows[1]?.title).toBe('Neighbourhood park and playground');
-    // The missing note becomes null — the card renders no coverage line rather
-    // than a coverage claim Hale invented on the model's behalf.
-    expect(rows[0]?.coverageNote).toBeNull();
-    expect(rows[1]?.coverageNote).toBeNull();
-    // The run is a real, visible, COMPLETED run: audit row (rule #6) + agent_runs.
-    expect(capture.auditLog).toEqual([
-      expect.objectContaining({
-        actionTaken: 'village.discovery.recorded',
-        after: { areaCoarse: 'L7G', provider: 'llm_only', count: 2 },
-      }),
-    ]);
-    expect(capture.agentRuns).toHaveLength(1);
-    expect((capture.agentRuns[0] as Record<string, unknown>).status).toBe('completed');
-  });
-
-  it('records a FAILED agent_runs row and rethrows when the model returns no tool call (rule #8)', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    // The forced tool came back with only text — a failed discovery run that still
-    // billed input/output tokens.
-    const create = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'no.' }],
-      usage: { input_tokens: 10, output_tokens: 20 },
-    });
-    const client = { messages: { create } } as unknown as DiscoveryAnthropicClient;
-
-    await expect(discoverForFamily(FAMILY_ID, db, deps(client))).rejects.toThrow(
-      'submit_candidates',
+    expect(rows.every((row) => row.offeredAt !== null)).toBe(true);
+    expect(rows.map((row) => row.eventDate)).toEqual(['2026-10-18', '2026-10-25']);
+    const tables = await db.client.query<{ name: string }>(
+      "select tablename as name from pg_tables where tablename in ('village_candidates','village_feed_rank')",
     );
-
-    expect(capture.agentRuns).toHaveLength(1);
-    const run = capture.agentRuns[0] as Record<string, unknown>;
-    expect(run.familyId).toBe(FAMILY_ID);
-    expect(run.agentName).toBe('discovery');
-    expect(run.status).toBe('failed');
-    // No candidates persisted on the failure path.
-    expect(capture.villageCandidates).toEqual([]);
+    expect(tables.rows).toEqual([]);
   });
-
-  it('records a FAILED agent_runs row and rethrows when the tool payload fails the parse (rule #8)', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    // A field we deliberately do NOT tolerate (a candidate with no title is not a
-    // candidate). The run still billed tokens, so it must be visible in agent_runs
-    // — not only in the Vercel log line the `after()` swallow writes.
-    const c = fakeClient([{ description: 'no title', confidence: 0.5 }]);
-
-    await expect(discoverForFamily(FAMILY_ID, db, deps(c.client))).rejects.toThrow();
-
-    expect(capture.agentRuns).toHaveLength(1);
-    const run = capture.agentRuns[0] as Record<string, unknown>;
-    expect(run.agentName).toBe('discovery');
-    expect(run.status).toBe('failed');
-    expect(capture.villageCandidates).toEqual([]);
-    expect(capture.auditLog).toEqual([]);
+  it('failed live research never returns a saved receipt or writes an unused candidate pool', async () => {
+    const familyId = await family();
+    const find = vi
+      .fn()
+      .mockResolvedValueOnce({ found: true, picks: [pick] })
+      .mockResolvedValueOnce({ found: false, reason: 'ground_failed' });
+    await discoverForFamily(familyId, db.database, { finder: { find } });
+    const current = await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(current).toEqual({ picks: [], reason: 'ground_failed' });
+    const rows = await db.database
+      .select()
+      .from(schema.familyActivityHistory)
+      .where(eq(schema.familyActivityHistory.familyId, familyId));
+    expect(rows).toHaveLength(1);
   });
-
-  it('passes the model ONLY the coarse area + stage + interests — no precise location, no DOB', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    const sentUser = c.create.mock.calls[0]?.[0]?.messages?.[0]?.content as string;
-    const sent = JSON.parse(sentUser);
-    // Only the coarse area + stage + age + interests + limit reach the model.
-    // VIL-266 added `age_months`: an age in completed months is a derivative of the
-    // birthdate that is strictly coarser than `stage` is precise about identity —
-    // it pins no calendar day, and it is the whole point of the ticket (a stage is
-    // a band; a four-year-old should not be searched as a nine-year-old).
-    // discoverForFamily derives the age against the real clock (it takes no `now`),
-    // so the expected value is the toddler's age today rather than a literal that
-    // would silently rot into a failure next month.
-    expect(sent).toEqual({
-      area_coarse: 'L7G',
-      stage: 'toddler',
-      age_months: ageInMonths(TODDLER_DOB),
-      interests: ['water'],
-      limit: 8,
-    });
-    // The full postal code / DOB must never be in the request payload.
-    expect(sentUser).not.toContain(TODDLER_DOB);
-    expect(sentUser).not.toContain(FAMILY_ID);
-  });
-
-  /**
-   * Rule #1: the new `age_months` input must not become a way for a teen's age to
-   * reach the model. Teens are excluded upstream in selectDiscoveryInputs, so a
-   * teen-only family makes no call at all, and a mixed family sends the non-teen
-   * age — never the teenager's.
-   */
-  it('never sends a teenager age with the new age_months input', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [
-        { dateOfBirth: TEEN_DOB, interests: ['driving'] },
-        { dateOfBirth: TODDLER_DOB, interests: ['water'] },
-      ],
-      capture,
-    });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    const sentUser = c.create.mock.calls[0]?.[0]?.messages?.[0]?.content as string;
-    const sent = JSON.parse(sentUser);
-    expect(sent.age_months).toBe(ageInMonths(TODDLER_DOB));
-    expect(sent.stage).toBe('toddler');
-    expect(sent.age_months).not.toBe(ageInMonths(TEEN_DOB));
-    expect(sentUser).not.toContain(TEEN_DOB);
-  });
-
-  it('never stores the family location: coords are PUBLIC venue only, no DOB/precise-home field', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient([
-      {
-        title: 'Toddler swim',
-        description: 'a class at a municipal pool',
-        cadence: 'seasonal',
-        confidence: 0.5,
-        coverageNote: 'serves your area',
-      },
-    ]);
-    // The geocode resolves a PUBLIC venue (a pool) — its location is a public
-    // place, never the family's home. Capture what reaches Google to assert only
-    // the coarse area is sent (rule #1).
-    const geoCalls: Array<{ title: string; area: string }> = [];
-    const geocode: DiscoverDeps['geocode'] = async (title, area) => {
-      geoCalls.push({ title, area });
-      return { lat: 43.6, lng: -79.4, venueName: 'Public Pool', venueAddress: '1 Pool Rd' };
-    };
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
-
-    for (const row of capture.villageCandidates as Record<string, unknown>[]) {
-      // The persisted row carries exactly the village_candidates columns — the
-      // lat/lng/venue columns hold the PUBLIC venue, and there is still NO column
-      // for a child DOB or the precise family home (rule #1).
-      expect(Object.keys(row).sort()).toEqual(
-        [
-          'ageRange',
-          'cadence',
-          'childId',
-          'confidence',
-          'coverageNote',
-          'eventDate',
-          'familyId',
-          'indoorOutdoor',
-          'kind',
-          'lat',
-          'lng',
-          'placeId',
-          'priceLevel',
-          'rating',
-          'ratingCount',
-          'runType',
-          'searchSeason',
-          'seasons',
-          'source',
-          'sourceUrl',
-          'summary',
-          'title',
-          'venueAddress',
-          'venueName',
-        ].sort(),
-      );
-      expect(row).not.toHaveProperty('dateOfBirth');
-      // Coords are the public venue's, set from the geocode.
-      expect(row.lat).toBe(43.6);
-      expect(row.venueName).toBe('Public Pool');
-    }
-
-    // The model's cadence persists as-is (the chip's source of truth).
-    const persistedCadences = (capture.villageCandidates as Record<string, unknown>[]).map(
-      (r) => r.cadence,
+  it('refuses missing location, child names and teen-only searches before web spend', async () => {
+    const find = vi.fn();
+    const teen = await family(180);
+    expect((await findFamilyActivities(db.database, teen, { finder: { find } })).reason).toBe(
+      'no_non_teen_children',
     );
-    expect(persistedCadences).toEqual(['seasonal']);
-
-    // The geocode received ONLY the candidate title + the coarse area — no precise
-    // location ever leaves the server (rule #1).
-    expect(geoCalls).toEqual([{ title: 'Toddler swim', area: 'L7G' }]);
+    const noArea = await family(36, '');
+    expect((await findFamilyActivities(db.database, noArea, { finder: { find } })).reason).toBe(
+      'no_area',
+    );
+    const own = await family();
+    expect(
+      (
+        await findFamilyActivities(db.database, own, {
+          subject: 'PrivateChildName art',
+          finder: { find },
+        })
+      ).picks,
+    ).toEqual([]);
+    expect(
+      (
+        await findFamilyActivities(db.database, own, {
+          subject: 'Test Parent art',
+          finder: { find },
+        })
+      ).picks,
+    ).toEqual([]);
+    expect(find).not.toHaveBeenCalled();
   });
-
-  it('resolves the coarse-area centre ONCE and biases every venue lookup to it (rule #1)', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
+  it('nudge candidates are freshly sourced and require an explicit date and link', async () => {
+    const familyId = await family();
+    const find = vi.fn().mockResolvedValue({
+      found: true,
+      picks: [pick, { ...pick, name: 'Undated', eventDate: undefined }],
     });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    const center = { lat: 43.6285, lng: -79.9618 }; // coarse-area centre, not a home
-    const areaCalls: string[] = [];
-    const geocodeArea: DiscoverDeps['geocodeArea'] = async (area) => {
-      areaCalls.push(area);
-      return center;
-    };
-    const biasArgs: Array<unknown> = [];
-    const geocode: DiscoverDeps['geocode'] = async (_title, _area, bias) => {
-      biasArgs.push(bias);
-      return null;
-    };
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode, geocodeArea));
-
-    // The coarse area is geocoded exactly once (not once per candidate).
-    expect(areaCalls).toEqual(['L7G']);
-    // Every venue lookup is biased to that single coarse-area centre.
-    expect(biasArgs).toEqual([center, center]);
-  });
-
-  it('falls back to an undefined bias when the coarse-area centre can not be resolved', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
+    const rows = await readCandidates(db.database, familyId, {
+      finder: { find },
+      window: 'this coming weekend',
     });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    const biasArgs: Array<unknown> = [];
-    const geocode: DiscoverDeps['geocode'] = async (_title, _area, bias) => {
-      biasArgs.push(bias);
-      return null;
-    };
-    const geocodeArea: DiscoverDeps['geocodeArea'] = async () => null;
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode, geocodeArea));
-
-    expect(biasArgs).toEqual([undefined, undefined]);
-  });
-
-  it('prefers the verified Places website over a model-supplied url (the model url is often a guess)', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      source: 'web',
+      sourceUrl: pick.sourceUrl,
+      eventDate: pick.eventDate,
     });
-    const c = fakeClient([
-      {
-        // No sourceUrl from the model → adopts the Places website.
-        title: 'Toddler swim',
-        description: 'a class at a municipal pool',
-        confidence: 0.5,
-        coverageNote: 'serves your area',
-      },
-      {
-        // The model supplied a url, BUT Places resolved the real venue site →
-        // the verified Places site must win (the model url is often hallucinated).
-        title: 'Neighbourhood park',
-        description: 'outdoor play',
-        sourceUrl: 'https://example.org/park',
-        confidence: 0.8,
-        coverageNote: 'public parks exist everywhere',
-      },
-    ]);
-    // Both venues resolve a public website via Places.
-    const geocode: DiscoverDeps['geocode'] = async (title) => ({
-      lat: 43.6,
-      lng: -79.4,
-      venueName: 'Public Venue',
-      venueAddress: '1 Venue Rd',
-      website: `https://places.example/${encodeURIComponent(title)}`,
-    });
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
-
-    const rows = capture.villageCandidates as Record<string, unknown>[];
-    // No LLM url → adopts the Places website.
-    expect(rows[0]?.sourceUrl).toBe('https://places.example/Toddler%20swim');
-    // LLM url present but Places has the real site → Places WINS (not the model url).
-    expect(rows[1]?.sourceUrl).toBe('https://places.example/Neighbourhood%20park');
-  });
-
-  it('adopts a model url only when Places has no website AND the url passes a sanity check', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient([
-      {
-        // Valid absolute https url + no Places website → kept as-is.
-        title: 'Real venue',
-        description: 'x',
-        sourceUrl: 'https://realvenue.ca/register',
-        confidence: 0.6,
-        coverageNote: 'serves your area',
-      },
-      {
-        // A placeholder host the model guessed + no Places website → rejected → null
-        // (register link falls back to a coarse-area Google search, correct-by-construction).
-        title: 'Guessed venue',
-        description: 'y',
-        sourceUrl: 'https://example.com/activity',
-        confidence: 0.4,
-        coverageNote: 'serves your area',
-      },
-      {
-        // Not an absolute http(s) url → rejected → null.
-        title: 'Bare host',
-        description: 'z',
-        sourceUrl: 'realvenue.ca/register',
-        confidence: 0.4,
-        coverageNote: 'serves your area',
-      },
-    ]);
-    // No venue resolves a Places website (coords only, or none).
-    const geocode: DiscoverDeps['geocode'] = async () => null;
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
-
-    const rows = capture.villageCandidates as Record<string, unknown>[];
-    expect(rows[0]?.sourceUrl).toBe('https://realvenue.ca/register');
-    expect(rows[1]?.sourceUrl ?? null).toBeNull();
-    expect(rows[2]?.sourceUrl ?? null).toBeNull();
-  });
-
-  it('leaves source_url null when the model gave none and the venue has no website (Google-search fallback)', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient([
-      {
-        title: 'Toddler swim',
-        description: 'a class at a municipal pool',
-        confidence: 0.5,
-        coverageNote: 'serves your area',
-      },
-    ]);
-    // Venue resolves coords but Places has no website.
-    const geocode: DiscoverDeps['geocode'] = async () => ({
-      lat: 43.6,
-      lng: -79.4,
-      venueName: 'Public Pool',
-      venueAddress: '1 Pool Rd',
-    });
-
-    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
-
-    const row = (capture.villageCandidates as Record<string, unknown>[])[0];
-    expect(row?.sourceUrl ?? null).toBeNull();
-  });
-
-  it('leaves coords null for a candidate the geocode can not resolve (list-only, no pin)', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
-      capture,
-    });
-    const c = fakeClient([
-      {
-        title: 'online newborn webinar',
-        description: 'a virtual session, no venue',
-        confidence: 0.5,
-        coverageNote: 'online',
-      },
-    ]);
-
-    // geocode returns null for an online / no-venue activity (deps default).
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    const row = (capture.villageCandidates as Record<string, unknown>[])[0];
-    expect(row?.lat).toBeNull();
-    expect(row?.lng).toBeNull();
-    expect(row?.venueName).toBeNull();
-  });
-
-  it('returns no_area and does NOT call the model when the family has no coarse area', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({ areaCoarse: null, children: [], capture });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    const result = await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    expect(result).toEqual({ status: 'no_area' });
-    expect(c.create).not.toHaveBeenCalled();
-    expect(capture.villageCandidates).toEqual([]);
-    expect(capture.auditLog).toEqual([]);
-  });
-
-  it('returns no_non_teen_children (no spend) for a teen-only family', async () => {
-    const capture: InsertCapture = {
-      villageCandidates: [],
-      auditLog: [],
-      agentRuns: [],
-      supersededUpdates: [],
-    };
-    const db = fakeDb({
-      areaCoarse: 'L7G',
-      children: [{ dateOfBirth: TEEN_DOB, interests: ['driving'] }],
-      capture,
-    });
-    const c = fakeClient(SAMPLE_CANDIDATES);
-
-    const result = await discoverForFamily(FAMILY_ID, db, deps(c.client));
-
-    expect(result).toEqual({ status: 'no_non_teen_children' });
-    expect(c.create).not.toHaveBeenCalled();
-    expect(capture.villageCandidates).toEqual([]);
-  });
-});
-
-describe('candidatesSchema — model null tolerance (season-search 500)', () => {
-  // The tool schema declares eventDate/seasons/cadence/sourceUrl as optional, and
-  // Claude routinely expresses "none" as an explicit null (a year-round pick in a
-  // season search has no eventDate and no seasons). The parse must accept exactly
-  // what the tool contract permits — a null here killed the whole run with a 500.
-  it('accepts explicit nulls for the optional candidate fields', async () => {
-    const { candidatesSchema } = await import('./discover.js');
-    const parsed = candidatesSchema.parse({
-      candidates: [
-        {
-          title: 'Public library toddler time',
-          description: 'Weekly story time, year-round.',
-          cadence: null,
-          eventDate: null,
-          seasons: null,
-          sourceUrl: null,
-          priceBand: null,
-          ageRange: null,
-          indoorOutdoor: null,
-          confidence: 0.8,
-          coverageNote: 'library site',
-        },
-      ],
-    });
-    expect(parsed.candidates[0]?.eventDate ?? null).toBeNull();
-    expect(parsed.candidates[0]?.seasons ?? null).toBeNull();
-    // The new attribute fields accept an explicit null too (season-search lesson).
-    expect(parsed.candidates[0]?.priceBand ?? null).toBeNull();
-    expect(parsed.candidates[0]?.ageRange ?? null).toBeNull();
-    expect(parsed.candidates[0]?.indoorOutdoor ?? null).toBeNull();
-  });
-
-  it('degrades an out-of-vocab attribute token to null instead of killing the run', async () => {
-    // The attribute-level season-search lesson: the model inventing 'cheap-ish'
-    // or 'mixed' must cost that FIELD, not the whole discovery run (which would
-    // bypass recordRun('failed') entirely).
-    const { candidatesSchema } = await import('./discover.js');
-    const parsed = candidatesSchema.parse({
-      candidates: [
-        {
-          title: 'Community centre open gym',
-          description: 'drop-in play',
-          priceBand: 'cheap-ish',
-          indoorOutdoor: 'mixed',
-          confidence: 0.6,
-          coverageNote: 'city site',
-        },
-      ],
-    });
-    expect(parsed.candidates[0]?.priceBand ?? null).toBeNull();
-    expect(parsed.candidates[0]?.indoorOutdoor ?? null).toBeNull();
-  });
-
-  it('accepts the attribute fields when the model DID supply them', async () => {
-    const { candidatesSchema } = await import('./discover.js');
-    const parsed = candidatesSchema.parse({
-      candidates: [
-        {
-          title: 'Outdoor splash pad',
-          description: 'free summer water play',
-          priceBand: 'free',
-          ageRange: '2–6 years',
-          indoorOutdoor: 'outdoor',
-          confidence: 0.7,
-          coverageNote: 'city site',
-        },
-      ],
-    });
-    expect(parsed.candidates[0]?.priceBand).toBe('free');
-    expect(parsed.candidates[0]?.ageRange).toBe('2–6 years');
-    expect(parsed.candidates[0]?.indoorOutdoor).toBe('outdoor');
-  });
-
-  it('never lets an out-of-vocab price band SURVIVE the parse (degrade, not persist)', async () => {
-    // The honesty property the old reject-semantics guarded, restated for the
-    // degrade behavior: the invented token must not reach the vocabulary — it
-    // becomes null (chip hidden), never a rendered raw string.
-    const { candidatesSchema } = await import('./discover.js');
-    const parsed = candidatesSchema.parse({
-      candidates: [
-        {
-          title: 'x',
-          description: 'y',
-          priceBand: 'cheap-ish',
-          confidence: 0.5,
-          coverageNote: 'z',
-        },
-      ],
-    });
-    expect(parsed.candidates[0]?.priceBand ?? null).toBeNull();
-    expect(JSON.stringify(parsed)).not.toContain('cheap-ish');
-  });
-
-  it('accepts a candidate with no coverageNote at all, and the explicit-null spelling', async () => {
-    const { candidatesSchema } = await import('./discover.js');
-    const parsed = candidatesSchema.parse({
-      candidates: [
-        { title: 'Library toddler time', description: 'Weekly story time.', confidence: 0.8 },
-        {
-          title: 'Splash pad',
-          description: 'Free summer water play.',
-          confidence: 0.6,
-          coverageNote: null,
-        },
-      ],
-    });
-    expect(parsed.candidates).toHaveLength(2);
-    expect(parsed.candidates[0]?.coverageNote ?? null).toBeNull();
-    expect(parsed.candidates[1]?.coverageNote ?? null).toBeNull();
-  });
-
-  it('still rejects a candidate with no title — a nameless pick is not a candidate', async () => {
-    const { candidatesSchema } = await import('./discover.js');
-    expect(() =>
-      candidatesSchema.parse({ candidates: [{ description: 'y', confidence: 0.5 }] }),
-    ).toThrow();
+    expect(find.mock.calls[0]![0].window).toBe('this coming weekend');
+    expect(
+      await db.database
+        .select()
+        .from(schema.familyActivityHistory)
+        .where(eq(schema.familyActivityHistory.familyId, familyId)),
+    ).toEqual([]);
   });
 });

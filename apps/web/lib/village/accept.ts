@@ -1,6 +1,6 @@
-import { and, eq, sql } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import { type IngestedEventPayload, ingestedEventPayloadSchema } from '@hale/tools-contracts';
+import { and, eq, sql } from 'drizzle-orm';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 
 /**
@@ -50,16 +50,16 @@ export async function acceptVillageCandidate(
 ): Promise<AcceptResult> {
   const rows = await database
     .select({
-      id: schema.villageCandidates.id,
-      familyId: schema.villageCandidates.familyId,
-      title: schema.villageCandidates.title,
-      kind: schema.villageCandidates.kind,
-      summary: schema.villageCandidates.summary,
-      sourceUrl: schema.villageCandidates.sourceUrl,
-      coverageNote: schema.villageCandidates.coverageNote,
+      id: schema.familyActivityHistory.id,
+      familyId: schema.familyActivityHistory.familyId,
+      title: schema.familyActivityHistory.title,
+      kind: schema.familyActivityHistory.kind,
+      summary: schema.familyActivityHistory.summary,
+      sourceUrl: schema.familyActivityHistory.sourceUrl,
+      coverageNote: schema.familyActivityHistory.coverageNote,
     })
-    .from(schema.villageCandidates)
-    .where(eq(schema.villageCandidates.id, args.candidateId))
+    .from(schema.familyActivityHistory)
+    .where(eq(schema.familyActivityHistory.id, args.candidateId))
     .limit(1);
 
   const candidate = rows[0];
@@ -78,7 +78,7 @@ export async function acceptVillageCandidate(
       candidate_id: candidate.id,
       title: candidate.title,
       kind: candidate.kind,
-      summary: candidate.summary,
+      summary: 'Parent selected this activity. Read the source for current dates and availability.',
       source_url: candidate.sourceUrl,
       coverage_note: candidate.coverageNote,
     },

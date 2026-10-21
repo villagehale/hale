@@ -34,9 +34,9 @@ describe('parseStatedAgeBand — the forms these feeds really publish', () => {
 
   it('reads a MIXED-unit range, where the two ends are in different units', () => {
     // TPL Toddler Time. 3 years runs through 3y11m, the registry's own convention.
-    expect(
-      parseStatedAgeBand('for children, 19 months to 3 years, and their parents'),
-    ).toEqual(band(19, 47));
+    expect(parseStatedAgeBand('for children, 19 months to 3 years, and their parents')).toEqual(
+      band(19, 47),
+    );
   });
 
   it('reads a year range whether it is spelled years, yrs, or nothing at all', () => {

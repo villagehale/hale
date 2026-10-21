@@ -67,10 +67,6 @@
     "file": "consent-reply.md",
     "sha256": "da33f7086128a7c99f7fb35456d77c76ea9f86bd06468dd6b4951b122af218bb"
   },
-  "curate-shortlist.md": {
-    "file": "curate-shortlist.md",
-    "sha256": "44f794b974575b8d8b8a85fe44adfba0756abb1bdcf32df75d1a1cd072f47e72"
-  },
   "draft-action.md": {
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
@@ -215,10 +211,6 @@
     "file": "opt-out-read.md",
     "sha256": "615ded7cfd504d54e24bfb0ed0a0c469da5c5ae72704c381def8aad6489475d1"
   },
-  "parse-civic-hours.md": {
-    "file": "parse-civic-hours.md",
-    "sha256": "be461fbaa85e727b98416b88bd3b11e12d27a7b4d3da6a05960204694ab79da4"
-  },
   "parse-village-search.md": {
     "file": "parse-village-search.md",
     "sha256": "0f601d5fb3dcc1cccee224c6c0e9d7bd3bd82dc1379a175c6ecefbc04d761c76"
@@ -238,10 +230,6 @@
   "radar-voice.md": {
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
-  },
-  "rank-recommendations.md": {
-    "file": "rank-recommendations.md",
-    "sha256": "3e02bc007a994ef820156a9d1d87346f993f97cdfecdc0e4957ee01f893a7a01"
   },
   "reminder-voice.md": {
     "file": "reminder-voice.md",

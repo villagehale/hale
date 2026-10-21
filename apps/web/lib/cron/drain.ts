@@ -59,9 +59,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 
 const EVENTS_QUEUE = 'events.ingested';
 const ACTIONS_QUEUE = 'actions.approved';
-/** Background feed-rank materialization: a job carries {family_id}; the handler
- * runs the ~25s ranker OUT of the request path and stores the order in
- * village_feed_rank, so the home feed read is a pure DB lookup. */
+/** Acknowledge already queued rerank jobs without rebuilding the retired catalog. */
 const RERANK_QUEUE = 'village.rerank';
 
 /**
@@ -776,7 +774,10 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // that imports a drain constant. The runtime entrypoint is the only place that
   // needs the real handler, so the import stays scoped to it.
   const { db } = await import('~/lib/db');
-  const { upsertFeedRank } = await import('~/lib/village/rank/upsert');
+  // Drain pre-migration queued rank jobs without rebuilding a retired catalog.
+  const upsertFeedRank = async (_database: unknown, familyId: string) => {
+    console.info({ familyId }, 'retired village rerank job: skipped');
+  };
 
   // The channel seam pulls the loop dispatch + adapters (and the db-backed ports);
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.

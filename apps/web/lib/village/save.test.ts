@@ -40,7 +40,7 @@ function fakeDb(opts: {
   const select = vi.fn().mockImplementation((projection?: Record<string, unknown>) => {
     const from = vi.fn().mockImplementation((table: unknown) => {
       let rows: unknown[] = [];
-      if (table === schema.villageCandidates) rows = opts.candidate ? [opts.candidate] : [];
+      if (table === schema.familyActivityHistory) rows = opts.candidate ? [opts.candidate] : [];
       else if (table === schema.children)
         rows = opts.childDob ? [{ dateOfBirth: opts.childDob }] : [];
       else if (table === schema.villageSaves) rows = opts.existingSaveRows ?? [];
@@ -56,9 +56,11 @@ function fakeDb(opts: {
   const onConflictDoNothing = vi.fn().mockReturnValue({ returning });
   const auditValues = vi.fn().mockResolvedValue(undefined);
   const saveValues = vi.fn().mockReturnValue({ onConflictDoNothing });
-  const insert = vi.fn().mockImplementation((table: unknown) =>
-    table === schema.villageSaves ? { values: saveValues } : { values: auditValues },
-  );
+  const insert = vi
+    .fn()
+    .mockImplementation((table: unknown) =>
+      table === schema.villageSaves ? { values: saveValues } : { values: auditValues },
+    );
 
   const deleteWhere = vi.fn().mockResolvedValue(undefined);
   const del = vi.fn().mockReturnValue({ where: deleteWhere });
@@ -89,7 +91,7 @@ describe('toggleVillageSave — private bookmark + audit (rule #6)', () => {
         familyId: FAMILY_ID,
         actor: USER_ID,
         actionTaken: 'village_candidate_saved',
-        targetTable: 'village_candidates',
+        targetTable: 'family_activity_history',
         targetId: CANDIDATE_ID,
       }),
     );
@@ -115,7 +117,7 @@ describe('toggleVillageSave — private bookmark + audit (rule #6)', () => {
         familyId: FAMILY_ID,
         actor: USER_ID,
         actionTaken: 'village_candidate_unsaved',
-        targetTable: 'village_candidates',
+        targetTable: 'family_activity_history',
         targetId: CANDIDATE_ID,
       }),
     );

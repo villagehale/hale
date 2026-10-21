@@ -15,7 +15,6 @@ import type { SaturdayPlans } from '~/lib/channel/nudge/saturday-plans';
 import { childCanAttend, parseClockLabel } from '~/lib/channel/nudge/saturday-window';
 import { type WeekdayFinderAsk, printableWeekdayName } from '~/lib/channel/nudge/weekday-care-ask';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
-import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { priceBandLabel } from '~/lib/format/labels';
@@ -64,6 +63,9 @@ import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weat
  * around and short enough that the text arrives while it still matters; a date three
  * weeks out texted today is just noise that will need repeating anyway. */
 export const REGISTRATION_HORIZON_DAYS = 7;
+
+/** Historical offered-source tag; retained after the civic ingestion path is retired. */
+const CIVIC_SOURCE = 'civic_registry';
 
 /** How many facts ride with a pick. Billed per segment, read on a phone. */
 const MAX_WHY_FACTS = 2;
@@ -142,7 +144,7 @@ const WEEKDAY_NAMES: Record<number, WeekdayName> = {
  *
  * These rows are already in this family's feed and the weekend rule discards them:
  * the civic sweep ingests EarlyON weekday mornings and library storytimes into
- * `village_candidates` under `run_type = 'civic'`, and both surfaces that send
+ * historical activity receipts with civic provenance, and both surfaces that send
  * unprompted finds - the intake radar's `placements` and the weather swap's
  * `fittedFor` - independently require a Saturday or a Sunday. This is a filter over
  * data already on the row, not a new source.
@@ -544,7 +546,8 @@ function availableWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDrop
   const teen = new Set(input.teenChildIds);
   const civic = input.candidates.filter(
     (candidate) =>
-      candidate.source === CIVIC_SOURCE &&
+      (candidate.source === CIVIC_SOURCE ||
+        (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate)) &&
       (candidate.childId === null || !teen.has(candidate.childId)),
   );
   if (civic.length === 0) return { nudge: null, skips: ['no_civic_candidate'] };
@@ -787,7 +790,8 @@ function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayN
   const teen = new Set(input.teenChildIds);
   const running = input.candidates.filter(
     (candidate) =>
-      candidate.source === CIVIC_SOURCE &&
+      (candidate.source === CIVIC_SOURCE ||
+        (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate)) &&
       candidate.eventDate === saturday.date &&
       (candidate.childId === null || !teen.has(candidate.childId)) &&
       inSeason(candidate, season),
