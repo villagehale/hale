@@ -263,11 +263,11 @@ describe('what the parent actually gets', () => {
     expect(body).not.toContain('Reply STOP');
     expect(body).not.toContain('STOP to opt out.');
 
-    // The query that crossed the border carried a place, a coarse window with no year and
-    // a stage band — and no name.
+    // The search keeps its coarse wording; stored dates are for the local fact boundary.
     expect(h.queries).toHaveLength(1);
-    expect(h.queries[0]?.town).toBe('New York, NY');
+    expect(h.queries[0]?.town).toBe('New York, NY, United States');
     expect(h.queries[0]?.window).toBe('September 12 to 15');
+    expect(h.queries[0]?.dateRange).toEqual({ start: '2026-09-12', end: '2026-09-15' });
     expect(h.queries[0]?.stage).toBe('preschool');
     expect(JSON.stringify(h.queries[0])).not.toContain('Mia');
 

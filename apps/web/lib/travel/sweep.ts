@@ -420,7 +420,10 @@ async function briefOne(
     return;
   }
 
-  const found = await deps.finder.find(deidentified.query);
+  const found = await deps.finder.find({
+    ...deidentified.query,
+    dateRange: { start: trip.startsOn, end: trip.endsOn },
+  });
   if (!found.found) {
     if (found.reason === 'no_picks') {
       // The search ran and there is nothing on. The trip is LEFT OPEN: a search that found

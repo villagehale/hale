@@ -6,6 +6,7 @@ import type { OptOutForm } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import type { fulfillCommitment } from '~/lib/commitments/ledger';
+import { safeHttpUrl } from '~/lib/format/http-url';
 import {
   ACTIVITY_WATCH_DUE_HOURS,
   type ActivityPromise,
@@ -262,13 +263,15 @@ export async function deliverFollowUp(
     );
   }
 
-  // THE VENUE'S OWN PAGE, appended by code after the composer's gates. The model is
-  // refused any URL, and that gate stays: a model that may write links will write a
-  // wrong one. Each page here is the address the pick was read off.
-  const message = withVenuePages(
-    composed.message,
-    input.picks.map((pick) => venuePage(pick)).filter((url): url is string => url !== null),
-  );
+  // Append only source URLs from this read; no retired public Hale share page.
+  const sources = [
+    ...input.picks.map(venuePage),
+    ...(input.searched?.checkedSources ?? []),
+  ].flatMap((source) => {
+    const url = source ? safeHttpUrl(source) : null;
+    return url ? [url] : [];
+  });
+  const message = withVenuePages(composed.message, sources);
 
   const body = withOptOut(message, input.optOut);
   // THE GATE, RE-READ ON THE STRING THAT ACTUALLY LEAVES — and it must stay the last

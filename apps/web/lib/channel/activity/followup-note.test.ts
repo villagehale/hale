@@ -8,7 +8,15 @@ import {
   topPickLeads,
   waitsOnAPageItCouldNotRead,
 } from './followup-note';
+import { asksTheParent } from './followup-note';
 import type { ActivityPick } from './lane';
+
+it('does not mistake a checked source URL query for an approval question', () => {
+  expect(
+    asksTheParent('Current dates remain unconfirmed. https://example.org/events?topic=kids#dates'),
+  ).toBe(false);
+  expect(asksTheParent('Would you like that? https://example.org/events?topic=kids')).toBe(true);
+});
 
 /**
  * THE TWO GATES THE FOLLOW-UP TEXT CANNOT SHIP WITHOUT PASSING.
@@ -622,6 +630,29 @@ describe('an empty search tells the composer where it looked', () => {
     watch: true,
     moreRemaining: 0,
   };
+
+  it('keeps fact evidence alongside main’s language and held-option handoff', () => {
+    const evidence = {
+      program: 'Family storytime',
+      age: 'ages 2-5',
+      sessions: ['October 23 at 10:30'],
+      schedule: null,
+      price: null,
+      history: null,
+      windowConfirmed: true,
+    };
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        language: 'fr-CA',
+        moreRemaining: 2,
+        picks: [{ ...PICK, evidence }],
+      }),
+    );
+    expect(payload.language).toBe('fr-CA');
+    expect(payload.more_remaining).toBe(2);
+    expect(payload.picks[0].evidence).toEqual(evidence);
+  });
 
   it('carries the area and the research only when there are no picks', () => {
     const empty = JSON.parse(followUpUserMessage({ ...base, picks: [], searched }));

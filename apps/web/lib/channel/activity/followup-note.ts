@@ -212,9 +212,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     ...(grounding.picks.length === 0
       ? {
           picks_empty: true,
-          ...(grounding.searched
-            ? { searched: { town: grounding.searched.town, notes: grounding.searched.notes } }
-            : {}),
+          ...(grounding.searched ? { searched: grounding.searched } : {}),
         }
       : { page_evidence: grounding.pageEvidence }),
     watch: grounding.watch,
@@ -231,6 +229,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     registration: pick.registration ?? null,
     source_name: pick.sourceName,
     source: pick.source,
+    ...(pick.evidence ? { evidence: pick.evidence } : {}),
   }));
   return JSON.stringify(payload);
 }
