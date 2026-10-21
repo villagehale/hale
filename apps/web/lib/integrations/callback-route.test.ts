@@ -392,6 +392,7 @@ describe('GET /api/integrations/callback — the text surface', () => {
   });
 
   it('passes the receipt one real calendar event when friend voice is on', async () => {
+    const startsAt = Date.now() + 24 * 60 * 60 * 1000;
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -400,8 +401,8 @@ describe('GET /api/integrations/callback — the text surface', () => {
             items: [
               {
                 summary: 'Swim at the rec centre',
-                start: { dateTime: '2026-10-20T15:00:00.000Z' },
-                end: { dateTime: '2026-10-20T16:00:00.000Z' },
+                start: { dateTime: new Date(startsAt).toISOString() },
+                end: { dateTime: new Date(startsAt + 60 * 60 * 1000).toISOString() },
               },
             ],
           });
