@@ -2,6 +2,10 @@ import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
+import type { BrowserUseSignupResult } from './browser-use/engine';
+import { browserUseSignupEnabled } from './browser-use/flag';
+import { type BrowserUseSignupRunner, browserUseSignupRunnerFromEnv } from './browser-use/runner';
+import { loadProviderSession, recordBrowserUseProfile } from './browser-use/vault';
 import { bookingConnectors } from './connectors/registry';
 import { connectorBookingSlots } from './connectors/slots';
 import {
@@ -10,12 +14,12 @@ import {
   signupProviderHost,
   typedOutsideGrant,
 } from './consent';
+import type { ShareableSignupField } from './consent';
 import { signupCompletedLine, signupHandbackLine } from './copy';
 import { type ReportDoor, chooseReportDoor } from './door';
 import { authorizedSignupEnabled } from './flag';
-import { assistedHandoffLine, collapseSignupFact } from './handoff';
+import { collapseSignupFact } from './handoff';
 import { inspectRegistrationPage } from './inspect';
-import { signupInfoPack } from './pack';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
@@ -37,11 +41,17 @@ export interface SignupRunDeps {
   /** Undefined loads Playwright. Null means the browser is absent. */
   browser?: SignupBrowser | null;
   /**
-   * Defaults to `bookingConnectors()`. A denylisted host never reaches a
-   * connector. A connector failure does not fall through to the browser.
+   * Defaults to `bookingConnectors()`. A connector failure does not fall
+   * through to the browser.
    */
   connectors?: readonly BookingConnector[];
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
+  /**
+   * Browser Use engine (T8), used only when BROWSER_USE_SIGNUP_ENABLED is
+   * exactly `true`. Undefined builds it from env; null means it is absent, and
+   * that absence is returned as `not_configured`.
+   */
+  browserUseSignup?: BrowserUseSignupRunner | null;
 }
 
 export interface SignupRunResult {
@@ -49,7 +59,27 @@ export interface SignupRunResult {
   outcome: string;
   reply: string | null;
   deliverOnThread: boolean;
+  /**
+   * Set on the Browser Use path. Hale's AI writes the parent message from it;
+   * this module has no fixed copy for it. `liveViewUrl` goes to the parent only.
+   */
+  browserUse?: BrowserUseHandoff;
 }
+
+export type BrowserUseHandoff =
+  | BrowserUseSignupResult
+  | {
+      outcome: 'error' | 'needs_login';
+      detail: 'not_configured' | 'no_provider_session' | 'engine_threw';
+      liveViewUrl: null;
+      checkoutUrl: null;
+      holdExpiresAt: null;
+      cartTotalCents: null;
+      confirmationNumber: null;
+      runId: null;
+      sessionId: null;
+      costUsd: null;
+    };
 
 const UNCLAIMED: SignupRunResult = {
   claimed: false,
@@ -63,7 +93,7 @@ const UNCLAIMED: SignupRunResult = {
  * from the registry runs first when one matches the host. A connector failure
  * returns connector_failed and does not open the browser. Otherwise the sandbox
  * browser opens that provider's own page and follows at most three steps.
- * A denylisted municipal host is an assisted handoff. A rush signal (queue,
+ * Any provider host may take the browser. A rush signal (queue,
  * captcha, resident or identity check, timed open-at) hands back with no
  * submit. The browser opens only after the gate accepts one activity, one
  * session, and the price, the result has a door, the child is not a teen, and
@@ -177,10 +207,7 @@ export async function runAuthorizedSignup(
     });
   }
   const providerHost = signupProviderHost(new URL(allowed.href).hostname);
-  const pack = route.kind === 'handoff' ? signupInfoPack(identity) : null;
-  const typedFields = pack
-    ? pack.map((slot) => slot.slot)
-    : fieldsPreparedToType(identity, session);
+  const typedFields = fieldsPreparedToType(identity, session);
   const consent = await ensureSignupConsent(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -201,23 +228,6 @@ export async function runAuthorizedSignup(
       host,
     });
   }
-  if (route.kind === 'handoff') {
-    await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
-      offerId: offer.id,
-      outcome: 'assisted_handoff',
-      reason: 'assisted_handoff',
-      link: offer.registrationUrl,
-      prefilled: pack?.map((slot) => slot.slot) ?? [],
-      host,
-      line: assistedHandoffLine({
-        link: offer.registrationUrl,
-        sessionLabel: session.label,
-        pack: pack ?? [],
-      }),
-    });
-  }
-
   const claimed = await markOffer(database, {
     offerId: offer.id,
     familyId: input.familyId,
@@ -246,6 +256,19 @@ export async function runAuthorizedSignup(
     connector: route.kind === 'connector' ? route.connector.id : null,
     host,
   });
+
+  if (browserUseSignupEnabled()) {
+    return runBrowserUseBranch(database, input, deps, {
+      offerId: offer.id,
+      href: allowed.href,
+      providerHost,
+      host,
+      identity,
+      session,
+      fieldsAllowed: consent.fieldsAllowed,
+      approvedPriceCents: offer.approvedPriceCents,
+    });
+  }
 
   if (route.kind === 'connector') {
     const slots = connectorBookingSlots({
@@ -448,6 +471,120 @@ export async function runAuthorizedSignup(
   } finally {
     await page?.close();
   }
+}
+
+function browserUseAbsent(
+  outcome: 'error' | 'needs_login',
+  detail: 'not_configured' | 'no_provider_session' | 'engine_threw',
+): BrowserUseHandoff {
+  return {
+    outcome,
+    detail,
+    liveViewUrl: null,
+    checkoutUrl: null,
+    holdExpiresAt: null,
+    cartTotalCents: null,
+    confirmationNumber: null,
+    runId: null,
+    sessionId: null,
+    costUsd: null,
+  };
+}
+
+/**
+ * T8 — the parent's yes, the session, the price and the consent grant were all
+ * checked above. Browser Use drives the provider's site to checkout and stops;
+ * the parent pays on the live browser. No parent copy is written here.
+ */
+async function runBrowserUseBranch(
+  database: Database,
+  input: SignupRunInput,
+  deps: SignupRunDeps,
+  ctx: {
+    offerId: string;
+    href: string;
+    providerHost: string;
+    host: string | null;
+    identity: Parameters<BrowserUseSignupRunner['run']>[0]['identity'];
+    session: {
+      label: string;
+      startsAt: string;
+      endsAt: string;
+      partySize?: number | null;
+      seatingNote?: string | null;
+    };
+    fieldsAllowed: readonly ShareableSignupField[];
+    approvedPriceCents: number | null;
+  },
+): Promise<SignupRunResult> {
+  const done = async (handoff: BrowserUseHandoff): Promise<SignupRunResult> => {
+    // The offer is handed back either way: at checkout the parent pays.
+    await finish(database, input, ctx.offerId, 'handed_back');
+    await writeAudit(database, input, ctx.offerId, {
+      step: 'browser_use',
+      outcome: handoff.outcome,
+      detail: handoff.detail,
+      runId: handoff.runId,
+      holdExpiresAt: handoff.holdExpiresAt?.toISOString() ?? null,
+      cartTotalCents: handoff.cartTotalCents,
+      costUsd: handoff.costUsd,
+      host: ctx.host,
+    });
+    return {
+      claimed: true,
+      outcome: handoff.outcome,
+      reply: null,
+      deliverOnThread: false,
+      browserUse: handoff,
+    };
+  };
+
+  const runner =
+    deps.browserUseSignup !== undefined
+      ? deps.browserUseSignup
+      : browserUseSignupRunnerFromEnv().runner;
+  if (!runner) {
+    console.warn(
+      { familyId: input.familyId, offerId: ctx.offerId, skipped: 'not_configured' },
+      'authorized signup: browser use engine not configured',
+    );
+    return done(browserUseAbsent('error', 'not_configured'));
+  }
+  const stored = await loadProviderSession(database, {
+    familyId: input.familyId,
+    providerHost: ctx.providerHost,
+    now: input.now,
+  });
+  if (!stored) return done(browserUseAbsent('needs_login', 'no_provider_session'));
+
+  let result: BrowserUseSignupResult;
+  try {
+    result = await runner.run({
+      correlationId: ctx.offerId,
+      registrationUrl: ctx.href,
+      identity: ctx.identity,
+      fieldsAllowed: ctx.fieldsAllowed,
+      session: ctx.session,
+      approvedPriceCents: ctx.approvedPriceCents,
+      providerSession: {
+        storageState: stored.storageState,
+        browserUseProfileId: stored.browserUseProfileId,
+      },
+      onProfileCreated: (profileId) =>
+        recordBrowserUseProfile(database, { sessionRowId: stored.id, profileId }),
+    });
+  } catch (err) {
+    console.warn(
+      {
+        familyId: input.familyId,
+        offerId: ctx.offerId,
+        error: err instanceof Error ? err.name : 'unknown',
+      },
+      'authorized signup: browser use engine threw',
+    );
+    return done(browserUseAbsent('error', 'engine_threw'));
+  }
+  return done(result);
 }
 
 async function resolveBrowser(deps: SignupRunDeps): Promise<SignupRuntimeAcquire> {

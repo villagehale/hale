@@ -2,6 +2,8 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { storeProviderSession } from './browser-use/vault';
+import { SHAREABLE_SIGNUP_FIELDS } from './consent';
 import { authorizedSignupHandler } from './handler';
 import { runAuthorizedSignup } from './run';
 import { recordSignupOffer } from './store';
@@ -431,42 +433,6 @@ describe('authorized signup runner', () => {
     expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
 
-  it('does not let a connector automate a denylisted host', async () => {
-    const seeded = await familyWithOffer({
-      ageMonths: 36,
-      url: 'https://www.toronto.ca/explore-enjoy/recreation/registrations',
-    });
-    const { browser, calls } = browserFor(SAFE);
-    let called = false;
-    const result = await runAuthorizedSignup(
-      db.database,
-      {
-        familyId: seeded.familyId,
-        parentUserId: seeded.parentUserId,
-        body: 'Yes, sign us up',
-        inboundChannelMessageId: 'msg-toronto',
-        existingThread: true,
-        now: NOW,
-      },
-      {
-        browser,
-        connectors: [
-          {
-            id: 'should-not-run',
-            matches: () => true,
-            book: async () => {
-              called = true;
-              return { ok: true };
-            },
-          },
-        ],
-      },
-    );
-    expect(result.outcome).toBe('assisted_handoff');
-    expect(called).toBe(false);
-    expect(calls.opened).toBe(0);
-  });
-
   it('returns connector_failed and does not fall through to the browser', async () => {
     const href = 'https://book.example-swim.test/lessons';
     const seeded = await familyWithOffer({ ageMonths: 36, url: href });
@@ -566,65 +532,6 @@ describe('authorized signup runner', () => {
     expect(calls.opened).toBe(1);
     expect(calls.submitted).toBe(0);
     expect(await audits(seeded.familyId)).not.toContain('Ada');
-  });
-
-  it('hands the parent the link and a pack for a municipal host', async () => {
-    const seeded = await familyWithOffer({
-      ageMonths: 36,
-      url: 'https://www.toronto.ca/explore-enjoy/recreation/registrations',
-    });
-    const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
-    const result = await runAuthorizedSignup(
-      db.database,
-      {
-        familyId: seeded.familyId,
-        parentUserId: seeded.parentUserId,
-        body: 'Yes, sign us up',
-        inboundChannelMessageId: 'msg-handoff',
-        existingThread: true,
-        now: NOW,
-      },
-      { browser },
-    );
-    expect(result.outcome).toBe('assisted_handoff');
-    expect(result.reply).toContain(
-      `This one has to be done by you. Here's the page: https://www.toronto.ca/explore-enjoy/recreation/registrations`,
-    );
-    expect(result.reply).toContain(`For Tue 4:30, you'll want `);
-    expect(result.reply).toContain('child_first_name: Ada');
-    expect(result.reply).toContain('postal_code: M5V2T6');
-    expect(result.reply).not.toContain('pack=');
-    expect(result.reply).not.toContain('session=');
-    expect(calls.opened).toBe(0);
-    expect(calls.submitted).toBe(0);
-    const trail = await audits(seeded.familyId);
-    expect(trail).toContain('assisted_handoff');
-    expect(trail).not.toContain('Ada');
-    expect(trail).not.toContain('M5V2T6');
-    expect(trail).not.toContain('Test Parent');
-    expect(trail).not.toContain('@');
-  });
-
-  it('does not open a browser for an ActiveNet host', async () => {
-    const seeded = await familyWithOffer({
-      ageMonths: 36,
-      url: 'https://anc.ca.apm.activecommunities.com/toronto/activity/search',
-    });
-    const { browser, calls } = browserFor(SAFE);
-    const result = await runAuthorizedSignup(
-      db.database,
-      {
-        familyId: seeded.familyId,
-        parentUserId: seeded.parentUserId,
-        body: 'Yes, sign us up',
-        inboundChannelMessageId: 'msg-activenet',
-        existingThread: true,
-        now: NOW,
-      },
-      { browser },
-    );
-    expect(result.outcome).toBe('assisted_handoff');
-    expect(calls.opened).toBe(0);
   });
 
   it('stops a booking form that asks for a waiver and does not submit', async () => {
@@ -821,24 +728,18 @@ describe('authorized signup runner', () => {
     expect(rows).toEqual([]);
   });
 
-  it('hands back when the consent field list is wider than the pack', async () => {
+  it('hands back when the consent field list is wider than the typed slots', async () => {
     const seeded = await familyWithOffer({
       ageMonths: 36,
-      url: 'https://www.brampton.ca/recreation',
+      url: 'https://swim.example-school.test/register',
     });
     await db.database.insert(schema.authorizedSignupConsents).values({
       familyId: seeded.familyId,
       parentUserId: seeded.parentUserId,
       messageId: 'msg-wider',
       activityKey: 'swim-parent-tot',
-      providerHost: 'www.brampton.ca',
-      fieldsAllowed: [
-        'child_first_name',
-        'parent_first_name',
-        'parent_email',
-        'postal_code',
-        'session',
-      ],
+      providerHost: 'swim.example-school.test',
+      fieldsAllowed: [...SHAREABLE_SIGNUP_FIELDS],
       createdAt: NOW,
     });
     const { browser, calls } = browserFor(SAFE);
@@ -1003,37 +904,6 @@ describe('authorized signup runner', () => {
     }
   });
 
-  it('does not call the sandbox connector for a denylisted host', async () => {
-    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', 'on');
-    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_BASE_URL', 'https://api.sandbox-partner.test');
-    const href = 'https://www.toronto.ca/explore-enjoy/recreation/registrations';
-    const seeded = await familyWithOffer({ ageMonths: 36, url: href });
-    const { browser, calls } = browserFor(SAFE);
-    const fetchMock = vi.fn(async () => Response.json({ status: 'booked' }));
-    vi.stubGlobal('fetch', fetchMock);
-    try {
-      const result = await runAuthorizedSignup(
-        db.database,
-        {
-          familyId: seeded.familyId,
-          parentUserId: seeded.parentUserId,
-          body: 'Yes, sign us up',
-          inboundChannelMessageId: 'msg-sandbox-deny',
-          existingThread: true,
-          now: NOW,
-        },
-        { browser },
-      );
-      expect(result.outcome).toBe('assisted_handoff');
-      expect(calls.opened).toBe(0);
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(result.reply).not.toMatch(/\bSTOP\b/);
-      expect(result.reply).not.toContain('TODO-Design');
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
   it('keeps the sandbox host on the browser when the reference flag is off', async () => {
     const href = 'https://book.sandbox-partner.test/lessons';
     const seeded = await familyWithOffer({ ageMonths: 36, url: href });
@@ -1062,5 +932,126 @@ describe('authorized signup runner', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+  describe('browser use engine (T8)', () => {
+    const CHECKOUT = {
+      outcome: 'reached_checkout' as const,
+      detail: 'none' as const,
+      liveViewUrl: 'https://live.browser-use.com/s/fixture-live-view-token',
+      checkoutUrl: 'https://anc.ca.apm.activecommunities.com/toronto/checkout',
+      holdExpiresAt: new Date('2026-10-05T12:10:00.000Z'),
+      cartTotalCents: 9800,
+      confirmationNumber: null,
+      runId: 'run-fixture',
+      sessionId: 'bu-session-fixture',
+      costUsd: '0.0243',
+    };
+    const TORONTO = 'https://anc.ca.apm.activecommunities.com/toronto/activity/search/detail/123';
+
+    beforeEach(() => {
+      vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'true');
+      vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    });
+
+    async function withProviderSession(seeded: { familyId: string; parentUserId: string }) {
+      const result = await storeProviderSession(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        providerHost: 'anc.ca.apm.activecommunities.com',
+        storageState: {
+          cookies: [{ name: 'JSESSIONID', value: 'c', domain: '.activecommunities.com' }],
+        },
+        capturedAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+      });
+      expect(result.ok).toBe(true);
+    }
+
+    function yes(seeded: { familyId: string; parentUserId: string }, messageId: string) {
+      return {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: messageId,
+        existingThread: true,
+        now: NOW,
+      };
+    }
+
+    it('drives an ActiveNet host to checkout and returns the live view with no fixed copy', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      const { browser, calls } = browserFor(SAFE);
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-1'), {
+        browser,
+        browserUseSignup: { run },
+      });
+      expect(result).toMatchObject({
+        claimed: true,
+        outcome: 'reached_checkout',
+        reply: null,
+        deliverOnThread: false,
+      });
+      expect(result.browserUse?.liveViewUrl).toBe(CHECKOUT.liveViewUrl);
+      expect(calls.opened).toBe(0);
+      const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
+      expect(engineInput).toMatchObject({ registrationUrl: TORONTO });
+      const [offer] = await db.database
+        .select({ status: schema.authorizedSignupOffers.status })
+        .from(schema.authorizedSignupOffers)
+        .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
+      expect(offer?.status).toBe('handed_back');
+      const log = await audits(seeded.familyId);
+      expect(log).toContain('browser_use');
+      expect(log).not.toContain('fixture-live-view-token');
+      expect(log).not.toContain('Ada');
+    });
+
+    it('does not start the engine on a bare yes', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(
+        db.database,
+        { ...yes(seeded, 'msg-bu-bare'), body: 'yes' },
+        { browserUseSignup: { run } },
+      );
+      expect(result.claimed).toBe(false);
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    it('returns needs_login without calling Browser Use when no session was captured', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-2'), {
+        browserUseSignup: { run },
+      });
+      expect(result.outcome).toBe('needs_login');
+      expect(result.browserUse?.detail).toBe('no_provider_session');
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    it('names a missing engine as not_configured', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-3'), {
+        browserUseSignup: null,
+      });
+      expect(result.outcome).toBe('error');
+      expect(result.browserUse?.detail).toBe('not_configured');
+    });
+
+    it('keeps the engine off and uses the browser path when the flag is not exactly true', async () => {
+      vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'TRUE');
+      const seeded = await familyWithOffer({ ageMonths: 36 });
+      const { browser, calls } = browserFor(SAFE);
+      const run = vi.fn(async () => CHECKOUT);
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-4'), {
+        browser,
+        browserUseSignup: { run },
+      });
+      expect(run).not.toHaveBeenCalled();
+      expect(calls.opened).toBe(1);
+    });
   });
 });

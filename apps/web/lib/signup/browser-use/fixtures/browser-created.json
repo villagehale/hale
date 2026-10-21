@@ -1,0 +1,16 @@
+{
+  "id": "e8f7d6c5-b4a3-4921-8f0e-1d2c3b4a5968",
+  "status": "active",
+  "liveUrl": "https://live.browser-use.com/s/fixture-seed-browser",
+  "cdpUrl": "wss://cdp.browser-use.com/fixture-seed-browser",
+  "timeoutAt": "2026-10-21T15:04:50Z",
+  "startedAt": "2026-10-21T14:59:51Z",
+  "finishedAt": null,
+  "proxyUsedMb": "0",
+  "proxyCost": "0",
+  "browserCost": "0",
+  "agentSessionId": null,
+  "recordingAvailable": false,
+  "metadata": {},
+  "extensions": []
+}
