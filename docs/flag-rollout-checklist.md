@@ -65,6 +65,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `ORPHAN_USER_SWEEP_ENABLED` | `true` | off | `false` | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `true` | off | `false` | Noah |
 | `BROWSER_USE_SIGNUP_ENABLED` | `true` | off | empty, or `false` | Barton |
+| `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` | `true` | off | empty, or `false` | Barton |
 | `SOCIAL_WATCHLIST` | `on` | off | empty, or `off` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | `true` | on (verify in Vercel); read through the VIL-226 lane helper as `travel_brief`, no action | unset it — off is off for every household; while on, a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows the brief to the listed households | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `true` | off | `false` | Noah |
@@ -186,7 +187,7 @@ Set one model flag to `candidate` only. `AI_GATEWAY_API_KEY` has to be set for J
 
 These stay off for the first families. The kill value is in the inventory table.
 
-- `AUTHORIZED_SIGNUP_ENABLED`, `SIGNUP_SANDBOX_RUNTIME_ENABLED`, `BOOKING_REFERENCE_CONNECTOR_ENABLED`, `BROWSER_USE_SIGNUP_ENABLED`: signup stays off until Barton arms it. Neither the sandbox flag nor the Browser Use flag turns signup on. The Browser Use engine also needs `BROWSER_USE_API_KEY` (unset) and migration 0172.
+- `AUTHORIZED_SIGNUP_ENABLED`, `SIGNUP_SANDBOX_RUNTIME_ENABLED`, `BOOKING_REFERENCE_CONNECTOR_ENABLED`, `BROWSER_USE_SIGNUP_ENABLED`: signup stays off until Barton arms it. Neither the sandbox flag nor the Browser Use flag turns signup on. The Browser Use engine also needs `BROWSER_USE_API_KEY` (unset) and migration 0172. `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` lets the agent pay with the Stripe Link wallet; before arming it, confirm Link works for Canadian parents and for one Link account per parent (Browser Use holds one connection per project), and decide the spending cap (default per-action cap is $50).
 - `FIRST_TOUCH_LOCATION_CARD_ENABLED`: the Linq location card stays off.
 - `COPARENT_DUTY_BURDEN_SURFACE_ENABLED`: the answer string does not leave even when the flag is on.
 - `ACTIVITY_REVIEWS_SURFACE`: stays off until three households have answered about one subject.
