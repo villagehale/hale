@@ -398,9 +398,7 @@ describe('providerPreflight', () => {
 });
 
 beforeEach(() => {
-  vi.stubEnv('FOUNDER_ALERT_EMAIL', 'founder@villagehale.com');
   vi.stubEnv('WELCOME_BCC', '');
-  vi.stubEnv('WELCOME_FROM', '');
 });
 afterEach(() => {
   vi.unstubAllEnvs();
