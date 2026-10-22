@@ -6,7 +6,7 @@ Status: **paid-call hold; no recording authorization**. This is the shared check
 
 - Finder #875 source head: `eed4d5713f8ce6d38b919465eec48aa82097e058`.
 - Registration #877 source head: `ee7dd93e2362e9563577c63c500b8d75084ac664`.
-- Both PRs still depend on the agreed #876 → #875 → #877 integration order. Re-freeze on the actual integrated head before pricing/approval; the two standalone Coach keys below are different requests, not permission to buy two copies of the final acceptance.
+- Both PRs still depend on the agreed #876 → #875 → #877 integration order. The priced proposal below explicitly covers each slice's distinct Coach request once; re-freeze the actual slice head before execution. These diagnostic keys are not execution approval.
 - All checks here used cached-only mode or a client that captures the actual request and throws before any response/network. API credentials were removed and `HALE_RECORD=0`. No responses, judge scores, cache files, prompts, schemas or test assertions were changed.
 
 | File (registration branch unless noted) | SHA-256 |
@@ -83,4 +83,178 @@ These remain failures. Re-recording might produce different answers but does not
 - Production cutover/backup approvals are separate: #876's synthetic recovery report does not approve a production restore or merge.
 
 No paid estimate API, fresh page fetch, production access/write, real SMS, environment change or merge occurred in these diagnostics.
+
+## Single priced request — proposal only, awaiting Barton's explicit approval
+
+This is the **one consolidated remaining request**, not another approved allowance. It replaces unpriced placeholders in this checklist; historical estimates in the original #872 docs are not current permission. No approval card has been tapped and no new paid call has run.
+
+### Amount and accounting
+
+- **Estimated additional allowance: US$18.25. Proposed hard additional ceiling: US$20.00.** Unchanged exact cache hits cost $0 and are reused; the table conservatively budgets every listed case.
+- Read-only original ledger snapshot: **US$14.233469475 spent, 576 calls, US$0 reserved**. Current cumulative cap is US$15, leaving **US$0.766530525**, which is neither enough for this proposal nor authorization to use it.
+- This is explicitly a request to increase the **same ledger's cumulative ceiling** to **US$34.233469475**, not to start a new ledger or claim another $20 is already approved. Estimated cumulative spend would be **US$32.483469475**. If Barton does not approve that higher ceiling, nothing live runs; reduce/reprice the scope here instead.
+- No environment variable, ledger content or configured cap was changed while preparing this request. Keep the historical refusal entry and all earlier usage; no reset, refund assumption or budget bypass.
+- Price is a planning allowance derived offline from returned historical usage and the repository's billing table, **not a newly verified provider quote or a token-count API call**. Search/result size, reasoning, cache misses and bounded production retries can change actual cost. Reserve each call's maximum charge before it runs; an insufficient reservation stops the run even if actual usage might have been lower.
+- One frozen pass per slice/case, not reroll-until-green. Existing runtime-bounded retries count toward the same ceiling; no manual quality reruns, paid new models, MinerU service or screenshot experiments. Real failures remain failures and are reported.
+
+### Roll-up
+
+| Scope | Planned case executions | Per-case allowance | Subtotal |
+| --- | ---: | ---: | ---: |
+| #875 Coach cached-CI repair envelope | 45 | $0.10 | $4.50 |
+| #877 Coach cached-CI repair envelope | 47 | $0.10 | $4.70 |
+| Finder source/age/price/retention acceptance | 8 | $0.55 | $4.40 |
+| Deep extract → follow-up acceptance | 8 | $0.10 | $0.80 |
+| Registration extraction including King | 12 | $0.015 | $0.18 |
+| Reminder/link writers + independent date checks and language/fact review | 13 | $0.03 | $0.39 |
+| Historical corrupt/wrong-date/wrong-weekday controls | 3 | $0.01 | $0.03 |
+| Four fresh Finder → Coach cases below | 4 | varies | $3.25 |
+| **Total planning envelope** | **140 case executions** | | **$18.25** |
+| **Hard additional ceiling requested** | | | **$20.00** |
+
+A case is **not** one API call. Coach can use up to six agent steps plus its existing bounded truncation recovery and three judge draws; Finder/deep include the relevant extraction, final copy and judge legs. Localized closing-soon includes the extra independent waitlist-deadline parse. The allowances cover those legs, not just the first missing key. The ceiling is not a guarantee that all cases finish.
+
+Why two Coach rows: #875 and #877 have different actual tools/registration context and different first missing keys, already reproduced above. Each PR must pass CI independently. Do not replay one branch's response under the other's key. Reuse any later request only if its actual key is identical. The envelope budgets both slice freezes once; final integration cannot silently trigger a third paid run.
+
+### Every Coach case
+
+Each amount includes subject and applicable judge legs. A dash means that fixture is not in #875's corpus.
+
+| Case | #875 | #877 | Combined estimate |
+| --- | ---: | ---: | ---: |
+| `move-named-day` | $0.10 | $0.10 | $0.20 |
+| `cancel-ambiguous-two-swims` | $0.10 | $0.10 | $0.20 |
+| `cancel-named-day` | $0.10 | $0.10 | $0.20 |
+| `no-such-event` | $0.10 | $0.10 | $0.20 |
+| `chit-chat` | $0.10 | $0.10 | $0.20 |
+| `changed-their-mind` | $0.10 | $0.10 | $0.20 |
+| `multi-intent` | $0.10 | $0.10 | $0.20 |
+| `typos-and-voice-to-text` | $0.10 | $0.10 | $0.20 |
+| `french-adjacent` | $0.10 | $0.10 | $0.20 |
+| `teen-item-asked-about` | $0.10 | $0.10 | $0.20 |
+| `four-changes-in-one-text` | $0.10 | $0.10 | $0.20 |
+| `village-one-verified-one-not` | $0.10 | $0.10 | $0.20 |
+| `village-nothing-verified-yet` | $0.10 | $0.10 | $0.20 |
+| `find-activities-bare-ask` | $0.10 | $0.10 | $0.20 |
+| `yes-with-nothing-open` | $0.10 | $0.10 | $0.20 |
+| `coaching-solids` | $0.10 | $0.10 | $0.20 |
+| `coaching-co-sleeping` | $0.10 | $0.10 | $0.20 |
+| `coaching-sleep-offerable` | $0.10 | $0.10 | $0.20 |
+| `coaching-night-wakeups` | $0.10 | $0.10 | $0.20 |
+| `acute-symptom-slip-through` | $0.10 | $0.10 | $0.20 |
+| `refer-a-friend` | $0.10 | $0.10 | $0.20 |
+| `connector-ask-safety-net` | $0.10 | $0.10 | $0.20 |
+| `registration-watch-asked` | $0.10 | $0.10 | $0.20 |
+| `registration-watch-not-armed` | $0.10 | $0.10 | $0.20 |
+| `registration-live-read-unavailable` | — | $0.10 | $0.10 |
+| `registration-live-date-only` | — | $0.10 | $0.10 |
+| `registration-window-plus-a-find` | $0.10 | $0.10 | $0.20 |
+| `continuity-bare-noun` | $0.10 | $0.10 | $0.20 |
+| `continuity-restate-fact` | $0.10 | $0.10 | $0.20 |
+| `continuity-after-proactive-send` | $0.10 | $0.10 | $0.20 |
+| `coaching-co-sleeping-restated` | $0.10 | $0.10 | $0.20 |
+| `coaching-solids-restated` | $0.10 | $0.10 | $0.20 |
+| `capability-park-nearby` | $0.10 | $0.10 | $0.20 |
+| `capability-park-nearby-again` | $0.10 | $0.10 | $0.20 |
+| `capability-hale-does-not-have` | $0.10 | $0.10 | $0.20 |
+| `spot-watch-link-pasted` | $0.10 | $0.10 | $0.20 |
+| `spot-watch-no-link` | $0.10 | $0.10 | $0.20 |
+| `nearby-count-three-families` | $0.10 | $0.10 | $0.20 |
+| `nearby-count-below-threshold` | $0.10 | $0.10 | $0.20 |
+| `weekend-saved-find-school-age` | $0.10 | $0.10 | $0.20 |
+| `weekend-empty-live-search` | $0.10 | $0.10 | $0.20 |
+| `saturday-morning-block-afternoon-find` | $0.10 | $0.10 | $0.20 |
+| `autonomy-off-email-en` | $0.10 | $0.10 | $0.20 |
+| `autonomy-off-email-fr` | $0.10 | $0.10 | $0.20 |
+| `autonomy-off-email-zh` | $0.10 | $0.10 | $0.20 |
+| `autonomy-off-email-es` | $0.10 | $0.10 | $0.20 |
+| `autonomy-complaint-one-email` | $0.10 | $0.10 | $0.20 |
+| **Subtotal** | **$4.50** | **$4.70** | **$9.20** |
+
+### Every Finder / deep case
+
+The five failed Finder cases are acceptance targets for a reviewed fix, not a promise that buying a new answer repairs them. Keep evidence/source-ownership and final-copy checks unchanged.
+
+| Runner | Case | Estimated allowance |
+| --- | --- | ---: |
+| Finder | `toddler-fall-programs-halton-hills` | $0.55 |
+| Finder | `preschool-swim-oakville` | $0.55 |
+| Finder | `free-drop-in-georgetown` | $0.55 |
+| Finder | `named-venue-cartwheel` | $0.55 |
+| Finder | `travel-visit-new-york` | $0.55 |
+| Finder | `travel-visit-montreal` | $0.55 |
+| Finder | `travel-visit-ottawa-month-boundary` | $0.55 |
+| Finder | `nothing-running-underwater-basket-weaving` | $0.55 |
+| Deep | `cartwheels-live-research` | $0.10 |
+| Deep | `registration-in-plain-sight` | $0.10 |
+| Deep | `registration-opens-later` | $0.10 |
+| Deep | `price-is-on-a-different-page` | $0.10 |
+| Deep | `every-fetch-refused` | $0.10 |
+| Deep | `read-and-empty` | $0.10 |
+| Deep | `followup-language-zh` | $0.10 |
+| Deep | `followup-language-ar` | $0.10 |
+| **Subtotal** | | **$5.20** |
+
+### Every registration / wording case
+
+Saved-page extraction uses the explicit fixture clock; it is not a fresh fetch claim. Historical corruption and wrong-date controls must still be held. Waitlist deadlines stay parent-reported; missing eligibility remains uncertain with the source link.
+
+| Runner | Case | Estimated allowance |
+| --- | --- | ---: |
+| Registration extract | `us-course-source-zone` | $0.015 |
+| Registration extract | `uk-course-date-only` | $0.015 |
+| Registration extract | `weekday-unique-year` | $0.015 |
+| Registration extract | `markham-fall-2026` | $0.015 |
+| Registration extract | `markham-other-cycle-same-page` | $0.015 |
+| Registration extract | `toronto-arc-rule-is-not-a-date` | $0.015 |
+| Registration extract | `burlington-table-row` | $0.015 |
+| Registration extract | `king-cross-year-registration` | $0.015 |
+| Registration extract | `stale-prior-year-trap` | $0.015 |
+| Registration extract | `toronto-announced-later` | $0.015 |
+| Registration extract | `halton-hills-no-table` | $0.015 |
+| Registration extract | `no-year-stated` | $0.015 |
+| Writer + verifier/review | open en reminder | $0.03 |
+| Writer + verifier/review | open fr-CA reminder | $0.03 |
+| Writer + verifier/review | full en reminder | $0.03 |
+| Writer + verifier/review | full ar reminder | $0.03 |
+| Writer + verifier/review | closing-soon en reminder | $0.03 |
+| Writer + verifier/review | closing-soon fr-CA reminder | $0.03 |
+| Writer + verifier/review | unconfirmed en reminder | $0.03 |
+| Writer + verifier/review | unconfirmed ar reminder | $0.03 |
+| Writer + verifier/review | pending en reminder | $0.03 |
+| Writer + verifier/review | check-in en reminder | $0.03 |
+| Writer + verifier/review | en link reply | $0.03 |
+| Writer + verifier/review | fr-CA link reply | $0.03 |
+| Writer + verifier/review | ar link reply | $0.03 |
+| Parser negative control | historical corrupted French parser control | $0.01 |
+| Parser negative control | injected wrong opening date parser control | $0.01 |
+| Parser negative control | wrong French weekday parser control | $0.01 |
+| **Subtotal** | | **$0.60** |
+
+### Every fresh end-to-end case
+
+These are the four existing fresh-conversation shapes, not a new country rollout. Use synthetic local families and private local artifacts; no production DB, watches or carrier SMS. Keep the actual source inputs, intermediate picks/references and final reply, including failures.
+
+| Case | Acceptance purpose | Estimated allowance |
+| --- | --- | ---: |
+| `fresh-burlington-storytime` | Burlington Ontario, current library event/session/age and matching official event URL; no unsupported price | $1.25 |
+| `fresh-rbg-paid-program` | Published paid-program price stays attributable to that program in final Coach copy | $0.50 |
+| `fresh-us-zip-burlington` | Existing ZIP/country handoff does not select Canadian Burlington for the US request | $0.75 |
+| `fresh-montreal-french` | Existing French follow-up preserves location, source and unknown facts without garbling | $0.75 |
+| **Subtotal** | | **$3.25** |
+
+Record first-reply latency from these same four real turns at no extra model-call budget; show all raw timings and N=4 if reporting p50/p95. This is a small-sample observation, **not** a statistically established latency SLO. A larger timing campaign is not silently included.
+
+### Basis, stop conditions and handoff
+
+Offline basis from the **same** historical ledger (multiple earlier passes, not this proposal): Coach 272 calls / $3.2700942; Finder 110 calls / $6.6818211; deep 30 calls / $0.4813891; registration extraction 12 calls / $0.0605929. Prior fresh cases cost Burlington $1.0399006, RBG $0.4097694, US ZIP $0.6038092, Montreal $0.5428712. Per-case allowances round those observations upward; they are not measured future-case costs. Reminder/link planning also includes new parser purposes; no claim that unchanged historical copy proves current language quality.
+
+1. #876 is first. Its exact documentation head `81d0273565a8f84e363c3754ea15d1dbd9e6f2fb` now has **all Actions checks green**, including workspace, cached Worker and Web E2E. Production backup/restore preflight and merge-window approval remain separate.
+2. Follow #876 → #875 → #877. Before executing each model phase, pin that slice's final head, prompt/tool/projection hashes and current exact misses. Do not buy recordings for the provisional integration worktree. If the priced case set/model/request contract changes, amend this **same** request for review before calling.
+3. Obtain Barton's explicit card approval for this amount/scope and ceiling. This document is not the card and does not approve itself. If separate slices require a different ceiling, stop and amend rather than quietly running against the old $15.
+4. Execute sequentially on the unchanged shared ledger, credentials available only after approval, SDK automatic retries disabled. Every paid model/judge leg and web-search fee is charged to this request. Never run a live whole-suite fallback just to discover what else is missing.
+5. Reuse exact hits; record actual calls/cost by case and stop at the proposed hard ceiling, a budget refusal, an unlisted request, or a required prompt/schema change. A failed acceptance is reported; it does not authorize another paid sample. Post verbatim successes/failures and requested language samples for review before committing recordings, then replay and require each PR's exact-head CI green.
+
+No production backup/restore, merge/deploy, pause/resume, env/settings or feature-flag change, email/SMS send, or model call is authorized by this request.
+
 
