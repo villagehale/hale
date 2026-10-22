@@ -647,6 +647,51 @@ describe('phase 3 - resolving a pair', () => {
     alreadyAsked: new Set([`user-${A}`, `user-${B}`]),
   };
 
+  it('does not disclose on a single yes', async () => {
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      ...optedIn,
+      proposals: [proposal({ familyAAskedAt: NOW, familyBAskedAt: NOW, familyAReply: 'yes' })],
+    });
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+    expect(result.introduced).toBe(0);
+    expect(result.introFailed).toBe(0);
+    expect(h.audits.filter((a) => a.actionTaken === 'village_intro_disclosed')).toEqual([]);
+  });
+
+  /** Both said yes and both are named, but the introduction was an email and Hale no
+   * longer sends one: counted and logged as `no_intro_channel`, never closed (rule #11). */
+  it('names no_intro_channel and holds a fully accepted, fully named pair open', async () => {
+    const errors: unknown[][] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+      errors.push(args);
+    });
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      ...optedIn,
+      proposals: [
+        proposal({
+          status: 'both_accepted',
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          familyAReply: 'yes',
+          familyBReply: 'yes',
+        }),
+      ],
+    });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.introduced).toBe(0);
+    expect(result.introFailed).toBe(1);
+    expect(result.closed).toBe(0);
+    expect(h.statuses).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.identityAsk.calls).toEqual([]);
+    expect(JSON.stringify(errors)).toContain('no_intro_channel');
+    spy.mockRestore();
+  });
+
   it('leaves the pair open - and unaudited as disclosed - when the provider is unconfigured', async () => {
     const h = harness({
       families: [family({ familyId: A }), family({ familyId: B })],
@@ -769,19 +814,136 @@ describe('phase 3 - the identity gap-fill', () => {
       ...overrides,
     });
 
-  /** ONE message naming both gaps, for the reason intake's single follow-up asks for both
-   * of its own at once: it is the only ask there will be. */
+  function waiting(a: Partial<IntroSweepFamily>, b: Partial<IntroSweepFamily>) {
+    return harness({
+      families: [family({ familyId: A, ...a }), family({ familyId: B, ...b })],
+      ...optedIn,
+      proposals: [accepted()],
+    });
+  }
+
+  it('asks only the side that owes a name, and names what it owes', async () => {
+    const h = waiting({}, { parentName: null });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.identityAsk.calls).toEqual([{ reason: 'introduction', missing: ['name'] }]);
+    expect(h.sends).toEqual([
+      {
+        templateKey: 'village_intro:identity_ask',
+        dedupeKey: 'village_intro:identity:prop-1:b',
+        parentUserId: `user-${B}`,
+      },
+    ]);
+    expect(result.waiting).toEqual({ awaiting_email: 0, awaiting_name: 1 });
+    expect(result.identityAsked).toBe(1);
+  });
+
+  it('never asks for an email address - Hale no longer sends one', async () => {
+    const h = waiting({}, { parentName: null, parentEmail: null });
+
+    await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.identityAsk.calls).toEqual([{ reason: 'introduction', missing: ['name'] }]);
+    expect(h.transport.sent).toHaveLength(1);
+  });
 
   /** The pair is NOT cancelled and NOT closed. Two parents each said yes twice; closing on
    * a fact Hale never asked them for would be Hale losing its own paperwork. */
+  it('holds the pair open rather than closing or introducing it', async () => {
+    const h = waiting({}, { parentName: null });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.statuses).toEqual([]);
+    expect(result.introduced).toBe(0);
+    // A pair still waiting on a name is not a missing intro channel (rule #11).
+    expect(result.introFailed).toBe(0);
+  });
+
+  it('asks once, then keeps waiting quietly on later ticks', async () => {
+    const h = waiting({}, { parentName: null });
+    h.deps.dedupeActive = async (_db, key) => key === 'village_intro:identity:prop-1:b';
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.transport.sent).toEqual([]);
+    expect(result.identityAsked).toBe(0);
+    expect(result.waiting).toEqual({ awaiting_email: 0, awaiting_name: 1 });
+  });
 
   /** A deferral spends nothing — no send, no ledger row, no window extension — so the next
    * tick is a retry rather than a pair held open by a question nobody was asked. */
+  it('spends nothing when the composer defers', async () => {
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B, parentName: null })],
+      ...optedIn,
+      proposals: [accepted()],
+      identityAsk: new FakeIdentityAsk({ status: 'deferred', reason: 'gate_exhausted' }),
+    });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.transport.sent).toEqual([]);
+    expect(h.sends).toEqual([]);
+    expect(h.expiries).toEqual([]);
+    expect(result.identityAsked).toBe(0);
+    expect(result.waiting.awaiting_name).toBe(1);
+  });
 
   /**
    * The window restarts at the ASK. The original seven days measured how long a card waits
    * for an answer, and that question has been answered — a pair that both-accepted on day
-   * six would otherwise be asked for an address and closed out hours later.
+   * six would otherwise be asked for a name and closed out hours later.
+   */
+  it('restarts the window when the ask goes out', async () => {
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B, parentName: null })],
+      ...optedIn,
+      proposals: [accepted({ expiresAt: new Date('2026-08-11T16:00:00Z') })],
+    });
+
+    await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.expiries).toEqual([
+      { proposalId: 'prop-1', expiresAt: new Date('2026-08-18T15:00:00Z') },
+    ]);
+  });
+
+  it('soft-closes the pair when the restarted window runs out with the name still missing', async () => {
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B, parentName: null })],
+      ...optedIn,
+      proposals: [accepted({ expiresAt: new Date('2026-08-01T00:00:00Z') })],
+    });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.transport.bodies()).toEqual([
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+    ]);
+    expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'expired', closed: true }]);
+    expect(result.closed).toBe(1);
+    expect(h.identityAsk.calls).toEqual([]);
+  });
+
+  it('audits the gap, never the value, and never the counterpart', async () => {
+    const h = waiting({}, { parentName: null });
+
+    await runVillageIntroSweep(DB, h.deps, NOW);
+
+    const asked = h.audits.filter((a) => a.actionTaken === 'village_intro_identity_asked');
+    expect(asked).toEqual([
+      { familyId: B, actionTaken: 'village_intro_identity_asked', after: { missing: ['name'] } },
+    ]);
+    expect(JSON.stringify(asked)).not.toContain(A);
+  });
+
+  /**
+   * The one identity failure that is NOT a question: a family that has left the sweep's own
+   * selection cannot be asked anything. It must be loud rather than a quiet counter, which
+   * is what the old missing-identity branch was.
    */
 
   /**

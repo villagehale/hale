@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 };
 
 /** One-click unsubscribe (CASL). Hale no longer sends email, but links already in
- * parents' inboxes must keep working, so this page still verify the signature and record the opt-out on load. No DATABASE_URL (static
+ * parents' inboxes must keep working, so this page still verifies the signature and records the opt-out on load. No DATABASE_URL (static
  * preview) → treat as invalid rather than fabricating success. */
 async function unsubscribe(params: {
   u?: string;
