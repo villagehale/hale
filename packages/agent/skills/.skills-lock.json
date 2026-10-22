@@ -19,6 +19,18 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
+  "browser-use-confirmation.md": {
+    "file": "browser-use-confirmation.md",
+    "sha256": "346a0f5250505a31aa9c5327a35e7699ef84c30319583eea044f80ecdb12cce8"
+  },
+  "browser-use-payment.md": {
+    "file": "browser-use-payment.md",
+    "sha256": "0cb09e88dc63291023bd687064cb8de927e8b24f2d1308fccbd0411c94cbd0a3"
+  },
+  "browser-use-signup.md": {
+    "file": "browser-use-signup.md",
+    "sha256": "850b1a16363873cb8d547f4ab7703cf1798019af805ef84f4dcf711f3965aa1d"
+  },
   "calendar-email-ask.md": {
     "file": "calendar-email-ask.md",
     "sha256": "dee39b5ffa124c1ad4426ad8a819be231a7c74e860b99895353da326ade928a6"

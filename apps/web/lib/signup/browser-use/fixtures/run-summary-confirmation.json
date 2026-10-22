@@ -1,0 +1,18 @@
+{
+  "id": "9a0b7c66-1e2f-4d3a-8b5c-7d6e5f4a3b21",
+  "task": "(redacted in fixture)",
+  "title": "Read confirmation",
+  "model": "gpt-6-luna",
+  "contextLimit": 400000,
+  "status": "completed",
+  "result": "Registration confirmed.",
+  "output": { "on_confirmation_page": true, "confirmation_number": "RCPT-0042817" },
+  "error": null,
+  "sessionId": "1b7e4a52-9c0e-4f0a-8e57-6c4a0f3d2e90",
+  "workspaceId": "a3d1f6c2-55b0-4c8e-9b6a-0f2e1c7d8b44",
+  "totalInputTokens": 21000,
+  "totalOutputTokens": 300,
+  "totalCostUsd": "0.0029",
+  "createdAt": "2026-10-21T15:10:00Z",
+  "updatedAt": "2026-10-21T15:10:30Z"
+}

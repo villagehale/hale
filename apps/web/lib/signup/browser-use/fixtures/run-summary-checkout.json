@@ -1,0 +1,25 @@
+{
+  "id": "6f1c2d1e-0d4b-4c39-9a3e-2b1f7f0b9a11",
+  "task": "(redacted in fixture)",
+  "title": "Register for swim",
+  "model": "gpt-6-luna",
+  "contextLimit": 400000,
+  "status": "completed",
+  "result": "Stopped on the checkout page.",
+  "output": {
+    "outcome": "reached_checkout",
+    "detail": "none",
+    "checkout_url": "https://anc.ca.apm.activecommunities.com/toronto/checkout",
+    "cart_total_cents": 9800,
+    "hold_minutes": 8,
+    "payment_details_entered": false
+  },
+  "error": null,
+  "sessionId": "1b7e4a52-9c0e-4f0a-8e57-6c4a0f3d2e90",
+  "workspaceId": "a3d1f6c2-55b0-4c8e-9b6a-0f2e1c7d8b44",
+  "totalInputTokens": 182000,
+  "totalOutputTokens": 4100,
+  "totalCostUsd": "0.0243",
+  "createdAt": "2026-10-21T15:00:00Z",
+  "updatedAt": "2026-10-21T15:03:40Z"
+}
