@@ -64,6 +64,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'a follow-up link part beside locked text; writes its own channel_messages row and linq_link_preview audit when a family id is passed',
   'apps/web/lib/channel/linq/group.ts':
     'opens or extends the household group and writes linq:group_open / linq:group_unreachable plus linq_group_opened or linq_group_held; the unknown-sender hold is the one unledgered text because that sender has no family row to attach it to',
+  'apps/web/lib/village/intros/group.ts':
+    'opens the three-way intro group (createLinqChat); runVillageIntroSweep writes a village_intro channel_messages row per family and the village_intro_disclosed audit beside the open (introduceInGroup in run.ts)',
   'apps/web/lib/channel/linq/group-coparent.ts':
     'the seated co-parent ladder and the noted-number instruction in a claimed group; sendLine inserts the channel_messages row (reply, dedupe key) before the Linq send and audits sms_reply_sent',
   'apps/web/lib/channel/linq/group-members.ts':
