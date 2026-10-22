@@ -528,7 +528,7 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
     status: 'reported',
     parents: [
       { parentUserId: 'p-1', channel: 'sms', outcome: 'sent' },
-      { parentUserId: 'p-2', channel: 'sms', outcome: 'no_withdraw_form' },
+      { parentUserId: 'p-2', channel: 'sms', outcome: 'never_linked' },
     ],
   };
 

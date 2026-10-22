@@ -1,11 +1,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -189,7 +189,10 @@ export function introAskRefusals(body: string, request: IntroAskRequest): IntroA
  * so that is what is checked.
  */
 function containsPossessive(lowerBody: string, possessive: string): boolean {
-  const noun = possessive.toLowerCase().replace(/['’]s$/, '').trim();
+  const noun = possessive
+    .toLowerCase()
+    .replace(/['’]s$/, '')
+    .trim();
   return noun.length > 0 && lowerBody.includes(noun);
 }
 

@@ -74,7 +74,8 @@ export interface InternalWriteInput {
 /**
  * A placement that stops at `family_events` is on HALE's calendar, not the
  * family's. The invite is what closes that gap: a tap-to-add calendar link texted to
- * each parent. A CANCEL has no link form and is named as such.
+ * each parent. A CANCEL texts each parent who got that link that the event is
+ * cancelled.
  *
  * The sender itself lives in apps/web (the ICS link composer and the A2 dispatch that
  * owns quiet hours, consent, the ledger and the audit row) and is INJECTED here,
@@ -97,9 +98,9 @@ export type CalendarInviteOutcome =
   | 'sent'
   /** This exact revision already went out (a re-drive of the same placement). */
   | 'already_sent'
-  /** A CANCEL: the invite exists only as a tap-to-add link, which has no withdraw
-   * form, so nothing is sent. */
-  | 'no_withdraw_form'
+  /** A CANCEL for a parent who was never texted the tap-to-add link: there is nothing
+   * on their phone to take back, so nothing is sent. */
+  | 'never_linked'
   /** No live SMS channel — Hale cannot reach this parent at all. */
   | 'no_channel'
   /** No SMS adapter wired in this environment. */

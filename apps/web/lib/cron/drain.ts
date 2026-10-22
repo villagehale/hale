@@ -786,6 +786,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const { dispatchLoopMessage, recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
+  const { productionCalendarCancelVoice } = await import('~/lib/loop/voice/calendar-cancel-voice');
   const { productionChannels } = await import('~/lib/channel/adapters/production');
   const { createCalendarInviteSender } = await import('~/lib/loop/calendar-invite');
   const { createGoogleCalendarPlacement } = await import(
@@ -803,6 +804,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const calendarInvites = createCalendarInviteSender(db(), {
     channels,
     renderer: loopTemplateRenderer,
+    cancelVoice: productionCalendarCancelVoice(),
   });
   // Approved send_email actions leave from the approving parent's own Gmail.
   const sendEmail = createGmailEmailSender(db());

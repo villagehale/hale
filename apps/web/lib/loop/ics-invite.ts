@@ -311,3 +311,25 @@ export async function composeEventLink(
   const url = await mintEventInviteLink(deps.database, row.familyId, row.id);
   return { status: 'composed', summary: invite.summary, startsAt: row.startsAt, sequence, url };
 }
+
+export type ComposeEventCancelResult =
+  | { status: 'composed'; summary: string; startsAt: Date }
+  | { status: 'not_found' };
+
+/**
+ * The facts a CANCEL text needs for one parent: the event's summary at that parent's own
+ * privacy level and its start. Unlike {@link composeEventLink} it reads a SOFT-DELETED
+ * row on purpose — a cancellation is about an event that no longer exists — and it
+ * mints nothing.
+ */
+export async function composeEventCancel(
+  input: ComposeEventLinkInput,
+  deps: { database: Database; now?: Date },
+): Promise<ComposeEventCancelResult> {
+  const now = deps.now ?? new Date();
+  const row = await loadInviteEventRow(deps.database, input.familyEventId);
+  if (!row || row.familyId !== input.familyId) return { status: 'not_found' };
+  const level = (await loadLoopPrefsView(input.parentUserId, deps.database)).childNameLevel;
+  const invite = toInviteEvent(row, { level, note: null, sequence: 0 }, now);
+  return { status: 'composed', summary: invite.summary, startsAt: row.startsAt };
+}

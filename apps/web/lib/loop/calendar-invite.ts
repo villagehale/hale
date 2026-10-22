@@ -7,16 +7,21 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, like } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
-import { composeEventLink } from '~/lib/loop/ics-invite';
+import { composeEventCancel, composeEventLink } from '~/lib/loop/ics-invite';
+import {
+  CALENDAR_CANCEL_SMS_TEMPLATE_KEY,
+  type CalendarCancelSmsPayload,
+} from '~/lib/loop/templates/calendar-cancel/sms';
 import {
   CALENDAR_INVITE_SMS_TEMPLATE_KEY,
   type CalendarInviteSmsPayload,
   inviteWhenLabel,
 } from '~/lib/loop/templates/calendar-invite/sms';
+import type { CalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
 
 /**
  * VIL-249 · M13 — the production fan-out: a placement, delivered as a tap-to-add link.
@@ -30,7 +35,9 @@ import {
  * in Calendar. The emailed iTIP invite (and the one-time ask for an address to send it
  * to) is retired with the email channel; a parent with a connected Google Calendar
  * gets the placement written there directly, and everyone else gets iMessage
- * reminders. REQUEST only: a CANCEL has nothing to link to, and says so by name.
+ * reminders. A CANCEL texts each parent who was sent that link that the event is
+ * cancelled, in words a model writes (calendar-cancel-voice.ts); a parent who never got
+ * the link is named `never_linked` and texted nothing.
  *
  * ITS STANDING IS A LOOP SEND, not the "Approved" reply's — that reply is an answer to
  * an inbound turn and leaves through the transport with no policy gate, while this
@@ -52,6 +59,9 @@ export interface CalendarInviteDeps {
    * 'channel_unavailable', not an absent dependency here. */
   channels: Partial<Record<ChannelKind, Channel>>;
   renderer: TemplateRenderer;
+  /** The cancellation's words. REQUIRED (rule #11); its deferral is named and the plain
+   * receipt goes instead. */
+  cancelVoice: CalendarCancelVoice;
   now?: () => Date;
 }
 
@@ -183,6 +193,89 @@ async function textOneParent(
   return { parentUserId: parent.userId, channel: 'sms', ...result };
 }
 
+/** The legs the dispatch can leave in, as the executor's outcomes. Shared by both texts. */
+function parentOutcome(
+  parentUserId: string,
+  leg: LegResult | undefined,
+): CalendarInviteParentOutcome {
+  // The dispatch's SMS consent gate is the live-state read (an active verified
+  // parent_channels row), and SMS is the only channel Hale sends on, so a consent
+  // suppression here is not a preference — it is a parent Hale has no way to reach.
+  if (leg?.outcome === 'suppressed_consent') {
+    return { parentUserId, channel: 'sms', outcome: 'no_channel' };
+  }
+  return { parentUserId, channel: 'sms', ...outcomeFromLeg(leg) };
+}
+
+/** Whether this parent was texted the tap-to-add link for this event — any revision. */
+async function wasTextedTheLink(
+  database: Database,
+  job: InviteJob,
+  parentUserId: string,
+): Promise<boolean> {
+  const m = schema.channelMessages;
+  const rows = await database
+    .select({ id: m.id })
+    .from(m)
+    .where(
+      and(
+        eq(m.familyId, job.familyId),
+        eq(m.parentUserId, parentUserId),
+        eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
+        like(m.dedupeKey, `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${job.familyEventId}:%`),
+        inArray(m.status, ['queued', 'sent', 'delivered']),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Text one parent that an event they were sent a tap-to-add link for is cancelled.
+ *
+ * Only a parent who got the link: anyone else has nothing on their phone to take back,
+ * and a cancellation for an event they never heard about is noise (`never_linked`).
+ */
+async function cancelOneParent(
+  database: Database,
+  ports: DispatchPorts,
+  voice: CalendarCancelVoice,
+  job: InviteJob,
+  parent: InvitedParent,
+  now: Date,
+): Promise<CalendarInviteParentOutcome> {
+  if (!(await wasTextedTheLink(database, job, parent.userId))) {
+    return { parentUserId: parent.userId, channel: 'sms', outcome: 'never_linked' };
+  }
+  const event = await composeEventCancel(
+    { familyId: job.familyId, familyEventId: job.familyEventId, parentUserId: parent.userId },
+    { database, now },
+  );
+  if (event.status === 'not_found') {
+    return { parentUserId: parent.userId, channel: 'sms', outcome: 'event_not_found' };
+  }
+
+  const when = inviteWhenLabel(event.startsAt, parent.timezone);
+  const voiced = await voice.compose({ summary: event.summary, when });
+  const payload: CalendarCancelSmsPayload = {
+    summary: event.summary,
+    when,
+    line: voiced.status === 'composed' ? voiced.body : null,
+  };
+  const message: LoopMessage = {
+    templateKey: CALENDAR_CANCEL_SMS_TEMPLATE_KEY,
+    familyId: job.familyId,
+    parentUserId: parent.userId,
+    category: 'approval',
+    urgency: 'time_sensitive',
+    channel: 'sms',
+    dedupeKey: `${CALENDAR_CANCEL_SMS_TEMPLATE_KEY}:${job.familyEventId}:${parent.userId}`,
+    payload: payload as unknown as Record<string, unknown>,
+  };
+  const { legs } = await dispatchLoopMessage(message, ports);
+  return parentOutcome(parent.userId, legs[0]);
+}
+
 /**
  * The port the executor calls after a placement lands. Never throws for a family
  * reason: everything that can go wrong is a named outcome the execution detail
@@ -216,13 +309,7 @@ export function createCalendarInviteSender(
         if (request.method === 'REQUEST') {
           outcomes.push(await textOneParent(database, ports, job, parent, now));
         } else {
-          // A CANCEL has no link form, so nothing is withdrawn by text — said rather
-          // than swallowed.
-          outcomes.push({
-            parentUserId: parent.userId,
-            channel: 'sms',
-            outcome: 'no_withdraw_form',
-          });
+          outcomes.push(await cancelOneParent(database, ports, deps.cancelVoice, job, parent, now));
         }
       }
 

@@ -18,7 +18,9 @@ const DDD = '44444444-4444-4444-8444-444444444444';
 const COURSE = 'cityofmarkham.perfectmind.com:22222222-2222-2222-2222-222222222222';
 const OTHER_COURSE = 'townofoakville.perfectmind.com:33333333-3333-3333-3333-333333333333';
 
-function family(overrides: Partial<IntroCandidateFamily> & { familyId: string }): IntroCandidateFamily {
+function family(
+  overrides: Partial<IntroCandidateFamily> & { familyId: string },
+): IntroCandidateFamily {
   return {
     parentUserId: `user-${overrides.familyId}`,
     fsa: 'M4K',
@@ -170,7 +172,7 @@ describe('matchIntroPairs', () => {
    * from the recipient's OWN child and a stage word. They belong to the handoff, where
    * Hale can ask for them.
    */
-  it('pairs two families that have no parent name and no email - identity is the handoff\'s business', () => {
+  it("pairs two families that have no parent name and no email - identity is the handoff's business", () => {
     const result = matchIntroPairs({
       families: [family({ familyId: AAA }), family({ familyId: BBB })],
       familiesWithOpenProposal: new Set(),
@@ -212,9 +214,7 @@ describe('matchIntroPairs', () => {
       pairedBefore: new Set(),
       now: NOW,
     });
-    expect(result.pairings).toEqual([
-      expect.objectContaining({ familyAId: BBB, familyBId: CCC }),
-    ]);
+    expect(result.pairings).toEqual([expect.objectContaining({ familyAId: BBB, familyBId: CCC })]);
   });
 
   it('gives each family at most one new proposal per run', () => {
@@ -225,9 +225,7 @@ describe('matchIntroPairs', () => {
       now: NOW,
     });
     expect(result.pairings).toHaveLength(1);
-    expect(result.pairings[0]).toEqual(
-      expect.objectContaining({ familyAId: AAA, familyBId: BBB }),
-    );
+    expect(result.pairings[0]).toEqual(expect.objectContaining({ familyAId: AAA, familyBId: BBB }));
   });
 
   it('anchors each side on its OWN oldest child inside the shared band', () => {
@@ -264,7 +262,11 @@ describe('matchIntroPairs', () => {
       now: NOW,
     });
     expect(result.pairings[0]).toEqual(
-      expect.objectContaining({ stage: 'toddler', familyAChildId: 'a-tot', familyBChildId: 'b-tot' }),
+      expect.objectContaining({
+        stage: 'toddler',
+        familyAChildId: 'a-tot',
+        familyBChildId: 'b-tot',
+      }),
     );
   });
 });
@@ -353,7 +355,11 @@ describe('matchIntroPairs across a municipality', () => {
   it('still requires an overlapping stage band across the wider radius', () => {
     const result = matchIntroPairs({
       families: [
-        family({ familyId: AAA, fsa: 'L7G', children: [{ id: 'baby', dateOfBirth: '2026-05-11' }] }),
+        family({
+          familyId: AAA,
+          fsa: 'L7G',
+          children: [{ id: 'baby', dateOfBirth: '2026-05-11' }],
+        }),
         family({ familyId: BBB, fsa: 'L7J', children: [{ id: 'big', dateOfBirth: '2018-01-01' }] }),
       ],
       familiesWithOpenProposal: new Set(),

@@ -6,9 +6,10 @@ import type {
   TemplateRenderer,
 } from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
-import { CAREGIVER_REMINDER_TEMPLATE_KEY } from './caregiver/keys';
-import { caregiverReminderRenderer } from './caregiver';
+import { CALENDAR_CANCEL_SMS_TEMPLATE_KEY, calendarCancelSmsRenderer } from './calendar-cancel/sms';
 import { CALENDAR_INVITE_SMS_TEMPLATE_KEY, calendarInviteSmsRenderer } from './calendar-invite/sms';
+import { caregiverReminderRenderer } from './caregiver';
+import { CAREGIVER_REMINDER_TEMPLATE_KEY } from './caregiver/keys';
 import { reminderRenderer } from './reminder';
 
 /**
@@ -27,6 +28,9 @@ export const loopTemplateRenderer: TemplateRenderer = {
     }
     if (message.templateKey === CALENDAR_INVITE_SMS_TEMPLATE_KEY) {
       return calendarInviteSmsRenderer.render(message, channel, nameLevel);
+    }
+    if (message.templateKey === CALENDAR_CANCEL_SMS_TEMPLATE_KEY) {
+      return calendarCancelSmsRenderer.render(message, channel, nameLevel);
     }
     // The caregiver twin. Registered rather than left to the fallback on purpose: an
     // unregistered key renders `defaultLoopRenderer`, which would text a grandmother a

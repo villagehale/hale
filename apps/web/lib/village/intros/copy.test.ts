@@ -4,12 +4,10 @@ import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import {
   DISCOVERABILITY_OFF,
   DISCOVERABILITY_ON,
-  INTRO_EMAIL_SUBJECT,
   INTRO_NO_ACK,
   INTRO_SOFT_CLOSE,
   INTRO_YES_ACK,
   NO_OPEN_INTRO,
-  introEmailBody,
   stageWord,
 } from './copy';
 
@@ -19,16 +17,6 @@ import {
  * family's identity, the soft close is identical for all three reasons an intro dies,
  * and every outbound body fits GSM-7 inside its segment budget.
  */
-
-/** The counterpart family's strings, as a live test would seed them. Nothing on this
- * list may appear in anything a card renders. */
-const COUNTERPART = {
-  parentName: 'Priya Raman',
-  childName: 'Marisol',
-  postal: 'M4K 1N2',
-  street: '18 Boulton Avenue',
-  exactAge: '31 months',
-};
 
 describe('stageWord', () => {
   it('has a stage word for every stage, and none of them is the raw stage key', () => {
@@ -74,48 +62,6 @@ describe('INTRO_SOFT_CLOSE', () => {
     for (const word of forbidden) {
       expect(INTRO_SOFT_CLOSE.toLowerCase()).not.toContain(word);
     }
-  });
-});
-
-describe('introEmailBody', () => {
-  it('names both parents, the shared stage, and hands the thread over', () => {
-    const body = introEmailBody({
-      parentAFirstName: 'Sam',
-      parentBFirstName: 'Priya',
-      stage: 'toddler',
-      anchorTitle: null,
-    });
-    expect(body).toContain('Hi Sam and Priya,');
-    expect(body).toContain('you each have a toddler');
-    expect(body).toContain("I'm stepping back");
-    expect(body).not.toContain('coming up near you both');
-  });
-
-  it('adds the anchor line only when there is an activity', () => {
-    const body = introEmailBody({
-      parentAFirstName: 'Sam',
-      parentBFirstName: 'Priya',
-      stage: 'preschool',
-      anchorTitle: 'Family Storytime',
-    });
-    expect(body).toContain("There's also Family Storytime coming up near you both");
-  });
-
-  it('never carries a child name, a postal code or a street', () => {
-    const body = introEmailBody({
-      parentAFirstName: 'Sam',
-      parentBFirstName: 'Priya',
-      stage: 'toddler',
-      anchorTitle: 'Family Storytime',
-    });
-    expect(body).not.toContain(COUNTERPART.childName);
-    expect(body).not.toContain(COUNTERPART.postal);
-    expect(body).not.toContain(COUNTERPART.street);
-    expect(body).not.toContain(COUNTERPART.parentName);
-  });
-
-  it('has a subject that says nothing a preview pane should not', () => {
-    expect(INTRO_EMAIL_SUBJECT).toBe('A Hale family near you');
   });
 });
 

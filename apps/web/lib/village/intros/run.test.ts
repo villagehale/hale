@@ -5,6 +5,8 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { INTRO_SOFT_CLOSE } from './copy';
+import { INTRO_GROUP_TEMPLATE_KEY, type OpenIntroGroupResult } from './group';
+import type { IntroGroupOutcome, IntroGroupRequest } from './group-voice';
 import {
   type IntroSweepChild,
   type IntroSweepDeps,
@@ -85,6 +87,9 @@ interface Harness {
   /** Every request the two composed asks were handed. The rule-#1 surface: a card cannot
    * name the other family if the other family was never passed to the composer. */
   introVoice: FakeIntroVoice;
+  /** Every request the group-intro composer was handed, and every group opened. */
+  groupCalls: IntroGroupRequest[];
+  groups: Array<{ to: readonly string[]; text: string }>;
   /** Every ledger write, so a test can assert the TEMPLATE KEY an ask was stamped with —
    * the only thing that makes the reply findable by a capture handler. */
   sends: Array<{ templateKey: string; dedupeKey: string; parentUserId: string }>;
@@ -113,6 +118,8 @@ function harness(
     nameLevel?: 'first_name' | 'relation' | 'generic';
     identityAsk?: FakeIdentityAsk;
     introVoice?: FakeIntroVoice;
+    groupOutcome?: IntroGroupOutcome;
+    openResult?: OpenIntroGroupResult;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -127,6 +134,8 @@ function harness(
   const classKeyCalls: Harness['classKeyCalls'] = [];
   const identityAsk = overrides.identityAsk ?? new FakeIdentityAsk();
   const introVoice = overrides.introVoice ?? new FakeIntroVoice();
+  const groupCalls: IntroGroupRequest[] = [];
+  const groups: Array<{ to: readonly string[]; text: string }> = [];
 
   const gate: OutboundGatePorts = {
     channelEnrolled: async () => overrides.hold !== 'not_enrolled',
@@ -177,6 +186,27 @@ function harness(
     },
     identityAsk,
     introVoice,
+    introGroupVoice: {
+      compose: async (request) => {
+        groupCalls.push(request);
+        return (
+          overrides.groupOutcome ?? {
+            status: 'composed',
+            body: `Meet ${request.parentAFirstName} and ${request.parentBFirstName}.`,
+          }
+        );
+      },
+    },
+    openIntroGroup: async (input) => {
+      groups.push(input);
+      return (
+        overrides.openResult ?? {
+          status: 'opened',
+          chatId: 'chat-intro',
+          providerMessageId: 'msg-intro',
+        }
+      );
+    },
     buildGate: () => gate,
     dedupeActive: async () => false,
     resolveSendablePhone: async (_db, userId) => `phone-${userId}`,
@@ -209,6 +239,8 @@ function harness(
     expiries,
     identityAsk,
     introVoice,
+    groupCalls,
+    groups,
     sends,
     threaded,
     classKeyCalls,
@@ -1075,4 +1107,160 @@ describe('phase 2 - the same-class signal', () => {
    * The run carries all three surfaces at once: E and F are matched, A and B are carded
    * off a live proposal, C and D are introduced by email off an accepted one.
    */
+});
+
+describe('phase 3 - the group introduction', () => {
+  const optedIn = {
+    discoverable: new Set([`user-${A}`, `user-${B}`]),
+    alreadyAsked: new Set([`user-${A}`, `user-${B}`]),
+  };
+
+  const accepted = (overrides: Partial<SweepProposal> = {}) =>
+    proposal({
+      status: 'both_accepted',
+      familyAAskedAt: NOW,
+      familyBAskedAt: NOW,
+      familyAReply: 'yes',
+      familyBReply: 'yes',
+      ...overrides,
+    });
+
+  function named(overrides: Parameters<typeof harness>[0] = {}) {
+    return harness({
+      families: [
+        family({ familyId: A, parentName: 'Sam Lee' }),
+        family({ familyId: B, parentName: 'Priya Shah' }),
+      ],
+      ...optedIn,
+      proposals: [accepted()],
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('VILLAGE_INTRO_GROUPS_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('opens ONE group with both parents, first names only, and audits BOTH families', async () => {
+    const h = named();
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.groupCalls).toEqual([
+      {
+        parentAFirstName: 'Sam',
+        parentBFirstName: 'Priya',
+        stageWord: 'toddler',
+        anchorTitle: null,
+        anchorDay: null,
+      },
+    ]);
+    expect(h.groups).toEqual([
+      { to: [`phone-user-${A}`, `phone-user-${B}`], text: 'Meet Sam and Priya.' },
+    ]);
+    expect(h.sends).toEqual([
+      {
+        templateKey: INTRO_GROUP_TEMPLATE_KEY,
+        dedupeKey: `${INTRO_GROUP_TEMPLATE_KEY}:prop-1:a`,
+        parentUserId: `user-${A}`,
+      },
+      {
+        templateKey: INTRO_GROUP_TEMPLATE_KEY,
+        dedupeKey: `${INTRO_GROUP_TEMPLATE_KEY}:prop-1:b`,
+        parentUserId: `user-${B}`,
+      },
+    ]);
+    const disclosures = h.audits.filter((a) => a.actionTaken === 'village_intro_disclosed');
+    expect(disclosures.map((d) => d.familyId).sort()).toEqual([A, B].sort());
+    for (const row of disclosures) {
+      expect(row.after).toMatchObject({
+        channel: 'imessage_group',
+        disclosedFields: ['parent_first_name', 'parent_phone', 'child_stage', 'activity_title'],
+      });
+    }
+    expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'both_accepted', closed: true }]);
+    expect(result.introduced).toBe(1);
+    expect(result.introFailed).toBe(0);
+  });
+
+  it('hands the composer the activity and its weekday when there is one', async () => {
+    const h = named({
+      proposals: [
+        accepted({
+          anchorTitle: 'Family Storytime',
+          anchorStartsAt: new Date('2026-08-15T14:00:00Z'),
+        }),
+      ],
+    });
+
+    await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.groupCalls[0]).toMatchObject({
+      anchorTitle: 'Family Storytime',
+      anchorDay: 'Saturday',
+    });
+  });
+
+  it('opens nothing and leaves the pair open when the composer defers', async () => {
+    const h = named({ groupOutcome: { status: 'deferred', reason: 'gate_exhausted' } });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.groups).toEqual([]);
+    expect(h.statuses).toEqual([]);
+    expect(h.audits.filter((a) => a.actionTaken === 'village_intro_disclosed')).toEqual([]);
+    expect(result.introduced).toBe(0);
+    // A deferral is a retry, not a missing channel.
+    expect(result.introFailed).toBe(0);
+  });
+
+  it('names no_intro_channel when no Linq line is configured, and discloses nothing', async () => {
+    const h = named({ openResult: { status: 'not_configured' } });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.introFailed).toBe(1);
+    expect(h.sends).toEqual([]);
+    expect(h.statuses).toEqual([]);
+    expect(h.audits.filter((a) => a.actionTaken === 'village_intro_disclosed')).toEqual([]);
+  });
+
+  it('counts a refused open as a failed intro and leaves the pair open', async () => {
+    const h = named({ openResult: { status: 'refused', code: '1006', permanent: true } });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.introFailed).toBe(1);
+    expect(h.statuses).toEqual([]);
+  });
+
+  it('closes a pair whose group was already opened, without opening a second', async () => {
+    const h = named();
+    h.deps.dedupeActive = async (_db, key) => key === `${INTRO_GROUP_TEMPLATE_KEY}:prop-1:a`;
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.groups).toEqual([]);
+    expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'both_accepted', closed: true }]);
+    expect(result.introduced).toBe(1);
+  });
+
+  it('still waits on a missing name before composing anything', async () => {
+    const h = named({
+      families: [
+        family({ familyId: A, parentName: 'Sam Lee' }),
+        family({ familyId: B, parentName: null }),
+      ],
+    });
+
+    await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(h.groupCalls).toEqual([]);
+    expect(h.groups).toEqual([]);
+    expect(h.identityAsk.calls).toEqual([{ reason: 'introduction', missing: ['name'] }]);
+  });
 });

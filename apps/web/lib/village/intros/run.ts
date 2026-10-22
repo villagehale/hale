@@ -29,6 +29,15 @@ import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loo
 import { discoverableUserIds } from './consent';
 import { INTRO_SOFT_CLOSE, stageWord } from './copy';
 import {
+  INTRO_GROUP_TEMPLATE_KEY,
+  type OpenIntroGroup,
+  createLinqIntroGroupOpener,
+  introFirstName,
+  introGroupDedupeKey,
+  villageIntroGroupsEnabled,
+} from './group';
+import { type IntroGroupVoice, productionIntroGroupVoice } from './group-voice';
+import {
   type IntroMatchSignal,
   type IntroSkipReason,
   matchAreaFsas,
@@ -286,6 +295,12 @@ export interface IntroSweepDeps {
    * under either of them, so a sweep with no composer has nothing to say and must not be
    * constructible. A composer that cannot run says so by DEFERRING, per send. */
   introVoice: IntroVoice;
+  /** The introduction's words (group-voice.ts). REQUIRED (rule #11): there is no fixed
+   * copy under it; a composer that cannot run DEFERS and the pair waits. */
+  introGroupVoice: IntroGroupVoice;
+  /** Opens the three-way iMessage group whose first message is the introduction. Its
+   * absence is the named `not_configured`, never a missing dependency. */
+  openIntroGroup: OpenIntroGroup;
 }
 
 /**
@@ -849,15 +864,141 @@ async function introduce(
     return;
   }
 
-  // The introduction was an email naming the two households to each other, and Hale no
-  // longer sends email. NOT closed and NOT audited as disclosed: nothing was disclosed,
-  // and the pair stays open until an introduction channel exists (rule #11 — counted,
-  // never a silent close).
+  if (!villageIntroGroupsEnabled()) {
+    // Dark: the group intro is the only introduction channel. NOT closed and NOT audited
+    // as disclosed: nothing was disclosed, and the pair stays open until the channel is
+    // lit (rule #11 — counted, never a silent close).
+    result.introFailed += 1;
+    console.error(
+      { proposalId: proposal.id, outcome: 'no_intro_channel' },
+      'village intros: introduction not delivered - the group intro is dark',
+    );
+    return;
+  }
+
+  await introduceInGroup(database, deps, proposal, familyA, familyB, result, now);
+}
+
+/** Every failure below leaves the pair OPEN and unaudited as disclosed: nothing crossed,
+ * so saying it did would put a false entry in the record PIPEDA right-to-access reads. */
+function introNotDelivered(
+  result: IntroSweepResult,
+  proposalId: string,
+  outcome: string,
+  detail?: Record<string, unknown>,
+): void {
   result.introFailed += 1;
-  console.error(
-    { proposalId: proposal.id, outcome: 'no_intro_channel' },
-    'village intros: introduction not delivered - the email channel is retired',
-  );
+  console.error({ proposalId, outcome, ...detail }, 'village intros: introduction not delivered');
+}
+
+/**
+ * The introduction as a three-way iMessage group: one Linq chat holding both parents,
+ * whose first message is the composed introduction. What crosses is exactly what both
+ * parents said yes to twice — first names, the shared stage, the activity — plus each
+ * parent's number, by being in the group.
+ */
+async function introduceInGroup(
+  database: Database,
+  deps: IntroSweepDeps,
+  proposal: SweepProposal,
+  familyA: IntroSweepFamily,
+  familyB: IntroSweepFamily,
+  result: IntroSweepResult,
+  now: Date,
+): Promise<void> {
+  // A group opened on an earlier tick whose close did not land: finish the close rather
+  // than open a second group (the ledger row is written right after the open).
+  if (await deps.dedupeActive(database, introGroupDedupeKey(proposal.id, 'a'))) {
+    await deps.setStatus(database, proposal.id, 'both_accepted', true, now);
+    result.introduced += 1;
+    return;
+  }
+
+  for (const family of [familyA, familyB]) {
+    const verdict = await assertProactiveSendAllowed(
+      { familyId: family.familyId, parentUserId: family.parentUserId, kind: 'village_intro', now },
+      deps.buildGate(database),
+    );
+    if (!verdict.allowed) {
+      result.held[verdict.reason] += 1;
+      return;
+    }
+  }
+
+  const toA = await deps.resolveSendablePhone(database, familyA.parentUserId);
+  const toB = await deps.resolveSendablePhone(database, familyB.parentUserId);
+  if (!toA || !toB) {
+    introNotDelivered(result, proposal.id, 'no_sendable_phone');
+    return;
+  }
+
+  const composed = await deps.introGroupVoice.compose({
+    parentAFirstName: introFirstName(familyA.parentName ?? ''),
+    parentBFirstName: introFirstName(familyB.parentName ?? ''),
+    stageWord: stageWord(proposal.stage),
+    anchorTitle: proposal.anchorTitle,
+    anchorDay:
+      proposal.anchorStartsAt === null
+        ? null
+        : weekdayIn(proposal.anchorStartsAt, familyA.timeZone),
+  });
+  if (composed.status === 'deferred') {
+    // A deferral is a retry: nothing opened, nothing recorded, the next tick composes again.
+    console.error(
+      { proposalId: proposal.id, outcome: 'composer_deferred', reason: composed.reason },
+      'village intros: group intro deferred',
+    );
+    return;
+  }
+
+  const opened = await deps.openIntroGroup({ to: [toA, toB], text: composed.body });
+  if (opened.status === 'not_configured') {
+    introNotDelivered(result, proposal.id, 'no_intro_channel');
+    return;
+  }
+  if (opened.status === 'refused') {
+    introNotDelivered(result, proposal.id, 'group_refused', { code: opened.code });
+    return;
+  }
+
+  for (const [side, family] of [
+    ['a', familyA],
+    ['b', familyB],
+  ] as const) {
+    await deps.recordSend(database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      templateKey: INTRO_GROUP_TEMPLATE_KEY,
+      dedupeKey: introGroupDedupeKey(proposal.id, side),
+      providerMessageId: opened.providerMessageId,
+      sentAt: now,
+      channel: 'imessage',
+      providerChatId: opened.chatId,
+    });
+  }
+
+  for (const [self, other] of [
+    [proposal.familyAId, proposal.familyBId],
+    [proposal.familyBId, proposal.familyAId],
+  ] as const) {
+    await deps.audit(database, {
+      familyId: self,
+      actor: 'system',
+      actionTaken: 'village_intro_disclosed',
+      targetTable: 'village_intro_proposals',
+      targetId: proposal.id,
+      // EXACTLY what crossed the household boundary, field by field (rule #6).
+      after: {
+        counterpartFamilyId: other,
+        channel: 'imessage_group',
+        disclosedFields: ['parent_first_name', 'parent_phone', 'child_stage', 'activity_title'],
+        anchored: proposal.anchorTitle !== null,
+      },
+    });
+  }
+
+  await deps.setStatus(database, proposal.id, 'both_accepted', true, now);
+  result.introduced += 1;
 }
 
 /** What Hale is missing before it can write the introduction for a side. */
@@ -1398,5 +1539,7 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
     transport: createOutboundTransport(),
     identityAsk: productionIdentityAskVoice(),
     introVoice: productionIntroVoice(),
+    introGroupVoice: productionIntroGroupVoice(),
+    openIntroGroup: createLinqIntroGroupOpener(),
   };
 }

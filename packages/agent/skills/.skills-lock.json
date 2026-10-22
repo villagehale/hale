@@ -19,6 +19,10 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
+  "calendar-cancel-voice.md": {
+    "file": "calendar-cancel-voice.md",
+    "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"
+  },
   "calendar-offer-read.md": {
     "file": "calendar-offer-read.md",
     "sha256": "aea480fe0eb977faef4e918c9dde6778a6605eadede342a542e385ff7f0c676e"
@@ -162,6 +166,10 @@
   "interest-passport-voice.md": {
     "file": "interest-passport-voice.md",
     "sha256": "2d3a751c0e6ac252aaea2c12c4f4d0eabad3e9bc645d557271524d06d229106a"
+  },
+  "intro-group-voice.md": {
+    "file": "intro-group-voice.md",
+    "sha256": "326a3c7c8f5d53bfa14782dd65e6c6ea7973bf789fd12e1ed7a6e2aa7840aea0"
   },
   "intro-voice.md": {
     "file": "intro-voice.md",

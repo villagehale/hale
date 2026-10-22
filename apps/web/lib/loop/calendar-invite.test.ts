@@ -5,11 +5,15 @@ import { fakeChannel } from '~/lib/channel/fakes';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { Channel, ChannelKind } from '~/lib/channel/types';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { CALENDAR_INVITE_SMS_TEMPLATE_KEY } from '~/lib/loop/templates/calendar-invite/sms';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
-import { eventInviteToken, eventInviteUrl } from './ics-invite';
+import type {
+  CalendarCancelOutcome,
+  CalendarCancelRequest,
+} from '~/lib/loop/voice/calendar-cancel-voice';
+import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { createCalendarInviteSender } from './calendar-invite';
+import { eventInviteToken, eventInviteUrl } from './ics-invite';
 
 /**
  * The per-event ICS route resolves its own db handle. The link round-trip below drives
@@ -37,6 +41,9 @@ const PHONE = '+16475550123';
 
 let db: TestDb;
 let sms: ReturnType<typeof fakeChannel>;
+/** What the cancellation composer was handed, and what it answers. */
+let cancelCalls: CalendarCancelRequest[];
+let cancelOutcome: CalendarCancelOutcome;
 
 function channels(): Partial<Record<ChannelKind, Channel>> {
   return { sms };
@@ -46,6 +53,12 @@ function sender() {
   return createCalendarInviteSender(db.database, {
     channels: channels(),
     renderer: loopTemplateRenderer,
+    cancelVoice: {
+      compose: async (request) => {
+        cancelCalls.push(request);
+        return cancelOutcome;
+      },
+    },
     now: () => NOON,
   });
 }
@@ -71,7 +84,6 @@ async function seedPlacement(
   if (!row) throw new Error('seedPlacement: no row');
   return row.id;
 }
-
 
 /** An enrolled, verified SMS channel — what makes the dispatch's consent gate open. */
 async function enrollSms(familyId: string, userId: string): Promise<void> {
@@ -141,6 +153,11 @@ beforeEach(async () => {
   db = await createTestDb();
   routeDb.current = db.database;
   sms = fakeChannel('sms', { status: 'sent', providerMessageId: 'linq-1' });
+  cancelCalls = [];
+  cancelOutcome = {
+    status: 'composed',
+    body: 'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
+  };
   vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('DATABASE_URL', 'postgres://pglite');
@@ -258,7 +275,47 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(sentText()).toContain('Tap to put it on your phone');
   });
 
-  it('names a CANCEL as no_withdraw_form and texts nothing', async () => {
+  /** What an approved calendar_cancel leaves behind: the row soft-deleted. */
+  async function softDelete(familyEventId: string): Promise<void> {
+    await db.database
+      .update(schema.familyEvents)
+      .set({ deletedAt: NOON })
+      .where(eq(schema.familyEvents.id, familyEventId));
+  }
+
+  it('texts a parent who got the link that the event is cancelled, in the composed words', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    await softDelete(familyEventId);
+
+    const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(report).toEqual({
+      status: 'reported',
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(cancelCalls).toEqual([{ summary: 'Swim class', when: 'Thu, Jul 23 at 10:30 AM' }]);
+    expect(sentText(1)).toBe(
+      'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
+    );
+  });
+
+  it('sends the plain receipt when the composer defers', async () => {
+    const { familyId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    await softDelete(familyEventId);
+    cancelOutcome = { status: 'deferred', reason: 'model_failed' };
+
+    await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(sentText(1)).toBe(
+      'Cancelled - Swim class, Thu, Jul 23 at 10:30 AM. You can take it off your calendar.',
+    );
+  });
+
+  it('names never_linked for a parent who was never texted the link, and texts nothing', async () => {
     const { familyId, parentUserId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);
 
@@ -266,9 +323,10 @@ describe('the tap-to-add link a text-only family gets', () => {
 
     expect(report).toEqual({
       status: 'reported',
-      parents: [{ parentUserId, channel: 'sms', outcome: 'no_withdraw_form' }],
+      parents: [{ parentUserId, channel: 'sms', outcome: 'never_linked' }],
     });
     expect(sms.calls).toHaveLength(0);
+    expect(cancelCalls).toEqual([]);
   });
 
   it('names no_channel for a parent with neither an address nor a live SMS channel', async () => {
