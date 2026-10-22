@@ -91,7 +91,12 @@ function input(sourceCode: string | null = null) {
     sourceCode,
     firstMessage: 'Maya is 2, we are at M4C 1B5',
     transcript: [
-      { direction: 'out' as const, body: 'greeting', providerId: 'SM_out_1', at: NOW.toISOString() },
+      {
+        direction: 'out' as const,
+        body: 'greeting',
+        providerId: 'SM_out_1',
+        at: NOW.toISOString(),
+      },
       { direction: 'in' as const, body: 'Maya is 2', providerId: 'SM_in_1', at: NOW.toISOString() },
     ],
     now: NOW,
@@ -149,6 +154,19 @@ describe('provisionFromIntake — lifetime Family comp (EarlyON Georgetown poste
   function familyValues(inserts: Array<{ table: string; values: unknown }>) {
     return inserts.find((row) => row.table === 'families')?.values as Record<string, unknown>;
   }
+
+  it('stores a US ZIP as US rather than silently provisioning Canada', async () => {
+    const { database, inserts } = fakeDatabase();
+    await provisionFromIntake(database, {
+      ...input(),
+      location: { postalCode: '05401', areaCoarse: '054', country: 'United States' },
+    });
+    expect(familyValues(inserts)).toMatchObject({
+      country: 'United States',
+      postalCode: '05401',
+      areaCoarse: '054',
+    });
+  });
 
   function compAuditRows(inserts: Array<{ table: string; values: unknown }>) {
     return inserts

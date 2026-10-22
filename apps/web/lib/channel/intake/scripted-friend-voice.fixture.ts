@@ -5,6 +5,7 @@
  * (what was sent, what was stored), never these words.
  */
 import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
+import { parseIntakePostal } from './derive';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 function offScriptAside(words: string): string | null {
   if (/who is this/i.test(words)) {
@@ -17,8 +18,8 @@ function offScriptAside(words: string): string | null {
     return 'I only keep what you send, and you can ask what I have.';
   if (/weather|recipe/i.test(words)) return "That's outside what I do.";
   if (/^(ok|lol|and|thanks)$/i.test(words) || /what's next/i.test(words)) return 'Got it.';
-  if (/\b10001\b/.test(words) || /\bchicago\b/i.test(words)) {
-    return 'I only cover the Toronto area right now.';
+  if (/\bSW1A 1AA\b|\bLondon, UK\b/i.test(words)) {
+    return 'I cannot place that location.';
   }
   return null;
 }
@@ -84,7 +85,8 @@ export function scriptedTurn(input: FriendVoiceInput): {
     capture.children = [{ name: null, ageMonths: Number(actually[1]) * 12, agePrecision: 'years' }];
   }
   if (/\b10001\b/.test(words)) capture.postalCode = '10001';
-  if (/\bchicago\b/i.test(words)) capture.city = 'Chicago';
+  if (/\bSW1A 1AA\b/i.test(words)) capture.postalCode = 'SW1A 1AA';
+  if (/\bLondon, UK\b/i.test(words)) capture.city = 'London, UK';
   if (/\bcheck my calendar\b/i.test(words)) capture.connectCalendar = true;
   if (/\bwatch my email\b/i.test(words)) capture.connectGmail = true;
   if (/^(yes|yeah|yep)$/i.test(words)) {
@@ -118,7 +120,7 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   const postalKnown =
-    (Boolean(capture.postalCode) && capture.postalCode !== '10001') ||
+    parseIntakePostal(capture.postalCode) !== null ||
     Boolean(input.placeLabel) ||
     input.checklist?.postal === true;
   const kidsKnown =

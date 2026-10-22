@@ -743,15 +743,15 @@ describe('friend voice onboarding', () => {
     expect(transport.bodies().at(-1)).toContain('Got it.');
     expect(transport.bodies().at(-1)?.trim().endsWith("What's your postal code?")).toBe(true);
 
-    await handleInboundSms(fake.db, inbound(transport, '10001'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'SW1A 1AA'), deps);
     const zip = transport.bodies().at(-1) ?? '';
-    expect(zip).toContain('I only cover the Toronto area right now.');
+    expect(zip).toContain('I cannot place that location.');
     expect(zip.trim().endsWith("What's your postal code?")).toBe(true);
     expect((await loadOpenSession(fake.db, PHONE))?.state).toBe('awaiting_place');
 
-    await handleInboundSms(fake.db, inbound(transport, 'Chicago'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'London, UK'), deps);
     const city = transport.bodies().at(-1) ?? '';
-    expect(city).toContain('I only cover the Toronto area right now.');
+    expect(city).toContain('I cannot place that location.');
     expect((await loadOpenSession(fake.db, PHONE))?.firstTouch?.place).toBeNull();
   });
 
