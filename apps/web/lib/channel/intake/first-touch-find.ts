@@ -1,5 +1,7 @@
-import { deidentifyActivityQuery, townFor } from '~/lib/channel/activity/deidentify';
+import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { qualifyActivityLocation } from '~/lib/channel/activity/location';
+import { placeOf } from '~/lib/channel/off-domain/place';
 import type { FirstTouchPlace } from './first-touch-place';
 import { asciiCopy } from './radar-decide';
 
@@ -36,10 +38,23 @@ export async function findThisWeek(input: {
     return { lines: [], outcome: 'not_configured' };
   }
   const municipality = input.place.municipality;
+  const place = input.place.country
+    ? await placeOf({
+        country: input.place.country,
+        province: null,
+        city: null,
+        postalCode: input.place.postalCode,
+        areaCoarse: input.place.areaCoarse,
+      })
+    : null;
   const query = deidentifyActivityQuery({
     subject: WEEK_FIND_SUBJECT,
     window: 'this week',
     municipality,
+    location:
+      place?.status === 'known' && place.city
+        ? qualifyActivityLocation(place.city, place.provinceOrState, place.country)
+        : null,
     stage: null,
     householdNames: [],
   });
@@ -54,7 +69,7 @@ export async function findThisWeek(input: {
     const found = await input.finder.find(query.query);
     if (!found.found) {
       console.info(
-        { outcome: found.reason, municipality, town: municipality ? townFor(municipality) : null },
+        { outcome: found.reason, municipality, town: query.query.town },
         'first-touch week find: no picks',
       );
       return { lines: [], outcome: 'empty' };

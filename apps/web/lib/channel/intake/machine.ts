@@ -1690,6 +1690,7 @@ async function friendOnboardingTurn(
           postalCode: place.postalCode,
           municipality: place.municipality as FirstTouchPlace['municipality'],
           city: place.city,
+          ...(place.country ? { country: place.country } : {}),
         }
       : null,
     parentName: priorGiven?.parentName ?? null,
@@ -2504,6 +2505,7 @@ function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['
     postalCode: place.postalCode,
     municipality: place.municipality,
     city: place.city,
+    ...(place.country ? { country: place.country } : {}),
   };
 }
 

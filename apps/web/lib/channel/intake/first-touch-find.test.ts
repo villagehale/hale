@@ -8,6 +8,7 @@ import {
   renderWeekFind,
 } from './first-touch-find';
 import type { FirstTouchPlace } from './first-touch-place';
+import { placeFromGivenFields } from './first-touch-place';
 
 const TORONTO: FirstTouchPlace = {
   kind: 'postal',
@@ -27,6 +28,23 @@ const STORY: ActivityPick = {
 };
 
 describe('findThisWeek', () => {
+  it('resolves an extracted US ZIP locally and sends only the qualified town to Finder', async () => {
+    const place = placeFromGivenFields({ postalCode: '05401', city: null });
+    expect(place).not.toBeNull();
+    if (!place) throw new Error('expected US postal context');
+    let seen: unknown;
+    await findThisWeek({
+      place,
+      finder: {
+        find: async (query) => {
+          seen = query;
+          return { found: false, reason: 'no_picks' };
+        },
+      },
+    });
+    expect(seen).toMatchObject({ town: 'Burlington, Vermont, United States', window: 'this week' });
+    expect(JSON.stringify(seen)).not.toContain('054');
+  });
   it('names a missing finder and returns no lines', async () => {
     const found = await findThisWeek({ finder: null, place: TORONTO });
     expect(found).toEqual({ lines: [], outcome: 'not_configured' });

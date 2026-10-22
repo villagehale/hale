@@ -67,6 +67,21 @@ describe('parseIntakePostal', () => {
   });
 });
 
+describe('parseIntakePostal', () => {
+  it('preserves ZIP+4 context and rejects incomplete ZIPs or prose', () => {
+    expect(parseIntakePostal(' 05401-1234 ')).toMatchObject({
+      postalCode: '05401-1234',
+      areaCoarse: '054',
+      country: 'United States',
+      countryCode: 'US',
+      timezone: 'America/New_York',
+    });
+    for (const value of ['054', '0540', '054012', 'SW1A 1AA', 'W1A', 'ZIP 05401', null]) {
+      expect(parseIntakePostal(value)).toBeNull();
+    }
+  });
+});
+
 describe('deriveDateOfBirth', () => {
   const now = new Date('2026-07-30T12:00:00.000Z');
 

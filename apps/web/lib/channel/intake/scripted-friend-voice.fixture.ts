@@ -5,6 +5,7 @@
  * (what was sent, what was stored), never these words.
  */
 import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
+import { parseIntakePostal } from './derive';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 function offScriptAside(words: string): string | null {
   if (/who is this/i.test(words)) {
@@ -119,7 +120,9 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   const postalKnown =
-    Boolean(capture.postalCode) || Boolean(input.placeLabel) || input.checklist?.postal === true;
+    parseIntakePostal(capture.postalCode) !== null ||
+    Boolean(input.placeLabel) ||
+    input.checklist?.postal === true;
   const kidsKnown =
     capture.children.some((child) => child.name) ||
     capture.kidsNamesDeclined ||
