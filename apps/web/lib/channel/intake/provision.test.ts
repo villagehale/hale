@@ -176,6 +176,25 @@ describe('provisionFromIntake — lifetime Family comp (EarlyON Georgetown poste
     return inserts.find((row) => row.table === 'families')?.values as Record<string, unknown>;
   }
 
+  it('stores a US ZIP as US rather than silently provisioning Canada', async () => {
+    const { database, inserts } = fakeDatabase();
+    await provisionFromIntake(database, {
+      ...input(),
+      location: {
+        postalCode: '05401',
+        areaCoarse: '054',
+        country: 'United States',
+        countryCode: 'US',
+        timezone: 'America/New_York',
+      },
+    });
+    expect(familyValues(inserts)).toMatchObject({
+      country: 'United States',
+      postalCode: '05401',
+      areaCoarse: '054',
+    });
+  });
+
   function compAuditRows(inserts: Array<{ table: string; values: unknown }>) {
     return inserts
       .filter((row) => row.table === 'audit_log')

@@ -1,5 +1,7 @@
-import { deidentifyActivityQuery, townFor } from '~/lib/channel/activity/deidentify';
+import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { qualifyActivityLocation } from '~/lib/channel/activity/location';
+import { placeOf } from '~/lib/channel/off-domain/place';
 import type { FirstTouchPlace } from './first-touch-place';
 import { asciiCopy } from './radar-decide';
 
@@ -13,7 +15,13 @@ import { asciiCopy } from './radar-decide';
 export const WEEK_FIND_SUBJECT =
   'kids week drop-ins, examples not a limit: swim soccer gym earlyon library parks storytime music';
 
-export type WeekFindOutcome = 'found' | 'empty' | 'not_configured' | 'failed' | 'refused' | 'budget';
+export type WeekFindOutcome =
+  | 'found'
+  | 'empty'
+  | 'not_configured'
+  | 'failed'
+  | 'refused'
+  | 'budget';
 
 /** How long the first-touch turn waits on the week search. The search may keep running. */
 export const WEEK_FIND_BUDGET_MS = 8_000;
@@ -30,10 +38,23 @@ export async function findThisWeek(input: {
     return { lines: [], outcome: 'not_configured' };
   }
   const municipality = input.place.municipality;
+  const place = input.place.country
+    ? await placeOf({
+        country: input.place.country,
+        province: null,
+        city: null,
+        postalCode: input.place.postalCode,
+        areaCoarse: input.place.areaCoarse,
+      })
+    : null;
   const query = deidentifyActivityQuery({
     subject: WEEK_FIND_SUBJECT,
     window: 'this week',
     municipality,
+    location:
+      place?.status === 'known' && place.city
+        ? qualifyActivityLocation(place.city, place.provinceOrState, place.country)
+        : null,
     stage: null,
     householdNames: [],
   });
@@ -48,7 +69,7 @@ export async function findThisWeek(input: {
     const found = await input.finder.find(query.query);
     if (!found.found) {
       console.info(
-        { outcome: found.reason, municipality, town: municipality ? townFor(municipality) : null },
+        { outcome: found.reason, municipality, town: query.query.town },
         'first-touch week find: no picks',
       );
       return { lines: [], outcome: 'empty' };
@@ -92,7 +113,10 @@ export async function findThisWeekWithin(
 
 /** The find bubble. Numbered pick lines only — no lead, no question. */
 export function renderWeekFind(lines: readonly string[]): string | null {
-  const shown = lines.map((line) => line.trim()).filter((line) => line.length > 0).slice(0, 3);
+  const shown = lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 3);
   if (shown.length === 0) return null;
   return shown.map((line, index) => `${index + 1}. ${line}`).join('\n');
 }
