@@ -446,7 +446,7 @@ async function briefOne(
   let rendered: TravelBriefRender;
   try {
     const target = await familyOutboundTarget(database, trip.familyId);
-    rendered = renderTravelBrief({
+    rendered = await renderTravelBrief({
       city: trip.destinationCity,
       startsOn: trip.startsOn,
       endsOn: trip.endsOn,

@@ -584,7 +584,7 @@ export async function startCoParentInvite(
     inviterPhoneE164: string;
     inviterName: string | null;
     parsed: ParsedCoParentAdd;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     now: Date;
     /**
      * Store the number and do not arm the YES that texts them. The Linq door
@@ -783,7 +783,7 @@ export async function recordCoParentAssent(
   input: {
     invite: CoParentInvite;
     inviterName: string;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     verbatimReply: string;
     channelMessageId: string | null;
     now: Date;

@@ -291,13 +291,15 @@ describe('spotOpenViolations', () => {
 
   it('passes the body the composer emits (positive control)', () => {
     expect(spotOpenViolations(good, context)).toEqual([]);
+    expect(
+      spotOpenViolations(good.replace('Tue swim', 'Tue swim — the afternoon one'), context),
+    ).not.toContain('not_gsm7');
   });
 
   it.each([
     ['url_missing', good.replace(URL, 'the portal')],
     ['asks_a_question', good.replace('.', '. Want the link?')],
     ['unbacked_digit', good.replace('Tue swim', 'Tue swim, 15 min drive')],
-    ['not_gsm7', good.replace('Tue swim', 'Tue swim — the 4pm one')],
   ])('names %s', (violation, body) => {
     expect(spotOpenViolations(body, context)).toContain(violation);
   });

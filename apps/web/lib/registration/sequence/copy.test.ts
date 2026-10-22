@@ -1056,11 +1056,11 @@ describe('VIL-338 · preparedCopyViolations, the composer’s own self-gate', ()
     );
   });
 
-  it('refuses a forbidden claim, a non-GSM-7 character and a fourth segment', () => {
+  it('refuses a forbidden claim and a fourth segment, and sends a typographic dash', () => {
     expect(preparedCopyViolations(`Everything is filled in. ${COURSE_URL}`, base)).toContain(
       'forbidden_claim',
     );
-    expect(preparedCopyViolations(`Opens — now. ${COURSE_URL}`, base)).toContain('not_gsm7');
+    expect(preparedCopyViolations(`Opens — now. ${COURSE_URL}`, base)).not.toContain('not_gsm7');
     expect(preparedCopyViolations(`${'a'.repeat(300)} ${COURSE_URL}`, base)).toContain(
       'too_many_segments',
     );

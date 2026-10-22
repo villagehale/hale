@@ -1,7 +1,6 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -105,7 +104,6 @@ export function refusals(body: string): ApologyRefusal[] {
   if (body === '') return ['empty'];
   const found: ApologyRefusal[] = [];
   if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
-  if (smsEncoding(body) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');

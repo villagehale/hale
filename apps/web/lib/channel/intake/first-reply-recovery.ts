@@ -20,7 +20,7 @@ import {
   transcriptHasOutbound,
 } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import {
   createOutboundTransport,
@@ -287,7 +287,7 @@ async function firstTouchRecoveryBody(
   deps: FirstReplyRecoveryDeps,
   sessionId: string,
   input: {
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     parentWords: string;
     place: RecoveryPlace;
     knownVenue: boolean;
@@ -333,10 +333,9 @@ function recoveryVenuePlace(sourceCode: string | null): ReturnType<typeof placeF
 }
 
 function languageFromTranscript(
-  transcript: Array<{ direction: 'in' | 'out'; body: string }>,
-): ReplyLanguage {
-  const inbound = [...transcript].reverse().find((entry) => entry.direction === 'in');
-  return inbound ? replyLanguage(inbound.body) : 'en';
+  _transcript: Array<{ direction: 'in' | 'out'; body: string }>,
+): ReplyLanguage | null {
+  return null;
 }
 
 interface FirstReplyCandidate {

@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
+import type { ConsentReader } from '~/lib/channel/consent-reply';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
@@ -107,6 +108,8 @@ export interface EmailInboundDeps {
    * that holds their document and says nothing.
    */
   reply: () => EmailReplyDeps;
+  /** Reads a yes or a no to a forwarding ask. Absence is named and grants nothing. */
+  consent?: ConsentReader;
 }
 
 export type EmailInboundOutcome =
@@ -227,6 +230,7 @@ export async function routeEmailInbound(
         reply: deps.reply,
         now: deps.now ?? ((): Date => new Date()),
         log: deps.log,
+        consent: deps.consent,
       },
       config,
       { event, sender, token: recipient.token, ref: recipient.ref, text, machine, headers },

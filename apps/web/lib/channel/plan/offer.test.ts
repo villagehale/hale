@@ -187,10 +187,9 @@ describe('the offer sentence gates', () => {
     ]);
   });
 
-  it('refuses an offer long enough to squeeze the answer out', () => {
-    const violations = offerViolations(`${'Want the full plan on this? '.repeat(8)}Reply YES?`);
-
-    expect(violations.some((v) => v.includes('characters'))).toBe(true);
+  it('keeps a long offer; length is not a reason to refuse it', () => {
+    const long = `${'The full plan covers the nights in between. '.repeat(8)}Want it?`;
+    expect(offerViolations(long)).toEqual([]);
   });
 
   it('is enforced by the TOOL, so a bad offer is never registered', async () => {

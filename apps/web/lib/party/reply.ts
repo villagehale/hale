@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import { normalizeToken } from '~/lib/channel/normalize-token';
 import type { createFamilyEvent } from '~/lib/loop/queries';
 import { partyWhen, redactTeenNames } from './card';
@@ -77,18 +76,6 @@ const CANCEL_WORDS = new Set([
  * (The affirmative vocabulary folds its own; this is for the party-specific phrases.) */
 function normalizeBody(body: string): string {
   return normalizeToken(body.replace(/[‘’ʼ`]/g, "'"));
-}
-
-/**
- * A yes, read off the ONE shared vocabulary (VIL-265). M10 used to hold its own twelve
- * words; the words it was missing were hosts whose link was never made, and nothing
- * about a party makes "go ahead" less of a yes than it is to the approval grammar.
- *
- * Widening the words does not widen what a yes DOES here — {@link mintLink} still
- * requires a fresh offer with no invite on it, which is the whole gate.
- */
-export function matchPartyLinkConfirm(body: string): boolean {
-  return readAffirmative(body) === 'yes';
 }
 
 export function matchPartyTallyAsk(body: string): boolean {
@@ -210,13 +197,17 @@ export interface PartyReplyDeps {
 
 export async function handlePartyReply(
   database: Database,
-  input: { familyId: string; parentUserId: string; body: string; now: Date },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    now: Date;
+    /** The model already read this as a yes to minting the link. The body is not scanned. */
+    confirmed?: boolean;
+  },
   deps: PartyReplyDeps,
 ): Promise<PartyReplyOutcome> {
-  // Matched first, then looked up. Unlike M7 — where "in" means nothing without the
-  // window — every phrase here is self-describing, so an ordinary message costs no
-  // query at all.
-  if (matchPartyLinkConfirm(input.body)) {
+  if (input.confirmed) {
     return mintLink(database, input, deps);
   }
   if (matchPartyTallyAsk(input.body)) {

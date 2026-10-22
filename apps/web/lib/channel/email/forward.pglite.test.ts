@@ -96,6 +96,8 @@ interface RouteArgs {
   /** A provider that refuses the send, the shape `sendEmailReply` turns into a throw. */
   sendFails?: boolean;
   limiter?: RateLimiter;
+  /** What the consent reader returns. Omitted means the model could not tell. */
+  consent?: 'yes' | 'no' | 'neither';
 }
 
 function inboundDeps(args: RouteArgs): EmailInboundDeps {
@@ -138,6 +140,12 @@ function inboundDeps(args: RouteArgs): EmailInboundDeps {
     log: { info: () => {}, error: () => {} },
     countOutcome: async (outcome) => {
       counted.push(outcome);
+    },
+    consent: {
+      read: async () => ({
+        verdict: args.consent ?? 'neither',
+        target: 'none' as const,
+      }),
     },
   };
 }
@@ -382,6 +390,7 @@ describe('the forwarding door · the answer', () => {
       to: forwardAnswerAddress(token, ref, CONFIG),
       from: `Sam <${parentEmail}>`,
       text: quotedYes('Yes'),
+      consent: 'yes',
       messageId: '<answer-1@example.test>',
     });
 
@@ -417,17 +426,17 @@ describe('the forwarding door · the answer', () => {
     expect(sent[1]?.text).toContain("from now on I'll read what bcs.on.ca sends you");
   });
 
-  it('MUTATION GUARD: the unstripped body reads as unclear, which is why extractReply is called', async () => {
-    const { readAffirmative } = await import('~/lib/channel/affirmative');
+  it('MUTATION GUARD: the quoted ask is stripped before the model reads the reply', async () => {
     const { extractReply } = await import('./reply-extract');
-    expect(readAffirmative(quotedYes('Yes'))).toBe('unclear');
-    expect(readAffirmative(extractReply(quotedYes('Yes')).text)).toBe('yes');
+    const quoted = quotedYes('Yes');
+    expect(extractReply(quoted).text).toBe('Yes');
+    expect(extractReply(quoted).text).not.toContain('Spring concert');
   });
 
   it('CASL: a STOP at the ask address unsubscribes, and is not answered with another email', async () => {
     // The ask is the ONE message on this door that Hale sends first, and its footer
     // promises "Reply STOP and Hale will stop emailing you" — over a Reply-To that is
-    // NOT the plain address. `stop` is deliberately not a NO (affirmative.ts), so
+    // NOT the plain address. STOP is a carrier keyword, not a placed no, so
     // without the keyword gate it reads as `unclear` and is answered with a further
     // email to somebody who just asked not to be emailed.
     const ref = await ask();
@@ -494,6 +503,7 @@ describe('the forwarding door · the answer', () => {
         to: forwardAnswerAddress(token, ref, CONFIG),
         from: `Sam <${parentEmail}>`,
         text: quotedYes('Yes'),
+        consent: 'yes',
         messageId: '<not-a-keyword@example.test>',
       }),
     ).toBe('forward_sender_allowed');
@@ -506,6 +516,7 @@ describe('the forwarding door · the answer', () => {
         to: forwardAnswerAddress(token, ref, CONFIG),
         from: `Sam <${parentEmail}>`,
         text: quotedYes('No'),
+        consent: 'no',
         messageId: '<answer-2@example.test>',
       }),
     ).toBe('forward_sender_refused');
@@ -779,6 +790,7 @@ describe('the forwarding door · the ask and the ref it hands out', () => {
         to: forwardAnswerAddress(token, ref, CONFIG),
         from: `Sam <${parentEmail}>`,
         text: quotedYes('Yes'),
+        consent: 'yes',
         messageId: '<yes-with-transport-down@example.test>',
         sendFails: true,
       }),
@@ -919,7 +931,7 @@ describe('a parent asking for their forwarding address, in the thread', () => {
     expect(nothing).toMatchObject({
       claimed: true,
       outcome: 'not_configured',
-      reply: forwardRevokeReply('en', 'not_configured'),
+      reply: await forwardRevokeReply('en', 'not_configured'),
     });
     expect((nothing as { templateKey?: string }).templateKey).toBeUndefined();
   });
@@ -944,6 +956,10 @@ describe('a parent asking for their forwarding address, in the thread', () => {
   });
 
   it('answers a French parent in French, and leaves everybody else to the coach', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, family.familyId));
     const verdict = await handler().handle(
       db.database,
       turn('bonjour, quelle est mon adresse de transfert'),
@@ -1121,6 +1137,7 @@ describe('the forwarding door · the three-day promise', () => {
       to: forwardAnswerAddress(token, ref, CONFIG),
       from: `Sam <${parentEmail}>`,
       text: quotedYes('Yes'),
+      consent: 'yes',
       messageId: '<sweep-allowed@example.test>',
     });
 

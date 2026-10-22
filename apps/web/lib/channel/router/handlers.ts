@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import { answeredOnTheSameChannel, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import type { EveningRequestReader } from '~/lib/channel/checkin/request';
 import { connectorRevokeReply } from '~/lib/channel/connect/copy';
@@ -46,11 +45,11 @@ import {
   type ParentCallNameVoice,
   handleParentCallNameReply,
 } from '~/lib/channel/identity/parent-call-name';
-import { replyLanguage } from '~/lib/channel/language';
 import {
   type CoParentNumberDeps,
   deliverCoParentNumberInvite,
 } from '~/lib/channel/linq/coparent-invite';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
@@ -82,25 +81,8 @@ import {
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
 import { failureReply, healthDoneReply } from './copy';
-import { matchFastPath } from './fast-path';
 import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
-
-/**
- * May this handler act on a BARE affirmative right now?
- *
- * An ordinal ("yes 2") and an undo are exempt: neither can be conversation and neither can
- * be an answer to any question but the numbered one. Everything else consults
- * {@link soleOpenKind} — see there for why the old priority order had to go.
- */
-async function mayClaimBareWord(
-  ctx: HandlerContext,
-  command: { verb: string; index: number | null },
-  kind: OpenQuestionKind,
-): Promise<boolean> {
-  if (command.index !== null || command.verb === 'undo') return true;
-  return soleOpenKind(await ctx.openQuestions(), kind);
-}
 
 /**
  * A resolved intro answer, in the shape the lane's own reader produces.
@@ -212,13 +194,8 @@ export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
       // ordinal grammar: the two reads of the pending list are a co-parent's tap apart,
       // and only an id survives that.
       const resolved = ctx.resolved?.kind === 'approval' ? ctx.resolved : null;
-      const command = resolved
-        ? ({ verb: resolved.polarity, index: null } as const)
-        : matchFastPath(ctx.body);
-      if (!command) return { claimed: false };
-      if (!resolved && !(await mayClaimBareWord(ctx, command, 'approval'))) {
-        return { claimed: false };
-      }
+      if (!resolved) return { claimed: false };
+      const command = { verb: resolved.polarity, index: null } as const;
       if (
         await declinePrivilegedGroupSeat(database, {
           familyId: ctx.familyId,
@@ -376,7 +353,7 @@ export function connectorLinkHandler(
         return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
       }
 
-      const language = replyLanguage(ctx.body);
+      const language = await familySpeechLanguage(database, ctx.familyId);
       const target = named ?? fresh;
       if (!target) return { claimed: false };
       if (await familyGroupTurn(database, ctx)) {
@@ -536,7 +513,11 @@ export function connectorDisconnectHandler(
       return {
         claimed: true,
         outcome: outcome.status,
-        reply: connectorRevokeReply(replyLanguage(ctx.body), provider, outcome.status),
+        reply: await connectorRevokeReply(
+          await familySpeechLanguage(database, ctx.familyId),
+          provider,
+          outcome.status,
+        ),
       };
     },
   };
@@ -593,14 +574,14 @@ export function forwardAddressHandler(
     name: 'forward_address',
     resolves: new Set<OpenQuestionKind>(['forward_address_revoke']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const language = replyLanguage(ctx.body);
+      const language = await familySpeechLanguage(database, ctx.familyId);
 
       const answer = await readRevokeAnswer(database, ctx, log, ports.consent);
       if (answer === 'no') {
         return {
           claimed: true,
           outcome: 'revoke_declined',
-          reply: forwardRevokeDeclinedReply(language),
+          reply: await forwardRevokeDeclinedReply(language),
           // The name that tells the ledger this question was ANSWERED rather than merely
           // spoken past. Drop it and a no leaves the confirm standing for the rest of its
           // window (forward-request.ts `forwardRevokeAsk`).
@@ -613,7 +594,7 @@ export function forwardAddressHandler(
         return {
           claimed: true,
           outcome,
-          reply: forwardRevokeReply(language, outcome),
+          reply: await forwardRevokeReply(language, outcome),
           templateKey: FORWARD_REVOKE_TEMPLATE_KEY,
         };
       }
@@ -629,7 +610,7 @@ export function forwardAddressHandler(
           return {
             claimed: true,
             outcome: 'not_configured',
-            reply: forwardRevokeReply(language, 'not_configured'),
+            reply: await forwardRevokeReply(language, 'not_configured'),
           };
         }
         const ask = await writeConsentAsk(ports.ask, { kind: 'forward_revoke', language });
@@ -677,7 +658,7 @@ export function forwardAddressHandler(
       return {
         claimed: true,
         outcome: 'address_sent',
-        reply: forwardAddressReply(language, forwardAddress(token, config)),
+        reply: await forwardAddressReply(language, forwardAddress(token, config)),
       };
     },
   };
@@ -704,7 +685,7 @@ export function forwardAddressHandler(
  *   what ties the pick to the ask it was offered for, and the TTL and the receipts are
  *   what stop it reaching an ask that has lapsed or already been answered.
  *
- *   A BARE WORD, which costs nothing to read (affirmative.ts) and keeps round 6's rule
+ *   A BARE WORD, which the model reads, and which keeps round 6's rule
  *   exactly: EVERY open question must be this one — stricter than `soleOpenKind`, see the
  *   handler's own note — and the ask must still be Hale's LAST WORD to this parent. A word
  *   with no target in it can only mean the thing said last; if Hale has said anything
@@ -922,17 +903,7 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
     resolves: new Set<OpenQuestionKind>(['checkup_offer']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const resolved = ctx.resolved?.kind === 'checkup_offer' ? ctx.resolved : null;
-      // A tick or the word "done" is unambiguous and claims immediately. A bare "yes" is
-      // not, and M8's own reading of one drafts an appointment — so it waits for
-      // `soleOpenKind` like every other bare affirmative. A RESOLVED answer skips the
-      // wait: it named its question, which is what the wait exists to establish.
-      if (
-        !resolved &&
-        readAffirmative(ctx.body) === 'yes' &&
-        !soleOpenKind(await ctx.openQuestions(), 'checkup_offer')
-      ) {
-        return { claimed: false };
-      }
+      if (resolved?.polarity === 'no') return { claimed: false };
       const outcome = await handleHealthCheckpointReply(
         database,
         {
@@ -940,7 +911,7 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
           parentUserId: ctx.parentUserId,
           body: ctx.body,
           now: ctx.now,
-          resolved: resolved ? 'booking' : null,
+          resolved: resolved?.polarity === 'yes' ? 'booking' : null,
         },
         deps,
       );
@@ -1079,10 +1050,8 @@ export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
     name: 'coach_plan',
     resolves: new Set<OpenQuestionKind>(['plan_offer']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const resolved = ctx.resolved?.kind === 'plan_offer';
-      if (!resolved && readAffirmative(ctx.body) === 'yes') {
-        if (!soleOpenKind(await ctx.openQuestions(), 'plan_offer')) return { claimed: false };
-      }
+      const resolved = ctx.resolved?.kind === 'plan_offer' && ctx.resolved.polarity === 'yes';
+      if (!resolved) return { claimed: false };
       const outcome = await handlePlanYes(
         database,
         {
@@ -1189,9 +1158,8 @@ async function alreadyApprovedReply(
   deps: PrepareReplyDeps,
 ): Promise<HandlerVerdict | null> {
   if (!f14EnabledFor(ctx.familyId)) return null;
-  const command = matchFastPath(ctx.body);
-  if (command === null || command.verb !== 'yes' || command.index !== null) return null;
-  if (!(await mayClaimBareWord(ctx, command, 'approval'))) return null;
+  const resolved = ctx.resolved?.kind === 'approval' ? ctx.resolved : null;
+  if (!resolved || resolved.polarity !== 'yes') return null;
 
   const approved = await deps.approvedShortlistAskedOf(
     database,
@@ -1399,65 +1367,10 @@ async function preOpenReply(
     // An already-registering course belongs to VIL-337's watch and to the coach.
     if (bind.status === 'declined') return { claimed: false };
 
-    // A YES riding along with the link answers the checklist too — under THE SAME TWO
-    // PERMISSIONS the bare word needs, because riding beside a link does not make a
-    // word less bare. Without them "yes, here's the link" answering the coach's own
-    // prose question would be filed as the parent stating their setup was done. When
-    // either permission is missing the link still binds and the word is simply not a
-    // fact: the bind's outcome is what the turn is named by, and the checklist is asked
-    // again on its own leg. The BIND's ack is what goes back either way: two receipts
-    // for one message is two messages.
-    //
-    // The bind test is POSITIVE — the two statuses that mean a page was actually read —
-    // and not `!== 'refused'`: a negative check silently admits every status added
-    // after it, and a throttled or refused turn filing the parent's setup as a fact
-    // against a reply that says Hale read no page on this turn is the exact double
-    // receipt this block exists to prevent.
-    const alongside = matchFastPath(ctx.body.replace(link, ' '));
-    if (
-      (bind.status === 'bound' || bind.status === 'already_bound') &&
-      alongside !== null &&
-      alongside.index === null &&
-      alongside.verb !== 'undo' &&
-      (await mayClaimBareWord(ctx, alongside, 'registration_readiness')) &&
-      (await deps.readinessAskedLastAt(database, sequence, ctx.parentUserId)) !== null
-    ) {
-      await handleReadinessAnswer(
-        database,
-        {
-          sequence,
-          answeredByUserId: ctx.parentUserId,
-          ready: alongside.verb === 'yes',
-          read: 'keyword',
-          confidence: null,
-          inboundChannelMessageId,
-          now: ctx.now,
-        },
-        deps,
-      );
-    }
     return { claimed: true, outcome: bind.status, reply: bind.reply };
   }
 
-  const command = matchFastPath(ctx.body);
-  if (command === null || command.verb === 'undo' || command.index !== null) return null;
-  if (!(await mayClaimBareWord(ctx, command, 'registration_readiness'))) return null;
-  if ((await deps.readinessAskedLastAt(database, sequence, ctx.parentUserId)) === null) return null;
-
-  const outcome = await handleReadinessAnswer(
-    database,
-    {
-      sequence,
-      answeredByUserId: ctx.parentUserId,
-      ready: command.verb === 'yes',
-      read: 'keyword',
-      confidence: null,
-      inboundChannelMessageId,
-      now: ctx.now,
-    },
-    deps,
-  );
-  return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+  return null;
 }
 
 /**

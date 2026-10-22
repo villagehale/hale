@@ -55,7 +55,6 @@ const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const ASK_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'calendar-email-ask.md');
 const NOTE_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'calendar-invite-note.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 const FACTS_LINT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'loop', 'voice', 'facts-lint.ts');
 
 // ── the request shapes, replicated from calendar-invite-voice.ts ────────────
@@ -87,11 +86,10 @@ const tidy = (raw) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-function askViolations(text, smsEncoding) {
+function askViolations(text) {
   const out = [];
   if (text === '') out.push('empty');
   if (text.length > MAX_ASK_CHARS) out.push(`over_char_cap (${text.length})`);
-  if (smsEncoding(text) !== 'gsm7') out.push('not_gsm7');
   const questions = (text.match(/\?/g) ?? []).length;
   if (questions > 1) out.push(`too_many_questions (${questions})`);
   if (!/email/i.test(text)) out.push('never_says_email');
@@ -191,7 +189,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const { findInventedFacts } = await tsImport(FACTS_LINT_SRC, import.meta.url);
   const askSkill = await agent.loadSkill(ASK_SKILL);
   const noteSkill = await agent.loadSkill(NOTE_SKILL);
@@ -237,7 +234,7 @@ async function main() {
         ).value.text;
 
     const text = tidy(raw);
-    const failures = askViolations(text, smsEncoding);
+    const failures = askViolations(text);
     const verdict = await judgeAsk(fixture.id, {
       ask: text,
       reference: REFERENCE_ASK,

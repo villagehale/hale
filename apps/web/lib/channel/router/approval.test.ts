@@ -1,7 +1,5 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import { matchFastPath } from './fast-path';
-import { approvalSubjects } from './open-questions';
 import {
   type ApprovalSpine,
   type PendingAction,
@@ -9,6 +7,8 @@ import {
   type SpineRefusal,
   resolveApproval,
 } from './approval';
+import type { FastPathCommand } from './fast-path';
+import { approvalSubjects } from './open-questions';
 
 /**
  * The approval fast-path, resolved against a scripted spine. The spine is faked (it is
@@ -71,12 +71,16 @@ const action = (
   reviewerApproved,
 });
 
+const YES: FastPathCommand = { verb: 'yes', index: null };
+const NO: FastPathCommand = { verb: 'no', index: null };
+const UNDO: FastPathCommand = { verb: 'undo', index: null };
+const yesAt = (index: number): FastPathCommand => ({ verb: 'yes', index });
+const noAt = (index: number): FastPathCommand => ({ verb: 'no', index });
+
 function run(
-  body: string,
+  command: FastPathCommand,
   options: Parameters<typeof spine>[0] = {},
 ): Promise<{ outcome: Awaited<ReturnType<typeof resolveApproval>>; calls: SpyCall[] }> {
-  const command = matchFastPath(body);
-  if (!command) throw new Error(`test bug: ${JSON.stringify(body)} is not a fast-path command`);
   const built = spine(options);
   return resolveApproval(
     DB,
@@ -87,27 +91,27 @@ function run(
 
 describe('resolveApproval — one pending action', () => {
   it('approves it on a bare yes, stamped with the texting parent', async () => {
-    const { outcome, calls } = await run('yes', { pending: [action('a-1')] });
+    const { outcome, calls } = await run(YES, { pending: [action('a-1')] });
 
     expect(outcome.status).toBe('approved');
     expect(calls).toEqual([{ op: 'approve', actionId: 'a-1', actor: PARENT }]);
   });
 
   it('declines it on a bare no', async () => {
-    const { outcome, calls } = await run('no', { pending: [action('a-1')] });
+    const { outcome, calls } = await run(NO, { pending: [action('a-1')] });
 
     expect(outcome.status).toBe('declined');
     expect(calls).toEqual([{ op: 'decline', actionId: 'a-1', actor: PARENT }]);
   });
 
   it('names what it did in the reply — a receipt, not an acknowledgement', async () => {
-    const { outcome } = await run('yes', { pending: [action('a-1', 'calendar_add')] });
+    const { outcome } = await run(YES, { pending: [action('a-1', 'calendar_add')] });
 
     expect(outcome.reply).toMatch(/add to your calendar/i);
   });
 
   it('reports honestly when the spine refuses on a state it cannot explain', async () => {
-    const { outcome } = await run('yes', { pending: [action('a-1')], refuse: 'unavailable' });
+    const { outcome } = await run(YES, { pending: [action('a-1')], refuse: 'unavailable' });
 
     expect(outcome.status).toBe('conflict');
     expect(outcome.reply).toMatch(/nothing was changed/i);
@@ -120,7 +124,7 @@ describe('resolveApproval — one pending action', () => {
    * work (it fails identically, for 24h in the undo case).
    */
   it('says the row was already answered rather than blaming itself', async () => {
-    const { outcome } = await run('yes', {
+    const { outcome } = await run(YES, {
       pending: [action('a-1')],
       refuse: 'already_resolved',
     });
@@ -138,8 +142,8 @@ describe('resolveApproval — one pending action', () => {
    * What it must say: Hale is still on it, they have nothing to do. What it must not
    * say: a verdict, a check, a review, or a clock Hale does not own.
    */
-  it('says the pre-review state in the parent\'s terms, with no reviewer jargon', async () => {
-    const { outcome } = await run('yes', {
+  it("says the pre-review state in the parent's terms, with no reviewer jargon", async () => {
+    const { outcome } = await run(YES, {
       pending: [action('a-1')],
       refuse: 'not_reviewer_approved',
     });
@@ -154,7 +158,7 @@ describe('resolveApproval — one pending action', () => {
   });
 
   it('declining a resolved row gets the same state receipt, not an apology', async () => {
-    const { outcome } = await run('no', {
+    const { outcome } = await run(NO, {
       pending: [action('a-1')],
       refuse: 'already_resolved',
     });
@@ -171,21 +175,21 @@ describe('resolveApproval — nothing pending', () => {
    * go rather than claiming every affirmative a parent ever sends.
    */
   it('DECLINES a bare yes so the message falls through to the next handler', async () => {
-    const { outcome, calls } = await run('yes', { pending: [] });
+    const { outcome, calls } = await run(YES, { pending: [] });
 
     expect(outcome.status).toBe('declined_to_claim');
     expect(calls).toEqual([]);
   });
 
   it('DECLINES a bare no the same way', async () => {
-    const { outcome } = await run('no', { pending: [] });
+    const { outcome } = await run(NO, { pending: [] });
     expect(outcome.status).toBe('declined_to_claim');
   });
 
   /** An ordinal cannot be conversation — it can only be an answer to a numbered list —
    * so it is answered rather than passed on. */
   it('claims an ORDINAL and says plainly that nothing is waiting', async () => {
-    const { outcome, calls } = await run('yes 2', { pending: [] });
+    const { outcome, calls } = await run(yesAt(2), { pending: [] });
 
     expect(outcome.status).toBe('nothing_pending');
     expect(outcome.reply).toMatch(/nothing'?s? waiting/i);
@@ -194,11 +198,15 @@ describe('resolveApproval — nothing pending', () => {
 });
 
 describe('resolveApproval — more than one pending action', () => {
-  const three = [action('a-1', 'calendar_add'), action('a-2', 'calendar_move'), action('a-3', 'book_checkup')];
+  const three = [
+    action('a-1', 'calendar_add'),
+    action('a-2', 'calendar_move'),
+    action('a-3', 'book_checkup'),
+  ];
 
   /** The safety property: an ambiguous affirmative NEVER executes. */
   it('executes nothing on a bare yes', async () => {
-    const { outcome, calls } = await run('yes', { pending: three });
+    const { outcome, calls } = await run(YES, { pending: three });
 
     expect(outcome.status).toBe('declined_to_claim');
     expect(calls).toEqual([]);
@@ -221,14 +229,14 @@ describe('resolveApproval — more than one pending action', () => {
    * for a coach that cannot run at all.
    */
   it('DOES NOT CLAIM a bare yes it cannot place - the coach has the thread', async () => {
-    const { outcome, calls } = await run('yes', { pending: three });
+    const { outcome, calls } = await run(YES, { pending: three });
 
     expect(outcome).toEqual({ status: 'declined_to_claim', reply: null, actionId: null });
     expect(calls).toEqual([]);
   });
 
   it('never assembles an option menu out of action-type labels', async () => {
-    const { outcome } = await run('yes', { pending: three });
+    const { outcome } = await run(YES, { pending: three });
 
     expect(outcome.reply).toBeNull();
   });
@@ -236,22 +244,22 @@ describe('resolveApproval — more than one pending action', () => {
   it('still resolves the ordinal a parent chooses to type - no read was removed', async () => {
     // Nothing prints "YES 2" any more. It keeps working, because a parent who learned it
     // must not discover it has been taken away.
-    const { calls } = await run('yes 2', { pending: three });
+    const { calls } = await run(yesAt(2), { pending: three });
     expect(calls).toEqual([{ op: 'approve', actionId: 'a-2', actor: PARENT }]);
   });
 
   it('resolves the ordinal to the action at that position', async () => {
-    const { calls } = await run('yes 2', { pending: three });
+    const { calls } = await run(yesAt(2), { pending: three });
     expect(calls).toEqual([{ op: 'approve', actionId: 'a-2', actor: PARENT }]);
   });
 
   it('declines the ordinal position on NO 3', async () => {
-    const { calls } = await run('no 3', { pending: three });
+    const { calls } = await run(noAt(3), { pending: three });
     expect(calls).toEqual([{ op: 'decline', actionId: 'a-3', actor: PARENT }]);
   });
 
   it('refuses an ordinal past the end of the list rather than wrapping', async () => {
-    const { outcome, calls } = await run('yes 3', { pending: [action('a-1'), action('a-2')] });
+    const { outcome, calls } = await run(yesAt(3), { pending: [action('a-1'), action('a-2')] });
 
     expect(outcome.status).toBe('out_of_range');
     expect(calls).toEqual([]);
@@ -259,7 +267,7 @@ describe('resolveApproval — more than one pending action', () => {
 
   it('does not claim a bare yes against eight pending actions either', async () => {
     const many = Array.from({ length: 8 }, (_, i) => action(`a-${i + 1}`));
-    const { outcome, calls } = await run('yes', { pending: many });
+    const { outcome, calls } = await run(YES, { pending: many });
 
     expect(outcome.reply).toBeNull();
     expect(calls).toEqual([]);
@@ -269,12 +277,11 @@ describe('resolveApproval — more than one pending action', () => {
     // The other direction, and the whole reason this is not simply "never claim a bare
     // yes": with one thing waiting there is nothing to confuse it with, and making the
     // parent repeat themselves would be the failure this fix is not allowed to cause.
-    const { outcome, calls } = await run('yes', { pending: [action('a-1', 'calendar_add')] });
+    const { outcome, calls } = await run(YES, { pending: [action('a-1', 'calendar_add')] });
 
     expect(outcome.status).toBe('approved');
     expect(calls).toEqual([{ op: 'approve', actionId: 'a-1', actor: PARENT }]);
   });
-
 });
 
 /**
@@ -303,7 +310,7 @@ describe('approvalSubjects', () => {
 
 describe('resolveApproval — undo', () => {
   it('reverses the most recent reversible action', async () => {
-    const { outcome, calls } = await run('undo', { undoable: action('a-9') });
+    const { outcome, calls } = await run(UNDO, { undoable: action('a-9') });
 
     expect(outcome.status).toBe('undone');
     expect(calls).toEqual([{ op: 'undo', actionId: 'a-9', actor: PARENT }]);
@@ -312,7 +319,7 @@ describe('resolveApproval — undo', () => {
   /** Undo is unmistakable, so it is always answered — never handed to the agent to
    * paraphrase, and never met with silence. */
   it('claims the message and says so when there is nothing to undo', async () => {
-    const { outcome, calls } = await run('undo', { undoable: null });
+    const { outcome, calls } = await run(UNDO, { undoable: null });
 
     expect(outcome.status).toBe('nothing_to_undo');
     expect(outcome.reply).toMatch(/nothing/i);
@@ -320,7 +327,7 @@ describe('resolveApproval — undo', () => {
   });
 
   it('says the undo window closed rather than promising another minute', async () => {
-    const { outcome } = await run('undo', {
+    const { outcome } = await run(UNDO, {
       undoable: action('a-9'),
       refuse: 'undo_window_expired',
     });
@@ -332,7 +339,7 @@ describe('resolveApproval — undo', () => {
   });
 
   it('says an action is not one it can take back, rather than that it broke', async () => {
-    const { outcome } = await run('undo', {
+    const { outcome } = await run(UNDO, {
       undoable: action('a-9', 'send_email'),
       refuse: 'not_reversible',
     });
@@ -343,7 +350,7 @@ describe('resolveApproval — undo', () => {
   });
 
   it('ignores the pending queue entirely — undo names an EXECUTED action', async () => {
-    const { calls } = await run('undo', {
+    const { calls } = await run(UNDO, {
       pending: [action('pending-1')],
       undoable: action('executed-1'),
     });
@@ -365,9 +372,11 @@ describe('resolveApproval — undo', () => {
 describe('two parents answering one shortlist card', () => {
   const CO_PARENT = '33333333-3333-4333-8333-333333333333';
 
-  const answer = (body: string, parentUserId: string, options: Parameters<typeof spine>[0]) => {
-    const command = matchFastPath(body);
-    if (!command) throw new Error(`test bug: ${JSON.stringify(body)}`);
+  const answer = (
+    command: FastPathCommand,
+    parentUserId: string,
+    options: Parameters<typeof spine>[0],
+  ) => {
     const built = spine(options);
     return resolveApproval(
       DB,
@@ -377,7 +386,7 @@ describe('two parents answering one shortlist card', () => {
   };
 
   it('lets the co-parent’s YES approve the household’s shortlist, stamped with them', async () => {
-    const { outcome, calls } = await answer('yes', CO_PARENT, {
+    const { outcome, calls } = await answer(YES, CO_PARENT, {
       pending: [action('shortlist-1', 'registration_shortlist')],
     });
 
@@ -390,7 +399,7 @@ describe('two parents answering one shortlist card', () => {
     // verb with nothing pending falls through to the coach, which can say something
     // true about a morning that is already handled — and, crucially, approves nothing
     // a second time.
-    const { outcome, calls } = await answer('yes', PARENT, { pending: [] });
+    const { outcome, calls } = await answer(YES, PARENT, { pending: [] });
 
     expect(outcome).toEqual({ status: 'declined_to_claim', reply: null, actionId: null });
     expect(calls).toEqual([]);
@@ -401,14 +410,12 @@ describe('two parents answering one shortlist card', () => {
     // row by id. It is gone from the queue, so nothing is approved twice and the reply
     // says what happened rather than asking them to try again.
     const built = spine({ pending: [] });
-    const command = matchFastPath('yes');
-    if (!command) throw new Error('test bug');
     const outcome = await resolveApproval(
       DB,
       {
         familyId: FAMILY,
         parentUserId: PARENT,
-        command,
+        command: YES,
         now: NOW,
         targetActionId: 'shortlist-1',
       },

@@ -1,4 +1,5 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { capabilityReply } from './copy';
@@ -63,6 +64,12 @@ export interface ChannelTurn {
    * guessed by the model.
    */
   audience: 'direct' | 'group';
+  /**
+   * Linq parts on this turn. The runtime fetches an image into a content block
+   * and names a video or a file in the context so the model writes the reply.
+   * Absent on a text-only turn.
+   */
+  inboundMedia?: readonly InboundMediaPart[];
 }
 
 /**

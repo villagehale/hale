@@ -56,6 +56,14 @@ const INBOUND_MESSAGE_ID = '44444444-4444-4444-8444-444444444444';
  * lane answers from the registration dataset AS OF this instant. */
 const TURN_NOW = new Date('2026-07-30T12:00:00.000Z');
 
+function placed(
+  kind: ResolvedAnswer['kind'],
+  questionId: string,
+  polarity: ResolvedAnswer['polarity'] = 'yes',
+): ResolvedAnswer {
+  return { kind, questionId, polarity, confidence: 'high' };
+}
+
 const turn = (
   body: string,
   options: { resolved?: ResolvedAnswer | null; open?: OpenQuestion[] } = {},
@@ -209,7 +217,10 @@ const BOOKING_CHECKPOINT = `well_baby_18_months:${CHILD}:1`;
 describe('approvalHandler', () => {
   it('claims an approval and executes it through the spine', async () => {
     const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
-    const verdict = await approvalHandler(s).handle(DB, turn('yes'));
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes', { resolved: placed('approval', 'a-1') }),
+    );
 
     expect(verdict.claimed).toBe(true);
     expect(s.approved).toEqual(['a-1']);
@@ -257,7 +268,10 @@ describe('healthReplyHandler', () => {
   /** Rule #4: a "yes" on a booking checkpoint DRAFTS, it never books. */
   it('drafts for approval rather than acting, and says so', async () => {
     const deps = healthDeps(BOOKING_CHECKPOINT);
-    const verdict = await healthReplyHandler(deps).handle(DB, turn('yes'));
+    const verdict = await healthReplyHandler(deps).handle(
+      DB,
+      turn('yes', { resolved: placed('checkup_offer', 'offer-1') }),
+    );
 
     expect(deps.drafted).toEqual(['book_checkup']);
     expect(verdict.claimed && verdict.reply).toBe(writtenAsk({ kind: 'checkup_drafted' }));
@@ -275,7 +289,10 @@ describe('who owns "yes"', () => {
     const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const health = healthDeps(BOOKING_CHECKPOINT);
 
-    const first = await approvalHandler(s).handle(DB, turn('yes'));
+    const first = await approvalHandler(s).handle(
+      DB,
+      turn('yes', { resolved: placed('approval', 'a-1') }),
+    );
     expect(first.claimed).toBe(true);
     expect(s.approved).toEqual(['a-1']);
     expect(health.drafted).toEqual([]);
@@ -290,8 +307,9 @@ describe('who owns "yes"', () => {
     const s = spine([]);
     const health = healthDeps(BOOKING_CHECKPOINT);
 
-    expect((await approvalHandler(s).handle(DB, turn('yes'))).claimed).toBe(false);
-    expect((await healthReplyHandler(health).handle(DB, turn('yes'))).claimed).toBe(true);
+    const answered = turn('yes', { resolved: placed('checkup_offer', 'offer-1') });
+    expect((await approvalHandler(s).handle(DB, answered)).claimed).toBe(false);
+    expect((await healthReplyHandler(health).handle(DB, answered)).claimed).toBe(true);
     expect(health.drafted).toEqual(['book_checkup']);
   });
 });
@@ -435,7 +453,10 @@ describe('handler order — registration last', () => {
     const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
     const sequence = sequenceDeps();
 
-    expect((await approvalHandler(s).handle(DB, turn('yes'))).claimed).toBe(true);
+    expect(
+      (await approvalHandler(s).handle(DB, turn('yes', { resolved: placed('approval', 'a-1') })))
+        .claimed,
+    ).toBe(true);
     expect(s.approved).toEqual(['a-1']);
     expect(sequence.reasks).toBe(0);
   });
@@ -447,8 +468,9 @@ describe('handler order — registration last', () => {
     const health = healthDeps(BOOKING_CHECKPOINT);
     const sequence = sequenceDeps();
 
-    expect((await approvalHandler(s).handle(DB, turn('yes'))).claimed).toBe(false);
-    expect((await healthReplyHandler(health).handle(DB, turn('yes'))).claimed).toBe(true);
+    const answered = turn('yes', { resolved: placed('checkup_offer', 'offer-1') });
+    expect((await approvalHandler(s).handle(DB, answered)).claimed).toBe(false);
+    expect((await healthReplyHandler(health).handle(DB, answered)).claimed).toBe(true);
     expect(health.drafted).toEqual(['book_checkup']);
     expect(sequence.reasks).toBe(0);
   });
@@ -495,7 +517,14 @@ describe('the village intro lane and the lanes behind it', () => {
     const pending = spine([
       { actionId: 'act-1', actionType: 'book_checkup', reviewerApproved: true },
     ]);
-    expect((await approvalHandler(pending).handle(DB, turn('yes'))).claimed).toBe(true);
+    expect(
+      (
+        await approvalHandler(pending).handle(
+          DB,
+          turn('yes', { resolved: placed('approval', 'act-1') }),
+        )
+      ).claimed,
+    ).toBe(true);
     expect(pending.approved).toEqual(['act-1']);
   });
 
@@ -695,7 +724,10 @@ describe('a bare affirmative with more than one kind of question open', () => {
 
   it('still approves when the drafted change is the only thing waiting', async () => {
     const s = spine(pending);
-    const verdict = await approvalHandler(s).handle(DB, turn('yes', { open: [APPROVAL_QUESTION] }));
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes', { open: [APPROVAL_QUESTION], resolved: placed('approval', 'a-1') }),
+    );
 
     expect(verdict.claimed).toBe(true);
     expect(s.approved).toEqual(['a-1']);
@@ -715,8 +747,8 @@ describe('a bare affirmative with more than one kind of question open', () => {
     expect(s.approved).toEqual([]);
   });
 
-  it('still answers an ORDINAL, which cannot be an answer to anything else', async () => {
-    // "yes 2" is not conversation and is not an intro answer. It never waits.
+  it('does not treat an ordinal as a command', async () => {
+    // "yes 2" used to pick a row. The model names the action by id; a digit is not a claim.
     const s = spine([
       { actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true },
       { actionId: 'a-2', actionType: 'reschedule_event', reviewerApproved: true },
@@ -726,17 +758,17 @@ describe('a bare affirmative with more than one kind of question open', () => {
       turn('yes 2', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
     );
 
-    expect(verdict.claimed).toBe(true);
-    expect(s.approved).toEqual(['a-2']);
+    expect(verdict.claimed).toBe(false);
+    expect(s.approved).toEqual([]);
   });
 
-  it('still answers UNDO, which names the last thing Hale did', async () => {
+  it('does not treat the word undo as a command', async () => {
     const s = spine([]);
     const verdict = await approvalHandler(s).handle(
       DB,
       turn('undo', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
     );
-    expect(verdict.claimed).toBe(true);
+    expect(verdict.claimed).toBe(false);
   });
 
   it('holds the health nudge back too - its question is not even a yes/no one', async () => {
@@ -922,31 +954,26 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     expect(prepare.readiness).toEqual([]);
   });
 
-  it('records a bare YES when readiness is the only thing open', async () => {
+  it('does not record readiness off the word yes', async () => {
     const prepare = prepareDeps();
     const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
       DB,
       preOpenTurn('yes', { open: [READINESS_QUESTION] }),
     );
 
-    expect(verdict.claimed).toBe(true);
-    if (!verdict.claimed) throw new Error('unreachable');
-    expect(verdict.outcome).toBe('readiness_recorded');
-    expect(prepare.readiness).toEqual([
-      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword', actor: PARENT },
-    ]);
+    expect(verdict.claimed).toBe(false);
+    expect(prepare.readiness).toEqual([]);
   });
 
-  it('records a bare NO — a no is a fact this feature keeps', async () => {
+  it('does not record readiness off the word no', async () => {
     const prepare = prepareDeps();
-    await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
+    const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
       DB,
       preOpenTurn('no', { open: [READINESS_QUESTION] }),
     );
 
-    expect(prepare.readiness).toEqual([
-      { ready: false, inbound: INBOUND_MESSAGE_ID, read: 'keyword', actor: PARENT },
-    ]);
+    expect(verdict.claimed).toBe(false);
+    expect(prepare.readiness).toEqual([]);
   });
 
   it('claims nothing when a drafted action is open too — nobody gets an ambiguous yes', async () => {
@@ -977,7 +1004,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     expect(prepare.readiness).toEqual([]);
   });
 
-  it('records both when the link and the answer arrive in one message, and acks the bind', async () => {
+  it('binds a link and does not file readiness off a riding yes', async () => {
     const prepare = prepareDeps();
     const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
       DB,
@@ -987,10 +1014,7 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed) throw new Error('unreachable');
     expect(prepare.bound).toHaveLength(1);
-    expect(prepare.readiness).toEqual([
-      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword', actor: PARENT },
-    ]);
-    // ONE ack, and it is the bind's: two receipts for one message is two messages.
+    expect(prepare.readiness).toEqual([]);
     expect(verdict.reply).toContain("Markham's portal");
     expect(verdict.outcome).toBe('bound');
   });
@@ -1010,10 +1034,8 @@ describe('sequenceReplyHandler · the pre-open branch', () => {
       },
     }).handle(DB, preOpenTurn('yes', { open: [READINESS_QUESTION] }));
 
-    expect(verdict.claimed).toBe(true);
-    expect(prepare.readiness).toEqual([
-      { ready: true, inbound: INBOUND_MESSAGE_ID, read: 'keyword', actor: PARENT },
-    ]);
+    expect(verdict.claimed).toBe(false);
+    expect(prepare.readiness).toEqual([]);
   });
 
   /**
@@ -1248,7 +1270,7 @@ describe('sequenceReplyHandler · a yes to a card the household already approved
 
     const verdict = await sequenceReplyHandler(sequenceDeps({ open: false }), prepare).handle(
       DB,
-      preOpenTurn('yes'),
+      preOpenTurn('yes', { resolved: placed('approval', 'seq-1') }),
     );
 
     expect(verdict.claimed).toBe(true);
