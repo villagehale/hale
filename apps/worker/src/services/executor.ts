@@ -1,5 +1,4 @@
 import type { ApprovedAction, CalendarPlacementPayload, ExecutionResult } from '@hale/types';
-import { Resend } from 'resend';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import {
@@ -39,16 +38,29 @@ interface ExecutorRunInput {
   actorUserId?: string | null;
 }
 
-interface SendResult {
+export interface SendResult {
   messageId?: string;
   submittedAt?: string;
 }
 
+/** Who an approved email is sent on behalf of — the parent whose Gmail it leaves. */
+export interface EmailSendContext {
+  familyId: string;
+  /** The approving parent. Null on an autonomous pass with no single actor. */
+  actorUserId: string | null;
+}
+
 /**
- * Injectable seams for the Executor's outbound side. Defaults hit Postgres +
- * Resend; tests pass stubs to prove the B9 idempotency invariant without a
- * live DB or live provider.
+ * Sends an approved email from the approving parent's own connected Gmail. Bound by
+ * the web drain (it owns the OAuth token vault); a process that has not bound one gets
+ * {@link unwiredEmailSender}, which fails LOUD with HALE_NOT_CONFIGURED.
  */
+export type EmailSender = (payload: EmailPayload, context: EmailSendContext) => Promise<SendResult>;
+
+export const unwiredEmailSender: EmailSender = async () => {
+  throw notConfigured('no Gmail sender bound in this process; cannot send email.');
+};
+
 export interface InternalWriteInput {
   familyId: string;
   actionId: string;
@@ -61,11 +73,10 @@ export interface InternalWriteInput {
 
 /**
  * A placement that stops at `family_events` is on HALE's calendar, not the
- * family's. The invite is what closes that gap: an iTIP object emailed to each
- * parent, which their client offers to add. A fresh or re-timed event INVITES; a
- * cancelled one WITHDRAWS the invite already sent.
+ * family's. The invite is what closes that gap: a tap-to-add calendar link texted to
+ * each parent. A CANCEL has no link form and is named as such.
  *
- * The sender itself lives in apps/web (the ICS composer and the A2 dispatch that
+ * The sender itself lives in apps/web (the ICS link composer and the A2 dispatch that
  * owns quiet hours, consent, the ledger and the audit row) and is INJECTED here,
  * because the worker sits below web in the dependency order and must not reach up
  * into it. A process that has not bound one gets {@link unwiredCalendarInvites},
@@ -86,43 +97,27 @@ export type CalendarInviteOutcome =
   | 'sent'
   /** This exact revision already went out (a re-drive of the same placement). */
   | 'already_sent'
-  /** No address to send a CANCEL to. A REQUEST for an addressless parent goes as a
-   * tap-to-add LINK by text instead, so this is now the cancellation path alone. */
-  | 'no_email_on_file'
-  /** No address AND no live SMS channel — Hale cannot reach this parent at all. */
+  /** A CANCEL: the invite exists only as a tap-to-add link, which has no withdraw
+   * form, so nothing is sent. */
+  | 'no_withdraw_form'
+  /** No live SMS channel — Hale cannot reach this parent at all. */
   | 'no_channel'
-  /** No email provider wired in this environment. */
+  /** No SMS adapter wired in this environment. */
   | 'not_configured'
   /** Dispatch policy refused the leg (pref / consent / cap / quiet hours). */
   | 'suppressed'
-  /** No sendable draft after the composer's retry budget — nothing was sent, and
-   * nothing preset was sent in its place (founder: no preset message bodies). */
-  | 'compose_deferred'
   | 'send_failed'
   /** The placement row could not be read back (gone, or another family's). */
   | 'event_not_found';
 
 export interface CalendarInviteParentOutcome {
   parentUserId: string;
-  /** Which form this parent was sent: the iTIP attachment, or the tap-to-add link. */
-  channel: 'email' | 'sms';
+  /** The form this parent was sent: the tap-to-add link, by text. */
+  channel: 'sms';
   outcome: CalendarInviteOutcome;
   /** The dispatch's own ledger status behind a 'suppressed' or 'send_failed'. */
   reason?: string;
 }
-
-/** Whether Hale asked this family for an email address, and why not when it didn't. */
-export type CalendarInviteAskOutcome =
-  | 'not_needed'
-  | 'sent'
-  | 'already_asked'
-  | 'suppressed'
-  /** The composer produced nothing sendable; the once-ever claim stays UNCONSUMED, so
-   * the next placement asks again. */
-  | 'compose_deferred'
-  | 'not_configured'
-  | 'send_failed'
-  | 'no_parent_to_ask';
 
 export type CalendarInviteReport =
   /** No sender bound in this process — nothing was composed and nothing was sent. */
@@ -130,14 +125,10 @@ export type CalendarInviteReport =
   /** The sender threw. The placement stands; the invite is the named residue. */
   | { status: 'errored'; message: string }
   /** The calendar write came back `already_written`: another pass owns this write and
-   * its invite (audit P1-4) — sending again here would double the parent's email. A
+   * its invite (audit P1-4) — sending again here would double the parent's text. A
    * named skip (rule #11), recorded in the execution detail like every other leg. */
   | { status: 'skipped_already_written' }
-  | {
-      status: 'reported';
-      parents: CalendarInviteParentOutcome[];
-      ask: CalendarInviteAskOutcome;
-    };
+  | { status: 'reported'; parents: CalendarInviteParentOutcome[] };
 
 export interface CalendarInviteSender {
   send(request: CalendarInviteRequest): Promise<CalendarInviteReport>;
@@ -165,8 +156,8 @@ export interface ExecutorDeps {
   confirmOutboundSend: (actionId: string, providerMessageId: string) => Promise<void>;
   /** Audits a suppressed redelivery (action.send_skipped_duplicate). */
   recordSkippedDuplicate: (familyId: string, actionId: string) => Promise<void>;
-  /** The actual email transport. */
-  sendEmail: (payload: EmailPayload) => Promise<SendResult>;
+  /** Sends an approved email from the approving parent's own Gmail. */
+  sendEmail: EmailSender;
   /** Pins an accepted village item onto the current week's plan (add_to_routine). */
   addToRoutine: (input: InternalWriteInput) => Promise<InternalWriteOutcome>;
   /** Records an accepted village item as an undated digest note (add_to_digest_only). */
@@ -177,7 +168,7 @@ export interface ExecutorDeps {
   moveCalendarEvent: (input: CalendarMoveInput) => Promise<CalendarWriteResult>;
   /** Soft-deletes an existing placement (calendar_cancel). */
   cancelCalendarEvent: (input: CalendarCancelInput) => Promise<CalendarWriteResult>;
-  /** Emails each parent the placement's iTIP object through the A2 dispatch. */
+  /** Texts each parent the placement's tap-to-add link through the A2 dispatch. */
   sendCalendarInvites: CalendarInviteSender;
   /**
    * Writes the same placement to the parent's Google Calendar when the web
@@ -198,7 +189,7 @@ export function defaultExecutorDeps(): ExecutorDeps {
     confirmOutboundSend: (actionId, providerMessageId) =>
       confirmOutboundSendDb(actionId, providerMessageId),
     recordSkippedDuplicate: (familyId, actionId) => recordSendSkippedDuplicate(familyId, actionId),
-    sendEmail: resendSend,
+    sendEmail: unwiredEmailSender,
     addToRoutine: (input) => addToRoutineDb(input),
     addToDigest: (input) => addToDigestDb(input),
     addToCalendar: (input) => addToCalendarDb(input),
@@ -213,7 +204,8 @@ export function defaultExecutorDeps(): ExecutorDeps {
 /**
  * Executor — dispatches approved actions to real-world tools.
  *
- * Email send is implemented via the Resend SDK. Other action types
+ * Email send goes out through the approving parent's own Gmail (an injected
+ * port the web drain binds). Other action types
  * require integrations (Google Calendar OAuth, Stripe + merchant
  * adapters, Computer Use for portal automation) that the worker
  * doesn't yet have credentials for. Those throw a clear
@@ -331,7 +323,10 @@ async function sendEmail(input: ExecutorRunInput, deps: ExecutorDeps): Promise<E
     };
   }
 
-  const result = await deps.sendEmail(payload);
+  const result = await deps.sendEmail(payload, {
+    familyId: input.familyId,
+    actorUserId: input.actorUserId ?? null,
+  });
   const messageId = result.messageId;
   if (!messageId) {
     throw new Error('email provider returned no message id');
@@ -632,32 +627,6 @@ function parsePayloadInstant(v: unknown, field: string, actionType: string): Dat
 function optionalPayloadInstant(v: unknown, field: string, actionType: string): Date | null {
   if (v === undefined || v === null || v === '') return null;
   return parsePayloadInstant(v, field, actionType);
-}
-
-// ─── Resend transport ─────────────────────────────────────────────────────
-
-const DEFAULT_FROM = 'hello@villagehale.com';
-
-export async function resendSend(payload: EmailPayload): Promise<SendResult> {
-  if (!process.env.RESEND_API_KEY) {
-    throw notConfigured('RESEND_API_KEY is not set; cannot send email.');
-  }
-  const from = payload.from ?? process.env.RESEND_FROM ?? DEFAULT_FROM;
-
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  const { data, error } = await resend.emails.send({
-    from,
-    // `to` is required upstream (sendEmail validates the payload), so it is set.
-    to: payload.to as string,
-    cc: payload.cc,
-    subject: payload.subject as string,
-    text: payload.body as string,
-  });
-
-  if (error) {
-    throw new Error(`Resend send failed (${error.name}): ${error.message}`);
-  }
-  return { messageId: data?.id };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────

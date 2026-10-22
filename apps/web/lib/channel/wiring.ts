@@ -2,7 +2,6 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
-import { hasOptedOut, recordEmailSend } from '~/lib/cron/email-compliance';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { DispatchPorts } from './dispatch';
 import { dedupeActive, recordChannelMessage } from './ledger';
@@ -12,8 +11,7 @@ import type { Channel, ChannelKind, TemplateRenderer } from './types';
 /**
  * Builds the prod DispatchPorts from a db handle + the injected channels/renderer.
  * The dispatch stays a pure decision engine; this is the only place it touches the
- * real db, the CASL email seam (hasOptedOut/recordEmailSend), the loop prefs, and
- * the SMS-consent read — so policy lives in exactly one place.
+ * real db, the loop prefs, and the SMS-consent read — so policy lives in exactly one place.
  */
 export function buildDispatchPorts(
   database: Database,
@@ -29,15 +27,13 @@ export function buildDispatchPorts(
     loadPrefs: (userId) => loadLoopPrefsView(userId, database),
     loadParent: async (userId) => {
       const rows = await database
-        .select({ email: schema.users.email, timezone: schema.users.timezone })
+        .select({ timezone: schema.users.timezone })
         .from(schema.users)
         .where(eq(schema.users.id, userId))
         .limit(1);
       const row = rows[0];
-      return { email: row?.email ?? null, timezone: row?.timezone ?? 'America/Toronto' };
+      return { timezone: row?.timezone ?? 'America/Toronto' };
     },
-    emailOptedOut: (userId, emailType) =>
-      hasOptedOut(database, userId, emailType as Parameters<typeof hasOptedOut>[2]),
     // The live SMS-consent gate is VIL-212's source of truth: an active, verified,
     // non-revoked parent_channels row (consent_records is its append-only CASL
     // ledger, not the live state).
@@ -45,14 +41,6 @@ export function buildDispatchPorts(
     activeDedupe: (dedupeKey) => dedupeActive(dedupeKey, database),
     record: (write) => recordChannelMessage(write, database),
     capture: captureServerEvent,
-    recordEmailSend: (input) =>
-      recordEmailSend(database, {
-        userId: input.userId,
-        familyId: input.familyId,
-        emailType: input.emailType as Parameters<typeof recordEmailSend>[1]['emailType'],
-        recipient: input.recipient,
-        providerMessageId: input.providerMessageId,
-      }),
     audit: async (r) => {
       await database.insert(schema.auditLog).values(r);
     },

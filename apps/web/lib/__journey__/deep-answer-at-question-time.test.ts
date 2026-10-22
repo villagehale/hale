@@ -157,7 +157,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
 
     const [user] = await database
       .insert(schema.users)
-      .values({ email: null, name: null, timezone: TZ })
+      .values({ name: null, timezone: TZ })
       .returning({ id: schema.users.id });
     parentUserId = (user as { id: string }).id;
 
@@ -622,7 +622,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
       ...channelRouterDeps(database),
       // The production adapter over the fake pipe: the router hands it a resolved sms
       // route, the fake records the send — one recorder shared with the deep job.
-      transport: createReplyTransport({ phone: transport, email: null }),
+      transport: createReplyTransport({ phone: transport }),
       coach,
       replyResolver: resolver,
       offDomain: { consider: async () => ({ status: 'in_domain' as const, fallback: null }) },

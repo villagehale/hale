@@ -1,22 +1,24 @@
-import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from '~/lib/channel/types';
+import type {
+  ChannelKind,
+  LoopMessage,
+  RenderedContent,
+  TemplateRenderer,
+} from '~/lib/channel/types';
 import { gsmSafe } from '../weekly-plan/core';
 
 /**
  * The calendar invite as a TEXT: one line, one link, tap to add.
  *
- * WHY IT EXISTS. The invite shipped on one channel — an email with a text/calendar part
- * — so a family that has only ever texted Hale (users.email null: every SMS-intake
- * family) said YES and got "Approved - add to calendar. I'll let you know once it's
+ * WHY IT EXISTS. The invite first shipped as an email with a text/calendar part (since
+ * retired with the email channel), so a family that has only ever texted Hale said YES
+ * and got "Approved - add to calendar. I'll let you know once it's
  * done." with no artifact anywhere near their phone. The event landed on Hale's own
  * family_events and nowhere else. The per-event link primitive that fixes it was already
  * deployed and had no callers (lib/loop/ics-invite.ts mintEventInviteLink, served by
  * app/api/ics/event/[token]); this is the copy that carries it.
  *
- * IT LIVES IN ITS OWN MODULE, apart from the email template next door, for a mechanical
- * reason: `sms-copy-encoding.test.ts` scans whole FILES for characters outside GSM-7,
- * and the email template is full of them (an em dash, a middle dot, HTML). A text is
- * billed by encoding, so the one file a carrier's alphabet applies to is kept separate
- * and scanned.
+ * `sms-copy-encoding.test.ts` scans this whole FILE for characters outside GSM-7: a
+ * text is billed by encoding.
  *
  * THE SCAN IS NOT ENOUGH BY ITSELF, which is why the body is FOLDED through `gsmSafe`
  * on the way out, exactly as the reminder SMS folds its own. Only the authored words
@@ -28,9 +30,7 @@ import { gsmSafe } from '../weekly-plan/core';
  * Folded, not stripped: the dash becomes a hyphen and an accent its base letter, so a
  * parent who turned names on still reads the name.
  *
- * DETERMINISTIC, unlike its two neighbours. The email's note and the address ask are
- * COMPOSED per send (founder, 2026-08-12: no preset message bodies) because they are
- * prose. This is not prose: it is a receipt for a decision the parent made seconds ago,
+ * DETERMINISTIC. This is not prose: it is a receipt for a decision the parent made seconds ago,
  * plus the link that makes it real — the same class as `approvedReceipt` and
  * `connectorOfferReply`, which are authored, locked and segment-tested rather than
  * written per send. A model in this path would buy nothing and could split the link.
@@ -47,6 +47,23 @@ import { gsmSafe } from '../weekly-plan/core';
  */
 
 export const CALENDAR_INVITE_SMS_TEMPLATE_KEY = 'calendar_invite_sms';
+
+/** "Wed, Jul 22 at 10:30 AM", in the family's own zone. */
+export function inviteWhenLabel(startsAt: Date, timeZone: string): string {
+  const day = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone,
+  }).format(startsAt);
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  }).format(startsAt);
+  return `${day} at ${time}`;
+}
 
 export interface CalendarInviteSmsPayload {
   /** The event's descriptor, already rendered at this parent's privacy level. */
@@ -98,6 +115,9 @@ export const calendarInviteSmsRenderer: TemplateRenderer = {
     if (channel !== 'sms') {
       throw new Error(`calendar invite sms: no ${channel} form of the tap-to-add link`);
     }
-    return { kind: 'sms', text: calendarInviteSmsText(asCalendarInviteSmsPayload(message.payload)) };
+    return {
+      kind: 'sms',
+      text: calendarInviteSmsText(asCalendarInviteSmsPayload(message.payload)),
+    };
   },
 };

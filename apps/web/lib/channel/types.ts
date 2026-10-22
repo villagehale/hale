@@ -1,4 +1,3 @@
-import type { ResendAttachment } from '~/lib/channel/resend-transport';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 
 /**
@@ -24,10 +23,11 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
  * voice renders the deterministic copy and still sends.
  */
 
-/** The live delivery legs. The persisted channel_message_channel enum still
- * carries 'push', 'voice', and 'whatsapp' for historical rows — this union is
- * only what the dispatch can SEND today. Push, voice, and WhatsApp are retired. */
-export type ChannelKind = 'email' | 'sms';
+/** The live delivery leg. The persisted channel_message_channel enum still
+ * carries 'email', 'push', 'voice', and 'whatsapp' for historical rows — this union
+ * is only what the dispatch can SEND today. Email, push, voice, and WhatsApp are
+ * retired. */
+export type ChannelKind = 'sms';
 
 /** Outbound loop taxonomy (mirrors loop_prefs categories; inbound 'reply' is A3). */
 export type LoopCategory = 'reminder' | 'approval' | 'alert';
@@ -98,9 +98,7 @@ export type VoiceOutcome =
  * `voice` is set by the renderers that HAVE a composed voice slot and is absent on every
  * other template — see {@link VoiceOutcome}. It is an enum about Hale's own pipeline and
  * never content, which is why the dispatch can carry it onto an immutable audit row. */
-export type RenderedContent =
-  | { kind: 'email'; subject: string; html: string; text: string; attachments?: ResendAttachment[] }
-  | { kind: 'sms'; text: string; voice?: VoiceOutcome };
+export type RenderedContent = { kind: 'sms'; text: string; voice?: VoiceOutcome };
 
 /** Produces channel-specific content for a message, honoring the resolved child-name
  * privacy level. Injected — the seam ships a Fake; templates provide the real one. */

@@ -326,7 +326,7 @@ export async function loadGmailReply(
   return message ? replyContextFromMessage(message) : null;
 }
 
-function productionDeps(database: Database): GmailDraftDeps {
+export function productionGmailDraftDeps(database: Database): GmailDraftDeps {
   return {
     flagOn: (actorUserId) => googleWriteScopesEnabledFor(actorUserId),
     listGmail: async (familyId) => {
@@ -413,12 +413,12 @@ export function gateProductionGmailDraft(
   database: Database,
   request: GmailDraftRequest,
 ): Promise<GmailDraftGate> {
-  return gateGmailDraft(request, productionDeps(database));
+  return gateGmailDraft(request, productionGmailDraftDeps(database));
 }
 
 export function commitProductionGmailDraft(
   database: Database,
   request: GmailDraftRequest,
 ): Promise<GmailDraftCommit> {
-  return commitGmailDraft(request, productionDeps(database));
+  return commitGmailDraft(request, productionGmailDraftDeps(database));
 }

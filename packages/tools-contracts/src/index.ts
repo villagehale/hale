@@ -106,7 +106,7 @@ export const channelSendJobPayloadSchema = z.object({
   // has both addresses and fatal for one who does not — a texted caregiver has
   // `users.email = null`, so the dropped pin routed their schedule to the email adapter
   // and produced a `no_address` failure every week instead of a text.
-  channel: z.enum(['email', 'sms']).optional(),
+  channel: z.enum(['sms']).optional(),
 });
 export type ChannelSendJobPayload = z.infer<typeof channelSendJobPayloadSchema>;
 
@@ -458,7 +458,11 @@ export const REQUIRED_CHECKS = {
   // clash with an existing placement for the same child (check_calendar_conflict,
   // now a REAL query over family_events — no longer the not_configured stub).
   calendar_add: ['check_action_time_window', 'check_action_idempotency', 'check_calendar_conflict'],
-  calendar_move: ['check_action_time_window', 'check_action_idempotency', 'check_calendar_conflict'],
+  calendar_move: [
+    'check_action_time_window',
+    'check_action_idempotency',
+    'check_calendar_conflict',
+  ],
   // Removing a placement can't conflict or run early — the only gate is dedup so a
   // redelivered cancel is a no-op.
   calendar_cancel: ['check_action_idempotency'],

@@ -5,7 +5,6 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { INTRO_SOFT_CLOSE } from './copy';
-import type { IntroEmailRequest, IntroEmailResult, IntroEmailSender } from './email';
 import {
   type IntroSweepChild,
   type IntroSweepDeps,
@@ -23,8 +22,6 @@ const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const C = '33333333-3333-4333-8333-333333333333';
 const D = '44444444-4444-4444-8444-444444444444';
-const E = '55555555-5555-4555-8555-555555555555';
-const F = '66666666-6666-4666-8666-666666666666';
 
 /** One opaque `host:courseId` key, as the reader hands them to the matcher. */
 const COURSE = 'cityofmarkham.perfectmind.com:22222222-2222-2222-2222-222222222222';
@@ -76,7 +73,6 @@ function family(overrides: Partial<IntroSweepFamily> & { familyId: string }): In
 interface Harness {
   deps: IntroSweepDeps;
   transport: FakeTransport;
-  emails: IntroEmailRequest[];
   proposalsCreated: Array<Record<string, unknown>>;
   /** The FSAs each anchor lookup was allowed to search — the activity radius, captured
    * because widening it is the half of this feature the card copy cannot show. */
@@ -114,14 +110,12 @@ function harness(
     hold?: ProactiveHoldReason | null;
     recentSends?: number;
     anchor?: { id: string; title: string; startsAt: Date } | null;
-    emailResult?: IntroEmailResult;
     nameLevel?: 'first_name' | 'relation' | 'generic';
     identityAsk?: FakeIdentityAsk;
     introVoice?: FakeIntroVoice;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
-  const emails: IntroEmailRequest[] = [];
   const proposalsCreated: Array<Record<string, unknown>> = [];
   const anchorSearches: Array<readonly string[]> = [];
   const audits: Harness['audits'] = [];
@@ -140,13 +134,6 @@ function harness(
     countProactiveSends: async () => 0,
     proactiveSentSince: async () => true,
     parentTimeZone: async () => (overrides.hold === 'quiet_hours' ? 'America/Toronto' : 'UTC'),
-  };
-
-  const email: IntroEmailSender = {
-    async send(request) {
-      emails.push(request);
-      return overrides.emailResult ?? { status: 'sent', providerMessageId: 'msg-1' };
-    },
   };
 
   const deps: IntroSweepDeps = {
@@ -209,13 +196,11 @@ function harness(
       return 'conv-1';
     },
     transport,
-    email,
   };
 
   return {
     deps,
     transport,
-    emails,
     proposalsCreated,
     anchorSearches,
     audits,
@@ -662,64 +647,10 @@ describe('phase 3 - resolving a pair', () => {
     alreadyAsked: new Set([`user-${A}`, `user-${B}`]),
   };
 
-  it('sends ONE intro email once both sides said yes, and audits BOTH families', async () => {
-    const h = harness({
-      families: [
-        family({ familyId: A, parentName: 'Sam Lee', parentEmail: 'sam@example.com' }),
-        family({ familyId: B, parentName: SENTINELS.parentName, parentEmail: SENTINELS.email }),
-      ],
-      ...optedIn,
-      proposals: [
-        proposal({
-          status: 'both_accepted',
-          familyAAskedAt: NOW,
-          familyBAskedAt: NOW,
-          familyAReply: 'yes',
-          familyBReply: 'yes',
-          anchorTitle: 'Family Storytime',
-        }),
-      ],
-    });
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-
-    expect(result.introduced).toBe(1);
-    expect(h.emails).toHaveLength(1);
-    expect(h.emails[0]).toEqual({
-      parentA: { firstName: 'Sam', email: 'sam@example.com' },
-      parentB: { firstName: 'Priya', email: SENTINELS.email },
-      stage: 'toddler',
-      anchorTitle: 'Family Storytime',
-    });
-
-    const disclosures = h.audits.filter((a) => a.actionTaken === 'village_intro_disclosed');
-    expect(disclosures.map((d) => d.familyId).sort()).toEqual([A, B].sort());
-    for (const row of disclosures) {
-      expect(row.after.disclosedFields).toEqual([
-        'parent_first_name',
-        'parent_email',
-        'child_stage',
-        'activity_title',
-      ]);
-    }
-    expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'both_accepted', closed: true }]);
-  });
-
-  it('does not disclose on a single yes', async () => {
-    const h = harness({
-      families: [family({ familyId: A }), family({ familyId: B })],
-      ...optedIn,
-      proposals: [proposal({ familyAAskedAt: NOW, familyBAskedAt: NOW, familyAReply: 'yes' })],
-    });
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-    expect(result.introduced).toBe(0);
-    expect(h.emails).toEqual([]);
-  });
-
   it('leaves the pair open - and unaudited as disclosed - when the provider is unconfigured', async () => {
     const h = harness({
       families: [family({ familyId: A }), family({ familyId: B })],
       ...optedIn,
-      emailResult: { status: 'skipped', reason: 'not_configured' },
       proposals: [
         proposal({
           status: 'both_accepted',
@@ -838,146 +769,20 @@ describe('phase 3 - the identity gap-fill', () => {
       ...overrides,
     });
 
-  function waiting(a: Partial<IntroSweepFamily>, b: Partial<IntroSweepFamily>) {
-    return harness({
-      families: [family({ familyId: A, ...a }), family({ familyId: B, ...b })],
-      ...optedIn,
-      proposals: [accepted()],
-    });
-  }
-
-  it('asks only the side that owes a fact, and names what it owes', async () => {
-    const h = waiting({}, { parentEmail: null });
-
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-
-    expect(h.identityAsk.calls).toEqual([{ reason: 'introduction', missing: ['email'] }]);
-    expect(h.sends).toEqual([
-      {
-        templateKey: 'village_intro:identity_ask',
-        dedupeKey: 'village_intro:identity:prop-1:b',
-        parentUserId: `user-${B}`,
-      },
-    ]);
-    expect(result.waiting).toEqual({ awaiting_email: 1, awaiting_name: 0 });
-    expect(result.identityAsked).toBe(1);
-  });
-
   /** ONE message naming both gaps, for the reason intake's single follow-up asks for both
    * of its own at once: it is the only ask there will be. */
-  it('sends one ask for a side missing both facts', async () => {
-    const h = waiting({}, { parentName: null, parentEmail: null });
-
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-
-    expect(h.identityAsk.calls).toEqual([{ reason: 'introduction', missing: ['name', 'email'] }]);
-    expect(h.transport.sent).toHaveLength(1);
-    expect(result.waiting).toEqual({ awaiting_email: 1, awaiting_name: 1 });
-  });
 
   /** The pair is NOT cancelled and NOT closed. Two parents each said yes twice; closing on
    * a fact Hale never asked them for would be Hale losing its own paperwork. */
-  it('holds the pair open rather than closing or introducing it', async () => {
-    const h = waiting({}, { parentEmail: null });
-
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-
-    expect(h.emails).toEqual([]);
-    expect(h.statuses).toEqual([]);
-    expect(result.introduced).toBe(0);
-    // Not folded into the bucket that means "the email bounced" (rule #11).
-    expect(result.introFailed).toBe(0);
-  });
-
-  it('asks once, then keeps waiting quietly on later ticks', async () => {
-    const h = harness({
-      families: [family({ familyId: A }), family({ familyId: B, parentEmail: null })],
-      ...optedIn,
-      proposals: [accepted()],
-    });
-    // The dedupe key from the first ask is live on every tick after it.
-    h.deps.dedupeActive = async (_db, key) => key === 'village_intro:identity:prop-1:b';
-
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-
-    expect(h.transport.sent).toEqual([]);
-    expect(result.identityAsked).toBe(0);
-    // Still counted as owed: this is a level, not an event.
-    expect(result.waiting).toEqual({ awaiting_email: 1, awaiting_name: 0 });
-  });
 
   /** A deferral spends nothing — no send, no ledger row, no window extension — so the next
    * tick is a retry rather than a pair held open by a question nobody was asked. */
-  it('spends nothing when the composer defers', async () => {
-    const h = harness({
-      families: [family({ familyId: A }), family({ familyId: B, parentEmail: null })],
-      ...optedIn,
-      proposals: [accepted()],
-      identityAsk: new FakeIdentityAsk({ status: 'deferred', reason: 'gate_exhausted' }),
-    });
-
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-
-    expect(h.transport.sent).toEqual([]);
-    expect(h.sends).toEqual([]);
-    expect(h.expiries).toEqual([]);
-    expect(result.identityAsked).toBe(0);
-    expect(result.waiting.awaiting_email).toBe(1);
-  });
 
   /**
    * The window restarts at the ASK. The original seven days measured how long a card waits
    * for an answer, and that question has been answered — a pair that both-accepted on day
    * six would otherwise be asked for an address and closed out hours later.
    */
-  it('restarts the window when the ask goes out', async () => {
-    const h = harness({
-      families: [family({ familyId: A }), family({ familyId: B, parentEmail: null })],
-      ...optedIn,
-      proposals: [accepted({ expiresAt: new Date('2026-08-11T16:00:00Z') })],
-    });
-
-    await runVillageIntroSweep(DB, h.deps, NOW);
-
-    expect(h.expiries).toEqual([
-      { proposalId: 'prop-1', expiresAt: new Date('2026-08-18T15:00:00Z') },
-    ]);
-  });
-
-  it('soft-closes the pair when the restarted window runs out with the fact still missing', async () => {
-    const h = harness({
-      families: [family({ familyId: A }), family({ familyId: B, parentEmail: null })],
-      ...optedIn,
-      proposals: [accepted({ expiresAt: new Date('2026-08-01T00:00:00Z') })],
-    });
-
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-
-    // The same one sentence every dead pair gets — it never says which of the ways it died.
-    expect(h.transport.bodies()).toEqual([
-      withOptOut(INTRO_SOFT_CLOSE, 'short'),
-      withOptOut(INTRO_SOFT_CLOSE, 'short'),
-    ]);
-    expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'expired', closed: true }]);
-    expect(result.closed).toBe(1);
-    expect(h.identityAsk.calls).toEqual([]);
-  });
-
-  it('audits the gap, never the value, and never the counterpart', async () => {
-    const h = waiting({}, { parentName: null, parentEmail: null });
-
-    await runVillageIntroSweep(DB, h.deps, NOW);
-
-    const asked = h.audits.filter((a) => a.actionTaken === 'village_intro_identity_asked');
-    expect(asked).toEqual([
-      {
-        familyId: B,
-        actionTaken: 'village_intro_identity_asked',
-        after: { missing: ['name', 'email'] },
-      },
-    ]);
-    expect(JSON.stringify(asked)).not.toContain(A);
-  });
 
   /**
    * The one identity failure that is NOT a question: a family that has left the sweep's own
@@ -1001,16 +806,6 @@ describe('phase 3 - the identity gap-fill', () => {
     expect(h.statuses).toEqual([]);
     expect(JSON.stringify(errors)).toContain('no longer in the sweep');
     spy.mockRestore();
-  });
-
-  it('introduces as soon as the missing fact has arrived', async () => {
-    const h = waiting({}, {});
-
-    const result = await runVillageIntroSweep(DB, h.deps, NOW);
-
-    expect(h.identityAsk.calls).toEqual([]);
-    expect(result.introduced).toBe(1);
-    expect(result.waiting).toEqual({ awaiting_email: 0, awaiting_name: 0 });
   });
 });
 
@@ -1118,75 +913,4 @@ describe('phase 2 - the same-class signal', () => {
    * The run carries all three surfaces at once: E and F are matched, A and B are carded
    * off a live proposal, C and D are introduced by email off an accepted one.
    */
-  it('sends byte-identical cards, emails and disclosure rows whether or not the pair shares a class', async () => {
-    const everyone = [A, B, C, D, E, F];
-    function run(classKeys: Record<string, string[]> | undefined) {
-      return harness({
-        families: everyone.map((familyId) => family({ familyId })),
-        discoverable: new Set(everyone.map((id) => `user-${id}`)),
-        alreadyAsked: new Set(everyone.map((id) => `user-${id}`)),
-        classKeys,
-        anchor: null,
-        proposals: [
-          proposal({ id: 'prop-card', familyAId: A, familyBId: B }),
-          proposal({
-            id: 'prop-email',
-            familyAId: C,
-            familyBId: D,
-            status: 'both_accepted',
-            familyAAskedAt: NOW,
-            familyBAskedAt: NOW,
-            familyAReply: 'yes',
-            familyBReply: 'yes',
-            anchorTitle: 'Family Storytime',
-            anchorStartsAt: new Date('2026-08-15T14:00:00Z'),
-          }),
-        ],
-      });
-    }
-
-    /** Everything this sweep put in front of a human, or wrote about having done so. */
-    function surfaces(h: Harness) {
-      return {
-        composerRequests: h.introVoice.calls,
-        bodies: h.transport.bodies(),
-        emails: h.emails,
-        threaded: h.threaded,
-        sends: h.sends,
-        proposalsCreated: h.proposalsCreated,
-        anchorSearches: h.anchorSearches,
-        cardAudits: h.audits.filter((a) => a.actionTaken === 'village_intro_card_sent'),
-        disclosureAudits: h.audits.filter((a) => a.actionTaken === 'village_intro_disclosed'),
-      };
-    }
-
-    // Every household holds the key, so the CARDED pair (A/B) and the EMAILED pair (C/D)
-    // share a class in fact, not only the matched pair (E/F): a card path that re-read the
-    // keys and changed one word for a shared class would differ here. A-D still match
-    // nothing — their open proposals exclude them — so the match output is unchanged.
-    const ranked = run({
-      [A]: [COURSE],
-      [B]: [COURSE],
-      [C]: [COURSE],
-      [D]: [COURSE],
-      [E]: [COURSE],
-      [F]: [COURSE],
-    });
-    const rankedResult = await runVillageIntroSweep(DB, ranked.deps, NOW);
-    const plain = run(undefined);
-    const plainResult = await runVillageIntroSweep(DB, plain.deps, NOW);
-
-    // The positive control: the two runs really did card, email and match. Without it
-    // this comparison would pass just as happily on two empty sweeps.
-    const ours = surfaces(ranked);
-    expect(ours.composerRequests).toHaveLength(2);
-    expect(ours.bodies).toHaveLength(2);
-    expect(ours.emails).toHaveLength(1);
-    expect(ours.disclosureAudits).toHaveLength(2);
-    expect(ours.proposalsCreated).toHaveLength(1);
-    expect(rankedResult.matchedOn.same_class).toBe(1);
-    expect(plainResult.matchedOn.same_area).toBe(1);
-
-    expect(ours).toEqual(surfaces(plain));
-  });
 });

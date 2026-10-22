@@ -9,7 +9,6 @@ import { createGoogleCalendarPlacement } from '~/lib/integrations/google-calenda
 import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
-import { productionCalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
 import { UNDOABLE_ACTION_TYPES, UNDO_WINDOW_HOURS, withinUndoWindow } from './undo-window';
 
 // The window and the reversible-type set live in undo-window.ts, so the surfaces that
@@ -207,7 +206,6 @@ function defaultWithdrawInvites(database: Database): WithdrawInvites {
   const sender = createCalendarInviteSender(database, {
     channels: productionChannels(database),
     renderer: loopTemplateRenderer,
-    voice: productionCalendarVoice(),
   });
   return (request) => sender.send(request);
 }

@@ -1,18 +1,14 @@
 import { defaultLoopRenderer } from '~/lib/channel/renderer';
-import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from '~/lib/channel/types';
+import type {
+  ChannelKind,
+  LoopMessage,
+  RenderedContent,
+  TemplateRenderer,
+} from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from './caregiver/keys';
 import { caregiverReminderRenderer } from './caregiver';
-import {
-  CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
-  CALENDAR_INVITE_TEMPLATE_KEY,
-  calendarEmailAskRenderer,
-  calendarInviteRenderer,
-} from './calendar-invite';
-import {
-  CALENDAR_INVITE_SMS_TEMPLATE_KEY,
-  calendarInviteSmsRenderer,
-} from './calendar-invite/sms';
+import { CALENDAR_INVITE_SMS_TEMPLATE_KEY, calendarInviteSmsRenderer } from './calendar-invite/sms';
 import { reminderRenderer } from './reminder';
 
 /**
@@ -29,14 +25,8 @@ export const loopTemplateRenderer: TemplateRenderer = {
     if (message.templateKey === REMINDER_TEMPLATE_KEY) {
       return reminderRenderer.render(message, channel, nameLevel);
     }
-    if (message.templateKey === CALENDAR_INVITE_TEMPLATE_KEY) {
-      return calendarInviteRenderer.render(message, channel, nameLevel);
-    }
     if (message.templateKey === CALENDAR_INVITE_SMS_TEMPLATE_KEY) {
       return calendarInviteSmsRenderer.render(message, channel, nameLevel);
-    }
-    if (message.templateKey === CALENDAR_EMAIL_ASK_TEMPLATE_KEY) {
-      return calendarEmailAskRenderer.render(message, channel, nameLevel);
     }
     // The caregiver twin. Registered rather than left to the fallback on purpose: an
     // unregistered key renders `defaultLoopRenderer`, which would text a grandmother a

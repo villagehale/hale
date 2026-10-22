@@ -791,7 +791,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const { createGoogleCalendarPlacement } = await import(
     '~/lib/integrations/google-calendar-placement'
   );
-  const { productionCalendarVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
+  const { createGmailEmailSender } = await import('~/lib/integrations/gmail-send-service');
 
   const channels = productionChannels(db());
 
@@ -803,8 +803,9 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const calendarInvites = createCalendarInviteSender(db(), {
     channels,
     renderer: loopTemplateRenderer,
-    voice: productionCalendarVoice(),
   });
+  // Approved send_email actions leave from the approving parent's own Gmail.
+  const sendEmail = createGmailEmailSender(db());
 
   // Two connections, and no scheduler. The session pooler behind DATABASE_DIRECT_URL
   // admits 15 clients in total; pg-boss's default pool of ten per instance meant two
@@ -828,12 +829,13 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
         boss: boss as unknown as DrainBoss,
         handlers: {
           runOrchestrator: (job) =>
-            runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement }),
+            runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement, sendEmail }),
           executeApprovedAction: (input) =>
             executeApprovedAction(input, {
               ...defaultExecuteApprovedDeps(),
               calendarInvites,
               googleCalendar: googlePlacement,
+              sendEmail,
             }),
           rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
           channelSend: (message) =>

@@ -1,20 +1,11 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
 
 /**
- * CASL compliance for Hale's non-transactional email (the daily brief today).
- * Every such message must: identify the sender, carry the business mailing
- * address, and offer a working one-click unsubscribe. The send path additionally
- * checks consent — here, the absence of an opt-out — before sending, and is held
- * behind a deliberate flag so no real user is emailed until the sending domain is
- * verified and the flag is flipped on purpose.
+ * CASL unsubscribe for the email Hale used to send. Hale no longer sends email, but
+ * the one-click unsubscribe links already in parents' inboxes must keep working, so
+ * the signed-token verification and the opt-out write stay.
  */
-
-// CASL requires a postal mailing address in every commercial electronic message.
-export const BUSINESS_ADDRESS =
-  'Village Hale Technologies Inc., 13394 10 Line, Georgetown, ON L7G 4S8';
-export const SENDER_NAME = 'Hale';
 
 export type EmailType = schema.NewEmailSend['emailType'];
 
@@ -62,26 +53,6 @@ export function verifyUnsubscribeToken(payload: UnsubscribePayload, token: strin
   return providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf);
 }
 
-/** True when the recipient has opted out of this email stream — the send path
- * must NOT send when this is true (CASL consent). */
-export async function hasOptedOut(
-  database: Database,
-  userId: string,
-  emailType: EmailType,
-): Promise<boolean> {
-  const rows = await database
-    .select({ id: schema.emailOptOuts.id })
-    .from(schema.emailOptOuts)
-    .where(
-      and(
-        eq(schema.emailOptOuts.userId, userId),
-        eq(schema.emailOptOuts.emailType, emailType),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
-}
-
 /**
  * Records a recipient's opt-out. Idempotent: the unique (user_id, email_type)
  * index folds a repeated unsubscribe click into the existing row rather than
@@ -106,48 +77,6 @@ export async function recordOptOut(
   return inserted.length > 0;
 }
 
-/**
- * Clears a recipient's opt-out (re-subscribe): the counterpart to recordOptOut,
- * used by the in-app notification settings where a parent can turn a stream back
- * on. Idempotent — deleting a row that isn't there is a no-op, so toggling on
- * when already on never errors.
- */
-export async function recordOptIn(
-  database: Database,
-  userId: string,
-  emailType: EmailType,
-): Promise<void> {
-  await database
-    .delete(schema.emailOptOuts)
-    .where(
-      and(
-        eq(schema.emailOptOuts.userId, userId),
-        eq(schema.emailOptOuts.emailType, emailType),
-      ),
-    );
-}
-
-/** Records one accepted send in the ledger (CASL: who + when). Written only
- * after the provider accepts the send. */
-export async function recordEmailSend(
-  database: Database,
-  input: {
-    userId: string;
-    familyId: string | null;
-    emailType: EmailType;
-    recipient: string;
-    providerMessageId?: string | null;
-  },
-): Promise<void> {
-  await database.insert(schema.emailSends).values({
-    userId: input.userId,
-    familyId: input.familyId,
-    emailType: input.emailType,
-    recipient: input.recipient,
-    providerMessageId: input.providerMessageId ?? null,
-  });
-}
-
 export type UnsubscribeResult =
   | { status: 'unsubscribed'; emailType: EmailType; firstTime: boolean }
   | { status: 'invalid' };
@@ -157,7 +86,12 @@ export type UnsubscribeResult =
  * one-click unsubscribe is CASL-required on every one, same as daily_digest. X1
  * (VIL-227) treats landing on one of these (not daily_digest/welcome) as the STOP
  * guardrail. */
-export const LOOP_EMAIL_TYPES: readonly EmailType[] = ['weekly_plan', 'reminder', 'approval', 'alert'];
+export const LOOP_EMAIL_TYPES: readonly EmailType[] = [
+  'weekly_plan',
+  'reminder',
+  'approval',
+  'alert',
+];
 
 const EMAIL_TYPES: readonly EmailType[] = ['daily_digest', 'welcome', ...LOOP_EMAIL_TYPES];
 

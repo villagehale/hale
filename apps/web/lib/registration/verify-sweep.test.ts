@@ -10,7 +10,6 @@ import {
   type RegistrationVerifyDeps,
   createFetchBody,
   createFetchPage,
-  formatRegistrationVerifyDigest,
   runRegistrationVerifySweep,
   verifyWeekStart,
 } from './verify-sweep';
@@ -71,7 +70,6 @@ interface Harness {
   deps: RegistrationVerifyDeps;
   markVerified: ReturnType<typeof vi.fn>;
   fetchPage: ReturnType<typeof vi.fn>;
-  send: ReturnType<typeof vi.fn>;
   extract: ReturnType<typeof vi.fn>;
   recordRun: ReturnType<typeof vi.fn>;
 }
@@ -79,7 +77,6 @@ interface Harness {
 function harness(overrides: Partial<RegistrationVerifyDeps> = {}): Harness {
   const markVerified = vi.fn(async () => {});
   const fetchPage = vi.fn(async () => MARKHAM_PAGE);
-  const send = vi.fn(async () => true);
   const extract = vi.fn(async () => reading());
   const recordRun = vi.fn(async () => {});
   const recordDiscoveries = vi.fn(async () => {});
@@ -93,18 +90,17 @@ function harness(overrides: Partial<RegistrationVerifyDeps> = {}): Harness {
     loadWindows: async () => [storedWindow()],
     markVerified,
     claimWeek: async () => true,
-    sender: { send },
     preflight: async () => ({ proceed: true, health: { ok: true } }),
     // Discovery is off unless a test asks for it, so the verify-leg assertions
     // are not muddied by extra fetches.
     discoveryTargets: [],
     ...overrides,
   };
-  return { deps, markVerified, fetchPage, send, extract, recordRun };
+  return { deps, markVerified, fetchPage, extract, recordRun };
 }
 
 describe('runRegistrationVerifySweep — confirmed', () => {
-  it('bumps verified_at for a row the page confirms, and sends no digest', async () => {
+  it('bumps verified_at for a row the page confirms', async () => {
     const h = harness();
     const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
 
@@ -112,8 +108,6 @@ describe('runRegistrationVerifySweep — confirmed', () => {
     expect(h.markVerified).toHaveBeenCalledWith({}, 'win-markham', NOW);
     expect(summary.confirmed).toBe(1);
     expect(summary.discrepancies).toBe(0);
-    // Nothing to act on — the quiet operator says nothing.
-    expect(h.send).not.toHaveBeenCalled();
   });
 });
 
@@ -134,7 +128,10 @@ describe('runRegistrationVerifySweep — an inferred field is not evidence (VIL-
 
   it('confirms the tier for the domain that was read, and not for the one that inferred it', async () => {
     const h = harness({
-      loadWindows: async () => [tiered('rec_program', 'win-markham-rec'), tiered('swim', 'win-markham-swim')],
+      loadWindows: async () => [
+        tiered('rec_program', 'win-markham-rec'),
+        tiered('swim', 'win-markham-swim'),
+      ],
     });
 
     const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
@@ -149,7 +146,7 @@ describe('runRegistrationVerifySweep — an inferred field is not evidence (VIL-
 });
 
 describe('runRegistrationVerifySweep — a discrepancy NEVER writes', () => {
-  it('does not touch the row, not even verified_at, and raises a digest line', async () => {
+  it('does not touch the row, not even verified_at, and reports the discrepancy', async () => {
     const h = harness({
       extract: vi.fn(async () =>
         reading({
@@ -165,29 +162,7 @@ describe('runRegistrationVerifySweep — a discrepancy NEVER writes', () => {
     expect(h.markVerified).not.toHaveBeenCalled();
     expect(summary.discrepancies).toBe(1);
     expect(summary.confirmed).toBe(0);
-    expect(h.send).toHaveBeenCalledTimes(1);
-    expect(String(h.send.mock.calls[0]?.[1])).toContain('2026-08-18');
-  });
-
-  it('says so when the digest was refused before it left (VIL-267)', async () => {
-    // `false` is the sender's "no founder address / no Resend key" answer — it does not
-    // throw, so without this the sweep finds discrepancies, tells nobody, and returns a
-    // summary indistinguishable from one that was delivered.
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const h = harness({
-      sender: { send: vi.fn(async () => false) },
-      extract: vi.fn(async () =>
-        reading({
-          generalOpen: { date: '2026-08-18', time: '06:30' },
-          evidence: 'Register starting Aug. 11 at 6:30 AM',
-        }),
-      ),
-    });
-
-    const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
-
-    expect(summary.discrepancies).toBe(1);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('digest not delivered'));
+    expect(JSON.stringify(summary.rows[0]?.outcome)).toContain('2026-08-18');
   });
 });
 
@@ -213,7 +188,10 @@ describe('runRegistrationVerifySweep — per-row isolation (rule #8)', () => {
     expect(summary.rows[0]?.outcome).toEqual({ kind: 'unverified', reason: 'fetch_failed' });
     expect(summary.rows[0]?.detail).toBe('HTTP 503');
     // The second municipality still got its sweep.
-    expect(summary.rows[1]?.outcome).toEqual({ kind: 'confirmed', fields: ['previewAt', 'openAt'] });
+    expect(summary.rows[1]?.outcome).toEqual({
+      kind: 'confirmed',
+      fields: ['previewAt', 'openAt'],
+    });
     expect(h.markVerified).toHaveBeenCalledTimes(1);
     expect(h.markVerified).toHaveBeenCalledWith({}, 'win-vaughan', NOW);
   });
@@ -288,10 +266,9 @@ describe('runRegistrationVerifySweep — bounded and idempotent', () => {
 
     expect(summary.skipped).toBe('already_ran_this_week');
     expect(summary.checked).toBe(0);
-    // A double-fire costs nothing: no page fetch, no model call, no email.
+    // A double-fire costs nothing: no page fetch, no model call.
     expect(h.fetchPage).not.toHaveBeenCalled();
     expect(h.extract).not.toHaveBeenCalled();
-    expect(h.send).not.toHaveBeenCalled();
   });
 
   it('does nothing at all when there is no model client', async () => {
@@ -299,10 +276,8 @@ describe('runRegistrationVerifySweep — bounded and idempotent', () => {
     const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
 
     expect(summary.skipped).toBe('no_model_client');
-    // Reading a page IS the job — without a model there is no reason to fetch,
-    // and certainly no reason to email the founder about our own misconfiguration.
+    // Reading a page IS the job — without a model there is no reason to fetch.
     expect(h.fetchPage).not.toHaveBeenCalled();
-    expect(h.send).not.toHaveBeenCalled();
   });
 
   it('aborts before spending anything when the provider is down', async () => {
@@ -320,7 +295,6 @@ describe('runRegistrationVerifySweep — bounded and idempotent', () => {
       alerted: true,
     });
     expect(h.fetchPage).not.toHaveBeenCalled();
-    expect(h.send).not.toHaveBeenCalled();
   });
 
   it('does not claim the week when the provider aborted, so a retry can still run', async () => {
@@ -344,7 +318,7 @@ describe('runRegistrationVerifySweep — the run leaves its outcomes behind', ()
    * "the date moved" and "we could not read the page" were the same absence to every
    * query — and the scorecard had to say so instead of saying which.
    */
-  it('records the week\'s split — confirmed, moved, unreadable — for the scorecard to read', async () => {
+  it("records the week's split — confirmed, moved, unreadable — for the scorecard to read", async () => {
     const moved = storedWindow({
       id: 'win-moved',
       cycleLabel: 'Winter 2027 Programs',
@@ -386,9 +360,9 @@ describe('runRegistrationVerifySweep — the run leaves its outcomes behind', ()
     expect(h.recordRun).not.toHaveBeenCalled();
   });
 
-  /** Telemetry must not cost a completed sweep its digest — the same contract the
-   * founder email has. Named out loud, never swallowed into a clean run. */
-  it('logs and carries on when the outcome write fails, still sending the digest', async () => {
+  /** Telemetry must not cost a completed sweep its result. Named out loud, never
+   * swallowed into a clean run. */
+  it('logs and carries on when the outcome write fails', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const h = harness({
       recordRun: vi.fn(async () => {
@@ -405,7 +379,6 @@ describe('runRegistrationVerifySweep — the run leaves its outcomes behind', ()
     const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
 
     expect(summary.discrepancies).toBe(1);
-    expect(h.send).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
       expect.anything(),
       expect.stringContaining('outcomes not recorded'),
@@ -441,8 +414,6 @@ describe('runRegistrationVerifySweep — the discovery leg', () => {
     // A discovery is a SUGGESTION. Nothing is inserted — the dataset stays
     // hand-verified (M1's rule: no row beats a guessed row).
     expect(h.markVerified).not.toHaveBeenCalled();
-    expect(h.send).toHaveBeenCalledTimes(1);
-    expect(String(h.send.mock.calls[0]?.[1])).toContain('new window published');
   });
 
   it('stays silent while the known gap is still a gap', async () => {
@@ -467,9 +438,6 @@ describe('runRegistrationVerifySweep — the discovery leg', () => {
     const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
 
     expect(summary.discoveries[0]?.published).toBe(false);
-    // Nothing changed this week. Saying so every Monday would train the founder
-    // to ignore the email.
-    expect(h.send).not.toHaveBeenCalled();
   });
 
   it('covers both known gaps: Toronto seasonal and Halton Hills', () => {
@@ -491,125 +459,6 @@ describe('runRegistrationVerifySweep — the discovery leg', () => {
         (t) => t.municipality === 'halton_hills' && t.programDomain === 'rec_program',
       ).map((t) => t.cycleLabel),
     ).toEqual(['Winter 2027']);
-  });
-});
-
-describe('formatRegistrationVerifyDigest', () => {
-  it('states both instants, the source and the quote for a discrepancy', () => {
-    const text = formatRegistrationVerifyDigest(
-      {
-        checked: 1,
-        confirmed: 0,
-        discrepancies: 1,
-        unverified: 0,
-        rows: [
-          {
-            windowId: 'win-markham',
-            municipality: 'markham',
-            programDomain: 'rec_program',
-            cycleLabel: '2026 Fall Programs',
-            sourceUrl: 'https://www.markham.ca/registration',
-            outcome: {
-              kind: 'discrepancy',
-              diffs: [
-                {
-                  field: 'openAt',
-                  stored: new Date('2026-08-11T06:30:00-04:00'),
-                  published: new Date('2026-08-18T06:30:00-04:00'),
-                },
-              ],
-              evidence: 'Register starting Aug. 18 at 6:30 AM',
-            },
-          },
-        ],
-        discoveries: [],
-      },
-      NOW,
-    );
-
-    expect(text).toContain('DISCREPANCY');
-    expect(text).toContain('markham');
-    expect(text).toContain('open_at');
-    // Both sides, in readable local time, so the founder can act without a query.
-    expect(text).toContain('2026-08-11 06:30');
-    expect(text).toContain('2026-08-18 06:30');
-    expect(text).toContain('https://www.markham.ca/registration');
-    expect(text).toContain('Register starting Aug. 18 at 6:30 AM');
-    // The standing promise, restated where the decision gets made.
-    expect(text).toContain('Nothing was changed');
-  });
-
-  it('groups the couldn-t-verify rows under a needs-human-look heading', () => {
-    const text = formatRegistrationVerifyDigest(
-      {
-        checked: 1,
-        confirmed: 0,
-        discrepancies: 0,
-        unverified: 1,
-        rows: [
-          {
-            windowId: 'win-rh',
-            municipality: 'richmond_hill',
-            programDomain: 'rec_program',
-            cycleLabel: 'Fall 2026',
-            sourceUrl: 'https://www.richmondhill.ca/guide',
-            outcome: { kind: 'unverified', reason: 'different_cycle_only' },
-            detail: undefined,
-          },
-        ],
-        discoveries: [],
-      },
-      NOW,
-    );
-
-    expect(text).toContain('needs a human look');
-    expect(text).toContain('richmond_hill');
-    expect(text).toContain('different_cycle_only');
-  });
-
-  it('never lists a confirmed row — silence is what confirmation looks like', () => {
-    const text = formatRegistrationVerifyDigest(
-      {
-        checked: 2,
-        confirmed: 2,
-        discrepancies: 1,
-        unverified: 0,
-        rows: [
-          {
-            windowId: 'win-ok',
-            municipality: 'burlington',
-            programDomain: 'swim',
-            cycleLabel: 'Fall swimming lessons',
-            sourceUrl: 'https://www.burlington.ca/register',
-            outcome: { kind: 'confirmed', fields: ['openAt'] },
-          },
-          {
-            windowId: 'win-bad',
-            municipality: 'markham',
-            programDomain: 'rec_program',
-            cycleLabel: '2026 Fall Programs',
-            sourceUrl: 'https://www.markham.ca/registration',
-            outcome: {
-              kind: 'discrepancy',
-              diffs: [
-                {
-                  field: 'openAt',
-                  stored: new Date('2026-08-11T06:30:00-04:00'),
-                  published: new Date('2026-08-18T06:30:00-04:00'),
-                },
-              ],
-              evidence: 'Register starting Aug. 18 at 6:30 AM',
-            },
-          },
-        ],
-        discoveries: [],
-      },
-      NOW,
-    );
-
-    expect(text).not.toContain('burlington');
-    // The count still appears, so "we checked and they were fine" is legible.
-    expect(text).toContain('2 confirmed');
   });
 });
 

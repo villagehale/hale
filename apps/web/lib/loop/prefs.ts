@@ -245,7 +245,8 @@ export type LoopPrefUpdate =
   | { field: 'quietHoursStart' | 'quietHoursEnd'; value: string }
   | { field: 'childNameLevel'; value: ChildNameLevel };
 
-const LOOP_CHANNELS: readonly LoopChannel[] = ['email', 'sms'];
+// Email is retired as a delivery channel; only SMS may be chosen.
+const LOOP_CHANNELS: readonly LoopChannel[] = ['sms'];
 const CHILD_NAME_LEVELS: readonly ChildNameLevel[] = ['first_name', 'relation', 'generic'];
 // 24h wall-clock 'HH:MM' or 'HH:MM:SS'; the zone comes from the user row.
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;

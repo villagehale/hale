@@ -28,7 +28,6 @@ import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
 import { discoverableUserIds } from './consent';
 import { INTRO_SOFT_CLOSE, stageWord } from './copy';
-import { type IntroEmailSender, createIntroEmailSender, introFirstName } from './email';
 import {
   type IntroMatchSignal,
   type IntroSkipReason,
@@ -278,7 +277,6 @@ export interface IntroSweepDeps {
    * quietly fail to deliver it is the worst version of this feature: both families are
    * told yes, audited as disclosed-to, and never hear from each other. */
   transport: ChannelTransport;
-  email: IntroEmailSender;
   /** The words of the gap-fill ask. REQUIRED (rule #11): a sweep that can discover it is
    * missing an address and has no way to ask for one is the stall this feature shipped
    * with. Its own DEFERRAL is the named absence — nothing sent, nothing recorded, asked
@@ -320,7 +318,8 @@ export interface IntroSweepResult {
   classKeyed: number;
   carded: number;
   introduced: number;
-  /** Both sides said yes and the email did not go. The pair stays open on purpose. */
+  /** Both sides said yes and no introduction went (no channel since email was retired).
+   * The pair stays open on purpose. */
   introFailed: number;
   /** SIDES still owing Hale a fact before their introduction can be written. Counted
    * every tick they are owed, not once when asked — this is a level, not an event. */
@@ -845,63 +844,26 @@ async function introduce(
     return;
   }
 
-  const nameA = familyA.parentName;
-  const nameB = familyB.parentName;
-  const emailA = familyA.parentEmail;
-  const emailB = familyB.parentEmail;
-  if (!nameA?.trim() || !nameB?.trim() || !emailA || !emailB) {
+  if (!familyA.parentName?.trim() || !familyB.parentName?.trim()) {
     await awaitIdentity(database, deps, scope, proposal, byId, result, now);
     return;
   }
 
-  const outcome = await deps.email.send({
-    parentA: { firstName: introFirstName(nameA), email: emailA },
-    parentB: { firstName: introFirstName(nameB), email: emailB },
-    stage: proposal.stage,
-    anchorTitle: proposal.anchorTitle,
-  });
-  if (outcome.status !== 'sent') {
-    // NOT closed and NOT audited as disclosed. Nothing was disclosed, so saying it was
-    // would put a false entry in the one record PIPEDA right-to-access reads.
-    result.introFailed += 1;
-    console.error(
-      { proposalId: proposal.id, outcome: outcome.status },
-      'village intros: introduction not delivered',
-    );
-    return;
-  }
-
-  for (const [self, other] of [
-    [proposal.familyAId, proposal.familyBId],
-    [proposal.familyBId, proposal.familyAId],
-  ] as const) {
-    await deps.audit(database, {
-      familyId: self,
-      actor: 'system',
-      actionTaken: 'village_intro_disclosed',
-      targetTable: 'village_intro_proposals',
-      targetId: proposal.id,
-      // EXACTLY what crossed the household boundary, field by field. A disclosure the
-      // trail describes only as "an intro was sent" is unanswerable in a right-to-access
-      // request, which is the one question this row exists to answer (rule #6).
-      after: {
-        counterpartFamilyId: other,
-        channel: 'email',
-        disclosedFields: ['parent_first_name', 'parent_email', 'child_stage', 'activity_title'],
-        anchored: proposal.anchorTitle !== null,
-      },
-    });
-  }
-
-  await deps.setStatus(database, proposal.id, 'both_accepted', true, now);
-  result.introduced += 1;
+  // The introduction was an email naming the two households to each other, and Hale no
+  // longer sends email. NOT closed and NOT audited as disclosed: nothing was disclosed,
+  // and the pair stays open until an introduction channel exists (rule #11 — counted,
+  // never a silent close).
+  result.introFailed += 1;
+  console.error(
+    { proposalId: proposal.id, outcome: 'no_intro_channel' },
+    'village intros: introduction not delivered - the email channel is retired',
+  );
 }
 
-/** What Hale is missing before it can write the introduction email for a side. */
+/** What Hale is missing before it can write the introduction for a side. */
 function identityGaps(family: IntroSweepFamily): IdentityGap[] {
   const missing: IdentityGap[] = [];
   if (!family.parentName?.trim()) missing.push('name');
-  if (!family.parentEmail) missing.push('email');
   return missing;
 }
 
@@ -1434,7 +1396,6 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
       await database.insert(schema.auditLog).values(row);
     },
     transport: createOutboundTransport(),
-    email: createIntroEmailSender(),
     identityAsk: productionIdentityAskVoice(),
     introVoice: productionIntroVoice(),
   };

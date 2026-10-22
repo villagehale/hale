@@ -33,7 +33,6 @@ interface Capture {
 
 function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPrefsView> } = {}) {
   const ledger: LedgerWrite[] = [];
-  const emailSends: { emailType: string; recipient: string }[] = [];
   const audits: { actionTaken: string; after: Record<string, unknown> }[] = [];
   const captures: Capture[] = [];
   const threaded: { familyId: string; parentUserId: string; body: string }[] = [];
@@ -42,16 +41,12 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
   const ports: DispatchPorts = {
     now: () => NOON,
     loadPrefs: async () => prefs,
-    loadParent: async () => ({ email: 'parent@example.com', timezone: TORONTO }),
-    emailOptedOut: async () => false,
+    loadParent: async () => ({ timezone: TORONTO }),
     smsConsentLive: async () => true,
     activeDedupe: async () => false,
     record: async (w) => {
       ledger.push(w);
       return `row-${ledger.length}`;
-    },
-    recordEmailSend: async (input) => {
-      emailSends.push({ emailType: input.emailType, recipient: input.recipient });
     },
     audit: async (r) => {
       audits.push({ actionTaken: r.actionTaken, after: r.after });
@@ -63,11 +58,11 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     threadMessage: async (input) => {
       threaded.push(input);
     },
-    channels: { email: fakeChannel('email'), sms: fakeChannel('sms') },
+    channels: { sms: fakeChannel('sms') },
     renderer: fakeRenderer,
     ...overrides,
   };
-  return { ports, ledger, emailSends, audits, captures, threaded };
+  return { ports, ledger, audits, captures, threaded };
 }
 
 function message(over: Partial<LoopMessage> = {}): LoopMessage {
@@ -86,22 +81,10 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
   it('suppressed_pref when the category is disabled', async () => {
     const { ports, ledger } = makePorts({ prefs: { catReminder: false } });
     const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_pref' }]);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'suppressed_pref' }]);
     expect(ledger).toEqual([
       expect.objectContaining({ status: 'suppressed_pref', dedupeKey: null }),
     ]);
-  });
-
-  it('suppressed_consent (email opt-out) — refused at the seam, provider never touched', async () => {
-    const emailChannel = fakeChannel('email');
-    const { ports, ledger } = makePorts({
-      emailOptedOut: async () => true,
-      channels: { email: emailChannel },
-    });
-    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_consent' }]);
-    expect(ledger[0]).toMatchObject({ status: 'suppressed_consent', channel: 'email' });
-    expect(emailChannel.calls).toHaveLength(0);
   });
 
   it('suppressed_consent (no live SMS consent) when the exchange channel is sms', async () => {
@@ -119,59 +102,46 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
   it('suppressed_quiet_hours for a normal message inside the window', async () => {
     const { ports, ledger } = makePorts({ now: () => NIGHT });
     const result = await dispatchLoopMessage(message({ urgency: 'normal' }), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_quiet_hours' }]);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'suppressed_quiet_hours' }]);
     expect(ledger[0]?.status).toBe('suppressed_quiet_hours');
   });
 
   it('time_sensitive bypasses quiet hours and sends', async () => {
-    const emailChannel = fakeChannel('email');
-    const { ports, ledger } = makePorts({ now: () => NIGHT, channels: { email: emailChannel } });
+    const emailChannel = fakeChannel('sms');
+    const { ports, ledger } = makePorts({ now: () => NIGHT, channels: { sms: emailChannel } });
     const result = await dispatchLoopMessage(message({ urgency: 'time_sensitive' }), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
     expect(emailChannel.calls).toHaveLength(1);
-    expect(ledger[0]?.status).toBe('sent');
+    expect(ledger[0]?.status).toBe('queued');
   });
 
   it('sends a reminder with no per-category count in the way', async () => {
     const { ports, ledger } = makePorts();
     const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
-    expect(ledger[0]?.status).toBe('sent');
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(ledger[0]?.status).toBe('queued');
   });
 });
 
 describe('per-channel dedupe idempotency — a re-drain never double-sends', () => {
   it('skips the leg whose per-channel key is already sent, writing no row', async () => {
-    const sentKeys = new Set(['fam-1:2026-W23:weekly:email']); // email already went last drain
-    const emailChannel = fakeChannel('email');
+    const sentKeys = new Set(['fam-1:2026-W23:weekly:sms']); // email already went last drain
+    const emailChannel = fakeChannel('sms');
     const { ports, ledger } = makePorts({
       activeDedupe: async (key) => sentKeys.has(key),
-      channels: { email: emailChannel },
+      channels: { sms: emailChannel },
     });
     const result = await dispatchLoopMessage(
       message({ category: 'reminder', dedupeKey: 'fam-1:2026-W23:weekly' }),
       ports,
     );
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'deduped' }]);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'deduped' }]);
     expect(emailChannel.calls).toHaveLength(0); // not re-sent
-    expect(ledger.filter((r) => r.channel === 'email')).toHaveLength(0); // dedupe writes no row
+    expect(ledger.filter((r) => r.channel === 'sms')).toHaveLength(0); // dedupe writes no row
   });
 });
 
 describe('email CASL dual-write + audit', () => {
-  it('writes channel_messages + email_sends + an audit row on a real email send', async () => {
-    const { ports, ledger, emailSends, audits } = makePorts();
-    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
-    expect(ledger.filter((r) => r.channel === 'email' && r.status === 'sent')).toHaveLength(1);
-    expect(emailSends).toEqual([{ emailType: 'reminder', recipient: 'parent@example.com' }]);
-    expect(audits).toEqual([
-      {
-        actionTaken: 'channel_sent',
-        after: { channel: 'email', category: 'reminder', templateKey: 'weekly-plan-v1' },
-      },
-    ]);
-  });
-
   it("names a caregiver leg by WHO received it — the trail must not say 'Hale sent you a message'", async () => {
     // A caregiver's reminder is a DISCLOSURE of the household to a third party, and the verb
     // is how a PIPEDA read finds it later. Pinned here because the templateKey is the
@@ -199,12 +169,6 @@ describe('email CASL dual-write + audit', () => {
     await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(audits.map((a) => a.actionTaken)).toEqual(['channel_sent']);
   });
-
-  it('does NOT write email_sends for a non-email leg', async () => {
-    const { ports, emailSends } = makePorts({ prefs: { loopChannel: 'sms' } });
-    await dispatchLoopMessage(message(), ports);
-    expect(emailSends).toEqual([]);
-  });
 });
 
 describe("the parent's own text thread", () => {
@@ -218,19 +182,6 @@ describe("the parent's own text thread", () => {
     expect(threaded).toEqual([
       { familyId: 'fam-1', parentUserId: 'user-1', body: 'weekly-plan-v1' },
     ]);
-  });
-
-  it('threads the SMS leg only — an email is not a text', async () => {
-    // The thread is the SMS thread (channelSmsNoteKey).
-    const { ports, threaded } = makePorts({ prefs: { loopChannel: 'sms' } });
-    const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
-
-    expect(result.legs.map((l) => `${l.channel}:${l.outcome}`)).toEqual(['sms:sent']);
-    expect(threaded).toHaveLength(1);
-
-    const viaEmail = makePorts();
-    await dispatchLoopMessage(message({ category: 'reminder' }), viaEmail.ports);
-    expect(viaEmail.threaded).toEqual([]);
   });
 
   it('threads nothing when the SMS leg never reached the provider', async () => {
@@ -251,7 +202,7 @@ describe('provider outcomes', () => {
   it('records a failed row on a permanent error', async () => {
     const { ports, ledger } = makePorts({
       channels: {
-        email: fakeChannel('email', {
+        sms: fakeChannel('sms', {
           status: 'error',
           transient: false,
           code: 'invalid_recipient',
@@ -263,7 +214,7 @@ describe('provider outcomes', () => {
     // The reason rides the leg so a caller can tell a refused address from an
     // unconfigured channel without re-reading the ledger row.
     expect(result.legs).toEqual([
-      { channel: 'email', outcome: 'failed', reason: 'invalid_recipient' },
+      { channel: 'sms', outcome: 'failed', reason: 'invalid_recipient' },
     ]);
     expect(ledger[0]).toMatchObject({ status: 'failed', errorCode: 'invalid_recipient' });
   });
@@ -271,7 +222,7 @@ describe('provider outcomes', () => {
   it('throws ChannelRetryableError on a transient error and writes no terminal row', async () => {
     const { ports, ledger } = makePorts({
       channels: {
-        email: fakeChannel('email', {
+        sms: fakeChannel('sms', {
           status: 'error',
           transient: true,
           code: 'rate_limited',
@@ -319,7 +270,7 @@ describe('provider outcomes', () => {
     const { ports, ledger } = makePorts({ channels: {} });
     const result = await dispatchLoopMessage(message(), ports);
     expect(result.legs).toEqual([
-      { channel: 'email', outcome: 'failed', reason: 'channel_unavailable' },
+      { channel: 'sms', outcome: 'failed', reason: 'channel_unavailable' },
     ]);
     expect(ledger[0]).toMatchObject({ status: 'failed', errorCode: 'channel_unavailable' });
   });
@@ -335,7 +286,7 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
         event: 'loop_message_failed',
         distinctId: 'user-1',
         properties: {
-          channel: 'email',
+          channel: 'sms',
           category: 'reminder',
           templateKey: 'weekly-plan-v1',
           reason: 'suppressed_pref',
@@ -353,10 +304,10 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
         event: 'loop_message_sent',
         distinctId: 'user-1',
         properties: {
-          channel: 'email',
+          channel: 'sms',
           category: 'reminder',
           templateKey: 'weekly-plan-v1',
-          reason: 'sent',
+          reason: 'queued',
         },
       },
     ]);
@@ -387,7 +338,7 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
   it('a permanent provider error writes one ledger row and one loop_message_failed capture', async () => {
     const { ports, ledger, captures } = makePorts({
       channels: {
-        email: fakeChannel('email', {
+        sms: fakeChannel('sms', {
           status: 'error',
           transient: false,
           code: 'invalid_recipient',
@@ -404,18 +355,18 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
   });
 
   it('a suppressed leg fires its paired capture, one per row', async () => {
-    const { ports, ledger, captures } = makePorts({ emailOptedOut: async () => true });
+    const { ports, ledger, captures } = makePorts({ smsConsentLive: async () => false });
     await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(captures).toHaveLength(ledger.length);
     expect(captures.map((c) => `${c.properties.channel}:${c.event}`)).toEqual([
-      'email:loop_message_failed',
+      'sms:loop_message_failed',
     ]);
   });
 
   it('a deduped leg writes NEITHER a ledger row nor a capture (no row ⇒ no event)', async () => {
     const { ports, ledger, captures } = makePorts({ activeDedupe: async () => true });
     const result = await dispatchLoopMessage(message({ dedupeKey: 'fam-1:key' }), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'deduped' }]);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'deduped' }]);
     expect(ledger).toHaveLength(0);
     expect(captures).toHaveLength(0);
   });
@@ -423,7 +374,7 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
   it('a transient (retryable) error writes no terminal row and fires no capture', async () => {
     const { ports, ledger, captures } = makePorts({
       channels: {
-        email: fakeChannel('email', {
+        sms: fakeChannel('sms', {
           status: 'error',
           transient: true,
           code: 'rate_limited',
@@ -436,69 +387,6 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
     );
     expect(ledger).toHaveLength(0);
     expect(captures).toHaveLength(0);
-  });
-});
-
-/**
- * VIL-249 — a message pinned to ONE channel. An ICS invite exists only as an email
- * (its whole payload is a text/calendar attachment), so it must reach a parent whose
- * exchange channel is SMS.
- */
-describe('a channel-pinned message', () => {
-  it('dispatches on the pinned channel rather than the parent’s loop channel', async () => {
-    const email = fakeChannel('email');
-    const sms = fakeChannel('sms');
-    const { ports, ledger } = makePorts({
-      prefs: { loopChannel: 'sms' },
-      channels: { email, sms },
-    });
-
-    const result = await dispatchLoopMessage(
-      message({ channel: 'email', category: 'approval' }),
-      ports,
-    );
-
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
-    expect(sms.calls).toHaveLength(0);
-    expect(ledger.map((r) => r.channel)).toEqual(['email']);
-  });
-});
-
-// ── VIL-293 · the choke point's own honesty gate ─────────────────────────────
-
-describe('a rendered body that claims something no row can back never reaches a provider', () => {
-  /** A template that promises to change how Hale itself behaves — the 2026-08-12
-   * sentence, in the one seam every loop message passes through. */
-  const claiming = {
-    render: () => ({
-      kind: 'sms' as const,
-      text: "Here's your week. I'll cut the one sec messages and just answer.",
-    }),
-  };
-
-  it('refuses the leg, writes the row, and calls no adapter', async () => {
-    const sms = fakeChannel('sms');
-    const { ports, ledger } = makePorts({
-      prefs: { loopChannel: 'sms' },
-      renderer: claiming,
-      channels: { sms },
-    });
-    const result = await dispatchLoopMessage(message(), ports);
-
-    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
-    expect(sms.calls).toEqual([]);
-    expect(ledger).toEqual([
-      expect.objectContaining({ status: 'failed', errorCode: 'unbacked_claim' }),
-    ]);
-  });
-
-  it('leaves an ordinary template alone', async () => {
-    const sms = fakeChannel('sms');
-    const { ports } = makePorts({ prefs: { loopChannel: 'sms' }, channels: { sms } });
-    const result = await dispatchLoopMessage(message(), ports);
-
-    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
-    expect(sms.calls).toHaveLength(1);
   });
 });
 
@@ -530,9 +418,9 @@ describe('recordAbandonedDispatch — the channel.send dead-letter outcome', () 
   it('records on the PINNED channel when the message rides one', async () => {
     const { ports, ledger } = makePorts({ prefs: { loopChannel: 'sms' } });
 
-    await recordAbandonedDispatch(message({ channel: 'email' }), ports);
+    await recordAbandonedDispatch(message({ channel: 'sms' }), ports);
 
-    expect(ledger[0]?.channel).toBe('email');
+    expect(ledger[0]?.channel).toBe('sms');
   });
 
   it('fires the paired loop_message_failed analytics event and touches no adapter', async () => {

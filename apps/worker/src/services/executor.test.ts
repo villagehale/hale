@@ -1,19 +1,13 @@
 import type { ApprovedAction } from '@hale/types';
 import { mintApprovedAction } from '@hale/types';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   type CalendarInviteReport,
   type CalendarInviteRequest,
   type ExecutorDeps,
-  resendSend,
   runExecutor,
   unwiredCalendarInvites,
 } from './executor.js';
-
-const resendSendMock = vi.fn();
-vi.mock('resend', () => ({
-  Resend: vi.fn(() => ({ emails: { send: resendSendMock } })),
-}));
 
 /**
  * B9 — outbound idempotency. These tests script the claim table + email
@@ -84,7 +78,6 @@ function makeClaimStore() {
         async (): Promise<CalendarInviteReport> => ({
           status: 'reported',
           parents: [],
-          ask: 'not_needed',
         }),
       ),
     },
@@ -129,13 +122,19 @@ describe('runExecutor — B9 outbound idempotency claim', () => {
   });
 
   it('sends the drafted email as written and records only the recipient domain, never the body', async () => {
-    const provider = vi.fn(async () => ({ messageId: 'pm-3', submittedAt: '2026-06-12T10:01:00Z' }));
+    const provider = vi.fn(async () => ({
+      messageId: 'pm-3',
+      submittedAt: '2026-06-12T10:01:00Z',
+    }));
     const { deps } = makeClaimStore();
     deps.sendEmail = provider;
 
     const result = await runExecutor({ familyId, approved: approvedEmail() }, deps);
 
-    expect(provider).toHaveBeenCalledWith({ to: 'clinic@example.com', subject: 'hi', body: 'hello' });
+    expect(provider).toHaveBeenCalledWith(
+      { to: 'clinic@example.com', subject: 'hi', body: 'hello' },
+      { familyId, actorUserId: null },
+    );
     expect(result.detail).toEqual({
       kind: 'email_sent',
       messageId: 'pm-3',
@@ -401,7 +400,7 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
       kind: 'calendar_placed',
       outcome: 'written',
       reversalHandle: 'fe-123',
-      invites: { status: 'reported', parents: [], ask: 'not_needed' },
+      invites: { status: 'reported', parents: [] },
       google: { status: 'skipped', reason: 'not_configured' },
     });
     expect(result.reversalHandle).toBeUndefined();
@@ -498,57 +497,6 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
   });
 });
 
-describe('resendSend — Resend transport', () => {
-  beforeEach(() => {
-    resendSendMock.mockReset();
-  });
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it('throws HALE_NOT_CONFIGURED when RESEND_API_KEY is absent (fail loud)', async () => {
-    vi.stubEnv('RESEND_API_KEY', '');
-    await expect(resendSend({ to: 'a@b.com', subject: 's', body: 'b' })).rejects.toThrow(
-      'HALE_NOT_CONFIGURED',
-    );
-    expect(resendSendMock).not.toHaveBeenCalled();
-  });
-
-  it('sends via Resend and returns the provider message id', async () => {
-    vi.stubEnv('RESEND_API_KEY', 're_test');
-    vi.stubEnv('RESEND_FROM', 'hello@villagehale.com');
-    resendSendMock.mockResolvedValue({ data: { id: 'resend-abc' }, error: null });
-
-    const result = await resendSend({
-      to: 'clinic@example.com',
-      cc: ['cc@example.com'],
-      subject: 'hi',
-      body: 'hello',
-    });
-
-    expect(result).toEqual({ messageId: 'resend-abc' });
-    expect(resendSendMock).toHaveBeenCalledWith({
-      from: 'hello@villagehale.com',
-      to: 'clinic@example.com',
-      cc: ['cc@example.com'],
-      subject: 'hi',
-      text: 'hello',
-    });
-  });
-
-  it('throws when Resend returns an error (never silently no-ops)', async () => {
-    vi.stubEnv('RESEND_API_KEY', 're_test');
-    resendSendMock.mockResolvedValue({
-      data: null,
-      error: { name: 'validation_error', message: 'bad sender' },
-    });
-
-    await expect(resendSend({ to: 'a@b.com', subject: 's', body: 'b' })).rejects.toThrow(
-      'Resend send failed (validation_error): bad sender',
-    );
-  });
-});
-
 /**
  * VIL-249 — the invite the placement owes the family. A placed event that never
  * left Hale's own tables is not on anyone's real calendar, so the send is part of
@@ -579,10 +527,9 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
   const TWO_PARENTS: CalendarInviteReport = {
     status: 'reported',
     parents: [
-      { parentUserId: 'p-1', channel: 'email', outcome: 'sent' },
-      { parentUserId: 'p-2', channel: 'email', outcome: 'no_email_on_file' },
+      { parentUserId: 'p-1', channel: 'sms', outcome: 'sent' },
+      { parentUserId: 'p-2', channel: 'sms', outcome: 'no_withdraw_form' },
     ],
-    ask: 'not_needed',
   };
 
   it('invites on calendar_add, addressed to the row that was just written', async () => {
@@ -657,7 +604,6 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
     const { requests, sender } = inviteSender({
       status: 'reported',
       parents: [],
-      ask: 'not_needed',
     });
     deps.sendCalendarInvites = sender;
 
@@ -785,7 +731,7 @@ describe('runExecutor — Google Calendar alongside the placement (VIL-93)', () 
     deps.sendCalendarInvites = {
       send: async (request) => {
         sent.push(request.familyEventId);
-        return { status: 'reported', parents: [], ask: 'not_needed' };
+        return { status: 'reported', parents: [] };
       },
     };
     deps.googleCalendar = {

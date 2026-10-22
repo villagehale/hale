@@ -552,10 +552,6 @@ export default async function PrivacyPage({
             United States.
           </li>
           <li>
-            <strong>Resend</strong> — delivery of transactional and weekly-brief emails (United
-            States).
-          </li>
-          <li>
             <strong>Linq</strong> — delivery of iMessage and SMS. The content of those messages
             passes through Linq; see{' '}
             <a href="#sms" className="link">

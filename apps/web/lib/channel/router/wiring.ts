@@ -24,10 +24,6 @@ import { createConsentAskWriter } from '~/lib/channel/consent-ask';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { createConsentReader } from '~/lib/channel/consent-reply';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
-import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
-import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
-import { productionEmailReply } from '~/lib/channel/email/reply-send';
-import { resolveSendableEmail } from '~/lib/channel/email/sendable';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
@@ -91,10 +87,8 @@ import {
   connectorLinkHandler,
   daycareFollowupHandler,
   emailAlertAddHandler,
-  emailCaptureHandler,
   emptySaturdayHandler,
   eveningCheckInHandler,
-  forwardAddressHandler,
   founderWelcomeHandler,
   healthReplyHandler,
   nameCaptureHandler,
@@ -244,10 +238,9 @@ async function resolveReplyRoute(
           }
         : null;
     }
-    case 'email': {
-      const address = await resolveSendableEmail(database, parentUserId);
-      return address ? { channel: 'email', to: address, inReplyTo: providerMessageId } : null;
-    }
+    // Retired pipe: Hale no longer sends email, so a leftover email row is unreachable.
+    case 'email':
+      return null;
     default:
       return null;
   }
@@ -416,7 +409,6 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
   return [
     villageIntroHandler(defaultVillageIntroReplyDeps(consent)),
     approvalHandler(defaultApprovalSpine()),
-    emailCaptureHandler(defaultEmailCaptureDeps()),
     connectorLinkHandler(),
     // Beside the connect half, and the position is free rather than load-bearing: the
     // two matchers are disjoint by construction (connect/detect.ts), so neither can
@@ -425,7 +417,6 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // Beside the connector pair, and free for their reason: all three matchers require a
     // noun no other handler's vocabulary contains, and detect.test.ts / the forwarding
     // matcher's own table assert the three are disjoint over the whole phrase list.
-    forwardAddressHandler(console, { consent, ask }),
     founderWelcomeHandler({ ...defaultFounderReplyDeps(), consent, ask }),
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
@@ -694,10 +685,6 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     transport: createReplyTransport({
       // SMS-shaped answers leave through the shared phone door (Linq by default).
       phone: createOutboundTransport(),
-      // Null until the inbound-email leg is provisioned, which is the same condition
-      // that makes an email route impossible to reach — dark by construction, and named
-      // rather than silent if it is ever reached anyway (reply-transport.ts).
-      email: productionEmailReply(),
     }),
     handlers: defaultHandlers(),
     // What Hale is still waiting to hear back about, and the stage that reads a parent's
@@ -930,14 +917,9 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
           askedAt: offer.askedAt,
         }));
       },
-      // The forwarding-address revoke confirm (VIL-352 round 6), read through the lane's own
-      // ledger reader — the evening check-in's discipline for the same reason, with the
-      // fifteen-minute window applied inside it so a lapsed confirm is never listed. It
-      // stands until one of its own receipts answers it, NOT until Hale next speaks: the
-      // clarifying menu Hale sends about this very question is a thing Hale said, and it
-      // used to close the question it was asking about (round 7). The last-word rule lives
-      // on the bare-word door in handlers.ts, which is the only reader it protects.
-      forwardAddressRevoke: (database, input) => forwardRevokeAsk(database, input),
+      // The email forwarding door is retired with the email channel, so no revoke
+      // confirm can be standing any more.
+      forwardAddressRevoke: async () => null,
     },
     options,
   );

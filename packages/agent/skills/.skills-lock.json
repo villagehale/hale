@@ -19,14 +19,6 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
-  "calendar-email-ask.md": {
-    "file": "calendar-email-ask.md",
-    "sha256": "dee39b5ffa124c1ad4426ad8a819be231a7c74e860b99895353da326ade928a6"
-  },
-  "calendar-invite-note.md": {
-    "file": "calendar-invite-note.md",
-    "sha256": "c6506cf2c2843859d080ad490726448896c10b6f9592e3d11b47b12cd1b6b38d"
-  },
   "calendar-offer-read.md": {
     "file": "calendar-offer-read.md",
     "sha256": "aea480fe0eb977faef4e918c9dde6778a6605eadede342a542e385ff7f0c676e"

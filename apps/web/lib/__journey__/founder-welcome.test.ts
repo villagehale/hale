@@ -310,7 +310,7 @@ describe("the founder's welcome note", () => {
       ),
       // The production adapter over the fake pipe: the router hands it a resolved sms
       // route, the fake records the send — the same recorder the founder lane writes to.
-      transport: createReplyTransport({ phone: transport, email: null }),
+      transport: createReplyTransport({ phone: transport }),
       replyResolver: resolver,
       coach: silentCoach,
       offDomain: { consider: async () => ({ status: 'in_domain' as const, fallback: null }) },

@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import type {
-  CalendarInviteAskOutcome,
   CalendarInviteMethod,
   CalendarInviteOutcome,
   CalendarInviteParentOutcome,
@@ -8,78 +7,37 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
-import {
-  type DispatchPorts,
-  type LedgerWrite,
-  type LegResult,
-  dispatchLoopMessage,
-} from '~/lib/channel/dispatch';
+import { and, eq, inArray } from 'drizzle-orm';
+import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
-import { unsubscribeUrl } from '~/lib/cron/email-compliance';
-import { composeEventInvite, composeEventLink, inviteAttachment } from '~/lib/loop/ics-invite';
-import {
-  CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
-  CALENDAR_INVITE_TEMPLATE_KEY,
-  type CalendarInvitePayload,
-  inviteWhenLabel,
-} from '~/lib/loop/templates/calendar-invite';
+import { composeEventLink } from '~/lib/loop/ics-invite';
 import {
   CALENDAR_INVITE_SMS_TEMPLATE_KEY,
   type CalendarInviteSmsPayload,
+  inviteWhenLabel,
 } from '~/lib/loop/templates/calendar-invite/sms';
-import type { CalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
 
 /**
- * VIL-249 · M13 — the production fan-out: a placement's iTIP object, delivered.
+ * VIL-249 · M13 — the production fan-out: a placement, delivered as a tap-to-add link.
  *
  * This is the executor's `sendCalendarInvites` port bound to real families. Every
  * send goes through the A2 dispatch, which is the only path to a provider: consent,
- * the per-category enables, quiet hours, the cap, the channel_messages ledger, the
- * email_sends CASL row and the audit row all happen there, exactly once, for this
- * message like every other. Nothing here talks to Resend.
+ * the per-category enables, quiet hours, the channel_messages ledger and the audit row
+ * all happen there, exactly once, for this message like every other.
  *
- * THREE HALVES, per recipient, because the invite exists in two forms:
+ * ONE FORM: a text carrying one line and a per-event ICS URL the parent's phone opens
+ * in Calendar. The emailed iTIP invite (and the one-time ask for an address to send it
+ * to) is retired with the email channel; a parent with a connected Google Calendar
+ * gets the placement written there directly, and everyone else gets iMessage
+ * reminders. REQUEST only: a CANCEL has nothing to link to, and says so by name.
  *
- *   1. EVERY parent with an address gets the iTIP object, pinned to the email leg (the
- *      attachment has no SMS or push form) and marked time_sensitive — the parent
- *      approved this seconds ago, so the receipt of their own decision must not be
- *      dropped by a quiet-hours window that exists to stop unsolicited pings. Their
- *      own `urgent_bypass_quiet_hours` pref still governs; the dispatch decides.
- *
- *   2. A parent with NO address gets the same placement as a LINK, by text: one line
- *      and a per-event ICS URL their phone opens in Calendar. Until this existed the
- *      invite lived on one channel, so every SMS-intake family (users.email null) said
- *      YES and got an acknowledgment with no artifact — the event was on Hale's
- *      calendar and nowhere near theirs. Same category, same urgency, same dispatch as
- *      the email twin; only the form differs. REQUEST only: a CANCEL has nothing to
- *      link to.
- *
- *      ITS STANDING IS THE EMAILED TWIN'S, not the "Approved" reply's — that reply is
- *      an answer to an inbound turn and leaves through the transport with no policy
- *      gate, while this leaves through the dispatch. So a parent who has turned
- *      `urgent_bypass_quiet_hours` OFF and says yes at 22:30 gets the acknowledgment
- *      and, that night, no link: the leg reports `suppressed`, and since the executor
- *      runs once per approval nothing re-drives it in the morning. Named rather than
- *      hidden (rule #11). The fix for it is a re-drive Hale does not have yet, not a
- *      quieter category or a second door around the gate.
- *
- *   3. A family that got NEITHER is asked for an address, once ever. The claim is the
- *      INSERT of the ledger row carrying the ask's dedupe key (#413's pattern): the
- *      partial unique index means exactly one concurrent placement wins it, and the
- *      dispatch then settles that same row rather than writing a second. A SUPPRESSED
- *      ask releases the key — a message the parent never received is not an ask, and
- *      the next placement may try again, which is the dispatch's own rule for its own
- *      keys.
- *
- *      IT IS NOW A LAST RESORT AND VERY NEARLY DEAD, which is worth saying out loud:
- *      the ask itself rides SMS, so a family that can receive it can receive the link
- *      instead, and a family that cannot receive the link cannot receive the ask
- *      either. Collecting an address Hale no longer needs for this is also a privacy
- *      regression (rule #1). Removing it — with `composeAsk`, the ask template, the
- *      email-capture reply and `sendPendingInvite` — is a subtraction of its own and
- *      is deliberately not bundled here.
+ * ITS STANDING IS A LOOP SEND, not the "Approved" reply's — that reply is an answer to
+ * an inbound turn and leaves through the transport with no policy gate, while this
+ * leaves through the dispatch. So a parent who has turned `urgent_bypass_quiet_hours`
+ * OFF and says yes at 22:30 gets the acknowledgment and, that night, no link: the leg
+ * reports `suppressed`, and since the executor runs once per approval nothing re-drives
+ * it in the morning. Named rather than hidden (rule #11).
  *
  * Every outcome is NAMED back to the executor (rule #11). "Reachable on no channel" is
  * a first-class result of a successful placement, not a silence inside one.
@@ -88,40 +46,26 @@ import type { CalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
 /** Roles that receive a family's calendar invites. Caregivers never do (rule #1). */
 const INVITED_ROLES = ['primary_parent', 'co_parent'] as const;
 
-/** The email stream an invite rides, for the CASL opt-out and the unsubscribe link.
- * 'approval' is the loop category a placement's receipt belongs to. */
-const INVITE_EMAIL_TYPE = 'approval' as const;
-
 export interface CalendarInviteDeps {
-  /** The seam's real adapters, shared with the drain so both send through one email
+  /** The seam's real adapters, shared with the drain so both send through one SMS
    * channel. Non-nullable (rule #11): a missing adapter is the dispatch's own
    * 'channel_unavailable', not an absent dependency here. */
   channels: Partial<Record<ChannelKind, Channel>>;
   renderer: TemplateRenderer;
-  /** Writes the two surfaces a person reads: the ask, and the invite's subject + note.
-   * Non-nullable (rule #11) — there is no preset copy to fall back to, so a composer
-   * that cannot produce a sendable draft DEFERS by name rather than being absent. */
-  voice: CalendarVoice;
   now?: () => Date;
 }
 
 interface InvitedParent {
   userId: string;
-  email: string | null;
   timezone: string;
   role: string;
 }
 
-/** The parents an invite is addressed to, primary first (the ask targets the head of
- * this list). */
-async function loadInvitedParents(
-  database: Database,
-  familyId: string,
-): Promise<InvitedParent[]> {
+/** The parents an invite is addressed to, primary first. */
+async function loadInvitedParents(database: Database, familyId: string): Promise<InvitedParent[]> {
   const rows = await database
     .select({
       userId: schema.users.id,
-      email: schema.users.email,
       timezone: schema.users.timezone,
       role: schema.familyMembers.role,
     })
@@ -133,51 +77,12 @@ async function loadInvitedParents(
         inArray(schema.familyMembers.role, [...INVITED_ROLES]),
       ),
     );
-  return rows.sort((a, b) => Number(b.role === 'primary_parent') - Number(a.role === 'primary_parent'));
+  return rows.sort(
+    (a, b) => Number(b.role === 'primary_parent') - Number(a.role === 'primary_parent'),
+  );
 }
 
-/** The most recent placement still standing — what a parent who has just handed over
- * their address is owed an invite for. */
-async function latestPlacedEventId(
-  database: Database,
-  familyId: string,
-): Promise<string | null> {
-  const [row] = await database
-    .select({ id: schema.familyEvents.id })
-    .from(schema.familyEvents)
-    .where(
-      and(
-        eq(schema.familyEvents.familyId, familyId),
-        eq(schema.familyEvents.source, 'placement'),
-        isNull(schema.familyEvents.deletedAt),
-      ),
-    )
-    // Most recently placed; among rows written in the same instant (a batch), the
-    // later event, so the answer is never arbitrary.
-    .orderBy(desc(schema.familyEvents.createdAt), desc(schema.familyEvents.startsAt))
-    .limit(1);
-  return row?.id ?? null;
-}
-
-/** The dedupe key for ONE parent's copy of ONE revision of one event. The revision is
- * in the key, so a move (which raises the sequence) sends a fresh invite while a
- * re-drive of the same placement is deduped by the dispatch. */
-function inviteDedupeKey(
-  familyEventId: string,
-  method: CalendarInviteMethod,
-  sequence: number,
-  parentUserId: string,
-): string {
-  return `${CALENDAR_INVITE_TEMPLATE_KEY}:${familyEventId}:${method}:${sequence}:${parentUserId}`;
-}
-
-/** One ask per family, forever — the key the claim row holds. */
-export function emailAskDedupeKey(familyId: string): string {
-  return `${CALENDAR_EMAIL_ASK_TEMPLATE_KEY}:${familyId}`;
-}
-
-/** The dispatch statuses that mean "not now" rather than "no". They release the ask's
- * claim, exactly as the dispatch declines to spend a dedupe key on a suppression. */
+/** The dispatch statuses that mean "not now" rather than "no". */
 function isSuppression(status: string): boolean {
   return status.startsWith('suppressed_');
 }
@@ -222,94 +127,12 @@ interface InviteJob {
   method: CalendarInviteMethod;
 }
 
-/** Compose one parent's copy and hand it to the dispatch. */
-async function inviteOneParent(
-  database: Database,
-  ports: DispatchPorts,
-  voice: CalendarVoice,
-  job: InviteJob,
-  parent: InvitedParent & { email: string },
-  now: Date,
-): Promise<CalendarInviteParentOutcome> {
-  const composed = await composeEventInvite(
-    {
-      familyId: job.familyId,
-      familyEventId: job.familyEventId,
-      parentUserId: parent.userId,
-      to: parent.email,
-      method: job.method,
-    },
-    { database, now },
-  );
-  if (composed.status === 'not_found') {
-    return { parentUserId: parent.userId, channel: 'email', outcome: 'event_not_found' };
-  }
-
-  // CASL: no working unsubscribe, no commercial send. Named rather than thrown, so a
-  // missing secret reads as "nothing is wired here" instead of a failed placement.
-  const unsubscribe = unsubscribeUrl({ userId: parent.userId, emailType: INVITE_EMAIL_TYPE });
-  if (!unsubscribe) {
-    return {
-      parentUserId: parent.userId,
-      channel: 'email',
-      outcome: 'not_configured',
-      reason: 'unsubscribe_unavailable',
-    };
-  }
-
-  // The words are the model's, over the redacted descriptor and nothing else; the
-  // containment gate holds both to it. No sendable draft ⇒ no email at all, named —
-  // there is no preset body to send instead (founder, 2026-08-12).
-  const when = inviteWhenLabel(composed.startsAt, parent.timezone);
-  const note = await voice.composeNote({
-    summary: composed.summary,
-    when,
-    method: composed.method === 'CANCEL' ? 'cancelled' : 'added',
-  });
-  if (note.status === 'deferred') {
-    return {
-      parentUserId: parent.userId,
-      channel: 'email',
-      outcome: 'compose_deferred',
-      reason: note.reason,
-    };
-  }
-
-  const payload: CalendarInvitePayload = {
-    summary: composed.summary,
-    when,
-    method: composed.method,
-    subject: note.subject,
-    body: note.body,
-    unsubscribeUrl: unsubscribe,
-    attachment: inviteAttachment(composed),
-  };
-  const message: LoopMessage = {
-    templateKey: CALENDAR_INVITE_TEMPLATE_KEY,
-    familyId: job.familyId,
-    parentUserId: parent.userId,
-    category: 'approval',
-    urgency: 'time_sensitive',
-    channel: 'email',
-    dedupeKey: inviteDedupeKey(
-      job.familyEventId,
-      composed.method,
-      composed.sequence,
-      parent.userId,
-    ),
-    payload: payload as unknown as Record<string, unknown>,
-  };
-
-  const { legs } = await dispatchLoopMessage(message, ports);
-  return { parentUserId: parent.userId, channel: 'email', ...outcomeFromLeg(legs[0]) };
-}
-
 /**
  * Text one parent the placement as a tap-to-add link.
  *
- * NO COMPOSER. The email twin pays for a model because its note is prose; this is a
- * receipt plus a URL, locked and segment-tested at the authoring site like every other
- * deterministic line Hale texts (templates/calendar-invite/sms.ts).
+ * NO COMPOSER. This is a receipt plus a URL, locked and segment-tested at the
+ * authoring site like every other deterministic line Hale texts
+ * (templates/calendar-invite/sms.ts).
  */
 async function textOneParent(
   database: Database,
@@ -350,133 +173,14 @@ async function textOneParent(
   const leg = legs[0];
   const result = outcomeFromLeg(leg);
   // The dispatch's SMS consent gate is the live-state read (an active verified
-  // parent_channels row), so a suppression here on a parent who also has no address is
-  // not a preference — it is a parent Hale has no way to reach at all. Naming it that
+  // parent_channels row), and SMS is the only channel Hale sends on, so a consent
+  // suppression here is not a preference — it is a parent Hale has no way to reach. Naming it that
   // way is the difference between "policy said no" and "there is nobody to send to",
   // and folding the two would hide whichever is real (rule #11).
   if (leg?.outcome === 'suppressed_consent') {
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'no_channel' };
   }
   return { parentUserId: parent.userId, channel: 'sms', ...result };
-}
-
-/**
- * Claim the family's one ask. The INSERT is the claim (#413): the partial unique index
- * on `dedupe_key` lets exactly one caller win, so two placements landing together
- * cannot both text the same family. Returns the claimed row's id, or null when the
- * family has already been asked.
- */
-async function claimEmailAsk(
-  database: Database,
-  familyId: string,
-  parentUserId: string,
-): Promise<string | null> {
-  const [row] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId,
-      parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'approval',
-      templateKey: CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
-      dedupeKey: emailAskDedupeKey(familyId),
-      status: 'queued',
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.channelMessages.id });
-  return row?.id ?? null;
-}
-
-/**
- * Settle the claimed row with what the dispatch decided, IN PLACE — this is the
- * dispatch's `record` port for the ask, so one ask is one ledger row rather than a
- * claim plus a duplicate. A suppression gives the key back (see the module note).
- */
-async function settleEmailAskClaim(
-  database: Database,
-  claimId: string,
-  familyId: string,
-  write: LedgerWrite,
-): Promise<string> {
-  await database
-    .update(schema.channelMessages)
-    .set({
-      status: write.status,
-      providerMessageId: write.providerMessageId ?? null,
-      errorCode: write.errorCode ?? null,
-      sentAt: write.sentAt ?? null,
-      dedupeKey: isSuppression(write.status) ? null : emailAskDedupeKey(familyId),
-    })
-    .where(eq(schema.channelMessages.id, claimId));
-  return claimId;
-}
-
-/**
- * Hand the claim back after a defer: the row stays as the honest record of an attempt
- * that sent nothing, and the key it was holding is released (the dedupe key is the
- * claim, so nulling it is what lets the next placement ask).
- */
-async function releaseEmailAskClaim(
-  database: Database,
-  claimId: string,
-  reason: string,
-): Promise<void> {
-  await database
-    .update(schema.channelMessages)
-    .set({ status: 'failed', errorCode: 'compose_deferred', dedupeKey: null })
-    .where(eq(schema.channelMessages.id, claimId));
-  console.error({ claimId, reason }, 'calendar invite: the email ask deferred — claim released');
-}
-
-/**
- * Ask the family for an address, at most once ever. The target is the primary parent
- * (the head of the invited list) — whether they can actually be texted is the
- * dispatch's question, not a second consent reader's.
- */
-async function askForEmail(
-  database: Database,
-  ports: DispatchPorts,
-  voice: CalendarVoice,
-  familyId: string,
-  parents: InvitedParent[],
-): Promise<CalendarInviteAskOutcome> {
-  const target = parents[0];
-  if (!target) return 'no_parent_to_ask';
-
-  // Claim BEFORE composing: the claim is what stops two concurrent placements both
-  // texting this family, and paying for two drafts to discover that is the wrong order.
-  const claimId = await claimEmailAsk(database, familyId, target.userId);
-  if (!claimId) return 'already_asked';
-
-  const ask = await voice.composeAsk();
-  if (ask.status === 'deferred') {
-    // Give the claim back. A family that was never texted has not been asked, so the
-    // next placement gets to try again — the same rule a suppression follows.
-    await releaseEmailAskClaim(database, claimId, ask.reason);
-    return 'compose_deferred';
-  }
-
-  const message: LoopMessage = {
-    templateKey: CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
-    familyId,
-    parentUserId: target.userId,
-    category: 'approval',
-    urgency: 'normal',
-    channel: 'sms',
-    payload: { text: ask.text },
-  };
-  const { legs } = await dispatchLoopMessage(message, {
-    ...ports,
-    record: (write) => settleEmailAskClaim(database, claimId, familyId, write),
-  });
-
-  const leg = legs[0];
-  if (!leg) return 'send_failed';
-  if (leg.outcome === 'sent') return 'sent';
-  if (isSuppression(leg.outcome)) return 'suppressed';
-  if (leg.reason && UNCONFIGURED_REASONS.has(leg.reason)) return 'not_configured';
-  return 'send_failed';
 }
 
 /**
@@ -499,7 +203,7 @@ export function createCalendarInviteSender(
       const now = clock();
       const parents = await loadInvitedParents(database, request.familyId);
       if (parents.length === 0) {
-        return { status: 'reported', parents: [], ask: 'no_parent_to_ask' };
+        return { status: 'reported', parents: [] };
       }
 
       const job: InviteJob = {
@@ -509,76 +213,20 @@ export function createCalendarInviteSender(
       };
       const outcomes: CalendarInviteParentOutcome[] = [];
       for (const parent of parents) {
-        if (parent.email) {
-          outcomes.push(
-            await inviteOneParent(
-              database,
-              ports,
-              deps.voice,
-              job,
-              { ...parent, email: parent.email },
-              now,
-            ),
-          );
-        } else if (request.method === 'REQUEST') {
-          // No address, but the placement still exists — it goes as a link they can tap.
+        if (request.method === 'REQUEST') {
           outcomes.push(await textOneParent(database, ports, job, parent, now));
         } else {
-          // A CANCEL has no link form, so an addressless parent is told nothing and
-          // that is said rather than swallowed.
-          outcomes.push({ parentUserId: parent.userId, channel: 'email', outcome: 'no_email_on_file' });
+          // A CANCEL has no link form, so nothing is withdrawn by text — said rather
+          // than swallowed.
+          outcomes.push({
+            parentUserId: parent.userId,
+            channel: 'sms',
+            outcome: 'no_withdraw_form',
+          });
         }
       }
 
-      // The ask is the LAST resort now, not the second half of the fan-out: a family
-      // that was handed the invite on either channel has nothing left to be asked for.
-      // After a CANCEL there is nothing to add either, and "want this in your real
-      // calendar?" about a cancellation is a question with no good answer.
-      const delivered = outcomes.some(
-        (outcome) => outcome.outcome === 'sent' || outcome.outcome === 'already_sent',
-      );
-      const needsAsk =
-        request.method === 'REQUEST' && !delivered && parents.every((parent) => !parent.email);
-      const ask = needsAsk
-        ? await askForEmail(database, ports, deps.voice, request.familyId, parents)
-        : 'not_needed';
-
-      return { status: 'reported', parents: outcomes, ask };
+      return { status: 'reported', parents: outcomes };
     },
   };
-}
-
-/**
- * The invite a newly-captured address is owed: the family's most recent standing
- * placement, sent to that one parent. Same dispatch, same dedupe key, so a parent who
- * was already sent this revision is not sent it twice.
- */
-export async function sendPendingInvite(
-  database: Database,
-  input: { familyId: string; parentUserId: string },
-  deps: CalendarInviteDeps,
-): Promise<CalendarInviteParentOutcome | { outcome: 'nothing_pending' }> {
-  const familyEventId = await latestPlacedEventId(database, input.familyId);
-  if (!familyEventId) return { outcome: 'nothing_pending' };
-
-  const parents = await loadInvitedParents(database, input.familyId);
-  const parent = parents.find((row) => row.userId === input.parentUserId);
-  if (!parent?.email) {
-    return { parentUserId: input.parentUserId, channel: 'email', outcome: 'no_email_on_file' };
-  }
-
-  const clock = deps.now ?? (() => new Date());
-  const ports = buildDispatchPorts(database, {
-    channels: deps.channels,
-    renderer: deps.renderer,
-    now: clock,
-  });
-  return inviteOneParent(
-    database,
-    ports,
-    deps.voice,
-    { familyId: input.familyId, familyEventId, method: 'REQUEST' },
-    { ...parent, email: parent.email },
-    clock(),
-  );
 }

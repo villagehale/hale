@@ -6,19 +6,12 @@ import { type ChildNameLevel, loadLoopPrefsView } from '~/lib/loop/prefs';
 import { eventDescriptor, isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild, ReminderEventView } from '~/lib/loop/templates/reminder/payload';
 import { mintIcsToken } from './ics-feed.js';
-import {
-  type IcsInviteEvent,
-  type IcsMethod,
-  generateEventCancel,
-  generateEventInvite,
-  generateEventPublish,
-} from './ics.js';
+import { type IcsInviteEvent, type IcsMethod, generateEventPublish } from './ics.js';
 
 /**
  * VIL-249 · M13 — the per-event calendar invite: add-to-calendar with zero OAuth. An
- * event leaves Hale two ways, both landing on the SAME UID so a client updates in place
- * rather than duplicating: attached to an email as an iTIP REQUEST/CANCEL, or behind an
- * unguessable link an SMS can carry.
+ * event leaves Hale behind an unguessable link an SMS can carry, always on the SAME UID
+ * so a client updates in place rather than duplicating.
  *
  * TOKEN (no new schema): a per-event token is `<familyEventId>.<sig>` where sig is
  * HMAC-SHA256 of the event id KEYED BY the family's own `families.ics_share_token` — the
@@ -48,11 +41,9 @@ import {
  * description, and a non-teen child is named only down to the recipient's own dial.
  */
 
-/** The from-identity the invite is sent under; the ORGANIZER must match it or clients
- * reject the iTIP object. Mirrors DEFAULT_FROM in lib/cron/email.ts. */
+/** The ORGANIZER stamped on a published event. */
 const INVITE_FROM = 'aloha@villagehale.com';
 const ORGANIZER_NAME = 'Hale';
-const ATTACHMENT_FILENAME = 'invite.ics';
 const TOKEN_SEPARATOR = '.';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -319,96 +310,4 @@ export async function composeEventLink(
   // Minted only once both checks have passed, so a not_found never writes a token.
   const url = await mintEventInviteLink(deps.database, row.familyId, row.id);
   return { status: 'composed', summary: invite.summary, startsAt: row.startsAt, sequence, url };
-}
-
-// ── The email leg ────────────────────────────────────────────────────────────
-
-export interface ComposeEventInviteInput {
-  familyId: string;
-  familyEventId: string;
-  /** The recipient parent — their child_name_level dial governs the rendering. */
-  parentUserId: string;
-  /** The ATTENDEE address. RFC 5546 requires one on a REQUEST, and it is the address
-   * the invite must actually be delivered to for a client to render the add card. */
-  to: string;
-  /** One line for the calendar entry's DESCRIPTION; dropped when the event is private. */
-  note?: string;
-  /** REQUEST (default) invites; CANCEL withdraws a previously sent invite. */
-  method?: IcsMethod;
-}
-
-export interface ComposeEventInviteDeps {
-  database: Database;
-  /** The ORGANIZER identity. It MUST equal the address the message is finally sent
-   * from or clients reject the iTIP object — which is why it resolves exactly as the
-   * A2 email adapter's from-identity does (RESEND_FROM, else the shared default). */
-  from?: string;
-  now?: Date;
-}
-
-export type ComposeEventInviteResult =
-  | {
-      status: 'composed';
-      /** The serialized iTIP object, ready to ride as a text/calendar part. */
-      ics: string;
-      method: IcsMethod;
-      sequence: number;
-      /** The event's redacted descriptor at THIS recipient's level. The caller's
-       * subject line is built from this rather than from the stored title, so the
-       * envelope can never be more revealing than the attachment (rule #1). */
-      summary: string;
-      startsAt: Date;
-    }
-  | { status: 'not_found' };
-
-/** The text/calendar part a composed invite becomes on an email. */
-export function inviteAttachment(composed: {
-  ics: string;
-  method: IcsMethod;
-}): { filename: string; content: string; contentType: string } {
-  return {
-    filename: ATTACHMENT_FILENAME,
-    content: Buffer.from(composed.ics, 'utf8').toString('base64'),
-    contentType: `text/calendar; charset=utf-8; method=${composed.method}`,
-  };
-}
-
-/**
- * One event as an iTIP object addressed to one parent, rendered at THAT parent's
- * privacy level — everything the email leg needs and nothing that sends it.
- *
- * Composing and sending are deliberately separate: the send goes through the A2
- * dispatch (quiet hours, consent, cap, ledger, audit), which is the only path to a
- * provider, and it needs the finished bytes to hand its email channel. See
- * lib/loop/calendar-invite.ts for the production fan-out.
- */
-export async function composeEventInvite(
-  input: ComposeEventInviteInput,
-  deps: ComposeEventInviteDeps,
-): Promise<ComposeEventInviteResult> {
-  const now = deps.now ?? new Date();
-  const method = input.method ?? 'REQUEST';
-
-  const row = await loadInviteEventRow(deps.database, input.familyEventId);
-  // Family scope (rule #1): the row's OWN family must be the one the caller claims.
-  if (!row || row.familyId !== input.familyId) return { status: 'not_found' };
-  // A REQUEST for an event that no longer exists would re-add it to the calendar.
-  if (method === 'REQUEST' && row.deletedAt !== null) return { status: 'not_found' };
-
-  const [level, sequence] = await Promise.all([
-    loadLoopPrefsView(input.parentUserId, deps.database).then((view) => view.childNameLevel),
-    icsSequence(deps.database, row.familyId, row.id, method),
-  ]);
-
-  const invite = toInviteEvent(row, { level, note: input.note ?? null, sequence }, now);
-  const options = {
-    organizerEmail: deps.from ?? process.env.RESEND_FROM ?? INVITE_FROM,
-    organizerName: ORGANIZER_NAME,
-    attendeeEmail: input.to,
-    now,
-  };
-  const ics =
-    method === 'CANCEL' ? generateEventCancel(invite, options) : generateEventInvite(invite, options);
-
-  return { status: 'composed', ics, method, sequence, summary: invite.summary, startsAt: row.startsAt };
 }
