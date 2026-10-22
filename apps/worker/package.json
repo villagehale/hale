@@ -42,6 +42,8 @@
     "eval:add-them-yourself": "node evals/run-add-them-yourself-eval.mjs --cached-only",
     "eval:reminder-voice": "node evals/run-reminder-voice-eval.mjs --cached-only",
     "eval:intro-voice": "node evals/run-intro-voice-eval.mjs --cached-only",
+    "eval:intro-group-voice": "node evals/run-intro-group-voice-eval.mjs --cached-only",
+    "eval:calendar-cancel-voice": "node evals/run-calendar-cancel-voice-eval.mjs --cached-only",
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
     "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",
     "eval:crisis-reply": "node evals/run-crisis-reply-eval.mjs --cached-only",
