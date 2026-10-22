@@ -4,6 +4,19 @@ import { describe, expect, it } from 'vitest';
 import { createTestDb, seedFamily } from '~/lib/testing/pglite';
 
 describe('activity history migration', () => {
+  it('sets a five-second DDL lock timeout for the migration transaction only', async () => {
+    const db = await createTestDb('0171_channel_pending_asks.sql');
+    try {
+      await db.exec("SET lock_timeout = '0'; BEGIN;");
+      await db.applyMigration('0172_activity_history_only.sql');
+      expect((await db.client.query('SHOW lock_timeout')).rows).toEqual([{ lock_timeout: '5s' }]);
+      await db.exec('COMMIT;');
+      expect((await db.client.query('SHOW lock_timeout')).rows).toEqual([{ lock_timeout: '0' }]);
+    } finally {
+      await db.close();
+    }
+  }, 30_000);
+
   it('preserves owned receipts, provenance and engagement IDs, discards the unused catalog', async () => {
     const db = await createTestDb('0171_channel_pending_asks.sql');
     try {

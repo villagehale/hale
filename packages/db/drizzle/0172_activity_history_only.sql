@@ -1,5 +1,6 @@
 -- Retain family-owned receipts and relationships, not the discovery catalog.
 DO $$ BEGIN
+SET LOCAL lock_timeout = '5s';
 IF to_regclass('public.village_candidates') IS NOT NULL THEN
 CREATE TABLE IF NOT EXISTS "family_activity_history" (LIKE "village_candidates" INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES);
 ALTER TABLE "family_activity_history" ADD COLUMN IF NOT EXISTS "offered_at" timestamp with time zone;
