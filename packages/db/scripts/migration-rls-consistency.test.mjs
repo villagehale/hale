@@ -47,6 +47,10 @@ describe('migration ↔ RLS consistency', () => {
       const sql = fs.readFileSync(path.join(drizzleDir, `${tag}.sql`), 'utf8');
       for (const table of createdTables(sql)) created.add(table);
       for (const table of rlsEnabledTables(sql)) protectedTables.add(table);
+      for (const match of sql.matchAll(/DROP TABLE (?:IF EXISTS )?"([a-z_0-9]+)"/gi)) {
+        created.delete(match[1]);
+        protectedTables.delete(match[1]);
+      }
     }
 
     const unprotected = [...created].filter((table) => !protectedTables.has(table)).sort();

@@ -1,5 +1,4 @@
 import type { CandidateAccess } from '@hale/db';
-import type { CIVIC_SOURCE } from '~/lib/civic/project';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
@@ -50,13 +49,8 @@ export const CLEARLY_BETTER_MARGIN = 2;
  * phone; a fourth clause is cost without comprehension. */
 const MAX_WHY_FACTS = 3;
 
-/** The one `village_candidates.source` whose url and time are the VENUE's own words.
- * Spelled here rather than imported from lib/civic/project so the decision stage does
- * not pull the whole projection (and its database client) into its graph — but PINNED
- * to the projection's own literal by the type annotation, which is erased at build and
- * costs the graph nothing. A projection that renames its source no longer silently
- * turns every civic pick into an unknown one: this file stops compiling. */
-const CIVIC_REGISTRY_SOURCE: typeof CIVIC_SOURCE = 'civic_registry';
+/** Historical source tag, retained without the retired civic projection. */
+const CIVIC_REGISTRY_SOURCE = 'civic_registry';
 
 export interface RadarChild {
   /** Set by the nudge roster so Saturday occupancy can tell siblings apart. Absent on
@@ -730,7 +724,9 @@ export function decideYearFinds(input: DecideRadarInput): WeekendPick[] {
 function accessFor(
   candidate: RadarCandidate,
 ): Pick<WeekendPick, 'access' | 'when' | 'verifiedUrl'> {
-  const civic = candidate.source === CIVIC_REGISTRY_SOURCE;
+  const civic =
+    candidate.source === CIVIC_REGISTRY_SOURCE ||
+    (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate);
   return {
     access:
       candidate.access === 'drop_in' || candidate.access === 'register_at_venue'

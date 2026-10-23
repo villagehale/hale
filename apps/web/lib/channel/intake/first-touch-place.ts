@@ -1,7 +1,7 @@
 import type { Municipality } from '@hale/db';
-import { municipalityForCity } from '~/lib/civic/project';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { type PostalContext, parseCanadianPostal } from './derive';
+import { municipalityForCity } from './municipality-city';
 
 /**
  * VIL-385 — a place the parent actually gave.

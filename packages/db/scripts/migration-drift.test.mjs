@@ -1,5 +1,22 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { computeDrift } from './migration-drift.mjs';
+import { computeDrift, readJournalWithHashes } from './migration-drift.mjs';
+
+describe('catalog history cutover', () => {
+  it('routes the normal migration command through the same guarded entry point', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(pkg.scripts.migrate).toBe('node scripts/apply-migrations.mjs');
+    expect(pkg.scripts['migrate:guard']).toBe(pkg.scripts.migrate);
+  });
+  it('keeps the retirement pending after the current main watermark', () => {
+    const entries = readJournalWithHashes(fileURLToPath(new URL('../drizzle/', import.meta.url)));
+    const base = entries.find((entry) => entry.tag === '0171_channel_pending_asks');
+    expect(computeDrift(entries, base.when).pending.map((entry) => entry.tag)).toEqual([
+      '0172_activity_history_only',
+    ]);
+  });
+});
 
 // Journal `when` values are strictly increasing (as drizzle-kit emits them).
 // Expected verdicts are derived from drizzle's own apply rule — a journal entry

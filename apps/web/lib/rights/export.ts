@@ -335,13 +335,13 @@ export async function assembleFamilyExport(
 
   const saveRows = await database
     .select({
-      title: schema.villageCandidates.title,
+      title: schema.familyActivityHistory.title,
       savedAt: schema.villageSaves.createdAt,
     })
     .from(schema.villageSaves)
     .innerJoin(
-      schema.villageCandidates,
-      eq(schema.villageSaves.candidateId, schema.villageCandidates.id),
+      schema.familyActivityHistory,
+      eq(schema.villageSaves.candidateId, schema.familyActivityHistory.id),
     )
     .where(eq(schema.villageSaves.familyId, familyId))
     .orderBy(schema.villageSaves.createdAt);

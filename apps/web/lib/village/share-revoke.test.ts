@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
 import type { Database } from '@hale/db';
+import { describe, expect, it, vi } from 'vitest';
 import { listSharedLinks, revokeShareLink } from './share-revoke';
 
 /**
@@ -14,7 +14,7 @@ const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const ACTOR_USER_ID = '55555555-5555-4555-8555-555555555555';
 const CANDIDATE_ID = '33333333-3333-4333-8333-333333333333';
 
-/** Fakes the village_candidates list select plus update().set().where().returning()
+/** Fakes the family_activity_history list select plus update().set().where().returning()
  *  and insert().values() for revoke. Spies capture the SET payload + the audit
  *  insert. */
 function fakeDb(config: {
@@ -81,7 +81,7 @@ describe('revokeShareLink', () => {
         familyId: FAMILY_ID,
         actor: ACTOR_USER_ID,
         actionTaken: 'share_link_revoked',
-        targetTable: 'village_candidates',
+        targetTable: 'family_activity_history',
         targetId: CANDIDATE_ID,
       }),
     );
