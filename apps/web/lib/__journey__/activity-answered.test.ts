@@ -885,12 +885,16 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
   it('the promise is kept even when the second look finds nothing', async () => {
     await turnTwoPromises();
 
+    const composer = composerModel();
     const sweepTransport = new FakeTransport();
     const result = await runActivityFollowUpSweep(
       database,
-      sweepDeps(sweepTransport, webPort([[]]).client),
+      sweepDeps(sweepTransport, webPort([[]]).client, {
+        composer: createFollowUpComposer(composer.client),
+      }),
       SWEEP_AT,
     );
+    expect(composer.misses, 'missing exact empty-result writer recording').toEqual([]);
 
     // Coming back empty-handed and SAYING SO is keeping the promise. A sweep that only
     // texted on success would leave this family waiting forever for the answer to a
