@@ -1,49 +1,74 @@
 #!/usr/bin/env node
-// Upload a Next build's source maps to PostHog error tracking, then delete them.
+// Upload a Next build's source maps to PostHog error tracking, then ALWAYS delete them.
 //
 //   node ../../scripts/posthog-sourcemaps.mjs <build-dir> <release-name>
 //
-// INERT WITHOUT A KEY: when POSTHOG_PERSONAL_API_KEY is unset (CI, previews, any deploy
-// before Barton sets it) this prints one line and exits 0 — no download, no network, the
-// build is unchanged. With the key set it runs `@posthog/cli sourcemap inject` then
-// `upload --delete-after`, so no .map file is ever served from the deployment.
+// Maps exist only when POSTHOG_PERSONAL_API_KEY is set (next.config.ts
+// productionBrowserSourceMaps). Whatever happens here — upload succeeds, fails, throws,
+// or is skipped (no key, bad args) — every *.map under <build-dir> is deleted in a
+// `finally`, so no map is ever served from the deployment.
 //
 // The key is handed to the CLI through its own env var (POSTHOG_CLI_API_KEY) and is
-// never printed or passed on a command line.
+// never printed or passed on a command line. A failed upload never fails the build.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
-const [dir, releaseName] = process.argv.slice(2);
-const key = process.env.POSTHOG_PERSONAL_API_KEY;
+/** Exact version: a CLI release must not change what the build does without a PR. */
+export const POSTHOG_CLI = '@posthog/cli@0.18.12';
 
-function shouldUpload(env = process.env) {
-  return Boolean(env.POSTHOG_PERSONAL_API_KEY);
+/** Delete every *.map file under `dir`. Returns how many were removed. */
+export function deleteMaps(dir) {
+  if (!dir || !existsSync(dir)) return 0;
+  let removed = 0;
+  const walk = (d) => {
+    for (const name of readdirSync(d)) {
+      const path = join(d, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (name.endsWith('.map')) {
+        rmSync(path, { force: true });
+        removed += 1;
+      }
+    }
+  };
+  walk(dir);
+  return removed;
 }
 
-if (!shouldUpload()) {
-  console.info('posthog-sourcemaps: POSTHOG_PERSONAL_API_KEY not set — skipping upload');
-  process.exit(0);
-}
-if (!dir || !releaseName || !existsSync(dir)) {
-  console.warn(`posthog-sourcemaps: build dir missing (${dir ?? 'none'}) — skipping upload`);
-  process.exit(0);
-}
-
-const env = {
-  ...process.env,
-  POSTHOG_CLI_API_KEY: key,
-  POSTHOG_CLI_PROJECT_ID: process.env.POSTHOG_PROJECT_ID || '486181',
-  POSTHOG_CLI_HOST: process.env.POSTHOG_CLI_HOST || 'https://us.posthog.com',
-};
-
-function run(args) {
-  const res = spawnSync('npx', ['-y', '@posthog/cli@latest', ...args], { env, stdio: 'inherit' });
-  return res.status === 0;
+function upload(dir, releaseName, env) {
+  if (!env.POSTHOG_PERSONAL_API_KEY) {
+    return 'skipped: POSTHOG_PERSONAL_API_KEY not set';
+  }
+  if (!releaseName || !existsSync(dir)) return 'skipped: build dir or release name missing';
+  const cliEnv = {
+    ...env,
+    POSTHOG_CLI_API_KEY: env.POSTHOG_PERSONAL_API_KEY,
+    POSTHOG_CLI_PROJECT_ID: env.POSTHOG_PROJECT_ID || '486181',
+    POSTHOG_CLI_HOST: env.POSTHOG_CLI_HOST || 'https://us.posthog.com',
+  };
+  const run = (args) =>
+    spawnSync('npx', ['-y', POSTHOG_CLI, ...args], { env: cliEnv, stdio: 'inherit' }).status === 0;
+  const ok =
+    run(['sourcemap', 'inject', '--directory', dir]) &&
+    run(['sourcemap', 'upload', '--directory', dir, '--release-name', releaseName]);
+  return ok ? 'uploaded' : 'upload failed (build continues)';
 }
 
-// A failed upload must not fail the deploy: the app works without symbolication.
-const ok =
-  run(['sourcemap', 'inject', '--directory', dir]) &&
-  run(['sourcemap', 'upload', '--directory', dir, '--release-name', releaseName, '--delete-after']);
-console.info(`posthog-sourcemaps: ${ok ? 'uploaded' : 'upload failed (build continues)'}`);
+export function main(argv = process.argv.slice(2), env = process.env) {
+  const [dir, releaseName] = argv;
+  let outcome = 'upload threw (build continues)';
+  try {
+    outcome = upload(dir, releaseName, env);
+  } catch {
+    // Named below; never fails the build.
+  } finally {
+    const removed = deleteMaps(dir);
+    console.info(`posthog-sourcemaps: ${outcome}; deleted ${removed} .map file(s)`);
+  }
+  return 0;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  process.exit(main());
+}
