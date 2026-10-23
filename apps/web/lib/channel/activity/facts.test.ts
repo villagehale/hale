@@ -64,7 +64,7 @@ describe('activity facts stay attached to their source', () => {
       access: 'register_at_venue',
       indoor_outdoor: 'indoor',
       when: '2026-10-16 10:30–11:30; 2026-10-21 09:30–10:30',
-      price: raw.price,
+      price: raw.price_evidence,
     });
     expect(result.picks[0]?.evidence.age).toBe(raw.age_evidence);
     expect(result.references).toEqual([]);
@@ -87,6 +87,12 @@ describe('activity facts stay attached to their source', () => {
       bind([{ ...raw, price: 'Free', price_evidence: 'Admission is free' }]).picks[0]?.price,
     ).toBeNull();
   });
+  it.each(['Free', '$99', '$2', 'approximately US$15'])(
+    'uses published price wording instead of a separately generated value (%s)',
+    (price) => {
+      expect(bind([{ ...raw, price }]).picks[0]?.price).toBe(raw.price_evidence);
+    },
+  );
   it('does not fall back to free-form when after rejecting invalid or out-of-month sessions', () => {
     for (const date of ['2020-10-16', '2026-11-16', '2026-02-31']) {
       const result = bind([

@@ -38,15 +38,22 @@ const pick = {
 describe('live recommendations without a catalog', () => {
   it('accepts the current main Finder URL without inventing a dated session', async () => {
     const familyId = await family();
-    const legacy = { name: pick.name, ageFit: pick.ageFit, when: null, price: null,
-      sourceName: pick.sourceName, source: 'web' as const, url: pick.sourceUrl };
+    const legacy = {
+      name: pick.name,
+      ageFit: pick.ageFit,
+      when: null,
+      price: null,
+      sourceName: pick.sourceName,
+      source: 'web' as const,
+      url: pick.sourceUrl,
+    };
     const finder = { find: async () => ({ found: true as const, picks: [legacy] }) };
     const result = await findFamilyActivities(db.database, familyId, { finder });
     expect(result.picks[0]?.sourceUrl).toBe(pick.sourceUrl);
     expect(result.picks[0]?.eventDate).toBeUndefined();
     expect(await readCandidates(db.database, familyId, { finder })).toEqual([]);
   });
-  it('passes the existing Finder municipality without leaking the postal prefix', async () => {
+  it('qualifies the Finder municipality without leaking the postal prefix', async () => {
     const familyId = await family(36, 'Burlington');
     await db.database
       .update(schema.families)
@@ -54,21 +61,21 @@ describe('live recommendations without a catalog', () => {
       .where(eq(schema.families.id, familyId));
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
     await findFamilyActivities(db.database, familyId, { finder: { find } });
-    expect(find.mock.calls[0]![0].town).toBe('Burlington');
+    expect(find.mock.calls[0]![0].town).toBe('Burlington, Ontario, Canada');
     expect(JSON.stringify(find.mock.calls)).not.toContain('L7M');
   });
 
-  it('keeps main’s no-area boundary for an unmapped city', async () => {
+  it('supports a non-GTA city with its province and country', async () => {
     const familyId = await family(36, 'Victoria');
     await db.database
       .update(schema.families)
       .set({ areaCoarse: null, province: 'BC', country: 'Canada' })
       .where(eq(schema.families.id, familyId));
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
-    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
-      'no_area',
+    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).picks).toEqual(
+      [pick],
     );
-    expect(find).not.toHaveBeenCalled();
+    expect(find.mock.calls[0]![0].town).toBe('Victoria, British Columbia, Canada');
   });
 
   it('does not guess an Ontario municipality for an unmapped foreign family', async () => {
@@ -78,10 +85,73 @@ describe('live recommendations without a catalog', () => {
       .set({ areaCoarse: null, province: 'VT', country: 'US' })
       .where(eq(schema.families.id, familyId));
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
-    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
-      'no_area',
-    );
-    expect(find).not.toHaveBeenCalled();
+    await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(find.mock.calls[0]![0].town).toBe('Burlington, VT, United States');
+  });
+
+  it('preserves checked sources and unconfirmed references when no pick is confirmed', async () => {
+    const familyId = await family();
+    const reference = {
+      name: pick.name,
+      sourceName: pick.sourceName,
+      sourceUrl: pick.sourceUrl,
+      ageFit: null,
+      when: null,
+      price: null,
+      status: 'unconfirmed' as const,
+      evidence: {
+        program: pick.name,
+        age: null,
+        sessions: [],
+        schedule: null,
+        price: null,
+        history: null,
+        windowConfirmed: false,
+      },
+    };
+    const searched = {
+      town: 'Toronto, Ontario, Canada',
+      notes: 'Research notes',
+      references: [reference],
+      checkedSources: [pick.sourceUrl],
+    };
+    const finder = {
+      find: async () => ({ found: false as const, reason: 'no_picks' as const, searched }),
+    };
+    expect(await findFamilyActivities(db.database, familyId, { finder })).toEqual({
+      picks: [],
+      reason: 'no_picks',
+      references: [reference],
+      checkedSources: [pick.sourceUrl],
+    });
+  });
+
+  it('preserves confirmed session evidence and checked sources in successful results', async () => {
+    const familyId = await family();
+    const evidence = {
+      program: pick.name,
+      age: pick.ageFit,
+      sessions: ['October 18, 2026 at 10am'],
+      schedule: null,
+      price: 'Free',
+      history: null,
+      windowConfirmed: true,
+    };
+    const sourced = { ...pick, evidence };
+    const finder = {
+      find: async () => ({
+        found: true as const,
+        picks: [sourced],
+        references: [],
+        checkedSources: [pick.sourceUrl],
+      }),
+    };
+    expect(await findFamilyActivities(db.database, familyId, { finder })).toEqual({
+      picks: [sourced],
+      reason: null,
+      references: [],
+      checkedSources: [pick.sourceUrl],
+    });
   });
 
   it('keeps a known venue identity for review ranking, never an ambiguous shared URL', async () => {
@@ -167,7 +237,7 @@ describe('live recommendations without a catalog', () => {
     expect(second.status).toBe('discovered');
     expect(find).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(find.mock.calls)).not.toContain('PrivateChildName');
-    expect(find.mock.calls[0]![0].town).toBe('Toronto');
+    expect(find.mock.calls[0]![0].town).toBe('Toronto, Ontario, Canada');
     const rows = await db.database
       .select()
       .from(schema.familyActivityHistory)
@@ -222,6 +292,18 @@ describe('live recommendations without a catalog', () => {
         })
       ).picks,
     ).toEqual([]);
+    expect(find).not.toHaveBeenCalled();
+  });
+  it('does not leak a household name stored as an unmapped city', async () => {
+    const familyId = await family(36, 'PrivateChildName');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: null, country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn();
+    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
+      'names_a_person',
+    );
     expect(find).not.toHaveBeenCalled();
   });
   it('nudge candidates are freshly sourced and require an explicit date and link', async () => {

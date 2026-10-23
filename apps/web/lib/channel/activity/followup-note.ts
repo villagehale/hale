@@ -222,7 +222,19 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     ...(grounding.picks.length === 0
       ? {
           picks_empty: true,
-          ...(grounding.searched ? { searched: grounding.searched } : {}),
+          ...(grounding.searched
+            ? {
+                searched: {
+                  town: grounding.searched.town,
+                  ...(grounding.searched.references
+                    ? { references: grounding.searched.references }
+                    : {}),
+                  ...(grounding.searched.checkedSources
+                    ? { checkedSources: grounding.searched.checkedSources }
+                    : {}),
+                },
+              }
+            : {}),
         }
       : { page_evidence: grounding.pageEvidence }),
     watch: grounding.watch,
