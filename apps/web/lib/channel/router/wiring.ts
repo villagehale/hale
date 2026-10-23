@@ -44,7 +44,7 @@ import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
-import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
+import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
@@ -76,7 +76,6 @@ import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
-import { createHoldingLine } from './holding-line';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
 import {
@@ -99,6 +98,7 @@ import {
   villageIntroHandler,
   weekdayCareHandler,
 } from './handlers';
+import { createHoldingLine } from './holding-line';
 import {
   type OpenQuestionReader,
   type OpenQuestionReaderOptions,
@@ -400,6 +400,8 @@ export interface DefaultHandlerPorts {
   consent?: ConsentReader;
   /** Writes a consent ask. Production uses the screen. Tests inject the text. */
   ask?: ConsentAskWriter;
+  /** Writes the model's lines (an intro yes acknowledgement). Tests inject one. */
+  saidLine?: SaidLineWriter;
 }
 
 export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicHandler[] {
@@ -407,7 +409,10 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
   const consent = ports.consent ?? createConsentReader(screenClient);
   const ask = ports.ask ?? createConsentAskWriter(screenClient);
   return [
-    villageIntroHandler(defaultVillageIntroReplyDeps(consent)),
+    villageIntroHandler({
+      ...defaultVillageIntroReplyDeps(consent),
+      saidLine: ports.saidLine ?? createSaidLineWriter(screenClient),
+    }),
     approvalHandler(defaultApprovalSpine()),
     connectorLinkHandler(),
     // Beside the connect half, and the position is free rather than load-bearing: the

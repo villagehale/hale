@@ -6,7 +6,6 @@ import {
   DISCOVERABILITY_ON,
   INTRO_NO_ACK,
   INTRO_SOFT_CLOSE,
-  INTRO_YES_ACK,
   NO_OPEN_INTRO,
   stageWord,
 } from './copy';
@@ -38,7 +37,6 @@ describe('the acks that stayed fixed', () => {
     for (const [name, body] of [
       ['DISCOVERABILITY_ON', DISCOVERABILITY_ON],
       ['DISCOVERABILITY_OFF', DISCOVERABILITY_OFF],
-      ['INTRO_YES_ACK', INTRO_YES_ACK],
       ['INTRO_NO_ACK', INTRO_NO_ACK],
       ['NO_OPEN_INTRO', NO_OPEN_INTRO],
       ['INTRO_SOFT_CLOSE', INTRO_SOFT_CLOSE],
@@ -71,7 +69,6 @@ describe('every outbound SMS body', () => {
   const bodies: Array<[string, string]> = [
     ['DISCOVERABILITY_ON', DISCOVERABILITY_ON],
     ['DISCOVERABILITY_OFF', DISCOVERABILITY_OFF],
-    ['INTRO_YES_ACK', INTRO_YES_ACK],
     ['INTRO_NO_ACK', INTRO_NO_ACK],
     ['INTRO_SOFT_CLOSE', INTRO_SOFT_CLOSE],
     ['NO_OPEN_INTRO', NO_OPEN_INTRO],

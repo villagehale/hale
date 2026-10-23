@@ -59,8 +59,8 @@ export interface CalendarInviteDeps {
    * 'channel_unavailable', not an absent dependency here. */
   channels: Partial<Record<ChannelKind, Channel>>;
   renderer: TemplateRenderer;
-  /** The cancellation's words. REQUIRED (rule #11); its deferral is named and the plain
-   * receipt goes instead. */
+  /** The cancellation's words. REQUIRED (rule #11); its deferral is named
+   * (`compose_deferred`) and nothing is sent. */
   cancelVoice: CalendarCancelVoice;
   now?: () => Date;
 }
@@ -257,11 +257,17 @@ async function cancelOneParent(
 
   const when = inviteWhenLabel(event.startsAt, parent.timezone);
   const voiced = await voice.compose({ summary: event.summary, when });
-  const payload: CalendarCancelSmsPayload = {
-    summary: event.summary,
-    when,
-    line: voiced.status === 'composed' ? voiced.body : null,
-  };
+  // No fixed fallback: a deferred compose sends nothing and is named back, so the
+  // cancellation is never a canned line (Barton: the model writes it, or nothing goes).
+  if (voiced.status !== 'composed') {
+    return {
+      parentUserId: parent.userId,
+      channel: 'sms',
+      outcome: 'compose_deferred',
+      reason: voiced.reason,
+    };
+  }
+  const payload: CalendarCancelSmsPayload = { summary: event.summary, when, line: voiced.body };
   const message: LoopMessage = {
     templateKey: CALENDAR_CANCEL_SMS_TEMPLATE_KEY,
     familyId: job.familyId,

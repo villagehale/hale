@@ -301,18 +301,36 @@ describe('the tap-to-add link a text-only family gets', () => {
     );
   });
 
-  it('sends the plain receipt when the composer defers', async () => {
-    const { familyId } = await textOnlyFamily();
+  it('sends nothing and names compose_deferred when the composer defers (no fixed fallback)', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);
     await sender().send({ familyId, familyEventId, method: 'REQUEST' });
     await softDelete(familyEventId);
+    const sentBefore = sms.calls.length;
     cancelOutcome = { status: 'deferred', reason: 'model_failed' };
 
-    await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+    const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
 
-    expect(sentText(1)).toBe(
-      'Cancelled - Swim class, Thu, Jul 23 at 10:30 AM. You can take it off your calendar.',
-    );
+    expect(report).toEqual({
+      status: 'reported',
+      parents: [
+        { parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: 'model_failed' },
+      ],
+    });
+    expect(sms.calls).toHaveLength(sentBefore);
+
+    // A later re-drive whose compose succeeds sends the model's words: the deferral
+    // minted no dedupe row, so nothing blocks it.
+    cancelOutcome = {
+      status: 'composed',
+      body: 'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
+    };
+    const retried = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+    expect(retried).toEqual({
+      status: 'reported',
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sms.calls).toHaveLength(sentBefore + 1);
   });
 
   it('names never_linked for a parent who was never texted the link, and texts nothing', async () => {

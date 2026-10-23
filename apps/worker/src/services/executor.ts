@@ -109,7 +109,10 @@ export type CalendarInviteOutcome =
   | 'suppressed'
   | 'send_failed'
   /** The placement row could not be read back (gone, or another family's). */
-  | 'event_not_found';
+  | 'event_not_found'
+  /** The model could not write the cancellation text, so nothing was sent. There is no
+   * fixed fallback line. */
+  | 'compose_deferred';
 
 export interface CalendarInviteParentOutcome {
   parentUserId: string;

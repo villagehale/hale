@@ -10,9 +10,9 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * The cancellation text a parent gets when an event they were texted a tap-to-add link
  * for is cancelled — written by a model (skill `calendar-cancel-voice`).
  *
- * A deferral is NAMED and the caller sends the deterministic receipt instead
- * (templates/calendar-cancel/sms.ts): a parent planning around a cancelled event is
- * worse off with no text than with a plain one.
+ * A rejected write is retried here (MAX_ATTEMPTS). A deferral after that is NAMED and
+ * the caller sends nothing (calendar-invite.ts `compose_deferred`): there is no fixed
+ * fallback text.
  */
 
 const LINK_SHAPE = /https?:\/\/|www\./i;
@@ -101,7 +101,7 @@ function errorClass(err: unknown): string {
 }
 
 function deferred(reason: CalendarCancelDeferral, detail?: string): CalendarCancelOutcome {
-  console.error({ reason, detail }, 'calendar cancel: no text composed, sending the receipt');
+  console.error({ reason, detail }, 'calendar cancel: no text composed, nothing sent');
   return { status: 'deferred', reason };
 }
 

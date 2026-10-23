@@ -92,11 +92,6 @@ export const DISCOVERABILITY_ALREADY_ON = "You're already set - I'll keep an eye
 
 export const DISCOVERABILITY_ALREADY_OFF = "Already off - I won't bring it up.";
 
-/** Acknowledges a yes to one intro. Deliberately says nothing about the other side:
- * at this moment their answer is unknown, and even "waiting on them" would disclose
- * that a specific household was asked. */
-export const INTRO_YES_ACK = "Great - if they're in too, I'll start a group text with you both.";
-
 /** Acknowledges a no to one intro. */
 export const INTRO_NO_ACK = "No problem - I'll keep looking.";
 
