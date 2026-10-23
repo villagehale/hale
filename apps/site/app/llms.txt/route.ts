@@ -33,7 +33,7 @@ function buildLlmsTxt(): string {
     '- What it does: finds activities near you by age (swim, camps, drop-ins, library programs, rec classes) with the source page for each; watches full classes for spots; reminds you before registration; asks how it went; works in group chats; reads photos of flyers and schedules; replies in the language you write in; with permission, reads Gmail and Google Calendar to keep dates straight, asking before it adds or changes anything.',
     '- What it does not do: it does not book, register or pay for you.',
     '- How it works: text Hale, tell it where you are and your kids\' ages, and it shows what\'s on this week. It texts only when there is a reason. Reply STOP any time.',
-    '- Price: free with unlimited chat. Paid plans: Plus $19 CAD/mo · $15 USD/month or $159/year; Max $39 CAD/mo · $29 USD/month or $329/year. Families who join now get every feature free until paid plans start.',
+    '- Price: free with unlimited chat. Paid plans: Plus $19 CAD / $15 USD a month or $159 CAD / $129 USD a year; Max $39 CAD / $29 USD a month or $329 CAD / $259 USD a year. Families who join now get every feature free until paid plans start.',
     '- Company: Village Hale Technologies Inc., Georgetown, Ontario. Founders Barton Dong (CEO) and Eugene Song (CTO). Contact aloha@villagehale.com.',
     `- Pages: [About](${SITE_URL}/about), [FAQ](${SITE_URL}/faq), [Pricing](${SITE_URL}/pricing)`,
     '',

@@ -221,7 +221,7 @@ describe('/pricing — the tier cards have anatomy', () => {
       features: [
         'Everything in Free',
         'Year memory, season to season',
-        'Sign-ups done for you, when you say yes',
+        'Sign-up links and reminders for a whole season',
       ],
     },
     {
@@ -230,7 +230,7 @@ describe('/pricing — the tier cards have anatomy', () => {
         'Everything in Plus',
         'The highest limits on searches and spot watches',
         'Priority support',
-        'Sign-ups for a whole season in one go',
+        'Sign-up links and reminders for a whole season',
       ],
     },
   ];
