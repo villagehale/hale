@@ -6,7 +6,7 @@ import { SOCIAL_PROOF_MIN } from '~/lib/village/social-proof';
  * WHO ELSE IS GOING — the one count Hale may speak, and every way it refuses to.
  *
  * ONE SURFACE, and the choice of it is forced by code rather than by taste. The first-find
- * reply's subject is a per-family `village_candidates` row whose reader selects nothing
+ * reply's subject is a per-family activity receipt whose reader selects nothing
  * cross-family, so a count there is 0 forever; the watched-spot text's `unbacked_digit`
  * makes a derived number a refusal `renderSpotOpen` throws on. The booked confirmation is
  * what is left, and its identity is PROBABLE rather than structural — which is the fact
