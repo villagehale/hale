@@ -535,7 +535,8 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
           tools: [],
         },
       }),
-      loadRegistrationWindows: async () => [],
+      loadRegistrationWatches: async () => [],
+      readRegistrationWatch: async () => null,
       loadTranscript: async () => [],
       loadContext: async (input) => ({
         parentName: null,

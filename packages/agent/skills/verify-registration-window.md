@@ -7,8 +7,8 @@ tools: []
 
 # Read the registration dates a municipal page publishes for one cycle
 
-You are given the text of a Canadian municipality's recreation registration page
-and the name of ONE cycle. Return the registration dates that page publishes for
+You are given the text of an operator's registration page (including Canadian,
+US and UK courses) and the name of ONE cycle or course. Return the registration dates that page publishes for
 THAT cycle, and nothing else.
 
 You are not being asked whether a date is correct. You are not told what is
@@ -22,9 +22,11 @@ try to get a swim spot that sells out in four minutes. A date that is wrong by a
 day is worse than no date at all, because no date sends them to look it up and a
 wrong date sends them to the wrong morning.
 
-So: **when you are not sure, say you did not find it.** `found: false` is a
-complete, correct, valuable answer. It costs a human two minutes of checking. A
-confident wrong date costs a family the season.
+Keep a published date even when part of it is uncertain. Copy its `date_text`,
+leave only the unresolved normalized `date` null, and explain the uncertainty in
+`note`. This is a found source fact, not "no dates published". Use `found: false`
+when no relevant published date can be identified, not merely because a year or
+eligibility label is missing. Never turn uncertainty into an invented date.
 
 ## THE STALE-YEAR TRAP — read this twice
 
@@ -37,10 +39,19 @@ report it as this one.
 - If the page shows only OTHER cycles — last spring, last year, the next season —
   that is `found: false`, reason `different_cycle_only`. It is not a hint. Do not
   adjust it. Do not roll a 2025 date forward into 2026.
-- Many pages print `Aug. 11` with no year at all. You may only supply a year that
-  the page itself states for that cycle — in the section heading, the table
-  caption, the cycle's own name. If nothing on the page supplies the year for
-  this cycle, that is `found: false`, reason `no_year_stated`.
+- Many pages print `Aug. 11` with no year beside it. Use the year printed for the
+  same registration cycle/block, including a sibling registration or preview date
+  in the same contiguous block when the date order is consistent. Quote the whole
+  supporting sibling sentence as `year_evidence`. Do not borrow a year from a
+  different block or use the course/session year as the registration year.
+  If no source year can be established, retain `date_text` with `date: null` and
+  an accurate note. There is also a weekday-based resolution rule when
+  `reference_date` is supplied and the page prints a weekday together with the
+  month/day: use a year only if exactly one of reference year minus one, reference
+  year, and reference year plus one matches that weekday. Quote the complete
+  weekday/month/day in `year_evidence`.
+  This unique match is evidence under this rule, not a guessed current year;
+  confidence should still reflect any other ambiguity about the course or date.
 - If the page says the dates are not out yet — "to be announced", "dates will be
   announced at a later date", "coming soon", "check back" — that is
   `found: false`, reason `announced_later`. This is a real and common state, and
@@ -48,23 +59,37 @@ report it as this one.
 
 ## Which date is which
 
-Municipalities publish up to three moments. Fill only the ones this page states
+Fill only the registration moments this page states
 for this cycle; leave the rest null.
 
 - **preview** — when programs become browsable / the guide goes online. Words
   like "preview starting", "program viewable online", "eGuide available",
   "view programs".
-- **resident_open** — when residents/taxpayers may register, where the town runs
-  a head start. In a table this is the column headed "resident".
-- **general_open** — when anyone may register. In a table, the "non-resident"
-  column. On a page with no resident/non-resident split at all, the single
-  published registration moment is `general_open` and `resident_open` is null.
+- **resident_open** — an opening explicitly labelled for residents/taxpayers
+  in its sentence or table column. Never infer a resident label from an earlier
+  date, a later non-resident opening, or a non-resident delay rule.
+- **general_open** — an explicitly labelled public/general/non-resident opening.
+  In a table, the "non-resident" column. Missing resident information is NOT
+  evidence of public access.
+- **unclassified_open** — a published registration date/time whose applicability
+  is unstated. Classify EACH opening by the label attached to that date. An
+  unlabelled opening goes here even when another opening on the same page is
+  explicitly labelled non-resident. The other date's label does not apply to it.
+  The date is still found and can be quoted; do not infer "for everyone" or equal access.
 
-Some towns print only the resident date and state the non-resident rule as prose
-("non-residents may register 10 days later"). Do NOT do that arithmetic. Report
-the printed resident date and leave `general_open` null.
+When the page states a non-resident delay as prose ("non-residents may register
+10 days later"), do NOT do that arithmetic or infer the earlier opening is
+resident-only. Report the printed opening with only its own explicit label;
+if unlabelled, use `unclassified_open`. Leave an unprinted non-resident date null.
 
 ## Output
+
+Also return `time_zone` (an IANA zone) and `time_zone_evidence` (a verbatim
+page quote naming the zone or an unambiguous venue city/address). If the location
+is ambiguous, return null for both. Never use the parent's zone or a hostname
+to infer the venue's zone. If the course label is not known, read only the single
+course on this page; several courses with different dates are ambiguous, not a
+reason to pick one. Course start/session dates are NOT registration dates.
 
 Answer with a SINGLE JSON object and nothing else — no prose, no code fence.
 
@@ -74,24 +99,30 @@ Answer with a SINGLE JSON object and nothing else — no prose, no code fence.
   "reason": null,
   "cycle_on_page": "2026 Fall Programs, Swim Lessons and Winter Break Camps",
   "year_evidence": "2026 Fall Programs, Swim Lessons and Winter Break Camps",
-  "preview":       { "date": "2026-08-03", "time": null },
+  "preview": null,
   "resident_open": null,
-  "general_open":  { "date": "2026-08-11", "time": "06:30" },
+  "general_open": null,
+  "unclassified_open": { "date_text": "Aug. 11", "date": "2026-08-11", "time": "06:30", "note": null },
   "evidence": "Register starting Aug. 11 at 6:30 AM",
-  "confidence": 0.95
+  "note": null,
+  "confidence": 0.95,
+  "time_zone": null,
+  "time_zone_evidence": null
 }
 ```
 
 ### found
-`true` only when this page publishes at least one date for the cycle you were
-asked about. Otherwise `false`, with every date field null.
+`true` when this page publishes at least one relevant date, including a raw date
+whose year is unresolved. Keep those partial date objects. Otherwise `false`,
+with every date field null.
 
 ### reason
 Null when `found` is true. Otherwise exactly one of:
 - `announced_later` — the page says the dates are not published yet.
 - `different_cycle_only` — the page publishes dates, but only for other cycles.
 - `no_year_stated` — a date for this cycle appears, but nothing on the page says
-  which year it belongs to.
+  which year it belongs to. A readable raw date should normally be kept with
+  `found: true`, normalized `date: null`, and a note instead of using this reason.
 - `not_published` — the page states no registration dates at all.
 
 ### cycle_on_page
@@ -102,13 +133,22 @@ page's wording, do not echo the name you were asked with.
 ### year_evidence
 The verbatim run of text from the page that supplies the YEAR for these dates —
 usually the heading or table caption the dates sit under. It must contain a
-four-digit year and must appear in the page text character-for-character. Null
-only when `found` is false.
+four-digit year and must appear in the page text character-for-character. A whole
+sibling sentence in the same registration block can supply the printed year.
+Do not splice sentences, abbreviate with ellipses, or paraphrase the quote.
+Null is allowed when no date has a resolved year or `found` is false.
+Cover the calendar year of EVERY returned date, not just the course/session year.
+For cross-year cycles, quote the registration paragraph with its printed year:
+"Winter 2027" alone cannot back November/December 2026 registration dates.
+Quote the sentence containing that printed registration year.
 
-### preview, resident_open, general_open
+### preview, resident_open, general_open, unclassified_open
 Either null, or an object:
-- `date` — `YYYY-MM-DD`. The year comes from `year_evidence`, never from
-  anywhere else.
+- `date_text` — the date exactly as printed, even when its full date is unresolved.
+- `date` — `YYYY-MM-DD`, or null when the source does not establish the full date.
+  Retain the object and raw text when null. A resolved year comes from the source
+  context described above, not a current-year fill.
+- `note` — explain the source uncertainty or qualification; otherwise null.
 - `time` — 24-hour `HH:MM`, zero-padded, or **null when the page publishes no
   time for that date**. Null is the right answer far more often than you expect;
   most preview dates and many registration dates print no time. Never invent
@@ -122,6 +162,11 @@ character from the page. It must appear in the page text exactly. This is
 checked; an `evidence` string that is not in the source discards your whole
 answer, so quoting loosely loses the reading you did.
 
+### note
+Source-grounded information or ambiguity the existing fields do not adequately
+express. Preserve useful facts without guessing; otherwise null. A partial date
+is available for an answer with a caveat, never for a precise reminder schedule.
+
 ### confidence
 0 to 1, your honesty about THIS reading.
 - `0.9`–`1.0` — the cycle is named, the dates sit plainly under it, you are
@@ -133,7 +178,7 @@ answer, so quoting loosely loses the reading you did.
 ## Honesty and degrade
 
 - Never refuse and never explain outside the JSON.
-- Never output a date that is not written on the page. No arithmetic, no rolling
+- Never invent a registration date unsupported by the page. No arithmetic, no rolling
   a prior year forward, no "same weekend as usual".
 - Never fill a time the page does not print, and never borrow one from a
   neighbouring row.

@@ -1,5 +1,35 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { computeDrift } from './migration-drift.mjs';
+import { computeDrift, readJournalWithHashes, requiresCatalogCutover } from './migration-drift.mjs';
+
+it('keeps all VIL-423 migrations pending after the current main watermark', () => {
+  const journal = readJournalWithHashes(fileURLToPath(new URL('../drizzle/', import.meta.url)));
+  const base = journal.find((entry) => entry.tag === '0171_channel_pending_asks');
+  expect(base).toBeDefined();
+  expect(computeDrift(journal, base.when).pending.map((entry) => entry.tag)).toEqual([
+    '0172_registration_live_watch_storage',
+    '0173_drop_registration_catalog',
+  ]);
+});
+
+describe('catalog retirement cutover guard', () => {
+  it('routes the normal migration command through the same maintenance guard', () => {
+    const { scripts } = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    );
+    expect(scripts.migrate).toBe('node scripts/apply-migrations.mjs');
+    expect(scripts.migrate).toBe(scripts['migrate:guard']);
+  });
+  const retirement = [{ tag: '0173_drop_registration_catalog', hash: 'registration' }];
+  it('blocks uncoordinated retirement while previous catalogs exist', () => {
+    expect(requiresCatalogCutover(retirement, [], true)).toBe(true);
+  });
+  it('allows a fresh database and normal later builds after retirement is recorded', () => {
+    expect(requiresCatalogCutover(retirement, [], false)).toBe(false);
+    expect(requiresCatalogCutover(retirement, ['registration'], true)).toBe(false);
+  });
+});
 
 // Journal `when` values are strictly increasing (as drizzle-kit emits them).
 // Expected verdicts are derived from drizzle's own apply rule — a journal entry

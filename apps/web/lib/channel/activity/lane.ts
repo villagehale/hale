@@ -2,7 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
+import { namesRetiredRecPortal } from './retired-portal';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';

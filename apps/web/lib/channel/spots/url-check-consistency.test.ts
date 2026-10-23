@@ -1,18 +1,28 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { REGISTRATION_COURSE_URL_MAX_CHARS } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { MAX_URL_CHARS } from './url';
 
 const ROOT = path.resolve(__dirname, '../../../../..');
 
-/** The DB bound on registration_sequences.course_url and the app's MAX_URL_CHARS are the
- * same number written twice; this is what keeps them the same number. */
+/** Spot links still use the original 200-char bound; registration watches now accept
+ * other public course URLs without widening the spot allowlist or its copy budget. */
 describe('course_url length bound', () => {
-  it.each([
-    'packages/db/drizzle/0111_registration_sequence_course_url_length.sql',
-    'packages/db/src/schema/registration-sequences.ts',
-  ])('%s bounds course_url at MAX_URL_CHARS', (file) => {
-    const source = readFileSync(path.join(ROOT, file), 'utf8');
-    expect(source).toMatch(new RegExp(`length\\((?:"course_url"|\\$\\{table\\.courseUrl\\})\\) <= ${MAX_URL_CHARS}\\b`));
+  it('keeps the historical spot-only bound', () => {
+    const source = readFileSync(
+      path.join(ROOT, 'packages/db/drizzle/0111_registration_sequence_course_url_length.sql'),
+      'utf8',
+    );
+    expect(source).toMatch(new RegExp(`length\\("course_url"\\) <= ${MAX_URL_CHARS}\\b`));
+  });
+  it('keeps the new migration and storage bound aligned', () => {
+    const source = readFileSync(
+      path.join(ROOT, 'packages/db/drizzle/0172_registration_live_watch_storage.sql'),
+      'utf8',
+    );
+    expect(source).toContain(
+      `length("course_url") BETWEEN 1 AND ${REGISTRATION_COURSE_URL_MAX_CHARS}`,
+    );
   });
 });

@@ -1,18 +1,16 @@
-import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
+import type { Municipality, ProgramDomain, RegistrationSourceState } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import {
   AGE_TOLERANCE_MONTHS,
   OPEN_NOW_MAX_AGE_DAYS,
+  type RegistrationMatch,
   inBand,
   latestPastCycle,
   matchRegistrationWindows,
-  type RegistrationMatch,
   resolveFamilyOpen,
   resolveMunicipalities,
   stillOpenCycle,
 } from './match-registration-windows.js';
-import { REGISTRATION_WINDOWS } from './registration-windows-data.js';
-import { toRegistrationWindowRow } from './registration-windows.js';
 
 /**
  * The registration radar's matcher. Expectations here are derived from the M1 spec,
@@ -28,7 +26,7 @@ import { toRegistrationWindowRow } from './registration-windows.js';
  */
 
 /** Build a window row; only the fields a test cares about need overriding. */
-function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
+function win(overrides: Partial<RegistrationSourceState> = {}): RegistrationSourceState {
   return {
     id: 'w-1',
     municipality: 'markham' as Municipality,
@@ -290,14 +288,10 @@ describe('matchRegistrationWindows — resident priority', () => {
   // Thornhill is the case the correction created — before it, Markham stored no resident
   // date and every postal code collapsed onto one morning.
   it("puts Thornhill on Markham's public morning and an unambiguous Markham FSA on the resident one", () => {
-    const seed = REGISTRATION_WINDOWS.find(
-      (s) =>
-        s.municipality === 'markham' &&
-        s.programDomain === 'rec_program' &&
-        s.cycleLabel.startsWith('2026 Fall'),
-    );
-    if (!seed) throw new Error('the Markham Fall 2026 seed row is gone');
-    const window = win(toRegistrationWindowRow(seed));
+    const window = win({
+      residentOpenAt: new Date('2026-08-11T10:30:00Z'),
+      openAt: new Date('2026-08-12T10:30:00Z'),
+    });
 
     expect(resolveFamilyOpen(window, 'L3T 1A1')).toEqual({
       isResidentWindow: false,
@@ -424,7 +418,7 @@ describe('matchRegistrationWindows — cycles that open together are ONE event',
     sourceUrl: 'https://www.burlington.ca/registering',
   };
 
-  function burlingtonTriple(): RegistrationWindow[] {
+  function burlingtonTriple(): RegistrationSourceState[] {
     return [
       win({
         ...BURLINGTON,
@@ -506,8 +500,16 @@ describe('latestPastCycle', () => {
   const AFTER_FALL = new Date('2026-09-10T00:00:00.000Z');
 
   it('names the most recent cycle this town has already opened', () => {
-    const summer = win({ id: 'w-summer', cycleLabel: 'Summer 2026', openAt: new Date('2026-05-05T11:00:00.000Z') });
-    const fall = win({ id: 'w-fall', cycleLabel: 'Fall 2026', openAt: new Date('2026-09-01T11:00:00.000Z') });
+    const summer = win({
+      id: 'w-summer',
+      cycleLabel: 'Summer 2026',
+      openAt: new Date('2026-05-05T11:00:00.000Z'),
+    });
+    const fall = win({
+      id: 'w-fall',
+      cycleLabel: 'Fall 2026',
+      openAt: new Date('2026-09-01T11:00:00.000Z'),
+    });
     const past = latestPastCycle({ windows: [summer, fall], postal: 'L3R 0B4', now: AFTER_FALL });
     expect(past?.window.cycleLabel).toBe('Fall 2026');
     expect(past?.openedForFamilyAt).toEqual(fall.openAt);
@@ -519,11 +521,16 @@ describe('latestPastCycle', () => {
   });
 
   it('never reaches into a town the family does not live in', () => {
-    const elsewhere = win({ municipality: 'burlington' as Municipality, openAt: new Date('2026-09-01T11:00:00.000Z') });
-    expect(latestPastCycle({ windows: [elsewhere], postal: 'L3R 0B4', now: AFTER_FALL })).toBeNull();
+    const elsewhere = win({
+      municipality: 'burlington' as Municipality,
+      openAt: new Date('2026-09-01T11:00:00.000Z'),
+    });
+    expect(
+      latestPastCycle({ windows: [elsewhere], postal: 'L3R 0B4', now: AFTER_FALL }),
+    ).toBeNull();
   });
 
-  it("uses the date THIS family could act on, so a resident head start is the one that already went", () => {
+  it('uses the date THIS family could act on, so a resident head start is the one that already went', () => {
     const resident = win({
       openAt: new Date('2026-09-15T11:00:00.000Z'),
       residentOpenAt: new Date('2026-09-01T11:00:00.000Z'),
@@ -552,7 +559,11 @@ describe('latestPastCycle', () => {
       ageMinMonths: 144,
       ageMaxMonths: 216,
     });
-    const otherDomain = win({ id: 'w-swim', programDomain: 'swim' as ProgramDomain, cycleLabel: 'Swim Fall 2026' });
+    const otherDomain = win({
+      id: 'w-swim',
+      programDomain: 'swim' as ProgramDomain,
+      cycleLabel: 'Swim Fall 2026',
+    });
     const otherTown = win({
       id: 'w-else',
       municipality: 'burlington' as Municipality,
@@ -586,10 +597,19 @@ describe('stillOpenCycle', () => {
   /** Five days after Toronto's Fall 2026 resident morning (2026-09-15T07:00-04:00). */
   const FIVE_DAYS_AFTER = new Date('2026-09-20T15:00:00.000Z');
 
-  function torontoRows(): RegistrationWindow[] {
-    return REGISTRATION_WINDOWS.filter((seed) => seed.municipality === 'toronto').map((seed) =>
-      win(toRegistrationWindowRow(seed)),
-    );
+  function torontoRows(): RegistrationSourceState[] {
+    return [
+      win({
+        municipality: 'toronto',
+        cycleLabel: 'Fall 2026',
+        residentOpenAt: new Date('2026-09-15T11:00:00Z'),
+        openAt: new Date('2026-09-17T11:00:00Z'),
+        sourceUrl:
+          'https://www.toronto.ca/news/city-of-toronto-releases-listings-for-fall-recreation-activities/',
+        ageMinMonths: 0,
+        ageMaxMonths: 156,
+      }),
+    ];
   }
 
   it("names the cycle a Toronto parent could register for this afternoon, with the city's own page", () => {

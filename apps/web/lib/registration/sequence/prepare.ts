@@ -1,7 +1,13 @@
 import { ageInMonths } from '@hale/types';
 import { z } from 'zod';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
-import { type BookMe4Model, fragment, readCourseModel } from '~/lib/channel/spots/availability';
+import {
+  type BookMe4Model,
+  type SpotReading,
+  fragment,
+  readCourseModel,
+  readSpot,
+} from '~/lib/channel/spots/availability';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 
@@ -9,7 +15,7 @@ import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
  * VIL-338 · what a bound course page says, and which single truthful sentence the
  * ladder is allowed to send about it. Pure: no DB, no network, no `new Date()`.
  *
- * THE PAGE IS THE SYSTEM OF RECORD FOR ITS OWN CLOCK. The M1 registration_windows row
+ * THE PAGE IS THE SYSTEM OF RECORD FOR ITS OWN CLOCK. An imported watch observation
  * is a hand-verified municipal announcement; the course page is the software that will
  * actually open the door. On the shipped data they disagree — the Markham fall row
  * carries only the resident instant (Aug 11 06:30) while the course page publishes
@@ -491,36 +497,13 @@ function readAge(
   return { fit: 'unknown', outsideBandChildIds };
 }
 
-const NON_RESIDENT = /non[- ]?resident/i;
-
-/**
- * What the page says the course costs, or nothing.
- *
- * The non-resident test runs FIRST because "Resident" is a substring of "Non-Resident"
- * on both Markham's rows and Newmarket's. A pair BOUNDS the cost and never asserts
- * which rate this household pays: `CanSelect` is false for an anonymous reader on every
- * sampled tenant, because the portal picks the rate from the account's own address.
- * Anything that is not a clean pair or a single row is omitted — a page printing four
- * member/non-member rows is a price question Hale cannot answer in one clause.
- */
+/** Preserve each published label/amount pair; never classify rates with a regex. */
 export function priceClause(prices: CourseFacts['Prices']): string | null {
   const rows = (prices ?? []).filter(
     (row): row is { Name: string; DisplayAmount: string } =>
       typeof row.Name === 'string' && typeof row.DisplayAmount === 'string',
   );
-  const [first, second] = rows;
-  if (first === undefined) return null;
-  if (rows.length === 1) return `the page lists ${first.DisplayAmount}`;
-  // The COUNT is the check. Markham's four-row paint-and-play page opens with a member
-  // non-resident/resident pair, so a clause that classified the first two rows and let
-  // the rest go would quote the member rate to a household the page charges $83.
-  if (rows.length !== 2 || second === undefined) return null;
-
-  const pair = [first, second];
-  const nonResident = pair.find((row) => NON_RESIDENT.test(row.Name));
-  const resident = pair.find((row) => !NON_RESIDENT.test(row.Name));
-  if (nonResident === undefined || resident === undefined) return null;
-  return `${resident.DisplayAmount} / ${nonResident.DisplayAmount} non-resident`;
+  return rows.length ? rows.map((row) => `${row.Name}: ${row.DisplayAmount}`).join('; ') : null;
 }
 
 /**
@@ -564,6 +547,7 @@ export type UnreadableReason =
 
 /** What every verdict that actually read a page carries. */
 export interface CoursePage {
+  availability?: SpotReading;
   facts: CourseFacts;
   backed: readonly string[];
   clocks: CourseClocks;
@@ -620,6 +604,7 @@ export function readCoursePrep(input: PrepInput, ctx: PrepContext): PrepVerdict 
   const clocks = courseClocks(facts, ctx.timeZone);
   const clock = applicableClock(clocks, ctx.isResidentWindow);
   const page: CoursePage = {
+    availability: readSpot(input.raw, ctx.courseId),
     facts,
     backed,
     clocks,

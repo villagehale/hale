@@ -55,6 +55,14 @@ export type UnfoundReason =
 export interface PublishedDate {
   date: string;
   time: string | null;
+  dateText?: string | null;
+  note?: string | null;
+}
+
+export interface PartialRegistrationDate {
+  kind: 'preview' | 'resident_open' | 'general_open' | 'unclassified_open';
+  dateText: string;
+  note: string | null;
 }
 
 /** What the page says, as read by the skill — before any comparison. */
@@ -67,12 +75,17 @@ export interface ExtractedWindow {
   preview: PublishedDate | null;
   residentOpen: PublishedDate | null;
   generalOpen: PublishedDate | null;
+  /** A published opening whose resident/non-resident applicability is not stated. */
+  unclassifiedOpen?: PublishedDate | null;
+  partialDates?: PartialRegistrationDate[];
+  note?: string | null;
   evidence: string | null;
   confidence: number;
+  timeZone?: string | null;
+  timeZoneEvidence?: string | null;
 }
 
-/** The stored row under review. A read-only projection of registration_windows —
- * deliberately not the row type, so nothing here can be handed back to an update. */
+/** Last-known source observation used for comparisons, never a parent-facing fact. */
 export interface StoredWindow {
   id: string;
   municipality: Municipality;
@@ -109,7 +122,10 @@ export type UnverifiedReason =
    * what it said is not evidence for a value nobody read off it. */
   | 'inferred_unconfirmed'
   | 'fetch_failed'
-  | 'extract_failed';
+  | 'extract_failed'
+  | 'invalid_date'
+  | 'unknown_time_zone'
+  | 'eligibility_unverified';
 
 /**
  * The three outcomes, and the whole contract of this module.
@@ -167,23 +183,83 @@ function yearsIn(text: string): Set<string> {
 export function corroborationFailure(
   pageText: string,
   extracted: ExtractedWindow,
+  referenceDate?: Date,
 ): 'uncorroborated' | null {
   if (!extracted.found) return null;
 
   const page = normalize(pageText);
   const evidence = extracted.evidence;
   const yearEvidence = extracted.yearEvidence;
-  if (!evidence || !yearEvidence) return 'uncorroborated';
+  const dates = [
+    extracted.preview,
+    extracted.residentOpen,
+    extracted.generalOpen,
+    extracted.unclassifiedOpen,
+  ];
+  if (!evidence || (!yearEvidence && dates.some(Boolean))) return 'uncorroborated';
   if (!page.includes(normalize(evidence))) return 'uncorroborated';
-  if (!page.includes(normalize(yearEvidence))) return 'uncorroborated';
+  if (yearEvidence && !page.includes(normalize(yearEvidence))) return 'uncorroborated';
+  if (extracted.partialDates?.some((date) => !evidence.includes(date.dateText)))
+    return 'uncorroborated';
 
-  const statedYears = yearsIn(yearEvidence);
-  for (const published of [extracted.preview, extracted.residentOpen, extracted.generalOpen]) {
-    if (published && !statedYears.has(published.date.slice(0, 4))) {
+  const statedYears = yearsIn(yearEvidence ?? '');
+  for (const published of dates) {
+    if (
+      published &&
+      !statedYears.has(published.date.slice(0, 4)) &&
+      !(
+        statedYears.size === 0 &&
+        referenceDate &&
+        uniqueWeekdayYear(published, yearEvidence ?? '', referenceDate)
+      )
+    ) {
       return 'uncorroborated';
     }
   }
   return null;
+}
+
+/** Without a printed year, accept only a weekday/month/day that picks exactly one nearby year. */
+function uniqueWeekdayYear(published: PublishedDate, evidence: string, now: Date): boolean {
+  const [year, month, day] = published.date.split('-').map(Number);
+  const monthNames = [
+    'jan(?:uary)?',
+    'feb(?:ruary)?',
+    'mar(?:ch)?',
+    'apr(?:il)?',
+    'may',
+    'jun(?:e)?',
+    'jul(?:y)?',
+    'aug(?:ust)?',
+    'sep(?:t(?:ember)?)?',
+    'oct(?:ober)?',
+    'nov(?:ember)?',
+    'dec(?:ember)?',
+  ];
+  const name = monthNames[month! - 1];
+  if (!name) return false;
+  const quote = evidence.match(
+    new RegExp(
+      `\\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)[,\\s]+(?:${name}[.,]?\\s+0?${day}(?:st|nd|rd|th)?\\b|0?${day}(?:st|nd|rd|th)?\\s+${name}\\b)`,
+      'i',
+    ),
+  );
+  if (!quote) return false;
+  const candidates = [
+    now.getUTCFullYear() - 1,
+    now.getUTCFullYear(),
+    now.getUTCFullYear() + 1,
+  ].filter((candidate) => {
+    const date = new Date(Date.UTC(candidate, month! - 1, day!));
+    return (
+      date.getUTCMonth() === month! - 1 &&
+      date.getUTCDate() === day &&
+      new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' })
+        .format(date)
+        .toLowerCase() === quote[1]!.toLowerCase()
+    );
+  });
+  return candidates.length === 1 && candidates[0] === year;
 }
 
 /** The stored counterpart of each published field. */
@@ -283,26 +359,33 @@ export function withoutInferredEvidence(
 
 // ── the model read ───────────────────────────────────────────────────────────
 
-const publishedDateSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  time: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+const publishedDateSchema = z.strictObject({
+  date_text: z.string().trim().min(1).nullable().optional(),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  time: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/)
+    .nullable(),
+  note: z.string().trim().min(1).nullable().optional(),
 });
 
-/** The model has two ways of saying "no date for this field": a plain `null`, and
- * a present object whose date is null (`{date:null,time:null}`) — it flip-flops
- * between them run to run. Both mean the same absence; collapse the object form to
- * `null` at the parse boundary so the rest of the module keeps its one invariant:
- * a PublishedDate always carries a real date, and absence is `null` (compareWindow's
- * `=== null` skip and publishedInstant both depend on it). */
+/** A null date without source text is absence; with source text it is a partial fact.
+ * Only complete dates reach compareWindow/publishedInstant. */
 const nullableWindowDate = z.preprocess(
   (value) =>
-    value && typeof value === 'object' && (value as { date?: unknown }).date == null
+    value &&
+    typeof value === 'object' &&
+    (value as { date?: unknown }).date == null &&
+    !(value as { date_text?: unknown }).date_text
       ? null
       : value,
   publishedDateSchema.nullable(),
 );
 
-const extractionSchema = z.object({
+const extractionSchema = z.strictObject({
   found: z.boolean(),
   reason: z
     .enum(['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published'])
@@ -312,19 +395,29 @@ const extractionSchema = z.object({
   preview: nullableWindowDate,
   resident_open: nullableWindowDate,
   general_open: nullableWindowDate,
+  unclassified_open: nullableWindowDate.optional(),
   evidence: z.string().nullable(),
+  note: z.string().nullable().optional(),
   confidence: z.number().min(0).max(1),
+  time_zone: z.string().nullable().optional(),
+  time_zone_evidence: z.string().nullable().optional(),
 });
 
 /** What the MODEL sees. Hand-written alongside the Zod schema above, which is what
  * validates what comes back — the same split the civic hours parser uses. */
 export const EXTRACTION_JSON_SCHEMA = {
   type: 'object',
+  additionalProperties: false,
   properties: {
     found: { type: 'boolean' },
     reason: {
-      type: ['string', 'null'],
-      enum: ['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published', null],
+      anyOf: [
+        {
+          type: 'string',
+          enum: ['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published'],
+        },
+        { type: 'null' },
+      ],
     },
     cycle_on_page: { type: ['string', 'null'] },
     year_evidence: {
@@ -334,11 +427,29 @@ export const EXTRACTION_JSON_SCHEMA = {
     preview: { $ref: '#/$defs/publishedDate' },
     resident_open: { $ref: '#/$defs/publishedDate' },
     general_open: { $ref: '#/$defs/publishedDate' },
+    unclassified_open: {
+      $ref: '#/$defs/publishedDate',
+      description: 'Published opening with unstated eligibility; never infer public access.',
+    },
     evidence: {
       type: ['string', 'null'],
       description: 'Verbatim page text the dates were read from.',
     },
-    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    note: {
+      type: ['string', 'null'],
+      description:
+        'Source-grounded information or uncertainty not captured by the date fields; otherwise null.',
+    },
+    confidence: { type: 'number', description: 'Confidence from 0 to 1; range validated locally.' },
+    time_zone: {
+      type: ['string', 'null'],
+      description:
+        'IANA source time zone, only when the page states a zone or an unambiguous venue location.',
+    },
+    time_zone_evidence: {
+      type: ['string', 'null'],
+      description: 'Verbatim page text supporting the source time zone; null if unknown.',
+    },
   },
   required: [
     'found',
@@ -348,41 +459,62 @@ export const EXTRACTION_JSON_SCHEMA = {
     'preview',
     'resident_open',
     'general_open',
+    'unclassified_open',
     'evidence',
+    'note',
     'confidence',
+    'time_zone',
+    'time_zone_evidence',
   ],
   $defs: {
     publishedDate: {
       type: ['object', 'null'],
+      additionalProperties: false,
       properties: {
-        date: { type: 'string', description: 'YYYY-MM-DD' },
+        date_text: {
+          type: ['string', 'null'],
+          description: 'Date exactly as printed, even when its year cannot be established.',
+        },
+        date: {
+          type: ['string', 'null'],
+          description:
+            'YYYY-MM-DD, or null when the full date cannot be established from the source.',
+        },
         time: {
           type: ['string', 'null'],
           description: '24-hour HH:MM, or null when the page publishes no time',
         },
+        note: {
+          type: ['string', 'null'],
+          description:
+            'Explain any unresolved year, applicability or other source ambiguity; otherwise null.',
+        },
       },
-      required: ['date', 'time'],
+      required: ['date_text', 'date', 'time', 'note'],
     },
   },
 } as const;
 
 /** The user-message payload. Exported so the eval sends the model byte-identical
  * input to what production sends (the eval replicates, never imports). */
-export function extractionInput(
-  window: Pick<StoredWindow, 'municipality' | 'programDomain' | 'cycleLabel'>,
-  pageText: string,
-): string {
+export function extractionInput(window: CycleIdentity, pageText: string): string {
   return JSON.stringify({
     municipality: window.municipality,
     program_domain: window.programDomain,
     cycle_label: window.cycleLabel,
+    ...(window.referenceDate ? { reference_date: window.referenceDate } : {}),
     page_text: pageText,
   });
 }
 
 /** What identifies the cycle to read — all the model is told about the stored row.
  * Deliberately NOT the dates: a model shown the answer cannot be a check on it. */
-export type CycleIdentity = Pick<StoredWindow, 'municipality' | 'programDomain' | 'cycleLabel'>;
+export interface CycleIdentity {
+  municipality: string;
+  programDomain: string;
+  cycleLabel: string;
+  referenceDate?: string;
+}
 
 export interface ExtractDeps {
   client: AgentClient;
@@ -397,23 +529,56 @@ export function parseExtraction(raw: unknown): ExtractedWindow {
 
 /** Normalise the skill's snake_case answer into the module's shape. */
 export function toExtractedWindow(value: z.infer<typeof extractionSchema>): ExtractedWindow {
+  const complete = (
+    published: z.infer<typeof publishedDateSchema> | null | undefined,
+  ): PublishedDate | null =>
+    published?.date
+      ? {
+          date: published.date,
+          time: published.time,
+          ...(published.date_text !== undefined ? { dateText: published.date_text } : {}),
+          ...(published.note !== undefined ? { note: published.note } : {}),
+        }
+      : null;
+  const partialDates: PartialRegistrationDate[] = [];
+  for (const [kind, published] of [
+    ['preview', value.preview],
+    ['resident_open', value.resident_open],
+    ['general_open', value.general_open],
+    ['unclassified_open', value.unclassified_open],
+  ] as const) {
+    if (published && published.date === null && published.date_text)
+      partialDates.push({
+        kind,
+        dateText: published.date_text,
+        note: published.note ?? value.note ?? null,
+      });
+  }
   return {
     found: value.found,
     reason: value.reason,
     cycleOnPage: value.cycle_on_page,
     yearEvidence: value.year_evidence,
-    preview: value.preview,
-    residentOpen: value.resident_open,
-    generalOpen: value.general_open,
+    preview: complete(value.preview),
+    residentOpen: complete(value.resident_open),
+    generalOpen: complete(value.general_open),
+    ...(value.unclassified_open !== undefined
+      ? { unclassifiedOpen: complete(value.unclassified_open) }
+      : {}),
+    ...(partialDates.length ? { partialDates } : {}),
+    ...(value.note !== undefined ? { note: value.note } : {}),
     evidence: value.evidence,
     confidence: value.confidence,
+    ...(value.time_zone !== undefined
+      ? { timeZone: value.time_zone, timeZoneEvidence: value.time_zone_evidence ?? null }
+      : {}),
   };
 }
 
 /**
  * Read the dates one municipal page publishes for one stored cycle.
  *
- * The skill is loaded OUTSIDE any catch (as in parseCivicHours): a missing skill
+ * The skill is loaded OUTSIDE any catch: a missing skill
  * file is a deploy bug and must surface as one, never degrade into "this town
  * publishes nothing".
  */

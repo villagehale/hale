@@ -3,12 +3,16 @@ import type { CIVIC_SOURCE } from '~/lib/civic/project';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
-import { nextWatchedCycle } from '~/lib/registration/discovery-targets';
 import type {
   PastRegistrationCycle,
   RegistrationMatch,
 } from '~/lib/registration/match-registration-windows';
 import { AGE_TOLERANCE_MONTHS, inBand } from '~/lib/registration/match-registration-windows';
+import {
+  type LiveRegistrationWindow,
+  registrationDate,
+  registrationWhen,
+} from '~/lib/registration/read';
 import { type Season, seasonOf } from '~/lib/village/visibility';
 import { type DailyOutlook, isOutdoorFriendly } from '~/lib/weather/open-meteo';
 
@@ -130,6 +134,12 @@ export interface WeekendPick {
   verifiedUrl: string | null;
 }
 
+function liveWindowWhen(window: RegistrationMatch['window'], resident: boolean): string | null {
+  const reading = (window as Partial<LiveRegistrationWindow>).reading;
+  const date = reading ? registrationDate(reading, resident) : null;
+  return reading && date ? registrationWhen(reading, date) : null;
+}
+
 export interface RegistrationLine {
   windowRef: { municipality: string; programDomain: string; cycleLabel: string };
   /** When THIS family can first register, in their own zone. */
@@ -142,7 +152,7 @@ export interface RegistrationLine {
   /** The municipal page, from the matched window's `source_url` (NOT NULL alongside a
    * NOT NULL `verified_at`, so a row can never be a guess). */
   registerUrl: string;
-  /** Whether the listings are up. `registration_windows.preview_at` is "when programs
+  /** Whether the listings are up. The live preview date is "when programs
    * become browsable", so this is the difference between a page worth opening today and
    * a date to set an alarm for. Most rows publish no preview, so false is the common
    * path — never a guess that they are up. */
@@ -540,7 +550,10 @@ function decideRegistration(input: DecideRadarInput): RegistrationLine | null {
       programDomain: match.window.programDomain,
       cycleLabel: asciiCopy(match.window.cycleLabel),
     },
-    opensAtLocal: asciiSpaces(formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now)),
+    opensAtLocal: asciiSpaces(
+      liveWindowWhen(match.window, match.isResidentWindow) ??
+        formatWhenPhrase(match.opensForFamilyAt, input.timeZone, input.now),
+    ),
     kidNames,
     residentNote:
       match.isResidentWindow && match.window.residentOpenAt !== null
@@ -569,11 +582,6 @@ function decideRegistrationAbsence(
   const stillOpen = input.stillOpenCycle;
   const past = stillOpen ?? input.pastCycle;
   if (past === null) return null;
-  const next = nextWatchedCycle(
-    past.window.municipality,
-    past.window.programDomain,
-    past.knownCycleLabels,
-  );
 
   return {
     cycleRef: {
@@ -582,9 +590,10 @@ function decideRegistrationAbsence(
       cycleLabel: asciiCopy(past.window.cycleLabel),
     },
     lastOpenedAtLocal: asciiSpaces(
-      formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
+      liveWindowWhen(past.window, true) ??
+        formatWhenPhrase(past.openedForFamilyAt, input.timeZone, input.now),
     ),
-    nextCycleLabel: next === null ? null : asciiCopy(next),
+    nextCycleLabel: null,
     stillOpen:
       stillOpen === null
         ? null

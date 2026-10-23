@@ -1,17 +1,21 @@
-import { type Database, type Municipality, schema } from '@hale/db';
-import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
 import {
-  SPOT_PORTAL_HOSTS,
-  type SpotPortal,
-  sanitizeSpotUrl,
-} from '~/lib/channel/spots/url';
+  type Database,
+  type Municipality,
+  type RegistrationSourceState,
+  registrationSourceState,
+  schema,
+} from '@hale/db';
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { SPOT_PORTAL_HOSTS, type SpotPortal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { formatWhenPhrase } from '~/lib/format/datetime';
+import { type FetchPage, createFetchBody } from '~/lib/registration/fetch';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
-import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
+import { type LiveRegistrationReading, readCourseRegistration } from '../live-reading';
 import { renderCourseBindAck, renderReadinessAck } from './copy.js';
+import { printsReadinessAsk } from './copy.js';
 import {
   type AgeVerdict,
   BIND_FETCH_TIMEOUT_MS,
@@ -20,10 +24,10 @@ import {
   type PrepChild,
   readCoursePrep,
 } from './prepare.js';
+import { refreshRegistrationWatch } from './refresh';
 import { legDedupeKey } from './run.js';
 import { SEQUENCE_LEGS } from './schedule.js';
 import { type FitNote, buildShortlist } from './shortlist.js';
-import { printsReadinessAsk } from './copy.js';
 
 /**
  * VIL-338 · what a parent may SAY to a registration morning that has not happened yet.
@@ -105,7 +109,7 @@ export interface PreparingSequence {
  * own instant. The exact anchor is resolved in code by {@link familyAnchor}, because
  * the resident head start comes off the family's FSA.
  *
- * Callers must join `actions` and `registration_windows`; there is no shape in Drizzle
+ * Callers must join `actions` and read the watch's imported `source_context`; there is no shape in Drizzle
  * that can make them, and every caller of this predicate is in this file.
  */
 function liveOptedInSequence(familyId: string, now: Date) {
@@ -116,7 +120,7 @@ function liveOptedInSequence(familyId: string, now: Date) {
     isNull(schema.actions.revertedAt),
     or(
       gt(schema.registrationSequences.courseOpensAt, now),
-      gt(schema.registrationWindows.openAt, now),
+      sql`(${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz > ${now}`,
     ),
   );
 }
@@ -125,7 +129,7 @@ function liveOptedInSequence(familyId: string, now: Date) {
  * and otherwise the M1 row resolved against their postal area (a resident household
  * registers days before the general date). */
 function familyAnchor(
-  window: typeof schema.registrationWindows.$inferSelect,
+  window: RegistrationSourceState,
   areaCoarse: string | null,
   courseOpensAt: Date | null,
 ): Date {
@@ -145,35 +149,38 @@ export async function loadPreparingSequence(
   familyId: string,
   now: Date,
 ): Promise<PreparingSequence | null> {
-  const [row] = await database
+  const [stored] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
       courseUrl: schema.registrationSequences.courseUrl,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       readinessReady: schema.registrationSequences.readinessReady,
-      window: schema.registrationWindows,
+      window: schema.registrationSequences.sourceContext,
       timeZone: schema.users.timezone,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
-      schema.registrationWindows,
-      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
-    )
     .innerJoin(schema.users, eq(schema.users.id, schema.registrationSequences.parentUserId))
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
     .where(
       and(
         liveOptedInSequence(familyId, now),
-        inArray(schema.registrationWindows.municipality, PORTAL_MUNICIPALITIES),
+        isNull(schema.registrationSequences.pausedAt),
+        inArray(
+          sql`${schema.registrationSequences.sourceContext}->>'municipality'`,
+          PORTAL_MUNICIPALITIES,
+        ),
       ),
     )
     .orderBy(
-      sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`,
+      sql`coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz)`,
     )
     .limit(1);
-  if (!row) return null;
+  if (!stored?.window) return null;
+  const window = registrationSourceState(stored.window);
+  if (!window) return null;
+  const row = { ...stored, window };
 
   const portal = portalOf(row.window.municipality);
   if (portal === null) return null;
@@ -446,6 +453,18 @@ export async function handleCourseBind(
     prerequisite: verdict.facts.PrerequisiteEvents === true,
     ageFit: verdict.age.fit,
     driftMinutes: Math.round(driftMs / 60_000),
+    reading: readCourseRegistration(
+      { ok: true, raw },
+      {
+        sourceUrl: sanitized.url,
+        checkedAt: now,
+        timeZone: sequence.portal.timeZone,
+        courseId: sanitized.courseId,
+      },
+    ),
+    cachedAnchor: sequence.courseOpensAt ?? sequence.opensForFamilyAt,
+    resident: sequence.isResidentWindow,
+    parentTimeZone: sequence.timeZone,
     now,
   });
 
@@ -460,7 +479,13 @@ export async function handleCourseBind(
     timeZone: sequence.timeZone,
     now,
   });
-  return written === 'bound' ? { status: 'bound', reply } : { status: 'already_bound', reply };
+  const confirmation =
+    clock.at > (sequence.courseOpensAt ?? sequence.opensForFamilyAt)
+      ? ' Old date reminders are paused until you confirm this later date in approvals.'
+      : '';
+  return written === 'bound'
+    ? { status: 'bound', reply: reply + confirmation }
+    : { status: 'already_bound', reply: reply + confirmation };
 }
 
 function refuse(
@@ -727,27 +752,26 @@ export async function approvedShortlistAskedOf(
   parentUserId: string,
   now: Date,
 ): Promise<{ sequenceId: string } | null> {
-  const [row] = await database
+  const [stored] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
       windowId: schema.registrationSequences.windowId,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
-      window: schema.registrationWindows,
+      window: schema.registrationSequences.sourceContext,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
-      schema.registrationWindows,
-      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
-    )
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
     .where(liveOptedInSequence(familyId, now))
     .orderBy(
-      sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`,
+      sql`coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz)`,
     )
     .limit(1);
-  if (!row) return null;
+  if (!stored?.window) return null;
+  const window = registrationSourceState(stored.window);
+  if (!window) return null;
+  const row = { ...stored, window };
   // The morning itself, resolved for THIS family: past it the ladder is asking how it
   // went, and "I'll run the morning with you" is no longer a true sentence.
   if (familyAnchor(row.window, row.areaCoarse, row.courseOpensAt).getTime() <= now.getTime()) {
@@ -755,7 +779,7 @@ export async function approvedShortlistAskedOf(
   }
 
   const asked = await lastWordAt(database, parentUserId, [
-    legDedupeKey(familyId, row.windowId, 'heads_up', parentUserId),
+    legDedupeKey(familyId, row.windowId ?? row.sequenceId, 'heads_up', parentUserId),
   ]);
   return asked === null ? null : { sequenceId: row.sequenceId };
 }
@@ -775,6 +799,10 @@ export interface CourseBindingWrite {
   prerequisite: boolean;
   ageFit: AgeVerdict['fit'];
   driftMinutes: number;
+  reading?: LiveRegistrationReading;
+  cachedAnchor?: Date;
+  resident?: boolean;
+  parentTimeZone?: string;
   now: Date;
 }
 
@@ -808,7 +836,11 @@ export async function recordCourseBinding(
   return database.transaction(async (tx) => {
     const [row] = await tx
       .update(schema.registrationSequences)
-      .set({ courseUrl: input.url, courseOpensAt: input.courseOpensAt, updatedAt: input.now })
+      .set({
+        courseUrl: input.url,
+        ...(input.reading ? {} : { courseOpensAt: input.courseOpensAt }),
+        updatedAt: input.now,
+      })
       .where(
         and(
           eq(schema.registrationSequences.id, input.sequenceId),
@@ -818,6 +850,15 @@ export async function recordCourseBinding(
       )
       .returning({ id: schema.registrationSequences.id });
     if (!row) return 'already_bound';
+    if (input.reading)
+      await refreshRegistrationWatch(tx as unknown as Database, {
+        sequenceId: input.sequenceId,
+        reading: input.reading,
+        resident: input.resident ?? false,
+        cachedAnchor: input.cachedAnchor,
+        parentTimeZone: input.parentTimeZone,
+        now: input.now,
+      });
 
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,

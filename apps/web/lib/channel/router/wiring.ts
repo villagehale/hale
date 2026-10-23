@@ -69,6 +69,7 @@ import { rememberWorkstreamTurn, workstreamExtractClient } from '~/lib/memory/wo
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
+import { registrationLinkHandler } from '~/lib/registration/sequence/link-handler';
 import {
   defaultPrepareReplyDeps,
   readinessQuestion,
@@ -100,7 +101,6 @@ import {
   nameCaptureHandler,
   parentCallNameHandler,
   planReplyHandler,
-  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
   weekdayCareHandler,
@@ -384,6 +384,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
  * "something went wrong" line until someone writes it a sentence.
  */
 const SPINE_REFUSALS: Record<string, SpineRefusal> = {
+  registration_date_changed: 'already_resolved',
   action_not_awaiting_approval: 'already_resolved',
   action_not_reviewer_approved: 'not_reviewer_approved',
   undo_window_expired: 'undo_window_expired',
@@ -459,8 +460,8 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // Exact "what do you know" / "forget …" / "correct …" only, and only when
     // FAMILY_MEMORY_KINDS_ENABLED is exactly true. Flag off claims nothing.
     familyMemoryKindsHandler(),
+    registrationLinkHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
-    recMorningHandler(),
     parentCallNameHandler(parentCallNameVoice(defaultCallNameComposer())),
     nameCaptureHandler(defaultNameCaptureDeps()),
     // BEHIND EVERY SHAPE MATCHER, because it is the only handler that claims a whole
