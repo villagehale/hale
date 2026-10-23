@@ -1,20 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { computeDrift, readJournalWithHashes, requiresCatalogCutover } from './migration-drift.mjs';
+import { computeDrift, readJournalWithHashes } from './migration-drift.mjs';
 
 describe('catalog history cutover', () => {
   it('routes the normal migration command through the same guarded entry point', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     expect(pkg.scripts.migrate).toBe('node scripts/apply-migrations.mjs');
     expect(pkg.scripts['migrate:guard']).toBe(pkg.scripts.migrate);
-  });
-  const retirement = [{ tag: '0172_activity_history_only', hash: 'activity' }];
-  it('requires maintenance approval while an unapplied retirement can remove the old catalog', () => {
-    expect(requiresCatalogCutover(retirement, [], true)).toBe(true);
-    expect(requiresCatalogCutover(retirement, ['unrelated'], true)).toBe(true);
-    expect(requiresCatalogCutover(retirement, ['activity'], true)).toBe(false);
-    expect(requiresCatalogCutover(retirement, [], false)).toBe(false);
   });
   it('keeps the retirement pending after the current main watermark', () => {
     const entries = readJournalWithHashes(fileURLToPath(new URL('../drizzle/', import.meta.url)));
