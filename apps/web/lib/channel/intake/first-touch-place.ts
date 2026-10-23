@@ -1,12 +1,12 @@
 import type { Municipality } from '@hale/db';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
-import { type PostalContext, parseCanadianPostal } from './derive';
+import { type PostalContext, parseCanadianPostal, parseIntakePostal } from './derive';
 import { municipalityForCity } from './municipality-city';
 
 /**
  * VIL-385 — a place the parent actually gave.
  *
- * A Canadian postal token, or a GTA city. The phone number is not an input:
+ * A Canadian postal token, an extracted US ZIP, or a GTA city. The phone number is not an input:
  * an area code is not a place, and this function cannot see one.
  */
 
@@ -18,6 +18,7 @@ export interface FirstTouchPlace {
   /** One municipality when the FSA or the city names exactly one. */
   municipality: Municipality | null;
   city: string | null;
+  country?: 'United States';
 }
 
 /**
@@ -76,7 +77,7 @@ export function placeFromGivenFields(input: {
   city: string | null;
 }): FirstTouchPlace | null {
   if (input.postalCode) {
-    const postal = parseCanadianPostal(input.postalCode.trim());
+    const postal = parseIntakePostal(input.postalCode.trim());
     if (postal) return fromPostal(postal);
   }
   if (input.city) {
@@ -122,7 +123,9 @@ export function placeFromMessage(body: string): FirstTouchPlace | null {
 }
 
 function fromPostal(postal: PostalContext): FirstTouchPlace {
-  const municipalities = resolveMunicipalities(postal.postalCode ?? postal.areaCoarse);
+  const municipalities = postal.country
+    ? []
+    : resolveMunicipalities(postal.postalCode ?? postal.areaCoarse);
   const only = municipalities.length === 1 ? (municipalities[0] ?? null) : null;
   return {
     kind: 'postal',
@@ -130,6 +133,7 @@ function fromPostal(postal: PostalContext): FirstTouchPlace {
     postalCode: postal.postalCode ?? postal.areaCoarse,
     municipality: only,
     city: null,
+    ...(postal.country ? { country: postal.country } : {}),
   };
 }
 

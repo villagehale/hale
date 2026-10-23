@@ -6,7 +6,7 @@ import type { AgePrecision, ExtractedChild } from './extract';
  */
 
 /**
- * Where a postal token places a family. The FSA is always known; the full code only
+ * Where a postal token places a family. The coarse prefix is always known; the full code only
  * when the parent volunteered one. Decision D2: the FSA is what discovery actually
  * runs on (the M1 matcher keys on it), so the second half is a later just-in-time ask
  * and never a precondition for setting a family up.
@@ -14,6 +14,7 @@ import type { AgePrecision, ExtractedChild } from './extract';
 export interface PostalContext {
   postalCode: string | null;
   areaCoarse: string;
+  country?: 'United States';
 }
 
 /**
@@ -27,9 +28,8 @@ const CANADIAN_POSTAL = /^([ABCEGHJKLMNPRSTVXY]\d[A-Za-z])(?:[ -]?(\d[A-Za-z]\d)
 
 /**
  * The family's location as a postal token establishes it, or null when the token is
- * not Canadian at all. Null is the REGION GATE tripping, not a formatting nit: a US
- * ZIP or a neighbourhood name reaches here as null and provisioning refuses rather
- * than guessing a country.
+ * not Canadian at all. US intake uses parseIntakePostal; this narrower parser is
+ * retained for Canadian venue/FSA callers rather than relabelling a ZIP as Canadian.
  */
 export function parseCanadianPostal(raw: string | null): PostalContext | null {
   if (!raw) return null;
@@ -38,6 +38,14 @@ export function parseCanadianPostal(raw: string | null): PostalContext | null {
   const areaCoarse = (match[1] as string).toUpperCase();
   const ldu = match[2]?.toUpperCase();
   return { postalCode: ldu ? `${areaCoarse} ${ldu}` : null, areaCoarse };
+}
+
+/** Intake accepts Canadian postal tokens and full US ZIPs, never a ZIP3 guessed as a city. */
+export function parseIntakePostal(raw: string | null): PostalContext | null {
+  const canadian = parseCanadianPostal(raw);
+  if (canadian) return canadian;
+  const zip = raw?.trim().match(/^(\d{5})(?:-\d{4})?$/)?.[1];
+  return zip ? { postalCode: zip, areaCoarse: zip.slice(0, 3), country: 'United States' } : null;
 }
 
 /** The country a Canadian postal code implies — matched against the onboarding region
@@ -63,11 +71,7 @@ const MIDPOINT_CORRECTION_MONTHS: Record<AgePrecision, number> = { years: 6, mon
  * birthday — that stamp is what earns the ±6-month early-edge tolerance in the
  * registration and health matchers.
  */
-export function deriveDateOfBirth(
-  ageMonths: number,
-  precision: AgePrecision,
-  now: Date,
-): string {
+export function deriveDateOfBirth(ageMonths: number, precision: AgePrecision, now: Date): string {
   const months = ageMonths + MIDPOINT_CORRECTION_MONTHS[precision];
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth() - months;

@@ -113,6 +113,7 @@ export interface FirstTouchPersisted {
     postalCode: string | null;
     municipality: string | null;
     city: string | null;
+    country?: 'United States';
   } | null;
   locationRequest: {
     at: string;
@@ -549,6 +550,7 @@ function decodeFirstTouchPlace(value: unknown): FirstTouchPersisted['place'] {
     postalCode?: unknown;
     municipality?: unknown;
     city?: unknown;
+    country?: unknown;
   };
   if (row.kind !== 'postal' && row.kind !== 'city') return null;
   if (typeof row.areaCoarse !== 'string' || row.areaCoarse.length === 0) return null;
@@ -558,6 +560,7 @@ function decodeFirstTouchPlace(value: unknown): FirstTouchPersisted['place'] {
     postalCode: typeof row.postalCode === 'string' ? row.postalCode : null,
     municipality: typeof row.municipality === 'string' ? row.municipality : null,
     city: typeof row.city === 'string' ? row.city : null,
+    ...(row.country === 'United States' ? { country: row.country } : {}),
   };
 }
 

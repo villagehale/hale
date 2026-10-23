@@ -92,6 +92,10 @@ export type ActivityDeidRefusal =
  * "the raw message never crosses the border" is not a discipline anybody has to keep.
  */
 export interface ActivityQuery {
+  /** Code-supplied calendar zone; not forwarded to the search query. */
+  timeZone?: string | null;
+  /** Exact dates from an existing trip; not forwarded to web search. */
+  dateRange?: { start: string; end: string };
   subject: string;
   window: string | null;
   /** The family's town, in the words a search engine understands. Null when the postal
@@ -111,13 +115,11 @@ export type ActivityDeidResult =
   | { ok: false; refusal: ActivityDeidRefusal };
 
 /**
- * `halton_hills` → `Halton Hills`, and `whitchurch_stouffville` → `Stouffville`. Taken
- * from {@link townLabel} rather than derived here, so a town has exactly one spelling:
- * a second title-caser could disagree with the one the parent is shown, and this string
- * is the town a web search is run against on that parent's behalf.
+ * These municipality tokens are Ontario municipalities. Keep that region and country
+ * in web queries so a same-named town abroad cannot become the search location.
  */
 export function townFor(municipality: Municipality): string {
-  return townLabel(municipality);
+  return `${townLabel(municipality)}, Ontario, Canada`;
 }
 
 /** True when `text` names any member of this household, as a whole word in any alphabet
@@ -162,12 +164,22 @@ function gateFreeText(
  * thing somebody has to remember, but "there is nowhere for unscrubbed text to enter".
  */
 export function deidentifyActivityQuery(input: {
+  timeZone?: string | null;
   subject: string;
   window?: string | null;
+  /** Qualified coarse location from the family reader, never model-supplied. */
+  location?: string | null;
   municipality: Municipality | null;
   stage: FamilyStage | null;
   householdNames: readonly string[];
 }): ActivityDeidResult {
+  if (
+    input.municipality === null &&
+    input.location &&
+    namesAPerson(input.location, input.householdNames)
+  ) {
+    return { ok: false, refusal: 'names_a_person' };
+  }
   const subject = gateFreeText(input.subject, input.householdNames);
   if (!subject.ok) {
     if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };
@@ -192,9 +204,10 @@ export function deidentifyActivityQuery(input: {
   return {
     ok: true,
     query: {
+      ...(input.timeZone ? { timeZone: input.timeZone } : {}),
       subject: subject.value,
       window,
-      town: input.municipality === null ? null : townFor(input.municipality),
+      town: input.municipality === null ? (input.location ?? null) : townFor(input.municipality),
       stage: input.stage,
     },
   };

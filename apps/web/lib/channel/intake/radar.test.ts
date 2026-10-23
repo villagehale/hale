@@ -390,7 +390,7 @@ describe('createRadarComposer', () => {
       yearFinder: {
         async find(query) {
           expect(query.subject).toBe(YEAR_OPEN_SUBJECT);
-          expect(query.town).toBe('Halton Hills');
+          expect(query.town).toBe('Halton Hills, Ontario, Canada');
           expect(query.window).toBe('this year');
           expect(JSON.stringify(query)).not.toContain('Seb');
           expect(JSON.stringify(query)).not.toContain('L7G');

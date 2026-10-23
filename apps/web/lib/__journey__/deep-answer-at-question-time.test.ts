@@ -1,4 +1,9 @@
 import { join } from 'node:path';
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async () =>
+    `Cartwheels Gym Centre, Halton Hills, Ontario, Canada. ${VENUE_TEXT}`,
+}));
 import type { AgentClient, RunAgentArgs, RunAgentResult } from '@hale/agent';
 import { invokeTool, pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
@@ -199,10 +204,15 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                 picks: [
                   {
                     name: 'Tiny Gym, Cartwheels Gym Centre',
+                    name_evidence: 'Tiny Gym',
                     age_fit: 'walking to 3.5 years',
+                    age_evidence: 'walking to 3.5 years',
                     when: 'Sundays, fall block',
+                    when_evidence: 'Tiny Gym | Sun | 9:30-10:15 AM | walking to 3.5 years',
+                    schedule_kind: 'recurring',
                     price: null,
                     source_name: 'Cartwheels Gym Centre',
+                    source_url: VENUE_PAGE,
                   },
                 ],
               }),

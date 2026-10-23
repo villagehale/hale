@@ -64,7 +64,7 @@ export interface RadarChild {
   dobPrecision: 'exact' | 'derived';
 }
 
-/** The village_candidates fields a decision can rest on. Titles and venues are PUBLIC
+/** The live activity fields a decision can rest on. Titles and venues are PUBLIC
  * places; nothing here is a family's own location. */
 export interface RadarCandidate {
   id: string;
@@ -78,7 +78,7 @@ export interface RadarCandidate {
   childId: string | null;
   confidence: number;
   /**
-   * The discovery layer that wrote the row (`village_candidates.source`), or null
+   * The discovery layer that supplied the result, or null
    * on a row that predates the column being set. `decideRadar` ignores it; the
    * weekday drop-in reads it, because a TIME claim about a weekday session may
    * only rest on the civic sweep's verified feed (civic/project.ts CIVIC_SOURCE)
@@ -88,7 +88,7 @@ export interface RadarCandidate {
   /** The row's own page, or null. Only ever RENDERED from a `civic_registry` row — see
    * {@link WeekendPick.verifiedUrl} for the rule and the reason. */
   sourceUrl: string | null;
-  /** What a parent DOES about this one (village_candidates.access, a
+  /** What a parent DOES about this one (access, a
    * {@link CandidateAccess}), or null on a row whose source was never asked. */
   access: string | null;
   /** When it runs, in the source's own words, already ASCII-folded. Null on every

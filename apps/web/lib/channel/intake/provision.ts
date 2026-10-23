@@ -45,10 +45,8 @@ export const INTAKE_CONSENT_SCOPE = 'sms_intake_origination';
 
 /**
  * Where the family is, as established during intake — the same shape whichever of the
- * three routes established it: a full Canadian postal code, a bare FSA (D2), or a QR
- * venue whose OWN coarse area we know. Only the first carries a `postalCode`; all
- * three are Canadian by construction (the region gate runs in the caller), so
- * provisioning never guesses a country.
+ * routes established it: Canadian postal/FSA, a Canadian QR venue, or a full US ZIP.
+ * US postal context carries its country; legacy Canadian context keeps its existing default.
  */
 export type IntakeLocation = PostalContext;
 
@@ -149,7 +147,7 @@ export async function provisionFromIntake(
         // is what the sweeps select on, and it must not flip before that row.
         onboardingStage: 'sms_intake',
         primaryLanguage: input.language === 'fr' ? 'fr' : 'en',
-        country: INTAKE_COUNTRY,
+        country: location.country ?? INTAKE_COUNTRY,
         postalCode: location.postalCode,
         areaCoarse: location.areaCoarse,
         ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),

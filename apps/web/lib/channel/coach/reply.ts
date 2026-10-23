@@ -2,7 +2,7 @@ import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/scree
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
-import { type NamedActivityLink, activityLinkSuffix } from './activity-links';
+import { type NamedActivityLink, activityLinkSuffix, restoreActivityLinks } from './activity-links';
 
 /**
  * VIL-221 · C2 — everything that happens to the model's answer between the loop
@@ -300,7 +300,7 @@ function fitToBudget(
  * model that returned nothing (rule #8 — no silent no-op).
  */
 export function toSmsReply(raw: string, args: SmsReplyArgs): string {
-  const flattened = plainText(raw);
+  const flattened = restoreActivityLinks(plainText(raw), args.activityLinks);
   if (flattened === '') {
     throw new Error('channel coach: model answer was empty after post-processing');
   }

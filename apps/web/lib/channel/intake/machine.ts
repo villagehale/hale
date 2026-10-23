@@ -81,7 +81,7 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
-import { deriveDateOfBirth, parseCanadianPostal, summarizeChildren } from './derive';
+import { deriveDateOfBirth, parseIntakePostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import { firstTouchLocationCardEnabled } from './first-touch-flag';
 import { type FirstTouchPlace, placeFromVenue } from './first-touch-place';
@@ -1624,6 +1624,7 @@ async function friendOnboardingTurn(
           postalCode: place.postalCode,
           municipality: place.municipality as FirstTouchPlace['municipality'],
           city: place.city,
+          ...(place.country ? { country: place.country } : {}),
         }
       : null,
     parentName: priorGiven?.parentName ?? null,
@@ -2374,6 +2375,7 @@ function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['
     postalCode: place.postalCode,
     municipality: place.municipality,
     city: place.city,
+    ...(place.country ? { country: place.country } : {}),
   };
 }
 
@@ -2381,7 +2383,7 @@ function intakeLocationFor(
   place: NonNullable<FirstTouchPersisted['place']> | FirstTouchPlace,
 ): IntakeLocation | null {
   if (place.kind === 'postal') {
-    return parseCanadianPostal(place.postalCode ?? place.areaCoarse);
+    return parseIntakePostal(place.postalCode ?? place.areaCoarse);
   }
   if (!place.areaCoarse.trim()) return null;
   return { postalCode: null, areaCoarse: place.areaCoarse };

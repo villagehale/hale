@@ -4,6 +4,7 @@ import {
   deriveDateOfBirth,
   intakeFamilyName,
   parseCanadianPostal,
+  parseIntakePostal,
   summarizeChildren,
 } from './derive';
 
@@ -30,6 +31,20 @@ describe('parseCanadianPostal', () => {
     expect(parseCanadianPostal('3LR')).toBeNull(); // right length, wrong shape
     expect(parseCanadianPostal('L3R 5')).toBeNull(); // half an LDU is not a code
     expect(parseCanadianPostal(null)).toBeNull();
+  });
+});
+
+describe('parseIntakePostal', () => {
+  it('preserves Canadian context and accepts a US ZIP with its country', () => {
+    expect(parseIntakePostal('M5V')).toEqual(parseCanadianPostal('M5V'));
+    expect(parseIntakePostal(' 05401-1234 ')).toEqual({
+      postalCode: '05401',
+      areaCoarse: '054',
+      country: 'United States',
+    });
+    for (const value of ['054', '0540', '054012', 'SW1A 1AA', 'W1A', 'ZIP 05401', null]) {
+      expect(parseIntakePostal(value)).toBeNull();
+    }
   });
 });
 
