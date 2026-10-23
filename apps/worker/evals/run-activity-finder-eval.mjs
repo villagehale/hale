@@ -181,10 +181,20 @@ function followUpUserMessage(subject, picks, pageEvidence, watch, searched, lang
     subject,
     // `users.locale`, passed through. The composer never sees the parent's words.
     language,
-    // An empty search carries where it looked and what it read (lane.ts `EmptySearch`);
-    // a message with a find is composed from exactly the payload it always was.
+    // Only bound references survive; raw research may contain rejected facts.
     ...(picks.length === 0
-      ? { picks_empty: true, ...(searched ? { searched } : {}) }
+      ? {
+          picks_empty: true,
+          ...(searched
+            ? {
+                searched: {
+                  town: searched.town,
+                  ...(searched.references ? { references: searched.references } : {}),
+                  ...(searched.checkedSources ? { checkedSources: searched.checkedSources } : {}),
+                },
+              }
+            : {}),
+        }
       : { page_evidence: pageEvidence }),
     watch,
     picks: picks.map((pick) => ({

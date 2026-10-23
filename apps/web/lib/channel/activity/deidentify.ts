@@ -173,6 +173,13 @@ export function deidentifyActivityQuery(input: {
   stage: FamilyStage | null;
   householdNames: readonly string[];
 }): ActivityDeidResult {
+  if (
+    input.municipality === null &&
+    input.location &&
+    namesAPerson(input.location, input.householdNames)
+  ) {
+    return { ok: false, refusal: 'names_a_person' };
+  }
   const subject = gateFreeText(input.subject, input.householdNames);
   if (!subject.ok) {
     if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };

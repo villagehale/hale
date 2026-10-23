@@ -631,6 +631,27 @@ describe('an empty search tells the composer where it looked', () => {
     moreRemaining: 0,
   };
 
+  it('never returns rejected research facts to the writer through empty-search notes', () => {
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [],
+        searched: {
+          ...searched,
+          notes: 'Cartwheels costs $140',
+          references: [],
+          checkedSources: ['https://gym.example/classes'],
+        },
+      }),
+    );
+    expect(payload.searched).toEqual({
+      town: searched.town,
+      references: [],
+      checkedSources: ['https://gym.example/classes'],
+    });
+    expect(JSON.stringify(payload)).not.toContain('$140');
+  });
+
   it('keeps fact evidence alongside main’s language and held-option handoff', () => {
     const evidence = {
       program: 'Family storytime',
@@ -654,10 +675,10 @@ describe('an empty search tells the composer where it looked', () => {
     expect(payload.picks[0].evidence).toEqual(evidence);
   });
 
-  it('carries the area and the research only when there are no picks', () => {
+  it('carries the area, not unvalidated research, when there are no picks', () => {
     const empty = JSON.parse(followUpUserMessage({ ...base, picks: [], searched }));
     expect(empty.picks_empty).toBe(true);
-    expect(empty.searched).toEqual(searched);
+    expect(empty.searched).toEqual({ town: searched.town });
   });
 
   it('leaves a message with a find composed from the payload it always had', () => {

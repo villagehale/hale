@@ -250,7 +250,9 @@ export function bindActivityFacts(
     )
       continue;
     const age = item.age_fit?.trim() && quoted(page.text, item.age_evidence) ? item.age_fit : null;
-    const price = item.price?.trim() && quoted(page.text, item.price_evidence) ? item.price : null;
+    // Display the source's price wording, never a separately generated amount/conversion.
+    const price =
+      item.price?.trim() && quoted(page.text, item.price_evidence) ? item.price_evidence : null;
     const observed = (item.sessions ?? []).filter(
       (session) =>
         quoted(page.text, session.evidence) &&

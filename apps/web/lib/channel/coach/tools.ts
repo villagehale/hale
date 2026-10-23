@@ -25,6 +25,7 @@ import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
+import type { NamedActivityLink } from './activity-links';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
   type GmailDraftNoticeBox,
@@ -214,7 +215,7 @@ export interface ChannelCoachToolArgs {
    */
   offeredThisTurn?: () => readonly OfferedCandidate[];
   /** Live-web pages this turn found, appended when the reply names the pick. */
-  recordActivityLinks?: (links: readonly { title: string; url: string }[]) => void;
+  recordActivityLinks?: (links: readonly NamedActivityLink[]) => void;
   /**
    * The live web-search lane and the family facts phase 0 needs, or null in a test that
    * is not exercising them. The two travel together on purpose: a finder with no reader
@@ -396,10 +397,7 @@ function refuseMismatchedWeekday(
  * rather than two arrays, because two would be two answers to "what did Hale offer this
  * turn" and the first divergence is a count attached to the wrong activity.
  */
-export interface NamedLink {
-  title: string;
-  url: string;
-}
+export type NamedLink = NamedActivityLink;
 
 export interface TurnOfferLedger {
   record(offers: readonly OfferedCandidate[]): void;
