@@ -94,7 +94,10 @@ jobs:
             ${{ runner.os }}-ms-playwright-
 
       - name: Install Playwright chromium
-        run: pnpm --filter @hale/web exec playwright install --with-deps chromium
+        run: |
+          # The runner's Azure HTTP mirror can hang apt until the job times out.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          pnpm --filter @hale/web exec playwright install --with-deps chromium
 
       # pnpm topo-order package scripts, NOT `pnpm build` (turbo): a workspace
       # turbo build also builds apps/site, which this smoke does not need.
