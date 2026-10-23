@@ -468,7 +468,7 @@ let anthropicClient: Anthropic | undefined;
 export function defaultDiscoverDeps(): DiscoverDeps {
   // Intake is the remaining caller (trigger-discovery.ts). The sweep budget
   // keeps one stalled request from outliving that wall (audit P1-7).
-  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'discovery' });
   return {
     client: anthropicClient,
     loadPrompt: loadDiscoveryPrompt,

@@ -528,7 +528,7 @@ async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
 let defaultClient: Anthropic | undefined;
 
 function anthropicClient(): AgentClient {
-  defaultClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  defaultClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'coach' });
   return defaultClient;
 }
 

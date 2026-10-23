@@ -799,9 +799,15 @@ describe('intake · the funnel milestones', () => {
       event: string;
       distinctId: string;
       properties: Record<string, unknown>;
+      options?: { setOnce?: Record<string, unknown> };
     }> = [];
-    const capture: IntakeDeps['capture'] = async (event, distinctId, properties = {}) => {
-      calls.push({ event, distinctId, properties });
+    const capture: IntakeDeps['capture'] = async (event, distinctId, properties, options) => {
+      calls.push({
+        event,
+        distinctId,
+        properties: properties ?? {},
+        ...(options ? { options } : {}),
+      });
       return 'sent';
     };
     return { calls, capture };
@@ -812,10 +818,42 @@ describe('intake · the funnel milestones', () => {
     const { fake, transport, deps } = harness({ capture });
 
     await text(fake, transport, deps, 'hi');
-    expect(calls.map((c) => c.event)).toEqual(['intake_started']);
+    expect(calls.map((c) => c.event)).toEqual(['intake_started', 'first_text_received']);
 
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-    expect(calls.map((c) => c.event)).toEqual(['intake_started', 'intake_completed']);
+    expect(calls.map((c) => c.event)).toEqual([
+      'intake_started',
+      'first_text_received',
+      'intake_completed',
+    ]);
+  });
+
+  it('records the first text with its door, locale and source, and sets first_source_code once', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'Hi (via earlyon-richmondhill)');
+
+    const first = calls.find((c) => c.event === 'first_text_received');
+    expect(first?.properties).toEqual({
+      source_code: 'earlyon-richmondhill',
+      door: 'sms',
+      channel: 'sms',
+      locale: 'en',
+    });
+    expect(first?.options).toEqual({ setOnce: { first_source_code: 'earlyon-richmondhill' } });
+    // Same key as the rest of intake: the session, never the phone.
+    expect(first?.distinctId).toBe(calls[0]?.distinctId);
+  });
+
+  it('fires first_text_received once — the second text is not a first text', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(calls.filter((c) => c.event === 'first_text_received')).toHaveLength(1);
   });
 
   it('keys both ends on the same intake session, so they join into one funnel', async () => {
@@ -825,7 +863,9 @@ describe('intake · the funnel milestones', () => {
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
 
-    const [started, completed] = calls;
+    const started = calls[0];
+    const completed = calls.at(-1);
+    expect(completed?.event).toBe('intake_completed');
     expect(started?.distinctId).toBe(completed?.distinctId);
     expect(started?.distinctId).toBeTruthy();
   });
@@ -852,7 +892,12 @@ describe('intake · the funnel milestones', () => {
     await text(fake, transport, deps, 'Hi (via earlyon-richmondhill)');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
 
-    expect(calls.at(-1)?.properties).toEqual({ source_code: 'earlyon-richmondhill' });
+    expect(calls.at(-1)?.properties).toEqual({
+      source_code: 'earlyon-richmondhill',
+      // Two parent texts, and the seconds between the first and provisioning.
+      step_count: 2,
+      duration_s: expect.any(Number),
+    });
   });
 
   it('leaves source_code ABSENT when nobody handed out a card', async () => {
@@ -864,7 +909,11 @@ describe('intake · the funnel milestones', () => {
 
     // Null, not the string 'direct': a bucket meaning "no card" must not be able to
     // look like a card that exists. buildEvent drops it on the way out.
-    expect(calls.at(-1)?.properties).toEqual({ source_code: null });
+    expect(calls.at(-1)?.properties).toEqual({
+      source_code: null,
+      step_count: 2,
+      duration_s: expect.any(Number),
+    });
   });
 });
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { SOURCE_CODE_STORAGE_KEY, type SessionLike, readFirstTouchSourceCode } from './source-code';
+import {
+  SOURCE_CODE_STORAGE_KEY,
+  type SessionLike,
+  readFirstTouchSourceCode,
+  sourceCodeFromSearch,
+} from './source-code';
 
 /**
  * Expected values are derived from the attribution rule, not from the implementation:
@@ -63,5 +68,26 @@ describe('readFirstTouchSourceCode', () => {
     // Safari private mode: reading `sessionStorage` throws, so the provider hands null.
     expect(readFirstTouchSourceCode('?s=earlyon-richmondhill', null)).toBe('earlyon-richmondhill');
     expect(readFirstTouchSourceCode('', null)).toBeNull();
+  });
+});
+
+describe('poster QR params (?src= with utm_campaign fallback)', () => {
+  it('reads ?src= when ?s= is absent', () => {
+    expect(sourceCodeFromSearch('?src=poster-oakville&utm_source=poster&utm_medium=qr')).toBe(
+      'poster-oakville',
+    );
+  });
+  it('prefers ?s= over ?src=, and falls back to utm_campaign on poster links only', () => {
+    expect(sourceCodeFromSearch('?s=earlyon-richmondhill&src=poster-oakville')).toBe(
+      'earlyon-richmondhill',
+    );
+    expect(sourceCodeFromSearch('?utm_source=poster&utm_campaign=poster-oakville')).toBe(
+      'poster-oakville',
+    );
+    // An ad campaign is not a card.
+    expect(sourceCodeFromSearch('?utm_source=google&utm_campaign=spring')).toBeNull();
+  });
+  it('drops an invalid value rather than sending it', () => {
+    expect(sourceCodeFromSearch('?src=Maya%20Smith')).toBeNull();
   });
 });

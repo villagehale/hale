@@ -29,6 +29,28 @@ import { parseSourceCode } from '~/lib/text-entry';
 /** The query parameter every entry surface tags its links with. */
 export const SOURCE_CODE_PARAM = 's';
 
+/**
+ * Poster QR URLs carry `?src=<poster-slug>&utm_source=poster&utm_medium=qr&utm_campaign=…`
+ * (docs/launch-runbook.md). Read in order: `s` (the original /text card tag), then `src`,
+ * then — ONLY on a poster link (`utm_source=poster`) — `utm_campaign` as the fallback.
+ * An ad's `utm_campaign` is not a card and must not become one. Every candidate passes
+ * the same validator.
+ */
+export const SOURCE_CODE_PARAMS = [SOURCE_CODE_PARAM, 'src'] as const;
+
+/** The first VALID code from the URL, or null. Exported for tests. */
+export function sourceCodeFromSearch(search: string): string | null {
+  const params = new URLSearchParams(search);
+  for (const name of SOURCE_CODE_PARAMS) {
+    const code = parseSourceCode(params.get(name) ?? undefined);
+    if (code) return code;
+  }
+  if (params.get('utm_source') === 'poster') {
+    return parseSourceCode(params.get('utm_campaign') ?? undefined);
+  }
+  return null;
+}
+
 /** Where the first touch is held for the rest of the tab session. */
 export const SOURCE_CODE_STORAGE_KEY = 'hale.first_touch_source';
 
@@ -46,7 +68,7 @@ export function readFirstTouchSourceCode(
   search: string,
   storage: SessionLike | null,
 ): string | null {
-  const fromUrl = parseSourceCode(new URLSearchParams(search).get(SOURCE_CODE_PARAM) ?? undefined);
+  const fromUrl = sourceCodeFromSearch(search);
   if (!storage) return fromUrl;
 
   // Re-validated on the way out, not trusted because we wrote it: sessionStorage is a

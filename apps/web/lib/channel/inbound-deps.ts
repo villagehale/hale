@@ -49,7 +49,7 @@ import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 let cachedClient: Anthropic | undefined;
 
 function anthropicClient(): AgentClient {
-  cachedClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  cachedClient ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'triage' });
   return cachedClient;
 }
 

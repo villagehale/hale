@@ -5,6 +5,7 @@ import {
   startActiveObservation,
   startObservation,
 } from '@langfuse/tracing';
+import { flushPosthog } from '~/lib/analytics/posthog-node';
 import { haleMask } from './mask';
 
 /**
@@ -158,4 +159,7 @@ export async function flushTelemetry(): Promise<void> {
   } catch (err) {
     logTelemetryError('flushTelemetry', err);
   }
+  // Every route that flushes Langfuse also drains PostHog's queue ($ai_generation,
+  // $exception). A no-op when neither PostHog client was ever built (no key).
+  await flushPosthog();
 }

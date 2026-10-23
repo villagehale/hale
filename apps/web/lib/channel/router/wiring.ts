@@ -80,7 +80,6 @@ import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
-import { createHoldingLine } from './holding-line';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
 import {
@@ -105,6 +104,7 @@ import {
   villageIntroHandler,
   weekdayCareHandler,
 } from './handlers';
+import { createHoldingLine } from './holding-line';
 import {
   type OpenQuestionReader,
   type OpenQuestionReaderOptions,
@@ -485,7 +485,7 @@ let screenAnthropic: Anthropic | undefined;
  * honest `client_unavailable` reading instead of a thrown route.
  */
 function screenClient(): AgentClient {
-  screenAnthropic ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  screenAnthropic ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'inbound_screen' });
   return screenAnthropic;
 }
 

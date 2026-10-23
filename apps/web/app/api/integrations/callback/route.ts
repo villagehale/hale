@@ -3,6 +3,7 @@ import { deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
+import { capturePortalEventAfter } from '~/lib/analytics/server-capture';
 import { consumeChannelSigninTokenById } from '~/lib/auth/channel-signin';
 import { type AhaSnapshot, failedAha, loadConnectedAha } from '~/lib/channel/connect/aha-read';
 import {
@@ -270,6 +271,18 @@ export async function GET(req: NextRequest) {
       tokens,
       providerMetadata,
     }));
+    {
+      const connected =
+        bound.provider === 'gmail'
+          ? 'portal_gmail_connected'
+          : bound.provider === 'gcal'
+            ? 'portal_calendar_connected'
+            : null;
+      const familyId = bound.familyId;
+      if (connected) {
+        capturePortalEventAfter(connected, familyId, surface === 'text' ? 'connected' : 'settings');
+      }
+    }
     await rememberGoogleGivenName(database, {
       familyId: bound.familyId,
       userId: bound.userId,

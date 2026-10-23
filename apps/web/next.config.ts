@@ -9,6 +9,10 @@ const repoRoot = join(here, '..', '..');
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Browser source maps exist only on a build that will upload them to PostHog and then
+  // delete them (scripts/posthog-sourcemaps.mjs --delete-after). Without the key —
+  // every build today — this is false and nothing changes.
+  productionBrowserSourceMaps: Boolean(process.env.POSTHOG_PERSONAL_API_KEY),
   typedRoutes: true,
   // The policies moved to the marketing site (D20). These forwards are permanent
   // (308) and are kept FOREVER, not until a cleanup: sent emails, stored consent
