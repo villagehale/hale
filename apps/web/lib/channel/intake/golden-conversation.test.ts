@@ -331,9 +331,6 @@ function conversation(options?: {
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
-    seedCivic: async () => 0,
-    resolveCenter: async () => ({ lat: 43.6426, lng: -79.3871 }),
-    discoveryTrigger: () => {},
     friendVoice: {
       async compose(input: FriendVoiceInput) {
         return (options?.compose ?? scriptedTurn)(input);

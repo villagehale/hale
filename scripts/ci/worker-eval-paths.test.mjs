@@ -263,7 +263,6 @@ describe('ci.yml wiring', () => {
       'eval:proactive-writer',
       'eval:weekday-care-ask',
       'eval:coach-plan',
-      'eval:civic-hours',
       'eval:registration-verify',
       'eval:activity-verdict',
       'eval:activity-finder',

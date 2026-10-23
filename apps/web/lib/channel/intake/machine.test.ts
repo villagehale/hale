@@ -52,13 +52,11 @@ function assent(reply: string): IntentReading {
 
 /** The M5V (downtown Toronto) FSA centroid the fake geocoder returns, so the
  * seeding assertions can tell "placed here" from "could not be placed". */
-const M5V_CENTRE = { lat: 43.6426, lng: -79.3871 };
 
 function harness(options: {
   extractions?: IntakeCollected[];
   intents?: IntentReading[];
   limiter?: FakeRateLimiter;
-  resolveCenter?: IntakeDeps['resolveCenter'];
   identityAsk?: FakeIdentityAsk;
   /** Defaults to the composer that finds nothing to answer — every test written before
    * the escape existed is asserting the script, and that is the script. */
@@ -116,15 +114,6 @@ function harness(options: {
       answerComposer: options.answerComposer ?? fakeSilentAnswerComposer,
       friendVoice: scriptedFriendVoice,
       identityAsk,
-      seedCivic: async (_db, familyId, areaCoarse, center) => {
-        const placed = center === null ? 'unplaced' : `${center.lat},${center.lng}`;
-        steps.push(`civic:${familyId ? 'family' : 'none'}:${areaCoarse}:${placed}`);
-        return 0;
-      },
-      resolveCenter: options.resolveCenter ?? (async () => M5V_CENTRE),
-      discoveryTrigger: (familyId) => {
-        steps.push(`discovery:${familyId ? 'family' : 'none'}`);
-      },
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       ...(options.capture ? { capture: options.capture } : {}),
       now: NOW,
@@ -275,46 +264,24 @@ describe('intake · the age the parent stated', () => {
  * VIL-260 · WS1 — the first reply is the one message a stranger is guaranteed to read,
  * and a family four milliseconds old has nothing on file for it to be built from.
  */
-describe('intake · seeding the first radar', () => {
-  it('places the family near its civic sessions BEFORE composing, and kicks discovery', async () => {
-    const { fake, transport, deps, steps } = harness({});
-    await text(fake, transport, deps, 'hi');
-    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-
-    // Order is the assertion: an inline projection composed AFTER the radar could not
-    // have reached it, which is exactly the bug. The centroid rides along, so the
-    // FIRST radar is distance-filtered like every later one (VIL-260 · WS5).
-    expect(steps).toEqual([
-      `civic:family:M5V:${M5V_CENTRE.lat},${M5V_CENTRE.lng}`,
-      'discovery:family',
-      'radar:M5V',
-    ]);
-  });
-
-  it('still seeds — unplaced — when the coarse area cannot be geocoded', async () => {
-    // A Places miss must cost this family PROXIMITY, not their first radar: an
-    // unplaced projection still has its municipality gate to fall back on.
-    const { fake, transport, deps, steps } = harness({ resolveCenter: async () => null });
-    await text(fake, transport, deps, 'hi');
-    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-
-    expect(steps).toEqual(['civic:family:M5V:unplaced', 'discovery:family', 'radar:M5V']);
-  });
-
-  it('seeds unplaced rather than dying when the geocoder itself throws', async () => {
-    const { fake, transport, deps, steps } = harness({
-      resolveCenter: async () => {
-        throw new Error('places quota exhausted');
-      },
-    });
+describe('intake · the first radar needs no discovery catalog', () => {
+  it('composes immediately from family context without seeding or queued discovery', async () => {
+    const { fake, transport, deps, steps, threaded } = harness({});
     await text(fake, transport, deps, 'hi');
     const result = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-
     expect(result.status).toBe('provisioned');
-    expect(steps).toEqual(['civic:family:M5V:unplaced', 'discovery:family', 'radar:M5V']);
+    expect(steps).toEqual(['radar:M5V']);
+    expect(fake.rows(schema.familyActivityHistory)).toEqual([]);
+    if (result.status !== 'provisioned') throw new Error('expected a provisioned family');
+    expect(
+      threaded.some(
+        (message) =>
+          message.familyId === result.familyId && transport.bodies().includes(message.body),
+      ),
+    ).toBe(true);
   });
 
-  it('does not seed anything for a conversation that never provisioned', async () => {
+  it('does not compose for a conversation that never provisioned', async () => {
     const { fake, transport, deps, steps } = harness({
       extractions: [{ children: MAYA_AND_LEO.children, postalCode: '10001' }],
     });
