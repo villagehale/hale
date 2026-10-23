@@ -54,6 +54,8 @@ Use the existing single priced checklist above; its old freeze heads/hashes need
 
 Current offline hashes: Finder skill `319f2bb36e10c9bcff84f0d013c6cc3c1ec6f076ff22122f075cc7d0af4fdf8a` (unchanged), facts binding `2b14f509a7705ddcbe70447ccad23c90848552c2f339bad78bba7ee34bc76a53`, Finder eval `22c810d258f47a9d11788749ddd86b1053dcaa314330cfd1c23633203fd4c01a`. These identify the current code, not recording authorization or a final acceptance freeze.
 
+Frozen runtime/full Web replay on `99985c758`: **10,490 pass / 1 fail / 12 skip**. The one failure is `activity-answered` → “the promise is kept even when the second look finds nothing”. Isolated replay confirms the changed empty-result writer request misses journey key `77314b87005d4f74370554029dd01f0c015f44979b71b276c0e495cc2aca0b6c`; the promise stays open and no text is sent. An added assertion exposes that exact missing key before the send-count assertion, without removing any acceptance assertion. No recording was fabricated and this is **not** a green full run. Local JSON report: `/private/tmp/hale-vil423-finder-web-20261023.json`.
+
 #876 must land first; the prepared catalog/history handoff stays separate until that integration. Re-freeze final inputs before asking Barton for one spend approval. Cached-only diagnostics do not authorize new calls or establish King, wording, source ownership or p50/p95 acceptance.
 
 No model/page API calls, production actions, settings changes or merge. This documentation-only update intentionally leaves the failing checks visible.
