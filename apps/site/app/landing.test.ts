@@ -80,9 +80,9 @@ describe('landing — the redesign hero', () => {
     expect(text).not.toMatch(/only \d+ (spots|left)|hurry|limited time/i);
   });
 
-  it('says Hale does not register yet, and drops place names outside the design', () => {
-    expect(text).toContain('Not yet.');
-    expect(text).toContain('You register yourself.');
+  it('says Hale signs up on a yes and you pay yourself, and drops place names outside the design', () => {
+    expect(text).toContain('Say yes and it signs your kid up, then hands you the payment step.');
+    expect(text).toContain('You always pay yourself.');
     for (const banned of ['GTA', 'Georgetown', 'Stouffville', 'Your data stays in Canada']) {
       expect(text).not.toContain(banned);
     }
