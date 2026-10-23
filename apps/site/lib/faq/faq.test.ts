@@ -32,6 +32,8 @@ describe('product FAQ', () => {
   it('gives every question a unique English slug', () => {
     expect(FAQ.map((item) => item.id)).toEqual([
       'what-is-hale',
+      'who-is-hale-for',
+      'where-does-hale-work',
       'how-do-i-start',
       'do-i-need-an-app-or-an-account',
       'can-hale-join-our-group-chat',
@@ -44,6 +46,7 @@ describe('product FAQ', () => {
       'how-often-will-hale-text-me',
       'will-hale-tell-me-if-a-class-is-any-good',
       'is-it-free',
+      'what-do-paid-plans-cost',
       'what-happens-to-our-data',
       'is-hale-a-person',
       'is-hale-official',
@@ -56,6 +59,8 @@ describe('the FAQ this build serves', () => {
   it('is the cleared question list, in order', () => {
     expect(FAQ.map((item) => item.question)).toEqual([
       'What is Hale?',
+      'Who is Hale for?',
+      'Where does Hale work?',
       'How do I start?',
       'Do I need an app or an account?',
       'Can Hale join our group chat?',
@@ -68,6 +73,7 @@ describe('the FAQ this build serves', () => {
       'How often will Hale text me?',
       'Will Hale tell me if a class is any good?',
       'Is it free?',
+      'What do paid plans cost?',
       'What happens to our data?',
       'Is Hale a person?',
       'Is Hale official?',

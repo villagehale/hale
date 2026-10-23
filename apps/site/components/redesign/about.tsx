@@ -37,6 +37,7 @@ export function RedesignAbout({
     <p className="hs-eyebrow">{t("About Hale")}</p>
     <h1 className="sp-h1">{t("A planner for your kids’ year.")}</h1>
     <p className="sp-lede">{t("Two parents building the helper we wanted.")}</p>
+    <p className="sp-lede">{t("An iMessage and text helper that plans your kids’ activities and your family’s year, for parents in the US and Canada.")}</p>
     
    </div>
    
@@ -49,8 +50,28 @@ export function RedesignAbout({
   <div className="hs-glass sp-quote"><span className="sp-tag">{t("Our mission")}</span><p>{t("Every parent should have someone who knows what’s on near them, remembers the date that fills in two minutes, and asks how it went. Across every stage of childhood, from the first months to almost grown.")}</p></div>
  </div>
 </section><section className="hs hs-wash-c">
+ <div className="hs-wrap">
+  <div className="hs-head"><h2 className="hs-h2">{t("What Hale does")}</h2></div>
+  <p className="hs-lede">{t("Hale finds what’s on near you for your kids’ ages, reminds you before sign-ups open, keeps the family calendar straight and asks how it went. You text it like a friend. No app to download.")}</p><ul className="hs-p"><li>{t("Hale finds activities near you, by age: swim, camps, drop-ins, library programs, rec classes and weekend plans, each with the page it came from.")}</li><li>{t("It watches full classes and texts you when a spot opens, and reminds you before registration so you’re ready.")}</li><li>{t("If you connect Gmail and Google Calendar, it reads school and activity emails and keeps dates on your calendar. It asks before it adds or changes anything.")}</li><li>{t("Send it a photo of a flyer or a schedule and it reads it. Write in any language and it replies in yours.")}</li><li>{t("It works in your group chats with a co-parent, the carpool or other parents, and keeps track of who’s in and who’s driving.")}</li></ul>
+ </div>
+</section><section className="hs hs-wash-a">
+ <div className="hs-wrap">
+  <div className="hs-head"><h2 className="hs-h2">{t("What makes Hale different")}</h2></div>
+  <ul className="hs-p"><li>{t("It lives in your texts. No app, no new account to learn.")}</li><li>{t("It searches live and shows its source. Every date comes with the page it came from, and if they disagree, the source page wins.")}</li><li>{t("It asks before it acts. Hale doesn’t book, register or pay for you; you stay in charge.")}</li><li>{t("It covers the whole kids’ year, from the first months to almost grown, not one season or one app.")}</li></ul>
+ </div>
+</section><section className="hs hs-wash-c">
+ <div className="hs-wrap">
+  <div className="hs-head"><h2 className="hs-h2">{t("Who uses Hale")}</h2></div>
+  <p className="hs-lede">{t("Hale is for parents and caregivers in the US and Canada with kids from newborn to 18: the parent who keeps the family calendar, co-parents who share the load, and groups of parents planning together. We’re just getting started, and founding families use Hale free.")}</p>
+ </div>
+</section><section className="hs hs-wash-a">
+ <div className="hs-wrap">
+  <div className="hs-head"><h2 className="hs-h2">{t("How Hale works")}</h2></div>
+  <ol className="hs-p"><li>{t("Text Hale. It asks where you are and how old your kids are.")}</li><li>{t("It shows you what’s on this week, picked for your kids.")}</li><li>{t("It texts you only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class.")}</li><li>{t("Hale is free, with unlimited chat. Reply STOP any time.")}</li></ol>
+ </div>
+</section><section className="hs hs-wash-c">
  <div className="hs-wrap hs-grid">
-  <div className="sp-split-l"><div className="hs-head"><p className="hs-eyebrow">{t("The people")}</p><h2 className="hs-h2">{t("Parent-built in Georgetown, Ontario.")}</h2><p className="hs-lede">{t("Hale is made by Village Hale Technologies Inc. We’re small and early, and a real person reads every note.")}</p></div></div>
+  <div className="sp-split-l"><div className="hs-head"><p className="hs-eyebrow">{t("The team behind Hale")}</p><h2 className="hs-h2">{t("Parent-built in Georgetown, Ontario.")}</h2><p className="hs-lede">{t("Hale is made by Village Hale Technologies Inc. We’re small and early, and a real person reads every note.")}</p></div></div>
   <div className="sp-split-r"><div className="sp-cards two" style={{ marginTop: 0 }}><div className="hs-card sp-card"><div className="sp-person"><span className="sp-avatar">BD</span><div><h3 className="hs-h3">Barton Dong</h3><p className="hs-p">{t("CEO ·")} <a className="hs-link" href="https://linkedin.com/in/anzhe-dong">LinkedIn</a></p></div></div></div><div className="hs-card sp-card"><div className="sp-person"><span className="sp-avatar">ES</span><div><h3 className="hs-h3">Eugene Song</h3><p className="hs-p">{t("CTO ·")} <a className="hs-link" href="https://www.linkedin.com/in/yuhang-eugene-song-53b692172">LinkedIn</a></p></div></div></div><div className="hs-card sp-card" style={{ gridColumn: "1/-1" }}><div className="sp-person"><img src={logoSrc} alt="" style={{ width: "56px", height: "56px", borderRadius: "30%" }} /><div><h3 className="hs-h3">{t("Why “Hale”")}</h3><p className="hs-p">Hale <code style={{ fontFamily: "var(--font-mono)", fontSize: "14px" }}>/HAH-leh/</code> {t("is Hawaiian for home. The mark is a honu, a sea turtle.")}</p></div></div></div>
   </div></div>
  </div>
