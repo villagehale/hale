@@ -3,6 +3,7 @@ import { linkRef } from '~/lib/channel/coach/activity-links';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import type { NamedActivityLink } from '~/lib/channel/coach/activity-links';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -48,6 +49,7 @@ export const EXAMPLE_CHILD_ID = '00000000-0000-4000-8000-000000000000';
  * wrong pick, and `inputExamples` on this surface are cached outside the protections
  * message content gets (rule #1). See {@link OfferedCandidate}. */
 interface OfferableActivity {
+  evidence?: ActivityPick['evidence'];
   title: string;
   kind: string;
   summary: string;
@@ -162,6 +164,7 @@ export function searchVillageTool(
    */
   onOffered?: (offers: readonly OfferedCandidate[]) => void,
   finder?: ActivityFinder,
+  onLinks?: (links: readonly NamedActivityLink[]) => void,
 ): RegisteredTool {
   return defineTool({
     name: 'search_village',
@@ -191,6 +194,7 @@ export function searchVillageTool(
           when: pick.when ?? 'Current time could not be verified',
           // A ref, not the page: the reply cites it and code attaches the URL.
           ...(pick.sourceUrl ? { ref: linkRef(pick.sourceUrl) } : {}),
+          ...(pick.evidence ? { evidence: pick.evidence } : {}),
         },
         offer: {
           title: pick.name,
@@ -230,12 +234,26 @@ export function searchVillageTool(
       // count and never a teen-attributed row, which has no venue and no date and must
       // not be nameable at all (rule #1).
       onOffered?.(offered);
+      onLinks?.([
+        ...(found.references ?? []).map((reference) => ({
+          title: reference.name,
+          url: reference.sourceUrl,
+          sourceReference: true,
+        })),
+        ...(offered.length === 0 ? (found.checkedSources ?? []) : []).map((url) => ({
+          title: input.query ?? 'Activity source',
+          url,
+          sourceReference: true,
+        })),
+      ]);
 
       return {
         candidates,
         inVerification: 0,
         standingOption: null,
         liveRead: found.reason ?? 'verified',
+        ...(found.references ? { references: found.references } : {}),
+        ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
       };
     },
   });

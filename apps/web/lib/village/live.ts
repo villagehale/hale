@@ -2,12 +2,14 @@ import { type Database, type Municipality, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
+import type { ActivityReference } from '~/lib/channel/activity/facts';
 import {
   type ActivityFinder,
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
 import { safeHttpUrl } from '~/lib/format/http-url';
+import { readActivityLocation, readActivityTimeZone } from '~/lib/channel/activity/reader';
 import { activityClient } from '~/lib/pipeline/client';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 import { resolveActiveAreaCoarse } from './areas';
@@ -155,9 +157,12 @@ export async function findFamilyActivities(
 ): Promise<{
   picks: ActivityPick[];
   reason: string | null;
+  references?: ActivityReference[];
+  checkedSources?: string[];
 }> {
   const now = options.now ?? new Date();
-  const [children, area, parents] = await Promise.all([
+  const [city, children, area, parents, timeZone] = await Promise.all([
+    readActivityLocation(database, familyId),
     database
       .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
       .from(schema.children)
@@ -168,20 +173,23 @@ export async function findFamilyActivities(
       .from(schema.familyMembers)
       .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
       .where(eq(schema.familyMembers.familyId, familyId)),
+    readActivityTimeZone(database, familyId),
   ]);
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
   const towns = area
     ? municipalitiesForFsa(area.replace(/\s+/g, '').toUpperCase().slice(0, 3))
     : [];
-  if (towns.length !== 1) return { picks: [], reason: 'no_area' };
+  if (towns.length !== 1 && !city) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
   )[0]!;
   const query = deidentifyActivityQuery({
+    timeZone,
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
     municipality: towns.length === 1 ? (towns[0]! as Municipality) : null,
+    location: city,
     stage: deriveStage(youngest.dateOfBirth, now),
     householdNames: [...children, ...parents].flatMap(({ name }) =>
       name ? [name, name.trim().split(/\s+/)[0]!] : [],
@@ -227,10 +235,18 @@ export async function findFamilyActivities(
           ? await unofferedActivityPicks(database, familyId, found.picks)
           : found.picks,
         reason: null,
+        ...(found.references ? { references: found.references } : {}),
+        ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
       }
     : {
         picks: [],
         reason: found.reason,
+        ...(found.searched
+          ? {
+              references: found.searched.references ?? [],
+              checkedSources: found.searched.checkedSources ?? [],
+            }
+          : {}),
       };
 }
 
