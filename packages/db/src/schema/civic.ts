@@ -17,16 +17,11 @@ import {
  * Family-AGNOSTIC public reference data, like registration_windows and
  * curated_resources: there is no family_id and nothing here is PII (rule #1). A
  * library branch's street address and coordinates are the BRANCH's, published by
- * the library itself — the same class of public venue location village_candidates
- * already stores. No family's location is ever written here; the per-family
+ * the library itself. No family's location is ever written here; the per-family
  * matching happens at read time against the family's coarse area.
  *
- * WHY A SEPARATE TABLE FROM village_candidates. A Thursday 10am storytime at
- * Armour Heights is one fact about the world, not one fact per family. Writing it
- * per-family would duplicate ~6,000 Toronto library events across every household
- * and make "is this still true?" a question with N answers. The facts live here
- * once; `projectCivicCandidates` selects the handful a given family should see and
- * writes those as village_candidates (run_type 'civic').
+ * The former weekly civic producer is retired. These retained venue identities
+ * still anchor family history and reviews; current recommendations read live pages.
  *
  * OUT OF SCOPE, DELIBERATELY: Instagram and Facebook are never read. Centre and
  * branch socials are echoes of the calendars ingested here, they are ephemeral and
