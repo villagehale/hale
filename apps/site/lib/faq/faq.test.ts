@@ -87,9 +87,9 @@ describe('the FAQ this build serves', () => {
     expect(blob).toContain('Is Hale official?');
   });
 
-  it('says signing up for you is later, and only with a yes', () => {
+  it('says Hale signs up only with a yes, and you always pay', () => {
     const book = FAQ.find((item) => item.question === 'Does Hale book or register for me?');
-    expect(book?.answer.startsWith('Not yet.')).toBe(true);
-    expect(book?.answer).toContain('only when you say yes');
+    expect(book?.answer.startsWith('Yes, when you say yes.')).toBe(true);
+    expect(book?.answer).toContain('You always pay yourself.');
   });
 });

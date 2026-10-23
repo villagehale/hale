@@ -64,10 +64,11 @@ describe('every locale renders the redesign', () => {
   it('keeps the FR and ZH hero and sign-up lines on the English promise', () => {
     const fr = rd(HTML.fr);
     expect(fr).toContain('aide tout le monde à s’entendre');
-    expect(plain(fr)).toContain('Liens d’inscription et rappels pour toute une saison');
+    expect(fr).toContain('Inscriptions faites pour toi, quand tu dis oui');
+    expect(plain(fr)).toContain('Les inscriptions de toute une saison, d’un coup');
     expect(fr).toContain('Plus de choses faites pour toi, toute l’année.');
     expect(fr).toContain('Le maximum de ce que Hale peut faire.');
-    expect(fr).toContain('L’inscription à ta place viendra plus tard, et seulement si tu dis oui.');
+    expect(fr).toContain('C’est toujours toi qui paies.');
     expect(fr).toContain('Demande comment ça s’est passé');
     expect(fr).toContain('Texte Hale');
     expect(rd(HTML.en)).toContain('More done for you, all year.');
@@ -76,11 +77,12 @@ describe('every locale renders the redesign', () => {
     expect(rd(HTML.en)).not.toContain('For the whole crew');
     const zh = rd(HTML.zh);
     expect(zh).toContain('它帮你找活动、让大家定下来');
-    expect(plain(zh)).toContain('一整季的报名链接和提醒');
+    expect(zh).toContain('你点头后代你报名');
+    expect(plain(zh)).toContain('一整季的报名，一次办完');
     expect(zh).toContain('一整年，更多事由它来做。');
     expect(zh).toContain('Hale 能做的，到这里最多。');
     expect(zh).not.toContain('每个孩子，照顾的人也算上');
-    expect(zh).toContain('以后会推出代报名，前提是你先点头。');
+    expect(zh).toContain('钱总是你自己付。');
     expect(zh).not.toContain('已报名');
   });
 });

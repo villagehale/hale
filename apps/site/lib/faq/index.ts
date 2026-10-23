@@ -81,7 +81,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'does-hale-book-or-register-for-me',
     question: 'Does Hale book or register for me?',
     answer:
-      'Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes.',
+      'Yes, when you say yes. Hale finds the class, watches for spots and texts you before sign-ups open. Say yes and it signs your kid up, then hands you the payment step. You always pay yourself.',
   },
   {
     id: 'what-does-hale-find',
