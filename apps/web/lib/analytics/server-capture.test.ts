@@ -1,12 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetPosthogClientsForTests } from './posthog-node';
+import { decodeBatch, ours } from './posthog-wire.testkit';
 import {
   captureInboundRouted,
   captureServerEvent,
   resetAnalyticsAbsenceLogForTests,
 } from './server-capture';
 
-// Server-side analytics capture: a dependency-free POST to PostHog's capture
-// endpoint, used where no client hook exists (server actions). Every payload goes
+// Server-side analytics capture through posthog-node (one /batch/ POST per event,
+// flushAt 1), used where no client hook exists (server actions). Every payload goes
 // through the SAME buildEvent redaction chokepoint as the client, so identifying or
 // non-primitive properties can never leave (rule #1). No-ops without a key.
 
@@ -15,11 +17,23 @@ const DISTINCT_ID = '11111111-1111-4111-8111-111111111111';
 beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'phc_test');
   vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', 'https://ph.example.com');
+  vi.stubEnv('POSTHOG_HOST', '');
+  vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
+  resetPosthogClientsForTests();
 });
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.restoreAllMocks();
-});
+
+/** The one event in a posthog-node /batch/ request, with OUR properties only. */
+function sentEvent(init: RequestInit | undefined) {
+  const { api_key, events } = decodeBatch(init);
+  expect(events).toHaveLength(1);
+  const one = events[0];
+  return {
+    api_key,
+    event: one?.event ?? '',
+    distinct_id: one?.distinct_id ?? '',
+    properties: ours(one?.properties ?? {}),
+  };
+}
 
 describe('captureServerEvent', () => {
   it('posts the sanitized event to the capture endpoint with the key and distinct_id', async () => {
@@ -33,14 +47,9 @@ describe('captureServerEvent', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const url = fetchMock.mock.calls[0]?.[0];
     const init = fetchMock.mock.calls[0]?.[1];
-    expect(url).toBe('https://ph.example.com/i/v0/e/');
+    expect(String(url)).toBe('https://ph.example.com/batch/');
     expect(init?.method).toBe('POST');
-    const body = JSON.parse(String(init?.body)) as {
-      api_key: string;
-      event: string;
-      distinct_id: string;
-      properties: Record<string, unknown>;
-    };
+    const body = sentEvent(init);
     expect(body.api_key).toBe('phc_test');
     expect(body.event).toBe('signup_completed');
     expect(body.distinct_id).toBe(DISTINCT_ID);
@@ -59,7 +68,7 @@ describe('captureServerEvent', () => {
     });
 
     const init = fetchMock.mock.calls[0]?.[1];
-    const body = JSON.parse(String(init?.body)) as { properties: Record<string, unknown> };
+    const body = sentEvent(init);
     // The forbidden 'email' key is dropped; the coarse 'method' survives.
     expect(body.properties).toEqual({ method: 'email' });
   });
@@ -106,15 +115,12 @@ describe('captureInboundRouted', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const init = fetchMock.mock.calls[0]?.[1];
-    const body = JSON.parse(String(init?.body)) as {
-      event: string;
-      distinct_id: string;
-      properties: Record<string, unknown>;
-    };
+    const body = sentEvent(init);
     expect(body.event).toBe('inbound_routed');
     expect(body.distinct_id).toBe('door:sms');
     expect(body.properties).toEqual({ door: 'sms', outcome: 'rate_limited' });
-    // The webhook's 15s budget cannot be spent waiting on PostHog.
+    // The webhook's 15s budget cannot be spent waiting on PostHog: posthog-node's
+    // request carries an abort signal (requestTimeout, posthog-node.ts).
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -127,7 +133,7 @@ describe('captureInboundRouted', () => {
     await captureInboundRouted('email', 'Maya said hi');
 
     const init = fetchMock.mock.calls[0]?.[1];
-    const body = JSON.parse(String(init?.body)) as { properties: Record<string, unknown> };
+    const body = sentEvent(init);
     expect(body.properties).toEqual({ door: 'email', outcome: 'unclassified' });
   });
 
