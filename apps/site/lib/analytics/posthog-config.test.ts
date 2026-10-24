@@ -39,8 +39,15 @@ describe('marketing-site PostHog posture', () => {
     expect(POSTHOG_INIT_CONFIG.autocapture).toBe(false);
   });
 
-  it('leaves the pageview to the provider, which stamps attribution on it first', () => {
-    expect(POSTHOG_INIT_CONFIG.capture_pageview).toBe(false);
+  it('captures pageviews on every client-side navigation, and page leaves', () => {
+    // Attribution rides as a super property registered in `loaded`, which posthog-js
+    // runs before its initial pageview (posthog-provider.tsx).
+    expect(POSTHOG_INIT_CONFIG.capture_pageview).toBe('history_change');
+    expect(POSTHOG_INIT_CONFIG.capture_pageleave).toBe(true);
+  });
+
+  it('keeps web vitals on', () => {
+    expect(POSTHOG_INIT_CONFIG.capture_performance.web_vitals).toBe(true);
   });
 
   it('honours Do Not Track', () => {

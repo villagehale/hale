@@ -25,4 +25,37 @@ export async function register(): Promise<void> {
 
   const provider = new NodeTracerProvider({ spanProcessors: [langfuseSpanProcessor] });
   provider.register();
+
+  // Process-level crashes (worker code runs in this process — apps/worker is a library
+  // the web functions import). Only installed when POSTHOG_PROJECT_API_KEY is set, so a
+  // keyless deploy keeps Node's exact default behaviour.
+  if (process.env.POSTHOG_PROJECT_API_KEY) {
+    const { installProcessErrorHandlers } = await import('~/lib/analytics/exceptions');
+    installProcessErrorHandlers();
+  }
+}
+
+/**
+ * Error tracking for every server request (API routes, crons, webhooks, RSC), via
+ * Next's `onRequestError`. Dark until POSTHOG_PROJECT_API_KEY is set (exceptions.ts
+ * returns 'not_configured' without touching the network). The error is REDACTED to its
+ * class + frames, and the properties are the closed allowlist: route path, method,
+ * surface. Never the message, never a header, never a body (rule #1).
+ */
+export async function onRequestError(
+  err: unknown,
+  request: { path: string; method: string },
+  context: { routePath?: string; routeType?: string },
+): Promise<void> {
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+  if (!process.env.POSTHOG_PROJECT_API_KEY) return;
+  const { captureSafeException, surfaceForRoute } = await import('~/lib/analytics/exceptions');
+  // The ROUTE PATTERN (`/api/webhooks/[provider]`), never the concrete path: a path can
+  // carry a token (`/a/<token>`), a pattern cannot.
+  const route = context.routePath ?? 'unknown';
+  await captureSafeException(err, 'system', {
+    hale_surface: surfaceForRoute(route),
+    route,
+    method: request.method,
+  });
 }

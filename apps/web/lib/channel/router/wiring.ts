@@ -481,7 +481,7 @@ let screenAnthropic: Anthropic | undefined;
  * honest `client_unavailable` reading instead of a thrown route.
  */
 function screenClient(): AgentClient {
-  screenAnthropic ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  screenAnthropic ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'inbound_screen' });
   return screenAnthropic;
 }
 

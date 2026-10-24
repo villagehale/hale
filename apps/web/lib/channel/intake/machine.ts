@@ -1050,6 +1050,57 @@ async function offScriptReply(
 }
 
 /**
+ * The opening turn of a number Hale has never heard from: `intake_started` plus
+ * `first_text_received`, the SMS funnel's first step. Keyed on the intake session id,
+ * like the rest of intake (no phone, no hash of one). `source_code` is the poster/site
+ * code the first text carried (session.sourceCode, read by sourceCodeFromBody), and it
+ * is ALSO set once on the person, so retention can break down by poster.
+ */
+async function reportOpening(
+  deps: IntakeDeps,
+  session: IntakeSession,
+  inbound: Inbound,
+  language: ReplyLanguage,
+): Promise<void> {
+  await reportIntakeStep(deps, 'intake_started', session.id, {
+    source_code: session.sourceCode,
+  });
+  const channel = inbound.transport === 'imessage' ? 'imessage' : 'sms';
+  try {
+    await (deps.capture ?? captureServerEvent)(
+      'first_text_received',
+      session.id,
+      {
+        source_code: session.sourceCode,
+        door: channel,
+        channel,
+        locale: language,
+      },
+      session.sourceCode ? { setOnce: { first_source_code: session.sourceCode } } : {},
+    );
+  } catch (err) {
+    console.warn('intake analytics: first text not recorded', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+  }
+}
+
+/** Counts and elapsed time only — never a word of the transcript. Exported for tests. */
+export function intakeShape(
+  transcript: readonly TranscriptEntry[],
+  now: Date,
+): { step_count: number; duration_s?: number } {
+  const inbound = transcript.filter((e) => e.direction === 'in');
+  const first = inbound[0] ? Date.parse(inbound[0].at) : Number.NaN;
+  return {
+    step_count: inbound.length,
+    ...(Number.isFinite(first)
+      ? { duration_s: Math.max(0, Math.round((now.getTime() - first) / 1000)) }
+      : {}),
+  };
+}
+
+/**
  * One end of the F14 funnel, recorded.
  *
  * DISTINCT ID IS THE INTAKE SESSION'S OWN ROW ID — a random uuid minted before this
@@ -1682,7 +1733,7 @@ async function friendOnboardingTurn(
     clarify: session.firstTouch?.clarify ?? null,
   };
   if (children && children.length > 0 && location && nextPlace) {
-    if (opening) await reportIntakeStep(deps, 'intake_started', session.id);
+    if (opening) await reportOpening(deps, session, inbound, language);
     return provision(
       database,
       {
@@ -1710,7 +1761,7 @@ async function friendOnboardingTurn(
       },
       now,
     );
-    await reportIntakeStep(deps, 'intake_started', session.id);
+    await reportOpening(deps, session, inbound, language);
     return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
   }
   if (voiced) {
@@ -1755,7 +1806,7 @@ async function friendOnboardingTurn(
     },
     now,
   );
-  if (opening) await reportIntakeStep(deps, 'intake_started', session.id);
+  if (opening) await reportOpening(deps, session, inbound, language);
   if (waitingAges) {
     return { status: 'first_touch', step: opening ? 'find_sent' : 'ages_waiting' };
   }
@@ -2952,6 +3003,7 @@ async function provision(
   // card" must not be able to look like a card that exists.
   await reportIntakeStep(deps, 'intake_completed', session.id, {
     source_code: session.sourceCode,
+    ...intakeShape(gathered.transcript, now),
   });
   return { status: 'provisioned', familyId };
 }
