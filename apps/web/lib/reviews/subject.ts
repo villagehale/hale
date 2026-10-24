@@ -19,7 +19,7 @@ export type SubjectUnresolved =
   | 'no_placing_action'
   /** The action carries neither the typed `sourceRef` nor the legacy `candidate_id`. */
   | 'no_provenance_in_payload'
-  /** `sourceRef.table` is something other than `village_candidates` — the week-plan
+  /** `sourceRef.table` is something other than `family_activity_history` — the week-plan
    * composer also writes `children` and `family_events` refs, and reading one of those
    * as a venue is exactly the bug this check exists for. */
   | 'foreign_source_table'
@@ -78,7 +78,10 @@ export async function resolveReviewSubject(
   let candidateId: string;
   const ref = action.sourceRef;
   if (ref && typeof ref === 'object') {
-    if (ref.table !== 'village_candidates') return { unresolved: 'foreign_source_table' };
+    // Old placed actions retain their original provenance key after the catalog is gone.
+    if (ref.table !== 'family_activity_history' && ref.table !== 'village_candidates') {
+      return { unresolved: 'foreign_source_table' };
+    }
     if (typeof ref.id !== 'string' || ref.id === '') {
       return { unresolved: 'no_provenance_in_payload' };
     }
@@ -95,14 +98,14 @@ export async function resolveReviewSubject(
   // candidate that still says which venue it was.
   const [candidate] = await database
     .select({
-      placeId: schema.villageCandidates.placeId,
-      civicVenueId: schema.villageCandidates.civicVenueId,
+      placeId: schema.familyActivityHistory.placeId,
+      civicVenueId: schema.familyActivityHistory.civicVenueId,
     })
-    .from(schema.villageCandidates)
+    .from(schema.familyActivityHistory)
     .where(
       and(
-        eq(schema.villageCandidates.id, candidateId),
-        eq(schema.villageCandidates.familyId, input.familyId),
+        eq(schema.familyActivityHistory.id, candidateId),
+        eq(schema.familyActivityHistory.familyId, input.familyId),
       ),
     )
     .limit(1);

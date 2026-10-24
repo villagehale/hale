@@ -21,7 +21,7 @@ export interface IntroEmailRequest {
   parentA: { firstName: string; email: string };
   parentB: { firstName: string; email: string };
   stage: FamilyStage;
-  /** Verbatim from the civic_sessions row, or null when the pair had no anchor. */
+  /** A current activity anchor, or null when no verified activity is attached. */
   anchorTitle: string | null;
 }
 
@@ -52,8 +52,7 @@ export interface IntroEmailSenderDeps {
 }
 
 export function createIntroEmailSender(deps: IntroEmailSenderDeps = {}): IntroEmailSender {
-  const transport =
-    deps.transport ?? createResendTransport({ apiKey: process.env.RESEND_API_KEY });
+  const transport = deps.transport ?? createResendTransport({ apiKey: process.env.RESEND_API_KEY });
   return {
     async send(request) {
       if (!(deps.configured ?? Boolean(process.env.RESEND_API_KEY))) {

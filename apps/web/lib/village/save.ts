@@ -37,12 +37,12 @@ export async function toggleVillageSave(
 ): Promise<ToggleSaveResult> {
   const rows = await database
     .select({
-      id: schema.villageCandidates.id,
-      familyId: schema.villageCandidates.familyId,
-      childId: schema.villageCandidates.childId,
+      id: schema.familyActivityHistory.id,
+      familyId: schema.familyActivityHistory.familyId,
+      childId: schema.familyActivityHistory.childId,
     })
-    .from(schema.villageCandidates)
-    .where(eq(schema.villageCandidates.id, args.candidateId))
+    .from(schema.familyActivityHistory)
+    .where(eq(schema.familyActivityHistory.id, args.candidateId))
     .limit(1);
 
   const candidate = rows[0];
@@ -94,7 +94,7 @@ export async function toggleVillageSave(
       familyId: args.familyId,
       actor: args.userId,
       actionTaken: 'village_candidate_saved',
-      targetTable: 'village_candidates',
+      targetTable: 'family_activity_history',
       targetId: args.candidateId,
     });
     return { status: 200, saved: true };
@@ -106,10 +106,7 @@ export async function toggleVillageSave(
 /** Whether a candidate is attributed to a 13+ child, derived LIVE from the child's
  * date_of_birth (deriveStage) — never a stored flag. An unattributed candidate
  * (childId null) is never teen. */
-async function isTeenAttributed(
-  database: Database,
-  childId: string | null,
-): Promise<boolean> {
+async function isTeenAttributed(database: Database, childId: string | null): Promise<boolean> {
   if (!childId) return false;
   const rows = await database
     .select({ dateOfBirth: schema.children.dateOfBirth })
@@ -137,7 +134,7 @@ async function unsave(
     familyId: args.familyId,
     actor: args.userId,
     actionTaken: 'village_candidate_unsaved',
-    targetTable: 'village_candidates',
+    targetTable: 'family_activity_history',
     targetId: args.candidateId,
   });
   return { status: 200, saved: false };

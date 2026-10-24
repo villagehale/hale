@@ -1,5 +1,5 @@
 /**
- * VIL-260 · WS5 — the age a civic source ACTUALLY stated, read from its own words.
+ * The age a public source ACTUALLY stated, read from its own words.
  *
  * WHY THIS EXISTS. A library files every under-six program under one calendar-wide
  * audience ("Preschool Children (0-5)", "Babies, Toddlers & Preschool"), so the
@@ -74,11 +74,31 @@ const RULES: readonly Rule[] = [
   { re: rx(`${NUM}\\s*${DASH}\\s*${NUM}\\s*${YEAR}`), low: 'years', high: 'years' },
   { re: rx(`${ZERO}\\s*${DASH}\\s*${NUM}\\s*${MONTH}`), low: 'zero', high: 'months' },
   { re: rx(`${ZERO}\\s*${DASH}\\s*${NUM}\\s*${YEAR}`), low: 'zero', high: 'years' },
-  { re: rx(`${NUM}\\s*${MONTH}\\s*(?:and|or)\\s*(?:under|younger|below)`), low: 'zero', high: 'months' },
-  { re: rx(`${NUM}\\s*${YEAR}\\s*(?:and|or)\\s*(?:under|younger|below)`), low: 'zero', high: 'years' },
-  { re: rx(`${AGE_CUE}${NUM}\\s*(?:and|or)\\s*(?:under|younger|below)`), low: 'zero', high: 'years' },
-  { re: rx(`(?:under|below|younger than)\\s*${NUM}\\s*${MONTH}`), low: 'zero', high: 'months-exclusive' },
-  { re: rx(`(?:under|below|younger than)\\s*${NUM}\\s*${YEAR}`), low: 'zero', high: 'years-exclusive' },
+  {
+    re: rx(`${NUM}\\s*${MONTH}\\s*(?:and|or)\\s*(?:under|younger|below)`),
+    low: 'zero',
+    high: 'months',
+  },
+  {
+    re: rx(`${NUM}\\s*${YEAR}\\s*(?:and|or)\\s*(?:under|younger|below)`),
+    low: 'zero',
+    high: 'years',
+  },
+  {
+    re: rx(`${AGE_CUE}${NUM}\\s*(?:and|or)\\s*(?:under|younger|below)`),
+    low: 'zero',
+    high: 'years',
+  },
+  {
+    re: rx(`(?:under|below|younger than)\\s*${NUM}\\s*${MONTH}`),
+    low: 'zero',
+    high: 'months-exclusive',
+  },
+  {
+    re: rx(`(?:under|below|younger than)\\s*${NUM}\\s*${YEAR}`),
+    low: 'zero',
+    high: 'years-exclusive',
+  },
   { re: rx(`${AGE_CUE}${NUM}\\s*${DASH}\\s*${NUM}`), low: 'years', high: 'years' },
 ];
 
@@ -121,7 +141,9 @@ function toMonths(value: number, unit: Unit, end: 'low' | 'high'): number {
     case 'years-exclusive':
       return value * MONTHS_PER_YEAR - 1;
     case 'years':
-      return end === 'low' ? value * MONTHS_PER_YEAR : value * MONTHS_PER_YEAR + MONTHS_PER_YEAR - 1;
+      return end === 'low'
+        ? value * MONTHS_PER_YEAR
+        : value * MONTHS_PER_YEAR + MONTHS_PER_YEAR - 1;
   }
 }
 

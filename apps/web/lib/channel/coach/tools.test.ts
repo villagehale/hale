@@ -407,7 +407,7 @@ describe('propose_calendar_add', () => {
     });
 
     expect(h.port.drafts[0]?.payload.sourceRef).toEqual({
-      table: 'village_candidates',
+      table: 'family_activity_history',
       id: 'cand-1',
     });
   });

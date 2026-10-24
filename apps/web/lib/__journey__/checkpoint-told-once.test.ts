@@ -11,7 +11,7 @@ import {
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
-import { createRadarComposer, readCandidates, readWindows } from '~/lib/channel/intake/radar';
+import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
@@ -23,6 +23,7 @@ import { matchHealthCheckpoints } from '~/lib/health/match';
 import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { checkpointToldKey, checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -119,9 +120,6 @@ async function runIntakeRadar(): Promise<Intake> {
     }),
     // Nothing to seed and nowhere to place them: this family's whole point is that
     // geography has nothing for them yet.
-    seedCivic: async () => 0,
-    resolveCenter: async () => null,
-    discoveryTrigger: () => {},
     answerComposer: fakeSilentAnswerComposer,
     friendVoice: scriptedFriendVoice,
     openQuestions: fakeNoOpenQuestions,
@@ -193,8 +191,8 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
         dateOfBirth: row.dateOfBirth as string,
         dobPrecision: row.dobPrecision === 'derived' ? ('derived' as const) : ('exact' as const),
       })),
-    loadCandidates: (database, id) => readCandidates(database, id),
-    loadWindows: (database, area) => readWindows(database, area),
+    loadCandidates: async () => [],
+    loadWindows: async () => [],
     /** SEAM: the real reader is TOLD ∪ DONE (health/reply.ts). TOLD is a LIKE over the
      * ledger's told-markers — every outbound row that carries one, whatever surface
      * wrote it (health/told.ts loadToldCheckpointRefs). Nothing is done here. */
@@ -245,6 +243,7 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     },
     transport,
     client: null,
+    recordActivityOffers,
     // MEM-10 · the REAL writer over the same store (this family was promised nothing,
     // so the honest outcome here is the ledger's `none_open`).
     fulfillCommitment,

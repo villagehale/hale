@@ -30,11 +30,11 @@ export async function readSavedVillageCandidates(
   );
 
   const rows = await database
-    .select({ candidate: schema.villageCandidates })
+    .select({ candidate: schema.familyActivityHistory })
     .from(schema.villageSaves)
     .innerJoin(
-      schema.villageCandidates,
-      eq(schema.villageSaves.candidateId, schema.villageCandidates.id),
+      schema.familyActivityHistory,
+      eq(schema.villageSaves.candidateId, schema.familyActivityHistory.id),
     )
     .where(eq(schema.villageSaves.familyId, familyId))
     .orderBy(desc(schema.villageSaves.createdAt));
@@ -56,6 +56,7 @@ export async function readSavedVillageCandidates(
         accepted: familyAccepted.has(row.candidate.id),
         saved: true,
       },
+      true,
     ),
   );
 }
