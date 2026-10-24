@@ -97,6 +97,7 @@ export function budgetedAiGateway(
 
 let cached: Anthropic | undefined;
 let cachedActivity: Anthropic | undefined;
+let cachedDiscoveryActivity: Anthropic | undefined;
 
 export function pipelineClient(): AgentClient {
   cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'classify_event' });
@@ -108,4 +109,13 @@ export function pipelineClient(): AgentClient {
 export function activityClient(): AgentClient {
   cachedActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS);
   return cachedActivity;
+}
+
+/** The same activity-lane budget, labeled `discovery` for the LLM dashboard. Only
+ * discoverForFamily (lib/village/discover.ts) uses it; the SMS activity lane keeps
+ * {@link activityClient} and its own label. A separate cached instance because the
+ * stage is fixed when the client is traced. */
+export function discoveryActivityClient(): AgentClient {
+  cachedDiscoveryActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS, { stage: 'discovery' });
+  return cachedDiscoveryActivity;
 }
