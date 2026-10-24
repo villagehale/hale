@@ -40,7 +40,12 @@ describe('the caregiver reminder', () => {
         timeZone: 'America/Toronto',
         events: [
           { eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T20:15:00Z', location: null },
-          { eventRef: 'e2', title: 'Soccer', startsAt: '2026-07-25T22:00:00Z', location: 'Memorial Park' },
+          {
+            eventRef: 'e2',
+            title: 'Soccer',
+            startsAt: '2026-07-25T22:00:00Z',
+            location: 'Memorial Park',
+          },
         ],
       }) as { text: string }
     ).text;
@@ -75,13 +80,11 @@ describe('the renderer refuses a leg a caregiver cannot receive', () => {
     payload: {
       offset: '-PT1H',
       timeZone: 'UTC',
-      events: [{ eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T20:15:00Z', location: null }],
+      events: [
+        { eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T20:15:00Z', location: null },
+      ],
     },
   };
-
-  it('throws on an email leg rather than rendering a shell for an address that does not exist', () => {
-    expect(() => caregiverReminderRenderer.render(message, 'email', 'first_name')).toThrow(/sms only/);
-  });
 
   it('renders the sms leg', () => {
     expect(caregiverReminderRenderer.render(message, 'sms', 'generic').kind).toBe('sms');

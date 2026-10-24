@@ -25,6 +25,7 @@ import {
   type ExecutorDeps,
   defaultExecutorDeps,
   runExecutor,
+  type EmailSender,
 } from '../services/executor.js';
 import type { GoogleCalendarPlacement } from '../services/google-calendar-placement.js';
 import {
@@ -184,15 +185,17 @@ function classifyEndedCalendarItem(job: IngestedEventPayload): FreshClassificati
 }
 
 /**
- * The collaborators the pipeline cannot build for itself. Today that is one: the
- * calendar-invite sender, which lives in apps/web (the ICS composer + the A2
- * dispatch) and is therefore bound by the web drain rather than resolved here.
- * Unbound, the executor names its own absence in the execution detail.
+ * The collaborators the pipeline cannot build for itself: the calendar-invite sender,
+ * the Google Calendar writer and the Gmail email sender all live in apps/web (they
+ * need the A2 dispatch or the OAuth token vault) and are bound by the web drain.
+ * Unbound, the executor names its own absence.
  */
 export interface OrchestratorOptions {
   calendarInvites?: CalendarInviteSender;
   /** Google Calendar writes for a placement. Unbound, the executor names the skip. */
   googleCalendar?: GoogleCalendarPlacement;
+  /** Approved-email sends from the parent's own Gmail. Unbound, send_email fails loud. */
+  sendEmail?: EmailSender;
 }
 
 /**
@@ -203,12 +206,14 @@ export interface OrchestratorOptions {
 function executorDeps(
   calendarInvites?: CalendarInviteSender,
   googleCalendar?: GoogleCalendarPlacement,
+  sendEmail?: EmailSender,
 ): ExecutorDeps | undefined {
-  if (!calendarInvites && !googleCalendar) return undefined;
+  if (!calendarInvites && !googleCalendar && !sendEmail) return undefined;
   return {
     ...defaultExecutorDeps(),
     ...(calendarInvites ? { sendCalendarInvites: calendarInvites } : {}),
     ...(googleCalendar ? { googleCalendar } : {}),
+    ...(sendEmail ? { sendEmail } : {}),
   };
 }
 
@@ -253,6 +258,7 @@ export async function runOrchestrator(
       resume.teenContent,
       opts.calendarInvites,
       opts.googleCalendar,
+      opts.sendEmail,
     );
     return;
   }
@@ -752,6 +758,7 @@ export async function runOrchestrator(
     opts.calendarInvites,
     opts.googleCalendar,
     null,
+    opts.sendEmail,
   );
 }
 
@@ -770,6 +777,7 @@ async function executeAndRecord(
   calendarInvites?: CalendarInviteSender,
   googleCalendar?: GoogleCalendarPlacement,
   actorUserId?: string | null,
+  sendEmail?: EmailSender,
 ): Promise<void> {
   const decision = {
     source: actorUserId ? ('human' as const) : ('autonomous' as const),
@@ -778,7 +786,7 @@ async function executeAndRecord(
   try {
     const execution = await runExecutor(
       { familyId, approved, actorUserId: actorUserId ?? null },
-      executorDeps(calendarInvites, googleCalendar),
+      executorDeps(calendarInvites, googleCalendar, sendEmail),
     );
     await recordExecution({ actionId, result: execution.detail, ok: execution.ok, decision });
     await markEventStage(familyId, eventId, execution.ok ? 'actioned' : 'failed');
@@ -809,6 +817,7 @@ async function resumeIntoExecutor(
   teenContent: boolean,
   calendarInvites?: CalendarInviteSender,
   googleCalendar?: GoogleCalendarPlacement,
+  sendEmail?: EmailSender,
 ): Promise<void> {
   const existing = await loadActionForEvent(eventId);
   if (!existing) {
@@ -901,6 +910,7 @@ async function resumeIntoExecutor(
     calendarInvites,
     googleCalendar,
     humanApprover,
+    sendEmail,
   );
 }
 
@@ -916,6 +926,8 @@ export interface ExecuteApprovedDeps {
   calendarInvites?: CalendarInviteSender;
   /** Google Calendar writes. Absent ⇒ the executor's unwired port (`not_configured`). */
   googleCalendar?: GoogleCalendarPlacement;
+  /** Gmail sends for approved email. Absent ⇒ the executor's unwired sender (fails loud). */
+  sendEmail?: EmailSender;
   loadConsent: typeof loadCrossParentConsent;
   recordApproval: typeof recordHumanApproval;
   recordGate: typeof recordActionGate;
@@ -1068,5 +1080,6 @@ export async function executeApprovedAction(
     deps.calendarInvites,
     deps.googleCalendar,
     approvedBy,
+    deps.sendEmail,
   );
 }

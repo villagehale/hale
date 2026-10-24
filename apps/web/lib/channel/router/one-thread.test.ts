@@ -16,7 +16,7 @@ import { routeChannelMessage } from './route';
 import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
 
 /**
- * TEXT + EMAIL, ONE THREAD, ONE MEMORY — the journey, against a real Postgres.
+ * TEXT + IMESSAGE, ONE THREAD, ONE MEMORY — the journey, against a real Postgres.
  *
  * Everything else in this folder tests the router with the context read stubbed out.
  * This runs the REAL one, which is where the whole claim lives: `loadInboundContext`
@@ -25,8 +25,9 @@ import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wir
  * any of that — it would return whatever route the test handed it, including the wrong
  * one, and the conversation key would be whatever the router happened to compute.
  *
- * The two messages below are the actual product promise: a parent texts, then emails,
- * and the second turn's coach reads the first turn back out of the same conversation.
+ * The two messages below are the actual product promise: a parent texts, then writes on
+ * iMessage, and the second turn's coach reads the first turn back out of the same
+ * conversation.
  */
 
 const NOW = new Date('2026-08-12T12:00:00.000Z');
@@ -142,7 +143,7 @@ describe('one parent, two doors, one conversation', () => {
 
   /** File an inbound the way its webhook does, and hand back C1's job for it. */
   async function inbound(
-    channel: 'sms' | 'email' | 'imessage',
+    channel: 'sms' | 'imessage',
     body: string,
     providerMessageId: string,
     providerChatId: string | null = null,
@@ -176,8 +177,8 @@ describe('one parent, two doors, one conversation', () => {
     const texted = await inbound('sms', 'is the splash pad open saturday?', 'SM1');
     const first = await routeChannelMessage(deps('Yes — from 10.'), texted);
 
-    const emailed = await inbound('email', 'and what about sunday?', '<msg-1@example.com>');
-    const second = await routeChannelMessage(deps('Sunday it opens at 11.'), emailed);
+    const messaged = await inbound('imessage', 'and what about sunday?', 'in-1', 'chat-direct');
+    const second = await routeChannelMessage(deps('Sunday it opens at 11.'), messaged);
 
     expect([first.status, second.status]).toEqual(['agent_replied', 'agent_replied']);
 
@@ -189,20 +190,19 @@ describe('one parent, two doors, one conversation', () => {
       'and what about sunday?',
     ]);
 
-    // Each answer left by the door its question came through — the text to the verified
-    // number, the email to the account address, threaded onto the inbound Message-ID.
+    // Each answer left by the door its question came through.
     expect(transport.sent).toEqual([
       { route: { channel: 'sms', to: PHONE }, body: 'Yes — from 10.' },
       {
-        route: { channel: 'email', to: EMAIL, inReplyTo: '<msg-1@example.com>' },
+        route: { channel: 'imessage', to: PHONE, chatId: 'chat-direct', replyToMessageId: 'in-1' },
         body: 'Sunday it opens at 11.',
       },
     ]);
   });
 
   it('opens the thread under the parent anchor, whichever door came first', async () => {
-    const emailed = await inbound('email', 'hi', '<msg-2@example.com>');
-    await routeChannelMessage(deps('Hello.'), emailed);
+    const messaged = await inbound('imessage', 'hi', 'in-2', 'chat-direct');
+    await routeChannelMessage(deps('Hello.'), messaged);
 
     const conversations = await db.database
       .select({ noteKey: schema.conversations.noteKey })
@@ -256,30 +256,5 @@ describe('one parent, two doors, one conversation', () => {
         .from(schema.conversations);
       expect(keys).toEqual([{ noteKey: channelSmsNoteKey(parentUserId) }]);
     });
-  });
-
-  it('goes silent on an email from a parent who has stopped email, and says so', async () => {
-    for (const emailType of [
-      'daily_digest',
-      'weekly_plan',
-      'reminder',
-      'approval',
-      'alert',
-    ] as const) {
-      await db.database.insert(schema.emailOptOuts).values({ userId: parentUserId, emailType });
-    }
-
-    const emailed = await inbound('email', 'anything on this week?', '<msg-3@example.com>');
-    const result = await routeChannelMessage(deps('Plenty.'), emailed);
-
-    expect(result.status).toBe('unreachable');
-    expect(transport.sent).toEqual([]);
-    // The positive control: the SAME parent is still reachable by text, so the silence
-    // above is the opt-out doing its job rather than a lookup that matched nothing.
-    const texted = await inbound('sms', 'anything on this week?', 'SM2');
-    await routeChannelMessage(deps('Swim at 10 on Saturday.'), texted);
-    expect(transport.sent).toEqual([
-      { route: { channel: 'sms', to: PHONE }, body: 'Swim at 10 on Saturday.' },
-    ]);
   });
 });

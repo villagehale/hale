@@ -189,21 +189,6 @@ describe('providerIncidentKey', () => {
     expect(billing).toBe(billingFromInference);
     expect(new Set([billing, auth, spike]).size).toBe(3);
   });
-
-  it('keys a failed digest send per DIGEST — one dead surface must not silence another', () => {
-    const papercut = providerIncidentKey({
-      kind: 'digest_send_failed',
-      digest: 'papercut',
-      reason: 'provider_error',
-    });
-    const loopHealth = providerIncidentKey({
-      kind: 'digest_send_failed',
-      digest: 'loop_health',
-      reason: 'provider_error',
-    });
-    expect(papercut).toBe('provider_health:digest_send_failed:papercut');
-    expect(new Set([papercut, loopHealth]).size).toBe(2);
-  });
 });
 
 describe('formatProviderAlert', () => {
@@ -247,19 +232,6 @@ describe('formatProviderAlert', () => {
     expect(text).toContain('7 of 8');
     expect(text).toContain('2026-08-01T12:00:00.000Z');
     expect(text).toContain('2026-08-01T13:00:00.000Z');
-  });
-
-  it('says which digest went dark and warns that its silence is not a clean week', () => {
-    const { subject, text } = formatProviderAlert(
-      { kind: 'digest_send_failed', digest: 'papercut', reason: 'provider_error' },
-      AT,
-    );
-
-    expect(subject).toBe('Hale ops: the weekly papercut digest failed to send');
-    expect(text).toContain('provider_error');
-    expect(text).toContain('never as a');
-    expect(text).toContain('Re-run the digest cron');
-    expect(text).not.toContain('FOUNDER_ALERT_PHONE');
   });
 });
 
@@ -426,10 +398,7 @@ describe('providerPreflight', () => {
 });
 
 beforeEach(() => {
-  vi.stubEnv('RESEND_API_KEY', 'test-key');
-  vi.stubEnv('FOUNDER_ALERT_EMAIL', 'founder@villagehale.com');
   vi.stubEnv('WELCOME_BCC', '');
-  vi.stubEnv('WELCOME_FROM', '');
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -438,8 +407,8 @@ afterEach(() => {
 describe('createProviderAlertSender', () => {
   it('posts the subject and body to Slack #ops', async () => {
     vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
-    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response('ok', { status: 200 }),
+    const fetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('ok', { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchImpl);
 

@@ -251,7 +251,6 @@ describe('ci.yml wiring', () => {
       'eval:turn-apology',
       'eval:holding-line',
       'eval:followup-voice',
-      'eval:calendar-voice',
       'eval:identity-ask',
       'eval:reminder-voice',
       'eval:intro-voice',

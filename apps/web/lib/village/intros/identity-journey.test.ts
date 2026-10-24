@@ -2,16 +2,11 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
-import {
-  defaultEmailCaptureDeps,
-  handleEmailCaptureReply,
-} from '~/lib/channel/email-capture/reply';
 import { defaultNameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
 import { FakeIdentityAsk, FakeIntroVoice } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type TestDb, createTestDb, seedChild } from '~/lib/testing/pglite';
-import type { IntroEmailRequest, IntroEmailSender } from './email';
 import { defaultVillageIntroReplyDeps, handleVillageIntroReply } from './reply';
 import { type IntroSweepDeps, defaultIntroSweepDeps, runVillageIntroSweep } from './run';
 
@@ -28,12 +23,14 @@ const introConsent: ConsentReader = {
 /**
  * THE FOUNDER'S LIVE SCENARIO, end to end, against real Postgres.
  *
- * Two families arrive by text. Neither has a name and neither has an email, because
- * nothing in the SMS product ever collected either one: intake writes `users.name = null`
- * and `users.email = null`, and until this change the only writers were the mobile
- * onboarding body and the authed web settings form. Both families are asked whether they
- * want to be findable, both say yes, both get a card, both say yes again — and then the
- * introduction could never be written.
+ * Two families arrive by text. Neither has a name, because nothing in the SMS product
+ * ever collected one: intake writes `users.name = null`. Both families are asked whether
+ * they want to be findable, both say yes, both get a card, both say yes again, and each
+ * is asked for the name the introduction needs.
+ *
+ * The introduction itself was an email and Hale no longer sends email, so the journey
+ * ends with the pair held OPEN and counted as `no_intro_channel` — never closed as if it
+ * had been introduced, and never audited as disclosed.
  *
  * WHY THIS RUNS ON REAL POSTGRES RATHER THAN THE CHAIN FAKES. Every load-bearing step
  * here is a QUERY: the capture window is a select over `channel_messages` filtered by
@@ -49,7 +46,7 @@ const introConsent: ConsentReader = {
 
 const M4K = 'M4K 1N2';
 
-describe('two nameless, address-less families get introduced', () => {
+describe('two nameless families get paired, named, and held for an intro channel', () => {
   let db: TestDb;
   let database: Database;
 
@@ -104,13 +101,7 @@ describe('two nameless, address-less families get introduced', () => {
     parentTimeZone: async () => 'UTC',
   };
 
-  function sweepDeps(transport: FakeTransport, emails: IntroEmailRequest[]): IntroSweepDeps {
-    const email: IntroEmailSender = {
-      async send(request) {
-        emails.push(request);
-        return { status: 'sent', providerMessageId: 'msg-1' };
-      },
-    };
+  function sweepDeps(transport: FakeTransport): IntroSweepDeps {
     return {
       // Every DB seam is production, including the consent ledger read that decides who
       // is discoverable — so the YES INTROS below is doing real work rather than being
@@ -119,7 +110,6 @@ describe('two nameless, address-less families get introduced', () => {
       buildGate: () => openGate,
       resolveSendablePhone: async (_db, userId) => `+1416555${userId.slice(0, 4)}`,
       transport,
-      email,
       identityAsk: new FakeIdentityAsk({ status: 'composed', body: 'IDENTITY-ASK' }),
       // The two asks' WORDS are a model's and are proven by their own eval; what this
       // journey is about is the state machine underneath them.
@@ -127,12 +117,11 @@ describe('two nameless, address-less families get introduced', () => {
     };
   }
 
-  it('asks, cards, gap-fills, captures, and introduces - with both audit rows', async () => {
+  it('asks, cards, gap-fills, captures - and holds the pair open with no intro channel', async () => {
     const one = await seedTextFamily('Wren family', 'Wren');
     const two = await seedTextFamily('Tomas family', 'Tomas');
     const transport = new FakeTransport();
-    const emails: IntroEmailRequest[] = [];
-    const deps = sweepDeps(transport, emails);
+    const deps = sweepDeps(transport);
     const now = new Date('2026-08-13T15:00:00Z');
 
     // ── tick 1: the discoverability ask reaches both ──
@@ -166,9 +155,9 @@ describe('two nameless, address-less families get introduced', () => {
       expect(['intro_accepted']).toContain(outcome.status);
     }
 
-    // ── tick 3: both sides owe a name AND an address, so each gets ONE ask ──
+    // ── tick 3: both sides owe a name, so each gets ONE ask ──
     const waiting = await runVillageIntroSweep(database, deps, now);
-    expect(waiting.waiting).toEqual({ awaiting_email: 2, awaiting_name: 2 });
+    expect(waiting.waiting).toEqual({ awaiting_email: 0, awaiting_name: 2 });
     expect(waiting.identityAsked).toBe(2);
     expect(waiting.introduced).toBe(0);
     // Not closed, and not miscounted as a delivery failure (rule #11).
@@ -178,66 +167,33 @@ describe('two nameless, address-less families get introduced', () => {
       .from(schema.villageIntroProposals);
     expect(openPair?.closedAt).toBeNull();
 
-    // ── the parents answer. Two texts each, through the REAL capture handlers ──
-    for (const [side, name, address] of [
-      [one, "I'm Dana", 'dana@example.com'],
-      [two, 'Sam Lee', 'sam@example.com'],
+    // ── the parents answer, through the REAL capture handler ──
+    for (const [side, name] of [
+      [one, "I'm Dana"],
+      [two, 'Sam Lee'],
     ] as const) {
-      const turn = { familyId: side.familyId, parentUserId: side.parentUserId, now };
-
       const named = await handleNameCaptureReply(
         database,
-        { ...turn, body: name },
+        { familyId: side.familyId, parentUserId: side.parentUserId, now, body: name },
         defaultNameCaptureDeps(),
       );
       expect(named.status).toBe('captured');
-
-      const mailed = await handleEmailCaptureReply(
-        database,
-        { ...turn, body: address },
-        { ...defaultEmailCaptureDeps(), sendPendingInvite: async () => false },
-      );
-      // The receipt follows the question that was asked: this address was for an
-      // introduction, not for calendar invites.
-      expect(mailed).toEqual({
-        status: 'captured',
-        reply: "Got it - I'll make that introduction and use this address from now on.",
-      });
     }
 
-    // ── tick 4: nothing is missing any more, so the introduction goes ──
-    const introduced = await runVillageIntroSweep(database, deps, now);
-    expect(introduced.introduced).toBe(1);
-    expect(introduced.waiting).toEqual({ awaiting_email: 0, awaiting_name: 0 });
+    // ── tick 4: nothing is missing, but there is no channel to introduce them on ──
+    const held = await runVillageIntroSweep(database, deps, now);
+    expect(held.introduced).toBe(0);
+    expect(held.introFailed).toBe(1);
+    expect(held.waiting).toEqual({ awaiting_email: 0, awaiting_name: 0 });
 
-    // ONE email, first names only, both addresses on the visible header.
-    //
-    // Order-independent on purpose: which family is side A is decided by comparing two
-    // random uuids, so pinning "Dana is parentA" is a coin flip that fails one run in two.
-    // What the introduction actually promises is that BOTH parents are on it, under their
-    // first names only — and that is what is asserted.
-    expect(emails).toHaveLength(1);
-    expect([emails[0]?.parentA, emails[0]?.parentB]).toEqual(
-      expect.arrayContaining([
-        { firstName: 'Dana', email: 'dana@example.com' },
-        { firstName: 'Sam', email: 'sam@example.com' },
-      ]),
-    );
-
-    // ── the disclosure trail: one row per family, naming exactly what crossed ──
+    // Nothing crossed, so nothing is audited as disclosed.
     const disclosed = await database
-      .select({ familyId: schema.auditLog.familyId, after: schema.auditLog.after })
+      .select({ id: schema.auditLog.id })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'village_intro_disclosed'));
-    expect(disclosed.map((row) => row.familyId).sort()).toEqual(
-      [one.familyId, two.familyId].sort(),
-    );
-    expect(disclosed[0]?.after).toMatchObject({
-      channel: 'email',
-      disclosedFields: ['parent_first_name', 'parent_email', 'child_stage', 'activity_title'],
-    });
+    expect(disclosed).toEqual([]);
 
-    // The pair is closed, and closed as introduced rather than as expired.
+    // The pair stays open rather than being closed as introduced.
     const [settled] = await database
       .select({
         status: schema.villageIntroProposals.status,
@@ -245,7 +201,7 @@ describe('two nameless, address-less families get introduced', () => {
       })
       .from(schema.villageIntroProposals);
     expect(settled?.status).toBe('both_accepted');
-    expect(settled?.closedAt).not.toBeNull();
+    expect(settled?.closedAt).toBeNull();
   });
 
   /**

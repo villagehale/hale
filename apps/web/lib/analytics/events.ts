@@ -52,8 +52,7 @@ export type AnalyticsEvent =
   | 'loop_message_failed'
   // The UNDO primitive (reverse-calendar.ts) reversing an executed placement.
   | 'loop_undo'
-  // A loop-category CASL email unsubscribe landing — the beta guardrail pages the
-  // founder at ANY occurrence (stop-alert.ts).
+  // A loop-category CASL email unsubscribe landing (app/unsubscribe/page.tsx).
   | 'loop_stop'
   // F14 · M10 the viral loop (VIL-245). Two coarse steps: a guest answers a host's
   // invite without an account, and a guest follows the one soft line to Hale. Keyed on

@@ -92,11 +92,6 @@ export const DISCOVERABILITY_ALREADY_ON = "You're already set - I'll keep an eye
 
 export const DISCOVERABILITY_ALREADY_OFF = "Already off - I won't bring it up.";
 
-/** Acknowledges a yes to one intro. Deliberately says nothing about the other side:
- * at this moment their answer is unknown, and even "waiting on them" would disclose
- * that a specific household was asked. */
-export const INTRO_YES_ACK = "Great - if they're in too, I'll introduce you both by email.";
-
 /** Acknowledges a no to one intro. */
 export const INTRO_NO_ACK = "No problem - I'll keep looking.";
 
@@ -131,7 +126,8 @@ export const INTRO_CLOSED_AFTER_NO =
  * coach would spend a model call to guess at something already known. What it must not
  * do is imply a match exists.
  */
-export const NO_OPEN_INTRO = "I don't have an intro waiting for you right now - I'll text you when there's a match.";
+export const NO_OPEN_INTRO =
+  "I don't have an intro waiting for you right now - I'll text you when there's a match.";
 
 /**
  * THE SOFT CLOSE — what the other side hears when an intro does not happen.
@@ -144,43 +140,3 @@ export const NO_OPEN_INTRO = "I don't have an intro waiting for you right now - 
  * happened, and the test that pins it asserts exactly that.
  */
 export const INTRO_SOFT_CLOSE = "No intro this time - I'll keep an eye out.";
-
-/** The subject line of the one email that carries an actual introduction. */
-export const INTRO_EMAIL_SUBJECT = 'A Hale family near you';
-
-/**
- * THE INTRO EMAIL — the only place two households ever see each other.
- *
- * First names only, on both sides. What it discloses is exactly what both parents said
- * yes to twice: their own first name, their email address (by being on the To/Cc line),
- * the stage band they share, and the activity if there is one. No last names, no
- * numbers, no neighbourhood, no children's names.
- *
- * The last line matters as much as the first. Hale made the introduction and Hale is
- * now out of it: an operator that lingers in a conversation between two parents is
- * reading a conversation it has no business in, and saying so plainly is the only way a
- * parent can tell the difference.
- */
-export function introEmailBody(input: {
-  parentAFirstName: string;
-  parentBFirstName: string;
-  stage: FamilyStage;
-  anchorTitle: string | null;
-}): string {
-  const both = `${input.parentAFirstName} and ${input.parentBFirstName}`;
-  const lines = [
-    `Hi ${both},`,
-    '',
-    `You're both Hale families in the same area, you each have a ${stageWord(input.stage)}, and you both said yes to an introduction. So: meet each other.`,
-  ];
-  if (input.anchorTitle !== null) {
-    lines.push('', `There's also ${input.anchorTitle} coming up near you both - that might be the easy first hello.`);
-  }
-  lines.push(
-    '',
-    "That's all from me. Just hit reply-all and take it from here - I'm stepping back.",
-    '',
-    'Hale',
-  );
-  return lines.join('\n');
-}

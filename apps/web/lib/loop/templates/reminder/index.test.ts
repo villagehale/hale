@@ -13,22 +13,42 @@ import { foldReminderVoice } from './sms';
  * no-link-on-T-1h rule, the SMS segment budget), never from observed output.
  */
 
-const EM_DASH = '—';
 const TZ = 'America/Toronto';
 const DEEP_LINK = 'https://app.villagehale.com/plan';
 const UNSUB = 'https://app.villagehale.com/unsubscribe?u=user-1&t=daily_digest&sig=abc';
 
-const maya: ReminderChild = { id: 'c-maya', name: 'Maya', dateOfBirth: '2019-03-10', gender: 'girl' };
+const maya: ReminderChild = {
+  id: 'c-maya',
+  name: 'Maya',
+  dateOfBirth: '2019-03-10',
+  gender: 'girl',
+};
 // 2011 DOB is ~15y → deriveStage 'teenager' → forced generic at every level/channel.
 const teen: ReminderChild = { id: 'c-teen', name: 'Sam', dateOfBirth: '2011-01-01', gender: 'boy' };
 
 function ev(over: Partial<ReminderEventView> = {}): ReminderEventView {
-  return { eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T20:30:00Z', childId: null, ...over };
+  return {
+    eventRef: 'e1',
+    title: 'Swim class',
+    startsAt: '2026-07-25T20:30:00Z',
+    childId: null,
+    ...over,
+  };
 }
 
 // 14:00Z = 10:00 EDT, 20:30Z = 4:30 EDT (America/Toronto, summer).
-const apptAt10 = ev({ eventRef: 'e-appt', childId: 'c-teen', title: 'Therapy', startsAt: '2026-07-25T14:00:00Z' });
-const swimAt430 = ev({ eventRef: 'e-swim', childId: 'c-maya', title: 'Swim class', startsAt: '2026-07-25T20:30:00Z' });
+const apptAt10 = ev({
+  eventRef: 'e-appt',
+  childId: 'c-teen',
+  title: 'Therapy',
+  startsAt: '2026-07-25T14:00:00Z',
+});
+const swimAt430 = ev({
+  eventRef: 'e-swim',
+  childId: 'c-maya',
+  title: 'Swim class',
+  startsAt: '2026-07-25T20:30:00Z',
+});
 
 function payload(over: Partial<ReminderPayload> = {}): ReminderPayload {
   return {
@@ -42,7 +62,11 @@ function payload(over: Partial<ReminderPayload> = {}): ReminderPayload {
   };
 }
 
-function msg(p: ReminderPayload, templateKey = 'reminder', category: LoopCategory = 'reminder'): LoopMessage {
+function msg(
+  p: ReminderPayload,
+  templateKey = 'reminder',
+  category: LoopCategory = 'reminder',
+): LoopMessage {
   return {
     templateKey,
     familyId: 'fam-1',
@@ -53,7 +77,7 @@ function msg(p: ReminderPayload, templateKey = 'reminder', category: LoopCategor
   };
 }
 
-function render(p: ReminderPayload, channel: 'email' | 'sms', level: ChildNameLevel): RenderedContent {
+function render(p: ReminderPayload, channel: 'sms', level: ChildNameLevel): RenderedContent {
   return loopTemplateRenderer.render(msg(p), channel, level);
 }
 
@@ -61,12 +85,6 @@ function sms(p: ReminderPayload, level: ChildNameLevel): string {
   const r = render(p, 'sms', level);
   if (r.kind !== 'sms') throw new Error('expected sms');
   return r.text;
-}
-
-function email(p: ReminderPayload, level: ChildNameLevel) {
-  const r = render(p, 'email', level);
-  if (r.kind !== 'email') throw new Error('expected email');
-  return r;
 }
 
 const batch = payload({ offset: '-P1D', events: [apptAt10, swimAt430] });
@@ -84,23 +102,9 @@ describe("T-24h batch — the events' day leads, every event listed", () => {
   it('sms folds to GSM-7 (em-dash → hyphen), one segment, no link (fits the budget)', () => {
     const text = sms(batch, 'first_name');
     expect(text).toMatch(DAY_LEAD);
-    expect(text.replace(DAY_LEAD, '')).toBe(
-      'an appointment at 10:00, Maya - Swim class at 4:30',
-    );
+    expect(text.replace(DAY_LEAD, '')).toBe('an appointment at 10:00, Maya - Swim class at 4:30');
     expect(smsSegments(text)).toBe(1);
     expect(text).not.toContain('http');
-  });
-
-  it('email lists both events as a time→event note and carries the See-your-week link', () => {
-    const e = email(batch, 'first_name');
-    expect(e.subject).toBe(`Sat, Jul 25: an appointment at 10:00, Maya ${EM_DASH} Swim class at 4:30`);
-    expect(e.html).toContain('Swim class');
-    expect(e.html).toContain('an appointment');
-    // Both times are surfaced in the note body (the batch tabular list).
-    expect(e.html).toContain('4:30');
-    expect(e.html).toContain('10:00');
-    expect(e.html).toContain(`href="${DEEP_LINK}"`);
-    expect(e.html).toContain('See your week');
   });
 });
 
@@ -112,13 +116,6 @@ describe("T-1h single — the event's day leads, glanceable, no links anywhere (
     expect(smsSegments(text)).toBe(1);
     expect(text).not.toContain('http');
   });
-
-  it('email has no See-your-week link and no /plan link (glanceable, rule #6)', () => {
-    const e = email(single, 'first_name');
-    expect(e.subject).toBe(`Sat, Jul 25: Maya ${EM_DASH} Swim class at 4:30`);
-    expect(e.html).not.toContain('See your week');
-    expect(e.html).not.toContain('/plan');
-  });
 });
 
 describe('teen event is generic at EVERY level and EVERY channel (rule #1)', () => {
@@ -129,8 +126,7 @@ describe('teen event is generic at EVERY level and EVERY channel (rule #1)', () 
     for (const level of ['first_name', 'relation', 'generic'] as ChildNameLevel[]) {
       for (const p of [teenBatch, teenPing]) {
         const smsText = sms(p, level);
-        const html = email(p, level).html;
-        for (const out of [smsText, html]) {
+        for (const out of [smsText]) {
           expect(out).toContain('an appointment');
           expect(out).not.toContain('Sam');
           expect(out).not.toContain('Therapy');
@@ -145,7 +141,7 @@ describe('a flagged-sensitive event is generic even for a non-teen (rule #1)', (
   const p = payload({ offset: '-P1D', events: [sensitive] });
 
   it('shows "an appointment", never the health title, on every channel', () => {
-    for (const out of [sms(p, 'first_name'), email(p, 'first_name').html]) {
+    for (const out of [sms(p, 'first_name')]) {
       expect(out).toContain('an appointment');
       expect(out).not.toContain('Blood test');
     }
@@ -194,43 +190,8 @@ describe('SMS segment budget', () => {
   });
 });
 
-describe('email fail-closed CASL', () => {
-  it('throws when the unsubscribe url is missing', () => {
-    expect(() => email(payload({ offset: '-P1D', events: [swimAt430], unsubscribeUrl: null }), 'first_name')).toThrow(
-      /unsubscribe/,
-    );
-  });
-
-  it('carries the sender identity, business address, and the escaped unsubscribe url', () => {
-    const e = email(batch, 'first_name');
-    expect(e.html).toContain('Village Hale Technologies Inc.');
-    expect(e.html).toContain('https://app.villagehale.com/unsubscribe?u=user-1&amp;t=daily_digest&amp;sig=abc');
-  });
-});
-
-describe('VIL-229 voice slot — email-only serif signature, deterministic fallback', () => {
+describe('VIL-229 voice slot — deterministic fallback', () => {
   const VOICE = "Tomorrow's the big swim day for Maya";
-
-  it('single: the voice line is the serif signature, replacing the deterministic descriptor', () => {
-    const e = email(payload({ offset: '-P1D', events: [swimAt430], voice: { line: VOICE } }), 'first_name');
-    expect(e.html).toContain(VOICE);
-    // Replaces the deterministic serif line…
-    expect(e.html).not.toContain(`Maya ${EM_DASH} Swim class`);
-    // …but the TIME stays slot-injected (never in the voice string).
-    expect(e.html).toContain('4:30');
-  });
-
-  it('batch: the voice opens as a serif lead; the per-event facts stay in the list', () => {
-    const e = email(payload({ offset: '-P1D', events: [apptAt10, swimAt430], voice: { line: VOICE } }), 'first_name');
-    expect(e.html).toContain(VOICE);
-    expect(e.html).toContain('Swim class'); // list keeps the descriptor facts
-    expect(e.html).toContain('10:00');
-  });
-
-  it('falls back to the deterministic line when the voice is absent (rule #8 fail-open)', () => {
-    const e = email(payload({ offset: '-PT1H', events: [swimAt430], deepLink: null }), 'first_name');
-    expect(e.html).toContain(`Maya ${EM_DASH} Swim class`);
-  });
 
   /**
    * VIL-353/v5: the SMS no longer ignores it. payload.ts called this field "email-only"
