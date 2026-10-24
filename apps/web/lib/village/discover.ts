@@ -1,7 +1,7 @@
 import type { Database } from '@hale/db';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
-import { activityClient } from '~/lib/pipeline/client';
+import { discoveryActivityClient } from '~/lib/pipeline/client';
 import { findFamilyActivities, recordActivityOffers } from './live';
 import type { Season } from './visibility';
 
@@ -42,5 +42,5 @@ export async function discoverForFamily(
   };
 }
 export function defaultDiscoverDeps(): DiscoverDeps {
-  return { finder: createActivityFinder(activityClient) };
+  return { finder: createActivityFinder(discoveryActivityClient) };
 }
