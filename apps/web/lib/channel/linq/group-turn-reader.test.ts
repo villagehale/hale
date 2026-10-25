@@ -54,19 +54,17 @@ describe('VIL-440 group turn reader', () => {
     });
   });
 
-  it('returns the model reading when the echo matches', async () => {
-    vi.mocked(forceToolJson).mockResolvedValue({
-      value: { turn: 'addressed', verbatim: INPUT.text },
-    } as never);
+  it('returns the model reading, with no echo of the text required', async () => {
+    vi.mocked(forceToolJson).mockResolvedValue({ value: { turn: 'addressed' } } as never);
     expect(await createGroupTurnReader(CLIENT).read(INPUT)).toBe('addressed');
   });
 
-  it('drops a paraphrased echo, retries once, then returns null', async () => {
-    vi.mocked(forceToolJson).mockResolvedValue({
-      value: { turn: 'addressed', verbatim: 'something else' },
-    } as never);
-    expect(await createGroupTurnReader(CLIENT).read(INPUT)).toBeNull();
-    expect(forceToolJson).toHaveBeenCalledTimes(2);
+  it('reads a very long message without any length gate', async () => {
+    vi.mocked(forceToolJson).mockResolvedValue({ value: { turn: 'question_for_hale' } } as never);
+    const long = { ...INPUT, text: 'can you sort saturday '.repeat(400) };
+    expect(await createGroupTurnReader(CLIENT).read(long)).toBe('question_for_hale');
+    const call = vi.mocked(forceToolJson).mock.calls[0]?.[0] as { inputJsonSchema: object };
+    expect(JSON.stringify(call.inputJsonSchema)).not.toContain('verbatim');
   });
 
   it('survives a thrown model call and stays silent', async () => {

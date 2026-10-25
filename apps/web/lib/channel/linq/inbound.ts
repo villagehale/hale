@@ -74,6 +74,7 @@ import { decideGroupTurn } from './group-turn-policy';
 import {
   type GroupTurnReader,
   groupTurnFromReading,
+  groupTurnReadContext,
   linqGroupTurnAiEnabled,
   sharedGroupTurnReader,
 } from './group-turn-reader';
@@ -637,9 +638,12 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
             ? null
             : await (deps.groupTurnReader ?? sharedGroupTurnReader()).read({
                 text: message.text,
-                senderName: null,
                 haleNames: ['Hale'],
-                recent: [],
+                ...(await groupTurnReadContext(deps.database, {
+                  familyId: mapped.status === 'same_family' ? mapped.familyId : null,
+                  chatId: message.chatId,
+                  senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
+                })),
               }),
           optOut,
         )

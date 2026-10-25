@@ -1,6 +1,10 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { loadTranscript, resolveNoteConversation } from '~/lib/coach/conversation';
+import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -11,9 +15,10 @@ import type { GroupTurnDecision } from './group-turn-policy';
  *
  * Replaces name and keyword matching (`decideGroupTurn`) when
  * `LINQ_GROUP_TURN_AI_ENABLED` is exactly `true` (default off). Code owns the routing;
- * the `group-turn-read` skill reads the words in any language. The verbatim echo is a
- * structural guard: a paraphrase means the text was not read. A failed read keeps Hale
- * silent (one unasked reply in a family chat is worse than one missed turn) and logs.
+ * the `group-turn-read` skill reads the words in any language. No echo of the text is
+ * asked for, so a long message is never dropped for not fitting the output. A failed
+ * read keeps Hale silent (one unasked reply in a family chat is worse than one missed
+ * turn) and logs.
  */
 
 export const GROUP_TURNS = ['addressed', 'question_for_hale', 'duty', 'chatter'] as const;
@@ -31,12 +36,15 @@ export interface GroupTurnReader {
   read(input: GroupTurnReadInput): Promise<GroupTurnReading | null>;
 }
 
-const outputSchema = z.object({ turn: z.enum(GROUP_TURNS), verbatim: z.string() });
+const outputSchema = z.object({ turn: z.enum(GROUP_TURNS) });
 const outputJsonSchema = {
   type: 'object',
-  properties: { turn: { type: 'string', enum: [...GROUP_TURNS] }, verbatim: { type: 'string' } },
-  required: ['turn', 'verbatim'],
+  properties: { turn: { type: 'string', enum: [...GROUP_TURNS] } },
+  required: ['turn'],
 } as const;
+
+/** How many earlier group lines the read sees. Context, not a cap on the message. */
+export const GROUP_TURN_RECENT_LINES = 6;
 
 /** The user-turn payload. Shared with the eval, which replays this request shape. */
 export function groupTurnUserMessage(input: GroupTurnReadInput): string {
@@ -44,7 +52,7 @@ export function groupTurnUserMessage(input: GroupTurnReadInput): string {
     text: input.text,
     senderName: input.senderName,
     haleNames: [...input.haleNames],
-    recent: input.recent.slice(-6),
+    recent: input.recent.slice(-GROUP_TURN_RECENT_LINES),
   });
 }
 
@@ -81,7 +89,7 @@ export function createGroupTurnReader(
       schema: outputSchema,
       maxTokens: 200,
     });
-    return value.verbatim === input.text ? value.turn : null;
+    return value.turn;
   };
   return {
     async read(input) {
@@ -107,4 +115,38 @@ let shared: GroupTurnReader | null = null;
 export function sharedGroupTurnReader(): GroupTurnReader {
   shared ??= createGroupTurnReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
   return shared;
+}
+
+/**
+ * The read's context, group-only (VIL-439 scope): the sender's first name and the last
+ * lines of THIS group's thread. Never a parent's 1:1 thread.
+ */
+export async function groupTurnReadContext(
+  database: Database,
+  input: { familyId: string | null; chatId: string; senderUserId: string | null },
+): Promise<Pick<GroupTurnReadInput, 'senderName' | 'recent'>> {
+  let senderName: string | null = null;
+  if (input.senderUserId) {
+    const [row] = await database
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, input.senderUserId))
+      .limit(1);
+    senderName = row?.name?.trim().split(/\s+/)[0] || null;
+  }
+  if (!input.familyId) return { senderName, recent: [] };
+  const conversationId = await resolveNoteConversation(
+    input.familyId,
+    channelGroupNoteKey(input.chatId),
+    database,
+  );
+  if (!conversationId) return { senderName, recent: [] };
+  const transcript = await loadTranscript(conversationId, database);
+  return {
+    senderName,
+    recent: transcript.slice(-GROUP_TURN_RECENT_LINES).map((line) => ({
+      from: line.role === 'assistant' ? ('hale' as const) : ('member' as const),
+      text: line.content,
+    })),
+  };
 }

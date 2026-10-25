@@ -27,4 +27,4 @@ Decide one `turn`:
 Read the meaning, not keywords. When unsure between Hale's turn and `chatter`,
 choose `chatter`: an unasked-for reply in a family chat is the harm to avoid.
 
-Return `turn` and `verbatim`, the message text copied exactly.
+Return `turn`.
