@@ -6,7 +6,11 @@ import { storeProviderSession } from './browser-use/vault';
 import { SHAREABLE_SIGNUP_FIELDS } from './consent';
 import { authorizedSignupHandler } from './handler';
 import type { LinkWalletApi } from './link/client';
-import { BROWSER_USE_REGISTRATION_RESERVE_USD, runAuthorizedSignup } from './run';
+import {
+  BROWSER_USE_REGISTRATION_RESERVE_USD,
+  BROWSER_USE_RUN_ALLOWANCE_USD,
+  runAuthorizedSignup,
+} from './run';
 import { browserUseRegistrationSpendUsd, recordSignupOffer } from './store';
 import { echoOutcomeWriter, stubConsentReader } from './test-models';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
@@ -1136,7 +1140,9 @@ describe('authorized signup runner', () => {
     };
     const TORONTO = 'https://anc.ca.apm.activecommunities.com/toronto/activity/search/detail/123';
 
-    beforeEach(() => {
+    beforeEach(async () => {
+      // Each run holds its allowance against the shared $25 reserve; start every test clean.
+      await db.database.update(schema.authorizedSignupOffers).set({ browserUseCostUsd: null });
       vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'true');
       vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     });
@@ -1416,8 +1422,8 @@ describe('authorized signup runner', () => {
     it('stops before Browser Use once the $25 registration reserve cannot cover a worst-case run', async () => {
       const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
       await withProviderSession(seeded);
-      // 21.5 spent + 4 worst case (3 signup + 1 payment) would pass 25.
-      await setSpentUsd(seeded.familyId, '21.500000');
+      // 20.5 spent + 5 allowance (3 signup + 1 payment + 1 browser/proxy) would pass 25.
+      await setSpentUsd(seeded.familyId, '20.500000');
       const run = vi.fn(async () => CHECKOUT);
       const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-reserve'), {
         browserUseSignup: { run },
@@ -1426,19 +1432,39 @@ describe('authorized signup runner', () => {
       expect(result.outcome).toBe('error');
       expect(result.browserUse?.detail).toBe('spend_reserve_reached');
       expect(run).not.toHaveBeenCalled();
-      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(21.5);
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(20.5);
     });
 
     it('still runs Browser Use while the worst-case run fits under the reserve', async () => {
       const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
       await withProviderSession(seeded);
-      await setSpentUsd(seeded.familyId, '21.000000');
+      await setSpentUsd(seeded.familyId, '0.000000');
       const run = vi.fn(async () => CHECKOUT);
       const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-under'), {
         browserUseSignup: { run },
       });
       expect(run).toHaveBeenCalledTimes(1);
       expect(result.outcome).toBe('reached_checkout');
+      // A live-view handoff has no final session cost yet: the allowance stays held.
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(
+        BROWSER_USE_RUN_ALLOWANCE_USD,
+      );
+    });
+
+    it('replaces the held allowance with the real session cost once the browser stopped', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => ({
+        ...CHECKOUT,
+        outcome: 'needs_human' as const,
+        liveViewUrl: null,
+        sessionCostUsd: '0.412000',
+      }));
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-settled'), {
+        browserUseSignup: { run },
+      });
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(0.412);
     });
 
     it('names a missing engine as not_configured', async () => {

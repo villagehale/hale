@@ -208,9 +208,10 @@ export async function recordBrowserUseCost(
 }
 
 /**
- * Everything Browser Use registrations have cost so far, across every family:
- * the sum of `browser_use_cost_usd` (migration 0175). Feeds the production
- * registration reserve in run.ts.
+ * Everything Browser Use registrations have cost or hold reserved, across every
+ * family: the sum of `browser_use_cost_usd` (migration 0175). A run in flight
+ * or handed to a parent with a live browser counts at its reserved allowance
+ * until its real session cost replaces it.
  */
 export async function browserUseRegistrationSpendUsd(database: Database): Promise<number> {
   const [row] = await database
@@ -222,4 +223,35 @@ export async function browserUseRegistrationSpendUsd(database: Database): Promis
     .from(schema.authorizedSignupOffers);
   const total = Number(row?.total ?? 0);
   return Number.isFinite(total) ? total : 0;
+}
+
+/** Serializes reservations across every instance (any fixed 64-bit key). */
+const REGISTRATION_RESERVE_LOCK = 7_340_025;
+
+/**
+ * Atomically holds `allowanceUsd` against the global registration reserve on
+ * this offer before a Browser Use run starts. Concurrent signups serialize on a
+ * transaction-scoped advisory lock, so two runs cannot both claim the last
+ * allowance. Returns false, writing nothing, when the allowance does not fit.
+ */
+export async function reserveBrowserUseAllowance(
+  database: Database,
+  input: { offerId: string; familyId: string; allowanceUsd: number; reserveUsd: number; now: Date },
+): Promise<{ ok: boolean; spentUsd: number }> {
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.execute(sql`select pg_advisory_xact_lock(${REGISTRATION_RESERVE_LOCK})`);
+    const spentUsd = await browserUseRegistrationSpendUsd(tx);
+    if (spentUsd + input.allowanceUsd > input.reserveUsd) return { ok: false, spentUsd };
+    await tx
+      .update(schema.authorizedSignupOffers)
+      .set({ browserUseCostUsd: input.allowanceUsd.toFixed(6), updatedAt: input.now })
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, input.offerId),
+          eq(schema.authorizedSignupOffers.familyId, input.familyId),
+        ),
+      );
+    return { ok: true, spentUsd };
+  });
 }

@@ -43,12 +43,12 @@ import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import {
-  browserUseRegistrationSpendUsd,
   loadBusy,
   loadPendingOffer,
   loadSignupIdentity,
   markOffer,
   recordBrowserUseCost,
+  reserveBrowserUseAllowance,
 } from './store';
 import type { SignupBrowser, SignupIdentity, SignupPage, SignupStopReason } from './types';
 import { registrationUrlAllowed } from './url';
@@ -543,7 +543,12 @@ export async function runAuthorizedSignup(
 
 /** Barton's production reserve for Browser Use registrations (10/25): $25 total. */
 export const BROWSER_USE_REGISTRATION_RESERVE_USD = 25;
-export const BROWSER_USE_WORST_CASE_RUN_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD;
+/**
+ * Held per run: the signup and payment agent caps plus $1 for what those caps
+ * leave out (browser time incl. the 15-minute checkout keep-alive, proxy,
+ * search and profile seeding).
+ */
+export const BROWSER_USE_RUN_ALLOWANCE_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
 
 function browserUseAbsent(
   outcome: 'error' | 'needs_login',
@@ -661,17 +666,6 @@ async function runBrowserUseBranch(
     );
     return done(browserUseAbsent('error', 'not_configured'));
   }
-  // Production reserve for Browser Use registrations. A run can cost up to the
-  // signup cap plus the payment cap, so a run starts only if that worst case
-  // still fits under the reserve: total spend never passes it.
-  const spentUsd = await browserUseRegistrationSpendUsd(database);
-  if (spentUsd + BROWSER_USE_WORST_CASE_RUN_USD > BROWSER_USE_REGISTRATION_RESERVE_USD) {
-    console.warn(
-      { familyId: input.familyId, offerId: ctx.offerId, spentUsd },
-      'authorized signup: browser use registration reserve reached',
-    );
-    return done(browserUseAbsent('error', 'spend_reserve_reached'));
-  }
   const stored = await loadProviderSession(database, {
     familyId: input.familyId,
     providerHost: ctx.providerHost,
@@ -685,6 +679,25 @@ async function runBrowserUseBranch(
       { familyId: input.familyId, offerId: ctx.offerId, paymentSkipped: payment.skipped },
       'authorized signup: agent payment skipped, stopping at checkout',
     );
+  }
+
+  // Production reserve for Browser Use registrations. The run's worst-case
+  // allowance is held on this offer before it starts, under a lock, and
+  // replaced by the real session cost when the browser stops. A live-view
+  // handoff keeps the allowance, so total spend never passes the reserve.
+  const reserved = await reserveBrowserUseAllowance(database, {
+    offerId: ctx.offerId,
+    familyId: input.familyId,
+    allowanceUsd: BROWSER_USE_RUN_ALLOWANCE_USD,
+    reserveUsd: BROWSER_USE_REGISTRATION_RESERVE_USD,
+    now: input.now,
+  });
+  if (!reserved.ok) {
+    console.warn(
+      { familyId: input.familyId, offerId: ctx.offerId, spentUsd: reserved.spentUsd },
+      'authorized signup: browser use registration reserve reached',
+    );
+    return done(browserUseAbsent('error', 'spend_reserve_reached'), payment.skipped);
   }
 
   let result: BrowserUseSignupResult;
