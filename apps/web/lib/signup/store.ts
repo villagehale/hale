@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { normalizeSession } from './forms/details';
 import type { BusyInterval, SignupIdentity, SignupOffer, SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
@@ -205,4 +205,21 @@ export async function recordBrowserUseCost(
         eq(schema.authorizedSignupOffers.familyId, input.familyId),
       ),
     );
+}
+
+/**
+ * Everything Browser Use registrations have cost so far, across every family:
+ * the sum of `browser_use_cost_usd` (migration 0175). Feeds the production
+ * registration reserve in run.ts.
+ */
+export async function browserUseRegistrationSpendUsd(database: Database): Promise<number> {
+  const [row] = await database
+    .select({
+      total: sql<
+        string | null
+      >`coalesce(sum(${schema.authorizedSignupOffers.browserUseCostUsd}), 0)`,
+    })
+    .from(schema.authorizedSignupOffers);
+  const total = Number(row?.total ?? 0);
+  return Number.isFinite(total) ? total : 0;
 }

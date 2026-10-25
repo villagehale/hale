@@ -6,8 +6,8 @@ import { storeProviderSession } from './browser-use/vault';
 import { SHAREABLE_SIGNUP_FIELDS } from './consent';
 import { authorizedSignupHandler } from './handler';
 import type { LinkWalletApi } from './link/client';
-import { runAuthorizedSignup } from './run';
-import { recordSignupOffer } from './store';
+import { BROWSER_USE_REGISTRATION_RESERVE_USD, runAuthorizedSignup } from './run';
+import { browserUseRegistrationSpendUsd, recordSignupOffer } from './store';
 import { echoOutcomeWriter, stubConsentReader } from './test-models';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
 
@@ -1403,6 +1403,42 @@ describe('authorized signup runner', () => {
       expect(result.outcome).toBe('needs_login');
       expect(result.browserUse?.detail).toBe('no_provider_session');
       expect(run).not.toHaveBeenCalled();
+    });
+
+    async function setSpentUsd(familyId: string, usd: string) {
+      await db.database.update(schema.authorizedSignupOffers).set({ browserUseCostUsd: null });
+      await db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ browserUseCostUsd: usd })
+        .where(eq(schema.authorizedSignupOffers.familyId, familyId));
+    }
+
+    it('stops before Browser Use once the $25 registration reserve cannot cover a worst-case run', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      // 21.5 spent + 4 worst case (3 signup + 1 payment) would pass 25.
+      await setSpentUsd(seeded.familyId, '21.500000');
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-reserve'), {
+        browserUseSignup: { run },
+      });
+      expect(BROWSER_USE_REGISTRATION_RESERVE_USD).toBe(25);
+      expect(result.outcome).toBe('error');
+      expect(result.browserUse?.detail).toBe('spend_reserve_reached');
+      expect(run).not.toHaveBeenCalled();
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(21.5);
+    });
+
+    it('still runs Browser Use while the worst-case run fits under the reserve', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '21.000000');
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-under'), {
+        browserUseSignup: { run },
+      });
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(result.outcome).toBe('reached_checkout');
     });
 
     it('names a missing engine as not_configured', async () => {

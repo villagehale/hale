@@ -3,7 +3,11 @@ import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
-import type { BrowserUseSignupResult } from './browser-use/engine';
+import {
+  type BrowserUseSignupResult,
+  PAYMENT_RUN_MAX_COST_USD,
+  SIGNUP_RUN_MAX_COST_USD,
+} from './browser-use/engine';
 import { browserUseSignupEnabled, browserUseSignupPaymentEnabled } from './browser-use/flag';
 import { browserUseProxyFor } from './browser-use/proxy';
 import {
@@ -39,6 +43,7 @@ import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import {
+  browserUseRegistrationSpendUsd,
   loadBusy,
   loadPendingOffer,
   loadSignupIdentity,
@@ -106,7 +111,7 @@ export type BrowserUseHandoff =
   | BrowserUseSignupResult
   | {
       outcome: 'error' | 'needs_login';
-      detail: 'not_configured' | 'no_provider_session' | 'engine_threw';
+      detail: 'not_configured' | 'no_provider_session' | 'engine_threw' | 'spend_reserve_reached';
       liveViewUrl: null;
       checkoutUrl: null;
       holdExpiresAt: null;
@@ -536,9 +541,13 @@ export async function runAuthorizedSignup(
   }
 }
 
+/** Barton's production reserve for Browser Use registrations (10/25): $25 total. */
+export const BROWSER_USE_REGISTRATION_RESERVE_USD = 25;
+export const BROWSER_USE_WORST_CASE_RUN_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD;
+
 function browserUseAbsent(
   outcome: 'error' | 'needs_login',
-  detail: 'not_configured' | 'no_provider_session' | 'engine_threw',
+  detail: 'not_configured' | 'no_provider_session' | 'engine_threw' | 'spend_reserve_reached',
 ): BrowserUseHandoff {
   return {
     outcome,
@@ -651,6 +660,17 @@ async function runBrowserUseBranch(
       'authorized signup: browser use engine not configured',
     );
     return done(browserUseAbsent('error', 'not_configured'));
+  }
+  // Production reserve for Browser Use registrations. A run can cost up to the
+  // signup cap plus the payment cap, so a run starts only if that worst case
+  // still fits under the reserve: total spend never passes it.
+  const spentUsd = await browserUseRegistrationSpendUsd(database);
+  if (spentUsd + BROWSER_USE_WORST_CASE_RUN_USD > BROWSER_USE_REGISTRATION_RESERVE_USD) {
+    console.warn(
+      { familyId: input.familyId, offerId: ctx.offerId, spentUsd },
+      'authorized signup: browser use registration reserve reached',
+    );
+    return done(browserUseAbsent('error', 'spend_reserve_reached'));
   }
   const stored = await loadProviderSession(database, {
     familyId: input.familyId,
