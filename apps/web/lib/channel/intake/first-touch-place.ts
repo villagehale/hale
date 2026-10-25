@@ -1,13 +1,11 @@
 import type { Municipality } from '@hale/db';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
-import { type PostalContext, parseCanadianPostal } from './derive';
-import { municipalityForCity } from './municipality-city';
+import { type PostalContext, parseIntakePostal } from './derive';
 
 /**
- * VIL-385 — a place the parent actually gave.
- *
- * A Canadian postal token, or a GTA city. The phone number is not an input:
- * an area code is not a place, and this function cannot see one.
+ * A place the parent actually gave: a Canadian postal code or a US ZIP.
+ * A city name is not enough — country and timezone come from the code.
+ * The phone number is not an input: an area code is not a place.
  */
 
 export interface FirstTouchPlace {
@@ -20,48 +18,9 @@ export interface FirstTouchPlace {
   city: string | null;
 }
 
-/**
- * Free-text cities. Longest first so "north york" wins over a shorter tail.
- * `york`, `king`, `sharon`, and `sutton` are omitted here: they are also
- * ordinary English words and given names. The whole message can still be one
- * of those, via {@link municipalityForCity}, because then the parent typed
- * the city and nothing else.
- */
-const FREE_TEXT_CITIES = [
-  'whitchurch-stouffville',
-  'richmond hill',
-  'east gwillimbury',
-  'king township',
-  'holland landing',
-  "jackson's point",
-  'jacksons point',
-  'king city',
-  'mount albert',
-  'sutton west',
-  'north york',
-  'east york',
-  'scarborough',
-  'etobicoke',
-  'mississauga',
-  'stouffville',
-  'queensville',
-  'newmarket',
-  'unionville',
-  'thornhill',
-  'schomberg',
-  'pefferlaw',
-  'nobleton',
-  'kettleby',
-  'georgina',
-  'keswick',
-  'uxbridge',
-  'markham',
-  'vaughan',
-  'toronto',
-];
-
 const POSTAL_IN_TEXT =
   /(?:^|[^A-Za-z0-9])([ABCEGHJKLMNPRSTVXY]\d[A-Za-z])(?:[ -]?(\d[A-Za-z]\d))?(?![A-Za-z0-9])/i;
+const ZIP_IN_TEXT = /(?:^|[^\d])(\d{5})(?:-(\d{4}))?(?!\d)/;
 
 /**
  * A SOURCE_VENUES code. The poster's city is the place we say back. The FSA
@@ -76,23 +35,12 @@ export function placeFromGivenFields(input: {
   city: string | null;
 }): FirstTouchPlace | null {
   if (input.postalCode) {
-    const postal = parseCanadianPostal(input.postalCode.trim());
+    const postal = parseIntakePostal(input.postalCode.trim());
     if (postal) return fromPostal(postal);
   }
-  if (input.city) {
-    const trimmed = input.city.trim();
-    const municipality = municipalityForCity(trimmed);
-    if (municipality && trimmed.length > 0) {
-      const label = titleCity(trimmed);
-      return {
-        kind: 'city',
-        areaCoarse: label,
-        postalCode: null,
-        municipality,
-        city: label,
-      };
-    }
-  }
+  // A city name is not a place we can put a family in. Country and timezone come
+  // from a Canadian postal code or a US ZIP, and the model asks for one.
+  void input.city;
   return null;
 }
 
@@ -100,7 +48,7 @@ export function placeFromVenue(venue: {
   areaCoarse: string;
   poster?: string;
 }): FirstTouchPlace | null {
-  const postal = parseCanadianPostal(venue.areaCoarse);
+  const postal = parseIntakePostal(venue.areaCoarse);
   if (!postal) return null;
   const place = fromPostal(postal);
   const city = venue.poster?.trim();
@@ -109,16 +57,8 @@ export function placeFromVenue(venue: {
 
 export function placeFromMessage(body: string): FirstTouchPlace | null {
   const postal = postalIn(body);
-  if (postal) return fromPostal(postal);
-  const city = cityIn(body);
-  if (!city) return null;
-  return {
-    kind: 'city',
-    areaCoarse: city.label,
-    postalCode: null,
-    municipality: city.municipality,
-    city: city.label,
-  };
+  if (!postal) return null;
+  return fromPostal(postal);
 }
 
 function fromPostal(postal: PostalContext): FirstTouchPlace {
@@ -134,41 +74,14 @@ function fromPostal(postal: PostalContext): FirstTouchPlace {
 }
 
 function postalIn(body: string): PostalContext | null {
+  const zip = ZIP_IN_TEXT.exec(body);
+  if (zip?.[1]) {
+    const token = zip[2] ? `${zip[1]}-${zip[2]}` : zip[1];
+    const parsed = parseIntakePostal(token);
+    if (parsed) return parsed;
+  }
   const match = POSTAL_IN_TEXT.exec(body);
   if (!match?.[1]) return null;
   const token = match[2] ? `${match[1]} ${match[2]}` : match[1];
-  return parseCanadianPostal(token);
-}
-
-function cityIn(body: string): { label: string; municipality: Municipality } | null {
-  const trimmed = body
-    .trim()
-    .replace(/[.!?]+$/g, '')
-    .trim();
-  const whole = municipalityForCity(trimmed);
-  if (whole && trimmed.length > 0) {
-    return { label: titleCity(trimmed), municipality: whole };
-  }
-  const folded = body.toLowerCase();
-  for (const phrase of FREE_TEXT_CITIES) {
-    if (!hasPhrase(folded, phrase)) continue;
-    const municipality = municipalityForCity(phrase);
-    if (!municipality) continue;
-    return { label: titleCity(phrase), municipality };
-  }
-  return null;
-}
-
-function hasPhrase(folded: string, phrase: string): boolean {
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|[^a-z])${escaped}(?:[^a-z]|$)`, 'i').test(folded);
-}
-
-function titleCity(raw: string): string {
-  return raw
-    .split(/([\s-])/)
-    .map((part) =>
-      part === ' ' || part === '-' ? part : part.charAt(0).toUpperCase() + part.slice(1),
-    )
-    .join('');
+  return parseIntakePostal(token);
 }

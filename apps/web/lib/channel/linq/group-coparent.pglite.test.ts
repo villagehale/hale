@@ -20,7 +20,7 @@ import {
   sendCoparentGroupCalendarReceipt,
   steerNotedCoparentOneToOne,
 } from './group-coparent';
-import { GROUP_WELCOME, groupCalendarReceipt, groupGmailReceipt } from './group-coparent-copy';
+import { groupCalendarReceipt, groupGmailReceipt, groupWelcome } from './group-coparent-copy';
 import type { LinqInboundText } from './payload';
 
 /**
@@ -361,7 +361,7 @@ describe('group co-parent seating', () => {
       { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(effect).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
-    expect(wire.groupTexts()).toEqual([GROUP_WELCOME.en]);
+    expect(wire.groupTexts()).toEqual([await groupWelcome('en')]);
     expect(wire.texts().join('\n')).not.toContain('Maya');
     expect(await familyCount()).toBe(1);
     expect(await childNames()).toEqual(['Maya']);
@@ -535,7 +535,7 @@ describe('group co-parent seating', () => {
     const seeded = await seedHousehold();
     await noteCoparent(seeded);
     const wire = linqFetch();
-    const expected = linqGroupMakeInstruction(formatLinqLineForParent(FROM), 'en');
+    const expected = await linqGroupMakeInstruction(formatLinqLineForParent(FROM), 'en');
     const unclaimed = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-unclaimed', senderHandle: COPARENT_PHONE, text: 'hello' }),
@@ -576,7 +576,7 @@ describe('group co-parent seating', () => {
       { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(expired).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
-    expect(wire.groupTexts()).toEqual([GROUP_WELCOME.en]);
+    expect(wire.groupTexts()).toEqual([await groupWelcome('en')]);
     const [invite] = await db.database
       .select({ state: schema.caregiverInvites.state })
       .from(schema.caregiverInvites);
@@ -660,7 +660,7 @@ describe('group co-parent seating', () => {
       saidLine,
     });
     expect(calendar).toBe('sent');
-    expect(wire.groupTexts()[0]).toBe(groupCalendarReceipt('en', 'Sam'));
+    expect(wire.groupTexts()[0]).toBe(await groupCalendarReceipt('en', 'Sam'));
     expect(wire.groupTexts()[1]?.startsWith(ASK)).toBe(true);
     expect(wire.groupTexts()[1]).toContain('to=gmail');
     expect(wire.groupLinks()).toEqual([]);
@@ -697,7 +697,7 @@ describe('group co-parent seating', () => {
       saidLine,
     });
     expect(sent).toBe('sent');
-    expect(wire.groupTexts().at(-1)).toBe(groupGmailReceipt('en', 'Sam'));
+    expect(wire.groupTexts().at(-1)).toBe(await groupGmailReceipt('en', 'Sam'));
     expect(wire.groupTexts().at(-1)).not.toContain('want me to catch');
     expect(
       wire.groupTexts().filter((text) => text.startsWith(ASK) && text.includes('to=gmail')),

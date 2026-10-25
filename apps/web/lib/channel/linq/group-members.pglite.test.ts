@@ -113,7 +113,7 @@ describe('linq group members', () => {
       role: 'co_parent',
       notice: 'sent',
     });
-    expect(wire.texts).toEqual([groupMemberWelcome('en', 'Barton')]);
+    expect(wire.texts).toEqual([await groupMemberWelcome('en', 'Barton')]);
 
     const again = await seatParticipantAdded(db.database, {
       chatId: CHAT,
@@ -178,7 +178,7 @@ describe('linq group members', () => {
       send: wire.send,
     });
     expect(hale).toMatchObject({ outcome: 'group_member_seated', notice: 'skipped' });
-    expect(wire.texts).toEqual([groupMemberWelcome('en', null)]);
+    expect(wire.texts).toEqual([await groupMemberWelcome('en', null)]);
   });
 
   it('welcomes in French when that is the household language', async () => {
@@ -196,7 +196,7 @@ describe('linq group members', () => {
       now: NOW,
       send: wire.send,
     });
-    expect(wire.texts).toEqual([groupMemberWelcome('fr', 'Barton')]);
+    expect(wire.texts).toEqual([await groupMemberWelcome('fr', 'Barton')]);
     expect(wire.texts[0]).not.toContain('kids');
   });
 
@@ -273,7 +273,7 @@ describe('linq group members', () => {
     });
     expect(first).toBe('sent');
     expect(second).toBe('already_sent');
-    expect(wire.texts).toEqual([groupStrangerHold('en', 'Barton')]);
+    expect(wire.texts).toEqual([await groupStrangerHold('en', 'Barton')]);
     expect(wire.texts[0]).not.toContain('kids');
     const [row] = await db.database
       .select({

@@ -101,9 +101,9 @@ describe('invokeTool — spending-cap rail (rule #7)', () => {
     const checkSpendingCap = vi.fn(async () => ({ ok: true, reason: 'within cap' }));
     const { deps, audits } = depsWith({ checkSpendingCap });
 
-    await expect(
-      invokeTool(orderTool, { item: 'wipes', priceUsd: 12 }, ctx, deps),
-    ).rejects.toThrow(/requires checkSpendingCap \+ monetaryCostOf/);
+    await expect(invokeTool(orderTool, { item: 'wipes', priceUsd: 12 }, ctx, deps)).rejects.toThrow(
+      /requires checkSpendingCap \+ monetaryCostOf/,
+    );
     // Half a cap check is no cap check: without a cost there is nothing to compare
     // against the cap, so the hook must not be consulted at all (rule #7).
     expect(checkSpendingCap).not.toHaveBeenCalled();

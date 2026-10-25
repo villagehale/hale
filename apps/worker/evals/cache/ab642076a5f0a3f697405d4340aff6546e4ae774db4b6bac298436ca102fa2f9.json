@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNJ65dMixNKwgSQhr4Gb",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzwUKEAgTGAI4AUIIdGhpbmtpbmcSDJmLCxoqYeDu/bMELRoMg2CMhgCDJFOcPq+vIjCkIeqhJQmTPeB2lraunqPcJZKjqS/NRKTghYTMMN7v7t91Noi6U8Gy8HYoTetU0bcq7ASoYLXKt6W+v40GyySp2rcHF1QoA3b9CF2WqiV9AsArZf58ZuQ2Qd5lyRPczf8kM1fDRvY3pvrTiOptowkWakKUVb3thnl2Ky6lkYoJTNdJ/qCXRrPp+f0JFr8A9wKaTknPB86VVk5DC6Otk/xZ0WqfLkUwA7te/gLOH8f2zmCxRgUAYXWwUhfwNQvU7uzjMoSCQHb7YiBFp6k3u/krPozZrZ+S1x9POvDLFQzc4/EF2zrqdTsjEgV1ghIuqg2VoFrpgkC1gzbbiqK77rHOmy8+aHDxokPXB/qqG9HzCdE35qNf0d1vNYRIQS50uZMaW2QQpeN5y4WKr00DTL/mp4StGlolp6gkuNtCJSCqquuPIdTpuwKqWIYhycRyQcB/ilC+oGzK0uVkqBIV5DBEJe+748Vmth3MGBksHSAmDeQjqwcZjeO5esocxdeVijywNlqe2v+bkalkNhNE5qiXyV/ICBQ7jiT8ssJITbxTEDj5lO39QpXEU2mOefxNt0jsJQ/41pRn40CnQIJuh8XFlmojNbq0ymOuCXq1LowB0u6L3Wphtpkqhhz9Uweftw2G9uXo1EDMFlCs4wMoZYjXghY7HK2s4HlZ69b2VGHdtlcu94rO3kRCFQR48TUyZr6Hq/h/LW2HTLOYrrmJjPh/4GP8N/oJll7WQxgBINS3honP4hAA/jGkRemlas8xHPN+5v8u7Dr8cFFvVh2Pp/A9dRoWGpc4dY4G2L+l8R0XesZUXXixl2OfAudJP7JLs36Jqua929siCwmidvzJM3MOjq7/OvJnxSwyTNlz8p2bJEGMXruxcJ1yrgi0nKWTXRgB"
+      },
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents and I'm on it. For Remy, Tiny Tumblers parent & tot is listed for Saturday mornings this fall, their site says, though it didn't post a price."
+      }
+    ],
+    "usage": {
+      "input_tokens": 811,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20637,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 127,
+      "output_tokens_details": {
+        "thinking_tokens": 41
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1511
+}

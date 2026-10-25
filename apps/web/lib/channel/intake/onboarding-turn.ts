@@ -3,6 +3,7 @@ import {
   acceptParentRole,
   preferParentRole,
 } from '~/lib/channel/identity/parent-role';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import type { ExtractedChild } from './extract';
 import { type FirstTouchPlace, placeFromGivenFields } from './first-touch-place';
 
@@ -73,6 +74,8 @@ export interface OnboardingCapture {
   /** Not now for email. Do not ask it again in this onboarding. */
   gmailLater: boolean;
   stopAsking: boolean;
+  /** BCP-47 tag of the language this parent is writing in. Null when the model omitted it. */
+  language: ReplyLanguage | null;
 }
 
 export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
@@ -93,6 +96,7 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   calendarLater: false,
   gmailLater: false,
   stopAsking: false,
+  language: null,
 };
 
 /**
@@ -437,6 +441,7 @@ export function acceptOnboardingCapture(
     calendarLater: row.calendarLater === true,
     gmailLater: row.gmailLater === true,
     stopAsking: row.stopAsking === true,
+    language: acceptReplyLanguage(typeof row.language === 'string' ? row.language : null),
   };
 }
 
@@ -489,6 +494,7 @@ export function mergeCaptures(
     calendarLater: next.calendarLater || prior.calendarLater,
     gmailLater: next.gmailLater || prior.gmailLater,
     stopAsking: next.stopAsking || prior.stopAsking,
+    language: next.language ?? prior.language,
   };
 }
 

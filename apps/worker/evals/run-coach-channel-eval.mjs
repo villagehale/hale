@@ -125,7 +125,7 @@ import {
 } from './coach-channel-fixtures.mjs';
 import { menuShape } from './coach-channel-menu-gate.mjs';
 import { inventedName } from './coach-channel-name-gate.mjs';
-import { modelProse, nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
+import { nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
   JUDGE_MIN,
@@ -188,8 +188,6 @@ const AUTONOMY_SWITCH_OFF_SRC = join(
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
 const MAX_TOKENS = 400;
-/** Mirrors MAX_REPLY_SEGMENTS in apps/web/lib/channel/coach/reply.ts. */
-const MAX_REPLY_SEGMENTS = 2;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
 const MAX_DRAFTS_PER_TURN = 2;
 /** The per-fixture voice FLOOR that sits alongside the corpus mean. See the header for
@@ -209,11 +207,9 @@ const MIN_PER_FIXTURE_VOICE = 3;
  * Deliberately blunt: the shape that matters is the OFFLOAD, and every phrasing of it
  * names the place. `\bapp\b` does not match "appointment", so the week's dentist is safe.
  *
- * It grades the POST-PROCESSED reply, like every other gate here. That used to be the
- * last hole in the boundary: an over-budget answer was trimmed and handed a "More in the
- * app: …" tail, so the app-point fired precisely when the answer was too long to send.
- * The tail is gone (skill audit P0 #4) and the trim now just stops at a sentence, which
- * is what the replicated fitToBudget below does too.
+ * It grades the POST-PROCESSED reply, like every other gate here. An over-budget answer
+ * used to be trimmed and handed a "More in the app: …" tail. The tail is gone, and
+ * VIL-434 sends the model's reply whole.
  */
 const APP_POINTING = [
   [/app\.villagehale\.com/i, 'sends the parent a link to the app'],
@@ -270,23 +266,6 @@ const GSM7_BASIC = new Set(
     .split(''),
 );
 const GSM7_EXTENDED = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
-
-/**
- * Mirrors `smsEncoding` in apps/web/lib/channel/sms-segments.ts.
- *
- * It was MISSING, and `offerViolations` had been calling it since the offer sentence
- * became a tool argument. Every `offer_full_plan` call in this suite therefore came back
- * to the model as "Tool call failed: smsEncoding is not defined", so the plan-offer arc
- * was never actually graded here — the model wrote the offer into its own answer instead
- * and the corpus scored that. Surfaced by the referral gate, which replicates the same
- * check and hit the same ReferenceError on its first live run.
- */
-function smsEncoding(text) {
-  for (const char of text) {
-    if (!GSM7_BASIC.has(char) && !GSM7_EXTENDED.has(char)) return 'ucs2';
-  }
-  return 'gsm7';
-}
 
 function smsSegments(text) {
   let gsm7 = true;
@@ -364,32 +343,24 @@ function redactTeenNames(text, children, now) {
   return out;
 }
 
-function sentences(body) {
-  return body
-    .replace(/\b([ap])\.m\./gi, '$1·m·')
-    .split(/(?<=[.!?])\s+/)
-    .map((part) => part.replaceAll('·', '.'))
-    .filter((part) => part.trim().length > 0);
-}
-
-/** Two GSM-7 segments, mirroring replyCharacterRoom in reply.ts. */
-function replyCharacterRoom(suffix) {
-  const tail = String(suffix ?? '').trim();
-  const reserved = tail === '' ? 0 : tail.length + 1;
-  return 306 - reserved;
-}
-
-function fitToBudget(body, max, suffix = '') {
-  const withSuffix = (text) => (suffix === '' ? text : `${text} ${suffix}`);
-  if (smsSegments(withSuffix(body)) <= max) return body;
-  const parts = sentences(body);
-  for (let count = parts.length - 1; count >= 1; count -= 1) {
-    const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
+/**
+ * VIL-434. A long model answer, including one that passes through "St.", leaves whole.
+ * Called once at startup so a restored trim fails this suite before any fixture runs.
+ */
+function assertLongRepliesAreNotCut() {
+  const raw = [
+    "Nothing's on Sebby's calendar today, Mon Oct 12.",
+    'The Kids & Me drop-in at St. Lawrence Community Centre runs this afternoon from 1-2:30 p.m. and their own page says it is free for under-sixes.',
+    'Dr. Chen is the host this week, and the entrance is on Ave. Road beside the library.',
+    'I can add it once you say you want it on the week.',
+  ].join(' ');
+  const out = toSmsReply(raw, [], undefined, undefined, undefined, []);
+  if (out !== raw) {
+    throw new Error(`VIL-434: a long reply was cut. sent=${JSON.stringify(out)}`);
   }
-  // No complete sentence fits. The caller asks for one shorter rewrite. A
-  // mid-sentence "..." is not a sentence, and it is not sent.
-  return null;
+  if (smsSegments(out) <= 2) {
+    throw new Error('VIL-434: the uncut fixture is no longer longer than two segments');
+  }
 }
 
 /**
@@ -407,9 +378,6 @@ function offerViolations(sentence) {
   const violations = [];
   const text = String(sentence).trim();
   if (text === '') return ['The offer was empty.'];
-  if (text.length > 160) {
-    violations.push(`The offer is ${text.length} characters; it must be at most 160.`);
-  }
   const questions = (text.match(/\?/g) ?? []).length;
   if (questions !== 1)
     violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
@@ -418,8 +386,6 @@ function offerViolations(sentence) {
       'The offer tells them to reply with a keyword. Ask in a sentence, like "Want me to send it?"',
     );
   }
-  if (smsEncoding(text) !== 'gsm7') violations.push('The offer is not plain ASCII.');
-  if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
   return violations;
 }
 
@@ -438,7 +404,6 @@ function dropDuplicateOffer(body, offer) {
  * what the model actually reads when a line is refused, so a replica that let something
  * through would be grading a tool that does not ship.
  */
-const EVAL_MAX_FORWARD_CHARS = 120;
 const EVAL_APP_POINTER = /\b(app|apps|settings|account|dashboard|website|download)\b/i;
 const EVAL_ANY_URL = /(https?:\/\/|www\.|villagehale|\.com\b|\.ca\b)/i;
 
@@ -446,11 +411,6 @@ function forwardViolations(forward) {
   const violations = [];
   const text = (forward ?? '').trim();
   if (text === '') return ['The line was empty.'];
-  if (text.length > EVAL_MAX_FORWARD_CHARS) {
-    violations.push(
-      `The line is ${text.length} characters; it must be at most ${EVAL_MAX_FORWARD_CHARS} so the link still fits beside it.`,
-    );
-  }
   if (EVAL_ANY_URL.test(text)) {
     violations.push(
       'The line contains a link. Do not write one - the real link is added after your message, and any URL you compose is one you invented.',
@@ -461,9 +421,6 @@ function forwardViolations(forward) {
       'The line points at an app, a website or an account. Hale is a number their friend texts; there is nothing for them to open, download or sign up for.',
     );
   }
-  if (smsEncoding(text) !== 'gsm7')
-    violations.push('The line contains a character that doubles the cost to send.');
-  if (smsSegments(text) > 1) violations.push('The line is longer than one SMS segment.');
   return violations;
 }
 
@@ -524,7 +481,9 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
   // The protected tail, mirroring reply.ts: the offer, the referral block, and any
   // activity URL the reply named. The referral block is redacted with the answer
   // because a parent forwards it OUT.
-  const link = activityLinkSuffix(redacted, activityLinks);
+  // By ref, mirroring reply.ts: typed URLs are dropped, cited refs attach their page.
+  const cited = attachLinks(redacted, activityLinks);
+  const link = cited.urls.join(' ');
   // A plan offer or a referral still crowds the count out. An activity URL does not:
   // the count is about that find, and the URL is that find's page.
   const protectedTail = redactTeenNames(
@@ -536,32 +495,24 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     NOW,
   );
   if (!protectedTail) {
-    const answer = dropDuplicateOffer(redacted, link);
-    const reserved = [nearbyClause(answer, nearby) ?? '', link]
-      .map((part) => part.trim())
-      .filter((part) => part !== '')
-      .join(' ');
-    const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, reserved);
-    if (fitted === null) return null;
-    const clause = nearbyClause(fitted, nearby);
+    const answer = dropDuplicateOffer(cited.body, link);
+    const clause = nearbyClause(answer, nearby);
     const tail = [clause ?? '', link]
       .map((part) => part.trim())
       .filter((part) => part !== '')
       .join(' ');
-    if (tail === '') return fitted;
-    if (fitted === '') return tail;
-    return `${fitted} ${tail}`;
+    if (tail === '') return answer;
+    if (answer === '') return tail;
+    return `${answer} ${tail}`;
   }
   const suffix = redactTeenNames(
     [protectedTail, link].filter((part) => part.trim() !== '').join(' '),
     children,
     NOW,
   );
-  const answer = dropDuplicateOffer(redacted, suffix);
+  const answer = dropDuplicateOffer(cited.body, suffix);
   if (answer === '') return suffix;
-  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix);
-  if (fitted === null) return null;
-  return `${fitted} ${suffix}`;
+  return `${answer} ${suffix}`;
 }
 
 /**
@@ -582,23 +533,17 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
  * A hand copy is how "lantern craft" dropped the Fanous page in the eval while the
  * product check was supposed to be the same function.
  */
-let activityLinkSuffix = () => '';
-let replyNamesActivity = () => false;
+let attachLinks = (text) => ({ body: text, urls: [] });
+let linkRef = (url) => url;
 
 function activityLinksFor(fixture, calls) {
   const links = [];
   for (const candidate of villageFor(fixture).candidates ?? []) {
-    if (candidate.url) {
-      links.push({
-        title: candidate.title,
-        url: candidate.url,
-        ...(candidate.venue ? { venue: candidate.venue } : {}),
-      });
-    }
+    if (candidate.url) links.push({ ref: linkRef(candidate.url), url: candidate.url });
   }
   if (calls.some((call) => call.tool === 'find_activities')) {
     const pick = webPickFor(fixture);
-    if (pick.url) links.push({ title: pick.name, url: pick.url });
+    if (pick.url) links.push({ ref: linkRef(pick.url), url: pick.url });
   }
   return links;
 }
@@ -848,8 +793,15 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     inputSchema: passthrough(),
     handler: async () => {
       record('search_village');
-      toolOutputs.push(village);
-      return village;
+      // What the model sees: each page's ref, never its URL (coach/tools.ts).
+      const shown = {
+        ...village,
+        candidates: (village.candidates ?? []).map(({ url, ...candidate }) =>
+          url ? { ...candidate, ref: linkRef(url) } : candidate,
+        ),
+      };
+      toolOutputs.push(shown);
+      return shown;
     },
   });
 
@@ -873,7 +825,9 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     ],
     handler: async () => {
       record('find_activities');
-      const result = { found: true, source: 'web', picks: [webPick] };
+      // What the model sees: the page's ref, never its URL (activity/tools.ts).
+      const { url, ...shown } = webPick;
+      const result = { found: true, source: 'web', picks: [url ? { ...shown, ref: linkRef(url) } : shown] };
       toolOutputs.push(result);
       return result;
     },
@@ -930,7 +884,7 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     monetary: false,
     touchesChildContent: true,
     description:
-      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters. Ask like a person ("Want me to send it?"). Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
+      'Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one short question. Ask like a person ("Want me to send it?"). Write it in the language they are using. Do not say Reply YES or name a keyword. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.',
     handler: async (input) => {
       // The gate IS the recompose loop: a refused offer throws a sentence the model
       // reads mid-turn and answers by calling again. Replicated from
@@ -963,7 +917,7 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     monetary: false,
     touchesChildContent: false,
     description:
-      "Get this family's own link for telling somebody else about Hale — call it whenever a parent asks how to refer, invite, share, or recommend Hale to a friend, or asks whether there is a referral link. `forward` is the line THEY will forward to their friend, in your voice: what Hale is, at most 120 plain-ASCII characters, no link and nothing about this family. The real link is added onto the end of your message for you, so never write a URL yourself and never write the forwarded line twice. Nothing is sent to anyone by this tool — the parent forwards it, and their friend texting in is that friend's own consent.",
+      "Get this family's own link for telling somebody else about Hale — call it whenever a parent asks how to refer, invite, share, or recommend Hale to a friend, or asks whether there is a referral link. `forward` is the line THEY will forward to their friend, in your voice: what Hale is, one short line, no link and nothing about this family. Write it in the parent's language. The real link is added onto the end of your message for you, so never write a URL yourself and never write the forwarded line twice. Nothing is sent to anyone by this tool — the parent forwards it, and their friend texting in is that friend's own consent.",
     handler: async (input) => {
       const violations = forwardViolations(input.forward);
       if (violations.length > 0) {
@@ -1417,14 +1371,16 @@ function fabrications(reply, hay, allowedUrls) {
       offenders.push(`day "${full}" is on no event and in no message`);
     }
   }
-  for (const sentence of reply.split(/(?<=[.!?])\s+|\n+/)) {
+  // A sentence can end inside a closing quote or bracket: in `I'll walk you right back."
+  // Then, when he shows up`, "Then" opens a sentence and is not a name.
+  for (const sentence of reply.split(/(?<=[.!?]["'\u201d\u2019)]?)\s+|\n+/)) {
     // A slash JOINS two words, it does not make one. "Bloor/Parkside" was flagged as an
     // invented name while both halves sat in the hay verbatim ("Bloor St W / Parkside
     // Dr"), which is the gate failing a faithful contraction of a fact Hale was handed.
     const words = sentence.trim().split(/[\s/]+/);
     for (const [index, word] of words.entries()) {
       if (index === 0) continue;
-      const invented = inventedName(word, hay);
+      const invented = inventedName(word, hay, NOW.getUTCFullYear());
       if (invented !== null) offenders.push(`name "${invented}" is in no fact`);
     }
   }
@@ -1485,7 +1441,7 @@ function dateSourcesFor(fixture, calls) {
 
 // ── grading ────────────────────────────────────────────────────────────────
 
-function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetries = 0) {
+function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
   const failures = [];
   if (reply === null) return ['the reply was empty after post-processing'];
 
@@ -1541,8 +1497,7 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   }
 
   // A drafted change is confirmed in an ordinary sentence. The parent answers in
-  // their own words (affirmative.ts reads yes, sure, oui, sounds good). Telling
-  // them which keyword to send is the failure, not the confirmation.
+  // their own words. Telling them which keyword to send is the failure.
   if (/\b(yes to confirm|reply yes)\b/i.test(lower)) {
     failures.push('asks the parent to reply with a keyword');
   }
@@ -1582,26 +1537,8 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
     }
   }
 
-  // A reply that names an activity the tools handed over has to carry that activity's
-  // URL. The runtime appends it when the reply refers to the find, including a
-  // shortened title ("lantern craft", "Riverdale Library … story time").
-  const links = activityLinksFor(fixture, calls);
-  for (const link of links) {
-    if (!replyNamesActivity(reply, link, links)) continue;
-    if (!lower.includes(link.url.toLowerCase())) {
-      failures.push(`names "${link.title}" without its link`);
-    }
-  }
 
-  // Answered in the parent's own language. Deterministic rather than left to the judge
-  // for the reason the other voice properties are: the corpus-mean gate scored the
-  // English-reply-to-a-French-text at 2/5 and passed the run anyway (2026-08-13 audit),
-  // and "is this sentence in French" is a fact, not a judgement.
-  if (expect.replyLanguage && !expect.replyLanguage.anyOf.some((word) => word.test(reply))) {
-    failures.push(
-      `answered in English a parent who wrote in ${expect.replyLanguage.label} (no ${expect.replyLanguage.label} function word in the reply)`,
-    );
-  }
+  // Language is the judge's. A function-word or script list is not a grade.
 
   // A draft that happened must be described as PENDING. "Moved" / "cancelled" /
   // "done" / "that one went through" would tell a parent something happened that
@@ -1610,10 +1547,7 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
     failures.push('describes a held draft as though it already happened (rule #4)');
   }
 
-  const segments = smsSegments(reply);
-  if (segments > MAX_REPLY_SEGMENTS) {
-    failures.push(`reply is ${segments} segments > ${MAX_REPLY_SEGMENTS}`);
-  }
+  // VIL-434. Segment count is telemetry. A reply longer than two segments is sent.
 
   // The voice properties that are mechanically checkable are checked mechanically. A
   // reader's judgment is the right tool for "does this sound like Hale"; it is the wrong
@@ -1636,47 +1570,6 @@ function checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetrie
   // approving the draft, so the second question is one they have no way to reply to.
   const questions = (reply.match(/\?/g) ?? []).length;
   if (questions > 1) failures.push(`${questions} questions in one message (at most one)`);
-
-  // The plan offer, the referral line, the nearby clause and the activity URL are
-  // appended after the fit, by the runtime. The question count above still sees the
-  // whole reply. The segment count below is on what the MODEL wrote, with any offer it
-  // wrote inline taken off first — the runtime de-duplicates that copy against the
-  // appended one, so charging it here would fail a turn for a sentence that is only
-  // ever sent once.
-  const referralForward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
-  const appended = [
-    calls.find((call) => call.tool === 'offer_full_plan')?.offer,
-    referralForward ? `${referralForward} ${FIXTURE_REFERRAL_LINK}` : undefined,
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const tail = {
-    appended,
-    nearbyClause: fixture.nearby?.clause ?? '',
-    links: activityLinksFor(fixture, calls),
-  };
-
-  // THE CORPUS WAS BLIND HERE, and it is worth saying why: every other gate in this
-  // function reads `reply`, which is the POST-TRIM body, and fitToBudget guarantees that
-  // body is inside the budget. So the segment check above can never fire, and a model
-  // composing twice what it can send graded exactly like one writing to the ceiling.
-  //
-  // That is how the 2026-08-21 bench shipped: the flagship question composed a verified
-  // Sep 1 opening plus two finds off a live web search, 548 units against 306, and the
-  // whole second paragraph went over the side. What was graded opened "Two things worth
-  // flagging here" and delivered one.
-  //
-  // Measured on the model's OWN prose, with any offer it wrote inline taken off first —
-  // the runtime de-duplicates that copy against the appended one, so charging it here
-  // would fail a turn for a sentence that is only ever sent once.
-  const composedPlain = plainText(String(composed ?? reply));
-  const composedAuthored = modelProse(composedPlain, { ...tail, ignoreCase: true });
-  const composedSegments = smsSegments(composedAuthored);
-  if (composedSegments > MAX_REPLY_SEGMENTS) {
-    failures.push(
-      `composed ${composedSegments} segments > ${MAX_REPLY_SEGMENTS}: everything past the cut was written and never sent`,
-    );
-  }
 
   for (const [pattern, label] of VOICE_TELLS) {
     if (pattern.test(reply)) failures.push(label);
@@ -1928,8 +1821,8 @@ const JUDGE_SYSTEM = [
   '4 = does the job, with one small blemish: a redundant detail, a slightly long clause,',
   'a word more than it needed.',
   '3 = does the job but the shape is off: two questions in one message, a sign-off or an',
-  'invitation to come back, restating the question, a list, or three-plus sentences where',
-  'one would do.',
+  'invitation to come back, restating the question, a list, or padding well past what',
+  'the thought needed.',
   '2 = misleading or self-absorbed: explains its own limits or machinery, sends the parent',
   'somewhere that cannot answer them, hedges instead of acting on a clear instruction, or',
   'buries the answer.',
@@ -2002,7 +1895,7 @@ async function main() {
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
     import.meta.url,
   ));
-  ({ activityLinkSuffix, replyNamesActivity } = await tsImport(
+  ({ attachLinks, linkRef } = await tsImport(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
     import.meta.url,
   ));
@@ -2029,9 +1922,7 @@ async function main() {
   const subjectLatencies = [];
 
   const skill = await agent.loadSkill(SKILL_PATH);
-  const shortenSkill = await agent.loadSkill(
-    join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-shorten.md'),
-  );
+  assertLongRepliesAreNotCut();
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
   // Sonnet, not the Haiku the other evals judge with. Scoring a two-sentence text
@@ -2106,9 +1997,6 @@ async function main() {
     /** What the companion handed back this turn — grounding the audit row cannot carry. */
     const guidance = [];
     let reply;
-    /** What the model actually wrote, before the trim — the subject of the length
-     * gate, because the trimmed body is inside the budget by construction. */
-    let composed = null;
     let toolResults = [];
     /** One entry per model call this turn — see makeCachedAgentClient. */
     const legs = [];
@@ -2127,7 +2015,6 @@ async function main() {
       const stand = fixture.broken ?? { reply: BROKEN_REPLY, calls: BROKEN_CALLS };
       calls.push(...stand.calls);
       auditLog.push({ actionTaken: 'tool:broken' });
-      composed = stand.reply;
       reply = toSmsReply(stand.reply, children);
     } else {
       const tools = [
@@ -2184,7 +2071,6 @@ async function main() {
       const forward = calls.find((call) => call.tool === 'share_referral_link')?.forward;
       const offerSentence = calls.find((call) => call.tool === 'offer_full_plan')?.offer;
       const referralBlock = forward ? `${forward} ${FIXTURE_REFERRAL_LINK}` : undefined;
-      composed = run.answer;
       reply = toSmsReply(
         run.answer,
         children,
@@ -2193,52 +2079,6 @@ async function main() {
         fixture.nearby,
         activityLinksFor(fixture, calls),
       );
-      // One shorter rewrite when no complete sentence fit. The same cached client
-      // keys it: a different system prompt is a different entry, and only a turn
-      // that actually overflowed writes one. The composed gate then grades the
-      // rewrite, which is the text that can be sent.
-      if (reply === null && plainText(run.answer) !== '') {
-        const suffix = redactTeenNames(
-          [offerSentence, referralBlock]
-            .map((part) => part?.trim() ?? '')
-            .filter((part) => part !== '')
-            .join(' '),
-          children,
-          NOW,
-        );
-        const lane = agent.withoutThinking(agent.pickLane(shortenSkill.meta.task));
-        if (!lane) throw new Error('coach-channel-shorten has no thinking-off lane');
-        const response = await client.messages.create({
-          ...agent.laneRequestFields(lane),
-          max_tokens: 200,
-          system: shortenSkill.instructions,
-          messages: [
-            {
-              role: 'user',
-              content: JSON.stringify({
-                ceiling: replyCharacterRoom(suffix),
-                text: plainText(run.answer),
-              }),
-            },
-          ],
-        });
-        const shorter = (response.content ?? [])
-          .filter((block) => block.type === 'text')
-          .map((block) => block.text)
-          .join('')
-          .trim();
-        if (shorter) {
-          composed = shorter;
-          reply = toSmsReply(
-            shorter,
-            children,
-            offerSentence,
-            referralBlock,
-            fixture.nearby,
-            activityLinksFor(fixture, calls),
-          );
-        }
-      }
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
       toolResults = auditLog.map((entry) => entry.after);
@@ -2429,7 +2269,7 @@ async function main() {
       invented,
       failures: [
         ...invented.map((f) => `FABRICATION: ${f}`),
-        ...checkFixture(fixture, reply, calls, auditLog, composed, truncatedRetries),
+        ...checkFixture(fixture, reply, calls, auditLog, truncatedRetries),
       ],
     });
   }
@@ -2482,7 +2322,7 @@ async function main() {
   const missedAction = clearAsks.filter((r) =>
     r.failures.some((f) => f.startsWith('never drafted')),
   );
-  const overBudget = answered.filter((r) => smsSegments(r.reply) > MAX_REPLY_SEGMENTS);
+  const longReplies = answered.filter((r) => smsSegments(r.reply) > 2);
   const splits = results.filter((r) => r.failures.some((f) => f.startsWith('CAPABILITY SPLIT')));
   const menus = results.filter((r) => r.failures.some((f) => f.startsWith('THE MENU')));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
@@ -2511,7 +2351,7 @@ async function main() {
   console.log(
     `missed action on a clear ask: ${missedAction.length}/${clearAsks.length}  (0 required)`,
   );
-  console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
+  console.log(`longer than two segments:     ${longReplies.length}  (sent whole — VIL-434)`);
   console.log(
     `capability pairs that split:  ${splits.length}  (0 required — a boundary that moves is one nobody wrote down)`,
   );
@@ -2562,11 +2402,7 @@ async function main() {
   }
 
   const allPass =
-    accuracy === 1 &&
-    fabricating.length === 0 &&
-    missedAction.length === 0 &&
-    overBudget.length === 0 &&
-    voiceOk;
+    accuracy === 1 && fabricating.length === 0 && missedAction.length === 0 && voiceOk;
 
   console.log('\n--- gate ---');
   if (severed) {

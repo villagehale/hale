@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { INVITE_EXPIRED_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
+import { coParentInviteExpired } from '~/lib/channel/coparent/copy';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
   type FakeDb,
@@ -658,7 +658,7 @@ describe('caregiver invite · the ways it does not happen', () => {
     // they are TOLD that, in one sentence, instead of being handed an intake greeting
     // and asked for their children's names (the shared reader, caregiver lane).
     expect(outcome).toEqual({ status: 'invite_expired_answered', role: 'grandparent' });
-    expect(transport.sent.at(-1)?.body).toBe(INVITE_EXPIRED_BY_LANGUAGE.en);
+    expect(transport.sent.at(-1)?.body).toBe(await coParentInviteExpired('en'));
     expect(auditActions(fake)).toContain('caregiver_invite_expired');
     expect(auditActions(fake)).toContain('caregiver_invite_expired_answered');
     expect(inserts(fake, schema.familyMembers).some((r) => r.role === 'grandparent')).toBe(false);

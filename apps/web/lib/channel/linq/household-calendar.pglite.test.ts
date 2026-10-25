@@ -413,7 +413,7 @@ describe('household calendars', () => {
       fetch: wire.fetch,
     });
     const when = new Date('2026-09-25T19:00:00.000Z');
-    const notice = groupKidEventText('en', {
+    const notice = await groupKidEventText('en', {
       name: 'Barton',
       kid: 'Maya',
       event: 'gymnastics',
@@ -620,7 +620,7 @@ describe('household calendars', () => {
     });
     expect(wire.texts()).toHaveLength(1);
     expect(wire.texts()[0]).toContain(
-      whoTakesPrompt('en', {
+      await whoTakesPrompt('en', {
         kid: 'Maya',
         event: 'gymnastics',
         day: formatDay(start, 'America/Toronto', 'en'),

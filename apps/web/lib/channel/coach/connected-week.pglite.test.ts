@@ -1,6 +1,6 @@
 import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
@@ -41,6 +41,10 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
     const family = await seedFamily(db.database);
     familyId = family.familyId;
     parentUserId = family.parentUserId;
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto' })
+      .where(eq(schema.users.id, parentUserId));
     integrationId = await seedIntegration(db.database, familyId, parentUserId, 'gcal');
   });
 

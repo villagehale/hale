@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -21,7 +22,6 @@ import {
   sweepDutyAsks,
 } from './asks';
 import { DUTY_NIGHT_BEFORE_COPY_EN } from './copy';
-import { COPARENT_DUTY_COPY_LOCKED_ENV } from './copy';
 import { COPARENT_DUTY_SENDS_ENABLED_ENV } from './flag';
 import { commitDutyUpdate, loadReadableDuties } from './model';
 
@@ -39,12 +39,36 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+/** A model reading. The locked template is not what leaves. */
+function scriptedReply(text: string): AgentClient {
+  return {
+    messages: {
+      create: vi.fn(async () => ({
+        content: [{ type: 'text', text: JSON.stringify({ text }) }],
+        usage: { input_tokens: 12, output_tokens: 8 },
+        stop_reason: 'end_turn',
+      })),
+    },
+  } as unknown as AgentClient;
+}
+
+const MODEL_NIGHT = "Test has Maya's swim at 3:00pm. Say so here if that changes.";
+
 /** Sunday 27 Sep 2026, 15:00 in Toronto. */
 const SUNDAY_AFTERNOON = new Date('2026-09-27T19:00:00.000Z');
 /** Sunday 27 Sep 2026, 18:00 in Toronto. Inside 17:00–21:00. */
 const SUNDAY_EVENING = new Date('2026-09-27T22:00:00.000Z');
 const MONDAY = new Date('2026-09-28T19:00:00.000Z');
 const TUESDAY = new Date('2026-09-29T19:00:00.000Z');
+
+async function seedDutyFamily(displayName: string) {
+  const family = await seedFamily(db.database, displayName);
+  await db.database
+    .update(schema.users)
+    .set({ timezone: 'America/Toronto' })
+    .where(eq(schema.users.id, family.parentUserId));
+  return family;
+}
 
 async function secondParent(familyId: string, name: string): Promise<string> {
   const email = `${name}-${familyId}@example.test`;
@@ -118,7 +142,7 @@ function sendPorts(send: DutySendPorts['send']): DutySendPorts {
 
 describe('duty ask sweep', () => {
   it('is a no-op when the flag is off, including a cancelled duty', async () => {
-    const family = await seedFamily(db.database, 'Flag off');
+    const family = await seedDutyFamily('Flag off');
     const sam = await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-off');
     await kidBlock({
@@ -165,7 +189,7 @@ describe('duty ask sweep', () => {
 
   it('asks one question when two events have no kid in the title', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Two kids');
+    const family = await seedDutyFamily('Two kids');
     await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-two');
     await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_AFTERNOON);
@@ -199,8 +223,7 @@ describe('duty ask sweep', () => {
 
   it("never names a 13+ child or their event in a group duty line, while a younger child's still asks", async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Teen in house');
+    const family = await seedDutyFamily('Teen in house');
     await secondParent(family.familyId, 'Alex');
     await claimGroup(family.familyId, 'chat-teen');
     await seedChild(db.database, family.familyId, 'Noor', 14 * 12, undefined, SUNDAY_AFTERNOON);
@@ -234,7 +257,7 @@ describe('duty ask sweep', () => {
 
   it('asks when both parents claim and does not pick a winner', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Both claimed');
+    const family = await seedDutyFamily('Both claimed');
     const sam = await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-both');
     await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_AFTERNOON);
@@ -293,7 +316,7 @@ describe('duty ask sweep', () => {
 
   it('closes a duty when the event is cancelled and does not delete the row', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Cancelled');
+    const family = await seedDutyFamily('Cancelled');
     await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-cancel');
     await kidBlock({
@@ -363,8 +386,7 @@ describe('duty ask sweep', () => {
 
   it('never initiates 1:1 when the family has no Linq group', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
-    const family = await seedFamily(db.database, 'No group');
+    const family = await seedDutyFamily('No group');
     await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, null);
     await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
@@ -427,8 +449,7 @@ describe('duty ask sweep', () => {
 
   it('does not hand a placeholder to the transport', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Placeholder');
+    const family = await seedDutyFamily('Placeholder');
     await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-placeholder');
     const send = vi.fn();
@@ -461,8 +482,7 @@ describe('duty ask sweep', () => {
 
   it('sends only to the group chat, and only after the gate allows it', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Group send');
+    const family = await seedDutyFamily('Group send');
     await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-send');
     const send = vi.fn(async (input: { chatId: string; text: string }) => ({
@@ -503,8 +523,7 @@ describe('duty ask sweep', () => {
 
   it('sends the locked night-before sentence and nothing with a booking claim', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Locked night');
+    const family = await seedDutyFamily('Locked night');
     await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-locked');
     await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
@@ -540,23 +559,29 @@ describe('duty ask sweep', () => {
     const send = vi.fn(async (input: { text: string }) => ({
       providerMessageId: `linq-${input.text.length}`,
     }));
-    const result = await sweepDutyAsks(db.database, {
+    const held = await sweepDutyAsks(db.database, {
       now: SUNDAY_EVENING,
       ports: sendPorts(send),
     });
+    expect(held.sent).toBe(0);
+    expect(held.held).toBeGreaterThanOrEqual(1);
+    expect(send).not.toHaveBeenCalled();
+    const result = await sweepDutyAsks(db.database, {
+      now: SUNDAY_EVENING,
+      ports: sendPorts(send),
+      replyClient: scriptedReply(MODEL_NIGHT),
+    });
     expect(result.sent).toBe(1);
     const body = send.mock.calls[0]?.[0]?.text as string;
-    expect(body.split('\n')[0]).toBe(
-      "Tomorrow: Test has Maya's swim at 3:00pm. Say so here if that changes.",
-    );
+    expect(body).toBe(MODEL_NIGHT);
+    expect(body).not.toBe("Tomorrow: Test has Maya's swim at 3:00pm. Say so here if that changes.");
     expect(body).not.toMatch(/\b(booked|enrolled|signed up)\b/i);
     expect(body).not.toMatch(/\{[a-zA-Z]+\}/);
   });
 
   it('suppresses asks 3 to 7 for 30 days after stop asking, and still answers', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Stop asking');
+    const family = await seedDutyFamily('Stop asking');
     await secondParent(family.familyId, 'Sam');
     await claimGroup(family.familyId, 'chat-stop');
     await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
@@ -631,13 +656,14 @@ describe('duty ask sweep', () => {
       text: "who's got pickup?",
       now: SUNDAY_EVENING,
       ports: sendPorts(async () => ({ providerMessageId: 'linq-answer' })),
+      replyClient: scriptedReply(MODEL_NIGHT),
     });
     expect(answer).toMatchObject({ delivery: { status: 'sent' } });
   });
 
   it('does not enable a single-parent household', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Solo');
+    const family = await seedDutyFamily('Solo');
     await claimGroup(family.familyId, 'chat-solo-parent');
     const view = await planFamilyDutyAsks(db.database, {
       familyId: family.familyId,

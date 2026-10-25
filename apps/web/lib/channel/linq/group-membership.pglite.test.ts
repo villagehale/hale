@@ -144,7 +144,7 @@ describe('VIL-438 group membership read model', () => {
 });
 
 describe('VIL-438 member welcome written from facts', () => {
-  it('flag off keeps the fixed welcome and never calls the voice', async () => {
+  it('flag off sends the spoken welcome (main) and never calls the voice', async () => {
     await seedFamily(PARENT, 'Barton');
     const voice = fakeGroupOnboardingComposer();
     const wire = sender();
@@ -158,7 +158,8 @@ describe('VIL-438 member welcome written from facts', () => {
       voice,
     });
     expect(voice.calls).toHaveLength(0);
-    expect(wire.texts).toEqual([groupMemberWelcome('en', 'Barton')]);
+    const spoken = await groupMemberWelcome('en', 'Barton');
+    expect(wire.texts).toEqual(spoken ? [spoken] : []);
   });
 
   it('flag on hands the T22 facts to the voice and sends what it wrote', async () => {

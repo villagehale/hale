@@ -1,14 +1,7 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { classifyKidCalendarItem, splitKidEvent } from '~/lib/channel/linq/kid-event';
-import {
-  type DutyCopyLanguage,
-  dutyClockLabel,
-  dutyOwnerEcho,
-  dutyTitleMayBeSpoken,
-  dutyWeekdayName,
-  spokenFirstName,
-} from './copy';
+import { type DutyCopyLanguage, dutyTitleMayBeSpoken, spokenFirstName } from './copy';
 import { coparentDutyMemoryEnabled } from './flag';
 import type { DutyState } from './model';
 
@@ -85,7 +78,8 @@ export async function projectDutyOnFamilyEvent(
   },
 ): Promise<DutyProjection> {
   if (!coparentDutyMemoryEnabled()) return { status: 'skipped', reason: 'flag_off' };
-  if (typeof database.select !== 'function') return { status: 'skipped', reason: 'no_family_event' };
+  if (typeof database.select !== 'function')
+    return { status: 'skipped', reason: 'no_family_event' };
 
   const children = await database
     .select({ name: schema.children.name, familyId: schema.children.familyId })
@@ -158,7 +152,9 @@ export async function projectDutyOnFamilyEvent(
   await database
     .update(schema.familyEvents)
     .set(next)
-    .where(and(eq(schema.familyEvents.id, event.id), eq(schema.familyEvents.familyId, input.familyId)));
+    .where(
+      and(eq(schema.familyEvents.id, event.id), eq(schema.familyEvents.familyId, input.familyId)),
+    );
   const audit = {
     familyId: input.familyId,
     actor: input.actorUserId,
@@ -184,7 +180,9 @@ export async function projectDutyOnFamilyEvent(
       actionTaken: 'duty_calendar_cleared',
     });
   }
-  return owner ? { status: 'updated', eventId: event.id } : { status: 'cleared', eventId: event.id };
+  return owner
+    ? { status: 'updated', eventId: event.id }
+    : { status: 'cleared', eventId: event.id };
 }
 
 /** DESCRIPTION for one feed event. Null leaves the VEVENT without one. */
@@ -211,15 +209,7 @@ export function dutyFeedDescription(input: {
   if (!kid) return null;
   const spokenEvent = dutyTitleMayBeSpoken(event) ? event : input.title;
   if (!dutyTitleMayBeSpoken(spokenEvent)) return null;
-  try {
-    return dutyOwnerEcho(input.language, {
-      name,
-      kid,
-      event: spokenEvent,
-      day: dutyWeekdayName(input.startsAt, input.timeZone, input.language),
-      time: dutyClockLabel(input.startsAt, input.timeZone, input.language),
-    });
-  } catch {
-    return null;
-  }
+  // The fixed owner sentence does not ride on the feed. The thread is where
+  // the model writes who has the event.
+  return null;
 }

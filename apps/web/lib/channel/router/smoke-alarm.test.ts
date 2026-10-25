@@ -1,6 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { EMERGENCY_TOKENS, namesAnEmergency } from '~/lib/channel/off-domain/copy';
 import { ChannelTurnFailed } from './coach-runtime';
 import {
   type SmokeAlarmClaim,
@@ -33,68 +32,6 @@ function asCoachSees(cause: unknown): ChannelTurnFailed {
     draftedActionIds: [],
   });
 }
-
-// ── the token list ───────────────────────────────────────────────────────────
-
-describe('the emergency tokens', () => {
-  it.each([
-    ['she is not breathing', true],
-    ['he went unconscious', true],
-    ['baby is unresponsive', true],
-    ['I think she is choking', true],
-    ['he had a seizure', true],
-    ['should I call 911', true],
-    ['NOT BREATHING', true],
-    ['Unconscious.', true],
-  ])('fires on %j', (text, expected) => {
-    expect(namesAnEmergency(text)).toBe(expected);
-  });
-
-  it.each([
-    'what should we do this weekend',
-    'swim class is at 9:11 tomorrow',
-    'the invoice came to $911',
-    'our unit number is 9110',
-    'call me at 647-555-0911',
-    'she is breathing fine now',
-  ])('stays quiet on %j', (text) => {
-    expect(namesAnEmergency(text)).toBe(false);
-  });
-
-  /**
-   * The two halves of the boundary the brief names. A price and a unit number contain
-   * the digits and are not the number; the emergency number is worth the false positive
-   * and those are not it.
-   */
-  it('separates the emergency number from digits that merely contain it', () => {
-    expect(namesAnEmergency('call 911 now')).toBe(true);
-    expect(namesAnEmergency('911')).toBe(true);
-    expect(namesAnEmergency('911.')).toBe(true);
-    expect(namesAnEmergency('$911')).toBe(false);
-    expect(namesAnEmergency('9110')).toBe(false);
-    expect(namesAnEmergency('19110')).toBe(false);
-  });
-
-  /** A token must not fire from inside a longer word, but must survive an ordinary
-   * inflection — "seizures" is the same emergency as "seizure". */
-  it('reads whole words, and their plurals', () => {
-    expect(namesAnEmergency('she is having seizures')).toBe(true);
-    expect(namesAnEmergency('he is unresponsive')).toBe(true);
-    expect(namesAnEmergency('unchoking')).toBe(false);
-    expect(namesAnEmergency('preseizure')).toBe(false);
-  });
-
-  it('is the short, conservative list the doctrine fixed', () => {
-    expect([...EMERGENCY_TOKENS]).toEqual([
-      'not breathing',
-      'unconscious',
-      'unresponsive',
-      'choking',
-      'seizure',
-      '911',
-    ]);
-  });
-});
 
 // ── the outage classifier ────────────────────────────────────────────────────
 
@@ -239,30 +176,21 @@ function alarm(
 }
 
 describe('the smoke alarm', () => {
-  it('sends nothing and logs urgently when the model is gone and the text is an emergency', async () => {
+  it('holds an outage without reading the words as a crisis', async () => {
     const a = alarm();
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(await a.run()).toBe('fired');
+    expect(await a.run()).toBe('unjudged');
     expect(a.sent).toEqual([]);
-    expect(log).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'emergency', where: 'model_outage' }),
-      expect.stringContaining('URGENT'),
-    );
+    expect(log).not.toHaveBeenCalled();
     log.mockRestore();
   });
 
-  it('logs a suicide crisis during an outage urgently, as mental, and sends nothing', async () => {
+  it('does the same for a sentence that used to match a crisis list', async () => {
     const a = alarm({ body: 'I want to die' });
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    expect(await a.run()).toBe('fired');
+    expect(await a.run()).toBe('unjudged');
     expect(a.sent).toEqual([]);
-    expect(log).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'mental' }),
-      expect.stringContaining('URGENT'),
-    );
-    log.mockRestore();
   });
 
   /** Both conditions, independently insufficient. Either one alone is an ordinary
@@ -274,25 +202,18 @@ describe('the smoke alarm', () => {
     expect(a.sent).toEqual([]);
   });
 
-  it('stays quiet during an outage when the text names no emergency', async () => {
+  it('holds an ordinary outage the same way', async () => {
     const a = alarm({ body: 'anything indoors this weekend?' });
 
-    expect(await a.run()).toBe('no_emergency_token');
+    expect(await a.run()).toBe('unjudged');
     expect(a.sent).toEqual([]);
   });
 
-  it('records the alarm so the same message cannot set it off twice', async () => {
+  it('does not record a crisis claim from the words', async () => {
     const claim = fakeClaim();
     const first = alarm({ claim });
-    expect(await first.run()).toBe('fired');
-    expect(claim.recorded).toEqual([
-      { familyId: FAMILY, parentUserId: PARENT, channelMessageId: MESSAGE },
-    ]);
-
-    const retry = alarm({ claim });
-    expect(await retry.run()).toBe('already_fired');
-    expect(retry.sent).toEqual([]);
-    expect(claim.recorded).toHaveLength(1);
+    expect(await first.run()).toBe('unjudged');
+    expect(claim.recorded).toEqual([]);
   });
 
   /** The claim read is a query. It must not be spent on the overwhelmingly common
