@@ -6,7 +6,7 @@ describe('router reply transport — iMessage', () => {
   it('sends into the Linq chat and does not touch the phone transport', async () => {
     const phone: ChannelTransport = { send: vi.fn() };
     const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-1' }));
-    const transport = createReplyTransport({ phone, email: null, imessage });
+    const transport = createReplyTransport({ phone, imessage });
 
     const sent = await transport.send({
       route: {
@@ -30,7 +30,7 @@ describe('router reply transport — iMessage', () => {
   it('answers a parent-started 1:1 in that chat, not the household group', async () => {
     const phone: ChannelTransport = { send: vi.fn() };
     const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-2' }));
-    const transport = createReplyTransport({ phone, email: null, imessage });
+    const transport = createReplyTransport({ phone, imessage });
     const groupChatId = 'chat-household-group';
 
     await transport.send({

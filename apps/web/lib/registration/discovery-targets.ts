@@ -7,7 +7,7 @@ import type { Municipality, ProgramDomain } from '@hale/db';
  * second reason to read it: the weekly sweep watches these pages so the gaps close
  * themselves, and the between-cycles reply names the cycle being watched for, so a
  * family whose season has gone hears what Hale is waiting on rather than silence. The
- * sweep's own module drags a model client, Resend and the provider pre-flight in with
+ * sweep's own module drags a model client and the provider pre-flight in with
  * it, none of which belong anywhere near a stranger's first text.
  *
  * The schema's rule is what makes a list like this necessary at all: a municipality
@@ -41,7 +41,8 @@ const TORONTO_NEWS = 'https://www.toronto.ca/news/';
 const TORONTO_WATCH = [TORONTO_REGISTER, TORONTO_NEWS] as const;
 const HALTON_HILLS_REGISTER =
   'https://www.haltonhills.ca/en/explore-and-play/program-registration.aspx';
-const WHITCHURCH_STOUFFVILLE_PLAY_BOOK = 'https://www.townofws.ca/play/recreation/programs/play-book/';
+const WHITCHURCH_STOUFFVILLE_PLAY_BOOK =
+  'https://www.townofws.ca/play/recreation/programs/play-book/';
 const NEWMARKET_PROGRAMS = 'https://www.newmarket.ca/recreation-parks/programs-camps';
 const EAST_GWILLIMBURY_GUIDE =
   'https://www.eastgwillimbury.ca/en/living-in-eg/health-and-active-living-guide.aspx';
@@ -106,7 +107,7 @@ export const DISCOVERY_TARGETS: readonly DiscoveryTarget[] = [
     programDomain: 'rec_program',
     cycleLabel: 'Winter 2027',
     sourceUrls: [GEORGINA_PROGRAMS],
-    gap: 'Georgina posts one cycle at a time on this page and has posted nothing since the fall block. Watch THIS page: the Town\'s recreation-general-information page was still carrying the spring block in September.',
+    gap: "Georgina posts one cycle at a time on this page and has posted nothing since the fall block. Watch THIS page: the Town's recreation-general-information page was still carrying the spring block in September.",
   },
 ];
 

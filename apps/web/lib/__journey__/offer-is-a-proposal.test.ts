@@ -100,7 +100,7 @@ describe('the offer is a proposal', () => {
 
     const [user] = await database
       .insert(schema.users)
-      .values({ email: null, name: null, timezone: TZ })
+      .values({ name: null, timezone: TZ })
       .returning({ id: schema.users.id });
     parentUserId = (user as { id: string }).id;
 
@@ -326,7 +326,7 @@ describe('the offer is a proposal', () => {
       ),
       // The production adapter over the fake pipe: the router hands it a resolved sms
       // route, the fake records the send — one recorder for the whole journey.
-      transport: createReplyTransport({ phone: transport, email: null }),
+      transport: createReplyTransport({ phone: transport }),
       replyResolver: resolver,
       coach,
       // The off-domain screen is a model call this journey never needs to make: every

@@ -26,7 +26,9 @@ export interface LoopPrefsView {
  * frozen constant so the defaults live in exactly one place (no magic strings).
  */
 export const DEFAULT_LOOP_PREFS: LoopPrefsView = Object.freeze({
-  loopChannel: 'email',
+  // The column default is still 'email' (no migration); the dispatch sends SMS
+  // whatever this says, so the view reports the channel that is actually used.
+  loopChannel: 'sms',
   catReminder: true,
   catApproval: true,
   catAlert: true,

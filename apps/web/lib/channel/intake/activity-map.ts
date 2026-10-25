@@ -2,6 +2,7 @@ import { STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
+import { activityRecommendationKey } from '~/lib/village/live';
 import { type WeekendPick, asciiCopy } from './radar-decide';
 
 /**
@@ -144,6 +145,7 @@ export interface ActivityMapGroup {
   lines: string[];
   /** The finds' own titles, same order as lines. */
   titles: string[];
+  picks?: ActivityPick[];
 }
 
 export type ActivityMapFinder = 'used' | 'not_configured' | 'refused' | 'failed' | 'empty';
@@ -256,6 +258,7 @@ export async function collectActivityMap(input: {
           category: category.id,
           lines: picks.map(webLine),
           titles: picks.map((pick) => pick.name.trim()),
+          picks,
         };
       } catch (err) {
         anyFailed = true;
@@ -271,6 +274,19 @@ export async function collectActivityMap(input: {
       }
     }),
   );
+  const seen = new Set<string>();
+  for (const group of groups) {
+    if (!group.picks) continue;
+    group.picks = group.picks.filter((pick) => {
+      const key = activityRecommendationKey(pick);
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    group.lines = group.picks.map(webLine);
+    group.titles = group.picks.map((pick) => pick.name.trim());
+  }
   if (civicGroup) {
     const free = groups.find((group) => group.category === 'free_public');
     if (free) {

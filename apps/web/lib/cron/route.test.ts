@@ -40,7 +40,7 @@ vi.mock('~/lib/cron/inference', () => ({
 vi.mock('~/lib/coach/attachments', () => ({
   sweepUnlinkedAttachments: (...a: unknown[]) => sweepAttachmentsMock(...a),
 }));
-vi.mock('~/lib/channel/email/forward-purge', () => ({
+vi.mock('~/lib/retention/forward-purge', () => ({
   sweepExpiredForwards: (...a: unknown[]) => sweepForwardsMock(...a),
 }));
 vi.mock('~/lib/channel/nudge/run', () => ({

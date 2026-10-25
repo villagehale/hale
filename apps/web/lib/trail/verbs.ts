@@ -422,6 +422,7 @@ export const AUDIT_VERBS = [
   'party_rsvp_submitted',
   'party_guest_message_sent',
   // ── the registration radar ──────────────────────────────────────────────
+  'activity.offered',
   'registration_shortlist_drafted',
   'registration_sequence_leg_sent',
   'registration_outcome_recorded',
@@ -1490,6 +1491,7 @@ const VERBS: Record<AuditVerb, Verb> = {
   party_rsvp_submitted: { sentence: 'a guest replied to your party invite', family: 'done' },
   party_guest_message_sent: { sentence: 'Hale texted a party guest', family: 'note' },
   // ── the registration radar ──────────────────────────────────────────────
+  'activity.offered': { sentence: 'Hale showed you current activity findings', family: 'note' },
   registration_shortlist_drafted: {
     sentence: 'Hale put together a registration shortlist',
     family: 'note',
@@ -1857,7 +1859,8 @@ const TARGET_NOUNS: Record<string, string> = {
   family_invites: 'invite',
   family_memory_episodes: 'logged moment',
   family_memory_facts: 'something I remembered',
-  village_candidates: 'village suggestion',
+  family_activity_history: 'village suggestion',
+  village_candidates: 'village suggestion', // Historical audit rows retain this key.
   consent_records: 'consent',
   activity_bookings: 'a class you signed up for',
   // A BARE noun, like every value here ('draft', 'plan', 'child'): an article baked into

@@ -168,6 +168,12 @@ export interface ActivityPick {
   source: ActivitySource;
   /** The page the pick was read off, when that page is an absolute http(s) URL. */
   url?: string;
+  sourceUrl?: string;
+  eventDate?: string;
+  indoorOutdoor?: 'indoor' | 'outdoor' | 'both' | null;
+  access?: 'drop_in' | 'register_at_venue' | null;
+  placeId?: string;
+  civicVenueId?: string;
 }
 
 /**

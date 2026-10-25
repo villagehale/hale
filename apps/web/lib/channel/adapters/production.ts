@@ -1,9 +1,7 @@
-import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import type { Database } from '@hale/db';
 import { familyOutboundTargetForUser } from '~/lib/channel/linq/family-outbound';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import type { Channel, ChannelKind } from '../types';
-import { createResendEmailChannel } from './resend-email';
 import { createSmsChannel } from './phone-sms';
 
 /**
@@ -16,16 +14,6 @@ import { createSmsChannel } from './phone-sms';
  */
 export function productionChannels(database: Database): Partial<Record<ChannelKind, Channel>> {
   return {
-    email: createResendEmailChannel({
-      resolveEmail: async (userId: string) => {
-        const rows = await database
-          .select({ email: schema.users.email })
-          .from(schema.users)
-          .where(eq(schema.users.id, userId))
-          .limit(1);
-        return rows[0]?.email ?? null;
-      },
-    }),
     // The ONE send-side reader (VIL-262): it carries the verified + non-revoked
     // predicate itself, so the SMS leg fails closed on its own rather than on the
     // dispatch having run the consent check first. The leg's default transport

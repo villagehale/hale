@@ -1,12 +1,9 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  BUSINESS_ADDRESS,
-  hasOptedOut,
   isLoopEmailType,
   processUnsubscribe,
   recordOptOut,
-  recordEmailSend,
   signUnsubscribeToken,
   unsubscribeStreamLabel,
   unsubscribeUrl,
@@ -14,7 +11,6 @@ import {
 } from './email-compliance';
 
 const USER_ID = '22222222-2222-4222-8222-222222222222';
-const FAMILY_ID = '33333333-3333-4333-8333-333333333333';
 
 beforeEach(() => {
   vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsub-secret');
@@ -35,15 +31,15 @@ describe('unsubscribe token', () => {
 
   it('rejects a token bound to a different user (cannot opt out someone else)', () => {
     const token = signUnsubscribeToken({ userId: USER_ID, emailType: 'daily_digest' }) as string;
-    expect(
-      verifyUnsubscribeToken({ userId: 'other-user', emailType: 'daily_digest' }, token),
-    ).toBe(false);
+    expect(verifyUnsubscribeToken({ userId: 'other-user', emailType: 'daily_digest' }, token)).toBe(
+      false,
+    );
   });
 
   it('rejects a garbage / non-hex token', () => {
-    expect(verifyUnsubscribeToken({ userId: USER_ID, emailType: 'daily_digest' }, 'not-hex!!')).toBe(
-      false,
-    );
+    expect(
+      verifyUnsubscribeToken({ userId: USER_ID, emailType: 'daily_digest' }, 'not-hex!!'),
+    ).toBe(false);
   });
 
   it('fails closed when UNSUBSCRIBE_SECRET is unset (no token minted, none verified)', () => {
@@ -72,22 +68,6 @@ describe('unsubscribe token', () => {
 });
 
 describe('opt-out store', () => {
-  it('hasOptedOut is true when a matching row exists, false otherwise', async () => {
-    const dbWithRow = {
-      select: () => ({
-        from: () => ({ where: () => ({ limit: async () => [{ id: 'x' }] }) }),
-      }),
-    } as never;
-    const dbEmpty = {
-      select: () => ({
-        from: () => ({ where: () => ({ limit: async () => [] }) }),
-      }),
-    } as never;
-
-    expect(await hasOptedOut(dbWithRow, USER_ID, 'daily_digest')).toBe(true);
-    expect(await hasOptedOut(dbEmpty, USER_ID, 'daily_digest')).toBe(false);
-  });
-
   it('recordOptOut inserts into email_opt_outs idempotently (onConflictDoNothing) and reports it was new', async () => {
     const captured: Array<{ table: unknown; values: unknown; conflict: boolean }> = [];
     const db = {
@@ -124,34 +104,6 @@ describe('opt-out store', () => {
     } as never;
 
     expect(await recordOptOut(db, USER_ID, 'daily_digest')).toBe(false);
-  });
-
-  it('recordEmailSend writes one ledger row with recipient + provider id', async () => {
-    const captured: Array<{ table: unknown; values: unknown }> = [];
-    const db = {
-      insert: (table: unknown) => ({
-        values: async (values: unknown) => {
-          captured.push({ table, values });
-        },
-      }),
-    } as never;
-
-    await recordEmailSend(db, {
-      userId: USER_ID,
-      familyId: FAMILY_ID,
-      emailType: 'daily_digest',
-      recipient: 'parent@example.com',
-      providerMessageId: 'resend-123',
-    });
-
-    expect(captured[0]?.table).toBe(schema.emailSends);
-    expect(captured[0]?.values).toMatchObject({
-      userId: USER_ID,
-      familyId: FAMILY_ID,
-      emailType: 'daily_digest',
-      recipient: 'parent@example.com',
-      providerMessageId: 'resend-123',
-    });
   });
 });
 
@@ -236,12 +188,6 @@ describe('processUnsubscribe', () => {
   });
 });
 
-describe('CASL footer content', () => {
-  it('exposes a business mailing address constant', () => {
-    expect(BUSINESS_ADDRESS).toContain('Village Hale Technologies Inc.');
-  });
-});
-
 describe('isLoopEmailType — the STOP guardrail classifier', () => {
   it('is true for the four loop streams, false for the legacy streams', () => {
     expect(isLoopEmailType('weekly_plan')).toBe(true);
@@ -272,9 +218,9 @@ describe('unsubscribeStreamLabel — the confirmation page names the stream that
   });
 
   it('labels no two streams the same, so the receipt is never ambiguous', () => {
-    const labels = (['daily_digest', 'welcome', 'weekly_plan', 'reminder', 'approval', 'alert'] as const).map(
-      unsubscribeStreamLabel,
-    );
+    const labels = (
+      ['daily_digest', 'welcome', 'weekly_plan', 'reminder', 'approval', 'alert'] as const
+    ).map(unsubscribeStreamLabel);
     expect(new Set(labels).size).toBe(labels.length);
   });
 });

@@ -166,13 +166,4 @@ describe('createSmsChannel().send', () => {
       }).send({ userId: USER_ID, rendered: SMS }),
     ).rejects.toThrow(/fetch is not a function/);
   });
-
-  it('refuses content that is not SMS — a wiring bug, not a runtime condition', async () => {
-    await expect(
-      createSmsChannel({ resolveTarget: async () => PHONE, configured: true }).send({
-        userId: USER_ID,
-        rendered: { kind: 'email', subject: 'x', html: '<p>y</p>', text: 'y' },
-      }),
-    ).rejects.toThrow(/received email content/);
-  });
 });

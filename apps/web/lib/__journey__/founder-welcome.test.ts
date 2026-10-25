@@ -145,9 +145,6 @@ describe("the founder's welcome note", () => {
       answerComposer: fakeSilentAnswerComposer,
       friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),
-      seedCivic: async () => 0,
-      resolveCenter: async () => null,
-      discoveryTrigger: () => {},
       limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
       consentAsk: askWriter(),
       now: INTAKE_AT,
@@ -310,7 +307,7 @@ describe("the founder's welcome note", () => {
       ),
       // The production adapter over the fake pipe: the router hands it a resolved sms
       // route, the fake records the send — the same recorder the founder lane writes to.
-      transport: createReplyTransport({ phone: transport, email: null }),
+      transport: createReplyTransport({ phone: transport }),
       replyResolver: resolver,
       coach: silentCoach,
       offDomain: { consider: async () => ({ status: 'in_domain' as const, fallback: null }) },

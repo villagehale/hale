@@ -587,12 +587,11 @@ describe('recMorningHandler', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, connector_link, connector_disconnect, forward_address, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
+  it('is village_intro, approval, connector_link, connector_disconnect, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
       'approval',
-      'email_capture',
       // Claims only an explicit connect-verb + provider-noun pair — a shape no other
       // handler's vocabulary contains — so its position among the specific-word
       // handlers is free; what matters is only that it is ahead of the bare-word
@@ -607,7 +606,6 @@ describe('the shipped order', () => {
       // all three matchers require a noun no other handler's vocabulary contains, and
       // each half asserts its disjointness from the others over its whole phrase table.
       // It reads no bare word either, so no YES can land here.
-      'forward_address',
       // Ahead of the three handlers that read a bare affirmative for a household's OWN
       // business: this is the only one whose wrong answer texts a different household.
       'founder_welcome',

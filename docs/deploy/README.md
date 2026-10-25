@@ -65,7 +65,6 @@ full app env; the table below is the **deploy-time** subset per platform.
 | `DATABASE_DIRECT_URL` | ✓ | — | Build-time / non-pooled |
 | `ANTHROPIC_API_KEY` | ✓ | — | Web agent pipeline + scheduled cron agents (digest / inference) |
 | `AI_GATEWAY_API_KEY` | ✓ | — | Only when a VIL-376 JEV or DeepSeek candidate is enabled. |
-| `RESEND_API_KEY` | ✓ | — | Daily-digest email send (from `hello@villagehale.com`; `RESEND_FROM` optional override) |
 | `CRON_SECRET` | ✓ | — | **Required for the scheduled agents.** Vercel sends it as `Authorization: Bearer <CRON_SECRET>`; the cron routes 401 (do no work, no spend) without a match. See [Scheduled agents (cron)](#scheduled-agents-cron). |
 | `CLERK_SECRET_KEY` | ✓ | — | Auth |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✓ | — | Auth (public) |
@@ -162,7 +161,7 @@ The schedule lives in `apps/web/vercel.json` under
 
 | Route | Schedule (UTC) | Toronto local | Cadence | Does |
 |---|---|---|---|---|
-| `/api/cron/digest` | `0 12 * * *` | ~07:00 EST / 08:00 EDT | daily, morning | Composes each family's daily brief on the harness (companion health/milestones + this-week village), stores it in `daily_digests`, and emails it via Resend from `hello@villagehale.com`. |
+| `/api/cron/digest` | `0 12 * * *` | ~07:00 EST / 08:00 EDT | daily, morning | Composes each family's daily brief on the harness (companion health/milestones + this-week village), stores it in `daily_digests`. |
 | `/api/cron/inference` | `0 6 * * *` | ~01:00 EST / 02:00 EDT | daily, overnight | Memory inference over each family's recent activity; saves ≥0.7-confidence facts through the guarded `save_memory` tool. |
 
 **Timezone note:** Vercel cron expressions are **UTC** (no per-cron timezone).

@@ -7,8 +7,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
  * VIL-255 · the LLM-provider health pre-flight, after the 2026-08-01 incident: the
  * Anthropic credit balance ran out silently, all eight families' daily briefs failed
  * at the 12:00Z window and eight infer-memory runs failed at 06:00Z, and it was found
- * by hand hours later. The founder-alert machinery already existed (X1's stop-alert /
- * loop-health-digest); nothing watched the provider.
+ * by hand hours later. Nothing watched the provider.
  *
  * One cheap call BEFORE each LLM cron's per-family fan-out answers "can we reach the
  * model at all?". A billing/auth answer aborts the window with a distinct outcome
@@ -17,7 +16,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
  * FAIL-OPEN BY CONSTRUCTION, not by a kill switch. Only `billing` and `auth` abort;
  * every other failure — including anything unexpected thrown inside the probe itself —
  * classifies as `transient` and the window runs as before. So the worst a bug in this
- * file can do is send a useless email; it can never be the reason a family's brief
+ * file can do is post a useless #ops alert; it can never be the reason a family's brief
  * didn't arrive. That property is why there is no feature flag here to forget to turn
  * on.
  *
@@ -157,22 +156,14 @@ export async function probeProviderHealth(client: AgentClient): Promise<Provider
 
 // ── incidents ────────────────────────────────────────────────────────────────
 
-/** The founder digests whose SEND can fail — each one a surface whose silence would
- * otherwise read as a clean week ("a refusal is not evidence", in ledger form). */
-export type FounderDigest = 'papercut' | 'loop_health';
-
 export type ProviderIncident =
   | { kind: 'preflight'; window: SendWindow; failure: ProviderFailureClass; detail: string }
-  | { kind: 'run_spike'; failed: number; total: number; windowStart: Date; windowEnd: Date }
-  /** A founder digest composed but its send failed (2026-09-03 audit): the named
-   * outcome its cron already returns, escalated through this seam instead of dying
-   * as a console line in a JSON response nobody reads. */
-  | { kind: 'digest_send_failed'; digest: FounderDigest; reason: string };
+  | { kind: 'run_spike'; failed: number; total: number; windowStart: Date; windowEnd: Date };
 
 /**
  * An incident's identity. Keyed on the CAUSE, not the window — one empty balance is one
- * incident whether the digest, the weekly compose, or the nudge sweep noticed it first,
- * so the founder gets one email rather than one per cron.
+ * incident whether the weekly compose or the nudge sweep noticed it first, so #ops
+ * gets one post rather than one per cron.
  */
 export function providerIncidentKey(incident: ProviderIncident): string {
   switch (incident.kind) {
@@ -180,8 +171,6 @@ export function providerIncidentKey(incident: ProviderIncident): string {
       return `provider_health:${incident.failure}`;
     case 'run_spike':
       return 'provider_health:run_spike';
-    case 'digest_send_failed':
-      return `provider_health:digest_send_failed:${incident.digest}`;
   }
 }
 
@@ -189,7 +178,7 @@ export function providerIncidentKey(incident: ProviderIncident): string {
  * How long one incident stays deduped. A day: an outage that is still an outage
  * tomorrow morning deserves to be said again, and a fixed window keeps the claim a
  * single atomic INSERT. The honest cost of a fixed window is the boundary — an outage
- * that starts just before it rolls produces two emails. Two emails for a real outage is
+ * that starts just before it rolls produces two posts. Two posts for a real outage is
  * the right side of that trade.
  */
 export const PROVIDER_INCIDENT_WINDOW_HOURS = 24;
@@ -285,36 +274,12 @@ const FAILURE_REMEDY: Record<ProviderFailureClass, string> = {
   transient: 'no action — the next window retries.',
 };
 
-const DIGEST_LABEL: Record<FounderDigest, string> = {
-  papercut: 'weekly papercut',
-  loop_health: 'weekly loop-health',
-};
-
 /** The alert body. Pure, so the wording is tested directly. Quiet-operator order: what
  * did not happen, why, what Hale did about it, what you do next. */
 export function formatProviderAlert(
   incident: ProviderIncident,
   at: Date,
 ): { subject: string; text: string } {
-  if (incident.kind === 'digest_send_failed') {
-    const remedy = 'the digest send failed. Re-run the digest cron and read the worker log.';
-    return {
-      subject: `Hale ops: the ${DIGEST_LABEL[incident.digest]} digest failed to send`,
-      text: [
-        `the ${DIGEST_LABEL[incident.digest]} digest composed, but its send failed (${incident.reason}).`,
-        '',
-        'what this means',
-        '  that founder surface is dark — treat its silence as unknown, never as a',
-        '  clean week. the numbers it would have carried are still in the database.',
-        '',
-        'what to do',
-        `  ${remedy}`,
-        '',
-        `raised ${at.toISOString()}. one #ops post per digest per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
-      ].join('\n'),
-    };
-  }
-
   if (incident.kind === 'run_spike') {
     return {
       subject: `Hale ops: ${incident.failed} of ${incident.total} agent runs failed in the last hour`,
@@ -422,7 +387,7 @@ export async function raiseProviderIncident(
   }
 
   const { subject, text } = formatProviderAlert(incident, now);
-  // Always logged, whether or not the email lands — the platform log is the trail an
+  // Always logged, whether or not the post lands — the platform log is the trail an
   // ops event gets (audit_log is family-scoped by schema and this event has no family).
   console.error({ incident: { ...incident, key } }, subject);
   try {
@@ -435,28 +400,6 @@ export async function raiseProviderIncident(
 
 function logAlertFailure(what: string, err: unknown): void {
   console.error(what, { message: err instanceof Error ? err.message : 'unknown error' });
-}
-
-/**
- * The one call a digest cron makes when its send failed — a thin name over
- * {@link raiseProviderIncident} so all three digests escalate identically and none
- * grows a private alert path. Best-effort like everything on this seam: the incident
- * is always console-logged in full by raiseProviderIncident, the claim dedupes to one
- * email per digest per window, and nothing here can throw into the failing cron.
- *
- * Honest limit: for the two email digests the escalation email rides the same Resend
- * the digest just failed on, so when Resend itself is down this leg degrades to the
- * logged incident + the claim row; the cross-transport backstop for that case is the
- * dead-man switch (audit P1-8), not a fourth alert pathway here.
- */
-export async function escalateDigestSendFailure(
-  database: Database,
-  digest: FounderDigest,
-  reason: string,
-  deps: ProviderHealthDeps = defaultProviderHealthDeps(),
-  now: Date = new Date(),
-): Promise<ProviderAlertOutcome> {
-  return raiseProviderIncident(database, { kind: 'digest_send_failed', digest, reason }, deps, now);
 }
 
 /** Why a window was cancelled — the shape each cron reports back in its own result, so

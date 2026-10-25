@@ -105,8 +105,7 @@ function fakeDb(): { database: Database; capture: DbCapture } {
   const capture: DbCapture = { insertedTables: [] };
   const database = {
     select: () => ({
-      from: (table: unknown) =>
-        selectChain(table === schema.loopPrefs ? [] : [FAMILY_ROW]),
+      from: (table: unknown) => selectChain(table === schema.loopPrefs ? [] : [FAMILY_ROW]),
     }),
     delete: () => ({ where: async () => undefined }),
     insert: (table: unknown) => {
@@ -127,11 +126,10 @@ function fakeDb(): { database: Database; capture: DbCapture } {
 }
 
 beforeEach(() => {
-  // No founder address and no Resend key: the alert degrades to a clean no-op, so these
-  // assert the ABORT, never a real send.
+  // No #ops webhook: the alert degrades to a clean no-op, so these assert the ABORT,
+  // never a real send.
   vi.stubEnv('FOUNDER_ALERT_EMAIL', '');
   vi.stubEnv('WELCOME_BCC', '');
-  vi.stubEnv('RESEND_API_KEY', '');
   vi.stubEnv('F14_ENABLED', 'true');
 });
 afterEach(() => {

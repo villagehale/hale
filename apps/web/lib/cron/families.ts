@@ -14,10 +14,6 @@ import { asc } from 'drizzle-orm';
 export const MAX_FAMILIES_PER_RUN = {
   inference: 100,
   pushReminders: 100,
-  /** The civic sweep's per-run projection bound. Its INGEST cost is fixed (one
-   * pass over the public calendars regardless of headcount); this caps only the
-   * per-family database work. */
-  civicSweep: 200,
   /** Memory digests are deterministic, but a bad rule still has to be bounded. */
   memoryDigest: 50,
 } as const;

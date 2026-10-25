@@ -101,7 +101,10 @@ jobs:
             ${{ runner.os }}-ms-playwright-
 
       - name: Install Playwright chromium
-        run: pnpm --filter @hale/web exec playwright install --with-deps chromium
+        run: |
+          # The runner's Azure HTTP mirror can hang apt until the job times out.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          pnpm --filter @hale/web exec playwright install --with-deps chromium
 
       - name: Test
         run: pnpm test
@@ -203,8 +206,6 @@ jobs:
       - name: Follow-up ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:followup-voice
 
-      - name: Calendar invite + email-ask composer eval (cached-only)
-        run: pnpm --filter @hale/worker eval:calendar-voice
 
       - name: Identity ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:identity-ask
@@ -244,9 +245,6 @@ jobs:
 
       - name: Coaching plan composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-plan
-
-      - name: Civic hours parser eval (cached-only)
-        run: pnpm --filter @hale/worker eval:civic-hours
 
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify

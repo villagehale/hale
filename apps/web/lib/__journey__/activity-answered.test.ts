@@ -144,7 +144,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
 
     const [user] = await database
       .insert(schema.users)
-      .values({ email: null, name: null, timezone: TZ })
+      .values({ name: null, timezone: TZ })
       .returning({ id: schema.users.id });
     parentUserId = (user as { id: string }).id;
 
@@ -550,7 +550,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
       ...channelRouterDeps(database),
       // The production adapter over the fake pipe: the router hands it a resolved sms
       // route, the fake records the send — one recorder for the whole journey.
-      transport: createReplyTransport({ phone: transport, email: null }),
+      transport: createReplyTransport({ phone: transport }),
       coach,
       replyResolver: recordedResolver({
         target: 'ambiguous',

@@ -1780,3 +1780,5 @@ body:has(.rd) footer > .shell { max-width: calc(1200px + 48px); padding-inline: 
     text-align: center;
   }
 }
+.rd .hs-tier-usd { display: block; margin-top: 4px; font-family: var(--font-ui); font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--meta); }
+.rd .t-max .hs-tier-usd { color: rgb(247 244 236 / 0.74); }

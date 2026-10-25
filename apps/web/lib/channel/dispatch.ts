@@ -18,11 +18,12 @@ import type {
  * F11 · The Sunday Loop — the dispatch (VIL-213 · A2). THE one place loop policy
  * is enforced: no caller reaches a provider except through here, so consent, the
  * A5 per-category enables, quiet hours, dedupe, the channel_messages ledger,
- * audit rows, and the email CASL dual-write all happen exactly once.
+ * and audit rows all happen exactly once.
  *
- * Delivery model: the exchange send goes via the parent's loop_channel (email or
- * sms). The Expo push mirror leg died with the mobile app (VIL-318); historical
- * 'push' ledger rows keep their persisted enum value.
+ * Delivery model: the exchange send goes by SMS. The email leg is retired (Hale no
+ * longer sends email), so a persisted loop_channel of 'email' no longer routes
+ * anywhere; the Expo push mirror leg died with the mobile app (VIL-318). Historical
+ * 'email' and 'push' ledger rows keep their persisted enum values.
  *
  * Policy is evaluated PER LEG through this single point, and every leg writes its
  * own ledger row. Dedupe is per (parent, category, CHANNEL) so a re-drain can't
@@ -32,6 +33,9 @@ import type {
  * Pure orchestrator over injected ports so the policy is tested against Fakes with
  * no live provider.
  */
+
+/** The one leg the dispatch sends on. */
+const EXCHANGE_CHANNEL: ChannelKind = 'sms';
 
 export type SuppressionStatus =
   | 'suppressed_pref'
@@ -60,9 +64,7 @@ export interface LedgerWrite {
 export interface DispatchPorts {
   now(): Date;
   loadPrefs(userId: string): Promise<LoopPrefsView>;
-  loadParent(userId: string): Promise<{ email: string | null; timezone: string }>;
-  /** CASL email opt-out for a loop stream (absence of opt-out = consent). */
-  emailOptedOut(userId: string, emailType: string): Promise<boolean>;
+  loadParent(userId: string): Promise<{ timezone: string }>;
   /** CASL express SMS consent, live (an active verified parent_channels row). */
   smsConsentLive(userId: string): Promise<boolean>;
   /** A prior send (not a suppression) already carries this per-channel dedupe key. */
@@ -77,13 +79,6 @@ export interface DispatchPorts {
     distinctId: string,
     properties?: Record<string, unknown>,
   ): Promise<CaptureOutcome>;
-  recordEmailSend(input: {
-    userId: string;
-    familyId: string;
-    emailType: string;
-    recipient: string;
-    providerMessageId: string | null;
-  }): Promise<void>;
   audit(row: {
     familyId: string;
     actor: string;
@@ -98,10 +93,6 @@ export interface DispatchPorts {
    * plan, a reminder and an ICS invite all become things the coach can see Hale having
    * said. `channel_messages` carries no body (rule #1), so a leg that skips this leaves
    * the parent's reply with no antecedent.
-   *
-   * The SMS leg ONLY, and that is a decision rather than an omission: the thread is the
-   * SMS thread (coach/note-key.ts), and an email is a different surface whose
-   * unification is its own piece of work.
    *
    * No db handle, like every other port here: the dispatch stays a decision engine and
    * wiring.ts binds the real writer (lib/channel/thread.ts).
@@ -175,10 +166,9 @@ export async function dispatchLoopMessage(
     ports.loadParent(msg.parentUserId),
   ]);
 
-  // One leg: the exchange channel. A channel-PINNED message (msg.channel — the ICS
-  // invite) rides that channel alone: its content exists there and nowhere else.
-  // See LoopMessage.channel.
-  const legs: ChannelKind[] = [msg.channel ?? prefs.loopChannel];
+  // One leg: SMS, the only channel Hale sends on. A channel-PINNED message
+  // (msg.channel) rides that channel alone. See LoopMessage.channel.
+  const legs: ChannelKind[] = [msg.channel ?? EXCHANGE_CHANNEL];
 
   const results: LegResult[] = [];
   for (const channel of legs) {
@@ -205,8 +195,7 @@ export async function recordAbandonedDispatch(
   msg: LoopMessage,
   ports: DispatchPorts,
 ): Promise<DispatchResult> {
-  const prefs = await ports.loadPrefs(msg.parentUserId);
-  const channel = msg.channel ?? prefs.loopChannel;
+  const channel = msg.channel ?? EXCHANGE_CHANNEL;
   await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: SEND_RETRIES_EXHAUSTED });
   return { legs: [{ channel, outcome: 'failed', reason: SEND_RETRIES_EXHAUSTED }] };
 }
@@ -215,7 +204,7 @@ async function dispatchLeg(
   msg: LoopMessage,
   channel: ChannelKind,
   prefs: LoopPrefsView,
-  parent: { email: string | null; timezone: string },
+  parent: { timezone: string },
   now: Date,
   ports: DispatchPorts,
 ): Promise<LegResult> {
@@ -242,9 +231,6 @@ async function dispatchLeg(
     return { channel, outcome: 'deduped' };
   }
 
-  if (channel === 'email' && (await ports.emailOptedOut(msg.parentUserId, msg.category))) {
-    return suppressed('suppressed_consent');
-  }
   if (channel === 'sms' && !(await ports.smsConsentLive(msg.parentUserId))) {
     return suppressed('suppressed_consent');
   }
@@ -253,7 +239,7 @@ async function dispatchLeg(
   // Carried on every leg from here down, the failures included: a template whose voice the
   // fold refused and a template whose send the provider refused are two different things
   // to go and look at, and reading one from the other is guesswork (rule #11).
-  const voice = rendered.kind === 'sms' ? rendered.voice : undefined;
+  const voice = rendered.voice;
   // THE CHOKE POINT'S OWN HONESTY GATE (VIL-293), and it is the ledger-FREE half of the
   // reconciliation primitive on purpose. This seam has no database handle by design — it
   // is a decision engine over injected ports — so it cannot ask whether a promise has a
@@ -293,15 +279,6 @@ async function dispatchLeg(
       providerChatId: result.providerChatId ?? null,
       sentAt: now,
     });
-    if (channel === 'email' && parent.email) {
-      await ports.recordEmailSend({
-        userId: msg.parentUserId,
-        familyId: msg.familyId,
-        emailType: msg.category,
-        recipient: parent.email,
-        providerMessageId: result.providerMessageId,
-      });
-    }
     // THE VERB IS WHO IT WENT TO, not what it was. A caregiver leg is a DISCLOSURE of
     // the household's week to a third party the parents authorised, and the generic row
     // renders on the family's trail as "Hale sent you a message" — which is false about
@@ -341,9 +318,7 @@ async function dispatchLeg(
   return { channel, outcome: 'failed', reason: errorCode, voice };
 }
 
-/** The words a parent will actually read, whatever the channel renders them into. An
- * email's HTML is not checked — its plain-text alternative carries the same sentences
- * and is the one a regex can read honestly. */
+/** The words a parent will actually read. */
 function claimText(rendered: RenderedContent): string {
   return rendered.text;
 }

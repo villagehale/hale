@@ -18,9 +18,8 @@ import { resolveMetricsExclusions } from './metrics-scope';
 import type { MedicalAnswers, RadarVerification, RetentionCohort } from './scorecard-rubric';
 
 /**
- * The founder counts the Monday loop-health email grades, kept here so the daily #ops
- * post can read them after that email's module is deleted (VIL-437). The SQL is the
- * same SQL the email ran. health-digest.ts re-exports these until that deletion.
+ * The founder counts the daily #ops post reads (VIL-437). The SQL is the same SQL the
+ * retired Monday loop-health email ran.
  */
 
 /** The founder's reporting zone — the only place a cohort LABEL is anchored to a

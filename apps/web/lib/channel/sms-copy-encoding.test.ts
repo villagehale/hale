@@ -6,14 +6,7 @@ import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { connectorRevokeReply } from '~/lib/channel/connect/copy';
 import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
 import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
-import {
-  forwardAddressReply,
-  forwardRevokeDeclinedReply,
-  forwardRevokeReply,
-  matchForwardAddressRequest,
-} from '~/lib/channel/email/forward-request';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
-import { replyLanguage } from '~/lib/channel/language';
 import { referralReply } from '~/lib/channel/off-domain/copy';
 import {
   approvedReceipt,
@@ -290,78 +283,6 @@ describe('the disconnect receipts stay GSM-7 and say what Google still holds', (
     expect(matchConnectorDisconnectRequest(CONNECTOR_TRUST_LINE.gcal)).toBeNull();
     expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
     expect(matchConnectorDisconnectRequest('disconnect my gmail')).toBe('gmail');
-  });
-});
-
-/**
- * THE FORWARDING ADDRESS REPLY — the one deterministic line that hands a parent a
- * credential, and the receipts that turn it off again (VIL-352).
- *
- * TWO segments rather than one, and the ceiling is argued in forward-request.ts: the
- * address alone is 56 characters, and the sentence beside it has to say that an unknown
- * sender is ASKED about rather than read, or a parent sets up a mail filter believing
- * Hale is already reading everything. The receipts carry no address and are held to one.
- */
-describe('the forwarding address reply stays GSM-7 and carries the whole address', () => {
-  const ADDRESS = `hale+${'a'.repeat(30)}@mail.villagehale.com`;
-
-  it.each(['en', 'fr'] as const)('%s', async (language) => {
-    const body = (await forwardAddressReply(language, ADDRESS)) ?? '';
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(body).toContain(ADDRESS);
-  });
-
-  it.each([
-    ['en', 'revoked'],
-    ['en', 'not_configured'],
-    ['fr', 'revoked'],
-    ['fr', 'not_configured'],
-  ] as const)('the %s %s receipt is GSM-7', async (language, outcome) => {
-    const body = (await forwardRevokeReply(language, outcome)) ?? '';
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(body.length).toBeGreaterThan(0);
-  });
-
-  it.each(['en', 'fr'] as const)('the %s declined receipt is GSM-7', async (language) => {
-    const body = (await forwardRevokeDeclinedReply(language)) ?? '';
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(body.length).toBeGreaterThan(0);
-  });
-
-  /**
-   * The words Hale's own replies teach have to be words that work — the same check the
-   * connected receipt gets, because both sentences tell a parent what to text.
-   *
-   * THE ADDRESS REPLY NOW READS AS `turn_off` WHEN IT IS ECHOED BACK, and that is the
-   * point of round 6 rather than a regression of the old `not.toBe('turn_off')` pin. Its
-   * closing line quotes the command, so the taught words are words the matcher hears —
-   * and what a turn-off reads as is now a QUESTION, not a revoke, so an echo costs one
-   * text instead of a credential.
-   */
-  it('honours the instructions its own copy gives', async () => {
-    expect(await forwardAddressReply('en', ADDRESS)).toContain('turn off my forwarding address');
-    expect(matchForwardAddressRequest('turn off my forwarding address')).toBe('turn_off');
-    expect(await forwardAddressReply('fr', ADDRESS)).toContain(
-      'désactiver mon adresse de transfert',
-    );
-    expect(matchForwardAddressRequest('désactiver mon adresse de transfert')).toBe('turn_off');
-    expect(await forwardRevokeReply('en', 'revoked')).toContain('forwarding address');
-    expect(matchForwardAddressRequest('forwarding address')).toBe('address');
-    expect(await forwardRevokeReply('fr', 'revoked')).toContain('adresse de transfert');
-    expect(matchForwardAddressRequest('adresse de transfert')).toBe('address');
-  });
-
-  /**
-   * AND IN THE LANGUAGE IT TAUGHT THEM. A taught phrase the matcher hears but the language
-   * detector does not is only half a working instruction: the French reply tells a parent
-   * to text "desactiver mon adresse de transfert", and every word of that sentence was
-   * either an English word or an accented one the fold strips, so the confirm that came
-   * back said "Reply YES". Hale must answer its own French in French.
-   */
-  it('does not read a taught phrase as a language tag', () => {
-    expect(replyLanguage('désactiver mon adresse de transfert')).toBeNull();
-    expect(replyLanguage('adresse de transfert')).toBeNull();
-    expect(replyLanguage('fr')).toBe('fr');
   });
 });
 

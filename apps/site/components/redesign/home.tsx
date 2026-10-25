@@ -343,16 +343,16 @@ export function RedesignHome({
    </li>
    <li className="hs-tier t-plus">
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
-    <h3>{t("$19 CAD/mo")}</h3>
-    <p className="hs-tier-meta">{t("or $159 CAD/yr, about three months free")}</p>
+    <h3>{t("$19 CAD/mo")}<span className="hs-tier-usd">{t("$15 USD/mo")}</span></h3>
+    <p className="hs-tier-meta">{t("or $159 CAD / $129 USD a year, about three months free")}</p>
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Free")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Year memory, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Sign-ups done for you, when you say yes")}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
    </li>
    <li className="hs-tier t-max">
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
-    <h3>{t("$39 CAD/mo")}</h3>
-    <p className="hs-tier-meta">{t("or $329 CAD/yr, about three months free")}</p>
+    <h3>{t("$39 CAD/mo")}<span className="hs-tier-usd">{t("$29 USD/mo")}</span></h3>
+    <p className="hs-tier-meta">{t("or $329 CAD / $259 USD a year, about three months free")}</p>
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches and spot watches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{keepCardTail(t("Sign-ups for a whole season in one go"))}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
@@ -369,7 +369,7 @@ export function RedesignHome({
    <a className="hs-more hs-desktop-only" href={localeHref(locale, "/faq")}><span>{t("All questions")}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a>
   </div>
   <div className="hs-faq-r">
-   <FaqItem id="does-hale-book-or-register-for-me" question={t("Does Hale book or register for me?")}>{t("Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes.")}</FaqItem>
+   <FaqItem id="does-hale-book-or-register-for-me" question={t("Does Hale book or register for me?")}>{t("Yes, when you say yes. Hale finds the class, watches for spots and texts you before sign-ups open. Say yes and it signs your kid up, then hands you the payment step. You always pay yourself.")}</FaqItem>
    <FaqItem id="is-it-free" question={t("Is it free?")}>{t("Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.")}</FaqItem>
    <FaqItem id="do-i-need-an-app" question={t("Do I need an app?")}>{t("No. Hale works in iMessage and regular texts. Add it to a group chat, or text it on its own.")}</FaqItem>
    <FaqItem id="what-about-our-privacy" question={t("What about our privacy?")}><Phrase locale={locale} sentence="Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details." phrase="privacy policy" href={localeHref(locale, "/privacy")} /></FaqItem>

@@ -6,24 +6,7 @@ creds. Do NOT run in CI — these reach a provider. Each snippet goes in a throw
 real env) and runs with `npx vitest run apps/web/lib/channel/adapters/_smoke.test.ts`.
 Delete the scratch file after. Never paste real creds into a committed file.
 
-## 1. Resend email — `createResendEmailChannel`
-
-Prereqs: `RESEND_API_KEY=re_...` (a Resend test key), `RESEND_FROM` a verified sender.
-`delivered@resend.dev` is Resend's always-accepts test recipient.
-
-```ts
-import { createResendEmailChannel } from './resend-email';
-
-const adapter = createResendEmailChannel({ resolveEmail: async () => 'delivered@resend.dev' });
-console.log(await adapter.send({
-  userId: 'smoke',
-  rendered: { kind: 'email', subject: 'Hale smoke', html: '<p>email leg live</p>', text: 'email leg live' },
-}));
-// expect: { status: 'sent', providerMessageId: '<resend id>' }
-// with RESEND_API_KEY unset it must instead be { status: 'skipped', reason: 'not_configured' }
-```
-
-## 2. Loop SMS — `createSmsChannel`
+## 1. Loop SMS — `createSmsChannel`
 
 The default sender is Linq (`LINQ_API_KEY` and `LINQ_FROM_E164`). The config gate:
 

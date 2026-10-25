@@ -54,9 +54,7 @@ function fakeDb(opts: {
   const endorseValues = vi.fn().mockReturnValue({ onConflictDoNothing });
   const insert = vi.fn().mockImplementation(() => {
     // First insert call is the endorsement, second is the audit row.
-    return insert.mock.calls.length === 1
-      ? { values: endorseValues }
-      : { values: auditValues };
+    return insert.mock.calls.length === 1 ? { values: endorseValues } : { values: auditValues };
   });
 
   return {
@@ -87,7 +85,7 @@ describe('endorseVillageCandidate — hybrid trust + audit (rule #6)', () => {
         familyId: FAMILY_ID,
         actor: USER_ID,
         actionTaken: 'village_candidate_endorsed',
-        targetTable: 'village_candidates',
+        targetTable: 'family_activity_history',
         targetId: CANDIDATE_ID,
       }),
     );

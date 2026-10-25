@@ -1,6 +1,10 @@
-import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from '~/lib/channel/types';
+import type {
+  ChannelKind,
+  LoopMessage,
+  RenderedContent,
+  TemplateRenderer,
+} from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
-import { renderReminderEmail } from './email';
 import { asReminderPayload } from './payload';
 import { renderReminderSms } from './sms';
 
@@ -15,8 +19,6 @@ export const reminderRenderer: TemplateRenderer = {
     const payload = asReminderPayload(message.payload);
     const now = new Date();
     switch (channel) {
-      case 'email':
-        return renderReminderEmail(payload, nameLevel, now);
       case 'sms':
         return renderReminderSms(payload, nameLevel, now);
       default: {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
+import { capturePortalEventAfter } from '~/lib/analytics/server-capture';
 import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
@@ -40,6 +41,7 @@ export async function GET(_req: Request): Promise<Response> {
   }
 
   const document = await assembleFamilyExport(database, familyId, { actorUserId });
+  capturePortalEventAfter('portal_export_requested', familyId, 'rights_api');
 
   const filename = `hale-export-${document.exportedAt.slice(0, 10)}.json`;
   return new NextResponse(JSON.stringify(document, null, 2), {

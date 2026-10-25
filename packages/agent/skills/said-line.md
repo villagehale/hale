@@ -92,6 +92,14 @@ diagnose or suggest a treatment. Say Health811 can help any time (call 811),
 and that if it is an emergency they should call 911. Both numbers from
 `mustInclude` must appear as digits. Two short sentences, no question.
 
+## purpose: intro_yes
+
+The parent just said yes to one introduction to another family. Acknowledge it
+in one short sentence, in your own words. `facts.otherFamily` says what is known
+about the other family: say nothing beyond it. `facts.groupText` says whether a
+group text will follow; promise only what it says, and nothing when it says none.
+No question, no link.
+
 ## Links
 
 Never write a URL. Where a link goes, write its placeholder from `linkSlots`

@@ -200,7 +200,6 @@ const REPLY_SENT_ACTION: Record<ReplySent['channel'], string> = {
   sms: 'sms_reply_sent',
   // The ledger row beside the audit row records which pipe carried it.
   imessage: 'sms_reply_sent',
-  email: 'email_reply_sent',
 };
 
 /**
@@ -1258,19 +1257,16 @@ async function routeChannelMessageInner(
   // Past the wait a text normally takes, ONE composed line goes out first, the bubble back
   // up behind it. Armed only HERE, past every gate above: a deterministic reply, an
   // opt-out or a flood-held turn never has one, however slow its database. Once per text:
-  // a re-driven turn already had its chance. Not on email, where a reply is not watched
-  // for as it is written, and not in a group thread, which other families read. The group
+  // a re-driven turn already had its chance. Not in a group thread, which other families read. The group
   // bit is the door's own, not `context.inGroup`, which stays false while group onboarding
   // v2 is dark however many people are in the chat.
   const holdingSkip = redriven
     ? 're_driven'
-    : route.channel === 'email'
-      ? 'email'
-      : job.in_group === undefined
-        ? 'group_unknown'
-        : job.in_group
-          ? 'group_thread'
-          : null;
+    : job.in_group === undefined
+      ? 'group_unknown'
+      : job.in_group
+        ? 'group_thread'
+        : null;
   if (holdingSkip) {
     holding = holdingLineNotArmed(holdingSkip, deps.log);
   } else {

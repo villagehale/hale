@@ -63,10 +63,10 @@ export function defaultInferenceDeps(): InferenceDeps {
   // budget bounds each request so one stall cannot eat the window (audit P1-7).
   const modelMode = parseModelMode(process.env.HALE_MEMORY_INFER_MODEL_MODE, 'memory inference');
   if (modelMode === 'candidate') {
-    gatewayClient ??= budgetedAiGateway(CRON_SWEEP_CLIENT_OPTIONS);
+    gatewayClient ??= budgetedAiGateway(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'memory_infer' });
     return { client: gatewayClient, modelMode };
   }
-  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'memory_infer' });
   return { client: anthropicClient, modelMode };
 }
 

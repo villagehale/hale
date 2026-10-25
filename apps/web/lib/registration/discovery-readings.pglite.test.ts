@@ -5,7 +5,6 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { DISCOVERY_TARGETS } from './discovery-targets';
-import type { ExtractedWindow } from './verify-window';
 import {
   DISCOVERY_ESCALATE_AFTER_MS,
   type DiscoveryReadingInsert,
@@ -15,6 +14,7 @@ import {
   recordDiscoveryReadings,
   runRegistrationVerifySweep,
 } from './verify-sweep';
+import type { ExtractedWindow } from './verify-window';
 
 /**
  * VIL-360. The weekly sweep used to email a count and forget the page. A fixture
@@ -75,9 +75,8 @@ describe('discovery readings persist and escalate (VIL-360)', () => {
     await db.close();
   });
 
-  it('records the news page, names it in the digest, and escalates seven days later', async () => {
+  it('records the news page and re-reads it seven days later without duplicating', async () => {
     expect(NEWS_PAGE).toContain(QUOTE);
-    const sent: { subject: string; text: string }[] = [];
     const deps = {
       client: {} as never,
       fetchPage: vi.fn(async (url: string) => (url === NEWS_URL ? NEWS_PAGE : REGISTER_PAGE)),
@@ -88,16 +87,12 @@ describe('discovery readings persist and escalate (VIL-360)', () => {
       markVerified: async () => {},
       claimWeek: async () => true,
       recordRun: async () => {},
-      recordDiscoveries: (database: TestDb['database'], readings: readonly DiscoveryReadingInsert[]) =>
-        recordDiscoveryReadings(database, readings),
+      recordDiscoveries: (
+        database: TestDb['database'],
+        readings: readonly DiscoveryReadingInsert[],
+      ) => recordDiscoveryReadings(database, readings),
       loadDiscoveryHistory: (database: TestDb['database'], now: Date) =>
         loadPriorPublishedDiscoveries(database, now),
-      sender: {
-        send: async (subject: string, text: string) => {
-          sent.push({ subject, text });
-          return true;
-        },
-      },
       preflight: (async () => ({
         proceed: true,
         health: null,
@@ -122,27 +117,15 @@ describe('discovery readings persist and escalate (VIL-360)', () => {
     });
     expect(news?.readAt).toEqual(FIRST_RUN);
     expect(news?.reading).toMatchObject({ evidence: QUOTE, found: true });
-    expect(register).toMatchObject({ published: false, pageHash: discoveryPageHash(REGISTER_PAGE) });
+    expect(register).toMatchObject({
+      published: false,
+      pageHash: discoveryPageHash(REGISTER_PAGE),
+    });
 
-    expect(sent).toHaveLength(1);
-    expect(sent[0]?.subject).toBe('Hale · registration re-verify: needs a look');
-    expect(sent[0]?.text).toContain('new window published — add?');
-    expect(sent[0]?.text).toContain('Winter 2027');
-    expect(sent[0]?.text).toContain(NEWS_URL);
-    expect(sent[0]?.text).toContain(QUOTE);
-    expect(sent[0]?.text).not.toContain('ESCALATION');
-
-    sent.length = 0;
     const weekLater = new Date(FIRST_RUN.getTime() + DISCOVERY_ESCALATE_AFTER_MS);
     await runRegistrationVerifySweep(db.database, deps, weekLater);
 
-    expect(sent).toHaveLength(1);
-    expect(sent[0]?.subject).toBe(
-      'Hale · registration re-verify: discovery still open after 7 days',
-    );
-    expect(sent[0]?.text).toContain('ESCALATION — published 7 days ago and still not in the dataset');
-    expect(sent[0]?.text).toContain('Winter 2027');
-    expect(sent[0]?.text).toContain(NEWS_URL);
-    expect(sent[0]?.text).not.toContain('new window published — add?');
+    const history = await loadPriorPublishedDiscoveries(db.database, weekLater);
+    expect(history.length).toBeGreaterThan(0);
   });
 });

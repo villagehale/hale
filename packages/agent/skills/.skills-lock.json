@@ -19,13 +19,9 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
-  "calendar-email-ask.md": {
-    "file": "calendar-email-ask.md",
-    "sha256": "dee39b5ffa124c1ad4426ad8a819be231a7c74e860b99895353da326ade928a6"
-  },
-  "calendar-invite-note.md": {
-    "file": "calendar-invite-note.md",
-    "sha256": "c6506cf2c2843859d080ad490726448896c10b6f9592e3d11b47b12cd1b6b38d"
+  "calendar-cancel-voice.md": {
+    "file": "calendar-cancel-voice.md",
+    "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"
   },
   "calendar-offer-read.md": {
     "file": "calendar-offer-read.md",
@@ -66,10 +62,6 @@
   "consent-reply.md": {
     "file": "consent-reply.md",
     "sha256": "b72df8e839e92b36cff701496e26439fca7339ac98e3292f4c3e7a39f71a5951"
-  },
-  "curate-shortlist.md": {
-    "file": "curate-shortlist.md",
-    "sha256": "44f794b974575b8d8b8a85fe44adfba0756abb1bdcf32df75d1a1cd072f47e72"
   },
   "draft-action.md": {
     "file": "draft-action.md",
@@ -171,6 +163,10 @@
     "file": "interest-passport-voice.md",
     "sha256": "2d3a751c0e6ac252aaea2c12c4f4d0eabad3e9bc645d557271524d06d229106a"
   },
+  "intro-group-voice.md": {
+    "file": "intro-group-voice.md",
+    "sha256": "326a3c7c8f5d53bfa14782dd65e6c6ea7973bf789fd12e1ed7a6e2aa7840aea0"
+  },
   "intro-voice.md": {
     "file": "intro-voice.md",
     "sha256": "bc6fe6af049867f0e7c0e99c0a546d64a429c61c002e5c86ccf15f3561b63cf5"
@@ -215,10 +211,6 @@
     "file": "opt-out-read.md",
     "sha256": "615ded7cfd504d54e24bfb0ed0a0c469da5c5ae72704c381def8aad6489475d1"
   },
-  "parse-civic-hours.md": {
-    "file": "parse-civic-hours.md",
-    "sha256": "be461fbaa85e727b98416b88bd3b11e12d27a7b4d3da6a05960204694ab79da4"
-  },
   "parse-village-search.md": {
     "file": "parse-village-search.md",
     "sha256": "0f601d5fb3dcc1cccee224c6c0e9d7bd3bd82dc1379a175c6ecefbc04d761c76"
@@ -239,10 +231,6 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
-  "rank-recommendations.md": {
-    "file": "rank-recommendations.md",
-    "sha256": "3e02bc007a994ef820156a9d1d87346f993f97cdfecdc0e4957ee01f893a7a01"
-  },
   "reminder-voice.md": {
     "file": "reminder-voice.md",
     "sha256": "b7a348d73cddfe88451da8818bc1b4ee26e5424a246ce9030cbbfb30549cc261"
@@ -261,7 +249,7 @@
   },
   "said-line.md": {
     "file": "said-line.md",
-    "sha256": "f8901fb5817bf9cd1593281681944c42ff00670dc63b343a53dffff7d2189230"
+    "sha256": "f25938b6caaf9e7664754a1bd29633145d1f18fd379cdd1a7b7aa43b2e06cf79"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",

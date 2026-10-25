@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { OPS_SLACK_CHANNEL_DEFAULT } from '~/lib/monitoring/ops-slack';
 import {
   resetWebhookAlertWindowForTests,
   webhookFailureAlert,
   withWebhookFailureAlert,
 } from '~/lib/channel/webhook-alert';
+import { OPS_SLACK_CHANNEL_DEFAULT } from '~/lib/monitoring/ops-slack';
 
 /**
  * VIL-331 — the alert that exists for the moment nothing else works.
@@ -119,24 +119,6 @@ describe('webhookFailureAlert', () => {
 
   /** The boundary is the SEAM'S, not the provider's: the email door alerts through the same
    * two legs under its own route token (audit P1-5a). */
-  it('names the email door with its own route token', async () => {
-    configure();
-    const { calls, fetch } = recorder();
-
-    const outcome = await webhookFailureAlert(
-      { route: 'email_inbound', error: new TypeError('fetch failed: db.supabase.co') },
-      { fetch },
-    );
-
-    expect(outcome).toEqual({ page: 'sent', analytics: 'sent' });
-    expect(pageText(calls)).toBe(
-      'Hale ALERT: email_inbound threw - TypeError. Details in logs + PostHog.',
-    );
-    expect(JSON.parse(only(posthogCall(calls), 'posthog').body)).toMatchObject({
-      distinct_id: 'route:email_inbound',
-      properties: { route: 'email_inbound', error_class: 'TypeError' },
-    });
-  });
 
   it('sends no parent phone number and no message body to either leg', async () => {
     configure();
@@ -175,7 +157,7 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     await webhookFailureAlert(
-      { route: 'email_inbound', error: new Error('x'.repeat(500)) },
+      { route: 'linq_inbound', error: new Error('x'.repeat(500)) },
       { fetch },
     );
 
@@ -191,7 +173,7 @@ describe('webhookFailureAlert', () => {
     const { calls, fetch } = recorder();
 
     const outcome = await webhookFailureAlert(
-      { route: 'email_inbound', error: new Error('boom') },
+      { route: 'linq_inbound', error: new Error('boom') },
       { fetch },
     );
 

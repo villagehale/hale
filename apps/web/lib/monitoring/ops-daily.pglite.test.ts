@@ -7,6 +7,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { METRICS_EXCLUDED_FAMILIES_ENV } from '~/lib/loop/metrics-scope';
 import { DEAD_LETTER_PAGE_ROUTE, FIRST_HELLO_PAGE_ROUTE } from '~/lib/monitoring/failure-page';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
+import { PROVIDER_INCIDENT_ROUTE } from '~/lib/monitoring/provider-health';
 import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
@@ -380,6 +381,104 @@ describe('aggregateOpsDaily — spend across families', () => {
     expect(spend.medianUsd).toBeCloseTo(0.5, 6);
     expect(spend.p95Usd).toBeCloseTo(1.4, 6);
     expect(spend.maxUsd).toBeCloseTo(1.4, 6);
+  });
+});
+
+describe('aggregateOpsDaily — the loop week (retired weekly emails)', () => {
+  it('counts plans, incidents, unmet intents and papercuts over the trailing 7 days', async () => {
+    const day = new Date('2026-06-20T13:14:00Z');
+    const inWeek = new Date('2026-06-17T10:00:00Z');
+    const beforeWeek = new Date('2026-06-10T10:00:00Z');
+    const family = await seedFamilyWithPhone('Loop Week Household', '+15555550177');
+
+    await db.database.insert(schema.weekPlans).values([
+      { familyId: family.familyId, weekStart: '2026-06-15', composedAt: inWeek },
+      { familyId: family.familyId, weekStart: '2026-06-08', composedAt: beforeWeek },
+    ]);
+    await db.database.insert(schema.rateLimits).values({
+      identifier: 'provider_health:billing',
+      route: PROVIDER_INCIDENT_ROUTE,
+      windowStart: inWeek,
+      count: 1,
+    });
+    const base = {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms' as const,
+      sentAt: inWeek,
+      createdAt: inWeek,
+    };
+    const [unmet] = await db.database
+      .insert(schema.channelMessages)
+      .values([
+        {
+          ...base,
+          direction: 'in' as const,
+          category: 'reply' as const,
+          status: 'delivered' as const,
+          unmetLane: 'off_domain_general' as const,
+          unmetCategory: 'weather' as const,
+        },
+        {
+          ...base,
+          direction: 'in' as const,
+          category: 'reply' as const,
+          status: 'delivered' as const,
+          unmetLane: 'off_domain_general' as const,
+          unmetCategory: 'weather' as const,
+        },
+        {
+          ...base,
+          direction: 'out' as const,
+          category: 'reply' as const,
+          status: 'sent' as const,
+          medicalReplySource: 'fixed' as const,
+        },
+        {
+          ...base,
+          direction: 'out' as const,
+          category: 'reply' as const,
+          status: 'sent' as const,
+          replySource: 'model_failed' as const,
+        },
+      ])
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.agentRuns).values({
+      familyId: family.familyId,
+      agentName: 'reminder-voice',
+      modelUsed: 'test-model',
+      promptTokens: 1,
+      completionTokens: 1,
+      costUsd: '0.000000',
+      latencyMs: 1,
+      startedAt: inWeek,
+      completedAt: inWeek,
+      status: 'failed',
+    });
+    await ledger(family, 'sms_turn_failed', unmet?.id ?? 'missing', inWeek, {
+      reason: 'apology_sent',
+    });
+
+    const report = await aggregateOpsDaily(db.database, day);
+
+    expect(report.week).toEqual({
+      plansComposed: 1,
+      providerIncidents: [{ reason: 'billing', count: 1 }],
+      unmetIntents: [{ reason: 'off_domain_general_weather', count: 2 }],
+      papercuts: {
+        unmet_intent: 2,
+        medical_fallback: 1,
+        reply_fallback: 1,
+        voice_failure: 1,
+        turn_failure: 1,
+      },
+    });
+    const text = composeOpsDailyPost(report);
+    expect(text).toContain('Loop (7d): week plans composed 1 | provider incidents: billing 1');
+    expect(text).toContain('Unmet intents (7d): off_domain_general_weather 2');
+    expect(text).toContain(
+      'Papercuts (7d): unmet 2 | medical fallback 1 | reply fallback 1 | voice fallback 1 | turn failures 1',
+    );
   });
 });
 
