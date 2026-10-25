@@ -197,7 +197,8 @@ export function groupOnboardingLineInput(
           stopIsPerPersonInAnyWording: true,
         },
         questions: 1,
-        mustMention: ['Hale', ...named(request.adderName)],
+        // No mustMention: a name check would be word matching on parent-facing copy.
+        mustMention: [],
         wayOut: true,
       };
   }

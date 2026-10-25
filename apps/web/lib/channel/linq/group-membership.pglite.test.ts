@@ -188,8 +188,27 @@ describe('VIL-438 member welcome written from facts', () => {
         stopIsPerPersonInAnyWording: true,
       },
       wayOut: true,
+      mustMention: [],
     });
     expect(wire.texts).toEqual(['Hi from Hale, Barton added you. What should I call you?']);
+  });
+
+  it('flag on: a welcome with a nickname and no question mark is not thrown out', async () => {
+    vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
+    await seedFamily(PARENT, 'Barton');
+    const body = 'Bart a ajouté Hale ici, dis-moi comment tu veux que je t’appelle';
+    const wire = sender();
+    const result = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550122',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+      voice: fakeGroupOnboardingComposer({ body }),
+    });
+    expect(result).toMatchObject({ notice: 'sent' });
+    expect(wire.texts).toEqual([body]);
   });
 
   it('flag on with a failed voice sends nothing but keeps the seat', async () => {
