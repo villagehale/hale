@@ -1372,7 +1372,7 @@ function fabrications(reply, hay, allowedUrls) {
     const words = sentence.trim().split(/[\s/]+/);
     for (const [index, word] of words.entries()) {
       if (index === 0) continue;
-      const invented = inventedName(word, hay);
+      const invented = inventedName(word, hay, NOW.getUTCFullYear());
       if (invented !== null) offenders.push(`name "${invented}" is in no fact`);
     }
   }
