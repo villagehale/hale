@@ -38,3 +38,45 @@ export function groupScopedContext<T extends AgentContext>(context: T): T {
     sourceNote: null,
   };
 }
+
+/**
+ * VIL-439 (T18) 2/2 — what `lookup_week` may show a group.
+ *
+ * A family event Hale holds (it has an `eventId`) is the household's own plan and stays.
+ * Anything read from a connected calendar becomes a busy block: no title, even a
+ * kid-related one, because the block came from one parent's private calendar. Mail is
+ * never quoted in a group, so mail items are dropped; the sync status stays so the model
+ * doesn't claim it has no access.
+ */
+type WeekEntry = { kind: string; [key: string]: unknown };
+type WeekResult = {
+  events: WeekEntry[];
+  mail: { items: unknown[]; [key: string]: unknown };
+  [key: string]: unknown;
+};
+
+export function groupSafeWeek<T extends WeekResult>(week: T): T {
+  return {
+    ...week,
+    events: week.events.map((entry) =>
+      entry.kind === 'calendar'
+        ? { kind: 'busy', when: entry.when, until: entry.until, allDay: entry.allDay }
+        : entry,
+    ),
+    mail: { ...week.mail, items: [], processedCount: null, since: null },
+  };
+}
+
+type HandlerTool = { name: string; handler: (...args: never[]) => unknown };
+
+/** Wrap `lookup_week` so a group turn only ever sees {@link groupSafeWeek}. */
+export function groupScopedTools<T extends HandlerTool>(tools: T[]): T[] {
+  return tools.map((tool) => {
+    if (tool.name !== 'lookup_week') return tool;
+    const inner = tool.handler as (...args: unknown[]) => Promise<WeekResult>;
+    return {
+      ...tool,
+      handler: async (...args: unknown[]) => groupSafeWeek(await inner(...args)),
+    } as T;
+  });
+}

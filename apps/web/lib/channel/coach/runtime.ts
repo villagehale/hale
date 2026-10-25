@@ -65,7 +65,11 @@ import {
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
-import { groupPrivacyScopeEnabled, groupScopedContext } from './group-privacy-scope';
+import {
+  groupPrivacyScopeEnabled,
+  groupScopedContext,
+  groupScopedTools,
+} from './group-privacy-scope';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
@@ -356,7 +360,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           const startedAt = Date.now();
           // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
           // reused set would spend this text's budget on the last one's.
-          const tools = ports.buildTools(
+          const builtTools = ports.buildTools(
             turn,
             (actionId) => draftedActionIds.push(actionId),
             (offer) => {
@@ -377,6 +381,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               gmailNotice = notice;
             },
           );
+          // VIL-439 (T18): a group turn's calendar reads are busy-only (same flag).
+          const tools =
+            turn.audience === 'group' && groupPrivacyScopeEnabled()
+              ? groupScopedTools(builtTools)
+              : builtTools;
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.

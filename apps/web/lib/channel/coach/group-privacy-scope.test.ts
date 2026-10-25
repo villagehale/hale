@@ -129,3 +129,53 @@ describe('VIL-439 group privacy scope', () => {
     });
   });
 });
+
+describe('VIL-439 2/2 busy-only week in a group', () => {
+  const WEEK = {
+    weekStart: '2026-10-26',
+    events: [
+      { kind: 'event', eventId: 'e1', what: 'Maya swim', when: 'Tue 4:30pm', where: 'Y' },
+      {
+        kind: 'calendar',
+        what: 'Maya therapy - Dr. Patel',
+        when: 'Thu 3pm',
+        until: 'Thu 4pm',
+        allDay: false,
+      },
+      { kind: 'busy', when: 'Fri 9am', until: 'Fri 10am', allDay: false },
+    ],
+    mail: {
+      sync: 'connected',
+      note: null,
+      processedCount: 41,
+      since: '2026-09-01',
+      items: [{ kind: 'activity', what: 'Invoice from Little Fins', when: 'Sat', where: null }],
+    },
+  };
+
+  it('turns connected-calendar titles into busy blocks and drops mail items', async () => {
+    const { groupSafeWeek } = await import('./group-privacy-scope');
+    const safe = groupSafeWeek(WEEK);
+    const text = JSON.stringify(safe);
+    expect(text).not.toContain('Dr. Patel');
+    expect(text).not.toContain('Little Fins');
+    expect(safe.events[1]).toEqual({
+      kind: 'busy',
+      when: 'Thu 3pm',
+      until: 'Thu 4pm',
+      allDay: false,
+    });
+    // The household's own plan stays, and the model still knows mail is connected.
+    expect(text).toContain('Maya swim');
+    expect(safe.mail.sync).toBe('connected');
+  });
+
+  it('wraps only lookup_week', async () => {
+    const { groupScopedTools } = await import('./group-privacy-scope');
+    const other = { name: 'propose_calendar_add', handler: async () => 'untouched' };
+    const week = { name: 'lookup_week', handler: async () => WEEK };
+    const [wrappedWeek, wrappedOther] = groupScopedTools([week, other]);
+    expect(wrappedOther).toBe(other);
+    expect(JSON.stringify(await wrappedWeek?.handler())).not.toContain('Dr. Patel');
+  });
+});
