@@ -1,4 +1,4 @@
-import { type AgentClient, pickModel } from '@hale/agent';
+import { type AgentClient, cachedSystem, pickModel } from '@hale/agent';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -203,7 +203,7 @@ export async function groundCurrentSource(
     const research = await client.messages.create({
       model: pickModel(skill.meta.task),
       max_tokens: GROUND_MAX_TOKENS,
-      system: skill.instructions,
+      system: cachedSystem(skill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
       messages: [{ role: 'user', content: query }],
     });

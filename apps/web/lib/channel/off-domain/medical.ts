@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane, pickModel } from '@hale/agent';
+import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent';
 import type { MedicalReplySourceValue } from '@hale/db';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
@@ -520,7 +520,7 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
     research = await resolved.messages.create({
       model: pickModel(medicalSkill.meta.task),
       max_tokens: GROUND_MAX_TOKENS,
-      system: medicalSkill.instructions,
+      system: cachedSystem(medicalSkill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
       messages: [{ role: 'user', content: groundUserMessage(query) }],
     });

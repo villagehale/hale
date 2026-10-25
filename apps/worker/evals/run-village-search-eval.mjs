@@ -38,6 +38,7 @@ import {
   lazyAnthropic,
   makeCost,
   totalUsd,
+  withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
@@ -114,7 +115,7 @@ function makeCachedAgentClient(tag, cachedOnly, getClient, cost, anthropicModel)
           model: request.model,
           system: request.system,
           tools: request.tools,
-          messages: request.messages,
+          messages: withoutMessageCacheMarkers(request.messages),
           max_tokens: request.max_tokens,
         });
         const runSuffix = process.env.EVAL_RUN_ID ? `:${process.env.EVAL_RUN_ID}` : '';

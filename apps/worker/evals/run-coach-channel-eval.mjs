@@ -144,6 +144,7 @@ import {
   noteUsage,
   readModelIds,
   totalUsd,
+  withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
@@ -1184,7 +1185,7 @@ function makeCachedAgentClient(
           model: request.model,
           system: request.system,
           tools: request.tools,
-          messages: request.messages,
+          messages: withoutMessageCacheMarkers(request.messages),
           max_tokens: request.max_tokens,
           thinking: request.thinking,
           output_config: request.output_config,

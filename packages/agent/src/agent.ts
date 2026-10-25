@@ -291,6 +291,33 @@ function buildSystem(skill: Skill): Anthropic.TextBlockParam[] {
 }
 
 /**
+ * The request's messages with ONE rolling cache breakpoint on the newest tool-result turn
+ * (VIL-430). The system breakpoint above caches tools + instructions; this second one
+ * caches the stable context layer (the first user turn) plus the loop history so far, so
+ * step N+1 of a tool loop reads steps 1..N back at the 0.1x rate instead of re-paying them.
+ *
+ * Only from step 2 on (when the last message is a tool-result turn): a one-step run
+ * would pay the 1.25x write on its context and never read it back. The marker goes on a
+ * shallow copy at send time, never into `messages`, so earlier turns carry no stale
+ * breakpoint and the request holds at most two (Anthropic allows four). Tool-result
+ * blocks never carry `cache_control` otherwise, which is what lets the eval harness
+ * strip it losslessly before hashing (`withoutMessageCacheMarkers` in harness.mjs).
+ */
+export function withHistoryBreakpoint(
+  messages: Anthropic.MessageParam[],
+): Anthropic.MessageParam[] {
+  const last = messages[messages.length - 1];
+  if (messages.length < 2 || !last || last.role !== 'user' || typeof last.content === 'string') {
+    return messages;
+  }
+  const blocks = last.content;
+  const tail = blocks[blocks.length - 1];
+  if (!tail || tail.type !== 'tool_result') return messages;
+  const marked: Anthropic.ToolResultBlockParam = { ...tail, cache_control: { type: 'ephemeral' } };
+  return [...messages.slice(0, -1), { ...last, content: [...blocks.slice(0, -1), marked] }];
+}
+
+/**
  * The first user turn: the serialized context, plus any native attachment blocks the
  * caller supplied for THIS turn. When attachments are present the content becomes a
  * block array (text context first, then the image/document blocks) so the model
@@ -577,7 +604,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
       max_tokens: maxTokens,
       system,
       ...(tools.length > 0 && { tools }),
-      messages,
+      messages: withHistoryBreakpoint(messages),
     });
     meter(response.usage);
 
@@ -634,7 +661,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
           max_tokens: maxTokens,
           system,
           ...(tools.length > 0 && { tools }),
-          messages,
+          messages: withHistoryBreakpoint(messages),
         });
         meter(response.usage);
       }
@@ -736,7 +763,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
       max_tokens: args.maxTokens ?? DEFAULT_MAX_TOKENS,
       system,
       ...(tools.length > 0 && { tools }),
-      messages,
+      messages: withHistoryBreakpoint(messages),
     });
 
     for await (const event of stream) {
