@@ -8,7 +8,8 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { linqFromE164, linqGroupMembersEnabled } from './config';
+import { linqFromE164, linqGroupMembersEnabled, linqGroupWelcomeVoiceEnabled } from './config';
+import { type GroupOnboardingComposer, composeOnboardingLine } from './group-onboarding-voice';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver';
@@ -377,6 +378,8 @@ export async function seatParticipantAdded(
     isFromMe: boolean;
     now: Date;
     send?: SendGroup;
+    /** Test seam for the VIL-438 welcome voice. Production uses the model. */
+    voice?: GroupOnboardingComposer;
   },
 ): Promise<SeatParticipantResult> {
   if (!linqGroupMembersEnabled()) return { outcome: 'flag_off' };
@@ -496,11 +499,25 @@ export async function seatParticipantAdded(
   }
   const language = await familyReplyLanguage(database, familyId);
   const adder = decision.kind === 'parent' ? await userFirstName(database, actor.userId) : null;
+  let text = groupMemberWelcome(language, adder);
+  if (linqGroupWelcomeVoiceEnabled()) {
+    const written = await composeOnboardingLine(database, {
+      familyId,
+      request: { kind: 'member_welcome', adderName: adder },
+      language,
+      templateKey: WELCOME_TEMPLATE,
+      voice: input.voice,
+    });
+    // A welcome the model could not write is not sent; the seat stands and the
+    // next add or turn can try again. No fixed fallback line.
+    if (!('body' in written)) return { outcome: 'group_member_seated', role, notice: 'not_sent' };
+    text = written.body;
+  }
   const notice = await sendOnce(database, {
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: groupMemberWelcome(language, adder),
+    text,
     templateKey: WELCOME_TEMPLATE,
     dedupeKey: `${WELCOME_TEMPLATE}:${input.chatId}:${hash}`,
     now: input.now,

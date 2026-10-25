@@ -98,3 +98,12 @@ export function linqMultiFamilyGroupsEnabled(): boolean {
 export function linqGroupOnboardingV2Enabled(): boolean {
   return trimmed('LINQ_GROUP_ONBOARDING_V2_ENABLED') === 'true';
 }
+
+/**
+ * VIL-438 (T22) — the new-member welcome is written by the model from facts
+ * (`member_welcome`) instead of the fixed line. Exactly `true` enables it. Default off:
+ * off keeps today's welcome byte-for-byte, so no eval re-record is needed to merge.
+ */
+export function linqGroupWelcomeVoiceEnabled(): boolean {
+  return trimmed('LINQ_GROUP_WELCOME_VOICE_ENABLED') === 'true';
+}

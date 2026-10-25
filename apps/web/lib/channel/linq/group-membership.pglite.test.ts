@@ -5,7 +5,9 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { seatParticipantAdded, unseatParticipantRemoved } from './group-members';
+import { groupMemberWelcome } from './group-members';
 import { groupMemberByPhone, memberPlanTier, readGroupMembership } from './group-membership';
+import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT = '+14165550111';
@@ -138,5 +140,73 @@ describe('VIL-438 group membership read model', () => {
     await seedFamily(PARENT, 'Barton');
     expect(await groupMemberByPhone(db.database, CHAT, '+14165550199')).toBeNull();
     expect(await groupMemberByPhone(db.database, CHAT, 'not-a-phone')).toBeNull();
+  });
+});
+
+describe('VIL-438 member welcome written from facts', () => {
+  it('flag off keeps the fixed welcome and never calls the voice', async () => {
+    await seedFamily(PARENT, 'Barton');
+    const voice = fakeGroupOnboardingComposer();
+    const wire = sender();
+    await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550122',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+      voice,
+    });
+    expect(voice.calls).toHaveLength(0);
+    expect(wire.texts).toEqual([groupMemberWelcome('en', 'Barton')]);
+  });
+
+  it('flag on hands the T22 facts to the voice and sends what it wrote', async () => {
+    vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
+    await seedFamily(PARENT, 'Barton');
+    const voice = fakeGroupOnboardingComposer({
+      body: 'Hi from Hale, Barton added you. What should I call you?',
+    });
+    const wire = sender();
+    const result = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550122',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+      voice,
+    });
+    expect(result).toMatchObject({ outcome: 'group_member_seated', notice: 'sent' });
+    expect(voice.calls[0]?.input).toMatchObject({
+      kind: 'member_welcome',
+      facts: {
+        adderName: 'Barton',
+        seesOnlyThisChat: true,
+        noSignUpNeeded: true,
+        planCoversWholeGroup: true,
+        stopIsPerPersonInAnyWording: true,
+      },
+      wayOut: true,
+    });
+    expect(wire.texts).toEqual(['Hi from Hale, Barton added you. What should I call you?']);
+  });
+
+  it('flag on with a failed voice sends nothing but keeps the seat', async () => {
+    vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
+    await seedFamily(PARENT, 'Barton');
+    const wire = sender();
+    const result = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550122',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+      voice: fakeGroupOnboardingComposer({ fail: true }),
+    });
+    expect(result).toMatchObject({ outcome: 'group_member_seated', notice: 'not_sent' });
+    expect(wire.texts).toHaveLength(0);
+    expect((await readGroupMembership(db.database, CHAT))?.members).toHaveLength(1);
   });
 });
