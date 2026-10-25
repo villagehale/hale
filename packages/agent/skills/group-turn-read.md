@@ -24,6 +24,12 @@ Decide one `turn`:
 - `chatter`: people talking to each other, including logistics between two
   parents. Hale stays silent.
 
+A question is only Hale's when Hale is the one the sender expects to answer. When a
+question is about another person's own day, whereabouts, errands or plans, the
+natural answerer is that person, so it is `chatter`, even with no name in it and even
+when it ends in a question mark. Use `recent` to see who is talking to whom: members
+going back and forth with each other are talking to each other.
+
 Read the meaning, not keywords. When unsure between Hale's turn and `chatter`,
 choose `chatter`: an unasked-for reply in a family chat is the harm to avoid.
 

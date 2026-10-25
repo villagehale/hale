@@ -10,7 +10,12 @@ import { askStillStanding } from '~/lib/channel/checkin/cadence';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { type ReviewSubjectRef, familyAreaKey } from '~/lib/reviews/aggregate';
 import type { VerdictOutcome, VerdictReader } from '~/lib/reviews/verdict';
-import { MID_ACTIVITY_ASK_TEMPLATE_KEY, isUuid, offerIdFromMidActivityDedupeKey } from './claim';
+import {
+  MID_ACTIVITY_ASK_TEMPLATE_KEY,
+  type MidActivityAskRef,
+  isUuid,
+  midActivityAskRef,
+} from './claim';
 import { midActivityAskEnabled } from './flag';
 
 /**
@@ -20,8 +25,8 @@ import { midActivityAskEnabled } from './flag';
  * The row is an `activity_reviews` verdict. `readHouseholdFindBias` /
  * `biasFindOrder` are what move the next recommendation. Nothing here ranks
  * candidates on its own, and nothing here is said out loud. The parent's
- * sentence is not stored. This pass sends nothing: the ask and the
- * acknowledgment are locked, and no sender is wired.
+ * sentence is not stored. This pass sends nothing: the ask itself is written by
+ * the proactive writer and sent by the decider (sweep.ts).
  */
 
 const ASK_LOOKBACK_MS = 48 * 60 * 60 * 1000;
@@ -168,7 +173,7 @@ function subjectOf(
  * verdict on the same table the next find already reads.
  *
  * Flag off is a named skip and does no read. There is no sender in this
- * function. The acknowledgment is locked, and a stored verdict still only
+ * function. A stored verdict only
  * changes the next find. This pass does not text.
  */
 export async function runMidActivityAnswerPass(
@@ -203,8 +208,8 @@ export async function runMidActivityAnswerPass(
   for (const ask of asks) {
     if (ask.parentUserId === null) continue;
     result.asksExamined += 1;
-    const offerId = offerIdFromMidActivityDedupeKey(ask.dedupeKey);
-    if (offerId === null) {
+    const ref = midActivityAskRef(ask.dedupeKey);
+    if (ref === null) {
       result.noSubject += 1;
       continue;
     }
@@ -213,7 +218,7 @@ export async function runMidActivityAnswerPass(
       familyId: ask.familyId,
       parentUserId: ask.parentUserId,
       askedAt: ask.askedAt,
-      offerId,
+      ref,
     });
     if (stored === 'recorded') result.recorded += 1;
     else if (stored === 'updated') result.updated += 1;
@@ -227,7 +232,49 @@ interface AskUnderRead {
   familyId: string;
   parentUserId: string;
   askedAt: Date;
-  offerId: string;
+  ref: MidActivityAskRef;
+}
+
+/**
+ * The recommendation an ask is about, and the child it is for. A signup names it on
+ * the offer; a plan or a parent-said signup carries it in its key. Null: no subject.
+ */
+async function askedActivity(
+  database: Database,
+  ask: AskUnderRead,
+): Promise<{ candidateId: string; childDob: string | null } | null> {
+  if (ask.ref.kind === 'signup') {
+    const [offer] = await database
+      .select({
+        activityKey: schema.authorizedSignupOffers.activityKey,
+        childDob: schema.children.dateOfBirth,
+      })
+      .from(schema.authorizedSignupOffers)
+      .innerJoin(schema.children, eq(schema.children.id, schema.authorizedSignupOffers.childId))
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, ask.ref.offerId),
+          eq(schema.authorizedSignupOffers.familyId, ask.familyId),
+        ),
+      )
+      .limit(1);
+    if (!offer || !isUuid(offer.activityKey)) return null;
+    return { candidateId: offer.activityKey, childDob: offer.childDob };
+  }
+  if (ask.ref.candidateId === null) return null;
+  const [row] = await database
+    .select({ childDob: schema.children.dateOfBirth })
+    .from(schema.familyActivityHistory)
+    .leftJoin(schema.children, eq(schema.children.id, schema.familyActivityHistory.childId))
+    .where(
+      and(
+        eq(schema.familyActivityHistory.id, ask.ref.candidateId),
+        eq(schema.familyActivityHistory.familyId, ask.familyId),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  return { candidateId: ask.ref.candidateId, childDob: row.childDob ?? null };
 }
 
 async function captureAsk(
@@ -236,30 +283,13 @@ async function captureAsk(
   result: MidActivityAnswerResult,
   ask: AskUnderRead,
 ): Promise<'recorded' | 'updated' | 'skipped'> {
-  const [offer] = await database
-    .select({
-      activityKey: schema.authorizedSignupOffers.activityKey,
-      childDob: schema.children.dateOfBirth,
-    })
-    .from(schema.authorizedSignupOffers)
-    .innerJoin(schema.children, eq(schema.children.id, schema.authorizedSignupOffers.childId))
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, ask.offerId),
-        eq(schema.authorizedSignupOffers.familyId, ask.familyId),
-      ),
-    )
-    .limit(1);
-  if (!offer) {
+  const asked = await askedActivity(database, ask);
+  if (!asked) {
     result.noSubject += 1;
     return 'skipped';
   }
-  if (deriveStage(offer.childDob, deps.now) === 'teenager') {
+  if (asked.childDob && deriveStage(asked.childDob, deps.now) === 'teenager') {
     result.teenScoped += 1;
-    return 'skipped';
-  }
-  if (!isUuid(offer.activityKey)) {
-    result.noSubject += 1;
     return 'skipped';
   }
 
@@ -272,7 +302,7 @@ async function captureAsk(
     .from(schema.familyActivityHistory)
     .where(
       and(
-        eq(schema.familyActivityHistory.id, offer.activityKey),
+        eq(schema.familyActivityHistory.id, asked.candidateId),
         eq(schema.familyActivityHistory.familyId, ask.familyId),
       ),
     )
@@ -347,7 +377,7 @@ async function captureAsk(
     result,
     ask,
     subject,
-    offer.childDob,
+    asked.childDob,
     inbound.id,
     outcome,
     deps.now,
@@ -359,7 +389,7 @@ async function applyOutcome(
   result: MidActivityAnswerResult,
   ask: AskUnderRead,
   subject: ReviewSubjectRef,
-  childDateOfBirth: string,
+  childDateOfBirth: string | null,
   sourceMessageId: string,
   outcome: VerdictOutcome,
   now: Date,

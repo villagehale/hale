@@ -110,4 +110,14 @@ describe('writerContext', () => {
       `less, please ${'y'.repeat(400)}`.slice(0, LINE_CHARS),
     );
   });
+
+  it('VIL-393 · hands the writer the stored language tag, and drops a sentence or nothing', () => {
+    expect(JSON.parse(writerContext([ITEM], null, 'fr')).language).toBe('fr');
+    expect(JSON.parse(writerContext([ITEM], null, 'zh')).language).toBe('zh');
+    expect(JSON.parse(writerContext([ITEM], null, 'please reply in French'))).not.toHaveProperty(
+      'language',
+    );
+    // No language: the context is byte-identical to before (cached writer evals keep their key).
+    expect(writerContext([ITEM], null)).toBe(JSON.stringify({ items: [ITEM] }));
+  });
 });

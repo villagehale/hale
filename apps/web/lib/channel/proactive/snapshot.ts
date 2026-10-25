@@ -291,6 +291,8 @@ export interface LoadedFamilyContext {
   declines: ({ what: string } & Owned)[];
   /** A child here is 13 or older. */
   teenInHousehold: boolean;
+  /** VIL-393 · the family's stored language tag, for the writer. Never a sentence. */
+  language?: string | null;
 }
 
 /**
@@ -304,7 +306,11 @@ export async function loadFamilyContext(
   now: Date,
 ): Promise<LoadedFamilyContext | null> {
   const [zone] = await database
-    .select({ timezone: schema.users.timezone, areaCoarse: schema.families.areaCoarse })
+    .select({
+      timezone: schema.users.timezone,
+      areaCoarse: schema.families.areaCoarse,
+      language: schema.families.primaryLanguage,
+    })
     .from(schema.familyMembers)
     .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
     .innerJoin(schema.families, eq(schema.families.id, schema.familyMembers.familyId))
@@ -409,6 +415,7 @@ export async function loadFamilyContext(
     .where(and(eq(schema.watchedSpots.familyId, familyId), isNull(schema.watchedSpots.releasedAt)))
     .limit(WATCH_ROWS);
   return {
+    language: zone.language ?? null,
     timeZone,
     household: {
       areaCoarse: zone.areaCoarse,
