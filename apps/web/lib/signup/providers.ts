@@ -3,12 +3,10 @@ import type { FieldSlot, SignupStopReason } from './types';
 /**
  * How an authorized booking is carried out (VIL-375, VIL-397).
  *
- * Scope is anything a parent needs help booking or signing up for. The
- * exclusion is narrow: the named city sites plus ActiveNet, Xplor,
- * PerfectMind, and Amilia are a denylist (assisted handoff, never a browser
- * or a connector). Any other host is handed back, without submitting, when the
- * page shows a rush signal: waiting room or queue, captcha, resident or
- * identity verification, or a timed open-at.
+ * Scope is any provider registration site. There is no host denylist and no
+ * allowlist. Any host is handed back, without submitting, when the page shows
+ * a rush signal: waiting room or queue, captcha, resident or identity
+ * verification, or a timed open-at.
  *
  * A registered connector runs first. The sandboxed browser is the fallback
  * and opens that provider's own page only. Form adapters name fields they
@@ -19,7 +17,7 @@ import type { FieldSlot, SignupStopReason } from './types';
  * ordinary loopback pages, so they take the browser path.
  */
 
-/** A partnership API. The municipal denylist is applied before `matches`. */
+/** A partnership API. */
 export interface BookingConnector {
   readonly id: string;
   matches(url: URL): boolean;
@@ -52,51 +50,14 @@ export type ConnectorBookingResult = { ok: true } | { ok: false; reason: SignupS
  */
 export const BOOKING_CONNECTORS: readonly BookingConnector[] = [];
 
-/**
- * Hosts Hale does not automate. Suffix match, so a subdomain is denied with
- * the registrable name. `nottoronto.ca` is not `toronto.ca`.
- */
-export const BOOKING_DENY_SUFFIXES = [
-  'activecommunities.com',
-  'activenetwork.com',
-  'perfectmind.com',
-  'xplorrecreation.com',
-  'toronto.ca',
-  'brampton.ca',
-  'markham.ca',
-  'mississauga.ca',
-  'richmondhill.ca',
-  'vaughan.ca',
-  'oakville.ca',
-  'caledon.ca',
-  'haltonhills.ca',
-  'burlington.ca',
-  'amilia.com',
-] as const;
+export type BookingRoute = { kind: 'connector'; connector: BookingConnector } | { kind: 'browser' };
 
-export type BookingRoute =
-  | { kind: 'handoff' }
-  | { kind: 'connector'; connector: BookingConnector }
-  | { kind: 'browser' };
-
-export function municipalBookingHost(hostname: string): boolean {
-  const host = hostname
-    .replace(/^\[|\]$/g, '')
-    .toLowerCase()
-    .replace(/\.$/, '');
-  return BOOKING_DENY_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
-}
-
-/**
- * Denylist first, then a matching connector, then the browser on this URL.
- * A connector cannot opt a denied host back into automation.
- */
+/** A matching connector first, then the browser on this URL. */
 export function bookingRoute(
   href: string,
   connectors: readonly BookingConnector[] = BOOKING_CONNECTORS,
 ): BookingRoute {
   const url = new URL(href);
-  if (municipalBookingHost(url.hostname)) return { kind: 'handoff' };
   const connector = connectors.find((candidate) => candidate.matches(url));
   if (connector) return { kind: 'connector', connector };
   return { kind: 'browser' };

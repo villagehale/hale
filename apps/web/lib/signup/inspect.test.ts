@@ -102,9 +102,16 @@ describe('inspectRegistrationPage', () => {
   it('stops on a password field', () => {
     const result = inspect([
       control({ name: 'username', label: 'Email', required: true }),
-      control({ name: 'password', type: 'password', label: 'Password' }),
+      control({ name: 'password', type: 'password', label: 'Password', required: true }),
     ]);
     expect(result).toMatchObject({ action: 'stop', reason: 'login_wall' });
+  });
+
+  it('does not stop on an optional sign-in box', () => {
+    const result = inspect([
+      control({ name: 'password', type: 'password', label: 'Password', required: false }),
+    ]);
+    expect(result).not.toMatchObject({ reason: 'login_wall' });
   });
 
   it('stops when the authorized session is disabled', () => {

@@ -5,21 +5,21 @@ import type {
   HandlerContext,
   HandlerVerdict,
 } from '~/lib/channel/router/route';
-import { isExplicitSignupUtterance } from './authorize';
 import { AUTHORIZED_SIGNUP_TEMPLATE_KEY } from './copy';
 import type { GroupSignupDelivery } from './report';
-import { runAuthorizedSignup } from './run';
+import { type SignupRunDeps, runAuthorizedSignup } from './run';
 import type { SignupBrowser } from './types';
 
-export interface AuthorizedSignupHandlerDeps {
+export interface AuthorizedSignupHandlerDeps
+  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter'> {
   browser?: SignupBrowser | null;
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
 }
 
 /**
- * Claims an explicit signup sentence ("yes, sign us up") and nothing else.
- *
- * A bare yes stays with the handlers ahead of this one. This handler sits
+ * Claims a reply to a pending sign-up offer when the consent model reads it as
+ * consent, a refusal, or unclear (with a clarifying question). Anything else,
+ * or an unreadable read, stays with the handlers after this one. This handler sits
  * before the registration reader, which also claims messages it cannot read,
  * and before the name capture and the evening check-in.
  */
@@ -29,16 +29,6 @@ export function authorizedSignupHandler(
   return {
     name: 'authorized_signup',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      if (
-        isExplicitSignupUtterance(ctx.body) &&
-        (await declinePrivilegedGroupSeat(database, {
-          familyId: ctx.familyId,
-          userId: ctx.parentUserId,
-          capability: 'signup',
-        }))
-      ) {
-        return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
-      }
       const result = await runAuthorizedSignup(
         database,
         {
@@ -49,7 +39,15 @@ export function authorizedSignupHandler(
           existingThread: true,
           now: ctx.now,
         },
-        deps,
+        {
+          ...deps,
+          declineSeat: () =>
+            declinePrivilegedGroupSeat(database, {
+              familyId: ctx.familyId,
+              userId: ctx.parentUserId,
+              capability: 'signup',
+            }),
+        },
       );
       if (!result.claimed) return { claimed: false };
       return {

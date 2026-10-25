@@ -115,7 +115,6 @@ export type SignupStopReason =
   | 'assisted_handoff'
   | 'unexpected_field'
   | 'missing_detail'
-  | 'teen_privacy'
   | 'browser_unavailable'
   | 'redirect'
   | 'unconfirmed'
