@@ -77,7 +77,7 @@ export interface RejectedHoldingLine {
 
 /** The user-turn payload. Shared with the eval, which replicates this request shape. */
 export function holdingLineUserMessage(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   rejected: readonly RejectedHoldingLine[] = [],
 ): string {
   const base = { situation: 'answer_still_coming', language };
@@ -95,7 +95,7 @@ export type HoldingLineCompose =
   | { status: 'unavailable'; reason: HoldingLineFallback };
 
 export interface HoldingLineComposer {
-  compose(language: ReplyLanguage): Promise<HoldingLineCompose>;
+  compose(language: ReplyLanguage | null): Promise<HoldingLineCompose>;
 }
 
 const lineSchema = z.object({ line: z.string() });
@@ -200,7 +200,7 @@ export function holdingLineNotArmed(
 /** Arm the one holding line for one turn. It fires at most once. */
 export function armHoldingLine(input: {
   afterMs: number;
-  language: ReplyLanguage;
+  language: ReplyLanguage | null;
   composer: HoldingLineComposer;
   send: (line: string) => Promise<void>;
   log: Pick<Console, 'info' | 'warn'>;

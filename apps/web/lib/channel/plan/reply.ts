@@ -1,9 +1,14 @@
 import { type Database, schema } from '@hale/db';
-import { type CoachingPlaybook, type FamilyStage, ageInMonths, deriveStage, playbookFor } from '@hale/types';
+import {
+  type CoachingPlaybook,
+  type FamilyStage,
+  ageInMonths,
+  deriveStage,
+  playbookFor,
+} from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
-import type { ReplySent } from '~/lib/channel/router/reply-route';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import type { ReplySent } from '~/lib/channel/router/reply-route';
 import { appendMessage, loadTranscript } from '~/lib/coach/conversation';
 import {
   cancelCommitment,
@@ -11,8 +16,8 @@ import {
   loadOpenCommitment,
   recordCommitment,
 } from '~/lib/commitments/ledger';
-import { pipelineClient } from '~/lib/pipeline/client';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { pipelineClient } from '~/lib/pipeline/client';
 import { type PlanComposer, type PlanGrounding, createPlanComposer } from './compose';
 import { type NoteComposer, createNoteComposer } from './note';
 import {
@@ -79,7 +84,9 @@ export class PlanDeferred extends Error {
   readonly reason: string;
 
   constructor(reason: string, violations: readonly string[]) {
-    super(`coach plan deferred: ${reason}${violations.length > 0 ? ` (${violations.join(' ')})` : ''}`);
+    super(
+      `coach plan deferred: ${reason}${violations.length > 0 ? ` (${violations.join(' ')})` : ''}`,
+    );
     this.name = 'PlanDeferred';
     this.reason = reason;
   }
@@ -146,16 +153,12 @@ export async function handlePlanYes(
     send: ReplySender;
     now: Date;
     /** The router's natural-reply stage already read this message as a yes to the open
-     * plan offer (lib/channel/router/resolve.ts). The shared vocabulary is tried first
-     * and still wins; this is what lets "go on then" accept a plan without Hale ever
-     * having told the parent to type a word. */
+     * plan offer (lib/channel/router/resolve.ts). A word is not a claim. */
     resolved?: 'yes' | null;
   },
   deps: PlanReplyDeps,
 ): Promise<PlanReplyOutcome> {
-  // Checked before any query: most inbound traffic is not a bare affirmative, and an
-  // ordinary message must not cost this handler a round trip.
-  if (readAffirmative(input.body) !== 'yes' && input.resolved !== 'yes') {
+  if (input.resolved !== 'yes') {
     return { status: 'declined_to_claim' };
   }
 
@@ -508,10 +511,7 @@ export async function loadPlanFacts(database: Database, familyId: string): Promi
  * gate's proactive budgets have nothing to say about it, and only the check-in three
  * days later is unprompted. The `dedupeKey` is what makes the send loop convergent.
  */
-export async function recordPlanSend(
-  database: Database,
-  write: PlanSendWrite,
-): Promise<string> {
+export async function recordPlanSend(database: Database, write: PlanSendWrite): Promise<string> {
   const [row] = await database
     .insert(schema.channelMessages)
     .values({

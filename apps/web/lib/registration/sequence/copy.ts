@@ -1,7 +1,7 @@
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
-import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { dayKeyIn } from '~/lib/plan/spine';
@@ -302,7 +302,6 @@ export function preparedCopyViolations(body: string, ctx: PreparedCopyContext): 
   if (questions > 1) violations.push('asks_a_question');
   if (FORBIDDEN_CLAIM.test(body)) violations.push('forbidden_claim');
   if (UNATTRIBUTED_READINESS.test(body)) violations.push('unattributed_readiness');
-  if (!isGsm7(body)) violations.push('not_gsm7');
   const wire = ctx.optOut === null ? body : withOptOut(body, ctx.optOut);
   if (smsSegments(wire) > MAX_PORTAL_SEGMENTS) violations.push('too_many_segments');
   return violations;

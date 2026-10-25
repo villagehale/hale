@@ -839,7 +839,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale wrote a reply from the facts it already had',
     family: 'note',
   },
-  reply_copy_fallback: { sentence: 'Hale sent the fixed reply', family: 'note' },
+  reply_copy_fallback: { sentence: 'Hale held a reply the model did not write', family: 'note' },
   voice_call_received: {
     // Hale keeps no audio and no transcript — only that a call arrived.
     sentence: 'a call came in to Hale’s number',

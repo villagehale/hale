@@ -1,14 +1,17 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
   configuredOutboundChannel,
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { replyProse } from '~/lib/channel/reply-copy/apply';
+import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqApiKey, linqGroupCoparentEnabled } from './config';
@@ -308,8 +311,8 @@ export async function familySpeech(
   database: Database,
   familyId: string,
   userId: string,
-): Promise<{ name: string | null; language: ReplyLanguage }> {
-  if (typeof database.select !== 'function') return { name: null, language: 'en' };
+): Promise<{ name: string | null; language: ReplyLanguage | null }> {
+  if (typeof database.select !== 'function') return { name: null, language: null };
   const language = await familySpeechLanguage(database, familyId);
   const [user] = await database
     .select({ name: schema.users.name })
@@ -324,13 +327,14 @@ export async function familySpeech(
 export async function familySpeechLanguage(
   database: Database,
   familyId: string,
-): Promise<ReplyLanguage> {
+): Promise<ReplyLanguage | null> {
+  if (typeof database.select !== 'function') return null;
   const [family] = await database
     .select({ primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
     .where(eq(schema.families.id, familyId))
     .limit(1);
-  return family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  return acceptReplyLanguage(family?.primaryLanguage);
 }
 
 /** The names of this family's 13+ children as of `now`: never said in a group line (rule #1). */
@@ -474,7 +478,7 @@ export async function noteGroupSyncConversation(
  */
 export async function flushGroupDecisionSyncs(
   database: Database,
-  input: { now: Date; fetch?: typeof fetch },
+  input: { now: Date; fetch?: typeof fetch; replyClient?: AgentClient | null },
 ): Promise<{ sent: number; held: number }> {
   if (typeof database.select !== 'function') return { sent: 0, held: 0 };
   const waiting = await database
@@ -540,36 +544,65 @@ export async function flushGroupDecisionSyncs(
     rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const speech = await familySpeech(database, familyId, rows[0]?.parentUserId ?? '');
     const lines: string[] = [];
+    let dutyUnvoiced = false;
+    const replyClient = await resolveReplyClient(input.replyClient);
     for (const row of rows) {
-      const name = speech.name ?? (speech.language === 'fr' ? 'Un parent' : 'A parent');
+      const name =
+        speech.name ?? (copyLanguage(speech.language) === 'fr' ? 'Un parent' : 'A parent');
       if (row.decision === 'picked' && row.day && row.time) {
-        lines.push(
-          groupPickedSyncLine(speech.language, {
-            name,
-            activity: row.activity,
-            kid: row.kid,
-            day: row.day,
-            time: row.time,
-          }),
-        );
-      } else if (row.decision === 'passed') {
-        lines.push(
-          groupPassedSyncLine(speech.language, {
-            name,
-            activity: row.activity,
-            kid: row.kid,
-          }),
-        );
-      } else if (row.decision === 'duty' && row.day && row.time) {
-        const line = dutySyncLine(speech.language, {
-          name: speech.name,
+        const line = await groupPickedSyncLine(speech.language, {
+          name,
           activity: row.activity,
           kid: row.kid,
           day: row.day,
           time: row.time,
         });
-        if (line && line.split('\n').length <= 1) lines.push(line);
+        if (line) lines.push(line);
+      } else if (row.decision === 'passed') {
+        const line = await groupPassedSyncLine(speech.language, {
+          name,
+          activity: row.activity,
+          kid: row.kid,
+        });
+        if (line) lines.push(line);
+      } else if (row.decision === 'duty' && row.day && row.time) {
+        const copy = copyLanguage(speech.language);
+        const fallback = copy
+          ? dutySyncLine(copy, {
+              name: speech.name,
+              activity: row.activity,
+              kid: row.kid,
+              day: row.day,
+              time: row.time,
+            })
+          : null;
+        const voiced =
+          fallback && copy
+            ? await replyProse(
+                {
+                  client: replyClient,
+                  database,
+                  familyId,
+                  language: copy,
+                  audience: 'group',
+                  surface: 'duty',
+                },
+                {
+                  fallback,
+                  facts: [name, row.activity, row.kid, row.day, row.time],
+                },
+              )
+            : null;
+        if (!voiced || voiced.includes('\n')) {
+          dutyUnvoiced = true;
+          break;
+        }
+        lines.push(voiced);
       }
+    }
+    if (dutyUnvoiced) {
+      held += 1;
+      continue;
     }
     if (lines.length === 0) continue;
     const actor = rows[0]?.parentUserId;

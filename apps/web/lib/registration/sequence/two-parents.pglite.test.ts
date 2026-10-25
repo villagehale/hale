@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveApproval } from '~/lib/channel/router/approval';
-import { matchFastPath } from '~/lib/channel/router/fast-path';
+import type { FastPathCommand } from '~/lib/channel/router/fast-path';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { approvedShortlistAskedOf } from './prepare-reply';
 import { defaultSequenceReplyDeps, handleSequenceReply } from './reply';
@@ -142,10 +142,8 @@ beforeEach(async () => {
 
 /** The production spine, whole — including the refusal mapping a hand-built one in a
  * test would have to restate. */
-async function say(body: string, parentUserId: string) {
+async function say(command: FastPathCommand, parentUserId: string) {
   const { defaultApprovalSpine } = await import('~/lib/channel/router/wiring');
-  const command = matchFastPath(body);
-  if (!command) throw new Error(`test bug: ${JSON.stringify(body)} is not a command`);
   return resolveApproval(
     db.database,
     { familyId, parentUserId, command, now: NOW },
@@ -171,7 +169,7 @@ async function auditRows(verb: string) {
 
 describe('one shortlist card, both parents answering', () => {
   it('lets the co-parent’s YES approve it, stamped with them', async () => {
-    const outcome = await say('yes', coParentUserId);
+    const outcome = await say({ verb: 'yes', index: null }, coParentUserId);
 
     expect(outcome.status).toBe('approved');
     expect(queued).toEqual([{ actionId, approvedBy: coParentUserId }]);
@@ -187,11 +185,11 @@ describe('one shortlist card, both parents answering', () => {
    * registered for.
    */
   it('does not let the primary parent’s later YES claim the executed row', async () => {
-    await say('yes', coParentUserId);
+    await say({ verb: 'yes', index: null }, coParentUserId);
     await executeTheDraft();
     queued.length = 0;
 
-    const second = await say('yes', primaryUserId);
+    const second = await say({ verb: 'yes', index: null }, primaryUserId);
 
     expect(second).toEqual({ status: 'declined_to_claim', reply: null, actionId: null });
     expect(queued).toEqual([]);

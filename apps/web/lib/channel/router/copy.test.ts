@@ -21,20 +21,13 @@ import {
 describe('whichOneReply', () => {
   it('numbers the choices AND invites the parents own words', () => {
     expect(whichOneReply(['move swim to tuesday', 'the 18-month checkup'], true)).toBe(
-      'Which one - 1) move swim to tuesday, 2) the 18-month checkup? Reply 1 or 2, or just say which.',
+      'Which one - move swim to tuesday or the 18-month checkup?',
     );
   });
 
-  it('serially comma-joins the numbers it offers', () => {
-    expect(whichOneReply(['a', 'b', 'c'], true)).toBe(
-      'Which one - 1) a, 2) b, 3) c? Reply 1, 2 or 3, or just say which.',
-    );
-  });
-
-  it('never makes the number the only way in', () => {
-    // The 2026-08-13 principle, kept: a parent who answers in words is understood, and the
-    // sentence says so rather than handing out a grammar to learn.
-    expect(whichOneReply(['a', 'b'], true)).toContain('or just say which');
+  it('names every choice and does not ask for a number', () => {
+    expect(whichOneReply(['a', 'b', 'c'], true)).toBe('Which one - a, b or c?');
+    expect(whichOneReply(['a', 'b'], true)).not.toMatch(/Reply \d/i);
   });
 
   it('discloses an overflow and points nowhere', () => {
@@ -94,7 +87,7 @@ describe('clarifyWhichQuestion', () => {
 
     expect(shown).toEqual([first, intro, second]);
     expect(reply).toBe(
-      'Which one - 1) add to your calendar (the first), 2) meeting the family nearby, 3) add to your calendar (the second)? Reply 1, 2 or 3, or just say which.',
+      'Which one - add to your calendar (the first), meeting the family nearby or add to your calendar (the second)?',
     );
   });
 
@@ -104,9 +97,7 @@ describe('clarifyWhichQuestion', () => {
         [q('approval', 'move swim to tuesday'), q('approval', 'the 18-month checkup')],
         true,
       ).reply,
-    ).toBe(
-      'Which one - 1) move swim to tuesday, 2) the 18-month checkup? Reply 1 or 2, or just say which.',
-    );
+    ).toBe('Which one - move swim to tuesday or the 18-month checkup?');
   });
 
   it('never claims the rest are "behind those" - nothing queues behind an introduction', () => {

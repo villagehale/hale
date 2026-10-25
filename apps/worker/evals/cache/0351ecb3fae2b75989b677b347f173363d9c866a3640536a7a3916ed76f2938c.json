@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNJ7fyMjjtiNPkCtxEyW",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuQYKEAgTGAI4AUIIdGhpbmtpbmcSDJh1Zi1h+cwunwz1ORoMrcDyZggXk7yhSipjIjCm+x3fzwwl9lkDkvj6nc8hZVh/ViBbOhI9QQNWcqIOkipSZ6yor+br6gpBUxMW5UEq1gXcogvbYHcNnHnpcyjriSSOAxWeSCW5g8JHzWRakgyjJCftA1nRSkQw6q3HL9XopPQjCv6gRNpM3kaXwKt0nZS8igYuCW03j46qLQ4MGNaxGhJbUnR0S1SwPHoAVmPvx+mg4u94rqoldA5Hrl+wl3oOcsl6oFgCPAbNe0r9w8WsxarxJw5BpkKGNVUnKLhWIXCnI60sPR3RacvORb9cqm512OpFrWUib1Mf27VYLbrPUsbCcj0fzrA+vJE8SEr6X/KmAAglfLIT7anWAOcZbfqU8r9UL+niiLA054iVTCcAyr+ffbTFF74373bB0755CO4Bvurbcl5E/q1Wx7GLOvaaASwWmb4yx9pfwiA5sCDMw+ELuo7Idt2xgBRqJKXcgEceDU8Q2QqkkOKRqysdcli/rLuXLKfwsUvnf0M4oJ3SeYPsMQzi5vnMwb4Is9/wfdEYs6tK6AzYIgW/yJZjR8OI/xaVMd7GHqJkT6aqp4JCJ9E5UF6wnfeOLHkZYGNC8v6PBVjLnpf3JFp817EqlFHUU29FCckyjg80dSuZJawQdKlPPKeXWZm5UX7kOstoIekWfYMthXBmB4Yfs4W4A5KeSa9ZrC+8gLm/aYJm4dESQahFKE+BZ9Nu1Von2lWW1Q3p+Q1kM35CLu7J3u6bheJ+X852TtzfNzC9NexsfD7/FMiW3r88T81xv4sGG5BvAAk0JSlKKJZbGg+XoEJxj/UOnfHyvnkVd+3x4v0PpMxf1aUzffA4HFHgC1dc2ST05rjTKKee0UoWKyKA1rq65pynjp7mzV+9ATor9sE/iF91SyxjdzFbiVZ/M8tA6iNqRWdHknRtT668DvYicfH6NkJlgk4TQsf1ksJfBXobOcXztxAn8qXt90lYp+ptkao2FR6bsD5tR8yQg3d6ZmVfOzbCKNnZa41CSizUs0wl8dnxz4rAE8DItyuApB4mu6PFKWVflP7UVVwYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Remy would be in Tiny Gym. It's the one for under 3.5s with a parent, and Mini Gym only starts once they're 3.5 and going solo. I couldn't find fall times on Cartwheels' own page, so I'd check those before planning around it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1851,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20637,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 153,
+      "output_tokens_details": {
+        "thinking_tokens": 66
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2227
+}

@@ -524,7 +524,9 @@ export type ActionGateReason =
   | 'parent_commitment'
   | 'lane_off'
   | 'autonomy_denied_kind'
-  | 'autonomy_notice_pending';
+  | 'autonomy_notice_pending'
+  /** VIL-357 · the approval landed outside the family's action window. */
+  | 'outside_time_window';
 
 interface RecordActionGateInput {
   familyId: string;

@@ -93,6 +93,9 @@ function parseSpokenLine(answer: string | null, questions: 0 | 1): { line: strin
 }
 
 function lineUsable(line: string, input: GroupOnboardingLine): boolean {
+  // VIL-438: the member welcome has no word or punctuation gate. Whether it carries
+  // the facts is the model's (and the eval judge's) call, not a string match.
+  if (input.kind === 'member_welcome') return line.trim().length > 0 && !/https?:\/\//i.test(line);
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
   if (/https?:\/\//i.test(line)) return false;

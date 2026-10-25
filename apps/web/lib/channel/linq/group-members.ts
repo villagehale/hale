@@ -1,14 +1,17 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { householdTimezone } from '~/lib/channel/household-timezone';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
+import { speak } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { linqFromE164, linqGroupMembersEnabled } from './config';
+import { linqFromE164, linqGroupMembersEnabled, linqGroupWelcomeVoiceEnabled } from './config';
+import { type GroupOnboardingComposer, composeOnboardingLine } from './group-onboarding-voice';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver';
@@ -23,46 +26,44 @@ type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver'
  */
 
 /**
- * VIL-398. One welcome when a newcomer is seated, and one hold when a stranger
- * speaks. Nothing else about the family goes into the thread until a parent
- * approves. French is ASCII. No opt-out wording.
+ * One welcome when a newcomer is seated, and one hold when a stranger speaks.
+ * The model writes both. Nothing else about the family goes into the thread
+ * until a parent approves.
  */
-export const GROUP_MEMBER_WELCOME_WITH_ADDER: Record<ReplyLanguage, string> = {
-  en: "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
-  fr: "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-};
-
-export const GROUP_MEMBER_WELCOME_NO_ADDER: Record<ReplyLanguage, string> = {
-  en: "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
-  fr: "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
-};
-
-export const GROUP_STRANGER_HOLD: Record<ReplyLanguage, string> = {
-  en: 'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. {parentA}, say "add them" if they share the load.',
-  fr: 'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. {parentA}, dis "ajoute cette personne" si elle partage la charge.',
-};
-
-function fillSlots(pattern: string, slots: Record<string, string>): string {
-  return pattern.replace(/\{(\w+)\}/g, (_, key: string) => slots[key] ?? '');
-}
-
-export function groupMemberWelcome(language: ReplyLanguage, adder: string | null): string {
+export function groupMemberWelcome(
+  language: ReplyLanguage | null,
+  adder: string | null,
+): Promise<string | null> {
   const name = adder?.trim() ?? '';
-  if (!name) return GROUP_MEMBER_WELCOME_NO_ADDER[language];
-  return fillSlots(GROUP_MEMBER_WELCOME_WITH_ADDER[language], { adder: name });
+  return speak({
+    purpose: 'group_member_welcome',
+    language,
+    facts: name ? { adder: name } : {},
+  });
 }
 
-export function groupStrangerHold(language: ReplyLanguage, parentA: string): string {
-  return fillSlots(GROUP_STRANGER_HOLD[language], { parentA });
+export function groupStrangerHold(
+  language: ReplyLanguage | null,
+  parentA: string,
+): Promise<string | null> {
+  return speak({
+    purpose: 'group_stranger_hold',
+    language,
+    facts: { parentA },
+    verbatim: [parentA],
+  });
 }
 
-async function familyReplyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
+async function familyReplyLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage | null> {
   const rows = await database
     .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
     .where(eq(schema.families.id, familyId));
   const language = rows.find((row) => row.id === familyId)?.primaryLanguage;
-  return language?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  return acceptReplyLanguage(language);
 }
 
 async function userFirstName(database: Database, userId: string | null): Promise<string | null> {
@@ -241,7 +242,12 @@ async function provisionMember(
     const tx = rawTx as unknown as Database;
     await tx
       .insert(schema.users)
-      .values({ externalAuthId: `sms:${phoneHash}`, email: null, name: null })
+      .values({
+        externalAuthId: `sms:${phoneHash}`,
+        email: null,
+        name: null,
+        timezone: await householdTimezone(tx, input.familyId),
+      })
       .onConflictDoNothing({ target: schema.users.externalAuthId });
     const [user] = await tx
       .select({ id: schema.users.id })
@@ -313,13 +319,20 @@ async function sendOnce(
     familyId: string;
     parentUserId: string;
     chatId: string;
-    text: string;
+    text: string | null;
     templateKey: string;
     dedupeKey: string;
     now: Date;
     send?: SendGroup;
   },
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  if (!input.text) {
+    console.info(
+      { familyId: input.familyId, templateKey: input.templateKey, reason: 'model_unreachable' },
+      'linq group member: spoken line unreachable',
+    );
+    return 'not_sent';
+  }
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
@@ -377,6 +390,8 @@ export async function seatParticipantAdded(
     isFromMe: boolean;
     now: Date;
     send?: SendGroup;
+    /** Test seam for the VIL-438 welcome voice. Production uses the model. */
+    voice?: GroupOnboardingComposer;
   },
 ): Promise<SeatParticipantResult> {
   if (!linqGroupMembersEnabled()) return { outcome: 'flag_off' };
@@ -496,11 +511,27 @@ export async function seatParticipantAdded(
   }
   const language = await familyReplyLanguage(database, familyId);
   const adder = decision.kind === 'parent' ? await userFirstName(database, actor.userId) : null;
+  let text: string | null;
+  if (!linqGroupWelcomeVoiceEnabled()) {
+    text = await groupMemberWelcome(language, adder);
+  } else {
+    const written = await composeOnboardingLine(database, {
+      familyId,
+      request: { kind: 'member_welcome', adderName: adder },
+      language: language ?? 'en',
+      templateKey: WELCOME_TEMPLATE,
+      voice: input.voice,
+    });
+    // A welcome the model could not write is not sent; the seat stands and the
+    // next add or turn can try again. No fixed fallback line.
+    if (!('body' in written)) return { outcome: 'group_member_seated', role, notice: 'not_sent' };
+    text = written.body;
+  }
   const notice = await sendOnce(database, {
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: groupMemberWelcome(language, adder),
+    text,
     templateKey: WELCOME_TEMPLATE,
     dedupeKey: `${WELCOME_TEMPLATE}:${input.chatId}:${hash}`,
     now: input.now,
@@ -594,7 +625,7 @@ export async function holdTrueStrangerOnce(
     familyId,
     parentUserId: primary,
     chatId: input.chatId,
-    text: groupStrangerHold(language, parentA),
+    text: await groupStrangerHold(language, parentA),
     templateKey: HOLD_TEMPLATE,
     dedupeKey: `${HOLD_TEMPLATE}:${input.chatId}:${hash}`,
     now: input.now,

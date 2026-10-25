@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011CgNPGcKBV9P6Q9yCE4pXD",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8wgKEAgTGAI4AUIIdGhpbmtpbmcSDKLqjcm4+oziUxW39hoMyPb0iiH3mzlwjgMXIjC9hh54vgklJftQX0Msm9Rnc5KTXENW2tjAiradCGg1VQviHOrKEQd21ktlJCBtYVYqkAjVb/1PAhD0/zs+pjd1PHfTrpFbU6n00BfJAe+sc8T2is1yatCrtEgXERXWbQOFKToUoS+/HWuNn5jwghl1LBWCBuZcTj72DNarrmV7NqIMyR/oLDsw2w+JZQPJjCIyOomZmuRSzdG9VFRZrMklRK9WtvsgtpACQjUcz7TFLP4Qs98ZeCzeSMSPABLxGkwVKxRr72BfGBd4Z8sMmQnocUPXP+o1A68YfU1stQiVJTlPwenvJlNKwjtdcDtRfoK5YeYj4DaRW0Zjc1+kLArTVniNC0Rvkxj2l4M3lO8FUv1Xtq5+T299RJzVxJf5jeBWGKuYySgiFo7b8qNf1eJBCr83KvRMiLf9pM4LdbwlQkpRz9iNb5zQkY3iB7U1EA71X2ysoXBWYxap7kURGz0EimEBnyQCOYm/U4XXY8LkSTts1Soqg1IscN/wc7FmEFD3yLe0+Oub1xZSLfFhqNPj4BXIm6V6EY0KHji29sBuiEDcF9RCoBC+rsK1mZv2QauJUA74S6o3QmpcOgwqhn+Q6s9pp8o48uDid82Qf38i1mha2P9fgRLN5CNJzBhzQ7yJ9zrBxPf+hb0LLzSAWJdXirDm+bLrvRfpXDXMzDu5OjgY0j+Ve9B09P5HWqS556TP8IWhOL5VfJupz3/mHkriNGPVUnsjoChP56eiYSVoTaCCroxG4q4WK8FD6FbuhmNf7Ztboh0rAqy+BFqR0K2QARhj/wn8LIwnPqlq3lmbEm/oyGJ58gBQJioD+T0Sopbfvinly1RajCbnf79mVj6zbdFb8zCRlfZq5l2hFEwRjFeRgGvCmbQFQJWkMx2oTsn2tHHeTrn/fk4kae39TPYVfQCfTEkH+OEFKsHifxe9V0flAw3vdOwbNXJduaMknY1YzSEQt4SRnMkEIK3oo7OJh8e+c991tDZY9Jay5jQ7/xxkpPbPWC/Ex59RRkVLQIfJv+lN7Bkxsd+MR+JOyvki07iuWUnhU1szujiOg5R8YcZB2i/XJcgFcoBPC5+fmI26dIU+XRGMC2W9+G2Pf5pFEfMipTonxT09lDEWOuflxC2N1tNbOC24kS8KnvisUIUqzTCCJ0oZS0IaaoHAwaqbaeg+1d+KSBNMJ42/m7cvN9sh/gmxYLSAp8/qgiCP8RdNvej+wzpHNyyE2hPa2cSBufy5dfPPqyXb+I62kY+Uha+1GbFyNz5HZwoR9t5sMd1t/8QUsPgjCRS1Rf7iE39mf8Tq88YOANjAkyduJ4P6cTHE0JKOy5Cr6FohHQCdyISQR49nEjdPwlkxZG+97Phce86yIw3OrCDatlsPy6Z7q3s+ZIc8vyDjdy2l7BNuWPCBBTNiDs+pYUHmY0rvfbJuHipgjZ2iA29YkRxGHn2XM4Pe5RgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JKi6F39gtHA2v5uc4b7vRT",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Tiny Gym at Cartwheels",
+          "date": "2026-09-13",
+          "time": "09:30",
+          "weekday": "Sunday"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1321,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20889,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 395,
+      "output_tokens_details": {
+        "thinking_tokens": 254
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3350
+}

@@ -57,7 +57,34 @@ const ALLOWED_CAPS = new Set([
  * is not a capitalised name, because it is on one of the two lists above, or because the
  * name is in `hay` and so was recalled rather than invented.
  */
-export function inventedName(word, hay) {
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const MONTH_DAY = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/g;
+
+/**
+ * Is this weekday name backed by a date Hale was handed? Only if some month-day date in
+ * `hay` actually FALLS on that weekday in `year`, computed from the calendar rather than
+ * by aliasing "Sunday" to "Sun": a reply that calls Aug 9 2026 a Sunday is recall, and
+ * one that calls it a Saturday is a wrong fact even though "sat" is in the hay elsewhere.
+ */
+export function weekdayGrounded(day, hay, year) {
+  const target = WEEKDAYS.indexOf(day.toLowerCase());
+  if (target < 0 || !Number.isInteger(year)) return false;
+  for (const match of hay.toLowerCase().matchAll(MONTH_DAY)) {
+    const month = MONTHS.indexOf(match[1]);
+    const date = Number(match[2]);
+    const at = new Date(Date.UTC(year, month, date));
+    if (at.getUTCMonth() !== month) continue;
+    if (at.getUTCDay() === target) return true;
+  }
+  for (const match of hay.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
+    const at = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    if (at.getUTCDay() === target) return true;
+  }
+  return false;
+}
+
+export function inventedName(word, hay, year) {
   const bare = word
     .replace(/^[^A-Za-z]+/, '')
     // Punctuation first, then the possessive it was hiding. The other order only ever
@@ -67,5 +94,11 @@ export function inventedName(word, hay) {
     .replace(/['’]s?$/i, '');
   if (!/^[A-Z][a-z]/.test(bare)) return null;
   if (ALLOWED_CAPS.has(bare) || CITEABLE_AUTHORITIES.has(bare)) return null;
+  if (WEEKDAYS.includes(bare.toLowerCase())) {
+    // Named outright in what Hale was handed (the parent's own "move Thursday"), or the
+    // real weekday of a date it was handed. Never an abbreviation alias.
+    if (hay.includes(bare.toLowerCase())) return null;
+    return weekdayGrounded(bare, hay, year) ? null : bare;
+  }
   return hay.includes(bare.toLowerCase()) ? null : bare;
 }

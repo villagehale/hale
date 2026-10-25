@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in French, that Hale stop sending emails without asking. turnedOffThisTurn lists send_email and reply_to_email, so autonomy really was switched off this turn. Saying it is done is true, not an overclaim. The reply is in French, short, one plain sentence that confirms the change and stops. No greeting, no question, no machinery.",
+    "score": 5
+  }
+}

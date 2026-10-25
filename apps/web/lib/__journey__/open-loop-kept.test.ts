@@ -23,7 +23,6 @@ import {
   fulfillCommitment,
   loadOpenCommitments,
 } from '~/lib/commitments/ledger';
-import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
@@ -205,7 +204,6 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     loadCandidates: (database, id, now) =>
       readCandidates(database, id, { now, finder: liveFinder }),
     loadWindows: async () => [],
-    loadSuppressedCheckpoints: async () => new Set<string>(),
     loadClaimedWindowIds: async () => new Set<string>(),
     loadWeekdayCareContext: async () => ({
       stated: [],
@@ -238,8 +236,6 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     fulfillCommitment,
     // The REAL offer writer over the same store: a health nudge whose task is booking
     // registers the standing question its own close makes (lib/health/offer.ts).
-    recordCheckupOffer: (database, input) =>
-      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
     // The REAL threader over the same store: a nudge the parent can answer has to be a
     // row in `messages`, because that is the only place their reply's antecedent lives.
     threadMessage: threadProactiveMessage,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two events (Mon 4:30pm and Thu 5:15pm), so asking which one and drafting nothing is the right handling. Both times trace to the week, and the reply is short and asks a single question.",
+    "score": 5
+  }
+}

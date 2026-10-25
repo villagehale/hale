@@ -1,5 +1,5 @@
 import { safeGivenName } from '~/lib/channel/identity/parent-call-name';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import type { CopyLanguage, ReplyLanguage } from '~/lib/channel/language';
 
 /**
  * Design-locked same-activity lines (byte-stable aside from `{activity}` and
@@ -19,15 +19,15 @@ export const SAME_ACTIVITY_CONFIRMATION_EN =
 export const SAME_ACTIVITY_CONFIRMATION_FR =
   "Vous etes tous les deux partants. L'autre parent s'appelle {firstName}, et elle ou il a recu votre prenom aussi. Voulez-vous que je lance une conversation a deux?";
 
-const OFFER: Record<ReplyLanguage, string> = {
+const OFFER: Record<CopyLanguage, string> = {
   en: SAME_ACTIVITY_OFFER_EN,
   fr: SAME_ACTIVITY_OFFER_FR,
 };
-const WAITING: Record<ReplyLanguage, string> = {
+const WAITING: Record<CopyLanguage, string> = {
   en: SAME_ACTIVITY_WAITING_EN,
   fr: SAME_ACTIVITY_WAITING_FR,
 };
-const CONFIRMATION: Record<ReplyLanguage, string> = {
+const CONFIRMATION: Record<CopyLanguage, string> = {
   en: SAME_ACTIVITY_CONFIRMATION_EN,
   fr: SAME_ACTIVITY_CONFIRMATION_FR,
 };

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own. `turnedOffThisTurn` lists send_email and reply_to_email, so the switch was actually flipped and saying so is true. The reply confirms the change in plain words and stops, with no greeting, no machinery and no extra question. Saying Hale will \"show\" the email first is a faithful reading of \"asks before each one.\"",
+    "score": 5
+  }
+}
