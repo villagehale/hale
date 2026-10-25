@@ -654,6 +654,8 @@ export type RouterStatus =
   | 'not_a_parent'
   /** No active verified channel to answer on. Nothing sent (CASL). */
   | 'unreachable'
+  /** A group turn that cannot name its group thread. Refused: nothing sent, no thread. */
+  | 'group_unscoped'
   /** A deterministic handler owned it. */
   | 'handled'
   /** A parent answered an open question in their own words, and the handler that owns
@@ -901,14 +903,26 @@ async function routeChannelMessageInner(
 
   // THREAD. One long-lived conversation per parent, resolved through the note anchor's
   // partial unique index so two texts arriving together cannot fork it.
+  const noteKey = channelThreadNoteKey({
+    inGroup,
+    channel: route.channel,
+    chatId: route.channel === 'imessage' ? route.chatId : null,
+    parentUserId: job.parent_user_id,
+  });
+  // A group turn with no group to scope it to is refused, never run on the sender's
+  // 1:1 thread (whose private history would reach the group).
+  if (noteKey === null) {
+    await noteUnanswered(deps, job, 'group_thread_unscoped');
+    return done(deps, job, {
+      status: 'group_unscoped',
+      handler: null,
+      conversationId: null,
+      lane: null,
+    });
+  }
   const conversationId = await resolveOrCreateNoteConversation(
     job.family_id,
-    channelThreadNoteKey({
-      inGroup,
-      channel: route.channel,
-      chatId: route.channel === 'imessage' ? route.chatId : null,
-      parentUserId: job.parent_user_id,
-    }),
+    noteKey,
     deps.database,
   );
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the

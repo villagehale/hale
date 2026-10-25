@@ -210,8 +210,15 @@ describe('VIL-439 review: group tools and group history', () => {
     expect(
       channelThreadNoteKey({ inGroup: false, channel: 'imessage', chatId: 'chat-g', parentUserId }),
     ).toBe(channelSmsNoteKey(parentUserId));
+    // No chat id, or not iMessage: refused, never the sender's 1:1 thread.
     expect(
       channelThreadNoteKey({ inGroup: true, channel: 'imessage', chatId: null, parentUserId }),
+    ).toBeNull();
+    expect(
+      channelThreadNoteKey({ inGroup: true, channel: 'sms', chatId: 'chat-g', parentUserId }),
+    ).toBeNull();
+    expect(
+      channelThreadNoteKey({ inGroup: false, channel: 'sms', chatId: null, parentUserId }),
     ).toBe(channelSmsNoteKey(parentUserId));
   });
 
