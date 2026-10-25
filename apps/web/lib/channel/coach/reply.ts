@@ -1,7 +1,7 @@
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
-import { type NamedActivityLink, activityLinkSuffix } from './activity-links';
+import { type NamedActivityLink, activityLinkSuffix, replyNamesActivity } from './activity-links';
 
 /**
  * VIL-221 · C2 — everything that happens to the model's answer between the loop
@@ -180,7 +180,13 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   if (flattened === '') {
     throw new Error('channel coach: model answer was empty after post-processing');
   }
-  const redacted = redactTeenNames(flattened, args.children, args.now);
+  const redacted = groundedUrlsOnly(
+    redactTeenNames(flattened, args.children, args.now),
+    args.activityLinks,
+  );
+  if (redacted === '') {
+    throw new Error('channel coach: model answer was only an ungrounded link');
+  }
   if (reachesForTheHealthLine(redacted)) {
     // The model wrote a health-line number in its own words. That is the reply. The
     // log counts the screen miss; the body never reaches it (rule #1).
@@ -279,4 +285,37 @@ function dropDuplicateOffer(body: string, offer: string): string {
   const haystack = body.trim();
   if (!haystack.toLowerCase().endsWith(needle)) return haystack;
   return haystack.slice(0, haystack.length - needle.length).trim();
+}
+
+const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
+
+/**
+ * A URL the model wrote stays only if it is a page link a tool returned THIS turn for
+ * the program the reply is about. Anything else is a wrong fact: a link for a different
+ * program than the one answered about (the `continuity-bare-noun` reply pasted the
+ * Tiny Tumblers page under an answer about Tiny Gym), or a link nothing returned at
+ * all. Dropped rather than replaced: the right link, when there is one, is appended by
+ * code from the tool result. Exported for tests.
+ */
+export function groundedUrlsOnly(
+  body: string,
+  links: readonly NamedActivityLink[] | undefined,
+): string {
+  if (!URL_IN_TEXT.test(body)) return body;
+  URL_IN_TEXT.lastIndex = 0;
+  const prose = body.replace(URL_IN_TEXT, ' ');
+  const kept = new Set(
+    (links ?? [])
+      .filter((link) => replyNamesActivity(prose, link, links ?? []))
+      .map((link) => link.url.toLowerCase()),
+  );
+  return body
+    .replace(URL_IN_TEXT, (url) => {
+      const bare = url.replace(/[.,;:!?]+$/, '');
+      const tail = url.slice(bare.length);
+      return kept.has(bare.toLowerCase()) ? url : tail;
+    })
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

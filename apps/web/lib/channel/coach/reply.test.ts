@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { plainText, redactTeenNames, toSmsReply } from './reply';
+import { groundedUrlsOnly, plainText, redactTeenNames, toSmsReply } from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -526,5 +526,49 @@ describe('activity links', () => {
     });
     expect(reply).toContain('https://tpl.example/lantern');
     expect(reply).not.toContain('https://tpl.example/robotics');
+  });
+});
+
+/**
+ * A link the model wrote is a fact. It stays only when a tool returned it this turn for
+ * the program the reply is about (eval fixture continuity-bare-noun, 2026-10-25 re-record).
+ */
+describe('model-written links', () => {
+  const TUMBLERS = {
+    title: 'Tiny Tumblers parent & tot',
+    url: 'https://www.haltonhills.ca/en/recreation/tiny-tumblers.aspx',
+  };
+  const ANSWER =
+    "Remy would be in Tiny Gym. It's the one for under 3.5s with a parent, and Mini Gym only starts once they're 3.5 and going solo. I couldn't find fall times on Cartwheels' own page, so I'd check those before planning around it.";
+
+  it("drops another program's link from an answer about Tiny Gym", () => {
+    const out = toSmsReply(`${ANSWER} ${TUMBLERS.url}`, {
+      children: [],
+      now: NOW,
+      activityLinks: [TUMBLERS],
+    });
+    expect(out).toBe(ANSWER);
+  });
+
+  it('does not append the returned link when the reply only shares a word with it', () => {
+    // One shared four-letter word ("Tiny") is not the reply naming the program.
+    const out = toSmsReply(ANSWER, { children: [], now: NOW, activityLinks: [TUMBLERS] });
+    expect(out).toBe(ANSWER);
+  });
+
+  it('drops a link no tool returned this turn', () => {
+    expect(groundedUrlsOnly('Swim is Tuesday, see https://example.com/swim.', [])).toBe(
+      'Swim is Tuesday, see.',
+    );
+  });
+
+  it('keeps the returned link for the exact program the reply is about', () => {
+    const body = `Tiny Tumblers parent & tot runs Saturday mornings: ${TUMBLERS.url}`;
+    expect(groundedUrlsOnly(body, [TUMBLERS])).toBe(body);
+  });
+
+  it('leaves a reply with no link untouched, in any script', () => {
+    const zh = '今天没有安排。圣劳伦斯社区中心下午有亲子活动。';
+    expect(groundedUrlsOnly(zh, [TUMBLERS])).toBe(zh);
   });
 });

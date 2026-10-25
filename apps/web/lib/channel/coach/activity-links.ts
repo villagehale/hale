@@ -126,7 +126,7 @@ export function replyNamesActivity(
 
   const hits = words.filter((word) => hay.includes(word));
   if (hits.length === 0 || otherFindMentioned(hay, link, links)) return false;
-  if (links.length === 1 || hits.length >= 2) return true;
+  if (hits.length >= 2) return true;
   return hits.some((word) => word.length >= 6);
 }
 
