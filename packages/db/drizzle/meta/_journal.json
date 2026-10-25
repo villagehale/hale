@@ -1191,6 +1191,13 @@
       "when": 1781556215000,
       "tag": "0174_family_link_wallets",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1781556218000,
+      "tag": "0177_provider_watch",
+      "breakpoints": true
     }
   ]
 }

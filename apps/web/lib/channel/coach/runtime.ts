@@ -60,6 +60,10 @@ import {
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
 import {
+  type ProviderWatchContext,
+  loadProviderWatchContext,
+} from '~/lib/signup/browser-use/watch/context';
+import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
@@ -171,6 +175,10 @@ export interface ChannelCoachPorts {
    * ladder is armed for them — Hale's flagship job, made visible to a turn that is
    * being asked about it (see registration-context.ts). */
   loadRegistrationWindows(familyId: string, now: Date): Promise<RegistrationWindowContext[]>;
+  /** What Hale's Browser Use watch last read on this family's providers (schedules,
+   * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
+   * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
+  loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -262,6 +270,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ports.loadChildren(turn.familyId),
         ports.loadRegistrationWindows(turn.familyId, now),
       ]);
+      const providerWatch = ports.loadProviderWatch
+        ? await ports.loadProviderWatch(turn.familyId, now)
+        : [];
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
       const skill =
@@ -314,6 +325,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // first, each saying whether Hale's ladder is already on it. Empty for a family
         // outside the covered set — and then the skill has nothing to claim.
         registrationWindows,
+        // What the watch last read on this family's providers. Absent when empty, so
+        // the ordinary turn's prompt bytes and cache prefix are untouched.
+        ...(providerWatch.length > 0 ? { providerWatch } : {}),
       };
 
       return traceAgentRun(
@@ -561,6 +575,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
+    // Optional data: a failed read leaves it out rather than failing the parent's turn.
+    // The line names the fault class only.
+    loadProviderWatch: (familyId, now) =>
+      loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
+        console.error(
+          { fault: err instanceof Error ? err.name : typeof err },
+          'coach: provider watch context unavailable',
+        );
+        return [];
+      }),
     loadRegistrationWindows: (familyId, now) =>
       loadRegistrationWindows(
         productionRegistrationContextPorts(database),

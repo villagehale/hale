@@ -66,6 +66,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `true` | off | `false` | Noah |
 | `BROWSER_USE_SIGNUP_ENABLED` | `true` | off | empty, or `false` | Barton |
 | `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` | `true` | off | empty, or `false` | Barton |
+| `BROWSER_USE_WATCH_ENABLED` | `true` | off | empty, or `false` | Barton |
 | `SOCIAL_WATCHLIST` | `on` | off | empty, or `off` | Noah |
 | `TRAVEL_BRIEF_ENABLED` | `true` | on (verify in Vercel); read through the VIL-226 lane helper as `travel_brief`, no action | unset it — off is off for every household; while on, a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows the brief to the listed households | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `true` | off | `false` | Noah |
@@ -188,6 +189,7 @@ Set one model flag to `candidate` only. `AI_GATEWAY_API_KEY` has to be set for J
 These stay off for the first families. The kill value is in the inventory table.
 
 - `AUTHORIZED_SIGNUP_ENABLED`, `SIGNUP_SANDBOX_RUNTIME_ENABLED`, `BOOKING_REFERENCE_CONNECTOR_ENABLED`, `BROWSER_USE_SIGNUP_ENABLED`: signup stays off until Barton arms it. Neither the sandbox flag nor the Browser Use flag turns signup on. The Browser Use engine also needs `BROWSER_USE_API_KEY` (unset) and migration 0172. `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` lets the agent pay with each parent's own Stripe Link Agent Wallet. Before arming it: Stripe must issue Hale a Link Agent Wallet OAuth client (`LINK_OAUTH_CLIENT_ID`, `LINK_OAUTH_CLIENT_SECRET`, plus `STRIPE_PUBLISHABLE_KEY`), migration 0173 must be applied, and the parent Link sign-in route must exist. The cap is the approved price, never above $500.
+- `BROWSER_USE_WATCH_ENABLED`: the hourly provider watch stays off until Barton arms it. It also needs `BROWSER_USE_API_KEY`, migration 0177 and at least one `provider_watch_targets` row. Spend is capped in code (`watch/sweep.ts`): $0.10 model cap per run, 2 runs per sweep, $1 per rolling 24 hours of recorded session cost.
 - `FIRST_TOUCH_LOCATION_CARD_ENABLED`: the Linq location card stays off.
 - `COPARENT_DUTY_BURDEN_SURFACE_ENABLED`: the answer string does not leave even when the flag is on.
 - `ACTIVITY_REVIEWS_SURFACE`: stays off until three households have answered about one subject.
