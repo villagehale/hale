@@ -162,6 +162,46 @@ describe('channelCoachRuntime', () => {
     expect(seen[1]).not.toHaveProperty('audience');
   });
 
+  it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
+    const seen: Record<string, unknown>[] = [];
+    const reading = {
+      provider: 'cityofx.perfectmind.com',
+      kind: 'waitlist',
+      checkedAt: NOW.toISOString(),
+      items: [
+        {
+          title: 'Preschool Swim',
+          ages: null,
+          days_times: null,
+          starts_on: null,
+          location: null,
+          status: 'waitlist' as const,
+          spots_left: null,
+          registration_opens: null,
+        },
+      ],
+    };
+    const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
+      seen.push(args.context as Record<string, unknown>);
+      return answering('ok.')(args);
+    };
+
+    await channelCoachRuntime(
+      ports({ runAgent, loadProviderWatch: async () => [reading] }),
+    ).respond(turn(), []);
+    await channelCoachRuntime(ports({ runAgent, loadProviderWatch: async () => [] })).respond(
+      turn(),
+      [],
+    );
+    await channelCoachRuntime(ports({ runAgent })).respond(turn(), []);
+
+    expect(seen[0]).toHaveProperty('providerWatch', [reading]);
+    expect(JSON.stringify(seen[0])).not.toContain('https://cityofx');
+    expect(seen[1]).not.toHaveProperty('providerWatch');
+    expect(seen[2]).not.toHaveProperty('providerWatch');
+    expect(JSON.stringify(seen[1])).toBe(JSON.stringify(seen[2]));
+  });
+
   /**
    * The thread does the work; the app is the receipts room a parent never NEEDS. A
    * model told not to send a link is a model that sometimes sends one anyway — it

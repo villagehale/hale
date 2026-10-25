@@ -22,6 +22,7 @@
     { "path": "/api/cron/queue-maintenance", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/failure-page", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/connector-sync", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/inbound-canary", "schedule": "9-59/10 * * * *" }
+    { "path": "/api/cron/inbound-canary", "schedule": "9-59/10 * * * *" },
+    { "path": "/api/cron/browser-use-watch", "schedule": "44 * * * *" }
   ]
 }
