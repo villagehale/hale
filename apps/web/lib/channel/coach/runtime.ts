@@ -16,7 +16,6 @@ import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memo
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 import { captureAgentError } from '~/lib/analytics/server-capture';
-import { POLICY_VERSION } from '~/lib/consent';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
@@ -39,6 +38,7 @@ import {
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
+import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -50,6 +50,12 @@ import {
   offeredSubject,
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
+import {
+  type ProviderWatchContext,
+  loadProviderWatchContext,
+} from '~/lib/signup/browser-use/watch/context';
+import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
+import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
@@ -59,18 +65,19 @@ import {
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
-import {
-  type ProviderWatchContext,
-  loadProviderWatchContext,
-} from '~/lib/signup/browser-use/watch/context';
-import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
-import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
+import { groupPrivacyScopeEnabled, groupScopedContext } from './group-privacy-scope';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
-import { type ReplyChild, ReplyNeedsShorter, redactTeenNames, replyCharacterRoom, toSmsReply } from './reply';
+import {
+  type ReplyChild,
+  ReplyNeedsShorter,
+  redactTeenNames,
+  replyCharacterRoom,
+  toSmsReply,
+} from './reply';
 import { shortenOverBudgetReply } from './shorten';
 import {
   type TurnOfferLedger,
@@ -331,6 +338,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // the ordinary turn's prompt bytes and cache prefix are untouched.
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
       };
+      // VIL-439 (T18): a group turn sees only group-safe context (flag, default off).
+      const turnContext =
+        turn.audience === 'group' && groupPrivacyScopeEnabled()
+          ? groupScopedContext(context)
+          : context;
 
       return traceAgentRun(
         {
@@ -371,7 +383,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           const result = await ports
             .runAgent({
               skill,
-              context,
+              context: turnContext,
               tools,
               client: ports.client(),
               maxSteps: MAX_STEPS,
@@ -463,9 +475,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
                   activityLinks: [
-                    ...offeredThisTurn.read().flatMap((item) =>
-                      item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
-                    ),
+                    ...offeredThisTurn
+                      .read()
+                      .flatMap((item) =>
+                        item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
+                      ),
                     ...offeredThisTurn.links(),
                   ],
                   nearby: nearby ?? undefined,
@@ -569,10 +583,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForProviderWatch(
         augmentCoachSkillForAutonomySwitchOff(
-        await augmentCoachSkillForGoogleDrafts(
-          await loadCronSkill('coach-channel-sms'),
-          parentUserId,
-        ),
+          await augmentCoachSkillForGoogleDrafts(
+            await loadCronSkill('coach-channel-sms'),
+            parentUserId,
+          ),
           await familyHasAutonomyGrant(familyId, database),
         ),
         browserUseWatchEnabled(),

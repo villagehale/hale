@@ -1,8 +1,4 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import {
-  type WatchToolPorts,
-  providerWatchTools,
-} from '~/lib/signup/browser-use/watch/tools';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
@@ -22,6 +18,7 @@ import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-fla
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
