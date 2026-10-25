@@ -73,6 +73,10 @@ const config: NextConfig = {
     // Authorized signup loads Playwright at runtime when the flag is on.
     // Absent in a runtime that did not install it — the runner hands back
     // browser_unavailable rather than bundling a browser into the function.
+    // playwright-core is the exception: a real dependency, traced into the
+    // function (see outputFileTracingIncludes) so the Browser Use engine can
+    // attach to its remote browser over CDP. External, because webpack cannot
+    // bundle it; it needs no local browser binary.
     '@playwright/test',
     'playwright',
     'playwright-core',
@@ -96,6 +100,7 @@ const config: NextConfig = {
       '../worker/prompts/**',
       '../worker/src/anthropic/client.ts',
       '../../packages/agent/skills/**',
+      '../../node_modules/playwright-core/**',
     ],
   },
   webpack: (config) => {
