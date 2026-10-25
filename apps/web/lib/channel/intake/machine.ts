@@ -1066,7 +1066,7 @@ async function reportOpening(
   deps: IntakeDeps,
   session: IntakeSession,
   inbound: Inbound,
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
 ): Promise<void> {
   await reportIntakeStep(deps, 'intake_started', session.id, {
     source_code: session.sourceCode,

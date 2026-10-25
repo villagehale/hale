@@ -145,6 +145,27 @@ describe('toSmsReply', () => {
     expect(out.endsWith('at St.')).toBe(false);
   });
 
+  /**
+   * VIL-434, any language. A Chinese reply and a Korean reply are UCS-2, so two segments
+   * is about 140 characters. Both go out whole, past that, with every sentence ending.
+   */
+  it.each([
+    [
+      'zh',
+      '今天Sebby的日历上没有安排。圣劳伦斯社区中心今天下午一点到两点半有亲子自由活动，官网说六岁以下免费。陈医生这周主持，入口在图书馆旁边的大道上。你想去的话告诉我，我帮你加到这周的日程里。另外，周六上午还有一节补课，如果周四不方便可以改到那天，秋季班的报名下个月十五号开始。',
+    ],
+    [
+      'ko',
+      '오늘 Sebby의 일정은 비어 있어요. 세인트 로렌스 커뮤니티 센터에서 오후 1시부터 2시 30분까지 부모와 아이 자유 놀이가 있고, 6세 미만은 무료라고 공식 페이지에 나와 있어요. 이번 주 진행자는 첸 선생님이고 입구는 도서관 옆이에요. 원하시면 이번 주 일정에 넣어 드릴게요.',
+    ],
+  ])('sends a long %s reply whole, past two segments', (_language, raw) => {
+    const out = toSmsReply(raw, { children: [], now: NOW });
+
+    expect(smsSegments(raw)).toBeGreaterThan(2);
+    expect(out).toBe(raw);
+    expect(out).toMatch(/[。.]$/);
+  });
+
   it('sends a single long sentence whole', () => {
     const raw = `${'swim '.repeat(80)}now`;
 

@@ -285,9 +285,7 @@ const DEFAULT_MAX_TOKENS = 2048;
  * unaffected either way.
  */
 function buildSystem(skill: Skill): Anthropic.TextBlockParam[] {
-  return [
-    { type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } },
-  ];
+  return [{ type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } }];
 }
 
 /**
@@ -384,9 +382,11 @@ function wireLane(task: AgentTask, lane?: LaneConfig): WireLaneFields {
 /**
  * Did this completion hit the token ceiling before producing anything usable?
  *
- * Text means the budget went where it was supposed to — a clipped sentence is still an
- * answer the post-processor can trim, and re-asking there would pay twice for something
- * already in hand.
+ * Text beside a tool call that parses means the budget went where it was supposed to.
+ * Text with NO tool call under `max_tokens` is different: it is the reply, cut wherever
+ * the ceiling landed. Nothing downstream trims a reply any more (VIL-434), so that text
+ * would go to the parent ending mid-word. It is re-asked like a silent completion, and a
+ * re-ask still cut returns `truncated: true` so the parent never gets half a sentence.
  *
  * A tool call counts only if EVERY call in the completion PARSES. Under `max_tokens` the
  * last tool_use block is the one that was cut, and the API returns whatever JSON it had:
@@ -406,10 +406,12 @@ function isTruncatedBeforeSpeaking(
   response: Anthropic.Message,
   toolByName: Map<string, RegisteredTool>,
 ): boolean {
-  if (response.stop_reason !== 'max_tokens' || textFrom(response.content) !== null) return false;
+  if (response.stop_reason !== 'max_tokens') return false;
   const toolUses = response.content.filter(
     (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
   );
+  // VIL-434: the answer itself was cut by the ceiling.
+  if (textFrom(response.content) !== null) return toolUses.length === 0;
   return (
     toolUses.length === 0 ||
     toolUses.some((b) => {
@@ -551,9 +553,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
-  const messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: initialUserContent(args) },
-  ];
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: initialUserContent(args) }];
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
@@ -718,9 +718,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
-  const messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: initialUserContent(args) },
-  ];
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: initialUserContent(args) }];
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
@@ -766,8 +764,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         // reported honestly rather than hidden in a null answer (rule #11) — the re-ask
         // itself is a separate change.
         truncatedRetries: 0,
-        truncated:
-          response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
+        truncated: response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }
