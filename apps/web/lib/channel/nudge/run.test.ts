@@ -589,6 +589,14 @@ describe('runNudgeCron — the outbound gate', () => {
     await runNudgeCron(db(), { ...h.deps, loadCandidates }, FRIDAY_10AM);
     expect(loadCandidates).not.toHaveBeenCalled();
   });
+
+  it("hands the family's language to the live search", async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ families: [family({ language: 'zh' })] });
+    const loadCandidates = vi.fn(async () => []);
+    await runNudgeCron(db(), { ...h.deps, loadCandidates }, FRIDAY_10AM);
+    expect(loadCandidates).toHaveBeenCalledWith(expect.anything(), 'fam-1', FRIDAY_10AM, TZ, 'zh');
+  });
 });
 
 describe('runNudgeCron — idempotency', () => {
