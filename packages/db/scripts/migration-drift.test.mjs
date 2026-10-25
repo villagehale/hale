@@ -18,6 +18,7 @@ describe('catalog history cutover', () => {
       '0174_family_link_wallets',
       '0175_signup_browser_use_cost',
       '0177_provider_watch',
+      '0180_drop_civic_catalog',
     ]);
   });
 });

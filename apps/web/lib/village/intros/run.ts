@@ -238,7 +238,6 @@ export interface IntroSweepDeps {
       familyBChildId: string;
       fsa: string;
       stage: FamilyStage;
-      civicSessionId: string | null;
       expiresAt: Date;
     },
   ): Promise<string>;
@@ -635,7 +634,6 @@ async function runMatchPhase(
       const anchor = await deps.loadAnchorSession(database, matchAreaFsas(pairing.fsa), now);
       const proposalId = await deps.createProposal(database, {
         ...pairing,
-        civicSessionId: anchor?.id ?? null,
         expiresAt,
       });
       result.proposed += 1;
@@ -1370,7 +1368,6 @@ async function insertProposal(
       fsa: input.fsa,
       stage: input.stage,
       status: 'proposed',
-      civicSessionId: input.civicSessionId,
       expiresAt: input.expiresAt,
     })
     .returning({ id: schema.villageIntroProposals.id });

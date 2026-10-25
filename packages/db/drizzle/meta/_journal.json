@@ -1205,6 +1205,13 @@
       "when": 1781556218000,
       "tag": "0177_provider_watch",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1781815418000,
+      "tag": "0180_drop_civic_catalog",
+      "breakpoints": true
     }
   ]
 }
