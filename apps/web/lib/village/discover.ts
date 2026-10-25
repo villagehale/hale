@@ -3,10 +3,12 @@ import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { discoveryActivityClient } from '~/lib/pipeline/client';
 import {
-  activityRecommendationKey,
   findFamilyActivities,
+  offerReceiptKey,
   offeredReceiptIdsByKey,
   recordActivityOffers,
+  refreshActivityOffers,
+  withSourceUrl,
 } from './live';
 import type { Season } from './visibility';
 
@@ -42,22 +44,36 @@ export async function discoverForFamily(
   if (found.reason === 'no_area' || found.reason === 'no_non_teen_children')
     return { status: found.reason };
   if (found.reason) return { status: 'unavailable', reason: found.reason };
-  // Reuse the existing receipt for an activity already offered (saved state and
-  // receipt identity survive); write a new receipt only for a genuinely new one.
+  // VIL-451 · reuse the existing receipt for an activity already offered (saved
+  // state and receipt identity survive) but refresh its facts from this live read;
+  // write a new receipt only for a genuinely new one. offeredIds keep the live
+  // ranking order.
   const existing = await offeredReceiptIdsByKey(database, familyId);
-  const offeredIds: string[] = [];
+  const slots: ({ id: string } | { fresh: number })[] = [];
   const fresh: typeof found.picks = [];
+  const refreshes: { id: string; pick: (typeof found.picks)[number] }[] = [];
   const seen = new Set<string>();
-  for (const pick of found.picks) {
-    const key = activityRecommendationKey(pick);
-    if (key !== null && seen.has(key)) continue;
-    if (key !== null) seen.add(key);
-    const id = key === null ? undefined : existing.get(key);
-    if (id) offeredIds.push(id);
-    else fresh.push(pick);
+  for (const raw of found.picks) {
+    const pick = withSourceUrl(raw);
+    const key = offerReceiptKey(pick);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const id = existing.get(key);
+    if (id) {
+      refreshes.push({ id, pick });
+      slots.push({ id });
+    } else {
+      slots.push({ fresh: fresh.length });
+      fresh.push(pick);
+    }
   }
+  await refreshActivityOffers(database, familyId, refreshes);
   const rows = await recordActivityOffers(database, familyId, fresh);
-  offeredIds.push(...rows.map((row) => row.id));
+  const offeredIds = slots.flatMap((slot) => {
+    if ('id' in slot) return [slot.id];
+    const row = rows[slot.fresh];
+    return row ? [row.id] : [];
+  });
   return {
     status: 'discovered',
     insertedCount: rows.length,

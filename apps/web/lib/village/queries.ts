@@ -81,6 +81,11 @@ export async function readVillage(
             ),
           )
       : [];
+  // VIL-451 · show receipts in the live ranking order, not database order.
+  if (result.status === 'discovered') {
+    const rank = new Map(result.offeredIds.map((id, index) => [id, index]));
+    candidateRows.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+  }
 
   const candidateIds = candidateRows.map((row) => row.id);
   const [endorsementCounts, familyEndorsed, familyAccepted, familySaved] = await Promise.all([
