@@ -26,12 +26,21 @@ const LAST_LEDGERED_TAG = '0097_pending_disambiguation';
 
 /** Statement shapes that raise on a second run, with the re-runnable form they must take. */
 const NOT_RERUNNABLE = [
-  { shape: /^ALTER TABLE\b[^;]*\bADD CONSTRAINT\b/i, use: 'DO $$ BEGIN ALTER TABLE … ADD CONSTRAINT …; EXCEPTION WHEN duplicate_object OR duplicate_table THEN null; END $$ (UNIQUE raises duplicate_table; the pglite double-apply test is the real gate)' },
+  {
+    shape: /^ALTER TABLE\b[^;]*\bADD CONSTRAINT\b/i,
+    use: 'DO $$ BEGIN ALTER TABLE … ADD CONSTRAINT …; EXCEPTION WHEN duplicate_object OR duplicate_table THEN null; END $$ (UNIQUE raises duplicate_table; the pglite double-apply test is the real gate)',
+  },
   { shape: /^CREATE TABLE (?!IF NOT EXISTS)/i, use: 'CREATE TABLE IF NOT EXISTS' },
-  { shape: /^CREATE (?:UNIQUE )?INDEX (?!IF NOT EXISTS)/i, use: 'CREATE [UNIQUE] INDEX IF NOT EXISTS' },
+  {
+    shape: /^CREATE (?:UNIQUE )?INDEX (?!IF NOT EXISTS)/i,
+    use: 'CREATE [UNIQUE] INDEX IF NOT EXISTS',
+  },
   { shape: /^ALTER TABLE\b[^;]*\bADD COLUMN (?!IF NOT EXISTS)/i, use: 'ADD COLUMN IF NOT EXISTS' },
   { shape: /^ALTER TYPE\b[^;]*\bADD VALUE (?!IF NOT EXISTS)/i, use: 'ADD VALUE IF NOT EXISTS' },
-  { shape: /^CREATE TYPE\b/i, use: 'DO $$ BEGIN CREATE TYPE …; EXCEPTION WHEN duplicate_object THEN null; END $$' },
+  {
+    shape: /^CREATE TYPE\b/i,
+    use: 'DO $$ BEGIN CREATE TYPE …; EXCEPTION WHEN duplicate_object THEN null; END $$',
+  },
   { shape: /^DROP (?:TABLE|INDEX|TYPE) (?!IF EXISTS)/i, use: 'DROP … IF EXISTS' },
 ];
 
@@ -77,8 +86,11 @@ describe('migrations after the ledger watermark are re-runnable', () => {
   });
 
   it('positive control: the deny-list recognises the exact shape that broke the deploy leg', () => {
-    const bare = 'ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_token_hash_unique" UNIQUE("token_hash")';
+    const bare =
+      'ALTER TABLE "join_invites" ADD CONSTRAINT "join_invites_token_hash_unique" UNIQUE("token_hash")';
     expect(NOT_RERUNNABLE.some(({ shape }) => shape.test(bare))).toBe(true);
-    expect(isGuarded(`DO $$ BEGIN IF NOT EXISTS (SELECT 1) THEN ${bare}; END IF; END $$`)).toBe(true);
+    expect(isGuarded(`DO $$ BEGIN IF NOT EXISTS (SELECT 1) THEN ${bare}; END IF; END $$`)).toBe(
+      true,
+    );
   });
 });

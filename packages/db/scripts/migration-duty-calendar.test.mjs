@@ -32,9 +32,7 @@ describe('0143_duty_calendar_sync is additive', () => {
   it('widens the sync check to duty and does not delete rows', () => {
     expect(sql).toContain(`"decision" IN ('picked', 'passed', 'duty')`);
     expect(sql).toContain(`"decision" = 'duty'`);
-    const statements = sql
-      .replace(/--[^\n]*/g, '')
-      .toUpperCase();
+    const statements = sql.replace(/--[^\n]*/g, '').toUpperCase();
     expect(statements).not.toContain('DELETE FROM');
     expect(statements).not.toContain('DROP TABLE');
     expect(statements).not.toContain('DROP COLUMN');

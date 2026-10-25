@@ -27,16 +27,18 @@ const SCHEMA = path.resolve(scriptDir, '..', 'src', 'schema', 'family-trips.ts')
 
 /** The quoted string literals inside a named CHECK's first `IN ( … )` list. */
 function checkedValues(sql, constraintName) {
-  const constraint = new RegExp(`CONSTRAINT "${constraintName}"[\\s\\S]*?IN \\(([\\s\\S]*?)\\)`).exec(
-    sql,
-  );
+  const constraint = new RegExp(
+    `CONSTRAINT "${constraintName}"[\\s\\S]*?IN \\(([\\s\\S]*?)\\)`,
+  ).exec(sql);
   if (!constraint) throw new Error(`no IN-list found for constraint "${constraintName}"`);
   return [...constraint[1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
 }
 
 /** The string literals in an exported `const NAME = [ … ] as const;` array. */
 function sourceValues(ts, constName) {
-  const declaration = new RegExp(`export const ${constName} = \\[([\\s\\S]*?)\\] as const;`).exec(ts);
+  const declaration = new RegExp(`export const ${constName} = \\[([\\s\\S]*?)\\] as const;`).exec(
+    ts,
+  );
   if (!declaration) throw new Error(`no source array found for ${constName}`);
   return [...declaration[1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
 }

@@ -23,11 +23,28 @@ export const TERMINAL_RUN_STATUSES: readonly BrowserUseRunStatus[] = [
   'cancelled',
 ];
 
+/** V4 model ids Hale pins. The API default is also Luna, but Hale never relies on it. */
+export type BrowserUseModel = 'gpt-6-luna';
+
+/**
+ * Provider-native params forwarded unchanged. For Luna the path is
+ * `reasoning.effort`: none, low, medium, high, xhigh or max.
+ */
+export interface BrowserUseModelParams {
+  reasoning: { effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' };
+}
+
 export interface BrowserUseRunRequest {
   task: string;
   outputSchema: Record<string, unknown>;
+  model: BrowserUseModel;
+  modelParams: BrowserUseModelParams;
   sessionId?: string;
-  browserSettings?: { profileId: string; record: boolean };
+  /**
+   * `proxyCountryCode: null` runs without Browser Use's residential proxy; the
+   * API defaults to a US residential proxy when the field is omitted.
+   */
+  browserSettings?: { profileId: string; record: boolean; proxyCountryCode: string | null };
   keepAlive?: number;
   agentmail: false;
   maxCostUsd: number;
@@ -51,6 +68,34 @@ export interface BrowserUseRunSummary {
   totalCostUsd: string | null;
 }
 
+/** GET /sessions/{id}/cost. Fixed-6-decimal strings. totalCostUsd includes browser and proxy. */
+export interface BrowserUseSessionCost {
+  sessionId: string;
+  numRuns: number;
+  llmCostUsd: string;
+  searchCostUsd: string;
+  browserCostUsd: string;
+  proxyCostUsd: string;
+  proxyUsedMb: string;
+  totalCostUsd: string;
+}
+
+export type BrowserUseQueueStatus =
+  | 'pending'
+  | 'dispatching'
+  | 'consumed'
+  | 'cancelled'
+  | 'superseded'
+  | 'failed';
+
+/** One message on a V4 session queue. `runId` is set once it dispatches. */
+export interface BrowserUseQueuedMessage {
+  id: number;
+  sessionId: string;
+  runId: string | null;
+  status: BrowserUseQueueStatus;
+}
+
 export interface BrowserUseRunEvent {
   id: number;
   type: string;
@@ -60,7 +105,11 @@ export interface BrowserUseRunEvent {
 export interface BrowserUseApi {
   createProfile(input: { name: string; userId: string }): Promise<{ id: string }>;
   deleteProfile(profileId: string): Promise<void>;
-  createBrowser(input: { profileId: string; timeoutMinutes: number }): Promise<{
+  createBrowser(input: {
+    profileId: string;
+    timeoutMinutes: number;
+    proxyCountryCode: string | null;
+  }): Promise<{
     id: string;
     cdpUrl: string | null;
   }>;
@@ -73,6 +122,16 @@ export interface BrowserUseApi {
     after: number,
   ): Promise<{ events: BrowserUseRunEvent[]; nextAfter: number | null }>;
   cancelRun(runId: string): Promise<void>;
+  /** Everything the session cost so far, browser time and proxy included. */
+  getSessionCost(sessionId: string): Promise<BrowserUseSessionCost>;
+  /** POST /sessions/{id}/queue: the next turn of the same session and browser. */
+  queueSessionMessage(
+    sessionId: string,
+    input: { text: string; interrupt: boolean },
+  ): Promise<BrowserUseQueuedMessage>;
+  getQueuedMessage(sessionId: string, messageId: number): Promise<BrowserUseQueuedMessage>;
+  /** PATCH /sessions/{id}/cost-cap: caps the session's active run. */
+  setSessionCostCap(sessionId: string, maxCostUsd: number): Promise<void>;
 }
 
 export class BrowserUseApiError extends Error {
@@ -120,6 +179,7 @@ export function browserUseApi(options: {
       const browser = await call<{ id: string; cdpUrl?: string | null }>('POST', '/browsers', {
         profileId: input.profileId,
         timeout: input.timeoutMinutes,
+        proxyCountryCode: input.proxyCountryCode,
         enableRecording: false,
       });
       return { id: browser.id, cdpUrl: browser.cdpUrl ?? null };
@@ -159,6 +219,36 @@ export function browserUseApi(options: {
     async cancelRun(runId) {
       await call('POST', `/runs/${id(runId)}/cancel`);
     },
+    async getSessionCost(sessionId) {
+      return await call<BrowserUseSessionCost>('GET', `/sessions/${id(sessionId)}/cost`);
+    },
+    async queueSessionMessage(sessionId, input) {
+      const message = await call<BrowserUseQueuedMessage>(
+        'POST',
+        `/sessions/${id(sessionId)}/queue`,
+        { text: input.text, interrupt: input.interrupt },
+      );
+      return queued(message);
+    },
+    async getQueuedMessage(sessionId, messageId) {
+      const message = await call<BrowserUseQueuedMessage>(
+        'GET',
+        `/sessions/${id(sessionId)}/queue/${messageId}`,
+      );
+      return queued(message);
+    },
+    async setSessionCostCap(sessionId, maxCostUsd) {
+      await call('PATCH', `/sessions/${id(sessionId)}/cost-cap`, { maxCostUsd });
+    },
+  };
+}
+
+function queued(message: BrowserUseQueuedMessage): BrowserUseQueuedMessage {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    runId: message.runId ?? null,
+    status: message.status,
   };
 }
 

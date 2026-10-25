@@ -30,9 +30,9 @@ function declaredEnums(sql) {
  * `REFERENCES "public"."users"` never matches: the token before `"public"` there is the
  * bare word `REFERENCES`, not a quoted column. */
 function referencedEnums(sql) {
-  return [
-    ...sql.matchAll(/"[a-z_][a-z0-9_]*"[ \t]+(?:"public"\.)?"([a-z_][a-z0-9_]*)"/gi),
-  ].map((m) => m[1]);
+  return [...sql.matchAll(/"[a-z_][a-z0-9_]*"[ \t]+(?:"public"\.)?"([a-z_][a-z0-9_]*)"/gi)].map(
+    (m) => m[1],
+  );
 }
 
 describe('migration enum ↔ declaration consistency', () => {
@@ -47,7 +47,8 @@ describe('migration enum ↔ declaration consistency', () => {
       // created and used in the same file (Drizzle emits CREATE TYPE first).
       for (const name of declaredEnums(sql)) declared.add(name);
       for (const name of referencedEnums(sql)) {
-        if (!declared.has(name)) violations.push(`${tag} references enum "${name}" never CREATE TYPE-d`);
+        if (!declared.has(name))
+          violations.push(`${tag} references enum "${name}" never CREATE TYPE-d`);
       }
     }
 

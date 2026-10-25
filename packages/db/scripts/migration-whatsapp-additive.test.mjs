@@ -42,7 +42,14 @@ describe('0104_whatsapp_channel is additive-only', () => {
     for (const stmt of statements) {
       expect(stmt).toMatch(/^ALTER TYPE "public"\."[a-z_]+" ADD VALUE IF NOT EXISTS '[a-z_]+';?$/);
       // Belt and braces over the same statements (comments are prose, not SQL):
-      for (const forbidden of ['DROP', 'RENAME', 'DELETE', 'UPDATE', 'ALTER TABLE', 'CREATE TABLE']) {
+      for (const forbidden of [
+        'DROP',
+        'RENAME',
+        'DELETE',
+        'UPDATE',
+        'ALTER TABLE',
+        'CREATE TABLE',
+      ]) {
         expect(stmt.toUpperCase()).not.toContain(forbidden);
       }
     }

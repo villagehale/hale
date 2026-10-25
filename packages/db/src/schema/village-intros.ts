@@ -101,7 +101,10 @@ export const villageIntroProposals = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    orderedPair: check('village_intro_proposals_ordered_pair', sql`${table.familyAId} < ${table.familyBId}`),
+    orderedPair: check(
+      'village_intro_proposals_ordered_pair',
+      sql`${table.familyAId} < ${table.familyBId}`,
+    ),
     openPairUniq: uniqueIndex('village_intro_proposals_open_pair_idx')
       .on(table.familyAId, table.familyBId)
       .where(sql`${table.closedAt} IS NULL`),

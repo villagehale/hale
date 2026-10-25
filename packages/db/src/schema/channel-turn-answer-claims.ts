@@ -27,9 +27,7 @@ export const channelTurnAnswerClaims = pgTable(
     claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    messageIdx: uniqueIndex('channel_turn_answer_claims_message_uniq').on(
-      table.channelMessageId,
-    ),
+    messageIdx: uniqueIndex('channel_turn_answer_claims_message_uniq').on(table.channelMessageId),
   }),
 );
 
