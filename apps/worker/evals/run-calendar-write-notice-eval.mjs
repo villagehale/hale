@@ -5,8 +5,7 @@
 // `calendarWriteNoticeRefusals` are imported from apps/web/lib/channel/calendar-write/notice.ts.
 // A judge scores facts and tone; nothing matches words.
 //
-// NOT YET RECORDED. No cached responses and no CI step until a live run records them
-// (a paid call, needs approval):
+// Recorded 2026-10-25 (6/6, $0.0008, ledger vil454-evals). CI replays it cached-only:
 //   node evals/run-calendar-write-notice-eval.mjs --max-usd 0.05   # live, then caches
 //   node evals/run-calendar-write-notice-eval.mjs --broken         # calibration: must FAIL
 //   node evals/run-calendar-write-notice-eval.mjs --cached-only    # CI: replay only
