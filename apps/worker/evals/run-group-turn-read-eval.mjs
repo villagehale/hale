@@ -85,10 +85,7 @@ async function main() {
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
   const allPass = results.every((r) => r.pass);
-  // --report: replay and print, but do not gate on the verdicts (a cache miss or a harness
-  // error still fails). CI runs this way until the known product failures recorded on
-  // the PR are fixed; then drop --report from the script and it gates like any suite.
-  if (!broken) process.exit(allPass || process.argv.includes('--report') ? 0 : 1);
+  if (!broken) process.exit(allPass ? 0 : 1);
   console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);
   process.exit(allPass ? 1 : 0);
 }

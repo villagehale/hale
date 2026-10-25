@@ -1,6 +1,6 @@
 {
   "response": {
-    "id": "msg_011CgPauCwZrt2SQ2WQdDrRT",
+    "id": "msg_011CgPcdCAEB5vuzC4pBsMCx",
     "type": "message",
     "role": "assistant",
     "model": "claude-sonnet-5-5",
@@ -15,7 +15,7 @@
     "usage": {
       "input_tokens": 2,
       "cache_creation_input_tokens": 562,
-      "cache_read_input_tokens": 17484,
+      "cache_read_input_tokens": 17600,
       "cache_creation": {
         "ephemeral_5m_input_tokens": 562,
         "ephemeral_1h_input_tokens": 0

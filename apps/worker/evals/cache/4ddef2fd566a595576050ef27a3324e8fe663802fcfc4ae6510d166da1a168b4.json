@@ -1,6 +1,6 @@
 {
   "response": {
-    "id": "msg_011CgPavADP2AWrNCvocNw34",
+    "id": "msg_011CgPcd5MT9R7YG6wfi7y3T",
     "type": "message",
     "role": "assistant",
     "model": "claude-sonnet-5-5",
@@ -9,23 +9,25 @@
     "content": [
       {
         "type": "tool_use",
-        "id": "toolu_01Ww16EoJGYCMweiMeJb9s5U",
+        "id": "toolu_01AJ8b8ekv88gnXYuun5wzeK",
         "name": "lookup_week",
-        "input": {},
+        "input": {
+          "weekOffset": 0
+        },
         "caller": {
           "type": "direct"
         }
       }
     ],
     "usage": {
-      "input_tokens": 374,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 17484,
+      "input_tokens": 361,
+      "cache_creation_input_tokens": 17600,
+      "cache_read_input_tokens": 0,
       "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 17600,
         "ephemeral_1h_input_tokens": 0
       },
-      "output_tokens": 28,
+      "output_tokens": 53,
       "output_tokens_details": {
         "thinking_tokens": 0
       },
