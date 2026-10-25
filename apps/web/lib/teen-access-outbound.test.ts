@@ -248,6 +248,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'the proactive decider snapshot — titles go to the decider only, never to a recipient; a household with a 13+ child and every sensitive row read as "busy"',
   ],
   [
+    'lib/channel/mid-activity/sweep.ts',
+    "the VIL-393 ask — a placed plan is read through isPrivateEvent first; a 13+ child's or sensitive row is skipped, so only an ordinary title reaches the writer",
+  ],
+  [
     'lib/channel/proactive/review.ts',
     'the proactive review — reads an event id only, as a sign that something changed since a hold',
   ],

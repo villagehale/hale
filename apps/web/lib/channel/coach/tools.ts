@@ -1,8 +1,4 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import {
-  type WatchToolPorts,
-  providerWatchTools,
-} from '~/lib/signup/browser-use/watch/tools';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
@@ -11,6 +7,10 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
+import {
+  type SaidSignupToolPorts,
+  noteActivitySignupTool,
+} from '~/lib/channel/mid-activity/said-tool';
 import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
 import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referral/share';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
@@ -22,6 +22,7 @@ import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-fla
 import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
@@ -180,6 +181,9 @@ export interface ChannelScheduleReader {
 }
 
 export interface ChannelCoachToolArgs {
+  /** VIL-393 · the parent-said-signup verb. Wired only while
+   * MID_ACTIVITY_SIGNUP_TOOL_ENABLED is on; absent leaves the tool set unchanged. */
+  activitySignup?: SaidSignupToolPorts | null;
   /** The Browser Use watch verbs (signup/browser-use/watch/tools.ts). Wired only while
    * BROWSER_USE_WATCH_ENABLED is on; absent leaves the tool set unchanged. */
   providerWatch?: WatchToolPorts | null;
@@ -787,6 +791,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // Offered to the model only where the skill lists it (augmentCoachSkillForAutonomySwitchOff).
   if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
   if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
+  if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
   return tools;
 }
 
