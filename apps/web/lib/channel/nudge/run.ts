@@ -22,13 +22,12 @@ import {
   loadParentCallName,
 } from '~/lib/channel/identity/parent-call-name';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
-import { readCandidates as readVillageCandidates } from '~/lib/channel/intake/radar';
-import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import {
-  type RadarCandidate,
-  type RadarChild,
-  upcomingWeekend,
-} from '~/lib/channel/intake/radar-decide';
+  type LiveCandidates,
+  readCandidates as readVillageCandidates,
+} from '~/lib/channel/intake/radar';
+import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
+import { type RadarChild, upcomingWeekend } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
@@ -68,6 +67,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import {
   type CheckupOfferRecordOutcome,
@@ -83,6 +83,7 @@ import { addDaysToKey, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
+import { proactiveSearchSubject } from '~/lib/seasonal/moments';
 import { recordActivityOffers } from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
@@ -195,7 +196,14 @@ export interface NudgeAuditRow {
 export interface NudgeRunDeps {
   selectFamilies(database: Database, now: Date): Promise<NudgeFamily[]>;
   loadChildren(database: Database, familyId: string): Promise<NudgeChildRow[]>;
-  loadCandidates(database: Database, familyId: string, now?: Date): Promise<RadarCandidate[]>;
+  /** Live web finds for the coming weekend (no stored catalog). `timeZone` lets the
+   * search name seasonal moments (Halloween) that fall inside the window. */
+  loadCandidates(
+    database: Database,
+    familyId: string,
+    now?: Date,
+    timeZone?: string,
+  ): Promise<LiveCandidates>;
   loadWindows(database: Database, areaCoarse: string, now?: Date): Promise<RegistrationWindow[]>;
   /** Health checkpoints this family must not be raised about again (VIL-243 · M8). */
   loadSuppressedCheckpoints(database: Database, familyId: string): Promise<Set<string>>;
@@ -559,7 +567,12 @@ async function decideForFamily(
   family: NudgeFamily,
   deps: NudgeRunDeps,
   now: Date,
-): Promise<NudgeDecision & { offeredPick?: ActivityPick }> {
+): Promise<
+  NudgeDecision & {
+    offeredPick?: ActivityPick;
+    search?: { searchReason: string | null; dropped: Record<string, number> };
+  }
+> {
   const childRows = await deps.loadChildren(database, family.familyId);
   const { children, teenChildIds, healthChildren } = splitByStage(childRows, now);
   // A family with no children on file has nothing any nudge class could rest on.
@@ -584,7 +597,9 @@ async function decideForFamily(
     saturdayPlans,
     householdBias,
   ] = await Promise.all([
-    weekendPossible ? deps.loadCandidates(database, family.familyId, now) : Promise.resolve([]),
+    weekendPossible
+      ? deps.loadCandidates(database, family.familyId, now, family.timeZone)
+      : Promise.resolve([] as LiveCandidates),
     area && weekendPossible ? deps.loadWindows(database, area, now) : Promise.resolve([]),
     // Weather is an input, never a blocker: the port swallows its own failures.
     area && weekendPossible
@@ -626,12 +641,17 @@ async function decideForFamily(
     now,
     timeZone: family.timeZone,
   });
+  const search = {
+    searchReason: candidates.searchReason ?? null,
+    dropped: candidates.dropped ?? {},
+  };
   if (decision.nudge?.kind !== 'weather_swap' && decision.nudge?.kind !== 'weekday_dropin')
-    return decision;
+    return { ...decision, search };
   const selectedId = decision.nudge.candidateRef.id;
   const selected = candidates.find((candidate) => candidate.id === selectedId);
   return {
     ...decision,
+    search,
     offeredPick: selected?.sourceUrl
       ? {
           name: selected.title,
@@ -729,7 +749,13 @@ async function runForFamily(
       actionTaken: 'proactive_nudge_skipped',
       targetTable: 'families',
       targetId: family.familyId,
-      after: { reason: 'nothing_worth_saying', cohort, skips: decision.skips },
+      after: {
+        reason: 'nothing_worth_saying',
+        cohort,
+        skips: decision.skips,
+        // Why the live search came back short, and why picks were dropped.
+        search: decision.search ?? null,
+      },
     });
     return emptyTally({ quiet: true, skips: decision.skips });
   }
@@ -1199,8 +1225,12 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     selectFamilies: selectNudgeFamilies,
     loadChildren: readNudgeChildren,
     recordActivityOffers,
-    loadCandidates: (database, familyId, now) =>
-      readVillageCandidates(database, familyId, { window: 'this coming weekend', now }),
+    loadCandidates: (database, familyId, now, timeZone) =>
+      readVillageCandidates(database, familyId, {
+        window: 'this coming weekend',
+        subject: proactiveSearchSubject(now ?? new Date(), timeZone ?? DEFAULT_TIMEZONE),
+        now,
+      }),
     loadWindows: (database, areaCoarse) => readRegistrationWindows(database, areaCoarse),
     loadSuppressedCheckpoints: (database, familyId) =>
       loadSuppressedCheckpointRefs(database, familyId),

@@ -122,7 +122,7 @@ async function seedTextedPlacement(home: Household): Promise<string> {
       title: TITLE,
       kind: 'drop_in',
       summary: 'Free indoor drop-in for under-sixes.',
-      source: 'civic_registry',
+      source: 'web',
       confidence: 0.9,
       placeId: null,
       civicVenueId: VENUE_ID,
