@@ -85,7 +85,7 @@ import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
-import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import { channelThreadNoteKey } from '~/lib/coach/note-key';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
 import {
   parentTimeZoneForOffer,
@@ -893,14 +893,22 @@ async function routeChannelMessageInner(
     });
   }
   const route = context.reply;
+  // VIL-439: a group turn is scoped as a group whatever the flags say. `context.inGroup`
+  // is false while group onboarding v2 is dark, but the door still marks every group
+  // message (`job.in_group`), and that message must never run as the sender's 1:1 turn:
+  // it gets the group thread, the group audience, and the group-scoped tools and context.
+  const inGroup = context.inGroup || job.in_group === true;
 
   // THREAD. One long-lived conversation per parent, resolved through the note anchor's
   // partial unique index so two texts arriving together cannot fork it.
   const conversationId = await resolveOrCreateNoteConversation(
     job.family_id,
-    context.inGroup && route.channel === 'imessage'
-      ? channelGroupNoteKey(route.chatId)
-      : channelSmsNoteKey(job.parent_user_id),
+    channelThreadNoteKey({
+      inGroup,
+      channel: route.channel,
+      chatId: route.channel === 'imessage' ? route.chatId : null,
+      parentUserId: job.parent_user_id,
+    }),
     deps.database,
   );
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
@@ -1236,7 +1244,7 @@ async function routeChannelMessageInner(
       AGENT_TURN_LIMIT,
     );
     if (!decision.allowed) {
-      if (context.inGroup) {
+      if (inGroup) {
         // The parent's own budget is spent, which is no one else's news: the line goes
         // to their phone, outside the group and outside the group's thread.
         await sendReply(deps, {
@@ -1433,7 +1441,7 @@ async function routeChannelMessageInner(
       // silence-plus-an-apology would read as Hale ignoring a decision the parent made.
       questions: natural.questions,
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
-      audience: context.inGroup ? 'group' : 'direct',
+      audience: inGroup ? 'group' : 'direct',
     });
   } finally {
     await stopTyping();

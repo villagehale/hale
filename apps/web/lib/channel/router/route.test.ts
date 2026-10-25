@@ -23,7 +23,7 @@ import {
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
-import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -4783,6 +4783,49 @@ describe('a slow answer gets one holding line first', () => {
     const direct = await turnIn(false);
     expect(direct.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
     expect(direct.holding.calls).toBe(1);
+  });
+
+  it('VIL-439: every group flag off, a group message still runs as a scoped group turn on the group thread', async () => {
+    // With v2 dark, wiring.ts says `inGroup: false` for a coparent-claimed group message.
+    // The door's own bit must still give it the group audience (group-scoped tools and
+    // context in the runtime) and the group's thread, never the sender's 1:1 thread.
+    for (const flag of [
+      'GROUP_PRIVACY_SCOPE_ENABLED',
+      'LINQ_GROUP_ONBOARDING_V2_ENABLED',
+      'LINQ_GROUP_TURN_AI_ENABLED',
+    ]) {
+      vi.stubEnv(flag, '');
+    }
+    const turnIn = async (in_group: boolean) => {
+      const audiences: Array<ChannelTurn['audience']> = [];
+      const coach = fakeCoach('the real answer');
+      const respond = coach.respond;
+      coach.respond = async (turn, rejected) => {
+        audiences.push(turn.audience);
+        return respond(turn, rejected);
+      };
+      const h = harness({
+        coach,
+        context: { reply: { ...IMESSAGE_ROUTE, chatId: 'chat-claimed-group' }, inGroup: false },
+      });
+      const result = await routeChannelMessage(h.deps, job({ in_group }));
+      return { result, audiences, h };
+    };
+
+    const group = await turnIn(true);
+    expect(group.result.status).toBe('agent_replied');
+    expect(group.audiences).toEqual(['group']);
+    expect(conversationRows(group.h.fake).map((r) => r.noteKey)).toEqual([
+      channelGroupNoteKey('chat-claimed-group'),
+    ]);
+
+    // Positive control: the door said 1:1, so it stays the parent's own thread.
+    const direct = await turnIn(false);
+    expect(direct.audiences).toEqual(['direct']);
+    expect(conversationRows(direct.h.fake).map((r) => r.noteKey)).toEqual([
+      channelSmsNoteKey(PARENT),
+    ]);
+    vi.unstubAllEnvs();
   });
 
   it('a job that does not say whether it came from a group is not armed, and says so', async () => {

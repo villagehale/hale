@@ -54,7 +54,14 @@ import {
   offeredSubject,
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
+import {
+  type ProviderWatchContext,
+  loadProviderWatchContext,
+} from '~/lib/signup/browser-use/watch/context';
+import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
+import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
+import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
@@ -63,18 +70,12 @@ import {
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
-import {
-  type ProviderWatchContext,
-  loadProviderWatchContext,
-} from '~/lib/signup/browser-use/watch/context';
-import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
-import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
+import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
-import { linkRef } from './activity-links';
 import { type ReplyChild, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
@@ -344,6 +345,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       if (media.unwatched.length > 0) {
         Object.assign(context, { arrivedMedia: media.unwatched });
       }
+      // VIL-439 (T18): every group turn sees only group-safe context and tools. No flag:
+      // the router sets the group audience for any message the door marked in_group.
+      const groupScoped = turn.audience === 'group';
+      const turnContext = groupScoped ? groupScopedContext(context) : context;
 
       return traceAgentRun(
         {
@@ -357,7 +362,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           const startedAt = Date.now();
           // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
           // reused set would spend this text's budget on the last one's.
-          const tools = ports.buildTools(
+          const builtTools = ports.buildTools(
             turn,
             (actionId) => draftedActionIds.push(actionId),
             (offer) => {
@@ -378,13 +383,16 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               gmailNotice = notice;
             },
           );
+          // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
+          // are busy-only, on every group turn.
+          const tools = groupScoped ? groupScopedTools(builtTools) : builtTools;
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
           const result = await ports
             .runAgent({
               skill,
-              context,
+              context: turnContext,
               tools,
               client: ports.client(),
               maxSteps: MAX_STEPS,
