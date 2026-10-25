@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011CgNJ9EEMWUyXQvosPoRKf",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStwgKEAgTGAI4AUIIdGhpbmtpbmcSDHxi1qrX+JXVBoR71xoM63nVmj7EhryLshsvIjB1T//akHfdI0AYlwXQA9GyhSOT2qUuAZkwzlTu+1qUtsQ+/tXHZxo5C5e/VtAdGJQq1AefnuI3Lzfy4qYajbGEvRIeYKlrwyz0xJcTkgYfZ4slSAiuMj6Y9lz+ZysJArOhcxMQ53PQITGRx+NweRClPuFJcs7sZ2cHOyPRV03OWWS6AwjRLc2Q4ZMGj4A+qFEXKrAA0uprF7Z/lzAsYxrGt6jfIgk3wj3MagMGDtWcd6anXB77GaPhFyRQYyEE0lsS8m/bOhO/tre+Y0utGsh1RV+GDRrnMTl5GUBCRRYTXL1dfkETcZJTzO21GWrt+1gJtVz3qO3avyR6sLKrvK+ViNkwgOuL/c2RRShT8BwfDJq2E35JBz1lIswod7rCCg5tKXkjgX0FBCvddH0JzkJptSo2omm9GUiLn45nc6y/Nb78qLYbt14KVYdup3K06KulxxrhHZYIcJnh1WN8LmQFFDh8iWHXrCyObT6FoFSSVyxQ8f07sRi9XByc99OmqtCZ2gwWlr72XlZizfJAZDO6jlb01agHi0sZEhb9pTJZSEWCSdENUevzrdknq9HBv+k4StkJ7FJnujiYhQewkSmhZR/Tx5CFypum8dLHkDQSOThG3FlNxc4CJbaQgmmrn1x427xftEAqakFZfEoO0/KrrQaHWrAUNEbP99856s8fQtteoB4BRiiFeJ0AMiAjw3xLCAiBbUcqcE2ueO+NkT7yyL1EjUAH16a2/+k+4tgsyjVrTF6BlrHjYa0aVngUJK+KrtGqO3//2x8/pD1OTVY1iuxYbh1TdEbBhSrIUIASRxwvVVVgmGNRPIuiY4mYwfenIl09d0n+2ozQjB+rfh34BctC9SNRo/r29rVIJ8tAQ0IbJ9KHmhbr78qOdfD3mqoZQYnUQ5l/xFbiMCr32Uji9epHhWLLygBnPCT2ZQ98rbf2Q+Q5Mu9Cmcr0ba8F7pEZIhuQ6arFRfO2bAK1UEjWQrKNv0Abzys+bizMIkZfFC4tEDjaqoERgfCG0VVRwvKsVeTrRllcMCgu2CfpYKukdt4ocMscteF292JD51QFpgaESqs4afn1fc3CYfRo0lZtolCxlugit5TSyxaFPD85W3OTS1xEjzmsrzzZOYnfqW9exlT0WVy58SpYnuZvtiDtPRbkePYkju0m51n1R0HADPDNGh74qndJM8mToesJEERkPNCIHI7Fwnpqt5hXX/TYTDQ9XGhDckHIsjoISNgvHk1Ef2abJsBL+g6dzx1O+ve7cQAVjtX1sg//PiUrjwQvGtUSGaksWXNpNeWIEp0670lkE9A7kA6Zux0HMtH+SOhz6B2e3G19u3Hxj4ewGeB5WsJ/c0h4/o7zO3Yn08sxTvADM6r5wxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01YF3VmV174EfXBFYqHGQ3NC",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Tiny Gym at Cartwheels",
+          "date": "2026-09-13",
+          "time": "09:30",
+          "weekday": "Sunday"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1321,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20637,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 376,
+      "output_tokens_details": {
+        "thinking_tokens": 235
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3291
+}
