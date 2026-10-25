@@ -163,6 +163,9 @@ export interface NudgeFamily {
   areaCoarse: string | null;
   timeZone: string;
   provisionedAt: Date;
+  /** `families.primary_language`, handed to the live search so the model can weigh the
+   * holidays this household is likely to keep. Optional so older fixtures stay valid. */
+  language?: string | null;
 }
 
 export interface NudgeChildRow {
@@ -203,6 +206,7 @@ export interface NudgeRunDeps {
     familyId: string,
     now?: Date,
     timeZone?: string,
+    language?: string | null,
   ): Promise<LiveCandidates>;
   loadWindows(database: Database, areaCoarse: string, now?: Date): Promise<RegistrationWindow[]>;
   /** Health checkpoints this family must not be raised about again (VIL-243 · M8). */
@@ -598,7 +602,7 @@ async function decideForFamily(
     householdBias,
   ] = await Promise.all([
     weekendPossible
-      ? deps.loadCandidates(database, family.familyId, now, family.timeZone)
+      ? deps.loadCandidates(database, family.familyId, now, family.timeZone, family.language)
       : Promise.resolve([] as LiveCandidates),
     area && weekendPossible ? deps.loadWindows(database, area, now) : Promise.resolve([]),
     // Weather is an input, never a blocker: the port swallows its own failures.
@@ -1180,6 +1184,7 @@ async function selectNudgeFamilies(database: Database, now: Date): Promise<Nudge
     .select({
       familyId: schema.families.id,
       areaCoarse: schema.families.areaCoarse,
+      language: schema.families.primaryLanguage,
       provisionedAt: schema.families.createdAt,
       parentUserId: schema.users.id,
       timeZone: schema.users.timezone,
@@ -1225,10 +1230,10 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     selectFamilies: selectNudgeFamilies,
     loadChildren: readNudgeChildren,
     recordActivityOffers,
-    loadCandidates: (database, familyId, now, timeZone) =>
+    loadCandidates: (database, familyId, now, timeZone, language) =>
       readVillageCandidates(database, familyId, {
         window: 'this coming weekend',
-        subject: proactiveSearchSubject(now ?? new Date(), timeZone ?? DEFAULT_TIMEZONE),
+        subject: proactiveSearchSubject(now ?? new Date(), timeZone ?? DEFAULT_TIMEZONE, language),
         now,
       }),
     loadWindows: (database, areaCoarse) => readRegistrationWindows(database, areaCoarse),
