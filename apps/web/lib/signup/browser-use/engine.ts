@@ -65,6 +65,8 @@ export type BrowserUseEngineDetail =
   | 'payment_boundary'
   | 'charge_mismatch'
   | 'charge_unverified'
+  /** Paid the right amount but no confirmation was captured: never reported as signed up. */
+  | 'unconfirmed'
   | 'amount_changed'
   | 'payment_ceiling'
   | 'currency_unknown'
@@ -525,6 +527,9 @@ async function placeOrder(
           amountChargedCents: charged,
           confirmationNumber: output.confirmation_number,
         });
+      }
+      if (!output.confirmation_number) {
+        return handsOn('unconfirmed', { liveViewUrl, costUsd, amountChargedCents: charged });
       }
       return {
         ...checkout,

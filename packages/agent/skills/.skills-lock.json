@@ -263,6 +263,14 @@
     "file": "said-line.md",
     "sha256": "f25938b6caaf9e7664754a1bd29633145d1f18fd379cdd1a7b7aa43b2e06cf79"
   },
+  "signup-consent.md": {
+    "file": "signup-consent.md",
+    "sha256": "bc79b1b933727995410c255587ac10f38f928f8030545686cbb628f4f247349f"
+  },
+  "signup-outcome-reply.md": {
+    "file": "signup-outcome-reply.md",
+    "sha256": "bc6c6659784b3b50f47108456e2a5756fe23ca3039c1d68af1fd24ae0884c638"
+  },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
     "sha256": "7aa0d3ce6b3e3220479a2cda575ce047ee1cf99ee3e3333525de1a11594fc160"

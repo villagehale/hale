@@ -9,7 +9,7 @@ This note describes `apps/web/lib/signup/` as it is on main after [PR #720](http
 `runAuthorizedSignup` in `apps/web/lib/signup/run.ts` is the loop. It runs in the web process. One turn does this, in order:
 
 1. Read the flag. Off returns `flag_off` and does not claim the turn.
-2. Require an explicit enroll phrase (`isExplicitSignupUtterance` in `apps/web/lib/signup/authorize.ts`). A bare "yes" is not an authorization.
+2. Require explicit consent, read by a model beside the offer and its sessions (`apps/web/lib/signup/consent-reader.ts`, skill `signup-consent`). There is no word list; a hedge or question gets one clarifying question back, and an unreadable read is not consent.
 3. Load the one pending offer (`loadPendingOffer` in `apps/web/lib/signup/store.ts`).
 4. Choose the report door (`chooseReportDoor` in `apps/web/lib/signup/door.ts`). A result that would open a new 1:1 is held. The browser does not open.
 5. `authorizeSignup` picks one session and checks the approved price against the family's busy intervals (`parent_calendar_blocks`, start and end only).

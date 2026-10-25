@@ -6,6 +6,18 @@ import { runAuthorizedSignup } from './run';
 import { recordSignupOffer } from './store';
 import type { FieldSlot, PageControl, PageSnapshot, SignupBrowser, SignupPage } from './types';
 
+// The consent read and the reply are model calls. Tests stand in for both (no live calls).
+vi.mock('./consent-reader', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./consent-reader')>();
+  const { stubConsentReader } = await import('./test-models');
+  return { ...actual, createSignupConsentReader: () => stubConsentReader() };
+});
+vi.mock('./outcome-reply', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./outcome-reply')>();
+  const { echoOutcomeWriter } = await import('./test-models');
+  return { ...actual, createSignupOutcomeWriter: () => echoOutcomeWriter() };
+});
+
 /**
  * VIL-387. The sandbox is the SignupBrowser. authorizeSignup, planBookingStep,
  * and the stop rules run in the backend. The browser receives a URL and then

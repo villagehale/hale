@@ -8,7 +8,20 @@ import { authorizedSignupHandler } from './handler';
 import type { LinkWalletApi } from './link/client';
 import { runAuthorizedSignup } from './run';
 import { recordSignupOffer } from './store';
+import { echoOutcomeWriter, stubConsentReader } from './test-models';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
+
+// The consent read and the reply are model calls. Tests stand in for both (no live calls).
+vi.mock('./consent-reader', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./consent-reader')>();
+  const { stubConsentReader } = await import('./test-models');
+  return { ...actual, createSignupConsentReader: () => stubConsentReader() };
+});
+vi.mock('./outcome-reply', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./outcome-reply')>();
+  const { echoOutcomeWriter } = await import('./test-models');
+  return { ...actual, createSignupOutcomeWriter: () => echoOutcomeWriter() };
+});
 
 const NOW = new Date('2026-09-29T15:00:00.000Z');
 const ORIGIN = 'http://127.0.0.1';
@@ -180,6 +193,153 @@ describe('authorized signup runner', () => {
     expect(calls.opened).toBe(0);
   });
 
+  it('reads consent with the model in any language and script, beside the offer', async () => {
+    for (const [body, id] of [
+      ['好的，帮我们报名吧', 'msg-zh'],
+      ['네, 등록해 주세요', 'msg-ko'],
+      ['go ahead and book it', 'msg-en'],
+    ] as const) {
+      const seeded = await familyWithOffer({ ageMonths: 36 });
+      const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
+      const consentReader = stubConsentReader(() => ({ verdict: 'consent', sessionId: null }));
+      const outcomeWriter = echoOutcomeWriter();
+      const result = await runAuthorizedSignup(
+        db.database,
+        {
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          body,
+          inboundChannelMessageId: id,
+          existingThread: true,
+          now: NOW,
+        },
+        { browser, consentReader, outcomeWriter },
+      );
+      expect(consentReader.calls).toEqual([body]);
+      expect(result.outcome).toBe('completed');
+      expect(calls.submitted).toBe(1);
+      expect(outcomeWriter.facts[0]).toMatchObject({ outcome: 'completed', confirmed: true });
+    }
+  });
+
+  it('asks the clarifying question and opens no browser when the reply is unclear', async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    const { browser, calls } = browserFor(SAFE);
+    const outcomeWriter = echoOutcomeWriter();
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'hmm maybe, is it the Tuesday one?',
+        inboundChannelMessageId: 'msg-unclear',
+        existingThread: true,
+        now: NOW,
+      },
+      {
+        browser,
+        outcomeWriter,
+        consentReader: stubConsentReader(() => ({
+          verdict: 'unclear',
+          question: 'Want me to book the Tue 4:30 session?',
+        })),
+      },
+    );
+    expect(result).toMatchObject({ claimed: true, outcome: 'clarify', deliverOnThread: true });
+    expect(outcomeWriter.facts[0]).toMatchObject({
+      outcome: 'clarify',
+      confirmed: false,
+      question: 'Want me to book the Tue 4:30 session?',
+    });
+    expect(calls.opened).toBe(0);
+    const [offer] = await db.database
+      .select({ status: schema.authorizedSignupOffers.status })
+      .from(schema.authorizedSignupOffers)
+      .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
+    expect(offer?.status).toBe('pending');
+  });
+
+  it('closes the offer and opens no browser on a refusal', async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    const { browser, calls } = browserFor(SAFE);
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: '先不用了，我自己来',
+        inboundChannelMessageId: 'msg-no',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser, consentReader: stubConsentReader(() => ({ verdict: 'decline' })) },
+    );
+    expect(result.outcome).toBe('declined');
+    expect(calls.opened).toBe(0);
+    const [offer] = await db.database
+      .select({ status: schema.authorizedSignupOffers.status })
+      .from(schema.authorizedSignupOffers)
+      .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
+    expect(offer?.status).toBe('handed_back');
+  });
+
+  it('does not claim the message when the consent read is unreadable (no model)', async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    const { browser, calls } = browserFor(SAFE);
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-null',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser, consentReader: stubConsentReader(() => null) },
+    );
+    expect(result.claimed).toBe(false);
+    expect(calls.opened).toBe(0);
+  });
+
+  it('sends nothing when the reply model writes nothing: there is no fixed fallback', async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    const { browser } = browserFor(SAFE, { ...SAFE, confirmed: true });
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-nowriter',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser, outcomeWriter: { write: async () => null } },
+    );
+    expect(result).toMatchObject({ outcome: 'completed', reply: null, deliverOnThread: false });
+  });
+
+  it('reports unconfirmed, never completed, when the page after submit shows no confirmation', async () => {
+    const seeded = await familyWithOffer({ ageMonths: 36 });
+    const { browser } = browserFor(SAFE, { ...SAFE, confirmed: false });
+    const outcomeWriter = echoOutcomeWriter();
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        body: 'Yes, sign us up',
+        inboundChannelMessageId: 'msg-unconf',
+        existingThread: true,
+        now: NOW,
+      },
+      { browser, outcomeWriter },
+    );
+    expect(result.outcome).toBe('unconfirmed');
+    expect(outcomeWriter.facts[0]?.confirmed).toBe(false);
+  });
+
   it('does not enroll when the flag is off', async () => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
     const seeded = await familyWithOffer({ ageMonths: 36 });
@@ -236,9 +396,7 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('ambiguous_session');
-    expect(result.reply).toBe(
-      `I can't tell which session you mean. Which one? Here's the page: ${ORIGIN}/register`,
-    );
+    expect(result.reply).toContain('outcome=ambiguous_session');
     expect(calls.opened).toBe(0);
     expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
@@ -315,9 +473,7 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('payment');
-    expect(result.reply).toBe(
-      `It's asking for payment, so that part is yours. Here's the page: ${ORIGIN}/register`,
-    );
+    expect(result.reply).toContain('outcome=payment');
     expect(calls.opened).toBe(1);
     expect(calls.submitted).toBe(0);
     const trail = await audits(seeded.familyId);
@@ -343,7 +499,7 @@ describe('authorized signup runner', () => {
     );
     expect(result.outcome).toBe('completed');
     expect(result.deliverOnThread).toBe(true);
-    expect(result.reply).toBe(`You're signed up for Tue 4:30.`);
+    expect(result.reply).toContain('outcome=completed reason= confirmed=true session=Tue 4:30');
     expect(result.reply).not.toContain('TODO-Design');
     expect(calls.submitted).toBe(1);
     const trail = await audits(seeded.familyId);
@@ -462,7 +618,7 @@ describe('authorized signup runner', () => {
       },
     );
     expect(result.outcome).toBe('connector_failed');
-    expect(result.reply).toContain(`I couldn't get through on my end.`);
+    expect(result.reply).toContain('confirmed=false');
     expect(result.reply).not.toMatch(/\bSTOP\b/);
     expect(result.reply).not.toContain('TODO-Design');
     expect(calls.opened).toBe(0);
@@ -554,9 +710,7 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('waiver');
-    expect(result.reply).toBe(
-      `There's a waiver to read and sign, so that part's yours. Here's the page: ${ORIGIN}/register`,
-    );
+    expect(result.reply).toContain('outcome=waiver');
     expect(calls.opened).toBe(1);
     expect(calls.submitted).toBe(0);
     expect(await audits(seeded.familyId)).not.toContain('Ada');
@@ -673,7 +827,7 @@ describe('authorized signup runner', () => {
       browser,
       deliverGroup: async (item) => {
         sent.push(item.chatId);
-        expect(item.body).toBe(`You're signed up for Tue 4:30.`);
+        expect(item.body).toContain('outcome=completed reason= confirmed=true session=Tue 4:30');
         return 'sent';
       },
     });
@@ -715,9 +869,7 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('consent_missing');
-    expect(result.reply).toBe(
-      `I stopped before finishing. Here's the page: https://www.toronto.ca/explore-enjoy/recreation/registrations`,
-    );
+    expect(result.reply).toContain('outcome=consent_missing');
     expect(result.reply).not.toContain('Ada');
     expect(result.reply).not.toContain('M5V2T6');
     expect(result.reply).not.toContain('TODO-Design');
@@ -821,7 +973,7 @@ describe('authorized signup runner', () => {
       { browser },
     );
     expect(result.outcome).toBe('completed');
-    expect(result.reply).toBe(`You're signed up for Tue 4:30.`);
+    expect(result.reply).toContain('outcome=completed reason= confirmed=true session=Tue 4:30');
   });
 
   it('uses the sandbox partnership connector before the browser when the flag is on', async () => {
@@ -846,7 +998,7 @@ describe('authorized signup runner', () => {
         { browser },
       );
       expect(result.outcome).toBe('completed');
-      expect(result.reply).toBe(`You're signed up for Tue 4:30.`);
+      expect(result.reply).toContain('outcome=completed reason= confirmed=true session=Tue 4:30');
       expect(result.reply).not.toMatch(/\bSTOP\b/);
       expect(result.reply).not.toContain('TODO-Design');
       expect(calls.opened).toBe(0);
@@ -893,7 +1045,7 @@ describe('authorized signup runner', () => {
         { browser },
       );
       expect(result.outcome).toBe('connector_failed');
-      expect(result.reply).toContain(`I couldn't get through on my end.`);
+      expect(result.reply).toContain('confirmed=false');
       expect(result.reply).toContain(href);
       expect(result.reply).not.toMatch(/\bSTOP\b/);
       expect(result.reply).not.toContain('TODO-Design');
@@ -1200,6 +1352,44 @@ describe('authorized signup runner', () => {
       );
       expect(result.claimed).toBe(false);
       expect(run).not.toHaveBeenCalled();
+    });
+
+    it('never reports completed from the engine without a confirmation number', async () => {
+      vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+      const seeded = await familyWithOffer({
+        ageMonths: 36,
+        url: TORONTO,
+        approvedPriceCents: 9800,
+      });
+      await withProviderSession(seeded);
+      const run = vi.fn(async () => ({
+        ...CHECKOUT,
+        outcome: 'completed' as const,
+        liveViewUrl: null,
+        confirmationNumber: null,
+        amountChargedCents: 9800,
+      }));
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-noconf'), {
+        browserUseSignup: { run },
+        paymentWallet: {
+          forParent: async () => ({
+            wallet: {
+              kind: 'stripe_link_agent_wallet' as const,
+              api: linkApiStub(),
+              approvalWindowMinutes: 5,
+            },
+            skipped: null,
+          }),
+        },
+        checkSpendingCap: async () => ({ ok: true, reason: 'within cap' }),
+      });
+      expect(result.outcome).toBe('needs_human');
+      expect(result.browserUse?.detail).toBe('unconfirmed');
+      const [offer] = await db.database
+        .select({ status: schema.authorizedSignupOffers.status })
+        .from(schema.authorizedSignupOffers)
+        .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
+      expect(offer?.status).toBe('handed_back');
     });
 
     it('returns needs_login without calling Browser Use when no session was captured', async () => {

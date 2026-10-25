@@ -1,7 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { redactSignupAudit } from './audit';
-import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
+import { authorizeSignup } from './authorize';
 import type { BrowserUseSignupResult } from './browser-use/engine';
 import { browserUseSignupEnabled, browserUseSignupPaymentEnabled } from './browser-use/flag';
 import {
@@ -19,7 +20,11 @@ import {
   typedOutsideGrant,
 } from './consent';
 import type { ShareableSignupField } from './consent';
-import { signupCompletedLine, signupHandbackLine } from './copy';
+import {
+  type SignupConsentReader,
+  type SignupConsentReading,
+  createSignupConsentReader,
+} from './consent-reader';
 import { type ReportDoor, chooseReportDoor } from './door';
 import { authorizedSignupEnabled } from './flag';
 import { type RushSignal, rushOpensAt } from './forms/rush';
@@ -27,6 +32,7 @@ import { collapseSignupFact } from './handoff';
 import { inspectRegistrationPage } from './inspect';
 import { LINK_SPEND_CEILING_CENTS } from './link/client';
 import type { SignupPaymentWallet, SignupWalletSkipped, SignupWalletSource } from './link/wallet';
+import { type SignupOutcomeWriter, createSignupOutcomeWriter } from './outcome-reply';
 import { type InfoPackSlot, signupInfoPack } from './pack';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
@@ -46,6 +52,12 @@ export interface SignupRunInput {
 }
 
 export interface SignupRunDeps {
+  /** Reads whether the parent said to sign up. Undefined uses the reply model. */
+  consentReader?: SignupConsentReader;
+  /** Writes the parent's reply from the structured outcome. Undefined uses the reply model. */
+  outcomeWriter?: SignupOutcomeWriter;
+  /** True when this sender holds a group seat that may not authorize a sign-up. */
+  declineSeat?: () => Promise<boolean>;
   /** Undefined loads Playwright. Null means the browser is absent. */
   browser?: SignupBrowser | null;
   /**
@@ -125,20 +137,23 @@ export async function runAuthorizedSignup(
   deps: SignupRunDeps = {},
 ): Promise<SignupRunResult> {
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
-  if (!isExplicitSignupUtterance(input.body)) return UNCLAIMED;
 
+  // No pending offer: nothing to consent to, and the message is someone else's.
   const offer = await loadPendingOffer(database, input.familyId);
-  const door = await reportDoor(database, input);
-  if (!offer) {
-    return replyFor(database, input, deps, door, {
-      offerId: null,
-      outcome: 'no_offer',
-      reason: 'no_offer',
-      link: '',
-      prefilled: [],
-      host: null,
-    });
+  if (!offer) return UNCLAIMED;
+  const reader = deps.consentReader ?? defaultConsentReader();
+  const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
+  // Unreadable (no model, model failure) is not consent and does not claim the message.
+  if (!reading || reading.verdict === 'unrelated') return UNCLAIMED;
+  if (reading.verdict === 'consent' && deps.declineSeat && (await deps.declineSeat())) {
+    return {
+      claimed: true,
+      outcome: 'group_member_not_authorized',
+      reply: null,
+      deliverOnThread: false,
+    };
   }
+  const door = await reportDoor(database, input);
 
   const allowed = registrationUrlAllowed(offer.registrationUrl);
   const host = allowed.ok ? new URL(allowed.href).hostname : null;
@@ -156,8 +171,31 @@ export async function runAuthorizedSignup(
     };
   }
 
+  if (reading.verdict === 'unclear') {
+    return replyFor(database, input, deps, door, {
+      offerId: offer.id,
+      outcome: 'clarify',
+      reason: null,
+      link: '',
+      prefilled: [],
+      host,
+      question: reading.question,
+    });
+  }
+  if (reading.verdict === 'decline') {
+    await markFromPending(database, input, offer.id, null);
+    return replyFor(database, input, deps, door, {
+      offerId: offer.id,
+      outcome: 'declined',
+      reason: null,
+      link: '',
+      prefilled: [],
+      host,
+    });
+  }
+
   const decision = authorizeSignup({
-    utterance: input.body,
+    reading,
     offer,
     busy: await loadBusy(database, input.familyId),
   });
@@ -332,6 +370,7 @@ export async function runAuthorizedSignup(
         prefilled: [],
         host,
         sessionLabel: labelFor(offer, decision.sessionId),
+        confirmation: { kind: 'connector', connector: route.connector.id },
       });
     } catch {
       await finish(database, input, offer.id, 'handed_back');
@@ -453,6 +492,7 @@ export async function runAuthorizedSignup(
           prefilled: filled,
           host,
           sessionLabel: labelFor(offer, decision.sessionId),
+          confirmation: { kind: 'page' },
         });
       }
       await page.continue();
@@ -537,9 +577,15 @@ async function runBrowserUseBranch(
   },
 ): Promise<SignupRunResult> {
   const done = async (
-    handoff: BrowserUseHandoff,
+    raw: BrowserUseHandoff,
     paymentSkipped: SignupPaymentSkipped | null = null,
   ): Promise<SignupRunResult> => {
+    // Completed only with a captured confirmation number. engine.ts already hands back
+    // 'unconfirmed'; this keeps any runner from reporting success without one.
+    const handoff: BrowserUseHandoff =
+      raw.outcome === 'completed' && raw.confirmationNumber === null
+        ? { ...raw, outcome: 'needs_human', detail: 'unconfirmed' }
+        : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
     await writeAudit(database, input, ctx.offerId, {
@@ -757,6 +803,39 @@ interface ReplyFacts {
   runtimeSkipped?: SignupRuntimeSkipped | null;
   /** Set when a rush signal stopped the run. Prefill values stay out of the audit. */
   rush?: RushHandoff | null;
+  /** Evidence of a booking. `completed` without it is reported as `unconfirmed`. */
+  confirmation?: SignupConfirmation;
+  /** The consent read's clarifying question, for `clarify`. */
+  question?: string;
+}
+
+/** What proves a booking: the provider's confirmation page, or its booking API saying booked. */
+export type SignupConfirmation = { kind: 'page' } | { kind: 'connector'; connector: string };
+
+/**
+ * Never claim success without a confirmation. The only way to report
+ * `completed` is to carry the evidence; anything else is `unconfirmed`.
+ */
+export function confirmedOutcome(facts: { outcome: string; confirmation?: SignupConfirmation }): {
+  outcome: string;
+  confirmed: boolean;
+} {
+  if (facts.outcome !== 'completed') return { outcome: facts.outcome, confirmed: false };
+  if (!facts.confirmation) return { outcome: 'unconfirmed', confirmed: false };
+  return { outcome: 'completed', confirmed: true };
+}
+
+let cachedConsentReader: SignupConsentReader | null = null;
+let cachedOutcomeWriter: SignupOutcomeWriter | null = null;
+
+function defaultConsentReader(): SignupConsentReader {
+  cachedConsentReader ??= createSignupConsentReader(() => resolveReplyClient(undefined));
+  return cachedConsentReader;
+}
+
+function defaultOutcomeWriter(): SignupOutcomeWriter {
+  cachedOutcomeWriter ??= createSignupOutcomeWriter(() => resolveReplyClient(undefined));
+  return cachedOutcomeWriter;
 }
 
 /** A rush sign-up is the parent's: hand over the open time, the link and the prefill. */
@@ -793,17 +872,37 @@ async function replyFor(
   input: SignupRunInput,
   deps: SignupRunDeps,
   door: ReportDoor,
-  facts: ReplyFacts,
+  rawFacts: ReplyFacts,
 ): Promise<SignupRunResult> {
-  const line =
+  const checked = confirmedOutcome(rawFacts);
+  const facts: ReplyFacts = {
+    ...rawFacts,
+    outcome: checked.outcome,
+    reason:
+      checked.outcome === 'unconfirmed' && rawFacts.reason === null
+        ? 'unconfirmed'
+        : rawFacts.reason,
+  };
+  const writer = deps.outcomeWriter ?? defaultOutcomeWriter();
+  const line: string | null =
     facts.line ??
-    (facts.outcome === 'completed'
-      ? signupCompletedLine(collapseSignupFact(facts.sessionLabel ?? ''))
-      : signupHandbackLine({
-          reason: facts.reason ?? facts.outcome,
-          link: facts.link,
-          prefilled: facts.prefilled,
-        }));
+    (await writer.write({
+      outcome: facts.outcome,
+      reason: facts.reason,
+      confirmed: checked.confirmed,
+      sessionLabel: facts.sessionLabel ? collapseSignupFact(facts.sessionLabel) : null,
+      link: facts.link,
+      prefilled: facts.prefilled,
+      rush: facts.rush
+        ? {
+            signal: facts.rush.signal,
+            opensAt: facts.rush.opensAt,
+            prefillSlots: facts.rush.prefill.map((item) => item.slot),
+          }
+        : null,
+      question: facts.question ?? null,
+      language: null,
+    }));
   await writeAudit(database, input, facts.offerId, {
     step: 'report',
     outcome: facts.outcome,
@@ -816,6 +915,10 @@ async function replyFor(
   });
   const rush = facts.rush ? { rush: facts.rush } : {};
   if (door.kind === 'held') {
+    return { ...rush, claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
+  }
+  if (line === null) {
+    // No reply model or no acceptable draft: nothing is sent, and there is no fixed fallback.
     return { ...rush, claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
   }
   if (door.kind === 'group') {
