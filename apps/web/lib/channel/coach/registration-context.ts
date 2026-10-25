@@ -100,11 +100,7 @@ export async function loadRegistrationWindows(
       return {
         town: townLabel(match.window.municipality),
         programs: [
-          ...new Set(
-            match.cycleWindows.map(
-              (w) => `${w.cycleLabel} ${PROGRAM_DOMAIN_LABEL[w.programDomain]}`,
-            ),
-          ),
+          ...new Set(match.cycleWindows.map((w) => `${w.cycleLabel} ${PROGRAM_DOMAIN_LABEL[w.programDomain]}`)),
         ].join(', '),
         opensFor: formatWhenPhrase(match.opensForFamilyAt, timeZone, now),
         residentsFirst: match.isResidentWindow && generalOpens !== null,
@@ -120,7 +116,9 @@ export async function loadRegistrationWindows(
  * ladder's own flag. `readWindows` is the intake radar's reader, shared rather than
  * re-queried, so the coach can never be looking at a different window set than the
  * sweep that will do the work. */
-export function productionRegistrationContextPorts(database: Database): RegistrationContextPorts {
+export function productionRegistrationContextPorts(
+  database: Database,
+): RegistrationContextPorts {
   return {
     areaCoarse: async (familyId) => {
       const [row] = await database

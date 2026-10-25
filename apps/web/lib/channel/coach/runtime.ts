@@ -16,6 +16,7 @@ import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memo
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 import { captureAgentError } from '~/lib/analytics/server-capture';
+import { POLICY_VERSION } from '~/lib/consent';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
@@ -38,7 +39,6 @@ import {
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
-import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -50,12 +50,6 @@ import {
   offeredSubject,
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
-import {
-  type ProviderWatchContext,
-  loadProviderWatchContext,
-} from '~/lib/signup/browser-use/watch/context';
-import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
-import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
@@ -66,22 +60,22 @@ import {
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
 import {
-  groupPrivacyScopeEnabled,
-  groupScopedContext,
-  groupScopedTools,
-} from './group-privacy-scope';
+  type ProviderWatchContext,
+  loadProviderWatchContext,
+} from '~/lib/signup/browser-use/watch/context';
+import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
+import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
 import {
-  type ReplyChild,
-  ReplyNeedsShorter,
-  redactTeenNames,
-  replyCharacterRoom,
-  toSmsReply,
-} from './reply';
+  groupPrivacyScopeEnabled,
+  groupScopedContext,
+  groupScopedTools,
+} from './group-privacy-scope';
+import { type ReplyChild, ReplyNeedsShorter, redactTeenNames, replyCharacterRoom, toSmsReply } from './reply';
 import { shortenOverBudgetReply } from './shorten';
 import {
   type TurnOfferLedger,
@@ -343,10 +337,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
       };
       // VIL-439 (T18): a group turn sees only group-safe context (flag, default off).
-      const turnContext =
-        turn.audience === 'group' && groupPrivacyScopeEnabled()
-          ? groupScopedContext(context)
-          : context;
+      const groupScoped = turn.audience === 'group' && groupPrivacyScopeEnabled();
+      const turnContext = groupScoped ? groupScopedContext(context) : context;
 
       return traceAgentRun(
         {
@@ -381,11 +373,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               gmailNotice = notice;
             },
           );
-          // VIL-439 (T18): a group turn's calendar reads are busy-only (same flag).
-          const tools =
-            turn.audience === 'group' && groupPrivacyScopeEnabled()
-              ? groupScopedTools(builtTools)
-              : builtTools;
+          // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
+          // are busy-only (same flag).
+          const tools = groupScoped ? groupScopedTools(builtTools) : builtTools;
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
@@ -484,11 +474,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
                   activityLinks: [
-                    ...offeredThisTurn
-                      .read()
-                      .flatMap((item) =>
-                        item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
-                      ),
+                    ...offeredThisTurn.read().flatMap((item) =>
+                      item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
+                    ),
                     ...offeredThisTurn.links(),
                   ],
                   nearby: nearby ?? undefined,
@@ -592,10 +580,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForProviderWatch(
         augmentCoachSkillForAutonomySwitchOff(
-          await augmentCoachSkillForGoogleDrafts(
-            await loadCronSkill('coach-channel-sms'),
-            parentUserId,
-          ),
+        await augmentCoachSkillForGoogleDrafts(
+          await loadCronSkill('coach-channel-sms'),
+          parentUserId,
+        ),
           await familyHasAutonomyGrant(familyId, database),
         ),
         browserUseWatchEnabled(),

@@ -69,14 +69,29 @@ export function groupSafeWeek<T extends WeekResult>(week: T): T {
 
 type HandlerTool = { name: string; handler: (...args: never[]) => unknown };
 
-/** Wrap `lookup_week` so a group turn only ever sees {@link groupSafeWeek}. */
+/**
+ * Tools a group turn never gets: they read or act on one parent's private inbox,
+ * memory, 1:1 history, or provider watch list.
+ */
+export const GROUP_WITHHELD_TOOLS: ReadonlySet<string> = new Set([
+  'prepare_gmail_draft',
+  'read_recent_memory',
+  'read_recent_conversations',
+  'list_watch_targets',
+  'add_watch_target',
+  'remove_watch_target',
+]);
+
+/** The group tool set: private tools dropped, `lookup_week` wrapped in {@link groupSafeWeek}. */
 export function groupScopedTools<T extends HandlerTool>(tools: T[]): T[] {
-  return tools.map((tool) => {
-    if (tool.name !== 'lookup_week') return tool;
-    const inner = tool.handler as (...args: unknown[]) => Promise<WeekResult>;
-    return {
-      ...tool,
-      handler: async (...args: unknown[]) => groupSafeWeek(await inner(...args)),
-    } as T;
-  });
+  return tools
+    .filter((tool) => !GROUP_WITHHELD_TOOLS.has(tool.name))
+    .map((tool) => {
+      if (tool.name !== 'lookup_week') return tool;
+      const inner = tool.handler as (...args: unknown[]) => Promise<WeekResult>;
+      return {
+        ...tool,
+        handler: async (...args: unknown[]) => groupSafeWeek(await inner(...args)),
+      } as T;
+    });
 }

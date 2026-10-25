@@ -179,3 +179,94 @@ describe('VIL-439 2/2 busy-only week in a group', () => {
     expect(JSON.stringify(await wrappedWeek?.handler())).not.toContain('Dr. Patel');
   });
 });
+
+describe('VIL-439 review: group tools and group history', () => {
+  it('a group tool set has no inbox, memory, 1:1 history or Gmail tools', async () => {
+    const { groupScopedTools, GROUP_WITHHELD_TOOLS } = await import('./group-privacy-scope');
+    const names = [
+      'lookup_week',
+      'propose_calendar_add',
+      'prepare_gmail_draft',
+      'read_recent_memory',
+      'read_recent_conversations',
+      'list_watch_targets',
+      'search_village',
+    ];
+    const tools = names.map((name) => ({
+      name,
+      handler: async () => ({ events: [], mail: { items: [] } }),
+    }));
+    const kept = groupScopedTools(tools).map((tool) => tool.name);
+    expect(kept).toEqual(['lookup_week', 'propose_calendar_add', 'search_village']);
+    for (const name of kept) expect(GROUP_WITHHELD_TOOLS.has(name)).toBe(false);
+  });
+
+  it('a group turn reads only that group thread, never a parent 1:1 thread', async () => {
+    const { channelThreadNoteKey, channelGroupNoteKey, channelSmsNoteKey } = await import(
+      '~/lib/coach/note-key'
+    );
+    const parentUserId = '22222222-2222-4222-8222-222222222222';
+    expect(
+      channelThreadNoteKey({ inGroup: true, channel: 'imessage', chatId: 'chat-g', parentUserId }),
+    ).toBe(channelGroupNoteKey('chat-g'));
+    expect(
+      channelThreadNoteKey({ inGroup: false, channel: 'imessage', chatId: 'chat-g', parentUserId }),
+    ).toBe(channelSmsNoteKey(parentUserId));
+    expect(
+      channelThreadNoteKey({ inGroup: true, channel: 'imessage', chatId: null, parentUserId }),
+    ).toBe(channelSmsNoteKey(parentUserId));
+  });
+
+  it('flag on: the runtime hands a group turn the scoped tool list', async () => {
+    vi.stubEnv('GROUP_PRIVACY_SCOPE_ENABLED', 'true');
+    const seenTools: string[][] = [];
+    const tools = ['lookup_week', 'prepare_gmail_draft', 'read_recent_memory'].map((name) => ({
+      name,
+      handler: async () => ({ events: [], mail: { items: [] } }),
+    }));
+    await channelCoachRuntime({
+      loadSkill: async () => ({
+        meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse', tools: [] },
+        instructions: 'x',
+      }),
+      loadTranscript: async () => [],
+      loadContext: async () => PRIVATE_CONTEXT as never,
+      loadChildren: async () => [],
+      loadRegistrationWindows: async () => [],
+      buildTools: () => tools as never,
+      nearbySaid: async () => null,
+      guardDeps: { async writeAudit() {} },
+      client: () => ({ messages: {} }) as never,
+      runAgent: async (args) => {
+        seenTools.push(args.tools.map((t) => t.name));
+        return {
+          answer: 'ok.',
+          steps: 1,
+          hitMaxSteps: false,
+          truncatedRetries: 0,
+          truncated: false,
+          usage: {
+            promptTokens: 1,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            completionTokens: 1,
+          },
+        };
+      },
+      recordRun: async () => {},
+      now: () => NOW,
+    }).respond(
+      {
+        familyId: '11111111-1111-4111-8111-111111111111',
+        parentUserId: '22222222-2222-4222-8222-222222222222',
+        conversationId: '33333333-3333-4333-8333-333333333333',
+        body: 'hale?',
+        now: NOW,
+        standingQuestions: [],
+        audience: 'group',
+      },
+      [],
+    );
+    expect(seenTools[0]).toEqual(['lookup_week']);
+  });
+});

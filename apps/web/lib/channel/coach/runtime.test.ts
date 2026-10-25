@@ -289,7 +289,9 @@ describe('channelCoachRuntime', () => {
     });
 
     await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(/budget/i);
-    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(/shorter rewrite/i);
+    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(
+      /shorter rewrite/i,
+    );
     expect(p.recorded).toEqual([
       expect.objectContaining({ status: 'failed' }),
       expect.objectContaining({ status: 'failed' }),

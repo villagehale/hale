@@ -83,7 +83,7 @@ import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
-import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import { channelThreadNoteKey } from '~/lib/coach/note-key';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
 import {
   parentTimeZoneForOffer,
@@ -894,9 +894,12 @@ async function routeChannelMessageInner(
   // partial unique index so two texts arriving together cannot fork it.
   const conversationId = await resolveOrCreateNoteConversation(
     job.family_id,
-    context.inGroup && route.channel === 'imessage'
-      ? channelGroupNoteKey(route.chatId)
-      : channelSmsNoteKey(job.parent_user_id),
+    channelThreadNoteKey({
+      inGroup: context.inGroup,
+      channel: route.channel,
+      chatId: route.channel === 'imessage' ? route.chatId : null,
+      parentUserId: job.parent_user_id,
+    }),
     deps.database,
   );
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
