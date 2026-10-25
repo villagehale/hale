@@ -213,6 +213,16 @@ jobs:
       - name: Add-them-yourself reply composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:add-them-yourself
 
+      # VIL-438/439/440 group suites.
+      - name: Group welcome composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-welcome-voice
+
+      - name: Group privacy coach eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-privacy
+
+      - name: Group turn read classifier eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-turn-read
+
       - name: Reminder voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder-voice
 
