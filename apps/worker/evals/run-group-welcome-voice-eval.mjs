@@ -60,6 +60,7 @@ const JUDGE_SYSTEM = [
   'input.language; in French, tu instead of vous; a link or phone number; telling people to',
   'reply with a keyword other than saying stop in their own words; hype, emoji, exclamation',
   'marks, "we"/"us" for Hale, a corporate or bot register; more than about four short sentences.',
+  'Also LOW: opening like a product introduction (a title or description of what Hale is) instead of a friend saying hi, or a spelling, elision or accent error.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
