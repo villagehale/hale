@@ -6,8 +6,33 @@ import type { VerdictOutcome, VerdictReader } from '~/lib/reviews/verdict';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { runMidActivityAnswerPass } from './answer';
 import { MID_ACTIVITY_ASK_TEMPLATE_KEY, midActivityAskDedupeKey } from './claim';
+import { midActivityStartDedupeKey } from './claim';
 import { MID_ACTIVITY_ASK_ENABLED_ENV } from './flag';
-import { runMidActivityAskSweep } from './sweep';
+import { noteActivitySignupTool } from './said-tool';
+import { type MidActivityAskDeps, queueSaidSignupAsk, runMidActivityAskSweep } from './sweep';
+
+/** A gate that allows: this file measures the sweep, not consent or quiet hours. */
+function openDeps(): MidActivityAskDeps {
+  return {
+    buildGate: () =>
+      ({
+        channelEnrolled: async () => true,
+        watchConsentGranted: async () => true,
+        countProactiveSends: async () => 0,
+        proactiveSentSince: async () => true,
+        parentTimeZone: async () => 'America/Toronto',
+      }) as unknown as ReturnType<MidActivityAskDeps['buildGate']>,
+    dedupeActive: async () => false,
+    queueCandidate: async (database, draft) => {
+      const inserted = await database
+        .insert(schema.proactiveCandidates)
+        .values({ ...draft, status: 'queued' })
+        .onConflictDoNothing()
+        .returning({ id: schema.proactiveCandidates.id });
+      return inserted.length === 0 ? 'duplicate' : 'queued';
+    },
+  };
+}
 
 /**
  * The mid-activity ask, against real Postgres.
@@ -17,9 +42,11 @@ import { runMidActivityAskSweep } from './sweep';
  * this file measures the gate, the hold, and the row that changes the next find.
  */
 
-const NOW = new Date('2026-06-03T15:00:00.000Z');
 const WEEK_MS = 7 * 24 * 3_600_000;
-const FIRST = Date.parse('2026-05-06T14:00:00.000Z');
+/** First session: 11:00 Toronto on 2 June; it ends (default length) at 12:00. */
+const FIRST = Date.parse('2026-06-02T15:00:00.000Z');
+/** 19:00 Toronto the same day: inside the evening-after-first-session window. */
+const NOW = new Date('2026-06-02T23:00:00.000Z');
 const PLACE = 'places/riverdale-pool';
 
 let db: TestDb;
@@ -157,58 +184,54 @@ describe('runMidActivityAskSweep', () => {
       else vi.stubEnv(MID_ACTIVITY_ASK_ENABLED_ENV, value);
       const result = await runMidActivityAskSweep(db.database, NOW);
       expect(result.skipped).toBe('flag_off');
-      expect(result.placeholder).toBe(0);
       expect(result.examined).toBe(0);
     }
     expect(await db.database.select().from(schema.channelMessages)).toEqual([]);
   });
 
-  it('queues one due ask for the decider and does not text or charge', async () => {
-    await seed({ sessions: weeklySessions(8, 2500) });
+  it('queues one ask the evening after the first session, facts only, and does not text', async () => {
+    const seeded = await seed({ sessions: weeklySessions(8, 2500) });
     arm();
 
-    const result = await runMidActivityAskSweep(db.database, NOW);
+    const result = await runMidActivityAskSweep(db.database, NOW, openDeps());
 
     expect(result.skipped).toBeNull();
-    expect(result.placeholder).toBe(0);
-    expect(result.held + result.queued).toBe(1);
-    expect(result.examined).toBe(1);
-    const candidates = await db.database.select().from(schema.proactiveCandidates);
-    expect(candidates.length).toBe(result.queued);
-    for (const row of candidates) {
-      expect(row.kind).toBe('mid_activity_ask');
-      expect(row.templateKey).toBe(MID_ACTIVITY_ASK_TEMPLATE_KEY);
-    }
-    const messages = await db.database.select().from(schema.channelMessages);
-    expect(messages).toEqual([]);
-    const reviews = await db.database.select().from(schema.activityReviews);
-    expect(reviews).toEqual([]);
+    expect(result.queued).toBe(1);
+    const [row] = await db.database.select().from(schema.proactiveCandidates);
+    expect(row?.kind).toBe('mid_activity_ask');
+    expect(row?.templateKey).toBe(MID_ACTIVITY_ASK_TEMPLATE_KEY);
+    expect(row?.dedupeKey).toBe(midActivityAskDedupeKey(seeded.offerId));
+    // Facts only: the activity's own title, and when the first session ended.
+    expect(row?.what).toBe('Parent and tot swim');
+    expect(row?.why).toContain('first_session_ended=2026-06-02T16:00:00.000Z');
+    expect(row?.why).not.toMatch(/how .* going/i);
+    // Lapses 08:00 Toronto the next morning.
+    expect(row?.worthlessAfter).toEqual(new Date('2026-06-03T12:00:00.000Z'));
+    expect(await db.database.select().from(schema.channelMessages)).toEqual([]);
+    expect(await db.database.select().from(schema.activityReviews)).toEqual([]);
   });
 
-  it('asks fewer when the parent has not chosen a cadence, and skips a short or off household', async () => {
-    const quiet = await seed({ cadence: 'off' });
+  it('waits for the evening, does not catch up the next day, and skips an off household', async () => {
+    await seed();
     arm();
-    expect((await runMidActivityAskSweep(db.database, NOW)).preferenceOff).toBe(1);
+    const morning = new Date('2026-06-02T15:30:00.000Z');
+    expect((await runMidActivityAskSweep(db.database, morning, openDeps())).tooSoon).toBe(1);
+    const nextDay = new Date('2026-06-03T16:00:00.000Z');
+    expect((await runMidActivityAskSweep(db.database, nextDay, openDeps())).pastWindow).toBe(1);
 
     await db.exec('truncate table families, users cascade');
-    await seed({ sessions: weeklySessions(1) });
-    expect((await runMidActivityAskSweep(db.database, NOW)).tooRare).toBe(1);
+    await seed({ cadence: 'off' });
+    expect((await runMidActivityAskSweep(db.database, NOW, openDeps())).preferenceOff).toBe(1);
 
     await db.exec('truncate table families, users cascade');
-    await seed({ cadence: 'daily', sessions: weeklySessions(8) });
-    expect((await runMidActivityAskSweep(db.database, NOW)).pastWindow).toBe(1);
-
-    await db.exec('truncate table families, users cascade');
-    const opaque = await seed({ activityKey: 'swim-parent-tot' });
-    expect(opaque.offerId).toBeTruthy();
-    expect((await runMidActivityAskSweep(db.database, NOW)).noSubject).toBe(1);
-    expect(quiet.familyId).not.toBe(opaque.familyId);
+    await seed({ activityKey: 'swim-parent-tot' });
+    expect((await runMidActivityAskSweep(db.database, NOW, openDeps())).noSubject).toBe(1);
   });
 
   it('does not ask about a teenager, and does not ask a second activity the same sweep', async () => {
     await seed({ dateOfBirth: '2010-01-01' });
     arm();
-    expect((await runMidActivityAskSweep(db.database, NOW)).teenScoped).toBe(1);
+    expect((await runMidActivityAskSweep(db.database, NOW, openDeps())).teenScoped).toBe(1);
 
     await db.exec('truncate table families, users cascade');
     const first = await seed();
@@ -234,13 +257,12 @@ describe('runMidActivityAskSweep', () => {
       status: 'completed',
     });
 
-    const result = await runMidActivityAskSweep(db.database, NOW);
-    expect(result.placeholder).toBe(0);
+    const result = await runMidActivityAskSweep(db.database, NOW, openDeps());
     expect(result.oneAtATime).toBe(1);
-    expect(result.held + result.queued).toBe(1);
+    expect(result.queued).toBe(1);
   });
 
-  it('treats a sent ask as already asked, so the next tick does not hold another', async () => {
+  it('treats a sent ask as already asked, so the next tick does not queue another', async () => {
     const seeded = await seed();
     await db.database.insert(schema.channelMessages).values({
       familyId: seeded.familyId,
@@ -251,13 +273,176 @@ describe('runMidActivityAskSweep', () => {
       templateKey: MID_ACTIVITY_ASK_TEMPLATE_KEY,
       dedupeKey: midActivityAskDedupeKey(seeded.offerId),
       status: 'sent',
-      createdAt: new Date('2026-06-03T14:30:00.000Z'),
+      createdAt: new Date('2026-06-02T22:30:00.000Z'),
     });
     arm();
 
-    const result = await runMidActivityAskSweep(db.database, NOW);
+    const result = await runMidActivityAskSweep(db.database, NOW, openDeps());
     expect(result.alreadyAsked).toBe(1);
-    expect(result.placeholder).toBe(0);
+    expect(result.queued).toBe(0);
+  });
+
+  it('queues an ask for a Hale-placed calendar plan, keyed to the recommendation that placed it', async () => {
+    const seeded = await seed({ offerStatus: 'pending' });
+    const [signal] = await db.database
+      .insert(schema.events)
+      .values({
+        familyId: seeded.familyId,
+        source: 'test',
+        eventType: 'signal.test',
+        dedupHash: `mid-plan-${seeded.familyId}`,
+        status: 'reviewed',
+      })
+      .returning({ id: schema.events.id });
+    const [action] = await db.database
+      .insert(schema.actions)
+      .values({
+        eventId: signal?.id as string,
+        familyId: seeded.familyId,
+        actionType: 'calendar_add',
+        payload: {
+          title: 'Parent and tot swim',
+          startsAt: new Date(FIRST).toISOString(),
+          sourceRef: { table: 'family_activity_history', id: seeded.candidateId },
+        },
+      })
+      .returning({ id: schema.actions.id });
+    const [event] = await db.database
+      .insert(schema.familyEvents)
+      .values({
+        familyId: seeded.familyId,
+        childId: seeded.childId,
+        title: 'Parent and tot swim',
+        startsAt: new Date(FIRST),
+        endsAt: new Date(FIRST + 45 * 60_000),
+        source: 'placement',
+        placedByActionId: action?.id as string,
+      })
+      .returning({ id: schema.familyEvents.id });
+    arm();
+
+    const result = await runMidActivityAskSweep(db.database, NOW, openDeps());
+    expect(result.queued).toBe(1);
+    const [row] = await db.database.select().from(schema.proactiveCandidates);
+    expect(row?.dedupeKey).toBe(
+      midActivityStartDedupeKey({
+        start: 'plan',
+        occurrence: event?.id as string,
+        candidateId: seeded.candidateId,
+      }),
+    );
+    expect(row?.why).toContain('start=plan');
+  });
+
+  it('holds a parent-said signup until the evening after its first session', async () => {
+    const seeded = await seed({ offerStatus: 'pending' });
+    arm();
+    const said = new Date('2026-06-01T20:00:00.000Z');
+    const tool = noteActivitySignupTool({
+      database: db.database,
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      now: said,
+      timeZone: async () => 'America/Toronto',
+      offeredThisTurn: () => [
+        {
+          title: 'Parent and tot swim',
+          venue: '',
+          candidateId: seeded.candidateId,
+          placeId: PLACE,
+          civicVenueId: null,
+        },
+      ],
+    });
+    const out = await tool.handler(
+      { title: 'Parent and tot swim', date: '2026-06-02', time: '11:00' },
+      {} as never,
+    );
+    expect(out).toEqual({ noted: true });
+    const [row] = await db.database.select().from(schema.proactiveCandidates);
+    expect(row?.status).toBe('held');
+    expect(row?.holdUntil).toEqual(new Date('2026-06-02T22:00:00.000Z'));
+    expect(row?.worthlessAfter).toEqual(new Date('2026-06-03T12:00:00.000Z'));
+    expect(row?.dedupeKey).toContain(seeded.candidateId);
+    // Said again: one ask, not two.
+    expect(
+      await queueSaidSignupAsk(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        title: 'Parent and tot swim',
+        firstSessionStartsAt: new Date(FIRST),
+        firstSessionEndsAt: null,
+        candidateId: seeded.candidateId,
+        timeZone: 'America/Toronto',
+        now: said,
+      }),
+    ).toBe('duplicate');
+  });
+});
+
+describe('the mid-activity reply changes the next find', () => {
+  it('a reply to the queued ask floats that place in the next search_village read', async () => {
+    const seeded = await seed();
+    arm();
+    await runMidActivityAskSweep(db.database, NOW, openDeps());
+    const [candidate] = await db.database.select().from(schema.proactiveCandidates);
+    // The decider sends the queued ask: the ledger row carries the candidate's keys.
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'activity_followup',
+      templateKey: candidate?.templateKey as string,
+      dedupeKey: candidate?.dedupeKey as string,
+      status: 'sent',
+      createdAt: new Date('2026-06-02T23:05:00.000Z'),
+    });
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: 'She loved it, pool was cold though',
+      createdAt: new Date('2026-06-02T23:20:00.000Z'),
+    });
+
+    const pick = (name: string, placeId: string) => ({
+      name,
+      sourceName: name,
+      source: 'web' as const,
+      sourceUrl: `https://example.com/${placeId}`,
+      ageFit: 'ages 2-5',
+      when: 'Saturdays',
+      price: 'Free',
+      placeId,
+    });
+    const finder = {
+      find: vi.fn().mockResolvedValue({
+        found: true,
+        picks: [pick('Library story time', 'places/library'), pick('Parent and tot swim', PLACE)],
+      }),
+    };
+    const { searchVillageTool } = await import('~/lib/coach/tools');
+    const search = async () => {
+      const out = (await searchVillageTool(db.database, undefined, finder).handler({}, {
+        familyId: seeded.familyId,
+      } as never)) as { candidates: { title: string }[] };
+      return out.candidates.map((row) => row.title);
+    };
+    const before = await search();
+
+    const result = await runMidActivityAnswerPass(db.database, {
+      verdict: reader(WORTH_IT),
+      now: new Date('2026-06-02T23:40:00.000Z'),
+    });
+    expect(result.recorded).toBe(1);
+
+    const after = await search();
+    expect(before[0]).toBe('Library story time');
+    expect(after[0]).toBe('Parent and tot swim');
   });
 });
 

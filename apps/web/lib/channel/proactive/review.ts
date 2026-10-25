@@ -128,6 +128,7 @@ export interface ProactiveReviewDeps {
   compose(input: {
     items: readonly ToolCandidate[];
     client: AgentClient | null;
+    language?: string | null;
   }): Promise<WriterResult>;
   buildGate(database: Database): OutboundGatePorts;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
@@ -951,11 +952,17 @@ async function reviewFamily(
       summary.shadowed += 1;
     }
     if (checkIns.length > 0) {
-      await sendChosen(database, deps, { familyId, chosen: checkIns, now, summary });
+      await sendChosen(database, deps, {
+        familyId,
+        chosen: checkIns,
+        now,
+        summary,
+        language: context.language,
+      });
     }
     return;
   }
-  await sendChosen(database, deps, { familyId, chosen, now, summary });
+  await sendChosen(database, deps, { familyId, chosen, now, summary, language: context.language });
 }
 
 /**
@@ -996,6 +1003,8 @@ async function sendChosen(
     chosen: QueuedItem[];
     now: Date;
     summary: ProactiveReviewSummary;
+    /** The family's stored language tag, for the writer (VIL-393). */
+    language?: string | null;
   },
 ): Promise<void> {
   const { familyId, now, summary } = input;
@@ -1083,7 +1092,11 @@ async function sendChosen(
     const setKey = [...distinct.keys()].sort().join('\n\n');
     let written = writtenFor.get(setKey);
     if (!written) {
-      written = await deps.compose({ items: [...distinct.values()], client: deps.client });
+      written = await deps.compose({
+        items: [...distinct.values()],
+        client: deps.client,
+        language: input.language ?? null,
+      });
       writtenFor.set(setKey, written);
     }
     if ('skipped' in written) {

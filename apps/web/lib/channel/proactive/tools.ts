@@ -181,8 +181,18 @@ export function readWriterText(value: unknown, items: readonly ToolCandidate[]):
   return { message: finished };
 }
 
-/** The writer's user message: the chosen items, and the parent's cadence note if any. */
-export function writerContext(items: readonly ToolCandidate[], cadenceNote: string | null): string {
+/**
+ * The writer's user message: the chosen items, the parent's cadence note if any, and
+ * the family's stored language tag (VIL-393) so the text reads in the parent's language.
+ * A missing or non-tag language is left out, never guessed.
+ */
+export function writerContext(
+  items: readonly ToolCandidate[],
+  cadenceNote: string | null,
+  language: string | null = null,
+): string {
   const note = cadenceNote ? boundedLine(cadenceNote) : '';
-  return JSON.stringify({ items, ...(note ? { note } : {}) });
+  const tag = typeof language === 'string' ? language.trim().toLowerCase() : '';
+  const lang = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(tag) ? tag : '';
+  return JSON.stringify({ items, ...(note ? { note } : {}), ...(lang ? { language: lang } : {}) });
 }

@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { SENT_STATUSES, dedupeActive } from '~/lib/channel/ledger';
 import {
   type OutboundGatePorts,
@@ -8,29 +8,40 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { type CandidateDraft, queueCheckInForDecider } from '~/lib/channel/proactive/queue';
-import { LINE_CHARS } from '~/lib/channel/proactive/tools';
+import { boundedLine } from '~/lib/channel/proactive/tools';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { addDaysToKey, dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import type { ReviewSubjectRef } from '~/lib/reviews/aggregate';
-import { MID_ACTIVITY_ASK_TEMPLATE_KEY, isUuid, midActivityAskDedupeKey } from './claim';
+import {
+  MID_ACTIVITY_ASK_TEMPLATE_KEY,
+  type MidActivityStart,
+  isUuid,
+  midActivityAskDedupeKey,
+  midActivityStartDedupeKey,
+} from './claim';
 import {
   type CheckInCadence,
-  cadenceFromSessionStarts,
   decideMidActivityAsk,
+  firstSessionAskWindow,
+  firstSessionEnd,
   preferenceFromCheckIn,
-  sessionsElapsed,
 } from './decide';
 import { midActivityAskEnabled } from './flag';
 
 /**
- * VIL-393 step 3 — ask once, mid-activity. The SENDER IS the proactive decider: a due
- * ask is queued as a `mid_activity_ask` candidate and the decider's writer words it
- * (no locked line), inside the outbound gate, quiet hours and same-item dedupe.
+ * VIL-393 step 3 — one ask, the evening after the first session. The SENDER IS the
+ * proactive decider: a due ask is queued as a `mid_activity_ask` candidate and the
+ * decider's writer words it in the parent's language (no locked line), inside the
+ * outbound gate, quiet hours and same-item dedupe.
  *
- * The working set is a completed authorized signup: that is the activity the
- * household is in. Session starts say how often it runs. The check-in cadence
- * says how often the parent wants to be asked, and a missing row prefers fewer.
- * A priced session is not a gate. This product does not charge for the ask.
+ * What starts an activity:
+ *   - a completed authorized signup (its sessions say when the first one ends);
+ *   - a Hale-placed calendar plan (a `placement` row an approved action wrote);
+ *   - the parent saying they signed up — the coach queues that ask itself, held to
+ *     the same evening (`queueSaidSignupAsk`).
+ * The check-in cadence says whether the parent wants to be asked; `off` never asks.
+ *
+ * The payload is FACTS only: the activity's own title and when its first session
+ * ended. The writer speaks; nothing here is a sentence.
  *
  * The once-only key is the ledger row the decider writes when the ask actually
  * leaves; queueing claims nothing, so a held ask is retried on a later tick.
@@ -42,10 +53,8 @@ export interface MidActivityAskResult {
   /** `'flag_off'` when the lane did not read. Null when it ran. */
   skipped: 'flag_off' | null;
   examined: number;
-  placeholder: number;
   alreadyAsked: number;
   preferenceOff: number;
-  tooRare: number;
   tooSoon: number;
   pastWindow: number;
   noSubject: number;
@@ -64,10 +73,8 @@ function emptyAsk(skipped: 'flag_off' | null): MidActivityAskResult {
   return {
     skipped,
     examined: 0,
-    placeholder: 0,
     alreadyAsked: 0,
     preferenceOff: 0,
-    tooRare: 0,
     tooSoon: 0,
     pastWindow: 0,
     noSubject: 0,
@@ -79,15 +86,8 @@ function emptyAsk(skipped: 'flag_off' | null): MidActivityAskResult {
   };
 }
 
-function startsOf(sessions: readonly { startsAt: string }[]): Date[] {
-  const starts: Date[] = [];
-  for (const session of sessions) {
-    const at = new Date(session.startsAt);
-    if (Number.isNaN(at.getTime())) continue;
-    starts.push(at);
-  }
-  return starts;
-}
+/** How far back a placed plan's first session may have ended and still be asked about. */
+const PLAN_LOOKBACK_MS = 2 * 24 * 3_600_000;
 
 function subjectOf(
   row: { familyId: string; placeId: string | null; civicVenueId: string | null },
@@ -99,10 +99,18 @@ function subjectOf(
   return null;
 }
 
-interface DueAsk {
+/** One activity that has started, from any source, before the ask is decided. */
+interface StartedActivity {
   familyId: string;
-  offerId: string;
   title: string | null;
+  firstEndedAt: Date;
+  dedupeKey: string;
+  start: 'signup' | MidActivityStart;
+}
+
+interface DueAsk extends StartedActivity {
+  parentUserId: string;
+  closesAt: Date;
 }
 
 export interface MidActivityAskDeps {
@@ -119,21 +127,11 @@ export function defaultMidActivityAskDeps(): MidActivityAskDeps {
   };
 }
 
-/**
- * Decide which completed signups are at their one mid-activity node.
- * Does not send itself: a due ask is queued for the proactive decider.
- */
-export async function runMidActivityAskSweep(
+async function signupStarts(
   database: Database,
-  now: Date = new Date(),
-  deps: MidActivityAskDeps = defaultMidActivityAskDeps(),
-): Promise<MidActivityAskResult> {
-  if (!midActivityAskEnabled()) {
-    console.info({ env: 'MID_ACTIVITY_ASK_ENABLED' }, 'mid-activity ask: dark, nothing read');
-    return emptyAsk('flag_off');
-  }
-
-  const result = emptyAsk(null);
+  now: Date,
+  result: MidActivityAskResult,
+): Promise<StartedActivity[]> {
   const offers = await database
     .select({
       offerId: schema.authorizedSignupOffers.id,
@@ -147,21 +145,6 @@ export async function runMidActivityAskSweep(
     .where(eq(schema.authorizedSignupOffers.status, 'completed'))
     .orderBy(asc(schema.authorizedSignupOffers.createdAt))
     .limit(MAX_OFFERS_PER_RUN);
-
-  if (offers.length === 0) return result;
-
-  const familyIds = [...new Set(offers.map((offer) => offer.familyId))];
-  const prefs = await database
-    .select({
-      familyId: schema.familyCheckInPrefs.familyId,
-      cadence: schema.familyCheckInPrefs.cadence,
-    })
-    .from(schema.familyCheckInPrefs)
-    .where(inArray(schema.familyCheckInPrefs.familyId, familyIds));
-  const cadenceByFamily = new Map<string, CheckInCadence>(
-    prefs.map((row) => [row.familyId, row.cadence]),
-  );
-
   const candidateIds = [
     ...new Set(offers.map((offer) => offer.activityKey).filter((key) => isUuid(key))),
   ];
@@ -179,21 +162,7 @@ export async function runMidActivityAskSweep(
           .from(schema.familyActivityHistory)
           .where(inArray(schema.familyActivityHistory.id, candidateIds));
   const candidateById = new Map(candidates.map((row) => [row.id, row]));
-
-  const dedupeKeys = offers.map((offer) => midActivityAskDedupeKey(offer.offerId));
-  const asked = await database
-    .select({ dedupeKey: schema.channelMessages.dedupeKey })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.templateKey, MID_ACTIVITY_ASK_TEMPLATE_KEY),
-        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
-        inArray(schema.channelMessages.dedupeKey, dedupeKeys),
-      ),
-    );
-  const askedKeys = new Set(asked.map((row) => row.dedupeKey));
-
-  const due: DueAsk[] = [];
+  const out: StartedActivity[] = [];
   for (const offer of offers) {
     result.examined += 1;
     if (deriveStage(offer.childDob, now) === 'teenager') {
@@ -205,27 +174,159 @@ export async function runMidActivityAskSweep(
       result.noSubject += 1;
       continue;
     }
-    const starts = startsOf(offer.sessions);
-    const decision = decideMidActivityAsk({
-      cadence: cadenceFromSessionStarts(starts),
-      preference: preferenceFromCheckIn(
-        cadenceByFamily.has(offer.familyId)
-          ? { cadence: cadenceByFamily.get(offer.familyId) as CheckInCadence }
-          : null,
+    const firstEndedAt = firstSessionEnd(
+      offer.sessions.map((session) => ({
+        startsAt: new Date(session.startsAt),
+        endsAt: session.endsAt ? new Date(session.endsAt) : null,
+      })),
+    );
+    if (!firstEndedAt) {
+      result.noSubject += 1;
+      continue;
+    }
+    out.push({
+      familyId: offer.familyId,
+      title: candidate.title,
+      firstEndedAt,
+      dedupeKey: midActivityAskDedupeKey(offer.offerId),
+      start: 'signup',
+    });
+  }
+  return out;
+}
+
+/** A Hale-placed calendar plan whose (first) session ended recently. */
+async function planStarts(
+  database: Database,
+  now: Date,
+  result: MidActivityAskResult,
+): Promise<StartedActivity[]> {
+  const e = schema.familyEvents;
+  const rows = await database
+    .select({
+      eventId: e.id,
+      familyId: e.familyId,
+      title: e.title,
+      startsAt: e.startsAt,
+      endsAt: e.endsAt,
+      sensitive: e.sensitive,
+      childDob: schema.children.dateOfBirth,
+      payload: schema.actions.payload,
+    })
+    .from(e)
+    .innerJoin(schema.actions, eq(schema.actions.id, e.placedByActionId))
+    .leftJoin(schema.children, eq(schema.children.id, e.childId))
+    .where(
+      and(
+        eq(e.source, 'placement'),
+        isNull(e.deletedAt),
+        isNotNull(e.placedByActionId),
+        gte(e.startsAt, new Date(now.getTime() - PLAN_LOOKBACK_MS)),
+        lte(e.startsAt, now),
       ),
-      sessionsElapsed: sessionsElapsed(starts, now),
-      sessionsPlanned: starts.length,
-      alreadyAsked: askedKeys.has(midActivityAskDedupeKey(offer.offerId)),
+    )
+    .orderBy(asc(e.startsAt))
+    .limit(MAX_OFFERS_PER_RUN);
+  const out: StartedActivity[] = [];
+  for (const row of rows) {
+    result.examined += 1;
+    if (row.sensitive || (row.childDob && deriveStage(row.childDob, now) === 'teenager')) {
+      result.teenScoped += 1;
+      continue;
+    }
+    const firstEndedAt = firstSessionEnd([{ startsAt: row.startsAt, endsAt: row.endsAt }]);
+    if (!firstEndedAt) continue;
+    const ref = (row.payload as { sourceRef?: { table?: unknown; id?: unknown } | null }).sourceRef;
+    const candidateId =
+      ref?.table === 'family_activity_history' && typeof ref.id === 'string' && isUuid(ref.id)
+        ? ref.id
+        : null;
+    out.push({
+      familyId: row.familyId,
+      title: row.title,
+      firstEndedAt,
+      dedupeKey: midActivityStartDedupeKey({ start: 'plan', occurrence: row.eventId, candidateId }),
+      start: 'plan',
+    });
+  }
+  return out;
+}
+
+/**
+ * Decide which started activities are at their one ask, the evening after the first
+ * session. Does not send itself: a due ask is queued for the proactive decider.
+ */
+export async function runMidActivityAskSweep(
+  database: Database,
+  now: Date = new Date(),
+  deps: MidActivityAskDeps = defaultMidActivityAskDeps(),
+): Promise<MidActivityAskResult> {
+  if (!midActivityAskEnabled()) {
+    console.info({ env: 'MID_ACTIVITY_ASK_ENABLED' }, 'mid-activity ask: dark, nothing read');
+    return emptyAsk('flag_off');
+  }
+
+  const result = emptyAsk(null);
+  const started = [
+    ...(await signupStarts(database, now, result)),
+    ...(await planStarts(database, now, result)),
+  ];
+  if (started.length === 0) return result;
+
+  const familyIds = [...new Set(started.map((row) => row.familyId))];
+  const prefs = await database
+    .select({
+      familyId: schema.familyCheckInPrefs.familyId,
+      cadence: schema.familyCheckInPrefs.cadence,
+    })
+    .from(schema.familyCheckInPrefs)
+    .where(inArray(schema.familyCheckInPrefs.familyId, familyIds));
+  const cadenceByFamily = new Map<string, CheckInCadence>(
+    prefs.map((row) => [row.familyId, row.cadence]),
+  );
+
+  const asked = await database
+    .select({ dedupeKey: schema.channelMessages.dedupeKey })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.templateKey, MID_ACTIVITY_ASK_TEMPLATE_KEY),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        inArray(
+          schema.channelMessages.dedupeKey,
+          started.map((row) => row.dedupeKey),
+        ),
+      ),
+    );
+  const askedKeys = new Set(asked.map((row) => row.dedupeKey));
+
+  const parents = new Map<string, Awaited<ReturnType<typeof primaryParent>>>();
+  const due: DueAsk[] = [];
+  for (const activity of started) {
+    if (!parents.has(activity.familyId)) {
+      parents.set(activity.familyId, await primaryParent(database, activity.familyId));
+    }
+    const parent = parents.get(activity.familyId);
+    if (!parent) {
+      result.noSubject += 1;
+      continue;
+    }
+    const cadence = cadenceByFamily.get(activity.familyId);
+    const decision = decideMidActivityAsk({
+      preference: preferenceFromCheckIn(cadence === undefined ? null : { cadence }),
+      firstSessionEndedAt: activity.firstEndedAt,
+      timeZone: parent.timeZone,
+      now,
+      alreadyAsked: askedKeys.has(activity.dedupeKey),
     });
     if (!decision.ask) {
       if (decision.reason === 'already_asked') result.alreadyAsked += 1;
       else if (decision.reason === 'preference_off') result.preferenceOff += 1;
-      else if (decision.reason === 'too_rare') result.tooRare += 1;
       else if (decision.reason === 'too_soon') result.tooSoon += 1;
       else result.pastWindow += 1;
       continue;
     }
-    due.push({ familyId: offer.familyId, offerId: offer.offerId, title: candidate.title });
+    due.push({ ...activity, parentUserId: parent.parentUserId, closesAt: decision.closesAt });
   }
 
   const seenFamily = new Set<string>();
@@ -264,6 +365,36 @@ async function primaryParent(
     : null;
 }
 
+/**
+ * The candidate the decider reads: facts only. `what` is the activity's own title (or
+ * empty when there is none), `why` names the start and when the first session ended.
+ */
+export function midActivityAskDraft(input: {
+  familyId: string;
+  parentUserId: string;
+  title: string | null;
+  start: 'signup' | MidActivityStart;
+  firstEndedAt: Date;
+  closesAt: Date;
+  dedupeKey: string;
+}): CandidateDraft {
+  return {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    kind: 'mid_activity_ask',
+    category: 'activity_followup',
+    templateKey: MID_ACTIVITY_ASK_TEMPLATE_KEY,
+    what: boundedLine(input.title ?? ''),
+    why: boundedLine(
+      `mid_activity_ask start=${input.start} first_session_ended=${input.firstEndedAt.toISOString()}`,
+    ),
+    sourceUrl: null,
+    worthlessAfter: input.closesAt,
+    parentRequested: false,
+    dedupeKey: input.dedupeKey,
+  };
+}
+
 async function queueAsk(
   database: Database,
   deps: MidActivityAskDeps,
@@ -271,44 +402,73 @@ async function queueAsk(
   now: Date,
   result: MidActivityAskResult,
 ): Promise<void> {
-  const parent = await primaryParent(database, ask.familyId);
-  if (!parent) {
-    result.noSubject += 1;
-    return;
-  }
   const verdict = await assertProactiveSendAllowed(
-    { familyId: ask.familyId, parentUserId: parent.parentUserId, kind: 'mid_activity_ask', now },
+    { familyId: ask.familyId, parentUserId: ask.parentUserId, kind: 'mid_activity_ask', now },
     deps.buildGate(database),
   );
   if (!verdict.allowed) {
     result.held += 1;
     return;
   }
-  const dedupeKey = midActivityAskDedupeKey(ask.offerId);
-  if (await deps.dedupeActive(dedupeKey, database)) {
+  if (await deps.dedupeActive(ask.dedupeKey, database)) {
     result.alreadyAsked += 1;
     return;
   }
-  // Facts only: the activity's own title. The writer speaks; nothing here is a line.
-  const what = `how ${ask.title?.trim() || 'the class they signed up for'} is going so far`;
-  const queued = await deps.queueCandidate(database, {
-    familyId: ask.familyId,
-    parentUserId: parent.parentUserId,
-    kind: 'mid_activity_ask',
-    category: 'activity_followup',
-    templateKey: MID_ACTIVITY_ASK_TEMPLATE_KEY,
-    what: what.slice(0, LINE_CHARS),
-    why: 'one mid-activity ask; the answer shapes the next find',
-    sourceUrl: null,
-    // Asked in the evening; lapses at 08:00 two local mornings out.
-    worthlessAfter: zonedLocalInstant(
-      addDaysToKey(dayKeyIn(now, parent.timeZone), 2),
-      '08:00',
-      parent.timeZone,
-    ),
-    parentRequested: false,
-    dedupeKey,
-  });
+  const queued = await deps.queueCandidate(database, midActivityAskDraft(ask));
   if (queued === 'duplicate') result.duplicate += 1;
   else result.queued += 1;
+}
+
+/**
+ * VIL-393 · the parent said they signed up (in any words; the coach model decides).
+ * Queue the one ask HELD until the evening after the first session, so the decider
+ * picks it up then. A start whose evening has already passed is not queued.
+ */
+export async function queueSaidSignupAsk(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    title: string;
+    firstSessionStartsAt: Date;
+    firstSessionEndsAt: Date | null;
+    candidateId: string | null;
+    timeZone: string;
+    now: Date;
+  },
+): Promise<'queued' | 'duplicate' | 'past_window' | 'preference_off' | 'flag_off'> {
+  if (!midActivityAskEnabled()) return 'flag_off';
+  const [pref] = await database
+    .select({ cadence: schema.familyCheckInPrefs.cadence })
+    .from(schema.familyCheckInPrefs)
+    .where(eq(schema.familyCheckInPrefs.familyId, input.familyId))
+    .limit(1);
+  if (preferenceFromCheckIn(pref ?? null) === 'off') return 'preference_off';
+  const firstEndedAt = firstSessionEnd([
+    { startsAt: input.firstSessionStartsAt, endsAt: input.firstSessionEndsAt },
+  ]);
+  if (!firstEndedAt) return 'past_window';
+  const { opensAt, closesAt } = firstSessionAskWindow(firstEndedAt, input.timeZone);
+  if (input.now.getTime() >= closesAt.getTime()) return 'past_window';
+  const draft = midActivityAskDraft({
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    title: input.title,
+    start: 'said',
+    firstEndedAt,
+    closesAt,
+    dedupeKey: midActivityStartDedupeKey({
+      start: 'said',
+      occurrence: firstEndedAt.toISOString().slice(0, 10),
+      candidateId: input.candidateId,
+    }),
+  });
+  const inserted = await database
+    .insert(schema.proactiveCandidates)
+    .values({ ...draft, status: 'held', holdUntil: opensAt, reason: 'first_session_evening' })
+    .onConflictDoNothing({
+      target: [schema.proactiveCandidates.familyId, schema.proactiveCandidates.dedupeKey],
+    })
+    .returning({ id: schema.proactiveCandidates.id });
+  return inserted.length === 0 ? 'duplicate' : 'queued';
 }

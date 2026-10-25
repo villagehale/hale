@@ -23,6 +23,7 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
@@ -604,6 +605,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         },
         parentUserId: turn.parentUserId,
         now: turn.now,
+        activitySignup: midActivitySignupToolEnabled()
+          ? {
+              database,
+              familyId: turn.familyId,
+              parentUserId: turn.parentUserId,
+              now: turn.now,
+              timeZone: () => channelScheduleReader(database, turn.now).timeZone(turn.familyId),
+              offeredThisTurn: offered.read,
+            }
+          : null,
         providerWatch: browserUseWatchEnabled()
           ? {
               database,
