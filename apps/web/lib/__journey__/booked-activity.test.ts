@@ -2,6 +2,12 @@ import { join } from 'node:path';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  type FollowupSweepDeps,
+  defaultFollowupSweepDeps,
+  runFollowupSweep,
+} from '~/lib/channel/followup/run';
+import { createFollowupVoice } from '~/lib/channel/followup/voice';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -9,23 +15,17 @@ import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext } from '~/lib/channel/router/route';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import {
-  type FollowupSweepDeps,
-  defaultFollowupSweepDeps,
-  runFollowupSweep,
-} from '~/lib/channel/followup/run';
-import { createFollowupVoice } from '~/lib/channel/followup/voice';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { pipelineClient } from '~/lib/pipeline/client';
+import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
-import type { FamilyChildRef } from '~/lib/sentinel';
-import { recordedModel } from '~/lib/testing/recorded-model';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordedModel } from '~/lib/testing/recorded-model';
 
 /**
  * A REGISTRATION RECEIPT, END TO END — the receipt arrives, the text goes, the parent says
