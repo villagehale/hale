@@ -251,6 +251,37 @@ type RunWait =
 /** The run's browser id, read from browser.ready / browser.reattached events. */
 interface BrowserTracker {
   browserId: string | null;
+  /** Set as soon as Browser Use creates a run or session, so a throw can carry it. */
+  runId?: string | null;
+  sessionId?: string | null;
+}
+
+/**
+ * The signup engine threw. Carries the run and session ids it had created (null
+ * when none was), and the session's cost when the browser could be stopped, so
+ * the caller only releases a held allowance when no session ever existed.
+ */
+export class BrowserUseEngineThrew extends Error {
+  readonly runId: string | null;
+  readonly sessionId: string | null;
+  readonly browserId: string | null;
+  readonly sessionCostUsd: string | null;
+  constructor(
+    cause: unknown,
+    ids: {
+      runId: string | null;
+      sessionId: string | null;
+      browserId: string | null;
+      sessionCostUsd: string | null;
+    },
+  ) {
+    super('browser use engine threw', { cause });
+    this.name = cause instanceof Error ? cause.name : 'BrowserUseEngineThrew';
+    this.runId = ids.runId;
+    this.sessionId = ids.sessionId;
+    this.browserId = ids.browserId;
+    this.sessionCostUsd = ids.sessionCostUsd;
+  }
 }
 
 async function waitForRun(
@@ -351,8 +382,24 @@ export async function runBrowserUseSignup(
   input: BrowserUseSignupInput,
   deps: BrowserUseEngineDeps,
 ): Promise<BrowserUseSignupResult> {
-  const tracker: BrowserTracker = { browserId: null };
-  return settleBrowser(deps, await driveSignup(input, deps, tracker), tracker);
+  const tracker: BrowserTracker = { browserId: null, runId: null, sessionId: null };
+  let result: BrowserUseSignupResult;
+  try {
+    result = await driveSignup(input, deps, tracker);
+  } catch (error) {
+    const sessionId = tracker.sessionId ?? null;
+    const sessionCostUsd = await stopAndReadCost(deps, {
+      browserId: tracker.browserId,
+      sessionId,
+    }).catch(() => null);
+    throw new BrowserUseEngineThrew(error, {
+      runId: tracker.runId ?? null,
+      sessionId,
+      browserId: tracker.browserId,
+      sessionCostUsd,
+    });
+  }
+  return settleBrowser(deps, result, tracker);
 }
 
 async function driveSignup(
@@ -382,11 +429,14 @@ async function driveSignup(
     });
     runId = run.id;
     sessionId = run.sessionId;
+    tracker.runId = run.id;
+    tracker.sessionId = run.sessionId || null;
 
     const waited = await waitForRun(deps, run.id, tracker);
     if (waited.kind === 'timeout') return failure('error', 'timeout', { runId, sessionId });
     const summary = await deps.api.getRun(run.id);
     const ids = { runId, sessionId: summary.sessionId || sessionId, costUsd: summary.totalCostUsd };
+    if (ids.sessionId) tracker.sessionId = ids.sessionId;
     if (waited.status === 'failed') return failure('error', 'run_failed', ids);
     if (waited.status === 'cancelled') return failure('error', 'run_cancelled', ids);
 
