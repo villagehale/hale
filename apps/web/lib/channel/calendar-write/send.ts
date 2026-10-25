@@ -10,6 +10,14 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
+import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
+import {
+  PROACTIVE_CATEGORY,
+  type ProactiveHoldReason,
+  type ProactiveSendVerdict,
+  assertProactiveSendAllowed,
+  buildOutboundGatePorts,
+} from '~/lib/channel/outbound-gate';
 import {
   createOutboundTransport,
   failedSendPatch,
@@ -40,6 +48,12 @@ import {
  * the AI-written notice and text it to that parent alone. A connect link is minted only
  * for an outcome that needs one. Every way this ends is logged (rule #11); nothing is
  * thrown.
+ *
+ * UNPROMPTED, SO GATED. The notice goes out after the drain finishes, not as the answer to a
+ * text, so it passes {@link assertProactiveSendAllowed} as a `calendar_alert` (the parent's
+ * own calendar changed; never urgent) BEFORE anything is read, minted, composed or sent.
+ * A hold DROPS the notice: the drain has no retry queue, and a calendar outcome is not worth
+ * waking a house for or texting someone who said stop. The hold reason is the logged result.
  */
 
 export const CALENDAR_WRITE_NOTICE_TEMPLATE_KEY = 'calendar_write_notice';
@@ -48,6 +62,9 @@ export type NoticeSendOutcome = 'sent' | 'no_send_target' | 'no_chat' | 'send_fa
 
 export interface CalendarWriteNoticePorts {
   enabled(): boolean;
+  /** The proactive-send gate (opt-out, consent, quiet hours) for this parent, now. */
+  gate(familyId: string, parentUserId: string, now: Date): Promise<ProactiveSendVerdict>;
+  now?(): Date;
   /** The event as this parent may see it, or null when it can't be read. */
   loadEvent(request: GoogleCalendarPlacementRequest & { actorUserId: string }): Promise<{
     event: CalendarWriteEvent;
@@ -56,13 +73,19 @@ export interface CalendarWriteNoticePorts {
   /** A one-tap calendar connect link for this parent, or null when none could be minted. */
   connectLink(familyId: string, parentUserId: string): Promise<string | null>;
   compose(input: CalendarWriteNoticeInput): Promise<string | null>;
-  send(familyId: string, parentUserId: string, text: string): Promise<NoticeSendOutcome>;
+  send(
+    familyId: string,
+    parentUserId: string,
+    text: string,
+    optOut: OptOutForm,
+  ): Promise<NoticeSendOutcome>;
 }
 
 export type CalendarWriteNoticeResult =
   | 'disabled'
   | 'no_actor'
   | 'no_news'
+  | `held:${ProactiveHoldReason}`
   | 'event_unreadable'
   | 'no_link'
   | 'unwritten'
@@ -80,6 +103,8 @@ export async function noticeAfterSync(
     if (!actorUserId) return 'no_actor';
     const outcome = calendarWriteOutcome(request.op, report);
     if (!outcome) return 'no_news';
+    const verdict = await ports.gate(request.familyId, actorUserId, ports.now?.() ?? new Date());
+    if (!verdict.allowed) return `held:${verdict.reason}`;
     const loaded = await ports.loadEvent({ ...request, actorUserId });
     if (!loaded) return 'event_unreadable';
     const needsLink =
@@ -95,7 +120,7 @@ export async function noticeAfterSync(
     if (!input) return 'no_link';
     const text = await ports.compose(input);
     if (!text) return 'unwritten';
-    return await ports.send(request.familyId, actorUserId, text);
+    return await ports.send(request.familyId, actorUserId, text, verdict.optOut);
   } catch (err) {
     console.error(
       { familyId: request.familyId, err: err instanceof Error ? err.name : 'unknown' },
@@ -147,11 +172,21 @@ async function parentTimezone(database: Database, userId: string): Promise<strin
 }
 
 /** Production ports. The send is a 1:1 text on the parent's own door, never the group. */
-export function productionCalendarWriteNoticePorts(database: Database): CalendarWriteNoticePorts {
-  const transport = createOutboundTransport();
+export function productionCalendarWriteNoticePorts(
+  database: Database,
+  makeTransport: typeof createOutboundTransport = createOutboundTransport,
+): CalendarWriteNoticePorts {
   return {
     enabled: () => calendarWriteNoticeEnabled(),
+    gate: (familyId, parentUserId, now) =>
+      assertProactiveSendAllowed(
+        { familyId, parentUserId, kind: 'calendar_alert', now },
+        buildOutboundGatePorts(database),
+      ),
     async loadEvent(request) {
+      // READ-ONLY for every op: composeEventCancel only selects the event row (soft-deleted
+      // included, which a delete needs) and the parent's privacy level, and mints nothing.
+      // Pinned by send.pglite.test.ts.
       const composed = await composeEventCancel(
         {
           familyId: request.familyId,
@@ -183,7 +218,8 @@ export function productionCalendarWriteNoticePorts(database: Database): Calendar
     },
     compose: (input) =>
       composeCalendarWriteNotice(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
-    async send(familyId, parentUserId, text) {
+    async send(familyId, parentUserId, text, optOut) {
+      const body = withOptOut(text, optOut);
       const phone = await resolveSendablePhone(database, parentUserId);
       if (!phone) return 'no_send_target';
       const door = await resolveMessagingDoor(database, parentUserId, {
@@ -200,7 +236,7 @@ export function productionCalendarWriteNoticePorts(database: Database): Calendar
           parentUserId,
           channel,
           direction: 'out',
-          category: 'reply',
+          category: PROACTIVE_CATEGORY.calendar_alert,
           templateKey: CALENDAR_WRITE_NOTICE_TEMPLATE_KEY,
           providerChatId: chatId,
           status: acceptedStatus(channel),
@@ -211,11 +247,12 @@ export function productionCalendarWriteNoticePorts(database: Database): Calendar
       let providerMessageId: string;
       try {
         if (chatId) {
-          ({ providerMessageId } = await sendLinqChatMessage({ chatId, text }));
+          ({ providerMessageId } = await sendLinqChatMessage({ chatId, text: body }));
         } else {
-          ({ providerMessageId } = await sendResolvingNewChat(transport, {
+          // Built here, per send, so a drain with the flag off never constructs one.
+          ({ providerMessageId } = await sendResolvingNewChat(makeTransport(), {
             to: phone,
-            body: text,
+            body,
           }));
         }
       } catch (err) {
@@ -230,7 +267,7 @@ export function productionCalendarWriteNoticePorts(database: Database): Calendar
         .update(schema.channelMessages)
         .set({ providerMessageId })
         .where(eq(schema.channelMessages.id, claimed.id));
-      await threadProactiveMessage(database, { familyId, parentUserId, body: text });
+      await threadProactiveMessage(database, { familyId, parentUserId, body });
       return 'sent';
     },
   };
