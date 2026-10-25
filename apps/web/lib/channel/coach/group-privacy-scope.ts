@@ -29,13 +29,12 @@ export const GROUP_WITHHELD = [
 ] as const;
 
 export function groupScopedContext<T extends AgentContext>(context: T): T {
-  const scoped: T = {
-    ...context,
+  const { providerWatch: _withheld, ...rest } = context as T & { providerWatch?: unknown };
+  return {
+    ...(rest as T),
     memoryFacts: [],
     recentEpisodes: [],
     memoryBrief: unavailableMemoryBrief(),
     sourceNote: null,
   };
-  delete (scoped as { providerWatch?: unknown }).providerWatch;
-  return scoped;
 }
