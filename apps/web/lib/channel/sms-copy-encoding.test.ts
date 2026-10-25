@@ -81,7 +81,6 @@ const SMS_COPY_SOURCES = [
   'lib/channel/connect/text-connect.ts',
   'lib/channel/inbound-copy.ts',
   'lib/channel/founder/copy.ts',
-  'lib/health/copy.ts',
   'lib/registration/sequence/copy.ts',
   'lib/party/copy.ts',
   'lib/party/guest-copy.ts',

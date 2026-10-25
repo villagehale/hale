@@ -43,7 +43,6 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { matchHealthCheckpoints } from '~/lib/health/match';
-import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
@@ -560,16 +559,6 @@ async function runToddlerJourney(): Promise<Journey> {
     // SEAM: the real reader unions "already told" (a LIKE over the ledger's
     // told-markers, whatever surface wrote them — health/told.ts) with "said done"
     // (health/reply.ts). The LIKE is what is restated.
-    loadSuppressedCheckpoints: async () => {
-      const prefix = checkpointToldKeyPrefix(familyId);
-      return new Set(
-        fake
-          .rows(schema.channelMessages)
-          .map((row) => String(row.dedupeKey ?? ''))
-          .filter((key) => key.startsWith(prefix))
-          .map((key) => key.slice(prefix.length)),
-      );
-    },
     loadClaimedWindowIds: async () =>
       new Set(fake.rows(schema.registrationSequences).map((row) => row.windowId as string)),
     loadWeekdayCareContext: async () => ({
@@ -602,8 +591,6 @@ async function runToddlerJourney(): Promise<Journey> {
     fulfillCommitment,
     // The REAL offer writer over the same store: a health nudge whose task is booking
     // registers the standing question its own close makes (lib/health/offer.ts).
-    recordCheckupOffer: (database, input) =>
-      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
     // The REAL threader over the same store: a nudge the parent can answer has to be a
     // row in `messages`, because that is the only place their reply's antecedent lives.
     threadMessage: threadProactiveMessage,

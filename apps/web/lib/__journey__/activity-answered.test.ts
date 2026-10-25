@@ -4,7 +4,6 @@ import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
@@ -36,6 +35,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
+import { isStage } from '~/lib/testing/structured-reply';
 
 /**
  * "I'LL COME BACK TO YOU ON IT" — the 2026-08-20 18:13-18:19 UTC transcript, replayed.

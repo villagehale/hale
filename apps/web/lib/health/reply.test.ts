@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { checkpointById, checkpointRef, parseCheckpointRef } from './checkpoints';
 import type { OpenCheckupOffer } from './offer';
-import {
-  type HealthReplyDeps,
-  handleHealthCheckpointReply,
-  matchHealthReply,
-} from './reply';
+import { type HealthReplyDeps, handleHealthCheckpointReply, matchHealthReply } from './reply';
 
 /**
  * VIL-243 · M8 — the reply seam. Two deterministic outcomes and nothing else: a parent
@@ -77,7 +73,16 @@ function harness(
 
 describe('matchHealthReply', () => {
   it('reads the whole done family', () => {
-    for (const body of ['done', 'Done.', 'DONE!', 'did it', 'Did it.', 'finished', 'all done', '✓']) {
+    for (const body of [
+      'done',
+      'Done.',
+      'DONE!',
+      'did it',
+      'Did it.',
+      'finished',
+      'all done',
+      '✓',
+    ]) {
       expect({ body, intent: matchHealthReply(body) }).toEqual({ body, intent: 'done' });
     }
   });

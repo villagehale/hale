@@ -124,7 +124,6 @@ function inputFor(
     // deciding between a registration date and a weekend.
     healthChildren: [],
     areaCoarse: null,
-    suppressedCheckpointRefs: new Set<string>(),
     // VIL-242 · no M7 sequence has claimed anything by default.
     claimedWindowIds: new Set<string>(),
     // VIL-360 · the weekday legs are off unless a case arms them, so every case
