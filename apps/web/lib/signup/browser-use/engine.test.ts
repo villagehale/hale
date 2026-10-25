@@ -179,6 +179,11 @@ describe('browser use signup engine', () => {
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
     });
+    // V4 keepAlive is integer seconds (120-14400), not the V2/V3 boolean. The
+    // 4-hour `timeout_at` on browser.released is Browser Use's hard limit, not this.
+    expect(CHECKOUT_KEEP_ALIVE_SECONDS).toBe(900);
+    expect(body.keepAlive).toBeGreaterThanOrEqual(120);
+    expect(body.keepAlive).toBeLessThanOrEqual(14400);
     expect(body).not.toHaveProperty('secretBindings');
     expect(body).not.toHaveProperty('opVaultId');
     expect(body).not.toHaveProperty('stripeLinkConnectionId');

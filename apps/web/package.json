@@ -42,6 +42,7 @@
     "next-auth": "5.0.0-beta.25",
     "pg-boss": "^10.1.6",
     "postgres": "^3.4.5",
+    "playwright-core": "1.61.1",
     "posthog-js": "^1.393.4",
     "posthog-node": "^5.57.0",
     "react": "^19.0.0",
