@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message correctly says Hale won't add or text the person and that the person should write to Hale directly by SMS, with no group mention, no invented name or role, and no phone number. However it uses 'm'écrire' correctly but 'pour rejoindre' is vague and 'moi-même' and 'je n'écris jamais en premier' are fine; the phrasing is slightly awkward ('pour rejoindre' lacks an object) and uses 'elle' which is acceptable. Real accents present, tu-register not needed since no address form appears, so minor deduction only.",
+    "score": 4
+  }
+}
