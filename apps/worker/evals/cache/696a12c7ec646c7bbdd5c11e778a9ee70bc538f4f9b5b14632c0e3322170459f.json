@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "low",
+    "reason": "Non-English reply (French); outside supported language, so routed to coach"
+  },
+  "latencyMs": 1267
+}

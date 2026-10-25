@@ -1,7 +1,8 @@
 /**
- * VIL-454 (T6) 3/3 — unclear answers to a calendar write. Not recorded; not in CI.
- * Run with `run-reply-resolver-eval.mjs --corpus=calendar-consent` once recording is
- * approved. Every case expects nothing to be written. `mustAsk` additionally expects a
+ * VIL-454 (T6) 3/3 — unclear answers to a calendar write. Recorded 2026-10-25 ($0.0016):
+ * 6/10 pass, nothing written in any case; the four `mustAsk` misses read as no_target, so
+ * this corpus is NOT in CI until that is fixed. Replay with
+ * `run-reply-resolver-eval.mjs --corpus=calendar-consent --cached-only`. Every case expects nothing to be written. `mustAsk` additionally expects a
  * reading that sends Hale back to ask (ambiguous or below_grade), not silence.
  */
 

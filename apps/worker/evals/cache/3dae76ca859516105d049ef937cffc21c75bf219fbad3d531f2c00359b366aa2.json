@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "ambiguous",
+    "polarity": "yes",
+    "confidence": "medium",
+    "reason": "\"好的\" is a plain yes, but two approval questions are open and it does not name either one"
+  },
+  "latencyMs": 4291
+}
