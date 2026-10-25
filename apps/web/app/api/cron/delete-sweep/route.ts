@@ -4,6 +4,8 @@ import { sweepRosterRetention } from '~/lib/channel/linq/roster-retention';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { runDeletionSweep, sweepMessageRetention } from '~/lib/rights/delete';
+import { remoteProfileDeleterFromEnv } from '~/lib/signup/browser-use/runner';
+import { sweepExpiredProviderSessions } from '~/lib/signup/browser-use/vault';
 
 // Node runtime: the sweep deletes via the postgres driver (not edge).
 export const runtime = 'nodejs';
@@ -30,6 +32,11 @@ export const runtime = 'nodejs';
  * privacy promise is a year, and a promise that stops when a flag flips is not
  * a promise. The step logs counts only.
  *
+ * PROVIDER SIGNUP SESSIONS ARE NOT FLAG-GATED EITHER. A captured provider login
+ * (cookies, never a password) lives at most 48 hours; past that the row and its
+ * Browser Use profile are deleted here. Without BROWSER_USE_API_KEY a row that
+ * already seeded a remote profile waits (`remotePending`) instead of orphaning it.
+ *
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING — no DB read,
  * no delete. The erased + purged-object counts are logged so the erasure (rows AND
@@ -41,6 +48,11 @@ export const GET = cronRoute('delete-sweep', async () => {
   const checkInNotesPurged = await purgeExpiredCheckInNotes(db());
   const messageRetention = await sweepMessageRetention(db());
   const groupRosterRetention = await sweepRosterRetention(db());
+  const providerSessions = await sweepExpiredProviderSessions(
+    db(),
+    new Date(),
+    remoteProfileDeleterFromEnv(),
+  );
   if (summary.erased > 0) {
     console.info(
       { erased: summary.erased, purgedObjects: summary.purgedObjects },
@@ -66,8 +78,23 @@ export const GET = cronRoute('delete-sweep', async () => {
     // Counts only (rule #1). The family-less deletions have no audit row to live in.
     console.info(groupRosterRetention, 'cron/delete-sweep: released group roster numbers');
   }
+  if (
+    providerSessions.deleted > 0 ||
+    providerSessions.remotePending > 0 ||
+    providerSessions.remoteFailed > 0
+  ) {
+    // Counts only (rule #1): never a host, a family, or a profile id.
+    console.info(providerSessions, 'cron/delete-sweep: deleted provider sessions past 48 hours');
+  }
   return NextResponse.json(
-    { ok: true, ...summary, checkInNotesPurged, messageRetention, groupRosterRetention },
+    {
+      ok: true,
+      ...summary,
+      checkInNotesPurged,
+      messageRetention,
+      groupRosterRetention,
+      providerSessions,
+    },
     { status: 200 },
   );
 });

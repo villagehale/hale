@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { authorizeSignup, isExplicitSignupUtterance } from './authorize';
+import { authorizeSignup } from './authorize';
+import type { SignupConsentReading } from './consent-reader';
+
+const CONSENT: SignupConsentReading = { verdict: 'consent', sessionId: null };
+const consentFor = (sessionId: string): SignupConsentReading => ({ verdict: 'consent', sessionId });
 import type { SignupOffer, SignupSession } from './types';
 
 const TUE: SignupSession = {
@@ -33,21 +37,28 @@ function offer(sessions: SignupSession[], approvedPriceCents: number | null = nu
 }
 
 describe('authorization gate', () => {
-  it('does not treat a bare yes as authorization', () => {
-    expect(isExplicitSignupUtterance('yes')).toBe(false);
-    expect(isExplicitSignupUtterance('yes please')).toBe(false);
-    expect(isExplicitSignupUtterance('ok')).toBe(false);
+  it('only a consent reading authorizes: unclear, decline, unrelated and unreadable do not', () => {
     const decision = authorizeSignup({
-      utterance: 'yes',
+      reading: null,
       offer: offer([TUE]),
       busy: [],
     });
     expect(decision).toEqual({ ok: false, reason: 'not_authorized' });
+    for (const reading of [
+      { verdict: 'unclear', question: 'Which session?' },
+      { verdict: 'decline' },
+      { verdict: 'unrelated' },
+    ] as SignupConsentReading[]) {
+      expect(authorizeSignup({ reading, offer: offer([TUE]), busy: [] })).toEqual({
+        ok: false,
+        reason: 'not_authorized',
+      });
+    }
   });
 
   it('authorizes the only session when the parent says to sign up', () => {
     const decision = authorizeSignup({
-      utterance: 'Yes, sign us up',
+      reading: CONSENT,
       offer: offer([TUE]),
       busy: [],
     });
@@ -56,7 +67,7 @@ describe('authorization gate', () => {
 
   it('uses the session the parent named', () => {
     const decision = authorizeSignup({
-      utterance: 'yes, sign us up for Wed 10:00',
+      reading: consentFor('wed-1000'),
       offer: offer([TUE, WED]),
       busy: [],
     });
@@ -65,7 +76,7 @@ describe('authorization gate', () => {
 
   it('picks the one open slot that fits the calendar', () => {
     const decision = authorizeSignup({
-      utterance: 'sign us up',
+      reading: CONSENT,
       offer: offer([TUE, WED]),
       busy: [{ startsAt: TUE.startsAt, endsAt: TUE.endsAt }],
     });
@@ -74,7 +85,7 @@ describe('authorization gate', () => {
 
   it('stops when more than one session fits', () => {
     const decision = authorizeSignup({
-      utterance: 'sign us up',
+      reading: CONSENT,
       offer: offer([TUE, WED]),
       busy: [],
     });
@@ -83,7 +94,7 @@ describe('authorization gate', () => {
 
   it('stops when the named session is full', () => {
     const decision = authorizeSignup({
-      utterance: 'sign us up for Tue 4:30',
+      reading: consentFor('tue-1630'),
       offer: offer([{ ...TUE, full: true }, WED]),
       busy: [],
     });
@@ -92,7 +103,7 @@ describe('authorization gate', () => {
 
   it('stops when every session is full', () => {
     const decision = authorizeSignup({
-      utterance: 'register us',
+      reading: CONSENT,
       offer: offer([
         { ...TUE, full: true },
         { ...WED, full: true },
@@ -104,7 +115,7 @@ describe('authorization gate', () => {
 
   it('stops when the named slot is not on the offer', () => {
     const decision = authorizeSignup({
-      utterance: 'sign us up for Fri 9:00',
+      reading: consentFor('fri-0900'),
       offer: offer([TUE, WED]),
       busy: [],
     });
@@ -113,7 +124,7 @@ describe('authorization gate', () => {
 
   it('stops when the session has a price the parent has not approved', () => {
     const decision = authorizeSignup({
-      utterance: 'yes, sign us up',
+      reading: CONSENT,
       offer: offer([{ ...TUE, priceCents: 1800 }]),
       busy: [],
     });
@@ -123,26 +134,17 @@ describe('authorization gate', () => {
   it('allows a price the parent already approved and a free session', () => {
     expect(
       authorizeSignup({
-        utterance: 'sign us up',
+        reading: CONSENT,
         offer: offer([{ ...TUE, priceCents: 1800 }], 1800),
         busy: [],
       }).ok,
     ).toBe(true);
     expect(
       authorizeSignup({
-        utterance: 'sign us up',
+        reading: CONSENT,
         offer: offer([{ ...TUE, priceCents: 0 }]),
         busy: [],
       }).ok,
     ).toBe(true);
-  });
-
-  it('does not enroll a different activity from extra words', () => {
-    const decision = authorizeSignup({
-      utterance: 'yes sign us up tomorrow maybe',
-      offer: offer([TUE]),
-      busy: [],
-    });
-    expect(decision).toEqual({ ok: false, reason: 'not_authorized' });
   });
 });

@@ -1,0 +1,20 @@
+{
+  "events": [
+    {
+      "runId": "6f1c2d1e-0d4b-4c39-9a3e-2b1f7f0b9a11",
+      "id": 1,
+      "ts": "2026-10-21T15:00:01Z",
+      "type": "run.started",
+      "data": {}
+    },
+    {
+      "runId": "6f1c2d1e-0d4b-4c39-9a3e-2b1f7f0b9a11",
+      "id": 2,
+      "ts": "2026-10-21T15:00:03Z",
+      "type": "browser.ready",
+      "data": { "live_view_url": "https://live.browser-use.com/s/fixture-live-view-token" }
+    }
+  ],
+  "nextAfter": null,
+  "hasMore": false
+}

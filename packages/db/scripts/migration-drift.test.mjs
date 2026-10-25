@@ -14,8 +14,10 @@ describe('catalog history cutover', () => {
     const base = entries.find((entry) => entry.tag === '0171_channel_pending_asks');
     expect(computeDrift(entries, base.when).pending.map((entry) => entry.tag)).toEqual([
       '0172_activity_history_only',
-      '0173_user_timezone_from_postal',
-      '0174_channel_inbound_media',
+      '0173_provider_signup_sessions',
+      '0174_family_link_wallets',
+      '0175_user_timezone_from_postal',
+      '0176_channel_inbound_media',
     ]);
   });
 });

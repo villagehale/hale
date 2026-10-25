@@ -462,7 +462,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     healthReplyHandler({ ...defaultHealthReplyDeps(), ask }),
     emailAlertAddHandler({ writeReceipt: createOfferReceiptWriter(screenClient) }),
     planReplyHandler(defaultPlanReplyDeps()),
-    // Explicit "sign us up" only. A bare yes is not a signup. Placed before the
+    // A reply to a pending sign-up offer, read by the consent model (no word list). Placed before the
     // registration reader, which also claims messages it cannot read.
     authorizedSignupHandler(),
     // Exact "what do you know" / "forget …" / "correct …" only, and only when

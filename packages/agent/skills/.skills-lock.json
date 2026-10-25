@@ -19,6 +19,18 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
+  "browser-use-confirmation.md": {
+    "file": "browser-use-confirmation.md",
+    "sha256": "346a0f5250505a31aa9c5327a35e7699ef84c30319583eea044f80ecdb12cce8"
+  },
+  "browser-use-payment.md": {
+    "file": "browser-use-payment.md",
+    "sha256": "0cb09e88dc63291023bd687064cb8de927e8b24f2d1308fccbd0411c94cbd0a3"
+  },
+  "browser-use-signup.md": {
+    "file": "browser-use-signup.md",
+    "sha256": "850b1a16363873cb8d547f4ab7703cf1798019af805ef84f4dcf711f3965aa1d"
+  },
   "calendar-cancel-voice.md": {
     "file": "calendar-cancel-voice.md",
     "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"
@@ -250,6 +262,14 @@
   "said-line.md": {
     "file": "said-line.md",
     "sha256": "f25938b6caaf9e7664754a1bd29633145d1f18fd379cdd1a7b7aa43b2e06cf79"
+  },
+  "signup-consent.md": {
+    "file": "signup-consent.md",
+    "sha256": "bc79b1b933727995410c255587ac10f38f928f8030545686cbb628f4f247349f"
+  },
+  "signup-outcome-reply.md": {
+    "file": "signup-outcome-reply.md",
+    "sha256": "bc6c6659784b3b50f47108456e2a5756fe23ca3039c1d68af1fd24ae0884c638"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
