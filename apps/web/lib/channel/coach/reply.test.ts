@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { groundedUrlsOnly, plainText, redactTeenNames, toSmsReply } from './reply';
+import { linkRef } from './activity-links';
+import { plainText, redactTeenNames, toSmsReply } from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -9,6 +10,7 @@ import { groundedUrlsOnly, plainText, redactTeenNames, toSmsReply } from './repl
  * model is the one part of this path that cannot be made to behave by construction.
  */
 
+const TPL_PAGE = 'https://www.torontopubliclibrary.ca/programs-and-classes/';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 const LINK = 'https://app.villagehale.com';
 
@@ -464,7 +466,7 @@ describe('the nearby count', () => {
   });
 
   it('keeps the count when the only suffix is the find URL', () => {
-    const reply = toSmsReply('Riverdale story time is Saturday at 10.', {
+    const reply = toSmsReply(`Riverdale story time is Saturday at 10. [${linkRef(TPL_PAGE)}]`, {
       children: [],
       now,
       nearby: {
@@ -472,13 +474,7 @@ describe('the nearby count', () => {
         title: 'Riverdale story time',
         otherTitles: [],
       },
-      activityLinks: [
-        {
-          title: 'Riverdale story time',
-          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
-          venue: 'Riverdale Library',
-        },
-      ],
+      activityLinks: [{ ref: linkRef(TPL_PAGE), url: TPL_PAGE }],
     });
 
     expect(reply).toContain('3 families near you say Riverdale Library is worth it.');
@@ -486,17 +482,12 @@ describe('the nearby count', () => {
   });
 
   it('still drops the count when a plan offer is the suffix', () => {
-    const reply = toSmsReply('Riverdale story time is Saturday at 10.', {
+    const reply = toSmsReply(`Riverdale story time is Saturday at 10. [${linkRef(TPL_PAGE)}]`, {
       children: [],
       now,
       nearby: NEARBY,
       planOffer: 'Want me to send the full plan?',
-      activityLinks: [
-        {
-          title: 'Riverdale story time',
-          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
-        },
-      ],
+      activityLinks: [{ ref: linkRef(TPL_PAGE), url: TPL_PAGE }],
     });
 
     expect(reply).not.toContain('families near you');
@@ -514,35 +505,49 @@ describe('plain ASCII folding', () => {
   });
 });
 
+/**
+ * Pages are attached by REF, never by matching words (activity-links.ts). The model
+ * cites the ref a tool returned; a URL it typed never reaches the parent.
+ */
 describe('activity links', () => {
-  it('appends the page for the activity the reply named, and not one it did not', () => {
-    const reply = toSmsReply('Fanous lantern craft is on Saturday afternoon at North York.', {
+  const LANTERN = {
+    ref: linkRef('https://tpl.example/lantern'),
+    url: 'https://tpl.example/lantern',
+  };
+  const ROBOTICS = {
+    ref: linkRef('https://tpl.example/robotics'),
+    url: 'https://tpl.example/robotics',
+  };
+  const TUMBLERS_URL = 'https://www.haltonhills.ca/en/recreation/tiny-tumblers.aspx';
+  const TUMBLERS = { ref: linkRef(TUMBLERS_URL), url: TUMBLERS_URL };
+  const ANSWER =
+    "Remy would be in Tiny Gym. He's 19 months, so a parent stays with him, and Mini Gym is for kids who are 3.5 and going solo.";
+
+  it('appends the page for the ref the reply cited, and not one it did not', () => {
+    const reply = toSmsReply(
+      `Fanous lantern craft is on Saturday afternoon at North York. [${LANTERN.ref}]`,
+      {
+        children: [],
+        now: NOW,
+        activityLinks: [LANTERN, ROBOTICS],
+      },
+    );
+    expect(reply).toBe(
+      'Fanous lantern craft is on Saturday afternoon at North York. https://tpl.example/lantern',
+    );
+  });
+
+  it('attaches nothing when the reply names a find but cites no ref', () => {
+    const reply = toSmsReply('Fanous lantern craft is on Saturday afternoon.', {
       children: [],
       now: NOW,
-      activityLinks: [
-        { title: 'Fanous lantern craft', url: 'https://tpl.example/lantern' },
-        { title: 'Robotics workshops', url: 'https://tpl.example/robotics' },
-      ],
+      activityLinks: [LANTERN],
     });
-    expect(reply).toContain('https://tpl.example/lantern');
-    expect(reply).not.toContain('https://tpl.example/robotics');
+    expect(reply).toBe('Fanous lantern craft is on Saturday afternoon.');
   });
-});
 
-/**
- * A link the model wrote is a fact. It stays only when a tool returned it this turn for
- * the program the reply is about (eval fixture continuity-bare-noun, 2026-10-25 re-record).
- */
-describe('model-written links', () => {
-  const TUMBLERS = {
-    title: 'Tiny Tumblers parent & tot',
-    url: 'https://www.haltonhills.ca/en/recreation/tiny-tumblers.aspx',
-  };
-  const ANSWER =
-    "Remy would be in Tiny Gym. It's the one for under 3.5s with a parent, and Mini Gym only starts once they're 3.5 and going solo. I couldn't find fall times on Cartwheels' own page, so I'd check those before planning around it.";
-
-  it("drops another program's link from an answer about Tiny Gym", () => {
-    const out = toSmsReply(`${ANSWER} ${TUMBLERS.url}`, {
+  it('drops a URL the model typed, even one a tool returned (continuity-bare-noun)', () => {
+    const out = toSmsReply(`${ANSWER} ${TUMBLERS_URL}`, {
       children: [],
       now: NOW,
       activityLinks: [TUMBLERS],
@@ -550,25 +555,19 @@ describe('model-written links', () => {
     expect(out).toBe(ANSWER);
   });
 
-  it('does not append the returned link when the reply only shares a word with it', () => {
-    // One shared four-letter word ("Tiny") is not the reply naming the program.
-    const out = toSmsReply(ANSWER, { children: [], now: NOW, activityLinks: [TUMBLERS] });
-    expect(out).toBe(ANSWER);
+  it('drops a URL no tool returned and a ref no tool returned', () => {
+    const out = toSmsReply('Swim is Tuesday, see https://example.com/swim. [link-abcdef]', {
+      children: [],
+      now: NOW,
+      activityLinks: [LANTERN],
+    });
+    expect(out).toBe('Swim is Tuesday, see.');
   });
 
-  it('drops a link no tool returned this turn', () => {
-    expect(groundedUrlsOnly('Swim is Tuesday, see https://example.com/swim.', [])).toBe(
-      'Swim is Tuesday, see.',
+  it('cites a page from a reply in any script', () => {
+    const zh = `周六下午北约克中央图书馆有灯笼手工活动。[${LANTERN.ref}]`;
+    expect(toSmsReply(zh, { children: [], now: NOW, activityLinks: [LANTERN] })).toBe(
+      '周六下午北约克中央图书馆有灯笼手工活动。 https://tpl.example/lantern',
     );
-  });
-
-  it('keeps the returned link for the exact program the reply is about', () => {
-    const body = `Tiny Tumblers parent & tot runs Saturday mornings: ${TUMBLERS.url}`;
-    expect(groundedUrlsOnly(body, [TUMBLERS])).toBe(body);
-  });
-
-  it('leaves a reply with no link untouched, in any script', () => {
-    const zh = '今天没有安排。圣劳伦斯社区中心下午有亲子活动。';
-    expect(groundedUrlsOnly(zh, [TUMBLERS])).toBe(zh);
   });
 });

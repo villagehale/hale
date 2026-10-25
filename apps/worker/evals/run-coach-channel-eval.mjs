@@ -480,7 +480,9 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
   // The protected tail, mirroring reply.ts: the offer, the referral block, and any
   // activity URL the reply named. The referral block is redacted with the answer
   // because a parent forwards it OUT.
-  const link = activityLinkSuffix(redacted, activityLinks);
+  // By ref, mirroring reply.ts: typed URLs are dropped, cited refs attach their page.
+  const cited = attachLinks(redacted, activityLinks);
+  const link = cited.urls.join(' ');
   // A plan offer or a referral still crowds the count out. An activity URL does not:
   // the count is about that find, and the URL is that find's page.
   const protectedTail = redactTeenNames(
@@ -492,7 +494,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     NOW,
   );
   if (!protectedTail) {
-    const answer = dropDuplicateOffer(redacted, link);
+    const answer = dropDuplicateOffer(cited.body, link);
     const clause = nearbyClause(answer, nearby);
     const tail = [clause ?? '', link]
       .map((part) => part.trim())
@@ -507,7 +509,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     children,
     NOW,
   );
-  const answer = dropDuplicateOffer(redacted, suffix);
+  const answer = dropDuplicateOffer(cited.body, suffix);
   if (answer === '') return suffix;
   return `${answer} ${suffix}`;
 }
@@ -530,23 +532,17 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
  * A hand copy is how "lantern craft" dropped the Fanous page in the eval while the
  * product check was supposed to be the same function.
  */
-let activityLinkSuffix = () => '';
-let replyNamesActivity = () => false;
+let attachLinks = (text) => ({ body: text, urls: [] });
+let linkRef = (url) => url;
 
 function activityLinksFor(fixture, calls) {
   const links = [];
   for (const candidate of villageFor(fixture).candidates ?? []) {
-    if (candidate.url) {
-      links.push({
-        title: candidate.title,
-        url: candidate.url,
-        ...(candidate.venue ? { venue: candidate.venue } : {}),
-      });
-    }
+    if (candidate.url) links.push({ ref: linkRef(candidate.url), url: candidate.url });
   }
   if (calls.some((call) => call.tool === 'find_activities')) {
     const pick = webPickFor(fixture);
-    if (pick.url) links.push({ title: pick.name, url: pick.url });
+    if (pick.url) links.push({ ref: linkRef(pick.url), url: pick.url });
   }
   return links;
 }
@@ -796,8 +792,15 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     inputSchema: passthrough(),
     handler: async () => {
       record('search_village');
-      toolOutputs.push(village);
-      return village;
+      // What the model sees: each page's ref, never its URL (coach/tools.ts).
+      const shown = {
+        ...village,
+        candidates: (village.candidates ?? []).map(({ url, ...candidate }) =>
+          url ? { ...candidate, ref: linkRef(url) } : candidate,
+        ),
+      };
+      toolOutputs.push(shown);
+      return shown;
     },
   });
 
@@ -821,7 +824,9 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     ],
     handler: async () => {
       record('find_activities');
-      const result = { found: true, source: 'web', picks: [webPick] };
+      // What the model sees: the page's ref, never its URL (activity/tools.ts).
+      const { url, ...shown } = webPick;
+      const result = { found: true, source: 'web', picks: [url ? { ...shown, ref: linkRef(url) } : shown] };
       toolOutputs.push(result);
       return result;
     },
@@ -1529,16 +1534,6 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
     }
   }
 
-  // A reply that names an activity the tools handed over has to carry that activity's
-  // URL. The runtime appends it when the reply refers to the find, including a
-  // shortened title ("lantern craft", "Riverdale Library … story time").
-  const links = activityLinksFor(fixture, calls);
-  for (const link of links) {
-    if (!replyNamesActivity(reply, link, links)) continue;
-    if (!lower.includes(link.url.toLowerCase())) {
-      failures.push(`names "${link.title}" without its link`);
-    }
-  }
 
   // Language is the judge's. A function-word or script list is not a grade.
 
@@ -1823,8 +1818,8 @@ const JUDGE_SYSTEM = [
   '4 = does the job, with one small blemish: a redundant detail, a slightly long clause,',
   'a word more than it needed.',
   '3 = does the job but the shape is off: two questions in one message, a sign-off or an',
-  'invitation to come back, restating the question, a list, or three-plus sentences where',
-  'one would do.',
+  'invitation to come back, restating the question, a list, or padding well past what',
+  'the thought needed.',
   '2 = misleading or self-absorbed: explains its own limits or machinery, sends the parent',
   'somewhere that cannot answer them, hedges instead of acting on a clear instruction, or',
   'buries the answer.',
@@ -1897,7 +1892,7 @@ async function main() {
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
     import.meta.url,
   ));
-  ({ activityLinkSuffix, replyNamesActivity } = await tsImport(
+  ({ attachLinks, linkRef } = await tsImport(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
     import.meta.url,
   ));

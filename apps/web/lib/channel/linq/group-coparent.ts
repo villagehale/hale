@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
@@ -874,7 +875,12 @@ export async function seatAppearingCoparent(
     const tx = rawTx as unknown as Database;
     await tx
       .insert(schema.users)
-      .values({ externalAuthId: `sms:${phoneHash}`, email: null, name: null })
+      .values({
+        externalAuthId: `sms:${phoneHash}`,
+        email: null,
+        name: null,
+        timezone: await householdTimezone(tx, input.familyId),
+      })
       .onConflictDoNothing({ target: schema.users.externalAuthId });
     const [user] = await tx
       .select({ id: schema.users.id })

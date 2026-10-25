@@ -1,148 +1,61 @@
 /**
- * The pages behind the activities this reply actually named.
+ * The pages behind the finds a reply cites, attached by reference.
  *
- * The model is told never to write a URL. The link is appended here when the reply
- * refers to one offered find: the title in full, a unique phrase from it ("lantern
- * craft"), the venue plus the activity type, or — when this is the only find the
- * reply is offering — a shortened title. A Saturday mention still does not pick up
- * every find from the turn.
+ * STRUCTURAL, NOT WORD MATCHING. Every find a tool hands the model this turn that has a
+ * page carries a `ref` (see `linkRef`) instead of its URL. When the reply is about that
+ * exact program, the model writes the ref in square brackets (`[link-1a2b3c]`); code
+ * removes the marker and appends that find's URL. A URL the model typed itself is
+ * dropped, whatever it says, because the only way a page reaches a parent is a ref that
+ * a tool returned this turn. An unknown ref is dropped too. Nothing here reads titles,
+ * venues or words.
  *
  * No imports. The coach-channel eval loads this file under tsx, where the `~/` alias
  * does not resolve.
  */
 
-export interface NamedActivityLink {
-  title: string;
+export interface RefLink {
+  ref: string;
   url: string;
-  /** A place the title does not already name, when the offer has one. */
-  venue?: string;
-}
-
-const GENERIC_TITLE_WORDS = new Set([
-  'class',
-  'classes',
-  'lesson',
-  'lessons',
-  'session',
-  'sessions',
-  'practice',
-  'club',
-  'camp',
-  'group',
-  'meetup',
-  'meeting',
-  'program',
-  'programme',
-  'activity',
-  'event',
-  'time',
-  'day',
-  'week',
-  'kids',
-  'kid',
-  'child',
-  'children',
-  'family',
-  'parent',
-  'baby',
-  'toddler',
-  'drop',
-  'and',
-  'the',
-  'for',
-  'with',
-  'from',
-  'this',
-  'that',
-  'your',
-  'our',
-]);
-
-function sameLink(a: NamedActivityLink, b: NamedActivityLink): boolean {
-  return a.url === b.url && a.title === b.title;
-}
-
-function wordsOf(title: string): string[] {
-  return [
-    ...new Set(
-      title
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((word) => word.length >= 4 && !GENERIC_TITLE_WORDS.has(word)),
-    ),
-  ];
-}
-
-function tokensOf(title: string): string[] {
-  return title
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word.length >= 4);
-}
-
-function otherFindMentioned(
-  hay: string,
-  link: NamedActivityLink,
-  links: readonly NamedActivityLink[],
-): boolean {
-  return links.some((other) => {
-    if (sameLink(other, link)) return false;
-    return wordsOf(other.title).some((word) => hay.includes(word));
-  });
 }
 
 /**
- * Does this reply refer to this find, among the finds offered this turn?
- *
- * Full title first. Then a two-word phrase that belongs to this title alone, then
- * the venue plus one word of the activity, then a shortened title when no other
- * offered find is named.
+ * A short, stable reference for a page: the same URL gets the same ref in a tool result
+ * and in the runtime's link table, so the two never need to share a counter.
+ * FNV-1a over the URL, six hex digits.
  */
-export function replyNamesActivity(
-  body: string,
-  link: NamedActivityLink,
-  links: readonly NamedActivityLink[],
-): boolean {
-  const hay = body.toLowerCase();
-  const words = wordsOf(link.title);
-  if (words.length > 0 && words.every((word) => hay.includes(word))) return true;
-
-  const tokens = tokensOf(link.title);
-  for (let i = 0; i < tokens.length - 1; i += 1) {
-    const phrase = `${tokens[i]} ${tokens[i + 1]}`;
-    if (!hay.includes(phrase)) continue;
-    const shared = links.some(
-      (other) => !sameLink(other, link) && other.title.toLowerCase().includes(phrase),
-    );
-    if (!shared) return true;
+export function linkRef(url: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < url.length; i += 1) {
+    hash ^= url.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-
-  if (link.venue) {
-    const venueWords = wordsOf(link.venue);
-    const venueHit = venueWords.length > 0 && venueWords.every((word) => hay.includes(word));
-    const typeWords = words.filter((word) => !venueWords.includes(word));
-    if (venueHit && typeWords.some((word) => hay.includes(word))) return true;
-  }
-
-  const hits = words.filter((word) => hay.includes(word));
-  if (hits.length === 0 || otherFindMentioned(hay, link, links)) return false;
-  if (hits.length >= 2) return true;
-  return hits.some((word) => word.length >= 6);
+  return `link-${hash.toString(16).padStart(8, '0').slice(0, 6)}`;
 }
 
-export function activityLinkSuffix(
-  body: string,
-  links: readonly NamedActivityLink[] | undefined,
-): string {
-  if (!links || links.length === 0) return '';
-  const hay = body.toLowerCase();
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const link of links) {
-    if (seen.has(link.url) || hay.includes(link.url.toLowerCase())) continue;
-    if (!replyNamesActivity(body, link, links)) continue;
-    seen.add(link.url);
-    out.push(link.url);
-  }
-  return out.join(' ');
+const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
+const REF_MARKER = /\[\s*(link-[0-9a-f]{6})\s*\]/gi;
+
+/**
+ * Split the model's text into the prose a parent reads and the pages its refs cite.
+ * `body` has every typed URL and every ref marker removed; `urls` are the pages for the
+ * refs that matched a link this turn, in the order the reply cited them, once each.
+ */
+export function attachLinks(
+  text: string,
+  links: readonly RefLink[] | undefined,
+): { body: string; urls: string[] } {
+  const byRef = new Map((links ?? []).map((link) => [link.ref.toLowerCase(), link.url]));
+  const urls: string[] = [];
+  const withoutRefs = text.replace(REF_MARKER, (_marker, ref: string) => {
+    const url = byRef.get(ref.toLowerCase());
+    if (url && !urls.includes(url)) urls.push(url);
+    return ' ';
+  });
+  const body = withoutRefs
+    // Trailing sentence punctuation belongs to the sentence, not the URL.
+    .replace(URL_IN_TEXT, (url) => ` ${url.slice(url.replace(/[.,;:!?]+$/, '').length)}`)
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { body, urls };
 }

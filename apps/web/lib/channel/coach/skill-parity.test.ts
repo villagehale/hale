@@ -61,10 +61,11 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   });
 
   /**
-   * VIL-434. The skill may still ask for a short reply. `toSmsReply` does not enforce
-   * that number: a body past it goes out whole, including through "St.".
+   * VIL-434. The skill asks for a brief reply in tone, never a sentence or
+   * character count, and `toSmsReply` enforces no length: a long body goes out
+   * whole, including through "St.".
    */
-  it('does not cut a reply the skill would have called over its length target', async () => {
+  it('does not cut a long reply, and the skill sets tone rather than a count', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
     const long = plainText(
       "Nothing's on the calendar today. The Kids & Me drop-in at St. Lawrence Community Centre runs this afternoon and the rest of this note is here so two segments cannot hold it. ".repeat(
@@ -72,7 +73,8 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       ),
     );
 
-    expect(skill.instructions).toContain('Two short sentences is the target');
+    expect(skill.instructions).toContain('Text like a friend: chill, casual, and brief.');
+    expect(skill.instructions).not.toMatch(/\b(one|two|three) (short )?sentences?\b(?! (in this file|is true))/i);
     expect(skill.instructions).not.toContain('gets cut off');
     expect(toSmsReply(long, { children: [], now: new Date('2026-10-12T14:07:00.000Z') })).toBe(
       long,

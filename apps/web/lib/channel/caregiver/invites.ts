@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, isNull } from 'drizzle-orm';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
@@ -1001,10 +1002,14 @@ export async function declineInvite(
 /** The users row for a caregiver's number, created if absent. Keyed by the SAME blind
  * index intake uses, so a caregiver who later texts Hale as a parent is one account,
  * and a re-invite after a STOP reuses the identity rather than forking it. */
-async function ensureCaregiverUser(tx: Database, externalAuthId: string): Promise<string> {
+async function ensureCaregiverUser(
+  tx: Database,
+  externalAuthId: string,
+  timezone: string,
+): Promise<string> {
   await tx
     .insert(schema.users)
-    .values({ externalAuthId, email: null, name: null })
+    .values({ externalAuthId, email: null, name: null, timezone })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
 
   const rows = await tx
@@ -1037,7 +1042,11 @@ export async function acceptInvite(
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    const caregiverUserId = await ensureCaregiverUser(tx, `sms:${hash}`);
+    const caregiverUserId = await ensureCaregiverUser(
+      tx,
+      `sms:${hash}`,
+      await householdTimezone(tx, invite.familyId),
+    );
 
     const [consent] = await tx
       .insert(schema.consentRecords)

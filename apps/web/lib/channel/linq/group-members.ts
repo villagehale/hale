@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { isParentRole } from '~/lib/channel/role-scope';
@@ -240,7 +241,12 @@ async function provisionMember(
     const tx = rawTx as unknown as Database;
     await tx
       .insert(schema.users)
-      .values({ externalAuthId: `sms:${phoneHash}`, email: null, name: null })
+      .values({
+        externalAuthId: `sms:${phoneHash}`,
+        email: null,
+        name: null,
+        timezone: await householdTimezone(tx, input.familyId),
+      })
       .onConflictDoNothing({ target: schema.users.externalAuthId });
     const [user] = await tx
       .select({ id: schema.users.id })

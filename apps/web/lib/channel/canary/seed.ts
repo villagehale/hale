@@ -71,7 +71,10 @@ export async function seedCanaryHousehold(database: Database): Promise<SeedCanar
       'family',
     );
     const user = one(
-      await tx.insert(schema.users).values({ name: 'Canary' }).returning({ id: schema.users.id }),
+      await tx
+        .insert(schema.users)
+        .values({ name: 'Canary', timezone: 'America/Toronto' })
+        .returning({ id: schema.users.id }),
       'user',
     );
     await tx.insert(schema.familyMembers).values({

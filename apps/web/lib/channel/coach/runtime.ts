@@ -74,6 +74,7 @@ import {
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
+import { linkRef } from './activity-links';
 import { type ReplyChild, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
@@ -474,13 +475,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
                   activityLinks: [
-                    ...offeredThisTurn
-                      .read()
-                      .flatMap((item) =>
-                        item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
-                      ),
-                    ...offeredThisTurn.links(),
-                  ],
+                    ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
+                    ...offeredThisTurn.links().map((link) => link.url),
+                  ].map((url) => ({ ref: linkRef(url), url })),
                   nearby: nearby ?? undefined,
                 }),
           });
@@ -525,10 +522,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForProviderWatch(
         augmentCoachSkillForAutonomySwitchOff(
-        await augmentCoachSkillForGoogleDrafts(
-          await loadCronSkill('coach-channel-sms'),
-          parentUserId,
-        ),
+          await augmentCoachSkillForGoogleDrafts(
+            await loadCronSkill('coach-channel-sms'),
+            parentUserId,
+          ),
           await familyHasAutonomyGrant(familyId, database),
         ),
         browserUseWatchEnabled(),
