@@ -47,6 +47,17 @@ describe('family-local recommendation history', () => {
     expect(find.mock.calls[0]?.[0].town).toBe('Toronto');
   });
 
+  it('VIL-451 · a repeat parent read still shows the current activity, on the same receipt', async () => {
+    const familyId = await family();
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    const first = await discoverForFamily(familyId, db.database, { finder: { find } });
+    const second = await discoverForFamily(familyId, db.database, { finder: { find } });
+    if (first.status !== 'discovered' || second.status !== 'discovered') throw new Error('status');
+    expect(first.offeredIds).toHaveLength(1);
+    expect(second.offeredIds).toEqual(first.offeredIds);
+    expect(second.insertedCount).toBe(0);
+  });
+
   it('keeps a different date or program and ignores tracking-only URL changes', async () => {
     const familyId = await family();
     await recordActivityOffers(db.database, familyId, [pick]);

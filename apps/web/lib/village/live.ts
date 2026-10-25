@@ -71,6 +71,42 @@ export async function unofferedActivityPicks(
   });
 }
 
+/**
+ * VIL-451 · the existing offer receipt for each recommendation key this family has
+ * already been offered, newest first wins. Lets a parent-initiated read show a still
+ * current activity again WITHOUT writing a duplicate offer row.
+ */
+export async function offeredReceiptIdsByKey(
+  database: Database,
+  familyId: string,
+): Promise<Map<string, string>> {
+  const history = await database
+    .select({
+      id: schema.familyActivityHistory.id,
+      name: schema.familyActivityHistory.title,
+      sourceUrl: schema.familyActivityHistory.sourceUrl,
+      eventDate: schema.familyActivityHistory.eventDate,
+      when: schema.familyActivityHistory.whenLabel,
+      offeredAt: schema.familyActivityHistory.offeredAt,
+    })
+    .from(schema.familyActivityHistory)
+    .where(
+      and(
+        eq(schema.familyActivityHistory.familyId, familyId),
+        isNotNull(schema.familyActivityHistory.offeredAt),
+      ),
+    );
+  const byKey = new Map<string, { id: string; at: number }>();
+  for (const row of history) {
+    const key = activityRecommendationKey(row);
+    if (key === null) continue;
+    const at = row.offeredAt?.getTime() ?? 0;
+    const prior = byKey.get(key);
+    if (!prior || at > prior.at) byKey.set(key, { id: row.id, at });
+  }
+  return new Map([...byKey].map(([key, value]) => [key, value.id]));
+}
+
 /** Current picks come from this operation's web research, never from saved history. */
 export async function findFamilyActivities(
   database: Database,
