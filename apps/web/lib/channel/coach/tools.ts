@@ -1,4 +1,8 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import {
+  type WatchToolPorts,
+  providerWatchTools,
+} from '~/lib/signup/browser-use/watch/tools';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
@@ -176,6 +180,9 @@ export interface ChannelScheduleReader {
 }
 
 export interface ChannelCoachToolArgs {
+  /** The Browser Use watch verbs (signup/browser-use/watch/tools.ts). Wired only while
+   * BROWSER_USE_WATCH_ENABLED is on; absent leaves the tool set unchanged. */
+  providerWatch?: WatchToolPorts | null;
   familyId: string;
   reader: ChannelScheduleReader;
   draftPort: ChannelDraftPort;
@@ -779,6 +786,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   }
   // Offered to the model only where the skill lists it (augmentCoachSkillForAutonomySwitchOff).
   if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
+  if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
   return tools;
 }
 

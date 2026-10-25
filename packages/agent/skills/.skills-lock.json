@@ -31,6 +31,10 @@
     "file": "browser-use-signup.md",
     "sha256": "850b1a16363873cb8d547f4ab7703cf1798019af805ef84f4dcf711f3965aa1d"
   },
+  "browser-use-watch.md": {
+    "file": "browser-use-watch.md",
+    "sha256": "275ebbb858e9def0a06d3838a68352f3ce9ed6205012b68cdf8bcb5e22fa5c2d"
+  },
   "calendar-cancel-voice.md": {
     "file": "calendar-cancel-voice.md",
     "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"

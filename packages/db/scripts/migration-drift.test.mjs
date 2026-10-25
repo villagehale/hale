@@ -17,8 +17,9 @@ describe('catalog history cutover', () => {
       '0173_provider_signup_sessions',
       '0174_family_link_wallets',
       '0175_signup_browser_use_cost',
-      '0176_user_timezone_from_postal',
-      '0177_channel_inbound_media',
+      '0177_provider_watch',
+      '0178_user_timezone_from_postal',
+      '0179_channel_inbound_media',
     ]);
   });
 });
