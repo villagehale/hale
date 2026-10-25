@@ -7,10 +7,7 @@
       "sender": "toddlers@maplegrove-childcare.ca",
       "daycare": "Maple Grove Childcare",
       "closure": "next Monday (staff PD day)",
-      "requests": [
-        "send extra set of weather-appropriate clothes",
-        "label water bottle"
-      ],
+      "requests": ["send extra set of weather-appropriate clothes", "label water bottle"],
       "child_name": "Mia"
     },
     "suggested_action": {

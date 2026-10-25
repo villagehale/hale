@@ -7,10 +7,7 @@
       "employer": "Maple Mart Grocery",
       "job_title": "part-time cashier",
       "first_shift_date": "2024-06-20",
-      "required_documents": [
-        "Social Insurance Number (SIN)",
-        "Signed TD1 form"
-      ],
+      "required_documents": ["Social Insurance Number (SIN)", "Signed TD1 form"],
       "sin_application_note": "Teen may need to apply for SIN through Service Canada if not yet obtained",
       "sender_email": "hr@maplemart-grocery.ca"
     },

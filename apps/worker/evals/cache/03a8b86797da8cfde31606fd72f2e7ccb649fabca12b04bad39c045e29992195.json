@@ -2,12 +2,7 @@
   "value": {
     "answer": "غالبًا ما يكون هذا زكامًا عاديًا، ولعب طفلك وأكله الطبيعي علامة جيدة. يزول عادةً خلال 7-10 أيام.",
     "triage": "اتصل بـ811 إذا لم يتحسن بعد 10 أيام أو ظهرت حمى أو ألم أذن. اذهب إلى الطوارئ أو اتصل بـ911 فورًا عند صعوبة التنفس أو زرقة الشفتين أو نعاس شديد.",
-    "sources": [
-      "Boston Children's Hospital",
-      "KidsHealth",
-      "MyHealth Alberta",
-      "Sanford Health"
-    ]
+    "sources": ["Boston Children's Hospital", "KidsHealth", "MyHealth Alberta", "Sanford Health"]
   },
   "latencyMs": 7298
 }

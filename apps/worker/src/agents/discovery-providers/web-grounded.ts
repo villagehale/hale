@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { forceToolJson, laneRequestFields, pickLane } from '@hale/agent';
+import { cachedSystem, forceToolJson, laneRequestFields, pickLane } from '@hale/agent';
 import type { DiscoveryQuery } from '@hale/types';
 import { z } from 'zod';
 import { anthropicClient } from '../../anthropic/client.js';
@@ -117,7 +117,7 @@ export class WebGroundedDiscoveryProvider implements DiscoveryProvider {
     const research = await this.deps.client.messages.create({
       ...(laneRequestFields(pickLane('discover')) as Pick<Anthropic.MessageCreateParams, 'model'>),
       max_tokens: 4096,
-      system: instructions,
+      system: cachedSystem(instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
       messages: [{ role: 'user', content: userMessage }],
     });

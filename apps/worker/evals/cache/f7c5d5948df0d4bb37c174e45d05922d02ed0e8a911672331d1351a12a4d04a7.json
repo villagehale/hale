@@ -7,10 +7,7 @@
       "sender": "registrar@northgate-secondary.schoolboard.ca",
       "institution_type": "secondary_school",
       "grade": "Grade 10",
-      "content_types": [
-        "exam_schedule",
-        "course_selection_deadline"
-      ],
+      "content_types": ["exam_schedule", "course_selection_deadline"],
       "exam_info": "June final exam schedule posted on school site",
       "course_selection_deadline": "April 18",
       "selection_method": "student portal",

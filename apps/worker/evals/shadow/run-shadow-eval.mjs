@@ -47,7 +47,10 @@ async function loadPromptVersions() {
     // Stand-in "classifier": baseline is stricter about escalating fevers.
     const feverish = /fever|39|40|temperature/i.test(input.text);
     const urgent = feverish || (bias === 'candidate' && /rash|not eating/i.test(input.text));
-    return { event_type: urgent ? 'health_urgent' : 'health_routine', confidence: urgent ? 0.9 : 0.5 };
+    return {
+      event_type: urgent ? 'health_urgent' : 'health_routine',
+      confidence: urgent ? 0.9 : 0.5,
+    };
   };
   return { baseline: classify('baseline'), candidate: classify('candidate') };
 }
@@ -75,7 +78,8 @@ function judge(input, base, cand) {
   // Real version: a Haiku call scoring which output is better + why. Stub prefers
   // the more cautious health call, as a placeholder rubric.
   const rank = (o) => (o.event_type === 'health_urgent' ? 1 : 0);
-  const winner = rank(cand) === rank(base) ? 'tie' : rank(cand) > rank(base) ? 'candidate' : 'baseline';
+  const winner =
+    rank(cand) === rank(base) ? 'tie' : rank(cand) > rank(base) ? 'candidate' : 'baseline';
   return { winner, why: `input=${input.id}: base=${base.event_type} cand=${cand.event_type}` };
 }
 
@@ -97,7 +101,8 @@ async function main() {
   const disagreements = [];
   for (const input of inputs) {
     const [b, c] = await Promise.all([baseline(input), candidate(input)]);
-    if (disagrees(b, c)) disagreements.push({ input, base: b, cand: c, verdict: judge(input, b, c) });
+    if (disagrees(b, c))
+      disagreements.push({ input, base: b, cand: c, verdict: judge(input, b, c) });
     if (disagreements.length >= TARGET_DISAGREEMENTS) break;
   }
 

@@ -2,9 +2,7 @@
   "value": {
     "reason": "Weekend swim find fits Saturday's free window and it is Thursday evening, but three consecutive proactive texts went unanswered and the parent did not request this item, so it is not owed the evening send.",
     "action": "hold",
-    "item_ids": [
-      "weekend-swim"
-    ],
+    "item_ids": ["weekend-swim"],
     "hold_until": null,
     "frequency_direction": null,
     "frequency_note": null

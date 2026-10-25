@@ -38,7 +38,7 @@ export const COACH_PLAN_FIXTURES = [
     topic: 'sleep',
     question: 'he wakes up at 3am every single night and wont go back down',
     child: { ageMonths: 18, stage: 'toddler' },
-    note: "The residual the skill audit left open (coach-channel scored 2-3: named what was common, gave no concrete step). It is the same question with the budget removed AND the method supplied, so it is the clearest read on whether grounding beat improvising.",
+    note: 'The residual the skill audit left open (coach-channel scored 2-3: named what was common, gave no concrete step). It is the same question with the budget removed AND the method supplied, so it is the clearest read on whether grounding beat improvising.',
     expect: {
       // The founder's requirement, checked as a token: the plan says which method it is.
       mustMention: ['ferber'],
@@ -51,7 +51,7 @@ export const COACH_PLAN_FIXTURES = [
       },
       forbidden: [...HEDGES, ...HEALTH_LINE],
       watchFor:
-        'A specific, repeated 3am waking at 18 months. Right: the graduated check-in method named, aimed at THAT waking, with the playbook\'s own intervals and the extinction-burst warning so a worse second night reads as the method working. Wrong: intervals that do not match the playbook, a general sleep-hygiene lecture, or bedtime advice that never reaches 3am.',
+        "A specific, repeated 3am waking at 18 months. Right: the graduated check-in method named, aimed at THAT waking, with the playbook's own intervals and the extinction-burst warning so a worse second night reads as the method working. Wrong: intervals that do not match the playbook, a general sleep-hygiene lecture, or bedtime advice that never reaches 3am.",
     },
   },
   {
@@ -60,12 +60,12 @@ export const COACH_PLAN_FIXTURES = [
     topic: 'sleep',
     question: 'we want to get her out of our bed and into her own room, shes 2',
     child: { ageMonths: 25, stage: 'toddler' },
-    note: 'A transition rather than a technique question, at an age where the playbook\'s alternative (the chair method) is arguably the better fit. Tests whether Hale RECOMMENDS plainly and names the alternative in a clause, rather than laying out both and leaving the parent to choose.',
+    note: "A transition rather than a technique question, at an age where the playbook's alternative (the chair method) is arguably the better fit. Tests whether Hale RECOMMENDS plainly and names the alternative in a clause, rather than laying out both and leaving the parent to choose.",
     expect: {
       mustGround: [],
       forbidden: [...HEDGES, ...HEALTH_LINE],
       watchFor:
-        'Moving a 2-year-old out of the parents\' bed. Right: one method recommended plainly by name, the alternative named in a single clause, named nights, and an explicit warning that night two or three is usually the hardest. Wrong: presenting two methods evenly and asking the parent to pick, or an endpoint they cannot tell they have reached.',
+        "Moving a 2-year-old out of the parents' bed. Right: one method recommended plainly by name, the alternative named in a single clause, named nights, and an explicit warning that night two or three is usually the hardest. Wrong: presenting two methods evenly and asking the parent to pick, or an endpoint they cannot tell they have reached.",
     },
   },
   {

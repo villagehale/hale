@@ -2,9 +2,7 @@
   "value": {
     "reason": "Parent explicitly asked to hear the moment a seat opened, it's Thursday 6 PM local (outside quiet hours), and the nudge expires at 7 PM local, so send now despite two unanswered prior texts.",
     "action": "send_now",
-    "item_ids": [
-      "watch-1"
-    ],
+    "item_ids": ["watch-1"],
     "hold_until": null,
     "frequency_direction": null,
     "frequency_note": null

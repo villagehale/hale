@@ -8,10 +8,7 @@
       "sender": "registrar@northgate-secondary.schoolboard.ca",
       "institution_type": "secondary_school",
       "grade_level": "Grade 10",
-      "content_topics": [
-        "final_exam_schedule",
-        "course_selection_deadline"
-      ],
+      "content_topics": ["final_exam_schedule", "course_selection_deadline"],
       "exam_schedule_posted": true,
       "course_selection_deadline": "2025-04-18",
       "key_action_for_student": "Review exam timetable; submit Grade 11 course selections by April 18 via student portal"

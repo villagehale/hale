@@ -2,11 +2,7 @@
   "value": {
     "answer": "اتصل بالرقم 911 الآن. التنفس السريع والصعب مع انسحاب الأضلاع وزرقة الشفاه علامات طوارئ، وقد تسوء الحالة بسرعة.",
     "triage": "اتصل بالرقم 911 فورا وابق مع طفلك. لا تنتظر ولا تتصل بالرقم 811 أولا، فالرقم 811 للحالات غير الطارئة. أخبرهم أن الشفاه زرقاء والأضلاع تنسحب.",
-    "sources": [
-      "Seattle Children's",
-      "Nationwide Children's Hospital",
-      "Connecticut Children's"
-    ]
+    "sources": ["Seattle Children's", "Nationwide Children's Hospital", "Connecticut Children's"]
   },
   "latencyMs": 5744
 }

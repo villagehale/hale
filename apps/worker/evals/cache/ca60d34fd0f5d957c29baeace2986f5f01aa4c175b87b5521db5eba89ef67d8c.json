@@ -1,9 +1,6 @@
 {
   "value": {
     "verdict": "not_worth_it",
-    "tags": [
-      "too_crowded",
-      "disorganised"
-    ]
+    "tags": ["too_crowded", "disorganised"]
   }
 }

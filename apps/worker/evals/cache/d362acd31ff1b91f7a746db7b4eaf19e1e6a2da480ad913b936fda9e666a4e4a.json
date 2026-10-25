@@ -37,14 +37,7 @@
           "properties": {
             "factType": {
               "type": "string",
-              "enum": [
-                "preference",
-                "routine",
-                "medical",
-                "logistic",
-                "relationship",
-                "voice"
-              ]
+              "enum": ["preference", "routine", "medical", "logistic", "relationship", "voice"]
             },
             "factKey": {
               "type": "string",
@@ -60,20 +53,12 @@
             },
             "memoryClass": {
               "type": "string",
-              "enum": [
-                "enduring",
-                "obligation",
-                "curiosity"
-              ],
+              "enum": ["enduring", "obligation", "curiosity"],
               "description": "enduring (who the family is, names, ages, home, a settled routine), obligation (a one-off event or a declined activity), or curiosity (a passing question)."
             },
             "disposition": {
               "type": "string",
-              "enum": [
-                "confirmed",
-                "declined",
-                "asked"
-              ],
+              "enum": ["confirmed", "declined", "asked"],
               "description": "confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed."
             },
             "expiresAt": {
@@ -84,13 +69,7 @@
               "description": "At least 1 characters."
             }
           },
-          "required": [
-            "factType",
-            "factKey",
-            "confidence",
-            "memoryClass",
-            "disposition"
-          ],
+          "required": ["factType", "factKey", "confidence", "memoryClass", "disposition"],
           "additionalProperties": false
         },
         "input_examples": [
@@ -139,21 +118,12 @@
           "type": "object",
           "properties": {
             "childId": {
-              "type": [
-                "string",
-                "null"
-              ],
+              "type": ["string", "null"],
               "format": "uuid"
             },
             "category": {
               "type": "string",
-              "enum": [
-                "health",
-                "development",
-                "routines",
-                "preferences",
-                "concerns"
-              ]
+              "enum": ["health", "development", "routines", "preferences", "concerns"]
             },
             "factKey": {
               "type": "string",
@@ -172,20 +142,12 @@
             },
             "memoryClass": {
               "type": "string",
-              "enum": [
-                "enduring",
-                "obligation",
-                "curiosity"
-              ],
+              "enum": ["enduring", "obligation", "curiosity"],
               "description": "enduring (who the family is, names, ages, home, a settled routine), obligation (a one-off event or a declined activity), or curiosity (a passing question)."
             },
             "disposition": {
               "type": "string",
-              "enum": [
-                "confirmed",
-                "declined",
-                "asked"
-              ],
+              "enum": ["confirmed", "declined", "asked"],
               "description": "confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed."
             },
             "expiresAt": {

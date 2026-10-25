@@ -27,9 +27,17 @@ describe('computeActionHash', () => {
 
   it('separates on every input — different activity, type, or family never collide', () => {
     const base = computeActionHash(FAM, 'add_to_routine', CAND);
-    const otherActivity = computeActionHash(FAM, 'add_to_routine', 'bbbbbbbb-0000-4000-8000-000000000012');
+    const otherActivity = computeActionHash(
+      FAM,
+      'add_to_routine',
+      'bbbbbbbb-0000-4000-8000-000000000012',
+    );
     const otherType = computeActionHash(FAM, 'add_to_digest_only', CAND);
-    const otherFamily = computeActionHash('22222222-2222-4222-8222-222222222222', 'add_to_routine', CAND);
+    const otherFamily = computeActionHash(
+      '22222222-2222-4222-8222-222222222222',
+      'add_to_routine',
+      CAND,
+    );
     expect(new Set([base, otherActivity, otherType, otherFamily]).size).toBe(4);
   });
 

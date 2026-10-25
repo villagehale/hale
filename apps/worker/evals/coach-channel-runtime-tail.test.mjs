@@ -4,7 +4,8 @@ import { modelProse, nearbyCountWasAppended } from './coach-channel-runtime-tail
 const CLAUSE = '3 families near you say Riverdale Library is worth it.';
 const URL = 'https://www.torontopubliclibrary.ca/programs-and-classes/';
 const LINKS = [{ title: 'Riverdale story time', url: URL }];
-const MODEL = "Saturday's already got soccer practice at 10am at Cedarvale Park. Riverdale story time is Sat Aug 8.";
+const MODEL =
+  "Saturday's already got soccer practice at 10am at Cedarvale Park. Riverdale story time is Sat Aug 8.";
 
 describe('modelProse', () => {
   it('drops the nearby clause and the activity URL from the sentence budget', () => {

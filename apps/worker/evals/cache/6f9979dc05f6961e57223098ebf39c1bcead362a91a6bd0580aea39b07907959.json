@@ -2,11 +2,7 @@
   "value": {
     "answer": "This needs emergency care now - go to the ER. A fever with a stiff neck, severe headache and light hurting the eyes needs a doctor to see your child right away. Please don't wait to see if it passes.",
     "triage": "Go to the nearest ER now. Call 911 instead if they are confused, hard to wake, having a seizure, have a rash that does not fade on pressure, or have trouble breathing. 811 is for nurse advice, but don't wait on the phone - go.",
-    "sources": [
-      "Raising Children Network",
-      "Cleveland Clinic",
-      "Penn Medicine"
-    ]
+    "sources": ["Raising Children Network", "Cleveland Clinic", "Penn Medicine"]
   },
   "latencyMs": 4711
 }

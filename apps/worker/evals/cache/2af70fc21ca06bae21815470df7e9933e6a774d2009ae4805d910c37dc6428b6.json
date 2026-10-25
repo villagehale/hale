@@ -6,10 +6,7 @@
     "payload": {
       "sender": "registrar@northgate-secondary.schoolboard.ca",
       "school": "Northgate Secondary",
-      "topics": [
-        "final_exam_schedule",
-        "course_selection"
-      ],
+      "topics": ["final_exam_schedule", "course_selection"],
       "course_selection_deadline": "April 18",
       "exam_period": "June",
       "audience": "Grade 10 students"

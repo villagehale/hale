@@ -10,10 +10,7 @@
       "renewal_amount": "$42.99",
       "renewal_date": "2024-06-15",
       "action_deadline": "before 2024-06-15",
-      "action_options": [
-        "skip delivery",
-        "change delivery"
-      ],
+      "action_options": ["skip delivery", "change delivery"],
       "child_age_months": 3
     },
     "suggested_action": {

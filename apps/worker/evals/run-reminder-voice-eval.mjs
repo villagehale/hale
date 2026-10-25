@@ -134,8 +134,8 @@ const JUDGE_SYSTEM = [
   'You are given `offset` ("-P1D" is the evening-before reminder, "-PT1H" is about an hour',
   'out), `now` (the local day and time it is sent), the already-redacted `events` the writer',
   'could see (each with its local `day`), the line, and watchFor - fixture-specific notes.',
-  'An evening-before reminder can be sent late, on the event\'s own day: a line that calls',
-  'the day wrongly (tomorrow when `now.day` is the event\'s `day`) is a LOW score.',
+  "An evening-before reminder can be sent late, on the event's own day: a line that calls",
+  "the day wrongly (tomorrow when `now.day` is the event's `day`) is a LOW score.",
   'A 5 is one short calm sentence that a friend who keeps your calendar would send:',
   'it frames what is coming without restating the time, it sounds like a person rather',
   'than a notification, and it stops.',
@@ -225,7 +225,9 @@ async function main() {
       }
       for (const word of fixture.wrongDayWords ?? []) {
         if (new RegExp(`\\b${word}\\b`, 'i').test(line)) {
-          failures.push(`calls the day wrongly: ${JSON.stringify(word)} (now.day is the event's day)`);
+          failures.push(
+            `calls the day wrongly: ${JSON.stringify(word)} (now.day is the event's day)`,
+          );
         }
       }
     }
@@ -281,7 +283,9 @@ async function main() {
     `restated clock times:    ${clockTimes.length}  (0 required - the shell prints it big, right below)`,
   );
   console.log(`resolved generics:       ${resolvedGeneric.length}  (0 required - rule #1)`);
-  console.log(`wrong days:              ${wrongDays.length}  (0 required - never tomorrow about today)`);
+  console.log(
+    `wrong days:              ${wrongDays.length}  (0 required - never tomorrow about today)`,
+  );
   for (const line of variationLines(variation)) console.log(line);
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
 

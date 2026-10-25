@@ -8,7 +8,14 @@
   },
   "expect": {
     "maxConfidence": 0.95,
-    "forbiddenStageTokens": ["driver", "driving lessons", "kindergarten", "homework", "soccer league", "curfew"],
+    "forbiddenStageTokens": [
+      "driver",
+      "driving lessons",
+      "kindergarten",
+      "homework",
+      "soccer league",
+      "curfew"
+    ],
     "forbiddenLocationTokens": []
   }
 }

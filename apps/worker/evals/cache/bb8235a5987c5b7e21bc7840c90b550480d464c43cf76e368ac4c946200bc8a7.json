@@ -5,11 +5,7 @@
     "rationale": "City rec email announcing time-boxed Fall toddler program registration opening Thursday 9 AM, matching a 31-month-old's age range.",
     "payload": {
       "sender": "register@cityrec.ca",
-      "programs": [
-        "Tumble Tots",
-        "Toddler Swim",
-        "Music & Movement"
-      ],
+      "programs": ["Tumble Tots", "Toddler Swim", "Music & Movement"],
       "ageRange": "2-3",
       "session": "Fall",
       "registrationOpens": "Thursday 9:00 AM",

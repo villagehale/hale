@@ -8,10 +8,7 @@
       "message_type": "closure_and_supply_notice",
       "closure_date": "next Monday",
       "closure_reason": "staff PD day",
-      "supply_requests": [
-        "extra set of weather-appropriate clothes",
-        "labelled water bottle"
-      ],
+      "supply_requests": ["extra set of weather-appropriate clothes", "labelled water bottle"],
       "context": "centre transitioning to more outdoor activities"
     },
     "suggested_action": {

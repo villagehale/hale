@@ -6,11 +6,7 @@
     "payload": {
       "sender": "register@cityrec.ca",
       "program_provider": "City Rec",
-      "activity_types": [
-        "Tumble Tots",
-        "Toddler Swim",
-        "Music & Movement"
-      ],
+      "activity_types": ["Tumble Tots", "Toddler Swim", "Music & Movement"],
       "age_range": "2-3 years",
       "child_age_months": 31,
       "registration_opens": "Thursday 9:00 AM",

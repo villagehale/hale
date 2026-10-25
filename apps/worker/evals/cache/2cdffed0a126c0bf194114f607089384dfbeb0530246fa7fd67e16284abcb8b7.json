@@ -2,12 +2,7 @@
   "value": {
     "answer": "立即拨打911。孩子呼吸急促费力、肋骨凹陷、嘴唇发青,说明可能缺氧。让孩子坐直,保持安静,不要自己开车送去。",
     "triage": "现在就拨打911或马上去急诊,不要等待。811只是护士咨询热线,不能代替911。若孩子哭不出声、难以叫醒或停止呼吸,更要立刻拨打911。",
-    "sources": [
-      "Seattle Children's",
-      "Connecticut Children's",
-      "Nationwide Children's",
-      "CHKD"
-    ]
+    "sources": ["Seattle Children's", "Connecticut Children's", "Nationwide Children's", "CHKD"]
   },
   "latencyMs": 2427
 }
