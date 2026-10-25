@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { ActionType } from '@hale/types';
-import type { AgentRunMetrics } from '../agents/run-metrics.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { computeActionHash } from '../agents/action-hash.js';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ExecuteApprovedDeps } from './index.js';
 
 /**
@@ -40,7 +40,9 @@ const ADD_TO_ROUTINE_VERDICT = {
 };
 
 const runClassifier = vi.fn();
-vi.mock('../agents/classifier.js', () => ({ runClassifier: (...a: unknown[]) => runClassifier(...a) }));
+vi.mock('../agents/classifier.js', () => ({
+  runClassifier: (...a: unknown[]) => runClassifier(...a),
+}));
 vi.mock('../agents/dedup.js', () => ({ dedupHashFor: () => 'village-hash' }));
 
 const runDrafter = vi.fn();
@@ -82,7 +84,10 @@ vi.mock('../services/memory-writer.js', () => ({
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
   autonomyTurnOnDelivered: vi.fn(async () => true),
   loadAutonomyStanding: vi.fn(async () => []),
-  loadCrossParentConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
+  loadCrossParentConsent: vi.fn(async () => ({
+    hasCoParent: false,
+    coParentConsentGranted: false,
+  })),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn'],
@@ -166,8 +171,12 @@ describe('runOrchestrator — accepted village item routes to add_to_routine', (
         verdict: ADD_TO_ROUTINE_VERDICT,
       })),
       loadConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
-      recordApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
+      recordApproval: vi.fn(async () => ({
+        claimed: true as const,
+        autonomy: { outcome: 'not_reached' as const },
+      })),
       recordGate: vi.fn(async () => {}),
+      checkWindow: async () => ({ withinWindow: true, detail: {} }),
       execute,
       log: { info: vi.fn(), warn: vi.fn() },
     };
