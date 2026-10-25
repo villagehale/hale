@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct and complete: autonomy for send_email and reply_to_email was actually turned off this turn, so 'C'est fait' is true. The reply is in the parent's language, short, and stops. One small blemish: 'Je ne enverrai' should be 'Je n'enverrai'.",
+    "score": 4
+  }
+}
