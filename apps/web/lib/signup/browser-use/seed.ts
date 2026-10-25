@@ -56,12 +56,40 @@ export function cdpSessionSeeder(connector: CdpConnector): ProviderSessionSeeder
   };
 }
 
-/** Playwright's CDP client, loaded lazily like the local signup browser. */
-export function playwrightSessionSeeder(): ProviderSessionSeeder | null {
-  try {
-    const mod = require('@playwright/test') as { chromium?: CdpConnector };
-    return mod.chromium ? cdpSessionSeeder(mod.chromium) : null;
-  } catch {
-    return null;
-  }
+export type CdpConnectorLoader = () => Promise<CdpConnector>;
+
+/**
+ * `playwright-core` is a runtime dependency because attaching over CDP needs no
+ * browser binary, so it runs inside a Vercel function. apps/web is ESM, so a
+ * bare `require` is undefined there; this loads it with a dynamic `import()`,
+ * which Next's file tracing follows for a server-external package.
+ */
+export const loadPlaywrightCore: CdpConnectorLoader = async () => {
+  const mod = (await import('playwright-core')) as {
+    chromium?: CdpConnector;
+    default?: { chromium?: CdpConnector };
+  };
+  const chromium = mod.chromium ?? mod.default?.chromium;
+  if (!chromium) throw new Error('playwright-core has no chromium export');
+  return chromium;
+};
+
+/**
+ * Loads the CDP client on first use. A load failure surfaces from `seed`, which
+ * the engine reports as `seed_failed` for that run instead of every new profile
+ * silently becoming `seed_unavailable`.
+ */
+export function playwrightSessionSeeder(
+  load: CdpConnectorLoader = loadPlaywrightCore,
+): ProviderSessionSeeder {
+  let connector: Promise<CdpConnector> | null = null;
+  return {
+    async seed(cdpUrl, state) {
+      connector ??= load().catch((error: unknown) => {
+        connector = null;
+        throw error;
+      });
+      await cdpSessionSeeder(await connector).seed(cdpUrl, state);
+    },
+  };
 }

@@ -185,3 +185,24 @@ export async function loadBusy(database: Database, familyId: string): Promise<Bu
     return [{ startsAt: row.startAt.toISOString(), endsAt: row.endAt.toISOString() }];
   });
 }
+
+/**
+ * The Browser Use session's full cost (model, search, browser time, proxy),
+ * read from GET /sessions/{id}/cost after its browser stopped. A run's own
+ * totalCostUsd covers the model only.
+ */
+export async function recordBrowserUseCost(
+  database: Database,
+  input: { offerId: string; familyId: string; sessionCostUsd: string; now: Date },
+): Promise<void> {
+  if (!/^\d+(\.\d+)?$/.test(input.sessionCostUsd)) return;
+  await database
+    .update(schema.authorizedSignupOffers)
+    .set({ browserUseCostUsd: input.sessionCostUsd, updatedAt: input.now })
+    .where(
+      and(
+        eq(schema.authorizedSignupOffers.id, input.offerId),
+        eq(schema.authorizedSignupOffers.familyId, input.familyId),
+      ),
+    );
+}

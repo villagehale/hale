@@ -179,6 +179,11 @@ describe('browser use signup engine', () => {
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
     });
+    // V4 keepAlive is integer seconds (120-14400), not the V2/V3 boolean. The
+    // 4-hour `timeout_at` on browser.released is Browser Use's hard limit, not this.
+    expect(CHECKOUT_KEEP_ALIVE_SECONDS).toBe(900);
+    expect(body.keepAlive).toBeGreaterThanOrEqual(120);
+    expect(body.keepAlive).toBeLessThanOrEqual(14400);
     expect(body).not.toHaveProperty('secretBindings');
     expect(body).not.toHaveProperty('opVaultId');
     expect(body).not.toHaveProperty('stripeLinkConnectionId');
@@ -333,29 +338,151 @@ describe('browser use signup engine', () => {
   });
 });
 
+const AGENT_BROWSER = '040b64a4-e01c-4b87-8179-44f5bc9093fe';
+const SESSION_COST = {
+  sessionId: runCreated.sessionId,
+  numRuns: 1,
+  llmCostUsd: '0.004100',
+  searchCostUsd: '0.000000',
+  browserCostUsd: '0.000333',
+  proxyCostUsd: '0.000000',
+  proxyUsedMb: '0.000000',
+  totalCostUsd: '0.004433',
+};
+
+function costRoutes(): Record<string, Route | Route[]> {
+  return {
+    [`PATCH /browsers/${AGENT_BROWSER}`]: { body: { id: AGENT_BROWSER, status: 'stopped' } },
+    [`GET /sessions/${runCreated.sessionId}/cost`]: { body: SESSION_COST },
+  };
+}
+
+describe('browser use run settings, browser stop and session cost', () => {
+  it('pins Luna on high reasoning and runs without the residential proxy by default', async () => {
+    const { deps, requests } = setup({ ...happyRoutes(), ...costRoutes() });
+    await runBrowserUseSignup(input(), deps);
+    const run = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/runs');
+    expect(run?.body).toMatchObject({
+      model: 'gpt-6-luna',
+      modelParams: { reasoning: { effort: 'high' } },
+      browserSettings: { proxyCountryCode: null },
+    });
+    const seed = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/browsers');
+    expect(seed?.body).toMatchObject({ proxyCountryCode: null });
+  });
+
+  it('turns the proxy back on only for a provider that asks for it', async () => {
+    const { deps, requests } = setup({ ...happyRoutes(), ...costRoutes() });
+    await runBrowserUseSignup(input({ proxyCountryCode: 'ca' }), deps);
+    const run = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/runs');
+    expect(run?.body).toMatchObject({ browserSettings: { proxyCountryCode: 'ca' } });
+  });
+
+  it('keeps the browser open at checkout while the parent takes over, and reads no cost yet', async () => {
+    const { deps, requests } = setup({ ...happyRoutes(), ...costRoutes() });
+    const result = await runBrowserUseSignup(input(), deps);
+    expect(result.outcome).toBe('reached_checkout');
+    expect(result.liveViewUrl).not.toBeNull();
+    expect(result.browserId).toBe(AGENT_BROWSER);
+    expect(result.sessionCostUsd).toBeNull();
+    expect(requests.some((r) => r.path === `/api/v4/browsers/${AGENT_BROWSER}`)).toBe(false);
+    expect(requests.some((r) => r.path.endsWith('/cost'))).toBe(false);
+  });
+
+  it('stops the browser as soon as a no-takeover outcome is known, then reads the session cost', async () => {
+    const summary = summaryWith({ outcome: 'sold_out', detail: 'none', checkout_url: null });
+    const { deps, requests } = setup({ ...happyRoutes(summary), ...costRoutes() });
+    const result = await runBrowserUseSignup(input(), deps);
+    expect(result.outcome).toBe('sold_out');
+    expect(result.sessionCostUsd).toBe('0.004433');
+    const stopAt = requests.findIndex(
+      (r) => r.method === 'PATCH' && r.path === `/api/v4/browsers/${AGENT_BROWSER}`,
+    );
+    const costAt = requests.findIndex(
+      (r) => r.path === `/api/v4/sessions/${runCreated.sessionId}/cost`,
+    );
+    expect(requests[stopAt]?.body).toEqual({ action: 'stop' });
+    expect(stopAt).toBeGreaterThan(-1);
+    expect(costAt).toBeGreaterThan(stopAt);
+  });
+
+  it('still returns the outcome when the cost read fails', async () => {
+    const summary = summaryWith({ outcome: 'sold_out', detail: 'none', checkout_url: null });
+    const { deps } = setup({
+      ...happyRoutes(summary),
+      ...costRoutes(),
+      [`GET /sessions/${runCreated.sessionId}/cost`]: { status: 500 },
+    });
+    const result = await runBrowserUseSignup(input(), deps);
+    expect(result.outcome).toBe('sold_out');
+    expect(result.sessionCostUsd).toBeNull();
+  });
+});
+
 describe('browser use confirmation read', () => {
   const CONFIRM = `/runs/${confirmationSummary.id}`;
+  const SESSION = `/sessions/${runCreated.sessionId}`;
+  const queued = (runId: string | null, status = runId ? 'consumed' : 'pending') => ({
+    id: 7,
+    sessionId: runCreated.sessionId,
+    runId,
+    mode: 'queue',
+    status,
+    text: '(redacted in fixture)',
+    createdAt: '2026-10-21T15:10:00Z',
+  });
   function confirmationRoutes(summary: unknown = confirmationSummary) {
     return {
-      'POST /runs': { body: { ...runCreated, id: confirmationSummary.id } },
+      [`POST ${SESSION}/queue`]: { body: queued(null) },
+      [`GET ${SESSION}/queue/7`]: { body: queued(confirmationSummary.id) },
+      [`PATCH ${SESSION}/cost-cap`]: {
+        body: { sessionId: runCreated.sessionId, maxCostUsd: '0.5' },
+      },
       [`GET ${CONFIRM}/status`]: { body: { status: 'completed' } },
-      [`GET ${CONFIRM}/events`]: { body: { events: [], nextAfter: null, hasMore: false } },
+      [`GET ${CONFIRM}/events`]: {
+        body: {
+          events: [
+            { id: 9, type: 'browser.reattached', data: { browser_session_id: AGENT_BROWSER } },
+          ],
+          nextAfter: null,
+          hasMore: false,
+        },
+      },
       [`GET ${CONFIRM}`]: { body: summary },
+      ...costRoutes(),
     };
   }
 
-  it('reads the confirmation number in the same session', async () => {
+  it('continues the same session through its queue, then stops the browser and reads the cost', async () => {
     const { deps, requests } = setup(confirmationRoutes());
     const result = await readBrowserUseConfirmation({ sessionId: runCreated.sessionId }, deps);
     expect(result).toEqual({
       outcome: 'confirmed',
       confirmationNumber: 'RCPT-0042817',
       costUsd: '0.0029',
+      sessionCostUsd: '0.004433',
     });
-    const body = requests[0]?.body as Record<string, unknown>;
-    expect(body).toMatchObject({ sessionId: runCreated.sessionId, agentmail: false });
-    expect(String(body.task)).toContain('# skill browser-use-confirmation');
-    expect(body).not.toHaveProperty('browserSettings');
+    expect(requests.some((r) => r.method === 'POST' && r.path === '/api/v4/runs')).toBe(false);
+    const queue = requests.find((r) => r.path === `/api/v4${SESSION}/queue`);
+    expect(queue?.body).toMatchObject({ interrupt: false });
+    expect(String((queue?.body as { text: string }).text)).toContain(
+      '# skill browser-use-confirmation',
+    );
+    const cap = requests.find((r) => r.path === `/api/v4${SESSION}/cost-cap`);
+    expect(cap?.body).toEqual({ maxCostUsd: 0.5 });
+    expect(
+      requests.some((r) => r.method === 'PATCH' && r.path === `/api/v4/browsers/${AGENT_BROWSER}`),
+    ).toBe(true);
+  });
+
+  it('parses a JSON text answer, since a queued turn carries no outputSchema', async () => {
+    const summary = {
+      ...confirmationSummary,
+      output: '```json\n{"on_confirmation_page": true, "confirmation_number": "RCPT-9"}\n```',
+    };
+    const { deps } = setup(confirmationRoutes(summary));
+    const result = await readBrowserUseConfirmation({ sessionId: runCreated.sessionId }, deps);
+    expect(result).toMatchObject({ outcome: 'confirmed', confirmationNumber: 'RCPT-9' });
   });
 
   it('returns not_confirmed when the page is not a confirmation', async () => {
@@ -366,5 +493,14 @@ describe('browser use confirmation read', () => {
     const { deps } = setup(confirmationRoutes(summary));
     const result = await readBrowserUseConfirmation({ sessionId: runCreated.sessionId }, deps);
     expect(result.outcome).toBe('not_confirmed');
+  });
+
+  it('stops waiting when the queued message is cancelled', async () => {
+    const { deps } = setup({
+      ...confirmationRoutes(),
+      [`GET ${SESSION}/queue/7`]: { body: queued(null, 'cancelled') },
+    });
+    const result = await readBrowserUseConfirmation({ sessionId: runCreated.sessionId }, deps);
+    expect(result).toMatchObject({ outcome: 'error', detail: 'run_cancelled' });
   });
 });

@@ -76,6 +76,22 @@ describe('signup outcome reply (mocked model)', () => {
     expect(requests[1]).toContain('missing the hand-off link');
   });
 
+  it('writes the assisted handoff from the pack and the page', async () => {
+    const sample =
+      'This one needs you: https://www.toronto.ca/register — for Tue 4:30 have parent_first_name Test Parent ready.';
+    const { client, requests } = mockModel([sample]);
+    const text = await createSignupOutcomeWriter(() => client).write({
+      ...BASE,
+      outcome: 'assisted_handoff',
+      reason: 'assisted_handoff',
+      link: 'https://www.toronto.ca/register',
+      prefilled: [],
+      pack: [{ slot: 'parent_first_name', value: 'Test Parent' }],
+    });
+    expect(text).toBe(sample);
+    expect(requests[0]).toContain('parent_first_name');
+  });
+
   it('no model sends nothing (no fixed fallback)', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
     await expect(createSignupOutcomeWriter(() => null).write(BASE)).resolves.toBeNull();

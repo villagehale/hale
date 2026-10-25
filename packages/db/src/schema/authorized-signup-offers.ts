@@ -3,6 +3,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -56,6 +57,8 @@ export const authorizedSignupOffers = pgTable(
     authorizedSessionId: text('authorized_session_id'),
     /** The inbound channel_messages id, never the body. */
     authorizingMessageId: text('authorizing_message_id'),
+    /** Browser Use session cost in USD (model, search, browser, proxy), once its browser stopped. */
+    browserUseCostUsd: numeric('browser_use_cost_usd', { precision: 12, scale: 6 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

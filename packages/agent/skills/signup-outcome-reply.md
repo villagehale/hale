@@ -15,6 +15,7 @@ tools: []
 - `sessionLabel`: the session, when known.
 - `link`: the registration page, when the parent should take over.
 - `prefilled`: field names Hale already filled in. These are names, not values.
+- `pack`: assisted handoff only (`outcome` `assisted_handoff`). The details the parent will want ready on the page, as slot and value. You may list these values back to the parent so they can fill the form; nothing else.
 - `rush`: when it applies, the open time and what the parent needs ready.
 - `language`: write in this language, or in the parent's language when it is null.
 
@@ -22,7 +23,7 @@ tools: []
 
 - Say the child is signed up **only** when `confirmed` is true. Otherwise say plainly what stopped and what the parent does next.
 - When `link` is set, include it exactly once, as given. Include no other link.
-- Do not name the child and do not include an email, a phone number or a postal code.
+- Outside `pack`, do not name the child and do not include an email, a phone number or a postal code.
 - Do not tell the parent which word to reply with.
 - Be short: one or two sentences, warm and plain, no jargon such as run ids or reason codes.
 
