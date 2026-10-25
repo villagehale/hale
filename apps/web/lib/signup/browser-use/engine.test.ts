@@ -3,6 +3,7 @@ import type { SignupIdentity } from '../types';
 import { BrowserUseApiError, browserUseApi } from './client';
 import {
   type BrowserUseEngineDeps,
+  BrowserUseEngineThrew,
   type BrowserUseSignupInput,
   CHECKOUT_KEEP_ALIVE_SECONDS,
   readBrowserUseConfirmation,
@@ -502,5 +503,40 @@ describe('browser use confirmation read', () => {
     });
     const result = await readBrowserUseConfirmation({ sessionId: runCreated.sessionId }, deps);
     expect(result).toMatchObject({ outcome: 'error', detail: 'run_cancelled' });
+  });
+});
+
+describe('browser use engine throws', () => {
+  it('carries the started session id and its cost through a throw', async () => {
+    let polls = 0;
+    const { deps } = setup(
+      { ...happyRoutes(), ...costRoutes() },
+      {
+        sleep: async () => {
+          polls += 1;
+          throw new Error('worker killed');
+        },
+      },
+    );
+    const thrown = await runBrowserUseSignup(input(), deps).catch((e: unknown) => e);
+    expect(polls).toBeGreaterThan(0);
+    expect(thrown).toBeInstanceOf(BrowserUseEngineThrew);
+    expect(thrown).toMatchObject({
+      runId: runCreated.id,
+      sessionId: runCreated.sessionId,
+      sessionCostUsd: '0.004433',
+    });
+  });
+
+  it('reports no ids when it throws before Browser Use created a run', async () => {
+    const { deps, requests } = setup(happyRoutes(), {
+      loadTask: async () => {
+        throw new Error('skill missing');
+      },
+    });
+    const thrown = await runBrowserUseSignup(input(), deps).catch((e: unknown) => e);
+    expect(thrown).toBeInstanceOf(BrowserUseEngineThrew);
+    expect(thrown).toMatchObject({ runId: null, sessionId: null, sessionCostUsd: null });
+    expect(requests.some((r) => r.path === '/api/v4/runs')).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
+  BrowserUseEngineThrew,
   type BrowserUseSignupResult,
   PAYMENT_RUN_MAX_COST_USD,
   SIGNUP_RUN_MAX_COST_USD,
@@ -119,11 +120,12 @@ export type BrowserUseHandoff =
       confirmationNumber: null;
       opensAt: null;
       amountChargedCents: null;
-      runId: null;
-      sessionId: null;
+      /** Set only on engine_threw, from the ids the engine had created. */
+      runId: string | null;
+      sessionId: string | null;
       costUsd: null;
-      sessionCostUsd: null;
-      browserId: null;
+      sessionCostUsd: string | null;
+      browserId: string | null;
     };
 
 const UNCLAIMED: SignupRunResult = {
@@ -602,6 +604,9 @@ async function runBrowserUseBranch(
   },
 ): Promise<SignupRunResult> {
   let allowanceHeld = false;
+  // A throw that does not say which session it had created may have started one:
+  // its hold stays until a real cost replaces it.
+  let sessionMayExist = false;
   const done = async (
     raw: BrowserUseHandoff,
     paymentSkipped: SignupPaymentSkipped | null = null,
@@ -619,7 +624,9 @@ async function runBrowserUseBranch(
     // hold until its real cost replaces it.
     const settledCostUsd =
       handoff.sessionCostUsd ??
-      (allowanceHeld && handoff.sessionId === null && handoff.runId === null ? '0' : null);
+      (allowanceHeld && !sessionMayExist && handoff.sessionId === null && handoff.runId === null
+        ? '0'
+        : null);
     if (settledCostUsd !== null) {
       await recordBrowserUseCost(database, {
         offerId: ctx.offerId,
@@ -735,6 +742,20 @@ async function runBrowserUseBranch(
       },
       'authorized signup: browser use engine threw',
     );
+    if (err instanceof BrowserUseEngineThrew) {
+      // The engine reports the ids it had created; a started session keeps its hold.
+      return done(
+        {
+          ...browserUseAbsent('error', 'engine_threw'),
+          runId: err.runId,
+          sessionId: err.sessionId,
+          browserId: err.browserId,
+          sessionCostUsd: err.sessionCostUsd,
+        },
+        payment.skipped,
+      );
+    }
+    sessionMayExist = true;
     return done(browserUseAbsent('error', 'engine_threw'), payment.skipped);
   }
   return done(result, payment.skipped);

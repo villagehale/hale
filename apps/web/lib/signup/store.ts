@@ -221,8 +221,11 @@ export async function browserUseRegistrationSpendUsd(database: Database): Promis
       >`coalesce(sum(${schema.authorizedSignupOffers.browserUseCostUsd}), 0)`,
     })
     .from(schema.authorizedSignupOffers);
-  const total = Number(row?.total ?? 0);
-  return Number.isFinite(total) ? total : 0;
+  // Fail closed: a total that cannot be read counts as unlimited spend, so no
+  // Browser Use run starts on an unknown balance.
+  if (!row || row.total === null || row.total === undefined) return Number.POSITIVE_INFINITY;
+  const total = Number(row.total);
+  return Number.isFinite(total) && total >= 0 ? total : Number.POSITIVE_INFINITY;
 }
 
 /** Serializes reservations across every instance (any fixed 64-bit key). */
