@@ -12,7 +12,7 @@ import type {
   CalendarCancelRequest,
 } from '~/lib/loop/voice/calendar-cancel-voice';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { createCalendarInviteSender } from './calendar-invite';
+import { createCalendarInviteSender, retryDeferredCalendarCancels } from './calendar-invite';
 import { eventInviteToken, eventInviteUrl } from './ics-invite';
 
 /**
@@ -331,6 +331,40 @@ describe('the tap-to-add link a text-only family gets', () => {
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
     expect(sms.calls).toHaveLength(sentBefore + 1);
+  });
+
+  it('VIL-449 · the retry sweep re-drives a deferred cancel once, then stops when it has landed', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    await softDelete(familyEventId);
+    cancelOutcome = { status: 'deferred', reason: 'model_failed' };
+    await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+    const mine = () => sms.calls.filter((call) => call.userId === parentUserId).length;
+    const before = mine();
+
+    cancelOutcome = {
+      status: 'composed',
+      body: 'Swim class is cancelled - take it off your calendar.',
+    };
+    await retryDeferredCalendarCancels(db.database, sender(), NOON);
+    expect(mine()).toBe(before + 1);
+
+    // Landed: the next tick texts this parent nothing more.
+    await retryDeferredCalendarCancels(db.database, sender(), NOON);
+    expect(mine()).toBe(before + 1);
+  });
+
+  it('VIL-449 · the retry sweep gives up once the event has started', async () => {
+    const { familyId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    await softDelete(familyEventId);
+    const after = new Date('2026-07-23T15:00:00.000Z');
+    const callsBefore = cancelCalls.length;
+    const summary = await retryDeferredCalendarCancels(db.database, sender(), after);
+    expect(summary.events).toBe(0);
+    expect(cancelCalls).toHaveLength(callsBefore);
   });
 
   it('names never_linked for a parent who was never texted the link, and texts nothing', async () => {

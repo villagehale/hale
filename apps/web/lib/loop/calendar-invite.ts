@@ -7,7 +7,7 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, eq, inArray, like } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, isNotNull, like } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
@@ -230,6 +230,32 @@ async function wasTextedTheLink(
   return rows.length > 0;
 }
 
+/** Whether this parent already has the cancellation text for this event. Checked
+ * BEFORE the model is asked, so a re-driven cancel costs nothing once it has landed. */
+async function wasTextedTheCancel(
+  database: Database,
+  job: InviteJob,
+  parentUserId: string,
+): Promise<boolean> {
+  const m = schema.channelMessages;
+  const rows = await database
+    .select({ id: m.id })
+    .from(m)
+    .where(
+      and(
+        eq(m.familyId, job.familyId),
+        eq(m.parentUserId, parentUserId),
+        like(
+          m.dedupeKey,
+          `${CALENDAR_CANCEL_SMS_TEMPLATE_KEY}:${job.familyEventId}:${parentUserId}%`,
+        ),
+        inArray(m.status, ['queued', 'sent', 'delivered']),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 /**
  * Text one parent that an event they were sent a tap-to-add link for is cancelled.
  *
@@ -246,6 +272,9 @@ async function cancelOneParent(
 ): Promise<CalendarInviteParentOutcome> {
   if (!(await wasTextedTheLink(database, job, parent.userId))) {
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'never_linked' };
+  }
+  if (await wasTextedTheCancel(database, job, parent.userId)) {
+    return { parentUserId: parent.userId, channel: 'sms', outcome: 'already_sent' };
   }
   const event = await composeEventCancel(
     { familyId: job.familyId, familyEventId: job.familyEventId, parentUserId: parent.userId },
@@ -322,4 +351,60 @@ export function createCalendarInviteSender(
       return { status: 'reported', parents: outcomes };
     },
   };
+}
+
+/** How far back a cancellation is still re-driven. The event must also not have started. */
+export const CANCEL_RETRY_LOOKBACK_DAYS = 7;
+/** Bounded per tick, like every other sweep. */
+export const CANCEL_RETRY_MAX_EVENTS = 50;
+
+export interface CancelRetrySummary {
+  events: number;
+  sent: number;
+  deferred: number;
+  failed: number;
+}
+
+/**
+ * VIL-449 · re-drive cancellation texts that never landed (`compose_deferred`, or held
+ * by quiet hours). A cancelled placement is a soft-deleted family_events row; any
+ * parent who was texted its link and has no cancellation text yet is retried through
+ * the same sender, so dispatch consent, quiet hours and same-item dedupe all apply, and
+ * the model writes the words or nothing goes (no fixed fallback). Gives up once the
+ * event has started or the cancel is older than the lookback.
+ */
+export async function retryDeferredCalendarCancels(
+  database: Database,
+  sender: CalendarInviteSender,
+  now: Date = new Date(),
+): Promise<CancelRetrySummary> {
+  const e = schema.familyEvents;
+  const since = new Date(now.getTime() - CANCEL_RETRY_LOOKBACK_DAYS * 86_400_000);
+  const rows = await database
+    .select({ id: e.id, familyId: e.familyId })
+    .from(e)
+    .where(and(isNotNull(e.deletedAt), gte(e.deletedAt, since), gt(e.startsAt, now)))
+    .limit(CANCEL_RETRY_MAX_EVENTS);
+  const summary: CancelRetrySummary = { events: rows.length, sent: 0, deferred: 0, failed: 0 };
+  for (const row of rows) {
+    try {
+      const report = await sender.send({
+        familyId: row.familyId,
+        familyEventId: row.id,
+        method: 'CANCEL',
+      });
+      if (report.status !== 'reported') continue;
+      for (const parent of report.parents) {
+        if (parent.outcome === 'sent') summary.sent += 1;
+        else if (parent.outcome === 'compose_deferred') summary.deferred += 1;
+      }
+    } catch (err) {
+      summary.failed += 1;
+      console.error(
+        { err: err instanceof Error ? err.name : 'unknown', familyEventId: row.id },
+        'calendar cancel retry: event failed',
+      );
+    }
+  }
+  return summary;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LoopCategory, LoopMessage, RenderedContent } from '~/lib/channel/types';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import type { LoopCategory, LoopMessage, RenderedContent } from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { loopTemplateRenderer } from '../registry';
 import type { ReminderChild, ReminderEventView, ReminderPayload } from './payload';

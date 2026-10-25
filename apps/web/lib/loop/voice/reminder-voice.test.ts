@@ -98,7 +98,9 @@ describe("reminderVoiceContext — the day is a fact in the family's zone, never
       late,
     );
     expect(ctx.now).toEqual({ day: 'Sat, Jul 25', time: '7:00 AM' });
-    expect(ctx.events).toEqual([{ what: 'Mira — 6-month checkup', day: 'Sat, Jul 25', when: '10:00' }]);
+    expect(ctx.events).toEqual([
+      { what: 'Mira — 6-month checkup', day: 'Sat, Jul 25', when: '10:00' },
+    ]);
   });
 
   it("reads the event's day in the family's zone, not UTC's", () => {
