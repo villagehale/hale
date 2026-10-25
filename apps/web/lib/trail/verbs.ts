@@ -1378,13 +1378,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   ics_feed_shared: { sentence: 'you turned on your calendar subscription', family: 'done' },
   ics_feed_revoked: { sentence: 'you turned off your calendar subscription', family: 'done' },
-  // NOT the subscription: a per-event link is a one-way HMAC over the same secret and
-  // discloses one entry, so the sentence says the entry and never the feed (rule #1).
   // VIL-449 · one re-drive of a cancellation text that had not landed yet.
   'calendar_cancel.retry_attempt': {
     sentence: 'tried again to text you that an event was cancelled',
     family: 'note',
   },
+  // NOT the subscription: a per-event link is a one-way HMAC over the same secret and
+  // discloses one entry, so the sentence says the entry and never the feed (rule #1).
   ics_event_link_minted: {
     sentence: 'made you a tap-to-add link for a calendar entry',
     family: 'done',
