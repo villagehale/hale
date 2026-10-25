@@ -38,13 +38,20 @@ const pick = {
 describe('live recommendations without a catalog', () => {
   it('accepts the current main Finder URL without inventing a dated session', async () => {
     const familyId = await family();
-    const legacy = { name: pick.name, ageFit: pick.ageFit, when: null, price: null,
-      sourceName: pick.sourceName, source: 'web' as const, url: pick.sourceUrl };
+    const legacy = {
+      name: pick.name,
+      ageFit: pick.ageFit,
+      when: null,
+      price: null,
+      sourceName: pick.sourceName,
+      source: 'web' as const,
+      url: pick.sourceUrl,
+    };
     const finder = { find: async () => ({ found: true as const, picks: [legacy] }) };
     const result = await findFamilyActivities(db.database, familyId, { finder });
     expect(result.picks[0]?.sourceUrl).toBe(pick.sourceUrl);
     expect(result.picks[0]?.eventDate).toBeUndefined();
-    expect(await readCandidates(db.database, familyId, { finder })).toEqual([]);
+    expect([...(await readCandidates(db.database, familyId, { finder }))]).toEqual([]);
   });
   it('passes the existing Finder municipality without leaking the postal prefix', async () => {
     const familyId = await family(36, 'Burlington');
