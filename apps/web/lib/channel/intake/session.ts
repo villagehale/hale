@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { haleContactCardDay } from '../linq/contact-card';
@@ -106,7 +106,7 @@ interface IntakeData {
 
 /** Coarse place plus the location-card outcome. No street, no coordinates. */
 export interface FirstTouchPersisted {
-  language: ReplyLanguage;
+  language: ReplyLanguage | null;
   place: {
     kind: 'postal' | 'city';
     areaCoarse: string;
@@ -332,7 +332,7 @@ function decodeLadderNext(value: unknown): IntakeLadderStep | null {
 }
 
 function decodeLadderLanguage(value: unknown): ReplyLanguage | null {
-  return value === 'en' || value === 'fr' ? value : null;
+  return acceptReplyLanguage(typeof value === 'string' ? value : null);
 }
 
 function decodeData(blob: string): IntakeData {
@@ -371,8 +371,7 @@ function decodeFirstTouch(value: unknown): FirstTouchPersisted | null {
     clarify?: unknown;
     given?: unknown;
   };
-  const language = row.language === 'fr' ? 'fr' : row.language === 'en' ? 'en' : null;
-  if (!language) return null;
+  const language = acceptReplyLanguage(typeof row.language === 'string' ? row.language : null);
   return {
     language,
     place: decodeFirstTouchPlace(row.place),

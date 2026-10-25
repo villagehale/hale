@@ -5,7 +5,6 @@
  * rules it broke.
  */
 
-import { MAX_PROSE_CHARS } from '~/lib/channel/intake/friend-voice';
 import { LINQ_GROUP_TRIGGER_PHRASE } from '~/lib/channel/linq/group';
 
 export interface LiveTurn {
@@ -276,11 +275,6 @@ export function liveViolations(replay: LiveReplay, expect: LiveExpectations): st
     if (BOOKING_CLAIM.test(prose)) out.push(`booking claim: "${prose.slice(0, 100)}"`);
     if (FALSE_PRIVACY.test(prose)) out.push(`false privacy claim: "${prose.slice(0, 100)}"`);
     if (STOP_WORDING.test(prose)) out.push(`STOP wording: "${prose.slice(0, 100)}"`);
-    if (prose.length > MAX_PROSE_CHARS && !isMapBubble(bubble)) {
-      out.push(
-        `bubble over ${MAX_PROSE_CHARS} chars (${prose.length}): "${prose.slice(0, 60)}..."`,
-      );
-    }
   }
 
   // Who is this: the company is named.

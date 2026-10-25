@@ -3,7 +3,6 @@ import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import {
   declineOpenInviteOnStop,
   loadLapsedInviteByPhone,
@@ -19,6 +18,7 @@ import {
   handleKnownNumberInbound,
   handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
+import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
@@ -33,7 +33,7 @@ import {
 import { type ParentRoleGuess, storeParentRole } from '~/lib/channel/identity/parent-role';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
-import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
@@ -81,7 +81,7 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
-import { deriveDateOfBirth, parseCanadianPostal, summarizeChildren } from './derive';
+import { deriveDateOfBirth, parseIntakePostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import { firstTouchLocationCardEnabled } from './first-touch-flag';
 import { type FirstTouchPlace, placeFromVenue } from './first-touch-place';
@@ -580,16 +580,22 @@ export async function handleInboundSms(
     // the same person texting Hale months later to sign up their own family is not
     // answering anything, and must still reach the greeting (`loadLapsedInviteByPhone`
     // bounds the same shadow by time).
-    if (!invite && readAffirmative(inbound.body) !== 'unclear') {
+    if (!invite) {
       const lapsed = await loadLapsedInviteByPhone(database, phoneE164, now);
       if (lapsed) {
-        return claimedTurn(database, inbound, now, () =>
-          handleLapsedInviteReply(
-            database,
-            { invite: lapsed, phoneE164, inbound, now },
-            caregiverPorts(deps),
-          ),
-        );
+        const read = await readConsent(deps.consent, {
+          question: 'caregiver_invite',
+          text: inbound.body,
+        });
+        if (read && read.verdict !== 'neither') {
+          return claimedTurn(database, inbound, now, () =>
+            handleLapsedInviteReply(
+              database,
+              { invite: lapsed, phoneE164, inbound, now },
+              caregiverPorts(deps),
+            ),
+          );
+        }
       }
     }
 
@@ -987,7 +993,7 @@ async function offScriptReply(
     deps.saidLine,
     await readTextOnce(deps.optOutReader, {
       text: args.parentWords,
-      language: replyLanguage(args.parentWords),
+      language: null,
     }),
   );
   if (identity.challenge) {
@@ -998,7 +1004,7 @@ async function offScriptReply(
     // The answer model saw a crisis the reader did not. Still the model's words.
     const written = await deps.saidLine?.write({
       purpose: 'crisis_mental',
-      language: replyLanguage(args.parentWords),
+      language: null,
       parentWords: args.parentWords,
       facts: { crisisLine: '988 (call or text, Canada and US)', emergency: '911' },
     });
@@ -1012,7 +1018,7 @@ async function offScriptReply(
     // #868: the 811 line is the model's words; the code checks both numbers are in it.
     const written = await deps.saidLine?.write({
       purpose: 'health',
-      language: replyLanguage(args.parentWords),
+      language: null,
       parentWords: args.parentWords,
       facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
       mustInclude: ['811', '911'],
@@ -1038,7 +1044,7 @@ async function offScriptReply(
   if (purpose === null) return null;
   const written = await deps.saidLine?.write({
     purpose,
-    language: replyLanguage(args.parentWords),
+    language: null,
     parentWords: args.parentWords,
     facts: {},
   });
@@ -1060,7 +1066,7 @@ async function reportOpening(
   deps: IntakeDeps,
   session: IntakeSession,
   inbound: Inbound,
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
 ): Promise<void> {
   await reportIntakeStep(deps, 'intake_started', session.id, {
     source_code: session.sourceCode,
@@ -1287,7 +1293,7 @@ function friendAddress(ctx: SendContext): 'tu' | 'vous' {
 
 function friendFields(
   step: FriendStep,
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   address: 'tu' | 'vous',
   extra: Partial<Omit<FriendVoiceInput, 'step' | 'language' | 'address' | 'recentTurns'>> = {},
 ): Omit<FriendVoiceInput, 'recentTurns'> {
@@ -1391,11 +1397,15 @@ function friendStepForGap(gap: OnboardingItem | undefined, card: boolean): Frien
 }
 
 /** Hale's iMessage line and the group phrase, when the chat is iMessage and the line is configured. */
-function coparentJoinFor(ctx: SendContext, language: ReplyLanguage) {
+function coparentJoinFor(ctx: SendContext, language: ReplyLanguage | null) {
   if (ctx.pipe.channel !== 'imessage') return null;
   const from = linqFromE164();
   if (!from) return null;
-  return { line: formatLinqLineForParent(from), phrase: LINQ_GROUP_TRIGGER_PHRASE[language] };
+  const phrase =
+    language === 'fr' || (language ?? '').startsWith('fr-')
+      ? LINQ_GROUP_TRIGGER_PHRASE.fr
+      : LINQ_GROUP_TRIGGER_PHRASE.en;
+  return { line: formatLinqLineForParent(from), phrase };
 }
 
 /**
@@ -1446,7 +1456,7 @@ async function pursueNewHouseholdGroup(
   }
 }
 
-function scheduledForModel(given: FirstTouchGiven | null, language: ReplyLanguage) {
+function scheduledForModel(given: FirstTouchGiven | null, language: ReplyLanguage | null) {
   return (given?.scheduled ?? []).map((row) => ({
     line: row.line,
     title: row.title,
@@ -1455,10 +1465,10 @@ function scheduledForModel(given: FirstTouchGiven | null, language: ReplyLanguag
   }));
 }
 
-function dayLabelFor(dayKey: string, language: ReplyLanguage): string {
+function dayLabelFor(dayKey: string, language: ReplyLanguage | null): string {
   const [year, month, day] = dayKey.split('-').map((part) => Number(part));
   if (!year || !month || !day) return dayKey;
-  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', {
+  return new Intl.DateTimeFormat(localeFor(language), {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -1609,8 +1619,7 @@ async function friendOnboardingTurn(
 ): Promise<IntakeOutcome> {
   const { session, inbound, now } = args;
   const ctx = sendContext(args);
-  const language =
-    session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
+  let language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
   const safety = await crisisReply(inbound, language, deps);
@@ -1716,6 +1725,7 @@ async function friendOnboardingTurn(
       },
     },
   );
+  language = spoken.capture.language ?? language;
   const stored = storedFromCapture(prior, spoken.capture);
   const nextPlace = stored.place ? persistPlace(stored.place) : null;
   const collected: IntakeCollected = {
@@ -1863,7 +1873,7 @@ async function resolveFirstTouchLocation(
 
 function withColdStart(
   session: IntakeSession,
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   progress: ColdStartProgress,
 ): FirstTouchPersisted {
   return {
@@ -2085,8 +2095,7 @@ async function friendColdTurn(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
-  const language =
-    session.ladderLanguage ?? session.firstTouch?.language ?? replyLanguage(inbound.body);
+  const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const ctx = sendContext(args);
   const safety = await crisisReply(inbound, language, deps);
   if (safety) {
@@ -2431,11 +2440,8 @@ function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['
 function intakeLocationFor(
   place: NonNullable<FirstTouchPersisted['place']> | FirstTouchPlace,
 ): IntakeLocation | null {
-  if (place.kind === 'postal') {
-    return parseCanadianPostal(place.postalCode ?? place.areaCoarse);
-  }
-  if (!place.areaCoarse.trim()) return null;
-  return { postalCode: null, areaCoarse: place.areaCoarse };
+  if (place.kind !== 'postal') return null;
+  return parseIntakePostal(place.postalCode ?? place.areaCoarse);
 }
 
 async function handleDetails(
@@ -2629,7 +2635,7 @@ async function sendPostYearFindLadder(
     familyId: string;
     parentUserId: string;
     phoneE164: string;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     now: Date;
     inbound: Inbound;
     send: (body: string, templateKey: string) => Promise<unknown>;
@@ -2673,7 +2679,7 @@ async function provision(
   const { session, phoneE164, inbound, now } = args;
   const firstInbound = gathered.transcript.find((e) => e.direction === 'in');
 
-  const language = session.ladderLanguage ?? replyLanguage(inbound.body);
+  const language = session.ladderLanguage ?? null;
   const discoveryOn = coldStartLadderEnabled() && session.firstTouch != null;
   const children = discoveryOn
     ? gathered.children.map((child) => ({ ...child, name: kidFirstName(child.name) }))
@@ -3040,7 +3046,7 @@ async function handleWatchReply(
   const { session, inbound, now } = args;
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-  const language = replyLanguage(inbound.body);
+  const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
 
   // The watch offer is retired under the friend voice: the find is the watch.
   // A session left waiting on it still gets an answer, written by the model,
@@ -3085,7 +3091,7 @@ async function handleLadder(
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
 
-  const language = session.ladderLanguage ?? replyLanguage(inbound.body);
+  const language = session.ladderLanguage ?? null;
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
@@ -3241,7 +3247,7 @@ async function sendLadderFriendCard(
     familyId: string;
     parentUserId: string;
     phoneE164: string;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     now: Date;
     inbound: Inbound;
     transcript: TranscriptEntry[];
@@ -3314,7 +3320,7 @@ async function askParentCallName(
   args: {
     familyId: string;
     parentUserId: string;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     send: (body: string, templateKey: string) => Promise<unknown>;
     friend?: {
       deps: IntakeDeps;
@@ -3373,7 +3379,7 @@ async function askParentCallName(
 async function helpBody(
   deps: IntakeDeps,
   session: IntakeSession | null,
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   parentWords: string,
 ): Promise<string | null> {
   const given = session?.firstTouch?.given ?? null;

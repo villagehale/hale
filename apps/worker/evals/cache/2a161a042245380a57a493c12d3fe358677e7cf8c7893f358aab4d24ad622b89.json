@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own and to ask first. The switch was turned off this turn for both sending and replying to email, so the reply's promise is backed. It answers in the parent's language with one plain sentence, no greeting, no machinery and no extra question.",
+    "score": 5
+  }
+}

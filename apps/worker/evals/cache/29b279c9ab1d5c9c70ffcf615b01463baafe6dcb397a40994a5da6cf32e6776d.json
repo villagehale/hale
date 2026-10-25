@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to connect Google Calendar in words the deterministic branch didn't catch. The reply says it can be done, quotes the exact short ask, and describes the real one-tap, fifteen-minute link. It writes out no URL, has no greeting or sign-off, and stops. This is exactly the required shape.",
+    "score": 5
+  }
+}

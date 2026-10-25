@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { speak } from '~/lib/channel/spoken-line';
 import { linqPollsEnabled } from './config';
 import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
 
@@ -21,28 +22,11 @@ import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
  * LINQ_POLLS stays off until ops turns it on.
  */
 
-/** Design locked. The text that precedes the poll. A Linq poll has no question field. */
-export const YEAR_FIND_POLL_PROMPT: Record<ReplyLanguage, string> = {
-  en: 'Which of these should I look at first?',
-  fr: 'Lequel je regarde en premier?',
-};
-
-/** Design locked. Always the last option. A vote for it is not another ask. */
-export const YEAR_FIND_POLL_NONE: Record<ReplyLanguage, string> = {
-  en: 'None of these',
-  fr: 'Aucun de ceux-la',
-};
-
 /**
- * Design locked sandbox scenario. A demo send when there is no live find.
- * Not a fallback for an empty search, and not sent on its own.
+ * In-flight taps still carry these labels. A new poll sets `choiceKind: 'none'`
+ * so a model-written label resolves the same way.
  */
-export const SANDBOX_YEAR_FIND_TITLES: Record<ReplyLanguage, readonly [string, string]> = {
-  en: ['Swim at the rec centre', 'Library storytime'],
-  fr: ['Nage au centre recreatif', 'Heure du conte a la bibliotheque'],
-};
-
-const NONE_OPTIONS = new Set<string>([YEAR_FIND_POLL_NONE.en, YEAR_FIND_POLL_NONE.fr]);
+const NONE_OPTIONS = new Set<string>(['None of these', 'Aucun de ceux-la']);
 
 /** Exact match on the locked "none" option, either language. */
 export function isYearFindPollNone(text: string): boolean {
@@ -53,10 +37,10 @@ export function isYearFindPollNone(text: string): boolean {
  * Up to three find titles, then the locked none option. Fewer than two
  * titles is no poll. A title that is itself the none line is dropped.
  */
-export function yearFindPollOptions(
+export async function yearFindPollOptions(
   language: ReplyLanguage,
   titles: readonly string[],
-): readonly string[] | null {
+): Promise<readonly PollOptionWrite[] | null> {
   const seen = new Set<string>();
   const cleaned: string[] = [];
   for (const raw of titles) {
@@ -66,19 +50,33 @@ export function yearFindPollOptions(
     cleaned.push(title);
     if (cleaned.length === 3) break;
   }
-  if (cleaned.length < 2) return null;
-  return [...cleaned, YEAR_FIND_POLL_NONE[language]];
+  const none = await speak({ purpose: 'year_find_none', language });
+  if (cleaned.length < 2 || !none) return null;
+  return [...cleaned.map((text) => ({ text })), { text: none, choiceKind: 'none' }];
 }
 
-/** The sandbox options, verbatim. Two fixed titles plus the none line. */
-export function sandboxYearFindPollOptions(language: ReplyLanguage): readonly string[] {
-  return [...SANDBOX_YEAR_FIND_TITLES[language], YEAR_FIND_POLL_NONE[language]];
+/** The sandbox options. Two titles plus the none line, all model-written. */
+export async function sandboxYearFindPollOptions(
+  language: ReplyLanguage | null,
+): Promise<readonly PollOptionWrite[] | null> {
+  const first = await speak({ purpose: 'year_find_sandbox_title', language, facts: { slot: '1' } });
+  const second = await speak({
+    purpose: 'year_find_sandbox_title',
+    language,
+    facts: { slot: '2' },
+  });
+  const none = await speak({ purpose: 'year_find_none', language });
+  if (!first || !second || !none) return null;
+  return [{ text: first }, { text: second }, { text: none, choiceKind: 'none' }];
 }
 
 export type LinqPollOffer =
   | { status: 'sent'; providerMessageId: string; channelMessageId: string }
   | { status: 'prompted' }
-  | { status: 'skipped'; reason: 'flag_off' | 'not_a_choice' | 'not_imessage' | 'no_chat' }
+  | {
+      status: 'skipped';
+      reason: 'flag_off' | 'not_a_choice' | 'not_imessage' | 'no_chat' | 'model_unreachable';
+    }
   | { status: 'skipped'; reason: 'refused' | 'not_configured'; code: string };
 
 /**
@@ -98,7 +96,7 @@ export async function offerYearFindPoll(
     fetch?: typeof fetch;
   },
 ): Promise<LinqPollOffer> {
-  const options = yearFindPollOptions(args.language, args.titles);
+  const options = await yearFindPollOptions(args.language, args.titles);
   return offerPoll(database, {
     ...args,
     options,
@@ -124,7 +122,7 @@ export async function offerSandboxYearFindPoll(
 ): Promise<LinqPollOffer> {
   return offerPoll(database, {
     ...args,
-    options: sandboxYearFindPollOptions(args.language),
+    options: await sandboxYearFindPollOptions(args.language),
     idempotencyKey: `poll:year-find-sandbox:${args.familyId}:${args.now.toISOString().slice(0, 10)}`,
   });
 }
@@ -143,7 +141,7 @@ async function offerPoll(
   args: {
     channel: string;
     chatId: string | null;
-    options: readonly string[] | null;
+    options: readonly PollOptionWrite[] | null;
     language: ReplyLanguage;
     familyId: string;
     parentUserId: string;
@@ -156,10 +154,12 @@ async function offerPoll(
   if (args.channel !== 'imessage') return { status: 'skipped', reason: 'not_imessage' };
   if (!args.chatId) return { status: 'skipped', reason: 'no_chat' };
   if (!args.options) return { status: 'skipped', reason: 'not_a_choice' };
+  const prompt = await speak({ purpose: 'year_find_prompt', language: args.language });
+  if (!prompt) return { status: 'skipped', reason: 'model_unreachable' };
   return sendChoicePoll(database, {
     chatId: args.chatId,
-    prompt: YEAR_FIND_POLL_PROMPT[args.language],
-    options: args.options.map((text) => ({ text })),
+    prompt,
+    options: args.options,
     familyId: args.familyId,
     parentUserId: args.parentUserId,
     now: args.now,

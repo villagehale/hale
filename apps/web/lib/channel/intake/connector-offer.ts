@@ -107,7 +107,7 @@ export async function sendYearConnectorCards(
     familyId: string;
     parentUserId: string;
     phoneE164: string;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     now: Date;
     ridesReply?: boolean;
     /** One card. The other label is `already_sent` and nothing is minted for it,

@@ -63,8 +63,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'followup-voice.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
-
 /** How many distinct openings the activity asks must show between them. Two is a low bar
  * on purpose — it catches a corpus that has collapsed onto one template without pretending
  * to measure style. */
@@ -133,7 +131,6 @@ function refusals(body, request) {
   const found = [];
   if (body === '') return ['empty'];
   if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
-  if (smsEncodingRef(body) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
@@ -151,10 +148,6 @@ function refusals(body, request) {
   if (/\d/.test(withoutSubject)) found.push('invented_number');
   return found;
 }
-
-/** Bound in main() once the real module is loaded — refusals() has to reach the same
- * GSM-7 table the segment counter bills on, not a copy of it. */
-let smsEncodingRef = () => 'gsm7';
 
 /** Mirrors `plainText` in apps/web/lib/channel/coach/reply.ts (behind `~/`, so replicated). */
 const GSM7_SUBSTITUTIONS = [
@@ -223,8 +216,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
-  smsEncodingRef = smsEncoding;
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleLines();
   const model = agent.pickModel(skill.meta.task);

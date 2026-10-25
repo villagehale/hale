@@ -56,33 +56,6 @@ export interface GroupOnboardingLine {
   wayOut?: boolean;
 }
 
-const ROLE_WORD: Record<ReplyLanguage, Record<RoleWordKey, string>> = {
-  en: {
-    mom: 'mom',
-    dad: 'dad',
-    parent: 'parent',
-    grandparent: 'grandparent',
-    nanny: 'nanny',
-    babysitter: 'babysitter',
-    aunt: 'aunt',
-    uncle: 'uncle',
-    cousin: 'cousin',
-    family: 'family',
-  },
-  fr: {
-    mom: 'maman',
-    dad: 'papa',
-    parent: 'parent',
-    grandparent: 'grand-parent',
-    nanny: 'nounou',
-    babysitter: 'gardienne',
-    aunt: 'tante',
-    uncle: 'oncle',
-    cousin: 'cousin',
-    family: 'famille',
-  },
-};
-
 function named(...values: ReadonlyArray<string | null>): string[] {
   return values.filter((value): value is string => typeof value === 'string' && value.length > 0);
 }
@@ -125,15 +98,13 @@ export function groupOnboardingLineInput(
         questions: 1,
         mustMention: [],
       };
-    case 'role_confirmed': {
-      const roleWord = ROLE_WORD[language][request.role];
+    case 'role_confirmed':
       return {
         ...base,
-        facts: { name: request.name, roleWord },
+        facts: { name: request.name, role: request.role },
         questions: 0,
-        mustMention: [...named(request.name), roleWord],
+        mustMention: [...named(request.name)],
       };
-    }
     case 'no_family_yet':
       return {
         ...base,

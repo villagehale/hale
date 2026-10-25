@@ -3,17 +3,19 @@
  *
  * The flag is off unless FAMILY_MEMORY_KINDS_ENABLED is exactly `true`. `TRUE`
  * and `true\n` stay off: a piped env write stores a trailing newline, and a
- * truthiness check would arm this. Parent-facing sentences are Sloane's locked
- * copy (VIL-381). They leave this module only when the flag is on AND
- * FAMILY_MEMORY_KINDS_COPY_LOCKED is exactly `true`. Both stay default off.
+ * truthiness check would arm this. A parent-facing sentence leaves only when
+ * that flag is on and the text is finished. The model writes it.
  *
  * VIL-388 (exportable family memory) has no snapshot builder in this repo.
  * {@link toFamilyMemoryExportFact} is the hook that snapshot should call so
  * kind and source travel with each fact. Do not invent a second export shape.
  */
 
+// Relative on purpose. The coach eval loads this file through context.ts, and
+// the tsx loader there cannot resolve the web app's `~` alias.
+import { copyLanguage } from '../channel/language';
+
 export const FAMILY_MEMORY_KINDS_ENABLED_ENV = 'FAMILY_MEMORY_KINDS_ENABLED';
-export const FAMILY_MEMORY_KINDS_COPY_LOCKED_ENV = 'FAMILY_MEMORY_KINDS_COPY_LOCKED';
 
 export type MemoryKind = 'lasting' | 'temporary' | 'one_off';
 export type MemorySource = 'parent_message' | 'calendar' | 'receipt' | 'inferred' | 'legacy';
@@ -53,7 +55,6 @@ export const MEMORY_KIND_COPY = {
     nothing:
       'I didn\'t find anything to forget there. Text "what do you know" to see what I have, then "forget <key>".',
     refused: 'I keep that one, it\'s a record. Text "what do you know" to see what can be changed.',
-    groupSync: '{who} asked me to forget something.',
   },
   fr: {
     recall:
@@ -62,7 +63,6 @@ export const MEMORY_KIND_COPY = {
     corrected: "C'est corrige : {key} est maintenant {value}.",
     nothing: 'Rien a oublier de ce cote. "que sais-tu" montre ce que j\'ai, puis "oublie <cle>".',
     refused: 'Celle-la reste, c\'est un dossier. "que sais-tu" montre ce qui peut changer.',
-    groupSync: "{who} m'a demande d'oublier quelque chose.",
   },
 } as const;
 
@@ -76,7 +76,6 @@ export const MEMORY_KIND_LINES = {
     termLasting: 'lasting',
     termTemporary: 'for now',
     forgottenMany: 'Done, I forgot {n} things.',
-    groupSyncCorrect: '{who} corrected something.',
   },
   fr: {
     recallEmpty: "Je n'ai encore rien note sur la famille.",
@@ -86,7 +85,6 @@ export const MEMORY_KIND_LINES = {
     termLasting: 'durable',
     termTemporary: "pour l'instant",
     forgottenMany: "C'est oublie : {n} elements.",
-    groupSyncCorrect: '{who} a corrige quelque chose.',
   },
 } as const;
 
@@ -96,10 +94,6 @@ export type MemoryKindCopyKey = keyof (typeof MEMORY_KIND_COPY)['en'];
 
 export function familyMemoryKindsEnabled(env: MemoryKindEnv = process.env): boolean {
   return env[FAMILY_MEMORY_KINDS_ENABLED_ENV] === 'true';
-}
-
-export function familyMemoryKindsCopyLocked(env: MemoryKindEnv = process.env): boolean {
-  return env[FAMILY_MEMORY_KINDS_COPY_LOCKED_ENV] === 'true';
 }
 
 export function memoryKindBodies(): string[] {
@@ -131,7 +125,7 @@ function fillMemory(
   template: string,
   params: Record<string, string | null | undefined>,
   required: readonly string[],
-  language: MemoryKindLanguage,
+  _language: MemoryKindLanguage,
 ): string {
   const bag = new Map<string, string>();
   for (const key of required) {
@@ -145,9 +139,6 @@ function fillMemory(
     return value;
   });
   if (MEMORY_TOKEN.test(rendered)) throw new MemoryKindCopyError('unrendered');
-  if (language === 'fr' && [...rendered].some((char) => char.charCodeAt(0) > 0x7f)) {
-    throw new MemoryKindCopyError('fr_not_ascii');
-  }
   if (MEMORY_BANNED.test(rendered)) throw new MemoryKindCopyError('banned');
   return rendered;
 }
@@ -289,41 +280,25 @@ export function renderMemoryCorrected(
   );
 }
 
-/** A statement. No value, no question. */
-export function renderMemoryGroupSync(
-  language: MemoryKindLanguage,
-  change: 'forget' | 'correct',
-  who: string,
-): string {
-  const template =
-    change === 'correct'
-      ? MEMORY_KIND_LINES[language].groupSyncCorrect
-      : MEMORY_KIND_COPY[language].groupSync;
-  const text = fillMemory(template, { who }, ['who'], language);
-  if (text.includes('?') || text.includes(who) === false) throw new MemoryKindCopyError('group');
-  return text;
-}
-
 export function memoryKindCopy(language: MemoryKindLanguage, key: MemoryKindCopyKey): string {
   return MEMORY_KIND_COPY[language][key];
 }
 
-export function memoryKindLanguage(primaryLanguage: string | null | undefined): MemoryKindLanguage {
-  return primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+export function memoryKindLanguage(
+  primaryLanguage: string | null | undefined,
+): MemoryKindLanguage | null {
+  return copyLanguage(primaryLanguage);
 }
 
 /**
- * The only way a placeholder may be handed to a transport. Both gates are
- * strict `=== 'true'`. Anything else names why it was withheld.
+ * The only way a placeholder may be handed to a transport. The kinds flag is
+ * strict `=== 'true'`. A leftover token is named rather than sent.
  */
 export function deliverMemoryKindCopy(
   body: string,
   env: MemoryKindEnv = process.env,
-):
-  | { deliver: true; body: string }
-  | { deliver: false; skipped: 'flag_off' | 'copy_not_locked' | 'unrendered' } {
+): { deliver: true; body: string } | { deliver: false; skipped: 'flag_off' | 'unrendered' } {
   if (!familyMemoryKindsEnabled(env)) return { deliver: false, skipped: 'flag_off' };
-  if (!familyMemoryKindsCopyLocked(env)) return { deliver: false, skipped: 'copy_not_locked' };
   if (MEMORY_TOKEN.test(body) || body.includes('TODO-Design') || MEMORY_BANNED.test(body)) {
     return { deliver: false, skipped: 'unrendered' };
   }
@@ -334,7 +309,7 @@ export async function sendMemoryKindReply(
   send: (body: string) => Promise<unknown>,
   body: string,
   env: MemoryKindEnv = process.env,
-): Promise<{ sent: boolean; skipped: 'flag_off' | 'copy_not_locked' | 'unrendered' | null }> {
+): Promise<{ sent: boolean; skipped: 'flag_off' | 'unrendered' | null }> {
   const gated = deliverMemoryKindCopy(body, env);
   if (!gated.deliver) return { sent: false, skipped: gated.skipped };
   await send(gated.body);

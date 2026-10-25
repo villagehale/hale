@@ -17,9 +17,6 @@ function offScriptAside(words: string): string | null {
     return 'I only keep what you send, and you can ask what I have.';
   if (/weather|recipe/i.test(words)) return "That's outside what I do.";
   if (/^(ok|lol|and|thanks)$/i.test(words) || /what's next/i.test(words)) return 'Got it.';
-  if (/\b10001\b/.test(words) || /\bchicago\b/i.test(words)) {
-    return 'I only cover the Toronto area right now.';
-  }
   return null;
 }
 
@@ -40,7 +37,11 @@ export function scriptedTurn(input: FriendVoiceInput): {
     ...EMPTY_ONBOARDING_CAPTURE,
     children: [],
     scheduleAdds: [],
+    // The model reports the language it is answering in. A stored tag wins.
+    // A first "Bonjour" is French; everything else in this fixture is English.
+    language: input.language ?? (/^(bonjour|salut)\b/i.test(words) ? 'fr' : 'en'),
   };
+  const speakingFrench = capture.language === 'fr';
   const postal = words.match(
     /\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])(?:[ -]?(\d[ABCEGHJ-NPRSTV-Z]\d))?\b/i,
   );
@@ -118,9 +119,7 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   const postalKnown =
-    (Boolean(capture.postalCode) && capture.postalCode !== '10001') ||
-    Boolean(input.placeLabel) ||
-    input.checklist?.postal === true;
+    Boolean(capture.postalCode) || Boolean(input.placeLabel) || input.checklist?.postal === true;
   const kidsKnown =
     capture.children.some((child) => child.name) ||
     capture.kidsNamesDeclined ||
@@ -177,11 +176,11 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   let ask: string;
-  if (input.language === 'fr' && !postalKnown) {
+  if (speakingFrench && !postalKnown) {
     ask = "Salut, c'est Hale. Quel est ton code postal?";
-  } else if (input.language === 'fr' && !kidsKnown) {
+  } else if (speakingFrench && !kidsKnown) {
     ask = "Comment s'appellent tes enfants?";
-  } else if (input.language === 'fr' && !agesKnown) {
+  } else if (speakingFrench && !agesKnown) {
     ask = 'Quel âge ont les enfants?';
   } else if (!postalKnown) {
     ask = input.introduce ? "Hey, it's Hale. What's your postal code?" : "What's your postal code?";

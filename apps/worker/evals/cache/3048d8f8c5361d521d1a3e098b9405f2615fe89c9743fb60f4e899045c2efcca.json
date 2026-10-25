@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNvefLxcrbdsk1zqNxVn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjwsKEAgTGAI4AUIIdGhpbmtpbmcSDAKpUBHabVV7aTGGdBoME24vKjDO9NVbY2t1IjDNI4p/yzM/ayNAO+h4nmbKMrmlIpumfUe0r/H3FDWQt2QiwjvoKp2mvsFQ8w7Nc0cqrAq2rUmsiR9HqfSmzUSpvJkmO/gf4y8AYVDxCe9M3P51If8Aeec2E7oFm45EQ0CUVIkgmXra2q6759A/JZiUaFNV+ppCKsRTxVXhKbLUlq/i8Vt1C9BmjlR7Pj+zS1SorwyGrNRp6+9JAZVPfP6E3yn8e6JYjgBo3+oXMN3dh1/hK8Ih/N+DNJPKObsJigA01Xnh2HYXGF7rz1vI6ohhgM/0votf84VUh1c31NXpuwU5LWAe+Ghil0uYALn2FS3XOOsunwojCnrth+zoayqbVQWJ4L4a9YSTXcegNoDBVQG0b6zlIe9pTelMqY11Z5f2ePZHRMqn+HvaU1bSgtTrcQJHWu1g4xP7OVg7w4Cb3Ytr6oneROCkAyHTTbFEdj/cTIAt3yioA2GF7qeB49AFL107JiTZgIw6J05RLiMfhJhzbL6jww3Q+9rK/RVC4lN/ql3jvcDwlN5K1i5J2TyXm4zaQ+HOIxRRVtb2ukCg5iSksGzkZ33fS7kii3wNk9k20+UGM1pOr2EDYUt9TDvB1q4BbDpqA4S+hSM5dEHtz4nYza0DGPMkfSPi5Qgyt3oKCPSQWw6tQezHeqdnR9dK2fHj6NQxDoT/Sy3Ww+/nHPvrdmAQ5M3z6t03TWYa5UX85UZ47o17bG/wFhV8XSO4tAwiy9kNdoh2lUCg305bWsz73rsFWdcEadv+zxazbGgQFNmt8uQBXEd39dzzlhKxnfOEGzB2BOi3+uJVqRxl/o6DK8h1uUitFSyQNfEW0H66X1ujIjjltpvyxh7QIngkjFwjYvqcaoZJEYP8wvefJ3kss6mSu026jmkKt51Iz1OETUOOPqjm6xhEZtOUlxOfmYeKu/4Q4Bw64oYTest5Xq+KpMd8hDnDEmj1fO58TvN0WctxdCD9yLjdni3QtLs1/AZa8cAPuB9Ht8JxNJei/MR8GG6OPiXqmkeeZKYShMZWJIHw21trTDESi58v9oxGoBlPoeM/XJrIj/CfTa59ALx4a+xhgvn/rQt5ZIbI4Uo8Y9MSBKXTO1e5hlJG0DpMlo/lznIakwny/05CPBt5U+/HRjr3Ag4CEK4JDIgAWcSQCjph5p1pNUgotQ5bJD++vU+78PXAcomh+qLLASx9v6mycJJF2HOuKt52Tx7y0II62M4VZrQsxGHxzHQEoNCePmc6MmUG8jqHtmFvXXO3OCV1htFbz/mjIpBKps7XEtT0aJ26v/IHVRgktdTy8bUwUNhUxGn8CdYzwQcxwDyoY5yP4bYtTIkQdPHhk4AZ5vyuShhmgLD1JqxkCYsF0A4enc2lvRdTaoEIZrtb6XP+MXwpJxCaDKUOOiUUrkBqjJf60OXyP2CtEFRvtcQT5ZNDXlJ6xwWLyjVb9zgK1wdWzaULbpzyWOytysioYMAytNuhyZM0OWvN5npG6+x55U8cS/9P7MasQ4GjW80yvbAosKsBvN11Ur5zIf8zMq088e5/eaXmTpBwjncLI8fJZFmX1zAqPMVG7iV+bSVSJoOgX5BlHlgMDRvHcqPiJFva+vLAWnluFEeEg66XVPOuW5OEPSPFc8BJqLlvZdCLIvYKkaWY5e/h0E88qQ4p2a1uIWTg55XXeIhtGJo98jN4DiFb3YepAGm77IjyQMZEQdw2r+js0WHXCZWT+ZWAqtlT7D9nUuezrII51tzkEd0NDOV5DQRuaVfdDbi3eoQ9jeOUd9ScgWpiDgkBwOgUHRQziamPGI0beOIAJrVO6jrFAE7LNue2qH38H3neErhlbtjYGAE="
+      },
+      {
+        "type": "text",
+        "text": "That email was mine, and I got the day wrong. You've got two swims this week, Mon 4:30 at West pool and Thu 5:15 at East pool. Which one was the email about, and what day should it have said?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 1001,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21378,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 345,
+      "output_tokens_details": {
+        "thinking_tokens": 277
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3973
+}
