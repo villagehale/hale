@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import type { CalendarInviteSender } from '@hale/worker/executor';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeChannel } from '~/lib/channel/fakes';
@@ -12,7 +13,13 @@ import type {
   CalendarCancelRequest,
 } from '~/lib/loop/voice/calendar-cancel-voice';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { createCalendarInviteSender, retryDeferredCalendarCancels } from './calendar-invite';
+import {
+  CANCEL_RETRY_MAX_ATTEMPTS,
+  CANCEL_RETRY_MAX_EVENTS,
+  createCalendarInviteSender,
+  retryDeferredCalendarCancels,
+  retryIsDue,
+} from './calendar-invite';
 import { eventInviteToken, eventInviteUrl } from './ics-invite';
 
 /**
@@ -289,6 +296,31 @@ describe('the tap-to-add link a text-only family gets', () => {
       .where(eq(schema.familyEvents.id, familyEventId));
   }
 
+  /** A GENUINE cancellation: the soft delete plus the executor's cancel audit row. */
+  async function cancelGenuinely(familyId: string, familyEventId: string): Promise<void> {
+    await softDelete(familyEventId);
+    await db.database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'action.calendar_cancelled',
+      targetTable: 'family_events',
+      targetId: familyEventId,
+      occurredAt: NOON,
+    });
+  }
+
+  /** A sender that records which events the sweep re-drove, for one family. */
+  function spySender(familyId: string) {
+    const calls: string[] = [];
+    const spy = {
+      send: async (request: { familyId: string; familyEventId: string }) => {
+        if (request.familyId === familyId) calls.push(request.familyEventId);
+        return { status: 'reported', parents: [] };
+      },
+    } as unknown as CalendarInviteSender;
+    return { spy, calls };
+  }
+
   it('texts a parent who got the link that the event is cancelled, in the composed words', async () => {
     const { familyId, parentUserId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);
@@ -343,7 +375,7 @@ describe('the tap-to-add link a text-only family gets', () => {
     const { familyId, parentUserId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);
     await sender().send({ familyId, familyEventId, method: 'REQUEST' });
-    await softDelete(familyEventId);
+    await cancelGenuinely(familyId, familyEventId);
     cancelOutcome = { status: 'deferred', reason: 'model_failed' };
     await sender().send({ familyId, familyEventId, method: 'CANCEL' });
     const mine = () => sms.calls.filter((call) => call.userId === parentUserId).length;
@@ -356,8 +388,8 @@ describe('the tap-to-add link a text-only family gets', () => {
     await retryDeferredCalendarCancels(db.database, sender(), NOON);
     expect(mine()).toBe(before + 1);
 
-    // Landed: the next tick texts this parent nothing more.
-    await retryDeferredCalendarCancels(db.database, sender(), NOON);
+    // Landed: the next due tick texts this parent nothing more.
+    await retryDeferredCalendarCancels(db.database, sender(), new Date(NOON.getTime() + 3_600_000));
     expect(mine()).toBe(before + 1);
   });
 
@@ -365,12 +397,73 @@ describe('the tap-to-add link a text-only family gets', () => {
     const { familyId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);
     await sender().send({ familyId, familyEventId, method: 'REQUEST' });
-    await softDelete(familyEventId);
+    await cancelGenuinely(familyId, familyEventId);
     const after = new Date('2026-07-23T15:00:00.000Z');
     const callsBefore = cancelCalls.length;
     const summary = await retryDeferredCalendarCancels(db.database, sender(), after);
     expect(summary.events).toBe(0);
     expect(cancelCalls).toHaveLength(callsBefore);
+  });
+
+  it('VIL-449 · the retry sweep ignores a soft delete that is not a genuine cancellation', async () => {
+    const { familyId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    // untrack / backfill / mirror cleanup: soft-deleted, no cancel audit row.
+    await softDelete(familyEventId);
+    const { spy, calls } = spySender(familyId);
+    await retryDeferredCalendarCancels(db.database, spy, NOON);
+    expect(calls).toEqual([]);
+  });
+
+  it('VIL-449 · the retry sweep takes the soonest events first, at most the per-tick cap', async () => {
+    const { familyId } = await textOnlyFamily();
+    const base = new Date('2026-07-24T14:00:00.000Z').getTime();
+    const ids: string[] = [];
+    // Seeded latest-start first, so insertion order is the reverse of start order.
+    for (let i = CANCEL_RETRY_MAX_EVENTS; i >= 0; i -= 1) {
+      const id = await seedPlacement(familyId, { startsAt: new Date(base + i * 3_600_000) });
+      await cancelGenuinely(familyId, id);
+      ids.unshift(id);
+    }
+    const { spy, calls } = spySender(familyId);
+    await retryDeferredCalendarCancels(db.database, spy, NOON);
+    expect(calls).toEqual(ids.slice(0, CANCEL_RETRY_MAX_EVENTS));
+  });
+
+  it('VIL-449 · the retry sweep backs off between attempts and stops at the attempt cap', async () => {
+    const { familyId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId, {
+      startsAt: new Date('2026-07-29T14:00:00.000Z'),
+    });
+    await cancelGenuinely(familyId, familyEventId);
+    const { spy, calls } = spySender(familyId);
+    const hour = 3_600_000;
+    let at = NOON.getTime();
+    await retryDeferredCalendarCancels(db.database, spy, new Date(at));
+    expect(calls).toHaveLength(1);
+    // Inside the first backoff window: nothing.
+    await retryDeferredCalendarCancels(db.database, spy, new Date(at + hour / 2));
+    expect(calls).toHaveLength(1);
+    for (let attempt = 1; attempt < CANCEL_RETRY_MAX_ATTEMPTS; attempt += 1) {
+      at += hour * 2 ** (attempt - 1);
+      await retryDeferredCalendarCancels(db.database, spy, new Date(at));
+      expect(calls).toHaveLength(attempt + 1);
+    }
+    // Cap reached: never again, however long we wait.
+    await retryDeferredCalendarCancels(db.database, spy, new Date(at + 100 * hour));
+    expect(calls).toHaveLength(CANCEL_RETRY_MAX_ATTEMPTS);
+  });
+
+  it('VIL-449 · retryIsDue doubles the wait each attempt', () => {
+    const last = NOON;
+    const at = (ms: number) => new Date(NOON.getTime() + ms);
+    expect(retryIsDue(undefined, NOON)).toBe(true);
+    expect(retryIsDue({ count: 1, last }, at(3_599_999))).toBe(false);
+    expect(retryIsDue({ count: 1, last }, at(3_600_000))).toBe(true);
+    expect(retryIsDue({ count: 3, last }, at(4 * 3_600_000 - 1))).toBe(false);
+    expect(retryIsDue({ count: 3, last }, at(4 * 3_600_000))).toBe(true);
+    expect(retryIsDue({ count: CANCEL_RETRY_MAX_ATTEMPTS, last }, at(1e12))).toBe(false);
   });
 
   it('names never_linked for a parent who was never texted the link, and texts nothing', async () => {

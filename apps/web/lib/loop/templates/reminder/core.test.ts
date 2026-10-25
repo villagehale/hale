@@ -11,23 +11,12 @@ import type { ReminderChild, ReminderEventView } from './payload';
 const NOW = new Date('2026-07-25T12:00:00Z');
 const TZ = 'America/Toronto';
 
-const maya: ReminderChild = {
-  id: 'c-maya',
-  name: 'Maya',
-  dateOfBirth: '2019-03-10',
-  gender: 'girl',
-};
+const maya: ReminderChild = { id: 'c-maya', name: 'Maya', dateOfBirth: '2019-03-10', gender: 'girl' };
 // 2011 DOB is ~15y at NOW → deriveStage 'teenager' → forced generic.
 const teen: ReminderChild = { id: 'c-teen', name: 'Sam', dateOfBirth: '2011-01-01', gender: 'boy' };
 
 function ev(over: Partial<ReminderEventView> = {}): ReminderEventView {
-  return {
-    eventRef: 'e1',
-    title: 'Swim class',
-    startsAt: '2026-07-25T14:00:00Z',
-    childId: null,
-    ...over,
-  };
+  return { eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T14:00:00Z', childId: null, ...over };
 }
 
 describe("localDayLabel — the event's own family-local day, never a word for its distance", () => {

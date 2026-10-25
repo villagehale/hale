@@ -64,11 +64,7 @@ function fakeClient(text: string | { throws: true }): AgentClient {
   } as unknown as AgentClient;
 }
 
-function run(
-  text: string | { throws: true },
-  factSlots: string[],
-  capture: { agentRuns: Record<string, unknown>[] },
-) {
+function run(text: string | { throws: true }, factSlots: string[], capture: { agentRuns: Record<string, unknown>[] }) {
   return composeVoice<TestVoice>({
     skill: SKILL,
     context: { hi: true },
@@ -87,11 +83,7 @@ function run(
 describe('composeVoice', () => {
   it('turns a clean JSON answer into a typed voice and records a completed run', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
-    const { voice, degraded } = await run(
-      JSON.stringify({ line: 'a calm week ahead' }),
-      [],
-      capture,
-    );
+    const { voice, degraded } = await run(JSON.stringify({ line: 'a calm week ahead' }), [], capture);
     expect(degraded).toBe(false);
     expect(voice).toEqual({ line: 'a calm week ahead' });
     expect(capture.agentRuns).toHaveLength(1);
@@ -109,11 +101,7 @@ describe('composeVoice', () => {
 
   it('degrades when a voice string invents a fact (a time) not in the slots (rule #8)', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
-    const { voice, degraded, reason } = await run(
-      JSON.stringify({ line: 'see you at 9:15 sharp' }),
-      ['no times here'],
-      capture,
-    );
+    const { voice, degraded, reason } = await run(JSON.stringify({ line: 'see you at 9:15 sharp' }), ['no times here'], capture);
     expect(voice).toBeNull();
     expect(degraded).toBe(true);
     expect(reason).toBe('invented');
@@ -122,11 +110,7 @@ describe('composeVoice', () => {
 
   it('keeps a voice whose facts are all grounded in the slots', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
-    const { voice, degraded, reason } = await run(
-      JSON.stringify({ line: 'drop-off is at 9:15' }),
-      ['school run 9:15'],
-      capture,
-    );
+    const { voice, degraded, reason } = await run(JSON.stringify({ line: 'drop-off is at 9:15' }), ['school run 9:15'], capture);
     expect(degraded).toBe(false);
     expect(reason).toBeNull();
     expect(voice).toEqual({ line: 'drop-off is at 9:15' });

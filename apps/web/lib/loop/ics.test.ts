@@ -156,11 +156,7 @@ describe('generateEventInvite — RFC 5545/5546 REQUEST', () => {
     const first = parseSingleEvent(generateEventInvite(invite(), INVITE_OPTIONS)).uid;
     const second = parseSingleEvent(
       generateEventInvite(
-        invite({
-          sequence: 7,
-          summary: 'Swim meet — moved',
-          startsAt: new Date('2026-08-01T18:00:00.000Z'),
-        }),
+        invite({ sequence: 7, summary: 'Swim meet — moved', startsAt: new Date('2026-08-01T18:00:00.000Z') }),
         { ...INVITE_OPTIONS, now: new Date('2026-07-30T09:00:00.000Z') },
       ),
     ).uid;

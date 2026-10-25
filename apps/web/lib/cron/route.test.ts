@@ -88,7 +88,7 @@ vi.mock('~/lib/channel/proactive/review', () => ({
 vi.mock('~/lib/loop/calendar-invite', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/loop/calendar-invite')>()),
   createCalendarInviteSender: () => ({}),
-  retryDeferredCalendarCancels: async () => ({ examined: 0, retried: 0 }),
+  retryDeferredCalendarCancels: async () => ({ events: 0, sent: 0, deferred: 0, failed: 0 }),
 }));
 
 const SECRET = 'cron-secret-xyz';

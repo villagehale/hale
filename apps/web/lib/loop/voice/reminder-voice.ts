@@ -3,7 +3,11 @@ import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { loadReminderVoiceSkill } from '~/lib/cron/skill';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
-import { eventDescriptor, localDayLabel, localTimeLabel } from '~/lib/loop/templates/reminder/core';
+import {
+  eventDescriptor,
+  localDayLabel,
+  localTimeLabel,
+} from '~/lib/loop/templates/reminder/core';
 import type {
   ReminderChild,
   ReminderEventView,

@@ -1,9 +1,4 @@
-import type {
-  ChannelKind,
-  LoopMessage,
-  RenderedContent,
-  TemplateRenderer,
-} from '~/lib/channel/types';
+import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from '~/lib/channel/types';
 import { asCaregiverReminderPayload } from './payload';
 import { renderCaregiverReminderSms } from './reminder-sms';
 

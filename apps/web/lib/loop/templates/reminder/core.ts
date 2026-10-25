@@ -103,11 +103,7 @@ export function eventDescriptor(
 ): string {
   const child = eventChild(event, children);
   if (isPrivateEvent(event, children, now)) return GENERIC_DESCRIPTOR;
-  if (
-    child &&
-    level !== 'generic' &&
-    !event.title.toLowerCase().includes(child.name.toLowerCase())
-  ) {
+  if (child && level !== 'generic' && !event.title.toLowerCase().includes(child.name.toLowerCase())) {
     const leveled = loopChildName({ ...child, gender: child.gender ?? '' }, level, now);
     return `${leveled} — ${event.title}`;
   }

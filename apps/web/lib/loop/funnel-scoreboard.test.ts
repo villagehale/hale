@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type FunnelScoreboard,
-  type IntakeMessageRow,
-  type NudgeRow,
-  type ReplyRow,
   computeNudgeEngagement,
   computeTtfa,
   formatFunnelScoreboard,
+  type FunnelScoreboard,
   percentileNearestRank,
+  type IntakeMessageRow,
+  type NudgeRow,
+  type ReplyRow,
 } from './funnel-scoreboard';
 
 /**
@@ -186,7 +186,10 @@ describe('computeNudgeEngagement — replies within 48h', () => {
   it('does not credit a reply that came after 48h, or from a different family', () => {
     const result = computeNudgeEngagement(
       [nudge(FAMILY_A, '2026-08-01T09:00:00Z'), nudge(FAMILY_B, '2026-08-01T09:00:00Z')],
-      [reply(FAMILY_A, '2026-08-03T09:00:01Z'), reply(FAMILY_C, '2026-08-01T10:00:00Z')],
+      [
+        reply(FAMILY_A, '2026-08-03T09:00:01Z'),
+        reply(FAMILY_C, '2026-08-01T10:00:00Z'),
+      ],
       WINDOW_END,
     );
 
@@ -244,10 +247,7 @@ function lineStartingWith(scoreboard: FunnelScoreboard, prefix: string): string 
 describe('formatFunnelScoreboard', () => {
   it('walks the intake funnel with each step converted from the one before it', () => {
     const line = lineStartingWith(
-      {
-        ...EMPTY,
-        intake: { sessionsStarted: 12, provisioned: 9, watchConsented: 5, sourceCoded: 4 },
-      },
+      { ...EMPTY, intake: { sessionsStarted: 12, provisioned: 9, watchConsented: 5, sourceCoded: 4 } },
       'Intake funnel',
     );
 
@@ -258,10 +258,7 @@ describe('formatFunnelScoreboard', () => {
 
   it('never divides by a zero step — an unreachable rate reads n/a', () => {
     const line = lineStartingWith(
-      {
-        ...EMPTY,
-        intake: { sessionsStarted: 3, provisioned: 0, watchConsented: 0, sourceCoded: 0 },
-      },
+      { ...EMPTY, intake: { sessionsStarted: 3, provisioned: 0, watchConsented: 0, sourceCoded: 0 } },
       'Intake funnel',
     );
 

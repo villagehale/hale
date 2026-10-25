@@ -170,12 +170,12 @@ describe('gradeW4Retention — families that came back a month in', () => {
   });
 
   it('scores 6 at half the north star, and 3 at a quarter of it', () => {
-    expect(gradeW4Retention([cohort(RETENTION_GRADED_WEEK, 40, retainedAt(0.5, 40))]).score).toBe(
-      6,
-    );
-    expect(gradeW4Retention([cohort(RETENTION_GRADED_WEEK, 40, retainedAt(0.25, 40))]).score).toBe(
-      3,
-    );
+    expect(
+      gradeW4Retention([cohort(RETENTION_GRADED_WEEK, 40, retainedAt(0.5, 40))]).score,
+    ).toBe(6);
+    expect(
+      gradeW4Retention([cohort(RETENTION_GRADED_WEEK, 40, retainedAt(0.25, 40))]).score,
+    ).toBe(3);
   });
 
   /** A measured zero over real families is a 0, not a shrug (rule 3): a month-old
