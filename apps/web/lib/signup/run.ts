@@ -601,6 +601,7 @@ async function runBrowserUseBranch(
     approvedPriceCents: number | null;
   },
 ): Promise<SignupRunResult> {
+  let allowanceHeld = false;
   const done = async (
     raw: BrowserUseHandoff,
     paymentSkipped: SignupPaymentSkipped | null = null,
@@ -617,7 +618,8 @@ async function runBrowserUseBranch(
     // before a run): release the held allowance. A started session keeps its
     // hold until its real cost replaces it.
     const settledCostUsd =
-      handoff.sessionCostUsd ?? (handoff.sessionId === null && handoff.runId === null ? '0' : null);
+      handoff.sessionCostUsd ??
+      (allowanceHeld && handoff.sessionId === null && handoff.runId === null ? '0' : null);
     if (settledCostUsd !== null) {
       await recordBrowserUseCost(database, {
         offerId: ctx.offerId,
@@ -704,6 +706,7 @@ async function runBrowserUseBranch(
     );
     return done(browserUseAbsent('error', 'spend_reserve_reached'), payment.skipped);
   }
+  allowanceHeld = true;
 
   let result: BrowserUseSignupResult;
   try {
