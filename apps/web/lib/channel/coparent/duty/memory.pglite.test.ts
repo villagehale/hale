@@ -202,7 +202,11 @@ describe('duty calendar memory', () => {
       .from(schema.familyMemoryFacts)
       .where(eq(schema.familyMemoryFacts.factKey, dutyKey));
     expect(beforeFacts).toHaveLength(1);
+    // Never a real send: a fake key and a mocked transport, whatever the shell holds.
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const tapbackFetch = vi.fn(async () => new Response('{}', { status: 201 }));
     const settled = await settleDutyMemory(db.database, {
+      fetch: tapbackFetch as unknown as typeof fetch,
       familyId: family.familyId,
       actorUserId: family.parentUserId,
       text: 'never mind',
