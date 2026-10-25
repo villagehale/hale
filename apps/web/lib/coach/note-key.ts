@@ -83,14 +83,17 @@ export const CHANNEL_SMS_THREAD_TITLE = 'Texts with Hale';
  * VIL-439 (T18) — which thread a channel coach turn reads and appends to. A group turn
  * gets only that group's thread, never a parent's 1:1 history; a 1:1 turn gets the
  * parent's own thread. Single source for the router, so it is testable.
+ *
+ * A group turn that cannot name its group (no chat id, or not iMessage) is REFUSED with
+ * null. It never falls back to the sender's 1:1 thread: that thread carries private
+ * history the rest of the group must not get.
  */
 export function channelThreadNoteKey(input: {
   inGroup: boolean;
   channel: string;
   chatId: string | null;
   parentUserId: string;
-}): string {
-  return input.inGroup && input.channel === 'imessage' && input.chatId
-    ? channelGroupNoteKey(input.chatId)
-    : channelSmsNoteKey(input.parentUserId);
+}): string | null {
+  if (!input.inGroup) return channelSmsNoteKey(input.parentUserId);
+  return input.channel === 'imessage' && input.chatId ? channelGroupNoteKey(input.chatId) : null;
 }
