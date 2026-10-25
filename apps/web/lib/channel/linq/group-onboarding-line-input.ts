@@ -39,7 +39,12 @@ export type GroupOnboardingRequest =
     }
   | { kind: 'text_me_directly'; name: string | null }
   | { kind: 'group_quiet_notice'; reason: GroupQuietReason; count: number }
-  | { kind: 'stop_ack' };
+  | { kind: 'stop_ack' }
+  | {
+      /** VIL-438 (T22): first message to someone a parent added. Facts only. */
+      kind: 'member_welcome';
+      adderName: string | null;
+    };
 
 export type GroupOnboardingKind = GroupOnboardingRequest['kind'];
 
@@ -146,6 +151,24 @@ export function groupOnboardingLineInput(
         ...base,
         facts: {},
         questions: 0,
+        mustMention: [],
+        wayOut: true,
+      };
+    case 'member_welcome':
+      // VIL-438 (T22) copy facts (Sloane): who added Hale, what Hale can see (only
+      // this chat), how to stop (any wording, per person), and that nobody else has to
+      // sign up because one family's plan covers the whole group.
+      return {
+        ...base,
+        facts: {
+          adderName: request.adderName,
+          seesOnlyThisChat: true,
+          noSignUpNeeded: true,
+          planCoversWholeGroup: true,
+          stopIsPerPersonInAnyWording: true,
+        },
+        questions: 1,
+        // No mustMention: a name check would be word matching on parent-facing copy.
         mustMention: [],
         wayOut: true,
       };
