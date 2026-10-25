@@ -36,6 +36,7 @@ import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
@@ -43,6 +44,7 @@ import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
+import { productionApprovalReceiptVoice } from '~/lib/channel/router/approval-receipt';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
 import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
@@ -426,7 +428,8 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
       ...defaultVillageIntroReplyDeps(consent),
       saidLine: ports.saidLine ?? createSaidLineWriter(screenClient),
     }),
-    approvalHandler(defaultApprovalSpine()),
+    // VIL-454 (T6): AI-written receipts when APPROVAL_RECEIPT_VOICE_ENABLED is `true`.
+    approvalHandler(defaultApprovalSpine(), productionApprovalReceiptVoice(familySpeechLanguage)),
     connectorLinkHandler(),
     // Beside the connect half, and the position is free rather than load-bearing: the
     // two matchers are disjoint by construction (connect/detect.ts), so neither can

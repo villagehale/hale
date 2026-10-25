@@ -74,6 +74,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { CALENDAR_CONSENT_FIXTURES } from './calendar-consent-fixtures.mjs';
 import {
   cacheGet,
   cacheKey,
@@ -449,6 +450,10 @@ function check(fixture, reading) {
     failures.push(`reason ${reading.reason} - wanted ${want.reason}`);
   }
 
+  if (fixture.mustAsk && reading.status === 'unresolved' && !warrantsClarifying(reading.reason)) {
+    failures.push(`went quiet on an unclear answer: ${reading.reason} asks nothing back`);
+  }
+
   if (
     fixture.neverClarify &&
     reading.status === 'unresolved' &&
@@ -493,10 +498,20 @@ async function main() {
     ? JEV_MODEL
     : (process.env.EVAL_GATEWAY_MODEL ?? agent.pickModel(skill.meta.task));
   const subjectLane = agent.pickLane(skill.meta.task);
+  // VIL-454: `--corpus=calendar-consent` runs the unclear-calendar-answer cases instead of
+  // the default corpus (kept separate so the CI corpus and its cache are untouched).
+  const corpus =
+    process.argv.find((arg) => arg.startsWith('--corpus='))?.split('=')[1] ?? 'default';
+  const corpora = {
+    default: REPLY_RESOLVER_FIXTURES,
+    'calendar-consent': CALENDAR_CONSENT_FIXTURES,
+  };
+  const baseFixtures = corpora[corpus];
+  if (!baseFixtures) throw new Error(`unknown --corpus=${corpus}`);
   const allFixtures =
     minSamples === null
-      ? REPLY_RESOLVER_FIXTURES
-      : expandSyntheticFixtures('reply-resolver', REPLY_RESOLVER_FIXTURES, minSamples, {
+      ? baseFixtures
+      : expandSyntheticFixtures('reply-resolver', baseFixtures, minSamples, {
           applyProfileReplacements: false,
           vary: (fixture, { reference }) => {
             const ids = new Map();

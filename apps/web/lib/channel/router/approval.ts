@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import type { ApprovalReceiptVoice, ReceiptKind } from './approval-receipt';
 import {
   UNDONE_RECEIPT,
   approvedReceipt,
@@ -8,7 +9,7 @@ import {
   nothingToUndoReply,
   outOfRangeReply,
 } from './copy';
-import { MAX_LISTED_APPROVALS, type FastPathCommand } from './fast-path';
+import { type FastPathCommand, MAX_LISTED_APPROVALS } from './fast-path';
 
 /**
  * VIL-220 · C1 — resolving a fast-path command against the approvals spine.
@@ -126,7 +127,7 @@ export type ApprovalStatus =
 
 export interface ApprovalOutcome {
   status: ApprovalStatus;
-  /** What to text back, or null when the message was not claimed. */
+  /** What to text back; null when not claimed, or when a bound receipt voice wrote nothing. */
   reply: string | null;
   /** The action acted on, when exactly one was. */
   actionId: string | null;
@@ -155,9 +156,15 @@ export async function resolveApproval(
     targetActionId?: string;
   },
   spine: ApprovalSpine,
+  /**
+   * VIL-454 (T6): when bound (APPROVAL_RECEIPT_VOICE_ENABLED), the approved / declined /
+   * undone receipt is AI-written instead of the fixed line. A failed compose is a null
+   * reply: the answer is recorded either way, and nothing canned goes out.
+   */
+  receiptVoice?: ApprovalReceiptVoice,
 ): Promise<ApprovalOutcome> {
   if (input.command.verb === 'undo') {
-    return resolveUndo(database, input, spine);
+    return resolveUndo(database, input, spine, receiptVoice);
   }
 
   const pending = await spine.listPending(database, input.familyId);
@@ -225,9 +232,17 @@ export async function resolveApproval(
   if (!outcome.ok) {
     return { status: 'conflict', reply: conflictReply(outcome.reason), actionId: target.actionId };
   }
+  const kind: ReceiptKind = approving ? 'approved' : 'declined';
   return {
-    status: approving ? 'approved' : 'declined',
-    reply: approving ? approvedReceipt(target.actionType) : declinedReceipt(target.actionType),
+    status: kind,
+    reply: await receiptReply(
+      database,
+      receiptVoice,
+      kind,
+      target.actionType,
+      input.familyId,
+      () => (approving ? approvedReceipt(target.actionType) : declinedReceipt(target.actionType)),
+    ),
     actionId: target.actionId,
   };
 }
@@ -261,10 +276,32 @@ function pick(
  * same gate the app's undo enforces, and a second copy of it would be a second copy
  * that can drift.
  */
+/** The receipt: AI-written when a voice is bound, today's fixed line when it is not. */
+async function receiptReply(
+  database: Database,
+  voice: ApprovalReceiptVoice | undefined,
+  kind: ReceiptKind,
+  actionType: string,
+  familyId: string,
+  fixed: () => string,
+): Promise<string | null> {
+  if (!voice) return fixed();
+  try {
+    return await voice({ database, kind, actionType, familyId });
+  } catch (err) {
+    console.error(
+      { kind, err: err instanceof Error ? err.name : 'unknown' },
+      'approval receipt: voice threw, nothing sent',
+    );
+    return null;
+  }
+}
+
 async function resolveUndo(
   database: Database,
   input: { familyId: string; parentUserId: string; now: Date },
   spine: ApprovalSpine,
+  receiptVoice?: ApprovalReceiptVoice,
 ): Promise<ApprovalOutcome> {
   const target = await spine.latestUndoable(database, input.familyId, input.now);
   if (!target) {
@@ -278,7 +315,18 @@ async function resolveUndo(
     now: input.now,
   });
   return outcome.ok
-    ? { status: 'undone', reply: UNDONE_RECEIPT, actionId: target.actionId }
+    ? {
+        status: 'undone',
+        reply: await receiptReply(
+          database,
+          receiptVoice,
+          'undone',
+          target.actionType,
+          input.familyId,
+          () => UNDONE_RECEIPT,
+        ),
+        actionId: target.actionId,
+      }
     : { status: 'conflict', reply: conflictReply(outcome.reason), actionId: target.actionId };
 }
 
