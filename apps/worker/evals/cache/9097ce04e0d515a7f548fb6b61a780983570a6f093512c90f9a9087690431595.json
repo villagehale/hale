@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly says Hale won't add or text them first and that the person can write to Hale directly by SMS, using tu and real accents. However, it invents a role-like phrase 'l'organisation de l'année des enfants' that is not in the facts, and the phrasing 'elle peut simplement m'écrire' is fine but the closing clause adds unrequested explanation. Slight padding and an unsupported detail lower the score.",
+    "score": 3
+  }
+}
