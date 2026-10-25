@@ -55,17 +55,15 @@ import type { threadProactiveMessage } from '~/lib/channel/thread';
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
-import { projectCivicCandidates } from '~/lib/civic/project';
 import { recordCommitment } from '~/lib/commitments/ledger';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
 import { reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
-import { type DiscoveryTrigger, defaultDiscoveryTrigger } from '~/lib/onboarding/trigger-discovery';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import { type LatLng, geocodeArea } from '~/lib/village/geocode';
+import { recordActivityOffers } from '~/lib/village/live';
 import { groupsFromFindBody } from './activity-map';
 import type { IntakeAnswerComposer } from './answer';
 import {
@@ -239,26 +237,6 @@ export interface IntakeDeps {
    * wiring error, not a silent skip of the later ask. */
   identityAsk: IdentityAskVoice;
   limiter: RateLimiter;
-  /** Places this family near the free civic sessions already on file, INLINE — pure DB
-   * work over rows the civic sweep wrote days ago, so it is fast enough to run before
-   * the first reply is composed and is the difference between a real first radar and
-   * "still learning your area". */
-  seedCivic?: (
-    database: Database,
-    familyId: string,
-    areaCoarse: string | null,
-    center: LatLng | null,
-    now: Date,
-  ) => Promise<number>;
-  /** The COARSE area's centroid (rule #1 — an FSA's middle, never a home), so the
-   * FIRST radar is filtered by distance like every later one. Null is a valid
-   * answer, not a failure: the projection then falls back to its municipality
-   * gate. Injected so no test reaches the network. */
-  resolveCenter?: (areaCoarse: string) => Promise<LatLng | null>;
-  /** Populates the village in the BACKGROUND (one model call + geocodes — far too slow
-   * for an inbound webhook). Its payoff is the 48h nudge, which otherwise sweeps a
-   * family whose candidate table is empty. Same trigger the web onboarding path uses. */
-  discoveryTrigger?: DiscoveryTrigger;
   /**
    * Live "this week" lookup for the first-touch ladder. Absent is named
    * `not_configured` and the locked empty line goes out — never a guess.
@@ -1072,6 +1050,57 @@ async function offScriptReply(
 }
 
 /**
+ * The opening turn of a number Hale has never heard from: `intake_started` plus
+ * `first_text_received`, the SMS funnel's first step. Keyed on the intake session id,
+ * like the rest of intake (no phone, no hash of one). `source_code` is the poster/site
+ * code the first text carried (session.sourceCode, read by sourceCodeFromBody), and it
+ * is ALSO set once on the person, so retention can break down by poster.
+ */
+async function reportOpening(
+  deps: IntakeDeps,
+  session: IntakeSession,
+  inbound: Inbound,
+  language: ReplyLanguage,
+): Promise<void> {
+  await reportIntakeStep(deps, 'intake_started', session.id, {
+    source_code: session.sourceCode,
+  });
+  const channel = inbound.transport === 'imessage' ? 'imessage' : 'sms';
+  try {
+    await (deps.capture ?? captureServerEvent)(
+      'first_text_received',
+      session.id,
+      {
+        source_code: session.sourceCode,
+        door: channel,
+        channel,
+        locale: language,
+      },
+      session.sourceCode ? { setOnce: { first_source_code: session.sourceCode } } : {},
+    );
+  } catch (err) {
+    console.warn('intake analytics: first text not recorded', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+  }
+}
+
+/** Counts and elapsed time only — never a word of the transcript. Exported for tests. */
+export function intakeShape(
+  transcript: readonly TranscriptEntry[],
+  now: Date,
+): { step_count: number; duration_s?: number } {
+  const inbound = transcript.filter((e) => e.direction === 'in');
+  const first = inbound[0] ? Date.parse(inbound[0].at) : Number.NaN;
+  return {
+    step_count: inbound.length,
+    ...(Number.isFinite(first)
+      ? { duration_s: Math.max(0, Math.round((now.getTime() - first) / 1000)) }
+      : {}),
+  };
+}
+
+/**
  * One end of the F14 funnel, recorded.
  *
  * DISTINCT ID IS THE INTAKE SESSION'S OWN ROW ID — a random uuid minted before this
@@ -1704,7 +1733,7 @@ async function friendOnboardingTurn(
     clarify: session.firstTouch?.clarify ?? null,
   };
   if (children && children.length > 0 && location && nextPlace) {
-    if (opening) await reportIntakeStep(deps, 'intake_started', session.id);
+    if (opening) await reportOpening(deps, session, inbound, language);
     return provision(
       database,
       {
@@ -1732,7 +1761,7 @@ async function friendOnboardingTurn(
       },
       now,
     );
-    await reportIntakeStep(deps, 'intake_started', session.id);
+    await reportOpening(deps, session, inbound, language);
     return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
   }
   if (voiced) {
@@ -1777,7 +1806,7 @@ async function friendOnboardingTurn(
     },
     now,
   );
-  if (opening) await reportIntakeStep(deps, 'intake_started', session.id);
+  if (opening) await reportOpening(deps, session, inbound, language);
   if (waitingAges) {
     return { status: 'first_touch', step: opening ? 'find_sent' : 'ages_waiting' };
   }
@@ -2682,8 +2711,6 @@ async function provision(
   const provisioned: IntakeSession = { ...session, familyId, userId };
   const ctx = sendContext({ session: provisioned, phoneE164, inbound, now });
 
-  await seedFirstRadar(database, { familyId, areaCoarse: gathered.location.areaCoarse, now }, deps);
-
   deps.keepTyping?.();
   const radar = await deps.radar.compose({
     familyId,
@@ -2778,11 +2805,19 @@ async function provision(
       ),
     ]);
     if (map && map.source !== 'unsent') {
+      let delivered = false;
       for (const bubble of map.bubbles) {
         if (bubble.trim().length === 0) continue;
-        await sendAndRecord(database, ctx, bubble, deps, []);
+        const sentMap = await sendAndRecord(database, ctx, bubble, deps, []);
+        if (!sentMap.channelMessageId) {
+          delivered = false;
+          break;
+        }
+        delivered = true;
         deps.keepTyping?.();
       }
+      const offered = radar.groups?.flatMap((group) => group.picks ?? []) ?? [];
+      if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
     outboundBody = friendOutbound(spoken) ?? '';
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
@@ -2968,6 +3003,7 @@ async function provision(
   // card" must not be able to look like a card that exists.
   await reportIntakeStep(deps, 'intake_completed', session.id, {
     source_code: session.sourceCode,
+    ...intakeShape(gathered.transcript, now),
   });
   return { status: 'provisioned', familyId };
 }
@@ -2996,45 +3032,6 @@ async function provision(
  * Neither may fail the intake: a parent has already been provisioned by this point, and
  * a missing weekend suggestion is not worth losing them over (rule #8 boundary catch).
  */
-async function seedFirstRadar(
-  database: Database,
-  args: { familyId: string; areaCoarse: string | null; now: Date },
-  deps: IntakeDeps,
-): Promise<void> {
-  // Resolved OUTSIDE the projection's try, and degrading to null rather than
-  // throwing: a geocoding miss must cost this family proximity, never the whole
-  // seeding — an unplaced projection still has its municipality gate.
-  const center = await resolveSeedCenter(args.areaCoarse, deps);
-  try {
-    const seedCivic = deps.seedCivic ?? projectCivicCandidates;
-    await seedCivic(database, args.familyId, args.areaCoarse, center, args.now);
-  } catch (err) {
-    console.error('intake civic projection failed (intake unaffected)', err);
-  }
-  try {
-    const trigger = deps.discoveryTrigger ?? defaultDiscoveryTrigger();
-    trigger(args.familyId, database);
-  } catch (err) {
-    console.error('intake first-village discovery trigger failed (intake unaffected)', err);
-  }
-}
-
-/** The family's coarse centroid, or null when there is no area or it cannot be
- * placed. Never throws — "we could not place them" is an answer the projection
- * knows how to act on. */
-async function resolveSeedCenter(
-  areaCoarse: string | null,
-  deps: IntakeDeps,
-): Promise<LatLng | null> {
-  if (areaCoarse === null) return null;
-  try {
-    return await (deps.resolveCenter ?? geocodeArea)(areaCoarse);
-  } catch (err) {
-    console.error('intake coarse-area geocode failed (projection falls back to area)', err);
-    return null;
-  }
-}
-
 async function handleWatchReply(
   database: Database,
   args: { session: IntakeSession; phoneE164: string; inbound: Inbound; now: Date },

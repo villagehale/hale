@@ -54,8 +54,11 @@ describe('introAskRefusals', () => {
 
   describe('the keyword instruction - the defect this arc removes', () => {
     it.each([
-      ["Want an intro? Reply YES INTRO or NO INTRO.", 'the card that shipped'],
-      ['Other Hale families are near you. Reply YES INTROS or NO INTROS.', 'the opt-in that shipped'],
+      ['Want an intro? Reply YES INTRO or NO INTRO.', 'the card that shipped'],
+      [
+        'Other Hale families are near you. Reply YES INTROS or NO INTROS.',
+        'the opt-in that shipped',
+      ],
       ['Want an intro? Just text yes or no.', 'a softer instruction'],
       ['Want an intro? Respond with YES.', 'a single-token instruction'],
       ['Want an intro? Send NO to skip.', 'the refusal half alone'],
@@ -81,9 +84,9 @@ describe('introAskRefusals', () => {
 
   describe('one speaker, first person - found by the first live recording', () => {
     it.each([
-      'A Hale family near you has a toddler around Maya\'s age. Hale can make an intro?',
-      'A Hale family near you has a toddler around Maya\'s age. Hale will introduce you?',
-      'A Hale family near you has a toddler around Maya\'s age - Hale has an intro for you?',
+      "A Hale family near you has a toddler around Maya's age. Hale can make an intro?",
+      "A Hale family near you has a toddler around Maya's age. Hale will introduce you?",
+      "A Hale family near you has a toddler around Maya's age - Hale has an intro for you?",
     ])('refuses Hale talking about Hale: %j', (body) => {
       expect(introAskRefusals(body, PROPOSAL)).toContain('third_person_self');
     });
@@ -119,7 +122,10 @@ describe('introAskRefusals', () => {
   describe('the pinned facts', () => {
     it('refuses a card that drops the counterpart band word', () => {
       expect(
-        introAskRefusals("A Hale family near you has a child around Maya's age. Want an intro?", PROPOSAL),
+        introAskRefusals(
+          "A Hale family near you has a child around Maya's age. Want an intro?",
+          PROPOSAL,
+        ),
       ).toContain('counterpart_word_missing');
     });
 
@@ -142,7 +148,10 @@ describe('introAskRefusals', () => {
 
     it('refuses a card that throws the activity away', () => {
       expect(
-        introAskRefusals("A Hale family near you has a toddler around Maya's age. Want an intro?", ANCHORED),
+        introAskRefusals(
+          "A Hale family near you has a toddler around Maya's age. Want an intro?",
+          ANCHORED,
+        ),
       ).toContain('anchor_missing');
     });
 
@@ -195,10 +204,10 @@ describe('introAskRefusals', () => {
 
     it('refuses a curly apostrophe - one character doubles the whole message', () => {
       expect(
-        introAskRefusals(
-          'A Hale family near you has a toddler around Maya’s age. Want an intro?',
-          { ...PROPOSAL, ownChildPossessive: 'Maya’s' },
-        ),
+        introAskRefusals('A Hale family near you has a toddler around Maya’s age. Want an intro?', {
+          ...PROPOSAL,
+          ownChildPossessive: 'Maya’s',
+        }),
       ).toContain('not_gsm7');
     });
 
@@ -213,10 +222,7 @@ describe('introAskRefusals', () => {
 
     it('refuses a link and an address it could only have invented', () => {
       expect(
-        introAskRefusals(
-          "Maya's toddler intro is at https://hale.example/x - want it?",
-          PROPOSAL,
-        ),
+        introAskRefusals("Maya's toddler intro is at https://hale.example/x - want it?", PROPOSAL),
       ).toContain('carries_link');
       expect(
         introAskRefusals("Maya's toddler intro - mail me at hi@hale.example?", PROPOSAL),
@@ -225,7 +231,10 @@ describe('introAskRefusals', () => {
 
     it('refuses a fragment that does not start a sentence', () => {
       expect(
-        introAskRefusals("a Hale family near you has a toddler around Maya's age. Intro?", PROPOSAL),
+        introAskRefusals(
+          "a Hale family near you has a toddler around Maya's age. Intro?",
+          PROPOSAL,
+        ),
       ).toContain('not_a_sentence');
     });
 

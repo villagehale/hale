@@ -2,22 +2,13 @@ import { createHash } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, type Municipality, type ProgramDomain, schema } from '@hale/db';
 import { and, asc, eq, gte, lt, lte } from 'drizzle-orm';
-import type { Resend } from 'resend';
-import { founderAddress } from '~/lib/auth/founder-signal';
-import { createResendTransport } from '~/lib/channel/resend-transport';
-import {
-  type ProviderAbort,
-  type ProviderAlertSender,
-  providerPreflight,
-} from '~/lib/monitoring/provider-health';
+import { type ProviderAbort, providerPreflight } from '~/lib/monitoring/provider-health';
 import { DISCOVERY_TARGETS, type DiscoveryTarget } from './discovery-targets';
 import {
   type CycleIdentity,
   type ExtractedWindow,
-  REGISTRATION_TIME_ZONE,
   type StoredWindow,
   type VerifyOutcome,
-  type VerifyField,
   compareWindow,
   corroborationFailure,
   extractPublishedWindow,
@@ -39,8 +30,8 @@ import { inferredFieldsFor } from './registration-windows';
  *     sweep performs, on the only column it may touch.
  *   DISCREPANCY writes NOTHING — not the new date, and not `verified_at` either,
  *     so an unconfirmed row stays visibly stale instead of looking freshly
- *     checked. It becomes a founder-digest line carrying both instants, the
- *     source URL and the page's own words, for a human to decide.
+ *     checked. The row's outcome (both instants, the source URL and the page's
+ *     own words) is returned in the run summary for a human to decide.
  *   UNVERIFIED (page changed, cycle gone, model unsure, fetch failed) is a
  *     "needs a human look" line. Never a guess, never a silent pass.
  *
@@ -385,7 +376,7 @@ export function verifyWeekStart(now: Date): Date {
  * first. Same mechanism and same reasoning as the provider-incident claim: a
  * family-independent ops event, made atomic by rate_limits' unique index, so a
  * Vercel retry or a manual re-trigger cannot double-spend on fetches and model
- * calls or send a second founder email.
+ * calls.
  */
 export async function claimVerifySweepWeek(database: Database, now: Date): Promise<boolean> {
   const windowStart = verifyWeekStart(now);
@@ -395,7 +386,10 @@ export async function claimVerifySweepWeek(database: Database, now: Date): Promi
     .where(
       and(
         eq(schema.rateLimits.route, REGISTRATION_VERIFY_ROUTE),
-        lt(schema.rateLimits.windowStart, new Date(now.getTime() - CLAIM_RETENTION_DAYS * 86_400_000)),
+        lt(
+          schema.rateLimits.windowStart,
+          new Date(now.getTime() - CLAIM_RETENTION_DAYS * 86_400_000),
+        ),
       ),
     );
 
@@ -403,7 +397,11 @@ export async function claimVerifySweepWeek(database: Database, now: Date): Promi
     .insert(schema.rateLimits)
     .values({ identifier: 'weekly-sweep', route: REGISTRATION_VERIFY_ROUTE, windowStart, count: 1 })
     .onConflictDoNothing({
-      target: [schema.rateLimits.identifier, schema.rateLimits.route, schema.rateLimits.windowStart],
+      target: [
+        schema.rateLimits.identifier,
+        schema.rateLimits.route,
+        schema.rateLimits.windowStart,
+      ],
     })
     .returning({ id: schema.rateLimits.id });
 
@@ -437,160 +435,6 @@ export const recordVerifyRun: RecordVerifyRun = async (database, weekStart, coun
   await database.insert(schema.registrationVerifyRuns).values({ weekStart, ...counts });
 };
 
-// ── the digest ───────────────────────────────────────────────────────────────
-
-const FIELD_LABEL: Record<VerifyField, string> = {
-  previewAt: 'preview_at',
-  residentOpenAt: 'resident_open_at',
-  openAt: 'open_at',
-};
-
-/** `2026-08-11 06:30` in Toronto local time — the wall clock a parent would set
- * an alarm for, which is the only reading of these instants that means anything. */
-function localStamp(at: Date): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: REGISTRATION_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(at);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
-}
-
-function rowHeading(row: RowResult): string {
-  return `${row.municipality} · ${row.programDomain} · ${row.cycleLabel}`;
-}
-
-/**
- * The founder-digest body. Pure, so the wording is unit-tested directly.
- *
- * CONFIRMED ROWS ARE NOT LISTED. Confirmation is what silence means here; a
- * weekly wall of "still fine" is how a founder learns to skim past the one line
- * that mattered. The count is kept so "we checked, and they were fine" stays
- * legible.
- */
-export function formatRegistrationVerifyDigest(
-  summary: Pick<
-    RegistrationVerifySummary,
-    'checked' | 'confirmed' | 'discrepancies' | 'unverified' | 'rows' | 'discoveries'
-  >,
-  now: Date,
-): string {
-  const lines: string[] = [
-    `Hale · registration re-verify · ${localStamp(now).slice(0, 10)}`,
-    '',
-    `${summary.checked} upcoming windows checked — ${summary.confirmed} confirmed, ` +
-      `${summary.discrepancies} discrepancies, ${summary.unverified} could not be verified.`,
-  ];
-
-  const discrepancies = summary.rows.filter((r) => r.outcome.kind === 'discrepancy');
-  if (discrepancies.length > 0) {
-    lines.push('', 'DISCREPANCY — the page no longer says what we store');
-    for (const row of discrepancies) {
-      if (row.outcome.kind !== 'discrepancy') continue;
-      lines.push(`  ${rowHeading(row)}`);
-      for (const diff of row.outcome.diffs) {
-        const stored = diff.stored === null ? '(nothing stored)' : localStamp(diff.stored);
-        lines.push(`    ${FIELD_LABEL[diff.field]}: we store ${stored} · page says ${localStamp(diff.published)}`);
-      }
-      if (row.outcome.evidence) {
-        lines.push(`    the page's words: "${row.outcome.evidence}"`);
-      }
-      lines.push(`    ${row.sourceUrl}`);
-    }
-    lines.push(
-      '',
-      '  Nothing was changed. These rows keep their old dates and their old verified_at',
-      '  until a human reads the page and updates the seed.',
-    );
-  }
-
-  const unverified = summary.rows.filter((r) => r.outcome.kind === 'unverified');
-  if (unverified.length > 0) {
-    lines.push('', 'Could not verify — needs a human look');
-    for (const row of unverified) {
-      if (row.outcome.kind !== 'unverified') continue;
-      const detail = row.detail ? ` (${row.detail})` : '';
-      lines.push(`  ${rowHeading(row)} — ${row.outcome.reason}${detail}`);
-      lines.push(`    ${row.sourceUrl}`);
-    }
-  }
-
-  const found = summary.discoveries.filter((d) => d.published);
-  appendDiscoveries(
-    lines,
-    'ESCALATION — published 7 days ago and still not in the dataset',
-    found.filter((d) => d.escalated),
-  );
-  appendDiscoveries(
-    lines,
-    'new window published — add?',
-    found.filter((d) => !d.escalated),
-  );
-  if (found.length > 0) {
-    lines.push(
-      '',
-      '  Nothing was added. The dataset stays hand-verified — read the page, then',
-      '  add the row to registration-windows-data.ts.',
-    );
-  }
-
-  return lines.join('\n');
-}
-
-function appendDiscoveries(lines: string[], heading: string, discoveries: readonly DiscoveryResult[]): void {
-  if (discoveries.length === 0) return;
-  lines.push('', heading);
-  for (const discovery of discoveries) {
-    lines.push(
-      `  ${discovery.target.municipality} · ${discovery.target.programDomain} · ${discovery.target.cycleLabel}`,
-    );
-    const reading = discovery.reading;
-    if (reading) {
-      for (const [label, value] of [
-        ['preview', reading.preview],
-        ['resident open', reading.residentOpen],
-        ['general open', reading.generalOpen],
-      ] as const) {
-        if (value) {
-          lines.push(`    ${label}: ${value.date}${value.time ? ` ${value.time}` : ' (no time published)'}`);
-        }
-      }
-      if (reading.evidence) {
-        lines.push(`    the page's words: "${reading.evidence}"`);
-      }
-    }
-    if (discovery.sourceUrl) lines.push(`    ${discovery.sourceUrl}`);
-  }
-}
-
-const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
-
-/** Mirrors the loop-health / provider-alert sender exactly: same aloha@ identity,
- * same injectable client, same best-effort contract. */
-export function createRegistrationDigestSender(client?: Resend): ProviderAlertSender {
-  return {
-    async send(subject, text) {
-      const to = founderAddress();
-      if (!to) {
-        return false;
-      }
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey && !client) {
-        return false;
-      }
-      const transport = createResendTransport({ apiKey, client });
-      const from = process.env.WELCOME_FROM ?? DEFAULT_FROM;
-      const { error } = await transport.send({ from, to, subject, text });
-      return !error;
-    },
-  };
-}
-
 // ── orchestration ────────────────────────────────────────────────────────────
 
 export interface RegistrationVerifyDeps {
@@ -608,19 +452,19 @@ export interface RegistrationVerifyDeps {
   recordRun: RecordVerifyRun;
   /** Writes each discovery reading. Non-nullable (rule #11): a sweep that found
    * a date and kept it only in an email is the gap this table exists to close. */
-  recordDiscoveries: (database: Database, readings: readonly DiscoveryReadingInsert[]) => Promise<void>;
+  recordDiscoveries: (
+    database: Database,
+    readings: readonly DiscoveryReadingInsert[],
+  ) => Promise<void>;
   /** Published readings old enough to escalate. A failure here is logged by the
    * caller and treated as no history — an escalation that did not happen,
    * named, rather than a sweep that aborts. */
   loadDiscoveryHistory: (database: Database, now: Date) => Promise<PriorPublishedDiscovery[]>;
-  sender: ProviderAlertSender;
   preflight: typeof providerPreflight;
   discoveryTargets: readonly DiscoveryTarget[];
 }
 
-export function defaultRegistrationVerifyDeps(
-  client: AgentClient | null,
-): RegistrationVerifyDeps {
+export function defaultRegistrationVerifyDeps(client: AgentClient | null): RegistrationVerifyDeps {
   return {
     client,
     fetchPage: createFetchPage(),
@@ -634,7 +478,6 @@ export function defaultRegistrationVerifyDeps(
     recordRun: recordVerifyRun,
     recordDiscoveries: recordDiscoveryReadings,
     loadDiscoveryHistory: loadPriorPublishedDiscoveries,
-    sender: createRegistrationDigestSender(),
     preflight: providerPreflight,
     discoveryTargets: DISCOVERY_TARGETS,
   };
@@ -675,8 +518,15 @@ async function verifyRow(
   try {
     pageText = await getPage(row.sourceUrl);
   } catch (err) {
-    console.error({ err, windowId: row.id, url: row.sourceUrl }, 'registration verify: fetch failed');
-    return { ...base, outcome: { kind: 'unverified', reason: 'fetch_failed' }, detail: errorText(err) };
+    console.error(
+      { err, windowId: row.id, url: row.sourceUrl },
+      'registration verify: fetch failed',
+    );
+    return {
+      ...base,
+      outcome: { kind: 'unverified', reason: 'fetch_failed' },
+      detail: errorText(err),
+    };
   }
 
   let reading: ExtractedWindow;
@@ -863,7 +713,10 @@ export async function runRegistrationVerifySweep(
       await deps.markVerified(database, row.windowId, now);
       confirmed += 1;
     } catch (err) {
-      console.error({ err, windowId: row.windowId }, 'registration verify: verified_at bump failed');
+      console.error(
+        { err, windowId: row.windowId },
+        'registration verify: verified_at bump failed',
+      );
     }
   }
 
@@ -900,8 +753,7 @@ export async function runRegistrationVerifySweep(
     discoveries,
   };
 
-  // The tally, for the founder scorecard to grade the radar on. Best-effort by the same
-  // contract as the digest below: this is telemetry about a sweep that has already
+  // The tally, for the founder scorecard to grade the radar on. Best-effort: this is telemetry about a sweep that has already
   // happened, and losing the row must not turn a completed run into a failed one. Logged
   // rather than swallowed — a week graded "recorded no outcomes" is the visible cost.
   try {
@@ -913,33 +765,6 @@ export async function runRegistrationVerifySweep(
     });
   } catch (err) {
     console.error({ err }, 'registration verify: outcomes not recorded');
-  }
-
-  const actionable =
-    summary.discrepancies > 0 || summary.unverified > 0 || discoveries.some((d) => d.published);
-  if (actionable) {
-    const subject =
-      summary.discrepancies > 0
-        ? `Hale · registration re-verify: ${summary.discrepancies} discrepancies`
-        : discoveries.some((d) => d.escalated)
-          ? 'Hale · registration re-verify: discovery still open after 7 days'
-          : 'Hale · registration re-verify: needs a look';
-    try {
-      const delivered = await deps.sender.send(
-        subject,
-        formatRegistrationVerifyDigest(summary, now),
-      );
-      if (!delivered) {
-        // Refused before it left (no founder address / no Resend key) rather than
-        // thrown. Silent here would mean a sweep that found discrepancies and told
-        // nobody, reported as a clean run (VIL-267).
-        console.warn('registration verify: digest not delivered (alert sender unconfigured)');
-      }
-    } catch (err) {
-      // Best-effort by contract, exactly like the provider alert: a failed email
-      // must not turn a completed sweep into a failed run.
-      console.error({ err }, 'registration verify: digest send failed');
-    }
   }
 
   return summary;

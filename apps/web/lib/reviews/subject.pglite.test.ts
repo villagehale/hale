@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { resolveReviewSubject } from './subject';
 
 /**
@@ -14,7 +14,7 @@ import { resolveReviewSubject } from './subject';
  * structurally different problems with two different fixes.
  */
 
-/** A real uuid: `village_candidates.civic_venue_id` is a uuid column, and the registry
+/** A real uuid: `family_activity_history.civic_venue_id` is a uuid column, and the registry
  * ids the projection stamps on it are `civic_venues.id`. */
 const CIVIC_VENUE_ID = '9f1c2b6a-7d31-4c2e-9a54-0a2b3c4d5e6f';
 
@@ -45,7 +45,7 @@ async function seedCandidate(
   values: { placeId?: string | null; civicVenueId?: string | null; supersededAt?: Date },
 ): Promise<string> {
   const [candidate] = await db.database
-    .insert(schema.villageCandidates)
+    .insert(schema.familyActivityHistory)
     .values({
       familyId,
       title: 'Saturday storytime',
@@ -57,7 +57,7 @@ async function seedCandidate(
       civicVenueId: values.civicVenueId ?? null,
       supersededAt: values.supersededAt ?? null,
     })
-    .returning({ id: schema.villageCandidates.id });
+    .returning({ id: schema.familyActivityHistory.id });
   return candidate?.id as string;
 }
 
@@ -80,8 +80,7 @@ async function seedPlacement(
       source: 'village',
       eventType: 'activity_signup_open',
       dedupHash: `subject-${Math.random()}`,
-      payload:
-        provenance.shape === 'legacy_candidate_id' ? { candidate_id: provenance.id } : {},
+      payload: provenance.shape === 'legacy_candidate_id' ? { candidate_id: provenance.id } : {},
     })
     .returning({ id: schema.events.id });
 
@@ -125,10 +124,24 @@ describe('resolveReviewSubject', () => {
     const candidateId = await seedCandidate(familyId, { placeId: 'places/abc' });
     const familyEventId = await seedPlacement(familyId, {
       shape: 'source_ref',
-      table: 'village_candidates',
+      table: 'family_activity_history',
       id: candidateId,
     });
 
+    expect(await resolveReviewSubject(db.database, { familyId, familyEventId })).toEqual({
+      source: 'place',
+      ref: 'places/abc',
+    });
+  });
+
+  it('resolves a pre-migration sourceRef against preserved receipt IDs', async () => {
+    const familyId = await seedFamily();
+    const candidateId = await seedCandidate(familyId, { placeId: 'places/abc' });
+    const familyEventId = await seedPlacement(familyId, {
+      shape: 'source_ref',
+      table: 'village_candidates',
+      id: candidateId,
+    });
     expect(await resolveReviewSubject(db.database, { familyId, familyEventId })).toEqual({
       source: 'place',
       ref: 'places/abc',
@@ -157,7 +170,7 @@ describe('resolveReviewSubject', () => {
     });
     const familyEventId = await seedPlacement(familyId, {
       shape: 'source_ref',
-      table: 'village_candidates',
+      table: 'family_activity_history',
       id: candidateId,
     });
 
@@ -177,14 +190,14 @@ describe('resolveReviewSubject', () => {
       table: 'children',
       id: candidateId,
     });
-    expect(await resolveReviewSubject(db.database, { familyId, familyEventId: foreign })).toEqual(
-      { unresolved: 'foreign_source_table' },
-    );
+    expect(await resolveReviewSubject(db.database, { familyId, familyEventId: foreign })).toEqual({
+      unresolved: 'foreign_source_table',
+    });
 
     // The positive control: the same id, named as what it actually is, resolves.
     const ours = await seedPlacement(familyId, {
       shape: 'source_ref',
-      table: 'village_candidates',
+      table: 'family_activity_history',
       id: candidateId,
     });
     expect(await resolveReviewSubject(db.database, { familyId, familyEventId: ours })).toEqual({
@@ -198,21 +211,21 @@ describe('resolveReviewSubject', () => {
     const bare = await seedCandidate(familyId, { placeId: null, civicVenueId: null });
     const bareEvent = await seedPlacement(familyId, {
       shape: 'source_ref',
-      table: 'village_candidates',
+      table: 'family_activity_history',
       id: bare,
     });
-    expect(
-      await resolveReviewSubject(db.database, { familyId, familyEventId: bareEvent }),
-    ).toEqual({ unresolved: 'no_shared_identity' });
+    expect(await resolveReviewSubject(db.database, { familyId, familyEventId: bareEvent })).toEqual(
+      { unresolved: 'no_shared_identity' },
+    );
 
     // The positive control: the same row with a place id resolves.
     await db.database
-      .update(schema.villageCandidates)
+      .update(schema.familyActivityHistory)
       .set({ placeId: 'places/abc' })
-      .where(eq(schema.villageCandidates.id, bare));
-    expect(
-      await resolveReviewSubject(db.database, { familyId, familyEventId: bareEvent }),
-    ).toEqual({ source: 'place', ref: 'places/abc' });
+      .where(eq(schema.familyActivityHistory.id, bare));
+    expect(await resolveReviewSubject(db.database, { familyId, familyEventId: bareEvent })).toEqual(
+      { source: 'place', ref: 'places/abc' },
+    );
   });
 
   it('refuses a placement nothing placed', async () => {
@@ -246,7 +259,7 @@ describe('resolveReviewSubject', () => {
     });
     const familyEventId = await seedPlacement(familyId, {
       shape: 'source_ref',
-      table: 'village_candidates',
+      table: 'family_activity_history',
       id: candidateId,
     });
 
@@ -265,7 +278,7 @@ describe('resolveReviewSubject', () => {
 
     const crossAction = await seedPlacement(
       familyId,
-      { shape: 'source_ref', table: 'village_candidates', id: theirCandidate },
+      { shape: 'source_ref', table: 'family_activity_history', id: theirCandidate },
       { actionFamilyId: otherFamilyId },
     );
     expect(
@@ -275,7 +288,7 @@ describe('resolveReviewSubject', () => {
     // Our own action, naming their candidate: refused one hop later.
     const crossCandidate = await seedPlacement(familyId, {
       shape: 'source_ref',
-      table: 'village_candidates',
+      table: 'family_activity_history',
       id: theirCandidate,
     });
     expect(
@@ -290,7 +303,7 @@ describe('resolveReviewSubject', () => {
     const candidateId = await seedCandidate(familyId, { placeId: 'places/abc' });
     const familyEventId = await seedPlacement(familyId, {
       shape: 'source_ref',
-      table: 'village_candidates',
+      table: 'family_activity_history',
       id: candidateId,
     });
 

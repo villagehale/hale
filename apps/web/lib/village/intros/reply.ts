@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
 import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
+import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import {
   type ConsentReading,
   type DiscoverabilityConsentInput,
@@ -18,9 +19,9 @@ import {
   INTRO_ALREADY_YES,
   INTRO_CLOSED_AFTER_NO,
   INTRO_NO_ACK,
-  INTRO_YES_ACK,
   NO_OPEN_INTRO,
 } from './copy';
+import { villageIntroGroupsEnabled } from './group';
 import { introScope, villageIntrosAllowlist } from './run';
 
 /**
@@ -115,7 +116,9 @@ export type IntroReplyOutcome =
   | { status: 'discoverability_revoked'; reply: string }
   /** They said again what they already said. Answered briefly, nothing written. */
   | { status: 'discoverability_unchanged'; reply: string }
-  | { status: 'intro_accepted'; reply: string }
+  /** `reply` is the model's acknowledgement, or null when it could not write one: the
+   * yes is recorded either way and nothing fixed goes out in its place. */
+  | { status: 'intro_accepted'; reply: string | null }
   | { status: 'intro_declined'; reply: string }
   /** They said again what they already said about this card. Nothing written. */
   | { status: 'intro_unchanged'; reply: string }
@@ -197,6 +200,12 @@ export interface VillageIntroReplyDeps {
   recordDecision(database: Database, decision: IntroDecision): Promise<void>;
   /** Close every live proposal this family is named in (a revocation). */
   cancelOpenProposals(database: Database, familyId: string, now: Date): Promise<void>;
+  /**
+   * Writes the acknowledgement of a yes to one intro, in the model's words (said-line).
+   * There is no fixed line behind it: absent, or a write that comes back null, means the
+   * yes is recorded and nothing is sent.
+   */
+  saidLine?: SaidLineWriter;
 }
 
 /**
@@ -295,9 +304,41 @@ export async function handleVillageIntroReply(
     now: input.now,
   });
 
-  return keyword.granted
-    ? { status: 'intro_accepted', reply: INTRO_YES_ACK }
-    : { status: 'intro_declined', reply: INTRO_NO_ACK };
+  if (!keyword.granted) return { status: 'intro_declined', reply: INTRO_NO_ACK };
+  return {
+    status: 'intro_accepted',
+    reply: await writeIntroYesAck(deps.saidLine, input.body, villageIntroGroupsEnabled()),
+  };
+}
+
+/**
+ * The acknowledgement of a yes, written by the model from facts (said-line purpose
+ * `intro_yes`). The facts carry what is TRUE right now: the other family's answer is
+ * unknown and must not be hinted at, and a group text is only promised while the groups
+ * flag is on. Null (no writer, or an unusable write): nothing is sent, the yes stands.
+ */
+export async function writeIntroYesAck(
+  writer: SaidLineWriter | undefined,
+  parentWords: string,
+  groupsEnabled: boolean,
+): Promise<string | null> {
+  if (!writer) {
+    console.error('intro yes ack: no line writer - nothing sent');
+    return null;
+  }
+  return writer.write({
+    purpose: 'intro_yes',
+    language: null,
+    parentWords,
+    facts: {
+      recorded: 'their yes to this one introduction',
+      otherFamily:
+        'unknown - do not say or hint whether the other family was asked or has answered',
+      groupText: groupsEnabled
+        ? 'if the other family also says yes, Hale starts a group text with both'
+        : 'none - do not promise or mention a group text or any next step with the other family',
+    },
+  });
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────

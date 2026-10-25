@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConsentReadingResult } from '~/lib/channel/consent-reply';
+import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import {
   DISCOVERABILITY_ALREADY_OFF,
   DISCOVERABILITY_ALREADY_ON,
@@ -10,7 +11,6 @@ import {
   INTRO_ALREADY_YES,
   INTRO_CLOSED_AFTER_NO,
   INTRO_NO_ACK,
-  INTRO_YES_ACK,
   NO_OPEN_INTRO,
 } from './copy';
 import {
@@ -62,10 +62,17 @@ function proposal(overrides: Partial<AnswerableProposal> = {}): AnswerablePropos
   };
 }
 
+/** What the stub writer returns: the model's words, not product copy. */
+const MODEL_YES_ACK = 'model-written ack';
+
 function deps(open: AnswerableProposal | null = null, standing: IntroStanding = 'unanswered') {
   const recordDiscoverability = vi.fn(async () => {});
   const recordDecision = vi.fn(async (_db: Database, _decision: IntroDecision) => {});
   const cancelOpenProposals = vi.fn(async () => {});
+  // Stands in for the model (said-line): a canned write in a test, never a paid call.
+  const saidLineWrite = vi.fn(
+    async (_input: SaidLineInput): Promise<string | null> => MODEL_YES_ACK,
+  );
   const spies: VillageIntroReplyDeps = {
     consent: { read: async ({ text }) => fixtureIntro(text) },
     recordDiscoverability,
@@ -73,8 +80,9 @@ function deps(open: AnswerableProposal | null = null, standing: IntroStanding = 
     answerableProposal: async () => open,
     recordDecision,
     cancelOpenProposals,
+    saidLine: { write: saidLineWrite },
   };
-  return { spies, recordDiscoverability, recordDecision, cancelOpenProposals };
+  return { spies, recordDiscoverability, recordDecision, cancelOpenProposals, saidLineWrite };
 }
 
 describe('handleVillageIntroReply', () => {
@@ -142,7 +150,7 @@ describe('handleVillageIntroReply', () => {
       { familyId: FAMILY_A, parentUserId: 'u-a', body: 'YES INTRO', now: NOW },
       spies,
     );
-    expect(outcome).toEqual({ status: 'intro_accepted', reply: INTRO_YES_ACK });
+    expect(outcome).toEqual({ status: 'intro_accepted', reply: MODEL_YES_ACK });
     expect(recordDecision).toHaveBeenCalledWith(
       DB,
       expect.objectContaining({ side: 'a', granted: true, bothAccepted: false }),
@@ -410,8 +418,54 @@ describe('answering a proposal card that already has this side answered', () => 
       spies,
     );
 
-    expect(outcome).toEqual({ status: 'intro_accepted', reply: INTRO_YES_ACK });
+    expect(outcome).toEqual({ status: 'intro_accepted', reply: MODEL_YES_ACK });
     expect(recordDecision).toHaveBeenCalled();
+  });
+});
+
+describe("the yes acknowledgement is the model's, or nothing", () => {
+  const yes = { familyId: FAMILY_A, parentUserId: 'u-a', body: 'YES INTRO', now: NOW };
+
+  it("sends what the model wrote, from the parent's words and the facts", async () => {
+    const { spies, saidLineWrite, recordDecision } = deps(proposal());
+    const outcome = await handleVillageIntroReply(DB, yes, spies);
+    expect(outcome).toEqual({ status: 'intro_accepted', reply: MODEL_YES_ACK });
+    expect(recordDecision).toHaveBeenCalled();
+    expect(saidLineWrite).toHaveBeenCalledWith(
+      expect.objectContaining({ purpose: 'intro_yes', parentWords: 'YES INTRO' }),
+    );
+  });
+
+  it('records the yes and sends nothing when the model cannot write one', async () => {
+    const { spies, saidLineWrite, recordDecision } = deps(proposal());
+    saidLineWrite.mockResolvedValueOnce(null);
+    const outcome = await handleVillageIntroReply(DB, yes, spies);
+    expect(outcome).toEqual({ status: 'intro_accepted', reply: null });
+    expect(recordDecision).toHaveBeenCalled();
+  });
+
+  it('records the yes and sends nothing with no writer wired', async () => {
+    const { spies, recordDecision } = deps(proposal());
+    const outcome = await handleVillageIntroReply(DB, yes, { ...spies, saidLine: undefined });
+    expect(outcome).toEqual({ status: 'intro_accepted', reply: null });
+    expect(recordDecision).toHaveBeenCalled();
+  });
+
+  it('does not hand the model a group-text promise while the groups flag is off', async () => {
+    vi.stubEnv('VILLAGE_INTRO_GROUPS_ENABLED', '');
+    try {
+      const { spies, saidLineWrite } = deps(proposal());
+      await handleVillageIntroReply(DB, yes, spies);
+      const off = saidLineWrite.mock.calls[0]?.[0];
+      vi.stubEnv('VILLAGE_INTRO_GROUPS_ENABLED', 'true');
+      const on = deps(proposal());
+      await handleVillageIntroReply(DB, yes, on.spies);
+      const onInput = on.saidLineWrite.mock.calls[0]?.[0];
+      expect(off?.facts.groupText).not.toEqual(onInput?.facts.groupText);
+      expect(off?.facts.groupText).toMatch(/^none/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

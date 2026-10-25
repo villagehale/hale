@@ -90,8 +90,8 @@ describe('loadSkill', () => {
    * the wrong model. It named find-activities and log-care until those were deleted as
    * dead (skill audit #9/#10); these are the live skills on the same two tiers. */
   it('parses the task tier of skills that are not converse', async () => {
-    const curate = await loadSkill('curate-shortlist');
-    expect(curate.meta.task).toBe('discover');
+    const search = await loadSkill('parse-village-search');
+    expect(search.meta.task).toBe('discover');
     const classify = await loadSkill('classify-event');
     expect(classify.meta.task).toBe('classify');
   });

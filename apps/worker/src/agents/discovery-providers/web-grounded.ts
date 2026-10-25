@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { forceToolJson, laneRequestFields, pickLane } from '@hale/agent';
 import type { DiscoveryQuery } from '@hale/types';
 import { z } from 'zod';
-import { forceToolJson, laneRequestFields, pickLane } from '@hale/agent';
 import { anthropicClient } from '../../anthropic/client.js';
 import { loadPrompt } from '../../prompts/loader.js';
 import type { DiscoveredCandidate, DiscoveryProvider } from './types.js';
@@ -68,7 +68,7 @@ interface WebGroundedDeps {
 }
 
 function defaultDeps(): WebGroundedDeps {
-  return { client: anthropicClient() };
+  return { client: anthropicClient('discovery') };
 }
 
 /** Public listing URLs returned by the server-side web_search tool. */

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
+import { type HaleStage, traceAnthropic } from '~/lib/analytics/llm-trace';
 
 /**
  * The shared Anthropic client for the inbound pipeline (classify/draft/review).
@@ -65,25 +66,41 @@ export interface AnthropicBudget {
  * on a missing key (rule #8 — a silent no-op client is not a client); callers
  * that legitimately run keyless check the env themselves first.
  */
-export function budgetedAnthropic(budget: AnthropicBudget): Anthropic {
+/**
+ * Every client this factory returns is ALSO handed through `traceAnthropic`
+ * (lib/analytics/llm-trace.ts): one privacy-mode `$ai_generation` per call once
+ * POSTHOG_PROJECT_API_KEY is set, and the bare client, untouched, until then. `stage`
+ * labels the call for the LLM dashboard; an unlabeled client reports 'unattributed'.
+ */
+export function budgetedAnthropic(
+  budget: AnthropicBudget,
+  trace: { stage?: HaleStage } = {},
+): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set');
   }
-  return new Anthropic({ apiKey, ...budget });
+  return traceAnthropic(new Anthropic({ apiKey, ...budget }), trace);
 }
 
-export function budgetedAiGateway(budget: AnthropicBudget): Anthropic {
+export function budgetedAiGateway(
+  budget: AnthropicBudget,
+  trace: { stage?: HaleStage } = {},
+): Anthropic {
   const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
   if (!apiKey) throw new Error('AI_GATEWAY_API_KEY is not set');
-  return new Anthropic({ apiKey, baseURL: 'https://ai-gateway.vercel.sh', ...budget });
+  return traceAnthropic(
+    new Anthropic({ apiKey, baseURL: 'https://ai-gateway.vercel.sh', ...budget }),
+    trace,
+  );
 }
 
 let cached: Anthropic | undefined;
 let cachedActivity: Anthropic | undefined;
+let cachedDiscoveryActivity: Anthropic | undefined;
 
 export function pipelineClient(): AgentClient {
-  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'classify_event' });
   return cached;
 }
 
@@ -92,4 +109,13 @@ export function pipelineClient(): AgentClient {
 export function activityClient(): AgentClient {
   cachedActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS);
   return cachedActivity;
+}
+
+/** The same activity-lane budget, labeled `discovery` for the LLM dashboard. Only
+ * discoverForFamily (lib/village/discover.ts) uses it; the SMS activity lane keeps
+ * {@link activityClient} and its own label. A separate cached instance because the
+ * stage is fixed when the client is traced. */
+export function discoveryActivityClient(): AgentClient {
+  cachedDiscoveryActivity ??= budgetedAnthropic(ACTIVITY_CLIENT_OPTIONS, { stage: 'discovery' });
+  return cachedDiscoveryActivity;
 }

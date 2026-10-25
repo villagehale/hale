@@ -1,10 +1,7 @@
 /**
- * Where founder ops mail goes. FOUNDER_ALERT_EMAIL, falling back to WELCOME_BCC.
- * Null when neither is set, so a signal is a clean no-op until an address is
- * configured. Exported: the STOP alert and the loop-health digest reuse this
- * resolution rather than a second copy.
- *
- * The email-signup notifier that used to live here is gone with the email door.
+ * The founder's account address — FOUNDER_ALERT_EMAIL, falling back to WELCOME_BCC.
+ * An identifier only: the founder channel resolves his SMS row from it. Nothing is
+ * mailed to it. Null when neither is set.
  */
 export function founderAddress(): string | null {
   const explicit = process.env.FOUNDER_ALERT_EMAIL?.trim();

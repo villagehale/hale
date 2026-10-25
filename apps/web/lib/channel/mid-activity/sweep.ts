@@ -142,13 +142,13 @@ export async function runMidActivityAskSweep(
       ? []
       : await database
           .select({
-            id: schema.villageCandidates.id,
-            familyId: schema.villageCandidates.familyId,
-            placeId: schema.villageCandidates.placeId,
-            civicVenueId: schema.villageCandidates.civicVenueId,
+            id: schema.familyActivityHistory.id,
+            familyId: schema.familyActivityHistory.familyId,
+            placeId: schema.familyActivityHistory.placeId,
+            civicVenueId: schema.familyActivityHistory.civicVenueId,
           })
-          .from(schema.villageCandidates)
-          .where(inArray(schema.villageCandidates.id, candidateIds));
+          .from(schema.familyActivityHistory)
+          .where(inArray(schema.familyActivityHistory.id, candidateIds));
   const candidateById = new Map(candidates.map((row) => [row.id, row]));
 
   const dedupeKeys = offers.map((offer) => midActivityAskDedupeKey(offer.offerId));

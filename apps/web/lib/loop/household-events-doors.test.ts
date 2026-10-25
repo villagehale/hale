@@ -61,7 +61,6 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/party/reminders.ts': 'scoped',
   // source = 'placement'
   'apps/web/lib/channel/followup/run.ts': 'scoped',
-  'apps/web/lib/loop/calendar-invite.ts': 'scoped',
   // joined through activity_bookings.event_id, reads `source` only
   'apps/web/lib/integrations/booking.ts': 'scoped',
   // already-held check before a coach offer row: household events only

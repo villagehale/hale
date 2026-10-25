@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { isUndoable } from '~/lib/actions/undo-window';
+import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { deriveDateOfBirth } from '~/lib/channel/intake/derive';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
@@ -39,12 +40,6 @@ import { approvalHandler } from '~/lib/channel/router/handlers';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import {
-  CIVIC_RUN_TYPE,
-  CIVIC_SOURCE,
-  type CivicSessionForFamily,
-  selectCivicSessions,
-} from '~/lib/civic/project';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { matchHealthCheckpoints } from '~/lib/health/match';
@@ -63,6 +58,7 @@ import {
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
 import { askWriter } from '~/lib/testing/consent-double';
+import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -123,9 +119,6 @@ const BATTLE_PLAN_AT = new Date('2026-08-24T23:00:00.000Z');
 /** Tuesday 06:30 Toronto — when Markham's doors open. */
 const WINDOW_OPEN = new Date('2026-08-25T10:30:00.000Z');
 
-/** L3R's coarse centroid. Rule #1: an FSA's middle, never a home. */
-const L3R_CENTRE = { lat: 43.8828, lng: -79.2663 };
-
 const MARKHAM_SOURCE = 'https://www.markham.ca/en/recreation/registration.aspx';
 
 const TODDLER_WINDOW_ID = '55555555-5555-4555-8555-555555555551';
@@ -173,63 +166,26 @@ const TEEN_WINDOW = registrationWindowRow({
   ageMaxMonths: 215,
 });
 
-/**
- * A prod-shaped civic session: a weekly library drop-in with a real BiblioCommons-ish
- * audience band ("1 to 5 years" → 12–60 months) and venue coordinates. Weekly, so the
- * projection dates it to its next occurrence rather than leaving it evergreen.
- */
-const CIVIC_SESSIONS: CivicSessionForFamily[] = [
-  {
-    id: 'civic-1',
-    venueId: 'civic-venue-markham-village',
-    title: 'Family Storytime',
-    summary: null,
-    recurrence: 'weekly',
-    startsAt: null,
-    dayOfWeek: 6, // Saturday
-    startMinute: 10 * 60 + 30,
-    endMinute: 11 * 60,
-    ageMinMonths: 12,
-    ageMaxMonths: 60,
-    registrationRequired: false,
-    isCancelled: false,
-    confidence: 0.9,
-    sourceUrl: 'https://markham.bibliocommons.com/events/storytime',
-    venueName: 'Markham Village Library',
-    venueAddress: '6031 Highway 7',
-    venueCity: 'Markham',
-    venueUrl: 'https://www.markhampubliclibrary.ca/branches/mv',
-    venueKind: 'library_branch',
-    lat: 43.8845,
-    lng: -79.2601,
-  },
-  {
-    // A teen coding club at the same branch. It must never reach this household —
-    // the band excludes both children, and that is the projection's own filter.
-    id: 'civic-2',
-    venueId: 'civic-venue-markham-village',
-    title: 'Teen Coding Club',
-    summary: null,
-    recurrence: 'weekly',
-    startsAt: null,
-    dayOfWeek: 6,
-    startMinute: 14 * 60,
-    endMinute: 15 * 60,
-    ageMinMonths: 156,
-    ageMaxMonths: 215,
-    registrationRequired: false,
-    isCancelled: false,
-    confidence: 0.9,
-    sourceUrl: 'https://markham.bibliocommons.com/events/teen-code',
-    venueName: 'Markham Village Library',
-    venueAddress: '6031 Highway 7',
-    venueCity: 'Markham',
-    venueUrl: 'https://www.markhampubliclibrary.ca/branches/mv',
-    venueKind: 'library_branch',
-    lat: 43.8845,
-    lng: -79.2601,
-  },
-];
+// A fresh finder response, never a persisted activity catalog fixture.
+const JOURNEY_FINDER: ActivityFinder = {
+  find: async () => ({
+    found: true,
+    picks: [
+      {
+        name: 'Family Storytime',
+        ageFit: '1 to 5 years',
+        when: 'Saturday 10:30 a.m.',
+        price: 'free',
+        sourceName: 'Markham Village Library',
+        source: 'web',
+        sourceUrl: 'https://markham.bibliocommons.com/events/storytime',
+        eventDate: '2026-08-01',
+        indoorOutdoor: 'indoor',
+        access: 'drop_in',
+      },
+    ],
+  }),
+};
 
 // ── the fakes this journey reuses, unchanged from their own suites ────────────
 
@@ -442,36 +398,8 @@ async function runToddlerJourney(): Promise<Journey> {
       client: null,
       now: () => INTAKE_AT,
       timeZone: TZ,
+      yearFinder: JOURNEY_FINDER,
     }),
-    // SEAM: `projectCivicCandidates` is the production default here, and its read is a
-    // civic_sessions INNER JOIN civic_venues the fake db cannot express. So the join is
-    // supplied (the fixtures above ARE the joined rows) and the REAL selection —
-    // age-band fit, proximity, next-occurrence dating — runs over them.
-    seedCivic: async (_db, familyId, _areaCoarse, center, now) => {
-      const ages = storedChildren(fake, now).map((child) => child.ageMonths);
-      const picked = selectCivicSessions(CIVIC_SESSIONS, ages, center, now, TZ);
-      for (const candidate of picked) {
-        await fake.db.insert(schema.villageCandidates).values({
-          familyId,
-          title: candidate.title,
-          kind: candidate.kind,
-          summary: candidate.summary,
-          source: CIVIC_SOURCE,
-          runType: CIVIC_RUN_TYPE,
-          confidence: candidate.confidence,
-          priceLevel: 'free',
-          indoorOutdoor: 'indoor',
-          ageRange: candidate.ageRange,
-          childId: null,
-          eventDate: candidate.eventDate,
-          seasons: null,
-          venueName: candidate.venueName,
-        } as never);
-      }
-      return picked.length;
-    },
-    resolveCenter: async () => L3R_CENTRE,
-    discoveryTrigger: () => {},
     // Same discipline as the radar above: the REAL composer on the REAL production
     // fallback path (`null` client renders the deterministic follow-up and names the
     // reason), so the journey reads the words a family actually gets when voice is off.
@@ -605,6 +533,7 @@ async function runToddlerJourney(): Promise<Journey> {
       );
 
   const nudgeDeps: NudgeRunDeps = {
+    recordActivityOffers,
     selectFamilies: async () => nudgeFamilies(),
     /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
      * (channel/family-recipients.ts). This household has one parent. */
@@ -619,8 +548,15 @@ async function runToddlerJourney(): Promise<Journey> {
         dateOfBirth: child.dateOfBirth,
         dobPrecision: child.dobPrecision,
       })),
-    loadCandidates: (database, id) => readCandidates(database, id),
-    loadWindows: (database, area) => readWindows(database, area),
+    loadCandidates: (database, id, now) =>
+      readCandidates(
+        scopedSelect(database, [
+          { table: schema.familyMembers, rows: () => fake.rows(schema.users) },
+        ]),
+        id,
+        { now, finder: JOURNEY_FINDER },
+      ),
+    loadWindows: async () => [],
     // SEAM: the real reader unions "already told" (a LIKE over the ledger's
     // told-markers, whatever surface wrote them — health/told.ts) with "said done"
     // (health/reply.ts). The LIKE is what is restated.
@@ -996,9 +932,7 @@ describe('2 · the first reply names something real', () => {
       expect(body).not.toMatch(/registration opens|registration opened/i);
       expect(body).not.toContain('Aug 25');
     }
-    const candidates = journey.fake.rows(schema.villageCandidates);
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.title).toBe('Family Storytime');
+    expect(journey.fake.rows(schema.familyActivityHistory)).toEqual([]);
   });
 
   it('fits the segment budget the whole payload is measured against', () => {
@@ -1016,12 +950,7 @@ describe('2 · the first reply names something real', () => {
       expect(body).not.toContain('Teen Coding Club');
       expect(body).not.toContain('Aquatic Leadership');
     }
-    // The projection dated the drop-in to its next occurrence, so a Saturday-only
-    // session can never be offered as a Sunday plan.
-    const candidates = journey.fake.rows(schema.villageCandidates);
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.title).toBe('Family Storytime');
-    expect(candidates[0]?.eventDate).toBe('2026-08-01');
+    expect(journey.fake.rows(schema.familyActivityHistory)).toEqual([]);
   });
 });
 

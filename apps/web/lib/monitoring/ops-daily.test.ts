@@ -71,6 +71,21 @@ const SAMPLE: OpsDailyReport = {
     ran: true,
     outcomes: { checked: 20, confirmed: 17, discrepancies: 1, unverified: 2 },
   },
+  week: {
+    plansComposed: 6,
+    providerIncidents: [{ reason: 'billing', count: 1 }],
+    unmetIntents: [
+      { reason: 'capability_booking', count: 3 },
+      { reason: 'domain_medical_records', count: 1 },
+    ],
+    papercuts: {
+      unmet_intent: 4,
+      medical_fallback: 1,
+      reply_fallback: 2,
+      voice_failure: 0,
+      turn_failure: 1,
+    },
+  },
   linqChatIds: 47,
 };
 
@@ -111,6 +126,18 @@ const ZERO: OpsDailyReport = {
   promises: { open: 0, overdue: 0, overdueFamilies: 0 },
   medical: { answered: 0, fallbacks: 0 },
   reverify: { ran: false, outcomes: null },
+  week: {
+    plansComposed: 0,
+    providerIncidents: [],
+    unmetIntents: [],
+    papercuts: {
+      unmet_intent: 0,
+      medical_fallback: 0,
+      reply_fallback: 0,
+      voice_failure: 0,
+      turn_failure: 0,
+    },
+  },
   linqChatIds: 0,
 };
 
@@ -119,7 +146,7 @@ const LONG_DIGITS = /\d{7,}/;
 const NON_ASCII = /[^ -~\n]/;
 
 describe('composeOpsDailyPost', () => {
-  it('renders a day of traffic as fourteen ASCII lines of counts', () => {
+  it('renders a day of traffic as seventeen ASCII lines of counts', () => {
     expect(composeOpsDailyPost(SAMPLE)).toBe(
       [
         'Hale daily | 24h to 2026-10-12 13:00 UTC | real families 7 | excluded 3',
@@ -135,6 +162,9 @@ describe('composeOpsDailyPost', () => {
         'Promises: 6 open | 2 overdue (1 family)',
         'Medical (7d): 1 of 4 answers used the fixed 811/911 line',
         'Re-verify (7d): ran | checked 20 | confirmed 17 | discrepancies 1 | unverified 2',
+        'Loop (7d): week plans composed 6 | provider incidents: billing 1',
+        'Unmet intents (7d): capability_booking 3, domain_medical_records 1',
+        'Papercuts (7d): unmet 4 | medical fallback 1 | reply fallback 2 | voice fallback 0 | turn failures 1',
         'Linq chat IDs (DB): 47 of 200',
       ].join('\n'),
     );
@@ -156,6 +186,9 @@ describe('composeOpsDailyPost', () => {
         'Promises: ledger empty',
         'Medical (7d): no medical answers',
         'Re-verify (7d): did not run',
+        'Loop (7d): week plans composed 0 | provider incidents: none',
+        'Unmet intents (7d): none',
+        'Papercuts (7d): unmet 0 | medical fallback 0 | reply fallback 0 | voice fallback 0 | turn failures 0',
         'Linq chat IDs (DB): 0 of 200',
       ].join('\n'),
     );
@@ -195,6 +228,17 @@ describe('composeOpsDailyPost', () => {
       expect(text).not.toMatch(LONG_DIGITS);
       expect(text).not.toMatch(NON_ASCII);
     }
+  });
+
+  it('names the top five unmet intents and counts the rest', () => {
+    const unmetIntents = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((reason) => ({
+      reason: `lane_${reason}`,
+      count: 1,
+    }));
+    const text = composeOpsDailyPost({ ...ZERO, week: { ...ZERO.week, unmetIntents } });
+    expect(text).toContain(
+      'Unmet intents (7d): lane_a 1, lane_b 1, lane_c 1, lane_d 1, lane_e 1 (+2 more)',
+    );
   });
 
   it('redacts a reason or a code that carries a phone-length digit run', () => {

@@ -59,9 +59,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 
 const EVENTS_QUEUE = 'events.ingested';
 const ACTIONS_QUEUE = 'actions.approved';
-/** Background feed-rank materialization: a job carries {family_id}; the handler
- * runs the ~25s ranker OUT of the request path and stores the order in
- * village_feed_rank, so the home feed read is a pure DB lookup. */
+/** Acknowledge already queued rerank jobs without rebuilding the retired catalog. */
 const RERANK_QUEUE = 'village.rerank';
 
 /**
@@ -776,7 +774,10 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // that imports a drain constant. The runtime entrypoint is the only place that
   // needs the real handler, so the import stays scoped to it.
   const { db } = await import('~/lib/db');
-  const { upsertFeedRank } = await import('~/lib/village/rank/upsert');
+  // Drain pre-migration queued rank jobs without rebuilding a retired catalog.
+  const upsertFeedRank = async (_database: unknown, familyId: string) => {
+    console.info({ familyId }, 'retired village rerank job: skipped');
+  };
 
   // The channel seam pulls the loop dispatch + adapters (and the db-backed ports);
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.
@@ -786,12 +787,13 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const { dispatchLoopMessage, recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
+  const { productionCalendarCancelVoice } = await import('~/lib/loop/voice/calendar-cancel-voice');
   const { productionChannels } = await import('~/lib/channel/adapters/production');
   const { createCalendarInviteSender } = await import('~/lib/loop/calendar-invite');
   const { createGoogleCalendarPlacement } = await import(
     '~/lib/integrations/google-calendar-placement'
   );
-  const { productionCalendarVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
+  const { createGmailEmailSender } = await import('~/lib/integrations/gmail-send-service');
 
   const channels = productionChannels(db());
 
@@ -803,8 +805,10 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const calendarInvites = createCalendarInviteSender(db(), {
     channels,
     renderer: loopTemplateRenderer,
-    voice: productionCalendarVoice(),
+    cancelVoice: productionCalendarCancelVoice(),
   });
+  // Approved send_email actions leave from the approving parent's own Gmail.
+  const sendEmail = createGmailEmailSender(db());
 
   // Two connections, and no scheduler. The session pooler behind DATABASE_DIRECT_URL
   // admits 15 clients in total; pg-boss's default pool of ten per instance meant two
@@ -828,12 +832,13 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
         boss: boss as unknown as DrainBoss,
         handlers: {
           runOrchestrator: (job) =>
-            runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement }),
+            runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement, sendEmail }),
           executeApprovedAction: (input) =>
             executeApprovedAction(input, {
               ...defaultExecuteApprovedDeps(),
               calendarInvites,
               googleCalendar: googlePlacement,
+              sendEmail,
             }),
           rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
           channelSend: (message) =>

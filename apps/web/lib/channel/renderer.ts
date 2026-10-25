@@ -2,7 +2,7 @@ import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from
 
 /**
  * A placeholder renderer for the seam until per-template renderers land (B2/D1/E3
- * own templates/<key>/{sms,email}.ts). Real content — and any child name,
+ * own templates/<key>/sms.ts). Real content — and any child name,
  * routed through loopChildName — is the template's job; this only lets the seam be
  * wired end-to-end today. It reads pre-rendered fields a caller sets on payload; it
  * never interpolates content into HTML (rule #1 + injection safety), so a caller that
@@ -16,25 +16,11 @@ import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from
  * keeps (`asWeeklyPlanPayload`).
  */
 export const defaultLoopRenderer: TemplateRenderer = {
-  render(message: LoopMessage, channel: ChannelKind): RenderedContent {
+  render(message: LoopMessage, _channel: ChannelKind): RenderedContent {
     const p = message.payload as Record<string, unknown>;
     if (typeof p.text !== 'string' || p.text.length === 0) {
       throw new Error(`default renderer: payload has no text (templateKey ${message.templateKey})`);
     }
-    const text = p.text;
-    if (channel === 'email') {
-      if (typeof p.html !== 'string' || p.html.length === 0) {
-        throw new Error(
-          `default renderer: payload has no html (templateKey ${message.templateKey})`,
-        );
-      }
-      return {
-        kind: 'email',
-        subject: typeof p.subject === 'string' ? p.subject : 'Hale',
-        html: p.html,
-        text,
-      };
-    }
-    return { kind: 'sms', text };
+    return { kind: 'sms', text: p.text };
   },
 };

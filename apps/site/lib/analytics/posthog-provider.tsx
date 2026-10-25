@@ -41,16 +41,22 @@ export function analyticsEnabled(): boolean {
  *    `persistence: 'memory'` is unchanged, so a recording still writes nothing to the
  *    visitor's device and the legal pages' no-cookie claim stays true. (The APP
  *    records too, masked, and says so — apps/web/lib/analytics/posthog-provider.tsx.)
- *  - `capture_pageview: false` — the provider captures `$pageview` itself, AFTER
- *    resolving `source_code` and `locale`, so the first pageview of a visit carries its
- *    attribution. posthog-js fires its own during `init()`, which is one statement too
- *    early to stamp anything on.
+ *  - `capture_pageview: 'history_change'` + `capture_pageleave: true` — posthog-js
+ *    captures the first pageview and every client-side navigation, plus page leaves.
+ *    `source_code` and `locale` are REGISTERED as super properties in the `loaded`
+ *    callback, which posthog-js runs before its initial pageview, so every event —
+ *    pageviews included — carries the visit's attribution. The super properties live in
+ *    memory (`persistence: 'memory'`); the first-touch code itself is held in
+ *    sessionStorage by source-code.ts, never a cookie.
+ *  - `capture_performance.web_vitals: true` — LCP/CLS/INP/FCP, anonymous numbers.
  *  - `respect_dnt` + the masking pair, unchanged. `mask_all_text` governs autocapture
  *    element text (off anyway), not replay — replays show the site's own copy.
  */
 export const POSTHOG_INIT_CONFIG = {
   autocapture: false,
-  capture_pageview: false,
+  capture_pageview: 'history_change',
+  capture_pageleave: true,
+  capture_performance: { web_vitals: true },
   disable_session_recording: false,
   session_recording: { maskAllInputs: true },
   persistence: 'memory',
@@ -119,10 +125,14 @@ export function PostHogProvider({
           posthog.init(KEY, {
             api_host: HOST ?? 'https://us.i.posthog.com',
             ...POSTHOG_INIT_CONFIG,
+            // Runs before posthog-js captures its initial pageview (see the config note).
+            loaded: (ph) => ph.register(buildEvent(PAGEVIEW, base).properties),
           });
+        } else {
+          // A locale switch re-runs this effect on an already-loaded client: restamp the
+          // super properties. The switch is a URL change, so history_change counts it.
+          posthog.register(buildEvent(PAGEVIEW, base).properties);
         }
-        const pageview = buildEvent(PAGEVIEW, base);
-        posthog.capture(pageview.event, pageview.properties);
         setAnalytics({ client: posthog, base });
       });
     };

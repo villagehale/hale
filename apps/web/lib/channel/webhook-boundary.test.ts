@@ -22,7 +22,6 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
 
 /** Every provider-facing webhook door, and the route token it must alert under. */
 const WEBHOOK_DOORS: ReadonlyArray<{ file: string; route: string }> = [
-  { file: 'app/api/channels/email/inbound/route.ts', route: 'email_inbound' },
   { file: 'app/api/channels/linq/inbound/route.ts', route: 'linq_inbound' },
 ];
 
@@ -44,6 +43,6 @@ describe('inbound webhook doors sit inside the failure boundary', () => {
    * regex above must actually reject a bare, unwrapped handler. */
   it('the wrap pattern rejects an unwrapped handler', () => {
     const unwrapped = 'export async function POST(req: Request) { return handle(req); }';
-    expect(unwrapped).not.toMatch(/return withWebhookFailureAlert\(\s*'email_inbound'/);
+    expect(unwrapped).not.toMatch(/return withWebhookFailureAlert\(\s*'linq_inbound'/);
   });
 });

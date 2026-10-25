@@ -127,7 +127,7 @@ export async function runReviewer(
   input: ReviewerRunInput,
   deps: ReviewerDeps = {},
 ): Promise<ReviewerRunResult> {
-  const client = deps.client ?? anthropicClient();
+  const client = deps.client ?? anthropicClient('reviewer');
   const invokeTool = deps.invokeTool ?? invokeReviewerTool;
   const getChildNames = deps.loadChildNames ?? loadChildNames;
   // The reviewer's instructions + tool list are the same on every turn of the
