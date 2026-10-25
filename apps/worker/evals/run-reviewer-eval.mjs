@@ -38,6 +38,7 @@ import {
   evalSubjectRequest,
   installEvalSpendCap,
   priceRates,
+  withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import { SMS_CALENDAR_REVIEWER_FIXTURES } from './sms-calendar-reviewer-fixtures.mjs';
 
@@ -108,7 +109,7 @@ function makeCachedClient(tag, { anthropicModel, directModel, maxTokens }) {
           model: params.model,
           system: params.system,
           tools: params.tools,
-          messages: params.messages,
+          messages: withoutMessageCacheMarkers(params.messages),
           max_tokens: params.max_tokens,
         });
         const key = cacheKey(`${tag}:reviewer`, canonical);

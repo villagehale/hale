@@ -27,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { register } from 'tsx/esm/api';
 import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
-import { installEvalSpendCap, priceRates } from './lib/harness.mjs';
+import { installEvalSpendCap, priceRates, withoutMessageCacheMarkers } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -90,7 +90,10 @@ function cachingClient({ cachedOnly, cost }) {
   return {
     messages: {
       create: async (request) => {
-        const canonical = JSON.stringify(request);
+        const canonical = JSON.stringify({
+          ...request,
+          messages: withoutMessageCacheMarkers(request.messages),
+        });
         const key = cacheKey(canonical);
         const cached = await cacheGet(key);
         if (cached) return cached.response;

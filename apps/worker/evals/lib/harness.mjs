@@ -136,6 +136,29 @@ export async function readJudgeModel(tier = 'haiku') {
 // prompt/skill, or a fixture input mints a new key, so a stale answer is never
 // reused; a cache hit makes zero API calls.
 
+/**
+ * The messages with every message-level `cache_control` removed, for hashing (VIL-430).
+ * The agent loop puts a rolling breakpoint on its newest tool-result block; that marker
+ * changes the bill, not the question, so it must not change a replay key. Lossless:
+ * tool-result and other message blocks carry no `cache_control` of their own. System
+ * blocks are NOT touched here, so keys that already hash a cached system stay put.
+ */
+export function withoutMessageCacheMarkers(messages) {
+  if (!Array.isArray(messages)) return messages;
+  return messages.map((message) => {
+    if (!Array.isArray(message?.content)) return message;
+    if (!message.content.some((block) => block && 'cache_control' in block)) return message;
+    return {
+      ...message,
+      content: message.content.map((block) => {
+        if (!block || !('cache_control' in block)) return block;
+        const { cache_control: _marker, ...rest } = block;
+        return rest;
+      }),
+    };
+  });
+}
+
 export function cacheKey(tag, payload) {
   return createHash('sha256').update(`${tag}\n${payload}`).digest('hex');
 }

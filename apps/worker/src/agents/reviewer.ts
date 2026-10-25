@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { cachedSystem, laneRequestFields, pickLane } from '@hale/agent';
+import { cachedSystem, laneRequestFields, pickLane, withHistoryBreakpoint } from '@hale/agent';
 import {
   REQUIRED_CHECKS,
   type ReviewerToolName,
@@ -149,6 +149,7 @@ export async function runReviewer(
   // the 0.1x read rate (estimateCostUsd applies the split).
   let promptTokens = 0;
   let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
   let completionTokens = 0;
   const startedAt = Date.now();
   const finish = (verdict: ReviewerVerdict): ReviewerRunResult => ({
@@ -157,9 +158,9 @@ export async function runReviewer(
       'reviewer',
       model,
       {
-        input_tokens: promptTokens,
+        input_tokens: promptTokens - cacheCreationTokens,
         output_tokens: completionTokens,
-        cache_creation_input_tokens: null,
+        cache_creation_input_tokens: cacheCreationTokens,
         cache_read_input_tokens: cacheReadTokens,
         server_tool_use: null,
       },
@@ -193,10 +194,11 @@ export async function runReviewer(
       max_tokens: 4096,
       system,
       tools,
-      messages,
+      messages: withHistoryBreakpoint(messages),
     });
     promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
     cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
+    cacheCreationTokens += response.usage.cache_creation_input_tokens ?? 0;
     completionTokens += response.usage.output_tokens;
 
     const toolUses = response.content.filter(
