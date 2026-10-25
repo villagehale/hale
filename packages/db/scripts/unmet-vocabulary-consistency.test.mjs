@@ -21,7 +21,12 @@ import { describe, expect, it } from 'vitest';
  * committed SQL, parse what it declares, compare against the code that depends on it.
  */
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATION = path.resolve(scriptDir, '..', 'drizzle', '0080_channel_message_unmet_intent.sql');
+const MIGRATION = path.resolve(
+  scriptDir,
+  '..',
+  'drizzle',
+  '0080_channel_message_unmet_intent.sql',
+);
 const SCHEMA = path.resolve(scriptDir, '..', 'src', 'schema', 'channel-messages.ts');
 
 /** The quoted string literals inside a named CHECK's `IN ( … )` list. */
@@ -35,9 +40,9 @@ function checkedValues(sql, constraintName) {
 
 /** The string literals in an exported `const NAME = [ … ] as const;` array. */
 function sourceValues(ts, constName) {
-  const declaration = new RegExp(`export const ${constName} = \\[([\\s\\S]*?)\\] as const;`).exec(
-    ts,
-  );
+  const declaration = new RegExp(
+    `export const ${constName} = \\[([\\s\\S]*?)\\] as const;`,
+  ).exec(ts);
   if (!declaration) throw new Error(`no source array found for ${constName}`);
   return [...declaration[1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
 }
@@ -94,7 +99,9 @@ describe('medical reply-source vocabulary · SQL CHECK ↔ TypeScript source', (
   });
 
   it('the constraint admits NULL and nothing outside the list', () => {
-    expect(sql).toMatch(/CHECK \("medical_reply_source" IS NULL OR "medical_reply_source" IN \(/);
+    expect(sql).toMatch(
+      /CHECK \("medical_reply_source" IS NULL OR "medical_reply_source" IN \(/,
+    );
   });
 });
 
