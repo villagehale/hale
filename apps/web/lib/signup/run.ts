@@ -613,11 +613,16 @@ async function runBrowserUseBranch(
         : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
-    if (handoff.sessionCostUsd !== null) {
+    // No Browser Use session ever started (setup failed or the engine threw
+    // before a run): release the held allowance. A started session keeps its
+    // hold until its real cost replaces it.
+    const settledCostUsd =
+      handoff.sessionCostUsd ?? (handoff.sessionId === null && handoff.runId === null ? '0' : null);
+    if (settledCostUsd !== null) {
       await recordBrowserUseCost(database, {
         offerId: ctx.offerId,
         familyId: input.familyId,
-        sessionCostUsd: handoff.sessionCostUsd,
+        sessionCostUsd: settledCostUsd,
         now: input.now,
       });
     }

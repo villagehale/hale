@@ -1467,6 +1467,20 @@ describe('authorized signup runner', () => {
       expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(0.412);
     });
 
+    it('releases the held allowance when the engine throws before any session', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => {
+        throw new Error('browser setup failed');
+      });
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-threw'), {
+        browserUseSignup: { run },
+      });
+      expect(result.browserUse?.detail).toBe('engine_threw');
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBe(0);
+    });
+
     it('names a missing engine as not_configured', async () => {
       const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
       await withProviderSession(seeded);
