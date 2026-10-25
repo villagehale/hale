@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { actions } from './actions.js';
 import { conversations } from './conversations.js';
 import {
@@ -174,6 +174,15 @@ export const channelMessages = pgTable(
      * failed enqueue read as a handled message forever (the retry saw the row and said
      * 'duplicate'). The reconciler re-drives rows left null. */
     handedOffAt: timestamp('handed_off_at', { withTimezone: true }),
+    /**
+     * INBOUND only: Linq parts that were not text (kind, https url, mime). Null when
+     * the turn carried none. Bytes are never stored — the coach fetches an image
+     * when it answers, and a re-drive reads this column rather than the job.
+     */
+    inboundMedia:
+      jsonb('inbound_media').$type<
+        Array<{ kind: 'image' | 'video' | 'file'; url: string | null; mime: string | null }>
+      >(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

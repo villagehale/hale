@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readInboundMedia } from '~/lib/channel/inbound-media';
 import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
-import { MAX_REPLY_SEGMENTS } from './reply';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 /**
@@ -146,6 +146,39 @@ describe('channelCoachRuntime', () => {
     );
   });
 
+  it('reads a photo into the loop and names a video it did not watch', async () => {
+    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
+    const p = ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(jpeg, { status: 200 })) as unknown as typeof fetch,
+        ),
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          attachments: args.attachments as unknown[],
+        });
+        return answering('Got the flyer.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn(''),
+        inboundMedia: [
+          { kind: 'image', url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+          { kind: 'video', url: 'https://cdn.example/clip.mp4', mime: 'video/mp4' },
+        ],
+      },
+      [],
+    );
+
+    expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
+    expect(seen[0]?.context.arrivedMedia).toEqual([{ kind: 'video' }]);
+  });
+
   it('tells the loop it is in the family group, and leaves a 1:1 context byte-identical', async () => {
     const seen: Record<string, unknown>[] = [];
     const p = ports({
@@ -235,23 +268,24 @@ describe('channelCoachRuntime', () => {
     expect(reply).toBe('your kid has practice Thursday.');
   });
 
-  it('holds a long answer to the segment budget', async () => {
+  it('sends a long answer whole, past two segments', async () => {
     const long = Array.from({ length: 12 }, (_, i) => `Sentence number ${i} about swim.`).join(' ');
     const p = ports({ runAgent: answering(long) });
 
     const { reply } = await channelCoachRuntime(p).respond(turn(), []);
 
-    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+    expect(smsSegments(reply)).toBeGreaterThan(2);
+    expect(reply).toBe(long);
     expect(reply).not.toContain(LINK);
-    expect(reply.startsWith('Sentence number 0')).toBe(true);
+    expect(reply).toContain('Sentence number 11');
   });
 
   /**
-   * One sentence that does not fit is not cut off. The runtime asks once for a
-   * shorter rewrite and sends that. The rewrite comes from the model; this test
-   * only checks that the call happens and that its text is what leaves.
+   * VIL-434. A sentence longer than two segments used to trigger a shorten rewrite.
+   * Code no longer calls that. The model's text is what leaves, and the client is
+   * not asked for a second pass.
    */
-  it('asks for a shorter rewrite when no complete sentence fits', async () => {
+  it('does not ask for a shorter rewrite when the answer is long', async () => {
     const long = `${'Please sit with him through a boring bedtime '.repeat(8)}tonight`;
     const created: unknown[] = [];
     const p = ports({
@@ -269,32 +303,10 @@ describe('channelCoachRuntime', () => {
 
     const { reply } = await channelCoachRuntime(p).respond(turn(), []);
 
-    expect(reply).toBe('Sit with him until he is quiet.');
-    expect(created).toHaveLength(1);
+    expect(reply).toBe(long);
+    expect(created).toHaveLength(0);
     expect(p.recorded).toEqual([
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'completed' }),
-    ]);
-  });
-
-  it('fails the turn when the shorter rewrite still does not fit', async () => {
-    const long = `${'Please sit with him through a boring bedtime '.repeat(8)}tonight`;
-    const p = ports({
-      runAgent: answering(long),
-      client: () =>
-        ({
-          messages: {
-            create: async () => ({ content: [{ type: 'text', text: long }] }),
-          },
-        }) as never,
-    });
-
-    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(/budget/i);
-    await expect(channelCoachRuntime(p).respond(turn(), [])).rejects.toThrow(
-      /shorter rewrite/i,
-    );
-    expect(p.recorded).toEqual([
-      expect.objectContaining({ status: 'failed' }),
-      expect.objectContaining({ status: 'failed' }),
     ]);
   });
 

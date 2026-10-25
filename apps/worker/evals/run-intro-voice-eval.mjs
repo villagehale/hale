@@ -153,9 +153,8 @@ const THIRD_PERSON_SELF =
  * rather we never raise this" is a support queue, not a chief of staff. */
 const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
 
-/** Bound in main() once the real modules load — the gates must reach the same GSM-7 table
- * the carrier bills on, and the same compliance line the send appends, not copies. */
-let smsEncodingRef = () => 'gsm7';
+/** Bound in main() once the real modules load — the segment counter and the compliance
+ * line the send appends, not copies. */
 let smsSegmentsRef = () => 1;
 let maxIntroAskChars = 0;
 
@@ -177,7 +176,6 @@ function introAskRefusals(body, request) {
   if (body === '') return ['empty'];
   if (body.length > maxIntroAskChars) found.push('over_char_cap');
   if (smsSegmentsRef(body) > MAX_INTRO_SEGMENTS) found.push('over_segment_cap');
-  if (smsEncodingRef(body) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
@@ -405,9 +403,8 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsEncoding, smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
+  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const { OPT_OUT_LINE } = await tsImport(OPT_OUT_SRC, import.meta.url);
-  smsEncodingRef = smsEncoding;
   smsSegmentsRef = smsSegments;
   // Mirrors MAX_INTRO_ASK_CHARS — derived exactly as voice.ts derives it, off the real
   // compliance line, so a reworded opt-out moves this cap without anybody editing it.

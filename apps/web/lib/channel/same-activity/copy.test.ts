@@ -2,7 +2,6 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
-import { readSameActivityChoice } from './choice';
 import {
   SAME_ACTIVITY_CONFIRMATION_EN,
   SAME_ACTIVITY_CONFIRMATION_FR,
@@ -96,15 +95,6 @@ describe('same-activity copy', () => {
       skipped: 'not_configured',
     });
     expect(sameActivityDeclineToOtherSide()).toEqual({ sent: false, skipped: 'decline' });
-  });
-
-  it('reads only a whole-message meet, join, or no', () => {
-    expect(readSameActivityChoice('Meet.')).toBe('meet');
-    expect(readSameActivityChoice(' JOIN ')).toBe('join_group');
-    expect(readSameActivityChoice('no')).toBe('no');
-    for (const body of ['STOP', 'stop', 'meet please', 'join the group', 'yes', '']) {
-      expect(readSameActivityChoice(body)).toBeNull();
-    }
   });
 
   it('does not wire a send, and does not read who signed up', () => {

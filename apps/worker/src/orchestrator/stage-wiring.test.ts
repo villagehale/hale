@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
-import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
  * F1 stage-wiring. The invariant: the orchestrator must look up the family's
@@ -25,20 +25,24 @@ const suggestion: ClassifierSuggestion = { kind: 'surface_only' };
 // Capture what the orchestrator hands the classifier.
 const classifierCalls: Array<{ stages?: FamilyStage[]; familyContextSlice?: unknown }> = [];
 
-const runClassifier = vi.fn(async (input: { stages?: FamilyStage[]; familyContextSlice?: unknown }) => {
-  classifierCalls.push({ stages: input.stages, familyContextSlice: input.familyContextSlice });
-  return {
-    eventType: 'unclassified' as const,
-    payload: {},
-    confidence: { score: 0.4, rationale: 'low' },
-    suggestion,
-    teenContent: false,
-    dedupHash: 'fixed-hash',
-    runMetrics: metrics,
-  };
-});
+const runClassifier = vi.fn(
+  async (input: { stages?: FamilyStage[]; familyContextSlice?: unknown }) => {
+    classifierCalls.push({ stages: input.stages, familyContextSlice: input.familyContextSlice });
+    return {
+      eventType: 'unclassified' as const,
+      payload: {},
+      confidence: { score: 0.4, rationale: 'low' },
+      suggestion,
+      teenContent: false,
+      dedupHash: 'fixed-hash',
+      runMetrics: metrics,
+    };
+  },
+);
 
-vi.mock('../agents/classifier.js', () => ({ runClassifier: (input: unknown) => runClassifier(input as never) }));
+vi.mock('../agents/classifier.js', () => ({
+  runClassifier: (input: unknown) => runClassifier(input as never),
+}));
 vi.mock('../agents/dedup.js', () => ({ dedupHashFor: () => 'fixed-hash' }));
 vi.mock('../agents/drafter.js', () => ({ runDrafter: vi.fn() }));
 vi.mock('../agents/reviewer.js', () => ({ runReviewer: vi.fn() }));
@@ -80,14 +84,20 @@ vi.mock('../services/memory-writer.js', () => ({
   recordReviewerRejection: vi.fn(async () => {}),
   recordExecution: vi.fn(async () => {}),
   recordActionGate: vi.fn(async () => {}),
-  recordHumanApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
+  recordHumanApproval: vi.fn(async () => ({
+    claimed: true as const,
+    autonomy: { outcome: 'not_reached' as const },
+  })),
   loadActionForEvent: vi.fn(async () => null),
   loadActionForApproval: vi.fn(async () => null),
   loadApprovedVerdictForAction: vi.fn(async () => null),
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01')),
   autonomyTurnOnDelivered: vi.fn(async () => true),
   loadAutonomyStanding: vi.fn(async () => []),
-  loadCrossParentConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
+  loadCrossParentConsent: vi.fn(async () => ({
+    hasCoParent: false,
+    coParentConsentGranted: false,
+  })),
   loadChildStages: vi.fn(async () => []),
   markEventStage: vi.fn(async () => {}),
 }));

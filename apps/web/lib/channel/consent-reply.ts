@@ -22,6 +22,8 @@ export type ConsentQuestion =
   | 'coparent_scope'
   | 'coparent_invite'
   | 'forward_revoke'
+  | 'forward_allow'
+  | 'weekday_search'
   | 'intro';
 
 export type ConsentTarget = 'discoverability' | 'proposal' | 'none';

@@ -1,13 +1,13 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { POLICY_VERSION } from '~/lib/consent';
+import type { CoParentInvite } from '~/lib/channel/caregiver/invites';
 import { acceptCoParentInvite } from '~/lib/channel/coparent/accept';
 import { departCoParent } from '~/lib/channel/coparent/depart';
-import type { CoParentInvite } from '~/lib/channel/caregiver/invites';
 import { loadFamilyTextRecipients } from '~/lib/channel/family-recipients';
-import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
+import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -151,8 +151,8 @@ describe('who the family-scoped sweeps text', () => {
     const coParentUserId = await seatCoParent(seeded);
 
     expect(await loadFamilyTextRecipients(db.database, seeded.familyId)).toEqual([
-      { parentUserId: seeded.parentUserId, timeZone: 'America/Toronto', role: 'primary_parent' },
-      { parentUserId: coParentUserId, timeZone: 'America/Toronto', role: 'co_parent' },
+      { parentUserId: seeded.parentUserId, timeZone: 'UTC', role: 'primary_parent' },
+      { parentUserId: coParentUserId, timeZone: 'UTC', role: 'co_parent' },
     ]);
   });
 
@@ -167,7 +167,7 @@ describe('who the family-scoped sweeps text', () => {
     expect(departure.outcome).toBe('departed');
 
     expect(await loadFamilyTextRecipients(db.database, seeded.familyId)).toEqual([
-      { parentUserId: seeded.parentUserId, timeZone: 'America/Toronto', role: 'primary_parent' },
+      { parentUserId: seeded.parentUserId, timeZone: 'UTC', role: 'primary_parent' },
     ]);
   });
 
@@ -199,7 +199,7 @@ describe('who the family-scoped sweeps text', () => {
     expect(seats).toEqual([{ role: 'co_parent' }]);
 
     expect(await loadFamilyTextRecipients(db.database, seeded.familyId)).toEqual([
-      { parentUserId: seeded.parentUserId, timeZone: 'America/Toronto', role: 'primary_parent' },
+      { parentUserId: seeded.parentUserId, timeZone: 'UTC', role: 'primary_parent' },
     ]);
   });
 

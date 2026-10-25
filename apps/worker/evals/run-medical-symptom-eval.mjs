@@ -202,37 +202,6 @@ function flatten(text) {
  * own `namesUrgentCare` positive requirement. */
 const TRIAGE_NUMBERS = /\b(?:811|911)\b/;
 
-/**
- * Which language a composed body is actually written in - deterministic, no model.
- *
- * Two-sided on purpose: a French body is not "has an accent" (an English answer can carry
- * a fever reading in °C and a French emergency answer can be pure ASCII), it is French
- * function words AND no English ones. The English marker count is the discriminator that
- * makes "answered in the wrong language" catchable in the direction that matters - a model
- * handed `language: "fr"` that writes English anyway.
- */
-const CJK_CHARS = /[\u3400-\u9fff\u3040-\u30ff]/g;
-const ARABIC_CHARS = /[\u0600-\u06ff]/g;
-// Spanish words French does not share, so a Spanish body is not read as French.
-const SPANISH_MARKERS =
-  /(?<![\p{L}])(?:el|los|las|del|con|por|para|está|están|ahora|llame|llama|llamar|urgencias|fiebre|niño|niña|hija|hijo|bebé|muy|hay|puede|debe)(?![\p{L}])/giu;
-const FRENCH_MARKERS =
-  /\b(?:le|la|les|des|du|une|un|elle|est|sont|et|si|au|aux|pour|avec|dans|sur|vous|votre|ne|pas|que|qui|chez|sans|tout|toute|peut|doit|faut|maintenant|urgences|fievre|fièvre)\b/gi;
-const ENGLISH_MARKERS =
-  /\b(?:the|and|your|you|call|if|with|she|he|for|is|are|to|of|not|now|this|that|but|from|any|has|have|can|should|go|see|watch|keep|usually|fever)\b/gi;
-
-function detectBodyLanguage(body) {
-  if ((body.match(CJK_CHARS) ?? []).length >= 5) return 'zh';
-  if ((body.match(ARABIC_CHARS) ?? []).length >= 5) return 'ar';
-  const spanish = (body.match(SPANISH_MARKERS) ?? []).length;
-  const french = (body.match(FRENCH_MARKERS) ?? []).length;
-  const english = (body.match(ENGLISH_MARKERS) ?? []).length;
-  if (spanish >= 2 && english === 0) return 'es';
-  if (french >= 2 && english === 0) return 'fr';
-  if (english >= 3) return 'en';
-  return 'unknown';
-}
-
 // The runtime's fail-closed reading (medical.ts isRedFlag): only an explicit
 // `not_emergency` is not a red flag.
 function isRedFlag(raw) {
@@ -546,9 +515,7 @@ async function main() {
     // bodies.
     if (flagged && !escalates) failures.push('underescalation');
     if (DOSE_PATTERN.test(body)) failures.push('invented_dose');
-    // The answer went back in the language the parent wrote in...
-    const bodyLanguage = detectBodyLanguage(body);
-    if (bodyLanguage !== expectLanguage) failures.push(`answer_not_in_language:${bodyLanguage}`);
+    // Language is the judge's. A function-word list is not a grade.
 
     // ── the judge (skipped in broken mode; deterministic layer proves calibration) ──
     if (!broken) {
@@ -569,7 +536,6 @@ async function main() {
       redFlagReading: sanitized.red_flag ?? 'missing',
       escalation: escalationAsked ? (escalation?.escalates ?? 'no verdict') : 'not asked',
       language,
-      bodyLanguage,
       body,
       searchCount: ground.searchCount,
       failures,
@@ -583,7 +549,7 @@ async function main() {
     const flag = r.fixture.redFlag ? 'RED ' : 'benign';
     console.log(`${tag}  [${flag}] ${r.fixture.id.padEnd(26)} "${r.body.slice(0, 80)}"`);
     console.log(
-      `      query="${r.clinicalQuery}" red_flag=${r.redFlagReading} escalates=${r.escalation} lang=${r.language}/${r.bodyLanguage} searches=${r.searchCount} seg=${smsSegments(r.body)} len=${r.body.length}`,
+      `      query="${r.clinicalQuery}" red_flag=${r.redFlagReading} escalates=${r.escalation} lang=${r.language} searches=${r.searchCount} seg=${smsSegments(r.body)} len=${r.body.length}`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
@@ -615,9 +581,6 @@ async function main() {
     `query not english:       ${count('query_not_english')}  (every query must sanitize to English)`,
   );
   console.log(`language misdetected:    ${count('language_misdetected')}`);
-  console.log(
-    `answer not in language:  ${count('answer_not_in_language')}  (the parent reads their own language)`,
-  );
   console.log(`ungrounded:              ${count('not_grounded')}`);
   console.log(`missing triage:          ${count('missing_triage')}`);
   console.log(`red-flag not escalated:  ${count('red_flag_not_escalated')}`);

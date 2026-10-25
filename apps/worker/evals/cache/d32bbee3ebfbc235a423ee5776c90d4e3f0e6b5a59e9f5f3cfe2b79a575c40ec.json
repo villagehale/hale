@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNJDLaiNQS8chnDNbhEd",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS0wYKEAgTGAI4AUIIdGhpbmtpbmcSDFFI/6Sz4upDOzKY/BoMNGkYTQ7jEa0Hk9U+IjC7S2wqXE7lNQGC/nzWpoN3khvFVTXUfIZTeSJUtpwQFfpE1c9of/rQ0kuQ/2HcrTYq8AW7isIi9kbdRfbZv/7hN9XsCn8md8TMxsBVmBSfhZgweTRd9RUXE/LNGOiGZFhhG3MJA+ZNTmZaOyEcUJHoIdoUoea0BmKhYvuiaGYlKEnMn9jteNMoVIzKclwaF+eK3o8BSdyPWFC00fJLV6yOR0kzwW9NItJZYR9lDgbIsm3Ui6p024IB1HRxd8vrJmn6FkhjbNeZ5wyY6xfadxS836/ZUA6mCtbbN40bG5zNtqy3bOaXKpy/cjRG3Qxtz8FoD8nUBIM1OQ3/QCH8BLkl0RKsyaztrqnBuHtx4xz8h6Q125LFeM79/rgDk12mm6LBXn4BmRV74kS98YTKpHR8Suixh4avKLP6SpJhDllkDrk+7xzPC3xVQ6yDEqnR4QGuZvPAZ9531B1XIpGnEg6QBnR4hsQIGJv+nFbTpgW189jay3ojMrUlhfWXvWgyztJGfbNlztvFOGjrrgFBJYrdWSytJ69CsVeStfF1q8qRRtn9yztnDEDqAXIulTiciFunL7YnMBJNsbe0ZMH4GxbVe4wtozAka6z4tgYhP7dauUxgtmo7jdXeWQkawHPN1A01CJWe+p3gcPU+/nSd0fBRC7wIny9EDK5sojR0QyXXj/ChN2GeTzu+Zm5yQXvc2a70wXwUqEjVBdZauBJAnPdUVIknFZ7PsGxmcGLKEs6h1rnbap7ZlkS4iUbayLyCY8/SJ7m2E2hg8nvfFxrrraz1BSsQTnwkiWUlPp9givYHdAczP7sGpILPKOYI+TCMBoKQgtbOJEWq3056jPToxpStDc4GM4UCEHflL+FGCkaQLx+uQrHsZbXZgFuWDyRhzGVlCyqnHnU6fWaxuwydwwkHCuAOXs0sPrdS7QCvOCIK4DA4KRYfMgcLLAPRt6CWBqNp8QZ3W+p0mEJu6rEkhvRXXSv5gtP2FAJrvsZ25a93UHL4po2poXhIsK3e0J30ZQI+Q92C3+Od1CnACDiGEDagNUsiSYmDV337TJAJSXu9hspVzhgB"
+      },
+      {
+        "type": "text",
+        "text": "Cedarvale Park is already on your week for Soccer practice, Sat 10:00am. The nearby finds I have aren't parks, but Riverdale Farm is a free outdoor farm, open daily, listed for Sun, Aug 9."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1238,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20637,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 158,
+      "output_tokens_details": {
+        "thinking_tokens": 76
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2073
+}

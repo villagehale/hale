@@ -7,7 +7,7 @@ import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
+import { coParentDepartedNotice } from './copy';
 import { departCoParent } from './depart';
 import {
   DEPARTURE_NOTICE_TEMPLATE_KEY,
@@ -205,7 +205,7 @@ describe('telling the parent who stayed', () => {
     expect(transport.sent[0]?.to).toBe(household.stayingPhone);
     expect(transport.sent[0]?.to).not.toBe(household.departedPhone);
     // The sentence, and nothing after it.
-    expect(transport.sent[0]?.body).toBe(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en);
+    expect(transport.sent[0]?.body).toBe(await coParentDepartedNotice('en'));
     expect(transport.sent[0]?.body).not.toContain(OPT_OUT_LINE);
     expect(transport.sent[0]?.body).not.toContain(OPT_OUT_SHORT);
     // Nobody is named — see the dedicated wire test below for the whole household.
@@ -223,7 +223,7 @@ describe('telling the parent who stayed', () => {
       {
         familyId: household.familyId,
         parentUserId: household.stayingUserId,
-        body: CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en,
+        body: await coParentDepartedNotice('en'),
       },
     ]);
     const verbs = await db.database
@@ -362,10 +362,10 @@ describe('telling the parent who stayed', () => {
     }
     // Both languages really were rendered — otherwise the loop above proves one body.
     expect(transport.sent.map((s) => s.body).join('\n')).toContain(
-      CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr,
+      await coParentDepartedNotice('fr'),
     );
     expect(transport.sent.map((s) => s.body).join('\n')).toContain(
-      CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en,
+      await coParentDepartedNotice('en'),
     );
   });
 
@@ -384,7 +384,7 @@ describe('telling the parent who stayed', () => {
       ports(transport).ports,
     );
 
-    expect(transport.sent[0]?.body).toBe(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.fr);
+    expect(transport.sent[0]?.body).toBe(await coParentDepartedNotice('fr'));
     // The audit row records the language that was CHOSEN. It used to be re-derived by
     // comparing the rendered body against the EN constant, so any change to how the
     // message is built relabelled every row — including the English ones.

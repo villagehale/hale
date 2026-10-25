@@ -25,12 +25,18 @@ import { BROWSER_USE_WATCH_OUTPUT_SCHEMA, type WatchOutput, parseWatchOutput } f
  * - per sweep: at most WATCH_MAX_RUNS_PER_SWEEP runs;
  * - per day: no run starts once the last 24 hours of recorded cost plus one run's
  *   reserve would pass WATCH_DAY_MAX_COST_USD. Recorded cost is the session's full
- *   cost (browser, proxy, model) when Browser Use reports it.
+ *   cost (browser, proxy, model) when Browser Use reports it;
+ * - per 30 days: no run starts once the last 30 days of recorded cost plus one run's
+ *   reserve would pass WATCH_MONTH_MAX_COST_USD ($15, Barton's approved monthly
+ *   budget). The day cap alone would allow about $30 a month.
+ * A spend total that cannot be read counts as over both caps.
  */
 export const WATCH_RUN_MAX_COST_USD = 0.1;
 /** What one run is assumed to cost before it starts: model cap plus browser time. */
 export const WATCH_RUN_RESERVE_USD = 0.15;
 export const WATCH_DAY_MAX_COST_USD = 1;
+/** Rolling 30-day watch budget, approved by Barton at $15/month. */
+export const WATCH_MONTH_MAX_COST_USD = 15;
 export const WATCH_MAX_RUNS_PER_SWEEP = 2;
 export const WATCH_RUN_DEADLINE_MS = 2 * 60 * 1000;
 /** Do not start another run after this much of the route's 300s has gone. */
@@ -42,6 +48,7 @@ export const WATCH_MODEL = 'gpt-6-luna';
 export const WATCH_MODEL_PARAMS = { reasoning: { effort: 'medium' } } as const;
 const PROXY_COUNTRY = 'ca';
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MONTH_MS = 30 * DAY_MS;
 
 export interface WatchSweepDeps {
   api: BrowserUseWatchApi;
@@ -56,7 +63,7 @@ export interface WatchSweepSummary {
   ran: number;
   outcomes: WatchRunOutcome[];
   spentLast24hUsd: number;
-  stoppedBy: 'none' | 'day_cap' | 'run_cap' | 'time_budget';
+  stoppedBy: 'none' | 'day_cap' | 'month_cap' | 'run_cap' | 'time_budget';
 }
 
 export type WatchSweepResult =
@@ -86,14 +93,23 @@ function taskWithFacts(skillBody: string, facts: Record<string, unknown>): strin
   return `${skillBody.trim()}\n\n## This page\n\n\`\`\`json\n${JSON.stringify(facts, null, 2)}\n\`\`\`\n`;
 }
 
-export async function spentLast24hUsd(database: Database, now: Date): Promise<number> {
+async function spentSinceUsd(database: Database, since: Date): Promise<number> {
   const [row] = await database
     .select({
       total: sql<string | null>`coalesce(sum(${schema.providerWatchReadings.costUsd}), 0)`,
     })
     .from(schema.providerWatchReadings)
-    .where(gte(schema.providerWatchReadings.readAt, new Date(now.getTime() - DAY_MS)));
-  return usd(row?.total) ?? 0;
+    .where(gte(schema.providerWatchReadings.readAt, since));
+  // Fail closed: an unreadable total never lets a run start.
+  return usd(row?.total) ?? Number.POSITIVE_INFINITY;
+}
+
+export async function spentLast24hUsd(database: Database, now: Date): Promise<number> {
+  return spentSinceUsd(database, new Date(now.getTime() - DAY_MS));
+}
+
+export async function spentLast30dUsd(database: Database, now: Date): Promise<number> {
+  return spentSinceUsd(database, new Date(now.getTime() - MONTH_MS));
 }
 
 async function dueTargets(database: Database, now: Date, limit: number) {
@@ -249,6 +265,7 @@ export async function runBrowserUseWatchSweep(
   if (!deps) return { skipped: 'not_configured' };
   const startedAt = deps.now().getTime();
   let spent = await spentLast24hUsd(database, deps.now());
+  let spentMonth = await spentLast30dUsd(database, deps.now());
   const targets = await dueTargets(database, deps.now(), WATCH_MAX_RUNS_PER_SWEEP + 1);
   const outcomes: WatchRunOutcome[] = [];
   let stoppedBy: WatchSweepSummary['stoppedBy'] = 'none';
@@ -260,6 +277,10 @@ export async function runBrowserUseWatchSweep(
     }
     if (spent + WATCH_RUN_RESERVE_USD > WATCH_DAY_MAX_COST_USD) {
       stoppedBy = 'day_cap';
+      break;
+    }
+    if (spentMonth + WATCH_RUN_RESERVE_USD > WATCH_MONTH_MAX_COST_USD) {
+      stoppedBy = 'month_cap';
       break;
     }
     if (deps.now().getTime() - startedAt > WATCH_SWEEP_START_BUDGET_MS) {
@@ -276,6 +297,7 @@ export async function runBrowserUseWatchSweep(
     const result = await runTarget(database, deps, target);
     outcomes.push(result.outcome);
     spent += result.costUsd;
+    spentMonth += result.costUsd;
     if (result.runId === null && result.costUsd === 0) continue;
     await database.insert(schema.providerWatchReadings).values({
       targetId: target.id,

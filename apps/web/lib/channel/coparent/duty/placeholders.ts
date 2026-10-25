@@ -1,10 +1,9 @@
 /**
  * VIL-383 group lines. Design locked these. They are group-only.
  *
- * `dutyCopyMayLeave` still rejects an unrendered `{token}` and stays false
- * unless `COPARENT_DUTY_COPY_LOCKED` is exactly `true`. No counts, no STOP
- * wording. French is ASCII. The nudge addresses one person (tu). The others
- * speak to the group (vous).
+ * `dutyCopyMayLeave` still rejects an unrendered `{token}`, a TODO-Design
+ * marker, and a booking claim. No counts, no STOP wording. French is ASCII.
+ * The nudge addresses one person (tu). The others speak to the group (vous).
  */
 
 import type { DutyCopyLanguage } from './copy';

@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -390,7 +391,7 @@ export async function maybeSendParentCallName(
     familyId: string;
     parentUserId: string;
     isWin: boolean;
-    language: 'en' | 'fr';
+    language: ReplyLanguage | null;
   },
   send: (ask: ParentCallNameAsk) => Promise<boolean>,
 ): Promise<boolean> {

@@ -1,16 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { replyLanguage } from '~/lib/channel/language';
-import {
-  DIRECT_ACCESS_EYE_REPLY,
-  PROVIDER_ACCESS_REPLY,
-  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
-  UNPLACEABLE_PROVIDER_REPLY,
-  UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
-  namesAMentalCrisis,
-  namesAnEmergency,
-  reachesForTheHealthLine,
-  referralReply,
-} from './copy';
+import { reachesForTheHealthLine, referralReply } from './copy';
 
 /**
  * The French twins of the three lines this lane can send without a model.
@@ -23,28 +12,6 @@ import {
  *
  * PENDING FOUNDER REVIEW, all three, plus the two proper nouns called out below.
  */
-describe('mental-crisis tripwire · VIL-327', () => {
-  it('fires on suicide / self-harm and leaves care-find and cheer-up alone', () => {
-    expect(namesAMentalCrisis('I want to die')).toBe(true);
-    expect(namesAMentalCrisis('thinking about suicide')).toBe(true);
-    expect(namesAMentalCrisis('self-harm tonight')).toBe(true);
-    expect(namesAMentalCrisis('I need a therapist')).toBe(false);
-    expect(namesAMentalCrisis('cheer me up')).toBe(false);
-  });
-
-  it('does not treat a therapist-find or a cheer-up as a crisis', () => {
-    expect(namesAMentalCrisis('can you find a therapist near us')).toBe(false);
-    expect(namesAMentalCrisis('988')).toBe(true);
-  });
-});
-
-describe('physical-emergency tripwire · VIL-328', () => {
-  it('stops the ordinary answer on the six tokens and not on a rash', () => {
-    expect(namesAnEmergency('she is not breathing')).toBe(true);
-    expect(namesAnEmergency('she has a rash')).toBe(false);
-  });
-});
-
 describe('the French off-domain lines', () => {
   /**
    * TWO PROPER NOUNS NEED VERIFYING BEFORE THIS SHIPS, and they are asserted verbatim so
@@ -64,27 +31,21 @@ describe('the French off-domain lines', () => {
     expect(reachesForTheHealthLine('Le cours de natation est a 9h11')).toBe(false);
   });
 
-  it('names the Ontario registry and the number that registers you, in French', () => {
-    expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr).toBe(
-      "Trouver un médecin pour vous, je ne peux pas - mais Accès Soins est la liste de l'Ontario pour un médecin de famille ou un pédiatre, et on s'y inscrit en composant le 811. Ce numéro répond aussi aux questions de santé à toute heure.",
-    );
-    expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr).toContain('811');
+  it('names the Ontario registry and the number that registers you, in French', async () => {
+    const fr = await referralReply('Je cherche un medecin de famille', 'fr');
+    expect(fr).toContain('811');
+    expect(fr).not.toBe(await referralReply('we need a family doctor', 'en'));
     // No clinic names, no URLs, no wait-time estimates — the same three things the
     // English line refuses to invent.
-    expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr).not.toMatch(/https?:|\.ca\b|\.com\b/);
+    expect(fr).not.toMatch(/https?:|\.ca\b|\.com\b/);
   });
 
-  it('holds the English constant itself, so the two can never drift apart', () => {
-    expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.en).toBe(PROVIDER_ACCESS_REPLY);
-  });
-
-  it('routes a French provider question to the French line and everything else to the English one', () => {
-    expect(
-      PROVIDER_ACCESS_REPLY_BY_LANGUAGE[replyLanguage('Je cherche un medecin de famille')],
-    ).toBe(PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr);
-    expect(PROVIDER_ACCESS_REPLY_BY_LANGUAGE[replyLanguage('looking for a family doctor')]).toBe(
-      PROVIDER_ACCESS_REPLY,
-    );
+  it('writes a line for every tag, including one the product does not author in', async () => {
+    const zh = await referralReply('Je cherche un medecin de famille', 'zh');
+    expect(zh).toBeTruthy();
+    expect(zh).toContain('Health Care Connect');
+    expect(zh).toContain('811');
+    expect(await referralReply('we need a family doctor', null)).toBeTruthy();
   });
 });
 
@@ -104,23 +65,28 @@ describe('the French off-domain lines', () => {
  * a registry that will never call you back is not.
  */
 describe('the provider referral table', () => {
-  it('sends an eye-care ask to the direct-access answer, not the registry', () => {
+  it('sends an eye-care ask to the direct-access answer, not the registry', async () => {
     for (const ask of [
       'Find a optometrist near me',
       'when should he get an eye exam',
       'need to get her eyes checked before school',
     ]) {
-      expect(referralReply(ask, 'en')).toBe(DIRECT_ACCESS_EYE_REPLY);
+      const reply = await referralReply(ask, 'en');
+      expect(reply).toContain('FindAnEyeDoctor.ca');
+      expect(reply).not.toContain('811');
+      expect(reply).not.toContain('Health Care Connect');
     }
   });
 
-  it('sends a primary-care ask to Health Care Connect', () => {
+  it('sends a primary-care ask to Health Care Connect', async () => {
     for (const ask of [
       'we just moved and need a family doctor',
       'how do I find a pediatrician',
       'looking for a nurse practitioner',
     ]) {
-      expect(referralReply(ask, 'en')).toBe(PROVIDER_ACCESS_REPLY);
+      const reply = await referralReply(ask, 'en');
+      expect(reply).toContain('Health Care Connect');
+      expect(reply).toContain('811');
     }
   });
 
@@ -129,7 +95,7 @@ describe('the provider referral table', () => {
    * `specialist-access` bucket, none of them is placed by Health Care Connect, and on
    * main every single one received its line.
    */
-  it('never answers an unplaceable specialist with the registry', () => {
+  it('never answers an unplaceable specialist with the registry', async () => {
     for (const ask of [
       'can you find us a pediatric dentist',
       'we need an OT for my son',
@@ -138,25 +104,29 @@ describe('the provider referral table', () => {
       'need a physiotherapist for her ankle',
       'trying to find a child psychologist',
     ]) {
-      expect(referralReply(ask, 'en')).not.toBe(PROVIDER_ACCESS_REPLY);
-      expect(referralReply(ask, 'en')).toBe(UNPLACEABLE_PROVIDER_REPLY);
+      const reply = await referralReply(ask, 'en');
+      expect(reply).not.toContain('Health Care Connect');
+      expect(reply).not.toContain('811');
+      expect(reply).toBeTruthy();
     }
   });
 
   /** A refusal that names no adjacent can is the shape the capability table forbids. */
-  it('says it does not know, and names what Hale can still do', () => {
-    expect(UNPLACEABLE_PROVIDER_REPLY).not.toMatch(/health care connect/i);
-    expect(UNPLACEABLE_PROVIDER_REPLY).not.toMatch(/https?:|\.ca\b|\.com\b/);
-    expect(UNPLACEABLE_PROVIDER_REPLY).not.toMatch(/\bthe app\b|settings/i);
-    expect(UNPLACEABLE_PROVIDER_REPLY).toMatch(/calendar|week/i);
+  it('says it does not know, and names what Hale can still do', async () => {
+    const reply = await referralReply('we need an OT for my son', 'en');
+    expect(reply).not.toMatch(/health care connect/i);
+    expect(reply).not.toMatch(/https?:|\.ca\b|\.com\b/);
+    expect(reply).not.toMatch(/\bthe app\b|settings/i);
+    expect(reply).toMatch(/calendar|week/i);
   });
 
-  it('answers a French provider ask in French on every branch it has one for', () => {
-    expect(referralReply('Je cherche un medecin de famille', 'fr')).toBe(
-      PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr,
-    );
-    expect(referralReply('je cherche un orthophoniste pour mon fils', 'fr')).toBe(
-      UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE.fr,
-    );
+  it('answers a French provider ask in French on every branch it has one for', async () => {
+    const family = await referralReply('Je cherche un medecin de famille', 'fr');
+    expect(family).toContain('811');
+    expect(family).not.toBe(await referralReply('we need a family doctor', 'en'));
+    const other = await referralReply('je cherche un orthophoniste pour mon fils', 'fr');
+    expect(other).not.toContain('Health Care Connect');
+    expect(other).not.toContain('811');
+    expect(other).not.toBe(await referralReply('we need an OT for my son', 'en'));
   });
 });

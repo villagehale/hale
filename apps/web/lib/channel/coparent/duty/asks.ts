@@ -41,7 +41,6 @@ import {
   type DutyWeekEntry,
   dutyClockLabel,
   dutyCopy,
-  dutyCopyLocked,
   dutyCopyMayLeave,
   dutyWeekList,
   dutyWeekdayName,
@@ -112,7 +111,13 @@ export type DutyDelivery =
     }
   | {
       status: 'held';
-      reason: 'quiet_hours' | 'not_enrolled' | 'opt_out_unread' | 'no_watch_consent' | 'ask_budget';
+      reason:
+        | 'quiet_hours'
+        | 'not_enrolled'
+        | 'opt_out_unread'
+        | 'no_watch_consent'
+        | 'ask_budget'
+        | 'model_unsent';
     }
   | { status: 'not_sent'; reason: string };
 
@@ -680,8 +685,7 @@ function dutyFacts(
 
 /**
  * Rewrite one already-budgeted duty bubble. The model may not add a question
- * the locked line did not already ask. A failed check, or a line that may not
- * leave, keeps the locked sentence.
+ * the locked line did not already ask. A miss holds the send.
  */
 async function voiceDuty(
   database: Database,
@@ -692,7 +696,7 @@ async function voiceDuty(
     facts: readonly string[];
     replyClient?: AgentClient | null;
   },
-): Promise<string> {
+): Promise<string | null> {
   const voiced = await replyProse(
     {
       client: await resolveReplyClient(input.replyClient),
@@ -700,12 +704,12 @@ async function voiceDuty(
       familyId: input.familyId,
       language: input.language,
       audience: 'group',
-      flagOn: dutyCopyLocked(),
       surface: 'duty',
     },
     { fallback: input.locked, facts: input.facts },
   );
-  return dutyCopyMayLeave(voiced) ? voiced : input.locked;
+  if (!voiced || !dutyCopyMayLeave(voiced)) return null;
+  return voiced;
 }
 
 /** Joined copy for a bubble. Null when nothing finished may leave. */
@@ -948,6 +952,7 @@ async function applyPlan(
     facts: dutyFacts(input.lines, input.view.render, input.view.open),
     replyClient: input.replyClient,
   });
+  if (!text) return { status: 'held', reason: 'model_unsent' };
   const first = input.lines[0];
   const ymd = localYmd(input.now, input.view.timeZone);
   const delivered = await deliverDutyGroupLine(
@@ -1056,6 +1061,7 @@ export async function dutyOverviewForWeeklyBubble(
     facts: dutyFacts(view.plan.foldLines, view.render, view.open),
     replyClient: input.replyClient,
   });
+  if (!text) return null;
   return {
     text,
     commit: async () => {

@@ -454,7 +454,7 @@ describe('takeRosterTurn', () => {
     expect(sent[0]?.replyTo).toBe('in-dad');
     expect(voice.calls[0]?.input).toMatchObject({
       kind: 'role_confirmed',
-      facts: { roleWord: 'dad' },
+      facts: { role: 'dad' },
       parentWords: "I'm his dad",
     });
     expect(recorded).toHaveLength(1);
@@ -569,7 +569,7 @@ describe('takeRosterTurn', () => {
     expect(await memberStatus(GRAN)).toBe('confirmed');
     expect(voice.calls[0]?.input).toMatchObject({
       kind: 'role_confirmed',
-      facts: { roleWord: 'aunt' },
+      facts: { role: 'aunt' },
     });
     expect(
       (

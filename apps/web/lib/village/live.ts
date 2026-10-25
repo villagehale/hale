@@ -7,9 +7,20 @@ import {
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
+import { safeHttpUrl } from '~/lib/format/http-url';
 import { activityClient } from '~/lib/pipeline/client';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 import { resolveActiveAreaCoarse } from './areas';
+
+/**
+ * VIL-452 · the Finder's link field is `url`; receipts and dedupe read `sourceUrl`.
+ * Normalize once at every offer boundary: an existing sourceUrl wins, and only a safe
+ * absolute http(s) link is kept. Never invents a URL.
+ */
+export function withSourceUrl<T extends { url?: string; sourceUrl?: string }>(pick: T): T {
+  const sourceUrl = safeHttpUrl(pick.sourceUrl) ?? safeHttpUrl(pick.url) ?? undefined;
+  return { ...pick, sourceUrl };
+}
 
 /** Identity only, never facts to answer with. A new dated occurrence is a new offer. */
 export function activityRecommendationKey(pick: {
@@ -172,11 +183,12 @@ export async function recordActivityOffers(
   now = new Date(),
 ) {
   if (picks.length === 0) return [];
+  const normalized = picks.map(withSourceUrl);
   return database.transaction(async (tx) => {
     const rows = await tx
       .insert(schema.familyActivityHistory)
       .values(
-        picks.map((pick) => ({
+        normalized.map((pick) => ({
           familyId,
           title: pick.name,
           kind: 'activity',

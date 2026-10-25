@@ -2,7 +2,6 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
@@ -29,12 +28,9 @@ import type { ActivityPick } from './lane';
  *   that silently drops every disappointing promise (rule #11 — the absence of the effect
  *   is a first-class outcome, and here it is an outcome the PARENT is told about).
  *
- * THE TOP PICK LANDS IN SEGMENT ONE, as a gate. A carrier bills 153 GSM-7 characters a
- * part and a phone shows the first of them; every trim in this codebase drops from the end
- * (coach/reply.ts `fitToBudget`). So an answer whose best find is in the last sentence is
- * an answer whose best find is the first thing to disappear — which is the shape of the
- * "later answers trimmed off the end" defect this product already has a name for.
- * Requiring the name in the first segment costs the model nothing and cannot be lost.
+ * THE TOP PICK LANDS EARLY, as a gate. A phone shows the start of a message first, so the
+ * name of the best find belongs in the opening. Chat replies are no longer cut to two
+ * segments (VIL-434); the name still leads because that is what a parent reads first.
  *
  * NEVER CLAIMS WHAT IT DID NOT DO. Every pick here came off the WEB, and
  * {@link claimsVerification} refuses a body that says otherwise. It is deliberately narrow
@@ -47,12 +43,6 @@ import type { ActivityPick } from './lane';
  * that is only as good as its source is still a find, and withholding it is the silence
  * that started all this.
  */
-
-/** One SMS, two segments — the same ceiling every other unprompted message keeps. */
-export const MAX_FOLLOWUP_SEGMENTS = 2;
-
-/** GSM-7 characters in one segment. The budget the top pick has to land inside. */
-const FIRST_SEGMENT_CHARS = 153;
 
 /** Same reasoning as the plan note's: a model that cannot fix a named mechanical fault in
  * three tries will not fix it on the fourth. */
@@ -250,11 +240,11 @@ function message(err: unknown): string {
 }
 
 /**
- * Whether the best find survives a phone's first screen — and therefore any trim.
+ * Whether the message names the best find.
  *
  * Matched on the pick's NAME rather than on sentence order, because "the top pick leads"
- * is about what a parent SEES, and a body that opens with a clause of preamble and then
- * names the place is fine. What is not fine is the name arriving in segment two.
+ * is about what a parent can tell, and a body that opens with a clause of preamble and then
+ * names the place is fine. Replies are sent whole (VIL-434), so the name may land anywhere.
  *
  * Matched on the name's distinctive WORDS, not the field verbatim and not its phrases.
  * `name` is a composite assembled for a structured payload — "Kinderfun (Toddler Program),
@@ -267,7 +257,7 @@ function message(err: unknown): string {
  * guard.
  *
  * So the question is the one a parent would ask: can I tell WHICH find this is? Two or
- * more of the name's identifying words landing in the first segment is a yes. Programme
+ * more of the name's identifying words anywhere in the message is a yes. Programme
  * nouns are not identifying — a body leading with "a toddler program" has named nothing.
  * (The eval mirrors this rule and mirrors it word for word; it replicates rather than
  * imports, like every other gate here.)
@@ -345,7 +335,7 @@ function identifyingWords(name: string): string[] {
 export function topPickLeads(body: string, picks: readonly ActivityPick[]): boolean {
   const top = picks[0];
   if (!top) return true;
-  const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  const head = body.toLowerCase();
   const venue = identifyingWords(top.sourceName ?? '');
   if (venue.length > 0 && venue.every((word) => head.includes(word))) return true;
   const words = identifyingWords(top.name);
@@ -444,37 +434,6 @@ export function followUpViolations(
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
-  // ONE RULER, AND IT IS THIS ONE. The skill used to teach the model to predict the fit
-  // and pre-drop for it ("when it will not fit, cut the SECOND find"), which is a model
-  // eyeballing segment arithmetic it cannot do: on 2026-08-24 it dropped a complete
-  // second find — a price and a schedule — out of a 263-character message with room for
-  // it, and nothing downstream could tell that answer from one that had only one find.
-  // Fit is measured HERE, and the correction says what to give up, so the model never has
-  // to guess whether it is in the losing case.
-  //
-  // AND IT SAYS WHAT MAY NOT GO, because a correction that names only the cut leaves
-  // everything it did not name looking spare. The first version of this sentence ended
-  // "and keep the rest as they are": handed it, the composer kept both finds intact and
-  // deleted the continuation sentence instead — the one thing `watch` had already written
-  // a row for — then spent its last attempt without putting it back and the promise went
-  // out silent about itself. A length correction that can be satisfied by breaking a
-  // different gate is a recompose loop that ends in silence, so the two things a trim may
-  // never reach are named here, in the same breath as the cut.
-  //
-  // LENGTH, NOT AN ASCII GATE. A follow-up is written in the language this parent writes
-  // in, and a GSM-7 refusal would throw out every one of those.
-  if (smsSegments(text) > MAX_FOLLOWUP_SEGMENTS) {
-    const keep = grounding.watch
-      ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
-      : 'never the facts of the find you led with';
-    violations.push(
-      `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
-        grounding.picks.length > 1
-          ? `Drop the LAST find whole - ${keep}.`
-          : `Shorten the wording around the facts, never the facts themselves - ${keep}.`
-      }`,
-    );
-  }
   if (LINK_SHAPE.test(text)) {
     violations.push('The message contains a link or a web address. Never send one.');
   }
@@ -485,9 +444,7 @@ export function followUpViolations(
   }
   if (!topPickLeads(text, grounding.picks)) {
     const top = grounding.picks[0];
-    violations.push(
-      `The best find (${top?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
-    );
+    violations.push(`The best find (${top?.name}) is not named. Lead with it.`);
   }
   // NO OFFER, BECAUSE AN OFFER IS A PROPOSAL AND A PROPOSAL IS A ROW. Nothing in this
   // lane can write one: the sweep has already decided what it will do next and put THAT

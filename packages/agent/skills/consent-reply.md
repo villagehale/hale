@@ -19,6 +19,8 @@ Hale asked one question. The parent wrote back in their own words, in whatever l
 - `coparent_scope` — whether Hale may text someone the parent named, as a co-parent.
 - `coparent_invite` — whether that person accepts the co-parent invite.
 - `forward_revoke` — whether to turn off the parent's forwarding address.
+- `forward_allow` — whether Hale may read mail forwarded from one sender. `target` is `none`.
+- `weekday_search` — whether Hale should look for weekday care. `target` is `none`.
 - `intro` — introductions. The parent may be answering whether Hale may look for a match, or whether they want this particular introduction. `target` says which.
 
 ## What you return

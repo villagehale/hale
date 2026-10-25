@@ -39,7 +39,12 @@ export type GroupOnboardingRequest =
     }
   | { kind: 'text_me_directly'; name: string | null }
   | { kind: 'group_quiet_notice'; reason: GroupQuietReason; count: number }
-  | { kind: 'stop_ack' };
+  | { kind: 'stop_ack' }
+  | {
+      /** VIL-438 (T22): first message to someone a parent added. Facts only. */
+      kind: 'member_welcome';
+      adderName: string | null;
+    };
 
 export type GroupOnboardingKind = GroupOnboardingRequest['kind'];
 
@@ -55,33 +60,6 @@ export interface GroupOnboardingLine {
   linkFollows?: boolean;
   wayOut?: boolean;
 }
-
-const ROLE_WORD: Record<ReplyLanguage, Record<RoleWordKey, string>> = {
-  en: {
-    mom: 'mom',
-    dad: 'dad',
-    parent: 'parent',
-    grandparent: 'grandparent',
-    nanny: 'nanny',
-    babysitter: 'babysitter',
-    aunt: 'aunt',
-    uncle: 'uncle',
-    cousin: 'cousin',
-    family: 'family',
-  },
-  fr: {
-    mom: 'maman',
-    dad: 'papa',
-    parent: 'parent',
-    grandparent: 'grand-parent',
-    nanny: 'nounou',
-    babysitter: 'gardienne',
-    aunt: 'tante',
-    uncle: 'oncle',
-    cousin: 'cousin',
-    family: 'famille',
-  },
-};
 
 function named(...values: ReadonlyArray<string | null>): string[] {
   return values.filter((value): value is string => typeof value === 'string' && value.length > 0);
@@ -125,15 +103,13 @@ export function groupOnboardingLineInput(
         questions: 1,
         mustMention: [],
       };
-    case 'role_confirmed': {
-      const roleWord = ROLE_WORD[language][request.role];
+    case 'role_confirmed':
       return {
         ...base,
-        facts: { name: request.name, roleWord },
+        facts: { name: request.name, role: request.role },
         questions: 0,
-        mustMention: [...named(request.name), roleWord],
+        mustMention: [...named(request.name)],
       };
-    }
     case 'no_family_yet':
       return {
         ...base,
@@ -175,6 +151,24 @@ export function groupOnboardingLineInput(
         ...base,
         facts: {},
         questions: 0,
+        mustMention: [],
+        wayOut: true,
+      };
+    case 'member_welcome':
+      // VIL-438 (T22) copy facts (Sloane): who added Hale, what Hale can see (only
+      // this chat), how to stop (any wording, per person), and that nobody else has to
+      // sign up because one family's plan covers the whole group.
+      return {
+        ...base,
+        facts: {
+          adderName: request.adderName,
+          seesOnlyThisChat: true,
+          noSignUpNeeded: true,
+          planCoversWholeGroup: true,
+          stopIsPerPersonInAnyWording: true,
+        },
+        questions: 1,
+        // No mustMention: a name check would be word matching on parent-facing copy.
         mustMention: [],
         wayOut: true,
       };
