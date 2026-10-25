@@ -18,7 +18,6 @@ import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { priceBandLabel } from '~/lib/format/labels';
-import type { HealthRegion } from '~/lib/health/checkpoints';
 import type { HealthChild } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import {
@@ -107,25 +106,6 @@ export interface WeatherSwapNudge {
   whyFacts: string[];
 }
 
-/**
- * VIL-243 · M8. Carries the checkpoint by REFERENCE, not by copy: the renderable
- * strings live in the reviewed content table (lib/health/checkpoints.ts) and are looked
- * up at render time, so a copy correction lands everywhere at once and no decision
- * object can ever hold a stale sentence.
- */
-export interface HealthCheckpointNudge {
-  kind: 'health_checkpoint';
-  checkpointRef: { id: string; region: HealthRegion };
-  /** This checkpoint's identity for this family: what the sweep dedupes on and what a
-   * "done" reply suppresses. Built by the matcher, never rebuilt. Never rendered. */
-  ref: string;
-  /** Under-13 children only. A 13+ child is NEVER named over this channel (rule #1). */
-  kidNames: string[];
-  /** True when every matched child is 13+, and the copy must go generic. */
-  teenOnly: boolean;
-  teenCount: number;
-}
-
 /** The five days the weekend rule throws away. A closed set, so a fact slot can be
  * checked exhaustively wherever it appears. */
 export type WeekdayName = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
@@ -194,7 +174,6 @@ export interface EmptySaturdayNudge {
 
 export type Nudge =
   | RegistrationNudge
-  | HealthCheckpointNudge
   | WeatherSwapNudge
   | EmptySaturdayNudge
   | WeekdayDropInNudge
@@ -229,8 +208,6 @@ export interface DecideNudgeInput {
   healthChildren: readonly HealthChild[];
   /** The family's FSA. Health checkpoints are region-gated; null means none apply. */
   areaCoarse: string | null;
-  /** Checkpoints the family must not be raised about again (already told, or done). */
-  suppressedCheckpointRefs: ReadonlySet<string>;
   /**
    * Registration windows an M7 sequence (VIL-242) has claimed for this family. The
    * sequence sends its own heads-up leg for a window it is preparing, so announcing it

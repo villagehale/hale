@@ -3,7 +3,12 @@ import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
-import type { BrowserUseSignupResult } from './browser-use/engine';
+import {
+  BrowserUseEngineThrew,
+  type BrowserUseSignupResult,
+  PAYMENT_RUN_MAX_COST_USD,
+  SIGNUP_RUN_MAX_COST_USD,
+} from './browser-use/engine';
 import { browserUseSignupEnabled, browserUseSignupPaymentEnabled } from './browser-use/flag';
 import { browserUseProxyFor } from './browser-use/proxy';
 import {
@@ -44,6 +49,7 @@ import {
   loadSignupIdentity,
   markOffer,
   recordBrowserUseCost,
+  reserveBrowserUseAllowance,
 } from './store';
 import type { SignupBrowser, SignupIdentity, SignupPage, SignupStopReason } from './types';
 import { registrationUrlAllowed } from './url';
@@ -106,7 +112,7 @@ export type BrowserUseHandoff =
   | BrowserUseSignupResult
   | {
       outcome: 'error' | 'needs_login';
-      detail: 'not_configured' | 'no_provider_session' | 'engine_threw';
+      detail: 'not_configured' | 'no_provider_session' | 'engine_threw' | 'spend_reserve_reached';
       liveViewUrl: null;
       checkoutUrl: null;
       holdExpiresAt: null;
@@ -114,11 +120,12 @@ export type BrowserUseHandoff =
       confirmationNumber: null;
       opensAt: null;
       amountChargedCents: null;
-      runId: null;
-      sessionId: null;
+      /** Set only on engine_threw, from the ids the engine had created. */
+      runId: string | null;
+      sessionId: string | null;
       costUsd: null;
-      sessionCostUsd: null;
-      browserId: null;
+      sessionCostUsd: string | null;
+      browserId: string | null;
     };
 
 const UNCLAIMED: SignupRunResult = {
@@ -536,9 +543,18 @@ export async function runAuthorizedSignup(
   }
 }
 
+/** Barton's production reserve for Browser Use registrations (10/25): $25 total. */
+export const BROWSER_USE_REGISTRATION_RESERVE_USD = 25;
+/**
+ * Held per run: the signup and payment agent caps plus $1 for what those caps
+ * leave out (browser time incl. the 15-minute checkout keep-alive, proxy,
+ * search and profile seeding).
+ */
+export const BROWSER_USE_RUN_ALLOWANCE_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
+
 function browserUseAbsent(
   outcome: 'error' | 'needs_login',
-  detail: 'not_configured' | 'no_provider_session' | 'engine_threw',
+  detail: 'not_configured' | 'no_provider_session' | 'engine_threw' | 'spend_reserve_reached',
 ): BrowserUseHandoff {
   return {
     outcome,
@@ -587,6 +603,10 @@ async function runBrowserUseBranch(
     approvedPriceCents: number | null;
   },
 ): Promise<SignupRunResult> {
+  let allowanceHeld = false;
+  // A throw that does not say which session it had created may have started one:
+  // its hold stays until a real cost replaces it.
+  let sessionMayExist = false;
   const done = async (
     raw: BrowserUseHandoff,
     paymentSkipped: SignupPaymentSkipped | null = null,
@@ -599,11 +619,19 @@ async function runBrowserUseBranch(
         : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
-    if (handoff.sessionCostUsd !== null) {
+    // No Browser Use session ever started (setup failed or the engine threw
+    // before a run): release the held allowance. A started session keeps its
+    // hold until its real cost replaces it.
+    const settledCostUsd =
+      handoff.sessionCostUsd ??
+      (allowanceHeld && !sessionMayExist && handoff.sessionId === null && handoff.runId === null
+        ? '0'
+        : null);
+    if (settledCostUsd !== null) {
       await recordBrowserUseCost(database, {
         offerId: ctx.offerId,
         familyId: input.familyId,
-        sessionCostUsd: handoff.sessionCostUsd,
+        sessionCostUsd: settledCostUsd,
         now: input.now,
       });
     }
@@ -667,6 +695,26 @@ async function runBrowserUseBranch(
     );
   }
 
+  // Production reserve for Browser Use registrations. The run's worst-case
+  // allowance is held on this offer before it starts, under a lock, and
+  // replaced by the real session cost when the browser stops. A live-view
+  // handoff keeps the allowance, so total spend never passes the reserve.
+  const reserved = await reserveBrowserUseAllowance(database, {
+    offerId: ctx.offerId,
+    familyId: input.familyId,
+    allowanceUsd: BROWSER_USE_RUN_ALLOWANCE_USD,
+    reserveUsd: BROWSER_USE_REGISTRATION_RESERVE_USD,
+    now: input.now,
+  });
+  if (!reserved.ok) {
+    console.warn(
+      { familyId: input.familyId, offerId: ctx.offerId, spentUsd: reserved.spentUsd },
+      'authorized signup: browser use registration reserve reached',
+    );
+    return done(browserUseAbsent('error', 'spend_reserve_reached'), payment.skipped);
+  }
+  allowanceHeld = true;
+
   let result: BrowserUseSignupResult;
   try {
     result = await runner.run({
@@ -694,6 +742,20 @@ async function runBrowserUseBranch(
       },
       'authorized signup: browser use engine threw',
     );
+    if (err instanceof BrowserUseEngineThrew) {
+      // The engine reports the ids it had created; a started session keeps its hold.
+      return done(
+        {
+          ...browserUseAbsent('error', 'engine_threw'),
+          runId: err.runId,
+          sessionId: err.sessionId,
+          browserId: err.browserId,
+          sessionCostUsd: err.sessionCostUsd,
+        },
+        payment.skipped,
+      );
+    }
+    sessionMayExist = true;
     return done(browserUseAbsent('error', 'engine_threw'), payment.skipped);
   }
   return done(result, payment.skipped);

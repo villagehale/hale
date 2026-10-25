@@ -1,4 +1,5 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
@@ -47,14 +48,15 @@ export const EXAMPLE_CHILD_ID = '00000000-0000-4000-8000-000000000000';
  * wrong pick, and `inputExamples` on this surface are cached outside the protections
  * message content gets (rule #1). See {@link OfferedCandidate}. */
 interface OfferableActivity {
-  sourceUrl?: string;
   title: string;
   kind: string;
   summary: string;
   venue?: string;
   when: string;
-  /** The row's own page, only when it is an absolute http(s) URL. */
-  url?: string;
+  /** A ref for the row's own page, never the URL. The one id the model sees, and on
+   * purpose: the reply cites it and code attaches that exact page, so an invented ref
+   * attaches nothing and a typed URL is dropped (channel/coach/activity-links.ts). */
+  ref?: string;
 }
 
 /**
@@ -187,8 +189,8 @@ export function searchVillageTool(
           summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
           venue: pick.sourceName,
           when: pick.when ?? 'Current time could not be verified',
-          sourceUrl: pick.sourceUrl,
-          url: pick.sourceUrl,
+          // A ref, not the page: the reply cites it and code attaches the URL.
+          ...(pick.sourceUrl ? { ref: linkRef(pick.sourceUrl) } : {}),
         },
         offer: {
           title: pick.name,

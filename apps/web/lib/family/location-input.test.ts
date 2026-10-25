@@ -1,15 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { isOnboardingRegionSupported, normalizeLocation } from './location-input.js';
 
-describe('isOnboardingRegionSupported (Canada-only onboarding gate, hard rule #1)', () => {
-  it('accepts Canada by name/alias (case-insensitive) and a null (unspecified) country', () => {
-    for (const c of ['Canada', ' canada ', 'CA', 'can', 'CANADA', null]) {
+describe('isOnboardingRegionSupported (Canada and the United States)', () => {
+  it('accepts Canada and the US by name/alias, and a null (unspecified) country', () => {
+    for (const c of [
+      'Canada',
+      ' canada ',
+      'CA',
+      'can',
+      'CANADA',
+      'United States',
+      'USA',
+      'US',
+      'united states of america',
+      null,
+    ]) {
       expect(isOnboardingRegionSupported(c)).toBe(true);
     }
   });
 
-  it('blocks an explicit non-Canadian country until that market is cleared', () => {
-    for (const c of ['United States', 'USA', 'US', 'United Kingdom', 'Australia', 'France']) {
+  it('blocks a country outside Canada and the US', () => {
+    for (const c of ['United Kingdom', 'Australia', 'France', 'Mexico']) {
       expect(isOnboardingRegionSupported(c)).toBe(false);
     }
   });

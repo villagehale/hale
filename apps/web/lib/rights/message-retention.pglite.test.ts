@@ -981,6 +981,9 @@ describe('sweepMessageRetention on a database without migration 0167', () => {
 
   beforeAll(async () => {
     before0167 = await createTestDb('0163_drop_retired_auth_tables.sql');
+    await before0167.exec(
+      'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb',
+    );
   });
 
   afterAll(async () => {

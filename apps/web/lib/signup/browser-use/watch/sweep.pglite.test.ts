@@ -8,6 +8,7 @@ import { loadProviderWatchContext } from './context';
 import {
   WATCH_DAY_MAX_COST_USD,
   WATCH_MAX_RUNS_PER_SWEEP,
+  WATCH_MONTH_MAX_COST_USD,
   WATCH_RUN_MAX_COST_USD,
   WATCH_RUN_RESERVE_USD,
   type WatchSweepDeps,
@@ -228,6 +229,64 @@ describe('browser use watch sweep', () => {
       true,
     );
     expect(result).toMatchObject({ ran: 1 });
+  });
+
+  it('caps watch spend at $15 over a rolling 30 days, not $1/day times 30', async () => {
+    expect(WATCH_MONTH_MAX_COST_USD).toBe(15);
+    const t = await target();
+    // $0.90 a day for the last 17 days stays under the $1 day cap every day,
+    // yet totals $15.30 over 30 days, past the $15 cap.
+    for (let day = 1; day <= 17; day += 1) {
+      await db.database.insert(schema.providerWatchReadings).values({
+        targetId: t.id,
+        providerHost: HOST,
+        outcome: 'read',
+        costUsd: '0.9000',
+        readAt: new Date(NOW.getTime() - (day * 24 + 1) * 60 * 60_000),
+      });
+    }
+    const fake = fakeBrowserUse();
+    const result = await runBrowserUseWatchSweep(db.database, deps(fake.fetchImpl), true);
+    expect(result).toMatchObject({ ran: 0, stoppedBy: 'month_cap' });
+    expect(fake.fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('counts spend older than 30 days out of the month cap', async () => {
+    const t = await target();
+    await db.database.insert(schema.providerWatchReadings).values({
+      targetId: t.id,
+      providerHost: HOST,
+      outcome: 'read',
+      costUsd: WATCH_MONTH_MAX_COST_USD.toFixed(4),
+      readAt: new Date(NOW.getTime() - 31 * 24 * 60 * 60_000),
+    });
+    const result = await runBrowserUseWatchSweep(
+      db.database,
+      deps(fakeBrowserUse().fetchImpl),
+      true,
+    );
+    expect(result).toMatchObject({ ran: 1 });
+  });
+
+  it('starts no run when the spend total cannot be read', async () => {
+    await target();
+    const fake = fakeBrowserUse();
+    const realSelect = db.database.select.bind(db.database);
+    let calls = 0;
+    const spy = vi.spyOn(db.database, 'select').mockImplementation(((
+      ...args: Parameters<typeof realSelect>
+    ) => {
+      calls += 1;
+      if (calls === 1) return { from: () => ({ where: async () => [{ total: null }] }) };
+      return realSelect(...args);
+    }) as never);
+    try {
+      const result = await runBrowserUseWatchSweep(db.database, deps(fake.fetchImpl), true);
+      expect(result).toMatchObject({ ran: 0, stoppedBy: 'day_cap' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fake.fetchImpl).not.toHaveBeenCalled();
   });
 
   it('cancels a run past its deadline and records it as failed with its cost', async () => {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own and to ask first. The autonomy switch was turned off this turn for send_email and reply_to_email, so the reply's promise to ask before every email is backed by state. It is one short, plain line in the parent's own language, with no machinery, no sign-off and no extra question. It answers completely and stops.",
+    "score": 5
+  }
+}

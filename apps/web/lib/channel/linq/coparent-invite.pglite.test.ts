@@ -242,7 +242,7 @@ describe('a number on the SMS door', () => {
     });
     expect(outcome).toEqual({
       status: 'sent',
-      reply: coParentInviteSentAck('them', 'en'),
+      reply: await coParentInviteSentAck('them', 'en'),
       templateKey: 'coparent:number_invite_ack',
     });
     const [row] = await db.database

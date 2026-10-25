@@ -1,8 +1,9 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, desc, eq, inArray, lte } from 'drizzle-orm';
-import { replyLanguage } from '~/lib/channel/language';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { isUndefinedTable } from '~/lib/channel/linq/roster';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
@@ -199,6 +200,8 @@ export interface OffDomainPorts {
   medical: MedicalComposer;
   /** Stamps the inbound row with the lane + bucket. Never throws — see
    * {@link UnmetSignalOutcome}. */
+  /** The family's stored language tag. Absent: the fixed provider lines do not guess one. */
+  language?(familyId: string): Promise<ReplyLanguage | null>;
   recordUnmetIntent(input: {
     channelMessageId: string;
     familyId: string;
@@ -319,14 +322,21 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // not vague but WRONG (founder, live gate, 2026-08-13, on an optometrist). The
       // table's miss branch says so instead, which is a correct answer where a guessed
       // registry is a wasted phone call.
-      // Which LANGUAGE those fixed sentences go out in is decided the same way and for
-      // the same reason — off the words in front of it, with no model consulted.
-      const language = replyLanguage(input.text);
+      // The stored tag picks an English or French template. Any other tag is the
+      // coach's, not an English sentence guessed from the words. Only the
+      // provider door reads it: a weather reply and a group thread do not.
+      const language =
+        lane === 'provider_access' && ports.language ? await ports.language(input.familyId) : null;
+      const providerLine =
+        lane === 'provider_access' ? await referralReply(input.text, language) : null;
+      if (lane === 'provider_access' && !providerLine) {
+        return { status: 'in_domain', fallback: null };
+      }
       const lined =
         lane === 'safety_critical'
           ? await momentDoor(ports, family, reading.category, input.text)
           : lane === 'provider_access'
-            ? fixedLine(referralReply(input.text, language))
+            ? fixedLine(providerLine ?? '')
             : await replyFor(
                 ports,
                 family,
@@ -797,5 +807,6 @@ export function productionOffDomainLane(
     medical: createMedicalComposer(client),
     moment: createMomentReply(client),
     recordUnmetIntent: recordUnmetIntent(database),
+    language: (familyId) => familySpeechLanguage(database, familyId),
   });
 }

@@ -1,6 +1,6 @@
 import type { Database } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
 import { playbookFor } from '@hale/types';
+import { describe, expect, it, vi } from 'vitest';
 import type { PlanComposeOutcome } from './compose';
 import type { NoteComposeOutcome } from './note';
 import { PlanDeferred, type PlanReplyDeps, handlePlanYes } from './reply';
@@ -72,8 +72,7 @@ function harness(
   const noteGrounding: unknown[] = [];
 
   const deps: PlanReplyDeps = {
-    loadOpenOffer: async () =>
-      overrides.offer === undefined ? FRESH_OFFER : overrides.offer,
+    loadOpenOffer: async () => (overrides.offer === undefined ? FRESH_OFFER : overrides.offer),
     loadQuestion: async () =>
       overrides.question === undefined ? 'he wakes at 3am every single night' : overrides.question,
     loadChild: async () =>
@@ -118,10 +117,18 @@ function harness(
     },
   };
 
-  const run = (body = 'yes') =>
+  const run = (body = 'yes', resolved: 'yes' | null = 'yes') =>
     handlePlanYes(
       database,
-      { familyId: FAMILY, parentUserId: PARENT, conversationId: CONVERSATION, body, send, now: NOW },
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        conversationId: CONVERSATION,
+        body,
+        send,
+        now: NOW,
+        resolved,
+      },
       deps,
     );
 
@@ -152,7 +159,7 @@ describe('claiming', () => {
   it('leaves an ordinary message to the coach', async () => {
     const h = harness();
 
-    expect(await h.run('what time is swim')).toEqual({ status: 'declined_to_claim' });
+    expect(await h.run('what time is swim', null)).toEqual({ status: 'declined_to_claim' });
     expect(h.sent).toEqual([]);
   });
 
@@ -203,8 +210,10 @@ describe('grounding', () => {
     });
     // The METHOD content comes from the curated playbook, never from the model's own
     // knowledge — that is the whole point of the arc's second pass.
-    expect((h.grounding[0] as { playbook: { primaryMethod: { name: string } } }).playbook
-      .primaryMethod.name).toBe(playbookFor('sleep').primaryMethod.name);
+    expect(
+      (h.grounding[0] as { playbook: { primaryMethod: { name: string } } }).playbook.primaryMethod
+        .name,
+    ).toBe(playbookFor('sleep').primaryMethod.name);
   });
 
   it('names it in the log when the thread no longer holds the question', async () => {

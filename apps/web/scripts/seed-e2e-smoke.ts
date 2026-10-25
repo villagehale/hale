@@ -68,7 +68,12 @@ if (existing.length > 0) {
 const adminUser = one(
   await db
     .insert(schema.users)
-    .values({ externalAuthId: 'smoke-admin', email: 'smoke-admin@example.test', name: 'Sam Smoke' })
+    .values({
+      externalAuthId: 'smoke-admin',
+      email: 'smoke-admin@example.test',
+      name: 'Sam Smoke',
+      timezone: 'America/Toronto',
+    })
     .returning({ id: schema.users.id }),
   'smoke-admin user',
 );

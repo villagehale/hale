@@ -7,6 +7,7 @@
  * block titled Busy: the model decides whether it is worth saying.
  */
 
+import { localeFor } from '~/lib/channel/language';
 import { zonedMidnight } from '~/lib/memory/period';
 
 export const AHA_TIME_ZONE = 'America/Toronto';
@@ -86,9 +87,9 @@ export function ahaWhenLabel(
   start: string,
   allDay: boolean,
   timeZone: string,
-  language: 'en' | 'fr',
+  language: string | null,
 ): string {
-  const locale = language === 'fr' ? 'fr-CA' : 'en-CA';
+  const locale = localeFor(language);
   if (allDay) {
     const [year, month, day] = start.split('-').map((part) => Number(part));
     if (!year || !month || !day) return start;

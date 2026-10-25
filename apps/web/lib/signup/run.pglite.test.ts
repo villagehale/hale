@@ -2,12 +2,17 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { BrowserUseEngineThrew } from './browser-use/engine';
 import { storeProviderSession } from './browser-use/vault';
 import { SHAREABLE_SIGNUP_FIELDS } from './consent';
 import { authorizedSignupHandler } from './handler';
 import type { LinkWalletApi } from './link/client';
-import { runAuthorizedSignup } from './run';
-import { recordSignupOffer } from './store';
+import {
+  BROWSER_USE_REGISTRATION_RESERVE_USD,
+  BROWSER_USE_RUN_ALLOWANCE_USD,
+  runAuthorizedSignup,
+} from './run';
+import { browserUseRegistrationSpendUsd, recordSignupOffer } from './store';
 import { echoOutcomeWriter, stubConsentReader } from './test-models';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
 
@@ -1136,7 +1141,9 @@ describe('authorized signup runner', () => {
     };
     const TORONTO = 'https://anc.ca.apm.activecommunities.com/toronto/activity/search/detail/123';
 
-    beforeEach(() => {
+    beforeEach(async () => {
+      // Each run holds its allowance against the shared $25 reserve; start every test clean.
+      await db.database.update(schema.authorizedSignupOffers).set({ browserUseCostUsd: null });
       vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'true');
       vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     });
@@ -1402,6 +1409,169 @@ describe('authorized signup runner', () => {
       });
       expect(result.outcome).toBe('needs_login');
       expect(result.browserUse?.detail).toBe('no_provider_session');
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    async function setSpentUsd(familyId: string, usd: string) {
+      await db.database.update(schema.authorizedSignupOffers).set({ browserUseCostUsd: null });
+      await db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ browserUseCostUsd: usd })
+        .where(eq(schema.authorizedSignupOffers.familyId, familyId));
+    }
+
+    it('stops before Browser Use once the $25 registration reserve cannot cover a worst-case run', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      // 20.5 spent + 5 allowance (3 signup + 1 payment + 1 browser/proxy) would pass 25.
+      await setSpentUsd(seeded.familyId, '20.500000');
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-reserve'), {
+        browserUseSignup: { run },
+      });
+      expect(BROWSER_USE_REGISTRATION_RESERVE_USD).toBe(25);
+      expect(result.outcome).toBe('error');
+      expect(result.browserUse?.detail).toBe('spend_reserve_reached');
+      expect(run).not.toHaveBeenCalled();
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(20.5);
+    });
+
+    it('still runs Browser Use while the worst-case run fits under the reserve', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-under'), {
+        browserUseSignup: { run },
+      });
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(result.outcome).toBe('reached_checkout');
+      // A live-view handoff has no final session cost yet: the allowance stays held.
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(
+        BROWSER_USE_RUN_ALLOWANCE_USD,
+      );
+    });
+
+    it('replaces the held allowance with the real session cost once the browser stopped', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => ({
+        ...CHECKOUT,
+        outcome: 'needs_human' as const,
+        liveViewUrl: null,
+        sessionCostUsd: '0.412000',
+      }));
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-settled'), {
+        browserUseSignup: { run },
+      });
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(0.412);
+    });
+
+    it('releases the held allowance when the engine throws before any session', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => {
+        throw new BrowserUseEngineThrew(new Error('browser setup failed'), {
+          runId: null,
+          sessionId: null,
+          browserId: null,
+          sessionCostUsd: null,
+        });
+      });
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-threw'), {
+        browserUseSignup: { run },
+      });
+      expect(result.browserUse?.detail).toBe('engine_threw');
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBe(0);
+    });
+
+    it('keeps the held allowance when the engine throws after a session started', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => {
+        throw new BrowserUseEngineThrew(new Error('worker killed'), {
+          runId: 'run-started',
+          sessionId: 'session-started',
+          browserId: null,
+          sessionCostUsd: null,
+        });
+      });
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-threw-late'), {
+        browserUseSignup: { run },
+      });
+      expect(result.browserUse?.detail).toBe('engine_threw');
+      expect(result.browserUse?.sessionId).toBe('session-started');
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(
+        BROWSER_USE_RUN_ALLOWANCE_USD,
+      );
+    });
+
+    it('settles to the real session cost when a throw after a session could read it', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => {
+        throw new BrowserUseEngineThrew(new Error('worker killed'), {
+          runId: 'run-started',
+          sessionId: 'session-started',
+          browserId: null,
+          sessionCostUsd: '0.250000',
+        });
+      });
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-threw-cost'), {
+        browserUseSignup: { run },
+      });
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(0.25);
+    });
+
+    it('keeps the held allowance when a runner throws without saying whether a session started', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => {
+        throw new Error('unknown runner failure');
+      });
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-threw-unknown'), {
+        browserUseSignup: { run },
+      });
+      expect(result.browserUse?.detail).toBe('engine_threw');
+      expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(
+        BROWSER_USE_RUN_ALLOWANCE_USD,
+      );
+    });
+
+    it('never starts Browser Use when the spend total cannot be read', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      await withProviderSession(seeded);
+      await setSpentUsd(seeded.familyId, '0.000000');
+      const run = vi.fn(async () => CHECKOUT);
+      const realTransaction = db.database.transaction.bind(db.database);
+      const spy = vi.spyOn(db.database, 'transaction').mockImplementation((async (
+        fn: (tx: unknown) => Promise<unknown>,
+      ) =>
+        realTransaction(async (tx) =>
+          fn(
+            new Proxy(tx, {
+              get(target, prop, receiver) {
+                if (prop === 'select') {
+                  return () => ({ from: async () => [{ total: 'not-a-number' }] });
+                }
+                return Reflect.get(target, prop, receiver);
+              },
+            }),
+          ),
+        )) as never);
+      try {
+        const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-unreadable'), {
+          browserUseSignup: { run },
+        });
+        expect(result.browserUse?.detail).toBe('spend_reserve_reached');
+      } finally {
+        spy.mockRestore();
+      }
       expect(run).not.toHaveBeenCalled();
     });
 

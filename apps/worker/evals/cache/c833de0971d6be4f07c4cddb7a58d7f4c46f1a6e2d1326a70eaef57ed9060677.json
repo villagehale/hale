@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked in Spanish that Hale stop sending emails without asking first. turnedOffThisTurn lists send_email and reply_to_email, so the confirmation is true. The reply answers in Spanish, in one plain sentence, with nothing extra. It does not mention replying to emails, but \"sending emails on your behalf\" covers what was asked.",
+    "score": 5
+  }
+}

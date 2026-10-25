@@ -31,7 +31,7 @@ export const users = pgTable(
      */
     parentRoleBasis: text('parent_role_basis').$type<'stated' | 'guessed'>(),
     locale: text('locale').notNull().default('en-CA'),
-    timezone: text('timezone').notNull().default('America/Toronto'),
+    timezone: text('timezone').notNull().default('UTC'),
     units: text('units').notNull().default('metric'),
     /** 0=Sunday, 1=Monday — same as localParts / Date.getUTCDay(), never 7.
      * Product default Sunday (VIL-319 / F11). */

@@ -418,7 +418,6 @@ describe('the nudge kind that never queues', () => {
   it('maps registration to the immediate lane, and nothing else', () => {
     expect(nudgeLane('registration')).toBe('immediate');
     for (const kind of [
-      'health_checkpoint',
       'weather_swap',
       'weekday_dropin',
       'weekday_care',

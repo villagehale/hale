@@ -184,6 +184,12 @@ describe('the tap-to-add link a text-only family gets', () => {
     const seeded = await seedFamily(db.database);
     await clearEmail(seeded.parentUserId);
     await enrollSms(seeded.familyId, seeded.parentUserId);
+    // Timezone comes from the postal code at signup now (VIL-413); this family's is
+    // Toronto, which is what the composed "10:30 AM" below is read in.
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto' })
+      .where(eq(schema.users.id, seeded.parentUserId));
     return seeded;
   }
 

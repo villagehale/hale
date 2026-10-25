@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked in French to stop sending emails without asking. The turn_off_autonomy call fired this turn for send_email and reply_to_email, so saying it is done is true and not a drafted-only overclaim. The reply is in French, short, exact and complete, with no greeting, sign-off or machinery talk.",
+    "score": 5
+  }
+}

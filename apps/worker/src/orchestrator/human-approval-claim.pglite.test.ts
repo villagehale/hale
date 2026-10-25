@@ -2,8 +2,8 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadActionForApproval, recordHumanApproval } from '../services/memory-writer.js';
-import { createTestDb, seedFamily, type TestDb } from '../testing/pglite.js';
-import { executeApprovedAction, type ExecuteApprovedDeps } from './index.js';
+import { type TestDb, createTestDb, seedFamily } from '../testing/pglite.js';
+import { type ExecuteApprovedDeps, executeApprovedAction } from './index.js';
 
 /**
  * The human-approval record is a CLAIM (audit P1-4 seam 2). Two deliveries of one
@@ -75,6 +75,7 @@ function makeDeps(execute: ExecuteApprovedDeps['execute']) {
     loadConsent: async () => ({ hasCoParent: false, coParentConsentGranted: false }),
     recordApproval: (input) => recordHumanApproval(input, db.database),
     recordGate: vi.fn(async () => {}),
+    checkWindow: async () => ({ withinWindow: true, detail: {} }),
     execute,
     log,
   };

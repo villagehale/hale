@@ -1,5 +1,5 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
+import { speak } from '~/lib/channel/spoken-line';
 import type { RadarDecision } from './radar-decide';
 
 /**
@@ -78,15 +78,13 @@ export type ActionLineHeld =
   /** The row carries no url. `village_candidates.source_url` is nullable, so this is a
    *  real null to fail closed on rather than an impossible one. */
   | 'no_url'
-  /** The url is not printable GSM-7. HELD, never folded: `asciiCopy` exists to make
-   *  town-written text safe and applying it to a URL would silently break the link
-   *  (R5). The spots copy makes the same call - throw or refuse, never trim. */
-  | 'not_gsm7'
   /** The line would push the payload past the segment budget. Assigned by the shell
    *  that measures it, never here. */
   | 'over_budget'
   /** Computed, logged, and not appended. Assigned by the shell (see the dark flag). */
-  | 'flag_off';
+  | 'flag_off'
+  /** The model could not write the line after a smaller-model retry. */
+  | 'model_unreachable';
 
 export type ActionLine =
   | { line: string; url: string; move: ActionMove }
@@ -108,51 +106,22 @@ export function firstReplyActionLineEnabled(): boolean {
   return process.env[FIRST_REPLY_ACTION_LINE_ENV] === 'true';
 }
 
-/**
- * The copy, one line per move per language.
- *
- * `{url}` is substituted verbatim and never folded. `{when}` is substituted with the
- * session's own time and its leading comma TOGETHER, so a row that carries no time
- * loses the clause rather than printing an empty one — both columns are written by the
- * same projection insert, so a drop-in without a time is not reachable from production
- * data and the branch exists only because the type allows it.
- *
- * FR is written and tested but unwired: the first reply has no language of its own yet
- * (intake/machine.ts says so where it appends the watch offer), so `radar.ts` passes
- * 'en'. It is GSM-7 by hand — `é`, `è`, `à`, `ù`, `ì` and `ò` are in the basic alphabet
- * while `ê`, `î`, lowercase `ç` and `œ` are not — and the encoding scan over this file
- * is what keeps the next French sentence honest.
- */
-const ACTION_LINE_COPY: Record<ReplyLanguage, Record<ActionMove, string>> = {
-  en: {
-    register_open: 'The page is here: {url}',
-    register_later_preview: 'The listings are up already if you want a look: {url}',
-    register_later: "Here's the page: {url}",
-    sign_up: 'Sign-up needed for this one: {url}',
-    just_go: 'No sign-up needed{when}: {url}',
-  },
-  fr: {
-    register_open: 'La page est ici : {url}',
-    register_later_preview: 'Les programmes sont deja en ligne si vous voulez voir : {url}',
-    register_later: 'Voici la page : {url}',
-    sign_up: "Il faut s'inscrire pour celle-la : {url}",
-    just_go: "Pas d'inscription{when} : {url}",
-  },
-};
-
-function render(
+async function render(
   move: ActionMove,
   language: ReplyLanguage,
   url: string,
   when: string | null,
-): ActionLine {
+): Promise<ActionLine> {
   // The URL is the one string in this payload Hale did not write, and it is the one
-  // string that must survive byte-for-byte. A url outside the printable basic alphabet
-  // is held rather than folded: folding it would send the family to a different address.
-  if (!isPrintableGsm7Basic(url)) return { line: null, held: 'not_gsm7' };
-  const line = ACTION_LINE_COPY[language][move]
-    .replace('{when}', when === null ? '' : `, ${when}`)
-    .replace('{url}', url);
+  // string that must survive byte-for-byte. It is sent unchanged. Folding it would
+  // send the family to a different address.
+  const line = await speak({
+    purpose: 'action_line',
+    language,
+    facts: { move, url, when: when ?? '' },
+    verbatim: [url],
+  });
+  if (!line) return { line: null, held: 'model_unreachable' };
   return { line, url, move };
 }
 
@@ -166,7 +135,10 @@ function render(
  * `language` is required rather than defaulted: the absence of a language is a value a
  * caller states, never one it falls into (rule #11).
  */
-export function renderActionLine(decision: RadarDecision, language: ReplyLanguage): ActionLine {
+export async function renderActionLine(
+  decision: RadarDecision,
+  language: ReplyLanguage,
+): Promise<ActionLine> {
   const absence = decision.registrationAbsence;
   if (absence?.stillOpen) {
     return render('register_open', language, absence.stillOpen.registerUrl, null);
