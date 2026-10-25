@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "6a1f0c2e-3b7d-4e19-9a52-0d8c4f7e1a01",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Chinese for 'OK, add it': clear yes to the only open question, add to calendar"
+  },
+  "latencyMs": 1113
+}

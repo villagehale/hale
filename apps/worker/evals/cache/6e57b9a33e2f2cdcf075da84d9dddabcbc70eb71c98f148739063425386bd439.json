@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Yes-but changes the terms (make it 4 instead); this is an answer plus a counter-request, so the coach must handle it"
+  },
+  "latencyMs": 2947
+}

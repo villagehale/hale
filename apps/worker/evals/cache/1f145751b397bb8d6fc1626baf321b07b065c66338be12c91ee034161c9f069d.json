@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "ambiguous",
+    "polarity": "yes",
+    "confidence": "medium",
+    "reason": "Clear yes, but two open approvals (add and remove calendar item) and no name to tell which one."
+  },
+  "latencyMs": 2482
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "6a1f0c2e-3b7d-4e19-9a52-0d8c4f7e1a01",
+    "polarity": "unclear",
+    "confidence": "low",
+    "reason": "French hedge: 'peut-être' (maybe) with 'je crois que oui' (I think yes); leans yes but parent has not clearly decided"
+  },
+  "latencyMs": 3779
+}

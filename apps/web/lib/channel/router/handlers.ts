@@ -57,6 +57,7 @@ import {
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
+import type { ApprovalReceiptVoice } from './approval-receipt';
 import { failureReply, healthDoneReply } from './copy';
 import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
@@ -162,7 +163,10 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
  * Declines anything that is not a command, and anything that is a command with nothing
  * to command — see {@link resolveApproval}.
  */
-export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
+export function approvalHandler(
+  spine: ApprovalSpine,
+  receiptVoice?: ApprovalReceiptVoice,
+): DeterministicHandler {
   return {
     name: 'approval',
     resolves: new Set<OpenQuestionKind>(['approval']),
@@ -193,6 +197,7 @@ export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
           targetActionId: resolved?.questionId,
         },
         spine,
+        receiptVoice,
       );
       if (outcome.status === 'declined_to_claim') return { claimed: false };
       return { claimed: true, outcome: outcome.status, reply: outcome.reply };

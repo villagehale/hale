@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the last calendar change was taken back, matching kind 'undone' and action 'add to your calendar', without inventing details. It is in English, first person, short and plain, though slightly formal with 'Done,' and does not name what the change was, which is acceptable per watchFor.",
+    "score": 5
+  }
+}
