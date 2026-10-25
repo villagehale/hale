@@ -7,7 +7,7 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, eq, inArray, like } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, like, sql } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
@@ -230,6 +230,32 @@ async function wasTextedTheLink(
   return rows.length > 0;
 }
 
+/** Whether this parent already has the cancellation text for this event. Checked
+ * BEFORE the model is asked, so a re-driven cancel costs nothing once it has landed. */
+async function wasTextedTheCancel(
+  database: Database,
+  job: InviteJob,
+  parentUserId: string,
+): Promise<boolean> {
+  const m = schema.channelMessages;
+  const rows = await database
+    .select({ id: m.id })
+    .from(m)
+    .where(
+      and(
+        eq(m.familyId, job.familyId),
+        eq(m.parentUserId, parentUserId),
+        like(
+          m.dedupeKey,
+          `${CALENDAR_CANCEL_SMS_TEMPLATE_KEY}:${job.familyEventId}:${parentUserId}%`,
+        ),
+        inArray(m.status, ['queued', 'sent', 'delivered']),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 /**
  * Text one parent that an event they were sent a tap-to-add link for is cancelled.
  *
@@ -246,6 +272,9 @@ async function cancelOneParent(
 ): Promise<CalendarInviteParentOutcome> {
   if (!(await wasTextedTheLink(database, job, parent.userId))) {
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'never_linked' };
+  }
+  if (await wasTextedTheCancel(database, job, parent.userId)) {
+    return { parentUserId: parent.userId, channel: 'sms', outcome: 'already_sent' };
   }
   const event = await composeEventCancel(
     { familyId: job.familyId, familyEventId: job.familyEventId, parentUserId: parent.userId },
@@ -322,4 +351,150 @@ export function createCalendarInviteSender(
       return { status: 'reported', parents: outcomes };
     },
   };
+}
+
+/** How far back a cancellation is still re-driven. The event must also not have started. */
+export const CANCEL_RETRY_LOOKBACK_DAYS = 7;
+/** Bounded per tick, like every other sweep. */
+export const CANCEL_RETRY_MAX_EVENTS = 50;
+/** Retries per cancelled event before the sweep gives up on it. */
+export const CANCEL_RETRY_MAX_ATTEMPTS = 5;
+/** Wait after the Nth retry: base × 2^(N-1) (1h, 2h, 4h, 8h). */
+export const CANCEL_RETRY_BACKOFF_BASE_MS = 3_600_000;
+
+/**
+ * The audit actions that mark a GENUINE cancellation: the approved calendar_cancel
+ * executor and a parent's undo. Any other soft delete (untrack, backfill, mirror
+ * cleanup) never texts a parent a cancel.
+ */
+export const GENUINE_CANCEL_ACTIONS = [
+  'action.calendar_cancelled',
+  'action.calendar_placement_reverted',
+] as const;
+export const CANCEL_RETRY_ATTEMPT_ACTION = 'calendar_cancel.retry_attempt';
+
+export interface CancelRetrySummary {
+  events: number;
+  sent: number;
+  deferred: number;
+  failed: number;
+}
+
+/**
+ * VIL-449 · re-drive cancellation texts that never landed (`compose_deferred`, or held
+ * by quiet hours). Only an event with a genuine cancel audit row is eligible, soonest
+ * start first, capped at CANCEL_RETRY_MAX_EVENTS. Each event gets at most
+ * CANCEL_RETRY_MAX_ATTEMPTS retries with exponential backoff between them, recorded as
+ * audit rows. Retries go through the same sender, so dispatch consent, quiet hours and
+ * same-item dedupe all apply, and the model writes the words or nothing goes. Gives up
+ * once the event has started or the cancel is older than the lookback.
+ */
+export async function retryDeferredCalendarCancels(
+  database: Database,
+  sender: CalendarInviteSender,
+  now: Date = new Date(),
+): Promise<CancelRetrySummary> {
+  const e = schema.familyEvents;
+  const a = schema.auditLog;
+  const since = new Date(now.getTime() - CANCEL_RETRY_LOOKBACK_DAYS * 86_400_000);
+  const cancelled = database
+    .selectDistinct({ eventId: a.targetId })
+    .from(a)
+    .where(
+      and(
+        eq(a.targetTable, 'family_events'),
+        inArray(a.actionTaken, [...GENUINE_CANCEL_ACTIONS]),
+        gte(a.occurredAt, since),
+      ),
+    );
+  const candidates = await database
+    .select({ id: e.id, familyId: e.familyId, startsAt: e.startsAt })
+    .from(e)
+    .where(
+      and(
+        isNotNull(e.deletedAt),
+        gte(e.deletedAt, since),
+        gt(e.startsAt, now),
+        inArray(sql`${e.id}::text`, cancelled),
+      ),
+    )
+    .orderBy(asc(e.startsAt), asc(e.id));
+  const attempts = await retryAttempts(
+    database,
+    candidates.map((row) => row.id),
+  );
+  const due = candidates
+    .filter((row) => retryIsDue(attempts.get(row.id), now))
+    .slice(0, CANCEL_RETRY_MAX_EVENTS);
+  const summary: CancelRetrySummary = { events: due.length, sent: 0, deferred: 0, failed: 0 };
+  for (const row of due) {
+    await database.insert(a).values({
+      familyId: row.familyId,
+      actor: 'system',
+      actionTaken: CANCEL_RETRY_ATTEMPT_ACTION,
+      targetTable: 'family_events',
+      targetId: row.id,
+      occurredAt: now,
+    });
+    try {
+      const report = await sender.send({
+        familyId: row.familyId,
+        familyEventId: row.id,
+        method: 'CANCEL',
+      });
+      if (report.status !== 'reported') continue;
+      for (const parent of report.parents) {
+        if (parent.outcome === 'sent') summary.sent += 1;
+        else if (parent.outcome === 'compose_deferred') summary.deferred += 1;
+      }
+    } catch (err) {
+      summary.failed += 1;
+      console.error(
+        { err: err instanceof Error ? err.name : 'unknown', familyEventId: row.id },
+        'calendar cancel retry: event failed',
+      );
+    }
+  }
+  return summary;
+}
+
+interface AttemptHistory {
+  count: number;
+  last: Date;
+}
+
+async function retryAttempts(
+  database: Database,
+  eventIds: readonly string[],
+): Promise<Map<string, AttemptHistory>> {
+  if (eventIds.length === 0) return new Map();
+  const a = schema.auditLog;
+  const rows = await database
+    .select({
+      eventId: a.targetId,
+      count: sql<number>`count(*)::int`,
+      last: sql<Date>`max(${a.occurredAt})`,
+    })
+    .from(a)
+    .where(
+      and(
+        eq(a.actionTaken, CANCEL_RETRY_ATTEMPT_ACTION),
+        eq(a.targetTable, 'family_events'),
+        inArray(a.targetId, [...eventIds]),
+      ),
+    )
+    .groupBy(a.targetId);
+  return new Map(
+    rows.flatMap((row) =>
+      row.eventId ? [[row.eventId, { count: row.count, last: new Date(row.last) }]] : [],
+    ),
+  );
+}
+
+/** Exported for the backoff test. No history → due now. */
+export function retryIsDue(history: AttemptHistory | undefined, now: Date): boolean {
+  if (!history) return true;
+  if (history.count >= CANCEL_RETRY_MAX_ATTEMPTS) return false;
+  const wait = CANCEL_RETRY_BACKOFF_BASE_MS * 2 ** (history.count - 1);
+  return now.getTime() - history.last.getTime() >= wait;
 }

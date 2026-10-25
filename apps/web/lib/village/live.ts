@@ -82,6 +82,65 @@ export async function unofferedActivityPicks(
   });
 }
 
+/**
+ * VIL-451 · receipt identity for a parent-initiated re-read. A linked pick uses its
+ * recommendation key; a linkless pick (no safe URL) falls back to venue + name +
+ * date/when so a repeat read reuses its receipt instead of writing a new one.
+ */
+export function offerReceiptKey(pick: {
+  name: string;
+  sourceUrl?: string | null;
+  sourceName?: string | null;
+  eventDate?: string | null;
+  when?: string | null;
+}): string {
+  const linked = activityRecommendationKey(pick);
+  if (linked !== null) return linked;
+  const normalized = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+  return JSON.stringify([
+    'linkless',
+    normalized(pick.sourceName ?? ''),
+    normalized(pick.name),
+    pick.eventDate ?? normalized(pick.when ?? ''),
+  ]);
+}
+
+/**
+ * VIL-451 · the newest existing offer receipt for each receipt key this family has
+ * already been offered. Lets a parent-initiated read show a still current activity
+ * again WITHOUT writing a duplicate offer row.
+ */
+export async function offeredReceiptIdsByKey(
+  database: Database,
+  familyId: string,
+): Promise<Map<string, string>> {
+  const history = await database
+    .select({
+      id: schema.familyActivityHistory.id,
+      name: schema.familyActivityHistory.title,
+      sourceUrl: schema.familyActivityHistory.sourceUrl,
+      sourceName: schema.familyActivityHistory.venueName,
+      eventDate: schema.familyActivityHistory.eventDate,
+      when: schema.familyActivityHistory.whenLabel,
+      offeredAt: schema.familyActivityHistory.offeredAt,
+    })
+    .from(schema.familyActivityHistory)
+    .where(
+      and(
+        eq(schema.familyActivityHistory.familyId, familyId),
+        isNotNull(schema.familyActivityHistory.offeredAt),
+      ),
+    );
+  const byKey = new Map<string, { id: string; at: number }>();
+  for (const row of history) {
+    const key = offerReceiptKey(row);
+    const at = row.offeredAt?.getTime() ?? 0;
+    const prior = byKey.get(key);
+    if (!prior || at > prior.at) byKey.set(key, { id: row.id, at });
+  }
+  return new Map([...byKey].map(([key, value]) => [key, value.id]));
+}
+
 /** Current picks come from this operation's web research, never from saved history. */
 export async function findFamilyActivities(
   database: Database,
@@ -190,20 +249,9 @@ export async function recordActivityOffers(
       .values(
         normalized.map((pick) => ({
           familyId,
-          title: pick.name,
+          ...offerFacts(pick),
           kind: 'activity',
-          summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
-          venueName: pick.sourceName,
-          ageRange: pick.ageFit,
-          whenLabel: pick.when,
-          eventDate: pick.eventDate ?? null,
-          indoorOutdoor: pick.indoorOutdoor ?? null,
-          access: pick.access ?? null,
-          placeId: pick.placeId ?? null,
-          civicVenueId: pick.civicVenueId ?? null,
-          priceLevel: pick.price && /^(free|\$0\b|no cost)/i.test(pick.price) ? 'free' : null,
           source: 'web',
-          sourceUrl: pick.sourceUrl ?? null,
           confidence: 1,
           offeredAt: now,
           discoveredAt: now,
@@ -218,5 +266,50 @@ export async function recordActivityOffers(
       after: { count: rows.length },
     });
     return rows;
+  });
+}
+
+/** The live facts a receipt shows. Shared by a new receipt and a refreshed one. */
+function offerFacts(pick: ActivityPick) {
+  return {
+    title: pick.name,
+    summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
+    venueName: pick.sourceName,
+    ageRange: pick.ageFit,
+    whenLabel: pick.when,
+    eventDate: pick.eventDate ?? null,
+    indoorOutdoor: pick.indoorOutdoor ?? null,
+    access: pick.access ?? null,
+    placeId: pick.placeId ?? null,
+    civicVenueId: pick.civicVenueId ?? null,
+    priceLevel: pick.price && /^(free|\$0\b|no cost)/i.test(pick.price) ? 'free' : null,
+    sourceUrl: pick.sourceUrl ?? null,
+  };
+}
+
+/**
+ * VIL-451 · a repeat parent read reuses the receipt row (saved state and identity
+ * survive) but rewrites its facts from THIS read's live result, so price, age and
+ * summary never come from the old offer.
+ */
+export async function refreshActivityOffers(
+  database: Database,
+  familyId: string,
+  refreshes: readonly { id: string; pick: ActivityPick }[],
+  now = new Date(),
+) {
+  if (refreshes.length === 0) return;
+  await database.transaction(async (tx) => {
+    for (const { id, pick } of refreshes) {
+      await tx
+        .update(schema.familyActivityHistory)
+        .set({ ...offerFacts(withSourceUrl(pick)), offeredAt: now })
+        .where(
+          and(
+            eq(schema.familyActivityHistory.id, id),
+            eq(schema.familyActivityHistory.familyId, familyId),
+          ),
+        );
+    }
   });
 }

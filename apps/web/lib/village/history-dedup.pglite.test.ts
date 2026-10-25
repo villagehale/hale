@@ -47,6 +47,68 @@ describe('family-local recommendation history', () => {
     expect(find.mock.calls[0]?.[0].town).toBe('Toronto');
   });
 
+  it('VIL-451 · a repeat parent read still shows the current activity, on the same receipt', async () => {
+    const familyId = await family();
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    const first = await discoverForFamily(familyId, db.database, { finder: { find } });
+    const second = await discoverForFamily(familyId, db.database, { finder: { find } });
+    if (first.status !== 'discovered' || second.status !== 'discovered') throw new Error('status');
+    expect(first.offeredIds).toHaveLength(1);
+    expect(second.offeredIds).toEqual(first.offeredIds);
+    expect(second.insertedCount).toBe(0);
+  });
+
+  it('VIL-451 · a repeat read refreshes the reused receipt with the live price, age and summary', async () => {
+    const familyId = await family();
+    const first = await discoverForFamily(familyId, db.database, {
+      finder: { find: vi.fn().mockResolvedValue({ found: true, picks: [pick] }) },
+    });
+    const live = { ...pick, price: '$12', ageFit: 'ages 3-6' };
+    const second = await discoverForFamily(familyId, db.database, {
+      finder: { find: vi.fn().mockResolvedValue({ found: true, picks: [live] }) },
+    });
+    if (first.status !== 'discovered' || second.status !== 'discovered') throw new Error('status');
+    expect(second.offeredIds).toEqual(first.offeredIds);
+    const [row] = await db.database
+      .select()
+      .from(schema.familyActivityHistory)
+      .where(eq(schema.familyActivityHistory.id, second.offeredIds[0] ?? ''));
+    expect(row?.ageRange).toBe('ages 3-6');
+    expect(row?.priceLevel).toBeNull();
+    expect(row?.summary).toBe('ages 3-6 — October 20 at 10 AM — $12');
+  });
+
+  it('VIL-451 · a linkless pick reuses its receipt on a repeat read', async () => {
+    const familyId = await family();
+    const linkless: ActivityPick = { ...pick, sourceUrl: undefined, url: undefined };
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [linkless] });
+    const first = await discoverForFamily(familyId, db.database, { finder: { find } });
+    const second = await discoverForFamily(familyId, db.database, { finder: { find } });
+    if (first.status !== 'discovered' || second.status !== 'discovered') throw new Error('status');
+    expect(first.insertedCount).toBe(1);
+    expect(second.insertedCount).toBe(0);
+    expect(second.offeredIds).toEqual(first.offeredIds);
+  });
+
+  it('VIL-451 · offeredIds follow the live ranking, mixing reused and new receipts', async () => {
+    const familyId = await family();
+    const other: ActivityPick = {
+      ...pick,
+      name: 'Toddler swim',
+      sourceUrl: 'https://pool.org/swim',
+    };
+    const first = await discoverForFamily(familyId, db.database, {
+      finder: { find: vi.fn().mockResolvedValue({ found: true, picks: [pick] }) },
+    });
+    const second = await discoverForFamily(familyId, db.database, {
+      finder: { find: vi.fn().mockResolvedValue({ found: true, picks: [other, pick] }) },
+    });
+    if (first.status !== 'discovered' || second.status !== 'discovered') throw new Error('status');
+    expect(second.offeredIds).toHaveLength(2);
+    expect(second.offeredIds[1]).toBe(first.offeredIds[0]);
+    expect(second.offeredIds[0]).not.toBe(first.offeredIds[0]);
+  });
+
   it('keeps a different date or program and ignores tracking-only URL changes', async () => {
     const familyId = await family();
     await recordActivityOffers(db.database, familyId, [pick]);
