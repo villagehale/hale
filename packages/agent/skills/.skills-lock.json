@@ -43,6 +43,10 @@
     "file": "calendar-offer-read.md",
     "sha256": "aea480fe0eb977faef4e918c9dde6778a6605eadede342a542e385ff7f0c676e"
   },
+  "calendar-write-notice.md": {
+    "file": "calendar-write-notice.md",
+    "sha256": "ff10adaf3be50fae78491ba47c943a00edced94e5433c4b2454ba61f865f174b"
+  },
   "capability-table.md": {
     "file": "capability-table.md",
     "sha256": "cddbfec3d736e5e46e2fcf4a97167ce2f6d3b22e4a3e92328b859e10cfcc9a6d"
