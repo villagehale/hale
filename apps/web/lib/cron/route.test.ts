@@ -83,6 +83,14 @@ vi.mock('~/lib/channel/proactive/review', () => ({
   defaultProactiveReviewDeps: () => ({}),
 }));
 
+// VIL-449 · the deferred-cancel retry reads the DB every tick; the gate test pins only
+// that the cron runs, so the rider is a no-op here.
+vi.mock('~/lib/loop/calendar-invite', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/loop/calendar-invite')>()),
+  createCalendarInviteSender: () => ({}),
+  retryDeferredCalendarCancels: async () => ({ examined: 0, retried: 0 }),
+}));
+
 const SECRET = 'cron-secret-xyz';
 
 function request(authHeader?: string): Request {
