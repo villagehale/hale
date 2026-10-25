@@ -2,7 +2,11 @@
   "value": {
     "answer": "Ear pulling and crying at night is often an ear infection in toddlers, though a cold or teething can look similar. Many ear infections clear on their own, and a lukewarm cloth on the ear may ease the pain. I can't see your child, so this is a best guess.",
     "triage": "Call 811 if the pain lasts more than a day or two, or if fluid or pus drains from the ear. Go to the ER or call 911 now for a stiff neck, unsteady walking, swelling behind the ear, a crooked smile, or fever over 40C.",
-    "sources": ["Johns Hopkins Medicine", "KidsHealth", "Seattle Children's"]
+    "sources": [
+      "Johns Hopkins Medicine",
+      "KidsHealth",
+      "Seattle Children's"
+    ]
   },
   "latencyMs": 5104
 }

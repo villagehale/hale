@@ -5,7 +5,10 @@
     "rationale": "A shipping notification saying the order has shipped and will arrive tomorrow is a one-way delivery update requiring no reply.",
     "payload": {
       "sender": "shipping@babycove.example",
-      "items": ["2 packs of size 3 diapers", "1 box of wipes"],
+      "items": [
+        "2 packs of size 3 diapers",
+        "1 box of wipes"
+      ],
       "status": "shipped",
       "expectedArrival": "tomorrow by 8 PM"
     },

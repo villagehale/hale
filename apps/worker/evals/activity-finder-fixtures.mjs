@@ -84,7 +84,7 @@ export const ACTIVITY_FIXTURES = [
     expectPicks: null,
     mustMentionInNotes: 'cartwheel',
     watchFor:
-      'The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.',
+      "The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.",
   },
 
   // ── a VISIT, not a term: the travel brief's own query shape ───────────────

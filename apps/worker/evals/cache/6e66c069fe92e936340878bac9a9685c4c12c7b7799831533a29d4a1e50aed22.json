@@ -6,7 +6,11 @@
     "payload": {
       "source": "programs@cityrec.ca",
       "activity_type": "parent_and_baby_programs",
-      "programs": ["Aquatots", "Baby Music", "Infant Massage"],
+      "programs": [
+        "Aquatots",
+        "Baby Music",
+        "Infant Massage"
+      ],
       "registration_opens": "2024-06-18T09:00:00",
       "timezone": "America/Toronto",
       "note": "Popular sessions fill within minutes"

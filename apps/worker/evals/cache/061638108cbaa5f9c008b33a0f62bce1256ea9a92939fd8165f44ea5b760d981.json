@@ -7,7 +7,10 @@
         "fact_value": {
           "item": "size 2 diapers",
           "reorder_qty": 128,
-          "observed_days_between_orders": [14, 15],
+          "observed_days_between_orders": [
+            14,
+            15
+          ],
           "approx_rate_per_day": "128/14 ≈ 9.1 and 128/15 ≈ 8.5 (about 8.5-9.1 diapers/day)"
         },
         "confidence": 0.7,

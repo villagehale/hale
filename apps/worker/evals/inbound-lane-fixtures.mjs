@@ -167,11 +167,7 @@ export const LANE_FIXTURES = [
     text: 'when do we introduce peanut butter',
     expect: 'in_domain',
   },
-  {
-    id: 'weaning-when',
-    text: 'when should I start weaning her off the bottle',
-    expect: 'in_domain',
-  },
+  { id: 'weaning-when', text: 'when should I start weaning her off the bottle', expect: 'in_domain' },
 
   // ── safety_critical · a phone number, not a chatbot ───────────────────────
   {

@@ -6,7 +6,11 @@
     "payload": {
       "source": "programs@cityrec.ca",
       "program_name": "Fall parent-and-baby programs",
-      "activities": ["Aquatots", "Baby Music", "Infant Massage"],
+      "activities": [
+        "Aquatots",
+        "Baby Music",
+        "Infant Massage"
+      ],
       "registration_opens": "2024-06-18T09:00:00",
       "timezone": "America/Toronto",
       "note": "Popular sessions fill quickly"

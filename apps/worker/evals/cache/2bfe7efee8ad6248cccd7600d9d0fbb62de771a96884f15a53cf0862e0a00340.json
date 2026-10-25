@@ -6,7 +6,10 @@
     "payload": {
       "order_id": "EB-88213",
       "merchant": "everydaybaby.ca",
-      "items": ["2x Size 2 diapers", "1x wipes refill"],
+      "items": [
+        "2x Size 2 diapers",
+        "1x wipes refill"
+      ],
       "total": "$58.20",
       "status": "confirmed",
       "next_step": "shipping notification to follow"

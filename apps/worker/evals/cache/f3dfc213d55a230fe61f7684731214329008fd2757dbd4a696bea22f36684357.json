@@ -2,7 +2,10 @@
   "value": {
     "answer": "This needs emergency care now - go to the ER. A fever of 38C or higher in a baby under 3 months has to be checked in person, even if baby seems well.",
     "triage": "Go to the ER now, do not wait it out. Call 911 if baby is hard to wake, limp, breathing fast or hard, has blue lips, has a seizure, or has a rash that does not fade. 811 can advise, but do not delay going to the ER.",
-    "sources": ["Children's Hospital of Philadelphia", "Connecticut Children's"]
+    "sources": [
+      "Children's Hospital of Philadelphia",
+      "Connecticut Children's"
+    ]
   },
   "latencyMs": 5459
 }

@@ -1,7 +1,11 @@
 {
   "value": {
     "verdict": "worth_it",
-    "tags": ["organized well", "accommodated child's needs", "good value"]
+    "tags": [
+      "organized well",
+      "accommodated child's needs",
+      "good value"
+    ]
   },
   "stopReason": "tool_use"
 }

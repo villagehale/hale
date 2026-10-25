@@ -136,11 +136,7 @@ function numberNode(schema: z.ZodTypeAny): JsonSchemaNode {
  * `minItems` is supported only for the values 0 and 1; anything else is a 400, so
  * a larger floor is restated in prose like the other stripped bounds.
  */
-function arrayNode(
-  schema: z.ZodTypeAny,
-  path: string,
-  state: { strictSafe: boolean },
-): JsonSchemaNode {
+function arrayNode(schema: z.ZodTypeAny, path: string, state: { strictSafe: boolean }): JsonSchemaNode {
   const def = defOf(schema);
   const node: JsonSchemaNode = {
     type: 'array',
@@ -252,8 +248,7 @@ function compileObject(
   const unknownKeys = (def as { unknownKeys?: string }).unknownKeys;
   const catchall = (def as { catchall?: z.ZodTypeAny }).catchall;
   const open =
-    unknownKeys === 'passthrough' ||
-    (catchall !== undefined && typeNameOf(catchall) !== 'ZodNever');
+    unknownKeys === 'passthrough' || (catchall !== undefined && typeNameOf(catchall) !== 'ZodNever');
   if (open) state.strictSafe = false;
 
   return { type: 'object', properties, required, additionalProperties: open };

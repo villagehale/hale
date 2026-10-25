@@ -91,12 +91,7 @@ function checkpoint(id, task, kidNames) {
   return { checkpointRef: { id }, task, kidNames };
 }
 
-function decision(
-  weekendPick,
-  registrationLine,
-  checkpointLine = null,
-  registrationAbsence = null,
-) {
+function decision(weekendPick, registrationLine, checkpointLine = null, registrationAbsence = null) {
   return {
     weekendPick,
     registrationLine,
@@ -154,20 +149,11 @@ export const RADAR_FIXTURES = [
     // No pick, no checkpoint: the absence IS the message, next to the first-find beat.
     // Halton Hills opened Fall 2026 on Sep 1 and the sweep is watching for Winter 2027,
     // so the cycle Hale is waiting on can be named for once.
-    decision: decision(
-      null,
-      null,
-      null,
-      absence({
-        cycleRef: {
-          municipality: 'halton_hills',
-          programDomain: 'rec_program',
-          cycleLabel: 'Fall 2026',
-        },
-        lastOpenedAtLocal: 'Sep 1, 7:00 a.m.',
-        nextCycleLabel: 'Winter 2027',
-      }),
-    ),
+    decision: decision(null, null, null, absence({
+      cycleRef: { municipality: 'halton_hills', programDomain: 'rec_program', cycleLabel: 'Fall 2026' },
+      lastOpenedAtLocal: 'Sep 1, 7:00 a.m.',
+      nextCycleLabel: 'Winter 2027',
+    })),
     expect: {
       mustRecall: ['Halton Hills', 'Fall 2026', 'Sep 1', 'Winter 2027'],
       forbidden: ['radar yet', 'http', "I'll text", 'let you know', 'opens'],
@@ -177,11 +163,7 @@ export const RADAR_FIXTURES = [
     id: 'checkpoint-only-18mo-halton-hills',
     // The live-gate family: outside civic-adapter coverage, no registration windows,
     // nothing discovered yet. Geography is empty; the child is 18 months old.
-    decision: decision(
-      null,
-      null,
-      checkpoint('immunization_18_months', CHECKPOINT_18_MONTH_SCHEDULE, ['Maya']),
-    ),
+    decision: decision(null, null, checkpoint('immunization_18_months', CHECKPOINT_18_MONTH_SCHEDULE, ['Maya'])),
     expect: {
       mustRecall: ['18 months'],
       // Every specific a helpful-sounding model would reach for and does not have.
@@ -192,11 +174,7 @@ export const RADAR_FIXTURES = [
     id: 'checkpoint-only-unnamed-child',
     // The parent described a baby without naming one. No name, and no "your little one
     // is due" — the window belongs to the calendar, not to the child.
-    decision: decision(
-      null,
-      null,
-      checkpoint('well_baby_18_months', CHECKPOINT_18_MONTH_WELL_BABY, []),
-    ),
+    decision: decision(null, null, checkpoint('well_baby_18_months', CHECKPOINT_18_MONTH_WELL_BABY, [])),
     expect: {
       mustRecall: ['18-month'],
       forbidden: ['due', 'behind', 'overdue', 'on track', 'make sure'],
@@ -206,11 +184,7 @@ export const RADAR_FIXTURES = [
     id: 'checkpoint-teen-household-generic-wording',
     // Every child in this household is 13+, so the row arrives in its GENERIC wording
     // with no name attached (rule #1). The composer may not put one back.
-    decision: decision(
-      null,
-      null,
-      checkpoint('immunization_14_to_16_years', CHECKPOINT_TEEN_RECORDS, []),
-    ),
+    decision: decision(null, null, checkpoint('immunization_14_to_16_years', CHECKPOINT_TEEN_RECORDS, [])),
     expect: {
       mustRecall: ['record check'],
       forbidden: ['vaccine record for', 'your teen is', 'behind', 'shots'],
@@ -235,11 +209,7 @@ export const RADAR_FIXTURES = [
     // A task that NAMES a visit and carries no lead time, no date and no place. A
     // booking window is the plausible detail a parent would act on and find wrong, so
     // it is the one this fixture exists to catch.
-    decision: decision(
-      null,
-      null,
-      checkpoint('well_baby_18_months', CHECKPOINT_18_MONTH_WELL_BABY, ['Noor']),
-    ),
+    decision: decision(null, null, checkpoint('well_baby_18_months', CHECKPOINT_18_MONTH_WELL_BABY, ['Noor'])),
     expect: {
       mustRecall: ['well-baby'],
       forbidden: [
@@ -270,11 +240,7 @@ export const RADAR_FIXTURES = [
     // A wet weekend: DECIDE already chose indoors, and there is no weather fact to say.
     decision: decision(
       pick({
-        candidateRef: {
-          id: 'c2',
-          title: 'Central Library story time',
-          venueName: 'Toronto Public Library',
-        },
+        candidateRef: { id: 'c2', title: 'Central Library story time', venueName: 'Toronto Public Library' },
         day: 'sunday',
         kidNames: ['Maya', 'Leo'],
         whyFacts: ['free', 'indoor', 'for 1-5 years'],
@@ -328,10 +294,7 @@ export const RADAR_FIXTURES = [
   },
   {
     id: '3kid-village-thin-approximate-age',
-    decision: decision(
-      null,
-      registration({ kidNames: ['Maya', 'Leo', 'Sam'], ageApproximate: true }),
-    ),
+    decision: decision(null, registration({ kidNames: ['Maya', 'Leo', 'Sam'], ageApproximate: true })),
     expect: { mustRecall: ['6:30'], forbidden: ['drop-in', 'library'] },
   },
   {
@@ -453,11 +416,7 @@ export const RADAR_FIXTURES = [
     id: '2kid-pick-only-window-absent',
     decision: decision(
       pick({
-        candidateRef: {
-          id: 'c7',
-          title: 'Evergreen Brick Works family walk',
-          venueName: 'Evergreen Brick Works',
-        },
+        candidateRef: { id: 'c7', title: 'Evergreen Brick Works family walk', venueName: 'Evergreen Brick Works' },
         day: 'sunday',
         kidNames: ['Ada', 'Noor'],
         whyFacts: ['free', 'outdoor', 'the forecast looks dry'],

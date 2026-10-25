@@ -50,7 +50,9 @@ function suiteUsd({ lane, skill, fixtures, userOf, tool, maxTokens }) {
   let usd = 0;
   for (const fixture of fixtures) {
     const input =
-      estimateTokens(skill.instructions) + estimateTokens(userOf(fixture)) + estimateTokens(tool);
+      estimateTokens(skill.instructions) +
+      estimateTokens(userOf(fixture)) +
+      estimateTokens(tool);
     usd += priced(lane.model, input, maxTokens);
   }
   return usd;

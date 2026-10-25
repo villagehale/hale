@@ -285,7 +285,9 @@ const DEFAULT_MAX_TOKENS = 2048;
  * unaffected either way.
  */
 function buildSystem(skill: Skill): Anthropic.TextBlockParam[] {
-  return [{ type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } }];
+  return [
+    { type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } },
+  ];
 }
 
 /**
@@ -576,7 +578,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: initialUserContent(args) }];
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: initialUserContent(args) },
+  ];
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
@@ -741,7 +745,9 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
   const tools = toAnthropicTools(args.skill, args.tools, args.strictTools ?? true);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: initialUserContent(args) }];
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: initialUserContent(args) },
+  ];
 
   let promptTokens = 0;
   let cacheReadTokens = 0;
@@ -787,7 +793,8 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         // reported honestly rather than hidden in a null answer (rule #11) — the re-ask
         // itself is a separate change.
         truncatedRetries: 0,
-        truncated: response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
+        truncated:
+          response.stop_reason === 'max_tokens' && textFrom(response.content) === null,
         usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
       };
     }

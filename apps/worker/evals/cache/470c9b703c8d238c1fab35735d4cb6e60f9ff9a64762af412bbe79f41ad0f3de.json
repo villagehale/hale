@@ -22,7 +22,9 @@
               "type": "string"
             }
           },
-          "required": ["childId"],
+          "required": [
+            "childId"
+          ],
           "additionalProperties": false
         },
         "strict": true,
@@ -44,10 +46,19 @@
             },
             "factType": {
               "type": "string",
-              "enum": ["preference", "routine", "medical", "logistic", "relationship", "voice"]
+              "enum": [
+                "preference",
+                "routine",
+                "medical",
+                "logistic",
+                "relationship",
+                "voice"
+              ]
             }
           },
-          "required": ["query"],
+          "required": [
+            "query"
+          ],
           "additionalProperties": false
         },
         "strict": true,
@@ -69,7 +80,14 @@
           "properties": {
             "factType": {
               "type": "string",
-              "enum": ["preference", "routine", "medical", "logistic", "relationship", "voice"]
+              "enum": [
+                "preference",
+                "routine",
+                "medical",
+                "logistic",
+                "relationship",
+                "voice"
+              ]
             },
             "factKey": {
               "type": "string",
@@ -81,7 +99,11 @@
               "description": "At least 0. At most 1."
             }
           },
-          "required": ["factType", "factKey", "confidence"],
+          "required": [
+            "factType",
+            "factKey",
+            "confidence"
+          ],
           "additionalProperties": false
         },
         "input_examples": [
@@ -107,14 +129,22 @@
           "properties": {
             "stage": {
               "type": "string",
-              "enum": ["newborn", "toddler", "preschool", "child", "teenager"]
+              "enum": [
+                "newborn",
+                "toddler",
+                "preschool",
+                "child",
+                "teenager"
+              ]
             },
             "ageMonths": {
               "type": "integer",
               "description": "At least 0. At most 215."
             }
           },
-          "required": ["stage"],
+          "required": [
+            "stage"
+          ],
           "additionalProperties": false
         },
         "strict": true,
@@ -161,7 +191,9 @@
               "description": "At least 1 characters. At most 256 characters."
             }
           },
-          "required": ["query"],
+          "required": [
+            "query"
+          ],
           "additionalProperties": false
         },
         "strict": true,

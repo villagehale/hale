@@ -6,7 +6,12 @@
         "source": "noreply@canada.ca",
         "subject": "EI maternity benefits",
         "summary": "Your EI maternity benefits claim has been processed. First payment expected within 3 business days.",
-        "tags": ["ei", "maternity", "government", "finance"],
+        "tags": [
+          "ei",
+          "maternity",
+          "government",
+          "finance"
+        ],
         "priority": "normal"
       }
     },

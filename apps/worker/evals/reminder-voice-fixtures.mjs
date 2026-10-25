@@ -121,6 +121,6 @@ export const REMINDER_VOICE_FIXTURES = [
     },
     wrongDayWords: ['tomorrow'],
     watchFor:
-      'An evening-before reminder held past its evening and sent on the event\'s own morning: `now.day` and the event\'s `day` are the same date. The failure is calling the day wrongly: "tomorrow", or anything else that is not today. A line that frames the morning or the day ahead without naming the day is truthful and fine; it must still never restate the time.',
+      "An evening-before reminder held past its evening and sent on the event's own morning: `now.day` and the event's `day` are the same date. The failure is calling the day wrongly: \"tomorrow\", or anything else that is not today. A line that frames the morning or the day ahead without naming the day is truthful and fine; it must still never restate the time.",
   },
 ];

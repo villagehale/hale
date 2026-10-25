@@ -4,7 +4,9 @@
       "digest_entry": {
         "summary": "heads up — noah's 6-month checkup (tue jun 23, 10:15am) overlaps a work meeting at 10:00am.",
         "category": "calendar_conflict",
-        "related_events": ["Noah's 6-month checkup, Tue Jun 23 10:15 AM"],
+        "related_events": [
+          "Noah's 6-month checkup, Tue Jun 23 10:15 AM"
+        ],
         "needs_action": true
       }
     },

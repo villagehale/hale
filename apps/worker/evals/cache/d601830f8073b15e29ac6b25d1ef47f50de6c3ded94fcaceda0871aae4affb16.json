@@ -9,7 +9,10 @@
       "message_type": "closure_and_supplies_reminder",
       "closure_date": "next Monday",
       "closure_reason": "staff PD day",
-      "requested_items": ["extra set of weather-appropriate clothes", "labelled water bottle"],
+      "requested_items": [
+        "extra set of weather-appropriate clothes",
+        "labelled water bottle"
+      ],
       "context": "Outdoor play season starting"
     },
     "suggested_action": {

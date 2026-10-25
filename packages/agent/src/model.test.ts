@@ -180,9 +180,12 @@ describe('withoutThinking', () => {
     });
   });
 
-  it.each<AgentTask>(['draft', 'infer', 'speak'])('has no less-thinking form for %s', (task) => {
-    expect(withoutThinking(pickLane(task))).toBeNull();
-  });
+  it.each<AgentTask>(['draft', 'infer', 'speak'])(
+    'has no less-thinking form for %s',
+    (task) => {
+      expect(withoutThinking(pickLane(task))).toBeNull();
+    },
+  );
 });
 
 describe('isAgentTask', () => {

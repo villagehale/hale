@@ -6,7 +6,10 @@
     "payload": {
       "milestone": "first_part_time_job_paperwork",
       "deadline": "June 20",
-      "required_items": ["Social Insurance Number (SIN)", "signed TD1 form"],
+      "required_items": [
+        "Social Insurance Number (SIN)",
+        "signed TD1 form"
+      ],
       "sin_application_path": "Service Canada (free)",
       "sender": "hr@maplemart-grocery.ca",
       "employer": "Maplemart Grocery",

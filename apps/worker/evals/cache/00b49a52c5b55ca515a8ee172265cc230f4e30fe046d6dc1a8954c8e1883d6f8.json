@@ -10,9 +10,15 @@
       "closure_notice": true,
       "closure_reason": "PD day",
       "closure_date": "Friday",
-      "supplies_requested": ["extra set of clothes", "labelled water bottle"],
+      "supplies_requested": [
+        "extra set of clothes",
+        "labelled water bottle"
+      ],
       "supply_deadline": "next week",
-      "activities": ["tummy time", "music"],
+      "activities": [
+        "tummy time",
+        "music"
+      ],
       "sender_name": "Ms. Priya"
     },
     "suggested_action": {

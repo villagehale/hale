@@ -5,7 +5,10 @@
     "rationale": "This is a one-way order confirmation email requiring no action from the family.",
     "payload": {
       "orderNumber": "EB-88213",
-      "items": ["2x Size 2 diapers", "1x wipes refill"],
+      "items": [
+        "2x Size 2 diapers",
+        "1x wipes refill"
+      ],
       "total": 58.2,
       "currency": "CAD",
       "merchant": "everydaybaby.ca"

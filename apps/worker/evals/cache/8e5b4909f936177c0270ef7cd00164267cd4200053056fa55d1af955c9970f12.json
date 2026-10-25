@@ -2,7 +2,9 @@
   "value": {
     "reason": "The parent explicitly requested to be notified the moment a seat opened in this class, making it parent-requested and time-critical (worthless in under an hour); despite a 2-unanswered streak, parent-requested items are owed even then, and it is within quiet hours (18:00 local, well before 21:00).",
     "action": "send_now",
-    "item_ids": ["watch-1"],
+    "item_ids": [
+      "watch-1"
+    ],
     "hold_until": null,
     "frequency_direction": null,
     "frequency_note": null

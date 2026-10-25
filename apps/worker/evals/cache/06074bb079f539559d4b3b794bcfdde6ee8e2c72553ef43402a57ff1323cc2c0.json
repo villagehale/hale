@@ -11,7 +11,10 @@
         "Extra set of clothes (for next week)",
         "Labelled water bottle (for next week)"
       ],
-      "activities_this_week": ["Tummy time", "Music"],
+      "activities_this_week": [
+        "Tummy time",
+        "Music"
+      ],
       "child_age_months": 9
     },
     "suggested_action": {

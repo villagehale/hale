@@ -2,7 +2,9 @@
   "value": {
     "reason": "The Saturday market candidate has no free window that fits — Saturday is an all-day family visit (Oct 10) and Sunday is an all-day soccer tournament (Oct 11), so there is no window where the family could attend; the find is dropped.",
     "action": "drop",
-    "item_ids": ["market"],
+    "item_ids": [
+      "market"
+    ],
     "hold_until": null,
     "frequency_direction": null,
     "frequency_note": null

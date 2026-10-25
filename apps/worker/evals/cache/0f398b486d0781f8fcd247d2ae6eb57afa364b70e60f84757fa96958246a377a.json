@@ -36,7 +36,12 @@
         "name": "search_memory",
         "input": {
           "familyId": "fam-eval-1",
-          "topics": ["playground", "meltdowns", "transitions", "routines"]
+          "topics": [
+            "playground",
+            "meltdowns",
+            "transitions",
+            "routines"
+          ]
         },
         "caller": {
           "type": "direct"

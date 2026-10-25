@@ -2,7 +2,9 @@
   "value": {
     "reason": "Three consecutive unanswered texts mean only parent-requested or truly time-critical items should go out; this Saturday swim find was not requested by the parent and has no deadline, so it is dropped.",
     "action": "drop",
-    "item_ids": ["weekend-swim"],
+    "item_ids": [
+      "weekend-swim"
+    ],
     "hold_until": null,
     "frequency_direction": null,
     "frequency_note": null

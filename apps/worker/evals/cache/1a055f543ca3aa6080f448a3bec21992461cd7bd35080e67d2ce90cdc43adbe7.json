@@ -40,7 +40,11 @@
         "name": "search_memory",
         "input": {
           "familyId": "fam-eval-5",
-          "topics": ["screen time", "routines", "weekends"]
+          "topics": [
+            "screen time",
+            "routines",
+            "weekends"
+          ]
         },
         "caller": {
           "type": "direct"
