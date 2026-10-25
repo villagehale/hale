@@ -143,6 +143,10 @@
     "file": "group-roster-reading.md",
     "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"
   },
+  "group-turn-read.md": {
+    "file": "group-turn-read.md",
+    "sha256": "92dfc2e383222c2a303a78add1058d8d922bcba3a0293fb3e545ccb3630fb247"
+  },
   "holding-line.md": {
     "file": "holding-line.md",
     "sha256": "d989fc5395640746c4ac6c733b1a6c9a35d43095e84ee1e9c5d3c4137adbec3b"

@@ -71,6 +71,13 @@ import {
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
 import { decideGroupTurn } from './group-turn-policy';
+import {
+  type GroupTurnReader,
+  groupTurnFromReading,
+  groupTurnReadContext,
+  linqGroupTurnAiEnabled,
+  sharedGroupTurnReader,
+} from './group-turn-reader';
 import { captureLogisticsText } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
@@ -161,6 +168,8 @@ export async function handleLinqInboundRequest(
     oneToOne?: OneToOneSend;
     /** Test seam for the family group's per-chat budget. Production is Postgres. */
     groupLimiter?: RateLimiter;
+    /** VIL-440 test seam. Production uses the shared model reader when the flag is on. */
+    groupTurnReader?: GroupTurnReader;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -615,12 +624,30 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
   }
   let budget: 'sender' | 'chat' = 'sender';
   if (linqGroupOnboardingV2Enabled()) {
-    const turn = decideGroupTurn({
-      text: message.text,
-      optOut: await optOutIntentOf(message.text),
-      kidNames:
-        mapped.status === 'same_family' ? await kidFirstNames(deps.database, mapped.familyId) : [],
-    });
+    const optOut = await optOutIntentOf(message.text);
+    const turn = linqGroupTurnAiEnabled()
+      ? groupTurnFromReading(
+          optOut
+            ? null
+            : await (deps.groupTurnReader ?? sharedGroupTurnReader()).read({
+                text: message.text,
+                haleNames: ['Hale'],
+                ...(await groupTurnReadContext(deps.database, {
+                  familyId: mapped.status === 'same_family' ? mapped.familyId : null,
+                  chatId: message.chatId,
+                  senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
+                })),
+              }),
+          optOut,
+        )
+      : decideGroupTurn({
+          text: message.text,
+          optOut,
+          kidNames:
+            mapped.status === 'same_family'
+              ? await kidFirstNames(deps.database, mapped.familyId)
+              : [],
+        });
     if (turn.route === 'duty' || turn.route === 'ignore') {
       const outcome = turn.route === 'duty' ? 'group_duty_statement' : turn.outcome;
       deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group turn');
