@@ -5,6 +5,7 @@ import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import type { BrowserUseSignupResult } from './browser-use/engine';
 import { browserUseSignupEnabled, browserUseSignupPaymentEnabled } from './browser-use/flag';
+import { browserUseProxyFor } from './browser-use/proxy';
 import {
   type BrowserUseSignupRunner,
   browserUseSignupRunnerFromEnv,
@@ -37,7 +38,13 @@ import { type InfoPackSlot, signupInfoPack } from './pack';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
-import { loadBusy, loadPendingOffer, loadSignupIdentity, markOffer } from './store';
+import {
+  loadBusy,
+  loadPendingOffer,
+  loadSignupIdentity,
+  markOffer,
+  recordBrowserUseCost,
+} from './store';
 import type { SignupBrowser, SignupIdentity, SignupPage, SignupStopReason } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -110,6 +117,8 @@ export type BrowserUseHandoff =
       runId: null;
       sessionId: null;
       costUsd: null;
+      sessionCostUsd: null;
+      browserId: null;
     };
 
 const UNCLAIMED: SignupRunResult = {
@@ -544,6 +553,8 @@ function browserUseAbsent(
     runId: null,
     sessionId: null,
     costUsd: null,
+    sessionCostUsd: null,
+    browserId: null,
   };
 }
 
@@ -588,6 +599,14 @@ async function runBrowserUseBranch(
         : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
+    if (handoff.sessionCostUsd !== null) {
+      await recordBrowserUseCost(database, {
+        offerId: ctx.offerId,
+        familyId: input.familyId,
+        sessionCostUsd: handoff.sessionCostUsd,
+        now: input.now,
+      });
+    }
     await writeAudit(database, input, ctx.offerId, {
       step: 'browser_use',
       outcome: handoff.outcome,
@@ -600,6 +619,7 @@ async function runBrowserUseBranch(
       paymentSkipped,
       rushOpensAt: handoff.opensAt,
       costUsd: handoff.costUsd,
+      sessionCostUsd: handoff.sessionCostUsd,
       host: ctx.host,
     });
     const rush: RushHandoff | null =
@@ -663,6 +683,7 @@ async function runBrowserUseBranch(
       },
       onProfileCreated: (profileId) =>
         recordBrowserUseProfile(database, { sessionRowId: stored.id, profileId }),
+      proxyCountryCode: browserUseProxyFor(ctx.providerHost),
     });
   } catch (err) {
     console.warn(
