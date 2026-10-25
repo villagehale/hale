@@ -1371,7 +1371,9 @@ function fabrications(reply, hay, allowedUrls) {
       offenders.push(`day "${full}" is on no event and in no message`);
     }
   }
-  for (const sentence of reply.split(/(?<=[.!?])\s+|\n+/)) {
+  // A sentence can end inside a closing quote or bracket: in `I'll walk you right back."
+  // Then, when he shows up`, "Then" opens a sentence and is not a name.
+  for (const sentence of reply.split(/(?<=[.!?]["'\u201d\u2019)]?)\s+|\n+/)) {
     // A slash JOINS two words, it does not make one. "Bloor/Parkside" was flagged as an
     // invented name while both halves sat in the hay verbatim ("Bloor St W / Parkside
     // Dr"), which is the gate failing a faithful contraction of a fact Hale was handed.
