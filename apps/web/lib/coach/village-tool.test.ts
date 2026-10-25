@@ -1,4 +1,5 @@
 import { invokeTool } from '@hale/agent';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -47,7 +48,10 @@ async function search(
     input,
     { familyId, actor: 'test' },
     { writeAudit: async () => {} },
-  ) as Promise<{ candidates: { title: string; when: string; url?: string }[]; liveRead: string }>;
+  ) as Promise<{
+    candidates: { title: string; when: string; url?: string; ref?: string }[];
+    liveRead: string;
+  }>;
 }
 
 describe('search_village uses this operation’s live evidence', () => {
@@ -83,7 +87,9 @@ describe('search_village uses this operation’s live evidence', () => {
     const offers: unknown[] = [];
     const result = await search(familyId, { find }, (rows) => offers.push(...rows));
     expect(result.candidates.map((row) => row.title)).toEqual(['Current swim']);
-    expect(result.candidates[0]?.url).toBe(pick.sourceUrl);
+    // The model sees the page's ref, never the URL (coach/activity-links.ts).
+    expect(result.candidates[0]).not.toHaveProperty('url');
+    expect(result.candidates[0]?.ref).toBe(linkRef(pick.sourceUrl as string));
     expect(offers).toEqual([
       expect.objectContaining({
         title: 'Current swim',

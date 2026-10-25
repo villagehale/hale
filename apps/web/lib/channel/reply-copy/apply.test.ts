@@ -7,8 +7,8 @@ import { memoryRecallParts, paginateMemoryRecall } from '~/lib/memory/kinds';
 import { replyFrame, replyProse } from './apply';
 
 /**
- * Injected model. A clean answer sends. A failed check, a thrown call, or the
- * flag being off sends the locked string and does not invent a second send.
+ * Injected model. A clean answer sends. A failed check or a thrown call holds
+ * the send. The locked sentence does not go out.
  */
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
@@ -50,14 +50,13 @@ function fakeClient(text: string | { throws: true }): AgentClient & {
   } as unknown as AgentClient & { messages: { create: ReturnType<typeof vi.fn> } };
 }
 
-function deps(client: AgentClient | null, database: ReturnType<typeof fakeDb>, flagOn = true) {
+function deps(client: AgentClient | null, database: ReturnType<typeof fakeDb>) {
   return {
     client,
     database,
     familyId: FAMILY_ID,
     language: 'en' as const,
     audience: 'group' as const,
-    flagOn,
     surface: 'duty' as const,
     skill: SKILL,
   };
@@ -80,7 +79,7 @@ describe('reply prose fallback', () => {
     expect(capture.runs[0]?.agentName).toBe('reply-copy');
   });
 
-  it('sends the locked string when a check fails', async () => {
+  it('holds the send when a check fails', async () => {
     const capture = {
       audits: [] as Record<string, unknown>[],
       runs: [] as Record<string, unknown>[],
@@ -94,12 +93,12 @@ describe('reply prose fallback', () => {
       fallback: LOCKED_ASK,
       facts: FACTS,
     });
-    expect(text).toBe(LOCKED_ASK);
+    expect(text).toBeNull();
     expect(capture.audits[0]?.actionTaken).toBe('reply_copy_fallback');
     expect(capture.runs[0]?.status).toBe('failed');
   });
 
-  it('sends the locked string when the model call throws', async () => {
+  it('holds the send when the model call throws', async () => {
     const capture = {
       audits: [] as Record<string, unknown>[],
       runs: [] as Record<string, unknown>[],
@@ -108,23 +107,21 @@ describe('reply prose fallback', () => {
       fallback: LOCKED_ASK,
       facts: FACTS,
     });
-    expect(text).toBe(LOCKED_ASK);
+    expect(text).toBeNull();
     expect(capture.audits[0]?.actionTaken).toBe('reply_copy_fallback');
     expect(capture.runs).toHaveLength(0);
   });
 
-  it('does not call the model when the copy flag is off', async () => {
+  it('does not call the model when no client is configured', async () => {
     const capture = {
       audits: [] as Record<string, unknown>[],
       runs: [] as Record<string, unknown>[],
     };
-    const client = fakeClient(JSON.stringify({ text: MODEL_ASK }));
-    const text = await replyProse(deps(client, fakeDb(capture), false), {
+    const text = await replyProse(deps(null, fakeDb(capture)), {
       fallback: LOCKED_ASK,
       facts: FACTS,
     });
-    expect(text).toBe(LOCKED_ASK);
-    expect(client.messages.create).not.toHaveBeenCalled();
+    expect(text).toBeNull();
     expect(capture.audits).toHaveLength(0);
   });
 });
@@ -155,6 +152,8 @@ describe('reply frame', () => {
         facts: [...parts.lines, 'Maya', '4', 'L3R', 'soccer'],
       },
     );
+    expect(frame).not.toBeNull();
+    if (!frame) return;
     const body = paginateMemoryRecall(frame.header, parts.lines, frame.footer).join('\n');
     expect(frame.header).toBe(opening);
     expect(frame.footer).toBe(closing);
@@ -162,7 +161,7 @@ describe('reply frame', () => {
     expect(body).not.toContain('HACKED');
   });
 
-  it('keeps the locked header and footer when the closing fails a check', async () => {
+  it('holds the frame when the closing fails a check', async () => {
     const capture = {
       audits: [] as Record<string, unknown>[],
       runs: [] as Record<string, unknown>[],
@@ -180,7 +179,7 @@ describe('reply frame', () => {
         facts: [...parts.lines, 'Maya', '4', 'L3R', 'soccer'],
       },
     );
-    expect(frame).toEqual({ header: parts.header, footer: parts.footer });
+    expect(frame).toBeNull();
     expect(capture.audits[0]?.actionTaken).toBe('reply_copy_fallback');
   });
 });

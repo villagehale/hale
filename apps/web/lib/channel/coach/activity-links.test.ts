@@ -1,47 +1,40 @@
 import { describe, expect, it } from 'vitest';
-import { activityLinkSuffix } from './activity-links';
+import { attachLinks, linkRef } from './activity-links';
 
-const FANOUS = {
-  title: 'Fanous lantern craft',
-  url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
-  venue: 'North York Central Library',
-};
+const PAGE = 'https://www.torontopubliclibrary.ca/programs-and-classes/';
+const OTHER = 'https://www.torontopubliclibrary.ca/robotics';
 
-const RIVERDALE = {
-  title: 'Riverdale story time',
-  url: 'https://www.torontopubliclibrary.ca/riverdale-story-time',
-  venue: 'Riverdale Library',
-};
+describe('linkRef', () => {
+  it('is stable per URL and different across URLs', () => {
+    expect(linkRef(PAGE)).toBe(linkRef(PAGE));
+    expect(linkRef(PAGE)).not.toBe(linkRef(OTHER));
+    expect(linkRef(PAGE)).toMatch(/^link-[0-9a-f]{6}$/);
+  });
+});
 
-const ROBOTICS = {
-  title: 'Robotics workshops',
-  url: 'https://www.torontopubliclibrary.ca/robotics',
-};
+describe('attachLinks', () => {
+  const links = [
+    { ref: linkRef(PAGE), url: PAGE },
+    { ref: linkRef(OTHER), url: OTHER },
+  ];
 
-describe('activityLinkSuffix', () => {
-  it('appends the Fanous page when the reply says lantern craft and drops the first word', () => {
-    const suffix = activityLinkSuffix('Saturday afternoon there is a lantern craft.', [
-      FANOUS,
-      ROBOTICS,
-    ]);
-    expect(suffix).toBe(FANOUS.url);
+  it('returns the page for each cited ref once, in citation order', () => {
+    const out = attachLinks(
+      `A [${linkRef(OTHER)}] and B [${linkRef(PAGE)}] and A again [${linkRef(OTHER)}].`,
+      links,
+    );
+    expect(out.urls).toEqual([OTHER, PAGE]);
+    expect(out.body).toBe('A and B and A again.');
   });
 
-  it('appends the Riverdale page when the reply names the library and story time', () => {
-    const suffix = activityLinkSuffix('Riverdale Library has story time on Saturday.', [
-      RIVERDALE,
-      ROBOTICS,
-    ]);
-    expect(suffix).toBe(RIVERDALE.url);
+  it('removes every typed URL, including one a tool returned', () => {
+    expect(attachLinks(`See ${PAGE} and https://made.up/page.`, links)).toEqual({
+      body: 'See and.',
+      urls: [],
+    });
   });
 
-  it('appends the only offered page when the title was shortened to one distinctive word', () => {
-    const suffix = activityLinkSuffix('The lantern thing is on Saturday afternoon.', [FANOUS]);
-    expect(suffix).toContain(FANOUS.url);
-  });
-
-  it('does not append a page the reply never referred to', () => {
-    const suffix = activityLinkSuffix('Thanks, that is plenty.', [FANOUS]);
-    expect(suffix).toBe('');
+  it('drops an unknown ref', () => {
+    expect(attachLinks('Swim. [link-000000]', links)).toEqual({ body: 'Swim.', urls: [] });
   });
 });

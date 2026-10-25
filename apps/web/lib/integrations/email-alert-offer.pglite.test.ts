@@ -3,8 +3,8 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
-import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
+import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
@@ -51,6 +51,10 @@ afterAll(async () => {
 
 beforeEach(async () => {
   family = await seedFamily(db.database);
+  await db.database
+    .update(schema.users)
+    .set({ timezone: 'America/Toronto' })
+    .where(eq(schema.users.id, family.parentUserId));
   // The voice stage is an LLM call and this suite is about the week, not the wording.
   vi.stubEnv('VOICE_DISABLED', 'true');
   vi.spyOn(console, 'error').mockImplementation(() => {});

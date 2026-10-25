@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking. Autonomy for send_email and reply_to_email was turned off this turn, so confirming it is true. The reply is in the parent's language, short and exact. \"Listo, Sam\" is a light opener rather than a greeting, so it does not count against the shape. It answers completely and stops.",
+    "score": 5
+  }
+}

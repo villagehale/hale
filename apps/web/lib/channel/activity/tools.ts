@@ -1,4 +1,5 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import { z } from 'zod';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
@@ -155,7 +156,12 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         pick.url ? [{ title: pick.name, url: pick.url }] : [],
       );
       if (linked.length > 0) args.onLinks?.(linked);
-      return { found: true as const, picks: result.picks };
+      // The model sees a page's REF, never its URL: a reply cites the ref and code
+      // attaches the page (coach/activity-links.ts), so a typed URL can never reach a parent.
+      const picks = result.picks.map(({ url, ...pick }) =>
+        url ? { ...pick, ref: linkRef(url) } : pick,
+      );
+      return { found: true as const, picks };
     },
   });
 }

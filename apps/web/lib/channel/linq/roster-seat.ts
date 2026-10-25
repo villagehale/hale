@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, notInArray } from 'drizzle-orm';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { storeParentRole } from '~/lib/channel/identity/parent-role';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -223,7 +224,12 @@ export async function seatConfirmedMember(
     const externalAuthId = `sms:${member.phoneE164Hash}`;
     await tx
       .insert(schema.users)
-      .values({ externalAuthId, email: null, name: null })
+      .values({
+        externalAuthId,
+        email: null,
+        name: null,
+        timezone: await householdTimezone(tx, member.familyId),
+      })
       .onConflictDoNothing({ target: schema.users.externalAuthId });
     const [user] = await tx
       .select({ id: schema.users.id })

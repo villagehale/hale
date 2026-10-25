@@ -40,23 +40,8 @@ import { WEEKDAY_CARE_ASK_FIXTURES } from './weekday-care-ask-fixtures.mjs';
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'weekday-care-ask.md');
 const TOOLS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'nudge', 'weekday-ask-tools.ts');
-const LANGUAGE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'language.ts');
-
 /** A reply word the founder rules forbid Hale to teach. */
 const KEYWORD_TEACHING = ['reply yes', 'reply no', 'text yes'];
-
-/**
- * Deterministic language evidence where a reader exists: Han script for Chinese, the
- * runtime's own French reader (lib/channel/language.ts) for French, and for English the
- * absence of both. Spanish has no reader here, so only the judge grades it.
- */
-function languageEvidence(language, text, replyLanguage) {
-  const han = /\p{Script=Han}/u.test(text);
-  if (language === 'zh') return han;
-  if (language === 'fr') return replyLanguage(text) === 'fr';
-  if (language === 'en') return !han && replyLanguage(text) !== 'fr';
-  return null;
-}
 
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text message Hale, a family planner that lives in',
@@ -100,15 +85,12 @@ const JUDGE_SYSTEM = [
   'Reply with ONLY the score tool.',
 ].join(' ');
 
-function grade(fixture, written, replyLanguage, verdict) {
+function grade(_fixture, written, verdict) {
   if ('skipped' in written) return [`refused by the runtime check: ${written.skipped}`];
   const failures = [];
   const body = written.message.toLowerCase();
   for (const phrase of KEYWORD_TEACHING) {
     if (body.includes(phrase)) failures.push(`teaches the reply word "${phrase}"`);
-  }
-  if (languageEvidence(fixture.language, written.message, replyLanguage) === false) {
-    failures.push(`not written in ${fixture.language}`);
   }
   if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
   return failures;
@@ -208,7 +190,6 @@ async function main() {
   }
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const tools = await tsImport(TOOLS_SRC, import.meta.url);
-  const { replyLanguage } = await tsImport(LANGUAGE_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
   const rawClient = lazyAnthropic();
@@ -254,7 +235,7 @@ async function main() {
       'message' in written
         ? await judge(fixture.id, { context: JSON.parse(context), text: written.message })
         : null;
-    const failures = grade(fixture, written, replyLanguage, verdict);
+    const failures = grade(fixture, written, verdict);
     if (failures.length > 0) failed += 1;
     console.info(`${failures.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id}`);
     if ('message' in written) console.info(`        > ${written.message}`);

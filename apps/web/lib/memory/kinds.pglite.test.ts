@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,8 +17,19 @@ const NOW = new Date('2026-09-30T15:00:00.000Z');
 const ON = { FAMILY_MEMORY_KINDS_ENABLED: 'true' };
 const LOCKED = {
   FAMILY_MEMORY_KINDS_ENABLED: 'true',
-  FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true',
 };
+
+function scriptedReply(payload: Record<string, string>): AgentClient {
+  return {
+    messages: {
+      create: vi.fn(async () => ({
+        content: [{ type: 'text', text: JSON.stringify(payload) }],
+        usage: { input_tokens: 12, output_tokens: 8 },
+        stop_reason: 'end_turn',
+      })),
+    },
+  } as unknown as AgentClient;
+}
 
 describe('migration 0141 backfill', () => {
   let db: TestDb;
@@ -165,7 +177,7 @@ describe('family memory kinds', () => {
 
   it('soft-invalidates a forget and audits it, without sending the placeholder', async () => {
     const { familyId, parentUserId } = await seedSwim('one_off');
-    const sendGroup = vi.fn(async () => 'sent' as const);
+    const sendGroup = vi.fn(async (_chatId: string, _body: string) => 'sent' as const);
     await db.database
       .update(schema.families)
       .set({ linqGroupChatId: `group-${familyId}` })
@@ -200,7 +212,9 @@ describe('family memory kinds', () => {
       forgotten: 1,
       reply: null,
     });
-    expect(sendGroup).not.toHaveBeenCalled();
+    expect(sendGroup).toHaveBeenCalledTimes(1);
+    expect(sendGroup.mock.calls[0]?.[1]).toBe('Test asked me to forget something.');
+    expect(String(sendGroup.mock.calls[0]?.[1])).not.toContain('swimming');
     expect(JSON.stringify(result)).not.toContain('TODO-Design');
 
     const [row] = await db.database
@@ -247,6 +261,7 @@ describe('family memory kinds', () => {
       })
       .returning({ id: schema.channelMessages.id });
 
+    const modelReply = 'Got it, swimming is now not for us. Say so here if that is wrong.';
     const result = await handleParentMemory(db.database, {
       familyId,
       parentUserId,
@@ -255,10 +270,11 @@ describe('family memory kinds', () => {
       inboundChannelMessageId: inbound?.id ?? null,
       env: LOCKED,
       sendGroup,
+      replyClient: scriptedReply({ text: modelReply }),
     });
 
     expect(result.corrected).toBe(1);
-    expect(result.reply).toBe('Got it. swimming is now not for us.');
+    expect(result.reply).toBe(modelReply);
     expect(sendGroup).toHaveBeenCalledTimes(1);
     expect(sendGroup.mock.calls[0]?.[1]).toBe('Test corrected something.');
     expect(String(sendGroup.mock.calls[0]?.[1])).not.toContain('not for us');
@@ -415,6 +431,8 @@ describe('family memory kinds', () => {
       sourcedAt: NOW,
       signalCount: 0,
     });
+    const opening = 'Here is what I have for your family.';
+    const closing = 'Wrong or old?';
     const result = await handleParentMemory(db.database, {
       familyId,
       parentUserId,
@@ -422,13 +440,14 @@ describe('family memory kinds', () => {
       now: NOW,
       inboundChannelMessageId: null,
       env: LOCKED,
+      replyClient: scriptedReply({ opening, closing }),
     });
     expect(result.reply).toBe(
       [
-        "Here's what I have for your family:",
+        opening,
         '- swimming: I think saturday (for now)',
         '- district: midtown (lasting, you told me)',
-        'Wrong or old? Text "correct <key>: <value>" or "forget <key>".',
+        closing,
       ].join('\n'),
     );
     expect(result.reply).not.toContain('SECRET_TEEN');

@@ -1,3 +1,4 @@
+import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 
 /**
@@ -21,6 +22,11 @@ export interface InboundMessage {
    * unsupported form is rejected by `normalizePhoneE164` before any ledger write. */
   from: string;
   body: string;
+  /**
+   * Linq parts that were not text. Absent on SMS and on a text-only turn.
+   * The coach reads an image from its url; a video is named, not downloaded.
+   */
+  media?: readonly InboundMediaPart[];
   /** The provider's own id for this inbound. The idempotency key: a carrier retry
    * carries the SAME id, which is how a duplicate is told from a real second text. */
   providerId: string;
@@ -28,7 +34,7 @@ export interface InboundMessage {
   /** The pipe the message arrived on. Absent means 'sms'. The webhook always sets it. */
   transport?: MessageTransport;
   /** Linq chat id when `transport` is `imessage`. The within-request reply (a STOP
-   * ack, the media line) sends back into this chat. Absent on SMS. */
+   * ack) sends back into this chat. Absent on SMS. */
   chatId?: string;
   /** True when this text arrived in a Linq group. The contact-card share is
    * 1:1 only and does not fire into a group. */

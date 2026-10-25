@@ -262,7 +262,11 @@ describe('connectorLinkHandler', () => {
     expect(verdict.reply).toContain('minutesValid=15');
   });
 
-  it('asks the model for a French line on a French ask', async () => {
+  it('asks the model for a French line when the household is French', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, familyId));
     const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
       db.database,
       turn('Connecte mon Google Agenda svp'),

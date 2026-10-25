@@ -13,7 +13,6 @@ import {
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
 import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
-import { readAffirmative } from '~/lib/channel/affirmative';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
@@ -28,28 +27,31 @@ import {
 } from '~/lib/channel/config';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { readConsent } from '~/lib/channel/consent-reply';
+import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
+import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
 import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
-import { replyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
   noteGroupSyncConversation,
   queueGroupActivityDecision,
 } from '~/lib/channel/linq/family-outbound';
 import {
-  LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
   linqCoParentAsk,
+  linqGroupLineMissing,
 } from '~/lib/channel/linq/group';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
@@ -110,12 +112,7 @@ import {
   turnSignalAborted,
   withTimeout,
 } from './deadline';
-import {
-  type DisambiguationOption,
-  type DisambiguationStore,
-  matchDisambiguation,
-  readsAsOrdinal,
-} from './disambiguation';
+import type { DisambiguationOption, DisambiguationStore } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import {
   HOLDING_LINE_AFTER_MS,
@@ -226,6 +223,8 @@ export interface InboundContext {
    * a flood line goes 1:1 rather than into the group.
    */
   inGroup: boolean;
+  /** Linq parts stored on the inbound row. Empty when the turn was text only. */
+  media?: readonly InboundMediaPart[];
 }
 
 /**
@@ -495,6 +494,11 @@ export interface ChannelRouterDeps {
    * ordinary coach turn. No client is `nothing_stated`, named in the reader's log.
    */
   weekdayCareReader: WeekdayCareReader;
+  /**
+   * Reads a yes or a no the resolver does not own (a weekday search). Absence
+   * is named and the turn is unreadable. Carrier STOP never reaches this reader.
+   */
+  consent?: ConsentReader;
   /**
    * Writes the drafts receipt when a turn breaks after drafting. Absence is
    * named and the parent is not handed a keyword sentence. The drafts remain.
@@ -889,13 +893,18 @@ async function routeChannelMessageInner(
     });
   }
   const route = context.reply;
+  // VIL-439: a group turn is scoped as a group whatever the flags say. `context.inGroup`
+  // is false while group onboarding v2 is dark, but the door still marks every group
+  // message (`job.in_group`), and that message must never run as the sender's 1:1 turn:
+  // it gets the group thread, the group audience, and the group-scoped tools and context.
+  const inGroup = context.inGroup || job.in_group === true;
 
   // THREAD. One long-lived conversation per parent, resolved through the note anchor's
   // partial unique index so two texts arriving together cannot fork it.
   const conversationId = await resolveOrCreateNoteConversation(
     job.family_id,
     channelThreadNoteKey({
-      inGroup: context.inGroup,
+      inGroup,
       channel: route.channel,
       chatId: route.channel === 'imessage' ? route.chatId : null,
       parentUserId: job.parent_user_id,
@@ -973,6 +982,7 @@ async function routeChannelMessageInner(
     parentUserId: job.parent_user_id,
     conversationId,
     body: context.body,
+    ...(context.media && context.media.length > 0 ? { inboundMedia: context.media } : {}),
     // A handler that answers for itself sends on the SAME route this turn resolved, and
     // has no way to reach any other one. stopTyping clears whatever the wait put up.
     send: async (body: string) => {
@@ -1060,7 +1070,7 @@ async function routeChannelMessageInner(
   const identity = await identityChallengeReply(
     turn.body,
     deps.saidLine,
-    await readTextOnce(deps.turnReader, { text: turn.body, language: replyLanguage(turn.body) }),
+    await readTextOnce(deps.turnReader, { text: turn.body, language: null }),
   );
   if (identity.challenge) {
     // #868: the model writes the disclosure. A failed write sends nothing.
@@ -1075,7 +1085,17 @@ async function routeChannelMessageInner(
     });
   }
 
-  // GATE 2 — the deterministic handlers, in order. First claim ends the turn.
+  // GATE 2 — the parent's own words, read by the model before any keyword handler.
+  // A turn Hale is not waiting on costs no model call. Carrier STOP, HELP, and START
+  // never reach this router. A resolved answer is delivered by the handler that owns
+  // the question. An unresolved turn falls through to the handlers that are not a
+  // yes or a no.
+  const natural = await resolveNaturalReply(deps, turn, answer);
+  if (natural.status === 'handled') {
+    return done(deps, job, { ...natural.result, conversationId, lane: null });
+  }
+
+  // GATE 2b — the deterministic handlers, in order. First claim ends the turn.
   //
   // SKIPPED ENTIRELY when the menu above spent a digit it could not place. Hale's other
   // numbered list is the approvals queue, and its ordering has nothing to do with the
@@ -1083,8 +1103,7 @@ async function routeChannelMessageInner(
   // since closed would otherwise be read by the approval grammar as consent to execute
   // the second DRAFTED action — one that may never have been on the menu at all (rule
   // #4). A digit typed while a menu was standing belongs to that menu; when the menu
-  // cannot use it, nobody else may. The turn carries on to the resolver and the coach,
-  // which can ask.
+  // cannot use it, nobody else may. The turn carries on to the coach, which can ask.
   if (!picked.ordinalSpent) {
     for (const handler of deps.handlers) {
       const verdict = await handler.handle(deps.database, turn);
@@ -1097,21 +1116,6 @@ async function routeChannelMessageInner(
         lane: null,
       });
     }
-  }
-
-  // GATE 2b — DID THEY JUST ANSWER SOMETHING? The words a parent uses are theirs, and
-  // Hale never hands them a keyword to recite (resolve.ts). This runs ONLY when both of
-  // its preconditions hold: every free reader above declined, AND Hale is actually
-  // holding a question. On the overwhelming majority of turns the second is false and
-  // this costs one batch of indexed selects and no model call at all.
-  //
-  // It sits ABOVE flood control for the reason the handlers do: answering "yeah go ahead"
-  // is the same act as answering "yes", and a parent whose hour is spent must still be
-  // able to approve, decline and opt out. It sits BELOW them because a free, exact read
-  // must always win — no keyword was removed, only stopped being printed.
-  const natural = await resolveNaturalReply(deps, turn, answer);
-  if (natural.status === 'handled') {
-    return done(deps, job, { ...natural.result, conversationId, lane: null });
   }
 
   // GATE 2c — WHAT DID THE PARENT JUST SETTLE? The inbound half of the reconciliation
@@ -1240,7 +1244,7 @@ async function routeChannelMessageInner(
       AGENT_TURN_LIMIT,
     );
     if (!decision.allowed) {
-      if (context.inGroup) {
+      if (inGroup) {
         // The parent's own budget is spent, which is no one else's news: the line goes
         // to their phone, outside the group and outside the group's thread.
         await sendReply(deps, {
@@ -1276,7 +1280,7 @@ async function routeChannelMessageInner(
   } else {
     holding = armHoldingLine({
       afterMs: deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS,
-      language: replyLanguage(context.body),
+      language: await familySpeechLanguage(deps.database, job.family_id),
       composer: deps.holdingLine,
       log: deps.log,
       send: async (line) => {
@@ -1437,7 +1441,7 @@ async function routeChannelMessageInner(
       // silence-plus-an-apology would read as Hale ignoring a decision the parent made.
       questions: natural.questions,
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
-      audience: context.inGroup ? 'group' : 'direct',
+      audience: inGroup ? 'group' : 'direct',
     });
   } finally {
     await stopTyping();
@@ -1466,7 +1470,7 @@ async function routeChannelMessageInner(
 async function consumePendingDisambiguation(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
-  answer: (body: string) => Promise<string>,
+  _answer: (body: string) => Promise<string>,
 ): Promise<
   | { status: 'handled'; handler: string }
   /** Carried on — and whether a digit went with the menu rather than on down the chain. */
@@ -1478,58 +1482,19 @@ async function consumePendingDisambiguation(
     now: turn.now,
   });
   if (!pending) return { status: 'carry_on', ordinalSpent: false };
-  // Read while the menu is known to have been STANDING, and true whatever the match then
-  // makes of it — see the skip at GATE 2.
-  const ordinalSpent = readsAsOrdinal(turn.body);
+  // The menu is spent so a later text is not still "the answer". The model places
+  // which question the words mean. A digit is not a choice.
   const spent = await deps.disambiguation.consume(deps.database, {
     id: pending.id,
     now: turn.now,
   });
   if (spent === 'already_spent') {
-    // Another turn for this parent got there first. One shot means one, so this one does
-    // not also act on it — and the digit is still that menu's.
     deps.log.info(
       { offered: pending.options.length },
       'channel router: the menu was already spent by another turn',
     );
-    return { status: 'carry_on', ordinalSpent };
   }
-
-  const choice = matchDisambiguation(pending, turn.body, await turn.openQuestions());
-  if (choice.status !== 'chosen') {
-    deps.log.info(
-      { reason: choice.reason, offered: pending.options.length, ordinalSpent },
-      'channel router: the reply did not pick one of the options Hale offered',
-    );
-    return { status: 'carry_on', ordinalSpent };
-  }
-
-  const owner = deps.handlers.find((handler) => handler.resolves?.has(choice.option.kind));
-  if (!owner) {
-    deps.log.error(
-      { kind: choice.option.kind },
-      'channel router: no handler owns the option the parent picked',
-    );
-    return { status: 'carry_on', ordinalSpent };
-  }
-  const verdict = await owner.handle(deps.database, {
-    ...turn,
-    resolved: {
-      kind: choice.option.kind,
-      questionId: choice.option.questionId,
-      polarity: choice.polarity,
-      confidence: 'high',
-    },
-  });
-  if (!verdict.claimed) {
-    deps.log.info(
-      { handler: owner.name, kind: choice.option.kind },
-      'channel router: the owning handler declined the option the parent picked',
-    );
-    return { status: 'carry_on', ordinalSpent };
-  }
-  await deliver(verdict, answer);
-  return { status: 'handled', handler: owner.name };
+  return { status: 'carry_on', ordinalSpent: false };
 }
 
 /**
@@ -1588,15 +1553,12 @@ type NaturalReplyOutcome =
 /**
  * The answer Hale could not place — and, when it can be had for free, WHICH answer it was.
  *
- * `polarity` is what the clarifier's menu is minted with, because the sentence Hale is
- * about to send asks WHICH, never WHETHER: the yes or no was already given, and re-reading
- * it off a reply that only names a target would turn "no thanks" followed by "the calendar
- * one" into a calendar write nobody consented to (rule #4).
+ * The yes or no was already given. A later reply that only names a target is not
+ * read again as yes or no: "no thanks" followed by "the calendar one" must not
+ * become a calendar write nobody consented to (rule #4).
  *
- * It is read by the free, deterministic vocabulary (affirmative.ts) rather than taken from
- * the resolver, and NULL when that vocabulary cannot read it. Null means nothing is minted
- * and the turn behaves exactly as it did before VIL-304: a polarity Hale would have had to
- * guess at is not one it may carry into somebody's calendar or another household's thread.
+ * Polarity comes from the model that read the reply. When that reading does not
+ * place it, polarity is null and nothing is minted. A guess is not a consent.
  */
 interface UnplacedAnswer {
   polarity: 'yes' | 'no' | null;
@@ -1670,12 +1632,11 @@ async function recordWeekdayCareAnswer(
   if (target.status !== 'open') return { status: 'not_recorded', reason: target.status };
 
   if ('scope' in target) {
-    const word = readAffirmative(turn.body);
-    if (word === 'yes') {
+    const read = await readConsent(deps.consent, { question: 'weekday_search', text: turn.body });
+    if (read?.verdict === 'yes') {
       return { status: 'search', prompt: target.prompt, eventKey: target.eventKey };
     }
-    if (word === 'no') return { status: 'declined' };
-    // Not a care fact. "she's at daycare" on this ask settles nothing about care.
+    if (read?.verdict === 'no') return { status: 'declined' };
     return { status: 'unreadable' };
   }
 
@@ -1712,12 +1673,11 @@ async function resolveNaturalReply(
     : await deps.replyResolver.read({ text: turn.body, questions });
   if (reading.status === 'unresolved') {
     if (questions.length > 1 && warrantsClarifying(reading.reason)) {
-      // A calendar-only ambiguity is not a keyword. The coach asks which one.
-      const word = emailOnly ? 'unclear' : readAffirmative(turn.body);
+      // The model did not place the reply. Do not classify the words here.
       return {
         status: 'unplaced',
         questions,
-        answer: { polarity: word === 'unclear' ? null : word },
+        answer: { polarity: null },
       };
     }
     return { status: 'carry_on', questions };
@@ -2216,11 +2176,18 @@ async function composeReconciledReply(
     if (inviteOnly && parseCoParentNumberReply(args.turn.body)) {
       const door = await resolveMessagingDoor(deps.database, args.turn.parentUserId);
       if (door.channel === 'imessage') {
-        const language = replyLanguage(args.turn.body);
+        const language = await familySpeechLanguage(deps.database, args.turn.familyId);
         const from = linqFromE164();
         const instruction = from
-          ? linqCoParentAsk(formatLinqLineForParent(from), language)
-          : LINQ_GROUP_LINE_MISSING_TEXT[language];
+          ? await linqCoParentAsk(formatLinqLineForParent(from), language)
+          : await linqGroupLineMissing(language);
+        if (!instruction) {
+          deps.log.error(
+            { reason: 'model_unreachable' },
+            'channel router: co-parent ask unreachable - nothing sent',
+          );
+          return { ...composed, reply: '', spotWatch: null, mints: [] };
+        }
         deps.log.error(
           { reason: 'no_coparent_invite' },
           'channel router: an invite claim was replaced with the Linq co-parent ask',

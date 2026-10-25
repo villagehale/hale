@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNPWGdte6LDgfk7joA4V",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8gUKEAgTGAI4AUIIdGhpbmtpbmcSDGHJLxTDOgPb4c0cBRoMdn/7tsHY2FZAdfcwIjAESec1f0CocmtvbpKImFpppiuB6y14/BAnBz/c48mg5pZ4S+AsS7NNHVp9EZ7AfDMqjwU473L9Y+lZmxSjnfoTEfXxNrXvMRuW6w4PmpbDPv+lNeVOlds662yxvkQirE7h23gBQmCdZSa7ma3uGYbY154MZCqh8Pl65+sfNhiwNGkjml4sxm8gyHgrCDBM1wdPFqwgyU1uAuPl9FKGFvn829/RuEDwc9xsAUYMy3zLiBZ8GHbHmgSSyDXlOw6FKKgne8ZKgtPwEeiB5bW0D8jBj0058YUCj+uSew0LNbSmonEdWrs7TfKEv3hXN7saykCVXbzr6iO3UJP9ToeupiHNJcOsPnPx3Li+U3GbO659AkQCFVXLZQwgyrqx90kdbiDsCPIldaXOgMC6r8XUEnTHEA8aRud6BZdzCZMdiRCm0fmr2Lnl9mBf542att4QchCDh3vxcW7RZQ9dPvRLqqVRJsrZ20GSDnxbbLiBl4akeOrlrqMJOoNdoiCfCOSrpfY1iAr4zHN8qGQGNC3hmyq9qXeaT/Lnz6GPUaYovaPWa7VHV1Bjjjgm7KWvjQBTr3GNtX3N8MTfvvZ+X2rToshBIieF4lcFHtZWY7wf0fl9S/v8ojXF26XnTa8rt7IkS1ubeJ5pitX2hnHd1cf2pJ8R2u7tVdlB6l+plgyIRztHs6DnYD6MbmZA3ALH3JK9UzzWkZ9EBHoU+E6lkbNKvK2dWnx651ChuvNnARFQiH5vKK88/YGuFvKaPv2DuhOAjKrc1ozXjjqASGL5PdcZJWylIwhjFAz3TMcIyDtN2F0YvOJIQ4qKYZ88H5KiO75ygLY8k8UbAA0xQFy7M+FDv5yZLeZYvvn+uSuLxsCZsdnyAp3K3k5k5bYvQQXGEmKN4R4VXEsl+jLPSozKFOO8CjMYFq+ezx1M8g5mO7Mq10XUNUiHGAE="
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice Sat 10:00am at Cedarvale Park. After that, there's Fanous lantern craft at North York Central Library, Sat, Aug 8, 2:00 p.m., a free drop-in for ages 6-12, so it suits Ada but not Milo."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1077,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20889,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 176,
+      "output_tokens_details": {
+        "thinking_tokens": 80
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2171
+}

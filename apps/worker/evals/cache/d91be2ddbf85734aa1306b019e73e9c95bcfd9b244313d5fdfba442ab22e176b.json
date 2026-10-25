@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNHsQvMQoCpPw5swNZbM",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShgcKEAgTGAI4AUIIdGhpbmtpbmcSDBdyc2tMV1ARmNbWXRoMAE265A9axR5Gp3s5IjDezbXvQx/pTn1+ydnvDBE10qW/nbR1GhVRtNis+a6FqhQtf09raKwxIxKcEYrZg8EqowYdjcwePjTVHSE5PMuPrLBGvDPwIWvjYaN4U8QhgdyD1NTUD4H7u9l6e7cDHWsckUAkEUFsSI+Uj4ldx1SRwrpjnIMtAtvfQ7h919+uO6EBqbb+afcwHn21x/FisZik0qCkxG2UOLbCa94K3kDXgLvfvGUBO8qfxktSu5iIV86Pi8Lsgneng7udD68Flu/2Qvh+U6UB2mW86CEEINlpzcrf+lQjaJ4A/Ls9BD9+0x4RNf3QiwKViktuQlapLSf0uTaW3odS3+Anf1yDxWqLKELmsmLBSE8nvbfDNvrcfiZxwWorH+K4K73/GNoIAho9659uqlQyT/zt7PX6z2CV5VIzuqeSN9EX5rpVV7ggsR1JBb+S5S2LMjONEUc5Tr7zcZmwfZBLYovY7D3biaJDM6d9obmdT/SdzWrm2oBJKrs92dqhYmJVA8dFWHizbNTdpkWM0fOqHhkq6fFLHLQ2SrO6stTclPlpYq9UTltcyRSfXfzfg742unCf2ND43hryDMzQkKnA1AttOlSRq/ztplLCcsH0AjroY8EpMbJ0G/Oje0q1erKIvFK7ut0t/YDIAXy8swW23iEcaS2u+ImaUOpk5LoJzPlZoDdFXxkr6gKRpYSFb932/1ZWleX9kKyp2Z+PPXdaB46KP9mgKLRrewDStDIUVQ/th0VfnyBhQZtFuFCwTVzjTgHuPIFrboMnj5r6huHVPJkY/hoiCA22gc9s5hfOJUSaBOJgolk493M4drigktLBT9SodVyT8t+VNrMi1rk0+qt67X7HFqbbs6ahjfFmBXzj2zczFg9z5zO3PK5UqId1QaI/p2Yb9XAJISOg+RC2gb/jrcKaoQVkhXOPxJ0CD6+DIRR47szmb4A34vJlg9ua34q1wnlu1pmuc/8Zxqwc1ahqoVAXGw+lGUqIqie0PLtYzR/PlKi15/hInnlpJViudHcjnYlBfQ65EJwxy6yJsx+c3TSaYnYe1/wNDsOv0+bpDKXZ9Z6BS759LndYOeb6nE4KxY+ryR1XIVHqVhMCWYqtZpmgngPHIaOs9iFXaHJG1ZwfkEB6UZKuGUE7IhgB"
+      },
+      {
+        "type": "text",
+        "text": "There's a private item Tue 3:45pm. What it is isn't mine to share."
+      }
+    ],
+    "usage": {
+      "input_tokens": 859,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20637,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 144,
+      "output_tokens_details": {
+        "thinking_tokens": 116
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1920
+}

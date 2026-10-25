@@ -352,7 +352,12 @@ function clippedToolUseMessage(u: Anthropic.Usage): Anthropic.Message {
     stop_sequence: null,
     content: [
       { type: 'thinking', thinking: '', signature: 'sig' } as Anthropic.ContentBlock,
-      { type: 'tool_use', id: 'call-1', name: 'get_child_profile', input: {} } as Anthropic.ToolUseBlock,
+      {
+        type: 'tool_use',
+        id: 'call-1',
+        name: 'get_child_profile',
+        input: {},
+      } as Anthropic.ToolUseBlock,
     ],
     usage: u,
   };
@@ -503,6 +508,55 @@ describe('runAgent when a step is truncated before it says anything', () => {
     expect(result.truncated).toBe(false);
   });
 
+  /**
+   * VIL-434. The ceiling landed inside the ANSWER. Nothing downstream trims a reply any
+   * more, so that text would go to the parent ending mid-word ("The Kids & Me drop-in at
+   * St."). It is re-asked like a silent completion, never sent as it stands.
+   */
+  function cutAnswerMessage(text: string, u: Anthropic.Usage): Anthropic.Message {
+    return {
+      ...textMessage(text, u),
+      id: 'msg-cut-answer',
+      stop_reason: 'max_tokens',
+    };
+  }
+
+  it('re-asks an answer the ceiling cut mid-sentence, and sends the whole one', async () => {
+    const { client, requests } = capturing([
+      cutAnswerMessage(
+        "Nothing's on Sebby's calendar today. The Kids & Me drop-in at St.",
+        usage(1_000, 400),
+      ),
+      textMessage(
+        "Nothing's on Sebby's calendar today. The Kids & Me drop-in at St. Lawrence runs 1-2:30 p.m.",
+        usage(1_000, 60),
+      ),
+    ]);
+
+    const result = await runAgent(args(client));
+
+    expect(requests).toHaveLength(2);
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
+    expect(result.answer).toBe(
+      "Nothing's on Sebby's calendar today. The Kids & Me drop-in at St. Lawrence runs 1-2:30 p.m.",
+    );
+    expect(result.truncatedRetries).toBe(1);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('never returns a cut answer when the re-ask is cut too', async () => {
+    const { client } = capturing([
+      cutAnswerMessage('今天Sebby的日历上没有安排。圣劳伦斯社区中心今天下午', usage(1_000, 400)),
+      cutAnswerMessage('今天Sebby的日历上没有安排。圣劳伦斯社区中心', usage(1_000, 400)),
+    ]);
+
+    const result = await runAgent(args(client));
+
+    expect(result.answer).toBeNull();
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedRetries).toBe(1);
+  });
+
   it('does not re-ask a lane that was not thinking', async () => {
     // `draft` is `thinking: 'between_tools'` already, so there is no second shape to buy:
     // no text and a clipped call there means the REPLY did not fit the budget, which is
@@ -520,28 +574,6 @@ describe('runAgent when a step is truncated before it says anything', () => {
     expect(read).toEqual([]);
     expect(result.answer).toBeNull();
     expect(result.truncated).toBe(true);
-    expect(result.truncatedRetries).toBe(0);
-  });
-
-  it('does not retry a step that was truncated AFTER it had started speaking', async () => {
-    // Text present means the budget was spent on the answer, not swallowed by thinking.
-    // Re-asking there would pay twice for a reply the post-processor can already trim.
-    const clipped: Anthropic.Message = {
-      id: 'msg-clipped',
-      type: 'message',
-      role: 'assistant',
-      model: 'claude-sonnet-4-6',
-      stop_reason: 'max_tokens',
-      stop_sequence: null,
-      content: [{ type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock],
-      usage: usage(1_000, 400),
-    };
-    const { client, requests } = capturing([clipped]);
-
-    const result = await runAgent(args(client));
-
-    expect(requests).toHaveLength(1);
-    expect(result.answer).toBe('Around 18 months, once he');
     expect(result.truncatedRetries).toBe(0);
   });
 
@@ -670,7 +702,7 @@ describe('runAgent keeps the answer written beside a registering tool call', () 
   it('still discards the preamble written before a tool it is about to READ', async () => {
     const client = fakeClient([
       textAndToolUseMessage(
-        "Let me pull up the profile and check.",
+        'Let me pull up the profile and check.',
         'tu-1',
         'get_child_profile',
         { childId: 'kid-1' },
@@ -982,7 +1014,12 @@ describe('runAgentStreaming', () => {
     expect(events).toEqual([
       { hook: 'step', step: 1 },
       { hook: 'tool_call', name: 'get_child_profile' },
-      { hook: 'tool_result', name: 'get_child_profile', ok: true, preview: 'Ran get_child_profile' },
+      {
+        hook: 'tool_result',
+        name: 'get_child_profile',
+        ok: true,
+        preview: 'Ran get_child_profile',
+      },
       { hook: 'step', step: 2 },
     ]);
 
@@ -1032,7 +1069,10 @@ describe('runAgentStreaming', () => {
       instructions: 'You answer.',
     };
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)) },
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)),
+      },
       { chunks: ['found ', 'it.'], final: textMessage('found it.', usage(60, 15)) },
     ]);
     const { deps } = guardDeps();
@@ -1105,7 +1145,10 @@ describe('runAgentStreaming', () => {
       instructions: 'You answer.',
     };
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)) },
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)),
+      },
       { chunks: ['found ', 'it.'], final: textMessage('found it.', usage(60, 15)) },
     ]);
     const { deps } = guardDeps();
@@ -1158,7 +1201,10 @@ describe('runAgentStreaming', () => {
       handler: async () => ({ card: { kind: 'evil', payload: 'leak-me' } }),
     });
     const client = fakeStreamingClient([
-      { chunks: [], final: toolUseMessage('t', 'get_child_profile', { childId: 'k' }, usage(10, 5)) },
+      {
+        chunks: [],
+        final: toolUseMessage('t', 'get_child_profile', { childId: 'k' }, usage(10, 5)),
+      },
       { chunks: ['ok.'], final: textMessage('ok.', usage(10, 5)) },
     ]);
     const { deps } = guardDeps();
@@ -1519,10 +1565,10 @@ describe('prompt cache prefix', () => {
   const FAMILY_SECRET = 'Ella naps at 12:30';
 
   function systemsFrom(client: AgentClient): unknown[] {
-    const mock = (client.messages as unknown as {
+    const mock = client.messages as unknown as {
       create?: { mock: { calls: Array<[{ system: unknown }]> } };
       stream?: { mock: { calls: Array<[{ system: unknown }]> } };
-    });
+    };
     const calls = (mock.create ?? mock.stream)?.mock.calls ?? [];
     return calls.map(([params]) => params.system);
   }

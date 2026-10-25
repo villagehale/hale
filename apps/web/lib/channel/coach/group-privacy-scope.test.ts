@@ -1,7 +1,7 @@
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTurn } from '~/lib/channel/router/coach-runtime';
-import { groupPrivacyScopeEnabled, groupScopedContext } from './group-privacy-scope';
+import { groupScopedContext } from './group-privacy-scope';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 const NOW = new Date('2026-10-25T16:00:00.000Z');
@@ -36,14 +36,6 @@ const PRIVATE_CONTEXT = {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('VIL-439 group privacy scope', () => {
-  it('is off unless the flag is exactly true', () => {
-    expect(groupPrivacyScopeEnabled()).toBe(false);
-    vi.stubEnv('GROUP_PRIVACY_SCOPE_ENABLED', 'on');
-    expect(groupPrivacyScopeEnabled()).toBe(false);
-    vi.stubEnv('GROUP_PRIVACY_SCOPE_ENABLED', 'true');
-    expect(groupPrivacyScopeEnabled()).toBe(true);
-  });
-
   it('drops memory, inbox-derived episodes, the brief, the source note and provider watch', () => {
     const scoped = groupScopedContext({
       ...PRIVATE_CONTEXT,
@@ -107,25 +99,31 @@ describe('VIL-439 group privacy scope', () => {
       };
     }
 
-    it('flag on: a group turn never hands private context to the model', async () => {
-      vi.stubEnv('GROUP_PRIVACY_SCOPE_ENABLED', 'true');
+    it('a group turn never hands private context to the model, with no flag set', async () => {
       const seen: string[] = [];
       await channelCoachRuntime(ports(seen)).respond(turn('group'), []);
       expect(seen[0]).not.toContain(SECRET_FACT);
       expect(seen[0]).not.toContain(INBOX_LINE);
     });
 
-    it('flag on: a 1:1 turn is untouched', async () => {
-      vi.stubEnv('GROUP_PRIVACY_SCOPE_ENABLED', 'true');
+    it('a 1:1 turn is untouched', async () => {
       const seen: string[] = [];
       await channelCoachRuntime(ports(seen)).respond(turn('direct'), []);
       expect(seen[0]).toContain(SECRET_FACT);
     });
 
-    it("flag off: today's group context is byte-identical", async () => {
+    it('every group flag off: a group turn is still scoped', async () => {
+      for (const flag of [
+        'GROUP_PRIVACY_SCOPE_ENABLED',
+        'LINQ_GROUP_ONBOARDING_V2_ENABLED',
+        'LINQ_GROUP_TURN_AI_ENABLED',
+      ]) {
+        vi.stubEnv(flag, '');
+      }
       const seen: string[] = [];
       await channelCoachRuntime(ports(seen)).respond(turn('group'), []);
-      expect(seen[0]).toContain(SECRET_FACT);
+      expect(seen[0]).not.toContain(SECRET_FACT);
+      expect(seen[0]).not.toContain(INBOX_LINE);
     });
   });
 });
@@ -217,8 +215,7 @@ describe('VIL-439 review: group tools and group history', () => {
     ).toBe(channelSmsNoteKey(parentUserId));
   });
 
-  it('flag on: the runtime hands a group turn the scoped tool list', async () => {
-    vi.stubEnv('GROUP_PRIVACY_SCOPE_ENABLED', 'true');
+  it('the runtime hands a group turn the scoped tool list, with no flag set', async () => {
     const seenTools: string[][] = [];
     const tools = ['lookup_week', 'prepare_gmail_draft', 'read_recent_memory'].map((name) => ({
       name,

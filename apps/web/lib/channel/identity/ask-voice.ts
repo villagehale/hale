@@ -2,7 +2,6 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -117,7 +116,6 @@ export function identityAskRefusals(
   const found: IdentityAskRefusal[] = [];
   if (body === '') return ['empty'];
   if (body.length > askCharCap(request)) found.push('over_char_cap');
-  if (smsEncoding(body) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
 

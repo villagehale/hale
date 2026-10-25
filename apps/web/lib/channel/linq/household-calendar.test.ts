@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GROUP_BOTH_FREE,
-  GROUP_CALENDAR_RECEIPT,
-  GROUP_CONFLICT,
-  GROUP_GMAIL_RECEIPT,
-  GROUP_HANDOFF,
-  GROUP_KID_EVENT,
-  GROUP_WELCOME,
   absorbHowItWentLines,
   groupActivityHowItWent,
   groupAddressedLine,
+  groupBothFreeText,
   groupBothReaderFrench,
+  groupCalendarReceipt,
+  groupConflictText,
   groupDepartureNotice,
+  groupGmailReceipt,
+  groupHandoffText,
+  groupKidEventText,
   groupPostEventText,
+  groupWelcome,
 } from './group-coparent-copy';
 import {
   type BusyBlock,
@@ -54,7 +54,7 @@ function block(over: Partial<BusyBlock> & Pick<BusyBlock, 'eventId' | 'userId'>)
   };
 }
 
-function notices(blocks: BusyBlock[], now = NOW) {
+async function notices(blocks: BusyBlock[], now = NOW) {
   return planHouseholdNotices({
     blocks,
     parentUserIds: [PARENT_A, PARENT_B],
@@ -106,14 +106,14 @@ describe('kidMailboxSubject', () => {
 });
 
 describe('two-reader group lines', () => {
-  it('names a known parent on how-it-went', () => {
-    expect(groupActivityHowItWent('en', 'Sam', 'swim')).toBe(
+  it('names a known parent on how-it-went', async () => {
+    expect(await groupActivityHowItWent('en', 'Sam', 'swim')).toBe(
       'Sam, how did swim go? One line is plenty.',
     );
-    expect(groupActivityHowItWent('fr', 'Sam', 'natation')).toBe(
+    expect(await groupActivityHowItWent('fr', 'Sam', 'natation')).toBe(
       "Sam, comment ca s'est passe pour natation ? Une ligne suffit.",
     );
-    expect(groupActivityHowItWent('fr', null, 'swim')).toBe(
+    expect(await groupActivityHowItWent('fr', null, 'swim')).toBe(
       "Comment ca s'est passe pour swim ? Une ligne suffit.",
     );
   });
@@ -127,17 +127,17 @@ describe('two-reader group lines', () => {
     );
   });
 
-  it('uses the locked group departure line, and the role when the name is unknown', () => {
-    expect(groupDepartureNotice('en', 'Sam')).toBe(
+  it('uses the locked group departure line, and the role when the name is unknown', async () => {
+    expect(await groupDepartureNotice('en', 'Sam')).toBe(
       "Sam left Hale. Nothing in the kids' year changed, and I'm still here.",
     );
-    expect(groupDepartureNotice('fr', 'Sam')).toBe(
+    expect(await groupDepartureNotice('fr', 'Sam')).toBe(
       "Sam a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.",
     );
-    expect(groupDepartureNotice('en', null)).toBe(
+    expect(await groupDepartureNotice('en', null)).toBe(
       "Your co-parent left Hale. Nothing in the kids' year changed, and I'm still here.",
     );
-    expect(groupDepartureNotice('fr', null)).toBe(
+    expect(await groupDepartureNotice('fr', null)).toBe(
       "Votre co-parent a quitte Hale. Rien n'a change dans l'annee des enfants, et je suis toujours la.",
     );
   });
@@ -170,47 +170,75 @@ describe('two-reader group lines', () => {
 });
 
 describe('design-locked group strings', () => {
-  it('matches Sloane byte for byte', () => {
-    expect(GROUP_WELCOME.en).toBe(
+  it('matches Sloane byte for byte', async () => {
+    expect(await groupWelcome('en')).toBe(
       "Hi, I'm Hale. This thread is your kids' year — both of you, and me. What should I call you?",
     );
-    expect(GROUP_WELCOME.fr).toBe(
+    expect(await groupWelcome('fr')).toBe(
       "Salut, c'est Hale. Ce fil, c'est l'annee des enfants: vous deux, et moi. Comment je t'appelle?",
     );
-    expect(GROUP_CALENDAR_RECEIPT.en).toBe(
-      "{name}'s calendar is connected. I'll keep the kids' stuff straight across both.",
+    expect(await groupWelcome('fr')).not.toBe(await groupWelcome('en'));
+    expect(await groupCalendarReceipt('en', 'Sam')).toBe(
+      "Sam's calendar is connected. I'll keep the kids' stuff straight across both.",
     );
-    expect(GROUP_CALENDAR_RECEIPT.fr).toBe(
-      'Le calendrier de {name} est connecte. Je suis les activites des enfants sur les deux.',
+    expect(await groupCalendarReceipt('fr', 'Sam')).toBe(
+      'Le calendrier de Sam est connecte. Je suis les activites des enfants sur les deux.',
     );
-    expect(GROUP_GMAIL_RECEIPT.en).toBe(
-      "{name}'s Gmail is connected. I'll pull out the kids' dates; the inbox stays private.",
+    expect(await groupGmailReceipt('en', 'Sam')).toBe(
+      "Sam's Gmail is connected. I'll pull out the kids' dates; the inbox stays private.",
     );
-    expect(GROUP_GMAIL_RECEIPT.fr).toBe(
-      'Le Gmail de {name} est connecte. Je garde les dates des enfants; la boite reste privee.',
+    expect(await groupGmailReceipt('fr', 'Sam')).toBe(
+      'Le Gmail de Sam est connecte. Je garde les dates des enfants; la boite reste privee.',
     );
-    expect(GROUP_KID_EVENT.en).toBe("Heads up: {name} added {kid}'s {event}, {day} at {time}.");
-    expect(GROUP_KID_EVENT.fr).toBe(
-      'Pour info: {name} a ajoute {event} pour {kid}, {day} a {time}.',
+    const kid = { name: 'Sam', kid: 'Maya', event: 'gymnastics', day: 'Fri', time: '15:00' };
+    expect(await groupKidEventText('en', kid)).toBe(
+      "Heads up: Sam added Maya's gymnastics, Fri at 15:00.",
     );
-    expect(GROUP_CONFLICT.en).toBe(
-      "{kid}'s {event} is {day} at {time}, and you're both busy then. Who's taking it?",
+    expect(await groupKidEventText('fr', kid)).toBe(
+      'Pour info: Sam a ajoute gymnastics pour Maya, Fri a 15:00.',
     );
-    expect(GROUP_CONFLICT.fr).toBe(
-      "{event} pour {kid}, {day} a {time}, et vous etes pris tous les deux. Qui s'en occupe?",
+    expect(
+      await groupConflictText('en', {
+        kid: 'Maya',
+        event: 'gymnastics',
+        day: 'Fri',
+        time: '15:00',
+      }),
+    ).toBe("Maya's gymnastics is Fri at 15:00, and you're both busy then. Who's taking it?");
+    expect(
+      await groupConflictText('fr', {
+        kid: 'Maya',
+        event: 'gymnastics',
+        day: 'ven.',
+        time: '15:00',
+      }),
+    ).toBe("gymnastics pour Maya, ven. a 15:00, et vous etes pris tous les deux. Qui s'en occupe?");
+    expect(
+      await groupHandoffText('en', {
+        name: 'Sam',
+        kid: 'Maya',
+        event: 'gymnastics',
+        time: '15:00',
+      }),
+    ).toBe("Tomorrow: Sam has Maya's gymnastics at 15:00.");
+    expect(
+      await groupHandoffText('fr', {
+        name: 'Sam',
+        kid: 'Maya',
+        event: 'gymnastics',
+        time: '15:00',
+      }),
+    ).toBe("Demain: Sam s'occupe de gymnastics pour Maya a 15:00.");
+    expect(await groupBothFreeText('en', 'Thu 15:00', 'Fri 16:00')).toBe(
+      "You're both free Thu 15:00 or Fri 16:00. Want the sign-up page for one?",
     );
-    expect(GROUP_HANDOFF.en).toBe("Tomorrow: {name} has {kid}'s {event} at {time}.");
-    expect(GROUP_HANDOFF.fr).toBe("Demain: {name} s'occupe de {event} pour {kid} a {time}.");
-    expect(GROUP_BOTH_FREE.en).toBe(
-      "You're both free {slot1} or {slot2}. Want the sign-up page for one?",
+    expect(await groupBothFreeText('fr', 'jeu. 15:00', 'ven. 16:00')).toBe(
+      "Vous etes libres tous les deux jeu. 15:00 ou ven. 16:00. Vous voulez la page d'inscription pour l'un des deux?",
     );
-    expect(GROUP_BOTH_FREE.fr).toBe(
-      "Vous etes libres tous les deux {slot1} ou {slot2}. Vous voulez la page d'inscription pour l'un des deux?",
-    );
-    expect(groupPostEventText('en', 'Sam', 'swim')).toBe(
+    expect(await groupPostEventText('en', 'Sam', 'swim')).toBe(
       'Sam, how did swim go? One line is plenty.',
     );
-    expect(groupPostEventText('fr', 'Sam', 'natation')).toBe(
+    expect(await groupPostEventText('fr', 'Sam', 'natation')).toBe(
       "Sam, comment ca s'est passe pour natation ? Une ligne suffit.",
     );
   });
@@ -219,8 +247,8 @@ describe('design-locked group strings', () => {
 describe('planHouseholdNotices', () => {
   const start = new Date('2026-09-25T19:00:00.000Z');
 
-  it('sends one heads-up and never the private title', () => {
-    const planned = notices([
+  it('sends one heads-up and never the private title', async () => {
+    const planned = await notices([
       block({
         eventId: 'gym',
         userId: PARENT_A,
@@ -239,8 +267,8 @@ describe('planHouseholdNotices', () => {
     expect(planned[0]?.recipientUserId).toBe(PARENT_B);
   });
 
-  it('says both are busy and does not name the other event', () => {
-    const planned = notices([
+  it('says both are busy and does not name the other event', async () => {
+    const planned = await notices([
       block({
         eventId: 'gym',
         userId: PARENT_A,
@@ -267,7 +295,7 @@ describe('planHouseholdNotices', () => {
     expect(planned[0]?.text).not.toContain('Quarterly');
     expect(planned[0]?.text).not.toContain('budget');
     expect(planned[0]?.text).not.toContain('free');
-    const passed = planHouseholdNotices({
+    const passed = await planHouseholdNotices({
       blocks: [
         block({
           eventId: 'gym',
@@ -297,9 +325,9 @@ describe('planHouseholdNotices', () => {
     expect(passed.find((notice) => notice.kind === 'conflict')).toBeUndefined();
   });
 
-  it('does not treat two calendars a week apart as a handoff', () => {
+  it('does not treat two calendars a week apart as a handoff', async () => {
     const evening = new Date('2026-09-24T22:00:00.000Z');
-    const planned = notices(
+    const planned = await notices(
       [
         block({
           eventId: 'this-week',
@@ -325,9 +353,9 @@ describe('planHouseholdNotices', () => {
     expect(planned.find((notice) => notice.kind === 'handoff')).toBeUndefined();
   });
 
-  it('states a handoff the evening before when the event is on one calendar', () => {
+  it('states a handoff the evening before when the event is on one calendar', async () => {
     const evening = new Date('2026-09-24T22:00:00.000Z');
-    const planned = notices(
+    const planned = await notices(
       [
         block({
           eventId: 'tomorrow',
@@ -346,9 +374,9 @@ describe('planHouseholdNotices', () => {
     );
   });
 
-  it("uses a parent's own words for a handoff when both calendars show the event", () => {
+  it("uses a parent's own words for a handoff when both calendars show the event", async () => {
     const evening = new Date('2026-09-24T22:00:00.000Z');
-    const planned = planHouseholdNotices({
+    const planned = await planHouseholdNotices({
       blocks: [
         block({
           eventId: 'a',
@@ -382,8 +410,8 @@ describe('planHouseholdNotices', () => {
     );
   });
 
-  it('asks the parent who took the kid, once, with the locked how-it-went line', () => {
-    const planned = notices([
+  it('asks the parent who took the kid, once, with the locked how-it-went line', async () => {
+    const planned = await notices([
       block({
         eventId: 'done-1',
         userId: PARENT_A,
@@ -400,8 +428,8 @@ describe('planHouseholdNotices', () => {
     expect(planned[0]?.recipientUserId).toBe(PARENT_A);
   });
 
-  it('suppresses a follow-up when both calendars hold the event and nobody said who took it', () => {
-    const planned = notices([
+  it('suppresses a follow-up when both calendars hold the event and nobody said who took it', async () => {
+    const planned = await notices([
       block({
         eventId: 'done-a',
         userId: PARENT_A,
@@ -424,8 +452,8 @@ describe('planHouseholdNotices', () => {
     expect(planned.filter((notice) => notice.kind === 'followup')).toHaveLength(0);
   });
 
-  it('folds several new kid events into one bubble of at most three lines', () => {
-    const planned = notices(
+  it('folds several new kid events into one bubble of at most three lines', async () => {
+    const planned = await notices(
       ['one', 'two', 'three', 'four'].map((eventId, index) =>
         block({
           eventId,
@@ -442,9 +470,9 @@ describe('planHouseholdNotices', () => {
     expect(planned[0]?.mark).toHaveLength(3);
   });
 
-  it('does not offer a shared free window unless someone asked', () => {
+  it('does not offer a shared free window unless someone asked', async () => {
     expect(
-      proposeSharedFree({
+      await proposeSharedFree({
         requested: false,
         blocks: [],
         now: NOW,
@@ -452,7 +480,7 @@ describe('planHouseholdNotices', () => {
         language: 'en',
       }),
     ).toBeNull();
-    const asked = proposeSharedFree({
+    const asked = await proposeSharedFree({
       requested: true,
       blocks: [],
       now: NOW,
@@ -478,7 +506,7 @@ describe('planHouseholdNotices', () => {
     expect(oneHour.length).toBeLessThan(2);
   });
 
-  it('reads a stored taker at the evening handoff and does not invent one', () => {
+  it('reads a stored taker at the evening handoff and does not invent one', async () => {
     const evening = new Date('2026-09-24T22:00:00.000Z');
     const both = [
       block({
@@ -513,7 +541,7 @@ describe('planHouseholdNotices', () => {
       day: null,
       slots: [],
     };
-    const decided = planHouseholdNotices({
+    const decided = await planHouseholdNotices({
       blocks: both,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
@@ -527,7 +555,7 @@ describe('planHouseholdNotices', () => {
     expect(decided[0]?.text).toBe(
       `Tomorrow: Sam has Maya's gymnastics at ${formatTime(start, ZONE, 'en')}.`,
     );
-    const unanswered = planHouseholdNotices({
+    const unanswered = await planHouseholdNotices({
       blocks: both,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
@@ -539,7 +567,7 @@ describe('planHouseholdNotices', () => {
     });
     expect(unanswered.find((notice) => notice.kind === 'handoff')).toBeUndefined();
     expect(unanswered.find((notice) => notice.text.includes('Tomorrow:'))).toBeUndefined();
-    const declined = planHouseholdNotices({
+    const declined = await planHouseholdNotices({
       blocks: both,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
@@ -555,10 +583,10 @@ describe('planHouseholdNotices', () => {
 });
 
 describe('planAmbiguousWhoTakes', () => {
-  it('asks who takes a tomorrow event when nobody is the taker and nobody else is busy', () => {
+  it('asks who takes a tomorrow event when nobody is the taker and nobody else is busy', async () => {
     const evening = new Date('2026-09-24T22:00:00.000Z');
     const start = new Date('2026-09-25T19:00:00.000Z');
-    const ask = planAmbiguousWhoTakes({
+    const ask = await planAmbiguousWhoTakes({
       blocks: [
         block({
           eventId: 'gym',
@@ -579,7 +607,12 @@ describe('planAmbiguousWhoTakes', () => {
     expect(ask?.kind).toBe('who_takes');
     const clock = when(start);
     expect(ask?.text).toBe(
-      whoTakesPrompt('en', { kid: 'Maya', event: 'gymnastics', day: clock.day, time: clock.time }),
+      await whoTakesPrompt('en', {
+        kid: 'Maya',
+        event: 'gymnastics',
+        day: clock.day,
+        time: clock.time,
+      }),
     );
     expect(ask?.text).not.toContain('busy');
     expect(ask?.text).not.toContain("Who's taking it?");
