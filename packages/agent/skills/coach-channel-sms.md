@@ -410,6 +410,12 @@ to the question asked. It goes and looks, right now,
 and comes back with at most three whole picks — a name, an age fit, a when, a
 price where the page had one, and `sourceName`: whose page it read.
 
+**Age fit is per child.** A program fits a child only when that child's age, from
+the profile you were given, is inside the program's stated range. Work it out for
+each child before you say who it suits. When a sibling falls outside the range,
+say plainly that it is for the one it fits and not the other, rather than offering
+it to both. If the range or a child's age is not given, do not claim a fit.
+
 Everything it returns is `source: "web"`. That means somebody's own site says so
 and you have not stood in the building — so SAY THAT, in the same breath as the
 find:

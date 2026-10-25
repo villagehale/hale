@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on their behalf, and `turnedOffThisTurn` shows send_email and reply_to_email were switched off this turn. So \"C'est fait\" is a true claim of a completed change. The reply answers in French to match the parent, makes one plain sentence, and stops. Nothing is invented and there is no greeting or sign-off.",
+    "score": 5
+  }
+}

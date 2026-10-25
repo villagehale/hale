@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for send_email and reply_to_email, so 'Done' is true. The reply is short and accurate, and it stops. 'Send' arguably also covers replies. It is a single plain sentence that fully answers the request.",
+    "score": 5
+  }
+}

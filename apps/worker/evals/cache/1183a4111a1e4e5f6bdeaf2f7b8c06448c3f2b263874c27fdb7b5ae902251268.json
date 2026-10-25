@@ -1,0 +1,59 @@
+{
+  "response": {
+    "id": "msg_011CgNPJ7dpArbG3vLTDuiLu",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/gYKEAgTGAI4AUIIdGhpbmtpbmcSDMTY2TdF24X3yOO8aRoM3JWK+Rjyx0kLfk+7IjDQjYz+lt6uM9lSwKN5AQ5gt553wxk9mwV075hZRIetIjgXBVfcBo3bUdemnGFms3cqmwZjjzZ1pp0Z8BrzGR7cXdykpYS7rTDbASRe3+e8QpqcCL7Q4OxWi16wgKWQcBffVaLthnQkDbz/WbKnQvQm7pC4068wOiEuS5aP1IbOLCpCaGnd30Ii3SYvttJj28+TB2+l394yqqCqE/7aVcU/+NCR6eXNwnrUVQvCzTc5WAX9ZUpmkYSJuy/cwO49O9DRWDc4YARRhxJBh40HdT+ZJT8/4XkFWwCFH5Z/NAt2JRcwpVnEsmPxda8TIrq0dlqIpo/5Pf0lls1DXu/XuM5X8E29ieoTOKSI1ELcDRczF31dNJsct1QzN2RjnxQv+NLLs2N/YPALGZUw36Zjl+qEKpvr57pR0bUjRZXjWmRyTid8eYPbrWPbiQcW4cOCdRJAXP7HoGtEAhCdSSdcQBCChEAXs6XdVvF6V/0RW90vr7hw5Qa52A2pEjBkkm2kSIMbQHdBDgEYEodE+zhxf7ZmEGidJEa5Xg6gPpxQpM88AKDm1uetBTjlHyedzI6G8MNPQmtRwB3Ze0jhOJifpMs8hnx6JtuSG/pX1rIx4kvlvGgSfCVKaULFV4/UgCj5fbinySk4R7HcBQzSmaKkop9zq9Hwhy3KNn3/uUFYPTuXGSkAvePizzMO2hcpnFRN20VegdwVBQ9LVClV9pFqYkeb/aatKPRTrjQwBqkJfUxJwoBkQr6Xq1m8L0sJBIwMSZQ4s3aa5nXAmocphab/jrJKH8aTXgRI4E5zEhncQppf6U/EtJW/zRUto31cbKi8sdZ7nv4oMxo/pinkvvlxDyTzu3iF2qu+GQ4C6pgySI/6VzdbQ5JOByKoOFLAF36sPqRxXzZ+P6TbdyH20xInlCdawO5gpUiq+jl4PA9YuWi06F/5w0OrTrom2uDhqwffAqyyp790qt+WRS4ypJ8RcA3kAVQ5Dte2VBND4TN10PjPlNH6wgjySbOoQ/zqjn07BhWLZ2we2nTICgZ/IxkcMIu2L9cY7ESrGwyPbGSGszExK0+IAdjGQDbIC2hUW+/cbrTgCjVufQFjXOjgeA0k1TCQBwmDCigeWxzHLUY/LFwYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01XWCtNzqLqTYxLY3hUqZmVR",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01U27ekFdJqh692qFrMCqkPk",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-milo",
+          "offer": "Want me to send the full plan for getting Milo sleeping in his own bed?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 390,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20889,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 317,
+      "output_tokens_details": {
+        "thinking_tokens": 115
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2867
+}
