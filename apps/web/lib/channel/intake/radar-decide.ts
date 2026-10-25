@@ -49,9 +49,6 @@ export const CLEARLY_BETTER_MARGIN = 2;
  * phone; a fourth clause is cost without comprehension. */
 const MAX_WHY_FACTS = 3;
 
-/** Historical source tag, retained without the retired civic projection. */
-const CIVIC_REGISTRY_SOURCE = 'civic_registry';
-
 export interface RadarChild {
   /** Set by the nudge roster so Saturday occupancy can tell siblings apart. Absent on
    * the intake radar, which does not read occupancy. */
@@ -78,15 +75,13 @@ export interface RadarCandidate {
   childId: string | null;
   confidence: number;
   /**
-   * The discovery layer that wrote the row (`village_candidates.source`), or null
-   * on a row that predates the column being set. `decideRadar` ignores it; the
-   * weekday drop-in reads it, because a TIME claim about a weekday session may
-   * only rest on the civic sweep's verified feed (civic/project.ts CIVIC_SOURCE)
-   * and never on an LLM-discovered row.
+   * Where the find came from. Every find is a live web search now (`'web'`, #876
+   * retired the stored civic catalog). A day or time claim rests only on a web find
+   * that carries both its page (`sourceUrl`) and its date (`eventDate`).
    */
   source: string | null;
-  /** The row's own page, or null. Only ever RENDERED from a `civic_registry` row — see
-   * {@link WeekendPick.verifiedUrl} for the rule and the reason. */
+  /** The page the live search read this off, or null. Rendered only on a web find
+   * that also carries its date — see {@link WeekendPick.verifiedUrl}. */
   sourceUrl: string | null;
   /** What a parent DOES about this one (village_candidates.access, a
    * {@link CandidateAccess}), or null on a row whose source was never asked. */
@@ -118,9 +113,8 @@ export interface WeekendPick {
    * lint rejects a clock time the model was not given, and this one is deliberately not
    * given (R3). */
   when: string | null;
-  /** The row's `source_url`, and only when `source === 'civic_registry'` — the one
-   * discovery source whose URL is the venue's own rather than a model's guess
-   * ("A model-supplied source URL ... is often guessed", village/discover.ts). */
+  /** The live find's `sourceUrl`, kept whenever the find is a dated web result
+   * (live/readCandidates already drop picks with no page or no date). */
   verifiedUrl: string | null;
 }
 
@@ -717,16 +711,13 @@ export function decideYearFinds(input: DecideRadarInput): WeekendPick[] {
  * one projected before the columns existed, and any row a future adapter writes without
  * them. All three are 'unknown', which renders as no action line at all (R4).
  *
- * The URL is narrower still: only a `civic_registry` row's, because that one is the
- * venue's own, while "a model-supplied source URL ... is often guessed"
- * (lib/village/discover.ts). A row with a url and the wrong source has no url here (R1).
+ * The URL and time ride only on a dated web find with its page; anything else has
+ * neither here (R1).
  */
 function accessFor(
   candidate: RadarCandidate,
 ): Pick<WeekendPick, 'access' | 'when' | 'verifiedUrl'> {
-  const civic =
-    candidate.source === CIVIC_REGISTRY_SOURCE ||
-    (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate);
+  const civic = candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate;
   return {
     access:
       candidate.access === 'drop_in' || candidate.access === 'register_at_venue'
