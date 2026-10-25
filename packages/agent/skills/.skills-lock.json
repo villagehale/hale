@@ -53,7 +53,7 @@
   },
   "coach-channel-group.md": {
     "file": "coach-channel-group.md",
-    "sha256": "1268847e1b4f3e3b66de39437232c1c1aeff72fb3dd1d53c417a910ea9ba38f9"
+    "sha256": "9d52740d4ae14f002dd9c1df9f8ed382975d0b80607b0aa4b07bd151461e606e"
   },
   "coach-channel-shorten.md": {
     "file": "coach-channel-shorten.md",
@@ -137,7 +137,7 @@
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
-    "sha256": "1d9ba11f1e8c99debdd0c2ae308243e11992d39c78453dc17a27db6abcaf015a"
+    "sha256": "5ec93e0191217b67867c67d7e819d6ac10c5ec107311577930b68d6c3a32c137"
   },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
@@ -145,7 +145,7 @@
   },
   "group-turn-read.md": {
     "file": "group-turn-read.md",
-    "sha256": "92dfc2e383222c2a303a78add1058d8d922bcba3a0293fb3e545ccb3630fb247"
+    "sha256": "d71b65072598da1529eaed76fc46ae07f9cb45157da5aca46760106161ef04df"
   },
   "holding-line.md": {
     "file": "holding-line.md",
