@@ -210,6 +210,9 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // different disclosures (the whole-calendar subscription, or a one-way-hashed
   // per-event link), and the first mint says which one the caller made.
   'apps/web/lib/loop/ics-feed.ts': ['ics_feed_shared', 'ics_event_link_minted'],
+  // CANCEL_RETRY_ATTEMPT_ACTION — a constant because the retry sweep reads its own
+  // attempts back by the same value (attempt cap and backoff, VIL-449).
+  'apps/web/lib/loop/calendar-invite.ts': ['calendar_cancel.retry_attempt'],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
   // CANARY_ANSWERED_ACTION — a constant precisely because the cron's
   // verification reads the same value back (channel/canary/run.ts); a literal
