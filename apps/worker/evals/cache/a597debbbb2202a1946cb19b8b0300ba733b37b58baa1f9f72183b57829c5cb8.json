@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Outcome is needs_permission and the text correctly says it is not yet on the calendar, uses only the given event, includes the provided link, is in Chinese, and stays short. Uses 您 which is acceptable in Chinese. Tone is plain and warm.",
+    "score": 5
+  }
+}
