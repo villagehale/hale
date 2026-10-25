@@ -1018,8 +1018,8 @@ describe('runNudgeCron — the weekday drop-in', () => {
       seasons: null,
       childId: null,
       confidence: 0.9,
-      source: 'civic_registry',
-      sourceUrl: null,
+      source: 'web',
+      sourceUrl: 'https://venue.example/dropin',
       access: null,
       whenLabel: null,
     },
@@ -1164,8 +1164,8 @@ describe('runNudgeCron — the weekday-care ask', () => {
       seasons: null,
       childId: null,
       confidence: 0.9,
-      source: 'civic_registry',
-      sourceUrl: null,
+      source: 'web',
+      sourceUrl: 'https://venue.example/dropin',
       access: null,
       whenLabel: null,
     },
@@ -1344,7 +1344,7 @@ describe('the call-name line after a find', () => {
           seasons: null,
           childId: null,
           confidence: 0.9,
-          source: 'civic_registry',
+          source: 'web',
           sourceUrl: null,
           access: null,
           whenLabel: null,
@@ -1374,7 +1374,7 @@ describe('runNudgeCron — empty Saturday', () => {
         candidate({
           id: 'sat-1',
           title: 'EarlyON Saturday',
-          source: 'civic_registry',
+          source: 'web',
           eventDate: SATURDAY,
           sourceUrl: 'https://tpl.example/earlyon',
         }),
@@ -1398,9 +1398,7 @@ describe('runNudgeCron — empty Saturday', () => {
     const h = harness({
       enrolled: false,
       saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
-      candidates: [
-        candidate({ source: 'civic_registry', eventDate: SATURDAY, title: 'EarlyON Saturday' }),
-      ],
+      candidates: [candidate({ source: 'web', eventDate: SATURDAY, title: 'EarlyON Saturday' })],
     });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
     expect(result.sent).toBe(0);

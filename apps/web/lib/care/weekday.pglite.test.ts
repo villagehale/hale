@@ -202,7 +202,7 @@ describe('readCandidates — the column the weekday claim rests on', () => {
         title: 'EarlyON drop-in',
         kind: 'drop_in',
         summary: 'Free drop-in at Armour Heights - 9:30 a.m.-11:00 a.m.',
-        source: 'civic_registry',
+        source: 'civic_registry', // historical receipt tag
         runType: 'civic',
         eventDate: '2026-09-15',
         confidence: 0.9,
@@ -220,7 +220,7 @@ describe('readCandidates — the column the weekday claim rests on', () => {
     ]);
 
     const rows = await readCandidates(db.database, familyId);
-    expect(rows).toEqual([]);
+    expect([...rows]).toEqual([]);
   });
 });
 

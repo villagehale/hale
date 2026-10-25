@@ -65,7 +65,6 @@ import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weat
 export const REGISTRATION_HORIZON_DAYS = 7;
 
 /** Historical offered-source tag; retained after the civic ingestion path is retired. */
-const CIVIC_SOURCE = 'civic_registry';
 
 /** How many facts ride with a pick. Billed per segment, read on a phone. */
 const MAX_WHY_FACTS = 2;
@@ -546,8 +545,9 @@ function availableWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDrop
   const teen = new Set(input.teenChildIds);
   const civic = input.candidates.filter(
     (candidate) =>
-      (candidate.source === CIVIC_SOURCE ||
-        (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate)) &&
+      candidate.source === 'web' &&
+      !!candidate.sourceUrl &&
+      !!candidate.eventDate &&
       (candidate.childId === null || !teen.has(candidate.childId)),
   );
   if (civic.length === 0) return { nudge: null, skips: ['no_civic_candidate'] };
@@ -601,10 +601,10 @@ function availableWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDrop
  *
  * TWO GATES MAKE THE CLAIM SAFE, and each is one comparison.
  *
- * `source === CIVIC_SOURCE`, because this message asserts a DAY. A civic row is dated
- * by the sweep from a feed it verified and its strings are built deterministically; an
- * LLM-discovered row's date and url are frequently model output (village/discover.ts),
- * and a wrong Tuesday is a family standing outside a library.
+ * `source === 'web'` with a page and a date, because this message asserts a DAY: a live
+ * find that names neither cannot be checked by the parent, and a wrong Tuesday is a
+ * family standing outside a library. (The stored civic catalog this used to read was
+ * retired in #876; every find is a live search now.)
  *
  * `eventDate >= today`, because `nextOccurrenceDay` dates a session to its next
  * occurrence AT THE MOMENT THE SWEEP RUNS, and that sweep runs weekly on Monday. A
@@ -790,8 +790,9 @@ function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayN
   const teen = new Set(input.teenChildIds);
   const running = input.candidates.filter(
     (candidate) =>
-      (candidate.source === CIVIC_SOURCE ||
-        (candidate.source === 'web' && !!candidate.sourceUrl && !!candidate.eventDate)) &&
+      candidate.source === 'web' &&
+      !!candidate.sourceUrl &&
+      !!candidate.eventDate &&
       candidate.eventDate === saturday.date &&
       (candidate.childId === null || !teen.has(candidate.childId)) &&
       inSeason(candidate, season),
