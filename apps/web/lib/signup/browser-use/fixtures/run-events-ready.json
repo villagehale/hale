@@ -12,7 +12,10 @@
       "id": 2,
       "ts": "2026-10-21T15:00:03Z",
       "type": "browser.ready",
-      "data": { "live_view_url": "https://live.browser-use.com/s/fixture-live-view-token" }
+      "data": {
+        "live_view_url": "https://live.browser-use.com/s/fixture-live-view-token",
+        "browser_session_id": "040b64a4-e01c-4b87-8179-44f5bc9093fe"
+      }
     }
   ],
   "nextAfter": null,

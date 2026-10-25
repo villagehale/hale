@@ -1131,6 +1131,8 @@ describe('authorized signup runner', () => {
       runId: 'run-fixture',
       sessionId: 'bu-session-fixture',
       costUsd: '0.0243',
+      sessionCostUsd: null,
+      browserId: null,
     };
     const TORONTO = 'https://anc.ca.apm.activecommunities.com/toronto/activity/search/detail/123';
 

@@ -5,6 +5,7 @@ import type { SignupIdentity } from '../types';
 import {
   type BrowserUseApi,
   BrowserUseApiError,
+  type BrowserUseRunRequest,
   type BrowserUseRunStatus,
   TERMINAL_RUN_STATUSES,
 } from './client';
@@ -45,6 +46,22 @@ export const POLL_INTERVAL_MS = 2000;
 export const SIGNUP_RUN_MAX_COST_USD = 3;
 export const CONFIRMATION_RUN_MAX_COST_USD = 0.5;
 const SEED_BROWSER_TIMEOUT_MINUTES = 5;
+/** How long a queued confirmation message may wait to dispatch. */
+export const QUEUE_DISPATCH_DEADLINE_MS = 60 * 1000;
+
+type PinnedModel = Pick<BrowserUseRunRequest, 'model' | 'modelParams'>;
+
+/** Signup and payment act on a real cart: Luna on high reasoning. */
+export const ACTION_MODEL: PinnedModel = {
+  model: 'gpt-6-luna',
+  modelParams: { reasoning: { effort: 'high' } },
+};
+
+/** Read-only checks (confirmation, status): Luna on medium reasoning. */
+export const CHECK_MODEL: PinnedModel = {
+  model: 'gpt-6-luna',
+  modelParams: { reasoning: { effort: 'medium' } },
+};
 
 export const SIGNUP_SKILL = 'browser-use-signup';
 export const PAYMENT_SKILL = 'browser-use-payment';
@@ -98,6 +115,11 @@ export interface BrowserUseSignupInput {
   providerSession: { storageState: ProviderStorageState; browserUseProfileId: string | null };
   /** Persists a newly created profile id so the 48h sweep can delete it. */
   onProfileCreated: (profileId: string) => Promise<void>;
+  /**
+   * Residential proxy country for this provider, or null (the default) to run
+   * without one. See `browserUseProxyFor`.
+   */
+  proxyCountryCode?: string | null;
 }
 
 /** The agent's outcomes plus the two that only the payment step reaches. */
@@ -123,13 +145,26 @@ export interface BrowserUseSignupResult {
   runId: string | null;
   /** Browser Use session id, for the confirmation follow-up. */
   sessionId: string | null;
+  /** The runs' model and search charge only. */
   costUsd: string | null;
+  /**
+   * GET /sessions/{id}/cost after the browser stopped: model, search, browser
+   * time and proxy. Null while the browser is kept open for a parent.
+   */
+  sessionCostUsd: string | null;
+  /** The run's browser, so a later step can stop it. Never a credential. */
+  browserId: string | null;
 }
 
 export type BrowserUseConfirmationResult =
-  | { outcome: 'confirmed'; confirmationNumber: string | null; costUsd: string | null }
-  | { outcome: 'not_confirmed'; costUsd: string | null }
-  | { outcome: 'error'; detail: BrowserUseEngineDetail };
+  | {
+      outcome: 'confirmed';
+      confirmationNumber: string | null;
+      costUsd: string | null;
+      sessionCostUsd: string | null;
+    }
+  | { outcome: 'not_confirmed'; costUsd: string | null; sessionCostUsd: string | null }
+  | { outcome: 'error'; detail: BrowserUseEngineDetail; sessionCostUsd: string | null };
 
 export interface BrowserUseEngineDeps {
   api: BrowserUseApi;
@@ -159,6 +194,8 @@ function failure(
     runId: run.runId ?? null,
     sessionId: run.sessionId ?? null,
     costUsd: run.costUsd ?? null,
+    sessionCostUsd: null,
+    browserId: null,
   };
 }
 
@@ -211,7 +248,16 @@ type RunWait =
   | { kind: 'terminal'; status: BrowserUseRunStatus; liveViewUrl: string | null }
   | { kind: 'timeout'; liveViewUrl: string | null };
 
-async function waitForRun(deps: BrowserUseEngineDeps, runId: string): Promise<RunWait> {
+/** The run's browser id, read from browser.ready / browser.reattached events. */
+interface BrowserTracker {
+  browserId: string | null;
+}
+
+async function waitForRun(
+  deps: BrowserUseEngineDeps,
+  runId: string,
+  tracker: BrowserTracker = { browserId: null },
+): Promise<RunWait> {
   const deadline = deps.now().getTime() + RUN_DEADLINE_MS;
   let cursor = 0;
   let liveViewUrl: string | null = null;
@@ -223,6 +269,8 @@ async function waitForRun(deps: BrowserUseEngineDeps, runId: string): Promise<Ru
         cursor = Math.max(cursor, event.id);
         if (event.type === 'browser.ready' || event.type === 'browser.reattached') {
           liveViewUrl = httpsUrl(event.data.live_view_url) ?? liveViewUrl;
+          const browserId = event.data.browser_session_id;
+          if (typeof browserId === 'string' && browserId) tracker.browserId = browserId;
         }
       }
       if (events.nextAfter === null || events.nextAfter <= cursor) {
@@ -255,6 +303,7 @@ async function ensureProfile(
   const browser = await deps.api.createBrowser({
     profileId: profile.id,
     timeoutMinutes: SEED_BROWSER_TIMEOUT_MINUTES,
+    proxyCountryCode: input.proxyCountryCode ?? null,
   });
   try {
     if (!browser.cdpUrl) return { ok: false, detail: 'browser_unavailable' };
@@ -270,9 +319,46 @@ async function ensureProfile(
   return { ok: true, profileId: profile.id };
 }
 
+/**
+ * Stops the run's browser once the outcome is known, unless a parent is taking
+ * over on its live view, then reads the session's true cost. The 900s
+ * keepAlive only matters for that takeover.
+ */
+async function settleBrowser(
+  deps: BrowserUseEngineDeps,
+  result: BrowserUseSignupResult,
+  tracker: BrowserTracker,
+): Promise<BrowserUseSignupResult> {
+  const settled = { ...result, browserId: tracker.browserId };
+  if (settled.liveViewUrl !== null) return settled;
+  return { ...settled, sessionCostUsd: await stopAndReadCost(deps, settled) };
+}
+
+async function stopAndReadCost(
+  deps: BrowserUseEngineDeps,
+  ids: { browserId: string | null; sessionId: string | null },
+): Promise<string | null> {
+  if (ids.browserId) await deps.api.stopBrowser(ids.browserId).catch(() => undefined);
+  if (!ids.sessionId) return null;
+  try {
+    return (await deps.api.getSessionCost(ids.sessionId)).totalCostUsd;
+  } catch {
+    return null;
+  }
+}
+
 export async function runBrowserUseSignup(
   input: BrowserUseSignupInput,
   deps: BrowserUseEngineDeps,
+): Promise<BrowserUseSignupResult> {
+  const tracker: BrowserTracker = { browserId: null };
+  return settleBrowser(deps, await driveSignup(input, deps, tracker), tracker);
+}
+
+async function driveSignup(
+  input: BrowserUseSignupInput,
+  deps: BrowserUseEngineDeps,
+  tracker: BrowserTracker,
 ): Promise<BrowserUseSignupResult> {
   let runId: string | null = null;
   let sessionId: string | null = null;
@@ -284,7 +370,12 @@ export async function runBrowserUseSignup(
     const run = await deps.api.createRun({
       task,
       outputSchema: BROWSER_USE_SIGNUP_OUTPUT_SCHEMA,
-      browserSettings: { profileId: profile.profileId, record: false },
+      ...ACTION_MODEL,
+      browserSettings: {
+        profileId: profile.profileId,
+        record: false,
+        proxyCountryCode: input.proxyCountryCode ?? null,
+      },
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
       maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
@@ -292,7 +383,7 @@ export async function runBrowserUseSignup(
     runId = run.id;
     sessionId = run.sessionId;
 
-    const waited = await waitForRun(deps, run.id);
+    const waited = await waitForRun(deps, run.id, tracker);
     if (waited.kind === 'timeout') return failure('error', 'timeout', { runId, sessionId });
     const summary = await deps.api.getRun(run.id);
     const ids = { runId, sessionId: summary.sessionId || sessionId, costUsd: summary.totalCostUsd };
@@ -329,7 +420,7 @@ export async function runBrowserUseSignup(
         cartTotalCents: total,
       };
       if (!input.payment) return checkout;
-      return await payAtCheckout(input, deps, input.payment, checkout, {
+      return await payAtCheckout(input, deps, input.payment, checkout, tracker, {
         total,
         currency: output.cart_currency,
         paymentHosts: output.payment_hosts,
@@ -371,6 +462,7 @@ async function payAtCheckout(
   deps: BrowserUseEngineDeps,
   wallet: SignupPaymentWallet,
   checkout: BrowserUseSignupResult,
+  tracker: BrowserTracker,
   cart: { total: number | null; currency: string | null; paymentHosts: readonly string[] },
 ): Promise<BrowserUseSignupResult> {
   const total = cart.total;
@@ -428,7 +520,7 @@ async function payAtCheckout(
       await cancel();
       return notApproved('card_unavailable');
     }
-    return await placeOrder(input, deps, checkout, {
+    return await placeOrder(input, deps, checkout, tracker, {
       total,
       currency: cart.currency,
       card,
@@ -457,6 +549,7 @@ async function placeOrder(
   input: BrowserUseSignupInput,
   deps: BrowserUseEngineDeps,
   checkout: BrowserUseSignupResult,
+  tracker: BrowserTracker,
   pay: {
     total: number;
     currency: string;
@@ -500,6 +593,7 @@ async function placeOrder(
         registration_url: input.registrationUrl,
       }),
       outputSchema: BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
+      ...ACTION_MODEL,
       sessionId: pay.sessionId,
       secretBindings,
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
@@ -507,7 +601,7 @@ async function placeOrder(
       maxCostUsd: PAYMENT_RUN_MAX_COST_USD,
     });
     runId = run.id;
-    const waited = await waitForRun(deps, run.id);
+    const waited = await waitForRun(deps, run.id, tracker);
     const liveViewUrl = waited.liveViewUrl ?? checkout.liveViewUrl;
     if (waited.kind === 'timeout') {
       await deps.api.cancelRun(run.id).catch(() => undefined);
@@ -569,40 +663,77 @@ async function placeOrder(
   }
 }
 
+function confirmationText(skillBody: string): string {
+  return `${skillBody.trim()}\n\n## Answer format\n\nReply with only one JSON object matching this JSON Schema, and nothing else:\n\n\`\`\`json\n${JSON.stringify(BROWSER_USE_CONFIRMATION_OUTPUT_SCHEMA)}\n\`\`\`\n`;
+}
+
+/** A queued turn has no outputSchema, so its answer may come back as JSON text. */
+function structuredOutput(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw;
+  const text = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+const DEAD_QUEUE_STATUSES = new Set(['cancelled', 'superseded', 'failed']);
+
 /**
- * After the parent paid on the live browser: a read-only follow-up in the same
- * Browser Use session reads the confirmation page. The caller deletes the
- * provider session once this says confirmed.
+ * After the parent took over and paid on the live browser: the same session
+ * continues with a queued message (POST /sessions/{id}/queue), so it reads the
+ * page the parent left open instead of starting a new run. Read-only. Then the
+ * browser stops and the session's full cost is read. A queued turn inherits
+ * the session's model; Browser Use does not take a model on the queue.
  */
 export async function readBrowserUseConfirmation(
-  input: { sessionId: string },
+  input: { sessionId: string; browserId?: string | null },
   deps: BrowserUseEngineDeps,
 ): Promise<BrowserUseConfirmationResult> {
+  const tracker: BrowserTracker = { browserId: input.browserId ?? null };
+  const settle = () => stopAndReadCost(deps, { ...tracker, sessionId: input.sessionId });
+  const error = async (detail: BrowserUseEngineDetail): Promise<BrowserUseConfirmationResult> => ({
+    outcome: 'error',
+    detail,
+    sessionCostUsd: await settle(),
+  });
   try {
-    const run = await deps.api.createRun({
-      task: (await deps.loadTask(CONFIRMATION_SKILL)).trim(),
-      outputSchema: BROWSER_USE_CONFIRMATION_OUTPUT_SCHEMA,
-      sessionId: input.sessionId,
-      agentmail: false,
-      maxCostUsd: CONFIRMATION_RUN_MAX_COST_USD,
+    const message = await deps.api.queueSessionMessage(input.sessionId, {
+      text: confirmationText(await deps.loadTask(CONFIRMATION_SKILL)),
+      interrupt: false,
     });
-    const waited = await waitForRun(deps, run.id);
-    if (waited.kind === 'timeout') return { outcome: 'error', detail: 'timeout' };
-    const summary = await deps.api.getRun(run.id);
-    if (waited.status === 'failed') return { outcome: 'error', detail: 'run_failed' };
-    if (waited.status === 'cancelled') return { outcome: 'error', detail: 'run_cancelled' };
-    const output = parseConfirmationOutput(summary.output);
-    if (!output) return { outcome: 'error', detail: 'unreadable_output' };
+    let queued = message;
+    const deadline = deps.now().getTime() + QUEUE_DISPATCH_DEADLINE_MS;
+    while (!queued.runId) {
+      if (DEAD_QUEUE_STATUSES.has(queued.status)) return await error('run_cancelled');
+      if (deps.now().getTime() >= deadline) return await error('timeout');
+      await deps.sleep(POLL_INTERVAL_MS);
+      queued = await deps.api.getQueuedMessage(input.sessionId, message.id);
+    }
+    await deps.api.setSessionCostCap(input.sessionId, CONFIRMATION_RUN_MAX_COST_USD);
+    const waited = await waitForRun(deps, queued.runId, tracker);
+    if (waited.kind === 'timeout') return await error('timeout');
+    const summary = await deps.api.getRun(queued.runId);
+    if (waited.status === 'failed') return await error('run_failed');
+    if (waited.status === 'cancelled') return await error('run_cancelled');
+    const output = parseConfirmationOutput(structuredOutput(summary.output));
+    if (!output) return await error('unreadable_output');
+    const sessionCostUsd = await settle();
     if (!output.on_confirmation_page) {
-      return { outcome: 'not_confirmed', costUsd: summary.totalCostUsd };
+      return { outcome: 'not_confirmed', costUsd: summary.totalCostUsd, sessionCostUsd };
     }
     return {
       outcome: 'confirmed',
       confirmationNumber: output.confirmation_number,
       costUsd: summary.totalCostUsd,
+      sessionCostUsd,
     };
-  } catch (error) {
-    if (error instanceof BrowserUseApiError) return { outcome: 'error', detail: 'api_error' };
-    throw error;
+  } catch (err) {
+    if (err instanceof BrowserUseApiError) return await error('api_error');
+    throw err;
   }
 }
