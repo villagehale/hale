@@ -63,7 +63,7 @@ import { reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import { recordActivityOffers } from '~/lib/village/live';
+import { recordActivityOffers, withSourceUrl } from '~/lib/village/live';
 import { groupsFromFindBody } from './activity-map';
 import type { IntakeAnswerComposer } from './answer';
 import {
@@ -2822,7 +2822,9 @@ async function provision(
         delivered = true;
         deps.keepTyping?.();
       }
-      const offered = radar.groups?.flatMap((group) => group.picks ?? []) ?? [];
+      const offered = (radar.groups?.flatMap((group) => group.picks ?? []) ?? []).map(
+        withSourceUrl,
+      );
       if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
     outboundBody = friendOutbound(spoken) ?? '';
