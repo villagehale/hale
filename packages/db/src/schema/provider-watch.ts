@@ -10,6 +10,9 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { families } from './families.js';
+import { users } from './users.js';
 
 /**
  * Browser Use watch (0177). Family-agnostic ops data: provider pages Hale re-reads on
@@ -34,7 +37,8 @@ export const providerWatchWorkspaces = pgTable(
 
 export type ProviderWatchKind = 'schedule' | 'openings' | 'waitlist';
 
-/** A provider page to re-read. Seeded by ops; the sweep moves `next_run_at`. */
+/** A provider page to re-read. Created by the coach's add_watch_target after a parent
+ * agrees; the sweep moves `next_run_at` and runs it only while a subscription is live. */
 export const providerWatchTargets = pgTable(
   'provider_watch_targets',
   {
@@ -80,6 +84,37 @@ export const providerWatchReadings = pgTable(
       table.readAt,
     ),
     readIdx: index('provider_watch_readings_read_idx').on(table.readAt),
+  }),
+);
+
+/** One family's agreed watch on a target. `removed_at` set = turned off by the parent. */
+export const familyWatchSubscriptions = pgTable(
+  'family_watch_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    parentUserId: uuid('parent_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    targetId: uuid('target_id')
+      .notNull()
+      .references(() => providerWatchTargets.id, { onDelete: 'cascade' }),
+    /** Which known source the URL was resolved from (`link:…`, `booking:…`, `spot:…`). */
+    sourceRef: text('source_ref').notNull(),
+    consentConversationId: text('consent_conversation_id').notNull(),
+    consentMessageSha256: text('consent_message_sha256').notNull(),
+    /** The parent's own words, quoted from the consenting message. */
+    consentQuote: text('consent_quote').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+  },
+  (table) => ({
+    liveIdx: uniqueIndex('family_watch_subscriptions_live_idx')
+      .on(table.familyId, table.targetId)
+      .where(sql`${table.removedAt} IS NULL`),
+    targetIdx: index('family_watch_subscriptions_target_idx').on(table.targetId),
   }),
 );
 

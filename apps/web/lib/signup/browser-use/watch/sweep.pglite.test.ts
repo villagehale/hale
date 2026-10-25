@@ -9,6 +9,7 @@ import {
   WATCH_DAY_MAX_COST_USD,
   WATCH_MAX_RUNS_PER_SWEEP,
   WATCH_RUN_MAX_COST_USD,
+  WATCH_RUN_RESERVE_USD,
   type WatchSweepDeps,
   runBrowserUseWatchSweep,
 } from './sweep';
@@ -108,6 +109,7 @@ describe('browser use watch sweep', () => {
   }
 
   async function target(overrides: Partial<typeof schema.providerWatchTargets.$inferInsert> = {}) {
+    const family = await seedFamily(db.database);
     const [row] = await db.database
       .insert(schema.providerWatchTargets)
       .values({
@@ -119,6 +121,16 @@ describe('browser use watch sweep', () => {
       })
       .returning();
     if (!row) throw new Error('no target');
+    // The sweep runs only targets a family agreed to.
+    await db.database.insert(schema.familyWatchSubscriptions).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      targetId: row.id,
+      sourceRef: 'spot:fixture',
+      consentConversationId: 'conv-fixture',
+      consentMessageSha256: 'a'.repeat(64),
+      consentQuote: 'yes please',
+    });
     return row;
   }
 
@@ -229,6 +241,36 @@ describe('browser use watch sweep', () => {
     expect(Number(reading?.costUsd)).toBeGreaterThan(0);
   });
 
+  it('skips a target no family is subscribed to, or whose subscription was removed', async () => {
+    const t = await target();
+    await db.database
+      .update(schema.familyWatchSubscriptions)
+      .set({ removedAt: NOW })
+      .where(eq(schema.familyWatchSubscriptions.targetId, t.id));
+    const fake = fakeBrowserUse();
+    expect(await runBrowserUseWatchSweep(db.database, deps(fake.fetchImpl), true)).toMatchObject({
+      ran: 0,
+    });
+    expect(fake.fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('a throw after the run exists still cancels it and books the reserve against the day cap', async () => {
+    await target();
+    const fake = fakeBrowserUse();
+    const inner = fake.fetchImpl.getMockImplementation();
+    fake.fetchImpl.mockImplementation(async (url: string, init: RequestInit) => {
+      // A 200 whose body is not JSON: a SyntaxError, not a BrowserUseApiError.
+      if (url.endsWith('/runs/run-1')) return new Response('<html>', { status: 200 });
+      return inner!(url, init);
+    });
+    const result = await runBrowserUseWatchSweep(db.database, deps(fake.fetchImpl), true);
+    expect(result).toMatchObject({ outcomes: ['api_error'] });
+    expect(fake.requests.some((r) => r.path === '/runs/run-1/cancel')).toBe(true);
+    const [reading] = await db.database.select().from(schema.providerWatchReadings);
+    expect(reading).toMatchObject({ outcome: 'failed', runId: 'run-1' });
+    expect(Number(reading?.costUsd)).toBeCloseTo(WATCH_RUN_RESERVE_USD);
+  });
+
   it('records an unreadable page and falls back to the run cost', async () => {
     await target();
     const fake = fakeBrowserUse({
@@ -265,7 +307,6 @@ describe('browser use watch sweep', () => {
     expect(context).toEqual([
       {
         provider: HOST,
-        page: PAGE,
         kind: 'waitlist',
         checkedAt: NOW.toISOString(),
         items: [expect.objectContaining({ title: 'Preschool Swim Sat 9am', status: 'waitlist' })],

@@ -166,7 +166,6 @@ describe('channelCoachRuntime', () => {
     const seen: Record<string, unknown>[] = [];
     const reading = {
       provider: 'cityofx.perfectmind.com',
-      page: 'https://cityofx.perfectmind.com/Clients/BookMe4?courseId=swim',
       kind: 'waitlist',
       checkedAt: NOW.toISOString(),
       items: [
@@ -197,6 +196,7 @@ describe('channelCoachRuntime', () => {
     await channelCoachRuntime(ports({ runAgent })).respond(turn(), []);
 
     expect(seen[0]).toHaveProperty('providerWatch', [reading]);
+    expect(JSON.stringify(seen[0])).not.toContain('https://cityofx');
     expect(seen[1]).not.toHaveProperty('providerWatch');
     expect(seen[2]).not.toHaveProperty('providerWatch');
     expect(JSON.stringify(seen[1])).toBe(JSON.stringify(seen[2]));

@@ -104,6 +104,8 @@ async function dueTargets(database: Database, now: Date, limit: number) {
       and(
         eq(schema.providerWatchTargets.enabled, true),
         lte(schema.providerWatchTargets.nextRunAt, now),
+        // Only pages some family agreed to and has not turned off.
+        sql`exists (select 1 from ${schema.familyWatchSubscriptions} s where s.target_id = ${schema.providerWatchTargets.id} and s.removed_at is null)`,
       ),
     )
     .orderBy(asc(schema.providerWatchTargets.nextRunAt))
@@ -212,15 +214,22 @@ async function runTarget(
     }
     return { outcome: 'read', runId, sessionId, output, costUsd };
   } catch (error) {
-    if (error instanceof BrowserUseApiError) {
-      // A run that was created still costs; reserve it so the day cap stays honest.
+    // Once a run exists it costs money whatever failed after it (an API error, a
+    // database write, a bug): try to stop it, and return the reserve so the caller
+    // still writes a failed reading and the day cap counts it.
+    if (runId !== null) {
+      const created = runId;
+      await deps.api.cancelRun(created).catch(() => undefined);
       return {
         outcome: 'api_error',
         runId,
         sessionId,
         output: null,
-        costUsd: runId ? WATCH_RUN_RESERVE_USD : 0,
+        costUsd: WATCH_RUN_RESERVE_USD,
       };
+    }
+    if (error instanceof BrowserUseApiError) {
+      return { outcome: 'api_error', runId, sessionId, output: null, costUsd: 0 };
     }
     throw error;
   }

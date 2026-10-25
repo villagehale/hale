@@ -1,11 +1,15 @@
 -- Browser Use watch: rerunnable provider-page checks for schedules, openings and waitlists.
 --
--- Family-agnostic ops data: a provider host, the page watched, the Browser Use workspace
--- that holds the provider's saved script, and what each run read. No family_id, no PII.
+-- Targets, workspaces and readings are family-agnostic: a provider host, the page watched,
+-- the Browser Use workspace that holds the provider's saved script, and what each run read.
+-- family_watch_subscriptions is the one family-scoped table: which family asked for which
+-- target, the conversation and a hash of the parent's words that carried their agreement,
+-- and when they turned it off. The sweep runs only targets with a live subscription.
 --
 -- Additive. Re-runnable: IF NOT EXISTS throughout.
 --
 -- Reversible:
+--   DROP TABLE IF EXISTS family_watch_subscriptions;
 --   DROP TABLE IF EXISTS provider_watch_readings;
 --   DROP TABLE IF EXISTS provider_watch_targets;
 --   DROP TABLE IF EXISTS provider_watch_workspaces;
@@ -50,3 +54,20 @@ CREATE TABLE IF NOT EXISTS "provider_watch_readings" (
 CREATE INDEX IF NOT EXISTS "provider_watch_readings_host_read_idx" ON "provider_watch_readings" ("provider_host","read_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "provider_watch_readings_read_idx" ON "provider_watch_readings" ("read_at");--> statement-breakpoint
 ALTER TABLE "provider_watch_readings" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "family_watch_subscriptions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"family_id" uuid NOT NULL REFERENCES "families"("id") ON DELETE cascade,
+	"parent_user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE cascade,
+	"target_id" uuid NOT NULL REFERENCES "provider_watch_targets"("id") ON DELETE cascade,
+	"source_ref" text NOT NULL,
+	"consent_conversation_id" text NOT NULL,
+	"consent_message_sha256" text NOT NULL,
+	"consent_quote" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"removed_at" timestamp with time zone,
+	CONSTRAINT "family_watch_subscriptions_quote_length_check" CHECK (char_length("consent_quote") <= 300)
+);--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "family_watch_subscriptions_live_idx" ON "family_watch_subscriptions" ("family_id","target_id") WHERE "removed_at" IS NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "family_watch_subscriptions_target_idx" ON "family_watch_subscriptions" ("target_id");--> statement-breakpoint
+ALTER TABLE "family_watch_subscriptions" ENABLE ROW LEVEL SECURITY;

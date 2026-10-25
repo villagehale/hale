@@ -63,6 +63,8 @@ import {
   type ProviderWatchContext,
   loadProviderWatchContext,
 } from '~/lib/signup/browser-use/watch/context';
+import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
+import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
@@ -565,12 +567,15 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
   return {
     client: anthropicClient,
     loadSkill: async (parentUserId, familyId) =>
-      augmentCoachSkillForAutonomySwitchOff(
+      augmentCoachSkillForProviderWatch(
+        augmentCoachSkillForAutonomySwitchOff(
         await augmentCoachSkillForGoogleDrafts(
           await loadCronSkill('coach-channel-sms'),
           parentUserId,
         ),
-        await familyHasAutonomyGrant(familyId, database),
+          await familyHasAutonomyGrant(familyId, database),
+        ),
+        browserUseWatchEnabled(),
       ),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
@@ -638,6 +643,21 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         },
         parentUserId: turn.parentUserId,
         now: turn.now,
+        providerWatch: browserUseWatchEnabled()
+          ? {
+              database,
+              familyId: turn.familyId,
+              parentUserId: turn.parentUserId,
+              conversationId: turn.conversationId,
+              parentWords: turn.body,
+              linksThisTurn: () => [
+                ...offered.links(),
+                ...offered
+                  .read()
+                  .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+              ],
+            }
+          : null,
       });
     },
     nearbySaid: (familyId, offers) => nearbySaidFor(database, familyId, offers),

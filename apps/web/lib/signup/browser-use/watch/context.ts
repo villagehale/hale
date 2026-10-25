@@ -14,6 +14,9 @@ import type { WatchItem } from './outcome';
  * matches when the hosts are equal or one is a subdomain of the other
  * (`cityofx.perfectmind.com` vs a booking mail from `perfectmind.com`).
  *
+ * No URL rides along: the model gets the provider name and the structured items only
+ * (the page address stays in the database for the engine).
+ *
  * Empty when the flag is off, when nothing matches, or when the newest reading is
  * older than WATCH_CONTEXT_MAX_AGE_MS, and then the caller omits the key entirely so
  * an ordinary turn's prompt bytes do not change.
@@ -23,7 +26,6 @@ export const WATCH_CONTEXT_MAX_PAGES = 5;
 
 export interface ProviderWatchContext {
   provider: string;
-  page: string;
   kind: string;
   /** When Hale's watch read the page, ISO. */
   checkedAt: string;
@@ -52,7 +54,7 @@ export async function loadProviderWatchContext(
 ): Promise<ProviderWatchContext[]> {
   if (!browserUseWatchEnabled(env)) return [];
 
-  const [bookings, spots] = await Promise.all([
+  const [bookings, spots, subscribed] = await Promise.all([
     database
       .selectDistinct({ host: schema.activityBookings.providerHost })
       .from(schema.activityBookings)
@@ -63,10 +65,24 @@ export async function loadProviderWatchContext(
       .where(
         and(eq(schema.watchedSpots.familyId, familyId), isNull(schema.watchedSpots.releasedAt)),
       ),
+    database
+      .select({ host: schema.providerWatchTargets.providerHost })
+      .from(schema.familyWatchSubscriptions)
+      .innerJoin(
+        schema.providerWatchTargets,
+        eq(schema.providerWatchTargets.id, schema.familyWatchSubscriptions.targetId),
+      )
+      .where(
+        and(
+          eq(schema.familyWatchSubscriptions.familyId, familyId),
+          isNull(schema.familyWatchSubscriptions.removedAt),
+        ),
+      ),
   ]);
   const familyHosts = [
     ...bookings.map((row) => signupProviderHost(row.host)),
     ...spots.map((row) => hostOf(row.url)).filter((host): host is string => host !== null),
+    ...subscribed.map((row) => signupProviderHost(row.host)),
   ];
   if (familyHosts.length === 0) return [];
 
@@ -76,7 +92,6 @@ export async function loadProviderWatchContext(
       provider: schema.providerWatchReadings.providerHost,
       reading: schema.providerWatchReadings.reading,
       readAt: schema.providerWatchReadings.readAt,
-      page: schema.providerWatchTargets.sourceUrl,
       kind: schema.providerWatchTargets.kind,
     })
     .from(schema.providerWatchReadings)
@@ -105,7 +120,6 @@ export async function loadProviderWatchContext(
     const items = Array.isArray(row.reading?.items) ? (row.reading.items as WatchItem[]) : [];
     out.push({
       provider: row.provider,
-      page: row.page,
       kind: row.kind,
       checkedAt: row.readAt.toISOString(),
       items,
