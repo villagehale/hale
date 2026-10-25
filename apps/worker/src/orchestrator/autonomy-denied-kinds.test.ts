@@ -1,7 +1,7 @@
 import { REQUIRED_CHECKS } from '@hale/tools-contracts';
+import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { ActionType } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
@@ -102,7 +102,10 @@ vi.mock('../services/memory-writer.js', () => ({
   loadHumanApprover: vi.fn(async () => humanApprover),
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01T00:00:00.000Z')),
   loadActionForApproval: vi.fn(async () => null),
-  recordHumanApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
+  recordHumanApproval: vi.fn(async () => ({
+    claimed: true as const,
+    autonomy: { outcome: 'not_reached' as const },
+  })),
   autonomyTurnOnDelivered: vi.fn(async () => true),
   loadAutonomyStanding: vi.fn(async () => [
     { parentUserId: 'parent-1', streakReached: true, optedIn: true },
@@ -145,23 +148,26 @@ describe('runOrchestrator — booking, registration and paying are never autonom
     vi.unstubAllEnvs();
   });
 
-  it.each(DENIED_KINDS)('%s, fully eligible → gated autonomy_denied_kind, executor not called', async (denied) => {
-    kind = denied;
-    await runOrchestrator(job);
+  it.each(DENIED_KINDS)(
+    '%s, fully eligible → gated autonomy_denied_kind, executor not called',
+    async (denied) => {
+      kind = denied;
+      await runOrchestrator(job);
 
-    expect(recordActionGate).toHaveBeenCalledTimes(1);
-    expect(recordActionGate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        familyId: 'fam-1',
-        actionId: 'action-1',
-        actionType: denied,
-        reason: 'autonomy_denied_kind',
-      }),
-    );
-    expect(markEventStage).toHaveBeenCalledWith('fam-1', 'evt-1', 'reviewed');
-    expect(markEventStage).not.toHaveBeenCalledWith('fam-1', 'evt-1', 'approved_pending_execute');
-    expect(runExecutor).not.toHaveBeenCalled();
-  });
+      expect(recordActionGate).toHaveBeenCalledTimes(1);
+      expect(recordActionGate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          familyId: 'fam-1',
+          actionId: 'action-1',
+          actionType: denied,
+          reason: 'autonomy_denied_kind',
+        }),
+      );
+      expect(markEventStage).toHaveBeenCalledWith('fam-1', 'evt-1', 'reviewed');
+      expect(markEventStage).not.toHaveBeenCalledWith('fam-1', 'evt-1', 'approved_pending_execute');
+      expect(runExecutor).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(['calendar_add', 'send_email'] as const)(
     'positive control: %s with the same fixture → executes, no gate',
@@ -237,6 +243,7 @@ describe('runOrchestrator — booking, registration and paying are never autonom
       },
       {
         ...defaultExecuteApprovedDeps(),
+        checkWindow: async () => ({ withinWindow: true, detail: {} }),
         loadAction: async () => ({
           eventId: 'evt-1',
           actionType: 'fill_pdf_form',
@@ -245,7 +252,10 @@ describe('runOrchestrator — booking, registration and paying are never autonom
           verdict: { kind: 'approve', toolResults: fullCoverage('fill_pdf_form'), rationale: 'ok' },
         }),
         loadConsent: async () => ({ hasCoParent: false, coParentConsentGranted: false }),
-        recordApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
+        recordApproval: vi.fn(async () => ({
+          claimed: true as const,
+          autonomy: { outcome: 'not_reached' as const },
+        })),
         recordGate: vi.fn(async () => {}),
       },
     );
