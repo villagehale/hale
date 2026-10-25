@@ -163,7 +163,7 @@ describe('runMidActivityAskSweep', () => {
     expect(await db.database.select().from(schema.channelMessages)).toEqual([]);
   });
 
-  it('holds one due ask as unwired and does not text or charge', async () => {
+  it('queues one due ask for the decider and does not text or charge', async () => {
     await seed({ sessions: weeklySessions(8, 2500) });
     arm();
 
@@ -171,8 +171,14 @@ describe('runMidActivityAskSweep', () => {
 
     expect(result.skipped).toBeNull();
     expect(result.placeholder).toBe(0);
-    expect(result.unwired).toBe(1);
+    expect(result.held + result.queued).toBe(1);
     expect(result.examined).toBe(1);
+    const candidates = await db.database.select().from(schema.proactiveCandidates);
+    expect(candidates.length).toBe(result.queued);
+    for (const row of candidates) {
+      expect(row.kind).toBe('mid_activity_ask');
+      expect(row.templateKey).toBe(MID_ACTIVITY_ASK_TEMPLATE_KEY);
+    }
     const messages = await db.database.select().from(schema.channelMessages);
     expect(messages).toEqual([]);
     const reviews = await db.database.select().from(schema.activityReviews);
@@ -231,7 +237,7 @@ describe('runMidActivityAskSweep', () => {
     const result = await runMidActivityAskSweep(db.database, NOW);
     expect(result.placeholder).toBe(0);
     expect(result.oneAtATime).toBe(1);
-    expect(result.unwired).toBe(1);
+    expect(result.held + result.queued).toBe(1);
   });
 
   it('treats a sent ask as already asked, so the next tick does not hold another', async () => {

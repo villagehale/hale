@@ -103,6 +103,11 @@ export type ProactiveSendKind =
    */
   | 'evening_check_in'
   /**
+   * VIL-393 · one mid-activity "how is it going" ask, written by the decider's writer
+   * (no locked line). Decider-only, like the evening check-in: no sweep sends it.
+   */
+  | 'mid_activity_ask'
+  /**
    * The co-parent left, and the parent who STAYED is told once (VIL-355 follow-up).
    *
    * Unprompted by construction — the departing parent acted, the staying one did not —
@@ -252,6 +257,8 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // worth waking a house for, and the 20:00 slot it is sent in sits an hour under the
   // floor anyway.
   evening_check_in: false,
+  // A question about how a class is going keeps until morning.
+  mid_activity_ask: false,
   // Nothing here is worth less at 08:00. The seat is already gone, the week is already
   // theirs, and waking somebody at 23:00 to tell them their co-parent left is the
   // cruellest hour this message could pick.
@@ -331,6 +338,8 @@ export const PROACTIVE_CATEGORY: Record<
   email_alert: 'email_alert',
   calendar_alert: 'calendar_alert',
   evening_check_in: 'evening_check_in',
+  // The same "how did it go" consent family as the activity follow-up.
+  mid_activity_ask: 'activity_followup',
   co_parent_departed: 'co_parent_departed',
   travel_brief: 'travel_brief',
   duty_ask: 'duty_ask',

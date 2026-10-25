@@ -42,6 +42,7 @@ export const PROACTIVE_ROUTING = {
   email_alert: 'not_routed',
   calendar_alert: 'not_routed',
   evening_check_in: 'decider',
+  mid_activity_ask: 'decider',
   co_parent_departed: 'not_routed',
   travel_brief: 'not_routed',
   duty_ask: 'not_routed',
