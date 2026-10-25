@@ -332,6 +332,16 @@ describe('runMidActivityAskSweep', () => {
       }),
     );
     expect(row?.why).toContain('start=plan');
+
+    // A sensitive placement is never asked about: its title must not reach the writer.
+    await db.exec('delete from proactive_candidates');
+    await db.database
+      .update(schema.familyEvents)
+      .set({ sensitive: true })
+      .where(eq(schema.familyEvents.id, event?.id as string));
+    const privateRun = await runMidActivityAskSweep(db.database, NOW, openDeps());
+    expect(privateRun.queued).toBe(0);
+    expect(privateRun.teenScoped).toBe(1);
   });
 
   it('holds a parent-said signup until the evening after its first session', async () => {

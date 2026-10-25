@@ -10,6 +10,7 @@ import {
 import { type CandidateDraft, queueCheckInForDecider } from '~/lib/channel/proactive/queue';
 import { boundedLine } from '~/lib/channel/proactive/tools';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReviewSubjectRef } from '~/lib/reviews/aggregate';
 import {
   MID_ACTIVITY_ASK_TEMPLATE_KEY,
@@ -210,6 +211,7 @@ async function planStarts(
       startsAt: e.startsAt,
       endsAt: e.endsAt,
       sensitive: e.sensitive,
+      childId: e.childId,
       childDob: schema.children.dateOfBirth,
       payload: schema.actions.payload,
     })
@@ -230,7 +232,11 @@ async function planStarts(
   const out: StartedActivity[] = [];
   for (const row of rows) {
     result.examined += 1;
-    if (row.sensitive || (row.childDob && deriveStage(row.childDob, now) === 'teenager')) {
+    // The one outbound predicate (rule #1): a 13+ child's or a sensitive row is never
+    // asked about, so its title never reaches the writer.
+    const children =
+      row.childId && row.childDob ? [{ id: row.childId, dateOfBirth: row.childDob }] : [];
+    if (isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, children, now)) {
       result.teenScoped += 1;
       continue;
     }
