@@ -795,8 +795,6 @@ interface ReplyFacts {
   link: string;
   prefilled: string[];
   host: string | null;
-  /** Set for the assisted handoff, whose pack values must not be audited. */
-  line?: string;
   /** Session label for the completed line. */
   sessionLabel?: string;
   /** Named reason the runtime handed back no browser. Absent when a browser ran. */
@@ -884,25 +882,23 @@ async function replyFor(
         : rawFacts.reason,
   };
   const writer = deps.outcomeWriter ?? defaultOutcomeWriter();
-  const line: string | null =
-    facts.line ??
-    (await writer.write({
-      outcome: facts.outcome,
-      reason: facts.reason,
-      confirmed: checked.confirmed,
-      sessionLabel: facts.sessionLabel ? collapseSignupFact(facts.sessionLabel) : null,
-      link: facts.link,
-      prefilled: facts.prefilled,
-      rush: facts.rush
-        ? {
-            signal: facts.rush.signal,
-            opensAt: facts.rush.opensAt,
-            prefillSlots: facts.rush.prefill.map((item) => item.slot),
-          }
-        : null,
-      question: facts.question ?? null,
-      language: null,
-    }));
+  const line: string | null = await writer.write({
+    outcome: facts.outcome,
+    reason: facts.reason,
+    confirmed: checked.confirmed,
+    sessionLabel: facts.sessionLabel ? collapseSignupFact(facts.sessionLabel) : null,
+    link: facts.link,
+    prefilled: facts.prefilled,
+    rush: facts.rush
+      ? {
+          signal: facts.rush.signal,
+          opensAt: facts.rush.opensAt,
+          prefillSlots: facts.rush.prefill.map((item) => item.slot),
+        }
+      : null,
+    question: facts.question ?? null,
+    language: null,
+  });
   await writeAudit(database, input, facts.offerId, {
     step: 'report',
     outcome: facts.outcome,

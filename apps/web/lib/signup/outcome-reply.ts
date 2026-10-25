@@ -22,6 +22,8 @@ export interface SignupOutcomeFacts {
   sessionLabel: string | null;
   link: string;
   prefilled: readonly string[];
+  /** Assisted handoff only: the parent's prepared details to have ready (slot and value). */
+  pack?: readonly { slot: string; value: string }[];
   rush: { signal: string; opensAt: string | null; prefillSlots: readonly string[] } | null;
   /** Clarifying question from the consent read, when the parent was unclear. */
   question: string | null;
