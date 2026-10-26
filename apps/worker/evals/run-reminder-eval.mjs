@@ -7,7 +7,7 @@
 // AM/PM, language, never claiming free time over a timed event, and tone.
 // Nothing matches words.
 //
-// Recorded 2026-10-25 (8/8, ledger vil454-evals; broken calibration fails 8/8). CI replays it cached-only:
+// Recorded 2026-10-26 (8/8, ledger 914-evals; broken calibration fails). CI replays it cached-only:
 //   node evals/run-reminder-eval.mjs --max-usd <ledger total + allowance>   # live, then caches
 //   node evals/run-reminder-eval.mjs --broken                               # calibration: must FAIL
 //   node evals/run-reminder-eval.mjs --cached-only                          # CI: replay only
