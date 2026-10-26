@@ -91,3 +91,15 @@ export const LONG_HISTORY_CASES: LongHistoryCase[] = [
   { id: 'zh-violin', question: '王老师的小提琴课这周还上吗？', expects: 'zhFact' },
   { id: 'es-sesame', question: '¿La fiesta tiene sesame? Juniper no puede comerlo', expects: 'fact' },
 ];
+
+/**
+ * A stored running summary as the thread-summary lane would leave it after folding
+ * the first 800 turns. HAND-WRITTEN FIXTURE, labelled as such — not a recorded model
+ * output (no paid call was made). Fictional family.
+ */
+export function longHistoryStoredSummary(): { summary: string; coveredTurns: number } {
+  return {
+    coveredTurns: 800,
+    summary: `Parent said Juniper's dentist is ${EARLY.transcriptMarker} on Bloor, cleanings every six months; Hale confirmed. Most later turns: parent asks for weekend ideas near home; Hale suggested farmers markets and puppet shows.`,
+  };
+}

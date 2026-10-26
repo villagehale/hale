@@ -12,6 +12,7 @@ import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 import { type RankQuery, rankTopK } from './relevance';
+import type { StoredThreadSummary } from './thread-summary';
 
 /**
  * Builds the family-scoped context the Ask Hale agent reasons over. Everything
@@ -40,8 +41,8 @@ import { type RankQuery, rankTopK } from './relevance';
  * that match nothing fall back to the old order (confidence for facts, recency for
  * episodes), so a generic message gets exactly what it got before.
  */
-const RECENT_EPISODE_LIMIT = 10;
-const RELEVANT_FACT_LIMIT = 30;
+const RECENT_EPISODE_LIMIT = 6;
+const RELEVANT_FACT_LIMIT = 15;
 /** How many rows retrieval ranks over. Bounded so a decade-old family costs one read. */
 const EPISODE_CANDIDATE_POOL = 300;
 const FACT_CANDIDATE_POOL = 300;
@@ -68,6 +69,12 @@ const COMPACTED_EXCERPT_CHARS = 120;
  * older turns that matter instead of whichever happened to be nearest the window.
  */
 const COMPACTED_EXCERPTS_MAX_CHARS = 1_000;
+/**
+ * Excerpt budget when a stored running summary already covers the older span: the
+ * summary carries the gist, so the retrieved excerpts only need to carry exact words
+ * the current message is reaching for (~150 tokens).
+ */
+const COMPACTED_EXCERPTS_WITH_SUMMARY_CHARS = 600;
 
 const EXCERPT_SEPARATOR = ' | ';
 
@@ -205,6 +212,7 @@ function clip(text: string, max: number): string {
 function compactTranscript(
   transcript: readonly TranscriptMessage[],
   question = '',
+  stored: StoredThreadSummary | null = null,
 ): {
   transcript: TranscriptMessage[];
   transcriptSummary: string | null;
@@ -228,7 +236,13 @@ function compactTranscript(
     newestFirst.length,
   );
   const kept: Array<{ index: number; excerpt: string }> = [];
-  let budget = COMPACTED_EXCERPTS_MAX_CHARS;
+  // A stored summary is used only when it spans turns that are actually out of the
+  // window (never more than were cut, never zero); otherwise the digest stands alone.
+  const summary =
+    stored && stored.coveredTurns > 0 && stored.coveredTurns <= cut && stored.summary.trim().length > 0
+      ? stored
+      : null;
+  let budget = summary ? COMPACTED_EXCERPTS_WITH_SUMMARY_CHARS : COMPACTED_EXCERPTS_MAX_CHARS;
   for (const { turn, index } of ranked) {
     const speaker = turn.role === 'assistant' ? 'Hale' : 'Parent';
     const excerpt = `${speaker}: "${clip(turn.content, COMPACTED_EXCERPT_CHARS)}"`;
@@ -241,6 +255,11 @@ function compactTranscript(
   const omitted = older.length - excerpts.length;
 
   const parts = [`${cut} earlier turns of this conversation are not shown.`];
+  if (summary) {
+    parts.push(
+      `Running summary of the oldest ${summary.coveredTurns} of them (internal, model-written, may be incomplete): ${summary.summary.trim()}`,
+    );
+  }
   if (excerpts.length > 0) {
     parts.push(`What was said in that span, oldest first: ${excerpts.join(EXCERPT_SEPARATOR)}.`);
   }
@@ -364,6 +383,8 @@ export interface LoadAgentContextInput {
   transcript: TranscriptMessage[];
   /** The Hale note this reply grounds on (redacted app view), or null. */
   sourceNote: SourceNoteContext | null;
+  /** VIL-144: the stored running summary of this thread's older turns, if any. */
+  threadSummary?: StoredThreadSummary | null;
 }
 
 /**
@@ -462,7 +483,7 @@ export async function loadAgentContext(
     ? toFocusedChild(input.focusedChildId, childRows, now)
     : null;
 
-  const thread = compactTranscript(input.transcript, input.question);
+  const thread = compactTranscript(input.transcript, input.question, input.threadSummary ?? null);
 
   const factRows = await database
     .select({

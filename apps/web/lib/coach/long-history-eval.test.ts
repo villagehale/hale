@@ -10,6 +10,11 @@ describe('VIL-144 long-history context eval (free, no keys)', () => {
     }
   });
 
+  it('still recalls every early detail with NO stored summary (summary call failed)', () => {
+    const results = runLongHistoryEval({ withSummary: false });
+    expect(results.every((r) => r.recalled)).toBe(true);
+  });
+
   it('--broken (pre-VIL-144 fixed slice) fails recall', () => {
     const results = runLongHistoryEval({ broken: true });
     expect(results.every((r) => r.pass)).toBe(false);

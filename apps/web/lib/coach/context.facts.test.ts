@@ -6,15 +6,15 @@ import { loadAgentContext } from './context';
 /**
  * MEM-1 — which facts the coach is given.
  *
- * The select is capped at RELEVANT_FACT_LIMIT (30). Past that cap the cap itself
- * decides what Hale remembers, so the choice of WHICH 30 is a product decision,
- * not an implementation detail: unordered, Postgres may return any 30 rows and
+ * The select is capped at RELEVANT_FACT_LIMIT (15 since VIL-144). Past that cap the cap itself
+ * decides what Hale remembers, so the choice of WHICH 15 is a product decision,
+ * not an implementation detail: unordered, Postgres may return any rows and
  * heap order shifts on UPDATE, so the coach forgets different things on different
  * turns. These run against real Postgres because an ORDER BY is exactly what a
  * query-builder fake cannot check.
  */
 
-const FACT_LIMIT = 30;
+const FACT_LIMIT = 15;
 
 /** More facts than the cap, so the selection has to actually choose. */
 const FACT_COUNT = 45;
@@ -49,7 +49,7 @@ describe('coach context — ranking past the cap', () => {
   beforeAll(async () => {
     ({ familyId } = await seedFamily(db.database, 'Ranking Family'));
     // Confidence ascends with the index, so the top-confidence facts are the ones
-    // inserted LAST — i.e. exactly the rows an unordered `LIMIT 30` over heap
+    // inserted LAST — i.e. exactly the rows an unordered `LIMIT` over heap
     // order drops first.
     await db.database.insert(schema.familyMemoryFacts).values(
       Array.from({ length: FACT_COUNT }, (_, i) => ({
@@ -64,11 +64,11 @@ describe('coach context — ranking past the cap', () => {
     );
   });
 
-  it('gives the coach the HIGHEST-confidence facts, not an arbitrary 30', async () => {
+  it('gives the coach the HIGHEST-confidence facts, not an arbitrary slice', async () => {
     const context = await load(familyId, null);
 
     expect(context.memoryFacts).toHaveLength(FACT_LIMIT);
-    // The top 30 of 45 by confidence are indexes 44 down to 15.
+    // The top FACT_LIMIT of 45 by confidence, highest first.
     const expected = Array.from({ length: FACT_LIMIT }, (_, n) => `family_fact_${FACT_COUNT - 1 - n}`);
     expect(context.memoryFacts.map((f) => f.factKey)).toEqual(expected);
   });
