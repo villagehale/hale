@@ -163,6 +163,7 @@ export async function provisionFromIntake(
         countryCode: location.countryCode,
         postalCode: location.postalCode,
         areaCoarse: location.areaCoarse,
+        sourceCode: input.sourceCode,
         ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
       })
       .returning({ id: schema.families.id });

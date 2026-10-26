@@ -81,11 +81,11 @@ describe('/answers stage filter without JavaScript', () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
     const element = await AnswersIndexPage({
       params: Promise.resolve({ locale: 'en' }),
-      searchParams: Promise.resolve({ s: 'ab12' }),
+      searchParams: Promise.resolve({ s: 'ossington' }),
     });
     const html = renderToStaticMarkup(element);
     expect(html).toContain('data-cta-placement="answers"');
-    expect(html).toContain('href="/text?s=ab12"');
+    expect(html).toContain('href="/text?s=ossington"');
     expect(html).not.toContain('href="sms:');
   });
 });

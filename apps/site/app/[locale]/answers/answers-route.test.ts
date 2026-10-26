@@ -144,9 +144,9 @@ describe('answers/[slug] route', () => {
 
   it('carries a validated ?s= code onto the guide door', async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
-    const html = await render(SLUG, 'en', { s: 'ab12' });
+    const html = await render(SLUG, 'en', { s: 'ossington' });
     expect(html).toContain('data-cta-placement="answer_detail"');
-    expect(html).toContain('href="/text?s=ab12"');
+    expect(html).toContain('href="/text?s=ossington"');
     expect(html).not.toContain('href="sms:');
   });
 

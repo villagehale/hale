@@ -4,7 +4,8 @@ import { buildAlternates, socialMetadata } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
-import { parseSourceCode, readSmsNumber } from '~/lib/text-entry';
+import { type SourceParams, pageSource } from '~/lib/page-source';
+import { readSmsNumber } from '~/lib/text-entry';
 
 /**
  * villagehale.com/text — the QR cards' landing surface, and the destination of
@@ -41,12 +42,13 @@ export default async function TextEntryPage({
   searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
-  searchParams?: Promise<{ s?: string | string[] }>;
+  searchParams?: Promise<SourceParams>;
 }) {
   const { locale } = await params;
-  // Same validator the header pill's first-touch reader uses. Absent, repeated,
-  // or not a source code → null, and the door stays the bare hello.
-  const source = parseSourceCode((await searchParams)?.s);
+  // Same read order as every other page's Text Hale door: `?s=`, then the poster
+  // QR's `?src=`, then a poster link's `utm_campaign`. Absent, repeated, malformed
+  // or unregistered → null, and the door stays the bare hello.
+  const source = await pageSource(searchParams);
   return (
     <RedesignText
       locale={locale}

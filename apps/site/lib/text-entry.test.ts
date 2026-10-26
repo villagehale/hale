@@ -171,3 +171,25 @@ describe('displaySmsNumber (the number shown on the page)', () => {
     expect(displaySmsNumber('+442071234567')).toBe('+442071234567');
   });
 });
+
+describe('parseRegisteredSourceCode', () => {
+  it('passes a registered code', async () => {
+    const { parseRegisteredSourceCode } = await import('./text-entry');
+    expect(parseRegisteredSourceCode('earlyon-richmondhill', () => {})).toBe(
+      'earlyon-richmondhill',
+    );
+  });
+  it('rejects and warns on an unregistered code', async () => {
+    const { parseRegisteredSourceCode } = await import('./text-entry');
+    const warnings: string[] = [];
+    expect(parseRegisteredSourceCode('spring-campaign', (m) => warnings.push(m))).toBeNull();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('spring-campaign');
+  });
+  it('rejects a malformed code without warning', async () => {
+    const { parseRegisteredSourceCode } = await import('./text-entry');
+    const warnings: string[] = [];
+    expect(parseRegisteredSourceCode('Maya Smith', (m) => warnings.push(m))).toBeNull();
+    expect(warnings).toHaveLength(0);
+  });
+});

@@ -1,5 +1,9 @@
-import { isJoinCode } from '~/lib/channel/join/code';
-import { isReferralCode } from '~/lib/channel/referral/code';
+import {
+  SOURCE_VENUES,
+  type SourceVenue,
+  resolveSourceCode,
+  sourceCodeFromViaTag,
+} from '@hale/source-codes';
 
 /**
  * VIL-237 · M2 — every word Hale texts during intake, in one file.
@@ -37,333 +41,9 @@ import { isReferralCode } from '~/lib/channel/referral/code';
  * triple the carrier bill on Hale's first sentence to a stranger, forever.
  */
 
-export interface SourceVenue {
-  /** How the venue is named back to the parent. */
-  name: string;
-  /** The venue's OWN coarse area (FSA). This is a fact about where the poster hangs,
-   * not a claim about where the family lives — it seeds discovery when the parent was
-   * never asked for a postal code (rule #1: coarse only, never an address). */
-  areaCoarse: string;
-  /**
-   * The PLACE the poster hangs in, named the way a person would say it — "Georgetown",
-   * not an FSA and not the venue's type. Present only on the codes that are a physical
-   * poster the founder put up himself, which is exactly the set the founder-welcome ping
-   * fires for: the location is the whole content of that ping (rule #1 — no parent, no
-   * child, no number), so a code with no place name has nothing to say and is not one.
-   *
-   * The registry IS the trigger, deliberately, rather than a prefix test on the code. A
-   * prefix would match a future `earlyon-` poster nobody has named a place for and put an
-   * empty blank in a sentence sent to a person.
-   */
-  poster?: string;
-}
-
-/**
- * The QR venue codes a prefilled body may carry. The registry IS the source of truth:
- * an unrecognised code is treated as no context at all rather than echoed, so Hale can
- * never claim to know a place we have never heard of, nor infer an area from one.
- */
-export const SOURCE_VENUES: Record<string, SourceVenue> = {
-  LIBRARY: { name: 'library', areaCoarse: 'M5V' },
-  REC: { name: 'rec centre', areaCoarse: 'M6K' },
-  CLINIC: { name: 'clinic', areaCoarse: 'M4K' },
-  SCHOOL: { name: 'school', areaCoarse: 'L7G' },
-  // "family centre", never the centres' program brand: "EarlyON" is a trademarked
-  // term (Ontario), so it appears in no greeting, no plate, and no new code. The
-  // earlyon-* keys that remain are printed on posters already hanging and cannot
-  // change without orphaning those QRs.
-  'earlyon-richmondhill': {
-    name: 'family centre',
-    areaCoarse: 'L4C',
-    poster: 'Richmond Hill',
-  },
-  'earlyon-georgetown': { name: 'family centre', areaCoarse: 'L7G', poster: 'Georgetown' },
-  // Per-location Halton Hills posters, so the source code says WHICH centre.
-  'earlyon-acton': { name: 'family centre', areaCoarse: 'L7J', poster: 'Acton' },
-  // Indoor board at West Neighbourhood House, 248 Ossington Ave — a venue plate,
-  // not a City column. Carries the lifetime comp (promo.ts).
-  ossington: { name: 'family centre', areaCoarse: 'M6J', poster: 'Ossington' },
-  // Indoor board at 3990 14th Ave, Markham — the first GTA board to say yes, so it
-  // carries the lifetime Family comp (promo.ts).
-  markham: { name: 'family centre', areaCoarse: 'L3R', poster: 'Markham' },
-  // Legacy spelling of the Markham code: a copy with this QR is already on the
-  // venue's board (first scan 2026-08-28). Remove once the reprint replaces it.
-  'earlyon-markham': { name: 'family centre', areaCoarse: 'L3R', poster: 'Markham' },
-  // The pitch deck's QR — so we see which investors actually texted the product.
-  'investor-deck': { name: 'the pitch deck', areaCoarse: 'M5V' },
-  // Toronto postering-column run (2026-08). One code per column — the posters are
-  // visually identical and the code rides the SMS body, so the weekly re-postering
-  // pass can prune columns that never text. City surfaces are cleared weekly, so a
-  // code going quiet means the spot, not the poster. No lifetime comp on these.
-  'poster-bayview-sheppard': {
-    name: 'Bayview & Sheppard poster',
-    areaCoarse: 'M2K',
-    poster: 'Bayview & Sheppard',
-  },
-  'poster-yonge-sheppard': {
-    name: 'Yonge & Sheppard poster',
-    areaCoarse: 'M2N',
-    poster: 'Yonge & Sheppard',
-  },
-  'poster-yonge-hollywood': {
-    name: 'Yonge & Hollywood poster',
-    areaCoarse: 'M2N',
-    poster: 'Yonge & Hollywood',
-  },
-  'poster-north-york-centre': {
-    name: 'North York Centre poster',
-    areaCoarse: 'M2N',
-    poster: 'North York Centre',
-  },
-  'poster-yonge-ellerslie': {
-    name: 'Yonge & Ellerslie poster',
-    areaCoarse: 'M2N',
-    poster: 'Yonge & Ellerslie',
-  },
-  'poster-kensington': {
-    name: 'Kensington Market poster',
-    areaCoarse: 'M5T',
-    poster: 'Kensington Market',
-  },
-  'poster-spadina-dundas': {
-    name: 'Spadina & Dundas poster',
-    areaCoarse: 'M5T',
-    poster: 'Spadina & Dundas',
-  },
-  'poster-grange-park': {
-    name: 'Grange Park poster',
-    areaCoarse: 'M5T',
-    poster: 'Grange Park',
-  },
-  'poster-queen-john': {
-    name: 'Queen & John poster',
-    areaCoarse: 'M5V',
-    poster: 'Queen & John',
-  },
-  'poster-queen-spadina': {
-    name: 'Queen & Spadina poster',
-    areaCoarse: 'M5V',
-    poster: 'Queen & Spadina',
-  },
-  'poster-queen-bathurst': {
-    name: 'Queen & Bathurst poster',
-    areaCoarse: 'M5V',
-    poster: 'Queen & Bathurst',
-  },
-  'poster-leslieville-carlaw': {
-    name: 'Queen & Carlaw poster',
-    areaCoarse: 'M4M',
-    poster: 'Leslieville - Queen & Carlaw',
-  },
-  'poster-leslieville-jones': {
-    name: 'Queen & Jones poster',
-    areaCoarse: 'M4M',
-    poster: 'Leslieville - Queen & Jones',
-  },
-  'poster-queen-coxwell': {
-    name: 'Queen & Coxwell poster',
-    areaCoarse: 'M4L',
-    poster: 'Queen & Coxwell',
-  },
-  'poster-beaches-woodbine': {
-    name: 'Queen & Woodbine poster',
-    areaCoarse: 'M4L',
-    poster: 'The Beaches - Queen & Woodbine',
-  },
-  'poster-beaches-lee': {
-    name: 'Queen & Lee poster',
-    areaCoarse: 'M4E',
-    poster: 'The Beaches - Queen & Lee',
-  },
-  'poster-high-park-humberside': {
-    name: 'High Park & Humberside poster',
-    areaCoarse: 'M6P',
-    poster: 'High Park & Humberside',
-  },
-  'poster-high-park-annette': {
-    name: 'High Park & Annette poster',
-    areaCoarse: 'M6P',
-    poster: 'High Park & Annette',
-  },
-  'poster-junction-pacific': {
-    name: 'Dundas & Pacific poster',
-    areaCoarse: 'M6P',
-    poster: 'The Junction - Dundas & Pacific',
-  },
-  'poster-junction-clendenan': {
-    name: 'Dundas & Clendenan poster',
-    areaCoarse: 'M6P',
-    poster: 'The Junction - Dundas & Clendenan',
-  },
-  'poster-leaside-laird': {
-    name: 'Eglinton & Laird poster',
-    areaCoarse: 'M4G',
-    poster: 'Leaside - Eglinton & Laird',
-  },
-  'poster-leaside-rumsey': {
-    name: 'Millwood & Rumsey poster',
-    areaCoarse: 'M4G',
-    poster: 'Leaside - Millwood & Rumsey',
-  },
-  'poster-bayview-belsize': {
-    name: 'Bayview & Belsize poster',
-    areaCoarse: 'M4S',
-    poster: 'Bayview & Belsize',
-  },
-  'poster-bayview-fleming': {
-    name: 'Bayview & Fleming poster',
-    areaCoarse: 'M4S',
-    poster: 'Bayview & Fleming',
-  },
-  // Expansion wave (2026-08): family corridors from the City structure inventory —
-  // Riverdale/Danforth, Roncesvalles, Bloor West Village, midtown Yonge, deeper
-  // Beaches and High Park, St Clair West.
-  'poster-queen-broadview': {
-    name: 'Queen & Broadview poster',
-    areaCoarse: 'M4M',
-    poster: 'Riverdale - Queen & Broadview',
-  },
-  'poster-queen-logan': {
-    name: 'Queen & Logan poster',
-    areaCoarse: 'M4M',
-    poster: 'Riverdale - Queen & Logan',
-  },
-  'poster-danforth-broadview': {
-    name: 'Danforth & Broadview poster',
-    areaCoarse: 'M4K',
-    poster: 'The Danforth - Broadview',
-  },
-  'poster-danforth-playter': {
-    name: 'Danforth & Playter poster',
-    areaCoarse: 'M4K',
-    poster: 'The Danforth - Playter Estates',
-  },
-  'poster-danforth-pape': {
-    name: 'Danforth Avenue poster',
-    areaCoarse: 'M4J',
-    poster: 'The Danforth - 975 Danforth Ave',
-  },
-  'poster-roncesvalles-marion': {
-    name: 'Roncesvalles & Marion poster',
-    areaCoarse: 'M6R',
-    poster: 'Roncesvalles - Marion',
-  },
-  'poster-roncesvalles-galley': {
-    name: 'Roncesvalles & Galley poster',
-    areaCoarse: 'M6R',
-    poster: 'Roncesvalles - Galley',
-  },
-  'poster-roncesvalles-fermanagh': {
-    name: 'Roncesvalles & Fermanagh poster',
-    areaCoarse: 'M6R',
-    poster: 'Roncesvalles - Fermanagh',
-  },
-  'poster-roncesvalles-grenadier': {
-    name: 'Roncesvalles & Grenadier poster',
-    areaCoarse: 'M6R',
-    poster: 'Roncesvalles - Grenadier',
-  },
-  'poster-roncesvalles-howard-park': {
-    name: 'Roncesvalles & Howard Park poster',
-    areaCoarse: 'M6R',
-    poster: 'Roncesvalles - Howard Park',
-  },
-  'poster-bloor-parkside': {
-    name: 'Bloor & Parkside poster',
-    areaCoarse: 'M6P',
-    poster: 'High Park - Bloor & Parkside',
-  },
-  'poster-bloor-west-glendonwynne': {
-    name: 'Bloor West Village poster',
-    areaCoarse: 'M6S',
-    poster: 'Bloor West Village - Glendonwynne',
-  },
-  'poster-bloor-west-willard': {
-    name: 'Bloor & Willard poster',
-    areaCoarse: 'M6S',
-    poster: 'Bloor West Village - Willard',
-  },
-  'poster-bloor-west-riverview': {
-    name: 'Bloor & Riverview poster',
-    areaCoarse: 'M6S',
-    poster: 'Bloor West Village - Riverview Gardens',
-  },
-  'poster-bloor-west-old-mill': {
-    name: 'Bloor & Old Mill poster',
-    areaCoarse: 'M8X',
-    poster: 'Old Mill & Swansea',
-  },
-  'poster-yonge-davisville': {
-    name: 'Yonge & Davisville poster',
-    areaCoarse: 'M4S',
-    poster: 'Davisville - Yonge & Davisville',
-  },
-  'poster-yonge-millwood': {
-    name: 'Yonge & Millwood poster',
-    areaCoarse: 'M4S',
-    poster: 'Davisville - Yonge & Millwood',
-  },
-  'poster-mt-pleasant-manor': {
-    name: 'Mount Pleasant & Manor poster',
-    areaCoarse: 'M4S',
-    poster: 'Mount Pleasant - Manor Rd',
-  },
-  'poster-yonge-eglinton': {
-    name: 'Yonge & Eglinton poster',
-    areaCoarse: 'M4R',
-    poster: 'Yonge & Eglinton',
-  },
-  'poster-yonge-lawrence-park': {
-    name: 'Lawrence Park poster',
-    areaCoarse: 'M4N',
-    poster: 'Lawrence Park - 3060 Yonge',
-  },
-  'poster-yonge-bedford-park': {
-    name: 'Yonge & Woburn poster',
-    areaCoarse: 'M4N',
-    poster: 'Bedford Park - Yonge & Woburn',
-  },
-  'poster-beaches-kew': {
-    name: 'Queen & Brookmount poster',
-    areaCoarse: 'M4E',
-    poster: 'The Beaches - Kew Gardens',
-  },
-  'poster-kingston-waverley': {
-    name: 'Kingston & Waverley poster',
-    areaCoarse: 'M4L',
-    poster: 'The Beaches - Kingston & Waverley',
-  },
-  'poster-upper-beaches': {
-    name: 'Kingston & Scarborough Rd poster',
-    areaCoarse: 'M4E',
-    poster: 'Upper Beaches',
-  },
-  'poster-high-park-glenlake': {
-    name: 'High Park & Glenlake poster',
-    areaCoarse: 'M6P',
-    poster: 'High Park - Glenlake',
-  },
-  'poster-high-park-dundas': {
-    name: 'High Park & Dundas poster',
-    areaCoarse: 'M6P',
-    poster: 'High Park - Dundas',
-  },
-  'poster-st-clair-christie': {
-    name: 'St Clair & Christie poster',
-    areaCoarse: 'M6C',
-    poster: 'St Clair West - Christie',
-  },
-  'poster-st-clair-rushton': {
-    name: 'St Clair & Rushton poster',
-    areaCoarse: 'M6C',
-    poster: 'St Clair West - Rushton',
-  },
-  'poster-st-clair-atlas': {
-    name: 'St Clair & Atlas poster',
-    areaCoarse: 'M6C',
-    poster: 'St Clair West - Atlas',
-  },
-};
+// The venue registry lives in @hale/source-codes so the site validates `?s=` codes
+// against the SAME list this intake resolves. Re-exported for existing importers.
+export { SOURCE_VENUES, type SourceVenue };
 
 /**
  * The prefilled-body conventions. Two forms, both venue-in-the-message (one number,
@@ -371,54 +51,25 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
  * number or a link the parent would have to open):
  *   1. `HALE <CODE>` — the whole body is the tag (original QR cards).
  *   2. `Hi (via <code>)` — the /text entry page's convention (VIL-240): a human first
- *      message with the tag as a trailing, visibly-disclosed suffix. Suffix-anchored so
- *      an ordinary sentence containing "(via …)" mid-message never matches.
+ *      message carrying the tag. Matched ANYWHERE in the body (a parent may type after
+ *      the prefilled tag); the tag must close right after the code, so "(via the
+ *      highway)" never matches.
  *
- * A `<code>` is either a QR VENUE (the registry below) or a per-family REFERRAL tag
- * (`friend-…`, lib/channel/referral/code.ts) forwarded by a parent. Both ride the same
- * `?s=` funnel and the same suffix; they differ only in what they resolve to, which is
- * `resolveCode`'s job.
+ * A `<code>` is a QR VENUE (the shared registry), a per-family REFERRAL tag
+ * (`friend-…`) or a co-parent JOIN tag (`join-…`). Resolution — shapes for the last
+ * two, registry membership for venues — is `resolveSourceCode` in @hale/source-codes,
+ * the same function the site uses to decide what it pre-fills. An unregistered venue
+ * still resolves to null here: Hale never claims to know a place it has never heard of.
  */
 const SOURCE_TAG = /^hale[\s:-]+([a-z0-9-]{2,48})$/i;
-const SOURCE_TAG_SUFFIX = /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)$/i;
 
-/**
- * The canonical registry key for a raw tag, matched case-insensitively.
- *
- * A REFERRAL tag is recognised by its shape rather than by the registry. The registry
- * exists because a venue's NAME is read back to the parent in the greeting, so an
- * unrecognised venue would have Hale claiming to know a place it has never heard of. A
- * referral tag is echoed nowhere and selects nothing — `venueForCode` returns null for
- * it, so the arrival gets the ordinary no-venue greeting and is still asked for a postal
- * code, which is correct: a friend of a Toronto family may live anywhere.
- *
- * A JOIN tag (`join-…`, lib/channel/join/code.ts) is recognised the same way and for the
- * same reason, but what happens to it afterwards is the opposite: the machine DIVERTS on
- * it before a session is ever created, because it names a household that already exists.
- * It is passed through here rather than resolved here because the answer lives in a
- * table and this function is pure — and because a token that buys nothing must still be
- * recognised, so the arrival can be greeted normally rather than told it is too late.
- */
-function resolveCode(raw: string): string | null {
-  if (isJoinCode(raw)) return raw.toLowerCase();
-  if (isReferralCode(raw)) return raw.toLowerCase();
-  if (raw in SOURCE_VENUES) return raw;
-  const upper = raw.toUpperCase();
-  if (upper in SOURCE_VENUES) return upper;
-  const lower = raw.toLowerCase();
-  if (lower in SOURCE_VENUES) return lower;
-  return null;
-}
-
-/** The venue CODE (registry key) for a prefilled first body, or null when the body
- * carries no tag or a tag we don't recognise. */
+/** The canonical code for a prefilled first body, or null when the body carries no tag
+ * or a tag we don't recognise. */
 export function sourceCodeFromBody(body: string): string | null {
   const trimmed = body.trim();
   const full = SOURCE_TAG.exec(trimmed);
-  if (full) return resolveCode(full[1] as string);
-  const suffix = SOURCE_TAG_SUFFIX.exec(trimmed);
-  if (suffix) return resolveCode(suffix[1] as string);
-  return null;
+  if (full) return resolveSourceCode(full[1] as string);
+  return sourceCodeFromViaTag(trimmed);
 }
 
 /** The registry entry for a stored source code, or null. */

@@ -62,6 +62,7 @@ const config: NextConfig = {
   },
   transpilePackages: [
     '@hale/db',
+    '@hale/source-codes',
     '@hale/types',
     '@hale/tools-contracts',
     '@hale/agent',

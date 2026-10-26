@@ -13,6 +13,7 @@
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {
+    "@hale/source-codes": "workspace:*",
     "@hale/types": "workspace:*",
     "@vercel/speed-insights": "^2.0.0",
     "lucide-react": "^1.20.0",
