@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the move of the one matching event (Saturday soccer at Cedarvale Park, 10:00 to 11:00) and asks plainly whether to go ahead, with no YES keyword. Small blemish: \"Aug 8\" is not in the week, which shows only \"Sat\". It seems borrowed from the library find's date. It is likely right, but it is not traceable to the event and was not needed.",
+    "score": 4
+  }
+}

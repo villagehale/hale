@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgPziyE5ZKbJvT9pZfSUp",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlQwKEAgTGAI4AUIIdGhpbmtpbmcSDCXTMV9r3eKiIqmszBoMj7hmLaM7V+H01DYCIjCdiSiyXVRgJgMTLgUSynaWc+DO2zKVhHpLd8bEpxtjq3K9btZjNrks3viEHZde9C0qsgvhPUOhQFHa4F5aVTJ7dGyueWbRCujciT30361u+LCs0brQm/O0D2GfZzJXlfTBXVNZ8M3oCetMQBhD6fLR5N1YoOqASowZyvjGavO6el6CsGC4O1KtorWYVr40BLpVpq3NJdFju6ZdYhy4oSBkHDhRqGv81EwZye8bv9qK6v5VdP8dIQG6LAwFcqjAKL8TMJ7XJjzUlWFch0eMHdMOeDXl1PVTwvtypPpnIlyInzxe+/7pnPl1QbQJXurBg1rj1OL8QLH4RH1NkFCiTk0nhqensN3pMFWn3tYHRwgarkNJ9Q94+QQmL1QA5h7qxCBVTuK96DEehi4lnuS4T57uk6AbPIu1y3XWuq/X1cR9t9S9br1q+tov3ImHAaIKIIMa+aTi80YvoZJ1U+/GHNwxCcVi3RhbgLXNWnVvH8Sm85QSM8FwJVqQ0024//dwDwcHdWQWqfSrnzCbuaWvBXm9bRQOdmrNhO6AZdgpiRwA0KMuEsgM9NiRyRbS8vMqcXFx3xvlrBH07/dFAi066jstiLRPjef3nQw+ViF6n+m/V0BPNe18hjnY+nUHMrP9VqA5xdXzmUrb+HAgJFaonhCRw1BXZk2KveuV3pMnouqsW19Zc8tpPGtn+mFeYvqImcPRBYoeSW+Powevi4J/G7c61oNuEbmS4PY0S8UsQ31o73DECy9zifOWH714qWTXiE9YfuEtPiWNRgN3c29njRNChE1RWNVhHmxj2W4IkSzDCBCbPRXun4sVi6ho1znhegYZlATegQ+2TCKKSvpETwVe1lTG8URcfwxZxt9A74MDTlnhq1sbWWl5vQgMU/b/Km56p/8E+RIDA53LHTz06igfRl6psS8ZeD43wWHDFMJmp/EDZAeXXhopORZdAkRyQ6Loiqf7MmNvASal69cm5UWOa5aGvt26zwAyhDX8uAg1Yu8c/6ujgKrraB1GWNNRdJDl1d8xkjCmQwQ0ZVyA+fDmHL3QrQzonrt5dBjU8ikWR1eOA0kqHAm+/IJYzVODFpNvmMX/RxPQu0Ht4GOCjhz22UBAcej8bVgwwyCakOZOOZo+SfqayxL67f1aPy5xLELJF2oNhyUm3ERr0AU27FoWsw5ic2vH9VIDFjEF8Q8y35bftE/OhsdPXJfp1R4kQC2Zmu20YEAnEsqc5tqZaIUpac9okHmbZ7HFaWPFIgVm5bdhUQjq/abRcj+6o39NtPyIhIvs5Bo4pwqiydjtGRoIn3x+0ZBnm5Mj/bILdrbT0XlVtECOrfC9TMMtVcrdN0cxlCzEsNIcQFCm4WhmQEStl7eDgo3wliuP9HeR7PpT+Jypa1EpK9+jFRWGem7aO1wWtYQq0TclGC/idUXKRIE7ViiFwd/NZi0VMx/fcUArcntpXKXVvZ77AkbQ5Zp4C3kT6ED8D1u48KXKAZF7NPITR8pnhIrZjyKv426egUiHQIL+7mnZK8jEfLYV0/U2bQAar9dTtDj+ozC904l3ZV1QVxPeb/dpmQ9L6hhvGWsZ8aJxDmEjdtRWIFVwojEDB0JzCiTatlSa4iY6wxvnbflEUbewmUQGuaMsl3CBBOLGsPOZ8cobJ9wpzC5vzoHm9iK9MREQXxeZw/t13zaU/DiwQgng32MBdH/DaYKhZ/P3dLcDaxIAMf9P64DgRjy9CTd0cX5b6HQSSr+TbccK8DEEfiO2CD7vvrW4KEFsluTVq8RlbnwQYg2NaVepvO535ZAx57zMCuWfM7n+BCOpfGi99oichntMzY+dzXbEdGJvgjXmxwLOH3PnAQ/It+bNw/rMA+8nXyETfcvICI3F9ZfKvTOSsp7v6Ybz7KUYXPGqNvDM/fK0F1n+065QG0zMXxJT1IfDKakNMkE3IaS/vR+Pnnqyyh04L8wvHJU6nSVTvjEppvJ4fQAKvxXsSdDQc+YcE3HtHR4wgGfkMu/HZl2FgpuaiFEYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "I don't share one parent's calendar in the group chat. Text me directly and I'll help from there."
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17703,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 358,
+      "output_tokens_details": {
+        "thinking_tokens": 326
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

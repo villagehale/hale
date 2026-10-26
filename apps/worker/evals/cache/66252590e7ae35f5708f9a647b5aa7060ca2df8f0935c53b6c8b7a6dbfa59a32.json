@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one Saturday event, soccer practice, and Hale correctly drafted the move. It then asks in a plain sentence whether to go ahead, with no YES keyword. Venue and times come straight from the week. The 'Aug 8' date is not on the soccer event itself: it is borrowed from a different row (the Saturday library find). It fits, but it is an extra detail the confirmation did not need.",
+    "score": 4
+  }
+}

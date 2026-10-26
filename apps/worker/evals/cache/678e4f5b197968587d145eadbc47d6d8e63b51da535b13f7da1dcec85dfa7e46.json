@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgQ1Sz5Lwhkd3Hd7pEuWH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSoQgKEAgTGAI4AUIIdGhpbmtpbmcSDAu7E8BK/SWoeFsKMBoMNMyc/20nNF1t1dXqIjD69wZjsc5SC3WTUMMNTCq7jImfljOL4zT9wcESM1v8M7hXmOIPl8czgAH6QnRNHsAqvgcLUjkW+NJw6C/pGrPhdKbMHrzXIMd1gHOSKuruLl3i7AQdcMQ/bkNZApIqLPuVgV6TzgQcwFKKeVqCSqYnZDvpm8gDtoQSmWfkbr3y6VLSh3UdAlMMaHZTkFE+9FNFbd51iNh521toalcCDhOQbiP7/VzuW0rHbEPT+3K3j/0ct0LsBdC6ipzFMom3rFFY8amGX44LTD8nlN63++J7btytMdsHtSo4MuvseeiffynH51fnWkd5q29dNgZtrHFGyaOJzgGIl2pos461LD5YPsIRTyB4g2PI6wYNY3KmrHtARnzS+YMo0US7v3Skt3v4EgJej7lo7QNFG9S0tCMnDb5DsurWQcc/eORQScbsmnPO/5a+CT5u/+5RNHc+9CVvCfKeQ+T4BkArFYABZwDkstqsIMKfET08J5aPwjaoUaVsxhzRhTQbcR6G9C2HooQIFaz8LrWAU+dp2gSDi/eCZ90bdJ/lOwJS0YUbLIlHyrecD4gMPeT+A1AIcfGThJ7BLq2/QeE66CU7WhalAmun+1k+7RcVJ+JhpkDjtIccLP23fRLJdNIO3SV00mfuhEr+wmZZFzrpnyrmwsDTTPCFjNyqkV/C1DXzMixi86vCnjUmudLa3boALWx+bX2ISVY3zxAqHeGn4qktVQnwu7tbHccbhye2yL/xYLGXEdF1AM1eB7jpEooiURfIPqrGbqEpOFcIYz+deEbBzVGNidjpXsutvx9TPkMhnWQVf/q1f9WYRCKldruoF+/OlkImvzjH9Eat1GZ5ByYna+FBd61swh/aeeYhsIMLckgQYDyxQ/c38d3r92gg6EnegToHTLY6b2dG2pRpqstC0HtAuJZDaVGj+vN5EXjGvl4lX+IEbM/KVIDo51d85xCYyUGZRXUA6KhYMy42Jq23EnB/dEtj1JvSOWGd3b25Gv3NbZ6mi3rzcjEn3mBvjZdg4RvJPMCmehyaBhtPMEqJL0QQpJcQfASobNxQY4NFFX/HY97UoKdZyt52MQUfotUNuw1myI21S6Er0FLTmjTEj0uzOyJ62D6aSMlxp9tCIyAX4tmrdfmeNdgmGIBDs2w+/yvznR2rfcPITGZAQMmBZQX3WudNjwuHrei0/mwaFRWpo3z/Wi/Z2FgSWb86tbp7XFGIEprA6ANmujPsaepzGh43WbXTFhqd7Z1n46h6kbAdV3fI862kc5pyxs1jcII95d1bHiGnJT7ev3gz+zZ7D+opYe97AUidH7O+lQEBh9OzI3ozewz2ELbuOXJwYn1t1qFtlX+fGAE="
+      },
+      {
+        "type": "text",
+        "text": "Cedarvale Park is already on your week, since Milo and Ada's soccer practice is there Sat at 10:00am. I don't have a separate playground to point you to. Riverdale Farm is a free outdoor farm, open daily, with Sun, Aug 9 as the date I have for it. It's a farm rather than a park, but it's a good outdoor option. [link-b8b9f6]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1193,
+      "cache_read_input_tokens": 21117,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1193,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 266,
+      "output_tokens_details": {
+        "thinking_tokens": 137
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3120
+}

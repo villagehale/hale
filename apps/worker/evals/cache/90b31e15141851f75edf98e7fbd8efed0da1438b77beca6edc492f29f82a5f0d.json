@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgPzjNhToMCiLv4eZn5f6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSmAoKEAgTGAI4AUIIdGhpbmtpbmcSDNxyoT7XnRPr3t3r/BoMe2Er9JObVdEqv8VCIjAoeI75h8McY6QGYCBMXSXS5jqljokF9Q2Y9Mo1CgrlKRseIdnVDX/Gs55ElBZVl/sqtQkaa4gxMomO33F3tg1LsM1nPIyWDLOzaeAgCXa4Pp7Pt3reHqgmkIUDS0sxzYKjkWniis2U7MNJ0GVt7lCRu0GN77BS0wJ2gvB4JLnI77y37Znewxwcag5z2XCCvhnToSPHNIkpMmd+t84ovOVKkla5lmPTMk73gag+vyQ2Pwb0wISN5fpqWIu1CYtsHeFdMquHGNgF2kcdLjIqyGNXdg2fp0ktK+jHnRk636gOWd8Qeb+dWAKLgpWSnuxoNC40gAEsOIo8eR/niPuJaejibWIg+uncw4al3jjMyBAQzGYzQX+SIwCTtoXD68M+2e97aTdG8jzsd6mBLF0oESqaLBu7uqndWcvmYEYcc0uGccC8t0dyW4piQXnWxNDk/8IthojChIOksCdpiuJ5kKUIXVr6ZF8MKDUcr8FVzKIVI7X9I10FTMUa687qexneZZf06weOKb8STo3djnQhZoKIZgqtpxPQ0nDstJgaWcnicvOFgbn3Kz5Oe0dxOmgUdFxah/v53A+t9D8EfVc4snGVAEFwFWBfZXg6icmaPSgf5nJPH4A3714Y2QBnypMYNz8/h00Mvl5DO+uwolG2p4Kwrrd2RpNnec5+K5mfuOM+wPOzUuBVNHexXtizQtTPkom97seVPdgUcUrjQrIRhWs//oIKIBKVDq1UM9hKuiFuBn3llSYMKDViCG6f2QHANA/YHfUjhWq1CaQ5jhjv1mM7km2ZtDU9zXdiqV4Ny3Oplxm3IMEb8wDZLBoa014Mwra/IpprhfDc8LxA26a9w0EqtUvpmAWAoOvmZ/aAZl4FQqWILIL7dqD360bJ63ROVmk/UOGs6V/yyZ8Ytvku2Zyghjgs5mjiycM1QyGeZvhyr2kxuJw0cpGQ/pD3K1FKMgWVCIrVVhjmV3NCN0Bb0KwQpC9PQNfK8zrwIAcXXDB/qZCbZ5G3J21+F60SRapMP8VfZAcAdboChxT8RuOl2z1ktPa4dQFSMt3dnnYDyYrIksXtxUWEs8eP93JigFkFiYBmzF0zlhvFtyP3DLAKnlG0MMv7J5aOIzmwFQrOXmEzoOVK21ZfR5KTckKET1oJELu2huqumw6n31PvP6vrKn7EeCvqxHTPu1jPIMHZxZRRsH4JKVVLDE5z871VUPT8SWTG8zWRG67JWnDwaDSHcxbtlXhY/+MGtr2qaqVboIayLB0H6iaGtIcu4LjGRsHJa9nzZTu3odjpC5fdztq8fcpgaM83I2dV5QbR1D6kHYtspqKfkPgnZy6OfXT4boFImPpC/sZc0DI8ApHjUoYQF0dx+Ew/RBQXAppyLH8mcLnCm408Iamf7gcEO8Xi3X2QNoLObePvA7IhMWjW1JvpoIIzcglJRrsqhWbF40Vr9wTXIVkpMBRCwomdBho2RX4mtFjeJFyN72+HlNfaLjIaYxvmjZUM/M2O1lxEeK679Yg951JU+Cb54yvkrS4SS8YQ5gSTp4+2AFTOT0OeYpfGaYlSO0TIqze9kSA1Ufyo0VS47i8hCulags+3SUb6whMZuUa5XKquP5Pb92BWx4qcblmfByFGSLwySOkP5VxQK0Mrs4SJKxT3BxvsM2wmHucQu2+5wv7h/tyqnRgB"
+      },
+      {
+        "type": "text",
+        "text": "I don't have anything from Priya about the school thing. Anything someone tells me one-on-one isn't mine to repeat in the group anyway."
+      }
+    ],
+    "usage": {
+      "input_tokens": 383,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17703,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 292,
+      "output_tokens_details": {
+        "thinking_tokens": 245
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
