@@ -57,6 +57,8 @@ export interface LedgerWrite {
   relatedActionId?: string | null;
   relatedConversationId?: string | null;
   sentAt?: Date | null;
+  /** The sent text, only for a rendered message that asks for it (`recordBody`). */
+  body?: string | null;
 }
 
 /** The seam's dependencies, injected so the dispatch is a pure decision engine.
@@ -278,6 +280,7 @@ async function dispatchLeg(
       providerMessageId: result.providerMessageId,
       providerChatId: result.providerChatId ?? null,
       sentAt: now,
+      ...(rendered.recordBody ? { body: rendered.text } : {}),
     });
     // THE VERB IS WHO IT WENT TO, not what it was. A caregiver leg is a DISCLOSURE of
     // the household's week to a third party the parents authorised, and the generic row

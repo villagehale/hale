@@ -22,10 +22,11 @@ import { users } from './users.js';
  *   - outbound_sends (executor exactly-once) is a different domain and is
  *     UNTOUCHED.
  *
- * `body` is nullable and populated for direction:'in' ONLY — the verbatim inbound
- * reply, which C3 treats as the approval's legal instrument (locked cross-ticket
- * contract). Outbound rows never store a rendered body: it is reconstructable from
- * template + payload, and storing rendered child-data is a liability (rule #1).
+ * `body` is nullable. Inbound rows carry the verbatim reply, which C3 treats as the
+ * approval's legal instrument (locked cross-ticket contract). An outbound row carries
+ * a body only when the message was written whole by the model from the parent's own
+ * facts and is no longer reconstructable from template + payload (the reminder, via
+ * `RenderedContent.recordBody`). Every other outbound row stores none (rule #1).
  */
 
 /**
@@ -142,8 +143,8 @@ export const channelMessages = pgTable(
     providerChatId: text('provider_chat_id'),
     status: channelMessageStatusEnum('status').notNull(),
     errorCode: text('error_code'),
-    /** Verbatim body — direction:'in' ONLY (A3 writes it; C3's legal instrument).
-     * Outbound rows leave this null (rule #1). */
+    /** Verbatim inbound body (A3 writes it; C3's legal instrument), or the sent text of
+     * a model-written outbound message that asked for it (`recordBody`). */
     body: text('body'),
     relatedActionId: uuid('related_action_id').references(() => actions.id, {
       onDelete: 'set null',

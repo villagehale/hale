@@ -24,8 +24,9 @@ import type {
   ReminderPayload,
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
-import { composeReminderVoice } from '~/lib/loop/voice/reminder-voice';
 import { getQueue } from '~/lib/queue';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { composeReminderText, reminderFacts } from './compose';
 import {
   type EventSnapshot,
   REMINDER_HORIZON_MS,
@@ -77,6 +78,8 @@ export interface ReminderParent {
  * of the classify gate's EventSnapshot (id, startsAt, deletedAt). */
 export interface LiveEvent extends EventSnapshot {
   title: string;
+  /** family_events.ends_at — the end the reminder states, with its AM/PM. */
+  endsAt?: Date | null;
   childId: string | null;
   /** family_events.sensitive — the reminder templates genericize a sensitive event, and
    * `classifyFamilyEvent` refuses it to a caregiver outright. */
@@ -192,9 +195,13 @@ export interface ReminderRunDeps {
   loadChildren: (db: Database, familyId: string) => Promise<ReminderChild[]>;
   enqueue: (job: ChannelSendJob) => Promise<void>;
   capture: typeof captureServerEvent;
-  /** VIL-229 · the agent client for the per-batch voice stage, or null to run WITHOUT
-   * it (the deterministic time + event descriptor still render + send — rule #8). */
+  /** The agent client that writes a parent's reminder. Null means no parent reminder
+   * can be written, so none is sent (there is no fallback copy). */
   client: AgentClient | null;
+  /** The family's language tag, for the model-written reminder. */
+  loadLanguage: (db: Database, familyId: string) => Promise<ReplyLanguage>;
+  /** Writes the whole reminder from facts, or null (nothing is sent). */
+  composeText: typeof composeReminderText;
   /** VIL-229 · the parent's resolved child-name-level dial, for the SAME redacted view
    * (rule #1) the voice stage hands the model and the template later renders. */
   loadNameLevel: (db: Database, userId: string) => Promise<ChildNameLevel>;
@@ -231,6 +238,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
         .select({
           id: schema.familyEvents.id,
           startsAt: schema.familyEvents.startsAt,
+          endsAt: schema.familyEvents.endsAt,
           deletedAt: schema.familyEvents.deletedAt,
           title: schema.familyEvents.title,
           childId: schema.familyEvents.childId,
@@ -348,6 +356,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
         .select({
           id: schema.familyEvents.id,
           startsAt: schema.familyEvents.startsAt,
+          endsAt: schema.familyEvents.endsAt,
           deletedAt: schema.familyEvents.deletedAt,
           title: schema.familyEvents.title,
           childId: schema.familyEvents.childId,
@@ -402,6 +411,14 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
     },
     capture: captureServerEvent,
     client: voiceClient(),
+    loadLanguage: async (db, familyId) => {
+      const [row] = await db
+        .select({ primaryLanguage: schema.families.primaryLanguage })
+        .from(schema.families)
+        .where(eq(schema.families.id, familyId));
+      return row?.primaryLanguage ?? 'en';
+    },
+    composeText: composeReminderText,
     loadNameLevel: async (db, userId) => (await loadLoopPrefsView(userId, db)).childNameLevel,
   };
 }
@@ -437,6 +454,7 @@ interface FiringRow {
   timezone: string;
   title: string;
   startsAt: Date;
+  endsAt: Date | null;
   childId: string | null;
   sensitive: boolean;
   location: string | null;
@@ -591,7 +609,10 @@ export async function runReminderCron(
   let cancelled = 0;
   let heldLaneOff = 0;
 
-  const drop = async (row: DueReminder, reason: SuppressReason): Promise<void> => {
+  const drop = async (
+    row: Pick<DueReminder, 'id' | 'familyId' | 'offset'>,
+    reason: SuppressReason,
+  ): Promise<void> => {
     await deps.markStatus(db, row.id, 'suppressed', reason);
     const dropped = { familyId: row.familyId, reminderId: row.id, offset: row.offset, reason };
     console.info(dropped, 'reminder: dropped, not sent');
@@ -649,6 +670,7 @@ export async function runReminderCron(
             timezone: row.timezone,
             title: event.title,
             startsAt: event.startsAt,
+            endsAt: event.endsAt ?? null,
             childId: event.childId,
             sensitive: event.sensitive,
             location: event.location,
@@ -700,52 +722,84 @@ export async function runReminderCron(
     // voice stage is a real model call composed in the recipient's own register — a
     // caregiver's reminder is deterministic logistics, and paying for a sentence in
     // somebody else's voice is the wrong spend twice over (rule #8).
+    // The parent's name dial and language, read ONCE per recipient and only when a
+    // reminder can actually be written and sent. Neither for a caregiver: their payload
+    // carries no child roster and their reminder is a separate template.
     const nameLevel =
       !caregiver && sendEnabled && deps.client ? await deps.loadNameLevel(db, parentUserId) : null;
+    const language =
+      !caregiver && sendEnabled && deps.client ? await deps.loadLanguage(db, group.familyId) : null;
 
     for (const batch of batches) {
       const [firstRef] = batch.eventRefs;
       if (!firstRef) continue; // a batch always has ≥1 event
 
       const events: ReminderEventView[] = [];
+      const factEvents: Parameters<typeof reminderFacts>[0]['events'][number][] = [];
       for (const ref of batch.eventRefs) {
         const r = rowByRef.get(ref);
         if (r) {
-          events.push({
+          const view: ReminderEventView = {
             eventRef: r.eventRef,
             title: r.title,
             startsAt: r.startsAt.toISOString(),
             childId: r.childId,
             sensitive: r.sensitive,
+          };
+          events.push(view);
+          factEvents.push({
+            ...view,
+            endsAt: r.endsAt ? r.endsAt.toISOString() : null,
+            location: r.location,
           });
         }
       }
 
-      // VIL-229 · the per-batch voice stage, over the SAME redacted view (eventDescriptor
-      // at the resolved name level) the template renders (rule #1). Fail-open (rule
-      // #8): a null client/level, or any compose degrade, leaves voice null and the
-      // deterministic time + descriptor still render + send.
-      const voice =
-        deps.client && nameLevel
-          ? (
-              await composeReminderVoice(
-                events,
-                children,
-                nameLevel,
-                group.timezone,
-                batch.offset,
-                group.familyId,
-                db,
-                deps.client,
-                now,
-              )
-            ).voice
-          : null;
+      // Compose-not-send: only reach real families once the founder flips the flag, and
+      // never pay for a text that will not be sent.
+      if (!sendEnabled) continue;
 
       // Rule #6: no deep link on the glanceable T-1h; /plan on the evening-before T-24h.
       // Never for a caregiver on either offset — /plan is behind an account they do not
-      // have, so the link would be a door with no key.
+      // have, so the link would be a door with no key. For a parent it is a FACT the model
+      // may use; code never appends it.
       const deepLink = !caregiver && batch.offset === '-P1D' ? `${appBaseUrl()}/plan` : null;
+
+      // The parent's reminder is written whole by the model from facts. No client, or a
+      // draft that could not be written, is NOTHING SENT and a logged, audited drop.
+      let text: string | null = null;
+      if (!caregiver) {
+        text =
+          deps.client && nameLevel && language
+            ? await deps.composeText(
+                deps.client,
+                reminderFacts({
+                  events: factEvents,
+                  children,
+                  level: nameLevel,
+                  timeZone: group.timezone,
+                  offset: batch.offset,
+                  now,
+                  planLink: deepLink,
+                  language,
+                }),
+                group.familyId,
+              )
+            : null;
+        if (text === null) {
+          console.error(
+            { familyId: group.familyId, offset: batch.offset, events: batch.eventRefs.length },
+            'reminder: no text written, nothing sent',
+          );
+          for (const ref of batch.eventRefs) {
+            const r = rowByRef.get(ref);
+            if (!r) continue;
+            await drop({ id: r.reminderId, familyId: r.familyId, offset: r.offset }, 'unwritten');
+          }
+          continue;
+        }
+      }
+
       const caregiverPayload: CaregiverReminderPayload = {
         offset: batch.offset,
         timeZone: group.timezone,
@@ -770,7 +824,7 @@ export async function runReminderCron(
         children,
         deepLink,
         unsubscribeUrl: unsubscribeUrl({ userId: parentUserId, emailType: REMINDER_EMAIL_TYPE }),
-        voice,
+        text: text ?? '',
       };
       // Batch key: the single event for T-1h, the evening for a merged T-24h. The family
       // is part of it because `dedupeActive` matches on the key alone, family-blind — and
@@ -793,9 +847,6 @@ export async function runReminderCron(
         ...(caregiver ? { channel: 'sms' as const } : {}),
         dedupeKey: `reminder:${batch.offset}:${group.familyId}:${parentUserId}:${batchKey}`,
       };
-
-      // Compose-not-send: only reach real families once the founder flips the flag.
-      if (!sendEnabled) continue;
 
       await deps.enqueue(job);
       for (const ref of batch.eventRefs) {

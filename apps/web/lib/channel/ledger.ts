@@ -60,6 +60,7 @@ export async function recordChannelMessage(
       relatedActionId: write.relatedActionId ?? null,
       relatedConversationId: write.relatedConversationId ?? null,
       sentAt: write.sentAt ?? null,
+      body: write.body ?? null,
     })
     .returning({ id: schema.channelMessages.id });
   if (!inserted) {
