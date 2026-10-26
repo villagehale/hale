@@ -20,25 +20,31 @@ describe('calendarCancelRefusals', () => {
     ).toEqual([]);
   });
 
-  it('refuses a text that never says which event, or never says cancelled', () => {
-    expect(calendarCancelRefusals('Heads up, plans changed for Thursday.', REQUEST)).toEqual(
-      expect.arrayContaining(['summary_missing', 'cancel_word_missing']),
-    );
+  it('refuses a text that never names the event', () => {
+    expect(calendarCancelRefusals('Heads up, plans changed for Thursday.', REQUEST)).toEqual([
+      'summary_missing',
+    ]);
   });
 
-  it('refuses a time it was not handed, a link, and the royal we', () => {
+  it('VIL-450: no wording rules - any language, any voice, any length passes the fact gate', () => {
+    for (const body of [
+      'Swim class 取消了，记得从日历里删掉。',
+      'Swim class est annulé, tu peux le retirer de ton calendrier.',
+      'تم إلغاء Swim class، يمكنك حذفه من التقويم.',
+      'swim class is off - Hale will leave it to you to clear it, we hope that helps',
+      `Swim class is off. ${'Sorry about that. '.repeat(12)}`,
+    ]) {
+      expect(calendarCancelRefusals(body, REQUEST), body).toEqual([]);
+    }
+  });
+
+  it('refuses a time it was not handed and a link', () => {
     expect(
       calendarCancelRefusals(
         'We cancelled Swim class at 4:15 - details at https://x.example',
         REQUEST,
       ),
-    ).toEqual(expect.arrayContaining(['invented_number', 'carries_link', 'first_person_plural']));
-  });
-
-  it('refuses a text over one segment', () => {
-    expect(
-      calendarCancelRefusals(`Swim class is cancelled. ${'x'.repeat(160)}`, REQUEST),
-    ).toContain('over_char_cap');
+    ).toEqual(expect.arrayContaining(['invented_number', 'carries_link']));
   });
 });
 

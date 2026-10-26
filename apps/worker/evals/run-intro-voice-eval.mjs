@@ -23,9 +23,9 @@
 // every gate it had and still shipped six asks that said "Hale can make an introduction"
 // and two that said "let us know" — one product speaking about itself in the third person
 // while every acknowledgement in copy.ts says "I'll introduce you both". Nothing was
-// watching for it, including the judge, which scored all six a 5. `third_person_self` and
-// `first_person_plural` are now mechanical refusals in voice.ts, the skill says so
-// outright, and the judge's rubric names both plus plain grammatical errors — the other
+// watching for it, including the judge, which scored all six a 5. Those are voice, so the
+// judge holds them (VIL-450 removed the word-matching refusals for them from voice.ts):
+// the judge's rubric names both plus plain grammatical errors — the other
 // thing it waved through ("Worth a intro?", scored 5). A rubric that passes a typo is not
 // reading the copy.
 //
@@ -138,21 +138,6 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
 const KEYWORD_INSTRUCTION =
   /\b(reply|respond|text|send|type)\b[^.?!]{0,20}\b(yes|no|y\b|n\b|intro|intros)\b/i;
 
-/**
- * Mirrors THIRD_PERSON_SELF — Hale as the SUBJECT OF A VERB, never the brand name.
- *
- * This suite is where the defect came from: the first live recording wrote "Hale can make
- * an introduction" in six asks out of six, and every one of them scored a 5 from a judge
- * that had not been told to care. "Another Hale family nearby" stays legal, because it is
- * the premise of the message and there is no other way to say it.
- */
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|makes|make|made|might|may|does|knows|thinks|found|sends|texts|introduces)\b/i;
-
-/** Mirrors FIRST_PERSON_PLURAL. Same recording, same cause: "Let us know if you would
- * rather we never raise this" is a support queue, not a chief of staff. */
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
-
 /** Bound in main() once the real modules load — the segment counter and the compliance
  * line the send appends, not copies. */
 let smsSegmentsRef = () => 1;
@@ -180,8 +165,6 @@ function introAskRefusals(body, request) {
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
   if (KEYWORD_INSTRUCTION.test(body)) found.push('instructs_keyword');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
 
   const lower = body.toLowerCase();
   if (!lower.includes('introduc') && !lower.includes('intro')) {
@@ -215,8 +198,6 @@ const GATE_NAMES = [
   'too_many_questions',
   'not_a_sentence',
   'instructs_keyword',
-  'third_person_self',
-  'first_person_plural',
   'introduction_word_missing',
   'counterpart_word_missing',
   'own_child_missing',
@@ -380,7 +361,7 @@ const JUDGE_SYSTEM = [
 // ("Reply YES INTROS"), calls Hale by name ("Hale has"), uses the royal we ("us"), asks two
 // questions, invents a number ("3"), drops every pinned proposal fact (no band word, no own
 // child, no anchor), and opens in the exact announcement voice this arc deleted. So
-// `--broken` proves instructs_keyword + third_person_self + first_person_plural +
+// `--broken` proves instructs_keyword + (judge: third person, royal we) +
 // too_many_questions + invented_number + counterpart_word_missing + own_child_missing +
 // anchor_missing + the retired-copy gate + the invented-name gate all bite, rather than
 // one of them carrying the calibration alone.

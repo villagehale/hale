@@ -65,6 +65,89 @@ const plain = (id, purpose, language, parentWords) => ({
 
 const ONE = 'https://app.villagehale.com/connect?t=U0FGRUJBQkVDQUZFQkFCRw&to=gcal';
 
+/**
+ * INTRO_REPLY_FACTS in apps/web/lib/village/intros/reply.ts, replicated (the eval cannot
+ * reach the web app's `~/` alias). reply.test.ts pins this copy to the original, so a
+ * drift fails a free unit test before it can mis-key the cache.
+ */
+const OTHER_FAMILY_UNSAID =
+  'never say or hint anything about the other family, including whether they were asked or answered';
+
+export const INTRO_REPLY_FACTS = {
+  discoverability_on: {
+    situation: 'they just agreed to be introduced to other Hale families nearby',
+    shared:
+      'nothing about them is shared with anyone until both families say yes to the same introduction',
+    offRamp: 'they can switch introductions off any time by just saying so',
+  },
+  discoverability_off: {
+    situation: 'they just switched introductions off; any pending ones are closed',
+    next: 'Hale will not bring introductions up again',
+  },
+  discoverability_already_on: {
+    situation: 'they had already said yes to introductions; nothing changed',
+    next: 'Hale is still keeping an eye out',
+  },
+  discoverability_already_off: {
+    situation: 'introductions were already off for them; nothing changed',
+    next: 'Hale will not bring introductions up again',
+  },
+  intro_no: {
+    situation: 'they said no to this one introduction; it is recorded',
+    otherFamily: OTHER_FAMILY_UNSAID,
+    next: 'Hale keeps looking for other matches',
+  },
+  intro_already_yes: {
+    situation: 'they had already said yes to this introduction; nothing changed',
+    otherFamily: OTHER_FAMILY_UNSAID,
+    next: 'Hale tells them if it goes ahead',
+  },
+  intro_already_no: {
+    situation: 'they had already passed on this introduction; nothing changed',
+    otherFamily: OTHER_FAMILY_UNSAID,
+    next: 'Hale keeps looking for other matches',
+  },
+  intro_closed: {
+    situation: 'they said no to this introduction earlier, so it is closed and cannot be reopened',
+    otherFamily: OTHER_FAMILY_UNSAID,
+    next: 'Hale is still looking and will text them at the next good match',
+  },
+  no_open_intro: {
+    situation: 'there is no introduction waiting for them right now',
+    match: 'none - do not imply a match exists',
+    next: 'Hale texts them when there is a match',
+  },
+  soft_close: {
+    situation: 'the introduction Hale asked them about is not happening',
+    reason: 'not given - never say or hint why, or anything about the other family',
+    next: 'Hale keeps an eye out for another match',
+  },
+};
+
+const intro = (id, script, situation, parentWords) => ({
+  id,
+  purpose: 'intro_reply',
+  script,
+  language: null,
+  parentWords,
+  facts: { ...INTRO_REPLY_FACTS[situation] },
+  mustInclude: [],
+});
+
+function INTRO_REPLY_FIXTURES() {
+  return [
+    intro('intro-optin-zh', 'zh', 'discoverability_on', '好的，可以帮我介绍附近的家庭'),
+    intro('intro-optout-ja', 'ja', 'discoverability_off', '紹介はもういらないです、やめてください'),
+    intro('intro-no-es', 'es', 'intro_no', 'No, gracias, esta vez no'),
+    intro('intro-closed-ar', 'ar', 'intro_closed', 'في الحقيقة نعم، أريد هذا التعارف'),
+    intro('intro-no-open-fr', 'fr', 'no_open_intro', "Oui, je veux bien qu'on me présente"),
+    intro('intro-already-yes-en', 'en', 'intro_already_yes', 'yes intro!! did you get that'),
+    intro('intro-already-off-en', 'en', 'discoverability_already_off', 'no intros, I said'),
+    // The sweep's soft close: no parent words, and the reason is never a fact.
+    intro('intro-soft-close-en', 'en', 'soft_close', null),
+  ];
+}
+
 export const SAID_LINE_FIXTURES = [
   identity('identity-en', 'en', 'en', 'who is this? how did you get my number'),
   identity('identity-fr', 'fr', 'fr', "c'est qui? vous êtes une arnaque?"),
@@ -153,4 +236,6 @@ export const SAID_LINE_FIXTURES = [
     mustInclude: [],
     links: { link: GMAIL },
   },
+  // VIL-450: the intro lane's replies, which were fixed English lines in intros/copy.ts.
+  ...INTRO_REPLY_FIXTURES(),
 ];

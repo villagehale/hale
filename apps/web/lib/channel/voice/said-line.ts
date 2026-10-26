@@ -37,7 +37,10 @@ export type SaidLinePurpose =
   /** Someone is hurt or ill (not a crisis): Health811 and 911, never advice. */
   | 'health'
   /** A parent said yes to one village introduction. */
-  | 'intro_yes';
+  | 'intro_yes'
+  /** Any other answer about introductions, or the soft close (VIL-450). `facts.situation`
+   * says what is true; the model words it. */
+  | 'intro_reply';
 
 export type SaidLineFact =
   | string

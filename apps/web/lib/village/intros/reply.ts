@@ -10,17 +10,6 @@ import {
   recordDiscoverabilityConsent,
   recordProposalConsent,
 } from './consent';
-import {
-  DISCOVERABILITY_ALREADY_OFF,
-  DISCOVERABILITY_ALREADY_ON,
-  DISCOVERABILITY_OFF,
-  DISCOVERABILITY_ON,
-  INTRO_ALREADY_NO,
-  INTRO_ALREADY_YES,
-  INTRO_CLOSED_AFTER_NO,
-  INTRO_NO_ACK,
-  NO_OPEN_INTRO,
-} from './copy';
 import { villageIntroGroupsEnabled } from './group';
 import { introScope, villageIntrosAllowlist } from './run';
 
@@ -112,19 +101,22 @@ export interface IntroKeyword {
 
 export type IntroReplyOutcome =
   | { status: 'declined_to_claim' }
-  | { status: 'discoverability_granted'; reply: string }
-  | { status: 'discoverability_revoked'; reply: string }
+  // Every `reply` below is the model's words (said-line `intro_reply` / `intro_yes`),
+  // or null when it could not write one: the state change stands either way and
+  // nothing fixed goes out in its place (VIL-450).
+  | { status: 'discoverability_granted'; reply: string | null }
+  | { status: 'discoverability_revoked'; reply: string | null }
   /** They said again what they already said. Answered briefly, nothing written. */
-  | { status: 'discoverability_unchanged'; reply: string }
+  | { status: 'discoverability_unchanged'; reply: string | null }
   /** `reply` is the model's acknowledgement, or null when it could not write one: the
    * yes is recorded either way and nothing fixed goes out in its place. */
   | { status: 'intro_accepted'; reply: string | null }
-  | { status: 'intro_declined'; reply: string }
+  | { status: 'intro_declined'; reply: string | null }
   /** They said again what they already said about this card. Nothing written. */
-  | { status: 'intro_unchanged'; reply: string }
+  | { status: 'intro_unchanged'; reply: string | null }
   /** A yes after their own no. The pairing is over and is not reopened. */
-  | { status: 'intro_closed'; reply: string }
-  | { status: 'no_open_intro'; reply: string };
+  | { status: 'intro_closed'; reply: string | null }
+  | { status: 'no_open_intro'; reply: string | null };
 
 export interface IntroReplyInput {
   familyId: string;
@@ -201,9 +193,9 @@ export interface VillageIntroReplyDeps {
   /** Close every live proposal this family is named in (a revocation). */
   cancelOpenProposals(database: Database, familyId: string, now: Date): Promise<void>;
   /**
-   * Writes the acknowledgement of a yes to one intro, in the model's words (said-line).
-   * There is no fixed line behind it: absent, or a write that comes back null, means the
-   * yes is recorded and nothing is sent.
+   * Writes every reply on this lane in the model's words (said-line). There is no fixed
+   * line behind any of them: absent, or a write that comes back null, means the state
+   * change is recorded and nothing is sent.
    */
   saidLine?: SaidLineWriter;
 }
@@ -237,7 +229,7 @@ export async function handleVillageIntroReply(
 
   if (keyword.target === 'discoverability') {
     // ALREADY THEIR ANSWER? Then this is a repeat, not a decision (see
-    // DISCOVERABILITY_ALREADY_ON). Compared against the STANDING answer rather than
+    // the discoverability_already_on situation). Compared against the STANDING answer rather than
     // against a recency window, because what makes it a repeat is that nothing would
     // change — a parent re-confirming a month later is just as much not-a-new-decision.
     //
@@ -247,7 +239,11 @@ export async function handleVillageIntroReply(
     if (repeatedAnswer(standing, keyword.granted)) {
       return {
         status: 'discoverability_unchanged',
-        reply: keyword.granted ? DISCOVERABILITY_ALREADY_ON : DISCOVERABILITY_ALREADY_OFF,
+        reply: await writeIntroReply(
+          deps.saidLine,
+          keyword.granted ? 'discoverability_already_on' : 'discoverability_already_off',
+          input.body,
+        ),
       };
     }
 
@@ -263,27 +259,45 @@ export async function handleVillageIntroReply(
       reading,
     });
     if (keyword.granted) {
-      return { status: 'discoverability_granted', reply: DISCOVERABILITY_ON };
+      return {
+        status: 'discoverability_granted',
+        reply: await writeIntroReply(deps.saidLine, 'discoverability_on', input.body),
+      };
     }
     await deps.cancelOpenProposals(database, input.familyId, input.now);
-    return { status: 'discoverability_revoked', reply: DISCOVERABILITY_OFF };
+    return {
+      status: 'discoverability_revoked',
+      reply: await writeIntroReply(deps.saidLine, 'discoverability_off', input.body),
+    };
   }
 
   const proposal = await deps.answerableProposal(database, input.familyId, input.now);
-  if (!proposal) return { status: 'no_open_intro', reply: NO_OPEN_INTRO };
+  if (!proposal) {
+    return {
+      status: 'no_open_intro',
+      reply: await writeIntroReply(deps.saidLine, 'no_open_intro', input.body),
+    };
+  }
 
   // THE SAME RULE AS THE OPT-IN, one function up. A repeat is answered and not rewritten.
   if (repeatedAnswer(proposal.standing, keyword.granted)) {
     return {
       status: 'intro_unchanged',
-      reply: keyword.granted ? INTRO_ALREADY_YES : INTRO_ALREADY_NO,
+      reply: await writeIntroReply(
+        deps.saidLine,
+        keyword.granted ? 'intro_already_yes' : 'intro_already_no',
+        input.body,
+      ),
     };
   }
   // A yes after their own no. Not a repeat, and not something to act on either: the other
   // family has had their soft close by now, and an introduction they were told was not
   // happening cannot be un-told. Recording it would resurrect a dead pairing.
   if (proposal.standing === 'declined') {
-    return { status: 'intro_closed', reply: INTRO_CLOSED_AFTER_NO };
+    return {
+      status: 'intro_closed',
+      reply: await writeIntroReply(deps.saidLine, 'intro_closed', input.body),
+    };
   }
 
   // Everything left is a real decision: a first answer, or a WITHDRAWAL after a yes. The
@@ -304,7 +318,12 @@ export async function handleVillageIntroReply(
     now: input.now,
   });
 
-  if (!keyword.granted) return { status: 'intro_declined', reply: INTRO_NO_ACK };
+  if (!keyword.granted) {
+    return {
+      status: 'intro_declined',
+      reply: await writeIntroReply(deps.saidLine, 'intro_no', input.body),
+    };
+  }
   return {
     status: 'intro_accepted',
     reply: await writeIntroYesAck(deps.saidLine, input.body, villageIntroGroupsEnabled()),
@@ -338,6 +357,98 @@ export async function writeIntroYesAck(
         ? 'if the other family also says yes, Hale starts a group text with both'
         : 'none - do not promise or mention a group text or any next step with the other family',
     },
+  });
+}
+
+/**
+ * Every intro answer that is not a first yes (VIL-450: these were fixed lines in copy.ts).
+ * The FACTS are what is true for each situation; the model writes the words, in the
+ * parent's language. The other family never appears as a fact, so no wording can leak
+ * whether they were asked or what they said.
+ */
+export type IntroReplySituation =
+  | 'discoverability_on'
+  | 'discoverability_off'
+  | 'discoverability_already_on'
+  | 'discoverability_already_off'
+  | 'intro_no'
+  | 'intro_already_yes'
+  | 'intro_already_no'
+  | 'intro_closed'
+  | 'no_open_intro'
+  /** The other side of a pair that died (sweep, run.ts). Same facts for every cause. */
+  | 'soft_close';
+
+const OTHER_FAMILY_UNSAID =
+  'never say or hint anything about the other family, including whether they were asked or answered';
+
+export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, string>> = {
+  discoverability_on: {
+    situation: 'they just agreed to be introduced to other Hale families nearby',
+    shared:
+      'nothing about them is shared with anyone until both families say yes to the same introduction',
+    offRamp: 'they can switch introductions off any time by just saying so',
+  },
+  discoverability_off: {
+    situation: 'they just switched introductions off; any pending ones are closed',
+    next: 'Hale will not bring introductions up again',
+  },
+  discoverability_already_on: {
+    situation: 'they had already said yes to introductions; nothing changed',
+    next: 'Hale is still keeping an eye out',
+  },
+  discoverability_already_off: {
+    situation: 'introductions were already off for them; nothing changed',
+    next: 'Hale will not bring introductions up again',
+  },
+  intro_no: {
+    situation: 'they said no to this one introduction; it is recorded',
+    otherFamily: OTHER_FAMILY_UNSAID,
+    next: 'Hale keeps looking for other matches',
+  },
+  intro_already_yes: {
+    situation: 'they had already said yes to this introduction; nothing changed',
+    otherFamily: OTHER_FAMILY_UNSAID,
+    next: 'Hale tells them if it goes ahead',
+  },
+  intro_already_no: {
+    situation: 'they had already passed on this introduction; nothing changed',
+    otherFamily: OTHER_FAMILY_UNSAID,
+    next: 'Hale keeps looking for other matches',
+  },
+  intro_closed: {
+    situation: 'they said no to this introduction earlier, so it is closed and cannot be reopened',
+    otherFamily: OTHER_FAMILY_UNSAID,
+    next: 'Hale is still looking and will text them at the next good match',
+  },
+  no_open_intro: {
+    situation: 'there is no introduction waiting for them right now',
+    match: 'none - do not imply a match exists',
+    next: 'Hale texts them when there is a match',
+  },
+  soft_close: {
+    situation: 'the introduction Hale asked them about is not happening',
+    reason: 'not given - never say or hint why, or anything about the other family',
+    next: 'Hale keeps an eye out for another match',
+  },
+};
+
+/** One intro reply in the model's words. Null (no writer, or an unusable write): the
+ * caller sends nothing and the failure is logged; there is no fixed line behind it. */
+export async function writeIntroReply(
+  writer: SaidLineWriter | undefined,
+  situation: IntroReplySituation,
+  parentWords: string | null,
+): Promise<string | null> {
+  if (!writer) {
+    console.error({ situation }, 'intro reply: no line writer - nothing sent');
+    return null;
+  }
+  return writer.write({
+    purpose: 'intro_reply',
+    language: null,
+    parentWords,
+    facts: { ...INTRO_REPLY_FACTS[situation] },
   });
 }
 

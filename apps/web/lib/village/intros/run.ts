@@ -26,7 +26,8 @@ import {
 } from '~/lib/channels/sms-consent-core';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
 import { discoverableUserIds } from './consent';
-import { INTRO_SOFT_CLOSE, stageWord } from './copy';
+import { stageWord } from './copy';
+import { writeIntroReply } from './reply';
 import {
   INTRO_GROUP_TEMPLATE_KEY,
   type OpenIntroGroup,
@@ -45,7 +46,13 @@ import {
   normalizeFsa,
   pairKey,
 } from './matcher';
-import { type IntroAskRequest, type IntroVoice, productionIntroVoice } from './voice';
+import {
+  type IntroAskRequest,
+  type IntroVoice,
+  introVoiceClient,
+  productionIntroVoice,
+} from './voice';
+import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
 
 /**
  * Village intros v1 — the sweep. Three phases, run in order, every tick.
@@ -296,6 +303,10 @@ export interface IntroSweepDeps {
   /** The introduction's words (group-voice.ts). REQUIRED (rule #11): there is no fixed
    * copy under it; a composer that cannot run DEFERS and the pair waits. */
   introGroupVoice: IntroGroupVoice;
+  /** The soft close's words (said-line `intro_reply`, VIL-450). REQUIRED: there is no
+   * fixed sentence under it. A null write sends nothing (said-line logs it); the pair
+   * still closes, exactly as it does when the gate holds the send. */
+  saidLine: SaidLineWriter;
   /** Opens the three-way iMessage group whose first message is the introduction. Its
    * absence is the named `not_configured`, never a missing dependency. */
   openIntroGroup: OpenIntroGroup;
@@ -1138,7 +1149,9 @@ async function softClose(
     const outcome = await sendIntroSms(database, deps, scope, {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
-      body: INTRO_SOFT_CLOSE,
+      // The SAME facts whatever killed the pair (declined, silent, expired): the reason is
+      // never handed to the writer, so no wording can carry it.
+      body: () => writeIntroReply(deps.saidLine, 'soft_close', null),
       templateKey: 'village_intro:soft_close',
       dedupeKey: `village_intro:close:${proposal.id}:${side.key}`,
       now,
@@ -1484,6 +1497,7 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
     identityAsk: productionIdentityAskVoice(),
     introVoice: productionIntroVoice(),
     introGroupVoice: productionIntroGroupVoice(),
+    saidLine: createSaidLineWriter(introVoiceClient),
     openIntroGroup: createLinqIntroGroupOpener(),
   };
 }

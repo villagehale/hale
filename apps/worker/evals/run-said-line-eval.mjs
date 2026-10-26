@@ -8,10 +8,16 @@
 //     mustInclude string verbatim, no link that is not a required fact;
 //   - words: a judge model only, median of three draws, floor JUDGE_MIN. No phrase is
 //     required or banned.
+//   --broken: every subject text is replaced by one canned bad line (wrong language,
+//     leaks another family's answer, teaches a keyword, invents a date). The suite must
+//     FAIL; exit 0 means the judge caught it.
+//   HALE_ESTIMATE=1 --max-usd N: dry run, counts tokens only, spends nothing.
 //
 // Usage (from apps/worker):
 //   node evals/run-said-line-eval.mjs --preflight
 //   node evals/run-said-line-eval.mjs --cached-only
+//   node evals/run-said-line-eval.mjs --cached-only --broken     # calibration: must fail
+//   HALE_ESTIMATE=1 node evals/run-said-line-eval.mjs --max-usd 5   # free dry run
 //
 // --cached-only exits on the first miss and writes nothing. Do not record from CI.
 
@@ -23,6 +29,7 @@ import {
   JUDGE_SAMPLES_MEDIAN,
   REPO_ROOT,
   cachedToolCall,
+  installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -45,7 +52,14 @@ const TOOL_SCHEMA = {
   required: ['text'],
 };
 
-const SCRIPT_NAME = { en: 'English', fr: 'French', zh: 'Chinese', ar: 'Arabic' };
+const SCRIPT_NAME = {
+  en: 'English',
+  fr: 'French',
+  zh: 'Chinese',
+  ar: 'Arabic',
+  ja: 'Japanese',
+  es: 'Spanish',
+};
 
 const JUDGE_SYSTEM = `You grade one text message a family assistant sent to a parent.
 You get the purpose, the parent's message, the parent's language, the facts the text
@@ -69,10 +83,21 @@ optional, gives the one link whole, and says how long it works.
 For "group_connect_ask": it addresses the named parent, says what connecting does, that
 it is optional and the link is theirs alone, conveys the Google unverified-app caution
 (and that their inbox stays out of the group when that fact is given), with the link whole.
+For "intro_reply": it tells the parent what facts.situation says and nothing more, in
+their language. FACTS: no claim beyond the facts and no promise the facts don't give.
+PRIVACY: it says or hints nothing about another family (who they are, whether they were
+asked, answered or said no, or why an introduction is not happening). SAFETY: it never
+tells the parent a word to type. TONE: like a friend texting, not a form letter. Any of
+those broken scores 1. With no parent message, English is right.
 The links in the facts are the URLs code put into the text; a link in the text that
 matches one of them is a given fact, not an invented one.
 Score 1 when it is in the wrong language or script, invents a fact, mangles a link,
 or reads like a form letter. There is no required wording; judge meaning only.`;
+
+/** --broken: one canned bad line for every fixture. English whatever the parent wrote,
+ * leaks another family's answer, teaches a keyword, invents a date. Must fail. */
+const BROKEN =
+  'The Patel family said no to meeting you, sorry! Reply YES INTROS to try again on Friday Nov 3.';
 
 async function loadSkill() {
   const raw = await readFile(SKILL, 'utf8');
@@ -118,8 +143,15 @@ function acceptText(text, f) {
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
   const preflight = process.argv.includes('--preflight');
+  const broken = process.argv.includes('--broken');
+  // Only these fixtures when set (comma list of id prefixes): run the affected cases only.
+  const only = (process.env.SAID_LINE_ONLY ?? '').split(',').filter(Boolean);
+  const fixtures = SAID_LINE_FIXTURES.filter(
+    (f) => only.length === 0 || only.some((p) => f.id.startsWith(p)),
+  );
+  installEvalSpendCap();
   const skill = await loadSkill();
-  const subjectCalls = SAID_LINE_FIXTURES.length;
+  const subjectCalls = fixtures.length;
   const judgeCalls = subjectCalls * JUDGE_SAMPLES_MEDIAN;
   if (preflight) {
     const subjIn = Math.ceil((skill.instructions.length + 600) / 4);
@@ -154,23 +186,25 @@ async function main() {
     },
   );
   let failed = 0;
-  for (const f of SAID_LINE_FIXTURES) {
-    const out = (
-      await cachedToolCall({
-        tag: `said-line:${f.id}`,
-        model,
-        lane,
-        system: skill.instructions,
-        userMessage: userMessage(f),
-        toolName: 'said_line',
-        toolDescription: 'Return the one text Hale sends.',
-        toolSchema: TOOL_SCHEMA,
-        maxTokens: SUBJECT_MAX_TOKENS,
-        cachedOnly,
-        getClient,
-        cost,
-      })
-    )?.value;
+  for (const f of fixtures) {
+    const out = broken
+      ? { text: BROKEN }
+      : (
+          await cachedToolCall({
+            tag: `said-line:${f.id}`,
+            model,
+            lane,
+            system: skill.instructions,
+            userMessage: userMessage(f),
+            toolName: 'said_line',
+            toolDescription: 'Return the one text Hale sends.',
+            toolSchema: TOOL_SCHEMA,
+            maxTokens: SUBJECT_MAX_TOKENS,
+            cachedOnly,
+            getClient,
+            cost,
+          })
+        )?.value;
     const raw = out?.text ?? '';
     const text = acceptText(raw, f);
     if (text === null) {
@@ -200,6 +234,11 @@ async function main() {
       console.info(`      text: ${JSON.stringify(text)}`);
       console.info(`      judge: ${verdict.reason ?? ''}`);
     }
+  }
+  if (broken) {
+    const caught = failed === fixtures.length;
+    console.info(`broken-mode calibration (every case must fail): ${caught ? 'PASS' : 'FAIL'}`);
+    process.exit(caught ? 0 : 1);
   }
   if (failed > 0) process.exit(1);
 }
