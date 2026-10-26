@@ -631,6 +631,52 @@ describe('an empty search tells the composer where it looked', () => {
     moreRemaining: 0,
   };
 
+  it('keeps uncertain references beside supported picks without exposing research notes', () => {
+    const reference = {
+      name: 'Family workshop',
+      sourceName: 'Example Library',
+      sourceUrl: 'https://library.example/workshop',
+      ageFit: null,
+      when: null,
+      price: null,
+      status: 'unconfirmed' as const,
+      evidence: {
+        program: 'Family workshop',
+        age: null,
+        sessions: [],
+        schedule: null,
+        price: null,
+        history: null,
+        windowConfirmed: false,
+      },
+    };
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [PICK],
+        searched: {
+          ...searched,
+          notes: 'Rejected research says $999 and ages 12-18.',
+          references: [reference],
+          checkedSources: [reference.sourceUrl],
+        },
+      }),
+    );
+    expect(payload.picks.map((pick: ActivityPick) => pick.name)).toEqual([PICK.name]);
+    expect(payload.page_evidence).toBe(base.pageEvidence);
+    expect(payload).not.toHaveProperty('picks_empty');
+    expect(payload.searched).toEqual({
+      town: searched.town,
+      references: [reference],
+      checkedSources: [reference.sourceUrl],
+    });
+    expect(JSON.stringify(payload)).not.toContain('$999');
+    expect(payload.searched).not.toHaveProperty('notes');
+    expect(
+      followUpUserMessage({ ...base, picks: [PICK], searched: { ...searched, references: [] } }),
+    ).toBe(followUpUserMessage({ ...base, picks: [PICK] }));
+  });
+
   it('never returns rejected research facts to the writer through empty-search notes', () => {
     const payload = JSON.parse(
       followUpUserMessage({

@@ -1,6 +1,7 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
-import { type NamedActivityLink, activityLinkSuffix } from '~/lib/channel/coach/activity-links';
+import { attachLinks, linkRef } from '~/lib/channel/coach/activity-links';
+import type { NamedLink } from '~/lib/channel/coach/tools';
 import type { ActivityPromise } from './commitment';
 import type { ActivityFinder, ActivityPick } from './lane';
 import type { BoundActivityReader } from './reader';
@@ -62,7 +63,7 @@ const call = (tool: ReturnType<typeof findActivitiesTool>, input: unknown) =>
 
 describe('find_activities', () => {
   it('hands historical references and exact source links to Coach without recommending them', async () => {
-    const url = 'https://venue.example/old?program=kids#details';
+    const url = 'https://venue.example/old?program=Kids#Details';
     const reference = {
       name: 'Past workshop',
       sourceName: 'Example',
@@ -81,7 +82,7 @@ describe('find_activities', () => {
         windowConfirmed: false,
       },
     };
-    const links: NamedActivityLink[] = [];
+    const links: NamedLink[] = [];
     const tool = findActivitiesTool({
       reader: reader(),
       onPromise: () => {},
@@ -100,10 +101,34 @@ describe('find_activities', () => {
       },
     });
     const output = await call(tool, { subject: 'workshop', window: 'October 2026' });
-    expect(output).toMatchObject({ found: false, references: [reference], checkedSources: [url] });
+    const { sourceUrl: _sourceUrl, ...facts } = reference;
+    expect(output).toMatchObject({
+      found: false,
+      references: [{ ...facts, ref: linkRef(url) }],
+      checkedSources: [{ ref: linkRef(url) }],
+    });
+    expect(JSON.stringify(output)).not.toContain(url);
     expect(output).not.toHaveProperty('picks');
-    expect(links).toEqual([{ title: 'workshop', url, sourceReference: true }]);
-    expect(activityLinkSuffix('I could not confirm a current date.', links)).toBe(url);
+    const refs = links.map(({ url }) => ({ url, ref: linkRef(url) }));
+    expect(attachLinks(`I could not confirm a current date. [${linkRef(url)}]`, refs).urls).toEqual(
+      [url],
+    );
+    expect(attachLinks('I could not confirm a current date.', refs).urls).toEqual([]);
+  });
+
+  it('hands a supported pick to Coach by ref without leaking either URL field', async () => {
+    const url = 'https://venue.example/current?Program=Kids#Details';
+    const links: NamedLink[] = [];
+    const tool = findActivitiesTool({
+      reader: reader(),
+      onPromise: () => {},
+      onLinks: (value) => links.push(...value),
+      finder: { find: async () => ({ found: true, picks: [{ ...PICK, url, sourceUrl: url }] }) },
+    });
+    const output = await call(tool, { subject: 'gymnastics' });
+    expect(output).toMatchObject({ found: true, picks: [{ ref: linkRef(url) }] });
+    expect(JSON.stringify(output)).not.toContain(url);
+    expect(links).toContainEqual({ title: PICK.name, url });
   });
   it('keeps a non-GTA city, operator and requested month in the same query', async () => {
     const seen: unknown[] = [];

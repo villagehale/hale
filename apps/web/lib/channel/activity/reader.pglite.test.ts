@@ -2,6 +2,7 @@ import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import { toSmsReply } from '~/lib/channel/coach/reply';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { ActivityQuery } from './deidentify';
@@ -111,12 +112,12 @@ it('keeps the London request and exact filtered page through the tool-to-SMS pat
     town: 'London, Ontario, Canada',
   });
   expect(
-    toSmsReply('STEAM Storytime: lpl.ca/whats-on.', {
+    toSmsReply(`STEAM Storytime. [${linkRef(url)}]`, {
       children: [],
       now: new Date(),
-      activityLinks: links,
+      activityLinks: links.map(({ url }) => ({ url, ref: linkRef(url) })),
     }),
-  ).toBe(`STEAM Storytime: ${url}.`);
+  ).toBe(`STEAM Storytime. ${url}`);
 });
 
 it('reads a saved non-GTA location and then its active area without leaking a postal code', async () => {
