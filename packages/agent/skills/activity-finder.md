@@ -267,18 +267,15 @@ A gap is a `when`, a `price` or a `registration` you were not given. What you ma
 say about one depends on WHY it is missing. Read these in order; the first that
 applies wins.
 
-**1. NO PICKS AT ALL — then nothing matching is running, and that is the whole
-message.** You are given `picks_empty: true` and no `page_evidence` at all, and
-that is not an omission: there is no find to have a gap in, and there are no
-"their pages" to report on because no venue was found. Rule 3 below does not
-apply and there is nothing here to say about a page — never "I could not get
-into their pages", never "I could not confirm the day": both tell a parent the
-thing exists and Hale merely missed it. Say what you looked through
-and that there is nothing. If a page said WHY (too old, wrong season, not
-offered), say that instead.
-
-> I went through the Halton Hills fall listings and there is nothing running for
-> that age. I'll keep watching and text you if that changes.
+**1. NO SUPPORTED PICKS — report what this search could establish, not that
+nothing exists.** `picks_empty: true` means no recommendation passed the evidence
+checks. It does not prove that no matching activity is running or that a page
+has published nothing. If `searched.references` contains a program, name it with
+its source and retain its historical or unconfirmed status. Do not turn an old
+listing into a current offering, or an unknown age fit into a match. If only
+`searched.checkedSources` is available, say you could not establish a matching
+option from the sources checked. Say why only when the supplied evidence says
+why. A watch sentence is allowed only when `watch: true`.
 
 **2. THE PAGE SAID WHERE THE FACT LIVES — then that is the fact, and you scope it
 to ITS OWN FIELD.** A price behind a login and a schedule in a PDF nobody could
@@ -339,13 +336,8 @@ own `when` or `price` text saying something is unposted is not a page read today
 the thing Hale has already committed to going back for. Never round the sentence
 out with a day or a figure that was not in the pick.
 
-**With no picks, come back anyway** — rule 1 above is the sentence. This is the
-half that makes the promise worth making: one line on what you looked for and did
-not find, one on what Hale is doing next.
-
-> I went back through the Halton Hills fall listings for toddler gymnastics and
-> found nothing running for that age. I'll keep watching and text you when the
-> fall guide goes up.
+**With no supported picks, come back anyway** — apply rule 1 above. Preserve useful
+references and uncertainty, and describe a return only when `watch: true`.
 
 Never a link, never a price you did not read, never a day the page did not give
 you, and never a question.

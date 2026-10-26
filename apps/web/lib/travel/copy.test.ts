@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ActivityReference } from '~/lib/channel/activity/facts';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
@@ -32,6 +33,25 @@ const ZOO = pick({
   price: 'USD 20',
   sourceName: 'Central Park Zoo',
 });
+
+const REFERENCE: ActivityReference = {
+  name: 'Discovery Club',
+  sourceName: 'City Museum',
+  sourceUrl: 'https://example.org/discovery',
+  ageFit: 'ages 2-5',
+  when: '2020-09-12 10:00',
+  price: '$14',
+  status: 'unconfirmed',
+  evidence: {
+    program: 'Discovery Club',
+    age: null,
+    sessions: [],
+    schedule: null,
+    price: null,
+    history: null,
+    windowConfirmed: false,
+  },
+};
 
 /** The BODY, which is what all but one of these tests are about. The render's other half
  * — which picks actually made it in — has its own test below. */
@@ -144,6 +164,88 @@ describe('renderTravelBrief', () => {
   it('throws rather than shortening when the body cannot be trusted', async () => {
     // Nothing on: there is no honest one-line version of this text, so there is no text.
     await expect(brief({ picks: [] })).rejects.toThrow(/no_picks/);
+  });
+
+  it('names an unconfirmed reference with its source, not a current recommendation', () => {
+    const rendered = renderBrief({ picks: [], references: [REFERENCE] });
+    expect(rendered.body).toContain('Places to check for Mia:');
+    expect(rendered.body).toContain(
+      'Discovery Club (City Museum): dates and age fit not confirmed for your trip.',
+    );
+    expect(rendered.body).not.toContain('things on');
+    expect(rendered.body).toContain('These are source listings, not confirmed plans.');
+    expect(rendered.body).not.toContain('off their own pages');
+    for (const rejected of ['2020', '10:00', '$14', 'ages 2-5', 'https://']) {
+      expect(rendered.body).not.toContain(rejected);
+    }
+    expect(rendered.rendered).toEqual([]);
+    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+  });
+
+  it('labels a historical reference as an older listing', () => {
+    const rendered = renderBrief({
+      picks: [],
+      references: [{ ...REFERENCE, status: 'historical' }],
+    });
+    expect(rendered.body).toContain(
+      'Discovery Club (City Museum): older listing; not confirmed for your trip.',
+    );
+    expect(rendered.body).not.toContain('2020');
+    expect(rendered.rendered).toHaveLength(0);
+    expect(rendered.renderedReferences).toHaveLength(1);
+  });
+
+  it('prioritizes supported picks and shares their two-slot ceiling with references', () => {
+    const rendered = renderBrief({
+      picks: [pick()],
+      references: [REFERENCE, { ...REFERENCE, name: 'Another Club' }],
+    });
+    expect(rendered.rendered).toHaveLength(1);
+    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+    expect(rendered.body).not.toContain('Another Club');
+    expect(rendered.body.indexOf(pick().name)).toBeLessThan(rendered.body.indexOf(REFERENCE.name));
+    expect(renderBrief({ references: [REFERENCE] }).renderedReferences).toEqual([]);
+  });
+
+  it('refuses rather than leaking a teen named in a reference or its source', () => {
+    for (const reference of [
+      { ...REFERENCE, name: 'Ari Discovery Club' },
+      { ...REFERENCE, sourceName: "Ari's Museum" },
+    ]) {
+      expect(() => brief({ picks: [], references: [reference], teenNames: ['Ari'] })).toThrow(
+        /names_a_teen/,
+      );
+    }
+  });
+
+  it('keeps reference-only group copy neutral and drops over-budget references whole', () => {
+    const rendered = renderBrief({
+      picks: [],
+      references: [REFERENCE, { ...REFERENCE, name: 'Long name '.repeat(100) }],
+      forGroup: true,
+    });
+    expect(rendered.body).toContain(
+      'Trip: New York, the 12th to the 15th. Places to check for Mia:',
+    );
+    expect(rendered.body).not.toContain('Long name');
+    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+    expect(smsSegments(withOptOut(rendered.body, 'full'))).toBeLessThanOrEqual(
+      MAX_TRAVEL_BRIEF_SEGMENTS,
+    );
+    expect(() =>
+      brief({ picks: [], references: [{ ...REFERENCE, name: 'Club — Museum' }] }),
+    ).toThrow(/not_gsm7/);
+  });
+
+  it('keeps the opening neutral when a long supported pick leaves only a reference', () => {
+    const rendered = renderBrief({
+      picks: [pick({ name: 'Long name '.repeat(100) })],
+      references: [REFERENCE],
+    });
+    expect(rendered.rendered).toEqual([]);
+    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+    expect(rendered.body).not.toContain('things on');
+    expect(rendered.body).toContain('Places to check');
   });
 });
 

@@ -726,6 +726,7 @@ async function runActivityOnce(
       now,
       query.timeZone,
       query.dateRange,
+      query.stages?.length ? query.stages : query.stage ? [query.stage] : undefined,
     );
     // VIL-499 stamps the page read this turn. Binding still decides which facts are picks.
     const cited = bound.picks.flatMap((raw) => {

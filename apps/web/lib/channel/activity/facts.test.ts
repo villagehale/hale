@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   type RawActivityFact,
@@ -41,6 +42,118 @@ const bind = (items: RawActivityFact[] = [raw], window: string | null = 'October
   bindActivityFacts(items, pages, window, now);
 
 describe('activity facts stay attached to their source', () => {
+  it('recovers the recorded Georgetown schedules without recommending the infant-only group', () => {
+    const recorded = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../../worker/evals/cache/1db45bf8408a049f988e34d017eab151e71bf2dd7358ac2509bd9f7ae8323bb1.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    ).value.picks as RawActivityFact[];
+    const sourcePages = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../../worker/evals/cache/5a611b43417951f5effe5c3a82fc0829ac768584abd9a472ef027d1c8b4ad45e.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    ).pages as { url: string; text: string }[];
+    const result = bindActivityFacts(recorded, sourcePages, null, now, undefined, undefined, [
+      'toddler',
+    ]);
+    expect(recorded).toHaveLength(3);
+    expect(result.picks.map((pick) => pick.name)).toEqual([recorded[0]?.name, recorded[1]?.name]);
+    expect(result.picks[0]?.when).toBe(recorded[0]?.when_evidence);
+    expect(result.picks[1]?.when).toBe(recorded[1]?.when_evidence);
+    expect(result.picks[0]?.age_fit).toBe(recorded[0]?.age_evidence);
+    expect(result.references).toEqual([
+      expect.objectContaining({
+        name: recorded[2]?.name,
+        ageFit: recorded[2]?.age_evidence,
+        status: 'unconfirmed',
+      }),
+    ]);
+  });
+  it('uses the published age wording and retains incompatible or unknown age as a reference', () => {
+    for (const age of ['ages 6-8 years', 'babies from birth until they begin to crawl']) {
+      const item = { ...raw, age_fit: 'ages 2-5', age_evidence: age };
+      const result = bindActivityFacts(
+        [item],
+        [{ url, text: `${text} ${age}` }],
+        'October 2026',
+        now,
+        undefined,
+        undefined,
+        ['toddler'],
+      );
+      expect(result.picks).toEqual([]);
+      expect(result.references[0]).toMatchObject({ ageFit: age, status: 'unconfirmed' });
+    }
+  });
+  it('accepts an explicitly stated mixed-unit band for a matching household stage', () => {
+    const age = '19 months to 3 years';
+    const item = { ...raw, age_evidence: age };
+    const result = bindActivityFacts(
+      [item],
+      [{ url, text: `${text} ${age}` }],
+      'October 2026',
+      now,
+      undefined,
+      undefined,
+      ['preschool', 'toddler'],
+    );
+    expect(result.picks[0]?.age_fit).toBe(age);
+    expect(result.references).toEqual([]);
+  });
+  it.each(['All ages welcome', 'Ages 2+', '2 and up', '18 months and older'])(
+    'retains explicit universal or minimum-age eligibility: %s',
+    (age) => {
+      const item = { ...raw, age_evidence: age };
+      const result = bindActivityFacts(
+        [item],
+        [{ url, text: `${text} ${age}` }],
+        'October 2026',
+        now,
+        undefined,
+        undefined,
+        ['toddler'],
+      );
+      expect(result.picks[0]?.age_fit).toBe(age);
+    },
+  );
+  it('does not move a quoted past-year session into the model supplied current year', () => {
+    const evidence = 'October 16, 2020, 10:30-11:30.';
+    const item = { ...raw, sessions: [{ ...raw.sessions[0]!, evidence }] };
+    const result = bindActivityFacts(
+      [item],
+      [{ url, text: `${text} ${evidence}` }],
+      'October 2026',
+      now,
+    );
+    expect(result.picks).toEqual([]);
+    expect(result.references[0]).toMatchObject({ when: null, status: 'unconfirmed' });
+  });
+  it('does not offer regular hours for a requested window that has already ended', () => {
+    const item = {
+      ...raw,
+      sessions: [],
+      when: '10:30-11:30',
+      schedule_kind: 'hours' as const,
+      when_evidence: 'Regular hours: 10:30-11:30.',
+    };
+    const result = bindActivityFacts([item], pages, 'October 1 to 10, 2026', now);
+    expect(result.picks).toEqual([]);
+    expect(result.references[0]).toMatchObject({ when: item.when_evidence, status: 'unconfirmed' });
+    const trip = bindActivityFacts([item], pages, 'October 1 to 10', now, undefined, {
+      start: '2026-10-01',
+      end: '2026-10-10',
+    });
+    expect(trip.picks).toEqual([]);
+    expect(trip.references[0]?.status).toBe('unconfirmed');
+  });
   it('uses existing trip dates without guessing a year from its scrubbed window', () => {
     const range = { start: '2026-10-16', end: '2026-10-17' };
     expect(activityDateRange('October 16 to 17', now, undefined, range)).toEqual(range);
@@ -103,7 +216,13 @@ describe('activity facts stay attached to their source', () => {
     }
   });
   it('distinguishes archived evidence from a current program with an unknown schedule', () => {
-    const archived = bind([{ ...raw, sessions: [{ ...raw.sessions[0]!, date: '2020-10-16' }] }]);
+    const evidence = 'October 16, 2020, 10:30-11:30.';
+    const archived = bindActivityFacts(
+      [{ ...raw, sessions: [{ ...raw.sessions[0]!, date: '2020-10-16', evidence }] }],
+      [{ url, text: `${text} ${evidence}` }],
+      'October 2026',
+      now,
+    );
     expect(archived.references[0]?.status).toBe('historical');
     const unknown = bind([{ ...raw, sessions: [] }]);
     expect(unknown.references[0]?.status).toBe('unconfirmed');
@@ -116,15 +235,34 @@ describe('activity facts stay attached to their source', () => {
       schedule_kind: 'hours' as const,
       when_evidence: 'Regular hours: 10:30-11:30.',
     };
-    expect(bind([regular], null).picks[0]?.when).toBe('10:30-11:30');
+    expect(bind([regular], null).picks[0]?.when).toBe(regular.when_evidence);
+  });
+  it('never replaces a published recurring schedule with a model generated weekday', () => {
+    const evidence = 'Mondays 10:30-11:30.';
+    const regular = {
+      ...raw,
+      sessions: [],
+      when: 'Fridays 10:30-11:30',
+      schedule_kind: 'recurring' as const,
+      when_evidence: evidence,
+    };
+    const result = bindActivityFacts([regular], [{ url, text: `${text} ${evidence}` }], null, now);
+    expect(result.picks[0]?.when).toBe(evidence);
+    expect(result.picks[0]?.when).not.toContain('Friday');
   });
   it('does not discard historical evidence or its existing attendance metadata', () => {
-    const archived = bind([{ ...raw, sessions: [{ ...raw.sessions[0]!, date: '2020-10-16' }] }]);
+    const evidence = 'October 16, 2020, 10:30-11:30.';
+    const archived = bindActivityFacts(
+      [{ ...raw, sessions: [{ ...raw.sessions[0]!, date: '2020-10-16', evidence }] }],
+      [{ url, text: `${text} ${evidence}` }],
+      'October 2026',
+      now,
+    );
     expect(archived.references[0]).toMatchObject({
       status: 'historical',
       access: 'register_at_venue',
       indoorOutdoor: 'indoor',
-      evidence: { sessions: [raw.sessions[0]!.evidence] },
+      evidence: { sessions: [evidence] },
     });
   });
   it('does not call the previous UTC day historical without source-timezone evidence', () => {

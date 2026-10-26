@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
+import type { ActivityReference } from '~/lib/channel/activity/facts';
 import type { ActivityFindResult, ActivityPick } from '~/lib/channel/activity/lane';
 import { dedupeActive } from '~/lib/channel/ledger';
 import {
@@ -141,6 +142,25 @@ const PICKS: ActivityPick[] = [
   },
 ];
 
+const REFERENCE: ActivityReference = {
+  name: 'Discovery Club',
+  sourceName: 'City Museum',
+  sourceUrl: 'https://example.org/discovery',
+  ageFit: 'ages 2-5',
+  when: '2020-09-12 10:00',
+  price: '$14',
+  status: 'unconfirmed',
+  evidence: {
+    program: 'Discovery Club',
+    age: null,
+    sessions: [],
+    schedule: null,
+    price: null,
+    history: null,
+    windowConfirmed: false,
+  },
+};
+
 interface Harness {
   deps: TravelBriefDeps;
   sent: Array<{ to: string; body: string }>;
@@ -247,6 +267,73 @@ describe('who is due, and on whose clock', () => {
 });
 
 describe('what the parent actually gets', () => {
+  it.each(['unconfirmed', 'historical'] as const)(
+    'delivers a %s reference once, without counting it as a supported pick',
+    async (status) => {
+      const family = await seedFamily();
+      const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+      const h = harness({
+        find: {
+          found: false,
+          reason: 'no_picks',
+          searched: {
+            town: 'New York',
+            notes: '$999 from rejected notes',
+            references: [{ ...REFERENCE, status }],
+          },
+        },
+      });
+      expect((await run(h)).sent).toBe(1);
+      expect(h.sent).toHaveLength(1);
+      expect(h.sent[0]?.body).toContain('Discovery Club (City Museum)');
+      expect(h.sent[0]?.body).toContain('not confirmed for your trip');
+      for (const rejected of ['2020', '$14', '$999', '10:00', 'ages 2-5', 'https://']) {
+        expect(h.sent[0]?.body).not.toContain(rejected);
+      }
+      expect((await tripRow(trip))?.closedReason).toBe('sent');
+      expect((await tripRow(trip))?.nextAttemptAt).toBeNull();
+      const [audit] = await database
+        .select({ after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'travel_brief_sent'));
+      expect(audit?.after).toEqual({ picks: 0, references: 1, merged: 0 });
+      // A reference-only brief uses the same one-text-per-trip contract, not a recheck promise.
+      expect((await run(h)).sent).toBe(0);
+      expect(h.sent).toHaveLength(1);
+      expect(h.queries).toHaveLength(1);
+    },
+  );
+
+  it('passes mixed results through while keeping reference receipts separate', async () => {
+    const family = await seedFamily();
+    await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const h = harness({ find: { found: true, picks: PICKS.slice(0, 1), references: [REFERENCE] } });
+    expect((await run(h)).sent).toBe(1);
+    expect(h.sent[0]?.body).toContain('American Museum of Natural History');
+    expect(h.sent[0]?.body).toContain(REFERENCE.name);
+    expect(h.sent[0]?.body).toContain('not confirmed for your trip');
+    const [audit] = await database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'travel_brief_sent'));
+    expect(audit?.after).toEqual({ picks: 1, references: 1, merged: 0 });
+  });
+
+  it('does not turn a location-verification failure into a reference brief', async () => {
+    const family = await seedFamily();
+    const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const h = harness({
+      find: {
+        found: false,
+        reason: 'location_unverified',
+        searched: { town: 'New York', notes: '', references: [REFERENCE] },
+      },
+    });
+    expect((await run(h)).searchFailed).toBe(1);
+    expect(h.sent).toEqual([]);
+    expect((await tripRow(trip))?.closedAt).toBeNull();
+  });
+
   it('names the city and both picks, and writes one audit row of counts', async () => {
     const family = await seedFamily();
     const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });

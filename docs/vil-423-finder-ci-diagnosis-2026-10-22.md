@@ -1,5 +1,55 @@
 # VIL-423 Finder CI diagnosis — 2026-10-22
 
+## 2026-10-26 — current free-code checkpoint (not model acceptance)
+
+The sections below this checkpoint are historical. #876 is already merged/deployed; #875 remains the next draft, before #877. No paid call, recording rewrite, schema/prod change or merge was made in this update.
+
+### Concrete before/after examples
+
+| Input and provenance | Before | Current deterministic result |
+| --- | --- | --- |
+| **Real committed Georgetown extraction + page snapshot**, not a fresh fetch: Kids & Me's Tuesday Georgetown / Thursday Acton quotes contain literal `\\u2019` / `\\u2013`; the page contains typographic characters. | Both genuine schedules failed the byte-level quote check, leaving an infant-only group as the supported result. | Exact quote matching normalizes encoding/typography. Both Kids & Me schedules survive; the birth-to-crawling group is an unconfirmed reference, not a toddler recommendation. |
+| **Synthetic contradiction:** model says Friday, source schedule says Monday. | A valid `when_evidence` could sit beside independently generated `when`. | Display uses the verified schedule quote itself. Age and price follow the same source-wording rule. This does not prove same-program ownership. |
+| **Synthetic contradiction:** session date says 2026 but its own quote says 2020. | Valid date syntax plus quote presence could admit the wrong year. | Explicit conflicting quoted years are rejected. Missing years and same-page cross-program attribution are not independently solved. |
+| **Existing recorded travel inputs through real Finder/renderer**, clock fixed to the fixture's T−7 date. | The test silently used today's real date in Finder; reference handling was absent, and its audit counted named references as picks. | CMOM remains a supported recommendation with its schedule. Zoo tariff wording does not establish program age: zoo is separately caveated, its price omitted, and the receipt is `picks: 1, references: 1`. |
+| **Synthetic reference-only travel integration.** | `no_picks` discarded source-bound references before rendering. | Names/source attribution and explicit historical/unconfirmed caveats reach the text, not unverified dates/ages/prices. Separate reference receipts; existing consent/privacy/dedupe/GSM/whole-item limits remain. A successful reference-only text closes the existing one-text-per-trip flow. |
+| **Follow-up instructions.** | An old rule said no picks meant nothing matching was running. | No supported pick means this search could not establish a recommendation; retain references/uncertainty. A return promise still requires a real watch. New model wording is untested. |
+
+The shared age parser is reused with canonical stage boundaries, including explicit `up to`, `all ages` and minimum ages. Narrower numeric restrictions win over universal wording. Unsupported qualitative wording stays a reference. Stage overlap means possible band fit, not exact-child eligibility. No per-city/site keyword table, API or dependency was added.
+
+### Free checks and exact recording boundary
+
+- Red-before-green regressions cover the actual Georgetown recordings, age restrictions, source-schedule mismatch, explicit year conflict, reference transport and catalog guard.
+- Facts/age/lane: **95/95**. Travel copy/sweep/journey: **54/54**. These are mechanics/frozen-input tests, not new model acceptance. Web typecheck, syntax/diff checks and **71/71** skill locks pass; Biome has warnings, no errors.
+- Finder's actual deterministic travel renderer now runs in the eval, with separate receipts. Requested date range/timezone/stages reach the same binder as production. Positive `expectPicks` gates remain; references cannot satisfy them. The legacy New York fixture explicitly asks for September 2026 while the corpus clock is October 15: it is marked past, not silently rolled forward. This stale positive fixture needs a declared clock/date correction before a paid freeze.
+- Current cached-only Finder stops at the first changed ground request: `activity-ground:toddler-fall-programs-halton-hills`, key `218db7f6160b108ef82cd734e9caf16b725d99d149f6a86629469b9c13caa932`. No new 3/8 or 8/8 score is claimed. Broken-mode calibration passes with **0 live calls / $0**.
+- Final frozen-runtime full Web: **10,506 pass / 9 fail / 12 skip**. All nine failures are the exact writer recording misses listed below (three ordinary activity journey cases, six deep-answer cases); original send/fulfillment/dedupe assertions remain. This is **not green**. Local JSON report: `/tmp/vil423-finder-web-final-20261026.json`. The initial run exposed the scripted Coach's unsupported `picks[0]` assumption; the fixture now reads the unconfirmed reference and invokes the real promise tool. It does not promote qualitative ages into recommendations or replace model responses.
+
+Observed exact writer misses after the prompt change (eight unique keys, nine journey cases; redelivery repeats one):
+
+| Journey | Missing key |
+| --- | --- |
+| Activity answered: ordinary follow-up | `8ca90aeccc6af168a3157a2d558f0bc12f26c9f5e86546926389e13e646fb3b8` |
+| Activity answered: empty result | `ccd553b2b707e2816f4ff26788c1a7f5299ef5fee4dd4264b5579ae58d6a4c52` |
+| Activity answered: deep follow-up | `02363e35f5aa5c67f2ece580ccbc6f337a7fc593e3fa947be09ae26d7f1c2761` |
+| Deep answer: complete Tiny Gym / redelivery | `fde3ff8d34ac262cdc10b97c85e80151c13e99adf2442f37c1122ff83aeb27db` |
+| Deep answer: dropped unquotable fact | `7c9ab3e325a16f19b0adda1700f0f4567ea70f172c345c23ca401dce91f07f15` |
+| Deep answer: swim grid | `f229a6e63b165a8eff9d5180f21bb9328c517605c6feb9a3b723afbc45ef98fb` |
+| Deep answer: uncertainty | `362ba73b034d04cd3c76a8cba54afeb277150df111a8c95fb608b127d6d65b6d` |
+| Deep answer: genuinely silent page | `84a8b4994b94d9258d9426063a324fff8b3e5f004af624d751b6cd02ec82c98e` |
+
+### Still substantive, not cured by buying recordings
+
+Same-page quote presence still does **not** establish which program owns a fact, that a publisher is the first-party operator, or that an undated recurring schedule is current. Ottawa's reseller ownership and the broader stale-page/source-selection problem are not declared fixed. A stronger page/program evidence contract needs to be agreed before declaring the final paid freeze; no new site allowlist or guessed metadata is used to conceal that gap.
+
+The original eight-case quality result remains the historical **3 pass / 5 fail**, not a new result. Georgetown has direct frozen-input repair evidence; Cartwheels' unsafe raw-notes path and contradictory empty wording are closed at the input/instruction boundary; travel references now reach the actual renderer. Their new model outputs, source identity, real non-GTA/US ZIP recommendation and first-reply timing remain unaccepted.
+
+Use the **same** linked shared priced checklist, not another allowance. Its old freeze and case accounting must be amended for these exact requests and remaining source/fixture decisions before approval. The historical ledger is still $14.233469475 spent / 576 calls / $0 reserved; remaining balance is not permission. No change to #877 is included here.
+
+Checkpoint hashes (SHA-256): skill `57c1fbbb3a97bf1117e5d210703c81d33e93d0e80a230705551b847e70c417c7`; facts `ea63d90999e4ab7a167b16ce43a97e16be53fd08d23c8acdaf7bbeb79985e3c0`; Finder eval `0dc3f5f314bf194ed2ad58ecbbd8c929593608d5d640435d7ebf2957168da23f`; fixtures `3c85dd1bcbdaed7c1eeefb5c1f7ae942d650d6c71c4c274b88c6e1fe2e57a60a`. These identify code, not approved final recording inputs.
+
+## Historical 2026-10-22 evidence
+
 Source head: `eed4d5713f8ce6d38b919465eec48aa82097e058`. This update documents failures; it does not claim they are fixed.
 
 ## Actual checks

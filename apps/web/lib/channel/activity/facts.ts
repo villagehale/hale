@@ -1,4 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { FAMILY_STAGES, type FamilyStage, STAGE_BOUNDARIES_MONTHS } from '@hale/types';
+import { parseStatedAgeBand } from '../../social/age-band';
 
 export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
   type: 'object',
@@ -109,7 +111,17 @@ export interface ActivityReference {
   indoorOutdoor?: RawActivityFact['indoor_outdoor'];
 }
 
-const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
+const normalize = (text: string) =>
+  text
+    .replace(/\\u([0-9a-f]{4})/gi, (_, code: string) =>
+      String.fromCharCode(Number.parseInt(code, 16)),
+    )
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[‐-―−]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 const quoted = (page: string, quote?: string | null): quote is string =>
   typeof quote === 'string' &&
   normalize(quote).length > 0 &&
@@ -226,6 +238,7 @@ export function bindActivityFacts(
   now: Date,
   timeZone?: string | null,
   knownRange?: { start: string; end: string },
+  requestedStages?: readonly FamilyStage[],
 ) {
   const picks: (RawActivityFact & {
     age_fit: string;
@@ -235,6 +248,13 @@ export function bindActivityFacts(
   })[] = [];
   const references: ActivityReference[] = [];
   const range = activityDateRange(window, now, timeZone, knownRange);
+  const stageBands = requestedStages?.map((stage) => {
+    const index = FAMILY_STAGES.indexOf(stage);
+    return {
+      min: STAGE_BOUNDARIES_MONTHS[index - 1] ?? 0,
+      max: (STAGE_BOUNDARIES_MONTHS[index] ?? Number.POSITIVE_INFINITY) - 1,
+    };
+  });
   const today = activityCalendarDate(now, timeZone);
   // Without a source zone, the previous UTC date can still be today locally.
   const conclusivelyPast = timeZone
@@ -249,17 +269,30 @@ export function bindActivityFacts(
       !quoted(page.text, item.name_evidence)
     )
       continue;
-    const age = item.age_fit?.trim() && quoted(page.text, item.age_evidence) ? item.age_fit : null;
+    const age =
+      item.age_fit?.trim() && quoted(page.text, item.age_evidence) ? item.age_evidence : null;
+    const ageBand = age ? parseStatedAgeBand(normalize(age)) : null;
+    // Stage overlap establishes only a possible fit, never an exact child's eligibility.
+    const stageCompatible =
+      !stageBands?.length ||
+      (ageBand &&
+        stageBands.some(
+          (stage) => ageBand.ageMinMonths <= stage.max && ageBand.ageMaxMonths >= stage.min,
+        ));
     // Display the source's price wording, never a separately generated amount/conversion.
     const price =
       item.price?.trim() && quoted(page.text, item.price_evidence) ? item.price_evidence : null;
-    const observed = (item.sessions ?? []).filter(
-      (session) =>
+    const observed = (item.sessions ?? []).filter((session) => {
+      const statedYears: readonly string[] =
+        normalize(session.evidence).match(/\b(?:19|20)\d{2}\b/g) ?? [];
+      return (
         quoted(page.text, session.evidence) &&
         validDate(session.date) &&
+        (statedYears.length === 0 || statedYears.includes(session.date.slice(0, 4))) &&
         validTime(session.start_time) &&
-        validTime(session.end_time),
-    );
+        validTime(session.end_time)
+      );
+    });
     const sessions = observed.filter(
       (session) =>
         range && session.date >= today && session.date >= range.start && session.date <= range.end,
@@ -274,7 +307,7 @@ export function bindActivityFacts(
       quoted(page.text, item.when_evidence) &&
       item.when?.trim() &&
       !historical
-        ? item.when
+        ? item.when_evidence
         : null;
     const displayedSessions = range
       ? sessions
@@ -298,8 +331,10 @@ export function bindActivityFacts(
     };
     if (
       age &&
+      stageCompatible &&
       when &&
       !historical &&
+      (!range || range.end >= today) &&
       (sessions.length > 0 || (regular && item.schedule_kind !== 'term'))
     ) {
       picks.push({ ...item, age_fit: age, when, price, event_date: sessions[0]?.date, evidence });
