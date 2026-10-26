@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   type IdentityAskVoice,
   type IdentityGap,
@@ -8,6 +8,7 @@ import {
 } from '~/lib/channel/identity/ask-voice';
 import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -20,6 +21,7 @@ import {
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import {
   familyHasSyntheticProbeChannel,
   resolveSendablePhone,
@@ -27,7 +29,6 @@ import {
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
 import { discoverableUserIds } from './consent';
 import { stageWord } from './copy';
-import { writeIntroReply } from './reply';
 import {
   INTRO_GROUP_TEMPLATE_KEY,
   type OpenIntroGroup,
@@ -46,13 +47,13 @@ import {
   normalizeFsa,
   pairKey,
 } from './matcher';
+import { writeIntroReply } from './reply';
 import {
   type IntroAskRequest,
   type IntroVoice,
   introVoiceClient,
   productionIntroVoice,
 } from './voice';
-import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
 
 /**
  * Village intros v1 — the sweep. Three phases, run in order, every tick.
@@ -169,6 +170,9 @@ export interface IntroSweepFamily {
   parentEmail: string | null;
   areaCoarse: string | null;
   timeZone: string;
+  /** The family's stored language tag (`families.primary_language`), or null when the
+   * stored value is not a tag. The soft close is written in it (VIL-450). */
+  language: ReplyLanguage | null;
 }
 
 /** A live proposal, with the anchor already resolved to its title and instant so the
@@ -307,6 +311,10 @@ export interface IntroSweepDeps {
    * fixed sentence under it. A null write sends nothing (said-line logs it); the pair
    * still closes, exactly as it does when the gate holds the send. */
   saidLine: SaidLineWriter;
+  /** The parent's latest inbound texts, oldest first, for the soft close's LANGUAGE only
+   * (VIL-450): the model infers the language from them, so a family whose stored tag is
+   * missing or stale is not answered in English by default. REQUIRED (rule #11). */
+  recentParentWords(database: Database, familyId: string, parentUserId: string): Promise<string[]>;
   /** Opens the three-way iMessage group whose first message is the introduction. Its
    * absence is the named `not_configured`, never a missing dependency. */
   openIntroGroup: OpenIntroGroup;
@@ -1151,7 +1159,17 @@ async function softClose(
       parentUserId: family.parentUserId,
       // The SAME facts whatever killed the pair (declined, silent, expired): the reason is
       // never handed to the writer, so no wording can carry it.
-      body: () => writeIntroReply(deps.saidLine, 'soft_close', null),
+      // The family's OWN language (VIL-450): its stored tag plus its latest texts, so the
+      // model writes in the language they text in. Never an English default.
+      body: async () =>
+        writeIntroReply(deps.saidLine, 'soft_close', null, {
+          language: family.language,
+          recentParentWords: await deps.recentParentWords(
+            database,
+            family.familyId,
+            family.parentUserId,
+          ),
+        }),
       templateKey: 'village_intro:soft_close',
       dedupeKey: `village_intro:close:${proposal.id}:${side.key}`,
       now,
@@ -1220,8 +1238,9 @@ export async function runVillageIntroSweep(
  * Consent, enrolment, volume and the clock are the GATE's business — selecting on them
  * here would put the same policy in two places and let them disagree. */
 async function selectIntroFamilies(database: Database): Promise<IntroSweepFamily[]> {
-  return database
+  const rows = await database
     .select({
+      primaryLanguage: schema.families.primaryLanguage,
       familyId: schema.families.id,
       areaCoarse: schema.families.areaCoarse,
       parentUserId: schema.users.id,
@@ -1244,6 +1263,39 @@ async function selectIntroFamilies(database: Database): Promise<IntroSweepFamily
         isNull(schema.families.scheduledDeletionAt),
       ),
     );
+  return rows.map(({ primaryLanguage, ...row }) => ({
+    ...row,
+    language: acceptReplyLanguage(primaryLanguage),
+  }));
+}
+
+/** How many of the parent's latest texts the soft close reads for its language. */
+const RECENT_PARENT_WORDS = 3;
+
+/** The parent's latest inbound bodies in this family, oldest first (VIL-450). Scoped to
+ * the one family and parent: no other household's words can reach the writer. */
+async function readRecentParentWords(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<string[]> {
+  const rows = await database
+    .select({ body: schema.channelMessages.body })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, familyId),
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        eq(schema.channelMessages.direction, 'in'),
+        isNotNull(schema.channelMessages.body),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(RECENT_PARENT_WORDS);
+  return rows
+    .map((row) => row.body?.trim() ?? '')
+    .filter((body) => body.length > 0)
+    .reverse();
 }
 
 async function readIntroChildren(database: Database, familyId: string): Promise<IntroSweepChild[]> {
@@ -1498,6 +1550,7 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
     introVoice: productionIntroVoice(),
     introGroupVoice: productionIntroGroupVoice(),
     saidLine: createSaidLineWriter(introVoiceClient),
+    recentParentWords: readRecentParentWords,
     openIntroGroup: createLinqIntroGroupOpener(),
   };
 }

@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
 import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import {
   type ConsentReading,
@@ -439,6 +440,10 @@ export async function writeIntroReply(
   writer: SaidLineWriter | undefined,
   situation: IntroReplySituation,
   parentWords: string | null,
+  /** The recipient family's OWN language, for a line that answers no text (the soft
+   * close): its stored tag when there is one, and its latest texts so the model can tell
+   * the language itself. Neither present: no hint at all, never an English default. */
+  family?: { language: ReplyLanguage | null; recentParentWords: readonly string[] },
 ): Promise<string | null> {
   if (!writer) {
     console.error({ situation }, 'intro reply: no line writer - nothing sent');
@@ -446,8 +451,11 @@ export async function writeIntroReply(
   }
   return writer.write({
     purpose: 'intro_reply',
-    language: null,
+    language: family?.language ?? null,
     parentWords,
+    ...(family && family.recentParentWords.length > 0
+      ? { recentParentWords: family.recentParentWords }
+      : {}),
     facts: { ...INTRO_REPLY_FACTS[situation] },
   });
 }

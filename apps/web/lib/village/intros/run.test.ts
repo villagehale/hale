@@ -72,6 +72,7 @@ function family(overrides: Partial<IntroSweepFamily> & { familyId: string }): In
     parentEmail: `parent-${overrides.familyId}@example.com`,
     areaCoarse: 'M4K 1N2',
     timeZone: 'America/Toronto',
+    language: null,
     ...overrides,
   };
 }
@@ -110,6 +111,8 @@ function harness(
   overrides: {
     /** The said-line writer comes back null (model down or unusable). */
     saidLineDown?: boolean;
+    /** Each family's latest inbound texts, by family id (the soft close's language read). */
+    recentWords?: Record<string, string[]>;
     families?: IntroSweepFamily[];
     discoverable?: Set<string>;
     alreadyAsked?: Set<string>;
@@ -222,6 +225,7 @@ function harness(
         return overrides.saidLineDown ? null : MODEL_SOFT_CLOSE;
       },
     },
+    recentParentWords: async (_db, familyId) => overrides.recentWords?.[familyId] ?? [],
     buildGate: () => gate,
     dedupeActive: async () => false,
     resolveSendablePhone: async (_db, userId) => `phone-${userId}`,
@@ -826,6 +830,79 @@ describe('phase 3 - resolving a pair', () => {
     expect(inputs[0]).toEqual(
       expect.objectContaining({ purpose: 'intro_reply', parentWords: null }),
     );
+  });
+
+  it("VIL-450: the soft close is written in each family's own language, same facts declined or expired", async () => {
+    const zhFamilies = [
+      family({ familyId: A, language: 'zh' }),
+      family({ familyId: B, language: 'zh' }),
+    ];
+    const recentWords = { [A]: ['周六的游泳课还有位置吗？'], [B]: ['谢谢！'] };
+    const declined = harness({
+      families: zhFamilies,
+      recentWords,
+      ...optedIn,
+      proposals: [
+        proposal({
+          status: 'declined',
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          familyBReply: 'no',
+        }),
+      ],
+    });
+    await runVillageIntroSweep(DB, declined.deps, NOW);
+    const expired = harness({
+      families: zhFamilies,
+      recentWords,
+      ...optedIn,
+      proposals: [
+        proposal({
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          expiresAt: new Date('2026-08-01T00:00:00Z'),
+        }),
+      ],
+    });
+    await runVillageIntroSweep(DB, expired.deps, NOW);
+
+    const [declinedA] = declined.saidLineCalls;
+    const [expiredA, expiredB] = expired.saidLineCalls;
+    expect(declinedA).toEqual(
+      expect.objectContaining({
+        purpose: 'intro_reply',
+        language: 'zh',
+        parentWords: null,
+        recentParentWords: ['周六的游泳课还有位置吗？'],
+      }),
+    );
+    // Same family, declined vs expired: byte-identical input, so no reason can leak.
+    expect(expiredA).toEqual(declinedA);
+    // Each side gets ITS OWN words, never the other family's.
+    expect(expiredB?.recentParentWords).toEqual(['谢谢！']);
+    expect(expiredB?.facts).toEqual(declinedA?.facts);
+  });
+
+  it("VIL-450: no stored language does not force English; the model reads the family's texts", async () => {
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      recentWords: { [A]: ['¿Hay clases de natación el sábado?'] },
+      ...optedIn,
+      proposals: [
+        proposal({
+          status: 'declined',
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          familyBReply: 'no',
+        }),
+      ],
+    });
+    await runVillageIntroSweep(DB, h.deps, NOW);
+    expect(h.saidLineCalls).toHaveLength(1);
+    const [input] = h.saidLineCalls;
+    expect(input?.language).toBeNull();
+    expect(input?.recentParentWords).toEqual(['¿Hay clases de natación el sábado?']);
+    expect(JSON.stringify(input)).not.toMatch(/"en"/);
   });
 
   it('VIL-450: sends nothing (no fixed fallback) when the model cannot write the soft close', async () => {

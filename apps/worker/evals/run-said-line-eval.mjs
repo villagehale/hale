@@ -88,7 +88,9 @@ their language. FACTS: no claim beyond the facts and no promise the facts don't 
 PRIVACY: it says or hints nothing about another family (who they are, whether they were
 asked, answered or said no, or why an introduction is not happening). SAFETY: it never
 tells the parent a word to type. TONE: like a friend texting, not a form letter. Any of
-those broken scores 1. With no parent message, English is right.
+those broken scores 1. With no parent message, the parent's language is parentLanguage
+(their recent texts, parentRecentTexts, show it when given); English to a family that
+texts in another language scores 1.
 The links in the facts are the URLs code put into the text; a link in the text that
 matches one of them is a given fact, not an invented one.
 Score 1 when it is in the wrong language or script, invents a fact, mangles a link,
@@ -116,8 +118,11 @@ function laneModel(task, ids) {
 function userMessage(f) {
   return JSON.stringify({
     purpose: f.purpose,
-    languageHint: f.language === 'fr' ? 'fr' : null,
+    // A fixture that sets languageHint states the stored tag exactly (the soft close);
+    // the older cases keep their hint, so their cache keys do not move.
+    languageHint: 'languageHint' in f ? f.languageHint : f.language === 'fr' ? 'fr' : null,
     parentWords: f.parentWords ?? null,
+    ...(f.recentParentWords?.length ? { recentParentWords: f.recentParentWords } : {}),
     facts: f.facts,
     mustInclude: f.mustInclude ?? [],
     linkSlots: Object.keys(f.links ?? {}).map((name) => `[[${name}]]`),
@@ -216,6 +221,7 @@ async function main() {
     const verdict = await judge(f.id, {
       purpose: f.purpose,
       parentMessage: f.parentWords,
+      ...(f.recentParentWords?.length ? { parentRecentTexts: f.recentParentWords } : {}),
       parentLanguage: SCRIPT_NAME[f.script] ?? f.script,
       // The facts as the parent's text carries them: code fills each link slot with its
       // URL, so the judge reads the URLs, not the placeholders the writer was given.

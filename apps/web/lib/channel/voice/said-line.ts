@@ -54,6 +54,12 @@ export interface SaidLineInput {
   language: ReplyLanguage | null;
   /** The parent's own words, when the line answers a text. */
   parentWords?: string | null;
+  /**
+   * The parent's latest texts, oldest first, when the line answers none of them (a
+   * proactive line such as the intro soft close). Read for the reply's LANGUAGE only;
+   * the model never quotes or answers them. The language is inferred, never defaulted.
+   */
+  recentParentWords?: readonly string[] | null;
   /** Plain values, or a small structured fact (a list, or named parts) the model words itself. */
   facts: Record<string, SaidLineFact>;
   /** Strings that must appear verbatim (numbers, addresses). Never a URL: see links. */
@@ -92,6 +98,11 @@ export function saidLineUserMessage(input: SaidLineInput): string {
     // A hint only when certain; the parent's words decide the reply's language (#868).
     languageHint: certainLanguageHint(input.language),
     parentWords: input.parentWords ?? null,
+    // Sent only when present, so every existing line's payload (and its cached evals)
+    // is byte-for-byte unchanged.
+    ...(input.recentParentWords && input.recentParentWords.length > 0
+      ? { recentParentWords: input.recentParentWords }
+      : {}),
     facts: input.facts,
     mustInclude: input.mustInclude ?? [],
     linkSlots: Object.keys(input.links ?? {}).map(linkSlot),

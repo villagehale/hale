@@ -145,6 +145,18 @@ function INTRO_REPLY_FIXTURES() {
     intro('intro-already-off-en', 'en', 'discoverability_already_off', 'no intros, I said'),
     // The sweep's soft close: no parent words, and the reason is never a fact.
     intro('intro-soft-close-en', 'en', 'soft_close', null),
+    // VIL-450: the soft close answers no text, so the family's OWN language comes from
+    // its stored tag and its latest texts. Never an English default.
+    {
+      ...intro('intro-soft-close-zh', 'zh', 'soft_close', null),
+      languageHint: 'zh',
+      recentParentWords: ['周六上午的游泳课还有位置吗？', '好的，谢谢'],
+    },
+    {
+      ...intro('intro-soft-close-es-no-tag', 'es', 'soft_close', null),
+      languageHint: null,
+      recentParentWords: ['¿Hay clases de natación para niños de 6 años el sábado?'],
+    },
   ];
 }
 

@@ -4,10 +4,10 @@ import type { ConsentReadingResult } from '~/lib/channel/consent-reply';
 import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import {
   type AnswerableProposal,
-  type IntroDecision,
-  type IntroStanding,
   INTRO_REPLY_FACTS,
+  type IntroDecision,
   type IntroReplySituation,
+  type IntroStanding,
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
   introStanding,
