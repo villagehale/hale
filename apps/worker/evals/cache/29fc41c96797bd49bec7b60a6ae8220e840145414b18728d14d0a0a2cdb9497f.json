@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "consent",
+    "sessionId": null,
+    "question": null,
+    "reason": "parent clearly agrees to proceed with the offer"
+  },
+  "latencyMs": 6085
+}

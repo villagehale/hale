@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The question is in Arabic, matching the parent's language. It asks one plain thing that would settle the signup. It does not claim a booking is made, and it does not dictate a reply word. It does, however, state a booking-like action (\"register your child\") with a specific time and price, which is a bit pushy given the parent's hedge, but it stays a question and is acceptable.",
+    "score": 4
+  }
+}

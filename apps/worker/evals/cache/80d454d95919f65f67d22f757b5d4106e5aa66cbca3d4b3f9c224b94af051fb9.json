@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "unclear",
+    "sessionId": null,
+    "question": "您是否同意现在为周六10:00的游泳课报名？",
+    "reason": "hedged reply, no clear go-ahead"
+  },
+  "latencyMs": 2367
+}

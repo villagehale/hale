@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "ambiguous",
+    "polarity": "yes",
+    "confidence": "medium",
+    "reason": "Plain 'sounds good' is a yes, but two calendar approvals are open (reschedule vs add) and nothing names which one."
+  },
+  "latencyMs": 1069
+}

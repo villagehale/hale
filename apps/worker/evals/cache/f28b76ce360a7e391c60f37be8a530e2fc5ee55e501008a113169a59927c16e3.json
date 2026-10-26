@@ -1,0 +1,54 @@
+{
+  "response": {
+    "id": "msg_011CgPxnSnNJY6zwviLgGomX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvgYKEAgTGAI4AUIIdGhpbmtpbmcSDMqme0tq8bUHkLcLmhoM/BMzcbPnt/2k2C/uIjAB/TtnoA85wUiYYsa8Q1OP7Pa4d+GcmyFzmBKrOoYX6xotBEoATVD16bFumukEUP4q2wX7rxrcOz4Hi1iugi+qop/JhTKi7/0qBrwMjEyn5PapbCbW+/p7DgN7p9V+qdJvCM2YhhwSYHBt6sHqwDoPRzkP3GYTMZfU7C1Y9VM8IF9yAp6VkdBIbxKGCsFacGLhpSWIgtApXMk9MVM5YIqmxzUzbSg48A5bgSWSpDV6Gmpadln8PoHYk5vjPvus9Emi5V74IqhTn1ova3NKhqza5Tfc24JolyenD9A1zNI9Ferb8EFIDgJAVc3sMQu9zKBs9d+WlOb2ZlLueg3AA36Gdh7dGO0G4GvbTlQ7c04ND2n2pNaurxJjWHKiygRBoT/w0rPeTt+CFe4d5HtST3+n2kX2zukeazbC4XxB+YmscYzQLpSsfhTwKU4CAetvmKWogxAcZrLASkVHoMEIM/egyZcSplCRjG+yZ380yHCgngW/F6ubCi4BiSCRUYaEFrryY0jKxg88b/7ZTxBNlNxmEdSmItS0LlcbC9N5VB5nJoldD2vUEzdaj3HLxk4VkxTxcz/6FnVlO+jiBXZbvVBBtIhSNy/bm1Ar1a75kM7VAW7EVn06OJxn9M/GHHV+UWl5dBUf3W2+7HrLLKPfbXGhwhuR4p134o16M2thH7eFjneYngHd2jsrwAu0X1z+eW/ZdYiJ8Cxhdm/sAtYNoSjlxnLb3cNd5WEbvcfGiSH+suMZ+aULHE9jpiHJzMn2h7NWhc/e28on6PTYqJ74aPZofgEPUTJF8Tg5SiGQvW+SnA/U6YsXkhybVcYcny04YbKC/8bFJRHLJUhQst8aYvhNmPO3vi/ZkgkXFlCI/VXvvCwy2EiAsYL9udzoXWpsG3IXz4RsbHrpGHjwBTnurwFQz5N2npn3cXzyZA1SnnQK5bvngEuJHetH4LLFSJFWhnC8ADCyCb5Og6uMCn+VBirTqfAiOmO2IM6ozrdz704XqKrPocVFul9hkGVPHt4ZbvUlzDkMzPNJZihstvfIHRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DT7mgzXDsFBkQcuyspMB3h",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_014sDDt9Aj1UpKaxNjky3xsG",
+        "name": "search_village",
+        "input": {
+          "query": "park playground"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 379,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20968,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 154,
+      "output_tokens_details": {
+        "thinking_tokens": 79
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2509
+}

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "unclear",
+    "sessionId": null,
+    "question": "土曜10時のクラス（12,000円）に申し込んでよろしいですか？",
+    "reason": "hedged reply, no session named"
+  },
+  "latencyMs": 2176
+}

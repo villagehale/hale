@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgPxvUMMTs3M4PMxWzNZN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/QoKEAgTGAI4AUIIdGhpbmtpbmcSDKa4IIfoR5OhA25cAxoM5mFG8aE+n7zoqHjwIjD1dKkD8Cek9yb67xdtw/mSTRUTZmgJ20ZrOqenggX0w1GfIKIklxklinVGF7fK9eUqmgpYMmt7JqpX4h1NG6TI8pLhWWfyADgoCjIzEYze2CpvfLzBFaWQHwF4Unv1XzT+sZ8c1cdFp+W+hHy5eNzA4803jYFqeEbcbeNK9HnRRW0c5e9cWxOe/oOCgpaip1jk4I50c06qbqIsh/NZpPb0zUSfQr+ZANxsTDYB86TJtnLUFdd61k6gBJVSzSOUKc7dEMWuwwtjuaZ/HM9VIHIiGnrQruuUuWQN2S4QOVafDhsx/PW1Y4zZp/U1WmMfQPLcJZXcCV+EfJ/WGNv3/+j83XYiVLRQy7dsFgPTJ2Mc/Z8peDojlGOJBVJDqFliNXGJNE3O1tDoXnYV6Z15KVU0+roHUgQUeem0gztW+1LvqXa5hPx6okXNxT+WPkmd7yW/Nd0iQ/OcLyYb7M+Q0iVobvLDCcaUZ7sDf8h2HkXiD5J6rIKHT58GSISR2X7AcUsWtNqBci/EKzpBSLFZJS+xvOqGSjUSnNgC+qiz5GoUY3Wvh7hSMC7mqC2T5Pyb2DO94PNn3nOGFprV+0AjkSY7D0h+/nG90s/4VXtJvHWpX8F0gmotW3nkBJzGnnzqhM2aoIqSQtqKMlMMLtYncByU3qedjGBbXMlyicqyuXmDUWvvxI+wpqHnEwa5b/QEcbo78OLZBDJcOyJ6eqB4WhbiQvV2Alwn12iQ/YZChMALLo6vxifHNiLj74/JPmlSXs94kZfL9NvT9uw17+CDqapaiO/JJBgcwRvPGcC35U9pCUyaODRhVfHw3ijm3xqtWFpr8H4qoBllkD4YGnGSMwv3K+PFHqbhUably1xKe8UL7oMIOOu49bbesYkH6T/NCaxU5KPiPBZ0Qmus6ZsO2OErwLd7JNIiRjYEe4Hnw+AjSFSCmrb3/LLHAdssngOZGMqm2hMi8HA1jRiYMoO/67nUUNZW9j+TNLV5ymIxfAC6L4p7oOJwSrX+TMPk6sBdxmnRj4Nd2c4UdR7kdlxhU/ervEeVRLaDgXHLocPs8YP+QU87X4GIrDIV8ikp6abQVOItL4ZTz7C+vhLTTCGQ8nANlzcQH+hWhLKjq9bi+8lROh2NOlolaMey/YRAPXN8UxNg+P2rClt00/SM7qsHwOr9c/mS7byYYtHZndjwdcUT+rO8XrYzjVNXZrf9LiewN1pPeD6KugFkcXFYgRuFAd5kGFTxfQPMGynRpIoumhGsjKEYsCNZ0lBy7eyoxYsartbuFGnjToHNGDaLdomaJcj0OFAZghWMQ10tnhfHOZI/Y4zcQhv+qyYm9T5YggiG4P0mAfCBktfNKngnNOjyMrksYIbUYAe9pNxU/pJp3vB4h8UYXAh06Vht0oEhDJwwJ2IZbDOHao54FUexk++q3fZflrpB0Z7U8Io2omlfa2Djc1QLTEA7RYWDE9DFljZRKuHURZS1DIZ+zIlshSDO5ojkUGggoUfo0kOKzTzOHB/cd/tmjywaiN2sCRW/nuECI3MKz4lOjqdtdnC6A61922I+y8H/nerGEEF8lJz/Dc30a+uBIGLO7PgxhCtBoSiUVcy2VxBybIhtdETtWVoico6xJypsYPb6zeOeWWQGA0VAlqfv096LSaNQfy1Jec5q5GofZGMzEIKDzkBY+xU0jXqf1f26sjl1hniTUWyWTVy+gFPJdkJMbqo9Ek6jZKRR6iJFTPvPY1P1y2u/MwmvGc2a8SKCmKF934d6f+ciDQmRMSTidDyOUT4Y8avLfvgee8feZO9V7E2WyW6nCtbkGAE="
+      },
+      {
+        "type": "text",
+        "text": "Anyone's free time is theirs to share, so I can't answer that in the group. Jordan can tell you directly, or you can text me one-on-one for it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17587,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 327,
+      "output_tokens_details": {
+        "thinking_tokens": 276
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

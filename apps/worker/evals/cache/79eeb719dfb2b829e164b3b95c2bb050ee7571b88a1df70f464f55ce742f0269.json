@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "b8e4d1f7-6a29-4c05-9d31-3f7c2e08a45b",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Parent says 'Add it to my week', which directly accepts the offer to add the 18-month well-baby visit booking to their week; the other open questions (calendar approval, intro opt-in) are not referenced."
+  },
+  "latencyMs": 3059
+}

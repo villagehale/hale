@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message clearly says Hale won't add or text the person and that the person can text Hale directly by SMS. Uses French with accents, though it uses \"vous\"-neutral first person and \"Elle\" without invented name or role; however the request asks for tu, and the message contains no tu form, so it does not match the required address. Otherwise plain and warm, no group mention, no invented facts.",
+    "score": 4
+  }
+}

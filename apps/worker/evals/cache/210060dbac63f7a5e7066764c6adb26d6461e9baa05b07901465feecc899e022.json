@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "States the outcome (could not write) accurately using only the given event details, no link since connectLink is null, English, first person, short and plain, with no blame or invented next steps.",
+    "score": 5
+  }
+}

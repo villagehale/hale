@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgPxwQuGmVoKCoM4bHXJg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS3wcKEAgTGAI4AUIIdGhpbmtpbmcSDKAqMrdBnxgHbacnpRoMS4+s0FgWsbpYdCIsIjBUf/WrsVuWCHPYUssW9j9sxsdrZvK+BDPEVHeSZk3wpH20ftbHyW24fpDnGJUFyrYq/AbFXjBwlk1I7F8iR85ebEkJ4qBKm5qo3YiMlJMzYO12pQmEV8QdR5Wggj7L0LvG+jfA80EmqqlqpeaAe/XqgfRJOKv47eoJ2Fq0hGD491jckZ4D5Hb5whAMpKdEbUCvsjcRabKzkcZ7p4QO0gx/HaEdtibUqH25d9Cl76Cb/d1COYR+VPIlqjuXqBB5aUaTnlKd5HTn5yZ2z63biv2o0qDgBTn7DB4A7aQNPs9tMd80YI1rAGnYeUQOO+/jiUt2ES7PN1vgJHMn2aM5dtsZTT/SzgxfkoyRt0cWgjeVxAtChwRdfgwmr/MOFIcjrxcVm45J5IgnZIIxcxJSgKm6ib9LwIS9gj0B/3YSChIMe3pUA9UXZZqTrgMQgiifI8nEcDSCRTwMNiJxrvC2FcDzhGmEN9DeVlNHZADcy5eDqYcrTuBeZrPpp5iqyKGClX1UCRFhO2RbIRLBmpBB6pcahkvPKpkB4zZU1fAN38mbnvNN7yh8UthryMW2nBgvK0EOkEYJ0LVrEALQGAF+hhikz91708Dui/LzfhTQRtkKy6phq+ttHJdNO5z9y2RU0zswZvz/SBUHAu8Osn2myFWHTM7/x5ZAXSkiPuMx0MoqBxKWLW31EXWPiBqKQnCoEUEO5EK2CWmuQv6yvBxqCV6Fh6qlQlLXy4hmQE7CzFldMs93qXBxhVbcKdEA7vajmvB3aWxs4vfyzGk9wzQKR0qMteRpNH1RRaGFBb9ldsqAIhqH/yPumKI4RCsynV3Q1eCJNOWzxnKxIEm72ZNsbdoDkyTdyAHPvwJM2dSb7je8zXYjPtg2S1O3bQntwcMyVooxzqf1UothWmQo9BNDIUJPTmJTvLWGBZQQYPsZqqP+1EScEVsnAhWxfStAqU2DuXMYCP3jtwtVLSDbNnqkggPGp+JP2RR1V60H348/Ks5fALOPhnHqf4wCZbs++9m08inEvTPLxHwrMI/wqMfVao9/scIYIhX14JC68J4frs7qV7g24pO1rd7qeLtBY9vOf8kXn11jijqJaOfQFLve0qBIm9Gvp91hTmPxCZ0bVob9zbnIaL05RLkVO0RXo4EbYhZKhHptQRtUU+OkMZLc4mBVM+hbm2KLWDZBvB9WGIzu2nqMLJn2cf+7lbN2s569V5zzgR20FGFw0qWM+tGmXCmHZYHzXinXeD27pX3gUsxlGAE="
+      },
+      {
+        "type": "text",
+        "text": "周六上午10点，Leo 有足球课，在社区中心。早上9点到10点那段时间已经被占了。除此之外，周六没有别的安排。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 548,
+      "cache_read_input_tokens": 17587,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 548,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 230,
+      "output_tokens_details": {
+        "thinking_tokens": 175
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

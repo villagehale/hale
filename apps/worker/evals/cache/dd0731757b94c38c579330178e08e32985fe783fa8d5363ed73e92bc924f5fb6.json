@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly says Hale cannot add the person itself and that the person must write to Hale directly by SMS. It uses tu-adjacent phrasing with real accents, invents no name or role, and has no group mention. However, it uses 'il faudra qu'elle m'écrive' which assumes a female person without facts supporting it, and the wording is slightly clunky with 'pour que je puisse commencer'. Overall solid but not ideal.",
+    "score": 4
+  }
+}

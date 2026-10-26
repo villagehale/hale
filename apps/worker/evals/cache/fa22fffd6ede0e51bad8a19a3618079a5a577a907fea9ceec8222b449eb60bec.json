@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgPxatniRJ7dCb1bQJung",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Waking up now and then is common at 8, but every single night is worth a closer look. Tonight, try a calm, boring wind-down: screens off an hour before bed, lights low, and a few minutes of quiet chat about anything on her mind. If she wakes at 2am, walk her back to bed with as little talk and light as you can. Worries and busy days often show up as night waking at this age. If it keeps going or she seems really distressed, mention it to your doctor."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1116,
+      "cache_read_input_tokens": 20968,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1116,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 148,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3224
+}

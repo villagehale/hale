@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "unclear",
+    "sessionId": null,
+    "question": "¿Quieres que inscriba a tu hijo en la clase del sábado 10:00 por 120 €, sí o no?",
+    "reason": "hedged agreement, not explicit go-ahead"
+  },
+  "latencyMs": 1042
+}

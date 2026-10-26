@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "unclear",
+    "sessionId": null,
+    "question": "Voulez-vous que je m'inscrive à la leçon de natation du samedi 10h (sess-1) ?",
+    "reason": "hedged yes, no session confirmed"
+  },
+  "latencyMs": 2510
+}

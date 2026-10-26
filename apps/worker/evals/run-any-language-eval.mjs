@@ -4,7 +4,7 @@
 // builders and readers imported from apps/web (resolve.ts, signup/consent-reader.ts). A
 // Haiku judge scores the ask-back question for language and purpose; no word matching.
 //
-// NOT YET RECORDED. No cached responses and no CI step until a live run records them:
+// Recorded 2026-10-25 (Barton OK 8:56 PM). CI replays it cached-only (eval:any-language). To re-record:
 //   node evals/run-any-language-eval.mjs --max-usd <cumulative cap>   # live, then caches
 //   node evals/run-any-language-eval.mjs --cached-only                # replay only
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is in French with tu, names Alex, states Hale won't write first, and says Alex can write Hale directly by SMS. Uses real accents and no group mention. Minor issue: 'je prendrai le relais' is a bit vague but not a promise to text Alex. Strong, plain, and accurate.",
+    "score": 5
+  }
+}

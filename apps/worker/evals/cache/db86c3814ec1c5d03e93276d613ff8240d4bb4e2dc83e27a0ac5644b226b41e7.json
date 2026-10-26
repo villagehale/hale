@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "consent",
+    "sessionId": "sess-1",
+    "question": null,
+    "reason": "explicit go-ahead in Spanish, single open session"
+  },
+  "latencyMs": 1525
+}

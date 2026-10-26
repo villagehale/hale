@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "7c2e9a10-4f3b-4d21-8e6a-1b9c0d2f3e41",
+    "polarity": "yes",
+    "confidence": "low",
+    "reason": "French hedged yes ('je pense que oui') to the only open approval; leans yes but is unsure, so low confidence for a parent check."
+  },
+  "latencyMs": 1952
+}

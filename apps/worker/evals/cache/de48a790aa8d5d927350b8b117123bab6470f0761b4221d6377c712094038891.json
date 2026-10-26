@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "unclear",
+    "sessionId": null,
+    "question": "هل تريد أن أسجل طفلك في درس السباحة يوم السبت الساعة 10:00 بسعر 120 دولاراً؟",
+    "reason": "hedged tentative agreement, no session named"
+  },
+  "latencyMs": 4210
+}

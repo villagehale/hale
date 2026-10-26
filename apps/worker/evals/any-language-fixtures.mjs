@@ -1,4 +1,4 @@
-// Any language (Barton, 2026-10-25: Hale supports any language). NOT RECORDED.
+// Any language (Barton, 2026-10-25: Hale supports any language). RECORDED 2026-10-25 (Barton OK 8:56 PM).
 //
 // One calendar change is waiting. Each parent answers in their own language, once plainly
 // and once with a hedge. Two readers are scored, both on the real skills:

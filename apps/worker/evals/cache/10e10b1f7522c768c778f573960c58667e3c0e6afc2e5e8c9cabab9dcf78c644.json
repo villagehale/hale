@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "unclear",
+    "sessionId": null,
+    "question": "Do you want me to register you for the Saturday 10:00 session, yes or no?",
+    "reason": "hedged reply, no session named"
+  },
+  "latencyMs": 1820
+}

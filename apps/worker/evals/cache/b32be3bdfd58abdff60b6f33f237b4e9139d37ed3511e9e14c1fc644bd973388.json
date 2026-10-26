@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgPxXhtoduDsSkG9G8CTV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Lots of kids Milo's age (5) are still co-sleeping, and it's very fixable. Start with the bedtime routine, not the bed. Do the same short routine every night, ending with him falling asleep in his own bed while you sit on a chair next to it. Tell him ahead of time that this is the new plan, so it doesn't catch him off guard at bedtime. Once he settles easily, move the chair a little farther from the bed every few nights, until it's at the door."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 133,
+      "cache_read_input_tokens": 21939,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 133,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 152,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2127
+}
