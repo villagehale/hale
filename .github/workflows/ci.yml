@@ -289,6 +289,9 @@ jobs:
       - name: Autonomy notice eval (cached-only)
         run: pnpm --filter @hale/worker eval:autonomy-notice
 
+      - name: Calendar write notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:calendar-write-notice
+
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
   # skipped job. Fails when workspace checks fail or when evals were required and
