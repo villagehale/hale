@@ -3,7 +3,8 @@
 // The subject is the REAL skill (packages/agent/skills/reminder.md) over the REAL facts
 // and gates: `reminderFacts`, `reminderUserMessage` and `reminderRefusals` are imported
 // from apps/web/lib/loop/reminders/compose.ts. The model writes the WHOLE text; a judge
-// scores facts, AM/PM, language, never claiming free time over a timed event, and tone.
+// scores facts (including a fact check on logistics such as departure or travel time),
+// AM/PM, language, never claiming free time over a timed event, and tone.
 // Nothing matches words.
 //
 // Recorded 2026-10-25 (8/8, ledger vil454-evals; broken calibration fails 8/8). CI replays it cached-only:
@@ -59,6 +60,13 @@ const JUDGE_SYSTEM = [
   'going, how it will go); guessing what a generic "an appointment" is; the wrong language or',
   'mixed languages; a link other than planLink; hype, exclamation marks, emoji, a question or',
   'asking them to reply with a word; a stiff template feel such as "Day: title at time".',
+  'FACT CHECK every logistics claim against the facts you are given: when to leave or set',
+  'off, how long getting there takes, traffic, parking, arrival or pickup times, and any',
+  'other timing or travel detail. If the facts do not contain it (there is never a travel',
+  'time or departure time in these facts), stating it as fact is an invented detail and a',
+  'LOW score (1-2), in any language, however it is phrased. Saying how far away the event',
+  'is from now (in about an hour, tomorrow afternoon) is a true fact from now and start, and',
+  'fine; turning that into when to leave is not.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
