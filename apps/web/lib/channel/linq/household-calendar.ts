@@ -515,6 +515,20 @@ function overlaps(a: BusyBlock, b: BusyBlock): boolean {
   return aStart < bEnd && bStart < aEnd;
 }
 
+/**
+ * Free/busy only (VIL-459, VIL-439): the time span of each live block, never its title,
+ * place or event id. This is all a cross-family find may read from a parent's calendar.
+ */
+export function freeBusyOnly(blocks: readonly BusyBlock[]): { start: Date; end: Date }[] {
+  return blocks
+    .filter((block) => block.status !== 'cancelled' && block.start !== null)
+    .map((block) => {
+      const start = block.start as Date;
+      const end = block.end ?? new Date(start.getTime() + (block.allDay ? 24 : 1) * 60 * 60 * 1000);
+      return { start: new Date(start.getTime()), end: new Date(end.getTime()) };
+    });
+}
+
 /** Earliest 60-minute waking slot in the next 7 days when neither parent is busy. */
 export function earliestSharedFree(
   blocks: readonly BusyBlock[],
