@@ -4,6 +4,7 @@ import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm'
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { laneEnabled } from '~/lib/channel/lanes';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -24,8 +25,8 @@ import type {
   ReminderPayload,
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { scopeFamilies } from '~/lib/preview/family-scope';
 import { getQueue } from '~/lib/queue';
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { composeReminderText, reminderFacts } from './compose';
 import {
   type EventSnapshot,
@@ -511,8 +512,9 @@ export async function runReminderCron(
   };
 
   // ── Phase A: converge the ledger from live placed events ─────────────────────
-  const parents = await deps.selectReminderParents(db);
-  const caregiverSeats = await deps.selectReminderCaregivers(db);
+  // On Preview, only allowlisted test families (no-op elsewhere).
+  const parents = scopeFamilies(await deps.selectReminderParents(db));
+  const caregiverSeats = scopeFamilies(await deps.selectReminderCaregivers(db));
 
   const familyParents = new Map<string, ReminderParent[]>();
   for (const p of parents) {
@@ -603,7 +605,7 @@ export async function runReminderCron(
   };
 
   // ── Phase B: fire — classify each due row against the LIVE event ──────────────
-  const due = await deps.loadDueReminders(db, now);
+  const due = scopeFamilies(await deps.loadDueReminders(db, now));
   const firing: FiringRow[] = [];
   let suppressed = 0;
   let cancelled = 0;

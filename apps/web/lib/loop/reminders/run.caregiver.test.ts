@@ -495,3 +495,44 @@ describe('one recipient, two households', () => {
     },
   );
 });
+
+describe('preview family scope (cron family filter)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const TEST_FAM = '11111111-1111-4111-8111-111111111111';
+
+  it('regression: on preview a non-test family is skipped entirely', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', TEST_FAM);
+    const loaded: string[] = [];
+    const { deps, upserts, enqueued } = makeDeps({
+      selectReminderParents: async () => [
+        { familyId: 'fam-1', userId: 'p1', timezone: TZ },
+        { familyId: TEST_FAM, userId: 'pt', timezone: TZ },
+      ],
+      loadHorizonEvents: async (_db, familyId) => {
+        loaded.push(familyId);
+        return [event()];
+      },
+      loadDueReminders: async () => [dueRow(), dueRow({ id: 'rt', familyId: TEST_FAM })],
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(loaded).toEqual([TEST_FAM]);
+    expect(upserts.every((u) => u.parentUserId === 'pt')).toBe(true);
+    expect(enqueued.every((job) => job.familyId === TEST_FAM)).toBe(true);
+  });
+
+  it('production behaviour is unchanged: every family is processed', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', TEST_FAM);
+    const loaded: string[] = [];
+    const { deps } = makeDeps({
+      selectReminderParents: async () => [{ familyId: 'fam-1', userId: 'p1', timezone: TZ }],
+      loadHorizonEvents: async (_db, familyId) => {
+        loaded.push(familyId);
+        return [];
+      },
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(loaded).toEqual(['fam-1']);
+  });
+});

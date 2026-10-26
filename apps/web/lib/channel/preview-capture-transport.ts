@@ -1,5 +1,6 @@
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
 import { linqApiKey, linqFromE164 } from '~/lib/channel/linq/config';
+import { isFictionalPhone } from '~/lib/preview/family-scope';
 
 /**
  * Preview-only capture door for fake-family proof runs.
@@ -16,7 +17,9 @@ type Env = Readonly<Record<string, string | undefined>>;
 export type CapturedSend = OutboundMessage & { capturedAt: string; providerMessageId: string };
 
 export class PreviewCaptureRefused extends Error {
-  constructor(readonly reason: 'not_preview' | 'flag_off' | 'linq_configured') {
+  constructor(
+    readonly reason: 'not_preview' | 'flag_off' | 'linq_configured' | 'not_test_recipient',
+  ) {
     super(`preview capture transport refused: ${reason}`);
     this.name = 'PreviewCaptureRefused';
   }
@@ -49,6 +52,9 @@ export function createPreviewCaptureTransport(
   let counter = 0;
   return {
     async send(input) {
+      // Only reserved fictional numbers, so a real family that slipped past a
+      // scope filter is refused rather than captured.
+      if (!isFictionalPhone(input.to)) throw new PreviewCaptureRefused('not_test_recipient');
       counter += 1;
       const send: CapturedSend = {
         ...input,

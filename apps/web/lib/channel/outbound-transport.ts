@@ -2,10 +2,12 @@ import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/tra
 import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import {
+  PreviewCaptureRefused,
   createPreviewCaptureTransport,
   previewCaptureRequested,
 } from '~/lib/channel/preview-capture-transport';
 import type { MessageTransport } from '~/lib/channel/transport-address';
+import { isPreviewDeploy } from '~/lib/preview/family-scope';
 
 /**
  * The one place a Hale-initiated text chooses its phone door.
@@ -20,6 +22,15 @@ export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): Ch
   // Preview proof runs only. Throws (never falls through to Linq) when the
   // flag is on outside preview or beside a configured Linq door.
   if (previewCaptureRequested()) return createPreviewCaptureTransport();
+  // On Preview nothing goes out except through the capture door, even when a
+  // Linq key happens to be set there.
+  if (isPreviewDeploy()) {
+    return {
+      async send() {
+        throw new PreviewCaptureRefused('flag_off');
+      },
+    };
+  }
   if (!linqPhoneOutboundConfigured()) {
     return {
       async send() {
