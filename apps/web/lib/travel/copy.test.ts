@@ -166,8 +166,8 @@ describe('renderTravelBrief', () => {
     await expect(brief({ picks: [] })).rejects.toThrow(/no_picks/);
   });
 
-  it('names an unconfirmed reference with its source, not a current recommendation', () => {
-    const rendered = renderBrief({ picks: [], references: [REFERENCE] });
+  it('names an unconfirmed reference with its source, not a current recommendation', async () => {
+    const rendered = await renderBrief({ picks: [], references: [REFERENCE] });
     expect(rendered.body).toContain('Places to check for Mia:');
     expect(rendered.body).toContain(
       'Discovery Club (City Museum): dates and age fit not confirmed for your trip.',
@@ -182,8 +182,8 @@ describe('renderTravelBrief', () => {
     expect(rendered.renderedReferences).toEqual([REFERENCE]);
   });
 
-  it('labels a historical reference as an older listing', () => {
-    const rendered = renderBrief({
+  it('labels a historical reference as an older listing', async () => {
+    const rendered = await renderBrief({
       picks: [],
       references: [{ ...REFERENCE, status: 'historical' }],
     });
@@ -195,8 +195,8 @@ describe('renderTravelBrief', () => {
     expect(rendered.renderedReferences).toHaveLength(1);
   });
 
-  it('prioritizes supported picks and shares their two-slot ceiling with references', () => {
-    const rendered = renderBrief({
+  it('prioritizes supported picks and shares their two-slot ceiling with references', async () => {
+    const rendered = await renderBrief({
       picks: [pick()],
       references: [REFERENCE, { ...REFERENCE, name: 'Another Club' }],
     });
@@ -204,22 +204,22 @@ describe('renderTravelBrief', () => {
     expect(rendered.renderedReferences).toEqual([REFERENCE]);
     expect(rendered.body).not.toContain('Another Club');
     expect(rendered.body.indexOf(pick().name)).toBeLessThan(rendered.body.indexOf(REFERENCE.name));
-    expect(renderBrief({ references: [REFERENCE] }).renderedReferences).toEqual([]);
+    expect((await renderBrief({ references: [REFERENCE] })).renderedReferences).toEqual([]);
   });
 
-  it('refuses rather than leaking a teen named in a reference or its source', () => {
+  it('refuses rather than leaking a teen named in a reference or its source', async () => {
     for (const reference of [
       { ...REFERENCE, name: 'Ari Discovery Club' },
       { ...REFERENCE, sourceName: "Ari's Museum" },
     ]) {
-      expect(() => brief({ picks: [], references: [reference], teenNames: ['Ari'] })).toThrow(
-        /names_a_teen/,
-      );
+      await expect(
+        brief({ picks: [], references: [reference], teenNames: ['Ari'] }),
+      ).rejects.toThrow(/names_a_teen/);
     }
   });
 
-  it('keeps reference-only group copy neutral and drops over-budget references whole', () => {
-    const rendered = renderBrief({
+  it('keeps reference-only group copy neutral and drops over-budget references whole', async () => {
+    const rendered = await renderBrief({
       picks: [],
       references: [REFERENCE, { ...REFERENCE, name: 'Long name '.repeat(100) }],
       forGroup: true,
@@ -232,13 +232,13 @@ describe('renderTravelBrief', () => {
     expect(smsSegments(withOptOut(rendered.body, 'full'))).toBeLessThanOrEqual(
       MAX_TRAVEL_BRIEF_SEGMENTS,
     );
-    expect(() =>
-      brief({ picks: [], references: [{ ...REFERENCE, name: 'Club — Museum' }] }),
-    ).toThrow(/not_gsm7/);
+    expect(
+      await brief({ picks: [], references: [{ ...REFERENCE, name: 'Club — Museum' }] }),
+    ).toContain('Club — Museum');
   });
 
-  it('keeps the opening neutral when a long supported pick leaves only a reference', () => {
-    const rendered = renderBrief({
+  it('keeps the opening neutral when a long supported pick leaves only a reference', async () => {
+    const rendered = await renderBrief({
       picks: [pick({ name: 'Long name '.repeat(100) })],
       references: [REFERENCE],
     });

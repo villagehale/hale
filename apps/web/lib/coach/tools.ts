@@ -1,9 +1,9 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import type { NamedActivityLink } from '~/lib/channel/coach/activity-links';
+import { linkRef } from '~/lib/channel/coach/activity-links';
+import type { NamedLink } from '~/lib/channel/coach/tools';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -164,7 +164,7 @@ export function searchVillageTool(
    */
   onOffered?: (offers: readonly OfferedCandidate[]) => void,
   finder?: ActivityFinder,
-  onLinks?: (links: readonly NamedActivityLink[]) => void,
+  onLinks?: (links: readonly NamedLink[]) => void,
 ): RegisteredTool {
   return defineTool({
     name: 'search_village',
@@ -238,12 +238,10 @@ export function searchVillageTool(
         ...(found.references ?? []).map((reference) => ({
           title: reference.name,
           url: reference.sourceUrl,
-          sourceReference: true,
         })),
-        ...(offered.length === 0 ? (found.checkedSources ?? []) : []).map((url) => ({
+        ...(found.checkedSources ?? []).map((url) => ({
           title: input.query ?? 'Activity source',
           url,
-          sourceReference: true,
         })),
       ]);
 
@@ -251,9 +249,18 @@ export function searchVillageTool(
         candidates,
         inVerification: 0,
         standingOption: null,
-        liveRead: found.reason ?? 'verified',
-        ...(found.references ? { references: found.references } : {}),
-        ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
+        liveRead: found.reason ?? 'source_read',
+        ...(found.references
+          ? {
+              references: found.references.map(({ sourceUrl, ...reference }) => ({
+                ...reference,
+                ref: linkRef(sourceUrl),
+              })),
+            }
+          : {}),
+        ...(found.checkedSources
+          ? { checkedSources: found.checkedSources.map((url) => ({ ref: linkRef(url) })) }
+          : {}),
       };
     },
   });

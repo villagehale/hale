@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import { z } from 'zod';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
 import { deidentifyActivityQuery, refusalSentence } from './deidentify';
@@ -64,7 +64,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
   return defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no household person's name, no address, no postal code; keep the public program and operator names — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means this read established no supported recommendations, not that no activities exist. Preserve any references and checkedSources; historical references do not establish current availability. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. Pass the requested month, year or date range in window, including on retries. The age band and the qualified city, province/state and country are attached from their record.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no household person's name, no address, no postal code; keep the public program and operator names — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means this read did not establish it; say it remains unconfirmed, not that the site did not publish it, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means this read established no supported recommendations, not that no activities exist. Preserve any references and checkedSources; historical references do not establish current availability. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. Pass the requested month, year or date range in window, including on retries. The age band and the qualified city, province/state and country are attached from their record.",
     inputSchema: z.object({
       subject: z.string().min(1),
       /** The season or window the parent asked about, in their own general terms. */
@@ -137,14 +137,16 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         if (result.searched?.references?.some((reference) => reference.status === 'unconfirmed')) {
           args.onPromise({ subject: deidentified.query.subject, childId });
         }
-        if (result.searched?.checkedSources?.length)
-          args.onLinks?.(
-            result.searched.checkedSources.map((url) => ({
-              title: deidentified.query.subject,
-              url,
-              sourceReference: true,
-            })),
-          );
+        args.onLinks?.([
+          ...(result.searched?.references ?? []).map((reference) => ({
+            title: reference.name,
+            url: reference.sourceUrl,
+          })),
+          ...(result.searched?.checkedSources ?? []).map((url) => ({
+            title: deidentified.query.subject,
+            url,
+          })),
+        ]);
         return {
           found: false as const,
           reason: result.reason,
@@ -153,8 +155,15 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
             : {}),
           ...(result.searched
             ? {
-                references: result.searched.references ?? [],
-                checkedSources: result.searched.checkedSources ?? [],
+                references: (result.searched.references ?? []).map(
+                  ({ sourceUrl, ...reference }) => ({
+                    ...reference,
+                    ref: linkRef(sourceUrl),
+                  }),
+                ),
+                checkedSources: (result.searched.checkedSources ?? []).map((url) => ({
+                  ref: linkRef(url),
+                })),
               }
             : {}),
         };
@@ -180,14 +189,17 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         args.onPromise({ subject: deidentified.query.subject, childId });
       }
       const linked = result.picks.flatMap((pick) =>
-        pick.url ? [{ title: pick.name, url: pick.url }] : [],
+        pick.url || pick.sourceUrl
+          ? [{ title: pick.name, url: (pick.url ?? pick.sourceUrl) as string }]
+          : [],
       );
       if (linked.length > 0) args.onLinks?.(linked);
       // The model sees a page's REF, never its URL: a reply cites the ref and code
       // attaches the page (coach/activity-links.ts), so a typed URL can never reach a parent.
-      const picks = result.picks.map(({ url, ...pick }) =>
-        url ? { ...pick, ref: linkRef(url) } : pick,
-      );
+      const picks = result.picks.map(({ url, sourceUrl, ...pick }) => {
+        const page = url ?? sourceUrl;
+        return page ? { ...pick, ref: linkRef(page) } : pick;
+      });
       if (result.references?.length)
         args.onLinks?.(
           result.references.map((reference) => ({
@@ -195,11 +207,24 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
             url: reference.sourceUrl,
           })),
         );
+      if (result.checkedSources?.length)
+        args.onLinks?.(
+          result.checkedSources.map((url) => ({ title: deidentified.query.subject, url })),
+        );
       return {
         found: true as const,
         picks,
-        ...(result.references ? { references: result.references } : {}),
-        ...(result.checkedSources ? { checkedSources: result.checkedSources } : {}),
+        ...(result.references
+          ? {
+              references: result.references.map(({ sourceUrl, ...reference }) => ({
+                ...reference,
+                ref: linkRef(sourceUrl),
+              })),
+            }
+          : {}),
+        ...(result.checkedSources
+          ? { checkedSources: result.checkedSources.map((url) => ({ ref: linkRef(url) })) }
+          : {}),
       };
     },
   });

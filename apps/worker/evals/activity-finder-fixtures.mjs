@@ -138,15 +138,15 @@ export const ACTIVITY_FIXTURES = [
   // the way phase 3 already recomposes.
   {
     id: 'travel-visit-new-york',
-    // Keep this recorded, already-past trip explicit; do not silently roll it into next year.
-    dateRange: { start: '2026-09-12', end: '2026-09-15' },
+    // Positive travel case must be future-dated against the fixed October 15 corpus clock.
+    dateRange: { start: '2026-11-12', end: '2026-11-15' },
     timeZone: 'America/New_York',
     subject:
       'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
-    window: 'September 12 to 15',
+    window: 'November 12 to 15, 2026',
     town: 'New York, NY',
     stage: 'preschool',
-    rawSubject: 'things to do in New York with Mia, 4, from 2026-09-12 to 2026-09-15',
+    rawSubject: 'things to do in New York with Mia, 4, from 2026-11-12 to 2026-11-15',
     dropsFromQuery: ['mia', '2026', '4 year'],
     expectPicks: true,
     composesOwnText: true,

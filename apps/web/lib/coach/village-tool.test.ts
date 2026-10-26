@@ -1,12 +1,12 @@
 import { invokeTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import type { ActivityReference } from '~/lib/channel/activity/facts';
-import { type NamedActivityLink, activityLinkSuffix } from '~/lib/channel/coach/activity-links';
-import { createTurnOfferLedger } from '~/lib/channel/coach/tools';
+import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { linkRef } from '~/lib/channel/coach/activity-links';
+import { attachLinks } from '~/lib/channel/coach/activity-links';
+import { type NamedLink, createTurnOfferLedger } from '~/lib/channel/coach/tools';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
 
@@ -45,7 +45,7 @@ async function search(
   finder: ActivityFinder,
   recorder?: Parameters<typeof searchVillageTool>[1],
   input: unknown = {},
-  onLinks?: (links: readonly NamedActivityLink[]) => void,
+  onLinks?: (links: readonly NamedLink[]) => void,
 ) {
   return invokeTool(
     searchVillageTool(db.database, recorder, finder, onLinks),
@@ -55,8 +55,8 @@ async function search(
   ) as Promise<{
     candidates: { title: string; when: string; url?: string; ref?: string }[];
     liveRead: string;
-    references?: ActivityReference[];
-    checkedSources?: string[];
+    references?: (Omit<ActivityReference, 'sourceUrl'> & { ref: string })[];
+    checkedSources?: { ref: string }[];
   }>;
 }
 
@@ -99,7 +99,7 @@ describe('search_village uses this operation’s live evidence', () => {
         windowConfirmed: false,
       },
     };
-    const links: NamedActivityLink[] = [];
+    const links: NamedLink[] = [];
     const result = await search(
       familyId,
       {
@@ -118,16 +118,20 @@ describe('search_village uses this operation’s live evidence', () => {
       {},
       (read) => links.push(...read),
     );
+    const { sourceUrl, ...facts } = reference;
     expect(result).toMatchObject({
       candidates: [],
       liveRead: 'no_picks',
-      references: [reference],
-      checkedSources: [reference.sourceUrl],
+      references: [{ ...facts, ref: linkRef(sourceUrl) }],
+      checkedSources: [{ ref: linkRef(sourceUrl) }],
     });
     expect(JSON.stringify(result)).not.toContain('$140');
-    expect(activityLinkSuffix('The current dates and suitability remain unconfirmed.', links)).toBe(
-      reference.sourceUrl,
-    );
+    expect(JSON.stringify(result)).not.toContain(sourceUrl);
+    const refs = links.map(({ url }) => ({ url, ref: linkRef(url) }));
+    expect(
+      attachLinks(`Current dates remain unconfirmed. [${linkRef(sourceUrl)}]`, refs).urls,
+    ).toEqual([sourceUrl]);
+    expect(attachLinks('Current dates remain unconfirmed.', refs).urls).toEqual([]);
     expect(
       await db.database
         .select()
@@ -150,6 +154,7 @@ describe('search_village uses this operation’s live evidence', () => {
     const offers: unknown[] = [];
     const result = await search(familyId, { find }, (rows) => offers.push(...rows));
     expect(result.candidates.map((row) => row.title)).toEqual(['Current swim']);
+    expect(result.liveRead).toBe('source_read');
     // The model sees the page's ref, never the URL (coach/activity-links.ts).
     expect(result.candidates[0]).not.toHaveProperty('url');
     expect(result.candidates[0]?.ref).toBe(linkRef(pick.sourceUrl as string));
@@ -169,7 +174,7 @@ describe('search_village uses this operation’s live evidence', () => {
     expect(receipts.filter((row) => row.offeredAt !== null)).toHaveLength(1);
   });
 
-  it('keeps confirmed source links in the offer ledger only, preserving shortened-title matching', async () => {
+  it('keeps supported source links in the offer ledger and attaches only cited refs', async () => {
     const familyId = await household();
     const ledger = createTurnOfferLedger();
     const source = { ...pick, name: 'Lake swim club' };
@@ -187,7 +192,12 @@ describe('search_village uses this operation’s live evidence', () => {
       ...ledger.links(),
     ];
     expect(links).toHaveLength(1);
-    expect(activityLinkSuffix('Swim this Saturday.', links)).toBe(source.sourceUrl);
+    expect(
+      attachLinks(
+        `Swim this Saturday. [${linkRef(source.sourceUrl as string)}]`,
+        links.map(({ url }) => ({ url, ref: linkRef(url) })),
+      ).urls,
+    ).toEqual([source.sourceUrl]);
   });
 
   it('a failed live read never falls back to saved history', async () => {

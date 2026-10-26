@@ -118,7 +118,7 @@ const { renderTravelBrief } = await tsImport(join(REPO_ROOT, 'apps/web/lib/trave
   parentURL: import.meta.url,
   tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
 });
-const EVAL_NOW = new Date('2026-10-15T12:00:00Z');
+export const EVAL_NOW = new Date('2026-10-15T12:00:00Z');
 
 const FOLLOWUP_TOOL_SCHEMA = {
   type: 'object',
@@ -204,6 +204,15 @@ function followUpUserMessage(subject, picks, pageEvidence, watch, searched, lang
             : {}),
         }
       : { page_evidence: pageEvidence }),
+    ...(picks.length > 0 && searched?.references?.length
+      ? {
+          searched: {
+            town: searched.town,
+            references: searched.references,
+            ...(searched.checkedSources ? { checkedSources: searched.checkedSources } : {}),
+          },
+        }
+      : {}),
     watch,
     picks: picks.map((pick) => ({
       name: pick.name,
@@ -1291,7 +1300,7 @@ async function main() {
         failures.push('travel_dates_past');
       } else {
         try {
-          brief = renderTravelBrief({
+          brief = await renderTravelBrief({
             city: fixture.town,
             startsOn: range.start,
             endsOn: range.end,

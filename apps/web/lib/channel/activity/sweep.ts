@@ -413,6 +413,14 @@ async function keepOne(
       picks = foundPicks;
     }
     if (!found.found) searched = found.searched;
+    else if (found.references?.length) {
+      searched = {
+        town: deidentified.query.town,
+        notes: '',
+        references: found.references,
+        ...(found.checkedSources ? { checkedSources: found.checkedSources } : {}),
+      };
+    }
   }
   evidence.picks = picks.length;
 

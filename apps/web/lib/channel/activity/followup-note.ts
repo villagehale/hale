@@ -210,23 +210,20 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     // is not silence — `picks_empty` is the one fact this message is about, and an omitted
     // key reads to a model as a field it may fill in (rule #11).
     ...(grounding.picks.length === 0
-      ? {
-          picks_empty: true,
-          ...(grounding.searched
-            ? {
-                searched: {
-                  town: grounding.searched.town,
-                  ...(grounding.searched.references
-                    ? { references: grounding.searched.references }
-                    : {}),
-                  ...(grounding.searched.checkedSources
-                    ? { checkedSources: grounding.searched.checkedSources }
-                    : {}),
-                },
-              }
-            : {}),
-        }
+      ? { picks_empty: true }
       : { page_evidence: grounding.pageEvidence }),
+    ...(grounding.searched &&
+    (grounding.picks.length === 0 || grounding.searched.references?.length)
+      ? {
+          searched: {
+            town: grounding.searched.town,
+            ...(grounding.searched.references ? { references: grounding.searched.references } : {}),
+            ...(grounding.searched.checkedSources
+              ? { checkedSources: grounding.searched.checkedSources }
+              : {}),
+          },
+        }
+      : {}),
     watch: grounding.watch,
   };
   if (grounding.moreRemaining > 0) {
