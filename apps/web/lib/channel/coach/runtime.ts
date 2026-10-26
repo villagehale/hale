@@ -720,4 +720,3 @@ export async function nearbySaidFor(
   const verdicts = await readSubjectVerdicts(database, subjects, areaKey);
   return nearbyClauseTarget(offers, verdicts);
 }
-
