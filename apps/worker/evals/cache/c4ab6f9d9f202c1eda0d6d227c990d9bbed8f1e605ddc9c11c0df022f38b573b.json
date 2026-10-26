@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is entirely in French, says tomorrow, gives the correct 15 h to 16 h time window and the Georgetown library location, and invents nothing. However it calls the event 'jour de congé' (day off), which contradicts the timed 3-4 PM library event, and the watchFor note explicitly flags describing the day as a day off with a start time as a low score.",
+    "score": 2
+  }
+}

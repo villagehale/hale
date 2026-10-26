@@ -6,7 +6,7 @@
 // scores facts, AM/PM, language, never claiming free time over a timed event, and tone.
 // Nothing matches words.
 //
-// Not recorded yet: CI replays cached-only, and an unrecorded case fails until recorded.
+// Recorded 2026-10-25 (8/8, ledger vil454-evals; broken calibration fails 8/8). CI replays it cached-only:
 //   node evals/run-reminder-eval.mjs --max-usd <ledger total + allowance>   # live, then caches
 //   node evals/run-reminder-eval.mjs --broken                               # calibration: must FAIL
 //   node evals/run-reminder-eval.mjs --cached-only                          # CI: replay only
@@ -51,8 +51,10 @@ const JUDGE_SYSTEM = [
   'correct INCLUDING morning versus afternoon or evening (AM/PM or the natural equivalent in',
   'that language); no clock time for an all-day event; the day phrased truly from now (tomorrow',
   'versus today); entirely in the requested language; short, calm, warm, like a friend.',
-  'A LOW score (1-2) is any of: describing the day as free, a day off, quiet, a break or',
-  'breathing room when ANY event has a start time, whatever its title says; a wrong or',
+  'A LOW score (1-2) is any of: implying the family has nothing to be at, or that the day is',
+  'open, free, quiet, a break or breathing room, when ANY event has a start time, whatever its',
+  'title says (naming an all-day item as what the day is, such as a PD day or day off, is a',
+  'true fact and fine, as long as the timed events are also clearly there); a wrong or',
   'ambiguous AM/PM; a wrong time, date, or place; an invented detail (what to bring, who is',
   'going, how it will go); guessing what a generic "an appointment" is; the wrong language or',
   'mixed languages; a link other than planLink; hype, exclamation marks, emoji, a question or',

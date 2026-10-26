@@ -252,6 +252,7 @@ describe('ci.yml wiring', () => {
       'eval:holding-line',
       'eval:followup-voice',
       'eval:identity-ask',
+      'eval:reminder',
       'eval:intro-voice',
       'eval:reply-resolver',
       'eval:radar',

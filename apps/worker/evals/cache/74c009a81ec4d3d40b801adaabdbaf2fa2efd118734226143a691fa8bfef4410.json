@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly names tomorrow (Monday), includes both events with correct times (10 h to 11 h, morning) and location, and stays in French. However, it calls the day 'le jour de congé' as the headline framing without noting that a timed event exists, which is close to describing the day as a day off despite a start time; it also lacks the warmth-friendly tone and reads a bit like a template. Facts are right, but the framing of the day as a day off is a flagged low-score issue.",
+    "score": 2
+  }
+}

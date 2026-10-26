@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French (\"Jour de congé\") though the language requested is English, and it gives a wrong time (3:00 instead of 9:30 AM to 12:00 PM), omits the location, and wrongly says the day is open with breathing room when a timed PD Day program exists.",
+    "score": 1
+  }
+}
