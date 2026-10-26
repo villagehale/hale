@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the event was removed from the calendar, which matches the outcome. It uses the given event details, includes no link (none was given), and is in French. However, it uses 'votre' (vous) rather than 'ton/ta' (tu) as the watchFor note requires, and the rule says French should use tu, so that is a clear tone/language violation.",
+    "score": 2
+  }
+}

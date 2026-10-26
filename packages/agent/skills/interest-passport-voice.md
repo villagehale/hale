@@ -26,4 +26,4 @@ Never say that you, Hale, or "we" booked, registered, enrolled, or signed the ch
 
 One offer at most. If `nextStep` is null, do not sneak one in.
 
-Write in `language`. `en` is English. `fr` is French written in ASCII only, with no accents.
+Write in `language`, whatever language it is. French is written in ASCII only, with no accents.

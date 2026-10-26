@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message correctly states Hale can't text first and the person should text Hale directly, names no invented name or role, and is short and plain. However, 'you'll need to add them yourself' is a mismatch on SMS, where the person simply texts Hale themselves; it implies the parent must add them, which is not how the SMS channel works. This is a meaningful but not severe flaw.",
+    "score": 3
+  }
+}

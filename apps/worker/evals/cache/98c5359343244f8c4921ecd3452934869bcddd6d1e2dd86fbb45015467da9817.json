@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event, the Thursday swim, so drafting the move was the right handling. The reply names the change, the pool and the new time, then asks in a plain sentence whether to go ahead. Every detail traces to the week, with no greeting, no keyword prompt and no padding.",
+    "score": 5
+  }
+}

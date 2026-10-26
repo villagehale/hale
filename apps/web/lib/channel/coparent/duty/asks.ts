@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
 import { gateOptionalAsk, recordOptionalAsk } from '~/lib/channel/intake/cold-start/ledger';
+import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
@@ -243,7 +244,10 @@ interface Household {
   childFirstNames: string[];
   teenNames: string[];
   timeZone: string;
+  /** Fixed-shape copy only (the locked line the model rewrites). */
   language: 'en' | 'fr';
+  /** The family's own tag, any language. What the model writes in. */
+  speechLanguage: ReplyLanguage;
   chatId: string | null;
 }
 
@@ -316,7 +320,8 @@ async function loadHousehold(database: Database, familyId: string, now: Date): P
       .filter((name): name is string => name !== null),
     teenNames,
     timeZone,
-    language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
+    language: copyLanguage(family?.primaryLanguage) ?? 'en',
+    speechLanguage: acceptReplyLanguage(family?.primaryLanguage) ?? 'en',
     chatId: family?.linqGroupChatId ?? null,
   };
 }
@@ -506,6 +511,7 @@ export type FamilyDutyView =
       chatId: string | null;
       parentUserId: string;
       language: 'en' | 'fr';
+      speechLanguage: ReplyLanguage;
       timeZone: string;
       open: OpenDutyQuestion | null;
       render: DutyRenderInput;
@@ -549,6 +555,7 @@ export async function planFamilyDutyAsks(
     chatId: home.chatId,
     parentUserId: home.primaryUserId,
     language: home.language,
+    speechLanguage: home.speechLanguage,
     timeZone: home.timeZone,
     open: built.open,
     render: {
@@ -691,7 +698,7 @@ async function voiceDuty(
   database: Database,
   input: {
     familyId: string;
-    language: 'en' | 'fr';
+    language: ReplyLanguage;
     locked: string;
     facts: readonly string[];
     replyClient?: AgentClient | null;
@@ -947,7 +954,7 @@ async function applyPlan(
   if (!locked) return { status: 'skipped', reason: 'placeholder' };
   const text = await voiceDuty(database, {
     familyId: input.familyId,
-    language: input.view.render.language,
+    language: input.view.speechLanguage,
     locked,
     facts: dutyFacts(input.lines, input.view.render, input.view.open),
     replyClient: input.replyClient,
@@ -1056,7 +1063,7 @@ export async function dutyOverviewForWeeklyBubble(
   if (!locked) return null;
   const text = await voiceDuty(database, {
     familyId: input.familyId,
-    language: view.render.language,
+    language: view.speechLanguage,
     locked,
     facts: dutyFacts(view.plan.foldLines, view.render, view.open),
     replyClient: input.replyClient,

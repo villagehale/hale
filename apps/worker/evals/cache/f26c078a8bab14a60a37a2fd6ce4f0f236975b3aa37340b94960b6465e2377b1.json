@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two swim lessons on the week, so asking which one, with nothing drafted, is the required handling. The reply names both events by day, time and pool, all taken from the week. It asks one question, has no greeting or sign-off, and stops.",
+    "score": 5
+  }
+}

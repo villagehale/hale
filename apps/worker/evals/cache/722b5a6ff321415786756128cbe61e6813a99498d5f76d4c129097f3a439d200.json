@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "7c2e9a10-4f3b-4d21-8e6a-1b9c0d2f3e41",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Chinese reply 好的，就这么办吧 (OK, let's just do it that way) is a clear yes, and it is the only open question"
+  },
+  "latencyMs": 2365
+}

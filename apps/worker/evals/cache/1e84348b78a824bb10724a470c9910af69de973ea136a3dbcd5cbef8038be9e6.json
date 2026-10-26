@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Parent says they will ask their partner, which is explicitly not an answer under the rules; no decision has been made."
+  },
+  "latencyMs": 1313
+}

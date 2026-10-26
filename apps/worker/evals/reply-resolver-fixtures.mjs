@@ -322,26 +322,18 @@ export const REPLY_RESOLVER_FIXTURES = [
     id: 'french-consent',
     text: 'oui, allez-y',
     questions: [APPROVAL_MOVE],
-    // CURRENT DOCUMENTED BEHAVIOUR, recorded from a live run — not an aspiration.
-    //
-    // What it actually does: `{ target: 'none', polarity: 'yes', confidence: 'low' }`,
-    // reason "Text is in French; cannot read confidently in English as instructed". So the
-    // reading is `no_target` and the turn goes to the coach — the parent's "oui, allez-y"
-    // does NOT approve the calendar change. Note it read the yes perfectly well and
-    // declined on language, which is the skill being obeyed, not a comprehension limit.
-    //
-    // The skill is deliberately English-first ("This is one language for now: reply `none`
-    // to a text you cannot read confidently rather than guessing at a translation"), and
-    // whether Hale should accept French consent vocabulary is an OPEN FOUNDER DECISION —
-    // a Quebec/Law 25 market question, not an engineering one. So this fixture does not
-    // assert that French works, and French passing is not a gate. It asserts what French
-    // does TODAY, and it is the tripwire that fails the day that changes in either
-    // direction: a skill edit that starts resolving French, or a model bump that starts
-    // guessing at it. Whoever trips it should take the decision to the founder rather than
-    // re-record the expectation.
-    expect: { status: 'unresolved', reason: 'no_target' },
+    // DECIDED 2026-10-25 (Barton): Hale supports any language, so the English-only line
+    // came out of the skill. This was the tripwire for that decision; it now pins the
+    // decided behaviour: a plain French yes to the one open change reads exactly as its
+    // English equivalent would. A regression back to `none` on language fails it.
+    expect: {
+      status: 'resolved',
+      questionId: APPROVAL_MOVE.id,
+      kind: 'approval',
+      polarity: 'yes',
+    },
     why:
-      'French consent vocabulary against a consequential approval. Recorded, not required: ' +
-      'see the note above before changing this line.',
+      'French consent to a consequential approval. Language is never, by itself, a reason ' +
+      'for none or lower confidence.',
   },
 ];

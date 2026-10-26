@@ -48,6 +48,7 @@
     "eval:group-turn-read": "node evals/run-group-turn-read-eval.mjs --cached-only",
     "eval:calendar-cancel-voice": "node evals/run-calendar-cancel-voice-eval.mjs --cached-only",
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
+    "eval:any-language": "node evals/run-any-language-eval.mjs --cached-only",
     "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",
     "eval:crisis-reply": "node evals/run-crisis-reply-eval.mjs --cached-only",
     "eval:said-line": "node evals/run-said-line-eval.mjs --cached-only",

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "7c2e9a10-4f3b-4d21-8e6a-1b9c0d2f3e41",
+    "polarity": "yes",
+    "confidence": "low",
+    "reason": "Hedged lean-yes (\"应该可以吧？\" = probably ok, right?) to the only open question, adding to calendar."
+  },
+  "latencyMs": 1599
+}

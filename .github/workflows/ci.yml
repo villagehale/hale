@@ -232,6 +232,9 @@ jobs:
       - name: Natural reply resolver eval (cached-only)
         run: pnpm --filter @hale/worker eval:reply-resolver
 
+      - name: Any-language reply reading and ask-back eval (cached-only)
+        run: pnpm --filter @hale/worker eval:any-language
+
       - name: Radar payload composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:radar
 

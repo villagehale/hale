@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "7c2e9a10-4f3b-4d21-8e6a-1b9c0d2f3e41",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Spanish 'sí, adelante por favor' is a clear yes to the only open question, add to calendar."
+  },
+  "latencyMs": 1361
+}

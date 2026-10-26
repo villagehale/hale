@@ -1,5 +1,6 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { activityKeyOf } from './signals';
@@ -58,7 +59,8 @@ const LINK = /https?:\/\/|www\./i;
 export interface PassportLineFacts {
   job: 'confirm' | 'acknowledge';
   acknowledgment: 'confirm' | 'remove' | 'reassign' | 'declare' | null;
-  language: 'en' | 'fr';
+  /** Any BCP-47 tag: the family's own language. */
+  language: ReplyLanguage;
   childName: string | null;
   activity: string | null;
   seasonLabel: string | null;

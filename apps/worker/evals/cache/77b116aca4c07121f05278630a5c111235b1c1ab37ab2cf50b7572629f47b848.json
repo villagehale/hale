@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct handling: it carries the appended referral link and tells Sam to forward it themselves, with no invented URL. The wording is a bit padded, though: the 'I won't be texting them first' and 'their own family here' clauses go past what was needed. 'The line below' is also muddled, since the pitch sentence sits before the link.",
+    "score": 4
+  }
+}

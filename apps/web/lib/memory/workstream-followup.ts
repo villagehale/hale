@@ -30,7 +30,13 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { addCalendarDays, formatLocalDate, localDateParts, timezoneOffsetMs } from './period';
-import { isoWeekdayIndex, localDate, localWeekday, workstreamLanguage } from './workstream-time';
+import {
+  type WorkstreamLanguage,
+  isoWeekdayIndex,
+  localDate,
+  localWeekday,
+  workstreamLanguage,
+} from './workstream-time';
 import {
   type DueWorkstream,
   haleActionNextStep,
@@ -751,7 +757,7 @@ async function oneAttempt(
     refusalNote?: string;
     now: Date;
     timeZone: string;
-    language: 'en' | 'fr';
+    language: WorkstreamLanguage;
   },
 ): Promise<PreparedBody> {
   const skill = await loadCronSkill('workstream-followup');
@@ -806,7 +812,7 @@ export async function composeWorkstreamFollowup(input: {
   nextStep: string | null;
   now?: Date;
   timeZone?: string;
-  language?: 'en' | 'fr';
+  language?: WorkstreamLanguage;
 }): Promise<WorkstreamComposeResult> {
   const attempt = {
     client: input.client,
@@ -1173,7 +1179,7 @@ export function followupBackoffUntil(attempt: number, now: Date): Date {
 async function followupSpeech(
   database: Database,
   familyId: string,
-): Promise<{ timeZone: string; language: 'en' | 'fr' }> {
+): Promise<{ timeZone: string; language: WorkstreamLanguage }> {
   const [family] = await database
     .select({ primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)

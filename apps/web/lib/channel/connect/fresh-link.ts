@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
@@ -253,5 +253,5 @@ async function familyLanguage(database: Database, familyId: string): Promise<Rep
     .from(schema.families)
     .where(eq(schema.families.id, familyId));
   const row = rows.find((candidate) => candidate.id === familyId);
-  return row?.primaryLanguage === 'fr' ? 'fr' : 'en';
+  return acceptReplyLanguage(row?.primaryLanguage) ?? 'en';
 }

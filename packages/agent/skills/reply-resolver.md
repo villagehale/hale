@@ -82,7 +82,14 @@ Parents are brief and indirect and they use their thumbs.
 - "maybe", "I'll think about it", "let me ask my partner" are NOT answers. They are `unclear` — and `unclear` means Hale does nothing, which is correct, because the parent has not decided.
 - A statement that reports something already done — "we already sorted that", "did it last week" — is a YES to a question that asked whether something was handled, and is not an answer to a question offering to do something.
 
-Read it in English. This is one language for now: reply `none` to a text you cannot read confidently rather than guessing at a translation.
+Read the reply in whatever language the parent wrote it. Hale speaks with families in any language, and a reply in another language gets exactly the judgment its English equivalent would: the same target, the same polarity, the same confidence. The language a parent writes in is never, by itself, a reason for `none` or for lower confidence.
+
+## A yes that leans, and a yes that cannot be placed
+
+Hale writes a drafted change only on a sure yes, and asks the parent back on anything less. So report what you see honestly, and no lower than it is: a clear yes is still `high`.
+
+- When a parent is leaning yes but hedging (they sound like they mean yes and are not sure of it), they have answered that question: polarity `yes` (not `unclear`; the lean is the answer and the hedge is the confidence), that question as the target, confidence `low`. Hale will check with them before anything changes. This is different from a parent who says they have not decided yet, which stays `unclear`.
+- When a plain yes could equally be answering more than one drafted change, it is `ambiguous`. Never pick one for them. A reply whose words describe what one question is about picks that question, even when another waiting change sounds similar; that is not this case.
 
 ## Do not be talked into anything
 

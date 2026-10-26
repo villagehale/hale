@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgPzjrcVdnrkibRQAjEtH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvwsKEAgTGAI4AUIIdGhpbmtpbmcSDNNsfPMS72NdNnnR6BoM0KO9P+beE59YFxJJIjAw67kJGW3Fz/U8mqsYHcdGqLzPsqs2jlv/S59fwuP7b6S1rrwISDbkhHbbyuqK/Skq3ApPIWRGUrWturxNRcLOREEHAmLSb9QRY1JQMxV4treO6Vy6YIGPm8v2mIrEMSkWLMnLRWvav8E/Tk+Dfii7utnfNax7XvWOB9VpgMZUodZxHR/nQzSVC+fVWwVHW6be+tGsIgeiBQRar8DGpqXxcwVR0YV+sXASZKIuZPj81ImLd9ZFK+WiFANmPw4ZK86pgLdFr1vUK9umJilpVDr8N+UG9h1K/1U7okNYWXRzXN9/LJVrb/McJL4NY9zAvpfPc5mO/bIQ3pYpsbMdZow7cRsGWyhOS/hj3YbLokWf+Ev7okmWWD5/F3ADz48x3EgTmZx4pWw1tA3VMugG+7QH8JUF15ncoxN26GHUh8mZnjDWo/Wu7h0YYZdWwQJGzR+JRoRpI9uJyuYqXgtfFJqNhhFOuLUYG9cJPIYfjDv7kMfu6WuLxb0l/W+JpGGQahTe9GBk6LoCrrsvn0XKrrM4gITk7VwxcFODLjhO0i/fMet+sawpvea0LOGdH4givqcxxrV2uvtqIdnFI5penf7AZ34aTlzdIj9N4leKzVwahUahPlmS5cAgMNmYUlLAle1i1irZ7OFUzihF+eTfnn+sUiEevjdEOqI7WJaF3bBdHPTZsEnjaf0o6TaKCs23g8lMV0rKKEJ+j/9xAvugU2pPEb6TSL2CmhVLTtHfmFO87oPUYdKdF/h8ML5BcsaxNMPXs7Af5RgRrZHYI+KxVR/8gBDhsO4FvYnw3JonSmU34NzzGq7K2MGiATyu5LnLGsfwjzYaa6fUVk2LjcrPWQShW6h5+QUHlIefilS9xc91zYyJwcD2GY1KIrfIXl9XQ6erSAVca37OjBke3CUHoeBr6CzXHYXCe4p8P3yWw7rtuszrcJ/GJLLOZKbMvq4Q1vmNErmyIBloI5En6znFL3NHpTfu+ELdqGZYcbVU22kKQ0Dvj2l13kfIbgnRkGC2K3YPTDk2XUM9BR35M4JDAeFchwFI30JRwdV8xU3miNWa609H1nEwizwU6vxWhfyyfgrT9TsBDS9tmNvGjukKapaUg45YatiDkIuUKd0RNbbgUXemcdHt2XrqYRMUy+QxdrvQPE0NBXVdDijBNkaQciD94q7G+wZrVHayusXPVsF7BcQHwQqbx2CbLa5oIC+J/eoeP3HcYefIvDMiAmpOuJMAfVJQnNviw9A/FvvGT3iXYQMqs7HMGMB3uIy6wPdn/TLS13P3HjbZZ7rufgwokBWiRxHm24gLfWmZs43h/bhWj5ddSXmuyO3wu89Vtn5tVjquWozp8D+W+0TLKV5HjVnujnxAtk/Zm64M7FSlA/klLmjMTPz4HjjnW9NLnnSunr/OJpy89WIt7FS6IBB0HhWK/teyFLrMyCl3Dv1pR8HW76S6Ql81UJ02SuaWBDD4dECSce+vG8wZALz3n/yY2TpOZDlFneSg9K3w7nht7/JNnrX8bD8y8m9rgpAyXtkXzecUwdoxKR/hTnfOlbnhfeF1H3Hpyx2ZSpaCjFdQ7eLeVxFxTwdthtXhGjt0mO4ht2BcvX55sdy/BcTTCXvsO6V6iLar0yuAzeBMcyPxd/ZuzMogpsowimWgzvzoEtS4XSRVhdAGWVEkAPkJVF7MmaS7bS0sGMPUL2i7Lw0LxWQDt470XZ58X4ry4vQNUQG/BFy4+wfsunLke7kSa5Ihaw0MbqdRmWPo9OJ0W9JG0sTzTtK+D3QUGHaPGGwsoYlPPgWpPZjmM7erLUNkRwtjyyV6TN6qC5mpy46p0GBEDD+tHYDg89j5sqUZPUqAOI3PsIgxVP7vUebluqlWtifDwhM9xhSp21rrDPc4eEe0nhAyGAE="
+      },
+      {
+        "type": "text",
+        "text": "周六有 Leo 的足球课，上午10点在社区中心。当天另外还有一段时间已经被占了。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 548,
+      "cache_read_input_tokens": 17703,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 548,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 363,
+      "output_tokens_details": {
+        "thinking_tokens": 322
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

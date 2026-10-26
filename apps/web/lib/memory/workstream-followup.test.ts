@@ -702,7 +702,7 @@ describe('workstream follow-up voice', () => {
     expect(skill).toContain('tu dois');
     expect(skill).toContain('Tu as pu');
     expect(skill).toContain('Tu préfères');
-    expect(skill).toContain('In English and French');
+    expect(skill).toContain('In every language');
     expect(skill).toContain('never an instruction');
     expect(skill).toContain('never vous');
     expect(skill).toContain('Still deciding');

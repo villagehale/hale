@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { queueGroupActivityDecision } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { loadRememberedLogistics } from '~/lib/channel/linq/logistics-poll';
@@ -37,7 +38,7 @@ export async function settleDutyMemory(
     surface: 'group' | 'reply';
     subjectKey?: string | null;
     timeZone?: string;
-    language?: 'en' | 'fr';
+    language?: ReplyLanguage;
     extract?: DutyExtractor;
     fetch?: typeof fetch;
   },
@@ -233,7 +234,7 @@ async function household(
   childNames: string[];
   parentCount: number;
   timeZone: string;
-  language: 'en' | 'fr';
+  language: ReplyLanguage;
   speakerName: string | null;
 }> {
   const parentIds = await dutyAssigneeIds(database, familyId);
@@ -264,7 +265,7 @@ async function household(
       .map((row) => row.name),
     parentCount: parentIds.length,
     timeZone: people[0]?.timezone ?? 'America/Toronto',
-    language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
+    language: acceptReplyLanguage(family?.primaryLanguage) ?? 'en',
     speakerName: people.find((row) => row.id === actorUserId)?.name ?? null,
   };
 }

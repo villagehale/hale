@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "consent",
+    "sessionId": "sess-1",
+    "question": null,
+    "reason": "clear go-ahead for the only available session"
+  },
+  "latencyMs": 4529
+}

@@ -384,7 +384,7 @@ describe('telling the parent who stayed', () => {
       ports(transport).ports,
     );
 
-    expect(transport.sent[0]?.body).toBe(await coParentDepartedNotice('fr'));
+    expect(transport.sent[0]?.body).toBe(await coParentDepartedNotice('fr-ca'));
     // The audit row records the language that was CHOSEN. It used to be re-derived by
     // comparing the rendered body against the EN constant, so any change to how the
     // message is built relabelled every row — including the English ones.
@@ -392,7 +392,7 @@ describe('telling the parent who stayed', () => {
       .select({ after: schema.auditLog.after })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'co_parent_departure_notice_sent'));
-    expect(audit?.after).toEqual({ language: 'fr' });
+    expect(audit?.after).toEqual({ language: 'fr-ca' });
   });
 
   /**

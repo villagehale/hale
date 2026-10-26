@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says the event was noted but not written because the calendar is read-only, which matches the needs_permission outcome. It includes the connect link exactly as given, is in Chinese, first person and short. It does not invent details, though it does not restate the event time or place, which is acceptable. Tone is plain and warm.",
+    "score": 5
+  }
+}

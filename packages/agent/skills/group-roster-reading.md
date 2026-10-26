@@ -12,7 +12,7 @@ You read one reply from one person in a family group chat. Hale asked who they a
 ## What you see
 
 - `text` — their whole message.
-- `language` — `en` or `fr`, a hint only. They may mix the two.
+- `language` — the family's stored language tag, a hint only. They may write in any language, or mix several.
 
 ## Output
 

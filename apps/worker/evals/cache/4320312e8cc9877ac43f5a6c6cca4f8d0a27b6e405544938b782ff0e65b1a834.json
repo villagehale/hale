@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Swim\" matches two events in the week, so asking which one and drafting nothing is the correct handling. The reply names both lessons with their exact day, time and pool, then asks a single clear question, with no padding or greeting.",
+    "score": 5
+  }
+}

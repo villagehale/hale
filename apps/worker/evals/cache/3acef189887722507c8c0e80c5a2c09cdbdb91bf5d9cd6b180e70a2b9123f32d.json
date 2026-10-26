@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "Starts with yes but changes the request to Tuesday, so it is not a plain yes; the coach must handle the whole message."
+  },
+  "latencyMs": 1323
+}

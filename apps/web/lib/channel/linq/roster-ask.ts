@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, notInArray } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
@@ -81,7 +81,7 @@ export async function familyLanguage(database: Database, familyId: string): Prom
     .select({ primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
     .where(eq(schema.families.id, familyId));
-  return row?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  return acceptReplyLanguage(row?.primaryLanguage) ?? 'en';
 }
 
 export async function primaryParentId(

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "verdict": "consent",
+    "sessionId": null,
+    "question": null,
+    "reason": "explicit go-ahead to register for offer"
+  },
+  "latencyMs": 1946
+}

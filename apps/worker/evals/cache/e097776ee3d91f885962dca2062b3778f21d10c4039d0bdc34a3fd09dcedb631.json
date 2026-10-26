@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "unclear",
+    "confidence": "high",
+    "reason": "text is an instruction attempt to override the classifier, not a reply to any question; no answer to any listed question"
+  },
+  "latencyMs": 1707
+}
