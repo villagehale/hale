@@ -1,4 +1,5 @@
 import { namesAPerson } from '~/lib/channel/activity/deidentify';
+import type { ActivityReference } from '~/lib/channel/activity/facts';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import { childPhrase } from '~/lib/channel/checkin/copy';
@@ -68,6 +69,8 @@ export interface TravelBriefInput {
   /** Everything the lane found, in its own order. At most {@link SLOTS_IN_TEXT} are
    * rendered; the rest are dropped, not linked. */
   picks: readonly ActivityPick[];
+  /** Source-bound leads only; their schedules, ages and prices are not rendered. */
+  references?: readonly ActivityReference[];
   /** The household's 13+ first names. Passed so the render can REFUSE rather than trim —
    * a teen's name reaching this body is a bug upstream, not a string to fix here. */
   teenNames: readonly string[];
@@ -79,6 +82,7 @@ export interface TravelBriefContext {
   dayPhrase: string;
   /** The picks that actually made it into the body. */
   rendered: readonly ActivityPick[];
+  renderedReferences?: readonly ActivityReference[];
   teenNames: readonly string[];
 }
 
@@ -127,7 +131,9 @@ function without(text: string, literal: string | null): string {
 export function travelBriefViolations(body: string, context: TravelBriefContext): string[] {
   const violations: string[] = [];
 
-  if (context.rendered.length === 0) violations.push('no_picks');
+  if (context.rendered.length === 0 && !context.renderedReferences?.length) {
+    violations.push('no_picks');
+  }
   // ON A WORD BOUNDARY, and `namesAPerson` rather than a substring test of its own: that
   // is the boundary the outbound redactor uses, so the set of names this refuses is
   // exactly the set that one replaces. A substring match refuses the WHOLE body, so its
@@ -142,6 +148,10 @@ export function travelBriefViolations(body: string, context: TravelBriefContext)
     rest = without(rest, pick.name);
     rest = without(rest, pick.when);
     rest = without(rest, pick.price);
+  }
+  for (const reference of context.renderedReferences ?? []) {
+    rest = without(rest, reference.name);
+    rest = without(rest, reference.sourceName);
   }
   if (rest.includes('?')) violations.push('asks_a_question');
   // A DIGIT WITH NOTHING BEHIND IT. Every number in this text traces to the trip's own
@@ -171,6 +181,8 @@ export interface TravelBriefRender {
    * message; this one is the assembly's own.
    */
   rendered: readonly ActivityPick[];
+  /** Named leads with explicit uncertainty, never supported picks. */
+  renderedReferences: readonly ActivityReference[];
 }
 
 /**
@@ -186,35 +198,55 @@ export interface TravelBriefRender {
 export async function renderTravelBrief(input: TravelBriefInput): Promise<TravelBriefRender> {
   const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
   const kids = childPhrase([...input.childNames]);
-  const opening = input.forGroup
+  const provenance = input.references?.length
+    ? 'These are source listings, not confirmed plans.'
+    : PROVENANCE;
+  let opening = input.forGroup
     ? await groupTravelBriefOpening(input.city, dayPhrase, kids)
     : `You're in ${input.city} ${dayPhrase}. A couple of things on for ${kids}:`;
   if (!opening) {
     throw new Error('travel brief copy refused: model_unreachable');
   }
+  if (input.references?.length) {
+    opening = opening.replace('A couple of things on', 'Places to check');
+  }
 
   const rendered: ActivityPick[] = [];
+  const renderedReferences: ActivityReference[] = [];
   let body = opening;
   for (const pick of input.picks.slice(0, SLOTS_IN_TEXT)) {
     const candidate = `${body} ${renderPick(pick)}`;
     // Measured with the closing sentence already counted, so the provenance line can never
     // be the thing that pushes a sent body over the ceiling. The opt-out line is not
     // part of the measurement: it is not appended.
-    if (smsSegments(withOptOut(`${candidate} ${PROVENANCE}`, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
+    if (smsSegments(withOptOut(`${candidate} ${provenance}`, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
       break;
     }
     body = candidate;
     rendered.push(pick);
   }
-  body = `${body} ${PROVENANCE}`;
+  for (const reference of (input.references ?? []).slice(0, SLOTS_IN_TEXT - rendered.length)) {
+    const caveat =
+      reference.status === 'historical'
+        ? 'older listing; not confirmed for your trip'
+        : 'dates and age fit not confirmed for your trip';
+    const candidate = `${body} ${reference.name} (${reference.sourceName}): ${caveat}.`;
+    if (smsSegments(withOptOut(`${candidate} ${provenance}`, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
+      break;
+    }
+    body = candidate;
+    renderedReferences.push(reference);
+  }
+  body = `${body} ${provenance}`;
 
   const violations = travelBriefViolations(body, {
     dayPhrase,
     rendered,
+    renderedReferences,
     teenNames: input.teenNames,
   });
   if (violations.length > 0) {
     throw new Error(`travel brief copy refused: ${violations.join(', ')}`);
   }
-  return { body, rendered };
+  return { body, rendered, renderedReferences };
 }

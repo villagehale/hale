@@ -84,7 +84,7 @@ export const ACTIVITY_FIXTURES = [
     expectPicks: null,
     mustMentionInNotes: 'cartwheel',
     watchFor:
-      "The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.",
+      'The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.',
   },
 
   // ── a VISIT, not a term: the travel brief's own query shape ───────────────
@@ -138,6 +138,9 @@ export const ACTIVITY_FIXTURES = [
   // the way phase 3 already recomposes.
   {
     id: 'travel-visit-new-york',
+    // Keep this recorded, already-past trip explicit; do not silently roll it into next year.
+    dateRange: { start: '2026-09-12', end: '2026-09-15' },
+    timeZone: 'America/New_York',
     subject:
       'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
     window: 'September 12 to 15',
@@ -152,6 +155,8 @@ export const ACTIVITY_FIXTURES = [
   },
   {
     id: 'travel-visit-montreal',
+    dateRange: { start: '2026-12-27', end: '2026-12-30' },
+    timeZone: 'America/Toronto',
     subject:
       'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
     window: 'December 27 to 30',
@@ -174,6 +179,8 @@ export const ACTIVITY_FIXTURES = [
     // (lib/travel/query.ts) never composes one: this fixture no longer mirrors the
     // product's window shape. "September 4 to 6, 2027" survives scrubResidualPii intact.
     id: 'travel-visit-ottawa-month-boundary',
+    dateRange: { start: '2027-09-04', end: '2027-09-06' },
+    timeZone: 'America/Toronto',
     subject:
       'things a family visiting for a few days can turn up to with young children: museums, zoos, aquariums, playgrounds',
     window: 'September 4 to 6, 2027',

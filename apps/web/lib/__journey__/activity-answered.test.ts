@@ -863,11 +863,15 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     // THE SWEEP, a day later. It re-runs the search on the STORED subject and comes back.
     const sweepWeb = webPort([[GYM_RESULT]]);
     const sweepTransport = new FakeTransport();
+    const composer = composerModel();
     const result = await runActivityFollowUpSweep(
       database,
-      sweepDeps(sweepTransport, sweepWeb.client),
+      sweepDeps(sweepTransport, sweepWeb.client, {
+        composer: createFollowUpComposer(composer.client),
+      }),
       SWEEP_AT,
     );
+    expect(composer.misses, 'missing exact follow-up writer recording').toEqual([]);
 
     expect(result).toMatchObject({ due: 1, sent: 1, sentEmptyHanded: 0 });
     expect(sweepTransport.bodies()[0]).toContain('Halton Hills Gymnastics Centre');
@@ -944,6 +948,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
 
     // It read a page rather than re-running the snippet search — `deepRead`, not `sent`
     // alone, is the difference between this sweep and the one it replaced.
+    expect(composer.misses, 'missing exact deep follow-up writer recording').toEqual([]);
     expect(result).toMatchObject({ due: 1, sent: 1, deepRead: 1, deepUnread: 0 });
 
     // ── the projection boundary ──────────────────────────────────────────────

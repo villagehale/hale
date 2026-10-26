@@ -79,6 +79,7 @@ import {
   evalRunTag,
   installEvalSpendCap,
   lazyAnthropic,
+  loadAgent,
   makeCost,
   makeJudge,
   noteUsage,
@@ -94,7 +95,6 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
-const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const ACTIVITY_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
 const TRAVEL_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'query.ts');
 
@@ -109,7 +109,15 @@ const {
   activityPicksJsonSchema: PICKS_TOOL_SCHEMA,
   bindActivityFacts,
   activityDateRange,
-} = await tsImport(join(REPO_ROOT, 'apps/web/lib/channel/activity/facts.ts'), import.meta.url);
+  activityCalendarDate,
+} = await tsImport(join(REPO_ROOT, 'apps/web/lib/channel/activity/facts.ts'), {
+  parentURL: import.meta.url,
+  tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+});
+const { renderTravelBrief } = await tsImport(join(REPO_ROOT, 'apps/web/lib/travel/copy.ts'), {
+  parentURL: import.meta.url,
+  tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+});
 const EVAL_NOW = new Date('2026-10-15T12:00:00Z');
 
 const FOLLOWUP_TOOL_SCHEMA = {
@@ -152,8 +160,8 @@ function composeUserMessage(q, researchNotes) {
   return JSON.stringify({
     ...JSON.parse(groundUserMessage(q)),
     research_notes: researchNotes,
-    today: EVAL_NOW.toISOString().slice(0, 10),
-    requested_date_range: activityDateRange(q.window, EVAL_NOW),
+    today: activityCalendarDate(EVAL_NOW, q.timeZone),
+    requested_date_range: activityDateRange(q.window, EVAL_NOW, q.timeZone, q.dateRange),
   });
 }
 
@@ -680,6 +688,9 @@ function normalizePicks(raw, ground, query) {
       ground.pages ?? [],
       query.window,
       EVAL_NOW,
+      query.timeZone,
+      query.dateRange,
+      query.stages?.length ? query.stages : query.stage ? [query.stage] : undefined,
     );
     decoded = bound.picks;
     references = bound.references;
@@ -1021,7 +1032,7 @@ async function main() {
   const getClient = lazyAnthropic('activity-finder');
   const cost = makeCost();
 
-  const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const agent = await loadAgent();
   const { createActivityPageFetch } = await tsImport(
     join(REPO_ROOT, 'apps/web/lib/channel/activity/page.ts'),
     { parentURL: import.meta.url, tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json') },
@@ -1128,6 +1139,8 @@ async function main() {
       town: fixture.town,
       stage: fixture.stage,
       window: fixture.window,
+      ...(fixture.dateRange ? { dateRange: fixture.dateRange } : {}),
+      ...(fixture.timeZone ? { timeZone: fixture.timeZone } : {}),
     };
 
     // ── the border: what actually leaves ─────────────────────────────────────
@@ -1268,20 +1281,29 @@ async function main() {
 
     // ── phase 3: THE FOLLOW-UP TEXT — unless the caller writes its own ───────
     //
-    // `composesOwnText` is the travel brief, and skipping this phase for it is the same
-    // rule this file's header states about the tool list, one layer up: DO NOT SCORE A
-    // TURN PRODUCTION DOES NOT MAKE. `createActivityFinder` ends at the picks; the
-    // follow-up composer below is `followup-note.ts`, which the coach reaches and the
-    // travel sweep never does — it hands the picks to `renderTravelBrief`, which is
-    // deterministic, has no model call in it at all, and writes to a four-segment ceiling
-    // rather than this one's two. Running it here would have scored the travel query on
-    // the coach's composer and reported the result as a fact about the travel brief.
-    //
-    // Nothing is weakened by the skip: every HARD ZERO above — the identity leak, the
-    // grounding, the fabricated pick, the half find, the directory, and `no_picks` — runs
-    // on these fixtures exactly as it does on the rest, and the quality bar becomes
-    // TRAVEL_JUDGE_SYSTEM, which asks the question this query shape is actually for.
+    // Travel uses its real deterministic renderer, never the AI follow-up composer.
+    // References can be delivered honestly but never satisfy the expectPicks gate above.
     if (fixture.composesOwnText === true) {
+      let brief = { body: '', rendered: [], renderedReferences: [] };
+      const range = activityDateRange(query.window, EVAL_NOW, query.timeZone, query.dateRange);
+      if (!range) failures.push('travel_dates_unresolved');
+      else if (range.end < activityCalendarDate(EVAL_NOW, query.timeZone)) {
+        failures.push('travel_dates_past');
+      } else {
+        try {
+          brief = renderTravelBrief({
+            city: fixture.town,
+            startsOn: range.start,
+            endsOn: range.end,
+            childNames: [],
+            teenNames: [],
+            picks: kept,
+            references,
+          });
+        } catch (err) {
+          failures.push(`travel_copy:${err instanceof Error ? err.message : 'refused'}`);
+        }
+      }
       // Skipped in broken mode for the same reason the other judge is: the deterministic
       // layer proves the calibration, and `brokenPicks` hands an `expectPicks` fixture an
       // empty list, so `no_picks` above is already red here.
@@ -1310,7 +1332,9 @@ async function main() {
       results.push({
         fixture,
         picks: kept,
-        body: '(the caller composes its own text)',
+        body: brief.body,
+        renderedPicks: brief.rendered,
+        renderedReferences: brief.renderedReferences,
         searchCount: ground.searchCount,
         pagesRead: ground.pagesRead,
         pagesRefused: ground.pagesRefused,

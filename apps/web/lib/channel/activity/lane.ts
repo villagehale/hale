@@ -618,6 +618,7 @@ async function runActivityOnce(
       now,
       query.timeZone,
       query.dateRange,
+      query.stages?.length ? query.stages : query.stage ? [query.stage] : undefined,
     );
     const cited = bound.picks.flatMap((raw) =>
       toPicks([raw]).map((pick) => ({
