@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in Chinese, both events present with correct times and AM/PM (上午11:00, 下午5:30至6:30), day correctly phrased as 明天 (tomorrow) from Sunday, no invented details, no link included (planLink not required to appear), calm and short. Tone is fine though slightly list-like.",
+    "score": 5
+  }
+}

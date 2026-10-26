@@ -77,10 +77,10 @@ body
 });
 
 describe('loadSkill', () => {
-  it('loads the bundled reminder-voice skill by bare name', async () => {
-    const skill = await loadSkill('reminder-voice');
-    expect(skill.meta.name).toBe('reminder-voice');
-    expect(skill.meta.task).toBe('draft');
+  it('loads the bundled reminder skill by bare name', async () => {
+    const skill = await loadSkill('reminder');
+    expect(skill.meta.name).toBe('reminder');
+    expect(skill.meta.task).toBe('speak');
     expect(skill.meta.tools).toEqual([]);
     expect(skill.instructions.length).toBeGreaterThan(0);
   });

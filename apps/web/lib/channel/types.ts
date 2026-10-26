@@ -98,7 +98,14 @@ export type VoiceOutcome =
  * `voice` is set by the renderers that HAVE a composed voice slot and is absent on every
  * other template — see {@link VoiceOutcome}. It is an enum about Hale's own pipeline and
  * never content, which is why the dispatch can carry it onto an immutable audit row. */
-export type RenderedContent = { kind: 'sms'; text: string; voice?: VoiceOutcome };
+export type RenderedContent = {
+  kind: 'sms';
+  text: string;
+  voice?: VoiceOutcome;
+  /** Keep the sent text on the outbound channel_messages row. Set only by a template
+   * whose whole text is model-written from the parent's own facts (the reminder). */
+  recordBody?: boolean;
+};
 
 /** Produces channel-specific content for a message, honoring the resolved child-name
  * privacy level. Injected — the seam ships a Fake; templates provide the real one. */

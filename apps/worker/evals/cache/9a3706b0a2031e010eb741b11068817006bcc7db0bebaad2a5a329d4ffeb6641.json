@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present: the all-day Jour de congé and Léa's swim 10 h to 11 h at Piscine Main. The time is correctly morning (10 h), the day is correctly 'demain', the text is entirely in French, and it is short and calm. No invented details, no link, no hype, and the day is not described as free.",
+    "score": 5
+  }
+}

@@ -223,9 +223,6 @@ jobs:
       - name: Group turn read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-turn-read
 
-      - name: Reminder voice composer eval (cached-only)
-        run: pnpm --filter @hale/worker eval:reminder-voice
-
       - name: Introduction ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intro-voice
 
@@ -291,6 +288,9 @@ jobs:
 
       - name: Calendar write notice eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-write-notice
+
+      - name: Reminder eval (cached-only)
+        run: pnpm --filter @hale/worker eval:reminder
 
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a

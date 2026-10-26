@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All events present with correct times and AM/PM (上午11:00 story time, 下午5:30到6:30 soccer), day correctly 明天, no invented details, entirely Chinese, short and calm. Omits the plan link which is acceptable since it was optional, and the story time location is not stated in the input so no fabrication occurred. Minor: '训练' (training) is an embellishment of 'Soccer', a small invented detail.",
+    "score": 4
+  }
+}

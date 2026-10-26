@@ -14,7 +14,6 @@ import {
 import type { ReminderStatus, SuppressReason } from './schedule';
 
 /** The parents' reminder lead is the event's own family-local day (reminder/core.ts). */
-const DAY_LEAD = /^Sat, Jul 25: /;
 
 /**
  * VIL-241 · M6 — the event reminders a caregiver was promised, and the three events they
@@ -103,7 +102,11 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
       captures.push({ event, distinctId, props });
       return 'sent';
     },
-    client: null,
+    // Parents' reminders are model-written; a fake writer stands in so the parent legs
+    // (the positive controls) still send. The caregiver leg never calls it.
+    client: {} as ReminderRunDeps['client'],
+    loadLanguage: async () => 'en',
+    composeText: async (_client, facts) => facts.events.map((e) => e.what).join('; '),
     loadNameLevel: async () => 'first_name',
     ...over,
   };
@@ -347,11 +350,9 @@ describe('fire — what actually reaches a caregiver', () => {
     await runReminderCron(db, deps, NOW);
     expect(enqueued[0]).toMatchObject({ templateKey: 'reminder', parentUserId: 'p1' });
     expect(enqueued[0]?.channel).toBeUndefined();
-    // The parents' own copy, and visibly not the caregiver's — theirs carries the address
-    // and joins with a dash where this one uses a colon.
-    const parentText = body(enqueued[0] as ChannelSendJob);
-    expect(parentText).toMatch(DAY_LEAD);
-    expect(parentText.replace(DAY_LEAD, '')).toBe('Swim class at 10:00');
+    // The parents' own text is the model's, written from the parents' redacted facts
+    // (the fake writer echoes them) — not the caregiver's template.
+    expect(body(enqueued[0] as ChannelSendJob)).toBe('Mia — Swim class');
   });
 });
 
@@ -479,8 +480,7 @@ describe('one recipient, two households', () => {
       const own = jobFor(enqueued, 'fam-1');
       expect(own.templateKey).toBe('reminder');
       expect(own.channel).toBeUndefined();
-      expect(body(own)).toMatch(DAY_LEAD);
-      expect(body(own).replace(DAY_LEAD, '')).toBe('an appointment at 10:00');
+      expect(body(own)).toBe('an appointment');
       expect(body(own)).not.toContain('Therapy intake');
 
       // The household she works for is a CAREGIVER's: their template, pinned to sms,

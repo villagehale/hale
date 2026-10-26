@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly reports the all-day PD Day tomorrow with no clock time and no invented details, in English and in a warm tone. However, it describes the day as breathing room, which the rules treat as a low-scoring error when an event exists, even though the event is all-day. This framing contradicts the event being on the calendar, so it cannot score high.",
+    "score": 2
+  }
+}

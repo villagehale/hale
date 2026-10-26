@@ -255,9 +255,9 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
-  "reminder-voice.md": {
-    "file": "reminder-voice.md",
-    "sha256": "b7a348d73cddfe88451da8818bc1b4ee26e5424a246ce9030cbbfb30549cc261"
+  "reminder.md": {
+    "file": "reminder.md",
+    "sha256": "61340e5059f38e83f617ca8e89d352ab31870fc19dcf8c44eca8179c7e10a711"
   },
   "reply-copy.md": {
     "file": "reply-copy.md",

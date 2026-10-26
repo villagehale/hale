@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct facts: the all-day Jour de congé and Léa's swimming 10:00-11:00 AM at Piscine Main, written as 10 h 00 to 11 h 00 in French, which is correct for morning. The day is correctly framed as tomorrow from Sunday. It is entirely in French, short and calm, with no invented details and no link. The phrasing 'un jour de congé, mais' is acceptable since the timed swimming event is explicitly stated and the day is not described as free.",
+    "score": 5
+  }
+}

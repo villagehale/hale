@@ -112,7 +112,10 @@ export type SuppressReason =
   /** VIL-226. The parent said "that's mine" (untrack.ts). */
   | 'parent_untracked'
   /** VIL-226. Cancelled by the one-off backfill after an adult verdict. */
-  | 'kid_relevance_backfill';
+  | 'kid_relevance_backfill'
+  /** The parent's reminder text could not be written by the model (or no model client
+   * is configured). Nothing is sent: there is no fallback copy. */
+  | 'unwritten';
 
 export type ReminderDecision =
   | { action: 'fire' }
@@ -137,7 +140,7 @@ export interface ClassifyOptions {
  * HOW LATE a due reminder is decides nothing. One held while its lane was off, or caught
  * up after a cron gap, is still useful while its event has not started, so it fires —
  * an evening-before one on the event's own day too: its lead is the event's date and its
- * voice phrases the day from the event's local start and `now` (reminder-voice.ts).
+ * model phrases the day from the event's local start and `now` (reminders/compose.ts).
  * Once the per-family send decider lands (#824) it owns that "still useful?" call, and
  * this rule becomes its input.
  */
