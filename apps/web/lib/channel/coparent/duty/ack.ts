@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
   LinqSendError,
@@ -59,7 +60,8 @@ export async function acknowledgeDutyWrite(input: {
   timeZone: string;
   inboundChatId: string | null;
   inboundMessageId: string | null;
-  language: 'en' | 'fr';
+  /** Any BCP-47 tag: what the model writes in. The locked echo is only en/fr shape. */
+  language: ReplyLanguage;
   name: string | null;
   kid: string | null;
   event: string | null;
@@ -84,7 +86,7 @@ export async function acknowledgeDutyWrite(input: {
   const templateKey = input.source === 'llm' ? 'linq:duty_restate' : 'linq:duty_tapback';
   const fallback =
     input.source === 'llm'
-      ? dutyOwnerEcho(input.language, {
+      ? dutyOwnerEcho(copyLanguage(input.language) ?? 'en', {
           name: input.name,
           kid: input.kid,
           event: input.event,

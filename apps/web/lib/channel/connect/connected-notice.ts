@@ -21,7 +21,7 @@ import {
   saveSession,
 } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
@@ -413,14 +413,14 @@ async function continueAfterReceipt(
   }
 }
 
-/** Intake stamps this when the kids-and-postal text was French. Anything else is English. */
+/** The family's stored language tag, any language; English only when none is stored. */
 async function familyReceiptLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
   const rows = await database
     .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
     .where(eq(schema.families.id, familyId));
   const row = rows.find((candidate) => candidate.id === familyId);
-  return row?.primaryLanguage === 'fr' ? 'fr' : 'en';
+  return acceptReplyLanguage(row?.primaryLanguage) ?? 'en';
 }
 
 /** The receipt's own door, as a transport the connector card can ride. */

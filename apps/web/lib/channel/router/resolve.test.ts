@@ -52,7 +52,7 @@ const OPT_IN: OpenQuestion = {
 const OFFER: OpenQuestion = {
   id: 'commitment-1',
   kind: 'plan_offer',
-  description: "A plan for the 4am wake-ups, in three texts",
+  description: 'A plan for the 4am wake-ups, in three texts',
   subject: 'the plan I offered',
   answerable: { yes: true, no: false },
   askedAt: null,
@@ -229,7 +229,11 @@ describe('replyResolverUserMessage', () => {
       text: 'yeah go ahead',
       questions: [
         { id: 'action-1', kind: 'approval', question: 'Reschedule on your calendar' },
-        { id: 'proposal-1', kind: 'intro_proposal', question: 'Whether to meet one nearby Hale family' },
+        {
+          id: 'proposal-1',
+          kind: 'intro_proposal',
+          question: 'Whether to meet one nearby Hale family',
+        },
       ],
     });
   });
@@ -241,5 +245,61 @@ describe('replyResolverUserMessage', () => {
     }
     // Non-vacuity: the question IS in there, it just carries no counterpart fact.
     expect(payload).toContain('nearby Hale family');
+  });
+});
+
+describe('any language, and an unsure yes comes back as a question', () => {
+  const CANCEL: OpenQuestion = {
+    ...APPROVAL,
+    id: 'action-2',
+    description: 'Remove from your calendar',
+  };
+
+  it('hands a non-English reply to the reader verbatim, with nothing dropped or flagged', () => {
+    for (const text of ['oui vas-y', '嗯…应该可以吧？', 'sí, dale']) {
+      const payload = JSON.parse(replyResolverUserMessage(text, [APPROVAL]));
+      expect(payload.text).toBe(text);
+      expect(Object.keys(payload).sort()).toEqual(['questions', 'text']);
+    }
+  });
+
+  it('a leaning yes (yes, low) to one calendar change is never written, and Hale asks', () => {
+    const reading = read({ target: APPROVAL.id, polarity: 'yes', confidence: 'low' }, [APPROVAL]);
+    expect(reading).toMatchObject({ status: 'unresolved', reason: 'below_grade' });
+    expect(reading.status === 'unresolved' && warrantsClarifying(reading.reason)).toBe(true);
+  });
+
+  it('a medium yes to a calendar change is not enough either, and Hale asks', () => {
+    const reading = read({ target: APPROVAL.id, polarity: 'yes', confidence: 'medium' }, [
+      APPROVAL,
+    ]);
+    expect(reading).toMatchObject({ status: 'unresolved', reason: 'below_grade' });
+  });
+
+  it('a yes with two changes waiting is ambiguous: nothing is written, and Hale asks which', () => {
+    const reading = read({ target: 'ambiguous', polarity: 'yes', confidence: 'medium' }, [
+      APPROVAL,
+      CANCEL,
+    ]);
+    expect(reading).toMatchObject({ status: 'unresolved', reason: 'ambiguous' });
+    expect(reading.status === 'unresolved' && warrantsClarifying(reading.reason)).toBe(true);
+  });
+
+  it('an undecided parent is still left alone (unclear is not pressed)', () => {
+    const reading = read({ target: APPROVAL.id, polarity: 'unclear', confidence: 'low' }, [
+      APPROVAL,
+    ]);
+    expect(reading).toMatchObject({ status: 'unresolved', reason: 'no_target' });
+    expect(reading.status === 'unresolved' && warrantsClarifying(reading.reason)).toBe(false);
+  });
+
+  it('control: a sure yes to the one calendar change still resolves', () => {
+    expect(
+      read({ target: APPROVAL.id, polarity: 'yes', confidence: 'high' }, [APPROVAL]),
+    ).toMatchObject({
+      status: 'resolved',
+      questionId: APPROVAL.id,
+      polarity: 'yes',
+    });
   });
 });

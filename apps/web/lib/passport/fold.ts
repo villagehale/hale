@@ -1,5 +1,7 @@
 import type { AgentClient } from '@hale/agent';
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { composePassportLine, interpretPassportReply } from './copy';
 import { interestPassportEnabled } from './flag';
@@ -72,7 +74,7 @@ export async function foldPassportIntoOutbound(args: {
     const line = await composePassportLine(client, {
       job: applied.acknowledgment ? 'acknowledge' : 'confirm',
       acknowledgment: applied.acknowledgment,
-      language: 'en',
+      language: await storedFamilyLanguage(args.database, args.familyId),
       childName: child?.name ?? null,
       activity: unasked?.activity ?? null,
       seasonLabel: unasked
@@ -129,4 +131,12 @@ export async function foldPassportIntoOutbound(args: {
     );
     return args.outboundBody;
   }
+}
+
+async function storedFamilyLanguage(database: Database, familyId: string): Promise<string> {
+  const [row] = await database
+    .select({ primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(row?.primaryLanguage) ?? 'en';
 }

@@ -29,6 +29,7 @@ import {
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import { type RadarChild, upcomingWeekend } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
@@ -304,7 +305,9 @@ export interface NudgeRunDeps {
    * kind (VIL-417). Null means it could not be written: nothing is sent and the
    * composer has already paged #ops.
    */
-  composeNameAsk(input: { ask: ParentCallNameAsk; language: 'en' | 'fr' }): Promise<string | null>;
+  composeNameAsk(input: { ask: ParentCallNameAsk; language: ReplyLanguage }): Promise<
+    string | null
+  >;
   /**
    * How-it-went lines the weekly group bubble absorbs. Absent means none.
    * Those lines are not also sent as their own bubble.
@@ -1004,7 +1007,10 @@ async function runForFamily(
         });
         const nameLine = decideParentCallName({ ...callName, isWin: true });
         if (nameLine.kind !== 'none') {
-          const body = await deps.composeNameAsk({ ask: nameLine, language: 'en' });
+          const body = await deps.composeNameAsk({
+            ask: nameLine,
+            language: acceptReplyLanguage(family.language) ?? 'en',
+          });
           if (body === null) {
             console.warn(
               { familyId: family.familyId, kind: nameLine.kind },

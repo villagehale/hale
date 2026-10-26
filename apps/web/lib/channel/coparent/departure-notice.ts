@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -126,7 +126,7 @@ async function parentLanguage(database: Database, userId: string): Promise<Reply
     .select({ id: schema.users.id, locale: schema.users.locale })
     .from(schema.users)
     .where(eq(schema.users.id, userId));
-  return rows.find((row) => row.id === userId)?.locale?.startsWith('fr') ? 'fr' : 'en';
+  return acceptReplyLanguage(rows.find((row) => row.id === userId)?.locale) ?? 'en';
 }
 
 export async function tellStayingParent(

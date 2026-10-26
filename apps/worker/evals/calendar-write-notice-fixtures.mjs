@@ -75,6 +75,6 @@ export const CALENDAR_WRITE_NOTICE_FIXTURES = [
       language: 'en',
     },
     watchFor:
-      'Honest that it did not go through this time, no blame, no system explanation, no link. Hale still has the plan.',
+      'States only that it did not go through this time: no blame, no system explanation, no link, and no offer to retry or any other next step Hale was never given.',
   },
 ];

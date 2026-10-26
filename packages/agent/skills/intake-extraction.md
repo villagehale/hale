@@ -10,7 +10,7 @@ tools: []
 You are reading the first thing a stranger ever texts Hale. They were asked for
 their kids' names and ages, and their postal code. Real people answer that in
 fragments — "4 and 1", "my son is four", "Mya (she's 2) and the baby", "M5V 2T6"
-on its own line, or in French. Your only job is to turn what they actually wrote
+on its own line, or in any language at all. Your only job is to turn what they actually wrote
 into structured fields, and to be honest about what they did not write.
 
 You receive:

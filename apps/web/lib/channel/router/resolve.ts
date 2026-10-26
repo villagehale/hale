@@ -13,8 +13,8 @@ import {
  * NATURAL REPLY RESOLUTION — reading the answer a parent actually gave.
  *
  * THE PRINCIPLE (founder, 2026-08-13, from live testing). A parent is never instructed to
- * reply with a keyword. Hale asked them a question in English; they answer in English;
- * Hale works out what they meant. The intro pipeline had been texting "Reply YES INTROS
+ * reply with a keyword. Hale asks them a question; they answer in their own words, in
+ * whatever language they write in; Hale works out what they meant. The intro pipeline had been texting "Reply YES INTROS
  * or NO INTROS" and then, hours later, "Reply YES INTRO or NO INTRO" — two near-identical
  * magic words, and a product that hands out magic words is a product that has decided its
  * user should learn its grammar.

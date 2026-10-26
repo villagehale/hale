@@ -1,10 +1,12 @@
+import { type ReplyLanguage, acceptReplyLanguage, localeFor } from '~/lib/channel/language';
 import { formatLocalDate, localDateParts, timezoneOffsetMs } from './period';
 
-export type WorkstreamLanguage = 'en' | 'fr';
+/** Any stored BCP-47 tag. The model writes in it; nothing here narrows it. */
+export type WorkstreamLanguage = ReplyLanguage;
 
-/** `fr` and `fr-CA` are French. Everything else is English. */
+/** The family's stored tag as-is (`zh`, `ar`, `fr-ca`); English only when none is stored. */
 export function workstreamLanguage(primary: string | null | undefined): WorkstreamLanguage {
-  return primary?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  return acceptReplyLanguage(primary) ?? 'en';
 }
 
 /** `2026-10-08T11:00:00-04:00` — the instant in `timeZone`, offset included. */
@@ -36,7 +38,7 @@ export function localWeekday(
   timeZone: string,
   language: WorkstreamLanguage,
 ): string {
-  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', {
+  return new Intl.DateTimeFormat(localeFor(language), {
     weekday: 'long',
     timeZone,
   }).format(instant);

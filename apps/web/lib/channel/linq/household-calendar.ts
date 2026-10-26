@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -880,7 +880,7 @@ async function loadFamilyCalendarContext(
     bothCalendars: gcal.size >= 2,
     bothMailboxes: gmail.size >= 2,
     timeZone: zone?.timezone ?? 'America/Toronto',
-    language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
+    language: acceptReplyLanguage(family?.primaryLanguage) ?? 'en',
     chatId: family?.linqGroupChatId ?? null,
     childNames: children.map((row) => row.name),
     children,

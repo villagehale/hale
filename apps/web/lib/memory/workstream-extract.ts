@@ -8,7 +8,12 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { formatOffsetIso, resolveCheckBackAt, workstreamLanguage } from './workstream-time';
+import {
+  type WorkstreamLanguage,
+  formatOffsetIso,
+  resolveCheckBackAt,
+  workstreamLanguage,
+} from './workstream-time';
 import {
   type WorkstreamApplyResult,
   type WorkstreamOp,
@@ -138,7 +143,7 @@ interface ExtractEvent {
 
 interface ExtractContext {
   timeZone: string;
-  language: 'en' | 'fr';
+  language: WorkstreamLanguage;
   children: ExtractChild[];
   events: ExtractEvent[];
 }
@@ -271,7 +276,7 @@ async function loadExtractContext(
 export function renderWorkstreamExtractInput(input: {
   now: Date;
   timeZone: string;
-  language: 'en' | 'fr';
+  language: WorkstreamLanguage;
   children: readonly { id: string; name: string; ageMonths: number }[];
   events: readonly { id: string; title: string; startsAt: string }[];
   parentText: string;

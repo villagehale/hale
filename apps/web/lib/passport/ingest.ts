@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { composePassportLine } from './copy';
 import { interestPassportEnabled } from './flag';
@@ -61,7 +62,7 @@ export async function attachPassportToEmailAlert(
       const line = await composePassportLine(await resolveReplyClient(undefined), {
         job: 'confirm',
         acknowledgment: null,
-        language: 'en',
+        language: await storedFamilyLanguage(database, input.familyId),
         childName: child?.name ?? null,
         activity: decision.draft.activity,
         seasonLabel: progressLabel({
@@ -194,4 +195,12 @@ export async function syncPassportFromCalendarChanges(
       'passport: calendar stamp skipped',
     );
   }
+}
+
+async function storedFamilyLanguage(database: Database, familyId: string): Promise<string> {
+  const [row] = await database
+    .select({ primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(row?.primaryLanguage) ?? 'en';
 }
