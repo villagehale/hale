@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "States the outcome (added), uses only the given title, time and place, includes no link (none given), is in English, plain and short, first person not strictly needed but acceptable. Matches the expected output closely.",
+    "score": 5
+  }
+}
