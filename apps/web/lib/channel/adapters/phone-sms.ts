@@ -11,6 +11,7 @@ import {
 import { groupBothReaderFrench } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
+import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import type { Channel } from '../types';
 
 /**
@@ -51,8 +52,11 @@ export interface SmsChannelDeps {
   database?: Database;
 }
 
+/** Linq is provisioned, or a Preview proof run asked for the capture door. The capture
+ * transport itself refuses outside preview and beside any Linq key or line, so this can
+ * never let a send through to a real phone. */
 function defaultOutboundConfigured(): boolean {
-  return linqPhoneOutboundConfigured();
+  return linqPhoneOutboundConfigured() || previewCaptureRequested();
 }
 
 export function createSmsChannel(deps: SmsChannelDeps): Channel {
