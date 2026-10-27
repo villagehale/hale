@@ -19,7 +19,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { GROUP_LISTS_FIXTURES } from './group-lists-fixtures.mjs';
+import { readCapUsd, readLedger, worstCaseUsd } from '../../web/lib/testing/spend-cap.mjs';
 import {
+  GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
   cacheGet,
   cacheKey,
@@ -31,7 +33,10 @@ import {
   makeCost,
   makeJudge,
   noteUsage,
-  readJudgeModel,
+  estimateInputTokensOffline,
+  isDryRun,
+  priceRates,
+  summarizeJudgePlan,
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
@@ -52,6 +57,8 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
 const MAX_TOKENS = 400;
+/** --dry only: assumed input growth per agent step (tool calls and results). */
+const DRY_STEP_GROWTH_TOKENS = 1500;
 const NOW = new Date('2026-10-26T16:00:00.000Z');
 
 // Judge text unchanged here on purpose: the calibrated judge lands in the shared harness
@@ -153,6 +160,53 @@ const BROKEN_CASES = [
   },
 ];
 
+/** Shared judge settings (Noah, #914): Sonnet, thinking off via the output cap, lowest of 3. */
+const JUDGE_SAMPLES = 3;
+const GROUP_LISTS_JUDGE_MAX_OUTPUT_TOKENS = 512;
+
+/**
+ * #918's own scored references, on top of GENERAL_REFERENCE_TEXTS (which already carries
+ * the 'Anotado en la lista Maleta playa: …' log entry). Examples to calibrate against, never
+ * phrases to match.
+ */
+const GROUP_LISTS_REFERENCE_TEXTS = [
+  {
+    facts:
+      'Shared list "Cottage packing" open items: bug spray, life jackets, sunscreen. Asked in English what is still on it.',
+    text: 'Still open on Cottage packing: bug spray, life jackets, and sunscreen.',
+    score: 3,
+    why: 'Facts right, but a status readout (label, colon, list), not a person texting the group. Caps at 3.',
+  },
+  {
+    facts:
+      'Shared list "Cottage packing" open items: bug spray, life jackets, sunscreen. Asked in English what is still on it.',
+    text: 'Just bug spray, life jackets and sunscreen left to pack for the cottage.',
+    score: 5,
+    why: 'Every item right, keeps it a packing list, and reads like a friend in the group.',
+  },
+  {
+    facts:
+      'Group message in Levantine Arabic ("شو في على قائمة المشتريات؟"). List "قائمة المشتريات": حليب, خبز, both added by ليلى.',
+    text: 'على قائمة المشتريات حاليًا حليب وخبز، وكلاهما أضافته ليلى.',
+    score: 2,
+    why: 'Facts right, but formal Modern Standard Arabic back to a parent who wrote Levantine: wrong dialect is a language failure.',
+  },
+  {
+    facts:
+      'Group message in Levantine Arabic ("شو في على قائمة المشتريات؟"). List "قائمة المشتريات": حليب, خبز, both added by ليلى.',
+    text: 'في حليب وخبز عالقائمة، ليلى حطّتهن الاثنين.',
+    score: 5,
+    why: 'Same facts, in the Levantine the parent wrote, the way a friend would answer.',
+  },
+  {
+    facts:
+      'Added to shared list "Maleta playa": protector solar, trajes de baño de los niños. Toallas were already on it. Language: Spanish.',
+    text: 'Listo, ya puse el protector solar y los trajes de baño de los niños. Las toallas ya estaban.',
+    score: 5,
+    why: 'The same facts as the log-entry reference, said the way a person texts it back.',
+  },
+];
+
 function contextFor(fixture) {
   return {
     parentName: fixture.sender.split(' ')[0],
@@ -215,7 +269,7 @@ function stubTools(agent, listed, have, calls) {
   return out;
 }
 
-function cachedAgentClient(tag, cachedOnly, getClient, cost) {
+function cachedAgentClient(tag, cachedOnly, getClient, cost, agentPlan) {
   return {
     messages: {
       async create(params) {
@@ -235,6 +289,32 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
         if (cachedOnly) {
           console.error(`agent cache miss in --cached-only mode (${tag}, key ${key}).`);
           process.exit(1);
+        }
+        if (isDryRun()) {
+          // --dry: no network. Worst case for the rest of the turn: this step and every
+          // step left up to MAX_STEPS, each at the full input (cache-write rate when
+          // marked, no read discount), growing by DRY_STEP_GROWTH_TOKENS a step, plus
+          // the full max_tokens of output. Then end the turn with no text.
+          const step = request.messages.filter((m) => m.role === 'assistant').length + 1;
+          const base = estimateInputTokensOffline(request);
+          for (let k = step; k <= MAX_STEPS; k++) {
+            const inputTokens = base + (k - step) * DRY_STEP_GROWTH_TOKENS;
+            agentPlan.push({
+              tag: `${tag}#step${k}`,
+              inputTokens,
+              worstUsd: worstCaseUsd(priceRates, request, inputTokens),
+            });
+          }
+          return {
+            id: 'dry',
+            type: 'message',
+            role: 'assistant',
+            model: request.model,
+            stop_reason: 'end_turn',
+            stop_sequence: null,
+            content: [],
+            usage: { input_tokens: 0, output_tokens: 0 },
+          };
         }
         const response = await getClient().messages.create(request);
         noteUsage(cost, request.model, response.usage);
@@ -357,8 +437,16 @@ async function main() {
     { ...coach, instructions: `${coach.instructions}\n\n${group.instructions}` },
     true,
   );
-  const judgeModel = await readJudgeModel();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'group-lists', cachedOnly, getClient, cost);
+  const judgeModel = agent.SONNET_MODEL;
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'group-lists', cachedOnly, getClient, cost, {
+    samples: JUDGE_SAMPLES,
+    aggregate: 'min',
+    references: [...GENERAL_REFERENCE_TEXTS, ...GROUP_LISTS_REFERENCE_TEXTS],
+    logCost: true,
+    maxOutputTokens: GROUP_LISTS_JUDGE_MAX_OUTPUT_TOKENS,
+  });
+  const dry = isDryRun();
+  const agentPlan = [];
 
   console.log(
     `group-lists eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(skill.meta.task)} judge=${judgeModel}`,
@@ -403,7 +491,13 @@ async function main() {
           skill,
           context: groupScopedContext(contextFor(fixture)),
           tools,
-          client: cachedAgentClient(`group-lists:${fixture.id}`, cachedOnly, getClient, cost),
+          client: cachedAgentClient(
+            `group-lists:${fixture.id}`,
+            cachedOnly,
+            getClient,
+            cost,
+            agentPlan,
+          ),
           maxSteps: MAX_STEPS,
           maxTokens: MAX_TOKENS,
           toolContext: { familyId: g.familyId, actor: g.ports.actorUserId },
@@ -452,6 +546,28 @@ async function main() {
     }
   }
 
+  if (dry) {
+    const capUsd = readCapUsd();
+    if (capUsd === null)
+      throw new Error('eval --dry: no --max-usd / HALE_MAX_USD; nothing to project against');
+    const { spentUsd } = readLedger();
+    for (const p of agentPlan)
+      console.log(
+        `DRY  agent uncached  ${p.tag}  ~${p.inputTokens} in  worst $${p.worstUsd.toFixed(5)}`,
+      );
+    for (const p of judge.plan)
+      console.log(
+        p.cached
+          ? `DRY  judge cached    ${p.tag}  score ${p.score}`
+          : `DRY  judge uncached  ${p.tag}  ~${p.inputTokens} in + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
+      );
+    const agentWorst = agentPlan.reduce((sum, p) => sum + p.worstUsd, 0);
+    const j = summarizeJudgePlan(judge.plan, { spentUsd: spentUsd + agentWorst, capUsd });
+    console.log(
+      `DRY summary | agent steps ${agentPlan.length} worst $${agentWorst.toFixed(5)} | judge draws ${j.draws} (cached ${j.cached}) worst $${j.worstTotalUsd.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${j.projectedLedgerUsd.toFixed(5)} vs cap $${capUsd} | ${j.fitsCap ? 'FITS' : 'EXCEEDS CAP'} | live calls: 0`,
+    );
+    process.exit(j.fitsCap ? 0 : 3);
+  }
   for (const r of results) {
     console.log(
       `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.id.padEnd(26)} judge=${r.score} calls=[${r.calls.join(',')}] "${r.reply.replace(/\s+/g, ' ')}"`,
