@@ -215,3 +215,26 @@ export const EMAIL_ALERT_BROKEN_CASES = [
       "Mail the parent sent THEMSELVES, relayed back to them in the code-built 'X sent something about Y' frame. Telling a parent about their own email is a 1.",
   },
 ];
+
+// #922's own scored references, appended to the shared general set. Examples to calibrate
+// the scale against, never phrases to match. The low ones are the exact prod texts.
+export const EMAIL_ALERT_REFERENCE_TEXTS = [
+  {
+    facts: 'Email from Father William Meehan: "RCIA", Thursday Oct 29, 7:30 PM. An adult event.',
+    text: 'Father William Meehan has RCIA on Thursday, Oct 29 at 7:30 p.m. Want me to add it to your week?',
+    score: 1,
+    why: "An adult's event texted to a parent, in a code-built 'X has Y on <date>' frame with a fixed offer (prod).",
+  },
+  {
+    facts: 'The parent sent an email themselves about Saturday plans.',
+    text: 'Barton Dong sent something about Saturday plans.',
+    score: 1,
+    why: "Relays the parent's own mail back to them in a template frame (prod).",
+  },
+  {
+    facts: 'Class trip to the farm moved from Fri Nov 6 to Fri Nov 13, 8:30 AM. Language: French.',
+    text: "La sortie à la ferme Brookside est maintenant le vendredi 13 novembre à 8 h 30. Tu veux que je l'ajoute à votre semaine ?",
+    score: 2,
+    why: "Mixes 'tu' with 'votre' in one text; a native speaker keeps one register.",
+  },
+];

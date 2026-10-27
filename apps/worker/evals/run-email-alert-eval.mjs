@@ -14,16 +14,25 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { EMAIL_ALERT_BROKEN_CASES, EMAIL_ALERT_FIXTURES } from './email-alert-fixtures.mjs';
+import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import {
+  EMAIL_ALERT_BROKEN_CASES,
+  EMAIL_ALERT_FIXTURES,
+  EMAIL_ALERT_REFERENCE_TEXTS,
+} from './email-alert-fixtures.mjs';
+import {
+  GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
   PRICE,
   cachedToolCall,
+  estimateInputTokensOffline,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
-  readJudgeModel,
+  priceRates,
+  summarizeJudgePlan,
   totalUsd,
 } from './lib/harness.mjs';
 
@@ -44,6 +53,8 @@ const TOOL_SCHEMA = {
   required: ['text'],
 };
 const MAX_TOKENS = 300;
+/** The judge's verdict cap (shared judge: 512, thinking off). */
+const JUDGE_MAX_OUTPUT_TOKENS = 512;
 
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text Hale sends a parent about an email that just',
@@ -100,13 +111,18 @@ async function main() {
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const lane = agent.pickLane(skill.meta.task);
-  const judgeModel = await readJudgeModel();
+  // THE SHARED JUDGE (Noah's makeJudge, decided 2026-10-27): Sonnet, thinking off via the
+  // verdict cap, lowest of 3 draws, general + this PR's scored references.
+  const judgeModel = agent.SONNET_MODEL;
 
   const toCase = (fixture) => {
     const facts = factsMod.emailAlertFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     return { fixture, facts, userMessage: compose.emailAlertUserMessage(facts) };
   };
   const cases = (broken ? EMAIL_ALERT_BROKEN_CASES : EMAIL_ALERT_FIXTURES).map(toCase);
+  const dryAll = isDryRun()
+    ? [...EMAIL_ALERT_FIXTURES, ...EMAIL_ALERT_BROKEN_CASES].map(toCase)
+    : null;
 
   if (estimateOnly) {
     // Priced at max_tokens out: a writer call and a judge call per normal case that speaks,
@@ -138,12 +154,58 @@ async function main() {
   installEvalSpendCap();
   const getClient = lazyAnthropic('email-alert');
   const cost = makeCost();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'email-alert', cachedOnly, getClient, cost);
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'email-alert', cachedOnly, getClient, cost, {
+    samples: 3,
+    aggregate: 'min',
+    references: [...GENERAL_REFERENCE_TEXTS, ...EMAIL_ALERT_REFERENCE_TEXTS],
+    logCost: true,
+    maxOutputTokens: JUDGE_MAX_OUTPUT_TOKENS,
+  });
+  const dry = isDryRun();
+  // --dry: an uncached writer call is priced here (the judge prices its own draws), and
+  // the judge then sees a worst-length stand-in body. No network.
+  const writerPlan = [];
+  const writeOrPrice = async (fixture, userMessage) => {
+    try {
+      return await writerCall(fixture, userMessage);
+    } catch (err) {
+      if (!dry) throw err;
+      const request = {
+        system: skill.instructions,
+        messages: [{ role: 'user', content: userMessage }],
+        tools: [{ name: 'email_alert_text', input_schema: TOOL_SCHEMA }],
+      };
+      const inputTokens = estimateInputTokensOffline(request);
+      const p = priceRates(model);
+      const worstUsd = (inputTokens * p.input * 1.25 + MAX_TOKENS * p.output) / 1e6;
+      writerPlan.push({ tag: `email-alert:${fixture.id}`, inputTokens, worstUsd });
+      return 'x'.repeat(480);
+    }
+  };
+  const writerCall = async (fixture, userMessage) =>
+    String(
+      (
+        await cachedToolCall({
+          tag: `email-alert:${fixture.id}`,
+          model,
+          lane,
+          system: skill.instructions,
+          userMessage,
+          toolName: 'email_alert_text',
+          toolSchema: TOOL_SCHEMA,
+          toolDescription: 'The one text Hale sends the parent about this email.',
+          maxTokens: MAX_TOKENS,
+          cachedOnly,
+          getClient,
+          cost,
+        })
+      ).value.text ?? '',
+    ).trim();
   console.log(
     `email-alert eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
   const results = [];
-  for (const { fixture, facts, userMessage } of cases) {
+  for (const { fixture, facts, userMessage } of dryAll ?? cases) {
     // SILENCE IS THE PASS: the code must stop before the writer. No model, no judge.
     if (fixture.expectSilent) {
       const silent = factsMod.alreadyOnCalendarUnchanged({
@@ -153,34 +215,49 @@ async function main() {
       results.push({ fixture, body: '(nothing sent)', failures: silent ? [] : ['not_silent'] });
       continue;
     }
-    const body = broken
-      ? fixture.text
-      : String(
-          (
-            await cachedToolCall({
-              tag: `email-alert:${fixture.id}`,
-              model,
-              lane,
-              system: skill.instructions,
-              userMessage,
-              toolName: 'email_alert_text',
-              toolSchema: TOOL_SCHEMA,
-              toolDescription: 'The one text Hale sends the parent about this email.',
-              maxTokens: MAX_TOKENS,
-              cachedOnly,
-              getClient,
-              cost,
-            })
-          ).value.text ?? '',
-        ).trim();
+    const body =
+      fixture.text !== undefined ? fixture.text : await writeOrPrice(fixture, userMessage);
     const failures = compose.emailAlertRefusals(body, facts).map((r) => `unsendable:${r}`);
     const verdict = await judge(fixture.id, {
       input: userMessage,
       text: body,
       watchFor: fixture.watchFor,
     });
+    if (verdict.dry) continue;
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
     results.push({ fixture, body, failures });
+  }
+  if (dry) {
+    const capUsd = readCapUsd();
+    if (capUsd === null) throw new Error('eval --dry: no --max-usd; nothing to project against');
+    const { spentUsd } = readLedger();
+    for (const w of writerPlan) {
+      console.log(
+        `DRY  uncached  writer ${w.tag}  ~${w.inputTokens} in + ${MAX_TOKENS} max out  worst $${w.worstUsd.toFixed(5)}`,
+      );
+    }
+    for (const p of judge.plan) {
+      console.log(
+        p.cached
+          ? `DRY  cached    ${p.tag}  score ${p.score}`
+          : `DRY  uncached  ${p.tag}  ~${p.inputTokens} in (~${p.cacheReadTokens ?? 0} at cache-read) + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
+      );
+    }
+    for (const r of results.filter((x) => x.fixture.expectSilent)) {
+      console.log(
+        `DRY  silent    ${r.fixture.id}  ${r.failures.length === 0 ? 'nothing sent (pass), 0 calls' : 'NOT SILENT'}`,
+      );
+    }
+    const s = summarizeJudgePlan(judge.plan, { spentUsd, capUsd });
+    const writerUsd = writerPlan.reduce((sum, w) => sum + w.worstUsd, 0);
+    const total = s.worstTotalUsd + writerUsd;
+    const projected = spentUsd + total;
+    const fits = projected <= capUsd;
+    console.log(
+      `DRY summary | judge draws ${s.draws} (cached ${s.cached}, uncached ${s.uncached}) worst $${s.worstTotalUsd.toFixed(5)} | writer calls ${writerPlan.length} worst $${writerUsd.toFixed(5)} | worst total $${total.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${projected.toFixed(5)} vs cap $${capUsd} | ${fits ? 'FITS' : 'EXCEEDS CAP'}`,
+    );
+    console.log('DRY: input tokens are an offline estimate (1 per 3 bytes); live calls: 0');
+    process.exit(fits ? 0 : 3);
   }
   for (const r of results) {
     console.log(
