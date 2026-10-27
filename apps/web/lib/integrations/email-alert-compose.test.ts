@@ -5,7 +5,7 @@ vi.mock('~/lib/pipeline/structured', () => ({
   forceToolJson: (...args: unknown[]) => forceToolJson(...args),
 }));
 vi.mock('~/lib/cron/skill', () => ({
-  loadCronSkill: async () => ({ instructions: 'SKILL', meta: { task: 'speak' } }),
+  loadCronSkill: async () => ({ instructions: 'SKILL', meta: { task: 'draft' } }),
 }));
 
 import type { AgentClient } from '@hale/agent';

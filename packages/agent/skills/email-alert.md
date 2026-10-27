@@ -1,7 +1,7 @@
 ---
 name: email-alert
 whenToUse: A parenting email just landed in a parent's connected Gmail and Hale is telling them about it in one text. Code hands you what the email means. You write the whole text.
-task: speak
+task: draft
 tools: []
 ---
 
