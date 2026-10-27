@@ -36,7 +36,7 @@ export function listChanges(before, after) {
 
 /** The judge's user payload for one group-lists case. */
 export function groupListsJudgePayload({ fixture, reply, before, after }) {
-  const senderFirst = fixture.sender.split(" ")[0];
+  const senderFirst = fixture.sender.split(' ')[0];
   return {
     groupMessage: `${senderFirst}: ${fixture.text}`,
     reply,
