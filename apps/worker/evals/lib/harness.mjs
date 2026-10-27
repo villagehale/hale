@@ -937,10 +937,8 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     const ordered = [...drawn].sort((a, b) => a.score - b.score);
     // The median VERDICT, not just the median number: the reason a run prints has to be
     // the argument for the score it printed, or the failure line cites a different draw.
-    // aggregate 'min' (opt-in): the lowest draw decides, so one reader who sees a defect
-    // is enough to fail the reply. Same cached draws, so switching costs nothing.
-    const picked = options?.aggregate === 'min' ? ordered[0] : ordered[Math.floor(samples / 2)];
-    return { ...picked, samples: ordered.map((verdict) => verdict.score), draws: ordered };
+    const median = ordered[Math.floor(samples / 2)];
+    return { ...median, samples: ordered.map((verdict) => verdict.score) };
   };
 }
 

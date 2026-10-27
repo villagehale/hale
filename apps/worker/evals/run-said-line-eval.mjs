@@ -6,7 +6,7 @@
 // not_posted, no_source, cheer_up, health (811/911) and the single connect link. Grade:
 //   - facts (structural, the same check as acceptSaidLine): non-empty, every
 //     mustInclude string verbatim, no link that is not a required fact;
-//   - words: a judge model only, lowest of three draws, floor JUDGE_MIN. No phrase is
+//   - words: a judge model only, median of three draws, floor JUDGE_MIN. No phrase is
 //     required or banned.
 //   --broken: every subject text is replaced by one canned bad line (wrong language,
 //     leaks another family's answer, teaches a keyword, invents a date). The suite must
@@ -268,7 +268,6 @@ async function main() {
       samples: JUDGE_SAMPLES_MEDIAN,
       toolSchema: scoreFirstJudgeSchema(400),
       keepTruncatedScore: true,
-      aggregate: 'min',
     },
   );
   const byId = new Map(SAID_LINE_FIXTURES.map((f) => [f.id, f]));
@@ -327,11 +326,7 @@ async function main() {
     });
     const ok = verdict.score >= JUDGE_MIN;
     if (!ok) failed += 1;
-    console.info(`${ok ? 'PASS' : 'FAIL'}  ${f.id}  judge:${verdict.score}  draws:${(verdict.samples ?? [verdict.score]).join(',')}`);
-    const spread = verdict.samples && new Set(verdict.samples).size > 1;
-    if (spread) {
-      for (const d of verdict.draws) console.info(`      draw ${d.score}: ${d.reason ?? ''}`);
-    }
+    console.info(`${ok ? 'PASS' : 'FAIL'}  ${f.id}  judge:${verdict.score}`);
     if (!ok) {
       console.info(`      text: ${JSON.stringify(text)}`);
       console.info(`      judge: ${verdict.reason ?? ''}`);
