@@ -23,4 +23,9 @@ export function fakeEmailAlertText(facts: EmailAlertFacts): string {
 export const fakeEmailAlertWriter = {
   composeText: async (facts: EmailAlertFacts) => fakeEmailAlertText(facts),
   language: async () => 'en' as const,
+  // Screens, open by default so a mechanics test reaches the send; a test that is about a
+  // screen overrides the one it is about.
+  parentAddresses: async (): Promise<readonly string[]> => [],
+  calendarMirrored: async () => false,
+  kidRelevance: async () => 'kid' as const,
 };

@@ -1338,3 +1338,100 @@ describe('messages.source (0183) on the real DDL', () => {
     expect(rows).toEqual([{ source: null }]);
   });
 });
+
+describe('screens before any alert (prod samples, Oct 2026)', () => {
+  it('RCIA: the kid judge says adult, so nothing is sent and no offer is made', async () => {
+    const h = harness({
+      classification: classified({
+        kind: 'new_event',
+        title: 'RCIA',
+        originalTime: null,
+        newTime: '2026-10-29T23:30:00.000Z',
+      }),
+    });
+    const asked: string[] = [];
+    h.ports.kidRelevance = async (item) => {
+      asked.push(item.title);
+      return 'adult';
+    };
+    await expect(alert(h)).resolves.toBe('not_kid');
+    expect(asked).toEqual(['RCIA']);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.threaded).toHaveLength(0);
+    expect(await ledgerRows()).toHaveLength(0);
+    const offers = await db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.familyId, family.familyId));
+    expect(offers).toHaveLength(0);
+  });
+
+  it('House Supper: unsure is not a yes either', async () => {
+    const h = harness({ classification: classified({ kind: 'new_event', title: 'House Supper' }) });
+    h.ports.kidRelevance = async () => 'unsure';
+    await expect(alert(h)).resolves.toBe('not_kid');
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('a kid judge that cannot answer sends nothing, under its own name', async () => {
+    const h = harness();
+    h.ports.kidRelevance = async () => 'held';
+    await expect(alert(h)).resolves.toBe('kid_judge_held');
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('Parent & Tot Skate: a calendar notification for a mirrored calendar is not texted twice', async () => {
+    const h = harness();
+    h.ports.calendarMirrored = async () => true;
+    const result = await alertPair(h, 'm-skate', {
+      envelope: {
+        ...ENVELOPE,
+        subject: 'Notification: Parent & Tot Skate @ Tue Oct 27, 2026 10:30am',
+        from: 'Google Calendar <calendar-notification@google.com>',
+      },
+    });
+    expect(result.alert).toBe('calendar_mirrored');
+    expect(h.classifyCalls).toBe(0);
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('a calendar notification with NO mirrored calendar still reaches the writer', async () => {
+    const h = harness();
+    h.ports.calendarMirrored = async () => false;
+    const result = await alertPair(h, 'm-skate', {
+      envelope: { ...ENVELOPE, from: 'Google Calendar <calendar-notification@google.com>' },
+    });
+    expect(result.alert).toBe('sent');
+  });
+
+  it('Barton Dong sent something about…: mail the parent sent themselves is ignored', async () => {
+    const h = harness();
+    h.ports.parentAddresses = async () => ['barton@example.test'];
+    const result = await alertPair(h, 'm-self', {
+      envelope: { ...ENVELOPE, from: 'Barton Dong <Barton@Example.test>' },
+    });
+    expect(result.alert).toBe('self_sent');
+    expect(h.classifyCalls).toBe(0);
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('the "has X on" / "sent something about" / fixed-CTA frames are gone from the alert path', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const source = await readFile(new URL('./email-alert.ts', import.meta.url), 'utf8');
+    for (const frame of [
+      'sent something about',
+      'OFFER_CTA',
+      'BOOKING_CTA',
+      'calendarNotice',
+      "'Want me to add it to your week?'",
+      "? 'says' : 'has'",
+    ]) {
+      expect(source).not.toContain(frame);
+    }
+    // And on the wire the text is the writer's, byte for byte.
+    const h = harness();
+    h.ports.composeText = async () => 'WRITER-ONLY';
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(h.transport.sent[0]?.body).toBe('WRITER-ONLY');
+  });
+});

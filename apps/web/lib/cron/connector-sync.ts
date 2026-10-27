@@ -2,7 +2,7 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { ageInMonths } from '@hale/types';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type PgBoss from 'pg-boss';
 import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import { laneEnabled } from '~/lib/channel/lanes';
@@ -38,6 +38,11 @@ import {
 import { composeEmailAlertText } from '~/lib/integrations/email-alert-compose';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
+import {
+  judgeKidRelevance,
+  loadKidRelevanceChildren,
+  loadNotMineHints,
+} from '~/lib/integrations/kid-relevance/judge';
 import {
   type ActiveConnectorConnection,
   type SweepableConnectorConnection,
@@ -491,6 +496,71 @@ function emailAlertPorts(
       // No model, no text: there is no fallback copy to send instead.
       const client = voiceClient();
       return client === null ? null : composeEmailAlertText(client, facts, id);
+    },
+    parentAddresses: async (parentUserId) => {
+      const [row] = await database
+        .select({ email: schema.users.email })
+        .from(schema.users)
+        .where(eq(schema.users.id, parentUserId));
+      return row?.email ? [row.email.trim().toLowerCase()] : [];
+    },
+    // Connected AND mirrored: the mirror lane is on and the family holds a live Google
+    // Calendar connection, so the mirror's own reminder already covers the event.
+    calendarMirrored: async (id) => {
+      if (!laneEnabled('parent_calendar_mirror')) return false;
+      const [row] = await database
+        .select({ id: schema.integrations.id })
+        .from(schema.integrations)
+        .where(
+          and(
+            eq(schema.integrations.familyId, id),
+            eq(schema.integrations.provider, 'gcal'),
+            eq(schema.integrations.status, 'active'),
+          ),
+        )
+        .limit(1);
+      return row !== undefined;
+    },
+    // The kid-relevance judge over the FULL body. The body is fetched here, handed to the
+    // judge's model and nowhere else: no log line, no row (the verdict keeps a keyed hash).
+    kidRelevance: async (item) => {
+      let body: string;
+      try {
+        body = await fetchGmailMessageBody(item.messageId, accessToken, googleGetFetch);
+      } catch (err) {
+        console.warn(
+          { familyId: item.familyId, err: err instanceof Error ? err.name : 'unknown' },
+          'email alert: body fetch for the kid judge failed - nothing sent',
+        );
+        return 'held';
+      }
+      const [judgement] = await judgeKidRelevance(
+        database,
+        {
+          familyId: item.familyId,
+          items: [
+            {
+              ref: item.messageId,
+              source: 'gmail',
+              integrationId: item.integrationId,
+              itemKey: item.messageId,
+              title: item.title,
+              startsAt: item.startsAt,
+              place: item.place,
+              sender: item.sender,
+              body,
+            },
+          ],
+          now: item.now,
+          deadline: new Date(Date.now() + 30_000),
+        },
+        {
+          client: pipelineClient(),
+          children: await loadKidRelevanceChildren(database, item.familyId),
+          notMineHints: await loadNotMineHints(database, item.familyId),
+        },
+      );
+      return judgement === undefined || judgement.verdict === 'held' ? 'held' : judgement.verdict;
     },
     language: async (id) => {
       const [row] = await database

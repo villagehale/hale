@@ -14,7 +14,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { EMAIL_ALERT_FIXTURES } from './email-alert-fixtures.mjs';
+import { EMAIL_ALERT_BROKEN_CASES, EMAIL_ALERT_FIXTURES } from './email-alert-fixtures.mjs';
 import {
   JUDGE_MIN,
   PRICE,
@@ -62,14 +62,12 @@ const JUDGE_SYSTEM = [
   'saying Hale read their inbox or Gmail when fromCalendar is true; a link or email address;',
   'the wrong or mixed language, or clumsy grammar a native speaker would not send; a question',
   'when ask is null, or two questions; a code-built prefix or label like "Email alert:"; a',
-  'separate template-like line stuck on; hype, exclamation marks, emoji, advice or a wish',
+  'separate template-like line stuck on; a code-built frame such as "X has Y on <date>", "X',
+  'sent something about Y" or a bare "Title on <date>"; a text about an adult event that is',
+  'not about the kids; relaying mail the parent sent themselves; repeating an event their',
+  'mirrored calendar already reminds them of; hype, exclamation marks, emoji, advice or a wish',
   'nobody asked for. A 3 is factual but stiff or awkward. Reply with ONLY the score tool.',
 ].join(' ');
-
-// Deterministic broken stand-in: a code-built prefix, an invented detail, a link, a
-// stuck-on passport line, a leaked teen sender, and a question with nothing behind it.
-const BROKEN =
-  'Email alert: Northside Counselling booked Mia in for 2:00!! Bring snacks. https://hale.example/p Added to passport. Reply YES?';
 
 function estimateTokens(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
@@ -100,7 +98,7 @@ async function main() {
   const lane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
 
-  const cases = EMAIL_ALERT_FIXTURES.map((fixture) => {
+  const cases = (broken ? EMAIL_ALERT_BROKEN_CASES : EMAIL_ALERT_FIXTURES).map((fixture) => {
     const facts = factsMod.emailAlertFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     return { fixture, facts, userMessage: compose.emailAlertUserMessage(facts) };
   });
@@ -134,7 +132,7 @@ async function main() {
   const results = [];
   for (const { fixture, facts, userMessage } of cases) {
     const body = broken
-      ? BROKEN
+      ? fixture.text
       : String(
           (
             await cachedToolCall({
@@ -173,8 +171,10 @@ async function main() {
   );
   const allPass = results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
-  console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);
-  process.exit(allPass ? 1 : 0);
+  // EVERY broken case must fail, not just one of them.
+  const allFail = results.every((r) => r.failures.length > 0);
+  console.log(`broken-mode calibration (every case must fail): ${allFail ? 'PASS' : 'FAIL'}`);
+  process.exit(allFail ? 0 : 1);
 }
 
 main().catch((err) => {

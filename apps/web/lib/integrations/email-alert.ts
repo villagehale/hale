@@ -136,6 +136,16 @@ export const EMAIL_ALERT_OUTCOMES = [
   'group_privacy',
   /** EMAIL_ALERT_ENABLED is not `true`: no classifier call, no text, no offer. */
   'lane_off',
+  /** The parent sent this mail themselves. Nothing to tell them. */
+  'self_sent',
+  /** A Google Calendar notification while that calendar is connected and mirrored: the
+   * mirror already reminds about the event, so a second text would be a duplicate. */
+  'calendar_mirrored',
+  /** The kid-relevance judge read the full email and said it is not about the kids
+   * (adult, or unsure). Nothing sent. */
+  'not_kid',
+  /** The kid-relevance judge failed or deferred. Nothing sent; no verdict is guessed. */
+  'kid_judge_held',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];
@@ -248,6 +258,26 @@ export interface EmailAlertPorts {
   language(familyId: string): Promise<ReplyLanguage>;
   /** The parent's wall clock — the zone every time in the message is rendered in. */
   timeZone(parentUserId: string): Promise<string>;
+  /** The parent's own email addresses, lower-cased: mail they sent themselves is skipped. */
+  parentAddresses(parentUserId: string): Promise<readonly string[]>;
+  /** True when this family's Google Calendar is connected AND mirrored into Hale, so the
+   * mirror already reminds about anything a calendar notification mail is about. */
+  calendarMirrored(familyId: string): Promise<boolean>;
+  /**
+   * The kid-relevance judge (lib/integrations/kid-relevance/judge.ts) over the FULL email
+   * body plus the extraction. The wiring fetches the body; it never reaches a log or a row.
+   * `held` = the judge failed or deferred.
+   */
+  kidRelevance(input: {
+    familyId: string;
+    integrationId: string;
+    messageId: string;
+    title: string;
+    sender: string;
+    place: string | null;
+    startsAt: string | null;
+    now: Date;
+  }): Promise<'kid' | 'adult' | 'unsure' | 'held'>;
 }
 
 /** messages.source (0183): the occasion matched (or null), the Gmail id, the snippet. */
@@ -290,6 +320,20 @@ export async function alertParentForEmail(
   if (await dedupeActive(dedupeKey, database))
     return { alert: 'already_sent', booking: null, going: null };
 
+  // MAIL THE PARENT SENT THEMSELVES is not news to them. Before the classifier: free.
+  const fromAddress = senderAddress(input.envelope.from);
+  if (
+    fromAddress !== null &&
+    (await ports.parentAddresses(parentUserId)).some((own) => own === fromAddress)
+  ) {
+    return { alert: 'self_sent', booking: null, going: null };
+  }
+  // A CALENDAR NOTIFICATION for a calendar Hale already mirrors: the mirror reminds about
+  // the event, and this text would be the same event twice (prod: the skate, sent twice).
+  if (fromParentsCalendar(input.envelope.from) && (await ports.calendarMirrored(familyId))) {
+    return { alert: 'calendar_mirrored', booking: null, going: null };
+  }
+
   let classification: SentinelClassification;
   try {
     classification = await ports.classify(
@@ -317,6 +361,22 @@ export async function alertParentForEmail(
   if (classification.status !== 'classified' || extraction === null) {
     return { alert: 'not_parenting', booking: null, going: null };
   }
+
+  // IS IT ABOUT THE KIDS? The kid-relevance judge reads the full body before any alert.
+  // An adult's event (RCIA, a house supper) sends nothing; so does unsure, and so does a
+  // judge that could not answer. Only a child's event goes on to the text and its offer.
+  const relevance = await ports.kidRelevance({
+    familyId,
+    integrationId,
+    messageId,
+    title: extraction.event.title,
+    sender: input.envelope.from,
+    place: extraction.event.location,
+    startsAt: extraction.event.newTime ?? extraction.event.originalTime,
+    now,
+  });
+  if (relevance === 'held') return { alert: 'kid_judge_held', booking: null, going: null };
+  if (relevance !== 'kid') return { alert: 'not_kid', booking: null, going: null };
 
   // ONE read of the flag per envelope, threaded into every call below rather than read
   // again: the closer, the sentence and the row it promises must be built from the same
@@ -1397,6 +1457,12 @@ function sanitizedTitle(raw: string): string {
  * their calendar. A school that merely mentions a calendar does not match: the address
  * is exact, and the display name is the whole label.
  */
+/** The bare address of a From header, lower-cased, or null. */
+function senderAddress(from: string): string | null {
+  const address = (/<([^>]*)>/.exec(from)?.[1] ?? from).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+$/.test(address) ? address : null;
+}
+
 function fromParentsCalendar(from: string): boolean {
   const display = /^\s*"?([^"<]*?)"?\s*<[^>]*>\s*$/.exec(from)?.[1]?.trim() ?? '';
   if (/^google calendar$/i.test(display)) return true;

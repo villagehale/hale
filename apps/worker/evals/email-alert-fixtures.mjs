@@ -111,3 +111,65 @@ export const EMAIL_ALERT_FIXTURES = [
       "A sign-up receipt for Mia's karate, first class Saturday Nov 7 at 9:00 a.m. The passport facts are present: the text must say, once and in its own words, that Hale is keeping this on Mia's record and they can reply if it's wrong. Exactly one question (calendar). Saying Hale booked or registered it, a second question, or a stuck-on separate line that reads like a template is a LOW score.",
   },
 ];
+
+// BROKEN CASES FROM THE EXACT PROD SAMPLES (Oct 2026, main d4806e327's code-built frames).
+// Each pairs the text prod sent with the facts it was built from; every one must FAIL.
+// RCIA and House Supper are adult events: the kid judge now stops them before any writer,
+// and the code-built "has X on" frame and fixed CTA are what the judge must also refuse.
+export const EMAIL_ALERT_BROKEN_CASES = [
+  {
+    // Synthetic: a code-built prefix, an invented detail, a link, a stuck-on passport line,
+    // a leaked teen sender, and a question with nothing behind it.
+    id: 'synthetic-everything-wrong',
+    args: args({
+      kind: 'new_event',
+      teenContent: true,
+      event: event({ title: 'a health appointment', newTime: '2026-11-02T15:00:00Z' }),
+      from: 'Northside Counselling <care@northside.example>',
+    }),
+    text: 'Email alert: Northside Counselling booked Mia in for 2:00!! Bring snacks. https://hale.example/p Added to passport. Reply YES?',
+    watchFor: 'Category-only teen mail; everything about this text is wrong.',
+  },
+  {
+    id: 'prod-rcia-template-cta',
+    args: args({
+      from: 'Father William Meehan <frwilliam@parish.example>',
+      event: event({ title: 'RCIA', newTime: '2026-10-29T23:30:00Z' }),
+    }),
+    text: 'Father William Meehan has RCIA on Thursday, Oct 29 at 7:30 p.m. Want me to add it to your week?',
+    watchFor:
+      "An ADULT's event (RCIA is adult faith formation) in a code-built 'X has Y on <date>' frame with a fixed CTA. Hale is for the kids' year; texting a parent about an adult event, in a template, is a 1.",
+  },
+  {
+    id: 'prod-skate-duplicate',
+    args: args({
+      kind: 'reminder_only',
+      from: 'Google Calendar <calendar-notification@google.com>',
+      event: event({ title: 'Parent & Tot Skate', originalTime: '2026-10-27T14:30:00Z' }),
+    }),
+    text: 'Parent & Tot Skate on Tuesday, Oct 27 at 10:30 a.m.',
+    watchFor:
+      "The parent's own calendar notification, already mirrored, so the mirror already reminded them: this text is the same event a second time. It is also a bare code-built 'Title on <date>' line, not something a friend would text. A LOW score.",
+  },
+  {
+    id: 'prod-house-supper-template',
+    args: args({
+      from: 'Martin Madsen <martin@example.org>',
+      event: event({ title: 'House Supper', newTime: '2026-10-31T22:00:00Z' }),
+    }),
+    text: 'Martin Madsen has House Supper on Saturday, Oct 31 at 6:00 p.m. Want me to add it to your week?',
+    watchFor:
+      "An adult's dinner in the code-built 'X has Y on <date>' template with a fixed CTA. Not about the kids, and templated. A LOW score.",
+  },
+  {
+    id: 'prod-self-sent-frame',
+    args: args({
+      kind: 'unclear',
+      from: 'Barton Dong <barton@example.test>',
+      event: event({ title: 'Saturday plans' }),
+    }),
+    text: 'Barton Dong sent something about Saturday plans.',
+    watchFor:
+      "Mail the parent sent THEMSELVES, relayed back to them in the code-built 'X sent something about Y' frame. Telling a parent about their own email is a 1.",
+  },
+];

@@ -194,6 +194,9 @@ export interface KidRelevanceItem {
   startsAt: string | null;
   place: string | null;
   sender: string | null;
+  /** The full email body, for a Gmail item judged before an alert. Read by the model only:
+   * never stored (the verdict row keeps a keyed hash), never logged. */
+  body?: string | null;
 }
 
 export interface KidRelevanceChild {
@@ -202,12 +205,18 @@ export interface KidRelevanceChild {
   dateOfBirth: string;
 }
 
+/** A body is clipped before the judge: enough for "whose event is this", bounded cost. */
+export const KID_BODY_MAX_CHARS = 4000;
+
 /** The text the model reads for one item: its title, where, and who sent it. */
-export function kidItemText(item: Pick<KidRelevanceItem, 'title' | 'place' | 'sender'>): string {
+export function kidItemText(
+  item: Pick<KidRelevanceItem, 'title' | 'place' | 'sender'> & { body?: string | null },
+): string {
   return [
     item.title,
     item.place ? `at ${item.place}` : '',
     item.sender ? `from ${item.sender}` : '',
+    item.body ? `\nEmail body:\n${item.body.slice(0, KID_BODY_MAX_CHARS)}` : '',
   ]
     .filter(Boolean)
     .join(' ');
