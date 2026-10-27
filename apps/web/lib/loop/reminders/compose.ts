@@ -19,8 +19,13 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 export const REMINDER_SKILL = 'reminder';
 
 export interface ReminderEventFacts {
-  /** The redacted descriptor: the leveled title, or the bare generic for a private event. */
+  /** The event's own name (its calendar title), or the bare generic for a private event. */
   what: string;
+  /** The child it is for, at the parent's name level, or null (none, private, or the
+   * title already names them). A separate fact, so the model never gets a "Mia — Swim" label. */
+  for: string | null;
+  /** The event's day said from the send moment: "today", "tomorrow", or null (further out). */
+  day: 'today' | 'tomorrow' | null;
   /** The event's family-local date, written out ("Monday, October 26, 2026"). */
   date: string;
   /** True when the event spans whole days with no clock time. */
@@ -78,6 +83,40 @@ export function localClockFact(instant: Date, timeZone: string): string {
   return `${part(parts, 'hour')}:${part(parts, 'minute')} ${part(parts, 'dayPeriod').toUpperCase()}`;
 }
 
+/** "today" / "tomorrow" / null for the event's local day against the send moment's. */
+export function relativeDay(
+  instant: Date,
+  now: Date,
+  timeZone: string,
+): 'today' | 'tomorrow' | null {
+  const ymd = (d: Date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+  const event = ymd(instant);
+  if (event === ymd(now)) return 'today';
+  // Noon-anchored next day, so a DST shift never lands on the wrong date.
+  const [y, m, d] = ymd(now).split('-').map(Number) as [number, number, number];
+  const next = new Date(Date.UTC(y, m - 1, d + 1, 12));
+  return event === next.toISOString().slice(0, 10) ? 'tomorrow' : null;
+}
+
+/** Split the leveled descriptor into the event's name and who it is for. */
+function nameAndChild(
+  event: ReminderFactEvent,
+  descriptor: string,
+  hidden: boolean,
+): { what: string; for: string | null } {
+  if (hidden || descriptor === event.title) return { what: descriptor, for: null };
+  const suffix = ` — ${event.title}`;
+  return descriptor.endsWith(suffix)
+    ? { what: event.title, for: descriptor.slice(0, -suffix.length) }
+    : { what: descriptor, for: null };
+}
+
 function localMinutes(instant: Date, timeZone: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
@@ -116,7 +155,8 @@ export function reminderFacts(args: {
       const allDay = isAllDay(start, end, timeZone);
       const hidden = isPrivateEvent(event, args.children, now);
       return {
-        what: eventDescriptor(event, args.children, args.level, now),
+        ...nameAndChild(event, eventDescriptor(event, args.children, args.level, now), hidden),
+        day: relativeDay(start, now, timeZone),
         date: localDateFact(start, timeZone),
         allDay,
         start: allDay ? null : localClockFact(start, timeZone),

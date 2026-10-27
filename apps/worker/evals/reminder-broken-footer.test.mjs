@@ -5,7 +5,10 @@ const r = (id, kind, failed) => ({ fixture: { id }, kind, failures: failed ? ['j
 
 describe('reminder --broken footer', () => {
   it('does not count a passing normal case as a broken case that slipped', () => {
-    const f = brokenFooter([r('en-teen-generic', 'normal', false), r('x:notification', 'broken', true)]);
+    const f = brokenFooter([
+      r('en-teen-generic', 'normal', false),
+      r('x:notification', 'broken', true),
+    ]);
     expect(f.calibrated).toBe(true);
     expect(f.slipped).toEqual([]);
     expect(f.ok).toBe(true);
@@ -19,7 +22,10 @@ describe('reminder --broken footer', () => {
     expect(f.ok).toBe(false);
   });
   it('reports a failing normal case as a normal failure, not calibration', () => {
-    const f = brokenFooter([r('fr-all-day-plus-timed', 'normal', true), r('x:wish', 'broken', true)]);
+    const f = brokenFooter([
+      r('fr-all-day-plus-timed', 'normal', true),
+      r('x:wish', 'broken', true),
+    ]);
     expect(f.calibrated).toBe(true);
     expect(f.normalFailed).toEqual(['fr-all-day-plus-timed']);
     expect(f.ok).toBe(false);
