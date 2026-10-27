@@ -106,6 +106,16 @@ const JUDGE_SYSTEM = [
   'event is stored or classified (that it is on the calendar, timed, all-day, an entry) instead',
   'of telling them what is on is unrequested filler and caps the score at',
   `${JUDGE_MIN - 1} at most, in any language and however it is phrased.`,
+  'TEXTS LIKE A FRIEND, NOT A NOTIFICATION: on top of grammar, ask whether a friend who knows',
+  'the family would text it this way. A reply that reads like a system notification or a',
+  'calendar readout (a title-then-day-then-time label, a formal full date and clock time where',
+  'a friend would just say when, a stiff "you have X from A to B" or "X is at A, running until B"',
+  'construction, padded clock times) is correct but not how a friend texts. Judge the whole',
+  'reply by how it reads, never against a list of phrases. Do it this way: first picture the',
+  'same facts as a quick, warm text from a friend; then ask whether this reply sounds like that',
+  'or like an automated alert that only states the entry and its times. Correct and polite is',
+  'not enough: if it sounds like the alert, it fails this check. It caps the score at',
+  `${JUDGE_MIN - 1} at most, in any language, even when every fact is right; say why in the reason.`,
   'CAPS ARE CEILINGS: complete, correct facts never lift a capped score. If your reason names',
   'any phrasing a native speaker would write differently, the score is at most',
   `${JUDGE_MIN - 1}, however minor you think it is.`,
@@ -168,6 +178,32 @@ const BROKEN_CASES = [
     fixtureId: 'zh-hour-out',
     tag: 'zh-hour-out:unnatural',
     body: '在大约一个小时以后，从晚上7点到8点，有钢琴课它是在Ms. Chen studio。',
+  },
+  // Title set after a colon as a label: recorded fr reply Sloane failed. Reads as a
+  // statement that the day is a day off, not as the event's name.
+  {
+    fixtureId: 'fr-jour-de-conge-timed',
+    tag: 'fr-jour-de-conge-timed:colon-label',
+    body: 'Demain, lundi 26 octobre, à 15 h 00 à la bibliothèque de Georgetown : jour de congé. Ça se termine à 16 h 00.',
+  },
+  // Notification-style but factually correct (Sloane's samples, recorded replies): a
+  // friend would not text these. The judge must cap each on naturalness alone.
+  {
+    fixtureId: 'en-late-same-day',
+    tag: 'en-late-same-day:notification',
+    body: 'Swim class is today at 10:00 AM, running until 11:00 AM.',
+  },
+  {
+    fixtureId: 'en-teen-generic',
+    tag: 'en-teen-generic:notification',
+    body: 'Tomorrow you have an appointment from 4:45 to 5:45 PM.',
+  },
+  // Barton's prod text. No fixture has these facts; it rides on en-late-same-day, so it
+  // also fails on facts. Kept as the bar's reference sample.
+  {
+    fixtureId: 'en-late-same-day',
+    tag: 'en-late-same-day:prod-notification',
+    body: 'Parent & Tot Skate on Tuesday, Oct 27 at 10:30 a.m.',
   },
 ];
 
