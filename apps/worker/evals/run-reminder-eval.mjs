@@ -31,6 +31,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { REMINDER_FIXTURES } from './reminder-fixtures.mjs';
+import { reminderJudgeModel } from './lib/reminder-judge-model.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -53,6 +54,8 @@ const JUDGE_SYSTEM = [
   'their calendar. The model wrote the whole text; nothing is added around it. You are given',
   'the facts (offset, now, events with date, allDay, start, end, location; planLink; language),',
   'the text and watchFor notes. Score 1-5 on FACTS, LANGUAGE and TONE, not wording.',
+  'planLink is OPTIONAL: the writer may include it or leave it out. Its absence is never a',
+  'fault and never lowers the score; only a link other than planLink is.',
   'A 5: every event is there with its facts as given and nothing invented; each time given is',
   'correct INCLUDING morning versus afternoon or evening (AM/PM or the natural equivalent in',
   'that language); no clock time for an all-day event; the day phrased truly from now (tomorrow',
@@ -64,7 +67,7 @@ const JUDGE_SYSTEM = [
   'ambiguous AM/PM; a wrong time, date, or place; an invented detail (what to bring, who is',
   'going, how it will go); guessing what a generic "an appointment" is; the wrong language or',
   'mixed languages; a link other than planLink; hype, exclamation marks, emoji, a question or',
-  'asking them to reply with a word; a stiff template feel such as "Day: title at time".',
+  'asking them to reply with a word.',
   'FACT CHECK every logistics claim against the facts you are given: when to leave or set',
   'off, how long getting there takes, traffic, parking, arrival or pickup times, and any',
   'other timing or travel detail. If the facts do not contain it (there is never a travel',
@@ -113,10 +116,9 @@ const JUDGE_SYSTEM = [
   `${JUDGE_MIN - 1} at most, in any language and however it is phrased.`,
   'TEXTS LIKE A FRIEND, NOT A NOTIFICATION: on top of grammar, ask whether a friend who knows',
   'the family would text it this way. A reply that reads like a system notification or a',
-  'calendar readout (a title-then-day-then-time label, a formal full date and clock time where',
-  'a friend would just say when, a stiff "you have X from A to B" or "X is at A, running until B"',
-  'construction, padded clock times) is correct but not how a friend texts. Judge the whole',
-  'reply by how it reads, never against a list of phrases. Do it this way: first picture the',
+  'calendar readout rather than a person is correct but not how a friend texts. Judge the',
+  'whole reply by its meaning and register, never by whether it uses or avoids any particular',
+  'phrase, construction or opener. Do it this way: first picture the',
   'same facts as a quick, warm text from a friend; then ask whether this reply sounds like that',
   'or like an automated alert that only states the entry and its times. Correct and polite is',
   'not enough: if it sounds like the alert, it fails this check. It caps the score at',
@@ -304,9 +306,9 @@ async function main() {
   // Re-score only: replies come from the cache (a miss is an error, never a live compose);
   // only the judge runs live.
   const rescore = process.argv.includes('--rescore');
-  // Haiku judge (Sloane, option b): references + lowest-of-3 instead of a pricier model.
-  // REMINDER_JUDGE_MODEL overrides for a later Sonnet comparison.
-  const judgeModel = process.env.REMINDER_JUDGE_MODEL ?? agent.HAIKU_MODEL;
+  // The shared judge (Sloane, 2026-10-27): agent.SONNET_MODEL, lowest of 3, references.
+  // REMINDER_JUDGE_MODEL overrides for a comparison run.
+  const judgeModel = reminderJudgeModel(process.env, agent);
   // --only a,b: run just these fixture ids / broken-case tags (minimum calibration set).
   const onlyArg = process.argv.find((a) => a.startsWith('--only='));
   const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null;
