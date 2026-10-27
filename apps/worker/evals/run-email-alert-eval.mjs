@@ -28,6 +28,7 @@ import {
   estimateInputTokensOffline,
   installEvalSpendCap,
   isDryRun,
+  isMain,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -276,7 +277,12 @@ async function main() {
   process.exit(allFail ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error('email-alert eval harness error:', err);
-  process.exit(2);
-});
+export { EMAIL_ALERT_BROKEN_CASES };
+
+// Imported (e.g. by a test) it does nothing; only `node run-email-alert-eval.mjs` runs it.
+if (isMain(import.meta.url)) {
+  main().catch((err) => {
+    console.error('email-alert eval harness error:', err);
+    process.exit(2);
+  });
+}

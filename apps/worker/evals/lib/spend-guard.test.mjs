@@ -106,15 +106,16 @@ describe('is-main guard', () => {
     expect(isMain(import.meta.url, '/nonexistent/entry.mjs')).toBe(false);
     expect(isMain(import.meta.url, undefined)).toBe(false);
   });
-  it('importing the reminder runner does not run the eval', async () => {
+  // #922 carries the email-alert runner, not #914's reminder runner: same guard, its runner.
+  it('importing the email-alert runner does not run the eval', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('test: runner called process.exit on import');
     });
     const log = vi.spyOn(console, 'log');
-    const mod = await import('../run-reminder-eval.mjs');
-    expect(Array.isArray(mod.BROKEN_CASES)).toBe(true);
+    const mod = await import('../run-email-alert-eval.mjs');
+    expect(Array.isArray(mod.EMAIL_ALERT_BROKEN_CASES)).toBe(true);
     expect(exit).not.toHaveBeenCalled();
-    expect(log.mock.calls.some((c) => String(c[0]).startsWith('reminder eval |'))).toBe(false);
+    expect(log.mock.calls.some((c) => String(c[0]).startsWith('email-alert eval |'))).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
     exit.mockRestore();
     log.mockRestore();
@@ -134,12 +135,12 @@ describe('--dry needs a real ledger and lists instead of calling (914)', () => {
     expect(installEvalSpendCap()).toBe(0.15);
   });
 
-  it('the reminder runner exits non-zero on --dry with no ledger, before any call', async () => {
+  it('the email-alert runner exits non-zero on --dry with no ledger, before any call', async () => {
     const { spawnSync } = await import('node:child_process');
     const drop = new Set(['HALE_SPEND_LEDGER', 'ANTHROPIC_API_KEY', 'AI_GATEWAY_API_KEY']);
     const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !drop.has(k)));
-    const runner = new URL('../run-reminder-eval.mjs', import.meta.url).pathname;
-    const res = spawnSync(process.execPath, [runner, '--dry', '--rescore', '--max-usd', '0.15'], {
+    const runner = new URL('../run-email-alert-eval.mjs', import.meta.url).pathname;
+    const res = spawnSync(process.execPath, [runner, '--dry', '--max-usd', '0.15'], {
       env,
       encoding: 'utf8',
       timeout: 60_000,
