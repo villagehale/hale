@@ -15,15 +15,18 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
+import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import {
   GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
   cachedToolCall,
   installEvalSpendCap,
+  isDryRun,
   isMain,
   lazyAnthropic,
   makeCost,
   makeJudge,
+  summarizeJudgePlan,
   totalUsd,
 } from './lib/harness.mjs';
 import { REMINDER_FIXTURES } from './reminder-fixtures.mjs';
@@ -86,12 +89,12 @@ const JUDGE_SYSTEM = [
   `not send it as written, it caps the score at ${JUDGE_MIN - 1} at most, in any language, even when`,
   'every fact is right; say what reads unnaturally in the reason.',
   'NOTHING GIVEN MAY BE LEFT OUT: check every date, start and end in the facts against the',
-  'text. Each event\'s day (said truly from now, such as tomorrow or today, or as a date), its',
+  "text. Each event's day (said truly from now, such as tomorrow or today, or as a date), its",
   'start time and, when the facts give one, its end time must all be in the text, in any natural',
   'form for the language. A text that drops any one of them, such as giving only the start when',
   'an end is given, leaves out a fact the parent needs: that is a fact failure and a LOW score',
   '(1-2), however natural the rest reads. Name in the reason which time or date is missing.',
-  'KEEP EACH TITLE AS THE EVENT\'S NAME: the title is what the event is called, not a',
+  "KEEP EACH TITLE AS THE EVENT'S NAME: the title is what the event is called, not a",
   'statement about the day or the family. Turning a title into a claim it does not make, such',
   'as recasting it as what the day is, what is closed, or what the event involves, changes a',
   'fact: that is a fact failure and a LOW score (1-2), in any language, even when every time',
@@ -126,7 +129,8 @@ const JUDGE_SYSTEM = [
 // Reminder-specific scored references, on top of the shared general set.
 const REMINDER_REFERENCE_TEXTS = [
   {
-    facts: 'Event "Parent & Tot Skate", Tuesday Oct 27, 10:30 AM. Now: Monday evening. Language: English.',
+    facts:
+      'Event "Parent & Tot Skate", Tuesday Oct 27, 10:30 AM. Now: Monday evening. Language: English.',
     text: 'Parent & Tot Skate is tomorrow morning at 10:30.',
     score: 5,
     why: "The same skate as Barton's prod sample, said the way a friend would: when, from now, and the time. Nothing invented.",
@@ -141,6 +145,15 @@ const REMINDER_REFERENCE_TEXTS = [
 
 // Deterministic broken stand-in: the prod bug itself — a code-built prefix, a time with
 // no meridiem, a free-day claim over a timed event, English for a French parent.
+/**
+ * The judge's output cap (914). Sized from the longest verdict in this suite's saved judge
+ * cache (Haiku and Sonnet, the 280 verdicts the 914 branch recorded): 244 tokens
+ * (@anthropic-ai/tokenizer, legacy count; median 97, p95 172). 512 is about 2x that, room
+ * for a newer tokenizer and the tool-call wrapper. A verdict that still hits it is a judge
+ * error that stops the run (makeJudge), never a pass.
+ */
+export const REMINDER_JUDGE_MAX_OUTPUT_TOKENS = 512;
+
 const BROKEN =
   "Mon, Oct 26: Jour de congé at 3:00 Tomorrow's a day off, so you've got a bit of breathing room.";
 
@@ -259,7 +272,9 @@ async function main() {
     aggregate: 'min',
     references: [...GENERAL_REFERENCE_TEXTS, ...REMINDER_REFERENCE_TEXTS],
     logCost: true,
+    maxOutputTokens: REMINDER_JUDGE_MAX_OUTPUT_TOKENS,
   });
+  const dry = isDryRun();
 
   console.log(
     `reminder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
@@ -269,26 +284,27 @@ async function main() {
     if (!wanted(fixture.id)) continue;
     const facts = compose.reminderFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     const userMessage = compose.reminderUserMessage(facts);
-    const body = broken && !rescore
-      ? BROKEN
-      : String(
-          (
-            await cachedToolCall({
-              tag: `reminder:${fixture.id}`,
-              model,
-              lane,
-              system: skill.instructions,
-              userMessage,
-              toolName: 'reminder_text',
-              toolSchema: TOOL_SCHEMA,
-              toolDescription: 'The one text Hale sends the parent.',
-              maxTokens: 300,
-              cachedOnly: cachedOnly || rescore,
-              getClient,
-              cost,
-            })
-          ).value.text ?? '',
-        ).trim();
+    const body =
+      broken && !rescore
+        ? BROKEN
+        : String(
+            (
+              await cachedToolCall({
+                tag: `reminder:${fixture.id}`,
+                model,
+                lane,
+                system: skill.instructions,
+                userMessage,
+                toolName: 'reminder_text',
+                toolSchema: TOOL_SCHEMA,
+                toolDescription: 'The one text Hale sends the parent.',
+                maxTokens: 300,
+                cachedOnly: cachedOnly || rescore,
+                getClient,
+                cost,
+              })
+            ).value.text ?? '',
+          ).trim();
     const failures = compose.reminderRefusals(body, facts).map((r) => `unsendable:${r}`);
     const verdict = await judge(fixture.id, {
       input: userMessage,
@@ -312,14 +328,41 @@ async function main() {
         watchFor: fixture.watchFor,
       });
       if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-      results.push({ fixture: { ...fixture, id: bc.tag }, body: bc.body, failures, scores: verdict.samples });
+      results.push({
+        fixture: { ...fixture, id: bc.tag },
+        body: bc.body,
+        failures,
+        scores: verdict.samples,
+      });
     }
+  }
+  if (dry) {
+    // --dry: list every draw and the guard's worst case, then exit. No network was used.
+    const capUsd = readCapUsd();
+    if (capUsd === null)
+      throw new Error('eval --dry: no --max-usd / HALE_MAX_USD; nothing to project against');
+    const { spentUsd } = readLedger();
+    for (const p of judge.plan) {
+      console.log(
+        p.cached
+          ? `DRY  cached    ${p.tag}  score ${p.score}`
+          : `DRY  uncached  ${p.tag}  ~${p.inputTokens} in + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
+      );
+    }
+    const s = summarizeJudgePlan(judge.plan, { spentUsd, capUsd });
+    console.log(
+      `DRY summary | draws ${s.draws} (cached ${s.cached}, uncached ${s.uncached}) | worst per call $${s.worstPerCallUsd.toFixed(5)} | worst total $${s.worstTotalUsd.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${s.projectedLedgerUsd.toFixed(5)} vs cap $${capUsd} | ${s.fitsCap ? 'FITS' : 'EXCEEDS CAP'}`,
+    );
+    console.log('DRY: input tokens are an offline over-estimate (1 per 3 bytes); live calls: 0');
+    process.exit(s.fitsCap ? 0 : 3);
   }
   for (const r of results) {
     console.log(
       `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(30)} "${r.body}"`,
     );
-    console.log(`      · scores [${(r.scores ?? []).join(', ')}] min ${Math.min(...(r.scores ?? [NaN]))}`);
+    console.log(
+      `      · scores [${(r.scores ?? []).join(', ')}] min ${Math.min(...(r.scores ?? [NaN]))}`,
+    );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
   console.log(

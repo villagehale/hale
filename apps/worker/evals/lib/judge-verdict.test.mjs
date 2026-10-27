@@ -197,3 +197,57 @@ describe('score-first judge schema', () => {
     expect(schema.properties.reason.maxLength).toBe(160);
   });
 });
+
+/**
+ * A VERDICT CUT OFF AT THE JUDGE'S OUTPUT CAP IS A JUDGE ERROR (914). The cap exists so
+ * the spend guard reserves a small worst case; it must never turn into a pass, a cached
+ * draw, or a quiet second ask.
+ */
+describe('a capped judge stops the run on a verdict that hits the cap', () => {
+  it.each(['claude-sonnet-5-5', 'claude-haiku-5-5'])(
+    '%s: throws JudgeTruncatedError, one call, nothing cached',
+    async (model) => {
+      const { JudgeTruncatedError } = await import('./harness.mjs');
+      const prefix = `judge-cap-${Math.random().toString(36).slice(2)}`;
+      const requests = [];
+      const create = async (request) => {
+        requests.push(request);
+        return {
+          stop_reason: 'max_tokens',
+          content: [{ type: 'text', text: '{"reason":"the reply is' }],
+          usage: { input_tokens: 10, output_tokens: 512 },
+        };
+      };
+      const judge = makeJudge(
+        model,
+        'score it',
+        prefix,
+        false,
+        () => ({ messages: { create } }),
+        makeCost(),
+        {
+          samples: 3,
+          aggregate: 'min',
+          maxOutputTokens: 512,
+        },
+      );
+      const err = await judge('fixture', { text: 'x' }).catch((e) => e);
+      expect(err).toBeInstanceOf(JudgeTruncatedError);
+      expect(err.message).toMatch(/max_tokens cap \(512\)/);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].max_tokens).toBe(512);
+      // the cap bounds the verdict only: the capped lane never thinks
+      expect(requests[0].thinking.type).not.toBe('adaptive');
+      const { readdirSync } = await import('node:fs');
+      expect(readdirSync(CACHE_DIR).some((f) => f.includes(prefix))).toBe(false);
+    },
+  );
+
+  it('rejects a cap that is not a positive integer', () => {
+    expect(() =>
+      makeJudge('claude-haiku-5-5', 's', 'p', false, () => ({}), makeCost(), {
+        maxOutputTokens: 0,
+      }),
+    ).toThrow(/positive integer/);
+  });
+});

@@ -26,6 +26,7 @@ import {
   isEstimate,
   readCapUsd,
   readLedger,
+  worstCaseUsd,
 } from '../../../web/lib/testing/spend-cap.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -244,6 +245,15 @@ if (process.env.EVAL_PRINT_TELEMETRY) {
 
 /** Prints the ceiling once, before any live call. With neither source set, the cap stays off. */
 export function installEvalSpendCap() {
+  // --dry projects against a REAL ledger or not at all: with no HALE_SPEND_LEDGER it
+  // refuses, rather than quietly reading installSpendCap's /tmp default (an empty ledger
+  // that would understate what has been spent).
+  if (
+    isDryRun() &&
+    (!process.env.HALE_SPEND_LEDGER || process.env.HALE_EVAL_LEDGER_DEFAULTED === '1')
+  ) {
+    throw new Error('eval --dry: no ledger path (HALE_SPEND_LEDGER); refusing to run');
+  }
   // installSpendCap quietly defaults the ledger to /tmp; remember that it was not chosen,
   // so the live-call guard below still refuses.
   if (!process.env.HALE_SPEND_LEDGER) process.env.HALE_EVAL_LEDGER_DEFAULTED = '1';
@@ -278,6 +288,18 @@ export function requireSpendGuard(tag = 'eval') {
   if (readCapUsd() === null) {
     throw new Error(`spend-guard: no --max-usd / HALE_MAX_USD; refusing live call ${tag}`);
   }
+}
+
+/**
+ * Input tokens of a request, estimated OFFLINE for --dry (the live guard counts them with
+ * countTokens, which is a network call). Deliberately high: one token per 3 UTF-8 bytes
+ * of everything sent (English runs ~4 bytes a token; a CJK character is 3 bytes and about
+ * a token), so the dry projection is at or above what the live guard will reserve.
+ */
+export function estimateInputTokensOffline(request) {
+  const { system, messages, tools, output_config } = request;
+  const bytes = Buffer.byteLength(JSON.stringify({ system, messages, tools, output_config }));
+  return Math.ceil(bytes / 3);
 }
 
 /** A client that fails loudly on any use: what --dry hands out instead of a real one. */
@@ -914,8 +936,23 @@ export function callUsd(model, usage) {
  *                [...GENERAL_REFERENCE_TEXTS, ...yourOwn].
  *   logCost      true: print model, tokens and USD for every LIVE judge call
  */
+/** A verdict cut off at the judge's output cap. A judge error that stops the run. */
+export class JudgeTruncatedError extends Error {}
+
 export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClient, cost, options) {
   const samples = options?.samples ?? 1;
+  // maxOutputTokens: a hard cap on the verdict, so the spend guard's per-call worst case
+  // (input + max_tokens of output) is small. The cap bounds thinking AND verdict together,
+  // so a capped judge runs on its tier's thinking-off lane and the cap only has to clear
+  // the verdict itself. A verdict that still hits it is a JudgeTruncatedError: never a
+  // pass, never cached, never quietly re-asked.
+  const verdictCap = options?.maxOutputTokens;
+  if (verdictCap !== undefined && !(Number.isInteger(verdictCap) && verdictCap > 0)) {
+    throw new Error(`makeJudge: maxOutputTokens must be a positive integer, got ${verdictCap}`);
+  }
+  // --dry: every draw is listed here (cached or not, and the guard's worst case for an
+  // uncached one) instead of being made. Read it after the run with judge.plan.
+  const plan = [];
   const judgeSystem = judgeSystemBase + renderReferenceTexts(options?.references);
   const logCall = (sampleTag, usage) => {
     if (!options?.logCost) return;
@@ -928,12 +965,43 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     const sampleTag =
       index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
     const schema = options?.toolSchema ?? options?.schema ?? JUDGE_SCHEMA;
+    const agentForLane = verdictCap ? await loadAgent() : null;
+    const baseLane = agentForLane ? judgeLane(agentForLane, model) : null;
+    const cappedLane = agentForLane ? (agentForLane.withoutThinking(baseLane) ?? baseLane) : null;
+    // A capped judge on a different lane (Sonnet: thinking off) is a different judge, so
+    // its verdicts key apart from the thinking ones. Same lane (Haiku): key unchanged.
+    const laneKey =
+      cappedLane && JSON.stringify(cappedLane) !== JSON.stringify(baseLane)
+        ? `\nlane:${JSON.stringify(cappedLane)}`
+        : '';
     const key = cacheKey(
       sampleTag,
-      `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}`,
+      `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}${laneKey}`,
     );
     const cached = await cacheGet(key);
-    if (cached && isVerdict(cached.parsed)) return cached.parsed;
+    if (cached && isVerdict(cached.parsed)) {
+      if (isDryRun()) plan.push({ tag: sampleTag, cached: true, score: cached.parsed.score });
+      return cached.parsed;
+    }
+    if (isDryRun()) {
+      // No network: price the request the live guard would see, with an offline count.
+      const agent = await loadAgent();
+      const lane = cappedLane ?? judgeLane(agent, model);
+      const maxTokens = verdictCap ?? (model === agent.HAIKU_MODEL ? 4096 : 8192);
+      const request = agent.structuredRequest({
+        lane,
+        maxTokens,
+        system: judgeSystem,
+        userMessage,
+        toolName: 'score',
+        toolDescription: 'Return the score.',
+        inputJsonSchema: schema,
+      });
+      const inputTokens = estimateInputTokensOffline(request);
+      const worstUsd = worstCaseUsd(priceRates, request, inputTokens);
+      plan.push({ tag: sampleTag, cached: false, inputTokens, maxTokens, worstUsd });
+      return { dry: true, score: Number.NaN, reason: '(dry: not scored)' };
+    }
     if (cachedOnly) failCachedMiss(sampleTag, key);
 
     // A score-first suite keeps a draw whose reason was cut off. That path reads the
@@ -966,7 +1034,7 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     try {
       result = await agent.forceToolJson({
         client: getClient(),
-        lane: judgeLane(agent, model),
+        lane: cappedLane ?? judgeLane(agent, model),
         // 1024, not 256. At 256 a judge writing a thorough reason ran out of tokens
         // MID-STRING, and because Anthropic does not hard-enforce a tool's input schema
         // the partial call still arrived as a well-formed object — `{ score: 2 }` with the
@@ -988,7 +1056,7 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
         // made — and `isVerdict` above means a draw that still runs out is loud, not a zero.
         // On the 5.5 generation a non-Haiku judge thinks first (Opus 5.5 cannot turn it
         // off), and `max_tokens` caps the thinking too, so it gets twice the room.
-        maxTokens: model === agent.HAIKU_MODEL ? 4096 : 8192,
+        maxTokens: verdictCap ?? (model === agent.HAIKU_MODEL ? 4096 : 8192),
         system: judgeSystem,
         userMessage,
         toolName: 'score',
@@ -997,6 +1065,11 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
         schema: ANY_INPUT,
       });
     } catch (err) {
+      if (err?.outcome === 'truncated' && verdictCap) {
+        throw new JudgeTruncatedError(
+          `judge error (${sampleTag}): verdict hit the max_tokens cap (${verdictCap}); not a pass, nothing cached, run stopped`,
+        );
+      }
       if (err?.outcome === 'truncated') {
         throw new Error(
           `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
@@ -1013,11 +1086,14 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     return result.value;
   }
 
-  return async function judge(tag, payload) {
+  async function judge(tag, payload) {
     const userMessage = JSON.stringify(payload);
     const drawn = [];
     for (let index = 0; index < samples; index += 1) {
       drawn.push(await draw(tag, userMessage, index));
+    }
+    if (drawn.some((verdict) => verdict.dry)) {
+      return { dry: true, score: Number.NaN, reason: '(dry)', samples: drawn.map((v) => v.score) };
     }
     // One sample returns exactly what it always did - same object, no extra field - so a
     // caller that never opted in cannot tell this function changed.
@@ -1032,6 +1108,23 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     // the argument for the score it printed, or the failure line cites a different draw.
     const median = ordered[Math.floor(samples / 2)];
     return { ...median, samples: ordered.map((verdict) => verdict.score) };
+  }
+  judge.plan = plan;
+  return judge;
+}
+
+/** --dry summary of a judge's plan: what would be scored and the guard's worst case. */
+export function summarizeJudgePlan(plan, { spentUsd, capUsd }) {
+  const uncached = plan.filter((p) => !p.cached);
+  const worstTotalUsd = uncached.reduce((sum, p) => sum + p.worstUsd, 0);
+  return {
+    draws: plan.length,
+    cached: plan.length - uncached.length,
+    uncached: uncached.length,
+    worstPerCallUsd: uncached.length ? Math.max(...uncached.map((p) => p.worstUsd)) : 0,
+    worstTotalUsd,
+    projectedLedgerUsd: spentUsd + worstTotalUsd,
+    fitsCap: spentUsd + worstTotalUsd <= capUsd,
   };
 }
 
