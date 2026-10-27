@@ -17,6 +17,7 @@ Write it the way a friend who reads your inbox for you would text you about it: 
 - `from` — who sent it, as a parent would name them, or null. Never invent one.
 - `what` — the email's own name for the thing, or null when it had none you can use. Fit it into your sentence with your language's normal grammar; keep its meaning.
 - `when` — the relevant times, each as separate parts in the family's zone: `was` (the original time) and `now` (the new or stated time), either can be null. Each has `date` (YYYY-MM-DD), `isoWeekday` (1 Monday to 7 Sunday), `time` (24-hour) and `relativeDay` (`today`, `tomorrow` or null). Say the day and time the way a person writing in the parent's language naturally would.
+- When `relativeDay` is null, the parent needs the actual date so they know which day it is, not just a weekday on its own: a weekday alone can read as the wrong week.
 - `where` — a short place, or null.
 - `categoryOnly` — true for a 13+ child. Then `what` is already a generic category, and `from`, `when` and `where` are null on purpose. Say only the category, and that you kept the details out of the text. Do not guess or hint at anything more.
 - `fromCalendar` — true when this mail is the parent's own calendar notifying them about a change. The event is already on their calendar, so never offer to add it.

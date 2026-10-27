@@ -151,7 +151,7 @@ export const EMAIL_ALERT_BROKEN_CASES = [
     }),
     // The writer declared the offer it made; these fail on their words, not a mismatch.
     offered: true,
-    text: 'Class trip to the farm. Old: Friday, Nov 6 at 8:30 a.m. New: Friday, Nov 13 at 8:30 a.m. Want me to add it to your week?',
+    text: 'Class trip to the farm. Old: Friday, Nov 6 at 8:30 a.m. New: Friday, Nov 13 at 8:30 a.m. I can add it to your week if you want.',
     watchFor:
       'A change written as an old/new change log, not how a friend says what it is now. A LOW score.',
   },
@@ -192,7 +192,7 @@ export const EMAIL_ALERT_BROKEN_CASES = [
     }),
     // The writer declared the offer it made; these fail on their words, not a mismatch.
     offered: true,
-    text: 'Father William Meehan has RCIA on Thursday, Oct 29 at 7:30 p.m. Want me to add it to your week?',
+    text: 'Father William Meehan has RCIA on Thursday, Oct 29 at 7:30 p.m. Should I put it on your calendar?',
     watchFor:
       "An ADULT's event (RCIA is adult faith formation) in a code-built 'X has Y on <date>' frame with a fixed CTA. Hale is for the kids' year; texting a parent about an adult event, in a template, is a 1.",
   },
@@ -215,7 +215,7 @@ export const EMAIL_ALERT_BROKEN_CASES = [
     }),
     // The writer declared the offer it made; these fail on their words, not a mismatch.
     offered: true,
-    text: 'Martin Madsen has House Supper on Saturday, Oct 31 at 6:00 p.m. Want me to add it to your week?',
+    text: 'Martin Madsen has House Supper on Saturday, Oct 31 at 6:00 p.m. Happy to add it to your week.',
     watchFor:
       "An adult's dinner in the code-built 'X has Y on <date>' template with a fixed CTA. Not about the kids, and templated. A LOW score.",
   },
@@ -259,9 +259,9 @@ export const EMAIL_ALERT_REFERENCE_TEXTS = [
   {
     facts:
       'Village Montessori moved the class pumpkin patch trip to Friday Nov 13, 9:00 AM. haleCanAddIt: true.',
-    text: 'Village Montessori moved the pumpkin patch trip to Friday, Nov 13 at 9:00 a.m. Would you like me to add it to your week?',
+    text: 'Please be advised that Village Montessori has rescheduled the class pumpkin patch trip to Friday, Nov 13 at 9:00 a.m. I can add it to your week.',
     score: 2,
-    why: 'Facts are right, but the closing offer is an assistant offering a service, not a friend texting. Dock that register.',
+    why: 'Facts are right, but the whole text reads like an office notice, not a friend texting. Dock that register.',
   },
   {
     facts: 'Email from Father William Meehan: "RCIA", Thursday Oct 29, 7:30 PM. An adult event.',

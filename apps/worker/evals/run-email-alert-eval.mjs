@@ -75,7 +75,7 @@ const JUDGE_SYSTEM = [
   'a native speaker would actually send; short, calm, warm, like a friend; at most one offer,',
   'only if haleCanAddIt is true, mentioned casually like a friend; when passport is set it is said once, inside the text, as',
   'something Hale is noting on the child record, with no admin talk about correcting it.',
-  'A LOW score (1-2) is any of: a wrong time, date, sender or place; an invented reason,',
+  'A LOW score (1-2) is any of: a wrong time, date, sender or place; a given date that does not come across, so the parent could not tell which day it is (judge by meaning: a bare weekday for a day beyond tomorrow leaves the date out); an invented reason,',
   'detail, attendee or outcome; claiming Hale booked, registered or confirmed anything; for',
   'categoryOnly, anything beyond the category (sender, time, place, a guess at what it is);',
   'saying Hale read their inbox or Gmail when fromCalendar is true; a link or email address;',
@@ -111,6 +111,12 @@ function priced(model, input, output) {
   return (input / 1e6) * price.input + (output / 1e6) * price.output;
 }
 
+/** The cases a --dry run prices: every case, or only the --only ids when given (a dry run
+ * used to ignore --only and project the whole corpus). */
+export function dryCases(all, only) {
+  return all.filter((f) => !only || only.has(f.id));
+}
+
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -136,7 +142,7 @@ async function main() {
     .filter((f) => !only || only.has(f.id))
     .map(toCase);
   const dryAll = isDryRun()
-    ? [...EMAIL_ALERT_FIXTURES, ...EMAIL_ALERT_BROKEN_CASES].map(toCase)
+    ? dryCases([...EMAIL_ALERT_FIXTURES, ...EMAIL_ALERT_BROKEN_CASES], only).map(toCase)
     : null;
 
   if (estimateOnly) {
