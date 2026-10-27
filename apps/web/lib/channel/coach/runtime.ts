@@ -61,6 +61,8 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
+import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
+import { augmentCoachSkillForGroupLists } from '~/lib/channel/lists/tools';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
@@ -288,8 +290,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         : [];
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
+      // VIL-447: the shared-list verbs exist only in a group, and only with the flag on.
       const skill =
-        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+        turn.audience === 'group'
+          ? augmentCoachSkillForGroupLists(
+              await appendGroupCoachSkill(loadedSkill),
+              groupSharedListsEnabled(),
+            )
+          : loadedSkill;
 
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
@@ -615,6 +623,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               offeredThisTurn: offered.read,
             }
           : null,
+        groupLists:
+          turn.audience === 'group' && groupSharedListsEnabled()
+            ? {
+                database,
+                familyId: turn.familyId,
+                conversationId: turn.conversationId,
+                actorUserId: turn.parentUserId,
+                now: turn.now,
+              }
+            : null,
         providerWatch: browserUseWatchEnabled()
           ? {
               database,
