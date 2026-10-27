@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import {
+  cacheAwareWorstUsd,
   capEnabled,
   capSdkClient,
   cappedCall,
@@ -26,7 +27,6 @@ import {
   isEstimate,
   readCapUsd,
   readLedger,
-  worstCaseUsd,
 } from '../../../web/lib/testing/spend-cap.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -292,9 +292,11 @@ export function requireSpendGuard(tag = 'eval') {
 
 /**
  * Input tokens of a request, estimated OFFLINE for --dry (the live guard counts them with
- * countTokens, which is a network call). Deliberately high: one token per 3 UTF-8 bytes
- * of everything sent (English runs ~4 bytes a token; a CJK character is 3 bytes and about
- * a token), so the dry projection is at or above what the live guard will reserve.
+ * countTokens, which is a network call). A rough heuristic, NOT a bound: one token per 3
+ * UTF-8 bytes of the JSON-serialised request. It is NOT guaranteed to be at or above the
+ * live count (JSON escaping inflates CJK text, while the API also adds tokens of its own
+ * for tool definitions and formatting), so the live guard's countTokens figure is the one
+ * that decides; a dry projection is an estimate of it.
  */
 export function estimateInputTokensOffline(request) {
   const { system, messages, tools, output_config } = request;
@@ -998,8 +1000,21 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
         inputJsonSchema: schema,
       });
       const inputTokens = estimateInputTokensOffline(request);
-      const worstUsd = worstCaseUsd(priceRates, request, inputTokens);
-      plan.push({ tag: sampleTag, cached: false, inputTokens, maxTokens, worstUsd });
+      // Cache-aware, like the live guard: the first uncached draw writes the system-prompt
+      // cache (full write rate); later ones, run back to back within the TTL, read it.
+      const firstUncached = !plan.some((p) => !p.cached);
+      const prefixTokens = firstUncached
+        ? 0
+        : estimateInputTokensOffline({ system: request.system, tools: request.tools });
+      const worstUsd = cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens);
+      plan.push({
+        tag: sampleTag,
+        cached: false,
+        inputTokens,
+        cacheReadTokens: prefixTokens,
+        maxTokens,
+        worstUsd,
+      });
       return { dry: true, score: Number.NaN, reason: '(dry: not scored)' };
     }
     if (cachedOnly) failCachedMiss(sampleTag, key);
@@ -1086,11 +1101,22 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     return result.value;
   }
 
+  // STRICTLY ONE DRAW AT A TIME, enforced here rather than trusted to callers: every draw
+  // of this judge (across concurrent judge() calls too) waits for the previous one to
+  // settle. The cache-aware spend guard relies on it - a parallel draw could write the
+  // prompt cache a second time before the guard saw the first write.
+  let queue = Promise.resolve();
+  const serialDraw = (tag, userMessage, index) => {
+    const run = queue.then(() => draw(tag, userMessage, index));
+    queue = run.catch(() => {});
+    return run;
+  };
+
   async function judge(tag, payload) {
     const userMessage = JSON.stringify(payload);
     const drawn = [];
     for (let index = 0; index < samples; index += 1) {
-      drawn.push(await draw(tag, userMessage, index));
+      drawn.push(await serialDraw(tag, userMessage, index));
     }
     if (drawn.some((verdict) => verdict.dry)) {
       return { dry: true, score: Number.NaN, reason: '(dry)', samples: drawn.map((v) => v.score) };

@@ -346,14 +346,16 @@ async function main() {
       console.log(
         p.cached
           ? `DRY  cached    ${p.tag}  score ${p.score}`
-          : `DRY  uncached  ${p.tag}  ~${p.inputTokens} in + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
+          : `DRY  uncached  ${p.tag}  ~${p.inputTokens} in (~${p.cacheReadTokens ?? 0} at cache-read) + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
       );
     }
     const s = summarizeJudgePlan(judge.plan, { spentUsd, capUsd });
     console.log(
       `DRY summary | draws ${s.draws} (cached ${s.cached}, uncached ${s.uncached}) | worst per call $${s.worstPerCallUsd.toFixed(5)} | worst total $${s.worstTotalUsd.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${s.projectedLedgerUsd.toFixed(5)} vs cap $${capUsd} | ${s.fitsCap ? 'FITS' : 'EXCEEDS CAP'}`,
     );
-    console.log('DRY: input tokens are an offline over-estimate (1 per 3 bytes); live calls: 0');
+    console.log(
+      'DRY: input tokens are a rough offline estimate (1 per 3 bytes, not a bound; the live guard counts with countTokens); draw 1 assumed to write the prompt cache, later draws to read it; live calls: 0',
+    );
     process.exit(s.fitsCap ? 0 : 3);
   }
   for (const r of results) {
@@ -361,7 +363,7 @@ async function main() {
       `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(30)} "${r.body}"`,
     );
     console.log(
-      `      · scores [${(r.scores ?? []).join(', ')}] min ${Math.min(...(r.scores ?? [NaN]))}`,
+      `      · scores [${(r.scores ?? []).join(', ')}] min ${Math.min(...(r.scores ?? [Number.NaN]))}`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }

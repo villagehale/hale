@@ -251,3 +251,43 @@ describe('a capped judge stops the run on a verdict that hits the cap', () => {
     ).toThrow(/positive integer/);
   });
 });
+
+/** JUDGE DRAWS RUN STRICTLY ONE AT A TIME (914), even when callers judge in parallel. */
+describe('judge draws are serial', () => {
+  it('never has two draws in flight, across concurrent judge() calls', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let calls = 0;
+    const create = async () => {
+      calls += 1;
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      // no score: the draw throws and nothing is cached, which is all this test needs
+      return {
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', id: 't', name: 'score', input: { reason: 'x' } }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      };
+    };
+    const prefix = `judge-serial-${Math.random().toString(36).slice(2)}`;
+    const judge = makeJudge(
+      'claude-haiku-5-5',
+      's',
+      prefix,
+      false,
+      () => ({ messages: { create } }),
+      makeCost(),
+      { samples: 2 },
+    );
+    const results = await Promise.allSettled([
+      judge('a', { t: 1 }),
+      judge('b', { t: 2 }),
+      judge('c', { t: 3 }),
+    ]);
+    expect(results.every((r) => r.status === 'rejected')).toBe(true);
+    expect(calls).toBeGreaterThanOrEqual(3);
+    expect(maxInFlight).toBe(1);
+  });
+});

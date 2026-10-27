@@ -164,12 +164,20 @@ describe('--dry needs a real ledger and lists instead of calling (914)', () => {
     const verdict = await judge('case', { text: 'hi' });
     expect(verdict.dry).toBe(true);
     expect(judge.plan).toHaveLength(3);
-    for (const p of judge.plan) {
+    judge.plan.forEach((p, i) => {
       expect(p.cached).toBe(false);
       expect(p.maxTokens).toBe(512);
-      // worst case = input (cache-write rate, system is cached) + 512 output at $10/MTok
-      expect(p.worstUsd).toBeCloseTo((p.inputTokens * 2 * 1.25 + 512 * 10) / 1e6, 8);
-    }
+      // draw 1 writes the prompt cache: all input at the cache-write rate + 512 out at $10/MTok.
+      // Later draws read it: the system prompt at 0.1x, the rest still at the write rate.
+      const read = i === 0 ? 0 : p.cacheReadTokens;
+      if (i > 0) expect(read).toBeGreaterThan(0);
+      else expect(p.cacheReadTokens).toBe(0);
+      expect(p.worstUsd).toBeCloseTo(
+        (read * 2 * 0.1 + (p.inputTokens - read) * 2 * 1.25 + 512 * 10) / 1e6,
+        8,
+      );
+    });
+    expect(judge.plan[1].worstUsd).toBeLessThan(judge.plan[0].worstUsd);
     expect(getClient).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     const s = summarizeJudgePlan(judge.plan, { spentUsd: 0.14, capUsd: 0.15 });

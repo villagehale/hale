@@ -156,6 +156,75 @@ export function worstCaseUsd(rates, request, inputTokens) {
   return projectUsd(rates, request, tokens) + (search?.feeUsd ?? 0);
 }
 
+// --- cache-aware worst case ---------------------------------------------------
+// A request whose system prompt carries cache_control pays the cache-WRITE rate on its
+// prefix the first time, and the cache-READ rate (0.1x) while that prefix is warm. The
+// guard only takes the read rate when THIS process saw proof the prefix was cached: the
+// previous call with the same prefix (model + tools + system) reported
+// cache_creation_input_tokens or cache_read_input_tokens, it STARTED within the cache TTL
+// (5 min by default, 1h when the marker says so, minus a safety margin), and no other call
+// is in flight (calls run one at a time, so a cache write cannot land twice unseen).
+// Anything else, the whole input is priced as now. The ledger always books the real usage.
+
+export const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
+export const CACHE_TTL_MARGIN_MS = 15_000;
+const warmPrefixes = new Map();
+let callsInFlight = 0;
+
+/** The cache prefix of a request ({key, ttlMs}), or null when the system is not cached. */
+export function cachePrefix(request) {
+  const system = Array.isArray(request?.system) ? request.system : [];
+  const marked = system.filter((b) => b?.cache_control);
+  if (marked.length === 0) return null;
+  const ttlMs = marked.some((b) => b.cache_control.ttl === '1h')
+    ? 60 * 60_000
+    : DEFAULT_CACHE_TTL_MS;
+  const key = JSON.stringify({ model: request.model, tools: request.tools ?? null, system });
+  return { key, ttlMs };
+}
+
+/** Prefix tokens the guard may price at the read rate now; 0 means no discount. */
+export function warmPrefixTokens(request, now = Date.now()) {
+  if (callsInFlight > 0) return 0;
+  const prefix = cachePrefix(request);
+  if (!prefix) return 0;
+  const seen = warmPrefixes.get(prefix.key);
+  if (!seen) return 0;
+  if (now - seen.startedAt > seen.ttlMs - CACHE_TTL_MARGIN_MS) return 0;
+  return seen.tokens;
+}
+
+/** Remember (or forget) a prefix from a call's REAL usage. */
+export function notePrefixUsage(request, usage, startedAt) {
+  const prefix = cachePrefix(request);
+  if (!prefix) return;
+  const tokens = (usage?.cache_creation_input_tokens ?? 0) + (usage?.cache_read_input_tokens ?? 0);
+  if (tokens > 0) warmPrefixes.set(prefix.key, { tokens, startedAt, ttlMs: prefix.ttlMs });
+  else warmPrefixes.delete(prefix.key);
+}
+
+/** Test hook: forget every warm prefix. */
+export function resetPromptCacheState() {
+  warmPrefixes.clear();
+  callsInFlight = 0;
+}
+
+/**
+ * Worst case with `prefixTokens` of the input at the cache-read rate. The rest of the
+ * input stays at the rate worstCaseUsd uses (cache-write when marked), output at max_tokens.
+ */
+export function cacheAwareWorstUsd(rates, request, inputTokens, prefixTokens = 0) {
+  if (!prefixTokens || webSearchTool(request)) return worstCaseUsd(rates, request, inputTokens);
+  const r = rates(request.model);
+  const read = Math.min(prefixTokens, inputTokens);
+  return (
+    (read * r.input * CACHE_READ +
+      (inputTokens - read) * r.input * CACHE_WRITE +
+      (request.max_tokens ?? 0) * r.output) /
+    1e6
+  );
+}
+
 export function searchFeeUsd(usage) {
   return (usage?.server_tool_use?.web_search_requests ?? 0) * USD_PER_WEB_SEARCH;
 }
@@ -299,7 +368,8 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
       );
     }
   }
-  const projected = worstCaseUsd(rates, request, inputTokens);
+  const warmTokens = search ? 0 : warmPrefixTokens(request);
+  const projected = cacheAwareWorstUsd(rates, request, inputTokens, warmTokens);
 
   if (isEstimate()) {
     const l = readLedger();
@@ -330,9 +400,13 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
   save(l);
 
   let message;
+  const startedAt = Date.now();
+  callsInFlight += 1;
   try {
     message = await call();
   } catch (err) {
+    callsInFlight -= 1;
+    notePrefixUsage(request, null, startedAt);
     const m = readLedger();
     m.reservedUsd = Math.max(0, m.reservedUsd - projected);
     // The request may have been billed before the failure; book the projection so the
@@ -349,12 +423,21 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
     save(m);
     throw err;
   }
+  callsInFlight -= 1;
+  notePrefixUsage(request, message?.usage, startedAt);
   const m = readLedger();
   m.reservedUsd = Math.max(0, m.reservedUsd - projected);
   const actual = message?.usage ? usageUsd(rates, request.model, message.usage) : projected;
   m.spentUsd += actual;
   m.calls += 1;
-  m.log.push({ tag, model: request.model, projected, actual, usage: message?.usage ?? null });
+  m.log.push({
+    tag,
+    model: request.model,
+    projected,
+    ...(warmTokens ? { cacheReadPricedTokens: warmTokens } : {}),
+    actual,
+    usage: message?.usage ?? null,
+  });
   save(m);
   return message;
 }
