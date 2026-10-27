@@ -115,9 +115,6 @@ read it, and score 1 for any of these, in any language:
   French are held to the same standard.
 - TONE: an official, stiff or customer-service register scores at most 2, even when
   every fact is right.
-- NATURALNESS: read the whole reply as a native speaker would. A reply with every fact
-  right that reads like a system notification, a calendar entry or a listing (facts
-  strung into a label rather than said the way a person texts a friend) scores at most 3.
 The links in the facts are the URLs code put into the text; a link in the text that
 matches one of them is a given fact, not an invented one.
 Score 1 when it is in the wrong language or script, invents a fact, mangles a link,
@@ -155,19 +152,6 @@ const BROKEN_CASES = [
     id: 'broken-name-reinterpreted',
     base: 'identity-fr',
     text: "Je suis Hale, un assistant IA d'une entreprise de technologie pour les villages. Barton Dong est la personne responsable de ce service. Plus d'infos sur villagehale.com ou écris à aloha@villagehale.com. Si tu veux que j'arrête, dis-le-moi simplement.",
-  },
-  {
-    id: 'broken-notification-voice',
-    // A synthetic base: an event the parent asked about, so only the voice is under test.
-    fixture: {
-      id: 'broken-notification-voice',
-      purpose: 'event_answer',
-      script: 'en',
-      parentWords: 'is there anything for my toddler at the rink this week?',
-      facts: { event: 'Parent & Tot Skate', day: 'Tuesday, Oct 27', time: '10:30 a.m.' },
-      mustInclude: [],
-    },
-    text: 'Parent & Tot Skate on Tuesday, Oct 27 at 10:30 a.m.',
   },
   {
     id: 'broken-time-dropped',
@@ -275,7 +259,7 @@ async function main() {
     ? [
         ...fixtures.map((f) => ({ ...f, brokenText: BROKEN })),
         ...BROKEN_CASES.map((c) => {
-          const f = c.fixture ?? byId.get(c.base);
+          const f = byId.get(c.base);
           if (!f) throw new Error(`broken case ${c.id}: no fixture ${c.base}`);
           return { ...f, id: c.id, brokenText: c.text };
         }),

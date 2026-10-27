@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "Plain, friendly English matching the parent's text. States only the given situation (already said yes, nothing changed). The next step (\"I'll let you know if it goes ahead\") is the given facts.next, so it is not a new promise. No hints about the other family, no apology, no word to type, no invented facts."
-  }
-}

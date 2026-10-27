@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 3,
-    "reason": "Correct French, no names or other-family hints, no word to type. But \"Super, merci pour ta réponse !\" is slightly chirpy, and \"une famille proche sera disponible\" hints at a specific family being available, which goes beyond the facts (no match exists). \"Je t'écrirai dès qu'une famille...\" is a reasonable next step given facts.next. Tone is mostly friendly but the family-availability wording implies a match is coming, a promise the facts do not give."
-  }
-}

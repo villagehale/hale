@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 1,
-    "reason": "Text is in English though the parent writes in Arabic, so it fails the language rule. It also breaks privacy by naming and hinting at another family (the Patel family, that they said no). It invents a Friday Nov 3 reply path and a \"YES INTROS\" word to type, which the safety rule forbids, and it apologizes without any fact giving that. It omits that the introduction is closed and cannot be reopened, and that Hale will text at the next good match."
-  }
-}
