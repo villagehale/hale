@@ -41,6 +41,7 @@
     "eval:identity-ask": "node evals/run-identity-ask-eval.mjs --cached-only",
     "eval:add-them-yourself": "node evals/run-add-them-yourself-eval.mjs --cached-only",
     "eval:reminder": "node evals/run-reminder-eval.mjs --cached-only",
+    "eval:email-alert": "node evals/run-email-alert-eval.mjs --cached-only",
     "eval:intro-voice": "node evals/run-intro-voice-eval.mjs --cached-only",
     "eval:intro-group-voice": "node evals/run-intro-group-voice-eval.mjs --cached-only",
     "eval:group-welcome-voice": "node evals/run-group-welcome-voice-eval.mjs --cached-only",
