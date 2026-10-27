@@ -7,7 +7,7 @@
 // AM/PM, language, never claiming free time over a timed event, and tone.
 // Nothing matches words.
 //
-// Recorded 2026-10-27 (8/8, ledger 914-evals; every --broken case fails, incl. an added wish). CI replays it cached-only:
+// Recorded 2026-10-27 (8/8, ledger 914-evals; every --broken case fails, incl. an added wish and one unnatural-but-factual reply per language). CI replays it cached-only:
 //   node evals/run-reminder-eval.mjs --max-usd <ledger total + allowance>   # live, then caches
 //   node evals/run-reminder-eval.mjs --broken                               # calibration: must FAIL
 //   node evals/run-reminder-eval.mjs --cached-only                          # CI: replay only
@@ -73,6 +73,17 @@ const JUDGE_SYSTEM = [
   'plan, or a comment or opinion about the day or the family, is unrequested filler. It is',
   `not a fact from the facts you are given, so it caps the score at ${JUDGE_MIN - 1} at most, in`,
   'any language and however it is phrased, even when every fact is right.',
+  'NATIVE SPEAKER CHECK, on the WHOLE text: read it as a native speaker of its language',
+  'receiving it from a friend. Would a native speaker text exactly this, as written? Clumsy',
+  'or unidiomatic phrasing, wrong grammar, a missing or wrong article or particle, a calque',
+  'or word-for-word translation, an unnatural way of saying a time range or a day, or a',
+  'title dropped in where the sentence does not flow, makes it NOT natural. Judge the reply',
+  'as a whole by how it reads, never against a list of phrases. Do it this way: first say to',
+  'yourself how a native speaker would text these same facts; then compare. If the text differs',
+  'from that in grammar, idiom or construction (not just in word choice or order a native would',
+  'also use), it is not natural, however close it is and however small the slip. If a native speaker would',
+  `not send it as written, it caps the score at ${JUDGE_MIN - 1} at most, in any language, even when`,
+  'every fact is right; say what reads unnaturally in the reason.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -82,12 +93,29 @@ const BROKEN =
   "Mon, Oct 26: Jour de congé at 3:00 Tomorrow's a day off, so you've got a bit of breathing room.";
 
 // Targeted broken cases: each is a believable reply with one defect the judge must catch.
-// The facts are right; only the job of one sentence is wrong (an unrequested wish).
+// The facts are right; one thing is wrong (an unrequested wish, or unnatural phrasing).
 const BROKEN_CASES = [
   {
     fixtureId: 'en-pd-day-all-day',
     tag: 'en-pd-day-all-day:added-wish',
     body: 'Tomorrow is a PD Day, so there is no school. Hope you can plan around it.',
+  },
+  // Clumsy-but-factual, one per fixture language: every fact is right, but no native
+  // speaker would text it as written. The judge must fail each on naturalness alone.
+  {
+    fixtureId: 'fr-jour-de-conge-timed',
+    tag: 'fr-jour-de-conge-timed:unnatural',
+    body: "Demain, lundi 26 octobre, à 15 h jusqu'à 16 h, il y a Jour de congé à la bibliothèque de Georgetown.",
+  },
+  {
+    fixtureId: 'en-pd-day-all-day',
+    tag: 'en-pd-day-all-day:unnatural',
+    body: 'Tomorrow, it is having PD Day the whole of day, school is not.',
+  },
+  {
+    fixtureId: 'zh-hour-out',
+    tag: 'zh-hour-out:unnatural',
+    body: '在大约一个小时以后，从晚上7点到8点，有钢琴课它是在Ms. Chen studio。',
   },
 ];
 
