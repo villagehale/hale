@@ -6,11 +6,11 @@ Status: **paid-call hold; no recording authorization**. This is the shared check
 
 This same-path checklist is now maintained in **#875** (`fix/vil-423-finder-followup`), then on main after merge. It was copied from #877 without editing that branch. The #877 copy is the earlier diagnostic snapshot, **not another request or budget**; take this canonical version when #877 later rebases. Keep one existing Linear priced discussion pointing here rather than opening a competing approval request.
 
-- #875 runtime/eval freeze: **`b0288e12c9fff05aab6e7ed1839b0cf0d506e65a`**, based on main `d4806e32709ab2bc76d10db77bf2ba803ee38268`. The subsequent documentation commit changes no runtime inputs; its pushed head is pinned in the Linear update. #877 still needs its separate later rebase/freeze, not another allowance.
+- #875 runtime/eval freeze: **`6d13fe29ba4eb22f8fde5dc6ca5b0959dd5ed0a7`**, based on main `d4806e32709ab2bc76d10db77bf2ba803ee38268`. The subsequent documentation commit changes no runtime inputs; its pushed head is pinned in the Linear update. #877 still needs its separate later rebase/freeze, not another allowance.
 - #876 is already merged/deployed. The remaining slice order is #875, then #877. The old #876 preflight/window text below describes an earlier checkpoint and does not reopen that approval.
 - Sloane's agreed corpus-clock choice is **`2026-10-15T12:00:00Z`**. New York explicitly requests **November 12–15, 2026**, with date range `2026-11-12`–`2026-11-15` and `America/New_York`: the positive travel fixture must be future-dated against its declared clock. The clock and old answers were not moved. Its frozen fixture hash is listed below.
-- The original **140 case / $18.25** proposal is retained below. Amend this **same proposal** with nine journey executions covering eight unique final-writer requests: **$0.80** using a conservative **$0.10 per unique activity writer plus bounded retry/judge envelope** (the existing deep allowance, not the smaller registration-writer allowance), with the repeated redelivery key reused at $0. **Combined planning total: 149 executions / $19.05**. #875's current corpus is reconciled (45 Coach, 8 Finder, 8 deep); #877's later rebase still requires its own input/count reconciliation within this same proposal before execution. This is not an approved allowance.
-- Keep the single proposed **$20 additional ceiling** and unchanged original ledger. The historical **$0.766530525** remainder is less than even the original proposal and is **not permission**. Amended estimated cumulative spend is **$33.283469475**; the proposed cumulative ceiling stays **$34.233469475**. No ledger, cap or environment has been changed.
+- The original **140 case / $18.25** proposal is retained below. Amend this **same proposal** with nine journey executions covering eight unique final-writer requests: **$0.80** using a conservative **$0.10 per unique activity writer plus bounded retry/judge envelope** (the existing deep allowance, not the smaller registration-writer allowance), with the repeated redelivery key reused at $0. Four new current-main group privacy cases add **$0.40** in the same request. **Combined planning total: 153 executions / $19.45**. #875's current corpus is reconciled (45 Coach, 4 group privacy, 8 Finder, 8 deep); #877's later rebase still requires its own input/count reconciliation within this same proposal before execution. This is not an approved allowance.
+- Keep the single proposed **$20 additional ceiling** and unchanged original ledger. The historical **$0.766530525** remainder is less than even the original proposal and is **not permission**. Amended estimated cumulative spend is **$33.683469475**; the proposed cumulative ceiling stays **$34.233469475**. No ledger, cap or environment has been changed.
 - #877 heads, hashes, keys and case counts below are **provisional historical inputs until its later rebase**, not proof of its current/future execution contract. Do not buy two responses to one identical key, or silently add another integration pass.
 - Existing free repairs have frozen-input evidence; they do not establish new model quality. Same-page program ownership, first-party/operator attribution and undated page currentness remain explicit limitations, not silently solved. Per Sloane's later clarification, a new publisher/currentness/exact-child evidence architecture is **not a prerequisite for this priced freeze**: honestly caveated references are acceptable, never silently promoted into verified recommendations. The historical 3/8 score is not a current model acceptance result.
 
@@ -18,10 +18,10 @@ This same-path checklist is now maintained in **#875** (`fix/vil-423-finder-foll
 
 | Item | Required evidence before approval/execution |
 | --- | --- |
-| #875 source head, awaiting human review | `b0288e12c9fff05aab6e7ed1839b0cf0d506e65a`; no code changes after this freeze |
+| #875 source head, awaiting human review | `6d13fe29ba4eb22f8fde5dc6ca5b0959dd5ed0a7`; no code changes after this freeze |
 | #875 input hashes | SHA-256 table below; runtime/eval files checked at the frozen source head |
 | Clock and changed NY request | Keep declared Oct 15 corpus clock; record the actual future month, fixture delta and resulting cache keys |
-| All Coach/Finder/deep first misses | 45 unique Coach subject keys, 8 Finder ground keys, 7 deep writer keys below; actual current first requests, not old-key substitutes |
+| All Coach/Finder/deep first misses | 45 unique Coach and 4 group privacy subject keys, 8 Finder ground keys, 7 deep writer keys below; actual current first requests, not old-key substitutes |
 | Eight journey writer requests | Re-observed unchanged in both rebased full Web runs: **9,970 pass / 9 fail / 12 skip**, eight unique writer keys below; no send/assertion bypass |
 | #877 freeze | Rebase/integration pending; retain historical section without claiming current hashes or requesting a separate allowance |
 | One priced ledger/request | Same historical ledger, amended case/call accounting, total and hard ceiling; fresh explicit Barton approval still required |
@@ -30,13 +30,13 @@ Read-only import of the rebased `coach-channel-fixtures.mjs` confirms **45 #875 
 
 ### Frozen #875 runtime/eval input hashes
 
-These hashes identify the inputs at `b0288e12c9fff05aab6e7ed1839b0cf0d506e65a`, not authorization or model acceptance. The legacy deep/session extraction path still does not independently prove field-to-quote or same-program association merely because its quote exists on a page; that limitation is not silently declared fixed.
+These hashes identify the inputs at `6d13fe29ba4eb22f8fde5dc6ca5b0959dd5ed0a7`, not authorization or model acceptance. The legacy deep/session extraction path still does not independently prove field-to-quote or same-program association merely because its quote exists on a page; that limitation is not silently declared fixed.
 
 | Input | SHA-256 |
 | --- | --- |
 | `packages/agent/skills/activity-finder.md` | `57c1fbbb3a97bf1117e5d210703c81d33e93d0e80a230705551b847e70c417c7` |
 | `packages/agent/skills/activity-deep.md` | `b74ca280ef2ad8e0a28fe840c8e9fa77559ff09a1c6a33d29fb660eacc264dca` |
-| `packages/agent/skills/coach-channel-sms.md` | `1724fd5b0d0a86a21221d816d8f54020804f704f6d2c178adcf5fddba60fe5b8` |
+| `packages/agent/skills/coach-channel-sms.md` | `fffc396c38ed65ae7e4af4fa848994191109f56c26473711e226f9838bb4a035` |
 | `apps/web/lib/channel/activity/facts.ts` | `ea63d90999e4ab7a167b16ce43a97e16be53fd08d23c8acdaf7bbeb79985e3c0` |
 | `apps/web/lib/channel/activity/lane.ts` | `37e592903e3d3629907d1b613770f4d2eab2f39279a97759017193c2a48f5e65` |
 | `apps/web/lib/channel/activity/followup-note.ts` | `ad9e2e843327d508b4327c2e05996fa37d47afe659d8f8e4c63dce4b6d0f8e74` |
@@ -55,10 +55,13 @@ These hashes identify the inputs at `b0288e12c9fff05aab6e7ed1839b0cf0d506e65a`, 
 | `apps/web/lib/channel/activity/tools.ts` | `a76f7b7638dbcc27c5a48d4abd1ffccbf1e860163add235e5fa4729dbfd13108` |
 | `apps/web/lib/coach/tools.ts` | `da7933e33ef566cd500ccba8867c3c8f92fb6812331556c3f1420314e8202eb6` |
 | `packages/agent/skills/onboarding-friend.md` | `ebd3e93f1f72c6b8ab784f7a049d0961c6e621cbc279d43771e3beb16dd28a68` |
+| `packages/agent/skills/coach-channel-group.md` | `9d52740d4ae14f002dd9c1df9f8ed382975d0b80607b0aa4b07bd151461e606e` |
+| `apps/worker/evals/group-privacy-fixtures.mjs` | `810c94c855647b398fb0d480a27fde7bb11c245f1a0120bf5ceb9d6e4941e413` |
+| `apps/worker/evals/run-group-privacy-eval.mjs` | `729edbbe396bb02c513891c0f6874d615eb9dd8dde4e37919c9b53baf0588190` |
 
 ### Actual post-rebase cached-only inventory
 
-Observed on 2026-10-26 from the exact inputs now committed in source freeze `b0288e12c9fff05aab6e7ed1839b0cf0d506e65a`. Each case used its runner with `--cached-only --only=<id>`, no `--env-file`, provider credentials unset and `HALE_RECORD=0`. Cases ran sequentially with a per-process timeout, without a live fallback or key mutation.
+Observed on 2026-10-26 from the exact inputs now committed in source freeze `6d13fe29ba4eb22f8fde5dc6ca5b0959dd5ed0a7`. Each case used its runner with `--cached-only --only=<id>`, no `--env-file`, provider credentials unset and `HALE_RECORD=0`. Cases ran sequentially with a per-process timeout, without a live fallback or key mutation.
 
 Finder subjects were `claude-sonnet-5-5`, judges `claude-opus-5-5`. All eight stopped at **ground** before any extraction, official-page snapshot access or judge request. This is eight actual first misses, **not eight new quality failures or a new 0/8 quality score**. Later exact keys are not derivable without the new ground response.
 
@@ -92,57 +95,73 @@ No official-page snapshot miss was reached in these Finder runs: each stopped ea
 
 Both single-case and full 45-case preflight complete after reusing `loadAgent()` (270 maximum base subject steps, 135 maximum judge draws). All **45 cases** were then invoked separately in cached-only mode and reached **45 unique first subject misses**, with no startup timeout or missing-key substitution. Subjects were `claude-sonnet-5-5`; judges remain `claude-opus-5-5` but were not reached. These are missing recordings, **not 45 new model-quality failures**.
 
-The rebased `move-named-day` key is now `fc637694…`; old `4edc30c7…` belongs to the previous freeze and must not be used as the current request. Tool/retry/judge requests after each unavailable subject response remain dependent, not yet derivable. The existing 45-case budget already covers this corpus; this is **not 45 extra cases**.
+The final `move-named-day` key is now `b13d073c…`; `fc637694…` belongs to the superseded post-rebase prompt and `4edc30c7…` to the older pre-rebase freeze and must not be used as the current request. Tool/retry/judge requests after each unavailable subject response remain dependent, not yet derivable. The existing 45-case budget already covers this corpus; this is **not 45 extra cases**.
 
 | Coach case / tag suffix (`coach-channel:`) | Actual first missing key |
 | --- | --- |
-| `move-named-day` | `fc637694d823704710d2d2858f4ebd1e4a0d88140c2c16cd27a47efbe388c113` |
-| `cancel-ambiguous-two-swims` | `37280a2a2a2f245f849f18d8329cb471eb5f18a9665764e813046099cd0ee254` |
-| `cancel-named-day` | `42e7e78e37c178e1d97c9ebb47689e8839642b8165aa2cab7651e8af56d8f7ff` |
-| `no-such-event` | `e44671d24c7213ba36a24e98e0d7ae46922099b15dad1746b8f5dac2d884e055` |
-| `chit-chat` | `198ef9dc34b8f297b62353a1d1589983355a1017eb4cc02241492d244c257478` |
-| `changed-their-mind` | `c614aa398c817f64b20f9a81518dce7426070854056bc8ec7580c3e050d40b3f` |
-| `multi-intent` | `737715e5b786cce23037cfc1d169d1d8219d5ea30323e6fd1bb4fdce4aec566b` |
-| `typos-and-voice-to-text` | `d889a29bffc180cd9c7295df2cb6836a20acd9383bc6055323f745b04e32fa5d` |
-| `french-adjacent` | `a7de9cb88af387155efb0abe899cd8d3b8239fb914f75e2f62f822129e3fe287` |
-| `teen-item-asked-about` | `849e3454699f626ee0965337e64156b60c467c29fbaab83f1930e7559a613f9f` |
-| `four-changes-in-one-text` | `798abf8b3c1891b143231bc8f543793c0fd14559a8c746a26892ab648540706c` |
-| `village-one-verified-one-not` | `95bdbc84da84f374a124ea63aed4868703289c55383af0951988b17216a74562` |
-| `village-nothing-verified-yet` | `deba53ed95bd755c2f7af54cdeb5afc93cdfb3b7353f16e12dbd813a7fd67796` |
-| `find-activities-bare-ask` | `8ce9910cac8aecbbf66b1aac62991362e899059b99516ba775dbdc9661af3ebc` |
-| `yes-with-nothing-open` | `81e6eb9bf978c7f807e2932b00ae0ed9ca081440d1468da22bdbe193c05ee04b` |
-| `coaching-solids` | `bc20ade11b5d90a6150fd08c6b35fc3e7bb62728af466cf884160919f7e63039` |
-| `coaching-co-sleeping` | `0b3624a687262ecce4a4e5725a75d5f1f0ecd7c156a734362548f39a0b171bfc` |
-| `coaching-sleep-offerable` | `b0c2d6d3f3d936e219f7d44aa3fdfed600f87c99038ac3ed44c15d54bb79dff9` |
-| `coaching-night-wakeups` | `94f4c6135954ae876bec527c11022c9082ed8baedb5fb3cfcedbb61f68a90e17` |
-| `acute-symptom-slip-through` | `92b06121366e37dfc5b5e2aa151f92e2faa0868f8848dc2b4127f5e0812eef4b` |
-| `refer-a-friend` | `baf91ddfa711355ad76946c392117acd0db8f799b4fdece7f2c5eda6f28ccdcb` |
-| `connector-ask-safety-net` | `2a172c6fcf5d9e4e3c902c569e9336d49c141cdd45b1f7c0939f5e6edc79952e` |
-| `registration-watch-asked` | `07b84a1f2e1d37c2063665a9b35d6bdcab136cf8dc0b83db59788d450c759e5c` |
-| `registration-watch-not-armed` | `6935fba89a832bb0276e2cb412b4a141d6a62bb0de1682874a4a3a50722e2271` |
-| `registration-window-plus-a-find` | `c0d44ba7268f333b219e74c4f90c9877c1b9dfffdf4d70f2bf0c948d84957b1b` |
-| `continuity-bare-noun` | `cc8a7272bad14c5e55701e38750cf2d158ea9c002b5a4648e56d251c25aebfa7` |
-| `continuity-restate-fact` | `e0cd8f2fe0c034516629a68c2b4eb794fab24fc2790696ec0c65983a8d012a9c` |
-| `continuity-after-proactive-send` | `b6540902d8288e11ac736da66d3ca27aefbfe6ba6d754e4d2977c14dec5e8c9e` |
-| `coaching-co-sleeping-restated` | `469be43b11bd6339a589588816a6a937da4c8a8fc4e98f52eba055cf04ee6319` |
-| `coaching-solids-restated` | `ae34e4f7155339a4da44a6cd19b065b0a477ade3844cac7c32349ff23d76889f` |
-| `capability-park-nearby` | `c3b05f060651ab1c13e1266352f94dba56db82219f536916554ce27971e29828` |
-| `capability-park-nearby-again` | `e7c5c773c8433a5fad8b54cdf7abbf54fdeba59ee117815707bb4074146b981b` |
-| `capability-hale-does-not-have` | `4ff82e2b9e14e649efa9ff9da37ab9fb9cfb573ac6c21909d2118932fc82547f` |
-| `spot-watch-link-pasted` | `962860c2b15beff351c42ff5db045653972a03e4367f8f019942bba61ad5aa10` |
-| `spot-watch-no-link` | `1ff0ad59b08c90a323e8234ae48076e3b78632a5b9c3e6769c8c593a46ca8072` |
-| `nearby-count-three-families` | `4ff8b0827ea4173e3e026020a7d2c3dd0c4146e1ad3312b5ad96f2851dc70ff0` |
-| `nearby-count-below-threshold` | `74ef610410ae15c410063a080abd32230d36cbcb5510b4fb69ab5de03b63a7ab` |
-| `weekend-saved-find-school-age` | `8883c4e58f5caf308a7e3223572ca85313ecef0d4ab9f72442fc4fce2060dece` |
-| `weekend-empty-live-search` | `33ea0149e4879b00144b866d12a67c1b2ea6d324424425ca9ae7e0f47208fb80` |
-| `saturday-morning-block-afternoon-find` | `7cf9a05c682cfb76c3d797e78f65d0c1d5ede76990f9695169cc70c5c3242198` |
-| `autonomy-off-email-en` | `9805caf2423ba4f0853b1b1eca2abcc9e9fa1bfc48b824d91356b64f812516e5` |
-| `autonomy-off-email-fr` | `9ec26b1fe811dbf8be4dbf7956f54598fff27a6e2b66628cb6af268e6dace1ea` |
-| `autonomy-off-email-zh` | `b76bf7c45940aa49426a3f5b21b377ac3fdcc6781e9cb185568ec83f88ebd8ef` |
-| `autonomy-off-email-es` | `67c105ac42364a11f5740805290ef85680a9d76226a94abf8ed4710e238e33b7` |
-| `autonomy-complaint-one-email` | `8f59bc2be75a495495eee1676a0408fff21aef6e70fe6a2a5e6079ed2464e5df` |
+| `move-named-day` | `b13d073c3944545afd66d8e4f4f41dc7a8d03878a0515dd093881f99502b6c2e` |
+| `cancel-ambiguous-two-swims` | `4d117f1a3ccb24ceb4046bfb569330dd27ad444b0ff4ff8d256ba04874422c8a` |
+| `cancel-named-day` | `8333128912604c7696e625209f4cf24b7a522fbed478403411674f6a44962c5a` |
+| `no-such-event` | `bfc3af29ef7d280595b0620a314077241357ad1af09f59eb8dd8eab944c9bcb9` |
+| `chit-chat` | `06d05abbb0752e712c11d767221c85d583c27a158fe5df23abcb350129a2c7e8` |
+| `changed-their-mind` | `66588871dae7dced638411aaa871316cbd09566542f32ae2f555493d87dd9c46` |
+| `multi-intent` | `c0a785c72d07c4e82cb129d2e61e56a244cfd3be41817499264045ce3610e511` |
+| `typos-and-voice-to-text` | `cd2544e2373f79cdf3773d93073bcc8ddae39cf2909c6798c3a29c6e715c1ed8` |
+| `french-adjacent` | `bec6a9f5a575b918c829994b17a7bc64d125381b8921e3dc30577234ac79144a` |
+| `teen-item-asked-about` | `1a1af9dffdbdc2074f426e5234a0fc6ecc1df42432a768c953cb01805b128a18` |
+| `four-changes-in-one-text` | `d28b9e247e2bed1ca0b439ce504eb0eef0c1ccb7ce856b05027111f7aa3b84a9` |
+| `village-one-verified-one-not` | `61a25149970de00f6f70c1dcbfbcdc0c44d923659629f5d3065bc147d79a34c3` |
+| `village-nothing-verified-yet` | `8d41c836a7ac2230421c6f0f9282be5e5e5ae16c8f54b21cf47a2bd3e9311594` |
+| `find-activities-bare-ask` | `199e41392e79db75f975d247916980069b0c079b0a9e8c43c3c82864d6597c6d` |
+| `yes-with-nothing-open` | `24474167e55c8169f7f290759158b30843c663bfc522e89d4306b83b69c816f7` |
+| `coaching-solids` | `74405428d4097908c4d1f64f2cd7131d732d29b6b053e1976172af7a6639e3be` |
+| `coaching-co-sleeping` | `fd8e838a58daa0205bf78df72f5eb0bda35eb219f27c91a8e14cfc6c402fef71` |
+| `coaching-sleep-offerable` | `7b8cbff541e7a06c7e8a1071493c90d5334ca642d0332c2aedc10b41a9473d40` |
+| `coaching-night-wakeups` | `cb4c56e01f9023a14c74f2e60f122aa9d9db7d5ac2d7e9f07311fee57f1362dd` |
+| `acute-symptom-slip-through` | `0e3d39d596958f71decce59e1f0847d92456115aa0f8223198ded65d415425d7` |
+| `refer-a-friend` | `182a9d94d06492e7dfdaa4d8fa8a67939607aa2fcf3834f6c7b4bb00cef66fab` |
+| `connector-ask-safety-net` | `ab102ab8a5d7b4c19399fc9d75581362b68b49073c480487ef47ce964354fa61` |
+| `registration-watch-asked` | `3ca8509d2716577ebb6aad0e713400a3600642ec81732c990f66ea4de5f5e88e` |
+| `registration-watch-not-armed` | `de568f446d96e9702f70dc6cfbe1467514d4d773cf61c3dbb0819420f8cd149d` |
+| `registration-window-plus-a-find` | `a03f14eae14955c6d8522b4dc13a29e75ab1dad5dd9b737a549d83e58c1b48ed` |
+| `continuity-bare-noun` | `8e27c8c9e2500493eb4a9582d44a82c8deffd652435e9b56f58bdeb9f88bcbe9` |
+| `continuity-restate-fact` | `efdda7a3498c0cba70a3cf9a239ddbbe9a36f0bff2c61cce23f415fa385da4ee` |
+| `continuity-after-proactive-send` | `39b64704cf70570eb47de62e4d77b0588f3bea7125f592514b84ecc855fe84d1` |
+| `coaching-co-sleeping-restated` | `a85b834a000fead07c7ebc4a963d40bc59582547ffcc1a7172afd7abc2f356d9` |
+| `coaching-solids-restated` | `1a5be442c9e5034f6d87129573d6d467c62ff325b4c04552c216f5680c18cee9` |
+| `capability-park-nearby` | `8b5a398d51f13e441508011cc96d1a53139aeea4daf871e1852d7396debd2789` |
+| `capability-park-nearby-again` | `c7c0295419739ea123c113cc1da1d18c97c9470081fb77ce5b09d7847d0787e4` |
+| `capability-hale-does-not-have` | `aac8fbc669b5037aaf9b11952b8438326e85c16ebf5230a5cb5efdfc88718e96` |
+| `spot-watch-link-pasted` | `33f8430a032eef46e2d5cd2f74b0156d644942fb9b050039cd82f7f079df928d` |
+| `spot-watch-no-link` | `096717c555cdde181fe07d53f61bd55a42c721e21fe35f852dcac5c75c1fe792` |
+| `nearby-count-three-families` | `04fd5298e05470d47c3498bba349248cf3dca3e4e50a5887a58e2bb3cbad07a3` |
+| `nearby-count-below-threshold` | `f8a7a85f721315b838ec0612cbe61e5230a342fff45f382695a1e6954b509549` |
+| `weekend-saved-find-school-age` | `5fa85646bc45719f592f1c9ace68270c7ad82c41faa2c477f45ff47c3bc370df` |
+| `weekend-empty-live-search` | `1de95721c33ca2144b1ecc1d9baffd90477824f3062f14492752906f3a7c662f` |
+| `saturday-morning-block-afternoon-find` | `add547ab8b587453cb97816d87f7ff987b8621bfd581a1300904f4d736da8c33` |
+| `autonomy-off-email-en` | `8e357bd6adccb5e8c29c6621e5618cc47c7c151828f6929cf3625c05af2198f7` |
+| `autonomy-off-email-fr` | `efc2d4df1167b633b4167320523aed0b7b204040bc9d61d3e7871af5541a3108` |
+| `autonomy-off-email-zh` | `52ac2e8291ebf6b20a0419f906dbb0074928ab145c01d8b201e4e82a6ebb23a4` |
+| `autonomy-off-email-es` | `350dc21430c4db25e6d3e3173ad31f10a850fe3d6610d47ff6daa3e1e5a08ae5` |
+| `autonomy-complaint-one-email` | `5437ed0a55102f04478e85baefcee30a159b57833ac42d1bba8d2408e317ffcb` |
 
-Current #875 inventory totals **68 unique observed first requests**: 45 Coach + 8 Finder ground + 7 deep writers + 8 journey writers (nine journey executions). No cache response was written or re-keyed. Full downstream acceptance and new first-reply latency remain unmeasured.
+### Additional current-main group privacy dependency — four cases
+
+CI on superseded head `2dbfe603f` reached the newly merged group-privacy gate before Coach and missed `group-privacy:en-swim-when`, key `711d5604e4179aaff3b9da8f4fcc4aa876382d522b7417232575c878f9605008`. Main's own CI on `d4806e327` passed. This is a shared Coach-prompt invalidation, not evidence of a privacy breach or a reason to weaken the gate.
+
+The final source review also found the Coach skill still said unknown prices were “not published,” contradicting the tool's corrected uncertainty wording. It now says only this read did not establish the price, superseding prior Coach/group keys. The existing runner gains only per-case selection and an unknown-ID refusal (mechanical regression passes); privacy policy, fixture secrets and scoring are unchanged.
+
+All four cases ran separately with the final prompt and stopped at actual first subject misses. Subjects are **Sonnet 5.5**, the unreached group-privacy judge is **Haiku 5.5** (existing `readJudgeModel()` default), unlike the **Opus 5.5** judges in main Coach/Finder/deep.
+
+| Group privacy case (`group-privacy:`) | Actual first missing key | Planning allowance |
+| --- | --- | ---: |
+| `en-swim-when` | `1080f5bada0b3a0b3e1996bc97d3605503b3d073a19ece8ac1dca525654b30a2` | $0.10 |
+| `en-is-other-parent-free` | `de39858c4b8e83f4d0bf24ca69968fe98f117793a3a0bf10aa33e834cb0075c2` | $0.10 |
+| `en-what-did-other-parent-say` | `70f4f05b66efa4ab275a0c4755271323184862ba37c393a944e37fd1d833ae4b` | $0.10 |
+| `zh-saturday-plans` | `4f7c9f4e3118bb15d71532f4ee3f51adb87de1fb3a4956a6cefdf34a26b76d35` | $0.10 |
+| **Additional current-main coverage** | **4 case executions** | **$0.40** |
+
+Current #875 inventory totals **72 unique observed first requests**: 45 Coach + 4 group privacy + 8 Finder ground + 7 deep writers + 8 journey writers (nine journey executions). No cache response was written or re-keyed. Full downstream acceptance and new first-reply latency remain unmeasured.
 
 ### Journey writer addition — eight unique keys / nine cases, re-observed post-rebase
 
@@ -163,7 +182,7 @@ Originally observed at the pre-rebase free-code checkpoint, then **all eight exa
 
 ### Offline models, call counts and enumeration boundaries
 
-Repository-pinned subjects/writers are **`claude-sonnet-5-5`**, judges **`claude-opus-5-5`** (the runner's `readJudgeModel` resolves the pinned judge; its legacy argument/comment does not select a cheaper model). Deep extraction uses task `extract`, hence Sonnet, and the follow-up uses the Finder draft lane. Record any different actual model before spending; no substitution is included.
+Repository-pinned subjects/writers are **`claude-sonnet-5-5`**. Main Coach/Finder/deep judges use **`claude-opus-5-5`**; the four newly added group-privacy cases use their existing **`claude-haiku-5-5`** judge default. Deep extraction uses task `extract`, hence Sonnet, and the follow-up uses the Finder draft lane. Record any different actual model before spending; no substitution is included.
 
 Offline repo rates (`packages/agent/src/cost.ts`, point-in-time pricing comment dated 2026-10-11): Sonnet $2 input / $10 output per million tokens, cache read $0.10; Opus $4 / $20, cache read $0.20; cache creation 1.25× base input. The local spend guard includes $0.01 per web search. These are **not a fresh provider quote**. The $0.80 addition uses the existing historical deep planning allowance, not a measured future cost.
 
@@ -266,13 +285,13 @@ No paid estimate API, fresh page fetch, production access/write, real SMS, envir
 
 ## Single priced request — original base plus the amendment above
 
-This is the **one consolidated remaining request**, not another approved allowance. The original 140-case itemization is preserved below, with the nine-journey amendment added once. #875's current corpus and first requests are reconciled above; #877's historical inputs must be re-frozen after its later rebase. Historical estimates in the original #872 docs are not permission. No new approval or paid call is claimed.
+This is the **one consolidated remaining request**, not another approved allowance. The original 140-case itemization is preserved below, with the nine-journey amendment and four current-main group privacy cases added once. #875's current corpus and first requests are reconciled above; #877's historical inputs must be re-frozen after its later rebase. Historical estimates in the original #872 docs are not permission. No new approval or paid call is claimed.
 
 ### Amount and accounting
 
-- **Original estimate: US$18.25; amended planning estimate: US$19.05. Proposed hard additional ceiling: US$20.00.** Unchanged exact cache hits cost $0 and are reused; the table conservatively budgets every listed case. #877 still requires post-rebase input confirmation before running, and dependent keys can only be observed after approved new upstream responses.
+- **Original estimate: US$18.25; amended planning estimate: US$19.45. Proposed hard additional ceiling: US$20.00.** Unchanged exact cache hits cost $0 and are reused; the table conservatively budgets every listed case. #877 still requires post-rebase input confirmation before running, and dependent keys can only be observed after approved new upstream responses.
 - Read-only original ledger snapshot: **US$14.233469475 spent, 576 calls, US$0 reserved**. Current cumulative cap is US$15, leaving **US$0.766530525**, which is neither enough for this proposal nor authorization to use it.
-- This is explicitly a request to increase the **same ledger's cumulative ceiling** to **US$34.233469475**, not to start a new ledger or claim another $20 is already approved. Preliminary amended estimated cumulative spend would be **US$33.283469475** (original estimate: US$32.483469475). If Barton does not approve that higher ceiling, nothing live runs; reduce/reprice the scope here instead.
+- This is explicitly a request to increase the **same ledger's cumulative ceiling** to **US$34.233469475**, not to start a new ledger or claim another $20 is already approved. Preliminary amended estimated cumulative spend would be **US$33.683469475** (original estimate: US$32.483469475). If Barton does not approve that higher ceiling, nothing live runs; reduce/reprice the scope here instead.
 - No environment variable, ledger content or configured cap was changed while preparing this request. Keep the historical refusal entry and all earlier usage; no reset, refund assumption or budget bypass.
 - Price is a planning allowance derived offline from returned historical usage and the repository's billing table, **not a newly verified provider quote or a token-count API call**. Search/result size, reasoning, cache misses and bounded production retries can change actual cost. Reserve each call's maximum charge before it runs; an insufficient reservation stops the run even if actual usage might have been lower.
 - One frozen pass per slice/case, not reroll-until-green. Existing runtime-bounded retries count toward the same ceiling; no manual quality reruns, paid new models, MinerU service or screenshot experiments. Real failures remain failures and are reported.
@@ -291,7 +310,8 @@ This is the **one consolidated remaining request**, not another approved allowan
 | Four fresh Finder → Coach cases below | 4 | varies | $3.25 |
 | **Original planning envelope** | **140 case executions** | | **$18.25** |
 | Added journey writer envelope (table above) | 9 / 8 unique writers | $0.10 / unique writer | $0.80 |
-| **Amended planning envelope — #875 reconciled; #877 later re-freeze required** | **149 case executions** | | **$19.05** |
+| Group privacy (new main, same Coach prompt) | 4 case executions | $0.10 | $0.40 |
+| **Amended planning envelope — #875 reconciled; #877 later re-freeze required** | **153 case executions** | | **$19.45** |
 | **Hard additional ceiling requested** | | | **$20.00** |
 
 A case is **not** one API call. Coach can use up to six agent steps plus its existing bounded truncation recovery and three judge draws; Finder/deep include the relevant extraction, final copy and judge legs. Localized closing-soon includes the extra independent waitlist-deadline parse. The allowances cover those legs, not just the first missing key. The ceiling is not a guarantee that all cases finish.
