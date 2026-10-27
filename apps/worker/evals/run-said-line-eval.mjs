@@ -54,6 +54,9 @@ const SAID_LINE_JUDGE_MAX_OUTPUT_TOKENS = 512;
 const DRY_SUBJECT_CALLS = 2;
 const HAIKU_IN = 1;
 const HAIKU_OUT = 5;
+/** Sonnet 5.5 list price, $/MTok: the writer tier since #919. */
+const SONNET_IN = 2;
+const SONNET_OUT = 10;
 
 const TOOL_SCHEMA = {
   type: 'object',
@@ -209,9 +212,11 @@ async function loadSkill() {
   return { task, instructions: m[2].trim() };
 }
 
+/** The writer's tier, read from the skill's task (Sonnet 5.5 since #919: Barton, 2026-10-27). */
 function laneModel(task, ids) {
   if (['screen', 'answer', 'speak', 'triage', 'acknowledge'].includes(task)) return ids.haiku;
-  throw new Error(`said-line lane ${task} is not a Haiku lane; update the estimate first`);
+  if (['draft', 'infer', 'converse'].includes(task)) return ids.sonnet;
+  throw new Error(`said-line lane ${task} has no priced tier; update the estimate first`);
 }
 
 /** saidLineUserMessage in said-line.ts, key for key (the cache key depends on it). */
@@ -300,8 +305,9 @@ async function main() {
   if (preflight) {
     const subjIn = Math.ceil((skill.instructions.length + 600) / 4);
     const judgeIn = Math.ceil((JUDGE_SYSTEM.length + 900) / 4);
-    const subj =
-      subjectCalls * ((subjIn / 1e6) * HAIKU_IN + (SUBJECT_MAX_TOKENS / 1e6) * HAIKU_OUT);
+    const sonnetWriter = ['draft', 'infer', 'converse'].includes(skill.task);
+    const [wIn, wOut] = sonnetWriter ? [SONNET_IN, SONNET_OUT] : [HAIKU_IN, HAIKU_OUT];
+    const subj = subjectCalls * ((subjIn / 1e6) * wIn + (SUBJECT_MAX_TOKENS / 1e6) * wOut);
     const judge = judgeCalls * ((judgeIn / 1e6) * HAIKU_IN + (JUDGE_MAX_TOKENS / 1e6) * HAIKU_OUT);
     console.info(
       `said-line preflight | lane=${skill.task} fixtures=${subjectCalls} subject calls=${subjectCalls} judge calls=${judgeCalls}`,

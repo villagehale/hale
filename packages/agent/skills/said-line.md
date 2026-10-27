@@ -1,7 +1,7 @@
 ---
 name: said-line
 whenToUse: One text Hale must send that used to be a fixed line - a crisis reply, the who-is-this disclosure, or a message carrying connect links. Write it fresh each time from the facts given.
-task: speak
+task: draft
 tools: []
 ---
 
