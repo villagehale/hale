@@ -19,7 +19,9 @@
 //
 // Env:
 //   HALE_MAX_USD=2.42              the cap for the whole round, across suites
-//   HALE_SPEND_LEDGER=/tmp/x.json  shared ledger, so suites run one after another share it
+//   HALE_SPEND_LEDGER=/path/x.json the ledger this run books to. REQUIRED for any capped or
+//                                  estimate run: there is no default, so worktrees never share
+//                                  one by accident. Pass one per worktree.
 //   HALE_ESTIMATE=1                never call the model: count tokens, book the projection,
 //                                  return a schema-shaped stand-in. Nothing is cached.
 // Run processes one after another; the ledger has no cross-process lock.
@@ -36,8 +38,6 @@ export const USD_PER_WEB_SEARCH = 0.01;
  * each search result comes back as input, and max_uses of them is what can be billed.
  */
 export const SEARCH_WORST_INPUT_TOKENS = 250_000;
-
-const DEFAULT_LEDGER = '/tmp/hale-eval-spend.json';
 
 export function isEstimate() {
   return process.env.HALE_ESTIMATE === '1';
@@ -77,9 +77,13 @@ export function capEnabled() {
   return readCapUsd() !== null || isEstimate();
 }
 
+export const MISSING_LEDGER_ERROR =
+  "spend-cap: HALE_SPEND_LEDGER is not set; refusing to start. Set HALE_SPEND_LEDGER to this worktree's own ledger file (there is no default).";
+
 function ledgerPath() {
-  if (!process.env.HALE_SPEND_LEDGER) process.env.HALE_SPEND_LEDGER = DEFAULT_LEDGER;
-  return process.env.HALE_SPEND_LEDGER;
+  const p = process.env.HALE_SPEND_LEDGER;
+  if (!p) throw new Error(MISSING_LEDGER_ERROR);
+  return p;
 }
 
 /**
@@ -88,9 +92,13 @@ function ledgerPath() {
  */
 export function installSpendCap(argv = process.argv) {
   const cap = readCapUsd(argv, process.env);
-  if (cap === null) return null;
-  process.env.HALE_MAX_USD = String(cap);
+  if (cap === null) {
+    // An estimate round books projections to the ledger too, so it needs one as well.
+    if (isEstimate()) ledgerPath();
+    return null;
+  }
   ledgerPath();
+  process.env.HALE_MAX_USD = String(cap);
   return cap;
 }
 

@@ -122,7 +122,7 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
    */
   async function liveClient(): Promise<AgentClient> {
     if (capped) return capped;
-    if (!process.env.HALE_MAX_USD) {
+    if (!process.env.HALE_MAX_USD || !process.env.HALE_SPEND_LEDGER) {
       throw new Error(
         'recorded-model: HALE_RECORD=1 needs HALE_MAX_USD (and HALE_SPEND_LEDGER); refusing an uncapped recording',
       );
