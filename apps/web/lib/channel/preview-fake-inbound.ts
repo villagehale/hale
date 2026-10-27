@@ -22,7 +22,9 @@ import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone
  * The sender must be in the fictional +1 437-555 probe range, so no real
  * family can be created or reached through it.
  *
- * Every refusal is a 404 with a reason code, never a line a parent would read.
+ * Outside Preview every route answers a plain, empty 404, so a production deploy
+ * gives no sign the door exists. On Preview a refusal is a 404 with a reason code,
+ * never a line a parent would read.
  */
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -56,7 +58,7 @@ function json(body: Record<string, unknown>, status = 200): Response {
   return Response.json(body, { status });
 }
 
-function fakeSender(raw: unknown): string | null {
+export function fakeSender(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const phone = normalizePhoneE164(raw);
   return phone && isSyntheticProbeNumber(phone) ? phone : null;
@@ -84,8 +86,15 @@ interface Gate {
   env?: Env;
 }
 
-function gate(req: Request, env: Env): Response | null {
+/** The same empty 404 an unknown path earns: no body, no reason, no JSON type. */
+function plainNotFound(): Response {
+  return new Response(null, { status: 404 });
+}
+
+/** The four gates and the bearer, shared by every Preview-only route (VIL-466). */
+export function previewRouteGate(req: Request, env: Env): Response | null {
   const refusal = previewFakeInboundRefusal(env);
+  if (refusal === 'not_preview') return plainNotFound();
   if (refusal) return json({ error: 'not_found', reason: refusal }, 404);
   if (!authorized(req, env)) return json({ error: 'unauthorized' }, 401);
   return null;
@@ -100,7 +109,7 @@ export async function handlePreviewFakeInbound(
   deps: InboundRouteDeps & Gate,
 ): Promise<Response> {
   const env = deps.env ?? process.env;
-  const shut = gate(req, env);
+  const shut = previewRouteGate(req, env);
   if (shut) return shut;
 
   let payload: { from?: unknown; text?: unknown; media?: unknown };
@@ -136,7 +145,7 @@ export async function handlePreviewCapturedRead(
   deps: Pick<InboundRouteDeps, 'database'> & Gate,
 ): Promise<Response> {
   const env = deps.env ?? process.env;
-  const shut = gate(req, env);
+  const shut = previewRouteGate(req, env);
   if (shut) return shut;
   const to = fakeSender(new URL(req.url).searchParams.get('to'));
   if (!to) return json({ error: 'sender_not_fictional' }, 400);

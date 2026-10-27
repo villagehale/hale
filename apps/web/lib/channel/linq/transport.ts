@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { linqApiKey, linqFromE164 } from './config';
 
@@ -148,6 +149,10 @@ async function linqRequest(input: {
   fetch?: typeof fetch;
   idempotencyKey?: string;
 }): Promise<LinqHttpResult> {
+  // VIL-466 · a Preview capture run never reaches Linq, whatever else is set. Every
+  // partner call (1:1, group, tapback, typing, poll, contact card) passes here, so a
+  // send the capture transport does not own is refused, permanently, before any fetch.
+  if (previewCaptureRequested()) throw new LinqSendError('preview_capture', 0, true);
   const apiKey = linqApiKey();
   if (!apiKey) throw new LinqSendError('not_configured', 0, true);
 
