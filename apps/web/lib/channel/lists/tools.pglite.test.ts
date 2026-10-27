@@ -21,7 +21,7 @@ import {
 } from './tools';
 
 /**
- * VIL-447 shared lists over the REAL DDL (0180 applied in journal order), driven through
+ * VIL-447 shared lists over the REAL DDL (0181 applied in journal order), driven through
  * the real agent loop by a SCRIPTED client that stands in for the model's reading of
  * intent. What is tested is what that reading can reach. No key is set; nothing leaves
  * the process. Judged reply quality lives in evals/run-group-lists-eval.mjs.
@@ -284,7 +284,7 @@ describe('group shared lists (VIL-447)', () => {
     expect(lists[0]?.items[0]).toMatchObject({ text: '牛奶', addedBy: '婷' });
   });
 
-  it('0180 enables RLS on both tables', async () => {
+  it('0181 enables RLS on both tables', async () => {
     const res = (await db.database.execute(
       sql`select relname, relrowsecurity from pg_class where relname in ('group_lists','group_list_items') order by relname`,
     )) as unknown as { rows: Array<{ relname: string; relrowsecurity: boolean }> };

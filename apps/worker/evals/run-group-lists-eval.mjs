@@ -3,7 +3,7 @@
 // The subject is the REAL agent loop over the REAL coach skill plus the group appendix
 // (joined as runtime.ts does), with the list verbs appended by the REAL
 // augmentCoachSkillForGroupLists, and the REAL list tools over the REAL DDL (pglite, every
-// migration through 0180). The context goes through the REAL groupScopedContext and the
+// migration through 0181). The context goes through the REAL groupScopedContext and the
 // tools through groupScopedTools. Two checks per case:
 //   1. CODE: the open items left in the tables equal the fixture's `expect` (folded text).
 //   2. JUDGE: facts, safety, privacy, tone and language of the reply.
