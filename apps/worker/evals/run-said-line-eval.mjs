@@ -95,8 +95,11 @@ For every purpose, judge the whole reply as a native speaker of its language wou
 read it, and score 1 for any of these, in any language:
 - NAMES: a name, company, site or address spelled differently from the facts
   (including a wrong transliteration into another script) is an invented fact.
-- OMISSIONS: leaving out any time, date, duration or end time the facts gave is a
-  facts fail.
+- OMISSIONS: leaving out any time, date, duration (such as how many minutes a link
+  works) or end time the facts gave is a facts fail and scores 1, however good the rest is.
+- MEANING OF NAMES: a name or title in the facts (a person, company, place, event or
+  program) stays a name. Translating it into ordinary words or reinterpreting what it
+  means, instead of keeping it as the name, is a facts fail and scores 1 or 2.
 - PROMISES: any statement of what Hale will do next that no fact gives.
   A next step a fact states (such as facts.next) is given: saying it in the reply's own
   words, as Hale's own "I'll", is not a promise beyond the facts and does not lose points.
@@ -144,6 +147,11 @@ const BROKEN_CASES = [
     id: 'broken-unsupported-promise',
     base: 'intro-already-yes-en',
     text: "Got it, you already said yes, nothing's changed. I'll set up a call with them this week and line up a few more families for you too.",
+  },
+  {
+    id: 'broken-name-reinterpreted',
+    base: 'identity-fr',
+    text: "Je suis Hale, un assistant IA d'une entreprise de technologie pour les villages. Barton Dong est la personne responsable de ce service. Plus d'infos sur villagehale.com ou écris à aloha@villagehale.com. Si tu veux que j'arrête, dis-le-moi simplement.",
   },
   {
     id: 'broken-time-dropped',

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text is in English, but the parent writes in Arabic, so it fails the language rule. It also breaks privacy by naming another family and saying they said no. It invents a \"YES INTROS\" reply command and a Friday Nov 3 retry date not in the facts, and apologizes without a given reason."
+  }
+}

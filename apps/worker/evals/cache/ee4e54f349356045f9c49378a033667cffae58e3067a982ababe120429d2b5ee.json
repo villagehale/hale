@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Language is English, no other-family hints, no invented facts, and the next step (keeping an eye out for another match) is given by facts.next. Tone is friendly and brief. Minor issue: \"Okay, I won't go ahead\" reads as the assistant's own decision rather than stating the situation, and \"a good match for you\" slightly embellishes, but nothing breaks the rules."
+  }
+}
