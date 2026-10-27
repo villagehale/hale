@@ -65,7 +65,11 @@ const JUDGE_SYSTEM = [
   'separate template-like line stuck on; a code-built frame such as "X has Y on <date>", "X',
   'sent something about Y" or a bare "Title on <date>"; a text about an adult event that is',
   'not about the kids; relaying mail the parent sent themselves; repeating an event their',
-  'mirrored calendar already reminds them of; hype, exclamation marks, emoji, advice or a wish',
+  'mirrored calendar already reminds them of; a change written as an old/new log instead of',
+  'what it is now; more than one ask or offer in one text (a passport note asked about AND a',
+  'calendar offer is two); admin talk about how to correct Hale; a register that shifts',
+  'inside the text (familiar and formal you, or their possessives, mixed);',
+  'hype, exclamation marks, emoji, advice or a wish',
   'nobody asked for. A 3 is factual but stiff or awkward. Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -98,26 +102,35 @@ async function main() {
   const lane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
 
-  const cases = (broken ? EMAIL_ALERT_BROKEN_CASES : EMAIL_ALERT_FIXTURES).map((fixture) => {
+  const toCase = (fixture) => {
     const facts = factsMod.emailAlertFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     return { fixture, facts, userMessage: compose.emailAlertUserMessage(facts) };
-  });
+  };
+  const cases = (broken ? EMAIL_ALERT_BROKEN_CASES : EMAIL_ALERT_FIXTURES).map(toCase);
 
   if (estimateOnly) {
-    // Priced at max_tokens out, one writer call and one judge call per fixture. No API.
+    // Priced at max_tokens out: a writer call and a judge call per normal case that speaks,
+    // a judge call per broken case, nothing for a silent case. No API.
     let usd = 0;
-    for (const c of cases) {
+    let calls = 0;
+    const normal = EMAIL_ALERT_FIXTURES.map(toCase);
+    const brokenCases = EMAIL_ALERT_BROKEN_CASES.map(toCase);
+    for (const c of [...normal, ...brokenCases]) {
+      if (c.fixture.expectSilent) continue;
+      const judgeIn =
+        estimateTokens(JUDGE_SYSTEM) + estimateTokens(c.userMessage) + MAX_TOKENS + 200;
+      usd += priced(judgeModel, judgeIn, 400);
+      calls += 1;
+      if (c.fixture.text !== undefined) continue;
+      calls += 1;
       const writerIn =
         estimateTokens(skill.instructions) +
         estimateTokens(c.userMessage) +
         estimateTokens(TOOL_SCHEMA);
       usd += priced(model, writerIn, MAX_TOKENS);
-      const judgeIn =
-        estimateTokens(JUDGE_SYSTEM) + estimateTokens(c.userMessage) + MAX_TOKENS + 200;
-      usd += priced(judgeModel, judgeIn, 400);
     }
     console.log(
-      `email-alert: estimate to record ${cases.length} fixtures (writer ${model} + judge ${judgeModel}), priced at max_tokens. live API calls: 0. nothing written. $${usd.toFixed(4)} USD`,
+      `email-alert: estimate to record ${normal.length} normal + ${brokenCases.length} broken cases (${calls} calls) (writer ${model} + judge ${judgeModel}), priced at max_tokens. live API calls: 0. nothing written. $${usd.toFixed(4)} USD`,
     );
     process.exit(0);
   }
@@ -131,6 +144,15 @@ async function main() {
   );
   const results = [];
   for (const { fixture, facts, userMessage } of cases) {
+    // SILENCE IS THE PASS: the code must stop before the writer. No model, no judge.
+    if (fixture.expectSilent) {
+      const silent = factsMod.alreadyOnCalendarUnchanged({
+        from: fixture.args.from,
+        kind: fixture.args.kind,
+      });
+      results.push({ fixture, body: '(nothing sent)', failures: silent ? [] : ['not_silent'] });
+      continue;
+    }
     const body = broken
       ? fixture.text
       : String(

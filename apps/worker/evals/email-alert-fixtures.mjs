@@ -80,13 +80,15 @@ export const EMAIL_ALERT_FIXTURES = [
   },
   {
     id: 'gmail-not-connected',
+    // SENDING NOTHING IS THE PASS. The parent's own calendar about an event already on it
+    // and unchanged: the code must stop before the writer (alreadyOnCalendarUnchanged).
+    expectSilent: true,
     args: args({
       kind: 'reminder_only',
       from: 'Google Calendar <calendar-notification@google.com>',
       event: event({ title: 'Pizza lunch', originalTime: '2026-10-30T16:00:00Z' }),
     }),
-    watchFor:
-      'The parent has NOT connected Gmail to Hale; this notice came from their own calendar (fromCalendar). It is already on their week, so no question. Saying Hale read their inbox, their Gmail or their email, or offering to add it, is a LOW score. Pizza lunch, Friday Oct 30 at noon.',
+    watchFor: 'Nothing is sent: it is already on their calendar and nothing changed.',
   },
   {
     id: 'passport-flag-on',
@@ -94,11 +96,8 @@ export const EMAIL_ALERT_FIXTURES = [
       kind: 'booking_confirmation',
       booked: true,
       from: 'Little Dragons <hello@dragons.example>',
-      event: event({
-        title: 'Little Dragons Karate',
-        newTime: '2026-11-07T14:00:00Z',
-        location: 'Dragons dojo',
-      }),
+      // No dated first session, so no calendar offer: the passport note is the one thing.
+      event: event({ title: 'Little Dragons Karate', location: 'Dragons dojo' }),
       passport: {
         childName: 'Mia',
         activity: 'Little Dragons Karate',
@@ -108,7 +107,7 @@ export const EMAIL_ALERT_FIXTURES = [
       },
     }),
     watchFor:
-      "A sign-up receipt for Mia's karate, first class Saturday Nov 7 at 9:00 a.m. The passport facts are present: the text must say, once and in its own words, that Hale is keeping this on Mia's record and they can reply if it's wrong. Exactly one question (calendar). Saying Hale booked or registered it, a second question, or a stuck-on separate line that reads like a template is a LOW score.",
+      "A sign-up receipt for Mia's karate. The passport is set and ask is null: say the news, and mention once, briefly, that Hale is noting it for Mia. No question at all, no admin talk about how to correct it, and never that Hale booked or registered it.",
   },
 ];
 
@@ -117,6 +116,49 @@ export const EMAIL_ALERT_FIXTURES = [
 // RCIA and House Supper are adult events: the kid judge now stops them before any writer,
 // and the code-built "has X on" frame and fixed CTA are what the judge must also refuse.
 export const EMAIL_ALERT_BROKEN_CASES = [
+  {
+    id: 'mixed-tu-votre',
+    args: args({
+      kind: 'reschedule',
+      language: 'fr',
+      event: event({
+        title: 'Sortie de classe à la ferme',
+        originalTime: '2026-11-06T13:30:00Z',
+        newTime: '2026-11-13T13:30:00Z',
+        location: 'Ferme Brookside',
+      }),
+    }),
+    text: "La sortie à la ferme Brookside est maintenant le vendredi 13 novembre à 8 h 30. Tu veux que je l'ajoute à votre semaine ?",
+    watchFor:
+      "Mixes 'tu' with 'votre' in one text: an inconsistent register a native speaker would not send. A LOW score.",
+  },
+  {
+    id: 'change-log-old-new',
+    args: args({
+      kind: 'reschedule',
+      event: event({
+        title: 'Class trip to the farm',
+        originalTime: '2026-11-06T13:30:00Z',
+        newTime: '2026-11-13T13:30:00Z',
+        location: 'Brookside farm',
+      }),
+    }),
+    text: 'Class trip to the farm. Old: Friday, Nov 6 at 8:30 a.m. New: Friday, Nov 13 at 8:30 a.m. Want me to add it to your week?',
+    watchFor:
+      'A change written as an old/new change log, not how a friend says what it is now. A LOW score.',
+  },
+  {
+    id: 'two-asks-passport-and-calendar',
+    args: args({
+      kind: 'booking_confirmation',
+      booked: true,
+      from: 'Little Dragons <hello@dragons.example>',
+      event: event({ title: 'Little Dragons Karate', newTime: '2026-11-07T14:00:00Z' }),
+    }),
+    text: "Mia's in for Little Dragons Karate, first class Saturday Nov 7 at 9 a.m. Want me to note it on her record? And want it on your calendar?",
+    watchFor:
+      'Two asks in one text (a passport note AND a calendar offer). One ask per text; this is a LOW score.',
+  },
   {
     // Synthetic: a code-built prefix, an invented detail, a link, a stuck-on passport line,
     // a leaked teen sender, and a question with nothing behind it.

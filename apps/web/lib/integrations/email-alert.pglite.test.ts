@@ -19,6 +19,7 @@ import {
   type GmailAlertEnvelope,
   alertParentForEmail,
   alertParentForGmailSweep,
+  alreadyOnCalendarUnchanged,
   emailAlertDedupeKey,
   emailAlertFacts,
 } from './email-alert';
@@ -742,12 +743,14 @@ describe('the offer at the end', () => {
       ask: 'add_to_week',
     });
 
+    // A calendar mail about a CHANGE is news (an unchanged one sends nothing; see below),
+    // and still carries no ask: it is already on their calendar.
     const h = harness({
       classification: classified({
-        kind: 'reminder_only',
+        kind: 'reschedule',
         title: 'Gymnastics',
         originalTime: when,
-        newTime: null,
+        newTime: '2026-10-02T20:15:00.000Z',
         location: 'the gym',
       }),
     });
@@ -1215,7 +1218,8 @@ describe('the interest passport rides as FACTS to the writer, never as code-writ
       kind: 'booking_confirmation',
       title: 'Little Dragons Karate',
       originalTime: null,
-      newTime: '2026-09-26T13:00:00.000Z',
+      // No dated first session, so no calendar offer: the passport is the one thing.
+      newTime: null,
       location: null,
     });
   }
@@ -1433,5 +1437,83 @@ describe('screens before any alert (prod samples, Oct 2026)', () => {
     h.ports.composeText = async () => 'WRITER-ONLY';
     await expect(alert(h)).resolves.toBe('sent');
     expect(h.transport.sent[0]?.body).toBe('WRITER-ONLY');
+  });
+});
+
+describe('one thing per text, and silence when there is nothing new', () => {
+  const PASSPORT = {
+    childName: 'Mia',
+    activity: 'Karate',
+    progress: null,
+    purpose: 'activity_record' as const,
+    seenIn: 'gmail_receipt' as const,
+  };
+  const base = {
+    from: 'Little Dragons <hello@dragons.example>',
+    teenContent: false,
+    matchedEventRef: null,
+    booked: true,
+    going: null,
+    timeZone: 'America/Toronto',
+    language: 'en' as const,
+    now: NOW,
+  };
+
+  it('an offer and a passport note never reach the writer together: the offer wins', () => {
+    const facts = emailAlertFacts({
+      ...base,
+      kind: 'booking_confirmation',
+      event: {
+        title: 'Karate',
+        childRef: null,
+        originalTime: null,
+        newTime: '2026-09-26T13:00:00.000Z',
+        location: null,
+      },
+      passport: PASSPORT,
+    });
+    expect(facts.ask).toBe('calendar');
+    expect(facts.passport).toBeNull();
+  });
+
+  it('with no offer, the passport is the one thing', () => {
+    const facts = emailAlertFacts({
+      ...base,
+      kind: 'booking_confirmation',
+      event: { title: 'Karate', childRef: null, originalTime: null, newTime: null, location: null },
+      passport: PASSPORT,
+    });
+    expect(facts.ask).toBeNull();
+    expect(facts.passport).toEqual(PASSPORT);
+  });
+
+  it('already on their calendar and unchanged: nothing is sent, the writer is never asked', async () => {
+    const h = harness({
+      classification: classified({
+        kind: 'reminder_only',
+        title: 'Pizza lunch',
+        originalTime: '2026-09-18T16:00:00.000Z',
+      }),
+    });
+    let asked = 0;
+    h.ports.composeText = async () => {
+      asked += 1;
+      return 'x';
+    };
+    const result = await alertPair(h, 'm-pizza', {
+      envelope: { ...ENVELOPE, from: 'Google Calendar <calendar-notification@google.com>' },
+    });
+    expect(result.alert).toBe('already_on_calendar');
+    expect(asked).toBe(0);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(await ledgerRows()).toHaveLength(0);
+  });
+
+  it('a calendar mail about a CHANGE is still news', () => {
+    const from = 'Google Calendar <calendar-notification@google.com>';
+    expect(alreadyOnCalendarUnchanged({ from, kind: 'reschedule' })).toBe(false);
+    expect(alreadyOnCalendarUnchanged({ from, kind: 'cancellation' })).toBe(false);
+    expect(alreadyOnCalendarUnchanged({ from, kind: 'reminder_only' })).toBe(true);
+    expect(alreadyOnCalendarUnchanged({ from: ENVELOPE.from, kind: 'reminder_only' })).toBe(false);
   });
 });

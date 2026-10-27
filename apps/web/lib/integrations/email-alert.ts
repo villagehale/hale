@@ -136,6 +136,9 @@ export const EMAIL_ALERT_OUTCOMES = [
   'group_privacy',
   /** EMAIL_ALERT_ENABLED is not `true`: no classifier call, no text, no offer. */
   'lane_off',
+  /** The parent's own calendar about an event that is on it and did not change (a plain
+   * reminder or a new-event notice). Nothing to tell them: sending nothing is right. */
+  'already_on_calendar',
   /** The parent sent this mail themselves. Nothing to tell them. */
   'self_sent',
   /** A Google Calendar notification while that calendar is connected and mirrored: the
@@ -360,6 +363,11 @@ export async function alertParentForEmail(
   const extraction = classification.extraction;
   if (classification.status !== 'classified' || extraction === null) {
     return { alert: 'not_parenting', booking: null, going: null };
+  }
+
+  // ALREADY ON THEIR CALENDAR AND UNCHANGED: nothing new to say, so nothing is sent.
+  if (alreadyOnCalendarUnchanged({ from: input.envelope.from, kind: extraction.kind })) {
+    return { alert: 'already_on_calendar', booking: null, going: null };
   }
 
   // IS IT ABOUT THE KIDS? The kid-relevance judge reads the full body before any alert.
@@ -1434,7 +1442,9 @@ export function emailAlertFacts(input: EmailAlertFactsInput): EmailAlertFacts {
     going,
     ask: offered ? ASK[kind] : null,
     language: input.language,
-    passport: input.passport ?? null,
+    // ONE THING PER TEXT: an offer and a passport note never ride together. The offer
+    // wins (a row keeps it); the passport is still stamped, unasked, for a later turn.
+    passport: offered ? null : (input.passport ?? null),
   };
 }
 
@@ -1457,6 +1467,16 @@ function sanitizedTitle(raw: string): string {
  * their calendar. A school that merely mentions a calendar does not match: the address
  * is exact, and the display name is the whole label.
  */
+/**
+ * True when the mail is the parent's own calendar about an event that is already on it and
+ * did not change. A cancellation or a move is news; a reminder or a "new event" notice for
+ * something they put there themselves is not. Pure, so the eval can ask the same question.
+ */
+export function alreadyOnCalendarUnchanged(input: { from: string; kind: ExtractionKind }): boolean {
+  if (!fromParentsCalendar(input.from)) return false;
+  return input.kind === 'reminder_only' || input.kind === 'new_event' || input.kind === 'unclear';
+}
+
 /** The bare address of a From header, lower-cased, or null. */
 function senderAddress(from: string): string | null {
   const address = (/<([^>]*)>/.exec(from)?.[1] ?? from).trim().toLowerCase();
