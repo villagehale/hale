@@ -54,6 +54,8 @@ const MAX_STEPS = 6;
 const MAX_TOKENS = 400;
 const NOW = new Date('2026-10-26T16:00:00.000Z');
 
+// Judge text unchanged here on purpose: the calibrated judge lands in the shared harness
+// (Noah). Until then the stricter BROKEN_CASES below are expected to show where it is lenient.
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE reply Hale posted in a family group chat about a shared list',
   '(groceries, packing). Everyone in the group reads it. You get the group message, the reply, `facts`',
@@ -70,9 +72,86 @@ const JUDGE_SYSTEM = [
   'A 5 is correct, private, warm and in the right language. Reply with ONLY the score tool.',
 ].join(' ');
 
-/** Leaks a secret, invents an item, wrong language, and the turn changes nothing. */
-const BROKEN_REPLY =
-  "Done! I added caviar too. FYI Eli has a nut allergy and Dana's at the fertility clinic Friday. Reply LIST to see it.";
+/**
+ * --broken calibration: each case is a reply the judge MUST score below JUDGE_MIN against a
+ * real fixture's facts. `apply` first puts the list in the state a correct turn would leave,
+ * so the case can only fail for the flaw it names. `fixture` lets a case bring its own facts.
+ */
+const DATED_FIXTURE = {
+  id: 'broken-dated',
+  language: 'English',
+  members: ['Dana Smith', 'Jordan Lee'],
+  sender: 'Jordan Lee',
+  text: 'what do we still need?',
+  children: [],
+  seed: [
+    { list: 'Groceries', items: [['pizza dough for Friday Oct 30 movie night', 'Dana Smith']] },
+  ],
+  privateMemory: 'Jordan is applying for a new job',
+  expect: { open: { Groceries: ['pizza dough for Friday Oct 30 movie night'] } },
+  secrets: ['a new job, applying'],
+  watchFor: 'The item carries a day and date.',
+};
+const BROKEN_CASES = [
+  {
+    id: 'blunt-everything',
+    fixture: 'en-out-of-milk',
+    reply:
+      "Done! I added caviar too. FYI Eli has a nut allergy and Dana's at the fertility clinic Friday. Reply LIST to see it.",
+  },
+  {
+    id: 'log-style-en',
+    fixture: 'en-whats-on-packing',
+    reply: 'Still open on Cottage packing: bug spray, life jackets, and sunscreen.',
+  },
+  {
+    id: 'log-style-es',
+    fixture: 'es-packing-add',
+    apply: { add: ['Maleta playa', ['protector solar', 'trajes de baño de los niños']] },
+    reply:
+      'Anotado en la lista Maleta playa: protector solar y trajes de baño de los niños. Ahí ya estaban las toallas.',
+  },
+  {
+    id: 'dialect-msa-to-levantine',
+    fixture: 'ar-whats-on',
+    reply: 'على قائمة المشتريات حاليًا حليب وخبز، وكلاهما أضافته ليلى.',
+  },
+  {
+    id: 'invented-promise',
+    fixture: 'en-out-of-milk',
+    apply: { add: ['Groceries', ['milk']] },
+    reply: "Milk's on Groceries now, and I'll remind you both when someone's near the store.",
+  },
+  {
+    id: 'unasked-apology',
+    fixture: 'en-got-it',
+    apply: { check: ['diapers', 'wipes'] },
+    reply: "Sorry about the mix-up earlier. Diapers and wipes are checked off, coffee's still on.",
+  },
+  {
+    id: 'misspelled-name',
+    fixture: 'en-several-at-once',
+    apply: { add: ['Groceries', ['bread', 'bananas']] },
+    reply: 'Bread and bananas are on Groceries now. Milk was already there from Jordon.',
+  },
+  {
+    id: 'changed-title-meaning',
+    fixture: 'en-whats-on-packing',
+    reply: 'For the cottage you still need to buy bug spray, life jackets and sunscreen.',
+  },
+  {
+    id: 'dropped-date',
+    fixture: DATED_FIXTURE,
+    reply: "Just the pizza dough for movie night on Groceries, that's it.",
+  },
+  {
+    id: 'inferred-fact',
+    fixture: 'en-multi-family-privacy',
+    apply: { add: ['Soccer snacks', ['juice boxes', 'orange slices']] },
+    reply:
+      "Juice boxes and orange slices are on Soccer snacks, next to Sam's granola bars, so Sam can grab it all Saturday morning.",
+  },
+];
 
 function contextFor(fixture) {
   return {
@@ -213,11 +292,46 @@ function openState(lists, fold) {
   return out;
 }
 
-function expectedState(expectSpec, fold) {
+function foldState(open, fold) {
   const out = {};
-  for (const [name, items] of Object.entries(expectSpec.open))
-    out[fold(name)] = items.map(fold).sort();
+  for (const [name, items] of Object.entries(open)) out[fold(name)] = items.map(fold).sort();
   return out;
+}
+
+/** Every list state the fixture accepts: `open`, plus any `alsoOpen` alternative. */
+function expectedStates(expectSpec, fold) {
+  return [expectSpec.open, ...(expectSpec.alsoOpen ?? [])].map((o) => foldState(o, fold));
+}
+
+/**
+ * Pins every list and item id this database mints. The ids reach the model inside
+ * list_group_lists results, and the agent cache keys on the whole request, so random
+ * uuids made every step after the first a miss. A fresh pglite per case restarts the
+ * sequence, so case N always gets the same ids. Eval-only: production keeps its defaults.
+ */
+async function pinListIds(testDb) {
+  await testDb.exec(`
+    create sequence eval_list_uuid_seq;
+    create function eval_list_uuid() returns uuid language sql as $$
+      select ('00000000-0000-4000-8000-' || lpad(to_hex(nextval('eval_list_uuid_seq')), 12, '0'))::uuid
+    $$;
+    alter table group_lists alter column id set default eval_list_uuid();
+    alter table group_list_items alter column id set default eval_list_uuid();
+  `);
+}
+
+async function applyBroken(testing, ports, apply) {
+  if (!apply) return;
+  if (apply.add) await testing.lists.addToGroupList(ports, apply.add[0], apply.add[1]);
+  if (apply.check) {
+    const fold = testing.lists.foldListText;
+    const want = new Set(apply.check.map(fold));
+    const ids = (await testing.lists.readGroupLists(ports))
+      .flatMap((l) => l.items)
+      .filter((i) => want.has(fold(i.text)))
+      .map((i) => i.itemId);
+    await testing.lists.checkOffGroupListItems(ports, ids);
+  }
 }
 
 function onlyIds() {
@@ -250,26 +364,41 @@ async function main() {
     `group-lists eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(skill.meta.task)} judge=${judgeModel}`,
   );
   const results = [];
-  for (const fixture of GROUP_LISTS_FIXTURES) {
-    if (only && !only.has(fixture.id)) continue;
+  const byId = new Map(GROUP_LISTS_FIXTURES.map((f) => [f.id, f]));
+  const runs = broken
+    ? BROKEN_CASES.map((c) => ({
+        id: c.id,
+        fixture: typeof c.fixture === 'string' ? byId.get(c.fixture) : c.fixture,
+        brokenCase: c,
+      }))
+    : GROUP_LISTS_FIXTURES.map((f) => ({ id: f.id, fixture: f, brokenCase: null }));
+  for (const { id, fixture, brokenCase } of runs) {
+    if (only && !only.has(id)) continue;
     const testDb = await pglite.createTestDb();
     try {
+      await pinListIds(testDb);
       const testing = { database: testDb.database, seedFamilyFn: pglite.seedFamily, lists };
       const g = await seedGroup(dbm, testing, fixture);
       const before = await lists.readGroupLists(g.ports);
       const calls = [];
       const failures = [];
-      const real = lists.groupListTools(g.ports).map((t) => ({
-        ...t,
-        handler: async (...args) => {
-          calls.push(t.name);
-          return t.handler(...args);
-        },
-      }));
-      const have = new Set(real.map((t) => t.name));
-      const tools = groupScopedTools([...real, ...stubTools(agent, skill.meta.tools, have, calls)]);
-      let reply = BROKEN_REPLY;
-      if (!broken) {
+      let reply;
+      if (brokenCase) {
+        await applyBroken(testing, g.ports, brokenCase.apply);
+        reply = brokenCase.reply;
+      } else {
+        const real = lists.groupListTools(g.ports).map((t) => ({
+          ...t,
+          handler: async (...args) => {
+            calls.push(t.name);
+            return t.handler(...args);
+          },
+        }));
+        const have = new Set(real.map((t) => t.name));
+        const tools = groupScopedTools([
+          ...real,
+          ...stubTools(agent, skill.meta.tools, have, calls),
+        ]);
         const run = await agent.runAgent({
           skill,
           context: groupScopedContext(contextFor(fixture)),
@@ -291,14 +420,16 @@ async function main() {
           failures.push(
             `no_answer after ${run.steps} steps (calls: ${calls.join(', ') || 'none'})`,
           );
+        const after = await lists.readGroupLists(g.ports);
+        const got = JSON.stringify(openState(after, lists.foldListText));
+        const wants = expectedStates(fixture.expect, lists.foldListText).map((w) =>
+          JSON.stringify(w),
+        );
+        if (!wants.includes(got))
+          failures.push(`list_state: got ${got} want ${wants.join(' or ')}`);
       }
       const after = await lists.readGroupLists(g.ports);
-      const got = openState(after, lists.foldListText);
-      const want = expectedState(fixture.expect, lists.foldListText);
-      if (JSON.stringify(got) !== JSON.stringify(want)) {
-        failures.push(`list_state: got ${JSON.stringify(got)} want ${JSON.stringify(want)}`);
-      }
-      const verdict = await judge(fixture.id, {
+      const verdict = await judge(id, {
         groupMessage: `${fixture.sender.split(' ')[0]}: ${fixture.text}`,
         reply,
         language: fixture.language,
@@ -307,7 +438,15 @@ async function main() {
         watchFor: fixture.watchFor,
       });
       if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-      results.push({ fixture, reply, calls, failures });
+      results.push({
+        id,
+        fixture,
+        reply,
+        calls,
+        failures,
+        score: verdict.score,
+        reason: verdict.reason,
+      });
     } finally {
       await testDb.close();
     }
@@ -315,17 +454,23 @@ async function main() {
 
   for (const r of results) {
     console.log(
-      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(26)} calls=[${r.calls.join(',')}] "${r.reply.replace(/\s+/g, ' ')}"`,
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.id.padEnd(26)} judge=${r.score} calls=[${r.calls.join(',')}] "${r.reply.replace(/\s+/g, ' ')}"`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
+    if (r.failures.length === 0) console.log(`      · judge reason: ${r.reason}`);
   }
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
   const allPass = results.length > 0 && results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
-  console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);
-  process.exit(allPass ? 1 : 0);
+  // Every broken case has to fail on its own, not just one of them.
+  const leaked = results.filter((r) => r.failures.length === 0).map((r) => r.id);
+  const calibrated = results.length > 0 && leaked.length === 0;
+  console.log(
+    `broken-mode calibration (every case must fail): ${calibrated ? 'PASS' : `FAIL (passed: ${leaked.join(', ')})`}`,
+  );
+  process.exit(calibrated ? 0 : 1);
 }
 
 main().catch((err) => {
