@@ -121,7 +121,34 @@ describe('recordedModel record mode', () => {
           system: SYSTEM,
           messages: [{ role: 'user', content: USER }],
         }),
-      ).rejects.toThrow(/needs HALE_MAX_USD/);
+      ).rejects.toThrow(/needs BOTH HALE_MAX_USD and HALE_SPEND_LEDGER/);
+      expect(live).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('refuses to record with a cap but no HALE_SPEND_LEDGER and never builds the live client', async () => {
+    vi.stubEnv('HALE_RECORD', '1');
+    vi.stubEnv('HALE_MAX_USD', '1');
+    vi.stubEnv('HALE_SPEND_LEDGER', '');
+    const dir = mkdtempSync(join(tmpdir(), 'recorded-model-'));
+    const live = vi.fn(() => {
+      throw new Error('live client must not be built uncapped');
+    });
+    const recorded = recordedModel(
+      join(dir, 'recordings.json'),
+      live as unknown as () => AgentClient,
+    );
+    try {
+      await expect(
+        recorded.client().messages.create({
+          model: MODEL,
+          max_tokens: 16,
+          system: SYSTEM,
+          messages: [{ role: 'user', content: USER }],
+        }),
+      ).rejects.toThrow(/needs BOTH HALE_MAX_USD and HALE_SPEND_LEDGER/);
       expect(live).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();

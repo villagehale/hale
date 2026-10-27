@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  MISSING_LEDGER_ERROR,
   SEARCH_WORST_INPUT_TOKENS,
   USD_PER_WEB_SEARCH,
   capSdkClient,
@@ -73,14 +74,49 @@ describe('the ceiling', () => {
     expect(() => readCapUsd(['node', 'eval.mjs'], { HALE_MAX_USD: '-1' })).toThrow(/HALE_MAX_USD/);
   });
 
-  it('installs the lower ceiling and a ledger before any call', () => {
+  it('installs the lower ceiling on the given ledger before any call', () => {
     vi.stubEnv('HALE_MAX_USD', '2');
-    vi.stubEnv('HALE_SPEND_LEDGER', '');
     const cap = installSpendCap(['node', 'eval.mjs', '--max-usd=0.4']);
     expect(cap).toBe(0.4);
     expect(process.env.HALE_MAX_USD).toBe('0.4');
-    expect(process.env.HALE_SPEND_LEDGER).toBe('/tmp/hale-eval-spend.json');
-    vi.stubEnv('HALE_SPEND_LEDGER', join(dir, 'ledger.json'));
+    expect(process.env.HALE_SPEND_LEDGER).toBe(join(dir, 'ledger.json'));
+  });
+});
+
+describe('a live run without HALE_SPEND_LEDGER', () => {
+  it('refuses to start, naming the var, and never defaults to /tmp', () => {
+    vi.stubEnv('HALE_SPEND_LEDGER', '');
+    vi.stubEnv('HALE_MAX_USD', '');
+    expect(() => installSpendCap(['node', 'eval.mjs', '--max-usd=0.4'])).toThrow(
+      MISSING_LEDGER_ERROR,
+    );
+    expect(process.env.HALE_SPEND_LEDGER).toBe('');
+    expect(process.env.HALE_MAX_USD).toBe('');
+  });
+
+  it('refuses an estimate round too', () => {
+    vi.stubEnv('HALE_SPEND_LEDGER', '');
+    vi.stubEnv('HALE_ESTIMATE', '1');
+    expect(() => installSpendCap(['node', 'eval.mjs'])).toThrow(/HALE_SPEND_LEDGER/);
+  });
+
+  it('makes no model call when the guard is reached without a ledger', async () => {
+    vi.stubEnv('HALE_SPEND_LEDGER', '');
+    vi.stubEnv('HALE_MAX_USD', '1');
+    const call = vi.fn(async () => ({ usage: { input_tokens: 1, output_tokens: 1 } }));
+    const countTokens = vi.fn(async () => ({ input_tokens: 10 }));
+    const client = { messages: { countTokens } };
+    await expect(cappedCall({ client, rates, request, call, tag: 't' })).rejects.toThrow(
+      /HALE_SPEND_LEDGER/,
+    );
+    expect(call).not.toHaveBeenCalled();
+    expect(countTokens).not.toHaveBeenCalled();
+  });
+
+  it('leaves an uncapped cached replay alone (no ledger needed)', () => {
+    vi.stubEnv('HALE_SPEND_LEDGER', '');
+    vi.stubEnv('HALE_MAX_USD', '');
+    expect(installSpendCap(['node', 'eval.mjs', '--cached-only'])).toBeNull();
   });
 });
 
@@ -110,16 +146,18 @@ describe('worst case', () => {
 });
 
 describe('spend cap at the call site', () => {
-  it('is exactly the call when no cap is set', async () => {
+  it('refuses a live call when no cap is set, before counting or calling', async () => {
     const m = mockClient();
-    await cappedCall({
-      client: m.client,
-      request,
-      call: () => m.client.messages.create(request),
-      rates,
-    });
+    await expect(
+      cappedCall({
+        client: m.client,
+        request,
+        call: () => m.client.messages.create(request),
+        rates,
+      }),
+    ).rejects.toThrow(/HALE_MAX_USD.*HALE_SPEND_LEDGER/);
     expect(m.countTokens).not.toHaveBeenCalled();
-    expect(m.create).toHaveBeenCalledTimes(1);
+    expect(m.create).not.toHaveBeenCalled();
   });
 
   it('refuses before the call when spent plus the worst case would cross the cap', async () => {
