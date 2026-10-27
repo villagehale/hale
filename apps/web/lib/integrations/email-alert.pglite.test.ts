@@ -25,7 +25,7 @@ import {
   emailAlertDedupeKey,
   emailAlertFacts,
 } from './email-alert';
-import { readEmailAlertParentWords } from './email-alert';
+import { readEmailAlertParentWords, venue } from './email-alert';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, type GoingCount, sessionKey } from './going';
 
@@ -1730,5 +1730,32 @@ describe('readEmailAlertParentWords: only this parent, only one-to-one', () => {
     await expect(
       readEmailAlertParentWords(db.database, family.familyId, family.parentUserId),
     ).resolves.toEqual([]);
+  });
+});
+
+describe('venue: a place reaches the writer, a street address never does (VIL-433)', () => {
+  it.each(['Room 2', 'Studio 3B', 'Gym 2', 'Salle 4', 'the gym', 'Ferme Brookside', 'Rink 1'])(
+    'lets %s through',
+    (place) => {
+      expect(venue(place)).toBe(place);
+    },
+  );
+
+  it.each([
+    '123 Main St',
+    '45 King Street West',
+    '12-B Elm Ave',
+    '200 rue Sainte-Catherine',
+    'Dojo, 88 Queen St E',
+    'Toronto M5V 2T6',
+    'Unit 4 10001',
+  ])('drops the street address %s', (place) => {
+    expect(venue(place)).toBeNull();
+  });
+
+  it('still drops an over-long place and an empty one', () => {
+    expect(venue('x'.repeat(31))).toBeNull();
+    expect(venue('')).toBeNull();
+    expect(venue(null)).toBeNull();
   });
 });

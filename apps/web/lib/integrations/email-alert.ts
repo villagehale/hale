@@ -1538,18 +1538,27 @@ function instant(iso: string | null): Date | null {
 }
 
 /**
- * ` at the gym` — a short PLACE, and nothing that looks like an address.
+ * A short PLACE, and never a street address.
  *
- * A street line or a room number is the half of a school email a text should not repeat:
- * the parent has been there, it is the longest thing the extraction returns, and putting
- * it on the wire is what turns an alert into a copy of the message. Any digit is the
- * cheap, honest test for one, and losing a genuine "Studio 2" to it is the right side to
- * err on.
+ * A street line is the half of a school email a text should not repeat (#649): the
+ * parent has been there, it is the longest thing the extraction returns, and putting it on
+ * the wire turns an alert into a copy of the message. VIL-433 narrows the original
+ * any-digit drop to the address shapes themselves, so a room the parent needs ("Room 2",
+ * "Studio 3B") reaches the writer while "123 Main St" or a postal code never does.
  */
-function venue(location: string | null): string | null {
+const STREET_NUMBER_FIRST = /^\s*\d+(?:-?[a-z0-9]+)?,?\s+[a-z]/i;
+const STREET_LINE =
+  /\b\d+[a-z]?\s+(?:[a-z.'-]+\s+){0,3}(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|way|cres|crescent|ct|court|pl|place|pkwy|hwy|highway|cir|circle|terr?|terrace|sq|square|rue|chemin|ch)\b\.?/i;
+const POSTAL_CODE = /\b[a-z]\d[a-z]\s?\d[a-z]\d\b|\b\d{5}(?:-\d{4})?\b/i;
+
+function looksLikeStreetAddress(place: string): boolean {
+  return STREET_NUMBER_FIRST.test(place) || STREET_LINE.test(place) || POSTAL_CODE.test(place);
+}
+
+export function venue(location: string | null): string | null {
   if (location === null) return null;
   const place = gsm7(location);
-  if (place === '' || place.length > LOCATION_MAX || /\d/.test(place)) return null;
+  if (place === '' || place.length > LOCATION_MAX || looksLikeStreetAddress(place)) return null;
   return place;
 }
 
