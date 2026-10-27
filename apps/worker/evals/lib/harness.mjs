@@ -935,6 +935,11 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     // caller that never opted in cannot tell this function changed.
     if (samples === 1) return drawn[0];
     const ordered = [...drawn].sort((a, b) => a.score - b.score);
+    // `aggregate: 'min'` keeps the LOWEST draw (and its reason): a suite that would rather
+    // see an inconsistent judge than let one lucky pass through opts into it.
+    if (options?.aggregate === 'min') {
+      return { ...ordered[0], samples: drawn.map((verdict) => verdict.score) };
+    }
     // The median VERDICT, not just the median number: the reason a run prints has to be
     // the argument for the score it printed, or the failure line cites a different draw.
     const median = ordered[Math.floor(samples / 2)];

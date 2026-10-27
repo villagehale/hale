@@ -219,7 +219,12 @@ async function main() {
   const model = agent.pickModel(skill.meta.task);
   const lane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
-  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'reminder', cachedOnly, getClient, cost);
+  // Three draws per reply, keep the LOWEST: an inconsistent judge shows up as a fail
+  // instead of a lucky pass slipping through.
+  const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'reminder', cachedOnly, getClient, cost, {
+    samples: 3,
+    aggregate: 'min',
+  });
 
   console.log(
     `reminder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
@@ -255,7 +260,7 @@ async function main() {
       watchFor: fixture.watchFor,
     });
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-    results.push({ fixture, body, failures });
+    results.push({ fixture, body, failures, scores: verdict.samples });
   }
   if (broken) {
     for (const bc of BROKEN_CASES) {
@@ -270,13 +275,14 @@ async function main() {
         watchFor: fixture.watchFor,
       });
       if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-      results.push({ fixture: { ...fixture, id: bc.tag }, body: bc.body, failures });
+      results.push({ fixture: { ...fixture, id: bc.tag }, body: bc.body, failures, scores: verdict.samples });
     }
   }
   for (const r of results) {
     console.log(
       `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(30)} "${r.body}"`,
     );
+    console.log(`      · scores [${(r.scores ?? []).join(', ')}] min ${Math.min(...(r.scores ?? [NaN]))}`);
     for (const f of r.failures) console.log(`      · ${f}`);
   }
   console.log(
