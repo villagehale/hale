@@ -1,6 +1,7 @@
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
 import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import { persistCapturedSend } from '~/lib/channel/preview-capture-store';
 import {
   createPreviewCaptureTransport,
   previewCaptureRequested,
@@ -19,7 +20,17 @@ import type { MessageTransport } from '~/lib/channel/transport-address';
 export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   // Preview proof runs only. Throws (never falls through to Linq) when the
   // flag is on outside preview or beside a configured Linq door.
-  if (previewCaptureRequested()) return createPreviewCaptureTransport();
+  if (previewCaptureRequested()) {
+    return createPreviewCaptureTransport(process.env, async (send) => {
+      // The capture already happened in memory; a failed write is named, not fatal,
+      // so a proof run still sees the send in this process.
+      try {
+        await persistCapturedSend(send);
+      } catch (err) {
+        console.error({ err }, 'outbound: preview capture not persisted');
+      }
+    });
+  }
   if (!linqPhoneOutboundConfigured()) {
     return {
       async send() {

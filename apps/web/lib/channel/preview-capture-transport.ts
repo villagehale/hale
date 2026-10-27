@@ -9,7 +9,9 @@ import { linqApiKey, linqFromE164 } from '~/lib/channel/linq/config';
  * start when any Linq key or line is configured, so a capture run can never sit
  * beside a real phone door.
  *
- * Nothing sets the flag in this tree, and the module seeds no families.
+ * Nothing sets the flag in this tree, and the module seeds no families. The
+ * deployed door persists each capture (preview-capture-store.ts) so a proof run
+ * can be read back word for word; the sink here is the seam for that.
  */
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -39,7 +41,7 @@ export function clearCapturedSends(): void {
 
 export function createPreviewCaptureTransport(
   env: Env = process.env,
-  sink: (send: CapturedSend) => void = () => {},
+  sink: (send: CapturedSend) => void | Promise<void> = () => {},
 ): ChannelTransport {
   if (env.VERCEL_ENV !== 'preview') throw new PreviewCaptureRefused('not_preview');
   if (!previewCaptureRequested(env)) throw new PreviewCaptureRefused('flag_off');
@@ -56,7 +58,7 @@ export function createPreviewCaptureTransport(
         providerMessageId: `preview-capture-${Date.now()}-${counter}`,
       };
       captured.push(send);
-      sink(send);
+      await sink(send);
       console.info({ to: input.to, captured: true }, 'outbound: preview capture, not sent');
       return { providerMessageId: send.providerMessageId };
     },
