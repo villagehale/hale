@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French though the requested language is English, it says 'Jour de congé at 3:00' which is wrong (the event is Swim class at 10:00 AM today, not a day off at 3:00), it says tomorrow when the event is today, it omits the swim class entirely, and it implies the day is open with 'breathing room' despite a timed event.",
+    "score": 1
+  }
+}

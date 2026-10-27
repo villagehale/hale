@@ -7,7 +7,7 @@
 // AM/PM, language, never claiming free time over a timed event, and tone.
 // Nothing matches words.
 //
-// Recorded 2026-10-26 (8/8, ledger 914-evals; broken calibration fails). CI replays it cached-only:
+// Recorded 2026-10-27 (8/8, ledger 914-evals; every --broken case fails, incl. an added wish). CI replays it cached-only:
 //   node evals/run-reminder-eval.mjs --max-usd <ledger total + allowance>   # live, then caches
 //   node evals/run-reminder-eval.mjs --broken                               # calibration: must FAIL
 //   node evals/run-reminder-eval.mjs --cached-only                          # CI: replay only
@@ -67,6 +67,12 @@ const JUDGE_SYSTEM = [
   'LOW score (1-2), in any language, however it is phrased. Saying how far away the event',
   'is from now (in about an hour, tomorrow afternoon) is a true fact from now and start, and',
   'fine; turning that into when to leave is not.',
+  'JUDGE WHAT EACH SENTENCE DOES, not its words: the text is only there to tell the parent',
+  'what is on the calendar. Any sentence whose job is something else that nobody asked for,',
+  'such as a wish, hope or blessing for them, advice or a suggestion on what to do or how to',
+  'plan, or a comment or opinion about the day or the family, is unrequested filler. It is',
+  `not a fact from the facts you are given, so it caps the score at ${JUDGE_MIN - 1} at most, in`,
+  'any language and however it is phrased, even when every fact is right.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -74,6 +80,16 @@ const JUDGE_SYSTEM = [
 // no meridiem, a free-day claim over a timed event, English for a French parent.
 const BROKEN =
   "Mon, Oct 26: Jour de congé at 3:00 Tomorrow's a day off, so you've got a bit of breathing room.";
+
+// Targeted broken cases: each is a believable reply with one defect the judge must catch.
+// The facts are right; only the job of one sentence is wrong (an unrequested wish).
+const BROKEN_CASES = [
+  {
+    fixtureId: 'en-pd-day-all-day',
+    tag: 'en-pd-day-all-day:added-wish',
+    body: 'Tomorrow is a PD Day, so there is no school. Hope you can plan around it.',
+  },
+];
 
 async function main() {
   const broken = process.argv.includes('--broken');
@@ -125,9 +141,25 @@ async function main() {
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
     results.push({ fixture, body, failures });
   }
+  if (broken) {
+    for (const bc of BROKEN_CASES) {
+      const fixture = REMINDER_FIXTURES.find((f) => f.id === bc.fixtureId);
+      if (!fixture) throw new Error(`broken case ${bc.tag}: no fixture ${bc.fixtureId}`);
+      const facts = compose.reminderFacts({ ...fixture.args, now: new Date(fixture.args.now) });
+      const userMessage = compose.reminderUserMessage(facts);
+      const failures = compose.reminderRefusals(bc.body, facts).map((r) => `unsendable:${r}`);
+      const verdict = await judge(bc.tag, {
+        input: userMessage,
+        text: bc.body,
+        watchFor: fixture.watchFor,
+      });
+      if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      results.push({ fixture: { ...fixture, id: bc.tag }, body: bc.body, failures });
+    }
+  }
   for (const r of results) {
     console.log(
-      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(26)} "${r.body}"`,
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(30)} "${r.body}"`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
@@ -136,8 +168,14 @@ async function main() {
   );
   const allPass = results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
-  console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);
-  process.exit(allPass ? 1 : 0);
+  // Calibration holds only if EVERY broken case fails; one that slips through means the
+  // judge cannot see that defect.
+  const slipped = results.filter((r) => r.failures.length === 0).map((r) => r.fixture.id);
+  const calibrated = slipped.length === 0;
+  console.log(
+    `broken-mode calibration (every case must fail): ${calibrated ? 'PASS' : `FAIL (passed: ${slipped.join(', ')})`}`,
+  );
+  process.exit(calibrated ? 0 : 1);
 }
 
 main().catch((err) => {
