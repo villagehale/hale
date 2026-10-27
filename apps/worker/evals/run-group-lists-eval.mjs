@@ -19,7 +19,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { GROUP_LISTS_FIXTURES } from './group-lists-fixtures.mjs';
-import { readCapUsd, readLedger, worstCaseUsd } from '../../web/lib/testing/spend-cap.mjs';
+import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import { projectAgentTurn } from './lib/agent-dry-plan.mjs';
 import {
   GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
@@ -33,7 +34,6 @@ import {
   makeCost,
   makeJudge,
   noteUsage,
-  estimateInputTokensOffline,
   isDryRun,
   priceRates,
   summarizeJudgePlan,
@@ -291,20 +291,20 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost, agentPlan) {
           process.exit(1);
         }
         if (isDryRun()) {
-          // --dry: no network. Worst case for the rest of the turn: this step and every
-          // step left up to MAX_STEPS, each at the full input (cache-write rate when
-          // marked, no read discount), growing by DRY_STEP_GROWTH_TOKENS a step, plus
-          // the full max_tokens of output. Then end the turn with no text.
+          // --dry: no network. Worst case for the rest of the turn (this step and every
+          // step left up to MAX_STEPS, full max_tokens out), priced by the live guard's
+          // cache-aware rule from spend-cap.mjs. Then end the turn with no text.
           const step = request.messages.filter((m) => m.role === 'assistant').length + 1;
-          const base = estimateInputTokensOffline(request);
-          for (let k = step; k <= MAX_STEPS; k++) {
-            const inputTokens = base + (k - step) * DRY_STEP_GROWTH_TOKENS;
-            agentPlan.push({
-              tag: `${tag}#step${k}`,
-              inputTokens,
-              worstUsd: worstCaseUsd(priceRates, request, inputTokens),
-            });
-          }
+          agentPlan.push(
+            ...projectAgentTurn({
+              request,
+              step,
+              maxSteps: MAX_STEPS,
+              growthTokens: DRY_STEP_GROWTH_TOKENS,
+              rates: priceRates,
+              tag,
+            }),
+          );
           return {
             id: 'dry',
             type: 'message',
@@ -553,7 +553,7 @@ async function main() {
     const { spentUsd } = readLedger();
     for (const p of agentPlan)
       console.log(
-        `DRY  agent uncached  ${p.tag}  ~${p.inputTokens} in  worst $${p.worstUsd.toFixed(5)}`,
+        `DRY  agent uncached  ${p.tag}  ~${p.inputTokens} in (~${p.cacheReadTokens} at cache-read) + ${MAX_TOKENS} max out  worst $${p.worstUsd.toFixed(5)}`,
       );
     for (const p of judge.plan)
       console.log(
