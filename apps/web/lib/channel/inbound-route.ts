@@ -48,8 +48,14 @@ export interface ChannelMessageReceivedJob {
   channel_message_id: string;
   provider_message_id: string;
   received_at: string;
-  /** The door's own group bit. Absent only on a job it did not queue (see the contract). */
-  in_group?: boolean;
+  /**
+   * The door's own group bit. REQUIRED (VIL-463): every producer must say it, and
+   * `undefined` is written only where the producer genuinely cannot know (the
+   * reconciler re-drives from the row, which does not store it). The router treats
+   * `undefined` on an iMessage chat as possibly a group and refuses the turn, so an
+   * unknown can never be run on the sender's 1:1 thread.
+   */
+  in_group: boolean | undefined;
 }
 
 export interface InboundRouteDeps {

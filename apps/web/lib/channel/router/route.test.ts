@@ -44,6 +44,7 @@ import type {
   PendingDisambiguation,
 } from './disambiguation';
 import { AGENT_TURNS_PER_HOUR } from './flood';
+import type { FloodLineCompose, FloodLineComposer } from './flood-line';
 import { villageIntroHandler } from './handlers';
 import {
   approvalHandler,
@@ -183,6 +184,20 @@ function fakeHoldingLine(line = "I'm on it."): HoldingLineComposer & { calls: nu
     },
   };
   return holding;
+}
+
+/** VIL-463: an over-limit composer that writes from facts, or fails like a dead model. */
+function fakeFloodLine(
+  result: FloodLineCompose = { status: 'composed', line: 'A lot came in at once.' },
+): FloodLineComposer & { calls: number } {
+  const flood = {
+    calls: 0,
+    async compose() {
+      flood.calls += 1;
+      return result;
+    },
+  };
+  return flood;
 }
 
 /** A coach that cannot run at all — the outage the canned choice sentence exists for. */
@@ -458,6 +473,7 @@ function harness(
     callTimeoutMs?: number;
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
+    floodLine?: FloodLineComposer;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -531,6 +547,7 @@ function harness(
       turns,
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
+      floodLine: options.floodLine ?? fakeFloodLine(),
       holdingLineAfterMs: options.holdingLineAfterMs,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
@@ -1265,7 +1282,7 @@ describe('the off-domain lane', () => {
       },
     };
     const h = harness({ offDomain: lane });
-    const { in_group: _unsaid, ...unsaid } = job();
+    const unsaid = job({ in_group: undefined });
 
     await routeChannelMessage(h.deps, unsaid);
 
@@ -1539,7 +1556,7 @@ describe('flood control', () => {
     const group = await spent(true);
     expect(group.result.status).toBe('flood_held');
     expect(group.coach.calls).toBe(0);
-    expect(group.h.transport.sent).toEqual([{ route: SMS_ROUTE, body: FLOOD_REPLY }]);
+    expect(group.h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'A lot came in at once.' }]);
 
     // Positive control: the same over-budget turn outside the group answers where it came from.
     const direct = await spent(false);
@@ -4837,7 +4854,7 @@ describe('a slow answer gets one holding line first', () => {
       holdingLine: holding,
       holdingLineAfterMs: 10,
     });
-    const { in_group: _unsaid, ...unsaid } = job();
+    const unsaid = job({ in_group: undefined });
 
     const result = await routeChannelMessage(h.deps, unsaid);
 
@@ -5231,7 +5248,7 @@ describe('the reply row, written to a real database', () => {
         [
           'the line a spent budget gets from a group, on their own phone',
           { limiter: SPENT, context: { inGroup: true } },
-          [FLOOD_REPLY],
+          ['A lot came in at once.'],
         ],
         [
           'the line someone who is not a parent gets',
@@ -5307,5 +5324,133 @@ describe('the reply row, written to a real database', () => {
         { ...ASKED, chat: 'chat-own', direction: 'out' },
       ]);
     });
+  });
+});
+
+/**
+ * VIL-463 — a group turn never reaches a parent's 1:1 thread, 1:1 asks, or the group
+ * with a private line. Fake families only; no keys, no SMS, no model.
+ */
+describe('VIL-463 group scope', () => {
+  const GROUP_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-family-group',
+    replyToMessageId: 'in-1',
+  };
+
+  it('refuses a job with no group bit that arrived in an iMessage chat, opening no 1:1 thread', async () => {
+    const coach = fakeCoach();
+    const h = harness({ coach, context: { reply: GROUP_ROUTE, inGroup: false } });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: undefined }));
+
+    expect(result.status).toBe('group_unscoped');
+    expect(result.conversationId).toBeNull();
+    expect(conversationRows(h.fake)).toEqual([]);
+    expect(messageRows(h.fake)).toEqual([]);
+    expect(coach.calls).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('positive control: the same chat with the bit said false runs as a 1:1 turn', async () => {
+    const h = harness({ context: { reply: GROUP_ROUTE, inGroup: false } });
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('a group "yes" does not resolve a question open in the 1:1 chat', async () => {
+    const question: OpenQuestion = {
+      id: 'aaaa1111-1111-4111-8111-111111111111',
+      kind: 'approval',
+      description: 'Reschedule on your calendar',
+      subject: 'reschedule on your calendar',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+    const seen: unknown[] = [];
+    const owner = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      async handle(_db: unknown, ctx: { resolved: unknown }) {
+        seen.push(ctx.resolved);
+        if (!ctx.resolved) return { claimed: false };
+        return { claimed: true, outcome: 'acted', reply: 'Done.' };
+      },
+    } as unknown as DeterministicHandler;
+    const resolved = fakeResolver({
+      status: 'resolved',
+      questionId: question.id,
+      kind: 'approval',
+      polarity: 'yes',
+      confidence: 'high',
+    });
+
+    const questions = fakeQuestions([question]);
+    const h = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions,
+      replyResolver: resolved,
+    });
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).not.toBe('resolved');
+    expect(questions.calls).toBe(0);
+    expect(resolved.calls).toBe(0);
+    expect(seen.every((r) => r === null)).toBe(true);
+
+    // Positive control: the same "yes" in the 1:1 chat resolves it.
+    const direct = harness({
+      context: { body: 'yes' },
+      handlers: [owner],
+      questions: fakeQuestions([question]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: question.id,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+    expect((await routeChannelMessage(direct.deps, job())).status).toBe('resolved');
+  });
+
+  async function overLimitGroupTurn(floodLine: FloodLineComposer) {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const h = harness({ limiter, floodLine, context: { reply: GROUP_ROUTE, inGroup: true } });
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+    return { h, result };
+  }
+
+  it('sends the composed over-limit line 1:1 with no conversation, never into the group', async () => {
+    const flood = fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' });
+    const { h, result } = await overLimitGroupTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Swamped for a second.' }]);
+    expect(h.transport.sent.some((s) => s.route.channel === 'imessage')).toBe(false);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out).toHaveLength(1);
+    expect(out[0]?.relatedConversationId).toBeNull();
+    expect(messageRows(h.fake).filter((m) => m.role === 'assistant')).toEqual([]);
+  });
+
+  it('sends nothing at all when the over-limit line cannot be composed', async () => {
+    const flood = fakeFloodLine({ status: 'unavailable', reason: 'model_failed' });
+    const { h, result } = await overLimitGroupTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([]);
   });
 });

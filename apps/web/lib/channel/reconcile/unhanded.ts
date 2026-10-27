@@ -167,6 +167,10 @@ export async function reconcileUnhandedInbound(
         // `sent_at` is when the parent actually sent it, which is what the turn should
         // reason about; created_at is only when we wrote the row.
         received_at: (row.sentAt ?? row.createdAt).toISOString(),
+        // VIL-463: the row does not store the door's group bit, so it is said to be
+        // unknown rather than left out. The router refuses an unknown iMessage turn
+        // instead of running it on the sender's 1:1 thread.
+        in_group: undefined,
       });
       await deps.database
         .update(schema.channelMessages)

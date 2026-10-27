@@ -1,5 +1,4 @@
 import {
-  type ChannelMessageReceivedPayload,
   type DeepResearchPayload,
   type QueueCreateOptions,
   approvedActionPayloadSchema,
@@ -38,6 +37,7 @@ import {
   SEND_RETRIES_EXHAUSTED,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import type { LoopMessage } from '~/lib/channel/types';
 import { POLICY_VERSION } from '~/lib/consent';
 
@@ -174,7 +174,7 @@ export interface DrainHandlers {
    * the caller. A throw re-queues the job; the parent's message is already durably on
    * the ledger, so a retry re-reads it rather than losing it. Injected so the drain
    * loop is testable without a transport, a model, or a db. */
-  channelMessage: (job: ChannelMessageReceivedPayload) => Promise<void>;
+  channelMessage: (job: ChannelMessageReceivedJob) => Promise<void>;
   /**
    * Keep ONE activity promise, now — three concurrent research legs, an Opus merge and
    * an adversarial refutation, bound to a db by the caller.
@@ -359,7 +359,9 @@ async function processChannelMessageJob(
     );
     return 'dropped';
   }
-  await deps.handlers.channelMessage(parsed.data);
+  // A job queued before the bit existed has no `in_group`; it is passed on as unknown
+  // (VIL-463), never as a 1:1 turn.
+  await deps.handlers.channelMessage({ ...parsed.data, in_group: parsed.data.in_group });
   return 'processed';
 }
 
