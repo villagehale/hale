@@ -30,8 +30,8 @@ import {
   summarizeDryPlan,
   totalUsd,
 } from './lib/harness.mjs';
-import { REMINDER_FIXTURES } from './reminder-fixtures.mjs';
 import { reminderJudgeModel } from './lib/reminder-judge-model.mjs';
+import { REMINDER_FIXTURES } from './reminder-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
