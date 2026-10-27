@@ -723,3 +723,18 @@ describe('the said-line eval replays these exact facts', () => {
     );
   });
 });
+
+describe('#919: standing is the parent\'s own state, and an open parent knows Hale texts on a match', () => {
+  const situations = Object.entries(INTRO_REPLY_FACTS) as Array<[string, Record<string, string>]>;
+  it('every situation where the parent is open carries the match-text fact (run.ts cardUnaskedSides)', () => {
+    for (const [name, facts] of situations) {
+      if (!('standing' in facts)) continue;
+      const open = name !== 'discoverability_off' && name !== 'discoverability_already_off';
+      expect(['matchText' in facts, name]).toEqual([open, name]);
+    }
+  });
+  it('the switched-off situations promise no match text', () => {
+    expect('matchText' in INTRO_REPLY_FACTS.discoverability_off).toBe(false);
+    expect('matchText' in INTRO_REPLY_FACTS.discoverability_already_off).toBe(false);
+  });
+});

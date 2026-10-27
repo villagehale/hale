@@ -85,27 +85,32 @@ export const INTRO_REPLY_FACTS = {
     shared:
       'nothing about them is shared with anyone until both families say yes to the same introduction',
     offRamp: 'they can switch introductions off any time by just saying so',
-    standing:
-      'they are open to introductions; Hale only texts about one when a good match comes up',
+    standing: 'the parent is open to introductions',
+    matchText:
+      'when Hale finds a good match for them, it texts them about it',
   },
   discoverability_off: {
     situation: 'they just switched introductions off for themselves',
     pendingClosed: 'any introductions that were waiting for them are closed',
-    standing: 'introductions are off for them',
+    standing: 'the parent has introductions switched off',
     backOn:
       'if they text that they want introductions again, introductions are back on for them; the closed ones stay closed',
   },
   discoverability_already_on: {
     situation: 'they had already said yes to introductions; nothing changed',
-    standing: 'they are still open to introductions',
+    standing: 'the parent is still open to introductions',
+    matchText:
+      'when Hale finds a good match for them, it texts them about it',
   },
   discoverability_already_off: {
     situation: 'introductions were already off for them; nothing changed',
-    standing: 'introductions are off for them',
+    standing: 'the parent has introductions switched off',
   },
   intro_no: {
     situation: 'they said no to this one introduction; it is recorded',
-    standing: 'they are still open to other introductions',
+    standing: 'the parent is still open to other introductions',
+    matchText:
+      'when Hale finds a good match for them, it texts them about it',
   },
   intro_already_yes: {
     situation: 'they had already said yes to this introduction; nothing changed',
@@ -113,20 +118,28 @@ export const INTRO_REPLY_FACTS = {
   },
   intro_already_no: {
     situation: 'they had already passed on this introduction; nothing changed',
-    standing: 'they are still open to other introductions',
+    standing: 'the parent is still open to other introductions',
+    matchText:
+      'when Hale finds a good match for them, it texts them about it',
   },
   intro_closed: {
     situation: 'they said no to this introduction earlier, so it is closed and cannot be reopened',
     theirAsk: 'saying yes now does not reopen it; it stays closed',
-    standing: 'they are still open to other introductions',
+    standing: 'the parent is still open to other introductions',
+    matchText:
+      'when Hale finds a good match for them, it texts them about it',
   },
   no_open_intro: {
     situation: 'there is no introduction waiting for them right now',
-    standing: 'they are open to introductions',
+    standing: 'the parent is open to introductions',
+    matchText:
+      'when Hale finds a good match for them, it texts them about it',
   },
   soft_close: {
     situation: 'the introduction Hale asked them about is not happening',
-    standing: 'they are still open to other introductions',
+    standing: 'the parent is still open to other introductions',
+    matchText:
+      'when Hale finds a good match for them, it texts them about it',
   },
 };
 
