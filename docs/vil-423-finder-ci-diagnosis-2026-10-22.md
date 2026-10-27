@@ -1,6 +1,28 @@
 # VIL-423 Finder CI diagnosis — 2026-10-22
 
-## 2026-10-26 — current free-code checkpoint (not model acceptance)
+## 2026-10-26 — post-rebase checkpoint (not model acceptance)
+
+Rebased #875 onto main `d4806e32709ab2bc76d10db77bf2ba803ee38268`. The earlier checkpoint below is pre-rebase history, not the current input freeze. #872/#877 were not changed; no paid calls, production changes or merge.
+
+| Before rebase / input gap | Current adaptation |
+| --- | --- |
+| The branch used title-matched URL attachment; main now uses cited link refs. | Keep main's ref mechanism. Both Finder tools project supported picks, uncertain references and checked sources to refs; the existing turn ledger keeps exact URLs. Uncited refs attach nothing, and typed URLs are not trusted. |
+| Main's country/timezone intake and async group travel opening conflict with the older slice. | Preserve main's CA/US postal intake, country code and timezone, and await its existing group writer. No old keyword location gate was restored. |
+| A supported recommendation alongside an uncertain reference lost the reference before the follow-up writer. | Both the sweep and writer projection retain mixed references, separate from picks and without rejected raw research. The eval mirrors that projection. |
+| NY's positive fixture asked for September while its fixed clock was October 15. | Explicitly change that fixture to **November 12–15, 2026**, retaining the fixed clock. A mechanical test requires positive travel ranges to be future-dated. No dates roll at runtime. |
+| A null date/price was described as proof the page had not published it. | The tool now says only that this read did not establish it; it cannot assert absence on the website. |
+
+Per Sloane's [October 26 clarification](https://linear.app/villagehale/issue/VIL-423#comment-13ba6e59-1a3a-4944-9246-775df934e566), full publisher-identity/currentness proof and exact-child eligibility are **not additional prerequisites**. Named uncertain references with caveats are acceptable, never as confirmed picks or unsupported facts. Same-page fact ownership and model wording remain limitations to observe in actual acceptance, not claims repaired by buying recordings. No site allowlist was added.
+
+Verified after adaptation: **157/157** follow-up/travel checks; **29/29** Finder/Coach ref checks; **110/110** reader/intake checks; **3/3** eval source/clock checks; **72/72** CI-script checks. These are separate, overlapping scopes, not an aggregate. Web typecheck and all **80** skill locks pass; Web lint has 71 warnings but no errors. The additional source-read label/retirement/reader/facts/lane regression passes **95/95**.
+
+Both rebased full Web runs, including the final runtime at `a0d49c793`, report **9,970 pass / 9 fail / 12 skip**; all nine failures stop at eight exact missing writer keys, re-observed unchanged from the pre-rebase journey table. The unchanged send/fulfillment/dedupe assertions remain red, not waived. This is the current main corpus, not the older 10,506-pass corpus below. No green CI claim.
+
+Runtime/eval freeze: `b0288e12c9fff05aab6e7ed1839b0cf0d506e65a`. Its only change after the final Web run is the two-line Coach eval loader repair: use existing `loadAgent()` instead of re-importing the agent source. Before: repeated source-loader setup stalled at the context import, before any API request. After: cached-only preflight completes and per-case runs expose actual current keys. The old `4edc30c7…` key is historical; the rebased `move-named-day` first key is `fc637694d823704710d2d2858f4ebd1e4a0d88140c2c16cd27a47efbe388c113`. Loader startup time is not first-reply model latency.
+
+Use the [one canonical priced checklist on #875](https://github.com/villagehale/hale/blob/codex/vil-423-finder-sources/docs/vil-423-remaining-acceptance-checklist.md). It includes **21 frozen file hashes and 68 unique actual first misses**: 45 Coach subjects, 8 Finder ground requests, 7 deep writers and 8 journey writers. All 45 Coach cases reach a missing request, without an import timeout. One deep refusal case passes. Downstream keys after missing responses are explicitly unknown, not fabricated. #877's older copy remains historical until its later rebase, not a second request. No new model quality score or paid authorization is implied.
+
+## Historical 2026-10-26 pre-rebase free-code checkpoint
 
 The sections below this checkpoint are historical. #876 is already merged/deployed; #875 remains the next draft, before #877. No paid call, recording rewrite, schema/prod change or merge was made in this update.
 
