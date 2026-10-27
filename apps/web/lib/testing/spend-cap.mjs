@@ -19,7 +19,9 @@
 //
 // Env:
 //   HALE_MAX_USD=2.42              the cap for the whole round, across suites
-//   HALE_SPEND_LEDGER=/tmp/x.json  shared ledger, so suites run one after another share it
+//   HALE_SPEND_LEDGER=/path/x.json the ledger this run books to. REQUIRED for any capped or
+//                                  estimate run: there is no default, so worktrees never share
+//                                  one by accident. Pass one per worktree.
 //   HALE_ESTIMATE=1                never call the model: count tokens, book the projection,
 //                                  return a schema-shaped stand-in. Nothing is cached.
 // Run processes one after another; the ledger has no cross-process lock.
@@ -36,8 +38,6 @@ export const USD_PER_WEB_SEARCH = 0.01;
  * each search result comes back as input, and max_uses of them is what can be billed.
  */
 export const SEARCH_WORST_INPUT_TOKENS = 250_000;
-
-const DEFAULT_LEDGER = '/tmp/hale-eval-spend.json';
 
 export function isEstimate() {
   return process.env.HALE_ESTIMATE === '1';
@@ -77,9 +77,26 @@ export function capEnabled() {
   return readCapUsd() !== null || isEstimate();
 }
 
+export const MISSING_LEDGER_ERROR =
+  "spend-cap: HALE_SPEND_LEDGER is not set; refusing to start. Set HALE_SPEND_LEDGER to this worktree's own ledger file (there is no default).";
+
+export const LIVE_GUARD_ERROR =
+  'spend-cap: a live model call needs BOTH a cap (--max-usd or HALE_MAX_USD) and HALE_SPEND_LEDGER; refusing the call. Cached replays need neither.';
+
+/**
+ * The gate every live (paid) call passes. Missing either the cap or the ledger refuses
+ * before anything is counted or sent. Replays never reach a live call, so never reach this.
+ */
+export function assertLiveSpendGuard(argv = process.argv, env = process.env) {
+  if (readCapUsd(argv, env) === null || !env.HALE_SPEND_LEDGER) {
+    throw new Error(LIVE_GUARD_ERROR);
+  }
+}
+
 function ledgerPath() {
-  if (!process.env.HALE_SPEND_LEDGER) process.env.HALE_SPEND_LEDGER = DEFAULT_LEDGER;
-  return process.env.HALE_SPEND_LEDGER;
+  const p = process.env.HALE_SPEND_LEDGER;
+  if (!p) throw new Error(MISSING_LEDGER_ERROR);
+  return p;
 }
 
 /**
@@ -88,9 +105,13 @@ function ledgerPath() {
  */
 export function installSpendCap(argv = process.argv) {
   const cap = readCapUsd(argv, process.env);
-  if (cap === null) return null;
-  process.env.HALE_MAX_USD = String(cap);
+  if (cap === null) {
+    // An estimate round books projections to the ledger too, so it needs one as well.
+    if (isEstimate()) ledgerPath();
+    return null;
+  }
   ledgerPath();
+  process.env.HALE_MAX_USD = String(cap);
   return cap;
 }
 
@@ -336,7 +357,7 @@ async function countInputTokens(client, request) {
  * With the cap off this is exactly `call()`.
  */
 export async function cappedCall({ client, request, call, rates, tag = '' }) {
-  if (!capEnabled()) return call();
+  if (!isEstimate()) assertLiveSpendGuard();
   const cap = readCapUsd() ?? Number.POSITIVE_INFINITY;
   const before = readLedger();
   if (before.halted) throw new Error(`spend-cap: round halted (${before.halted}); refusing ${tag}`);
@@ -456,10 +477,12 @@ const CAPPED = Symbol.for('hale.spendCap');
 
 export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
   const raw = client?.[CAPPED]?.raw ?? client;
-  if (!capEnabled()) return raw;
+  // No passthrough with the cap off: every live call goes through cappedCall's guard.
   // A suite that wraps the harness client again keeps one check and the outer tag.
   if (client?.[CAPPED]) return capSdkClient(raw, { rates, tag });
-  if (!rates) throw new Error('spend-cap: rates are required when the cap is on');
+  if (!rates && capEnabled()) {
+    throw new Error('spend-cap: rates are required when the cap is on');
+  }
   const messages = client.messages;
   const wrapped = {
     messages: {
