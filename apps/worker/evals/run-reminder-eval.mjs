@@ -16,13 +16,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import {
+  GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
   cachedToolCall,
   installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   makeJudge,
-  readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
 import { REMINDER_FIXTURES } from './reminder-fixtures.mjs';
@@ -122,6 +122,22 @@ const JUDGE_SYSTEM = [
   'Reply with ONLY the score tool.',
 ].join(' ');
 
+// Reminder-specific scored references, on top of the shared general set.
+const REMINDER_REFERENCE_TEXTS = [
+  {
+    facts: 'Event "Parent & Tot Skate", Tuesday Oct 27, 10:30 AM. Now: Monday evening. Language: English.',
+    text: 'Parent & Tot Skate is tomorrow morning at 10:30.',
+    score: 5,
+    why: "The same skate as Barton's prod sample, said the way a friend would: when, from now, and the time. Nothing invented.",
+  },
+  {
+    facts: 'Event "Soccer", tomorrow 5:30-6:30 PM. Language: Chinese.',
+    text: '明天下午5点半到6点半有足球训练。',
+    score: 5,
+    why: '足球训练 is the normal way to say a kids\' "Soccer" session in Chinese. It is a natural rendering of the title, NOT a changed title or a fact failure.',
+  },
+];
+
 // Deterministic broken stand-in: the prod bug itself — a code-built prefix, a time with
 // no meridiem, a free-day claim over a timed event, English for a French parent.
 const BROKEN =
@@ -218,12 +234,18 @@ async function main() {
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const lane = agent.pickLane(skill.meta.task);
-  const judgeModel = await readJudgeModel();
+  // Re-score only: replies come from the cache (a miss is an error, never a live compose);
+  // only the judge runs live.
+  const rescore = process.argv.includes('--rescore');
+  // Stronger grader than the Haiku subject: Sonnet 5.5 (not JUDGE_MODEL/Opus, for cost).
+  const judgeModel = process.env.REMINDER_JUDGE_MODEL ?? agent.SONNET_MODEL;
   // Three draws per reply, keep the LOWEST: an inconsistent judge shows up as a fail
   // instead of a lucky pass slipping through.
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'reminder', cachedOnly, getClient, cost, {
     samples: 3,
     aggregate: 'min',
+    references: [...GENERAL_REFERENCE_TEXTS, ...REMINDER_REFERENCE_TEXTS],
+    logCost: true,
   });
 
   console.log(
@@ -233,7 +255,7 @@ async function main() {
   for (const fixture of REMINDER_FIXTURES) {
     const facts = compose.reminderFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     const userMessage = compose.reminderUserMessage(facts);
-    const body = broken
+    const body = broken && !rescore
       ? BROKEN
       : String(
           (
@@ -247,7 +269,7 @@ async function main() {
               toolSchema: TOOL_SCHEMA,
               toolDescription: 'The one text Hale sends the parent.',
               maxTokens: 300,
-              cachedOnly,
+              cachedOnly: cachedOnly || rescore,
               getClient,
               cost,
             })

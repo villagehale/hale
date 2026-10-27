@@ -28,6 +28,8 @@ import {
 } from '../../../web/lib/testing/spend-cap.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+import { GENERAL_REFERENCE_TEXTS, renderReferenceTexts } from './judge-references.mjs';
+export { GENERAL_REFERENCE_TEXTS, renderReferenceTexts };
 export const WORKER_ROOT = join(HERE, '..', '..');
 export const REPO_ROOT = join(WORKER_ROOT, '..', '..');
 export const CACHE_DIR = join(HERE, '..', 'cache');
@@ -835,8 +837,40 @@ export async function judgeLaneFor(model) {
   return judgeLane(await loadAgent(), model);
 }
 
-export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost, options) {
+/**
+ * Cost of one call in USD from its usage, at list rates (cache reads 0.1x, cache writes
+ * 1.25x input). Used for the per-call judge cost log.
+ */
+export function callUsd(model, usage) {
+  const p = priceRates(model);
+  const u = usage ?? {};
+  return (
+    ((u.input_tokens ?? 0) * p.input +
+      (u.cache_read_input_tokens ?? 0) * p.input * 0.1 +
+      (u.cache_creation_input_tokens ?? 0) * p.input * 1.25 +
+      (u.output_tokens ?? 0) * p.output) /
+    1e6
+  );
+}
+
+/**
+ * options:
+ *   samples      draws per reply (default 1)
+ *   aggregate    'min' keeps the lowest draw; default is the median
+ *   references   scored reference texts ({facts,text,score,why}[]), appended to the
+ *                system prompt (so they are part of the cache key). Pass
+ *                [...GENERAL_REFERENCE_TEXTS, ...yourOwn].
+ *   logCost      true: print model, tokens and USD for every LIVE judge call
+ */
+export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClient, cost, options) {
   const samples = options?.samples ?? 1;
+  const judgeSystem = judgeSystemBase + renderReferenceTexts(options?.references);
+  const logCall = (sampleTag, usage) => {
+    if (!options?.logCost) return;
+    console.log(
+      `judge-cost | ${sampleTag} | model=${model} in=${usage?.input_tokens ?? 0} cacheR=${usage?.cache_read_input_tokens ?? 0} cacheW=${usage?.cache_creation_input_tokens ?? 0} out=${usage?.output_tokens ?? 0} | $${callUsd(model, usage).toFixed(5)}`,
+    );
+  };
 
   async function draw(tag, userMessage, index) {
     const sampleTag =
@@ -870,6 +904,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
         );
       }
       if (!response.capBooked) noteUsage(cost, model, response.usage);
+      logCall(sampleTag, response.usage);
       await cachePut(key, { parsed: toolUse.input });
       return toolUse.input;
     }
@@ -921,6 +956,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
       throw new Error(`judge (${sampleTag}) returned no score; nothing cached`);
     }
     noteUsage(cost, model, result.usage);
+    logCall(sampleTag, result.usage);
     await cachePut(key, { parsed: result.value });
     return result.value;
   }
