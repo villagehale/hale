@@ -87,6 +87,10 @@
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
   },
+  "email-alert.md": {
+    "file": "email-alert.md",
+    "sha256": "cc36dee99ab70cb81481d4f287c282bc5e095b7c50f9bda846ebf0419d73f4d4"
+  },
   "evening-request.md": {
     "file": "evening-request.md",
     "sha256": "ebe28455ab5c0ec920d418694812fdb6fc4e31e6257b8912ac27c6cda1a87fee"

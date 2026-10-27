@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { laneEnabled } from '~/lib/channel/lanes';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -16,7 +17,6 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { formatDayHeading } from '~/lib/format/datetime';
@@ -38,12 +38,12 @@ import {
   familyHoldsLiveBooking,
   recordActivityBooking,
 } from './booking';
+import type { EmailAlertAsk, EmailAlertFacts } from './email-alert-compose';
 import {
   type EmailAlertOfferDraft,
   recordEmailAlertOffer,
   withdrawEmailAlertOffer,
 } from './email-alert-offer';
-import type { EmailAlertAsk, EmailAlertFacts } from './email-alert-compose';
 import {
   type GoingCount,
   type GoingOutcome,

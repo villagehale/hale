@@ -3,8 +3,8 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import type { ExtractionKind } from '~/lib/sentinel';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { ExtractionKind } from '~/lib/sentinel';
 
 /**
  * The email alert text. The model writes the WHOLE message from facts, in the parent's

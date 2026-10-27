@@ -35,6 +35,7 @@ import {
   emptyEmailAlertCounts,
   gmailAlertSweepInput,
 } from '~/lib/integrations/email-alert';
+import { composeEmailAlertText } from '~/lib/integrations/email-alert-compose';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
 import {
@@ -55,7 +56,6 @@ import {
   syncConnection,
 } from '~/lib/integrations/sync';
 import { decryptTokens } from '~/lib/integrations/token-vault';
-import { composeEmailAlertText } from '~/lib/integrations/email-alert-compose';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { pipelineClient } from '~/lib/pipeline/client';
 import {
@@ -488,7 +488,11 @@ function emailAlertPorts(
     // text was about yet, so the source (occasion id, Gmail id, snippet) stops at this
     // port until one exists — it never goes to an audit row or a log line.
     threadMessage: (db, { source: _source, ...thread }) => threadProactiveMessage(db, thread),
-    composeText: (facts, id) => composeEmailAlertText(voiceClient(), facts, id),
+    composeText: async (facts, id) => {
+      // No model, no text: there is no fallback copy to send instead.
+      const client = voiceClient();
+      return client === null ? null : composeEmailAlertText(client, facts, id);
+    },
     language: async (id) => {
       const [row] = await database
         .select({ primaryLanguage: schema.families.primaryLanguage })
