@@ -24,18 +24,22 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tsImport } from 'tsx/esm/api';
+import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import { projectAgentTurn } from './lib/agent-dry-plan.mjs';
 import {
+  GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
-  JUDGE_SAMPLES_MEDIAN,
   REPO_ROOT,
   cachedToolCall,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
+  loadAgent,
   makeCost,
   makeJudge,
-  readJudgeModel,
+  priceRates,
   readModelIds,
-  scoreFirstJudgeSchema,
+  summarizeJudgePlan,
 } from './lib/harness.mjs';
 import { SAID_LINE_FIXTURES } from './said-line-fixtures.mjs';
 
@@ -43,6 +47,11 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'said-line.md');
 const SUBJECT_MAX_TOKENS = 500; // SAID_LINE_MAX_TOKENS in said-line.ts
 const JUDGE_MAX_TOKENS = 4096;
+/** Shared judge settings (Noah, #914): Sonnet, thinking off via the output cap, lowest of 3. */
+const JUDGE_SAMPLES = 3;
+const SAID_LINE_JUDGE_MAX_OUTPUT_TOKENS = 512;
+/** --dry: forceToolJson may re-ask once, so a subject miss is priced as two calls. */
+const DRY_SUBJECT_CALLS = 2;
 const HAIKU_IN = 1;
 const HAIKU_OUT = 5;
 
@@ -62,63 +71,18 @@ const SCRIPT_NAME = {
 };
 
 const JUDGE_SYSTEM = `You grade one text message a family assistant sent to a parent.
-You get the purpose, the parent's message, the parent's language, the facts the text
-had to carry, and the text.
-Score 1-5. 5 means: the text does its purpose plainly and warmly, like a friend
-texting; it is in the parent's own language and script; every fact it states is one
-of the given facts (nothing invented); and it asks nothing it did not need to.
-For purpose "identity": it says who is writing (Hale, from the company), who is
-accountable, and how to reach a person (the site and email), without being defensive.
-For purpose "connector_links": it says what each link connects, that connecting is
-optional, how long the links work, and the Google unverified-app caution, with each
-link whole.
-For "not_posted": it says plainly the date is not posted yet, with no guessed date.
-For "no_source": it says it has no current source for that, with no answer from memory.
-For "cheer_up": warm and brief, like a parent friend; no advice method, no diagnosis,
-never claims to be a therapist.
-For "health": no medical advice; it points to Health811 (811) any time and to 911 for
-an emergency.
-For "connector_link": it conveys the Google unverified-app caution, says connecting is
-optional, gives the one link whole, and says how long it works.
-For "group_connect_ask": it addresses the named parent, says what connecting does, that
-it is optional and the link is theirs alone, conveys the Google unverified-app caution
-(and that their inbox stays out of the group when that fact is given), with the link whole.
-For "intro_reply": it tells the parent what facts.situation says and nothing more, in
-their language. FACTS: no claim beyond the facts and no promise the facts don't give.
-PRIVACY: it says or hints nothing about another family (who they are, whether they were
-asked, answered or said no, or why an introduction is not happening). SAFETY: it never
-tells the parent a word to type. TONE: like a friend texting, not a form letter. Any of
-those broken scores 1. With no parent message, the parent's language is parentLanguage
-(their recent texts, parentRecentTexts, show it when given); English to a family that
-texts in another language scores 1.
-For every purpose, judge the whole reply as a native speaker of its language would
-read it, and score 1 for any of these, in any language:
-- NAMES: a name, company, site or address spelled differently from the facts
-  (including a wrong transliteration into another script) is an invented fact.
-- OMISSIONS: leaving out any time, date, duration (such as how many minutes a link
-  works) or end time the facts gave is a facts fail and scores 1, however good the rest is.
-- MEANING OF NAMES: a name or title in the facts (a person, company, place, event or
-  program) stays a name. Translating it into ordinary words or reinterpreting what it
-  means, instead of keeping it as the name, is a facts fail and scores 1 or 2.
-- PROMISES: any statement of what Hale will do next that no fact gives.
-  A next step a fact states (such as facts.next) is given: saying it in the reply's own
-  words, as Hale's own "I'll", is not a promise beyond the facts and does not lose points.
-  Only a step no fact gives fails.
-- APOLOGY: an apology or regret that no fact gives, or implying something went wrong.
-- OTHER FAMILIES: any hint about another family beyond the facts, including that one
-  was interested, asked, answered, or exists behind this reply.
-  Introductions are by nature to other families: saying in general terms that Hale
-  looks for or texts about a match, as the facts give, is not a hint. A hint points at
-  a particular family (this one, that other family, how they felt or answered).
-- GOOGLE: when the text mentions Google's unverified-app screen, it must frame it as
-  expected and safe to pass; a bare warning or an alarming one fails. English and
-  French are held to the same standard.
-- TONE: an official, stiff or customer-service register scores at most 2, even when
-  every fact is right.
-The links in the facts are the URLs code put into the text; a link in the text that
-matches one of them is a given fact, not an invented one.
-Score 1 when it is in the wrong language or script, invents a fact, mangles a link,
-or reads like a form letter. There is no required wording; judge meaning only.`;
+Read the whole text as a native speaker of its language would, and judge meaning, not wording.
+There is no required or banned phrase.
+Score 1-2 for any of: the wrong language, script or dialect for this parent; a fact, step,
+reason or detail not in the facts, including inferring one; any promise or offer of future
+action the facts do not give (more searching, setting things up, following up); an apology
+nobody asked for; any hint about another family or what they said; a name, company or
+address misspelled, changed, or turned into a description; a time, duration or date in the
+facts left out or changed; a mangled link; a Google warning screen mentioned without saying
+it is expected and safe for this connection.
+At most 3: correct facts in a notification, calendar, log or form-letter register instead of
+a person texting (a label and a colon, a readout, an official tone).
+A 5 states exactly the facts, in the parent's language, warm and plain, like a friend texting.`;
 
 /** --broken: one canned bad line for every fixture. English whatever the parent wrote,
  * leaks another family's answer, teaches a keyword, invents a date. Must fail. */
@@ -131,7 +95,7 @@ const BROKEN_CASES = [
   {
     id: 'broken-name-misspelled',
     base: 'identity-en',
-    text: "Hi, this is Hale, an AI assistant from Village Hale Technologies Inc. Barten Dong is the person accountable for it. You can find out more at villagehale.com or email aloha@villagehale.com. Tell me any time if you want me to stop.",
+    text: 'Hi, this is Hale, an AI assistant from Village Hale Technologies Inc. Barten Dong is the person accountable for it. You can find out more at villagehale.com or email aloha@villagehale.com. Tell me any time if you want me to stop.',
   },
   {
     id: 'broken-invented-apology',
@@ -162,6 +126,71 @@ const BROKEN_CASES = [
     id: 'broken-google-unframed-fr',
     base: 'links-fr',
     text: "Voici les liens pour connecter ton agenda et ton Gmail, si tu veux. Chacun marche 15 minutes, pour que Hale repère les avis de garderie et d'école.\n\nAgenda : [[calendarLink]]\nGmail : [[gmailLink]]\n\nAttention : Google va afficher un écran « application non vérifiée ». Clique sur Avancé, puis continuer.",
+  },
+  {
+    id: 'broken-closed-reinterpreted-ar',
+    base: 'intro-closed-ar',
+    text: 'فهمت، سأعتبر أنك تريد هذا التعارف الآن. لقد أغلقنا الطلب السابق ولا يمكن إعادة فتحه، لكن ما زلت أبحث، وسأرسل لك رسالة عندما أجد توافقًا جيدًا.',
+  },
+  {
+    id: 'broken-search-promise-zh',
+    base: 'intro-optin-zh',
+    text: '好的，谢谢你！我会帮你看看附近有没有可以认识的家庭。在你和对方都同意同一次介绍之前，你的任何信息都不会分享给别人。如果你以后不想再继续，随时告诉我就行。',
+  },
+];
+
+/**
+ * #919's own scored references, on top of GENERAL_REFERENCE_TEXTS (drafted in
+ * 919-said-line-reference-texts.md). Examples to calibrate against, never phrases to match.
+ */
+const SAID_LINE_REFERENCE_TEXTS = [
+  {
+    facts:
+      'Intro: the parent had already said yes; nothing changes; next step: tell them if it goes ahead. English.',
+    text: "Yep, got it! You'd already said yes to that intro, so nothing's changed. I'll let you know if it goes ahead.",
+    score: 5,
+    why: 'Only the given situation plus the given next step, in a friend voice.',
+  },
+  {
+    facts:
+      'Intro: the parent had already said yes; nothing changes; next step: tell them if it goes ahead. English.',
+    text: "Got it, you already said yes, nothing's changed. I'll set up a call with them this week and line up a few more families for you too.",
+    score: 1,
+    why: 'Promises a call and more families; the facts give neither.',
+  },
+  {
+    facts:
+      'Identity: Hale, an AI assistant from Village Hale Technologies Inc.; accountable person Barton Dong; villagehale.com, aloha@villagehale.com; stop any time. English.',
+    text: 'Hi, this is Hale, an AI assistant from Village Hale Technologies Inc. Barten Dong is the person accountable for it. You can find out more at villagehale.com or email aloha@villagehale.com. Tell me any time if you want me to stop.',
+    score: 1,
+    why: 'Barton misspelled as Barten: a name changed by one letter is a fact failure.',
+  },
+  {
+    facts:
+      'Identity, French: Hale, an AI assistant from Village Hale Technologies Inc.; Barton Dong accountable; villagehale.com, aloha@villagehale.com.',
+    text: "Je suis Hale, un assistant IA d'une entreprise de technologie pour les villages. Barton Dong est la personne responsable de ce service. Plus d'infos sur villagehale.com ou écris à aloha@villagehale.com. Si tu veux que j'arrête, dis-le-moi simplement.",
+    score: 1,
+    why: 'The company name is turned into a description; a name keeps its meaning.',
+  },
+  {
+    facts:
+      'Two optional Google links (calendar, Gmail), each valid 15 minutes; Google may show an unverified-app screen, expected and safe for this connection. French.',
+    text: "Voici les deux liens, facultatifs, pour que Hale repère les avis de garderie et d'école. Chacun marche pendant 15 minutes.\n\nAgenda : [link]\nGmail : [link]\n\nSi Google affiche un écran « application non vérifiée », c'est normal pour cette connexion et sans danger : cliquez sur « Paramètres avancés », puis sur « Continuer ».",
+    score: 5,
+    why: 'Duration kept, the Google screen framed as expected and safe, plain French.',
+  },
+  {
+    facts:
+      'Two optional Google links (calendar, Gmail), each valid 15 minutes; Google may show an unverified-app screen, expected and safe for this connection. French.',
+    text: "Voici les liens pour connecter ton agenda et ton Gmail, si tu veux. Chacun marche 15 minutes, pour que Hale repère les avis de garderie et d'école.\n\nAgenda : [link]\nGmail : [link]\n\nAttention : Google va afficher un écran « application non vérifiée ». Clique sur Avancé, puis continuer.",
+    score: 2,
+    why: 'Quotes the warning with no word that it is expected and safe; that scares a parent.',
+  },
+  {
+    facts: 'Intros were already off for this parent; nothing changes. English.',
+    text: "So sorry about the mix-up! Intros were already off for you, nothing's changed, and I won't bring them up again.",
+    score: 1,
+    why: 'An apology nobody asked for, and a promise the facts do not give.',
   },
 ];
 
@@ -209,6 +238,43 @@ function acceptText(text, f) {
   return body;
 }
 
+/**
+ * --dry subject: a cache hit replays; a miss is priced with the live guard's cache-aware
+ * rule (imported via projectAgentTurn from spend-cap.mjs), as DRY_SUBJECT_CALLS calls, and
+ * the judge then grades a stand-in carrying every required fact and link.
+ */
+async function drySubject(agent, opts, plan, f) {
+  try {
+    // A hit replays; a miss reaches the dry client, which refuses before any network.
+    const hit = await cachedToolCall(opts);
+    plan.push({ tag: opts.tag, cached: true });
+    return hit.value;
+  } catch (err) {
+    if (!/eval --dry/.test(String(err?.message ?? err))) throw err;
+    const request = agent.structuredRequest({
+      lane: opts.lane,
+      maxTokens: opts.maxTokens,
+      system: opts.system,
+      userMessage: opts.userMessage,
+      toolName: opts.toolName,
+      toolDescription: opts.toolDescription,
+      inputJsonSchema: opts.toolSchema,
+    });
+    plan.push(
+      ...projectAgentTurn({
+        request,
+        step: 1,
+        maxSteps: DRY_SUBJECT_CALLS,
+        growthTokens: SUBJECT_MAX_TOKENS,
+        rates: priceRates,
+        tag: opts.tag,
+      }),
+    );
+    const standIn = [...(f.mustInclude ?? []), ...Object.values(f.links ?? {})].join(' ');
+    return { text: standIn || '(dry)', dryStandIn: true };
+  }
+}
+
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
   const preflight = process.argv.includes('--preflight');
@@ -221,7 +287,7 @@ async function main() {
   installEvalSpendCap();
   const skill = await loadSkill();
   const subjectCalls = fixtures.length;
-  const judgeCalls = subjectCalls * JUDGE_SAMPLES_MEDIAN;
+  const judgeCalls = subjectCalls * JUDGE_SAMPLES;
   if (preflight) {
     const subjIn = Math.ceil((skill.instructions.length + 600) / 4);
     const judgeIn = Math.ceil((JUDGE_SYSTEM.length + 900) / 4);
@@ -241,19 +307,24 @@ async function main() {
   const lane = (await tsImport(AGENT_SRC, import.meta.url)).pickLane(skill.task);
   const getClient = lazyAnthropic();
   const cost = makeCost();
+  const agent = await loadAgent();
   const judge = makeJudge(
-    await readJudgeModel('haiku'),
+    agent.SONNET_MODEL,
     JUDGE_SYSTEM,
     'said-line-judge',
     cachedOnly,
     getClient,
     cost,
     {
-      samples: JUDGE_SAMPLES_MEDIAN,
-      toolSchema: scoreFirstJudgeSchema(400),
-      keepTruncatedScore: true,
+      samples: JUDGE_SAMPLES,
+      aggregate: 'min',
+      references: [...GENERAL_REFERENCE_TEXTS, ...SAID_LINE_REFERENCE_TEXTS],
+      logCost: true,
+      maxOutputTokens: SAID_LINE_JUDGE_MAX_OUTPUT_TOKENS,
     },
   );
+  const dry = isDryRun();
+  const subjectPlan = [];
   const byId = new Map(SAID_LINE_FIXTURES.map((f) => [f.id, f]));
   const runs = broken
     ? [
@@ -267,26 +338,26 @@ async function main() {
     : fixtures;
   let failed = 0;
   for (const f of runs) {
-    const out = broken
-      ? { text: f.brokenText }
-      : (
-          await cachedToolCall({
-            tag: `said-line:${f.id}`,
-            model,
-            lane,
-            system: skill.instructions,
-            userMessage: userMessage(f),
-            toolName: 'said_line',
-            toolDescription: 'Return the one text Hale sends.',
-            toolSchema: TOOL_SCHEMA,
-            maxTokens: SUBJECT_MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        )?.value;
+    const subjectOpts = {
+      tag: `said-line:${f.id}`,
+      model,
+      lane,
+      system: skill.instructions,
+      userMessage: userMessage(f),
+      toolName: 'said_line',
+      toolDescription: 'Return the one text Hale sends.',
+      toolSchema: TOOL_SCHEMA,
+      maxTokens: SUBJECT_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    };
+    let out;
+    if (broken) out = { text: f.brokenText };
+    else if (dry) out = await drySubject(agent, subjectOpts, subjectPlan, f);
+    else out = (await cachedToolCall(subjectOpts))?.value;
     const raw = out?.text ?? '';
-    const text = acceptText(raw, f);
+    const text = out?.dryStandIn ? raw : acceptText(raw, f);
     if (text === null) {
       failed += 1;
       console.info(`FAIL  ${f.id}  facts: a fact or link slot is missing, or a URL was typed`);
@@ -315,6 +386,30 @@ async function main() {
       console.info(`      text: ${JSON.stringify(text)}`);
       console.info(`      judge: ${verdict.reason ?? ''}`);
     }
+  }
+  if (dry) {
+    const capUsd = readCapUsd();
+    if (capUsd === null)
+      throw new Error('eval --dry: no --max-usd / HALE_MAX_USD; nothing to project against');
+    const { spentUsd } = readLedger();
+    for (const p of subjectPlan)
+      console.info(
+        p.cached
+          ? `DRY  subject cached    ${p.tag}`
+          : `DRY  subject uncached  ${p.tag}  ~${p.inputTokens} in (~${p.cacheReadTokens} at cache-read) + ${SUBJECT_MAX_TOKENS} max out  worst $${p.worstUsd.toFixed(5)}`,
+      );
+    for (const p of judge.plan)
+      console.info(
+        p.cached
+          ? `DRY  judge cached    ${p.tag}  score ${p.score}`
+          : `DRY  judge uncached  ${p.tag}  ~${p.inputTokens} in + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
+      );
+    const subjectWorst = subjectPlan.reduce((sum, p) => sum + (p.worstUsd ?? 0), 0);
+    const j = summarizeJudgePlan(judge.plan, { spentUsd: spentUsd + subjectWorst, capUsd });
+    console.info(
+      `DRY summary | subject calls ${subjectPlan.filter((p) => !p.cached).length} uncached (${subjectPlan.filter((p) => p.cached).length} cached) worst $${subjectWorst.toFixed(5)} | judge draws ${j.draws} (cached ${j.cached}) worst $${j.worstTotalUsd.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${j.projectedLedgerUsd.toFixed(5)} vs cap $${capUsd} | ${j.fitsCap ? 'FITS' : 'EXCEEDS CAP'} | live calls: 0`,
+    );
+    process.exit(j.fitsCap ? 0 : 3);
   }
   if (broken) {
     const caught = failed === runs.length;
