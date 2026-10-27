@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Fails several hard rules: the reply is in English while the parent texts in Spanish. It names another family (the Patel family) and says they said no, which breaks the privacy rule. It tells the parent a word to type (YES INTROS), breaking the safety rule. It also invents a Friday Nov 3 date and an apology the facts don't give."
+  }
+}

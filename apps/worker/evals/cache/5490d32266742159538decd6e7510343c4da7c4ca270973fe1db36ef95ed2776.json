@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Fails several rules: it reveals another family (the Patel family) declined, hinting at other families' answers. It apologizes with no fact giving an apology, and it tells the parent a word to type (YES INTROS). It also doesn't say plainly the registration date is not posted yet; it instead talks about an introduction retry and invents a Friday Nov 3 date not in the empty facts."
+  }
+}

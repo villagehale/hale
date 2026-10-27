@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "French, correct script, all facts from the given list (Hale, company type, Barton Dong, website, email). Names kept intact. Tone is friendly and direct, with \"tu\" matching the casual parent message. Minor issues: it says \"une entreprise de technologie pour les villages\" rather than the company name Village Hale Technologies Inc., so the company is not named in full. It also never answers the suspicion directly with reassurance, though it does say who is accountable and how to reach them."
+  }
+}

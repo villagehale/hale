@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Fails several hard rules: the text names another family (the Patel family) and says they declined, a privacy breach. It also tells the parent a word to type (YES INTROS), breaking the safety rule. It adds an invented Friday Nov 3 date and an unsupported \"try again\" offer, and the reply is in English to a Spanish-speaking parent. The apology is not given by any fact."
+  }
+}

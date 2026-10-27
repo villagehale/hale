@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Facts are conveyed in English and the next step is given by facts.next, so no promise penalty. But \"So sorry about the mix-up!\" is an apology implying something went wrong, which no fact gives. Tone is otherwise friendly and brief, but the unsupported apology breaks the rule and caps the score."
+  }
+}

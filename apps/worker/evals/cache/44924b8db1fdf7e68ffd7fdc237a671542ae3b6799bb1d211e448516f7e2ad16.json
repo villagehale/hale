@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Purpose is no_source: the text should say it has no current source and not answer from memory. Instead it talks about the Patel family declining a meeting, which is a privacy breach about another family, and it tells the parent to reply YES INTROS, a word to type. It also invents a Friday Nov 3 date and an apology no fact gives. It never addresses the wait-time question."
+  }
+}
