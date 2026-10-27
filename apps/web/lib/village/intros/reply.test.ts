@@ -4,6 +4,7 @@ import type { ConsentReadingResult } from '~/lib/channel/consent-reply';
 import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import {
   type AnswerableProposal,
+  INTRO_MUST_CONVEY,
   INTRO_REPLY_FACTS,
   type IntroDecision,
   type IntroReplySituation,
@@ -12,6 +13,7 @@ import {
   handleVillageIntroReply,
   introStanding,
   proposalStanding,
+  writeIntroReply,
   repeatedAnswer,
 } from './reply';
 
@@ -633,6 +635,7 @@ describe("VIL-450: every other intro reply is the model's, or nothing", () => {
       language: null,
       parentWords: c.body,
       facts: INTRO_REPLY_FACTS[c.situation],
+      ...(INTRO_MUST_CONVEY[c.situation] ? { mustConvey: INTRO_MUST_CONVEY[c.situation] } : {}),
     });
   });
 
@@ -686,6 +689,27 @@ describe('#919: guardrails are writer constraints, not facts to be voiced', () =
   });
 });
 
+describe('#919: switching introductions off always conveys that pending ones are closed', () => {
+  it('discoverability_off requires the pendingClosed fact by key, and that fact exists', () => {
+    expect(INTRO_MUST_CONVEY.discoverability_off).toEqual(['pendingClosed']);
+    expect(INTRO_REPLY_FACTS.discoverability_off).toHaveProperty('pendingClosed');
+    for (const [situation, keys] of Object.entries(INTRO_MUST_CONVEY)) {
+      for (const key of keys ?? []) {
+        expect(INTRO_REPLY_FACTS[situation as keyof typeof INTRO_REPLY_FACTS], situation).toHaveProperty(key);
+      }
+    }
+  });
+
+  it('the revocation hands the writer mustConvey [pendingClosed]', async () => {
+    const write = vi.fn().mockResolvedValue('ok');
+    await writeIntroReply({ write }, 'discoverability_off', 'no more intros');
+    expect(write.mock.calls[0]?.[0]).toMatchObject({ mustConvey: ['pendingClosed'] });
+    write.mockClear();
+    await writeIntroReply({ write }, 'intro_no', 'no thanks');
+    expect(write.mock.calls[0]?.[0]).not.toHaveProperty('mustConvey');
+  });
+});
+
 describe('the said-line eval replays these exact facts', () => {
   it('said-line-fixtures.mjs INTRO_REPLY_FACTS matches reply.ts key for key', async () => {
     // The eval replicates the facts (it cannot reach `~/`); the cache key depends on them.
@@ -694,5 +718,8 @@ describe('the said-line eval replays these exact facts', () => {
       INTRO_REPLY_FACTS: unknown;
     };
     expect(fixtures.INTRO_REPLY_FACTS).toEqual(INTRO_REPLY_FACTS);
+    expect((fixtures as unknown as { INTRO_MUST_CONVEY: unknown }).INTRO_MUST_CONVEY).toEqual(
+      INTRO_MUST_CONVEY,
+    );
   });
 });

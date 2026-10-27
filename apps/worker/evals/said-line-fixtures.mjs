@@ -89,8 +89,11 @@ export const INTRO_REPLY_FACTS = {
       'they are open to introductions; Hale only texts about one when a good match comes up',
   },
   discoverability_off: {
-    situation: 'they just switched introductions off for themselves; any pending ones are closed',
+    situation: 'they just switched introductions off for themselves',
+    pendingClosed: 'any introductions that were waiting for them are closed',
     standing: 'introductions are off for them',
+    backOn:
+      'if they text that they want introductions again, introductions are back on for them; the closed ones stay closed',
   },
   discoverability_already_on: {
     situation: 'they had already said yes to introductions; nothing changed',
@@ -127,6 +130,11 @@ export const INTRO_REPLY_FACTS = {
   },
 };
 
+/** INTRO_MUST_CONVEY in reply.ts, replicated and pinned the same way. */
+export const INTRO_MUST_CONVEY = {
+  discoverability_off: ['pendingClosed'],
+};
+
 const intro = (id, script, situation, parentWords) => ({
   id,
   purpose: 'intro_reply',
@@ -135,6 +143,7 @@ const intro = (id, script, situation, parentWords) => ({
   parentWords,
   facts: { ...INTRO_REPLY_FACTS[situation] },
   mustInclude: [],
+  ...(INTRO_MUST_CONVEY[situation] ? { mustConvey: INTRO_MUST_CONVEY[situation] } : {}),
 });
 
 function INTRO_REPLY_FIXTURES() {

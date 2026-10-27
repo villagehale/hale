@@ -388,8 +388,11 @@ export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, strin
       'they are open to introductions; Hale only texts about one when a good match comes up',
   },
   discoverability_off: {
-    situation: 'they just switched introductions off for themselves; any pending ones are closed',
+    situation: 'they just switched introductions off for themselves',
+    pendingClosed: 'any introductions that were waiting for them are closed',
     standing: 'introductions are off for them',
+    backOn:
+      'if they text that they want introductions again, introductions are back on for them; the closed ones stay closed',
   },
   discoverability_already_on: {
     situation: 'they had already said yes to introductions; nothing changed',
@@ -426,6 +429,15 @@ export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, strin
   },
 };
 
+/**
+ * Facts, by key, whose meaning every reply in that situation carries (`mustConvey`).
+ * Keys only: the writer says them in its own words and language, and no code matches
+ * wording. Leaving one out would change what the parent understands is true now.
+ */
+export const INTRO_MUST_CONVEY: Partial<Record<IntroReplySituation, readonly string[]>> = {
+  discoverability_off: ['pendingClosed'],
+};
+
 /** One intro reply in the model's words. Null (no writer, or an unusable write): the
  * caller sends nothing and the failure is logged; there is no fixed line behind it. */
 export async function writeIntroReply(
@@ -449,6 +461,7 @@ export async function writeIntroReply(
       ? { recentParentWords: family.recentParentWords }
       : {}),
     facts: { ...INTRO_REPLY_FACTS[situation] },
+    ...(INTRO_MUST_CONVEY[situation] ? { mustConvey: INTRO_MUST_CONVEY[situation] } : {}),
   });
 }
 

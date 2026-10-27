@@ -225,6 +225,7 @@ function userMessage(f) {
     ...(f.recentParentWords?.length ? { recentParentWords: f.recentParentWords } : {}),
     facts: f.facts,
     mustInclude: f.mustInclude ?? [],
+    ...(f.mustConvey?.length ? { mustConvey: f.mustConvey } : {}),
     linkSlots: Object.keys(f.links ?? {}).map((name) => `[[${name}]]`),
   });
 }
@@ -235,6 +236,7 @@ function acceptText(text, f) {
   let body = (text ?? '').trim();
   if (body.length === 0) return null;
   if (!(f.mustInclude ?? []).every((fact) => body.includes(fact))) return null;
+  if (!(f.mustConvey ?? []).every((key) => key in f.facts)) return null;
   if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
   for (const [name, url] of Object.entries(f.links ?? {})) {
     const slot = `[[${name}]]`;

@@ -65,6 +65,11 @@ export interface SaidLineInput {
   /** Strings that must appear verbatim (numbers, addresses). Never a URL: see links. */
   mustInclude?: readonly string[];
   /**
+   * Fact KEYS whose meaning the text must carry, in the model's own words and language.
+   * Checked structurally only (each key names a fact that is there); never by wording.
+   */
+  mustConvey?: readonly string[];
+  /**
    * Links by slot name. The model never sees or types a URL (#868): it writes the
    * placeholder `[[name]]` where each link goes, and code puts the exact URL in.
    */
@@ -105,6 +110,8 @@ export function saidLineUserMessage(input: SaidLineInput): string {
       : {}),
     facts: input.facts,
     mustInclude: input.mustInclude ?? [],
+    // Sent only when present, so every other line's payload (and cache key) is unchanged.
+    ...(input.mustConvey && input.mustConvey.length > 0 ? { mustConvey: input.mustConvey } : {}),
     linkSlots: Object.keys(input.links ?? {}).map(linkSlot),
   });
 }
@@ -119,6 +126,8 @@ export function acceptSaidLine(text: string, input: SaidLineInput): string | nul
   if (body.length === 0) return null;
   const required = input.mustInclude ?? [];
   if (!required.every((fact) => body.includes(fact))) return null;
+  // A mustConvey key with no fact behind it is a wiring bug, not something to say.
+  if (!(input.mustConvey ?? []).every((key) => key in input.facts)) return null;
   if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
   for (const [name, url] of Object.entries(input.links ?? {})) {
     const slot = linkSlot(name);
