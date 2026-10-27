@@ -20,13 +20,14 @@ import {
   GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
   cachedToolCall,
+  formatDraws,
   installEvalSpendCap,
   isDryRun,
   isMain,
   lazyAnthropic,
   makeCost,
   makeJudge,
-  summarizeJudgePlan,
+  summarizeDryPlan,
   totalUsd,
 } from './lib/harness.mjs';
 import { REMINDER_FIXTURES } from './reminder-fixtures.mjs';
@@ -266,6 +267,29 @@ export function brokenFooter(results) {
   return { ok: calibrated && normalFailed.length === 0, calibrated, slipped, normalFailed, lines };
 }
 
+/** The --dry listing: every compose and judge call, then subtotals and a grand total. */
+export function dryPlanLines(plans, { spentUsd, capUsd }) {
+  const lines = [];
+  const row = (kind, p) =>
+    p.cached
+      ? `DRY  ${kind.padEnd(7)} cached    ${p.tag}${p.score !== undefined ? `  score ${p.score}` : ''}`
+      : `DRY  ${kind.padEnd(7)} uncached  ${p.tag}  ~${p.inputTokens} in (~${p.cacheReadTokens ?? 0} at cache-read) + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`;
+  for (const p of plans.compose ?? []) lines.push(row('compose', p));
+  for (const p of plans.judge ?? []) lines.push(row('judge', p));
+  const s = summarizeDryPlan(plans, { spentUsd, capUsd });
+  const sub = (name, x) =>
+    `DRY ${name} | calls ${x.calls} (cached ${x.cached}, uncached ${x.uncached}) | worst $${x.worstUsd.toFixed(5)}`;
+  lines.push(sub('compose', s.compose));
+  lines.push(sub('judge  ', s.judge));
+  lines.push(
+    `DRY total | worst $${s.worstTotalUsd.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${s.projectedLedgerUsd.toFixed(5)} vs cap $${capUsd} | ${s.fitsCap ? 'FITS' : 'EXCEEDS CAP'}`,
+  );
+  lines.push(
+    'DRY: input tokens are a rough offline estimate (1 per 3 bytes, not a bound; the live guard counts with countTokens); the first uncached call of each kind writes its prompt cache, later ones read it; an uncached reply is priced as a max-length stand-in for its judge; live calls: 0',
+  );
+  return lines;
+}
+
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -297,6 +321,8 @@ async function main() {
     maxOutputTokens: REMINDER_JUDGE_MAX_OUTPUT_TOKENS,
   });
   const dry = isDryRun();
+  // --dry: compose (subject-model) calls are projected into this plan, never made.
+  const composePlan = [];
 
   console.log(
     `reminder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
@@ -322,6 +348,7 @@ async function main() {
                 toolDescription: 'The one text Hale sends the parent.',
                 maxTokens: 300,
                 cachedOnly: cachedOnly || rescore,
+                dryPlan: dry ? composePlan : undefined,
                 getClient,
                 cost,
               })
@@ -341,6 +368,7 @@ async function main() {
       body,
       failures,
       scores: verdict.samples,
+      draws: verdict.draws,
       kind: broken && !rescore ? 'broken' : 'normal',
     });
   }
@@ -363,6 +391,7 @@ async function main() {
         body: bc.body,
         failures,
         scores: verdict.samples,
+        draws: verdict.draws,
         kind: 'broken',
       });
     }
@@ -373,20 +402,12 @@ async function main() {
     if (capUsd === null)
       throw new Error('eval --dry: no --max-usd / HALE_MAX_USD; nothing to project against');
     const { spentUsd } = readLedger();
-    for (const p of judge.plan) {
-      console.log(
-        p.cached
-          ? `DRY  cached    ${p.tag}  score ${p.score}`
-          : `DRY  uncached  ${p.tag}  ~${p.inputTokens} in (~${p.cacheReadTokens ?? 0} at cache-read) + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
-      );
-    }
-    const s = summarizeJudgePlan(judge.plan, { spentUsd, capUsd });
-    console.log(
-      `DRY summary | draws ${s.draws} (cached ${s.cached}, uncached ${s.uncached}) | worst per call $${s.worstPerCallUsd.toFixed(5)} | worst total $${s.worstTotalUsd.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${s.projectedLedgerUsd.toFixed(5)} vs cap $${capUsd} | ${s.fitsCap ? 'FITS' : 'EXCEEDS CAP'}`,
-    );
-    console.log(
-      'DRY: input tokens are a rough offline estimate (1 per 3 bytes, not a bound; the live guard counts with countTokens); draw 1 assumed to write the prompt cache, later draws to read it; live calls: 0',
-    );
+    for (const line of dryPlanLines(
+      { compose: composePlan, judge: judge.plan },
+      { spentUsd, capUsd },
+    ))
+      console.log(line);
+    const s = summarizeDryPlan({ compose: composePlan, judge: judge.plan }, { spentUsd, capUsd });
     process.exit(s.fitsCap ? 0 : 3);
   }
   for (const r of results) {
@@ -396,6 +417,7 @@ async function main() {
     console.log(
       `      · scores [${(r.scores ?? []).join(', ')}] min ${Math.min(...(r.scores ?? [Number.NaN]))}`,
     );
+    for (const d of formatDraws(r.draws)) console.log(`      · ${d}`);
     for (const f of r.failures) console.log(`      · ${f}`);
   }
   console.log(

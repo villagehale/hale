@@ -490,6 +490,15 @@ export async function cachedToolCall(opts) {
   }
 
   if (cachedOnly) failCachedMiss(tag, key);
+  if (isDryRun() && Array.isArray(opts.dryPlan)) {
+    // --dry (914): an uncached compose call is PROJECTED, never made and never a throw.
+    // Priced as the live guard would: the first uncached call on this plan writes the
+    // system-prompt cache; later ones (serial, within the TTL) read it.
+    const entry = await dryToolCallPlanEntry({ ...opts, model, maxTokens }, opts.dryPlan);
+    opts.dryPlan.push(entry);
+    // A worst-case-length stand-in, so a judge fed this reply is priced at its worst too.
+    return { value: { text: dryStandInText(maxTokens) }, latencyMs: 0, cached: false, dry: true };
+  }
   requireLane(tag, model, opts);
 
   const startedAt = Date.now();
@@ -546,6 +555,56 @@ export async function cachedToolCall(opts) {
   noteLatency(model, latencyMs);
   if (Array.isArray(cost.latencies)) cost.latencies.push(latencyMs);
   return { value, latencyMs, cached: false };
+}
+
+/** A stand-in reply of the most bytes `maxTokens` of output could be (offline estimate). */
+export function dryStandInText(maxTokens) {
+  return 'x'.repeat(maxTokens * 3);
+}
+
+/** --dry plan entry for one uncached tool call: estimate, max output, cache-aware worst case. */
+export async function dryToolCallPlanEntry(opts, plan) {
+  const { tag, model, maxTokens, system, userMessage, toolName, toolSchema } = opts;
+  let request;
+  if (opts.lane) {
+    const agent = await loadAgent();
+    request = agent.structuredRequest({
+      lane: opts.lane,
+      maxTokens,
+      system,
+      userMessage,
+      toolName,
+      toolDescription: opts.toolDescription ?? 'Return the result.',
+      inputJsonSchema: toolSchema,
+    });
+  } else {
+    request = {
+      model,
+      max_tokens: maxTokens,
+      system,
+      tools: [
+        {
+          name: toolName,
+          description: opts.toolDescription ?? 'Return the result.',
+          input_schema: toolSchema,
+        },
+      ],
+      messages: [{ role: 'user', content: userMessage }],
+    };
+  }
+  const inputTokens = estimateInputTokensOffline(request);
+  const firstUncached = !plan.some((p) => !p.cached);
+  const prefixTokens = firstUncached
+    ? 0
+    : estimateInputTokensOffline({ system: request.system, tools: request.tools });
+  return {
+    tag,
+    cached: false,
+    inputTokens,
+    cacheReadTokens: prefixTokens,
+    maxTokens,
+    worstUsd: cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens),
+  };
 }
 
 // --- cached free-text call (for the coach answer arm) -----------------------
@@ -1128,7 +1187,12 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     // `aggregate: 'min'` keeps the LOWEST draw (and its reason): a suite that would rather
     // see an inconsistent judge than let one lucky pass through opts into it.
     if (options?.aggregate === 'min') {
-      return { ...ordered[0], samples: drawn.map((verdict) => verdict.score) };
+      // Every draw's score AND reason (914), in draw order, not only the lowest one's.
+      return {
+        ...ordered[0],
+        samples: drawn.map((verdict) => verdict.score),
+        draws: drawn.map((verdict) => ({ score: verdict.score, reason: verdict.reason })),
+      };
     }
     // The median VERDICT, not just the median number: the reason a run prints has to be
     // the argument for the score it printed, or the failure line cites a different draw.
@@ -1152,6 +1216,34 @@ export function summarizeJudgePlan(plan, { spentUsd, capUsd }) {
     projectedLedgerUsd: spentUsd + worstTotalUsd,
     fitsCap: spentUsd + worstTotalUsd <= capUsd,
   };
+}
+
+/** --dry summary across compose (subject-model) and judge plans: subtotals + grand total. */
+export function summarizeDryPlan({ compose = [], judge = [] }, { spentUsd, capUsd }) {
+  const part = (plan) => {
+    const uncached = plan.filter((p) => !p.cached);
+    return {
+      calls: plan.length,
+      cached: plan.length - uncached.length,
+      uncached: uncached.length,
+      worstUsd: uncached.reduce((sum, p) => sum + p.worstUsd, 0),
+    };
+  };
+  const c = part(compose);
+  const j = part(judge);
+  const worstTotalUsd = c.worstUsd + j.worstUsd;
+  return {
+    compose: c,
+    judge: j,
+    worstTotalUsd,
+    projectedLedgerUsd: spentUsd + worstTotalUsd,
+    fitsCap: spentUsd + worstTotalUsd <= capUsd,
+  };
+}
+
+/** One line per judge draw: `draw N: score S - reason`. */
+export function formatDraws(draws) {
+  return (draws ?? []).map((d, i) => `draw ${i + 1}: ${d.score} - ${d.reason}`);
 }
 
 export const JUDGE_MIN = 4;
