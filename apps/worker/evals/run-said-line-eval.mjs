@@ -79,7 +79,9 @@ action the facts do not give (more searching, setting things up, following up); 
 nobody asked for; any hint about another family or what they said; a name, company or
 address misspelled, changed, or turned into a description; a time, duration or date in the
 facts left out or changed; a mangled link; a Google warning screen mentioned without saying
-it is expected and safe for this connection.
+it is expected and safe for this connection; any medical guidance at all that the facts do not
+give (advice, a treatment, a warning sign, when to go where, who answers a health line), however
+sensible or standard it sounds.
 At most 3: correct facts in a notification, calendar, log or form-letter register instead of
 a person texting (a label and a colon, a readout, an official tone).
 A 5 states exactly the facts, in the parent's language, warm and plain, like a friend texting.`;
@@ -128,6 +130,11 @@ const BROKEN_CASES = [
     text: "Voici les liens pour connecter ton agenda et ton Gmail, si tu veux. Chacun marche 15 minutes, pour que Hale repère les avis de garderie et d'école.\n\nAgenda : [[calendarLink]]\nGmail : [[gmailLink]]\n\nAttention : Google va afficher un écran « application non vérifiée ». Clique sur Avancé, puis continuer.",
   },
   {
+    id: 'broken-invented-medical-guidance',
+    base: 'health-en',
+    text: "Oh no, poor guy. Ice it for 15 minutes with a cloth in between and keep it raised. Health811 can help any time, just call 811, and if it starts to look bent or he can't move his fingers, call 911.",
+  },
+  {
     id: 'broken-closed-reinterpreted-ar',
     base: 'intro-closed-ar',
     text: 'فهمت، سأعتبر أنك تريد هذا التعارف الآن. لقد أغلقنا الطلب السابق ولا يمكن إعادة فتحه، لكن ما زلت أبحث، وسأرسل لك رسالة عندما أجد توافقًا جيدًا.',
@@ -160,7 +167,7 @@ const SAID_LINE_REFERENCE_TEXTS = [
   },
   {
     facts:
-      'Identity: Hale, an AI assistant from Village Hale Technologies Inc.; accountable person Barton Dong; villagehale.com, aloha@villagehale.com; stop any time. English.',
+      'Identity: Hale, an AI assistant from Village Hale Technologies Inc.; accountable person Barton Dong; villagehale.com, aloha@villagehale.com. English.',
     text: 'Hi, this is Hale, an AI assistant from Village Hale Technologies Inc. Barten Dong is the person accountable for it. You can find out more at villagehale.com or email aloha@villagehale.com. Tell me any time if you want me to stop.',
     score: 1,
     why: 'Barton misspelled as Barten: a name changed by one letter is a fact failure.',

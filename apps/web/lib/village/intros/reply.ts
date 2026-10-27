@@ -421,6 +421,7 @@ export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, strin
   intro_closed: {
     situation: 'they said no to this introduction earlier, so it is closed and cannot be reopened',
     otherFamily: OTHER_FAMILY_UNSAID,
+    theirAsk: 'saying yes now does not reopen it; it stays closed',
     next: 'Hale is still looking and will text them at the next good match',
   },
   no_open_intro: {

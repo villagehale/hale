@@ -13,13 +13,22 @@ export const IDENTITY_FACTS = {
   contactEmail: 'aloha@villagehale.com',
 };
 
-const identity = (id, script, language, parentWords) => ({
+// numberOriginFact in apps/web/lib/channel/intake/number-origin.ts, for the record shapes
+// readNumberOrigin returns (#919). Absent: the record does not say, and the writer must not guess.
+const TEXTED_FIRST_QR = { how: 'they texted Hale first', from: 'a Hale QR code they scanned' };
+const TEXTED_FIRST = { how: 'they texted Hale first' };
+const ADDED_BY = {
+  how: 'a member of their family added their number to the family on Hale',
+  who: 'Wei',
+};
+
+const identity = (id, script, language, parentWords, howWeGotYourNumber = null) => ({
   id,
   purpose: 'identity',
   script,
   language,
   parentWords,
-  facts: { ...IDENTITY_FACTS },
+  facts: { ...IDENTITY_FACTS, ...(howWeGotYourNumber ? { howWeGotYourNumber } : {}) },
   mustInclude: [IDENTITY_FACTS.website, IDENTITY_FACTS.contactEmail],
 });
 
@@ -111,6 +120,7 @@ export const INTRO_REPLY_FACTS = {
   intro_closed: {
     situation: 'they said no to this introduction earlier, so it is closed and cannot be reopened',
     otherFamily: OTHER_FAMILY_UNSAID,
+    theirAsk: 'saying yes now does not reopen it; it stays closed',
     next: 'Hale is still looking and will text them at the next good match',
   },
   no_open_intro: {
@@ -162,10 +172,10 @@ function INTRO_REPLY_FIXTURES() {
 }
 
 export const SAID_LINE_FIXTURES = [
-  identity('identity-en', 'en', 'en', 'who is this? how did you get my number'),
+  identity('identity-en', 'en', 'en', 'who is this? how did you get my number', TEXTED_FIRST_QR),
   identity('identity-fr', 'fr', 'fr', "c'est qui? vous êtes une arnaque?"),
-  identity('identity-zh', 'zh', 'en', '你是谁？你怎么有我的电话号码？'),
-  identity('identity-ar', 'ar', 'en', 'من أنت؟ كيف حصلت على رقمي؟'),
+  identity('identity-zh', 'zh', 'en', '你是谁？你怎么有我的电话号码？', ADDED_BY),
+  identity('identity-ar', 'ar', 'en', 'من أنت؟ كيف حصلت على رقمي؟', TEXTED_FIRST),
   links('links-en', 'en', 'send me the links to connect my calendar and gmail'),
   links('links-fr', 'fr', 'envoie-moi les liens pour connecter mon agenda et gmail'),
   plain(
