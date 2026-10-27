@@ -1,0 +1,9 @@
+{
+  "value": {
+    "care": "daycare",
+    "provider": null,
+    "confidence": "high",
+    "reason": "child attends nursery daily, no name given"
+  },
+  "latencyMs": 3066
+}
