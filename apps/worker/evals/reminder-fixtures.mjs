@@ -70,7 +70,7 @@ export const REMINDER_FIXTURES = [
       ],
     }),
     watchFor:
-      'An all-day PD Day tomorrow with no time. No clock time may appear. Saying school is out or it is a PD day is fine; inventing plans or a time is not.',
+      'An all-day PD Day tomorrow with no time. No clock time may appear. Saying it is a PD day is fine. The facts do not say school is closed or who it affects; stating that (or any other consequence of the title) as fact is an unstated inference and a LOW score, as is inventing plans or a time.',
   },
   {
     id: 'fr-all-day-plus-timed',

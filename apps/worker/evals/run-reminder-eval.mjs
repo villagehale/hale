@@ -98,6 +98,14 @@ const JUDGE_SYSTEM = [
   'article, quotation or connecting words a native speaker would give a named event, and a',
   'bare title dropped into a sentence where it does not fit still fails the native speaker',
   'check. Changing what the title says is a fact failure; say in the reason how it changed.',
+  'NO UNSTATED INFERENCES: state only what the facts say. A consequence the text draws from a',
+  'title or from the facts (what is closed or open, who is affected, why it is happening, what',
+  'it means for the family) is not in the facts, even when it is likely: stating it as fact is a',
+  'fact failure and a LOW score (1-2), in any language, however it is phrased.',
+  'NO CALENDAR TALK: the parent knows they have a calendar. A sentence that explains how the',
+  'event is stored or classified (that it is on the calendar, timed, all-day, an entry) instead',
+  'of telling them what is on is unrequested filler and caps the score at',
+  `${JUDGE_MIN - 1} at most, in any language and however it is phrased.`,
   'CAPS ARE CEILINGS: complete, correct facts never lift a capped score. If your reason names',
   'any phrasing a native speaker would write differently, the score is at most',
   `${JUDGE_MIN - 1}, however minor you think it is.`,
@@ -138,6 +146,18 @@ const BROKEN_CASES = [
     fixtureId: 'fr-jour-de-conge-timed',
     tag: 'fr-jour-de-conge-timed:reinterprets-title',
     body: "Rappel : demain à 15 h, il y a un jour de congé à la bibliothèque de Georgetown, jusqu'à 16 h.",
+  },
+  // Calendar metadata explained back to the parent (recorded en-pd-day-timed reply).
+  {
+    fixtureId: 'en-pd-day-timed',
+    tag: 'en-pd-day-timed:calendar-talk',
+    body: "Tomorrow there's a PD Day from 9:30 AM to 12:00 PM at the Northside community centre. It's on the calendar as a timed event, so you'll want to plan around it.",
+  },
+  // Unstated inference: the facts say only "PD Day", all day; school closure is inferred.
+  {
+    fixtureId: 'en-pd-day-all-day',
+    tag: 'en-pd-day-all-day:inferred-closure',
+    body: 'Tomorrow is a PD Day, so school is closed for students.',
   },
   {
     fixtureId: 'en-pd-day-all-day',
