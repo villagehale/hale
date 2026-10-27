@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
 import { isStage } from '~/lib/testing/structured-reply';
+import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
 import { type DryRunEnvelope, runBookedDetectionDryRun } from './booked-detection-dry-run';
 
 /**

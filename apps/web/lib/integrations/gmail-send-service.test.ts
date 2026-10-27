@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type GmailSendReaders, gmailEmailSender } from './gmail-send-service';
 import { GMAIL_COMPOSE_SCOPE } from './google-write-flag';
+import { type GmailSendReaders, gmailEmailSender } from './gmail-send-service';
 
 const FAMILY = 'fam-1';
 const PARENT = 'parent-1';
