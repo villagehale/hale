@@ -144,6 +144,7 @@ describe('the committed pnpm-lock.yaml', () => {
       'apps/worker',
       'packages/agent',
       'packages/db',
+      'packages/source-codes',
       'packages/tools-contracts',
       'packages/types',
     ]);
