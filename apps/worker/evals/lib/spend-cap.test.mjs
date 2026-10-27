@@ -146,16 +146,18 @@ describe('worst case', () => {
 });
 
 describe('spend cap at the call site', () => {
-  it('is exactly the call when no cap is set', async () => {
+  it('refuses a live call when no cap is set, before counting or calling', async () => {
     const m = mockClient();
-    await cappedCall({
-      client: m.client,
-      request,
-      call: () => m.client.messages.create(request),
-      rates,
-    });
+    await expect(
+      cappedCall({
+        client: m.client,
+        request,
+        call: () => m.client.messages.create(request),
+        rates,
+      }),
+    ).rejects.toThrow(/HALE_MAX_USD.*HALE_SPEND_LEDGER/);
     expect(m.countTokens).not.toHaveBeenCalled();
-    expect(m.create).toHaveBeenCalledTimes(1);
+    expect(m.create).not.toHaveBeenCalled();
   });
 
   it('refuses before the call when spent plus the worst case would cross the cap', async () => {

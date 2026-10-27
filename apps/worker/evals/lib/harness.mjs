@@ -19,7 +19,6 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import {
-  capEnabled,
   capSdkClient,
   cappedCall,
   installSpendCap,
@@ -591,7 +590,7 @@ function gatewayUsageMessage(model, peeked) {
  * does not offer.
  */
 export async function spendCappedFetch({ tag = 'gateway', request, send }) {
-  if (!capEnabled()) return send();
+  // cappedCall refuses unless both the cap and HALE_SPEND_LEDGER are set.
   const priced = { ...request, max_tokens: request.max_tokens ?? 1024 };
   let sent;
   await cappedCall({
