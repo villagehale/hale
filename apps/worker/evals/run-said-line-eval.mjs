@@ -91,6 +91,27 @@ tells the parent a word to type. TONE: like a friend texting, not a form letter.
 those broken scores 1. With no parent message, the parent's language is parentLanguage
 (their recent texts, parentRecentTexts, show it when given); English to a family that
 texts in another language scores 1.
+For every purpose, judge the whole reply as a native speaker of its language would
+read it, and score 1 for any of these, in any language:
+- NAMES: a name, company, site or address spelled differently from the facts
+  (including a wrong transliteration into another script) is an invented fact.
+- OMISSIONS: leaving out any time, date, duration or end time the facts gave is a
+  facts fail.
+- PROMISES: any statement of what Hale will do next that no fact gives.
+  A next step a fact states (such as facts.next) is given: saying it in the reply's own
+  words, as Hale's own "I'll", is not a promise beyond the facts and does not lose points.
+  Only a step no fact gives fails.
+- APOLOGY: an apology or regret that no fact gives, or implying something went wrong.
+- OTHER FAMILIES: any hint about another family beyond the facts, including that one
+  was interested, asked, answered, or exists behind this reply.
+  Introductions are by nature to other families: saying in general terms that Hale
+  looks for or texts about a match, as the facts give, is not a hint. A hint points at
+  a particular family (this one, that other family, how they felt or answered).
+- GOOGLE: when the text mentions Google's unverified-app screen, it must frame it as
+  expected and safe to pass; a bare warning or an alarming one fails. English and
+  French are held to the same standard.
+- TONE: an official, stiff or customer-service register scores at most 2, even when
+  every fact is right.
 The links in the facts are the URLs code put into the text; a link in the text that
 matches one of them is a given fact, not an invented one.
 Score 1 when it is in the wrong language or script, invents a fact, mangles a link,
@@ -100,6 +121,41 @@ or reads like a form letter. There is no required wording; judge meaning only.`;
  * leaks another family's answer, teaches a keyword, invents a date. Must fail. */
 const BROKEN =
   'The Patel family said no to meeting you, sorry! Reply YES INTROS to try again on Friday Nov 3.';
+
+/** --broken, targeted: one fixture each, a reply that passes the code checks and breaks
+ * exactly one judge rule. Every one must fail. */
+const BROKEN_CASES = [
+  {
+    id: 'broken-name-misspelled',
+    base: 'identity-en',
+    text: "Hi, this is Hale, an AI assistant from Village Hale Technologies Inc. Barten Dong is the person accountable for it. You can find out more at villagehale.com or email aloha@villagehale.com. Tell me any time if you want me to stop.",
+  },
+  {
+    id: 'broken-invented-apology',
+    base: 'intro-already-off-en',
+    text: "So sorry about the mix-up! Intros were already off for you, nothing's changed, and I won't bring them up again.",
+  },
+  {
+    id: 'broken-other-families',
+    base: 'intro-no-es',
+    text: 'Entendido, lo dejo anotado. La otra familia tenía muchas ganas de conocerte, pero no pasa nada.',
+  },
+  {
+    id: 'broken-unsupported-promise',
+    base: 'intro-already-yes-en',
+    text: "Got it, you already said yes, nothing's changed. I'll set up a call with them this week and line up a few more families for you too.",
+  },
+  {
+    id: 'broken-time-dropped',
+    base: 'connector-link-en',
+    text: "Google may show an 'unverified app' screen. That's expected for this connection and safe to pass: tap Advanced, then continue. Connecting Google Calendar is optional:\n[[link]]",
+  },
+  {
+    id: 'broken-google-unframed-fr',
+    base: 'links-fr',
+    text: "Voici les liens pour connecter ton agenda et ton Gmail, si tu veux. Chacun marche 15 minutes, pour que Hale repère les avis de garderie et d'école.\n\nAgenda : [[calendarLink]]\nGmail : [[gmailLink]]\n\nAttention : Google va afficher un écran « application non vérifiée ». Clique sur Avancé, puis continuer.",
+  },
+];
 
 async function loadSkill() {
   const raw = await readFile(SKILL, 'utf8');
@@ -190,10 +246,21 @@ async function main() {
       keepTruncatedScore: true,
     },
   );
+  const byId = new Map(SAID_LINE_FIXTURES.map((f) => [f.id, f]));
+  const runs = broken
+    ? [
+        ...fixtures.map((f) => ({ ...f, brokenText: BROKEN })),
+        ...BROKEN_CASES.map((c) => {
+          const f = byId.get(c.base);
+          if (!f) throw new Error(`broken case ${c.id}: no fixture ${c.base}`);
+          return { ...f, id: c.id, brokenText: c.text };
+        }),
+      ]
+    : fixtures;
   let failed = 0;
-  for (const f of fixtures) {
+  for (const f of runs) {
     const out = broken
-      ? { text: BROKEN }
+      ? { text: f.brokenText }
       : (
           await cachedToolCall({
             tag: `said-line:${f.id}`,
@@ -242,7 +309,7 @@ async function main() {
     }
   }
   if (broken) {
-    const caught = failed === fixtures.length;
+    const caught = failed === runs.length;
     console.info(`broken-mode calibration (every case must fail): ${caught ? 'PASS' : 'FAIL'}`);
     process.exit(caught ? 0 : 1);
   }

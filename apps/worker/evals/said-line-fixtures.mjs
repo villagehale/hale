@@ -79,9 +79,10 @@ export const INTRO_REPLY_FACTS = {
     shared:
       'nothing about them is shared with anyone until both families say yes to the same introduction',
     offRamp: 'they can switch introductions off any time by just saying so',
+    next: 'Hale texts them only if a good match comes up; there is no search to report on',
   },
   discoverability_off: {
-    situation: 'they just switched introductions off; any pending ones are closed',
+    situation: 'they just switched introductions off for themselves; any pending ones are closed',
     next: 'Hale will not bring introductions up again',
   },
   discoverability_already_on: {

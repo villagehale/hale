@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "All facts present: both links match exactly, optional framing, 15-minute validity, why (daycare/school notices), and the Google unverified-app caution framed as normal and safe with Advanced then continue. Tone is friendly and brief. Minor issue: \"Sure.\" and \"for the same reason\" are fine, but the text doesn't explicitly say each link connects a named service beyond \"Calendar\" and \"Gmail\" labels, which is adequate. Deducting slightly for not stating the links are personal to the parent, though this is not strictly required for connector_links."
+  }
+}

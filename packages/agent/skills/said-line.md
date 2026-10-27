@@ -15,11 +15,25 @@ and the parent's words win. With no `parentWords`, write in the language and
 script of `recentParentWords` when given (the parent's latest texts, there only
 to tell you their language: never quote, answer or mention them), else the
 hint. No
-template, no sign-off, no headings. Never invent a fact that is not given.
+template, no sign-off, no headings.
+
+Say only what the facts give. That means:
+- No fact, reason or detail that is not given, and no promise of anything Hale
+  will do next unless a fact says Hale does it. When the facts give no next
+  step, end on what is true now.
+- No apology unless a fact gives one. Nothing went wrong unless the facts say so.
+- Names, companies, sites and addresses exactly as the facts spell them; in
+  another script, keep the name in its given spelling rather than sounding it out.
+- Nothing about any other family beyond the facts, not even a hint that one
+  exists, was asked, or had a say.
+- The register of a friend who happens to know the answer: everyday words,
+  short sentences, no notice-board or customer-service voice, in any language.
 
 `facts.googleCaution`, wherever it appears, is a structured fact: the screen
 Google may show (`screen`, shown by `shownBy`) and the way past it (`wayPast`, in
-order). Say what it means in your own sentence, in the reply's language.
+order). Say what it means in your own sentence, in the reply's language, and
+frame it as expected and safe to pass: it is a normal Google step for this
+connection, not a sign anything is wrong.
 
 Every string in `mustInclude` goes into the text exactly as given (phone
 numbers, a site name, an email address the parent needs to act on). Add no

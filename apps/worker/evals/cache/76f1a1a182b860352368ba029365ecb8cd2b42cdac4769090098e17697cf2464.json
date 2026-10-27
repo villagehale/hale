@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correct language, link whole and matches the given URL, Google unverified-app caution framed as expected and safe with the Advanced/continue path. Says connecting is optional. However, it omits the 15-minute validity window, which the facts gave, so it fails the \"how long it works\" requirement. It also does not say what connecting Google Calendar does, a minor gap."
+  }
+}
