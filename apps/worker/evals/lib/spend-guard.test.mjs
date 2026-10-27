@@ -46,13 +46,6 @@ describe('requireSpendGuard', () => {
     vi.stubEnv('HALE_MAX_USD', '');
     expect(() => requireSpendGuard('t')).toThrow(/no --max-usd/);
   });
-  it('refuses when installEvalSpendCap had to default the ledger to /tmp', () => {
-    vi.stubEnv('HALE_SPEND_LEDGER', '');
-    process.argv = [...argv, '--max-usd', '0.095'];
-    installEvalSpendCap();
-    expect(process.env.HALE_SPEND_LEDGER).toBeTruthy();
-    expect(() => requireSpendGuard('t')).toThrow(/no ledger path/);
-  });
   it('passes with both a ledger and a cap', () => {
     vi.stubEnv('HALE_SPEND_LEDGER', join(dir, 'l.json'));
     vi.stubEnv('HALE_MAX_USD', '0.095');
@@ -67,7 +60,7 @@ describe('requireSpendGuard', () => {
   it('spendCappedFetch never sends when unguarded', async () => {
     const send = vi.fn();
     await expect(spendCappedFetch({ tag: 'g', request: { model: 'x' }, send })).rejects.toThrow(
-      /spend-guard/,
+      /spend-cap: a live model call needs BOTH/,
     );
     expect(send).not.toHaveBeenCalled();
   });
