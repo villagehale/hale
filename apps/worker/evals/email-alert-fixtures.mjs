@@ -33,6 +33,8 @@ function args(over) {
     timeZone: TZ,
     language: 'en',
     passport: null,
+    // This parent's own recent texts to Hale (one-to-one only), for register.
+    recentParentWords: [],
     now: NOW,
     ...over,
   };
@@ -50,7 +52,7 @@ export const EMAIL_ALERT_FIXTURES = [
       }),
     }),
     watchFor:
-      'Village Montessori set a one-to-one parent-teacher conference, Wednesday Nov 4 at 3:30 p.m., Room 2. States who, what, when (p.m.) and where; may end with ONE question about adding it to the week because ask is add_to_week. Inventing what will be discussed or who attends is a LOW score.',
+      'Village Montessori set a one-to-one parent-teacher conference, Wednesday Nov 4 at 3:30 p.m., Room 2. States who, what, when (p.m.) and where; haleCanAddIt is true, so it MAY mention, once and casually, that Hale could add it to the week; it may also leave it out. Inventing what will be discussed or who attends is a LOW score.',
   },
   {
     id: 'montessori-group-fr',
@@ -63,9 +65,11 @@ export const EMAIL_ALERT_FIXTURES = [
         newTime: '2026-11-13T13:30:00Z',
         location: 'Ferme Brookside',
       }),
+      // The parent's own one-to-one texts: they tutoie Hale.
+      recentParentWords: ['Merci, c’est noté', 'Tu peux me rappeler l’heure du dîner jeudi ?'],
     }),
     watchFor:
-      "A whole-class trip moved from Friday Nov 6 to Friday Nov 13, 8:30 a.m., Brookside farm. Entirely in natural French a native speaker would send (articles, 'de 8 h 30', no calques). Both dates must be right. Inventing a reason, what to bring, or which other families go is a LOW score.",
+      "A whole-class trip moved from Friday Nov 6 to Friday Nov 13, 8:30 a.m., Brookside farm. Entirely in natural French a native speaker would send (articles, 'de 8 h 30', no calques). Both dates must be right. The parent writes with 'tu', so one familiar register all the way through. Inventing a reason, what to bring, or which other families go is a LOW score.",
   },
   {
     id: 'teen-category-only',
@@ -107,7 +111,7 @@ export const EMAIL_ALERT_FIXTURES = [
       },
     }),
     watchFor:
-      "A sign-up receipt for Mia's karate. The passport is set and ask is null: say the news, and mention once, briefly, that Hale is noting it for Mia. No question at all, no admin talk about how to correct it, and never that Hale booked or registered it.",
+      "A sign-up receipt for Mia's karate. The passport is set and haleCanAddIt is false: say the news, and mention once, briefly, that Hale is noting it for Mia. No question at all, no admin talk about how to correct it, and never that Hale booked or registered it.",
   },
 ];
 
@@ -128,6 +132,8 @@ export const EMAIL_ALERT_BROKEN_CASES = [
         location: 'Ferme Brookside',
       }),
     }),
+    // The writer declared the offer it made; these fail on their words, not a mismatch.
+    offered: true,
     text: "La sortie à la ferme Brookside est maintenant le vendredi 13 novembre à 8 h 30. Tu veux que je l'ajoute à votre semaine ?",
     watchFor:
       "Mixes 'tu' with 'votre' in one text: an inconsistent register a native speaker would not send. A LOW score.",
@@ -143,6 +149,8 @@ export const EMAIL_ALERT_BROKEN_CASES = [
         location: 'Brookside farm',
       }),
     }),
+    // The writer declared the offer it made; these fail on their words, not a mismatch.
+    offered: true,
     text: 'Class trip to the farm. Old: Friday, Nov 6 at 8:30 a.m. New: Friday, Nov 13 at 8:30 a.m. Want me to add it to your week?',
     watchFor:
       'A change written as an old/new change log, not how a friend says what it is now. A LOW score.',
@@ -155,6 +163,8 @@ export const EMAIL_ALERT_BROKEN_CASES = [
       from: 'Little Dragons <hello@dragons.example>',
       event: event({ title: 'Little Dragons Karate', newTime: '2026-11-07T14:00:00Z' }),
     }),
+    // The writer declared the offer it made; these fail on their words, not a mismatch.
+    offered: true,
     text: "Mia's in for Little Dragons Karate, first class Saturday Nov 7 at 9 a.m. Want me to note it on her record? And want it on your calendar?",
     watchFor:
       'Two asks in one text (a passport note AND a calendar offer). One ask per text; this is a LOW score.',
@@ -169,6 +179,8 @@ export const EMAIL_ALERT_BROKEN_CASES = [
       event: event({ title: 'a health appointment', newTime: '2026-11-02T15:00:00Z' }),
       from: 'Northside Counselling <care@northside.example>',
     }),
+    // The writer declared the offer it made; these fail on their words, not a mismatch.
+    offered: true,
     text: 'Email alert: Northside Counselling booked Mia in for 2:00!! Bring snacks. https://hale.example/p Added to passport. Reply YES?',
     watchFor: 'Category-only teen mail; everything about this text is wrong.',
   },
@@ -178,6 +190,8 @@ export const EMAIL_ALERT_BROKEN_CASES = [
       from: 'Father William Meehan <frwilliam@parish.example>',
       event: event({ title: 'RCIA', newTime: '2026-10-29T23:30:00Z' }),
     }),
+    // The writer declared the offer it made; these fail on their words, not a mismatch.
+    offered: true,
     text: 'Father William Meehan has RCIA on Thursday, Oct 29 at 7:30 p.m. Want me to add it to your week?',
     watchFor:
       "An ADULT's event (RCIA is adult faith formation) in a code-built 'X has Y on <date>' frame with a fixed CTA. Hale is for the kids' year; texting a parent about an adult event, in a template, is a 1.",
@@ -199,6 +213,8 @@ export const EMAIL_ALERT_BROKEN_CASES = [
       from: 'Martin Madsen <martin@example.org>',
       event: event({ title: 'House Supper', newTime: '2026-10-31T22:00:00Z' }),
     }),
+    // The writer declared the offer it made; these fail on their words, not a mismatch.
+    offered: true,
     text: 'Martin Madsen has House Supper on Saturday, Oct 31 at 6:00 p.m. Want me to add it to your week?',
     watchFor:
       "An adult's dinner in the code-built 'X has Y on <date>' template with a fixed CTA. Not about the kids, and templated. A LOW score.",
@@ -214,6 +230,20 @@ export const EMAIL_ALERT_BROKEN_CASES = [
     watchFor:
       "Mail the parent sent THEMSELVES, relayed back to them in the code-built 'X sent something about Y' frame. Telling a parent about their own email is a 1.",
   },
+  {
+    id: 'offered-flag-mismatch',
+    // The text offers to add it, but the writer declared offered=false: code would keep no
+    // offer row, so a YES would match nothing. The judge fails a text that disagrees with
+    // its own flag.
+    args: args({
+      kind: 'new_event',
+      event: event({ title: 'Picture day', newTime: '2026-11-06T13:30:00Z' }),
+    }),
+    offered: false,
+    text: 'Village Montessori set picture day for Friday, Nov 6 at 8:30 a.m. I can pop it on your week if you want.',
+    watchFor:
+      'The text offers to add the event but offered is false: the text and its offered flag disagree. A 1.',
+  },
 ];
 
 // #922's own scored references, appended to the shared general set. Examples to calibrate
@@ -221,14 +251,14 @@ export const EMAIL_ALERT_BROKEN_CASES = [
 export const EMAIL_ALERT_REFERENCE_TEXTS = [
   {
     facts:
-      'Village Montessori moved the class pumpkin patch trip to Friday Nov 13, 9:00 AM. ask: add_to_week.',
+      'Village Montessori moved the class pumpkin patch trip to Friday Nov 13, 9:00 AM. haleCanAddIt: true.',
     text: 'Heads up, Village Montessori moved the pumpkin patch trip to next Friday at 9. I can throw it on your week if you like.',
     score: 5,
     why: 'Reads like a friend casually mentioning it, and the offer is a passing aside, not a service.',
   },
   {
     facts:
-      'Village Montessori moved the class pumpkin patch trip to Friday Nov 13, 9:00 AM. ask: add_to_week.',
+      'Village Montessori moved the class pumpkin patch trip to Friday Nov 13, 9:00 AM. haleCanAddIt: true.',
     text: 'Village Montessori moved the pumpkin patch trip to Friday, Nov 13 at 9:00 a.m. Would you like me to add it to your week?',
     score: 2,
     why: 'Facts are right, but the closing offer is an assistant offering a service, not a friend texting. Dock that register.',

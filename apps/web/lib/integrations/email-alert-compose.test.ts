@@ -28,7 +28,9 @@ const FACTS: EmailAlertFacts = {
   categoryOnly: false,
   fromCalendar: false,
   going: null,
-  ask: null,
+  notOnTheirCalendarYet: true,
+  haleCanAddIt: false,
+  recentParentWords: [],
   language: 'en',
   passport: null,
 };
@@ -46,8 +48,11 @@ describe('composeEmailAlertText', () => {
   const logged = (): string => JSON.stringify(spies.flatMap((spy) => spy.mock.calls));
 
   it('returns the model text when the first draft passes', async () => {
-    forceToolJson.mockResolvedValueOnce({ value: { text: '  The text.  ' } });
-    await expect(composeEmailAlertText(client, FACTS, 'fam')).resolves.toBe('The text.');
+    forceToolJson.mockResolvedValueOnce({ value: { text: '  The text.  ', offered: false } });
+    await expect(composeEmailAlertText(client, FACTS, 'fam')).resolves.toEqual({
+      text: 'The text.',
+      offered: false,
+    });
     expect(forceToolJson).toHaveBeenCalledTimes(1);
   });
 
@@ -84,7 +89,12 @@ describe('emailAlertRefusals', () => {
     expect(emailAlertRefusals('See https://a.example', FACTS)).toContain('link');
     expect(emailAlertRefusals('Write to a@b.ca', FACTS)).toContain('email_address');
     expect(emailAlertRefusals('Add it?', FACTS)).toContain('unbacked_question');
-    expect(emailAlertRefusals('Add it?', { ...FACTS, ask: 'add_to_week' })).toEqual([]);
+    // A question is backed only when the writer OFFERED and Hale can keep it.
+    expect(emailAlertRefusals('Add it?', { ...FACTS, haleCanAddIt: true }, true)).toEqual([]);
+    expect(emailAlertRefusals('Add it?', { ...FACTS, haleCanAddIt: true }, false)).toContain(
+      'unbacked_question',
+    );
+    expect(emailAlertRefusals('I can add it.', FACTS, true)).toContain('unbacked_offer');
     expect(emailAlertRefusals('x'.repeat(481), FACTS)).toContain('over_char_cap');
     expect(emailAlertRefusals('Picture day moved to Friday.', FACTS)).toEqual([]);
   });

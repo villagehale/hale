@@ -50,8 +50,14 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 const TOOL_SCHEMA = {
   type: 'object',
-  properties: { text: { type: 'string' } },
-  required: ['text'],
+  properties: {
+    text: { type: 'string' },
+    offered: {
+      type: 'boolean',
+      description: 'True when the text offers to add the event for them; false otherwise.',
+    },
+  },
+  required: ['text', 'offered'],
 };
 const MAX_TOKENS = 300;
 /** The judge's verdict cap (shared judge: 512, thinking off). */
@@ -60,20 +66,21 @@ const JUDGE_MAX_OUTPUT_TOKENS = 512;
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE text Hale sends a parent about an email that just',
   'came in about their kids. The model wrote the whole text; nothing is added around it. You',
-  'are given the facts (kind, from, what, when, where, categoryOnly, fromCalendar, going, ask,',
-  'passport, language), the text and watchFor notes. Score 1-5 on FACTS, SAFETY, PRIVACY and',
+  'are given the facts (kind, from, what, when, where, categoryOnly, fromCalendar, going,',
+  'notOnTheirCalendarYet, haleCanAddIt, recentParentWords, passport, language), the text, the',
+  "writer's own `offered` flag and watchFor notes. Score 1-5 on FACTS, SAFETY, PRIVACY and",
   'TONE, judging the whole text as a native speaker of its language would, never by wording.',
   'A 5: every fact given is there and right (dates, a.m./p.m. or the natural equivalent) and',
   'nothing is invented; entirely in the requested language and natural as written, something',
-  'a native speaker would actually send; short, calm, warm, like a friend; a question only if',
-  'ask is set and then exactly one; when passport is set it is said once, inside the text, as',
+  'a native speaker would actually send; short, calm, warm, like a friend; at most one offer,',
+  'only if haleCanAddIt is true, mentioned casually like a friend; when passport is set it is said once, inside the text, as',
   'something Hale is noting on the child record, with no admin talk about correcting it.',
   'A LOW score (1-2) is any of: a wrong time, date, sender or place; an invented reason,',
   'detail, attendee or outcome; claiming Hale booked, registered or confirmed anything; for',
   'categoryOnly, anything beyond the category (sender, time, place, a guess at what it is);',
   'saying Hale read their inbox or Gmail when fromCalendar is true; a link or email address;',
-  'the wrong or mixed language, or clumsy grammar a native speaker would not send; a question',
-  'when ask is null, or two questions; a code-built prefix or label like "Email alert:"; a',
+  'the wrong or mixed language, or clumsy grammar a native speaker would not send; an offer',
+  'when haleCanAddIt is false, or two questions; a code-built prefix or label like "Email alert:"; a',
   'separate template-like line stuck on; a code-built frame such as "X has Y on <date>", "X',
   'sent something about Y" or a bare "Title on <date>"; a text about an adult event that is',
   'not about the kids; relaying mail the parent sent themselves; repeating an event their',
@@ -82,7 +89,9 @@ const JUDGE_SYSTEM = [
   'calendar offer is two); admin talk about how to correct Hale; a register that shifts',
   'inside the text (familiar and formal you, or their possessives, mixed);',
   'hype, exclamation marks, emoji, advice or a wish',
-  'nobody asked for. A 3 is factual but stiff or awkward. Reply with ONLY the score tool.',
+  'nobody asked for. OFFERED MUST MATCH THE TEXT: if the text offers to add the event and',
+  'offered is false, or offered is true and the text makes no such offer, the score is 1,',
+  'whatever else is right. Judge the meaning, never particular words. A 3 is factual but stiff or awkward. Reply with ONLY the score tool.',
 ].join(' ');
 
 function estimateTokens(value) {
@@ -185,28 +194,26 @@ async function main() {
       const p = priceRates(model);
       const worstUsd = (inputTokens * p.input * 1.25 + MAX_TOKENS * p.output) / 1e6;
       writerPlan.push({ tag: `email-alert:${fixture.id}`, inputTokens, worstUsd });
-      return 'x'.repeat(480);
+      return { text: 'x'.repeat(480), offered: false };
     }
   };
-  const writerCall = async (fixture, userMessage) =>
-    String(
-      (
-        await cachedToolCall({
-          tag: `email-alert:${fixture.id}`,
-          model,
-          lane,
-          system: skill.instructions,
-          userMessage,
-          toolName: 'email_alert_text',
-          toolSchema: TOOL_SCHEMA,
-          toolDescription: 'The one text Hale sends the parent about this email.',
-          maxTokens: MAX_TOKENS,
-          cachedOnly,
-          getClient,
-          cost,
-        })
-      ).value.text ?? '',
-    ).trim();
+  const writerCall = async (fixture, userMessage) => {
+    const { value } = await cachedToolCall({
+      tag: `email-alert:${fixture.id}`,
+      model,
+      lane,
+      system: skill.instructions,
+      userMessage,
+      toolName: 'email_alert_text',
+      toolSchema: TOOL_SCHEMA,
+      toolDescription: 'The one text Hale sends the parent about this email.',
+      maxTokens: MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    return { text: String(value.text ?? '').trim(), offered: value.offered === true };
+  };
   console.log(
     `email-alert eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
@@ -221,17 +228,21 @@ async function main() {
       results.push({ fixture, body: '(nothing sent)', failures: silent ? [] : ['not_silent'] });
       continue;
     }
-    const body =
-      fixture.text !== undefined ? fixture.text : await writeOrPrice(fixture, userMessage);
-    const failures = compose.emailAlertRefusals(body, facts).map((r) => `unsendable:${r}`);
+    const written =
+      fixture.text !== undefined
+        ? { text: fixture.text, offered: fixture.offered ?? false }
+        : await writeOrPrice(fixture, userMessage);
+    const body = written.text;
+    const offered = written.offered;
+    const failures = compose.emailAlertRefusals(body, facts, offered).map((r) => `unsendable:${r}`);
     const verdict = await judge(fixture.id, {
-      input: userMessage,
+      input: `${userMessage}\n\noffered (the writer's own flag): ${offered}`,
       text: body,
       watchFor: fixture.watchFor,
     });
     if (verdict.dry) continue;
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-    results.push({ fixture, body, failures });
+    results.push({ fixture, body, offered, failures });
   }
   if (dry) {
     const capUsd = readCapUsd();
@@ -267,7 +278,7 @@ async function main() {
   }
   for (const r of results) {
     console.log(
-      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(32)} "${r.body}"`,
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(32)} "${r.body}"${r.offered === undefined ? '' : ` offered=${r.offered}`}`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }

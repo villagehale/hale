@@ -19,8 +19,6 @@ import type { ExtractionKind } from '~/lib/sentinel';
 
 export const EMAIL_ALERT_SKILL = 'email-alert';
 
-export type EmailAlertAsk = 'add_to_week' | 'calendar';
-
 /** One time, as separate facts in the parent's zone; the writer phrases it in their
  * language. `isoWeekday` is 1 (Monday) to 7 (Sunday); `time` is 24-hour HH:MM. */
 export interface EmailAlertWhen {
@@ -42,8 +40,15 @@ export interface EmailAlertFacts {
   fromCalendar: boolean;
   /** Other Hale families holding this session, or null when nothing may be said. */
   going: number | null;
-  /** The one question the text may end with, or null. Code decides; the model words it. */
-  ask: EmailAlertAsk | null;
+  /** The event is not on the family's calendar yet (not from their calendar, not an
+   * occasion Hale already holds). A FACT, not an instruction. */
+  notOnTheirCalendarYet: boolean;
+  /** Hale can add it if they want: a dated, future, non-teen occasion an offer row can keep.
+   * The writer decides whether to mention it and says so in `offered`. */
+  haleCanAddIt: boolean;
+  /** This parent's own latest texts, oldest first, so the writer can match how they write
+   * (form of address included). Nobody else's words, never a group chat's. */
+  recentParentWords: string[];
   language: ReplyLanguage;
   /** Interest passport facts (flag on, a receipt Hale will keep on the child's record), or
    * null. The model says it inside the text; code adds no line for it. */
@@ -60,24 +65,43 @@ const URL_SHAPE = /https?:\/\/\S+/i;
 const EMAIL_SHAPE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 
 /** Structural refusals only, never wording. */
-export function emailAlertRefusals(body: string, facts: EmailAlertFacts): string[] {
+export function emailAlertRefusals(
+  body: string,
+  facts: EmailAlertFacts,
+  offered = false,
+): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
   const found: string[] = [];
   if (text.length > EMAIL_ALERT_MAX_CHARS) found.push('over_char_cap');
   if (URL_SHAPE.test(text)) found.push('link');
   if (EMAIL_SHAPE.test(text)) found.push('email_address');
-  // A question with no row behind it is consent read against nothing (#649).
-  if (facts.ask === null && /[?？¿]/.test(text)) found.push('unbacked_question');
+  // An offer Hale cannot keep is a promise with no row behind it (#649).
+  if (offered && !facts.haleCanAddIt) found.push('unbacked_offer');
+  // A question with no offer row behind it is consent read against nothing (#649).
+  if (!offered && /[?？¿]/.test(text)) found.push('unbacked_question');
   return found;
 }
 
-const outputSchema = z.object({ text: z.string() });
-const outputJsonSchema = {
+const outputSchema = z.object({ text: z.string(), offered: z.boolean() });
+export const EMAIL_ALERT_OUTPUT_JSON_SCHEMA = {
   type: 'object',
-  properties: { text: { type: 'string' } },
-  required: ['text'],
+  properties: {
+    text: { type: 'string' },
+    offered: {
+      type: 'boolean',
+      description: 'True when the text offers to add the event for them; false otherwise.',
+    },
+  },
+  required: ['text', 'offered'],
 } as const;
+
+/** What the writer returns: the text and whether it offered to add the event. Code keeps
+ * an offer row only when `offered` is true. */
+export interface EmailAlertWritten {
+  text: string;
+  offered: boolean;
+}
 
 export const EMAIL_ALERT_MAX_ATTEMPTS = 2;
 
@@ -91,7 +115,7 @@ export async function composeEmailAlertText(
   client: AgentClient,
   facts: EmailAlertFacts,
   familyId: string,
-): Promise<string | null> {
+): Promise<EmailAlertWritten | null> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
     skill = await loadCronSkill(EMAIL_ALERT_SKILL);
@@ -111,13 +135,13 @@ export async function composeEmailAlertText(
         userMessage: emailAlertUserMessage(facts),
         toolName: 'email_alert_text',
         toolDescription: 'The one text Hale sends the parent about this email.',
-        inputJsonSchema: outputJsonSchema,
+        inputJsonSchema: EMAIL_ALERT_OUTPUT_JSON_SCHEMA,
         schema: outputSchema,
         maxTokens: 300,
       });
       const text = value.text.trim();
-      const refusals = emailAlertRefusals(text, facts);
-      if (refusals.length === 0) return text;
+      const refusals = emailAlertRefusals(text, facts, value.offered);
+      if (refusals.length === 0) return { text, offered: value.offered };
       console.warn({ familyId, attempt, refusals }, 'email alert: draft refused');
     } catch (err) {
       console.warn(

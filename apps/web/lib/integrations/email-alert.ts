@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, notExists } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { laneEnabled } from '~/lib/channel/lanes';
@@ -37,7 +37,7 @@ import {
   familyHoldsLiveBooking,
   recordActivityBooking,
 } from './booking';
-import type { EmailAlertAsk, EmailAlertFacts, EmailAlertWhen } from './email-alert-compose';
+import type { EmailAlertFacts, EmailAlertWhen, EmailAlertWritten } from './email-alert-compose';
 import {
   type EmailAlertOfferDraft,
   recordEmailAlertOffer,
@@ -255,7 +255,10 @@ export interface EmailAlertPorts {
     input: Parameters<typeof threadProactiveMessage>[1] & { source: EmailAlertThreadSource },
   ) => Promise<unknown>;
   /** The model writes the whole text from facts, or returns null (nothing sent). */
-  composeText(facts: EmailAlertFacts, familyId: string): Promise<string | null>;
+  composeText(facts: EmailAlertFacts, familyId: string): Promise<EmailAlertWritten | null>;
+  /** This parent's own latest texts in their own thread, oldest first, for register only.
+   * Never another parent's words and never a group chat's. */
+  recentParentWords(familyId: string, parentUserId: string): Promise<string[]>;
   /** The family's language tag, for the model-written text. */
   language(familyId: string): Promise<ReplyLanguage>;
   /** The parent's wall clock — the zone every time in the message is rendered in. */
@@ -496,24 +499,29 @@ export async function alertParentForEmail(
     going: counted,
     timeZone: input.timeZone,
     language: await ports.language(familyId),
+    recentParentWords: await ports.recentParentWords(familyId, parentUserId),
     passport: passport.facts,
     now,
   });
   // THE MODEL WRITES IT OR NOTHING GOES. Before the claim, so a text that was never
   // written leaves the dedupe key unspent and no row reads as a text in flight.
-  const message = await ports.composeText(facts, familyId);
-  if (message === null) return { alert: 'alert_unwritten', booking: null, going: null };
-  // The same pure decision the sentence above just made. Two calls of one function rather
-  // than a flag threaded between them: the CTA and the row it promises cannot disagree.
-  const offer = emailAlertOfferDraft({
-    kind: extraction.kind,
-    event: extraction.event,
-    teenContent: extraction.teenContent,
-    matchedEventRef: extraction.matchedEventRef,
-    booked,
-    from: input.envelope.from,
-    now,
-  });
+  const written = await ports.composeText(facts, familyId);
+  if (written === null) return { alert: 'alert_unwritten', booking: null, going: null };
+  const message = written.text;
+  // THE OFFER ROW EXISTS ONLY IF THE TEXT OFFERED. The writer decides whether to mention
+  // that Hale can add it and says so in `offered`; no row means a later YES matches
+  // nothing. The same pure decision `haleCanAddIt` was read off backs the row.
+  const offer = !written.offered
+    ? null
+    : emailAlertOfferDraft({
+        kind: extraction.kind,
+        event: extraction.event,
+        teenContent: extraction.teenContent,
+        matchedEventRef: extraction.matchedEventRef,
+        booked,
+        from: input.envelope.from,
+        now,
+      });
 
   // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race. The
   // dedupe read above is the cost guard; this is the correctness one.
@@ -1257,6 +1265,8 @@ export interface EmailAlertFactsInput {
   going: GoingCount | null;
   timeZone: string;
   language: ReplyLanguage;
+  /** This parent's own latest texts, for register. Absent = none. */
+  recentParentWords?: string[];
   /** Interest passport facts for the writer, or null/absent. Category-only mail drops them. */
   passport?: EmailAlertPassportFacts | null;
   now: Date;
@@ -1386,21 +1396,6 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
 };
 
 /**
- * WHICH QUESTION the text may end with, per kind. Code decides WHETHER (a question is
- * asked if and only if {@link emailAlertOfferDraft} returns a draft, i.e. a row will
- * exist to keep it — #649); the model decides the words. A receipt has already told the
- * parent they are in, so its open question is the calendar, not the week.
- */
-const ASK: Record<ExtractionKind, EmailAlertAsk> = {
-  cancellation: 'add_to_week',
-  reschedule: 'add_to_week',
-  new_event: 'add_to_week',
-  reminder_only: 'add_to_week',
-  unclear: 'add_to_week',
-  booking_confirmation: 'calendar',
-};
-
-/**
  * The FACTS the model writes the alert from — never a sentence.
  *
  * Teen (13+) mail is category-only: the pipeline already genericised the title, and this
@@ -1421,7 +1416,9 @@ export function emailAlertFacts(input: EmailAlertFactsInput): EmailAlertFacts {
       categoryOnly: true,
       fromCalendar: false,
       going: null,
-      ask: null,
+      notOnTheirCalendarYet: false,
+      haleCanAddIt: false,
+      recentParentWords: input.recentParentWords ?? [],
       language: input.language,
       passport: null,
     };
@@ -1430,7 +1427,7 @@ export function emailAlertFacts(input: EmailAlertFactsInput): EmailAlertFacts {
     whenFacts(iso, input.timeZone, input.now);
   const sender = clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, '');
   const fromCalendar = fromParentsCalendar(input.from);
-  const offered = emailAlertOfferDraft(input) !== null;
+  const canAdd = emailAlertOfferDraft(input) !== null;
   return {
     kind,
     from: fromCalendar || sender === '' ? null : sender,
@@ -1440,11 +1437,13 @@ export function emailAlertFacts(input: EmailAlertFactsInput): EmailAlertFacts {
     categoryOnly: false,
     fromCalendar,
     going,
-    ask: offered ? ASK[kind] : null,
+    notOnTheirCalendarYet: !fromCalendar && input.matchedEventRef === null,
+    haleCanAddIt: canAdd,
+    recentParentWords: input.recentParentWords ?? [],
     language: input.language,
     // ONE THING PER TEXT: an offer and a passport note never ride together. The offer
     // wins (a row keeps it); the passport is still stamped, unasked, for a later turn.
-    passport: offered ? null : (input.passport ?? null),
+    passport: canAdd ? null : (input.passport ?? null),
   };
 }
 
@@ -1618,4 +1617,50 @@ function clamp(text: string, max: number): string {
   const cut = text.slice(0, max);
   const space = cut.lastIndexOf(' ');
   return (space > max / 2 ? cut.slice(0, space) : cut).trimEnd();
+}
+
+/** How many of the parent's latest texts the writer reads for register. */
+export const EMAIL_ALERT_RECENT_PARENT_WORDS = 3;
+
+/**
+ * This parent's own latest inbound texts in this family, oldest first (VIL-433, same shape
+ * as #919's intro reader). Scoped to the one family and the one parent, and NEVER a group
+ * chat: a group's "vous/votre" or another parent's words are not how this parent writes
+ * to Hale one-to-one.
+ */
+export async function readEmailAlertParentWords(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<string[]> {
+  const m = schema.channelMessages;
+  const rows = await database
+    .select({ body: m.body })
+    .from(m)
+    .where(
+      and(
+        eq(m.familyId, familyId),
+        eq(m.parentUserId, parentUserId),
+        eq(m.direction, 'in'),
+        isNotNull(m.body),
+        notExists(
+          database
+            .select({ one: schema.linqGroupMembers.chatId })
+            .from(schema.linqGroupMembers)
+            .where(eq(schema.linqGroupMembers.chatId, m.providerChatId)),
+        ),
+        notExists(
+          database
+            .select({ one: schema.linqGroupRosters.chatId })
+            .from(schema.linqGroupRosters)
+            .where(eq(schema.linqGroupRosters.chatId, m.providerChatId)),
+        ),
+      ),
+    )
+    .orderBy(desc(m.createdAt))
+    .limit(EMAIL_ALERT_RECENT_PARENT_WORDS);
+  return rows
+    .map((row) => row.body?.trim() ?? '')
+    .filter((body) => body.length > 0)
+    .reverse();
 }

@@ -34,6 +34,7 @@ import {
   emptyBookingCounts,
   emptyEmailAlertCounts,
   gmailAlertSweepInput,
+  readEmailAlertParentWords,
 } from '~/lib/integrations/email-alert';
 import { composeEmailAlertText } from '~/lib/integrations/email-alert-compose';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
@@ -497,6 +498,8 @@ function emailAlertPorts(
       const client = voiceClient();
       return client === null ? null : composeEmailAlertText(client, facts, id);
     },
+    // Register only: this parent's own one-to-one texts, never a group's or anyone else's.
+    recentParentWords: (id, parentUserId) => readEmailAlertParentWords(database, id, parentUserId),
     parentAddresses: async (parentUserId) => {
       const [row] = await database
         .select({ email: schema.users.email })

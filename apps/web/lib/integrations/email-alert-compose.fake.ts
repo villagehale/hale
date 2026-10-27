@@ -1,4 +1,4 @@
-import type { EmailAlertFacts } from './email-alert-compose';
+import type { EmailAlertFacts, EmailAlertWritten } from './email-alert-compose';
 
 /**
  * A deterministic stand-in for the model, for MECHANICS tests only (send, ledger, offer,
@@ -15,13 +15,18 @@ export function fakeEmailAlertText(facts: EmailAlertFacts): string {
   if (facts.where) parts.push(`at ${facts.where}`);
   if (facts.going !== null) parts.push(`with ${facts.going} other Hale families`);
   if (facts.categoryOnly) parts.push('(details kept out)');
-  if (facts.ask) parts.push(`ask:${facts.ask}`);
+  if (facts.haleCanAddIt) parts.push('<offer>');
   if (facts.passport) parts.push(`passport:${facts.passport.activity}`);
   return parts.join(' ');
 }
 
 export const fakeEmailAlertWriter = {
-  composeText: async (facts: EmailAlertFacts) => fakeEmailAlertText(facts),
+  // Offers whenever Hale can add it; a test about `offered: false` overrides this.
+  composeText: async (facts: EmailAlertFacts): Promise<EmailAlertWritten> => ({
+    text: fakeEmailAlertText(facts),
+    offered: facts.haleCanAddIt,
+  }),
+  recentParentWords: async (): Promise<string[]> => [],
   language: async () => 'en' as const,
   // Screens, open by default so a mechanics test reaches the send; a test that is about a
   // screen overrides the one it is about.

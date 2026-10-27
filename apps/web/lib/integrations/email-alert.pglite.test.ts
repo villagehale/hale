@@ -6,6 +6,8 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
+import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { EmailAlertFacts } from '~/lib/integrations/email-alert-compose';
 import { fakeEmailAlertWriter } from '~/lib/integrations/email-alert-compose.fake';
@@ -23,6 +25,7 @@ import {
   emailAlertDedupeKey,
   emailAlertFacts,
 } from './email-alert';
+import { readEmailAlertParentWords } from './email-alert';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, type GoingCount, sessionKey } from './going';
 
@@ -612,7 +615,7 @@ describe('the offer at the end', () => {
    * row with no clause is a question nobody was asked that makes every bare affirmative in
    * the household ambiguous for a day.
    */
-  const CTA = 'ask:add_to_week';
+  const CTA = '<offer>';
 
   const future = (
     over: Partial<ExtractedEvent> & { kind?: ExtractionKind; teenContent?: boolean } = {},
@@ -720,7 +723,13 @@ describe('the offer at the end', () => {
       location: 'the gym',
     };
     const facts = emailAlertFacts({ ...RENDER_FOR_OFFER, from, kind: 'reminder_only', event });
-    expect(facts).toMatchObject({ fromCalendar: true, from: null, what: 'Gymnastics', ask: null });
+    expect(facts).toMatchObject({
+      fromCalendar: true,
+      from: null,
+      what: 'Gymnastics',
+      haleCanAddIt: false,
+      notOnTheirCalendarYet: false,
+    });
     // Separate facts, never a built-up English label: the writer phrases it in its language.
     expect(facts.when.was).toEqual({
       date: '2026-10-01',
@@ -746,7 +755,8 @@ describe('the offer at the end', () => {
     expect(school).toMatchObject({
       fromCalendar: false,
       from: 'Google Classroom',
-      ask: 'add_to_week',
+      haleCanAddIt: true,
+      notOnTheirCalendarYet: true,
     });
 
     // A calendar mail about a CHANGE is news (an unchanged one sends nothing; see below),
@@ -792,7 +802,8 @@ describe('the offer at the end', () => {
       when: { was: null, now: null },
       where: null,
       going: null,
-      ask: null,
+      haleCanAddIt: false,
+      recentParentWords: [],
       what: 'a message about school',
     });
   });
@@ -1240,7 +1251,7 @@ describe('the interest passport rides as FACTS to the writer, never as code-writ
     const WRITTEN = 'MODEL-WRITTEN-ALERT';
     h.ports.composeText = async (facts) => {
       seen.push(facts);
-      return WRITTEN;
+      return { text: WRITTEN, offered: false };
     };
     const result = await alertParentForEmail(
       db.database,
@@ -1440,7 +1451,7 @@ describe('screens before any alert (prod samples, Oct 2026)', () => {
     }
     // And on the wire the text is the writer's, byte for byte.
     const h = harness();
-    h.ports.composeText = async () => 'WRITER-ONLY';
+    h.ports.composeText = async () => ({ text: 'WRITER-ONLY', offered: false });
     await expect(alert(h)).resolves.toBe('sent');
     expect(h.transport.sent[0]?.body).toBe('WRITER-ONLY');
   });
@@ -1478,7 +1489,8 @@ describe('one thing per text, and silence when there is nothing new', () => {
       },
       passport: PASSPORT,
     });
-    expect(facts.ask).toBe('calendar');
+    expect(facts.haleCanAddIt).toBe(true);
+    expect(facts.notOnTheirCalendarYet).toBe(true);
     expect(facts.passport).toBeNull();
   });
 
@@ -1489,7 +1501,7 @@ describe('one thing per text, and silence when there is nothing new', () => {
       event: { title: 'Karate', childRef: null, originalTime: null, newTime: null, location: null },
       passport: PASSPORT,
     });
-    expect(facts.ask).toBeNull();
+    expect(facts.haleCanAddIt).toBe(false);
     expect(facts.passport).toEqual(PASSPORT);
   });
 
@@ -1504,7 +1516,7 @@ describe('one thing per text, and silence when there is nothing new', () => {
     let asked = 0;
     h.ports.composeText = async () => {
       asked += 1;
-      return 'x';
+      return { text: 'x', offered: false };
     };
     const result = await alertPair(h, 'm-pizza', {
       envelope: { ...ENVELOPE, from: 'Google Calendar <calendar-notification@google.com>' },
@@ -1577,5 +1589,146 @@ describe('the writer gets parts, not a built-up label (prod: clumsy French)', ()
       },
     });
     expect(facts.when.now).toBeNull();
+  });
+});
+
+describe('the writer decides the offer; code keeps a row only when it did (VIL-433)', () => {
+  const picture = () =>
+    classified({
+      kind: 'new_event',
+      title: 'Picture day',
+      originalTime: null,
+      newTime: '2026-10-02T13:00:00.000Z',
+    });
+  const offerRows = () =>
+    db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.familyId, family.familyId));
+  const familyEvents = () =>
+    db.database
+      .select()
+      .from(schema.familyEvents)
+      .where(eq(schema.familyEvents.familyId, family.familyId));
+
+  it('passes the facts, never an instruction: not on their calendar yet, and Hale can add it', async () => {
+    const h = harness({ classification: picture() });
+    const seen: EmailAlertFacts[] = [];
+    h.ports.composeText = async (facts) => {
+      seen.push(facts);
+      return { text: 'Picture day is Friday.', offered: false };
+    };
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(seen[0]).toMatchObject({ notOnTheirCalendarYet: true, haleCanAddIt: true });
+    expect(seen[0]).not.toHaveProperty('ask');
+  });
+
+  it('offered=false: the text goes, and NO offer row is created', async () => {
+    const h = harness({ classification: picture() });
+    h.ports.composeText = async () => ({ text: 'Picture day is Friday.', offered: false });
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(h.transport.sent[0]?.body).toBe('Picture day is Friday.');
+    await expect(offerRows()).resolves.toHaveLength(0);
+  });
+
+  it('offered=true: exactly one offer row backs the text', async () => {
+    const h = harness({ classification: picture() });
+    h.ports.composeText = async () => ({
+      text: 'Picture day Friday, I can pop it in.',
+      offered: true,
+    });
+    await expect(alert(h)).resolves.toBe('sent');
+    await expect(offerRows()).resolves.toHaveLength(1);
+  });
+
+  it('a parent YES after a text with no offer row creates no calendar event', async () => {
+    const h = harness({ classification: picture() });
+    h.ports.composeText = async () => ({ text: 'Picture day is Friday.', offered: false });
+    await expect(alert(h)).resolves.toBe('sent');
+    await expect(offerRows()).resolves.toHaveLength(0);
+
+    const open = await defaultOpenQuestionReader().open(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+    const verdict = await emailAlertAddHandler({
+      writeReceipt: { write: async (facts) => `${facts.happened}|${facts.title}` },
+    }).handle(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      conversationId: randomUUID(),
+      body: 'yes',
+      send: async () => ({ providerMessageId: 'prov-1', channel: 'sms' as const }),
+      now: NOW,
+      resolved: null,
+      openQuestions: async () => open,
+      inboundChannelMessageId: randomUUID(),
+    });
+    expect(verdict).toEqual({ claimed: false });
+    await expect(familyEvents()).resolves.toHaveLength(0);
+  });
+
+  it("hands the writer this parent's own recent words from the port", async () => {
+    const h = harness({ classification: picture() });
+    h.ports.recentParentWords = async () => ['salut, merci!'];
+    const seen: EmailAlertFacts[] = [];
+    h.ports.composeText = async (facts) => {
+      seen.push(facts);
+      return { text: 'x', offered: false };
+    };
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(seen[0]?.recentParentWords).toEqual(['salut, merci!']);
+  });
+});
+
+describe('readEmailAlertParentWords: only this parent, only one-to-one', () => {
+  let at = 0;
+  async function inbound(
+    who: { familyId: string; parentUserId: string },
+    body: string,
+    over: { chatId?: string; direction?: 'in' | 'out' } = {},
+  ) {
+    at += 1;
+    await db.database.insert(schema.channelMessages).values({
+      familyId: who.familyId,
+      parentUserId: who.parentUserId,
+      channel: 'imessage',
+      direction: over.direction ?? 'in',
+      category: 'reply',
+      providerChatId: over.chatId ?? 'chat-1to1',
+      status: 'delivered',
+      body,
+      createdAt: new Date(NOW.getTime() - 60_000 * (100 - at)),
+    });
+  }
+
+  it("returns the parent's latest three one-to-one texts, oldest first, and nobody else's", async () => {
+    const other = await seedFamily(db.database, 'Other family');
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: family.familyId,
+      chatId: 'chat-group',
+      userId: family.parentUserId,
+      phoneE164Encrypted: 'enc',
+      phoneE164Hash: 'hash',
+      role: 'parent',
+    });
+    await inbound(family, 'oldest, dropped by the limit');
+    await inbound(family, 'un');
+    await inbound(family, 'deux');
+    await inbound(other, 'another family');
+    await inbound(family, 'votre groupe', { chatId: 'chat-group' });
+    await inbound(family, 'Hale wrote this', { direction: 'out' });
+    await inbound(family, 'trois');
+
+    await expect(
+      readEmailAlertParentWords(db.database, family.familyId, family.parentUserId),
+    ).resolves.toEqual(['un', 'deux', 'trois']);
+  });
+
+  it('is empty for a parent who has never texted', async () => {
+    await expect(
+      readEmailAlertParentWords(db.database, family.familyId, family.parentUserId),
+    ).resolves.toEqual([]);
   });
 });

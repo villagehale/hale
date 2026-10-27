@@ -1066,8 +1066,8 @@ describe('the booking write', () => {
     const h = harness();
     await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
     await expect(bookingRows()).resolves.toHaveLength(0);
-    expect(h.transport.sent[0]?.body).toContain('ask:add_to_week');
-    expect(h.transport.sent[0]?.body).not.toContain('ask:calendar');
+    expect(h.transport.sent[0]?.body).toContain('[new_event]');
+    expect(h.transport.sent[0]?.body).not.toContain('[booking_confirmation]');
   });
 
   it('counts a booking that never reached the decision as null, not as a refusal', async () => {
@@ -1233,7 +1233,7 @@ describe('the offer that must not be made twice', () => {
       going: 'going_dark',
     });
 
-    expect(h.transport.sent[0]?.body).toContain('ask:calendar');
+    expect(h.transport.sent[0]?.body).toContain('<offer>');
     await expect(offerRows()).resolves.toHaveLength(1);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBeNull();

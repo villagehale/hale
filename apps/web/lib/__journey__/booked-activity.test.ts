@@ -311,7 +311,7 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     expect(text).toContain('City of Brookfield Recreation');
     expect(text).toContain('Preschool Swim Level 2');
     expect(text).toContain('2026-08-01 09:00');
-    expect(text).toContain('ask:calendar');
+    expect(text).toContain('<offer>');
     // The receipt's own details have no column and never reach the wire.
     expect(text).not.toContain('RC-88214');
     expect(text).not.toContain('96.00');
