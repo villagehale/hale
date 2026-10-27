@@ -244,6 +244,28 @@ export const BROKEN_CASES = [
   },
 ];
 
+/**
+ * The --broken footer. Calibration holds only if EVERY broken case fails; normal cases
+ * (real replies, as in --broken --rescore) are meant to PASS and are reported on their own
+ * line, never counted as a broken case that slipped through. Exit ok needs both.
+ * @param {{ fixture: { id: string }, failures: string[], kind: 'normal' | 'broken' }[]} results
+ */
+export function brokenFooter(results) {
+  const brokenCases = results.filter((r) => r.kind === 'broken');
+  const normal = results.filter((r) => r.kind === 'normal');
+  const slipped = brokenCases.filter((r) => r.failures.length === 0).map((r) => r.fixture.id);
+  const normalFailed = normal.filter((r) => r.failures.length > 0).map((r) => r.fixture.id);
+  const calibrated = slipped.length === 0;
+  const lines = [
+    `broken-mode calibration (${brokenCases.length} broken cases, every one must fail): ${calibrated ? 'PASS' : `FAIL (passed: ${slipped.join(', ')})`}`,
+  ];
+  if (normal.length > 0)
+    lines.push(
+      `normal cases (${normal.length}, every one must pass): ${normalFailed.length === 0 ? 'PASS' : `FAIL (failed: ${normalFailed.join(', ')})`}`,
+    );
+  return { ok: calibrated && normalFailed.length === 0, calibrated, slipped, normalFailed, lines };
+}
+
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -312,7 +334,15 @@ async function main() {
       watchFor: fixture.watchFor,
     });
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-    results.push({ fixture, body, failures, scores: verdict.samples });
+    // A real reply (normal run, or --broken --rescore) is meant to PASS; only the
+    // deterministic stand-in body is meant to fail.
+    results.push({
+      fixture,
+      body,
+      failures,
+      scores: verdict.samples,
+      kind: broken && !rescore ? 'broken' : 'normal',
+    });
   }
   if (broken) {
     for (const bc of BROKEN_CASES) {
@@ -333,6 +363,7 @@ async function main() {
         body: bc.body,
         failures,
         scores: verdict.samples,
+        kind: 'broken',
       });
     }
   }
@@ -372,14 +403,9 @@ async function main() {
   );
   const allPass = results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
-  // Calibration holds only if EVERY broken case fails; one that slips through means the
-  // judge cannot see that defect.
-  const slipped = results.filter((r) => r.failures.length === 0).map((r) => r.fixture.id);
-  const calibrated = slipped.length === 0;
-  console.log(
-    `broken-mode calibration (every case must fail): ${calibrated ? 'PASS' : `FAIL (passed: ${slipped.join(', ')})`}`,
-  );
-  process.exit(calibrated ? 0 : 1);
+  const footer = brokenFooter(results);
+  for (const line of footer.lines) console.log(line);
+  process.exit(footer.ok ? 0 : 1);
 }
 
 // Importing this file (a test, a load check) must never run the eval.
