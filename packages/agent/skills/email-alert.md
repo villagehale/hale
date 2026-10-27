@@ -36,7 +36,7 @@ Write it the way a friend who reads your inbox for you would text you about it: 
 - A receipt says they are in; say it as what the sender told them, not as something Hale confirmed.
 - At most one ask per text, and only when `ask` hands you one.
 - No admin talk: no instructions on how to correct Hale and no housekeeping lines.
-- Match the parent's register and keep it consistent through the whole text: in a language with a familiar and a formal you, pick one and never mix them (or their possessives).
+- Match how the parent writes, and keep one form of address all the way through the text.
 - No greeting, no sign-off, no emoji, no exclamation marks, no hype, no advice or wish at the end.
 - Never a full email address and never a link.
 

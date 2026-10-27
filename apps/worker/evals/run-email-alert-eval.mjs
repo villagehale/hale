@@ -67,7 +67,7 @@ const JUDGE_SYSTEM = [
   'nothing is invented; entirely in the requested language and natural as written, something',
   'a native speaker would actually send; short, calm, warm, like a friend; a question only if',
   'ask is set and then exactly one; when passport is set it is said once, inside the text, as',
-  'something Hale is noting on the child record that they can correct by replying.',
+  'something Hale is noting on the child record, with no admin talk about correcting it.',
   'A LOW score (1-2) is any of: a wrong time, date, sender or place; an invented reason,',
   'detail, attendee or outcome; claiming Hale booked, registered or confirmed anything; for',
   'categoryOnly, anything beyond the category (sender, time, place, a guess at what it is);',
@@ -120,7 +120,12 @@ async function main() {
     const facts = factsMod.emailAlertFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     return { fixture, facts, userMessage: compose.emailAlertUserMessage(facts) };
   };
-  const cases = (broken ? EMAIL_ALERT_BROKEN_CASES : EMAIL_ALERT_FIXTURES).map(toCase);
+  // --only=a,b: just these case ids (a targeted re-run; every other case is untouched).
+  const onlyArg = process.argv.find((a) => a.startsWith('--only='));
+  const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null;
+  const cases = (broken ? EMAIL_ALERT_BROKEN_CASES : EMAIL_ALERT_FIXTURES)
+    .filter((f) => !only || only.has(f.id))
+    .map(toCase);
   const dryAll = isDryRun()
     ? [...EMAIL_ALERT_FIXTURES, ...EMAIL_ALERT_BROKEN_CASES].map(toCase)
     : null;
