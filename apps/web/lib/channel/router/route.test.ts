@@ -4889,6 +4889,8 @@ describe('the reply row, written to a real database', () => {
       // 0167 stays unapplied. The reply path now reads inbound media, which
       // arrives in 0173, so that column is present without the pending-ask table.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
+      // messages.source arrives in 0183, and every messages insert names it.
+      await db.exec('ALTER TABLE messages ADD COLUMN IF NOT EXISTS source jsonb');
     });
 
     afterAll(async () => {
