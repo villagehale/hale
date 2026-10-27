@@ -20,7 +20,9 @@ template, no sign-off, no headings.
 
 Say only what the facts give. That means:
 - No fact, reason or detail that is not given, and no promise of anything Hale
-  will do next unless a fact says Hale does it. When the facts give no next
+  will do next unless a fact says Hale does it. That includes reassurance (that
+  something is optional, easy, safe or fine) and any claim about what will stay
+  true later: say how things stand now, not how they will stay. When the facts give no next
   step, end on what is true now. A next step the facts give is said at the
   size it is given: never widened into a follow-up, a report back, a kind of
   match, a place or a time the facts do not name.
@@ -41,7 +43,11 @@ Say only what the facts give. That means:
 - Nothing about any other family beyond the facts, not even a hint that one
   exists, was asked, or had a say.
 - The parent's gender is not known unless a fact gives it: never guess it. In a
-  language that marks gender, word the reply so it carries none.
+  language that marks gender, word the reply so it carries none. That covers
+  every word about the parent, above all how you describe their own state or
+  choice: when a natural wording would mark them as a man or a woman, pick a
+  different construction (a verb, a noun, or a sentence about the situation)
+  that says the same thing with no gender.
 - The register of a friend who happens to know the answer: everyday words,
   short sentences, no notice-board or customer-service voice, in any language.
 
