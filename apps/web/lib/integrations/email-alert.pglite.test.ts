@@ -6,6 +6,8 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import type { EmailAlertFacts } from '~/lib/integrations/email-alert-compose';
 import { fakeEmailAlertWriter } from '~/lib/integrations/email-alert-compose.fake';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -1181,5 +1183,158 @@ describe('the model writes the whole text', () => {
       expect(trail).not.toContain(content);
     }
     for (const spy of spies) spy.mockRestore();
+  });
+});
+
+describe('the interest passport rides as FACTS to the writer, never as code-written text', () => {
+  const RECEIPT = {
+    subject: 'Registration confirmed: Little Dragons Karate, Fall session, 12 weeks',
+    from: 'Little Dragons <hello@dragons.example>',
+    snippet: 'You are registered for Little Dragons Karate.',
+    receivedAt: '2026-09-17T14:00:00.000Z',
+  };
+
+  async function passportHousehold(): Promise<{ integrationId: string }> {
+    await db.database
+      .insert(schema.children)
+      .values({ familyId: family.familyId, name: 'Mia', dateOfBirth: '2019-03-02' });
+    const [row] = await db.database
+      .insert(schema.integrations)
+      .values({
+        familyId: family.familyId,
+        userId: family.parentUserId,
+        provider: 'gmail',
+        status: 'active',
+      })
+      .returning({ id: schema.integrations.id });
+    return { integrationId: row?.id as string };
+  }
+
+  function karate(): SentinelClassification {
+    return classified({
+      kind: 'booking_confirmation',
+      title: 'Little Dragons Karate',
+      originalTime: null,
+      newTime: '2026-09-26T13:00:00.000Z',
+      location: null,
+    });
+  }
+
+  async function run(flag: 'true' | undefined) {
+    if (flag) vi.stubEnv('INTEREST_PASSPORT_ENABLED', flag);
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    const { integrationId } = await passportHousehold();
+    const h = harness({ classification: karate() });
+    const seen: EmailAlertFacts[] = [];
+    // The writer's text is a sentinel string: anything else on the wire was added by code.
+    const WRITTEN = 'MODEL-WRITTEN-ALERT';
+    h.ports.composeText = async (facts) => {
+      seen.push(facts);
+      return WRITTEN;
+    };
+    const result = await alertParentForEmail(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId,
+        messageId: 'm-karate',
+        envelope: RECEIPT,
+        cancelledThisSweep: new Set<string>(),
+        timeZone: 'America/Toronto',
+        now: NOW,
+      },
+      h.ports,
+    );
+    return { h, seen, result, WRITTEN };
+  }
+
+  it('flag on: the passport facts reach the writer, and the wire body is exactly what it wrote', async () => {
+    const { h, seen, result, WRITTEN } = await run('true');
+    expect(result.alert).toBe('sent');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.passport).toMatchObject({
+      childName: 'Mia',
+      activity: 'Little Dragons Karate',
+      purpose: 'activity_record',
+      seenIn: 'gmail_receipt',
+    });
+    // No code-joined sentence, prefix or suffix: the outgoing text is the model's, byte for
+    // byte (the opt-out line is off under the default verdict here).
+    expect(h.transport.sent[0]?.body).toBe(WRITTEN);
+    expect(h.threaded[0]?.body).toBe(WRITTEN);
+    // And the stamp records that the parent was told.
+    const rows = await db.database
+      .select({ askedAt: schema.kidInterests.askedAt })
+      .from(schema.kidInterests)
+      .where(eq(schema.kidInterests.familyId, family.familyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.askedAt).not.toBeNull();
+  });
+
+  it('flag off: the writer gets passport null and nothing else changes', async () => {
+    const { h, seen, WRITTEN } = await run(undefined);
+    expect(seen[0]?.passport).toBeNull();
+    expect(h.transport.sent[0]?.body).toBe(WRITTEN);
+  });
+
+  it('flag on, writer fails: nothing is sent and no stamp says the parent was asked', async () => {
+    vi.stubEnv('INTEREST_PASSPORT_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    const { integrationId } = await passportHousehold();
+    const h = harness({ classification: karate() });
+    h.ports.composeText = async () => null;
+    const result = await alertParentForEmail(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId,
+        messageId: 'm-karate',
+        envelope: RECEIPT,
+        cancelledThisSweep: new Set<string>(),
+        timeZone: 'America/Toronto',
+        now: NOW,
+      },
+      h.ports,
+    );
+    expect(result.alert).toBe('alert_unwritten');
+    expect(h.transport.sent).toHaveLength(0);
+  });
+});
+
+describe('messages.source (0183) on the real DDL', () => {
+  it('the thread write stores the event id, Gmail id and snippet on the coach transcript row', async () => {
+    await threadProactiveMessage(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: 'Saturday swim is off this week.',
+      source: { kind: 'gmail', eventId: null, gmailMessageId: 'm1', snippet: ENVELOPE.snippet },
+    });
+    const rows = await db.database
+      .select({ content: schema.messages.content, source: schema.messages.source })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+      .where(eq(schema.conversations.familyId, family.familyId));
+    expect(rows).toEqual([
+      {
+        content: 'Saturday swim is off this week.',
+        source: { kind: 'gmail', eventId: null, gmailMessageId: 'm1', snippet: ENVELOPE.snippet },
+      },
+    ]);
+  });
+
+  it('every other writer leaves it null', async () => {
+    await threadProactiveMessage(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: 'Plain note.',
+    });
+    const rows = await db.database
+      .select({ source: schema.messages.source })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+      .where(eq(schema.conversations.familyId, family.familyId));
+    expect(rows).toEqual([{ source: null }]);
   });
 });

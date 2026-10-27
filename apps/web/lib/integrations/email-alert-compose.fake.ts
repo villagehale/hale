@@ -16,6 +16,7 @@ export function fakeEmailAlertText(facts: EmailAlertFacts): string {
   if (facts.going !== null) parts.push(`with ${facts.going} other Hale families`);
   if (facts.categoryOnly) parts.push('(details kept out)');
   if (facts.ask) parts.push(`ask:${facts.ask}`);
+  if (facts.passport) parts.push(`passport:${facts.passport.activity}`);
   return parts.join(' ');
 }
 

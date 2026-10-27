@@ -20,7 +20,7 @@ import {
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { formatDayHeading } from '~/lib/format/datetime';
-import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
+import { type EmailAlertPassportFacts, passportForEmailAlert } from '~/lib/passport/ingest';
 import type {
   CorrelatedEventRef,
   ExtractedEvent,
@@ -250,12 +250,8 @@ export interface EmailAlertPorts {
   timeZone(parentUserId: string): Promise<string>;
 }
 
-export interface EmailAlertThreadSource {
-  /** The family occasion this email matched, or null. */
-  eventId: string | null;
-  gmailMessageId: string;
-  snippet: string;
-}
+/** messages.source (0183): the occasion matched (or null), the Gmail id, the snippet. */
+export type EmailAlertThreadSource = schema.MessageSource;
 
 export interface EmailAlertInput {
   familyId: string;
@@ -408,24 +404,9 @@ export async function alertParentForEmail(
   // that cannot exist.
   const counted = await readGoingFor(database, familyId, draft);
   const going = counted;
-  const facts = emailAlertFacts({
-    from: input.envelope.from,
-    kind: extraction.kind,
-    event: extraction.event,
-    teenContent: extraction.teenContent,
-    matchedEventRef: extraction.matchedEventRef,
-    booked,
-    going: counted,
-    timeZone: input.timeZone,
-    language: await ports.language(familyId),
-    now,
-  });
-  // THE MODEL WRITES IT OR NOTHING GOES. Before the claim, so a text that was never
-  // written leaves the dedupe key unspent and no row reads as a text in flight.
-  const message = await ports.composeText(facts, familyId);
-  if (message === null) return { alert: 'alert_unwritten', booking: null, going: null };
-  const passport = await attachPassportToEmailAlert(database, {
-    body: message,
+  // THE PASSPORT IS A FACT, NOT A LINE: decided before the model writes, handed to it, and
+  // said inside the one text it writes. Code joins nothing on.
+  const passport = await passportForEmailAlert(database, {
     sending: true,
     familyId,
     parentUserId,
@@ -438,6 +419,23 @@ export async function alertParentForEmail(
     childRef: extraction.event.childRef,
     now,
   });
+  const facts = emailAlertFacts({
+    from: input.envelope.from,
+    kind: extraction.kind,
+    event: extraction.event,
+    teenContent: extraction.teenContent,
+    matchedEventRef: extraction.matchedEventRef,
+    booked,
+    going: counted,
+    timeZone: input.timeZone,
+    language: await ports.language(familyId),
+    passport: passport.facts,
+    now,
+  });
+  // THE MODEL WRITES IT OR NOTHING GOES. Before the claim, so a text that was never
+  // written leaves the dedupe key unspent and no row reads as a text in flight.
+  const message = await ports.composeText(facts, familyId);
+  if (message === null) return { alert: 'alert_unwritten', booking: null, going: null };
   // The same pure decision the sentence above just made. Two calls of one function rather
   // than a flag threaded between them: the CTA and the row it promises cannot disagree.
   const offer = emailAlertOfferDraft({
@@ -492,7 +490,7 @@ export async function alertParentForEmail(
   try {
     const sent = await sendResolvingNewChat(ports.transport, {
       to,
-      body: withOptOut(passport.body, verdict.optOut),
+      body: withOptOut(message, verdict.optOut),
     });
     providerMessageId = sent.providerMessageId;
     if (sent.transport === 'imessage') {
@@ -559,15 +557,16 @@ export async function alertParentForEmail(
     draft,
     offered: offer !== null,
   });
-  await passport.afterSend();
+  await passport.afterSend(facts.passport !== null);
 
   // The composed sentence. The opt-out line is not appended, so this is also the wire
   // body. The coach re-reads this row next turn (channel/thread.ts).
   await ports.threadMessage(database, {
     familyId,
     parentUserId,
-    body: passport.body,
+    body: message,
     source: {
+      kind: 'gmail',
       eventId: extraction.matchedEventRef?.id ?? null,
       gmailMessageId: messageId,
       snippet: input.envelope.snippet,
@@ -1041,8 +1040,7 @@ async function recordBackfillEnvelope(
     // No text went out, so the audit's `offered` flag is false.
     offered: false,
   });
-  const passport = await attachPassportToEmailAlert(database, {
-    body: '',
+  const passport = await passportForEmailAlert(database, {
     sending: false,
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -1055,7 +1053,7 @@ async function recordBackfillEnvelope(
     childRef: extraction.event.childRef,
     now: input.now,
   });
-  await passport.afterSend();
+  await passport.afterSend(false);
   return quiet(booking);
 }
 
@@ -1192,6 +1190,8 @@ export interface EmailAlertFactsInput {
   going: GoingCount | null;
   timeZone: string;
   language: ReplyLanguage;
+  /** Interest passport facts for the writer, or null/absent. Category-only mail drops them. */
+  passport?: EmailAlertPassportFacts | null;
   now: Date;
 }
 
@@ -1356,6 +1356,7 @@ export function emailAlertFacts(input: EmailAlertFactsInput): EmailAlertFacts {
       going: null,
       ask: null,
       language: input.language,
+      passport: null,
     };
   }
   const at = (iso: string | null): string | null => longWhen(iso, input.timeZone, input.now);
@@ -1373,6 +1374,7 @@ export function emailAlertFacts(input: EmailAlertFactsInput): EmailAlertFacts {
     going,
     ask: offered ? ASK[kind] : null,
     language: input.language,
+    passport: input.passport ?? null,
   };
 }
 

@@ -219,6 +219,8 @@ export async function loadTranscript(
 export interface MessageScope {
   childId: string | null;
   topic: string | null;
+  /** What a proactive turn was about (messages.source, 0183). Omitted = null. */
+  source?: schema.MessageSource | null;
 }
 
 /** Appends one message turn to a conversation, carrying its scope (child + topic).
@@ -233,7 +235,14 @@ export async function appendMessage(
 ): Promise<string> {
   const rows = await database
     .insert(schema.messages)
-    .values({ conversationId, role, content, childId: scope.childId, topic: scope.topic })
+    .values({
+      conversationId,
+      role,
+      content,
+      childId: scope.childId,
+      topic: scope.topic,
+      source: scope.source ?? null,
+    })
     .returning({ id: schema.messages.id });
   const id = rows[0]?.id;
   if (!id) {

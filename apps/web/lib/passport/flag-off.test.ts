@@ -1,7 +1,7 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { foldPassportIntoOutbound } from './fold';
-import { attachPassportToEmailAlert, syncPassportFromCalendarChanges } from './ingest';
+import { passportForEmailAlert, syncPassportFromCalendarChanges } from './ingest';
 
 const database = new Proxy({} as Database, {
   get() {
@@ -11,8 +11,7 @@ const database = new Proxy({} as Database, {
 
 describe('passport flag off', () => {
   it('does not read the database from email, calendar, or an outbound fold', async () => {
-    const email = await attachPassportToEmailAlert(database, {
-      body: 'Practice moved to Tuesday.',
+    const email = await passportForEmailAlert(database, {
       sending: true,
       familyId: 'family',
       parentUserId: 'parent',
@@ -25,8 +24,8 @@ describe('passport flag off', () => {
       childRef: null,
       now: new Date('2026-04-15T15:00:00Z'),
     });
-    expect(email.body).toBe('Practice moved to Tuesday.');
-    await email.afterSend();
+    expect(email.facts).toBeNull();
+    await email.afterSend(true);
 
     await syncPassportFromCalendarChanges(database, {
       familyId: 'family',

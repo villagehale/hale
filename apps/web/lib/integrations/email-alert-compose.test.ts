@@ -30,6 +30,7 @@ const FACTS: EmailAlertFacts = {
   going: null,
   ask: null,
   language: 'en',
+  passport: null,
 };
 
 const client = {} as AgentClient;

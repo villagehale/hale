@@ -25,6 +25,7 @@ Write it the way a friend who reads your inbox for you would text you about it: 
   - `add_to_week` — ask, in your own words, whether they want it added to their week.
   - `calendar` — ask, in your own words, whether they want it on their calendar.
   When `ask` is null, ask nothing.
+- `passport` — null, or a sign-up Hale is keeping on the child's activity record (the interest passport): `childName` (or null), `activity`, `progress` (e.g. a season and week count, or null), `purpose` (`activity_record`: Hale's running list of what this child does, so later finds fit), `seenIn` (`gmail_receipt`). When present, say it once, in your own words, inside the same text: that you are keeping this on the child's record, and that they can just reply if it is wrong. It is not a second question; if `ask` is also set, the one question stays the one at the end. Never claim Hale booked or registered anything.
 - `language` — write the whole text in this language.
 
 ## How to write it

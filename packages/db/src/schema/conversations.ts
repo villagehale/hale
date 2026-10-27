@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, index, uniqueIndex, check, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { families } from './families.js';
 import { children } from './children.js';
@@ -52,6 +52,15 @@ export const conversations = pgTable(
  * is valid (topic null). ON DELETE SET NULL on `childId` — a removed child must
  * not cascade-delete the family's conversation history.
  */
+/** The email an email-alert turn came from: the occasion it matched, the Gmail id, the
+ * snippet. */
+export interface MessageSource {
+  kind: 'gmail';
+  eventId: string | null;
+  gmailMessageId: string;
+  snippet: string;
+}
+
 export const messages = pgTable(
   'messages',
   {
@@ -65,6 +74,9 @@ export const messages = pgTable(
     childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
     /** Coarse topic tag (health/sleep/feeding/…) for timeline filtering; null when untagged. */
     topic: text('topic'),
+    /** What a proactive turn was ABOUT (0183), so the coach can answer a reply to it.
+     * Null for every turn that has none. Never copied to a log or an audit row. */
+    source: jsonb('source').$type<MessageSource>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Soft delete (rule #6 / #9): a parent-removed turn is stamped, not erased, so
      * the audit row that references it stays intact. NULL = live; the read path

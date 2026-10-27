@@ -484,10 +484,9 @@ function emailAlertPorts(
 
   return {
     ...proactiveSendPorts(database),
-    // The thread row is the coach's transcript. `messages` has no column for what the
-    // text was about yet, so the source (occasion id, Gmail id, snippet) stops at this
-    // port until one exists — it never goes to an audit row or a log line.
-    threadMessage: (db, { source: _source, ...thread }) => threadProactiveMessage(db, thread),
+    // The thread row is the coach's transcript, and `messages.source` (0183) is where what
+    // the text was about lives (occasion id, Gmail id, snippet). Never an audit row or a log.
+    threadMessage: threadProactiveMessage,
     composeText: async (facts, id) => {
       // No model, no text: there is no fallback copy to send instead.
       const client = voiceClient();

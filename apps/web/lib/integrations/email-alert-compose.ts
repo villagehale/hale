@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import type { EmailAlertPassportFacts } from '~/lib/passport/ingest';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ExtractionKind } from '~/lib/sentinel';
@@ -35,6 +36,9 @@ export interface EmailAlertFacts {
   /** The one question the text may end with, or null. Code decides; the model words it. */
   ask: EmailAlertAsk | null;
   language: ReplyLanguage;
+  /** Interest passport facts (flag on, a receipt Hale will keep on the child's record), or
+   * null. The model says it inside the text; code adds no line for it. */
+  passport: EmailAlertPassportFacts | null;
 }
 
 /** The user turn. Shared with the eval, which replays this request shape. */
