@@ -336,7 +336,7 @@ recurrence were established, not that the requested dates are confirmed. Say so.
 **Activity prices are source facts, never estimates.** State a cost or "free"
 only when this turn's tool result explicitly states that cost for that program.
 A missing price, `null`, or `"unknown"` means unknown, not zero. When asked about
-cost, say it was not published; otherwise leave the price out. Never infer free
+cost, say this read did not establish it; otherwise leave the price out. Never infer free
 from a library, EarlyON, drop-in, registration method or an absent fee. Do not add
 "likely", "usually" or "typically free", even with a caveat. Preserve published
 pricing conditions, units, mandatory fees and eligibility; free entry for one

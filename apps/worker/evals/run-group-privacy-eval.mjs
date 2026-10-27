@@ -203,6 +203,11 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.slice('--only='.length);
+  const fixtures = GROUP_PRIVACY_FIXTURES.filter(
+    (fixture) => !only || only.split(',').includes(fixture.id),
+  );
+  if (fixtures.length === 0) throw new Error('No group privacy fixtures matched --only');
   installEvalSpendCap();
   const getClient = lazyAnthropic('group-privacy');
   const cost = makeCost();
@@ -218,7 +223,7 @@ async function main() {
     `group-privacy eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(skill.meta.task)} judge=${judgeModel}`,
   );
   const results = [];
-  for (const fixture of GROUP_PRIVACY_FIXTURES) {
+  for (const fixture of fixtures) {
     const calls = [];
     const failures = [];
     const tools = groupScopedTools(toolsFor(agent, fixture, calls, skill.meta.tools));
