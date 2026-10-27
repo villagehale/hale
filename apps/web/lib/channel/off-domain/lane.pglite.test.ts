@@ -988,6 +988,9 @@ describe('a pending ask on a database without its table', () => {
 
   beforeAll(async () => {
     before0167 = await createTestDb('0163_drop_retired_auth_tables.sql');
+    // The current families schema also carries source_code (migration 0182), which this
+    // older database predates; add it so inserts through the schema still work.
+    await before0167.exec('ALTER TABLE families ADD COLUMN IF NOT EXISTS source_code text');
   });
 
   afterAll(async () => {
