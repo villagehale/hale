@@ -721,7 +721,13 @@ describe('the offer at the end', () => {
     };
     const facts = emailAlertFacts({ ...RENDER_FOR_OFFER, from, kind: 'reminder_only', event });
     expect(facts).toMatchObject({ fromCalendar: true, from: null, what: 'Gymnastics', ask: null });
-    expect(facts.when.was).toBe('Thursday, Oct 1 at 4:15 p.m.');
+    // Separate facts, never a built-up English label: the writer phrases it in its language.
+    expect(facts.when.was).toEqual({
+      date: '2026-10-01',
+      isoWeekday: 4,
+      time: '16:15',
+      relativeDay: null,
+    });
     // The address alone is enough. A display name that is not Google Calendar is not.
     expect(
       emailAlertFacts({
@@ -1515,5 +1521,61 @@ describe('one thing per text, and silence when there is nothing new', () => {
     expect(alreadyOnCalendarUnchanged({ from, kind: 'cancellation' })).toBe(false);
     expect(alreadyOnCalendarUnchanged({ from, kind: 'reminder_only' })).toBe(true);
     expect(alreadyOnCalendarUnchanged({ from: ENVELOPE.from, kind: 'reminder_only' })).toBe(false);
+  });
+});
+
+describe('the writer gets parts, not a built-up label (prod: clumsy French)', () => {
+  const base = {
+    from: 'Village Montessori <office@villagemontessori.example>',
+    teenContent: false,
+    matchedEventRef: null,
+    booked: false,
+    going: null,
+    timeZone: 'America/Toronto',
+    now: new Date('2026-11-12T14:00:00.000Z'),
+  };
+  it('a French move: sender, event, place and each time arrive as separate facts', () => {
+    const facts = emailAlertFacts({
+      ...base,
+      language: 'fr',
+      kind: 'reschedule',
+      event: {
+        title: 'Sortie de classe à la ferme',
+        childRef: null,
+        originalTime: '2026-11-06T13:30:00.000Z',
+        newTime: '2026-11-13T13:30:00.000Z',
+        location: 'Ferme Brookside',
+      },
+    });
+    expect(facts.from).toBe('Village Montessori');
+    expect(facts.what).toBe('Sortie de classe à la ferme');
+    expect(facts.where).toBe('Ferme Brookside');
+    expect(facts.when.now).toEqual({
+      date: '2026-11-13',
+      isoWeekday: 5,
+      time: '08:30',
+      relativeDay: 'tomorrow',
+    });
+    expect(facts.when.was?.relativeDay).toBeNull();
+    // No English words for the writer to translate.
+    const wire = JSON.stringify(facts);
+    for (const english of ['Friday', 'Nov', ' at ', 'a.m.', 'p.m.']) {
+      expect(wire).not.toContain(english);
+    }
+  });
+  it('an unreadable time is no time, never "Invalid Date"', () => {
+    const facts = emailAlertFacts({
+      ...base,
+      language: 'en',
+      kind: 'new_event',
+      event: {
+        title: 'Picnic',
+        childRef: null,
+        originalTime: null,
+        newTime: 'next tuesday-ish',
+        location: null,
+      },
+    });
+    expect(facts.when.now).toBeNull();
   });
 });

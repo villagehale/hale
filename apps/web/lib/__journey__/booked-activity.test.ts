@@ -310,7 +310,7 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     // question it may ask; the words are the model's (the stand-in echoes the facts).
     expect(text).toContain('City of Brookfield Recreation');
     expect(text).toContain('Preschool Swim Level 2');
-    expect(text).toContain('Saturday, Aug 1 at 9:00 a.m.');
+    expect(text).toContain('2026-08-01 09:00');
     expect(text).toContain('ask:calendar');
     // The receipt's own details have no column and never reach the wire.
     expect(text).not.toContain('RC-88214');

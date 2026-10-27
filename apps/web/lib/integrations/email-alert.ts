@@ -19,7 +19,6 @@ import {
 } from '~/lib/channel/outbound-transport';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { formatDayHeading } from '~/lib/format/datetime';
 import { type EmailAlertPassportFacts, passportForEmailAlert } from '~/lib/passport/ingest';
 import type {
   CorrelatedEventRef,
@@ -38,7 +37,7 @@ import {
   familyHoldsLiveBooking,
   recordActivityBooking,
 } from './booking';
-import type { EmailAlertAsk, EmailAlertFacts } from './email-alert-compose';
+import type { EmailAlertAsk, EmailAlertFacts, EmailAlertWhen } from './email-alert-compose';
 import {
   type EmailAlertOfferDraft,
   recordEmailAlertOffer,
@@ -1427,7 +1426,8 @@ export function emailAlertFacts(input: EmailAlertFactsInput): EmailAlertFacts {
       passport: null,
     };
   }
-  const at = (iso: string | null): string | null => longWhen(iso, input.timeZone, input.now);
+  const at = (iso: string | null): EmailAlertWhen | null =>
+    whenFacts(iso, input.timeZone, input.now);
   const sender = clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, '');
   const fromCalendar = fromParentsCalendar(input.from);
   const offered = emailAlertOfferDraft(input) !== null;
@@ -1490,20 +1490,46 @@ function fromParentsCalendar(from: string): boolean {
   return /^calendar-notification@google\.com$/i.test(address);
 }
 
-/** `Saturday, Sep 19 at 9:00 a.m.`, in the parent's zone, with the year on another year's
- * date — the weekday included because a parent reading this on a phone plans against the
- * DAY and should not have to look the date up. Null when the extraction's time field is
- * absent or is not a date: the skill asks for ISO 8601 with an offset, but the field is a
- * model's free text, and "Invalid Date" on a phone is worse than no time at all. */
-function longWhen(iso: string | null, timeZone: string, now: Date): string | null {
+/**
+ * A time as SEPARATE FACTS, never a built-up English label: the local date, the weekday
+ * number, the 24-hour clock, and whether it is today or tomorrow, all in the parent's
+ * zone. The writer phrases it in the parent's own language (a French parent got
+ * "Friday, Nov 13 at 8:30 a.m." to translate and wrote clumsy French). Null when the
+ * extraction's time field is absent or not a date: "Invalid Date" is worse than no time.
+ */
+function whenFacts(iso: string | null, timeZone: string, now: Date): EmailAlertWhen | null {
   const at = instant(iso);
   if (at === null) return null;
-  const clock = new Intl.DateTimeFormat('en-CA', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone,
-  }).format(at);
-  return gsm7(`${formatDayHeading(at, timeZone, now)} at ${clock}`);
+  const parts = (d: Date) =>
+    Object.fromEntries(
+      new Intl.DateTimeFormat('en-CA', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        weekday: 'short',
+        timeZone,
+      })
+        .formatToParts(d)
+        .map((p) => [p.type, p.value]),
+    );
+  const p = parts(at);
+  const date = `${p.year}-${p.month}-${p.day}`;
+  const dayOf = (d: Date) => {
+    const q = parts(d);
+    return `${q.year}-${q.month}-${q.day}`;
+  };
+  const today = dayOf(now);
+  const tomorrow = dayOf(new Date(now.getTime() + 24 * 3600 * 1000));
+  const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return {
+    date,
+    isoWeekday: WEEKDAYS.indexOf(p.weekday as string) + 1,
+    time: `${p.hour}:${p.minute}`,
+    relativeDay: date === today ? 'today' : date === tomorrow ? 'tomorrow' : null,
+  };
 }
 
 function instant(iso: string | null): Date | null {

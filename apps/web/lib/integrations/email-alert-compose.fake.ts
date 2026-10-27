@@ -10,8 +10,8 @@ export function fakeEmailAlertText(facts: EmailAlertFacts): string {
   const parts = [`[${facts.kind}]`];
   if (facts.from) parts.push(facts.from);
   if (facts.what) parts.push(facts.what);
-  if (facts.when.now) parts.push(facts.when.now);
-  else if (facts.when.was) parts.push(facts.when.was);
+  const when = facts.when.now ?? facts.when.was;
+  if (when) parts.push(`${when.date} ${when.time}`);
   if (facts.where) parts.push(`at ${facts.where}`);
   if (facts.going !== null) parts.push(`with ${facts.going} other Hale families`);
   if (facts.categoryOnly) parts.push('(details kept out)');

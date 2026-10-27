@@ -2,8 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import type { EmailAlertPassportFacts } from '~/lib/passport/ingest';
 import { loadCronSkill } from '~/lib/cron/skill';
+import type { EmailAlertPassportFacts } from '~/lib/passport/ingest';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ExtractionKind } from '~/lib/sentinel';
 
@@ -21,13 +21,22 @@ export const EMAIL_ALERT_SKILL = 'email-alert';
 
 export type EmailAlertAsk = 'add_to_week' | 'calendar';
 
+/** One time, as separate facts in the parent's zone; the writer phrases it in their
+ * language. `isoWeekday` is 1 (Monday) to 7 (Sunday); `time` is 24-hour HH:MM. */
+export interface EmailAlertWhen {
+  date: string;
+  isoWeekday: number;
+  time: string;
+  relativeDay: 'today' | 'tomorrow' | null;
+}
+
 export interface EmailAlertFacts {
   kind: ExtractionKind;
   /** Display name or bare domain; null for category-only mail or none. */
   from: string | null;
   /** The email's own name for the thing, folded; null when none survives. */
   what: string | null;
-  when: { was: string | null; now: string | null };
+  when: { was: EmailAlertWhen | null; now: EmailAlertWhen | null };
   where: string | null;
   categoryOnly: boolean;
   fromCalendar: boolean;

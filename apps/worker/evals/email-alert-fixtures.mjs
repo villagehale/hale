@@ -220,6 +220,20 @@ export const EMAIL_ALERT_BROKEN_CASES = [
 // the scale against, never phrases to match. The low ones are the exact prod texts.
 export const EMAIL_ALERT_REFERENCE_TEXTS = [
   {
+    facts:
+      'Village Montessori moved the class pumpkin patch trip to Friday Nov 13, 9:00 AM. ask: add_to_week.',
+    text: 'Heads up, Village Montessori moved the pumpkin patch trip to next Friday at 9. I can throw it on your week if you like.',
+    score: 5,
+    why: 'Reads like a friend casually mentioning it, and the offer is a passing aside, not a service.',
+  },
+  {
+    facts:
+      'Village Montessori moved the class pumpkin patch trip to Friday Nov 13, 9:00 AM. ask: add_to_week.',
+    text: 'Village Montessori moved the pumpkin patch trip to Friday, Nov 13 at 9:00 a.m. Would you like me to add it to your week?',
+    score: 2,
+    why: 'Facts are right, but the closing offer is an assistant offering a service, not a friend texting. Dock that register.',
+  },
+  {
     facts: 'Email from Father William Meehan: "RCIA", Thursday Oct 29, 7:30 PM. An adult event.',
     text: 'Father William Meehan has RCIA on Thursday, Oct 29 at 7:30 p.m. Want me to add it to your week?',
     score: 1,

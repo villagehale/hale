@@ -23,7 +23,7 @@ const FACTS: EmailAlertFacts = {
   kind: 'new_event',
   from: SECRET_SENDER,
   what: SECRET_TITLE,
-  when: { was: null, now: 'Friday, Oct 2 at 9:00 a.m.' },
+  when: { was: null, now: { date: '2026-10-02', isoWeekday: 5, time: '09:00', relativeDay: null } },
   where: null,
   categoryOnly: false,
   fromCalendar: false,
