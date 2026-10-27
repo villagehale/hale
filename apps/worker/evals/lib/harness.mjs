@@ -12,7 +12,7 @@
 // never silently spend.
 
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +24,7 @@ import {
   cappedCall,
   installSpendCap,
   isEstimate,
+  readCapUsd,
   readLedger,
 } from '../../../web/lib/testing/spend-cap.mjs';
 
@@ -243,6 +244,9 @@ if (process.env.EVAL_PRINT_TELEMETRY) {
 
 /** Prints the ceiling once, before any live call. With neither source set, the cap stays off. */
 export function installEvalSpendCap() {
+  // installSpendCap quietly defaults the ledger to /tmp; remember that it was not chosen,
+  // so the live-call guard below still refuses.
+  if (!process.env.HALE_SPEND_LEDGER) process.env.HALE_EVAL_LEDGER_DEFAULTED = '1';
   const cap = installSpendCap(process.argv);
   if (cap !== null) {
     const ledger = readLedger();
@@ -253,9 +257,54 @@ export function installEvalSpendCap() {
   return cap;
 }
 
+// --- mandatory spend guard + --dry ------------------------------------------
+// EVERY live call passes requireSpendGuard first. No ledger path or no --max-usd/HALE_MAX_USD
+// means the call is refused BEFORE a client is built or a socket opened — a "does the file
+// load" check can never bill. --dry (or HALE_EVAL_DRY=1) makes no network call at all: the
+// client is a stub that throws on any use, so a dry run that needs the network fails loudly.
+
+export function isDryRun(argv = process.argv, env = process.env) {
+  return argv.includes('--dry') || env.HALE_EVAL_DRY === '1';
+}
+
+export function requireSpendGuard(tag = 'eval') {
+  if (isDryRun()) {
+    throw new Error(`eval --dry: refusing live call ${tag}; dry mode makes no network calls`);
+  }
+  const ledger = process.env.HALE_SPEND_LEDGER;
+  if (!ledger || process.env.HALE_EVAL_LEDGER_DEFAULTED === '1') {
+    throw new Error(`spend-guard: no ledger path (HALE_SPEND_LEDGER); refusing live call ${tag}`);
+  }
+  if (readCapUsd() === null) {
+    throw new Error(`spend-guard: no --max-usd / HALE_MAX_USD; refusing live call ${tag}`);
+  }
+}
+
+/** A client that fails loudly on any use: what --dry hands out instead of a real one. */
+export function dryClient(tag = 'eval') {
+  const refuse = () => {
+    throw new Error(`eval --dry: attempted network call (${tag}); dry mode makes none`);
+  };
+  return {
+    messages: { create: refuse, countTokens: refuse, stream: refuse },
+  };
+}
+
+/** True when `importMetaUrl` is the script node was started with (not an import). */
+export function isMain(importMetaUrl, argv1 = process.argv[1]) {
+  if (!argv1) return false;
+  try {
+    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(argv1);
+  } catch {
+    return false;
+  }
+}
+
 export function lazyAnthropic(tag = 'eval') {
   let client;
   return () => {
+    if (isDryRun()) return dryClient(tag);
+    requireSpendGuard(tag);
     client ??= new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
       // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
@@ -271,6 +320,8 @@ let gatewayAnthropic;
  * normal Anthropic client so a candidate never grades itself. */
 export function evalSubjectClient(getCurrentClient) {
   if (!process.env.EVAL_GATEWAY_MODEL) return getCurrentClient();
+  if (isDryRun()) return dryClient('gateway');
+  requireSpendGuard('gateway');
   const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
   if (!apiKey) throw new Error('Set AI_GATEWAY_API_KEY, VERCEL_KEY, or JEV_KEY');
   gatewayAnthropic ??= new Anthropic({
@@ -593,6 +644,7 @@ function gatewayUsageMessage(model, peeked) {
  * does not offer.
  */
 export async function spendCappedFetch({ tag = 'gateway', request, send }) {
+  requireSpendGuard(tag);
   if (!capEnabled()) return send();
   const priced = { ...request, max_tokens: request.max_tokens ?? 1024 };
   let sent;

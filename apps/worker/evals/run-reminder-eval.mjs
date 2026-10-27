@@ -20,6 +20,7 @@ import {
   JUDGE_MIN,
   cachedToolCall,
   installEvalSpendCap,
+  isMain,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -146,7 +147,7 @@ const BROKEN =
 // Targeted broken cases: each is a believable reply with one defect the judge must catch.
 // The facts are right; one thing is wrong (an unrequested wish, unnatural phrasing, or a
 // given time left out).
-const BROKEN_CASES = [
+export const BROKEN_CASES = [
   {
     fixtureId: 'en-pd-day-all-day',
     tag: 'en-pd-day-all-day:added-wish',
@@ -214,6 +215,13 @@ const BROKEN_CASES = [
     tag: 'en-teen-generic:notification',
     body: 'Tomorrow you have an appointment from 4:45 to 5:45 PM.',
   },
+  // Storytime calendar readout (the pattern of Barton's prod Storytime sample) on the real
+  // zh facts: every fact right, but an entry list, not a text from a friend.
+  {
+    fixtureId: 'zh-evening-with-plan',
+    tag: 'zh-evening-with-plan:storytime-readout',
+    body: 'Library story time：10月26日 上午11:00。Soccer：10月26日 下午5:30-6:30。',
+  },
   // Barton's prod text. No fixture has these facts; it rides on en-late-same-day, so it
   // also fails on facts. Kept as the bar's reference sample.
   {
@@ -237,8 +245,13 @@ async function main() {
   // Re-score only: replies come from the cache (a miss is an error, never a live compose);
   // only the judge runs live.
   const rescore = process.argv.includes('--rescore');
-  // Stronger grader than the Haiku subject: Sonnet 5.5 (not JUDGE_MODEL/Opus, for cost).
-  const judgeModel = process.env.REMINDER_JUDGE_MODEL ?? agent.SONNET_MODEL;
+  // Haiku judge (Sloane, option b): references + lowest-of-3 instead of a pricier model.
+  // REMINDER_JUDGE_MODEL overrides for a later Sonnet comparison.
+  const judgeModel = process.env.REMINDER_JUDGE_MODEL ?? agent.HAIKU_MODEL;
+  // --only a,b: run just these fixture ids / broken-case tags (minimum calibration set).
+  const onlyArg = process.argv.find((a) => a.startsWith('--only='));
+  const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null;
+  const wanted = (id) => !only || only.has(id);
   // Three draws per reply, keep the LOWEST: an inconsistent judge shows up as a fail
   // instead of a lucky pass slipping through.
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'reminder', cachedOnly, getClient, cost, {
@@ -253,6 +266,7 @@ async function main() {
   );
   const results = [];
   for (const fixture of REMINDER_FIXTURES) {
+    if (!wanted(fixture.id)) continue;
     const facts = compose.reminderFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     const userMessage = compose.reminderUserMessage(facts);
     const body = broken && !rescore
@@ -286,6 +300,7 @@ async function main() {
   }
   if (broken) {
     for (const bc of BROKEN_CASES) {
+      if (!wanted(bc.tag)) continue;
       const fixture = REMINDER_FIXTURES.find((f) => f.id === bc.fixtureId);
       if (!fixture) throw new Error(`broken case ${bc.tag}: no fixture ${bc.fixtureId}`);
       const facts = compose.reminderFacts({ ...fixture.args, now: new Date(fixture.args.now) });
@@ -322,7 +337,10 @@ async function main() {
   process.exit(calibrated ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error('reminder eval harness error:', err);
-  process.exit(2);
-});
+// Importing this file (a test, a load check) must never run the eval.
+if (isMain(import.meta.url)) {
+  main().catch((err) => {
+    console.error('reminder eval harness error:', err);
+    process.exit(2);
+  });
+}
