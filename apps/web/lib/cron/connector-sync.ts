@@ -55,6 +55,8 @@ import {
   syncConnection,
 } from '~/lib/integrations/sync';
 import { decryptTokens } from '~/lib/integrations/token-vault';
+import { composeEmailAlertText } from '~/lib/integrations/email-alert-compose';
+import { voiceClient } from '~/lib/loop/voice/compose';
 import { pipelineClient } from '~/lib/pipeline/client';
 import {
   type FamilyChildRef,
@@ -482,6 +484,18 @@ function emailAlertPorts(
 
   return {
     ...proactiveSendPorts(database),
+    // The thread row is the coach's transcript. `messages` has no column for what the
+    // text was about yet, so the source (occasion id, Gmail id, snippet) stops at this
+    // port until one exists — it never goes to an audit row or a log line.
+    threadMessage: (db, { source: _source, ...thread }) => threadProactiveMessage(db, thread),
+    composeText: (facts, id) => composeEmailAlertText(voiceClient(), facts, id),
+    language: async (id) => {
+      const [row] = await database
+        .select({ primaryLanguage: schema.families.primaryLanguage })
+        .from(schema.families)
+        .where(eq(schema.families.id, id));
+      return row?.primaryLanguage ?? 'en';
+    },
     classify: async (envelope, familyTimezone) => {
       const { children, candidates } = await loadContext();
       return classifyChildEventEmail(envelope, {
