@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Arabic \"she goes to daycare every day\" maps to daycare; no provider named so null is correct; high confidence fits a clear statement. Reason is factual, no invented details."
+  }
+}
