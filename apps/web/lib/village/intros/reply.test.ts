@@ -676,6 +676,16 @@ describe("VIL-450: every other intro reply is the model's, or nothing", () => {
   });
 });
 
+describe('#919: guardrails are writer constraints, not facts to be voiced', () => {
+  it('no intro situation carries an instruction-shaped fact key', () => {
+    for (const [situation, facts] of Object.entries(INTRO_REPLY_FACTS)) {
+      for (const key of ['otherFamily', 'reason', 'match']) {
+        expect(facts, situation).not.toHaveProperty(key);
+      }
+    }
+  });
+});
+
 describe('the said-line eval replays these exact facts', () => {
   it('said-line-fixtures.mjs INTRO_REPLY_FACTS matches reply.ts key for key', async () => {
     // The eval replicates the facts (it cannot reach `~/`); the cache key depends on them.

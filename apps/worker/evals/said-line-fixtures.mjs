@@ -18,7 +18,7 @@ export const IDENTITY_FACTS = {
 const TEXTED_FIRST_QR = { how: 'they texted Hale first', from: 'a Hale QR code they scanned' };
 const TEXTED_FIRST = { how: 'they texted Hale first' };
 const ADDED_BY = {
-  how: 'a member of their family added their number to the family on Hale',
+  how: "a member of their family added their number to their family's account on Hale",
   who: 'Wei',
 };
 
@@ -79,59 +79,51 @@ const ONE = 'https://app.villagehale.com/connect?t=U0FGRUJBQkVDQUZFQkFCRw&to=gca
  * reach the web app's `~/` alias). reply.test.ts pins this copy to the original, so a
  * drift fails a free unit test before it can mis-key the cache.
  */
-const OTHER_FAMILY_UNSAID =
-  'never say or hint anything about the other family, including whether they were asked or answered';
-
 export const INTRO_REPLY_FACTS = {
   discoverability_on: {
     situation: 'they just agreed to be introduced to other Hale families nearby',
     shared:
       'nothing about them is shared with anyone until both families say yes to the same introduction',
     offRamp: 'they can switch introductions off any time by just saying so',
-    next: 'Hale texts them only if a good match comes up; there is no search to report on',
+    standing:
+      'they are open to introductions; Hale only texts about one when a good match comes up',
   },
   discoverability_off: {
     situation: 'they just switched introductions off for themselves; any pending ones are closed',
-    next: 'Hale will not bring introductions up again',
+    standing: 'introductions are off for them',
   },
   discoverability_already_on: {
     situation: 'they had already said yes to introductions; nothing changed',
-    next: 'Hale is still keeping an eye out',
+    standing: 'they are still open to introductions',
   },
   discoverability_already_off: {
     situation: 'introductions were already off for them; nothing changed',
-    next: 'Hale will not bring introductions up again',
+    standing: 'introductions are off for them',
   },
   intro_no: {
     situation: 'they said no to this one introduction; it is recorded',
-    otherFamily: OTHER_FAMILY_UNSAID,
-    next: 'Hale keeps looking for other matches',
+    standing: 'they are still open to other introductions',
   },
   intro_already_yes: {
     situation: 'they had already said yes to this introduction; nothing changed',
-    otherFamily: OTHER_FAMILY_UNSAID,
     next: 'Hale tells them if it goes ahead',
   },
   intro_already_no: {
     situation: 'they had already passed on this introduction; nothing changed',
-    otherFamily: OTHER_FAMILY_UNSAID,
-    next: 'Hale keeps looking for other matches',
+    standing: 'they are still open to other introductions',
   },
   intro_closed: {
     situation: 'they said no to this introduction earlier, so it is closed and cannot be reopened',
-    otherFamily: OTHER_FAMILY_UNSAID,
     theirAsk: 'saying yes now does not reopen it; it stays closed',
-    next: 'Hale is still looking and will text them at the next good match',
+    standing: 'they are still open to other introductions',
   },
   no_open_intro: {
     situation: 'there is no introduction waiting for them right now',
-    match: 'none - do not imply a match exists',
-    next: 'Hale texts them when there is a match',
+    standing: 'they are open to introductions',
   },
   soft_close: {
     situation: 'the introduction Hale asked them about is not happening',
-    reason: 'not given - never say or hint why, or anything about the other family',
-    next: 'Hale keeps an eye out for another match',
+    standing: 'they are still open to other introductions',
   },
 };
 

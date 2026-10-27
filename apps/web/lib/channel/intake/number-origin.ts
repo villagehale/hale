@@ -25,10 +25,10 @@ export function numberOriginFact(
   }
   return origin.byName
     ? {
-        how: 'a member of their family added their number to the family on Hale',
+        how: "a member of their family added their number to their family's account on Hale",
         who: origin.byName,
       }
-    : { how: 'a member of their family added their number to the family on Hale' };
+    : { how: "a member of their family added their number to their family's account on Hale" };
 }
 
 /** The record, for a parent already in a family. Being added by someone wins: that is
