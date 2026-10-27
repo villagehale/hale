@@ -84,6 +84,12 @@ const JUDGE_SYSTEM = [
   'also use), it is not natural, however close it is and however small the slip. If a native speaker would',
   `not send it as written, it caps the score at ${JUDGE_MIN - 1} at most, in any language, even when`,
   'every fact is right; say what reads unnaturally in the reason.',
+  'NOTHING GIVEN MAY BE LEFT OUT: check every date, start and end in the facts against the',
+  'text. Each event\'s day (said truly from now, such as tomorrow or today, or as a date), its',
+  'start time and, when the facts give one, its end time must all be in the text, in any natural',
+  'form for the language. A text that drops any one of them, such as giving only the start when',
+  'an end is given, leaves out a fact the parent needs: that is a fact failure and a LOW score',
+  '(1-2), however natural the rest reads. Name in the reason which time or date is missing.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -93,7 +99,8 @@ const BROKEN =
   "Mon, Oct 26: Jour de congé at 3:00 Tomorrow's a day off, so you've got a bit of breathing room.";
 
 // Targeted broken cases: each is a believable reply with one defect the judge must catch.
-// The facts are right; one thing is wrong (an unrequested wish, or unnatural phrasing).
+// The facts are right; one thing is wrong (an unrequested wish, unnatural phrasing, or a
+// given time left out).
 const BROKEN_CASES = [
   {
     fixtureId: 'en-pd-day-all-day',
@@ -106,6 +113,13 @@ const BROKEN_CASES = [
     fixtureId: 'fr-jour-de-conge-timed',
     tag: 'fr-jour-de-conge-timed:unnatural',
     body: "Demain, lundi 26 octobre, à 15 h jusqu'à 16 h, il y a Jour de congé à la bibliothèque de Georgetown.",
+  },
+  // Omitted fact: natural French with every fact right except the end time, which is
+  // dropped. The judge must fail it on the missing time alone.
+  {
+    fixtureId: 'fr-jour-de-conge-timed',
+    tag: 'fr-jour-de-conge-timed:omits-end',
+    body: 'Demain à 15 h, tu as « Jour de congé » à la bibliothèque de Georgetown.',
   },
   {
     fixtureId: 'en-pd-day-all-day',

@@ -45,7 +45,7 @@ export const REMINDER_FIXTURES = [
       ],
     }),
     watchFor:
-      'The prod bug. The title says day off, but this is a timed 3:00-4:00 PM thing at the library tomorrow. In French; states tomorrow, 15 h or 3 PM to 16 h or 4 PM, and the place. Calling the day free, quiet, a break or breathing room is a LOW score.',
+      'The prod bug. The family\'s calendar has an event titled "Jour de congé" (day off) from 3:00 to 4:00 PM tomorrow at Georgetown library: something they go to at the library, not a closure, and the facts say nothing more about what it is. In French; states tomorrow, 15 h or 3 PM to 16 h or 4 PM (both times), and the place, naming the event by its title as a native speaker would. Saying the library is closed, guessing what the activity is, or calling the day free, quiet, a break or breathing room is a LOW score.',
   },
   {
     id: 'en-pd-day-timed',
