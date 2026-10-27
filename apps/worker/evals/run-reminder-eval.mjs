@@ -90,6 +90,17 @@ const JUDGE_SYSTEM = [
   'form for the language. A text that drops any one of them, such as giving only the start when',
   'an end is given, leaves out a fact the parent needs: that is a fact failure and a LOW score',
   '(1-2), however natural the rest reads. Name in the reason which time or date is missing.',
+  'KEEP EACH TITLE AS THE EVENT\'S NAME: the title is what the event is called, not a',
+  'statement about the day or the family. Turning a title into a claim it does not make, such',
+  'as recasting it as what the day is, what is closed, or what the event involves, changes a',
+  'fact: that is a fact failure and a LOW score (1-2), in any language, even when every time',
+  'and place is right. Keeping the name never excuses grammar: the title still needs the',
+  'article, quotation or connecting words a native speaker would give a named event, and a',
+  'bare title dropped into a sentence where it does not fit still fails the native speaker',
+  'check. Changing what the title says is a fact failure; say in the reason how it changed.',
+  'CAPS ARE CEILINGS: complete, correct facts never lift a capped score. If your reason names',
+  'any phrasing a native speaker would write differently, the score is at most',
+  `${JUDGE_MIN - 1}, however minor you think it is.`,
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -120,6 +131,13 @@ const BROKEN_CASES = [
     fixtureId: 'fr-jour-de-conge-timed',
     tag: 'fr-jour-de-conge-timed:omits-end',
     body: 'Demain à 15 h, tu as « Jour de congé » à la bibliothèque de Georgetown.',
+  },
+  // Reinterpreted title: Sloane-failed recorded sample. "un jour de congé" turns the event's
+  // name into a claim that the day is a day off; the judge must fail it on that alone.
+  {
+    fixtureId: 'fr-jour-de-conge-timed',
+    tag: 'fr-jour-de-conge-timed:reinterprets-title',
+    body: "Rappel : demain à 15 h, il y a un jour de congé à la bibliothèque de Georgetown, jusqu'à 16 h.",
   },
   {
     fixtureId: 'en-pd-day-all-day',
