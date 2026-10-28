@@ -4,6 +4,7 @@ import {
   type ReminderFactEvent,
   isAllDay,
   localClockFact,
+  relativeDay,
   reminderFacts,
   reminderRefusals,
   reminderUserMessage,
@@ -53,6 +54,8 @@ describe('reminderFacts — the facts the model writes the whole text from', () 
       events: [
         {
           what: 'Jour de congé',
+          for: null,
+          day: 'tomorrow',
           date: 'Monday, October 26, 2026',
           allDay: false,
           start: '3:00 PM',
@@ -79,6 +82,8 @@ describe('reminderFacts — the facts the model writes the whole text from', () 
     });
     expect(facts([allDay], [], 'en').events[0]).toEqual({
       what: 'PD Day',
+      for: null,
+      day: 'tomorrow',
       date: 'Monday, October 26, 2026',
       allDay: true,
       start: null,
@@ -94,9 +99,34 @@ describe('reminderFacts — the facts the model writes the whole text from', () 
   });
 
   it('attributes a younger child at the parent name level', () => {
-    expect(facts([ev({ title: 'Swim', childId: 'c-kid' })], [KID]).events[0]?.what).toBe(
-      'Mia — Swim',
-    );
+    expect(facts([ev({ title: 'Swim', childId: 'c-kid' })], [KID]).events[0]).toMatchObject({
+      what: 'Swim',
+      for: 'Mia',
+    });
+  });
+
+  it('never hands the model a "child — title" label', () => {
+    const msg = reminderUserMessage(facts([ev({ title: 'Swim', childId: 'c-kid' })], [KID]));
+    expect(msg).not.toContain('—');
+  });
+
+  it('a private event names no child', () => {
+    const f = facts([ev({ title: 'therapy', childId: 'c-teen' })], [TEEN]);
+    expect(f.events[0]).toMatchObject({ what: 'an appointment', for: null });
+  });
+
+  it('says the day from the send moment: today, tomorrow, or null further out', () => {
+    expect(
+      relativeDay(new Date('2026-10-26T14:00:00Z'), new Date('2026-10-26T11:00:00Z'), TZ),
+    ).toBe('today');
+    expect(relativeDay(new Date('2026-10-26T19:00:00Z'), NOW, TZ)).toBe('tomorrow');
+    // 11:30 PM local on Sunday is still Sunday, not Monday (UTC already rolled over).
+    expect(relativeDay(new Date('2026-10-26T03:30:00Z'), NOW, TZ)).toBe('today');
+    expect(relativeDay(new Date('2026-10-28T19:00:00Z'), NOW, TZ)).toBeNull();
+    // Across the DST change (Nov 1, 2026): Sat evening -> Sun is still tomorrow.
+    expect(
+      relativeDay(new Date('2026-11-01T15:00:00Z'), new Date('2026-10-31T22:00:00Z'), TZ),
+    ).toBe('tomorrow');
   });
 });
 

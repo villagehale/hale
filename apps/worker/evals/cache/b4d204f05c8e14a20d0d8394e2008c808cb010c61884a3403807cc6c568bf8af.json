@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: tomorrow, story time at 11 AM (上午11点), soccer 5:30-6:30 PM (下午5:30到6:30), no invented details, correct planLink, entirely in Chinese, no filler, short and calm. Native check: '足球' for 'Soccer' is acceptable per the calibration reference, but '下午5:30到6:30' is slightly less idiomatic than '5点半到6点半' in casual Chinese texting, and '有足球' without 训练 reads a bit clipped. 'Your plan is here' line is a mild non-fact sentence but pairs with the optional link. Overall natural enough and friend-like, with slight stiffness in the mixed numeral time format.",
+    "score": 4
+  }
+}

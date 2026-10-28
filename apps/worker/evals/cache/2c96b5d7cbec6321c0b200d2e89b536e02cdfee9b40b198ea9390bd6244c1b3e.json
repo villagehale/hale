@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: tomorrow (Monday 26 October), start 15 h, end 16 h, and the Georgetown library. The 24-hour clock removes any AM/PM ambiguity. There is no invented detail, no inferred closure, and no filler. The title is kept as the event's name, not recast as a claim about the day. However, \"il y a un jour de congé à la bibliothèque de Georgetown, jusqu'à 16 h\" is clumsy. It reads as if a day off is happening at the library, which is a mild recasting of the title. A native speaker would not put a bare, unquoted title in as \"un jour de congé\" and would more naturally say \"de 15 h à 16 h\" instead of \"à 15 h ... jusqu'à 16 h\" split around the place. The text also has a stiff, readout feel with the formal \"lundi 26 octobre\" added to \"demain\". So it is capped at 3.",
+    "score": 3
+  }
+}

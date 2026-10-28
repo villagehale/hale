@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: 'tomorrow' is true from Sunday evening, the event is 4:45 to 5:45 PM with PM correctly marked, the title stays generic 'an appointment' with no guessed content, no location is invented, and the language is English. The phrasing 'you have an appointment from 4:45 to 5:45 PM' is a bit stiff, closer to a calendar readout than how a friend would text, which caps the score at 3.",
+    "score": 3
+  }
+}

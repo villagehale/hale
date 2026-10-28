@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: tomorrow is a PD Day all day, no clock time used. However, the text is unnatural English: 'it is having PD Day the whole of day, school is not' is a garbled construction a native speaker would not send. It also states as fact that school is not running, which is not in the facts (an unstated inference about who is affected). Capped at 2 for the unstated consequence, which is a fact failure.",
+    "score": 2
+  }
+}

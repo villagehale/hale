@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start time 15 h and the place, but omits the end time 16 h, which is in the facts. A native speaker would also phrase it as 'Demain à 15 h' with 'tu as' and a quoted title, which reads acceptably. Missing the end time is a fact failure, so the score is low.",
+    "score": 2
+  }
+}
