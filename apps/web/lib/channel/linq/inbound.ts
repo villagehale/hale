@@ -33,6 +33,7 @@ import {
   linqGroupMembersEnabled,
   linqGroupOnboardingV2Enabled,
   linqGroupPlanRsvpEnabled,
+  linqGroupPollsEnabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
   linqMultiFamilyGroupsEnabled,
@@ -71,7 +72,9 @@ import {
   unseatParticipantRemoved,
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
-import { considerGroupPlanRsvp } from './group-plan-rsvp/inbound';
+import { considerGroupPlanRsvp, considerGroupPollCardVote } from './group-plan-rsvp/inbound';
+import type { GroupPollCardPort } from './group-plan-rsvp/poll-turn';
+import { isGroupPollCardKind } from './group-plan-rsvp/poll-turn';
 import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
 import { parseLinqTapback } from './group-plan-rsvp/reading';
 import { groupPlanRsvpTakesTheTurn } from './group-plan-rsvp/turn';
@@ -180,6 +183,8 @@ export async function handleLinqInboundRequest(
     groupPlanRsvpReader?: GroupPlanRsvpReader;
     /** VIL-442 test seam. Production composes with the model when the flag is on. */
     groupPlanRsvpComposer?: GroupPlanRsvpComposer;
+    /** VIL-471 test seam. Production sends the native card through sendChoicePoll. */
+    groupPollCard?: GroupPollCardPort;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -471,7 +476,7 @@ async function tryGroupPlanRsvpTurn(
     tapback: LinqTapback | null;
   },
 ): Promise<Response | null> {
-  if (!linqGroupPlanRsvpEnabled()) return null;
+  if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return null;
   const mappedSender = await mapGroupHandlesToFamily(deps.database, {
     sender: input.senderHandle,
     others: [],
@@ -483,6 +488,7 @@ async function tryGroupPlanRsvpTurn(
       send: deps.sendGroupText,
       reader: deps.groupPlanRsvpReader,
       composer: deps.groupPlanRsvpComposer,
+      pollCard: deps.groupPollCard,
     },
     {
       chatId: input.chatId,
@@ -501,6 +507,59 @@ async function tryGroupPlanRsvpTurn(
   return json({
     outcome: rsvp.outcome,
     ...(rsvp.notice ? { notice: rsvp.notice } : {}),
+  });
+}
+
+/**
+ * VIL-471 — a tap on a native group poll card counts for anyone in the chat,
+ * so it is read before the same-family sender check the 1:1 polls use.
+ */
+async function tryGroupPollCardVote(
+  deps: LinqDoorDeps,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    optionId: string;
+    event: 'added' | 'removed';
+  },
+): Promise<Response | null> {
+  if (!linqGroupPollsEnabled()) return null;
+  const option = await lookupLinqPollOption(deps.database, input.optionId);
+  if (!option || option.chatId !== input.chatId || !isGroupPollCardKind(option.pollKind)) {
+    return null;
+  }
+  const mappedSender = await mapGroupHandlesToFamily(deps.database, {
+    sender: input.senderHandle,
+    others: [],
+  });
+  const vote = await considerGroupPollCardVote(
+    {
+      database: deps.database,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+      composer: deps.groupPlanRsvpComposer,
+      pollCard: deps.groupPollCard,
+    },
+    {
+      chatId: input.chatId,
+      senderHandle: input.senderHandle,
+      senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
+      event: input.event,
+      optionId: input.optionId,
+      card: {
+        providerMessageId: option.providerMessageId,
+        familyId: option.familyId,
+        pollKind: option.pollKind,
+        subjectKey: option.subjectKey,
+      },
+    },
+  );
+  if (!vote.handled) return null;
+  deps.log.info({ outcome: vote.outcome }, 'linq inbound: group poll card vote');
+  await deps.countOutcome(vote.count);
+  return json({
+    outcome: vote.outcome,
+    ...(vote.notice ? { notice: vote.notice } : {}),
   });
 }
 
@@ -1050,6 +1109,20 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
   if (signal.isFromMe) {
     await deps.countOutcome('ignored');
     return json({ outcome: 'signal_from_me' });
+  }
+  if (
+    (signal.event === 'poll.vote.added' || signal.event === 'poll.vote.removed') &&
+    signal.optionId &&
+    signal.senderHandle &&
+    signal.chatId
+  ) {
+    const groupVote = await tryGroupPollCardVote(deps, {
+      chatId: signal.chatId,
+      senderHandle: signal.senderHandle,
+      optionId: signal.optionId,
+      event: signal.event === 'poll.vote.added' ? 'added' : 'removed',
+    });
+    if (groupVote) return groupVote;
   }
   if (
     signal.event === 'poll.vote.added' &&

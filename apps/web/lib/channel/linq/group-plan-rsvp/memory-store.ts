@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import type { GroupPollRecord, GroupPollStore, NativeCardOption } from './poll-store';
+import { pollOptionsFrom, withCardIds } from './poll-store';
+import { tallyGroupPoll } from './poll-tally';
 import type {
   CreatePlanInput,
   ExpectedPerson,
@@ -44,10 +47,18 @@ interface MemoryPlan extends GroupPlanRecord {
   closedAt: Date | null;
 }
 
+interface MemoryPoll extends GroupPollRecord {
+  votes: Map<string, { memberKey: string; displayName: string; optionKey: string; source: string }>;
+  closedAt: Date | null;
+}
+
 export interface MemoryGroupPlanWorld {
   families: Map<string, { familyId: string; timeZone: string }>;
   seats: Map<string, ExpectedPerson[]>;
   plans: Map<string, MemoryPlan>;
+  polls: Map<string, MemoryPoll>;
+  /** Native poll cards Hale sent, keyed by Linq's poll message id. */
+  cards: Map<string, NativeCardOption[]>;
   audits: { actionTaken: string; after: Record<string, unknown> }[];
 }
 
@@ -56,7 +67,112 @@ export function createMemoryWorld(): MemoryGroupPlanWorld {
     families: new Map(),
     seats: new Map(),
     plans: new Map(),
+    polls: new Map(),
+    cards: new Map(),
     audits: [],
+  };
+}
+
+function copyPoll(poll: MemoryPoll): GroupPollRecord {
+  return {
+    id: poll.id,
+    chatId: poll.chatId,
+    familyId: poll.familyId,
+    question: poll.question,
+    options: poll.options.map((option) => ({ ...option })),
+    expected: poll.expected.map((person) => ({ ...person })),
+    providerMessageId: poll.providerMessageId,
+    origin: poll.origin,
+  };
+}
+
+export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPollStore {
+  const live = (chatId: string) =>
+    [...world.polls.values()].find((poll) => poll.chatId === chatId && poll.closedAt === null);
+  return {
+    async loadLivePoll(chatId) {
+      const poll = live(chatId);
+      return poll ? copyPoll(poll) : null;
+    },
+
+    async pollForCard(chatId, providerMessageId) {
+      const poll = live(chatId);
+      return poll && poll.providerMessageId === providerMessageId ? copyPoll(poll) : null;
+    },
+
+    async createPoll(input) {
+      const prior = live(input.chatId);
+      if (prior) prior.closedAt = input.now;
+      const poll: MemoryPoll = {
+        id: randomUUID(),
+        chatId: input.chatId,
+        familyId: input.familyId,
+        question: input.question,
+        options: pollOptionsFrom(input.options),
+        expected: input.expected.map((person) => ({ ...person })),
+        providerMessageId: input.providerMessageId,
+        origin: input.origin,
+        votes: new Map(),
+        closedAt: null,
+      };
+      world.polls.set(poll.id, poll);
+      world.audits.push({
+        actionTaken: 'linq_group_poll_started',
+        after: {
+          origin: input.origin,
+          options: input.options.length,
+          expected: input.expected.length,
+        },
+      });
+      return copyPoll(poll);
+    },
+
+    async attachCard(pollId, card) {
+      const poll = world.polls.get(pollId);
+      if (!poll) return;
+      poll.providerMessageId = card.providerMessageId;
+      poll.options = withCardIds(poll.options, card.options);
+    },
+
+    async cardOptions(providerMessageId) {
+      return [...(world.cards.get(providerMessageId) ?? [])];
+    },
+
+    async loadPollTally(pollId) {
+      const poll = world.polls.get(pollId);
+      if (!poll) return tallyGroupPoll([], [], []);
+      return tallyGroupPoll(poll.options, [...poll.votes.values()], poll.expected);
+    },
+
+    async recordPollVote(input) {
+      const poll = world.polls.get(input.pollId);
+      if (!poll) throw new Error('recordPollVote: poll missing');
+      const prior = poll.votes.get(input.memberKey);
+      if (prior?.optionKey === input.optionKey) return { changed: false };
+      poll.votes.set(input.memberKey, {
+        memberKey: input.memberKey,
+        displayName: input.displayName,
+        optionKey: input.optionKey,
+        source: input.source,
+      });
+      world.audits.push({
+        actionTaken: 'linq_group_poll_vote_recorded',
+        after: { source: input.source, changed: Boolean(prior) },
+      });
+      return { changed: true };
+    },
+
+    async clearPollVote(input) {
+      const poll = world.polls.get(input.pollId);
+      const prior = poll?.votes.get(input.memberKey);
+      if (!poll || prior?.optionKey !== input.optionKey) return { cleared: false };
+      poll.votes.delete(input.memberKey);
+      world.audits.push({
+        actionTaken: 'linq_group_poll_vote_removed',
+        after: { source: 'native' },
+      });
+      return { cleared: true };
+    },
   };
 }
 
@@ -64,6 +180,8 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
   const plansById = () => [...world.plans.values()];
 
   return {
+    ...createMemoryGroupPollStore(world),
+
     async coveringFamily(chatId) {
       return world.families.get(chatId) ?? null;
     },

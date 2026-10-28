@@ -1,11 +1,19 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { linqGroupPlanRsvpEnabled } from '../config';
+import { linqGroupPlanRsvpEnabled, linqGroupPollsEnabled } from '../config';
 import type { LinqTapback } from '../transport';
 import { groupPlanRsvpLineInput } from './facts';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
+import type { GroupPollTally } from './poll-tally';
+import {
+  type GroupPollCardPort,
+  type GroupPollCardSkip,
+  pollReadView,
+  takeGroupPollReading,
+} from './poll-turn';
 import {
   type GroupPlanRsvpReader,
   type GroupPlanRsvpReading,
+  isGroupPollIntent,
   sharedGroupPlanRsvpReader,
 } from './reading';
 import type { GroupPlanRsvpStore } from './store';
@@ -23,6 +31,10 @@ import {
  * Works for seated Hale customers and for people who never signed up (Instinct
  * #1). Banter is recorded as chatter and Hale stays quiet. Tapbacks and free
  * text are votes. Hale speaks only at settle points, in model-written words.
+ *
+ * VIL-471 — the same read also covers group polls (`LINQ_GROUP_POLLS_ENABLED`):
+ * a poll intent goes to `poll-turn.ts`. Either flag alone runs the turn; the
+ * other half stays dark.
  */
 
 export type GroupPlanRsvpTurnOutcome =
@@ -34,10 +46,16 @@ export type GroupPlanRsvpTurnOutcome =
         | 'group_plan_recorded'
         | 'group_plan_spoken'
         | 'group_plan_unread'
-        | 'group_plan_line_unsent';
+        | 'group_plan_line_unsent'
+        | 'group_poll_spoken'
+        | 'group_poll_recorded'
+        | 'group_poll_unread'
+        | 'group_poll_line_unsent';
       count: 'ignored' | 'intake';
       notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' };
       tally?: PlanTally;
+      card?: 'sent' | { skipped: GroupPollCardSkip };
+      pollTally?: GroupPollTally;
     };
 
 /** Banter and a missed read stay quiet without stealing the rest of the group door. */
@@ -48,7 +66,10 @@ export function groupPlanRsvpTakesTheTurn(
     outcome.handled &&
     (outcome.outcome === 'group_plan_spoken' ||
       outcome.outcome === 'group_plan_recorded' ||
-      outcome.outcome === 'group_plan_line_unsent')
+      outcome.outcome === 'group_plan_line_unsent' ||
+      outcome.outcome === 'group_poll_spoken' ||
+      outcome.outcome === 'group_poll_recorded' ||
+      outcome.outcome === 'group_poll_line_unsent')
   );
 }
 
@@ -66,8 +87,17 @@ export interface GroupPlanRsvpTurnDeps {
   store: GroupPlanRsvpStore;
   reader?: GroupPlanRsvpReader;
   composer?: GroupPlanRsvpComposer;
-  send: (input: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+  send: (input: {
+    chatId: string;
+    text: string;
+    kind?: 'plan' | 'poll';
+  }) => Promise<{ providerMessageId: string }>;
+  /** Plan RSVPs (LINQ_GROUP_PLAN_RSVP_ENABLED). */
   enabled?: () => boolean;
+  /** Group polls (LINQ_GROUP_POLLS_ENABLED). */
+  pollsEnabled?: () => boolean;
+  /** The native poll card. Absent is named on the outcome (`no_card_port`), never silent. */
+  pollCard?: GroupPollCardPort;
 }
 
 function coversKeysFor(
@@ -89,13 +119,16 @@ export async function takeGroupPlanRsvpTurn(
   input: GroupPlanRsvpTurnInput,
   deps: GroupPlanRsvpTurnDeps,
 ): Promise<GroupPlanRsvpTurnOutcome> {
-  const enabled = deps.enabled ?? linqGroupPlanRsvpEnabled;
-  if (!enabled()) return { handled: false };
+  const rsvpOn = (deps.enabled ?? linqGroupPlanRsvpEnabled)();
+  const pollsOn = (deps.pollsEnabled ?? linqGroupPollsEnabled)();
+  if (!rsvpOn && !pollsOn) return { handled: false };
 
-  const live = await deps.store.loadLivePlan(input.chatId);
+  const live = rsvpOn ? await deps.store.loadLivePlan(input.chatId) : null;
+  const livePoll = pollsOn ? await deps.store.loadLivePoll(input.chatId) : null;
   const reader = deps.reader ?? sharedGroupPlanRsvpReader();
   const seated = await deps.store.seatedExpected(input.chatId);
   const liveTally = live ? await deps.store.loadTally(live.id) : null;
+  const somethingLive = Boolean(live || livePoll);
 
   const reading = await reader.read({
     text: input.text,
@@ -110,15 +143,60 @@ export async function takeGroupPlanRsvpTurn(
         }
       : null,
     recent: [],
+    ...(pollsOn ? { polls: { live: livePoll ? pollReadView(livePoll) : null } } : {}),
   });
 
   if (!reading || reading.confidence !== 'high') {
-    if (!live) return { handled: false };
-    return { handled: true, outcome: 'group_plan_unread', count: 'ignored' };
+    if (!somethingLive) return { handled: false };
+    return {
+      handled: true,
+      outcome: live ? 'group_plan_unread' : 'group_poll_unread',
+      count: 'ignored',
+    };
   }
 
   if (reading.intent === 'chatter' || reading.intent === 'unclear') {
-    if (!live) return { handled: false };
+    if (!somethingLive) return { handled: false };
+    return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+  }
+
+  const senderKey =
+    memberKeyFromHandle(input.senderHandle) ??
+    memberKeyFromName(input.senderName ?? input.senderHandle);
+  const senderSeat = seated.find((person) => person.memberKey === senderKey);
+  const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
+
+  if (isGroupPollIntent(reading.intent)) {
+    if (!pollsOn) {
+      if (!somethingLive) return { handled: false };
+      return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
+    }
+    return takeGroupPollReading(
+      reading,
+      {
+        chatId: input.chatId,
+        language: input.language,
+        now: input.now,
+        livePoll,
+        seated,
+        voter: {
+          memberKey: senderKey,
+          displayName,
+          userId: senderSeat?.userId ?? null,
+          haleCustomer: senderSeat?.haleCustomer ?? false,
+        },
+      },
+      {
+        store: deps.store,
+        composer: deps.composer,
+        send: (line) => deps.send(line),
+        card: deps.pollCard,
+      },
+    );
+  }
+
+  if (!rsvpOn) {
+    if (!somethingLive) return { handled: false };
     return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
   }
 
@@ -145,11 +223,6 @@ export async function takeGroupPlanRsvpTurn(
   if (!plan) return { handled: false };
 
   const before = (await deps.store.loadTally(plan.id)).tally;
-  const senderKey =
-    memberKeyFromHandle(input.senderHandle) ??
-    memberKeyFromName(input.senderName ?? input.senderHandle);
-  const senderSeat = seated.find((person) => person.memberKey === senderKey);
-  const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
 
   if (reading.intent === 'rsvp' || reading.intent === 'edit') {
     if (!reading.response) {
@@ -218,7 +291,7 @@ export async function takeGroupPlanRsvpTurn(
   }
 
   try {
-    await deps.send({ chatId: input.chatId, text: spoken.line });
+    await deps.send({ chatId: input.chatId, text: spoken.line, kind: 'plan' });
   } catch (err) {
     console.error(
       { err: err instanceof Error ? err.name : 'unknown' },

@@ -5,20 +5,25 @@ import { primaryParentId } from '../roster-ask';
 import { LinqSendError, sendLinqChatMessage } from '../transport';
 
 /**
- * VIL-442 — one ledgered send into a claimed group for a plan tally or follow-up.
+ * VIL-442 — one ledgered send into a claimed group for a plan tally or follow-up,
+ * and (VIL-471) a group poll line.
  *
  * Claims the channel_messages row before Linq hears the line. A refusal marks
  * that same row failed. The covering family's primary parent owns the row.
  */
 export const GROUP_PLAN_RSVP_TEMPLATE = 'linq:group_plan_rsvp';
 export const GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE = 'linq:group_plan_rsvp_followup';
+export const GROUP_POLL_TEMPLATE = 'linq:group_poll';
 
 export async function sendGroupPlanRsvpLine(
   database: Database,
   input: {
     chatId: string;
     text: string;
-    templateKey: typeof GROUP_PLAN_RSVP_TEMPLATE | typeof GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE;
+    templateKey:
+      | typeof GROUP_PLAN_RSVP_TEMPLATE
+      | typeof GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE
+      | typeof GROUP_POLL_TEMPLATE;
     now: Date;
   },
 ): Promise<{ providerMessageId: string }> {

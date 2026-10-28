@@ -58,6 +58,7 @@ describe('groupPlanRsvpUserMessage', () => {
       senderName: string;
       plan: { title: string; deadline: string; yesNames: string[]; waitingNames: string[] };
       recent: { from: string; text: string }[];
+      polls?: unknown;
     };
     expect(payload).toEqual({
       text: 'count the Chens in for Saturday',
@@ -71,5 +72,27 @@ describe('groupPlanRsvpUserMessage', () => {
       },
       recent: [{ from: 'member', text: 'museum Saturday?' }],
     });
+    expect(payload.polls).toBeUndefined();
+  });
+
+  it('includes the live poll only when polls are on the request', () => {
+    const live = {
+      question: 'Saturday',
+      options: [
+        { key: 'o1', text: 'park' },
+        { key: 'o2', text: 'pool' },
+      ],
+    };
+    const payload = JSON.parse(
+      groupPlanRsvpUserMessage({
+        text: 'the pool',
+        tapback: null,
+        senderName: 'Sam',
+        plan: null,
+        recent: [],
+        polls: { live },
+      }),
+    ) as { polls?: { live: typeof live } };
+    expect(payload.polls).toEqual({ live });
   });
 });
