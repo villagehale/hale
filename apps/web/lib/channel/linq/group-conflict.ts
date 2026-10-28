@@ -52,6 +52,8 @@ export interface ClashBusy {
   personId: string;
   start: Date;
   end: Date;
+  /** Hale's own record of a stored taker: it counts without that person's calendar. */
+  known: boolean;
 }
 
 export interface GroupClashInput {
@@ -71,7 +73,7 @@ export interface GroupClash {
   /** Free on a calendar Hale can see, and the plan they could take. */
   suggested: { personId: string; planKey: string } | null;
   alsoFree: readonly string[];
-  /** Busy then on a calendar Hale can see. */
+  /** Busy then, on a calendar Hale can see or a plan Hale holds for them. */
   busy: readonly string[];
   /** Calendars Hale cannot see: they may be asked, never called free. */
   couldAsk: readonly string[];
@@ -83,15 +85,15 @@ function overlaps(a: Span, b: Span): boolean {
   return a.start.getTime() < b.end.getTime() && b.start.getTime() < a.end.getTime();
 }
 
+/** Ties up an adult from now until it ends: not a container, and not over. */
+function takesTime(plan: ClashPlan, now: Date): boolean {
+  const length = plan.end.getTime() - plan.start.getTime();
+  return length > 0 && length <= CONTAINER_MS && plan.end.getTime() > now.getTime();
+}
+
 function watched(plan: ClashPlan, now: Date): boolean {
   const start = plan.start.getTime();
-  const length = plan.end.getTime() - start;
-  return (
-    start > now.getTime() &&
-    start <= now.getTime() + LOOKAHEAD_MS &&
-    length > 0 &&
-    length <= CONTAINER_MS
-  );
+  return takesTime(plan, now) && start > now.getTime() && start <= now.getTime() + LOOKAHEAD_MS;
 }
 
 function spanKey(key: string, span: Span): string {
@@ -111,10 +113,26 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
   const named = (id: string) => (people.get(id)?.name ?? '').length > 0;
   const restsOn = (plan: ClashPlan): string | null =>
     plan.takerId ?? (plan.holders.length === 1 ? (plan.holders[0] ?? null) : null);
+  // A plan already under way is no new clash, but whoever has it is not free until it ends.
+  const underway: ClashBusy[] = input.plans
+    .filter((plan) => takesTime(plan, input.now) && plan.start.getTime() <= input.now.getTime())
+    .flatMap((plan) =>
+      (plan.takerId ? [plan.takerId] : plan.holders).map((personId) => ({
+        key: plan.key,
+        personId,
+        start: plan.start,
+        end: plan.end,
+        known: plan.takerId !== null,
+      })),
+    );
+  const taken = [...input.busy, ...underway];
   const busyThen = (id: string, span: Span): ClashBusy | null =>
-    people.get(id)?.calendar
-      ? (input.busy.find((block) => block.personId === id && overlaps(block, span)) ?? null)
-      : null;
+    taken.find(
+      (block) =>
+        block.personId === id &&
+        (block.known || people.get(id)?.calendar === true) &&
+        overlaps(block, span),
+    ) ?? null;
   const freeFor = (id: string, plan: ClashPlan): boolean =>
     people.get(id)?.calendar === true &&
     busyThen(id, plan) === null &&
@@ -154,13 +172,17 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
       restsOn: Object.fromEntries(pair.map((plan) => [plan.key, restsOn(plan)])),
       suggested,
       alsoFree,
-      busy: visible.filter((id) => named(id) && pair.some((plan) => busyThen(id, plan) !== null)),
+      busy: input.people
+        .filter(
+          (person) => named(person.id) && pair.some((plan) => busyThen(person.id, plan) !== null),
+        )
+        .map((person) => person.id),
       couldAsk: input.people
         .filter(
           (person) =>
             !person.calendar &&
             person.name.length > 0 &&
-            !pair.some((plan) => restsOn(plan) === person.id),
+            !pair.some((plan) => restsOn(plan) === person.id || busyThen(person.id, plan) !== null),
         )
         .map((person) => person.id),
     };
@@ -259,6 +281,7 @@ export function clashCalendar(input: {
     `${clashTitleNorm(title)}|${start.getTime()}|${end.getTime()}`;
 
   for (const event of input.events) {
+    if (event.private && event.placedGoogleEventId) privatePlaced.add(event.placedGoogleEventId);
     if (!event.end || event.end.getTime() <= event.start.getTime()) continue;
     let takerId: string | null = null;
     if (event.owner?.kind === 'parent') takerId = event.owner.userId;
@@ -268,13 +291,13 @@ export function clashCalendar(input: {
       named.set(takerId, { id: takerId, name: label, calendar: false });
     }
     if (event.private) {
-      if (event.placedGoogleEventId) privatePlaced.add(event.placedGoogleEventId);
       if (takerId) {
         busy.push({
           key: `plan:${event.id}`,
           personId: takerId,
           start: event.start,
           end: event.end,
+          known: true,
         });
       }
       continue;
@@ -309,6 +332,7 @@ export function clashCalendar(input: {
         personId: block.userId,
         start: block.start,
         end: block.end,
+        known: false,
       });
       continue;
     }

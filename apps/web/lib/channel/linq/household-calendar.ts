@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lte, or } from 'drizzle-orm';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -1111,7 +1111,13 @@ async function clashNotice(
     if (seat.role !== 'caregiver' || parents.includes(seat.userId)) continue;
     people.push({ id: seat.userId, name: firstName(seat.name), calendar: false });
   }
-  const events = await database
+  const horizon = new Date(input.now.getTime() + LOOKAHEAD_MS);
+  const ahead = and(
+    gt(schema.familyEvents.endsAt, input.now),
+    lte(schema.familyEvents.startsAt, horizon),
+  );
+  const copies = [...new Set(input.blocks.map((block) => block.eventId))];
+  const rows = await database
     .select({
       id: schema.familyEvents.id,
       title: schema.familyEvents.title,
@@ -1129,8 +1135,9 @@ async function clashNotice(
       and(
         eq(schema.familyEvents.familyId, input.familyId),
         householdFamilyEvent(),
-        gte(schema.familyEvents.startsAt, input.now),
-        lte(schema.familyEvents.startsAt, new Date(input.now.getTime() + LOOKAHEAD_MS)),
+        copies.length > 0
+          ? or(ahead, inArray(schema.familyEvents.placedGoogleEventId, copies))
+          : ahead,
       ),
     );
   const childNames = input.children.map((child) => child.name);
@@ -1139,17 +1146,31 @@ async function clashNotice(
     .map((child) => child.name);
   const aboutTeen = (title: string) =>
     withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
-  const calendar = clashCalendar({
-    blocks: input.blocks,
-    events: events.map((row) => ({
-      id: row.id,
-      title: row.title,
-      start: row.startsAt,
-      end: row.endsAt,
+  // A private plan's calendar copy is busy time wherever either of them sits, so a copy
+  // the parent dragged to another day still never carries the plan's title.
+  const events = rows
+    .map((row) => ({
+      row,
       private:
         row.sensitive ||
         (row.childId !== null && input.teens.has(row.childId)) ||
         aboutTeen(row.title),
+    }))
+    .filter(
+      ({ row, private: hidden }) =>
+        hidden ||
+        (row.endsAt !== null &&
+          row.endsAt.getTime() > input.now.getTime() &&
+          row.startsAt.getTime() <= horizon.getTime()),
+    );
+  const calendar = clashCalendar({
+    blocks: input.blocks,
+    events: events.map(({ row, private: hidden }) => ({
+      id: row.id,
+      title: row.title,
+      start: row.startsAt,
+      end: row.endsAt,
+      private: hidden,
       owner:
         row.dutyOwnerKind === 'parent' && row.dutyOwnerUserId
           ? { kind: 'parent' as const, userId: row.dutyOwnerUserId }

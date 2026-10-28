@@ -385,6 +385,41 @@ describe('group clash alerts (VIL-444)', () => {
     expect(JSON.stringify(writer.calls)).not.toMatch(/kestrel|orthodontist/i);
   });
 
+  it("keeps a private plan's calendar copy to busy after the parent drags it to another day", async () => {
+    const seeded = await seedFamily();
+    const lastWeek = new Date(AT_3.getTime() - 7 * 24 * 60 * 60 * 1000);
+    await db.database.insert(schema.familyEvents).values({
+      familyId: seeded.familyId,
+      childId: seeded.mayaId,
+      title: 'Maya allergist',
+      startsAt: lastWeek,
+      endsAt: new Date(lastWeek.getTime() + 60 * 60 * 1000),
+      source: 'parent',
+      sensitive: true,
+      placedGoogleEventId: 'placed-allergist',
+      placedGoogleIntegrationId: seeded.bartonCalendar,
+    });
+    await calendarItem(seeded, 'barton', {
+      eventId: 'placed-allergist',
+      title: 'Maya allergist',
+      end: AT_4,
+    });
+    await calendarItem(seeded, 'barton', { eventId: 'swim', title: 'Maya swim pickup' });
+    const writer = fakeWriter();
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(writer.calls).toHaveLength(1);
+    expect(writer.calls[0]?.items[1]).toEqual({ kind: 'busy', who: 'Barton' });
+    expect(JSON.stringify(writer.calls)).not.toMatch(/allergist/i);
+    expect(line.bodies()).not.toMatch(/allergist/i);
+  });
+
   it('sends nothing and claims no row when the model cannot write the alert', async () => {
     const seeded = await seedFamily();
     await twoPickupsOnBarton(seeded);

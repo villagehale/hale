@@ -74,7 +74,7 @@ describe('findGroupClashes', () => {
   it('flags a plan whose taker is busy then', () => {
     const [clash] = findGroupClashes({
       plans: [plan({ key: 'a', title: 'Maya recital', takerId: 'barton', end: AT_4 })],
-      busy: [{ key: 'busy:1', personId: 'barton', start: AT_330, end: AT_4 }],
+      busy: [{ key: 'busy:1', personId: 'barton', start: AT_330, end: AT_4, known: false }],
       people: [barton, sam],
       now: NOW,
     });
@@ -104,13 +104,50 @@ describe('findGroupClashes', () => {
         plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] }),
         plan({ key: 'b', title: 'Leo daycare pickup', holders: ['barton'] }),
       ],
-      busy: [{ key: 'busy:sam', personId: 'sam', start: AT_3, end: AT_4 }],
+      busy: [{ key: 'busy:sam', personId: 'sam', start: AT_3, end: AT_4, known: false }],
       people: [barton, sam, rosa],
       now: NOW,
     });
     expect(clash?.suggested).toBeNull();
     expect(clash?.busy).toEqual(['sam']);
     expect(clash?.couldAsk).toEqual(['rosa']);
+  });
+
+  it('counts busy time Hale holds for a taker whose calendar it cannot read', () => {
+    const [clash] = findGroupClashes({
+      plans: [plan({ key: 'a', title: 'Maya swim pickup', takerId: 'barton' })],
+      busy: [{ key: 'plan:private', personId: 'barton', start: AT_3, end: AT_4, known: true }],
+      people: [{ ...barton, calendar: false }, sam, rosa],
+      now: NOW,
+    });
+    expect(clash && 'busy' in clash.second && clash.second.busy.personId).toBe('barton');
+    expect(clash?.suggested).toEqual({ personId: 'sam', planKey: 'a' });
+    expect(clash?.busy).toEqual(['barton']);
+    expect(clash?.couldAsk).toEqual(['rosa']);
+  });
+
+  it('keeps whoever has a plan already under way from being called free', () => {
+    const swim = plan({
+      key: 'swim',
+      title: 'Maya swim',
+      holders: ['sam'],
+      start: new Date(NOW.getTime() - 30 * 60 * 1000),
+      end: AT_330,
+    });
+    const clashes = findGroupClashes({
+      plans: [
+        swim,
+        plan({ key: 'a', title: 'Leo daycare pickup', holders: ['barton'] }),
+        plan({ key: 'b', title: 'Ava piano pickup', holders: ['barton'] }),
+      ],
+      busy: [],
+      people: [barton, sam],
+      now: NOW,
+    });
+    expect(clashes).toHaveLength(1);
+    expect(clashes[0]?.first.key).toBe('a');
+    expect(clashes[0]?.suggested).toBeNull();
+    expect(clashes[0]?.busy).toEqual(['sam']);
   });
 
   it('respects a stored taker over the calendar a plan sits on', () => {
@@ -286,8 +323,28 @@ describe('clashCalendar', () => {
     });
     expect(calendar.plans).toEqual([]);
     expect(calendar.busy).toEqual([
-      { key: 'busy:gcal-barton:work', personId: 'barton', start: AT_3, end: AT_330 },
+      { key: 'busy:gcal-barton:work', personId: 'barton', start: AT_3, end: AT_330, known: false },
     ]);
+  });
+
+  it('keeps the calendar copy of a private plan with no end to busy time', () => {
+    const calendar = clashCalendar({
+      blocks: [block({ eventId: 'placed-allergist', title: 'Maya allergist' })],
+      events: [
+        {
+          id: 'allergist',
+          title: 'Maya allergist',
+          start: AT_3,
+          end: null,
+          private: true,
+          owner: null,
+          placedGoogleEventId: 'placed-allergist',
+        },
+      ],
+      decidedTaker: noDecision,
+    });
+    expect(calendar.plans).toEqual([]);
+    expect(calendar.busy.map((row) => row.personId)).toEqual(['barton']);
   });
 
   it('takes the taker from a duty owner or a decided who-takes, never from words', () => {
