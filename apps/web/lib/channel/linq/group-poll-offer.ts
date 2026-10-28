@@ -1,37 +1,36 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray } from 'drizzle-orm';
+import { and, eq, gte } from 'drizzle-orm';
 import { z } from 'zod';
-import { acceptedStatus } from '~/lib/channel/ledger';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqMultiFamilyGroupsEnabled, linqPollsEnabled } from './config';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { type LinqPollOffer, sendChoicePoll } from './poll';
 
 /**
- * VIL-458 slice 2 — when a multi-family group is stuck choosing, Hale may send
- * one AI-written text that names the options and invites a tapback or a quick
- * reply. Behind LINQ_POLLS and LINQ_MULTI_FAMILY_GROUPS_ENABLED. There is no
- * native poll card and no sendChoicePoll on this path.
+ * VIL-458 slice 2 — offer a native poll when a multi-family group is stuck
+ * choosing, behind LINQ_POLLS and LINQ_MULTI_FAMILY_GROUPS_ENABLED.
  *
  * The model (skill `group-poll-offer`) reads the thread and usually says no.
- * It writes the one text and the option labels from facts already in the
- * messages. Code does no keyword matching and no fixed copy. It only:
+ * It writes any prompt and the options from facts already in the messages.
+ * Code does no keyword matching and no fixed copy. It only:
  *   - applies the hard guards (flags, quiet hours, one ask this turn, an
  *     already-open poll, a recent offer in this chat),
  *   - hands the model the thread plus those two facts (no ids),
  *   - rejects a failed or unusable read (send nothing),
- *   - sends the model's text through {@link sendLinqChatMessage}.
+ *   - sends through {@link sendChoicePoll} when the model offers two or more
+ *     options.
  *
  * Not wired into inbound. A failed model call is no send (no fallback).
  *
- * SEAM (Noah, #935 / #938) — this file does not tally votes. Do not extend
- * `./group-poll-tally.ts` for tapbacks or quick replies after this text. The
- * single shared tally is consolidating on PR #938
- * (`./group-plan-rsvp` — `reading.ts` + `tally.ts`). Until inbound wires that
- * reader, {@link GROUP_OFFER_TALLY_SEAM} is the named handoff.
+ * SEAM (Noah, #935 / #938) — this file does not tally votes. A tap on the
+ * card, a tapback, or a plain-language reply all count in the same shared
+ * tally consolidating on PR #938 (`./group-plan-rsvp` — `reading.ts` +
+ * `tally.ts`). Do not extend `./group-poll-tally.ts` for this path. Until
+ * inbound wires that reader, {@link GROUP_OFFER_TALLY_SEAM} is the named
+ * handoff.
  */
 
 const QUIET_START = '21:00:00';
@@ -39,16 +38,14 @@ const QUIET_END = '08:00:00';
 const DEFAULT_ZONE = 'America/Toronto';
 export const RECENT_OFFER_MS = 24 * 60 * 60 * 1000;
 export const OPEN_POLL_MS = 7 * 24 * 60 * 60 * 1000;
-export const GROUP_OFFER_TEMPLATE = 'linq:group_offer';
 const OFFER_MAX = 400;
-const RECENT_TEMPLATES = [GROUP_OFFER_TEMPLATE, 'linq:poll'] as const;
 
 /**
- * Named handoff for votes after a stuck-group offer. Tapbacks and quick
- * replies in this chat are the answers. Read them through the shared tally
- * consolidating on PR #938 — do not add a second counter here, and do not
- * grow `group-poll-tally.ts` for this path. Merge #938 when inbound wires
- * the read (no rebase).
+ * Named handoff for votes after a stuck-group poll. Native taps, tapbacks,
+ * and plain-language replies in this chat are the answers. Read them through
+ * the shared tally consolidating on PR #938 — do not add a second counter
+ * here, and do not grow `group-poll-tally.ts` for this path. Merge #938 when
+ * inbound wires the read (no rebase).
  */
 export const GROUP_OFFER_TALLY_SEAM = {
   reader: 'pr-938-group-plan-rsvp',
@@ -68,7 +65,7 @@ export interface GroupPollOfferInput {
 
 export interface GroupPollOfferDecision {
   offer: boolean;
-  text: string;
+  prompt: string;
   options: string[];
 }
 
@@ -81,15 +78,15 @@ export const POLL_OFFER_TOOL_SCHEMA = {
   type: 'object',
   properties: {
     offer: { type: 'boolean' },
-    text: { type: 'string' },
+    prompt: { type: 'string' },
     options: { type: 'array', items: { type: 'string' } },
   },
-  required: ['offer', 'text', 'options'],
+  required: ['offer', 'prompt', 'options'],
 } as const;
 
 const offerSchema = z.object({
   offer: z.boolean(),
-  text: z.string(),
+  prompt: z.string(),
   options: z.array(z.string()),
 });
 export type PollOfferAnswer = z.infer<typeof offerSchema>;
@@ -103,9 +100,9 @@ export function pollOfferUserMessage(input: GroupPollOfferInput): string {
   });
 }
 
-/** Null when offer is true but the text or options are unusable. */
+/** Null when offer is true but the options are unusable. */
 export function pollOfferFromAnswer(answer: PollOfferAnswer): GroupPollOfferDecision | null {
-  if (!answer.offer) return { offer: false, text: '', options: [] };
+  if (!answer.offer) return { offer: false, prompt: '', options: [] };
   const seen = new Set<string>();
   const options: string[] = [];
   for (const raw of answer.options) {
@@ -114,13 +111,12 @@ export function pollOfferFromAnswer(answer: PollOfferAnswer): GroupPollOfferDeci
     seen.add(text);
     options.push(text);
   }
-  const text = answer.text.trim();
-  if (!text || options.length < 2) return null;
-  return { offer: true, text, options };
+  if (options.length < 2) return null;
+  return { offer: true, prompt: answer.prompt.trim(), options };
 }
 
 export type StuckPollOfferResult =
-  | { status: 'sent'; providerMessageId: string; channelMessageId: string }
+  | Extract<LinqPollOffer, { status: 'sent' } | { status: 'prompted' }>
   | { status: 'held'; reason: 'quiet_hours' }
   | {
       status: 'skipped';
@@ -131,11 +127,9 @@ export type StuckPollOfferResult =
         | 'recent_offer'
         | 'judge_no'
         | 'not_a_choice'
-        | 'model_unreachable'
-        | 'refused'
-        | 'not_configured';
-      code?: string;
-    };
+        | 'model_unreachable';
+    }
+  | Extract<LinqPollOffer, { status: 'skipped' }>;
 
 export async function considerStuckGroupPoll(
   database: Database,
@@ -198,80 +192,18 @@ export async function considerStuckGroupPoll(
     return { status: 'skipped', reason: 'model_unreachable' };
   }
   if (!reading.offer) return { status: 'skipped', reason: 'judge_no' };
-  if (!reading.text || reading.options.length < 2) {
-    return { status: 'skipped', reason: 'not_a_choice' };
-  }
-  return sendOfferText(database, {
+  if (reading.options.length < 2) return { status: 'skipped', reason: 'not_a_choice' };
+  const day = input.now.toISOString().slice(0, 10);
+  return sendChoicePoll(database, {
     chatId: input.chatId,
+    prompt: reading.prompt || null,
+    options: reading.options.map((text) => ({ text, pollKind: 'group_stuck' })),
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     now: input.now,
     fetch: input.fetch,
-    text: reading.text,
-    options: reading.options,
+    idempotencyKey: `poll:group-stuck:${input.chatId}:${day}`.slice(0, 180),
   });
-}
-
-async function sendOfferText(
-  database: Database,
-  args: {
-    chatId: string;
-    familyId: string;
-    parentUserId: string;
-    now: Date;
-    fetch?: typeof fetch;
-    text: string;
-    options: readonly string[];
-  },
-): Promise<StuckPollOfferResult> {
-  try {
-    const sent = await sendLinqChatMessage({
-      chatId: args.chatId,
-      text: args.text,
-      fetch: args.fetch,
-    });
-    const [row] = await database
-      .insert(schema.channelMessages)
-      .values({
-        familyId: args.familyId,
-        parentUserId: args.parentUserId,
-        channel: 'imessage',
-        direction: 'out',
-        category: 'reply',
-        templateKey: GROUP_OFFER_TEMPLATE,
-        providerMessageId: sent.providerMessageId,
-        providerChatId: args.chatId,
-        status: acceptedStatus('imessage'),
-        sentAt: args.now,
-      })
-      .returning({ id: schema.channelMessages.id });
-    const channelMessageId = row?.id;
-    if (!channelMessageId) throw new Error('group offer: channel_messages insert returned no row');
-    await database.insert(schema.auditLog).values({
-      familyId: args.familyId,
-      actor: args.parentUserId,
-      actionTaken: 'linq_group_offer_sent',
-      targetTable: 'channel_messages',
-      targetId: channelMessageId,
-      after: { options: [...args.options] },
-    });
-    return { status: 'sent', providerMessageId: sent.providerMessageId, channelMessageId };
-  } catch (err) {
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
-    console.warn(
-      {
-        familyId: args.familyId,
-        code,
-        httpStatus: err instanceof LinqSendError ? err.httpStatus : 0,
-      },
-      'group poll offer: not sent',
-    );
-    return {
-      status: 'skipped',
-      reason: code === 'not_configured' ? 'not_configured' : 'refused',
-      code,
-    };
-  }
 }
 
 async function householdZone(database: Database, userId: string): Promise<string> {
@@ -293,7 +225,7 @@ async function chatHasRecentOffer(database: Database, chatId: string, now: Date)
     .where(
       and(
         eq(schema.channelMessages.providerChatId, chatId),
-        inArray(schema.channelMessages.templateKey, [...RECENT_TEMPLATES]),
+        eq(schema.channelMessages.templateKey, 'linq:poll'),
         gte(schema.channelMessages.sentAt, since),
       ),
     )
@@ -329,8 +261,7 @@ export function createGroupPollOfferJudge(
       system: skill.instructions,
       userMessage: pollOfferUserMessage(input),
       toolName: 'group_poll_offer',
-      toolDescription:
-        'Say whether Hale should send one text that names the options and invites a tapback or a quick reply.',
+      toolDescription: 'Say whether Hale should offer a poll, and if so write it from the thread.',
       inputJsonSchema: POLL_OFFER_TOOL_SCHEMA,
       schema: offerSchema,
       maxTokens: OFFER_MAX,

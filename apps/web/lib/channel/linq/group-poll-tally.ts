@@ -26,11 +26,10 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * thread after each answer keeps the tally right; nothing is stored here yet.
  * If the read fails, there is no tally and nothing is posted (no fallback).
  *
- * Do not extend this file for the stuck-group text offer (slice 2). That path
- * has no native poll card. Votes after it (tapback or quick reply) are chat
- * answers for the single shared tally consolidating on PR #938
- * (`./group-plan-rsvp`). The named handoff is GROUP_OFFER_TALLY_SEAM in
- * `./group-poll-offer.ts`.
+ * Do not extend this file for the stuck-group offer (slice 2). Native taps,
+ * tapbacks, and plain-language replies after that poll are chat answers for
+ * the single shared tally consolidating on PR #938 (`./group-plan-rsvp`).
+ * The named handoff is GROUP_OFFER_TALLY_SEAM in `./group-poll-offer.ts`.
  */
 
 export interface GroupPollOption {

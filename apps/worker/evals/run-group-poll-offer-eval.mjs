@@ -1,10 +1,10 @@
 // Group poll offer eval (VIL-458 slice 2, hard rule #8: no LLM mocking).
 //
 // Subject is the REAL skill (group-poll-offer.md) through the REAL request builder
-// imported from group-poll-offer.ts. The offer is one AI-written text (tapback /
-// quick reply), not a native poll card. The gate is offer vs no-offer. No word
-// in any message is checked. A later recording can add a copy judge; this
-// runner prices and grades the offer decision.
+// imported from group-poll-offer.ts. The offer is a native poll card; the model
+// writes the prompt and options from the thread. The gate is offer vs no-offer.
+// No word in any message is checked. A later recording can add a copy judge;
+// this runner prices and grades the offer decision.
 //
 //   node evals/run-group-poll-offer-eval.mjs --dry           # $0, no API: worst-case $
 //   node evals/run-group-poll-offer-eval.mjs --broken        # $0 calibration: must FAIL
@@ -71,7 +71,7 @@ async function main() {
     let reading;
     if (broken) {
       // A naive offer: always send, options invented. Must fail the no-offer cases.
-      reading = { offer: true, text: 'Pick one', options: ['A', 'B'] };
+      reading = { offer: true, prompt: 'Pick one', options: ['A', 'B'] };
     } else {
       const { value } = await cachedToolCall({
         tag: `group-poll-offer:${f.id}`,
@@ -82,7 +82,7 @@ async function main() {
         toolName: 'group_poll_offer',
         toolSchema: src.POLL_OFFER_TOOL_SCHEMA,
         toolDescription:
-          'Say whether Hale should send one text that names the options and invites a tapback or a quick reply.',
+          'Say whether Hale should offer a poll, and if so write it from the thread.',
         maxTokens: OFFER_MAX,
         cachedOnly: mode === 'cached-only',
         getClient,
@@ -93,7 +93,6 @@ async function main() {
     const got = reading?.offer ?? null;
     const misses = [];
     if (got !== f.accept.offer) misses.push(`offer=${got}`);
-    if (f.accept.offer && reading && !reading.text) misses.push('text-empty');
     if (f.accept.offer && reading && reading.options.length < 2) misses.push('options<2');
     results.push({ id: f.id, pass: misses.length === 0, detail: misses.join(' ') });
   }
