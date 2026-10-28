@@ -87,6 +87,10 @@
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
   },
+  "duty-night.md": {
+    "file": "duty-night.md",
+    "sha256": "ee80e6028f58cfbbea64df2c65fb863080e8a86b38b262b5057e5b535d5efee9"
+  },
   "evening-request.md": {
     "file": "evening-request.md",
     "sha256": "ebe28455ab5c0ec920d418694812fdb6fc4e31e6257b8912ac27c6cda1a87fee"
@@ -254,6 +258,10 @@
   "radar-voice.md": {
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
+  },
+  "registration-evening.md": {
+    "file": "registration-evening.md",
+    "sha256": "411689df1e728654faceb599f80fe3f403f087579f4a3d0cae061ffd269d4d44"
   },
   "reminder.md": {
     "file": "reminder.md",

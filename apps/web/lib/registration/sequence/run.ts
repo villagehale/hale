@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
@@ -7,6 +8,7 @@ import {
 } from '~/lib/channel/family-recipients';
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -14,6 +16,7 @@ import {
   householdCopies,
   notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
+import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -30,6 +33,7 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { localParts } from '~/lib/loop/prefs';
+import { voiceClient } from '~/lib/loop/voice/compose';
 import { pipelineClient } from '~/lib/pipeline/client';
 import {
   type RegistrationMatch,
@@ -39,11 +43,14 @@ import {
 import { type FetchPage, createFetchBody, pageCache } from '~/lib/registration/verify-sweep';
 import { loadClaimedWindowIds } from './claims.js';
 import {
+  type EveningFacts,
+  battlePlanDecision,
   headsUpPromisesPlan,
   renderSequenceLeg,
   renderShortlistRationale,
   windowPhrase,
 } from './copy.js';
+import { composeRegistrationEvening } from './evening-compose.js';
 import {
   GO_FETCH_TIMEOUT_MS,
   type PrepInput,
@@ -299,6 +306,15 @@ export interface SequenceRunDeps {
     database: Database,
     input: { sequenceId: string; courseUrl: string; courseOpensAt: Date; now: Date },
   ): Promise<boolean>;
+  /**
+   * The speak-lane client. Null when no key is configured. An evening text with
+   * no client is unwritten: nothing is sent, and the miss is named (rule #11).
+   */
+  client: AgentClient | null;
+  /** The parent's language. The model writes the evening text in it. */
+  loadLanguage(database: Database, familyId: string): Promise<ReplyLanguage>;
+  /** Facts in, one text out. Null means nothing is sent. */
+  composeEvening: typeof composeRegistrationEvening;
 }
 
 /**
@@ -383,6 +399,12 @@ export interface SequenceRunResult {
    * reference data about a season; the bound course is the parent's own choice, and
    * this is the count of the times the two disagreed. */
   noFit: number;
+  /**
+   * Evening texts that were due and not sent because the model did not write
+   * one. Nothing is held for later under another name: the dedupe key is
+   * unspent, so the next tick tries again. Its own count (rule #11).
+   */
+  unwritten: number;
 }
 
 function emptyResult(enabled: boolean): SequenceRunResult {
@@ -404,6 +426,7 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     read: 0,
     readSkipped: 0,
     noFit: 0,
+    unwritten: 0,
   };
 }
 
@@ -568,6 +591,8 @@ type LegTally = LegReadEffects & {
    * is, so the answer is the same for one parent and for two.
    */
   skipped?: SequenceSkipReason;
+  /** The evening text was due and the model did not write it. Nothing was sent. */
+  unwritten?: number;
 };
 
 function emptyTally(overrides: Partial<LegTally> = {}): LegTally {
@@ -817,7 +842,7 @@ async function runLegForSequence(
     effects.prep = 'unbound';
   }
 
-  const body = renderSequenceLeg(leg, {
+  const legInput = {
     shortlist,
     timeZone: sequence.timeZone,
     now,
@@ -833,7 +858,34 @@ async function runLegForSequence(
           ? null
           : waitlistDeadline(sequence.waitlistStartedAt, sequence.window.waitlistResponseHours),
     },
-  });
+  };
+  let body: string;
+  if (leg === 'battle_plan') {
+    const decision = battlePlanDecision(legInput);
+    if (decision.kind === 'fixed') {
+      body = decision.text;
+    } else {
+      const written = await writeEvening(database, deps, sequence.familyId, decision.facts);
+      if (!written) {
+        await deps.audit(database, {
+          familyId: sequence.familyId,
+          actor: 'system',
+          actionTaken: 'registration_evening_unwritten',
+          targetTable: 'registration_sequences',
+          targetId: sequence.sequenceId,
+          after: {
+            leg,
+            windowId: sequence.window.id,
+            outcome: 'registration_evening_unwritten',
+          },
+        });
+        return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+      }
+      body = written;
+    }
+  } else {
+    body = renderSequenceLeg(leg, legInput);
+  }
 
   // ONE COMPOSED LEG, TWO ENVELOPES. The sentence is about the household's morning and
   // is rendered once, on the LADDER's clock (the sequence row's), so both parents read
@@ -1047,6 +1099,27 @@ async function readCourse(
   });
 }
 
+/**
+ * The evening text, or null. Null is nothing sent. A missing client is named
+ * here; a model miss is named inside the composer.
+ */
+async function writeEvening(
+  database: Database,
+  deps: SequenceRunDeps,
+  familyId: string,
+  facts: EveningFacts,
+): Promise<string | null> {
+  if (!deps.client) {
+    console.error(
+      { familyId, outcome: 'registration_evening_unwritten', reason: 'client_unavailable' },
+      'registration sequence: evening text unwritten, nothing sent',
+    );
+    return null;
+  }
+  const language = await deps.loadLanguage(database, familyId);
+  return deps.composeEvening(deps.client, { ...facts, language }, familyId);
+}
+
 /** The page's own clock where this reading says the anchor is WRONG, or null. Both drift
  * verdicts carry one and nothing else may move the anchor: a `prepared` page agrees with
  * it within the tolerance, and a page nobody could read has no clock to move it to. */
@@ -1206,6 +1279,7 @@ export async function runRegistrationSequenceCron(
       // RECIPIENT, so the two are added differently and deliberately.
       if (outcome.skipped) result.skipped[outcome.skipped] += 1;
       if (outcome.quiet) result.quiet += 1;
+      result.unwritten += outcome.unwritten ?? 0;
       result.sent += outcome.sent;
       result.deduped += outcome.deduped;
       result.refused += outcome.refused;
@@ -1411,6 +1485,9 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     // throw and a 4 MB ceiling. Six seconds, because this read happens inside a leg
     // whose interval is fifteen minutes wide.
     fetchBody: createFetchBody(GO_FETCH_TIMEOUT_MS),
+    client: voiceClient(),
+    loadLanguage: familyLanguage,
+    composeEvening: composeRegistrationEvening,
     refreshCourseAnchor: async (database, input) => {
       const [row] = await database
         .update(schema.registrationSequences)

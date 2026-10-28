@@ -1,4 +1,5 @@
 import { inspect } from 'node:util';
+import type { AgentClient } from '@hale/agent';
 import type { RegistrationWindow } from '@hale/db';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,7 @@ import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { FetchPage } from '~/lib/registration/verify-sweep';
+import type { EveningComposeInput } from './evening-compose.js';
 import {
   type LiveSequence,
   type SequenceFamily,
@@ -119,6 +121,8 @@ interface Harness {
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
   /** VIL-338 · every guarded anchor refresh the battle-plan read caused. */
   anchors: Array<{ sequenceId: string; courseUrl: string; courseOpensAt: Date }>;
+  /** Facts handed to the evening composer. The stub writes these; it does not call a model. */
+  composed: EveningComposeInput[];
 }
 
 function harness(
@@ -150,6 +154,11 @@ function harness(
      * unbound", and the default THROWS so a read nobody expected is a failure rather
      * than a quietly empty page. */
     fetchBody?: FetchPage;
+    /** The speak-lane client. Undefined uses a client the stub composer never calls.
+     * Null is the unconfigured key: the evening text is unwritten and nothing is sent. */
+    client?: AgentClient | null;
+    /** Facts in, one text out. Undefined records the facts and returns a sendable stub. */
+    composeEvening?: SequenceRunDeps['composeEvening'];
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -161,6 +170,7 @@ function harness(
   const kept: Harness['kept'] = [];
   const threaded: Harness['threaded'] = [];
   const anchors: Harness['anchors'] = [];
+  const composed: EveningComposeInput[] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
@@ -263,6 +273,23 @@ function harness(
       });
       return true;
     },
+    client:
+      options.client === undefined
+        ? ({
+            messages: {
+              create: async () => {
+                throw new Error('compose is injected');
+              },
+            },
+          } as unknown as AgentClient)
+        : options.client,
+    loadLanguage: async () => 'en',
+    composeEvening:
+      options.composeEvening ??
+      (async (_client, facts) => {
+        composed.push(facts);
+        return `composed evening ${facts.situation}`;
+      }),
   };
 
   return {
@@ -277,6 +304,7 @@ function harness(
     kept,
     threaded,
     anchors,
+    composed,
   };
 }
 
@@ -851,9 +879,8 @@ describe('runRegistrationSequenceCron — the send-side reader (VIL-262)', () =>
  * the COURSE PAGE is the system of record and the M1 window row is a hand-read of a
  * seasonal info page. So the ladder anchors on `course_opens_at`, re-reads the page at
  * the two legs that speak about the course, and every failure of that read has its own
- * true sentence rather than a suppression. The thirteen municipalities with no readable
- * portal must come out of all of it byte-identical, which is what makes the ticket safe
- * to merge dark.
+ * true sentence rather than a suppression. The templated legs for a municipality with
+ * no readable portal stay byte-identical. The evening text is composed from facts.
  */
 const MARKHAM_COURSE =
   'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928';
@@ -984,23 +1011,18 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(auditAfter(town.writes, 'registration_sequence_leg_sent')).not.toHaveProperty('prep');
   });
 
-  it('is byte-identical to today for a municipality with no readable portal', async () => {
+  it('keeps the templated legs byte-identical and composes the evening text from municipal facts', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    // The inertness proof. Richmond Hill has no registry portal, so nothing below can
-    // reach it: no read, no clause, no link — the three texts as they ship today.
-    // The three strings VIL-242 shipped, verbatim. Nothing in VIL-338 may edit them:
-    // the whole ticket is safe to merge dark precisely because thirteen municipalities
-    // come out of it unchanged to the byte.
+    // Richmond Hill has no registry portal, so nothing below can reach the network.
+    // The heads-up and the go leg are the strings VIL-242 shipped. The evening text
+    // is the composer's, from the municipal facts — never a sentence this file owns.
     const captured: Record<string, string> = {
       heads_up:
         "Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Maya. I'll send your plan the evening before.",
-      battle_plan:
-        'Tomorrow: Richmond Hill Fall 2026 recreation programs opens 6:30 a.m. for Maya. Sign in tonight and have this open: https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx',
       go: 'Richmond Hill Fall 2026 recreation programs opens 6:30 a.m.. Your link: https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx',
     };
     for (const [leg, tick] of [
       ['heads_up', HEADS_UP_TICK],
-      ['battle_plan', BATTLE_PLAN_TICK],
       ['go', GO_TICK],
     ] as const) {
       const h = harness({
@@ -1010,9 +1032,71 @@ describe('VIL-338 · the bound course is read at send time', () => {
         },
       });
       const result = await runRegistrationSequenceCron(db(), h.deps, tick);
-      expect(result).toMatchObject({ sent: 1, read: 0 });
+      expect(result).toMatchObject({ sent: 1, read: 0, unwritten: 0 });
       expect(h.threaded[0]?.body).toBe(captured[leg]);
+      expect(h.composed).toEqual([]);
     }
+
+    const evening = harness({
+      sequences: [live()],
+      fetchBody: async () => {
+        throw new Error('a non-portal municipality must never reach the network');
+      },
+    });
+    const result = await runRegistrationSequenceCron(db(), evening.deps, BATTLE_PLAN_TICK);
+    expect(result).toMatchObject({ sent: 1, read: 0, unwritten: 0 });
+    expect(evening.threaded[0]?.body).toBe('composed evening municipal');
+    expect(evening.composed).toMatchObject([
+      {
+        language: 'en',
+        situation: 'municipal',
+        who: 'Maya',
+        opensAt: '6:30 a.m.',
+        link: win().sourceUrl,
+        portal: null,
+        setup: null,
+        courseName: null,
+        ageBand: null,
+        children: 1,
+        window: 'Richmond Hill Fall 2026 recreation programs',
+      },
+    ]);
+  });
+
+  it('sends nothing and spends no dedupe key when the evening text is unwritten', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: async () => coursePage(),
+      composeEvening: async () => null,
+    });
+    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+    expect(result).toMatchObject({ sent: 0, unwritten: 1, failed: 0 });
+    expect(result.prep.prepared).toBe(1);
+    expect([...h.dedupeKeys]).toEqual([]);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.writes.some((w) => w.payload.actionTaken === 'registration_sequence_leg_sent')).toBe(
+      false,
+    );
+    const row = h.writes.find((w) => w.payload.actionTaken === 'registration_evening_unwritten');
+    expect(row?.payload).toMatchObject({
+      actionTaken: 'registration_evening_unwritten',
+      targetTable: 'registration_sequences',
+      targetId: 'seq-1',
+      after: { leg: 'battle_plan', windowId: 'w-1', outcome: 'registration_evening_unwritten' },
+    });
+
+    const noClient = harness({
+      sequences: [live()],
+      client: null,
+      fetchBody: async () => {
+        throw new Error('a non-portal municipality must never reach the network');
+      },
+    });
+    const quiet = await runRegistrationSequenceCron(db(), noClient.deps, BATTLE_PLAN_TICK);
+    expect(quiet).toMatchObject({ sent: 0, unwritten: 1, read: 0 });
+    expect(noClient.composed).toEqual([]);
+    expect([...noClient.dedupeKeys]).toEqual([]);
   });
 
   it('anchors the whole ladder on the page’s clock, not the M1 row’s', async () => {
@@ -1069,7 +1153,15 @@ describe('VIL-338 · the bound course is read at send time', () => {
         courseOpensAt: new Date('2026-09-15T11:30:00.000Z'),
       },
     ]);
-    expect(h.transport.bodies()[0]).toContain('7:30 a.m.');
+    expect(h.composed).toMatchObject([
+      {
+        situation: 'course',
+        opensAt: '7:30 a.m.',
+        link: MARKHAM_COURSE,
+        courseName: 'LEGO Builders',
+      },
+    ]);
+    expect(h.threaded[0]?.body).toBe('composed evening course');
     expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
       prep: 'window_moved',
       driftMinutes: 60,
@@ -1234,7 +1326,15 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(result).toMatchObject({ sent: 1, failed: 0, read: 1 });
     expect(result.prep).toMatchObject({ page_unreadable: 1, anchor_moved: 0 });
     expect(h.anchors).toEqual([]);
-    expect(h.transport.bodies()[0]).toContain('I could not re-read the course page tonight');
+    expect(h.composed).toMatchObject([
+      {
+        situation: 'page_unreadable',
+        courseName: null,
+        ageBand: null,
+        link: MARKHAM_COURSE,
+      },
+    ]);
+    expect(h.threaded[0]?.body).toBe('composed evening page_unreadable');
     expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:battle_plan:user-1']);
   });
 

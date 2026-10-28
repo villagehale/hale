@@ -426,6 +426,7 @@ export const AUDIT_VERBS = [
   'activity.offered',
   'registration_shortlist_drafted',
   'registration_sequence_leg_sent',
+  'registration_evening_unwritten',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -1505,6 +1506,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   registration_sequence_leg_sent: {
     sentence: 'Hale nudged you about a registration window',
     family: 'done',
+  },
+  registration_evening_unwritten: {
+    sentence: 'Hale did not send the evening-before registration text',
+    family: 'note',
   },
   registration_outcome_recorded: {
     sentence: 'you told Hale how a registration went',

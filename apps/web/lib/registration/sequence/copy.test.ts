@@ -7,6 +7,7 @@ import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url'
 import {
   type LegCopyInput,
   MAX_PORTAL_SEGMENTS,
+  battlePlanDecision,
   preparedCopyViolations,
   printsReadinessAsk,
   readinessClause,
@@ -75,7 +76,7 @@ const LEG_INPUT: LegCopyInput = {
 };
 
 describe('renderSequenceLeg', () => {
-  const legs = ['heads_up', 'battle_plan', 'go', 'check_in'] as const;
+  const legs = ['heads_up', 'go', 'check_in'] as const;
 
   it.each(legs)('renders %s inside the segment budget, in GSM-7', (leg) => {
     const body = renderSequenceLeg(leg, LEG_INPUT);
@@ -162,8 +163,10 @@ describe('renderSequenceLeg', () => {
     expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain('residents');
   });
 
-  it('carries the direct municipal link on the battle plan and the go, not the heads-up', () => {
-    expect(renderSequenceLeg('battle_plan', LEG_INPUT)).toContain(LONGEST_URL);
+  it('hands the municipal link to the evening composer, and prints it on the go', () => {
+    const evening = battlePlanDecision(LEG_INPUT);
+    expect(evening.kind).toBe('compose');
+    if (evening.kind === 'compose') expect(evening.facts.link).toBe(LONGEST_URL);
     expect(renderSequenceLeg('go', LEG_INPUT)).toContain(LONGEST_URL);
     // The heads-up is a week out; a link nobody can use yet just eats the budget the
     // hedge and the kids' names need.
@@ -187,6 +190,12 @@ describe('renderSequenceLeg', () => {
       expect(body).not.toContain('null');
       expect(body).not.toContain('undefined');
     }
+    const evening = battlePlanDecision(teen);
+    expect(evening.kind).toBe('compose');
+    if (evening.kind === 'compose') {
+      expect(evening.facts.who).toBe('your teen');
+      expect(evening.facts.who).not.toContain('null');
+    }
     // The generic task naming still says WHOSE registration it is, without a name.
     expect(renderSequenceLeg('heads_up', teen)).toContain('your teen');
   });
@@ -204,8 +213,8 @@ describe('renderSequenceLeg', () => {
     expect(body).toContain('Max and Mia');
   });
 
-  it('stays inside the budget for a three-kid family on the longest URL', () => {
-    const body = renderSequenceLeg('battle_plan', {
+  it('hands three children to the evening composer as one who, on the longest URL', () => {
+    const evening = battlePlanDecision({
       ...LEG_INPUT,
       shortlist: shortlist({
         fitNotes: [
@@ -215,7 +224,15 @@ describe('renderSequenceLeg', () => {
         ],
       }),
     });
-    expect(smsSegments(withOptOut(body, 'full'))).toBeLessThanOrEqual(MAX_NUDGE_SEGMENTS);
+    expect(evening.kind).toBe('compose');
+    if (evening.kind !== 'compose') return;
+    expect(evening.facts.who).toBe('Sebastian, Genevieve and Maximilian');
+    expect(evening.facts.children).toBe(3);
+    expect(evening.facts.link).toBe(LONGEST_URL);
+  });
+
+  it('does not render the evening text from a template', () => {
+    expect(() => renderSequenceLeg('battle_plan', LEG_INPUT)).toThrow(/composed from facts/);
   });
 });
 
@@ -556,6 +573,20 @@ const PREPARED = (over = {}): PrepVerdict => ({
   ...coursePage(over),
 });
 
+/** A rendered battle plan, or nothing when that evening is composed from facts. */
+function fixedBattlePlan(input: LegCopyInput): string | null {
+  const decision = battlePlanDecision(input);
+  return decision.kind === 'fixed' ? decision.text : null;
+}
+
+function composeFacts(input: LegCopyInput) {
+  const decision = battlePlanDecision(input);
+  if (decision.kind !== 'compose') {
+    throw new Error('expected the evening text to be composed from facts');
+  }
+  return decision.facts;
+}
+
 /** Every portal-leg body a real send can carry, at the reader's caps. */
 function everyPortalBody(): Record<string, string> {
   const capsPage = { facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP } };
@@ -566,29 +597,20 @@ function everyPortalBody(): Record<string, string> {
       portalInput({ readinessReady: ready }),
     );
     bodies[`go unbound/${ready}`] = renderSequenceLeg('go', portalInput({ readinessReady: ready }));
-    bodies[`battle_plan unbound/${ready}`] = renderSequenceLeg(
-      'battle_plan',
-      portalInput({ readinessReady: ready }),
-    );
+    const unboundPlan = fixedBattlePlan(portalInput({ readinessReady: ready }));
+    if (unboundPlan) bodies[`battle_plan unbound/${ready}`] = unboundPlan;
     bodies[`go prepared/${ready}`] = renderSequenceLeg(
       'go',
       bound(PREPARED(capsPage), { readinessReady: ready }),
     );
-    bodies[`battle_plan prepared/${ready}`] = renderSequenceLeg(
-      'battle_plan',
-      bound(PREPARED(capsPage), { readinessReady: ready }),
-    );
-    // A page that reads clean but publishes no name Hale can print takes the OTHER
-    // branch of `plannedCourse`, which is a whole sentence no sweep reached while the
-    // fixture page always carried a name.
-    bodies[`battle_plan prepared_unnamed/${ready}`] = renderSequenceLeg(
-      'battle_plan',
-      bound(PREPARED(), { readinessReady: ready }),
-    );
-    bodies[`battle_plan unreadable/${ready}`] = renderSequenceLeg(
-      'battle_plan',
+    const preparedPlan = fixedBattlePlan(bound(PREPARED(capsPage), { readinessReady: ready }));
+    if (preparedPlan) bodies[`battle_plan prepared/${ready}`] = preparedPlan;
+    const unnamedPlan = fixedBattlePlan(bound(PREPARED(), { readinessReady: ready }));
+    if (unnamedPlan) bodies[`battle_plan prepared_unnamed/${ready}`] = unnamedPlan;
+    const unreadablePlan = fixedBattlePlan(
       bound({ kind: 'page_unreadable', reason: 'fetch_failed' }, { readinessReady: ready }),
     );
+    if (unreadablePlan) bodies[`battle_plan unreadable/${ready}`] = unreadablePlan;
   }
   const failures: [string, PrepVerdict][] = [
     // A clean read whose own clock is NOT the anchor, and a clean read whose own name
@@ -619,7 +641,8 @@ function everyPortalBody(): Record<string, string> {
   ];
   for (const [name, verdict] of failures) {
     bodies[`go ${name}`] = renderSequenceLeg('go', bound(verdict));
-    bodies[`battle_plan ${name}`] = renderSequenceLeg('battle_plan', bound(verdict));
+    const plan = fixedBattlePlan(bound(verdict));
+    if (plan) bodies[`battle_plan ${name}`] = plan;
   }
   return bodies;
 }
@@ -691,16 +714,7 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
     const bodies = everyPortalBody();
     const namesTheMorning = [
       'readiness/null',
-      'battle_plan unbound/null',
-      'battle_plan prepared/null',
-      'battle_plan prepared_drifted',
-      'battle_plan prepared_asks',
       'go prepared_drifted',
-      'battle_plan prepared_unnamed/null',
-      'battle_plan unreadable/null',
-      'battle_plan course_gone',
-      'battle_plan registration_closed',
-      'battle_plan age_ineligible',
       'go unbound/null',
       'go prepared/null',
       'go page_unreadable',
@@ -711,6 +725,19 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
       (name) => !(bodies[name] as string).includes(ANCHOR_TIME),
     );
     expect(missing).toEqual([]);
+    const evening = [
+      portalInput(),
+      bound(PREPARED({ facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP } })),
+      bound(PREPARED({ facts: { EventName: NAME_AT_CAP }, clock: DRIFTED_INSIDE_TOLERANCE })),
+      bound(PREPARED({ facts: { EventName: NAME_WITH_QUESTION } })),
+      bound(PREPARED()),
+      bound({ kind: 'page_unreadable', reason: 'fetch_failed' }),
+      bound({ kind: 'course_gone' }),
+      bound({ kind: 'registration_closed', ...coursePage() }),
+      bound({ kind: 'age_ineligible', ...coursePage({ facts: { AgeRestrictions: BAND_AT_CAP } }) }),
+    ];
+    const wrong = evening.filter((input) => composeFacts(input).opensAt !== ANCHOR_TIME);
+    expect(wrong).toEqual([]);
   });
 
   it('prints the anchor even where this read’s clock drifted inside the tolerance', () => {
@@ -721,10 +748,18 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
     // shape that cannot tell the two apart.
     const bodies = everyPortalBody();
     const DRIFTED_TIME = '10:40 a.m.';
-    for (const name of ['battle_plan prepared_drifted', 'go prepared_drifted']) {
-      expect(bodies[name]).toContain(ANCHOR_TIME);
-      expect(bodies[name]).not.toContain(DRIFTED_TIME);
-    }
+    expect(bodies['go prepared_drifted']).toContain(ANCHOR_TIME);
+    expect(bodies['go prepared_drifted']).not.toContain(DRIFTED_TIME);
+    const drifted = composeFacts(
+      bound(
+        PREPARED({
+          facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP },
+          clock: DRIFTED_INSIDE_TOLERANCE,
+        }),
+      ),
+    );
+    expect(drifted.opensAt).toBe(ANCHOR_TIME);
+    expect(drifted.opensAt).not.toBe(DRIFTED_TIME);
   });
 
   it('names both instants only where the page itself moved the morning', () => {
@@ -733,13 +768,28 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
     const bodies = everyPortalBody();
     expect(bodies['go window_moved']).toContain('I had 10:30 a.m. for this');
     expect(bodies['go window_moved']).toContain('11:30 a.m.');
-    expect(bodies['battle_plan window_moved']).toContain('11:30 a.m.');
-    expect(bodies['battle_plan window_moved']).not.toContain(ANCHOR_TIME);
+    const moved = composeFacts(
+      bound({
+        kind: 'window_moved',
+        ...coursePage({
+          facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP },
+          clock: MOVED_LATER,
+        }),
+      }),
+    );
+    expect(moved.opensAt).toBe('11:30 a.m.');
+    expect(moved.opensAt).not.toBe(ANCHOR_TIME);
+    expect(moved.situation).toBe('course');
   });
 });
 
 describe('VIL-338 · the forbidden sentence is unsayable', () => {
   const FORBIDDEN = /filled in|staged|held for you|ready to go/i;
+
+  it('keeps no evening-before template in the copy module', () => {
+    const source = readFileSync(new URL('./copy.ts', import.meta.url), 'utf8');
+    expect(source.includes('Tomorrow:')).toBe(false);
+  });
 
   it('is absent from the copy module’s own source', () => {
     // The grep is over the SOURCE, not only the output: a template nobody has wired a
@@ -792,7 +842,7 @@ describe('VIL-338 · the forbidden sentence is unsayable', () => {
     // template, which prints no page value and therefore never reached the gate.
     const spliced = `${everyPortalBody()['go page_unreadable']} You are all set.`;
     expect(gateViolations(spliced)).toContain('unattributed_readiness');
-    const claimed = `${everyPortalBody()['battle_plan course_gone']} Everything is filled in.`;
+    const claimed = `${everyPortalBody()['battle_plan late_by_drift']} Everything is filled in.`;
     expect(gateViolations(claimed)).toContain('forbidden_claim');
   });
 });
@@ -835,16 +885,13 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
     expect(printsReadinessAsk('battle_plan', null)).toBe(false);
   });
 
-  it('asks exactly once, in the imperative, on the two legs that ask', () => {
+  it('asks exactly once, in the imperative, on the readiness leg, and hands setup to the evening', () => {
     const readiness = renderSequenceLeg('readiness', portalInput());
     expect(readiness).toContain('Want me to know when that is done?');
     expect(readiness).not.toMatch(/Reply YES/i);
-    const plan = renderSequenceLeg('battle_plan', portalInput({ readinessReady: false }));
-    expect(plan).toContain('Want me to know when it is?');
-    // A parent who has answered is not asked again.
-    expect(renderSequenceLeg('battle_plan', portalInput({ readinessReady: true }))).not.toContain(
-      'Want me to know when it is?',
-    );
+    expect(composeFacts(portalInput({ readinessReady: false })).setup).toBe('not_told');
+    expect(composeFacts(portalInput({ readinessReady: true })).setup).toBe('told_done');
+    expect(composeFacts(LEG_INPUT).setup).toBeNull();
   });
 
   it('carries at most ONE reply-able ask per leg, and none at all on the go — D14', () => {
@@ -870,20 +917,26 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
     // content for a household that has answered nothing.
     const bodies = everyPortalBody();
     const missing: string[] = [];
-    const expected = (leg: string, ready: string) =>
+    const expected = (ready: string) =>
       ready === 'true'
         ? 'You told me the setup is done.'
-        : leg === 'go'
-          ? 'You have not told me the setup is done - sign in now and check it.'
-          : 'You have not told me the setup is done - tonight is the time. Want me to know when it is?';
-    for (const leg of ['go', 'battle_plan']) {
-      for (const shape of leg === 'go'
-        ? ['prepared', 'unbound']
-        : ['prepared', 'prepared_unnamed', 'unbound']) {
-        for (const ready of ['true', 'false', 'null']) {
-          const name = `${leg} ${shape}/${ready}`;
-          if (!(bodies[name] as string).includes(expected(leg, ready))) missing.push(name);
-        }
+        : 'You have not told me the setup is done - sign in now and check it.';
+    for (const shape of ['prepared', 'unbound']) {
+      for (const ready of ['true', 'false', 'null']) {
+        const name = `go ${shape}/${ready}`;
+        if (!(bodies[name] as string).includes(expected(ready))) missing.push(name);
+      }
+    }
+    const setupFor = (ready: boolean | null) => (ready === true ? 'told_done' : 'not_told');
+    for (const ready of [true, false, null] as const) {
+      for (const input of [
+        portalInput({ readinessReady: ready }),
+        bound(PREPARED(), { readinessReady: ready }),
+        bound(PREPARED({ facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP } }), {
+          readinessReady: ready,
+        }),
+      ]) {
+        if (composeFacts(input).setup !== setupFor(ready)) missing.push(`evening/${ready}`);
       }
     }
     expect(missing).toEqual([]);
@@ -949,13 +1002,20 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
 
   it('says the course is gone only where the portal said so', () => {
     expect(bodies['go course_gone']).toContain('is not showing the course you sent me');
-    expect(bodies['battle_plan course_gone']).toContain('is gone from');
+    const gone = composeFacts(bound({ kind: 'course_gone' }));
+    expect(gone.situation).toBe('course_gone');
+    expect(gone.link).toBe(LONGEST_URL);
+    expect(gone.link).not.toBe(DEEP_LINK);
   });
 
   it('says registration is closed without claiming anything changed on Hale’s side', () => {
     expect(bodies['go registration_closed']).toContain('closed to online registration');
     expect(bodies['go registration_closed']).toContain('Nothing changed on my side');
-    expect(bodies['battle_plan registration_closed']).toContain('shows registration closed');
+    const closed = composeFacts(
+      bound({ kind: 'registration_closed', ...coursePage({ facts: { EventName: NAME_AT_CAP } }) }),
+    );
+    expect(closed.situation).toBe('registration_closed');
+    expect(closed.link).toBe(LONGEST_URL);
   });
 
   it('never says a course opens on the leg that just said it is gone or closed', () => {
@@ -971,9 +1031,13 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
     // The evening plan degrades to the MUNICIPAL window and its general link, which is
     // a different claim about a different page — and never to the course's own sign-in
     // link, which is the one tap this verdict has no course to offer.
-    for (const name of ['battle_plan course_gone', 'battle_plan registration_closed']) {
-      expect(bodies[name]).toContain(LONGEST_URL);
-      expect(bodies[name]).not.toContain('Sign in, then Register');
+    for (const kind of ['course_gone', 'registration_closed'] as const) {
+      const facts = composeFacts(
+        bound(kind === 'course_gone' ? { kind } : { kind, ...coursePage() }),
+      );
+      expect(facts.link).toBe(LONGEST_URL);
+      expect(facts.link).not.toBe(DEEP_LINK);
+      expect(facts.situation).toBe(kind);
     }
   });
 
@@ -985,7 +1049,11 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
     // sentence may not carry a name, a band, a price or a seat count.
     expect(body).not.toContain(NAME_AT_CAP);
     expect(body).not.toContain(BAND_AT_CAP);
-    expect(bodies['battle_plan page_unreadable']).toContain('could not re-read the course page');
+    const unread = composeFacts(bound({ kind: 'page_unreadable', reason: 'fetch_failed' }));
+    expect(unread.situation).toBe('page_unreadable');
+    expect(unread.link).toBe(COURSE_URL);
+    expect(unread.courseName).toBeNull();
+    expect(unread.ageBand).toBeNull();
   });
 
   it('names the page’s own band when it has one, and never invents one when it does not', () => {
@@ -994,6 +1062,21 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
     const noBand = bodies['go age_ineligible_no_band'] as string;
     expect(noBand).toContain('outside the age band');
     expect(noBand).not.toContain('ages y');
+    const outside = composeFacts(
+      bound({
+        kind: 'age_ineligible',
+        ...coursePage({ facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP } }),
+      }),
+    );
+    expect(outside.situation).toBe('age_outside');
+    expect(outside.ageBand).toBe(BAND_AT_CAP);
+    expect(outside.courseName).toBe(NAME_AT_CAP);
+    expect(outside.link).toBe(COURSE_URL);
+    expect(outside.children).toBe(3);
+    const unbanded = composeFacts(
+      bound({ kind: 'age_ineligible', ...coursePage({ facts: { EventName: NAME_AT_CAP } }) }),
+    );
+    expect(unbanded.ageBand).toBeNull();
   });
 
   it('names both instants when the page has moved, and never says "opens" after the open', () => {
@@ -1011,9 +1094,15 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
     expect(nextDay).toContain('Sep 16');
     // A move INSIDE tomorrow is not news — the anchor was refreshed and the plan simply
     // prints the new time, which is true now.
-    const sameDay = bodies['battle_plan window_moved'] as string;
-    expect(sameDay).toContain('Tomorrow:');
-    expect(sameDay).toContain('11:30 a.m.');
+    const sameDay = composeFacts(
+      bound({
+        kind: 'window_moved',
+        ...coursePage({ facts: { EventName: NAME_AT_CAP }, clock: MOVED_LATER }),
+      }),
+    );
+    expect(sameDay.situation).toBe('course');
+    expect(sameDay.opensAt).toBe('11:30 a.m.');
+    expect(sameDay.courseName).toBe(NAME_AT_CAP);
   });
 });
 
@@ -1072,21 +1161,19 @@ describe('VIL-338 · preparedCopyViolations, the composer’s own self-gate', ()
     // value that passes `printable` can reach it. Without it a course really named
     // "Parent and Tot: Ready to Swim?" would put a question mark in a leg whose whole
     // D14 budget is spent on the readiness ask.
-    const bodies = everyPortalBody();
-    const asked = bodies['battle_plan prepared_asks'] as string;
-    expect(asked).not.toContain(NAME_WITH_QUESTION);
-    expect(asked).not.toContain('Swim');
-    expect(asked).toContain("Tomorrow: Oakville's portal opens");
-    // The positive control, so the absence above cannot pass on a composer that names
-    // no course at all: a clean name IS printed on the same template.
-    expect(bodies['battle_plan prepared/null']).toContain(`Tomorrow: ${NAME_AT_CAP} at`);
-    // And the bytes-did-not-back half, at the leg rather than only in the bind ack.
-    const unbacked = renderSequenceLeg(
-      'battle_plan',
+    const asked = composeFacts(bound(PREPARED({ facts: { EventName: NAME_WITH_QUESTION } })));
+    expect(asked.courseName).toBe(NAME_WITH_QUESTION);
+    expect(asked.situation).toBe('course');
+    const named = composeFacts(
+      bound(PREPARED({ facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP } })),
+    );
+    expect(named.courseName).toBe(NAME_AT_CAP);
+    expect(named.link).toBe(COURSE_URL);
+    const unbacked = composeFacts(
       bound(PREPARED({ facts: { EventName: 'Preschool Sports' }, backed: [] })),
     );
-    expect(unbacked).not.toContain('Preschool Sports');
-    expect(unbacked).toContain("Tomorrow: Oakville's portal opens");
+    expect(unbacked.courseName).toBeNull();
+    expect(unbacked.situation).toBe('course');
   });
 
   it('does not lengthen a proactive body with an opt-out footer', () => {
@@ -1327,7 +1414,6 @@ describe('VIL-338 · a non-portal municipality renders byte-identically to today
   const TODAY = {
     heads_up:
       "Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Max. I'll send your plan the evening before.",
-    battle_plan: `Tomorrow: Richmond Hill Fall 2026 recreation programs opens 6:30 a.m. for Max. Sign in tonight and have this open: ${LONGEST_URL}`,
     go: `Richmond Hill Fall 2026 recreation programs opens 6:30 a.m.. Your link: ${LONGEST_URL}`,
     check_in:
       'How did Richmond Hill Fall 2026 recreation programs go? Reply "got in", "waitlisted #12" or "missed it".',
@@ -1344,7 +1430,17 @@ describe('VIL-338 · a non-portal municipality renders byte-identically to today
     // shipped, rather than reaching into a portal label nobody looked up.
     const unwired = { ...LEG_INPUT, portal: undefined } as unknown as LegCopyInput;
     expect(renderSequenceLeg('go', unwired)).toBe(TODAY.go);
-    expect(renderSequenceLeg('battle_plan', unwired)).toBe(TODAY.battle_plan);
+    expect(() => renderSequenceLeg('battle_plan', unwired)).toThrow(/composed from facts/);
+    const evening = battlePlanDecision(unwired);
+    expect(evening.kind).toBe('compose');
+    if (evening.kind === 'compose') {
+      expect(evening.facts.situation).toBe('municipal');
+      expect(evening.facts.link).toBe(LONGEST_URL);
+      expect(evening.facts.who).toBe('Max');
+      expect(evening.facts.opensAt).toBe('6:30 a.m.');
+      expect(evening.facts.setup).toBeNull();
+      expect(evening.facts.portal).toBeNull();
+    }
     expect(renderSequenceLeg('readiness', unwired)).toBe(TODAY.heads_up);
     // Same for the thing being consented to: an unwired caller must not enumerate a
     // fourth text nobody wired the leg for.

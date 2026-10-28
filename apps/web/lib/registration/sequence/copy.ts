@@ -48,6 +48,12 @@ import type { FitNote, Shortlist } from './shortlist.js';
  * shipped, character for character — including "6:30 a.m.." in the go leg, a
  * pre-existing double period that is deliberately NOT fixed here because "byte
  * identical" is the property that makes this ticket safe to merge dark.
+ *
+ * VIL-484 · THE EVENING BATTLE PLAN IS NOT RENDERED HERE. The sentences that
+ * named an open are facts (`battlePlanDecision`) for evening-compose.ts. The
+ * model writes the whole text. A draft that cannot be written sends nothing.
+ * Two heads-up sentences stay in this file, because they are not that text:
+ * the page already open, and a morning moved to another day.
  */
 
 /**
@@ -364,119 +370,173 @@ function readiness(input: LegCopyInput, portal: SpotPortal): string {
   return `${windowPhrase(input.shortlist)} opens ${when(input.anchor, input.timeZone, input.now)} for ${who}. Before then, on ${portal.portalLabel}: ${portal.accountLabel}, ${who} added with their birthday(s), your address complete, and a card saved. Want me to know when that is done?`;
 }
 
-function battlePlan(input: LegCopyInput): string {
-  const { shortlist } = input;
-  // Nullish for the reason schedule.ts's `hasReadablePortal` is: an absent portal keeps
-  // the sentence that shipped, which is inert, rather than composing one about a portal
-  // nobody looked up.
-  const portal = input.portal ?? null;
-  // THE ANCHOR, never the M1 row. For an unbound ladder the two are the same instant by
-  // construction, so this is byte-identical for the thirteen municipalities and for
-  // every household that has pasted nothing; for a bound one the row is a hand-read of
-  // an info page (Markham's carries only the resident clock, Oakville's non-resident
-  // open is a midnight placeholder) and reaching for it here would schedule the leg on
-  // one morning and name another.
-  const municipal = `Tomorrow: ${windowPhrase(shortlist)} opens ${timeOfDay(input.anchor, input.timeZone)} for ${whoPhrase(shortlist.fitNotes)}. Sign in tonight and have this open: ${shortlist.sourceUrl}`;
-  if (portal === null) return municipal;
-  const prepared =
-    input.prep === null ? null : battlePlanPrepared(input, input.prep, portal, municipal);
-  // No course bound: the municipal page is still the right link, and the one thing this
-  // household has that the other thirteen do not is a checklist they were asked about.
-  return prepared ?? `${municipal} ${readinessClause(input.readinessReady, 'evening')}`;
+export type EveningSituation =
+  | 'municipal'
+  | 'course'
+  | 'page_unreadable'
+  | 'course_gone'
+  | 'registration_closed'
+  | 'age_outside';
+
+/**
+ * Facts for the evening-before registration text. English date and clock labels
+ * are facts the model restates in the parent's language. They are never sent.
+ */
+export interface EveningFacts {
+  now: { date: string; time: string };
+  window: string;
+  /** Who the window is for. A 13+ child is already "your teen", never a name. */
+  who: string;
+  opensAt: string;
+  opensOn: string;
+  /** The one URL the text may carry, or null. */
+  link: string | null;
+  portal: string | null;
+  /** Null when this evening does not speak about portal setup. */
+  setup: 'told_done' | 'not_told' | null;
+  situation: EveningSituation;
+  courseName: string | null;
+  ageBand: string | null;
+  children: number;
+}
+
+export type BattlePlanDecision =
+  | { kind: 'fixed'; text: string }
+  | { kind: 'compose'; facts: EveningFacts };
+
+function writtenDate(instant: Date, timeZone: string): string {
+  return asciiSpaces(
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone,
+    }).format(instant),
+  );
+}
+
+function setupFact(ready: boolean | null, portal: SpotPortal | null): EveningFacts['setup'] {
+  if (portal === null) return null;
+  return ready === true ? 'told_done' : 'not_told';
+}
+
+function composeEvening(
+  input: LegCopyInput,
+  portal: SpotPortal | null,
+  situation: EveningSituation,
+  link: string | null,
+  extra: { courseName?: string | null; ageBand?: string | null; opensAt?: string } = {},
+): BattlePlanDecision {
+  return {
+    kind: 'compose',
+    facts: {
+      now: {
+        date: writtenDate(input.now, input.timeZone),
+        time: timeOfDay(input.now, input.timeZone),
+      },
+      window: windowPhrase(input.shortlist),
+      who: whoPhrase(input.shortlist.fitNotes),
+      opensAt: extra.opensAt ?? timeOfDay(input.anchor, input.timeZone),
+      opensOn: writtenDate(input.anchor, input.timeZone),
+      link,
+      portal: portal?.portalLabel ?? null,
+      setup: setupFact(input.readinessReady, portal),
+      situation,
+      courseName: extra.courseName ?? null,
+      ageBand: extra.ageBand ?? null,
+      children: input.shortlist.fitNotes.length,
+    },
+  };
 }
 
 /**
- * The evening-before plan for a household whose course Hale can read, composed from
- * THIS tick's bytes. Null where the stored URL will not mint a sign-in link — a URL
- * `courseSignInUrl` refuses is a URL this composer will not treat as a bound course,
- * and the caller falls back to the municipal sentence.
+ * The evening-before plan. A compose decision is facts only — the model writes
+ * the text. A fixed decision is one of the two heads-up sentences that are not
+ * that text (already open, or moved to another day).
  */
-function battlePlanPrepared(
+export function battlePlanDecision(input: LegCopyInput): BattlePlanDecision {
+  const portal = input.portal ?? null;
+  const prep = input.prep;
+  if (portal !== null && prep !== null) {
+    const prepared = preparedDecision(input, prep, portal);
+    if (prepared) return prepared;
+  }
+  return composeEvening(input, portal, 'municipal', input.shortlist.sourceUrl);
+}
+
+/**
+ * A bound course's evening plan. Null where the stored URL will not mint a
+ * sign-in link — that URL is not treated as a bound course, and the caller
+ * hands the municipal facts instead.
+ */
+function preparedDecision(
   input: LegCopyInput,
   prep: PrepCopyInput,
   portal: SpotPortal,
-  municipal: string,
-): string | null {
+): BattlePlanDecision | null {
   const link = courseSignInUrl(prep.courseUrl);
   if (link === null) return null;
   const label = portal.portalLabel;
-  const clause = readinessClause(input.readinessReady, 'evening');
   const verdict = prep.verdict;
-  const openAt = (at: Date) => timeOfDay(at, input.timeZone);
+  const municipal = input.shortlist.sourceUrl;
 
   switch (verdict.kind) {
     case 'page_unreadable':
-      // It does NOT wait for a better read: the go leg re-reads in the morning anyway,
-      // and a plan at 06:10 is worse than a plan without the course clause.
-      return `Tomorrow: ${label} opens ${openAt(input.anchor)} I could not re-read the course page tonight, so check it yourself: ${prep.courseUrl} ${clause}`;
+      // It does not wait for a better read: the go leg re-reads in the morning,
+      // and the facts say the page could not be read. No class detail is handed.
+      return composeEvening(input, portal, 'page_unreadable', prep.courseUrl);
     case 'course_gone':
-      return `${municipal} The course page you sent me is gone from ${label}.`;
+      return composeEvening(input, portal, 'course_gone', municipal);
     case 'registration_closed':
-      return `${municipal} ${label} shows registration closed, so this is the general link.`;
+      return composeEvening(input, portal, 'registration_closed', municipal);
     case 'late_by_drift': {
       const clock = verdict.clock;
-      if (clock === null) return `${municipal} ${clause}`;
-      return `Heads up: ${label} shows this course already open since ${when(clock.at, input.timeZone, input.now)} Sign in, then Register: ${link}`;
+      if (clock === null) return composeEvening(input, portal, 'municipal', municipal);
+      return {
+        kind: 'fixed',
+        text: `Heads up: ${label} shows this course already open since ${when(clock.at, input.timeZone, input.now)} Sign in, then Register: ${link}`,
+      };
     }
     case 'age_ineligible':
-      return ageSentence(
-        verdict,
-        input,
-        label,
-        prep.courseUrl,
-        // The evening-before leg says when the morning is on every other branch, and a
-        // parent whose child may be out of band still has to decide by that clock.
-        `Opens ${openAt(input.anchor)} Sign in and check: ${prep.courseUrl}`,
-        'Tomorrow: ',
-      );
+      return composeEvening(input, portal, 'age_outside', prep.courseUrl, {
+        ageBand: printable(verdict.facts.AgeRestrictions, verdict.backed),
+        courseName: printable(verdict.facts.EventName, verdict.backed),
+      });
     case 'window_moved': {
       const clock = verdict.clock;
-      if (clock === null) return `${municipal} ${clause}`;
-      // A move INSIDE tomorrow is not news: run.ts has just refreshed the anchor, so the
-      // ordinary plan prints the new time and is true. A move to another DAY is news,
-      // and it is the only battle plan that says so — the key is spent, so there is no
-      // second "Tomorrow:" the evening before the new morning.
+      if (clock === null) return composeEvening(input, portal, 'municipal', municipal);
+      // A move inside the same local day is the ordinary plan at the new time.
+      // A move to another day is news, and the key is spent, so this is the only
+      // evening text that says the morning moved.
       if (dayKeyIn(clock.at, input.timeZone) !== dayKeyIn(input.anchor, input.timeZone)) {
         const name = printable(verdict.facts.EventName, verdict.backed);
         const moved = `Heads up: ${label} now shows ${name} opening ${when(clock.at, input.timeZone, input.now)} That is not tomorrow, so I have moved your morning to it. ${prep.courseUrl}`;
         const unnamed = `Heads up: ${label} now shows that course opening ${when(clock.at, input.timeZone, input.now)} That is not tomorrow, so I have moved your morning to it. ${prep.courseUrl}`;
-        if (name === null) return unnamed;
-        return guarded(moved, unnamed, {
-          url: prep.courseUrl,
-          printed: [name],
-          backed: verdict.backed,
-          optOut: 'full',
-        });
+        if (name === null) return { kind: 'fixed', text: unnamed };
+        return {
+          kind: 'fixed',
+          text: guarded(moved, unnamed, {
+            url: prep.courseUrl,
+            printed: [name],
+            backed: verdict.backed,
+            optOut: 'full',
+          }),
+        };
       }
-      return plannedCourse(verdict, prep, label, openAt(clock.at), clause);
+      return composeEvening(input, portal, 'course', prep.courseUrl, {
+        courseName: printable(verdict.facts.EventName, verdict.backed),
+        opensAt: timeOfDay(clock.at, input.timeZone),
+      });
     }
     case 'prepared':
-      // The ANCHOR, not this read's clock. `prepared` is the verdict for a page that
-      // AGREES with the anchor within WINDOW_DRIFT_TOLERANCE_MINUTES, so printing the
-      // page's own instant here would put up to fifteen minutes between this sentence
-      // and the go leg's on the same course, for no gain — a page that really moved
-      // returns `window_moved`, which refreshes the anchor and prints the new time.
-      return plannedCourse(verdict, prep, label, openAt(input.anchor), clause);
+      // The ANCHOR, not this read's clock. `prepared` agrees with the anchor
+      // within WINDOW_DRIFT_TOLERANCE_MINUTES, so the page's own instant would
+      // put up to fifteen minutes between this text and the go leg.
+      return composeEvening(input, portal, 'course', prep.courseUrl, {
+        courseName: printable(verdict.facts.EventName, verdict.backed),
+      });
   }
-}
-
-/** The evening plan for a course that reads clean: its name where the bytes back one,
- * the portal's own page, and the one clause about what the parent told Hale. */
-function plannedCourse(
-  page: CoursePage,
-  prep: PrepCopyInput,
-  label: string,
-  at: string,
-  clause: string,
-): string {
-  const name = printable(page.facts.EventName, page.backed);
-  const unnamed = `Tomorrow: ${label} opens ${at} Sign in tonight and have this open: ${prep.courseUrl} ${clause}`;
-  if (name === null) return unnamed;
-  return guarded(
-    `Tomorrow: ${name} at ${label} opens ${at} Sign in tonight and have this open: ${prep.courseUrl} ${clause}`,
-    unnamed,
-    { url: prep.courseUrl, printed: [name], backed: page.backed, optOut: 'full' },
-  );
 }
 
 /**
@@ -609,8 +669,11 @@ export function renderSequenceLeg(leg: SequenceLeg, input: LegCopyInput): string
       // anyway, because a throw in a leg costs that family its whole tick, and the
       // heads-up is exactly what the scheduler would have chosen instead.
       return input.portal == null ? headsUp(input) : readiness(input, input.portal);
-    case 'battle_plan':
-      return battlePlan(input);
+    case 'battle_plan': {
+      const decision = battlePlanDecision(input);
+      if (decision.kind === 'fixed') return decision.text;
+      throw new Error('registration sequence: the evening text is composed from facts');
+    }
     case 'go':
       return go(input);
     case 'check_in':

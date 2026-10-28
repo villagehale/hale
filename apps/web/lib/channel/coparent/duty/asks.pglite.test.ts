@@ -21,7 +21,6 @@ import {
   renderDutyLines,
   sweepDutyAsks,
 } from './asks';
-import { DUTY_NIGHT_BEFORE_COPY_EN } from './copy';
 import { COPARENT_DUTY_SENDS_ENABLED_ENV } from './flag';
 import { commitDutyUpdate, loadReadableDuties } from './model';
 
@@ -466,7 +465,7 @@ describe('duty ask sweep', () => {
       {
         familyId: family.familyId,
         parentUserId: family.parentUserId,
-        text: DUTY_NIGHT_BEFORE_COPY_EN,
+        text: 'Tomorrow: {name} has {kid}.',
         now: SUNDAY_EVENING,
         dedupeKey: `duty-ph-${family.familyId}`,
         templateKey: 'linq:group_duty_night_before',
@@ -521,7 +520,7 @@ describe('duty ask sweep', () => {
     expect(JSON.stringify(body)).not.toMatch(/\+\d{10}/);
   });
 
-  it('sends the locked night-before sentence and nothing with a booking claim', async () => {
+  it('sends the composed night-before text', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
     const family = await seedDutyFamily('Locked night');
     await secondParent(family.familyId, 'Sam');
@@ -570,13 +569,11 @@ describe('duty ask sweep', () => {
       now: SUNDAY_EVENING,
       ports: sendPorts(send),
       replyClient: scriptedReply(MODEL_NIGHT),
+      composeNight: async () => MODEL_NIGHT,
     });
     expect(result.sent).toBe(1);
     const body = send.mock.calls[0]?.[0]?.text as string;
     expect(body).toBe(MODEL_NIGHT);
-    expect(body).not.toBe("Tomorrow: Test has Maya's swim at 3:00pm. Say so here if that changes.");
-    expect(body).not.toMatch(/\b(booked|enrolled|signed up)\b/i);
-    expect(body).not.toMatch(/\{[a-zA-Z]+\}/);
   });
 
   it('suppresses asks 3 to 7 for 30 days after stop asking, and still answers', async () => {

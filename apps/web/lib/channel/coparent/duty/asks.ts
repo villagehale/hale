@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
 import { gateOptionalAsk, recordOptionalAsk } from '~/lib/channel/intake/cold-start/ledger';
+import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
@@ -50,6 +51,7 @@ import {
 import { coparentDutySendsActive, coparentDutySendsArmed } from './flag';
 import type { DutyExtractor } from './interpret';
 import { type DutyRole, type DutyState, dutyStateFromFact, needsWhichKid } from './model';
+import { type DutyNightFacts, composeDutyNight } from './night-compose';
 
 /**
  * VIL-382 · duty asks in the Linq co-parent group.
@@ -712,6 +714,64 @@ async function voiceDuty(
   return voiced;
 }
 
+function englishStamp(instant: Date, timeZone: string): { date: string; time: string } {
+  return {
+    date: asciiSpaces(
+      new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone,
+      }).format(instant),
+    ),
+    time: dutyClockLabel(instant, timeZone, 'en'),
+  };
+}
+
+/**
+ * Facts for the night-before text. English date and clock labels are facts
+ * the model restates. A missing handoff name or event is null: nothing is sent.
+ */
+export function dutyNightFacts(
+  lines: readonly CadenceLine[],
+  ctx: DutyRenderInput,
+): DutyNightFacts | null {
+  const night = lines.find((row) => row.mode === 'night_before');
+  if (!night) return null;
+  const occasion = occasionForLine(night, ctx);
+  const name = occasion?.spokenName?.trim();
+  const event = occasion?.eventLabel?.trim();
+  if (!occasion || !name || !event) return null;
+  const reask = lines.find((row) => row.mode === 'reask_48h');
+  const reaskOccasion = reask ? occasionForLine(reask, ctx) : undefined;
+  const reaskEvent = reaskOccasion?.eventLabel?.trim();
+  const silent = lines.find((row) => row.mode === 'silent_parent');
+  const silentOccasion = silent ? occasionForLine(silent, ctx) : undefined;
+  const quietName = silent ? silentParentName(ctx, silentOccasion) : null;
+  return {
+    language: ctx.language,
+    now: englishStamp(ctx.now, ctx.timeZone),
+    handoff: {
+      name,
+      kid: occasion.kid ?? null,
+      event,
+      time: dutyClockLabel(occasion.startsAt, ctx.timeZone, 'en'),
+      date: englishStamp(occasion.startsAt, ctx.timeZone).date,
+    },
+    unowned:
+      reaskOccasion && reaskEvent
+        ? {
+            kid: reaskOccasion.kid ?? null,
+            event: reaskEvent,
+            day: dutyWeekdayName(reaskOccasion.startsAt, ctx.timeZone, 'en'),
+            time: dutyClockLabel(reaskOccasion.startsAt, ctx.timeZone, 'en'),
+          }
+        : null,
+    quiet: quietName ? { name: quietName } : null,
+  };
+}
+
 /** Joined copy for a bubble. Null when nothing finished may leave. */
 export function renderDutyLines(
   lines: readonly CadenceLine[],
@@ -858,12 +918,18 @@ export async function deliverDutyGroupLine(
     dedupeKey: string;
     templateKey: string;
     sendsActive: boolean;
+    /** A model-written text. The template gate does not read it. */
+    composed?: boolean;
     fetch?: typeof fetch;
   },
   ports: DutySendPorts = defaultDutySendPorts(),
 ): Promise<DutyDelivery> {
   if (!input.sendsActive) return { status: 'skipped', reason: 'flag_off' };
-  if (!dutyCopyMayLeave(input.text)) return { status: 'skipped', reason: 'placeholder' };
+  if (input.composed) {
+    if (input.text.trim() === '') return { status: 'skipped', reason: 'placeholder' };
+  } else if (!dutyCopyMayLeave(input.text)) {
+    return { status: 'skipped', reason: 'placeholder' };
+  }
   const target = await ports.target(database, input.familyId);
   if (target.channel !== 'group') return { status: 'skipped', reason: 'no_group' };
   const verdict = await ports.gate(
@@ -879,7 +945,9 @@ export async function deliverDutyGroupLine(
   if (await dedupeActive(input.dedupeKey, database))
     return { status: 'skipped', reason: 'deduped' };
   const body = withOptOut(input.text, verdict.optOut);
-  if (body.includes('TODO-Design')) return { status: 'skipped', reason: 'placeholder' };
+  if (!input.composed && body.includes('TODO-Design')) {
+    return { status: 'skipped', reason: 'placeholder' };
+  }
   if (coldStartLadderEnabled()) {
     const budget = await gateOptionalAsk(database, {
       familyId: input.familyId,
@@ -931,6 +999,70 @@ export async function deliverDutyGroupLine(
   }
 }
 
+async function applyNightBefore(
+  database: Database,
+  input: {
+    familyId: string;
+    now: Date;
+    view: Exclude<FamilyDutyView, { skipped: 'flag_off' | 'single_parent' }>;
+    lines: readonly CadenceLine[];
+    templateKey: string;
+    ports?: DutySendPorts;
+    replyClient?: AgentClient | null;
+    composeNight?: typeof composeDutyNight;
+  },
+): Promise<DutyDelivery> {
+  const facts = dutyNightFacts(input.lines, input.view.render);
+  if (!facts) {
+    console.error(
+      { familyId: input.familyId, outcome: 'duty_night_unwritten', reason: 'facts_missing' },
+      'duty night: nothing sent',
+    );
+    return { status: 'held', reason: 'model_unsent' };
+  }
+  const client = await resolveReplyClient(input.replyClient);
+  if (!client) {
+    console.error(
+      { familyId: input.familyId, outcome: 'duty_night_unwritten', reason: 'client_unavailable' },
+      'duty night: nothing sent',
+    );
+    return { status: 'held', reason: 'model_unsent' };
+  }
+  const compose = input.composeNight ?? composeDutyNight;
+  const text = await compose(client, facts, input.familyId);
+  if (!text) return { status: 'held', reason: 'model_unsent' };
+  const first = input.lines[0];
+  const ymd = localYmd(input.now, input.view.timeZone);
+  const delivered = await deliverDutyGroupLine(
+    database,
+    {
+      familyId: input.familyId,
+      parentUserId: input.view.parentUserId,
+      text,
+      now: input.now,
+      dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
+      templateKey: input.templateKey,
+      sendsActive: true,
+      composed: true,
+    },
+    input.ports,
+  );
+  if (delivered.status === 'sent') {
+    const noted = input.lines.filter((row) => {
+      if (row.mode === 'reask_48h') return facts.unowned !== null;
+      if (row.mode === 'silent_parent') return facts.quiet !== null;
+      return true;
+    });
+    await noteLinesSent(database, {
+      familyId: input.familyId,
+      lines: noted,
+      open: input.view.open,
+      now: input.now,
+    });
+  }
+  return delivered;
+}
+
 async function applyPlan(
   database: Database,
   input: {
@@ -941,8 +1073,12 @@ async function applyPlan(
     templateKey: string;
     ports?: DutySendPorts;
     replyClient?: AgentClient | null;
+    composeNight?: typeof composeDutyNight;
   },
 ): Promise<DutyDelivery> {
+  if (input.lines.some((row) => row.mode === 'night_before')) {
+    return applyNightBefore(database, input);
+  }
   const locked = renderDutyLines(input.lines, input.view.render);
   if (!locked) return { status: 'skipped', reason: 'placeholder' };
   const text = await voiceDuty(database, {
@@ -981,7 +1117,12 @@ async function applyPlan(
 
 export async function sweepDutyAsks(
   database: Database,
-  input: { now?: Date; ports?: DutySendPorts; replyClient?: AgentClient | null } = {},
+  input: {
+    now?: Date;
+    ports?: DutySendPorts;
+    replyClient?: AgentClient | null;
+    composeNight?: typeof composeDutyNight;
+  } = {},
 ): Promise<DutySweepResult> {
   if (!coparentDutySendsArmed()) return emptyDutySweep(false);
   const now = input.now ?? new Date();
@@ -1025,6 +1166,7 @@ export async function sweepDutyAsks(
         : 'linq:group_duty_night_before',
       ports: input.ports,
       replyClient: input.replyClient,
+      composeNight: input.composeNight,
     });
     if (delivered.status === 'sent') result.sent += 1;
     else if (delivered.status === 'held') result.held += 1;
