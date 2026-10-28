@@ -159,13 +159,19 @@ async function seed(
   return { familyId, ana, sam, actionId, familyEventId, origin, payload: action?.payload };
 }
 
-async function audit(familyId: string, actionTaken: string, familyEventId: string) {
+async function audit(
+  familyId: string,
+  actionTaken: string,
+  familyEventId: string,
+  occurredAt?: Date,
+) {
   await db.database.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
     actionTaken,
     targetTable: 'family_events',
     targetId: familyEventId,
+    ...(occurredAt ? { occurredAt } : {}),
   });
 }
 
@@ -361,6 +367,19 @@ describe('VIL-443 loadGroupPlan, real database', () => {
     const moved = await loadGroupPlan(db.database, request(s), MORNING);
     expect(moved?.change).toBe('moved');
     expect(moved?.reachedUserIds).toEqual([]);
+  });
+
+  it('does not count a calendar the move never wrote to, until a write there lands', async () => {
+    const s = await seed();
+    await googleWrite(s.familyId, s.familyEventId, s.sam);
+    const later = (minutes: number) => new Date(Date.now() + minutes * 60_000);
+    // T6 skipped the update (no token, flag off): a move with no Google outcome after it.
+    await audit(s.familyId, 'action.calendar_moved', s.familyEventId, later(1));
+    expect((await loadGroupPlan(db.database, request(s), MORNING))?.reachedUserIds).toEqual([]);
+    await audit(s.familyId, 'integration.google_calendar_written', s.familyEventId, later(2));
+    expect((await loadGroupPlan(db.database, request(s), MORNING))?.reachedUserIds).toEqual([
+      s.sam,
+    ]);
   });
 
   it('gives a move its own revision, so the group hears about it once more', async () => {

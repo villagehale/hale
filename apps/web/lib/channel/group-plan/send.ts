@@ -256,6 +256,10 @@ async function groupMembers(
   }));
 }
 
+const CALENDAR_MOVED = 'action.calendar_moved';
+const GOOGLE_WRITTEN = 'integration.google_calendar_written';
+const GOOGLE_FAILED = 'integration.google_calendar_failed';
+
 async function wasMoved(database: Database, familyId: string, familyEventId: string) {
   const [moved] = await database
     .select({ id: schema.auditLog.id })
@@ -265,22 +269,18 @@ async function wasMoved(database: Database, familyId: string, familyEventId: str
         eq(schema.auditLog.familyId, familyId),
         eq(schema.auditLog.targetTable, 'family_events'),
         eq(schema.auditLog.targetId, familyEventId),
-        eq(schema.auditLog.actionTaken, 'action.calendar_moved'),
+        eq(schema.auditLog.actionTaken, CALENDAR_MOVED),
       ),
     )
     .limit(1);
   return moved !== undefined;
 }
 
-const GOOGLE_WRITE_OUTCOMES = [
-  'integration.google_calendar_written',
-  'integration.google_calendar_failed',
-] as const;
-
 /**
  * Whose own calendar holds this version of the plan: the owner of the Google calendar
- * Hale created it on, and only while Hale's latest write there landed. A move whose
- * update failed left the old time on that calendar, so its owner is "not yet" again.
+ * Hale created it on, and only when Hale's latest write there landed after the plan's
+ * latest move. A move whose update failed, or was never tried (no token, flag off),
+ * left the old time on that calendar, so its owner is "not yet" again.
  */
 async function reachedOwners(
   database: Database,
@@ -289,20 +289,27 @@ async function reachedOwners(
   placed: { googleEventId: string | null; integrationId: string | null },
 ): Promise<string[]> {
   if (!placed.googleEventId || !placed.integrationId) return [];
-  const [latest] = await database
-    .select({ actionTaken: schema.auditLog.actionTaken })
+  const rows = await database
+    .select({ actionTaken: schema.auditLog.actionTaken, occurredAt: schema.auditLog.occurredAt })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
         eq(schema.auditLog.targetTable, 'family_events'),
         eq(schema.auditLog.targetId, familyEventId),
-        inArray(schema.auditLog.actionTaken, [...GOOGLE_WRITE_OUTCOMES]),
+        inArray(schema.auditLog.actionTaken, [CALENDAR_MOVED, GOOGLE_WRITTEN, GOOGLE_FAILED]),
       ),
     )
-    .orderBy(desc(schema.auditLog.occurredAt))
-    .limit(1);
-  if (latest?.actionTaken !== 'integration.google_calendar_written') return [];
+    .orderBy(desc(schema.auditLog.occurredAt));
+  const latest = (action: string) =>
+    rows.find((row) => row.actionTaken === action)?.occurredAt.getTime();
+  const written = latest(GOOGLE_WRITTEN);
+  if (written === undefined) return [];
+  const failed = latest(GOOGLE_FAILED);
+  const moved = latest(CALENDAR_MOVED);
+  if ((failed !== undefined && failed >= written) || (moved !== undefined && moved > written)) {
+    return [];
+  }
   const [owner] = await database
     .select({ userId: schema.integrations.userId })
     .from(schema.integrations)
