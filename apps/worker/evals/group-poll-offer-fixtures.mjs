@@ -1,6 +1,8 @@
 // Group poll offer — the corpus (VIL-458 slice 2).
 // Expectations come from the SPEC (packages/agent/skills/group-poll-offer.md).
-// The gate is offer vs no-offer. Scoring is the label, never a word in a message.
+// The offer is one AI-written text that names the options and invites a
+// tapback or a quick reply — not a native poll card. The gate is offer vs
+// no-offer. Scoring is the label, never a word in a message.
 
 const stuckEn = [
   { from: 'Ana', text: 'Saturday or Sunday for the park?' },

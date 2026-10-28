@@ -1,8 +1,11 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
+  GROUP_OFFER_TALLY_SEAM,
+  GROUP_OFFER_TEMPLATE,
   type GroupPollOfferDecision,
   type GroupPollOfferJudge,
   considerStuckGroupPoll,
@@ -12,7 +15,8 @@ import {
 
 // What the model offers is the eval's job (run-group-poll-offer-eval.mjs). The
 // judge here is a fixed decision; these tests cover only what code owns: flags,
-// quiet hours, one ask, open/recent polls, and that a failed read sends nothing.
+// quiet hours, one ask, open/recent offers, that a failed read sends nothing,
+// and that a yes is one text (no native poll card).
 
 let db: TestDb;
 beforeAll(async () => {
@@ -70,54 +74,44 @@ const fixed = (d: GroupPollOfferDecision | null): GroupPollOfferJudge & { calls:
   return judge;
 };
 
-function pollWire(): {
+function textWire(): {
   fetch: typeof fetch;
   texts: () => string[];
-  pollOptions: () => string[];
+  pollPosts: () => number;
 } {
   const texts: string[] = [];
-  const pollOptions: string[] = [];
-  const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+  let pollPosts = 0;
+  const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    if (String(url).includes('/polls')) {
+      pollPosts += 1;
+      return new Response(JSON.stringify({ message_id: 'poll-unexpected' }), { status: 202 });
+    }
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
     const message = body?.message as { parts?: { type?: string; value?: string }[] } | undefined;
     for (const part of message?.parts ?? []) {
       if (part.type === 'text' && part.value) texts.push(part.value);
-    }
-    const poll = body?.poll as { options?: { text?: string }[] } | undefined;
-    const options = poll?.options ?? [];
-    if (options.length > 0) {
-      for (const option of options) {
-        if (option.text) pollOptions.push(option.text);
-      }
-      return new Response(
-        JSON.stringify({
-          message_id: `poll-${pollOptions.length}`,
-          poll: {
-            options: options.map((option, index) => ({
-              option_id: `opt-${index}`,
-              text: option.text,
-            })),
-          },
-        }),
-        { status: 202 },
-      );
     }
     return new Response(JSON.stringify({ message: { id: `m-${texts.length}` } }), { status: 201 });
   });
   return {
     fetch: fetchImpl as unknown as typeof fetch,
     texts: () => texts,
-    pollOptions: () => pollOptions,
+    pollPosts: () => pollPosts,
   };
 }
 
 const yes: GroupPollOfferDecision = {
   offer: true,
-  prompt: 'Which day for the park?',
+  text: 'Saturday or Sunday — tap a reaction or reply with the day that works.',
   options: ['Saturday', 'Sunday'],
 };
 
 describe('group poll offer (VIL-458 slice 2)', () => {
+  it('names the shared #938 tally as the vote reader, not a second counter here', () => {
+    expect(GROUP_OFFER_TALLY_SEAM.reader).toBe('pr-938-group-plan-rsvp');
+    expect(GROUP_OFFER_TALLY_SEAM.path).toBe('apps/web/lib/channel/linq/group-plan-rsvp');
+  });
+
   it('sends the model the thread and the two facts, never ids', () => {
     const msg = pollOfferUserMessage({
       openPoll: true,
@@ -132,11 +126,14 @@ describe('group poll offer (VIL-458 slice 2)', () => {
     expect(parsed.messages[0]).toEqual({ from: 'Ana', text: STUCK[0]?.text });
   });
 
-  it('rejects an offer with fewer than two options', () => {
-    expect(pollOfferFromAnswer({ offer: true, prompt: 'hi', options: ['Saturday'] })).toBeNull();
-    expect(pollOfferFromAnswer({ offer: false, prompt: '', options: [] })).toEqual({
+  it('rejects an offer with fewer than two options or an empty text', () => {
+    expect(pollOfferFromAnswer({ offer: true, text: 'hi', options: ['Saturday'] })).toBeNull();
+    expect(
+      pollOfferFromAnswer({ offer: true, text: '', options: ['Saturday', 'Sunday'] }),
+    ).toBeNull();
+    expect(pollOfferFromAnswer({ offer: false, text: '', options: [] })).toEqual({
       offer: false,
-      prompt: '',
+      text: '',
       options: [],
     });
   });
@@ -145,7 +142,7 @@ describe('group poll offer (VIL-458 slice 2)', () => {
     vi.stubEnv('LINQ_POLLS', '');
     const seeded = await seedFamily();
     const judge = fixed(yes);
-    const wire = pollWire();
+    const wire = textWire();
     const out = await considerStuckGroupPoll(db.database, judge, {
       chatId: CHAT,
       familyId: seeded.familyId,
@@ -157,13 +154,13 @@ describe('group poll offer (VIL-458 slice 2)', () => {
     expect(out).toEqual({ status: 'skipped', reason: 'flag_off' });
     expect(judge.calls).toBe(0);
     expect(wire.texts()).toEqual([]);
-    expect(wire.pollOptions()).toEqual([]);
+    expect(wire.pollPosts()).toBe(0);
   });
 
   it('does not call the judge or send during quiet hours', async () => {
     const seeded = await seedFamily();
     const judge = fixed(yes);
-    const wire = pollWire();
+    const wire = textWire();
     const out = await considerStuckGroupPoll(db.database, judge, {
       chatId: CHAT,
       familyId: seeded.familyId,
@@ -174,13 +171,13 @@ describe('group poll offer (VIL-458 slice 2)', () => {
     });
     expect(out).toEqual({ status: 'held', reason: 'quiet_hours' });
     expect(judge.calls).toBe(0);
-    expect(wire.pollOptions()).toEqual([]);
+    expect(wire.pollPosts()).toBe(0);
   });
 
   it('does not offer a second ask in the same turn', async () => {
     const seeded = await seedFamily();
     const judge = fixed(yes);
-    const wire = pollWire();
+    const wire = textWire();
     const out = await considerStuckGroupPoll(db.database, judge, {
       chatId: CHAT,
       familyId: seeded.familyId,
@@ -192,7 +189,7 @@ describe('group poll offer (VIL-458 slice 2)', () => {
     });
     expect(out).toEqual({ status: 'skipped', reason: 'already_asked' });
     expect(judge.calls).toBe(0);
-    expect(wire.pollOptions()).toEqual([]);
+    expect(wire.pollPosts()).toBe(0);
   });
 
   it('does not offer when a poll is already open in this chat', async () => {
@@ -207,7 +204,7 @@ describe('group poll offer (VIL-458 slice 2)', () => {
       createdAt: DAY,
     });
     const judge = fixed(yes);
-    const wire = pollWire();
+    const wire = textWire();
     const out = await considerStuckGroupPoll(db.database, judge, {
       chatId: CHAT,
       familyId: seeded.familyId,
@@ -220,7 +217,35 @@ describe('group poll offer (VIL-458 slice 2)', () => {
     expect(judge.calls).toBe(0);
   });
 
-  it('does not offer when Hale offered a poll in this chat recently', async () => {
+  it('does not offer when Hale sent a text offer in this chat recently', async () => {
+    const seeded = await seedFamily();
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.userId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: GROUP_OFFER_TEMPLATE,
+      providerChatId: CHAT,
+      providerMessageId: 'offer-recent',
+      status: acceptedStatus('imessage'),
+      sentAt: new Date(DAY.getTime() - 60 * 60 * 1000),
+    });
+    const judge = fixed(yes);
+    const wire = textWire();
+    const out = await considerStuckGroupPoll(db.database, judge, {
+      chatId: CHAT,
+      familyId: seeded.familyId,
+      parentUserId: seeded.userId,
+      messages: STUCK,
+      now: DAY,
+      fetch: wire.fetch,
+    });
+    expect(out).toEqual({ status: 'skipped', reason: 'recent_offer' });
+    expect(judge.calls).toBe(0);
+  });
+
+  it('does not offer when Hale recently sent a native poll in this chat', async () => {
     const seeded = await seedFamily();
     await db.database.insert(schema.channelMessages).values({
       familyId: seeded.familyId,
@@ -235,7 +260,7 @@ describe('group poll offer (VIL-458 slice 2)', () => {
       sentAt: new Date(DAY.getTime() - 60 * 60 * 1000),
     });
     const judge = fixed(yes);
-    const wire = pollWire();
+    const wire = textWire();
     const out = await considerStuckGroupPoll(db.database, judge, {
       chatId: CHAT,
       familyId: seeded.familyId,
@@ -250,9 +275,9 @@ describe('group poll offer (VIL-458 slice 2)', () => {
 
   it('sends nothing when the judge says no, or when the read fails', async () => {
     const seeded = await seedFamily();
-    const no = fixed({ offer: false, prompt: '', options: [] });
+    const no = fixed({ offer: false, text: '', options: [] });
     const unread = fixed(null);
-    const wire = pollWire();
+    const wire = textWire();
     const declined = await considerStuckGroupPoll(db.database, no, {
       chatId: CHAT,
       familyId: seeded.familyId,
@@ -274,13 +299,13 @@ describe('group poll offer (VIL-458 slice 2)', () => {
     expect(no.calls).toBe(1);
     expect(unread.calls).toBe(1);
     expect(wire.texts()).toEqual([]);
-    expect(wire.pollOptions()).toEqual([]);
+    expect(wire.pollPosts()).toBe(0);
   });
 
-  it('sends the model-written prompt and options through sendChoicePoll', async () => {
+  it('sends the model-written text only — no native poll card', async () => {
     const seeded = await seedFamily();
     const judge = fixed(yes);
-    const wire = pollWire();
+    const wire = textWire();
     const out = await considerStuckGroupPoll(db.database, judge, {
       chatId: CHAT,
       familyId: seeded.familyId,
@@ -291,7 +316,17 @@ describe('group poll offer (VIL-458 slice 2)', () => {
     });
     expect(out.status).toBe('sent');
     expect(judge.calls).toBe(1);
-    expect(wire.texts()).toEqual(['Which day for the park?']);
-    expect(wire.pollOptions()).toEqual(['Saturday', 'Sunday']);
+    expect(wire.texts()).toEqual([yes.text]);
+    expect(wire.pollPosts()).toBe(0);
+    const ledger = await db.database
+      .select({ templateKey: schema.channelMessages.templateKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, seeded.familyId));
+    expect(ledger).toEqual([{ templateKey: GROUP_OFFER_TEMPLATE }]);
+    const pollRows = await db.database
+      .select({ id: schema.linqPollOptions.id })
+      .from(schema.linqPollOptions)
+      .where(eq(schema.linqPollOptions.familyId, seeded.familyId));
+    expect(pollRows).toEqual([]);
   });
 });
