@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  EVENT_NOTES_FAILED,
   createEventNotesReader,
   descriptionHash,
   sameEventNotes,
@@ -34,12 +35,24 @@ describe('createEventNotesReader', () => {
     expect(client).not.toHaveBeenCalled();
   });
 
-  it('a failed read is null, so nothing extra is sent', async () => {
+  it('an unavailable client is null (no attempt), so nothing extra is sent', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-placeholder');
     const read = createEventNotesReader(() => {
       throw new Error('boom');
     });
     expect(await read({ title: 'Swim', description: 'Use the back lot' })).toBeNull();
+  });
+  it('a model failure is EVENT_NOTES_FAILED, so the mirror can count it', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-placeholder');
+    const boom = vi.fn(async () => {
+      throw new Error('model down');
+    });
+    const client = {
+      messages: { create: boom, stream: boom },
+    } as unknown as import('@hale/agent').AgentClient;
+    const read = createEventNotesReader(() => client);
+    expect(await read({ title: 'Swim', description: 'Use the back lot' })).toBe(EVENT_NOTES_FAILED);
+    expect(boom).toHaveBeenCalled();
   });
 });
 
