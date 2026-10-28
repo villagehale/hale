@@ -59,7 +59,9 @@ async function user(name: string) {
   return row?.id as string;
 }
 
-async function seed(opts: { group?: boolean; sensitive?: boolean; language?: string } = {}) {
+async function seed(
+  opts: { group?: boolean; sensitive?: boolean; language?: string; childDob?: string } = {},
+) {
   const [family] = await db.database
     .insert(schema.families)
     .values({
@@ -111,6 +113,12 @@ async function seed(opts: { group?: boolean; sensitive?: boolean; language?: str
     })
     .returning({ id: schema.actions.id, payload: schema.actions.payload });
   const actionId = action?.id as string;
+  const [child] = opts.childDob
+    ? await db.database
+        .insert(schema.children)
+        .values({ familyId, name: 'Mia', dateOfBirth: opts.childDob })
+        .returning({ id: schema.children.id })
+    : [];
   const [placed] = await db.database
     .insert(schema.familyEvents)
     .values({
@@ -120,6 +128,7 @@ async function seed(opts: { group?: boolean; sensitive?: boolean; language?: str
       location: 'Y on Main',
       source: 'placement',
       sensitive: opts.sensitive ?? false,
+      childId: child?.id ?? null,
       placedByActionId: actionId,
     })
     .returning({ id: schema.familyEvents.id });
@@ -156,6 +165,31 @@ async function seat(
     phoneE164Hash: phoneBlindIndex(phone),
     role,
   });
+}
+
+/** The chat's roster (group onboarding v2), in the given status, with these members. */
+async function roster(
+  familyId: string,
+  status: 'confirmed' | 'roles_proposed',
+  members: Array<{
+    status: 'known_parent' | 'confirmed' | 'asked';
+    confirmedRole?: 'grandparent' | 'nanny';
+  }>,
+) {
+  const [row] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: GROUP, familyId, source: 'new_group', status })
+    .returning({ id: schema.linqGroupRosters.id });
+  for (const member of members) {
+    n += 1;
+    await db.database.insert(schema.linqGroupRosterMembers).values({
+      rosterId: row?.id as string,
+      chatId: GROUP,
+      phoneE164Hash: phoneBlindIndex(`+1647555${7000 + n}`),
+      status: member.status,
+      confirmedRole: member.confirmedRole ?? null,
+    });
+  }
 }
 
 async function googleWrite(familyId: string, familyEventId: string, owner: string) {
@@ -307,6 +341,19 @@ describe('VIL-443 loadGroupPlan, real database', () => {
     const plan = await loadGroupPlan(db.database, request(s), MORNING);
     expect(plan?.event.title).not.toContain('Swim');
     expect(plan?.event.where).toBeNull();
+  });
+
+  it('classifies the plan the way the group audience gate reads a placed row', async () => {
+    const classOf = async (opts: Parameters<typeof seed>[0]) => {
+      const s = await seed(opts);
+      const plan = await loadGroupPlan(db.database, request(s), MORNING);
+      await db.exec('truncate table families, users cascade');
+      return plan?.contentClass;
+    };
+    expect(await classOf({})).toBe('schedule');
+    expect(await classOf({ childDob: '2022-04-01' })).toBe('event_logistics');
+    expect(await classOf({ childDob: '2022-04-01', sensitive: true })).toBe('health');
+    expect(await classOf({ childDob: '2011-02-01' })).toBe('teen_content');
   });
 
   it("writes in the family's language", async () => {
@@ -468,5 +515,56 @@ describe('VIL-443 production ports, real database', () => {
       outcome: 'already_sent',
     });
     expect(wire.posted).toHaveLength(1);
+  });
+
+  describe('with group onboarding v2, the group hears only what everyone in it may', () => {
+    async function run(opts: Parameters<typeof seed>[0], setUp: (familyId: string) => unknown) {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      vi.stubEnv('GROUP_PLAN_CALENDAR_REPORT_ENABLED', 'true');
+      vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+      const s = await seed(opts);
+      await setUp(s.familyId);
+      const wire = linqWire();
+      const inner = {
+        send: vi.fn(
+          async (): Promise<CalendarInviteReport> => ({ status: 'reported', parents: [] }),
+        ),
+      };
+      const sender = withGroupPlanReport(inner, {
+        ...productionGroupPlanReportPorts(db.database, { fetch: wire.fetch, now: () => MORNING }),
+        compose: async (input) => `Swim is set. Add it here: ${input.link}`,
+      });
+      return { report: await sender.send(request(s)), inner, posted: wire.posted };
+    }
+
+    it('reports to a confirmed group of parents and a grandparent', async () => {
+      const { report, inner, posted } = await run({ childDob: '2022-04-01' }, (familyId) =>
+        roster(familyId, 'confirmed', [
+          { status: 'known_parent' },
+          { status: 'confirmed', confirmedRole: 'grandparent' },
+        ]),
+      );
+      expect(report).toEqual({ status: 'group_reported', outcome: 'sent' });
+      expect(inner.send).not.toHaveBeenCalled();
+      expect(posted.map((p) => p.url)).toEqual([GROUP_MESSAGES]);
+    });
+
+    it("gives the parents their own invites for a teen's plan, and the group nothing", async () => {
+      const { report, inner, posted } = await run({ childDob: '2011-02-01' }, (familyId) =>
+        roster(familyId, 'confirmed', [{ status: 'known_parent' }]),
+      );
+      expect(report).toEqual({ status: 'reported', parents: [] });
+      expect(inner.send).toHaveBeenCalledTimes(1);
+      expect(posted).toEqual([]);
+    });
+
+    it('gives the parents their own invites while the roster is not confirmed', async () => {
+      const { report, inner, posted } = await run({}, (familyId) =>
+        roster(familyId, 'roles_proposed', [{ status: 'known_parent' }, { status: 'asked' }]),
+      );
+      expect(report).toEqual({ status: 'reported', parents: [] });
+      expect(inner.send).toHaveBeenCalledTimes(1);
+      expect(posted).toEqual([]);
+    });
   });
 });

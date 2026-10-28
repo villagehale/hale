@@ -22,6 +22,7 @@ const PLAN: GroupPlan = {
   familyEventId: 'e1',
   placedByActionId: 'a1',
   chatId: 'chat-1',
+  contentClass: 'event_logistics',
   gateUserId: 'u-ana',
   change: 'added',
   dedupeKey: 'group_plan_calendar:e1:1',
@@ -39,6 +40,7 @@ function ports(overrides: Partial<GroupPlanReportPorts> = {}): GroupPlanReportPo
   return {
     enabled: () => true,
     loadPlan: vi.fn(async () => PLAN),
+    audience: vi.fn(async () => ({ allowed: true, reason: 'in_scope' }) as const),
     alreadySent: vi.fn(async () => false),
     gate: vi.fn(async () => ({ allowed: true, optOut: 'short' }) as const),
     mintLink: vi.fn(async () => LINK),
@@ -89,7 +91,41 @@ describe('VIL-443 withGroupPlanReport', () => {
       outcome: 'sent',
     });
     expect(inner.send).not.toHaveBeenCalled();
+    expect(p.audience).toHaveBeenCalledWith('chat-1', 'event_logistics');
     expect(p.send).toHaveBeenCalledWith(PLAN, TEXT, 'short');
+  });
+
+  for (const reason of [
+    'group_roles_unconfirmed',
+    'group_audience_empty',
+    'group_audience_refused',
+    'not_migrated',
+  ] as const) {
+    it(`gives its parents their own invites when the group may not hear it (${reason})`, async () => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const inner = innerSender();
+      const p = ports({ audience: vi.fn(async () => ({ allowed: false, reason }) as const) });
+      expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+        status: 'reported',
+        parents: [],
+      });
+      expect(inner.send).toHaveBeenCalledWith(REQUEST);
+      expect(p.alreadySent).not.toHaveBeenCalled();
+      expect(p.compose).not.toHaveBeenCalled();
+      expect(p.send).not.toHaveBeenCalled();
+    });
+  }
+
+  it('names an unreadable audience and sends nothing anywhere', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const inner = innerSender();
+    const p = ports({ audience: vi.fn(async () => Promise.reject(new Error('db'))) });
+    expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+      status: 'errored',
+      message: 'group_plan_unreadable',
+    });
+    expect(inner.send).not.toHaveBeenCalled();
+    expect(p.send).not.toHaveBeenCalled();
   });
 
   it('names an unreadable placement and sends nothing anywhere', async () => {

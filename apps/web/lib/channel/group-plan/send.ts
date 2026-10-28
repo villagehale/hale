@@ -8,6 +8,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { type GroupAudienceVerdict, groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import { readGroupMembership } from '~/lib/channel/linq/group-membership';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
@@ -19,6 +20,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { failedSendPatch } from '~/lib/channel/outbound-transport';
+import { type ContentClass, classifyFamilyEvent } from '~/lib/channel/role-scope';
 import {
   icsSequence,
   loadInviteEventRow,
@@ -47,7 +49,10 @@ import { isGroupPlanAction } from './stamp';
  * plan a family-group turn drafted, the group gets ONE AI-written text carrying the
  * add-to-calendar link, instead of each parent getting the same link 1:1: a parent in the
  * group would otherwise have it twice, and grandparents or a nanny in the chat would not
- * have it at all. Every other placement goes to the inner sender untouched.
+ * have it at all. Every other placement goes to the inner sender untouched, and so does a
+ * group plan the group may not hear (its audience gate: a teen's or health event, a roster
+ * not yet confirmed, someone in the chat whose role does not cover it): its parents get
+ * their own invites, as they would without this flag.
  *
  * Moves and cancels find the plan through the row's placing action, so the same group
  * hears about every revision. One send per revision (and one per cancel): the dedupe key
@@ -77,6 +82,8 @@ export interface GroupPlan {
   /** The calendar_add that placed the row. */
   placedByActionId: string;
   chatId: string;
+  /** The placed row's class, the one the group's audience gate is asked about. */
+  contentClass: ContentClass;
   /** The parent whose proactive-send standing gates the group text: the primary parent. */
   gateUserId: string;
   change: GroupPlanChange;
@@ -94,6 +101,8 @@ export interface GroupPlanReportPorts {
   now?(): Date;
   /** The group plan behind a placement, or null when it is not one. Writes nothing. */
   loadPlan(request: CalendarInviteRequest): Promise<GroupPlan | null>;
+  /** Whether everyone in the chat may hear a line of this class. */
+  audience(chatId: string, contentClass: ContentClass): Promise<GroupAudienceVerdict>;
   alreadySent(dedupeKey: string): Promise<boolean>;
   gate(familyId: string, parentUserId: string, now: Date): Promise<ProactiveSendVerdict>;
   /** The per-event add-to-calendar link, minted on the family. */
@@ -151,8 +160,10 @@ export function withGroupPlanReport(
     async send(request): Promise<CalendarInviteReport> {
       if (!ports.enabled()) return inner.send(request);
       let plan: GroupPlan | null;
+      let audience: GroupAudienceVerdict | null = null;
       try {
         plan = await ports.loadPlan(request);
+        if (plan) audience = await ports.audience(plan.chatId, plan.contentClass);
       } catch (err) {
         console.error(
           {
@@ -165,6 +176,18 @@ export function withGroupPlanReport(
         return { status: 'errored', message: 'group_plan_unreadable' };
       }
       if (!plan) return inner.send(request);
+      if (!audience?.allowed) {
+        console.info(
+          {
+            familyId: request.familyId,
+            familyEventId: request.familyEventId,
+            contentClass: plan.contentClass,
+            reason: audience?.reason,
+          },
+          'group plan report: not for this group - its parents get their own invites',
+        );
+        return inner.send(request);
+      }
       const outcome = await reportGroupPlan(plan, ports);
       console.info(
         {
@@ -340,11 +363,15 @@ export async function loadGroupPlan(
   const timeZone = await householdTimezone(database, row.familyId);
   const invite = toInviteEvent(row, { level: 'generic', note: null, sequence: 0 }, now);
 
+  const children =
+    row.childId && row.childDob ? [{ id: row.childId, dateOfBirth: row.childDob }] : [];
+
   return {
     familyId: row.familyId,
     familyEventId: row.id,
     placedByActionId,
     chatId,
+    contentClass: classifyFamilyEvent(row, children, now),
     gateUserId,
     change,
     dedupeKey: `${GROUP_PLAN_TEMPLATE_KEY}:${row.id}:${revision}`,
@@ -374,6 +401,7 @@ export function productionGroupPlanReportPorts(
     enabled: () => groupPlanReportEnabled(),
     now: clock,
     loadPlan: (request) => loadGroupPlan(database, request, clock()),
+    audience: (chatId, contentClass) => groupAudienceAllows(database, chatId, contentClass),
     alreadySent: (dedupeKey) => dedupeActive(dedupeKey, database),
     gate: (familyId, parentUserId, now) =>
       assertProactiveSendAllowed(
