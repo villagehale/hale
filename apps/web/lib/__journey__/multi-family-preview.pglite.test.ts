@@ -155,8 +155,7 @@ describe('Preview conversation: three fake families, seven numbers', () => {
       { chatId: CHAT, adderHandle: MEI, now: NOW, handles: SEVEN },
       ports,
     );
-    expect(intro.handled).toBe(true);
-    expect(intro.outcome).toBe('intro');
+    expect(intro).toMatchObject({ handled: true, outcome: 'intro' });
     transcript.unshift({
       from: 'Mei',
       text: '(adds Hale to the class group)',
@@ -180,7 +179,7 @@ describe('Preview conversation: three fake families, seven numbers', () => {
       },
       { ...ports, reader: reader('question') },
     );
-    expect(first.outcome).toBe('shared_reply');
+    expect(first).toMatchObject({ handled: true, outcome: 'shared_reply' });
 
     transcript.push({ from: 'Tom', text: 'I can bring orange slices', kind: 'human' });
     const banter = await takeMultiFamilyTurn(
@@ -195,7 +194,7 @@ describe('Preview conversation: three fake families, seven numbers', () => {
       },
       { ...ports, reader: reader('chatter') },
     );
-    expect(banter.outcome).toBe('chatter_ignored');
+    expect(banter).toMatchObject({ handled: true, outcome: 'chatter_ignored' });
     transcript.push({ from: 'Hale', text: '(stays quiet)', kind: 'quiet' });
 
     transcript.push({ from: 'Ada', text: 'hey I am Ada, Leo is my kid', kind: 'human' });
@@ -211,7 +210,7 @@ describe('Preview conversation: three fake families, seven numbers', () => {
       },
       { ...ports, reader: reader('who_i_am', { role: 'parent', kidName: 'Leo' }) },
     );
-    expect(who.outcome).toBe('who_confirmed');
+    expect(who).toMatchObject({ handled: true, outcome: 'who_confirmed' });
 
     transcript.push({ from: 'Priya', text: '(hearts Hale)', kind: 'tapback' });
     const heart = await takeMultiFamilyReaction(
@@ -225,7 +224,7 @@ describe('Preview conversation: three fake families, seven numbers', () => {
       },
       { ...ports, reader: reader('yes') },
     );
-    expect(heart.outcome).toBe('yes');
+    expect(heart).toMatchObject({ handled: true, outcome: 'yes' });
 
     transcript.push({ from: 'Jordan', text: 'Hale, leave me out of this one', kind: 'human' });
     const stop = await takeMultiFamilyTurn(
@@ -240,7 +239,7 @@ describe('Preview conversation: three fake families, seven numbers', () => {
       },
       { ...ports, reader: reader('stop_me'), optOut: async () => 'stop' },
     );
-    expect(stop.outcome).toBe('member_stopped');
+    expect(stop).toMatchObject({ handled: true, outcome: 'member_stopped' });
 
     const haleLines = transcript.filter((line) => line.kind === 'hale').map((line) => line.text);
     expect(haleLines.length).toBeGreaterThanOrEqual(3);

@@ -7,7 +7,7 @@ import type { ReplyLanguage } from '../language';
  * and from numbers Hale already knows. Private family surfaces are never here.
  */
 
-export const SHARED_GROUP_VOICE_SKILL = 'shared-group-voice';
+export const SHARED_GROUP_VOICE_SKILL = 'shared-group-voice' as const;
 
 export type SharedGroupVoiceKind =
   | 'intro'

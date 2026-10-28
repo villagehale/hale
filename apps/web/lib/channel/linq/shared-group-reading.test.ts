@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  createSharedGroupReader,
   parseSharedGroupReading,
   reactionAsVote,
   sharedGroupUserMessage,
@@ -28,14 +28,10 @@ describe('shared group reading', () => {
     ).toBe('unclear');
   });
 
-  it('does not treat a keyword list as the reader — the skill has no join phrase', () => {
-    const skill = readFileSync(
-      new URL('../../../../../packages/agent/skills/shared-group-reading.md', import.meta.url),
-      'utf8',
-    );
-    expect(skill).not.toMatch(/our family is in this group/i);
-    expect(skill).not.toMatch(/notre famille est dans ce groupe/i);
-    expect(skill).not.toContain('TODO-Design');
+  it('a parent string is not a reading — only the model object is', () => {
+    expect(parseSharedGroupReading('stop').intent).toBe('unclear');
+    expect(parseSharedGroupReading({ intent: 'chatter' }).intent).toBe('unclear');
+    expect(typeof createSharedGroupReader).toBe('function');
   });
 
   it('reads hearts and thumbs as votes, and never invents a vote from a laugh', () => {

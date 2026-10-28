@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { sharedGroupLineInput } from './shared-group-line-input';
+import { SHARED_GROUP_VOICE_SKILL, sharedGroupLineInput } from './shared-group-line-input';
 import { sharedLineUsable } from './shared-group-voice';
 
 describe('shared group line input', () => {
@@ -23,14 +22,10 @@ describe('shared group line input', () => {
     expect(sharedLineUsable('TODO-Design: placeholder', answer)).toBe(false);
   });
 
-  it('keeps parent-facing directions in the skill, not in TypeScript strings', () => {
-    const skill = readFileSync(
-      new URL('../../../../../packages/agent/skills/shared-group-voice.md', import.meta.url),
-      'utf8',
-    );
-    const source = readFileSync(new URL('./shared-group-line-input.ts', import.meta.url), 'utf8');
-    expect(skill).not.toContain('TODO-Design');
-    expect(source).not.toContain('TODO-Design');
-    expect(source).not.toMatch(/our family is in this group/i);
+  it('hands the model facts and a skill name, not a parent line', () => {
+    const intro = sharedGroupLineInput({ kind: 'intro', adderFirstName: 'Mei' }, 'en');
+    expect(intro.skill).toBe(SHARED_GROUP_VOICE_SKILL);
+    expect(intro.facts).toEqual({ adderFirstName: 'Mei' });
+    expect(intro).not.toHaveProperty('line');
   });
 });

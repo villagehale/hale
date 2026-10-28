@@ -257,7 +257,7 @@ describe('multi-family zero-setup', () => {
     expect(mei?.familyId).not.toBe(ada?.familyId);
   });
 
-  it('stops one member in any wording and leaves the others on Hale', async () => {
+  it('unseats on a stop_me reading and leaves the others on Hale', async () => {
     await threeFamilies();
     const wire = sender();
     const voice = fakeSharedGroupComposer();
@@ -279,7 +279,7 @@ describe('multi-family zero-setup', () => {
       {
         chatId: CHAT,
         senderHandle: JORDAN,
-        text: 'Hale, leave me out of this one',
+        text: 'I will bring the orange slices',
         providerMessageId: 'in-stop',
         receivedAt: NOW,
         now: NOW,
