@@ -46,6 +46,7 @@ import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { familyLocalNow } from './local-now';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import {
@@ -187,6 +188,9 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
+  /** The family's own IANA time zone (VIL-435). Optional: absent, the turn carries only
+   * the UTC instant, exactly as before. */
+  loadTimeZone?(familyId: string): Promise<string>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -283,6 +287,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ports.loadChildren(turn.familyId),
         ports.loadRegistrationWindows(turn.familyId, now),
       ]);
+      const timeZone = ports.loadTimeZone
+        ? await ports.loadTimeZone(turn.familyId).catch(() => null)
+        : null;
+      const localNow = timeZone ? familyLocalNow(now, timeZone) : null;
       const providerWatch = ports.loadProviderWatch
         ? await ports.loadProviderWatch(turn.familyId, now)
         : [];
@@ -322,6 +330,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...familyContext,
         channel: 'sms' as const,
         nowIso: now.toISOString(),
+        // TODAY IN THE FAMILY'S OWN TIME ZONE (VIL-435). A fact for the model to reason
+        // over (weekday, date, whether today may be a holiday where they live), never a
+        // filter and never copy. Absent when the zone could not be read.
+        ...(localNow ? { localNow } : {}),
         // What Hale is holding an answer for, in Hale's own words (see ChannelTurn). A
         // FACT about state, handed to the model the same way the family's schedule is —
         // so a turn that is plainly an answer to one of them can be treated as one, and a
@@ -544,6 +556,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
+    loadTimeZone: (familyId) => channelScheduleReader(database, new Date()).timeZone(familyId),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(
