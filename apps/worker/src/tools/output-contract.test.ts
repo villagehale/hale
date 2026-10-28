@@ -58,7 +58,11 @@ describe('throughOutputContract — the declared shape is the sent shape', () =>
     expect(out).toEqual({
       tool: 'check_spending_cap',
       ok: true,
-      result: { withinLimits: true, limitUsd: 50, rationale: 'amount 12 within per-action cap of 50' },
+      result: {
+        withinLimits: true,
+        limitUsd: 50,
+        rationale: 'amount 12 within per-action cap of 50',
+      },
     });
   });
 });
