@@ -22,14 +22,12 @@ describe('toEventNotes', () => {
 });
 
 describe('createEventNotesReader', () => {
-  const saved = process.env.ANTHROPIC_API_KEY;
   afterEach(() => {
-    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
-    else process.env.ANTHROPIC_API_KEY = saved;
+    vi.unstubAllEnvs();
   });
 
   it('with no key there is no call and no notes', async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
     const client = vi.fn();
     const read = createEventNotesReader(client);
     expect(await read({ title: 'Swim', description: 'Use the back lot' })).toBeNull();
@@ -37,7 +35,7 @@ describe('createEventNotesReader', () => {
   });
 
   it('a failed read is null, so nothing extra is sent', async () => {
-    process.env.ANTHROPIC_API_KEY = 'test-placeholder';
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-placeholder');
     const read = createEventNotesReader(() => {
       throw new Error('boom');
     });
