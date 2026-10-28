@@ -14,7 +14,11 @@ import type {
   GroupPickupClaimReader,
   GroupPickupClaimReading,
 } from './group-pickup-claim';
-import { narrateHouseholdCalendar, takeGroupPickupClaim } from './household-calendar';
+import {
+  captureLogisticsText,
+  narrateHouseholdCalendar,
+  takeGroupPickupClaim,
+} from './household-calendar';
 import { handleLinqInboundRequest } from './inbound';
 import { recordLogisticsVote, whoTakesFactKey, writeLogisticsDecision } from './logistics-poll';
 
@@ -1205,6 +1209,35 @@ describe('group pickup claims (VIL-444)', () => {
     expect(reader.calls).toHaveLength(3);
     expect(await liveTakers(seeded.familyId)).toEqual([
       { takerUserId: seeded.bartonId, source: 'claim', since: at(2) },
+    ]);
+  });
+
+  it('stores who-takes replies in the group in the order they were sent, however late', async () => {
+    const seeded = await seedFamily();
+    await calendarItem(seeded, 'barton', { eventId: 'daycare', title: 'Leo daycare pickup' });
+    const at = (minutes: number) => new Date(DAY.getTime() + minutes * MINUTE);
+    const reply = (parentUserId: string, body: string, sentAt: Date, readAt: Date) =>
+      captureLogisticsText(db.database, {
+        familyId: seeded.familyId,
+        parentUserId,
+        body,
+        sentAt,
+        now: readAt,
+      });
+    const takes = "I'll take Leo daycare pickup";
+
+    expect(await reply(seeded.samId, takes, at(0), at(10))).toBe('stored');
+    expect(await reply(seeded.bartonId, takes, at(5), at(11))).toBe('stored');
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.bartonId, source: 'text', since: at(5) },
+    ]);
+
+    expect(await reply(seeded.bartonId, "We'll figure it out", at(7), at(12))).toBe('withheld');
+    expect(await liveTakers(seeded.familyId)).toEqual([]);
+    expect(await reply(seeded.samId, takes, at(8), at(13))).toBe('stored');
+    expect(await reply(seeded.samId, takes, at(0), at(14))).toBe('skipped');
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.samId, source: 'text', since: at(8) },
     ]);
   });
 });

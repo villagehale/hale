@@ -1395,13 +1395,12 @@ export async function takeGroupPickupClaim(
   );
   if (!action) return 'not_a_claim';
   const saidAt = input.sentAt.getTime() < input.now.getTime() ? input.sentAt : input.now;
-  const changedSince = (factKey: string, taker: string | null) =>
+  const changedSince = (factKey: string) =>
     whoTakesChangedSince(database, {
       familyId: input.familyId,
       factKey,
       sentAt: saidAt,
       remembered,
-      taker,
     });
   let superseded = false;
   if (action.kind === 'drop') {
@@ -1411,7 +1410,7 @@ export async function takeGroupPickupClaim(
       const factKey = whoTakesFactKey(key.startIso, key.titleNorm);
       const memory = rememberedWhoTakes(remembered, key.startIso, key.titleNorm);
       if (memory?.status !== 'decided' || memory.takerUserId !== input.senderUserId) continue;
-      if (await changedSince(factKey, null)) {
+      if (await changedSince(factKey)) {
         superseded = true;
         continue;
       }
@@ -1431,9 +1430,7 @@ export async function takeGroupPickupClaim(
     if (plan.claimed && plan.takerId === input.senderUserId) continue;
     const key = pickupDecisionKey(plan);
     const factKey = whoTakesFactKey(key.startIso, key.titleNorm);
-    // This message's own text capture runs just before and names the sender, so a later
-    // decision that already has them is no reason to stop.
-    if (await changedSince(factKey, input.senderUserId)) {
+    if (await changedSince(factKey)) {
       superseded = true;
       continue;
     }
@@ -1835,8 +1832,8 @@ export async function rememberBothFreeAsked(
 /**
  * A clear who-takes or slot reply, in the group or in a 1:1 the parent
  * started. Stored on the family so the evening handoff can read it. Does not
- * send. An unclear sentence is left alone. With `sentAt`, a who-takes reply
- * never undoes a decision stored after the message was sent.
+ * send. An unclear sentence is left alone. With `sentAt`, a who-takes reply is
+ * stored as of when it was sent, and never over a decision stored after that.
  */
 export async function captureLogisticsText(
   database: Database,
@@ -1844,7 +1841,7 @@ export async function captureLogisticsText(
     familyId: string;
     parentUserId: string;
     body: string;
-    /** A group message: Linq can retry it before anything dedupes it. */
+    /** A group message: Linq can retry it, or deliver it late, before anything dedupes it. */
     sentAt?: Date;
     now: Date;
   },
@@ -1863,14 +1860,15 @@ export async function captureLogisticsText(
   const remembered = await loadRememberedLogistics(database, input.familyId);
   const blocks = await loadFamilyBlocks(database, input.familyId);
   const who = readWhoTakesReply(input.body, parents, input.parentUserId);
+  const saidAt =
+    input.sentAt && input.sentAt.getTime() < input.now.getTime() ? input.sentAt : input.now;
   const changedSince = async (factKey: string): Promise<boolean> =>
     input.sentAt
       ? whoTakesChangedSince(database, {
           familyId: input.familyId,
           factKey,
-          sentAt: input.sentAt,
+          sentAt: saidAt,
           remembered,
-          taker: null,
         })
       : false;
   if (who && 'declined' in who) {
@@ -1882,7 +1880,7 @@ export async function captureLogisticsText(
         familyId: input.familyId,
         parentUserId: input.parentUserId,
         factKey,
-        now: input.now,
+        now: saidAt,
         source: 'text',
       });
     }
@@ -1898,7 +1896,7 @@ export async function captureLogisticsText(
       parentUserId: input.parentUserId,
       factKey,
       childId: null,
-      now: input.now,
+      now: saidAt,
       value: {
         kind: 'who_takes',
         status: 'declined' in who ? 'declined' : 'decided',
