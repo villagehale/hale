@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text keeps every given fact: event title 'Swim class', the day (today, which is true from now Monday Oct 26), start 10:00 a.m., and end 11:00 a.m. There is no location or 'for' in the facts, so none is missing, and nothing was invented. AM/PM is correct and the language is English.",
+    "score": 5
+  }
+}
