@@ -143,6 +143,10 @@
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
   },
+  "group-poll-offer.md": {
+    "file": "group-poll-offer.md",
+    "sha256": "c94cc326953dd2d6fa25594c59f5ef61d243897749023806ee3592ee17675d31"
+  },
   "group-poll-tally-read.md": {
     "file": "group-poll-tally-read.md",
     "sha256": "310b69a4c546773232b288343466460030fc3b12602fdcab1cccb32543fd4827"
