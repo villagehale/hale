@@ -8,6 +8,7 @@ import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redr
 import { sweepDutyAsks } from '~/lib/channel/coparent/duty/asks';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { runFollowupSweep } from '~/lib/channel/followup/run';
+import { productionGroupPlanReportPorts, withGroupPlanReport } from '~/lib/channel/group-plan/send';
 import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/inbound-deps';
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
 import { runMidActivityAnswerPass } from '~/lib/channel/mid-activity/answer';
@@ -149,14 +150,18 @@ export const GET = cronRoute('nudge', async () => {
     });
     const workstreamFollowups = await runWorkstreamFollowupSweep(db());
     // VIL-449 · cancellation texts that were deferred (or held) get another try, hourly,
-    // through the same sender: dedupe, consent and quiet hours apply in the dispatch.
+    // through the same sender: dedupe, consent and quiet hours apply in the dispatch. A
+    // plan the family group made is called off in that group (VIL-443), as it was added.
     const calendarCancelRetries = await retryDeferredCalendarCancels(
       db(),
-      createCalendarInviteSender(db(), {
-        channels: productionChannels(db()),
-        renderer: loopTemplateRenderer,
-        cancelVoice: productionCalendarCancelVoice(),
-      }),
+      withGroupPlanReport(
+        createCalendarInviteSender(db(), {
+          channels: productionChannels(db()),
+          renderer: loopTemplateRenderer,
+          cancelVoice: productionCalendarCancelVoice(),
+        }),
+        productionGroupPlanReportPorts(db()),
+      ),
     );
     return NextResponse.json(
       {
