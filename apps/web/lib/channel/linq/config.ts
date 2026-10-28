@@ -107,3 +107,12 @@ export function linqGroupOnboardingV2Enabled(): boolean {
 export function linqGroupWelcomeVoiceEnabled(): boolean {
   return trimmed('LINQ_GROUP_WELCOME_VOICE_ENABLED') === 'true';
 }
+
+/**
+ * VIL-444 (T24) — a clash in the household group gets one model-written alert with a
+ * suggested fix, in place of the household conflict line. Exactly `true` enables it.
+ * Default off: off plans and sends exactly what it did before.
+ */
+export function linqGroupConflictAlertsEnabled(): boolean {
+  return trimmed('LINQ_GROUP_CONFLICT_ALERTS_ENABLED') === 'true';
+}

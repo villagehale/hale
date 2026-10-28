@@ -1,13 +1,24 @@
-import { type Database, schema } from '@hale/db';
-import { and, eq, inArray } from 'drizzle-orm';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
-import { linqGroupCoparentEnabled, linqPollsEnabled } from './config';
+import {
+  linqGroupConflictAlertsEnabled,
+  linqGroupCoparentEnabled,
+  linqPollsEnabled,
+} from './config';
 import { groupAudienceAllows } from './group-audience';
+import {
+  type ClashPerson,
+  clashCalendar,
+  findGroupClashes,
+  groupConflictLineInput,
+} from './group-conflict';
+import { sharedGroupConflictWriter } from './group-conflict-voice';
 import {
   classifyKidCalendarItem,
   splitKidEvent,
@@ -110,7 +121,7 @@ export interface WhoTakesAsk {
 }
 
 export interface HouseholdNotice {
-  kind: 'kid_event' | 'conflict' | 'handoff' | 'followup' | 'who_takes';
+  kind: 'kid_event' | 'conflict' | 'clash' | 'handoff' | 'followup' | 'who_takes';
   dedupeKey: string;
   /**
    * `activity_followup` has no frequency counter. Quiet hours and consent
@@ -131,6 +142,7 @@ const NOTICE_CLASS: Record<HouseholdNotice['kind'], ContentClass> = {
   kid_event: 'event_logistics',
   followup: 'event_logistics',
   conflict: 'pickup_duty',
+  clash: 'pickup_duty',
   handoff: 'pickup_duty',
   who_takes: 'pickup_duty',
 };
@@ -154,6 +166,8 @@ export interface NoticePlanInput {
   statements?: readonly HandoffStatement[];
   /** A poll vote or a clear text reply already stored. Not a guess. */
   remembered?: readonly RememberedLogistics[];
+  /** VIL-444: the clash alert owns overlaps, so no conflict line is planned here. */
+  clashAlerts?: boolean;
 }
 
 /**
@@ -165,7 +179,7 @@ export async function planHouseholdNotices(input: NoticePlanInput): Promise<Hous
   // already said, or the event is on exactly one calendar.
   const handoff = await soonestHandoff(input);
   if (handoff) return [handoff];
-  const conflict = await soonestConflict(input);
+  const conflict = input.clashAlerts ? null : await soonestConflict(input);
   if (conflict) return [conflict];
   const kids = await batchedKidEvents(input);
   if (kids) return [kids];
@@ -817,6 +831,8 @@ async function loadFamilyCalendarContext(
 ): Promise<{
   parentUserIds: readonly [string, string] | null;
   bothCalendars: boolean;
+  /** Users whose Google Calendar syncs now. One in error may be stale, so it is not here. */
+  calendarUserIds: string[];
   bothMailboxes: boolean;
   timeZone: string;
   language: ReplyLanguage;
@@ -878,6 +894,10 @@ async function loadFamilyCalendarContext(
   return {
     parentUserIds,
     bothCalendars: gcal.size >= 2,
+    calendarUserIds: connections
+      .filter((row) => row.provider === 'gcal' && row.status === 'active')
+      .map((row) => row.userId)
+      .filter((id): id is string => typeof id === 'string'),
     bothMailboxes: gmail.size >= 2,
     timeZone: zone?.timezone ?? 'America/Toronto',
     language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
@@ -947,12 +967,34 @@ export async function narrateHouseholdCalendar(
     statements,
     remembered,
   };
-  const notices = await planHouseholdNotices(planInput);
-  let notice = notices[0] ?? null;
-  if (linqPollsEnabled()) {
-    const ambiguous = await planAmbiguousWhoTakes(planInput);
-    if (ambiguous && (!notice || notice.kind === 'kid_event' || notice.kind === 'followup')) {
-      notice = ambiguous;
+  const clashAlerts = linqGroupConflictAlertsEnabled();
+  let notice: HouseholdNotice | null = null;
+  if (clashAlerts) {
+    const clash = await clashNotice(database, {
+      familyId: input.familyId,
+      chatId: context.chatId,
+      now: input.now,
+      timeZone: context.timeZone,
+      language: context.language,
+      parentUserIds: context.parentUserIds,
+      parentNames,
+      calendarUserIds: context.calendarUserIds,
+      blocks,
+      remembered,
+      children: context.children,
+      teens,
+    });
+    if (clash === 'unsent' || clash === 'held') return;
+    notice = clash;
+  }
+  if (!notice) {
+    const notices = await planHouseholdNotices({ ...planInput, clashAlerts });
+    notice = notices[0] ?? null;
+    if (linqPollsEnabled()) {
+      const ambiguous = await planAmbiguousWhoTakes(planInput);
+      if (ambiguous && (!notice || notice.kind === 'kid_event' || notice.kind === 'followup')) {
+        notice = ambiguous;
+      }
     }
   }
   if (!notice) return;
@@ -1006,6 +1048,183 @@ export async function narrateHouseholdCalendar(
         ),
       );
   }
+}
+
+/**
+ * VIL-444 (T24) — the soonest clash this group has not been sent, written by the model.
+ *
+ * Null: no clash, every clash was already sent, or this group may not hear pickup duty.
+ * `held`: the gate holds it now (quiet hours, consent), checked before the model is paid
+ * to write. `unsent`: the model could not write it, so nothing goes out on this pass and
+ * the next one asks again. People in the chat with no calendar Hale can read (a
+ * caregiver, a parent who has not connected one) may be asked; the alert never calls
+ * them free.
+ */
+async function clashNotice(
+  database: Database,
+  input: {
+    familyId: string;
+    chatId: string;
+    now: Date;
+    timeZone: string;
+    language: ReplyLanguage;
+    parentUserIds: readonly string[];
+    parentNames: Readonly<Record<string, string>>;
+    calendarUserIds: readonly string[];
+    blocks: readonly BusyBlock[];
+    remembered: readonly RememberedLogistics[];
+    children: readonly { id: string; name: string }[];
+    teens: ReadonlySet<string>;
+  },
+): Promise<HouseholdNotice | 'held' | 'unsent' | null> {
+  const audience = await groupAudienceAllows(database, input.chatId, NOTICE_CLASS.clash);
+  if (!audience.allowed) {
+    console.warn(
+      { familyId: input.familyId, kind: 'clash', reason: audience.reason },
+      'household calendar: not for this group',
+    );
+    return null;
+  }
+  const parents = [...new Set(input.parentUserIds)];
+  const firstName = (name: string | null | undefined) => name?.trim().split(/\s+/)[0] ?? '';
+  const people: ClashPerson[] = parents.map((id) => ({
+    id,
+    name: firstName(input.parentNames[id]),
+    calendar: input.calendarUserIds.includes(id),
+  }));
+  const seats = await database
+    .select({
+      userId: schema.linqGroupMembers.userId,
+      role: schema.linqGroupMembers.role,
+      name: schema.users.name,
+    })
+    .from(schema.linqGroupMembers)
+    .innerJoin(schema.users, eq(schema.users.id, schema.linqGroupMembers.userId))
+    .where(
+      and(
+        eq(schema.linqGroupMembers.chatId, input.chatId),
+        eq(schema.linqGroupMembers.familyId, input.familyId),
+        isNull(schema.linqGroupMembers.removedAt),
+      ),
+    );
+  for (const seat of seats) {
+    if (seat.role !== 'caregiver' || parents.includes(seat.userId)) continue;
+    people.push({ id: seat.userId, name: firstName(seat.name), calendar: false });
+  }
+  const events = await database
+    .select({
+      id: schema.familyEvents.id,
+      title: schema.familyEvents.title,
+      startsAt: schema.familyEvents.startsAt,
+      endsAt: schema.familyEvents.endsAt,
+      childId: schema.familyEvents.childId,
+      sensitive: schema.familyEvents.sensitive,
+      dutyOwnerUserId: schema.familyEvents.dutyOwnerUserId,
+      dutyOwnerLabel: schema.familyEvents.dutyOwnerLabel,
+      dutyOwnerKind: schema.familyEvents.dutyOwnerKind,
+      placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+    })
+    .from(schema.familyEvents)
+    .where(
+      and(
+        eq(schema.familyEvents.familyId, input.familyId),
+        householdFamilyEvent(),
+        gte(schema.familyEvents.startsAt, input.now),
+        lte(schema.familyEvents.startsAt, new Date(input.now.getTime() + LOOKAHEAD_MS)),
+      ),
+    );
+  const childNames = input.children.map((child) => child.name);
+  const teenNames = input.children
+    .filter((child) => input.teens.has(child.id))
+    .map((child) => child.name);
+  const aboutTeen = (title: string) =>
+    withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
+  const calendar = clashCalendar({
+    blocks: input.blocks,
+    events: events.map((row) => ({
+      id: row.id,
+      title: row.title,
+      start: row.startsAt,
+      end: row.endsAt,
+      private:
+        row.sensitive ||
+        (row.childId !== null && input.teens.has(row.childId)) ||
+        aboutTeen(row.title),
+      owner:
+        row.dutyOwnerKind === 'parent' && row.dutyOwnerUserId
+          ? { kind: 'parent' as const, userId: row.dutyOwnerUserId }
+          : row.dutyOwnerKind === 'named' && row.dutyOwnerLabel
+            ? { kind: 'named' as const, label: row.dutyOwnerLabel }
+            : null,
+      placedGoogleEventId: row.placedGoogleEventId,
+    })),
+    decidedTaker: (startIso, titleNorm) => {
+      const memory = rememberedWhoTakes(input.remembered, startIso, titleNorm);
+      return memory?.status === 'decided' ? memory.takerUserId : null;
+    },
+  });
+  for (const person of calendar.named) {
+    if (!people.some((known) => known.id === person.id)) people.push(person);
+  }
+  const kids = childNames.filter((name) => !teenNames.includes(name));
+  const clashes = findGroupClashes({
+    plans: calendar.plans,
+    busy: calendar.busy,
+    people,
+    now: input.now,
+  });
+  for (const clash of clashes) {
+    if (await dedupeActive(clash.dedupeKey, database)) continue;
+    const plans = 'plan' in clash.second ? [clash.first, clash.second.plan] : [clash.first];
+    const recipient =
+      [clash.suggested?.personId, ...plans.map((plan) => clash.restsOn[plan.key])].find(
+        (id): id is string => typeof id === 'string' && parents.includes(id),
+      ) ?? parents[0];
+    if (!recipient) return null;
+    const verdict = await assertProactiveSendAllowed(
+      {
+        familyId: input.familyId,
+        parentUserId: recipient,
+        kind: 'activity_followup',
+        now: input.now,
+      },
+      buildOutboundGatePorts(database),
+    );
+    if (!verdict.allowed) {
+      console.warn(
+        { familyId: input.familyId, kind: 'clash', reason: verdict.reason },
+        'household calendar: group notice held',
+      );
+      return 'held';
+    }
+    const text = await sharedGroupConflictWriter().write(
+      groupConflictLineInput(clash, {
+        people,
+        kids,
+        timeZone: input.timeZone,
+        language: input.language,
+      }),
+    );
+    if (!text) {
+      console.warn(
+        { familyId: input.familyId, outcome: 'group_clash_unsent' },
+        'household calendar: clash alert not written, nothing sent',
+      );
+      return 'unsent';
+    }
+    return {
+      kind: 'clash',
+      dedupeKey: clash.dedupeKey,
+      gateKind: 'activity_followup',
+      category: 'calendar_alert',
+      text,
+      recipientUserId: recipient,
+      mark: plans.flatMap((plan) =>
+        plan.rows.map((row) => ({ ...row, field: 'announced' as const })),
+      ),
+    };
+  }
+  return null;
 }
 
 async function loadHandoffStatements(
