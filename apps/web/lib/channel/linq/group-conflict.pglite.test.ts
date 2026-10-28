@@ -16,6 +16,7 @@ import type {
 } from './group-pickup-claim';
 import { narrateHouseholdCalendar, takeGroupPickupClaim } from './household-calendar';
 import { handleLinqInboundRequest } from './inbound';
+import { recordLogisticsVote, whoTakesFactKey, writeLogisticsDecision } from './logistics-poll';
 
 /**
  * VIL-444 (T24) in the household group: one alert per clash, written by the model, sent
@@ -1077,6 +1078,63 @@ describe('group pickup claims (VIL-444)', () => {
     expect(await liveTakers(seeded.familyId)).toEqual([
       { takerUserId: rosa, source: 'claim', since: at(9) },
     ]);
+  });
+
+  it('lets no tap on a who-takes poll asked before a claim undo it', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded, true);
+    const subjectKey = whoTakesFactKey(AT_3.toISOString(), 'leo daycare pickup');
+    await writeLogisticsDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.bartonId,
+      factKey: subjectKey,
+      childId: null,
+      now: new Date(DAY.getTime() - 60 * MINUTE),
+      value: {
+        kind: 'who_takes',
+        status: 'open',
+        startIso: AT_3.toISOString(),
+        titleNorm: 'leo daycare pickup',
+        takerUserId: null,
+        slotLabel: null,
+        slotStart: null,
+        kid: 'Leo',
+        event: 'daycare pickup',
+        day: null,
+        slots: [],
+        source: 'poll',
+      },
+    });
+    expect(await claim(seeded, seeded.samId, fakeClaimReader(reads('Leo daycare pickup')))).toBe(
+      'claimed',
+    );
+
+    const tap = (choiceKind: string, choiceValue: string | null, optionText: string) =>
+      recordLogisticsVote(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.bartonId,
+        subjectKey,
+        pollKind: 'who_takes',
+        choiceKind,
+        choiceValue,
+        optionText,
+        now: new Date(DAY.getTime() + 5 * MINUTE),
+      });
+    expect(await tap('parent', seeded.bartonId, 'Barton')).toBe('ignored');
+    expect(await tap('figure_it_out', null, "We'll figure it out")).toBe('ignored');
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.samId, source: 'claim', since: DAY },
+    ]);
+
+    const writer = fakeWriter();
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + 10 * MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toEqual([]);
+    expect(line.urls()).toEqual([]);
   });
 
   it('takes nothing when the plan it names shares its decision with one it left out', async () => {

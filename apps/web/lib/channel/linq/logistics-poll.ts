@@ -421,6 +421,12 @@ export async function recordLogisticsVote(
   },
 ): Promise<'decided' | 'declined' | 'passed' | 'ignored'> {
   if (!input.subjectKey) return 'ignored';
+  const existing = (await loadRememberedLogistics(database, input.familyId)).find(
+    (row) => row.factKey === input.subjectKey,
+  );
+  // A who-takes poll is only asked while nothing is stored for its plan, so a pickup someone
+  // took in the group came after every poll about it: a late tap does not undo it.
+  if (existing?.source === 'claim' && existing.status === 'decided') return 'ignored';
   if (input.choiceKind === 'figure_it_out') {
     await withholdWhoTakes(database, {
       familyId: input.familyId,
@@ -431,9 +437,6 @@ export async function recordLogisticsVote(
     });
     return 'passed';
   }
-  const existing = (await loadRememberedLogistics(database, input.familyId)).find(
-    (row) => row.factKey === input.subjectKey,
-  );
   const parsed = parseWhoTakesKey(input.subjectKey);
   if (input.choiceKind === 'parent' && !input.choiceValue) return 'ignored';
   if (input.choiceKind === 'slot' && !input.choiceValue) return 'ignored';
