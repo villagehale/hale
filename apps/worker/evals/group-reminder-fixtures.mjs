@@ -203,9 +203,10 @@ export const GROUP_REMINDER_FIXTURES = [
       notSet: 1,
     },
     confirmMustSay: [
-      'no reminder was set for Sam to bring the folding chairs',
-      'that is because more than one person in this chat is called Sam, so Hale could not tell which one',
-      'it does not ask which Sam they meant, and does not say or imply that Sam will be reminded',
+      'no reminder is set yet for Sam to bring the folding chairs',
+      'that is because more than one person in this chat is called Sam, so Hale did not guess',
+      'it asks Grace, in a single question, which Sam she meant',
+      'it does not say a reminder is already set, and does not suggest Sam will be reached some other way',
     ],
   },
   {
@@ -228,7 +229,7 @@ export const GROUP_REMINDER_FIXTURES = [
     reminderMustSay: [
       'it speaks to Ruth by name',
       'it reminds her to put the bins out',
-      'if it mentions the time, it does not claim this is 10:30 PM',
+      'if it mentions timing, it may say the 10:30 PM she asked for falls in quiet hours and that it went out earlier because of that; it must not present 10:30 PM as the time it is going out, or state that quiet hours start at 10:30 PM',
     ],
   },
   {
@@ -262,14 +263,14 @@ export const GROUP_REMINDER_FIXTURES = [
       plan: [{ delivery: 'group', moved: null }],
     },
     confirmMustSay: [
-      'written in French, with vous because the whole group reads it',
+      'written in French, in a tone that fits a message the whole group reads',
       'Jacqueline will be reminded to pick Léo up from swimming',
       'on Thursday at 16 h (4 PM)',
       'it will be posted here in the group chat',
       'she can cancel or change it by just telling Hale',
     ],
     reminderMustSay: [
-      'written in French, with vous in the group',
+      'written in French, in a tone that fits a message the whole group reads',
       'it speaks to Jacqueline by name',
       'it reminds her to pick Léo up from swimming',
     ],

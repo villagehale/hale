@@ -59,6 +59,18 @@ export interface DueReminder {
 }
 
 /**
+ * The reminder's facts plus where quiet hours moved it: `sendsAt` is when it actually goes
+ * out, and `moved` says whether that is `earlier` or `later` than `askedFor`, derived here
+ * by comparing the two instants so the model never has to.
+ */
+export type ReminderFactsWithMove = ReminderTextFacts & {
+  sendsAt: string;
+  moved: 'earlier' | 'later' | null;
+  /** Why it was moved; only quiet hours ever move a reminder. Null when not moved. */
+  movedBecause: 'quiet_hours' | null;
+};
+
+/**
  * `recipientName` is the seat's first name, or the name as the asker said it, for a
  * reminder for someone else. A reminder for the asker is named by `askerName`.
  */
@@ -68,8 +80,10 @@ export function reminderFacts(input: {
   recipientName: string | null;
   now: Date;
   timeZone: string;
-}): ReminderTextFacts {
+}): ReminderFactsWithMove {
   const { reminder, askerName, timeZone } = input;
+  const delta = reminder.deliverAt.getTime() - reminder.askedForAt.getTime();
+  const moved = delta === 0 ? null : delta < 0 ? 'earlier' : 'later';
   const forName =
     reminder.forKind === 'sender'
       ? askerName
@@ -87,9 +101,9 @@ export function reminderFacts(input: {
     forEveryone: reminder.forKind === 'everyone',
     askedByName: reminder.forKind === 'sender' ? null : askerName,
     what: reminder.what,
-    askedFor:
-      reminder.askedForAt.getTime() === reminder.deliverAt.getTime()
-        ? null
-        : whenFact(reminder.askedForAt, timeZone),
+    askedFor: moved === null ? null : whenFact(reminder.askedForAt, timeZone),
+    sendsAt: whenFact(reminder.deliverAt, timeZone),
+    moved,
+    movedBecause: moved === null ? null : 'quiet_hours',
   };
 }

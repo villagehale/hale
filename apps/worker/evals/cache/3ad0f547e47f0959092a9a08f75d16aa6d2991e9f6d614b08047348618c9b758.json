@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The text omits the named recipient: mustSay requires it to speak to Dan by name, but it never addresses him. The rest is accurate and in English, but a missing mustSay item caps the score low."
+  }
+}
