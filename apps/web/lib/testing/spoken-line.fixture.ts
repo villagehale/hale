@@ -381,6 +381,42 @@ function render(
         : facts.change === 'correct'
           ? `${facts.who} corrected something.`
           : `${facts.who} asked me to forget something.`;
+    case 'group_plan_options':
+      return fill(
+        pick(
+          language,
+          'I found a few that could work for {topic}: {options}',
+          "J'ai trouve quelques idees pour {topic} : {options}",
+        ),
+        facts,
+      );
+    case 'group_plan_followup':
+      return fill(
+        pick(
+          language,
+          '{unanswered}, still thinking about {topic}?',
+          '{unanswered}, vous reflechissez encore a {topic} ?',
+        ),
+        facts,
+      );
+    case 'group_plan_progress':
+      return facts.winning
+        ? fill(
+            pick(
+              language,
+              '{yes} are in for {winning}. {maybe} are a maybe.',
+              '{yes} sont partants pour {winning}. {maybe} hesistent.',
+            ),
+            facts,
+          )
+        : fill(
+            pick(
+              language,
+              'So far {yes} yes, {no} no, {maybe} maybe.',
+              'Pour l instant {yes} oui, {no} non, {maybe} peut-etre.',
+            ),
+            facts,
+          );
     default:
       return undefined;
   }

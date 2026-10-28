@@ -46,6 +46,7 @@
     "eval:group-welcome-voice": "node evals/run-group-welcome-voice-eval.mjs --cached-only",
     "eval:group-privacy": "node evals/run-group-privacy-eval.mjs --cached-only",
     "eval:group-turn-read": "node evals/run-group-turn-read-eval.mjs --cached-only",
+    "eval:group-plan": "node evals/run-group-plan-eval.mjs --cached-only",
     "eval:calendar-cancel-voice": "node evals/run-calendar-cancel-voice-eval.mjs --cached-only",
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
     "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",

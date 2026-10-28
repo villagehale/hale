@@ -107,3 +107,12 @@ export function linqGroupOnboardingV2Enabled(): boolean {
 export function linqGroupWelcomeVoiceEnabled(): boolean {
   return trimmed('LINQ_GROUP_WELCOME_VOICE_ENABLED') === 'true';
 }
+
+/**
+ * VIL-441 (T14) — plan together in a household group: find options, read
+ * yes/no/maybe from free text and tapbacks, follow up once. Exactly `true`
+ * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function linqGroupPlanEnabled(): boolean {
+  return trimmed('LINQ_GROUP_PLAN_ENABLED') === 'true';
+}

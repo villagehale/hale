@@ -143,6 +143,10 @@
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
   },
+  "group-plan-read.md": {
+    "file": "group-plan-read.md",
+    "sha256": "dd2ee04c7175599eb9f4ec9fc86e294830f5dbb75b348530a3dff009293d16c3"
+  },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
     "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"
@@ -289,7 +293,7 @@
   },
   "spoken-line.md": {
     "file": "spoken-line.md",
-    "sha256": "85cb933a8e58bccf7eba4a2965d2161a7b940426a2adecb93be8bed6451a4cbe"
+    "sha256": "05f1d248b22f9cce877cec2ba95bc2cffd5b44fb799b3e3c577ad2ca43d2f0f9"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",

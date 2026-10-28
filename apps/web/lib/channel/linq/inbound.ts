@@ -32,6 +32,7 @@ import {
   linqGroupCoparentEnabled,
   linqGroupMembersEnabled,
   linqGroupOnboardingV2Enabled,
+  linqGroupPlanEnabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
   linqMultiFamilyGroupsEnabled,
@@ -78,6 +79,12 @@ import {
   linqGroupTurnAiEnabled,
   sharedGroupTurnReader,
 } from './group-turn-reader';
+import {
+  type GroupPlanFinder,
+  type GroupPlanPorts,
+  takeGroupPlanTurn,
+} from './group-plan';
+import type { GroupPlanReader } from './group-plan-reader';
 import { captureLogisticsText } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
@@ -170,6 +177,10 @@ export async function handleLinqInboundRequest(
     groupLimiter?: RateLimiter;
     /** VIL-440 test seam. Production uses the shared model reader when the flag is on. */
     groupTurnReader?: GroupTurnReader;
+    /** VIL-441 test seam. Production uses the shared model reader when the flag is on. */
+    groupPlanReader?: GroupPlanReader;
+    /** VIL-441 test seam. Production uses the activity finder when keys are present. */
+    groupPlanFinder?: GroupPlanFinder;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -435,6 +446,46 @@ function coparentPorts(deps: LinqDoorDeps): GroupCoparentPorts {
   };
 }
 
+function groupPlanPorts(deps: LinqDoorDeps): GroupPlanPorts {
+  return {
+    now: deps.now?.() ?? new Date(),
+    language: null,
+    send: deps.sendGroupText,
+    reader: deps.groupPlanReader,
+    finder: deps.groupPlanFinder,
+  };
+}
+
+async function tryGroupPlanTurn(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+): Promise<Response | null> {
+  if (!linqGroupPlanEnabled()) return null;
+  const planned = await takeGroupPlanTurn(deps.database, {
+    chatId: message.chatId,
+    senderHandle: message.senderHandle,
+    text: message.text,
+    providerMessageId: message.messageId,
+    ports: groupPlanPorts(deps),
+  });
+  if (!planned.handled) return null;
+  deps.log.info({ outcome: planned.outcome }, 'linq inbound: group plan');
+  const count =
+    planned.outcome === 'group_plan_posted' ||
+    planned.outcome === 'group_plan_progress' ||
+    planned.outcome === 'group_plan_followed_up'
+      ? 'intake'
+      : 'ignored';
+  await deps.countOutcome(count);
+  return json({
+    outcome: planned.outcome,
+    ...('notice' in planned ? { notice: planned.notice } : {}),
+    ...('reason' in planned ? { reason: planned.reason } : {}),
+    ...('seated' in planned ? { seated: planned.seated } : {}),
+    ...('stance' in planned ? { stance: planned.stance } : {}),
+  });
+}
+
 function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
   return {
     now: deps.now?.() ?? new Date(),
@@ -473,6 +524,8 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return claimGroupFromTrigger(deps, message, coparent, coparent.language);
   }
   if (coparent.type === 'route_member') {
+    const planned = await tryGroupPlanTurn(deps, message);
+    if (planned) return planned;
     return routeClaimedGroup(deps, message);
   }
   if (coparent.type === 'done') {
@@ -483,6 +536,11 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 
   // #868: stop/start read by the model in any wording; one cached read for this turn.
   const optOut = await optOutIntentOf(message.text);
+  if (optOut !== 'stop') {
+    const planned = await tryGroupPlanTurn(deps, message);
+    if (planned) return planned;
+  }
+
   if (optOut !== 'stop') {
     const shared = await takeMultiFamilyTurn(deps.database, {
       chatId: message.chatId,
@@ -1269,6 +1327,33 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         await deps.countOutcome('intake');
         return json({ outcome: 'group_coparent_seated', notice });
       }
+    }
+  }
+  if (
+    linqGroupPlanEnabled() &&
+    signal.event === 'reaction.added' &&
+    signal.chatId &&
+    signal.senderHandle &&
+    !signal.isFromMe
+  ) {
+    const planned = await takeGroupPlanTurn(deps.database, {
+      chatId: signal.chatId,
+      senderHandle: signal.senderHandle,
+      text: '',
+      reactionType: signal.reactionType,
+      providerMessageId: signal.messageId,
+      ports: groupPlanPorts(deps),
+    });
+    if (planned.handled) {
+      deps.log.info({ outcome: planned.outcome }, 'linq inbound: group plan tapback');
+      await deps.countOutcome(
+        planned.outcome === 'group_plan_progress' ? 'intake' : 'ignored',
+      );
+      return json({
+        outcome: planned.outcome,
+        ...('seated' in planned ? { seated: planned.seated } : {}),
+        ...('stance' in planned ? { stance: planned.stance } : {}),
+      });
     }
   }
   if (
