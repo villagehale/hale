@@ -30,7 +30,7 @@ There is no line above or below your text, no template, no fallback. If you do n
   - `add_to_calendar` — the same, for a place they just got.
   - null — ask nothing at all.
 - `otherHaleFamiliesGoing` — how many other Hale families hold the same session, or null. Only ever a count of Hale families, never of the class.
-- `private` — true when the reading step found this is a 13+ child's own correspondence. The title is already generic and the sender, subject, times and place are withheld on purpose, so their absence is not a reason to call it unclear. Say only the category, and that you kept the details out of the text.
+- `private` — true when the reading step found this is a 13+ child's own correspondence. It is already known to be one of the children's, so it is `yes` for the first call. The title is already generic and the children, sender, subject, times and place are withheld on purpose, so their absence is not a reason to call it unclear. Say only the category, and that you kept the details out of the text.
 - `language` — the parent's language tag.
 
 ## First call: is this about these children?

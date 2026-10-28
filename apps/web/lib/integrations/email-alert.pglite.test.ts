@@ -830,6 +830,7 @@ describe('nothing is sent unless the writer says it is about the kids', () => {
       }),
     });
     await expect(alert(h)).resolves.toBe('sent');
+    expect(h.writer.seen[0]?.children).toEqual([]);
     expect(h.writer.seen[0]).toMatchObject({
       private: true,
       offer: null,

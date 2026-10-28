@@ -132,7 +132,7 @@ describe('emailAlertNoticeFacts', () => {
     } satisfies EmailAlertNoticeFacts);
   });
 
-  it('a 13+ child’s mail is category-only: no sender, subject, child, time, place, offer or count', () => {
+  it('a 13+ child’s mail is category-only: no children, sender, subject, time, place, offer or count', () => {
     const hidden = facts({
       extraction: extraction({
         teenContent: true,
@@ -141,6 +141,7 @@ describe('emailAlertNoticeFacts', () => {
       otherHaleFamiliesGoing: 2,
     });
     expect(hidden.private).toBe(true);
+    expect(hidden.children).toEqual([]);
     expect(hidden.offer).toBeNull();
     expect(hidden.otherHaleFamiliesGoing).toBeNull();
     expect(hidden.email).toEqual({
@@ -196,6 +197,10 @@ describe('emailAlertNoticeRefusals', () => {
     ).toEqual(['over_char_cap']);
     expect(emailAlertNoticeRefusals('See https://maple.example. Add it?', facts())).toEqual([
       'link',
+    ]);
+    // Under the char cap, but UCS-2: three segments.
+    expect(emailAlertNoticeRefusals(`${'好'.repeat(150)}?`, facts())).toEqual([
+      'over_segment_budget',
     ]);
     expect(emailAlertNoticeRefusals('Picture day is Friday.', facts())).toEqual(['offer_unasked']);
     expect(emailAlertNoticeRefusals('Swim is off. Okay?', facts({ offer: null }))).toEqual([
