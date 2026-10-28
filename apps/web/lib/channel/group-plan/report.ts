@@ -164,14 +164,20 @@ export function groupPlanReportRefusals(body: string, input: GroupPlanReportInpu
 }
 
 const outputSchema = z.object({ text: z.string() });
-const outputJsonSchema = {
+/** Exported with the description and lanes so the eval sends the runtime's exact request. */
+export const GROUP_PLAN_REPORT_TOOL_SCHEMA = {
   type: 'object',
   properties: { text: { type: 'string' } },
   required: ['text'],
 } as const;
+export const GROUP_PLAN_REPORT_TOOL_DESCRIPTION = 'The one text Hale sends the family group.';
 
 /** The second attempt's lane: the small model with thinking off. */
-const RETRY_LANE: LaneConfig = { model: HAIKU_MODEL, thinking: 'disabled', effort: 'medium' };
+export const GROUP_PLAN_REPORT_RETRY_LANE: LaneConfig = {
+  model: HAIKU_MODEL,
+  thinking: 'disabled',
+  effort: 'medium',
+};
 export const GROUP_PLAN_REPORT_MAX_TOKENS = 300;
 
 /**
@@ -184,7 +190,7 @@ export async function composeGroupPlanReport(
   input: GroupPlanReportInput,
 ): Promise<string | null> {
   const skill = await loadCronSkill(GROUP_PLAN_REPORT_SKILL);
-  const lanes = [pickLane(skill.meta.task), RETRY_LANE];
+  const lanes = [pickLane(skill.meta.task), GROUP_PLAN_REPORT_RETRY_LANE];
   let refused: string[] = [];
   for (const [index, lane] of lanes.entries()) {
     try {
@@ -194,8 +200,8 @@ export async function composeGroupPlanReport(
         system: skill.instructions,
         userMessage: groupPlanReportUserMessage(input, refused),
         toolName: GROUP_PLAN_REPORT_TOOL,
-        toolDescription: 'The one text Hale sends the family group.',
-        inputJsonSchema: outputJsonSchema,
+        toolDescription: GROUP_PLAN_REPORT_TOOL_DESCRIPTION,
+        inputJsonSchema: GROUP_PLAN_REPORT_TOOL_SCHEMA,
         schema: outputSchema,
         maxTokens: GROUP_PLAN_REPORT_MAX_TOKENS,
       });
