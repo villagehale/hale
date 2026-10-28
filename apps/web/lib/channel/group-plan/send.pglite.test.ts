@@ -535,7 +535,7 @@ describe('VIL-443 production ports, real database', () => {
       now: () => MORNING,
     });
     const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
-    const one = (text: string) => ({ messages: [text], keyed: 0 });
+    const one = (text: string) => [text];
     expect(await ports.send(plan, one('Swim is set. Add it here: https://x.test/l'), 'short')).toBe(
       'sent',
     );
@@ -571,7 +571,6 @@ describe('VIL-443 production ports, real database', () => {
       familyEventId: s.familyEventId,
       change: 'added',
       messages: 1,
-      landed: 1,
       inChat: [s.ana],
     });
   });
@@ -614,9 +613,7 @@ describe('VIL-443 production ports, real database', () => {
       now: () => MORNING,
     });
     const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
-    expect(
-      await ports.send(plan, { messages: ['Swim: https://x.test/l'], keyed: 0 }, 'short'),
-    ).toBe('sent');
+    expect(await ports.send(plan, ['Swim: https://x.test/l'], 'short')).toBe('sent');
 
     const [report] = await db.database
       .select({ after: schema.auditLog.after })
@@ -648,9 +645,7 @@ describe('VIL-443 production ports, real database', () => {
         now: () => MORNING,
       });
       const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
-      expect(
-        await ports.send(plan, { messages: ['Swim: https://x.test/l'], keyed: 0 }, 'short'),
-      ).toBe('sent');
+      expect(await ports.send(plan, ['Swim: https://x.test/l'], 'short')).toBe('sent');
 
       const [report] = await db.database
         .select({ after: schema.auditLog.after })
@@ -674,7 +669,7 @@ describe('VIL-443 production ports, real database', () => {
       .orderBy(schema.channelMessages.providerMessageId);
   }
 
-  it('sends a few messages in order, keying the revision on the one carrying the link', async () => {
+  it('sends a few messages in order, keying the revision on the last, the one with the link', async () => {
     const s = await seed();
     const wire = linqWire();
     const ports = productionGroupPlanReportPorts(db.database, {
@@ -682,8 +677,12 @@ describe('VIL-443 production ports, real database', () => {
       now: () => MORNING,
     });
     const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
-    const messages = ['Swim is set for Saturday.', 'Add it: https://x.test/l', 'See you there.'];
-    expect(await ports.send(plan, { messages, keyed: 1 }, 'short')).toBe('sent');
+    const messages = [
+      'Swim is set for Saturday.',
+      '10 to 11 at the Y.',
+      'Add it: https://x.test/l',
+    ];
+    expect(await ports.send(plan, messages, 'short')).toBe('sent');
     expect(postedTexts(wire.posted)).toEqual(messages);
     expect(await rowsOf(s.familyId)).toEqual([
       {
@@ -692,13 +691,13 @@ describe('VIL-443 production ports, real database', () => {
         providerMessageId: 'm-1',
         errorCode: null,
       },
-      { dedupeKey: plan.dedupeKey, status: 'sent', providerMessageId: 'm-2', errorCode: null },
       {
-        dedupeKey: `${plan.dedupeKey}#2`,
+        dedupeKey: `${plan.dedupeKey}#1`,
         status: 'sent',
-        providerMessageId: 'm-3',
+        providerMessageId: 'm-2',
         errorCode: null,
       },
+      { dedupeKey: plan.dedupeKey, status: 'sent', providerMessageId: 'm-3', errorCode: null },
     ]);
     const [audited] = await db.database
       .select()
@@ -708,10 +707,9 @@ describe('VIL-443 production ports, real database', () => {
       familyEventId: s.familyEventId,
       change: 'added',
       messages: 3,
-      landed: 3,
       inChat: [s.ana],
     });
-    expect(await ports.send(plan, { messages, keyed: 1 }, 'short')).toBe('already_sent');
+    expect(await ports.send(plan, messages, 'short')).toBe('already_sent');
     expect(wire.posted).toHaveLength(3);
   });
 
@@ -726,7 +724,7 @@ describe('VIL-443 production ports, real database', () => {
       '10 to 11 at the Y.',
       'Add it: https://x.test/l',
     ];
-    expect(await ports.send(plan, { messages, keyed: 2 }, 'short')).toBe('send_failed');
+    expect(await ports.send(plan, messages, 'short')).toBe('send_failed');
     expect(postedTexts(wire.posted)).toEqual(messages.slice(0, 2));
     expect(
       Object.fromEntries((await rowsOf(s.familyId)).map((r) => [r.dedupeKey, r.status])),
@@ -743,22 +741,24 @@ describe('VIL-443 production ports, real database', () => {
     ).toEqual([]);
   });
 
-  it('is partly sent when the link landed and a message after it did not', async () => {
+  it('has not told the group when everything but the last message, the link, landed', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const s = await seed();
     const wire = linqWire(400, 1);
     const ports = productionGroupPlanReportPorts(db.database, { fetch: wire.fetch });
     const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
-    const messages = ['Swim is set. Add it: https://x.test/l', 'See you there.'];
-    expect(await ports.send(plan, { messages, keyed: 0 }, 'short')).toBe('partly_sent');
+    const messages = ['Swim is set for Saturday, 10 to 11 at the Y.', 'Add it: https://x.test/l'];
+    expect(await ports.send(plan, messages, 'short')).toBe('send_failed');
+    expect(postedTexts(wire.posted)).toEqual(messages);
     expect(
       Object.fromEntries((await rowsOf(s.familyId)).map((r) => [r.dedupeKey, r.status])),
-    ).toEqual({ [plan.dedupeKey]: 'sent', [`${plan.dedupeKey}#1`]: 'failed' });
-    const [audited] = await db.database
-      .select()
-      .from(schema.auditLog)
-      .where(eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported'));
-    expect(audited?.after).toMatchObject({ messages: 2, landed: 1 });
+    ).toEqual({ [`${plan.dedupeKey}#0`]: 'sent', [plan.dedupeKey]: 'failed' });
+    expect(
+      await db.database
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported')),
+    ).toEqual([]);
   });
 
   it('marks a send Linq refused as failed, and keeps the revision spent so it never doubles', async () => {
@@ -766,9 +766,7 @@ describe('VIL-443 production ports, real database', () => {
     const s = await seed();
     const ports = productionGroupPlanReportPorts(db.database, { fetch: linqWire(400).fetch });
     const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
-    expect(await ports.send(plan, { messages: ['Swim is set.'], keyed: 0 }, 'short')).toBe(
-      'send_failed',
-    );
+    expect(await ports.send(plan, ['Swim is set.'], 'short')).toBe('send_failed');
     const [message] = await db.database
       .select({ status: schema.channelMessages.status })
       .from(schema.channelMessages)

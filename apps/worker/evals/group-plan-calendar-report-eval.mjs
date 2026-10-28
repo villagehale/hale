@@ -83,7 +83,14 @@ const PER_CALL_OVERHEAD_TOKENS = 500;
 /** The judge's output ceiling for a Haiku judge (harness makeJudge). */
 const JUDGE_MAX_TOKENS = 4096;
 /** Every reason a draft can be refused, so the retry's turn is at its longest. */
-const EVERY_REFUSAL = ['empty', 'carries_link', 'link_missing', 'link_repeated', 'other_link'];
+const EVERY_REFUSAL = [
+  'empty',
+  'carries_link',
+  'link_missing',
+  'link_repeated',
+  'link_not_last',
+  'other_link',
+];
 
 /** Rounded up: a third of a token per Latin character, two for anything else. */
 function tokensAtMost(text) {

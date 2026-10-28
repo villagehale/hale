@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type GroupPlan,
   type GroupPlanReportPorts,
-  keyedMessage,
   productionGroupPlanReportPorts,
   reportGroupPlan,
   withGroupPlanReport,
@@ -102,18 +101,7 @@ describe('VIL-443 withGroupPlanReport', () => {
     });
     expect(inner.send).not.toHaveBeenCalled();
     expect(p.audience).toHaveBeenCalledWith('chat-1', 'event_logistics');
-    expect(p.send).toHaveBeenCalledWith(PLAN, { messages: MESSAGES, keyed: 1 }, 'short');
-  });
-
-  it('counts the group as told once the link landed, even when a later message did not', async () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    const inner = innerSender();
-    const p = ports({ send: vi.fn(async () => 'partly_sent' as const) });
-    expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
-      status: 'group_reported',
-      outcome: 'partly_sent',
-    });
-    expect(inner.send).not.toHaveBeenCalled();
+    expect(p.send).toHaveBeenCalledWith(PLAN, MESSAGES, 'short');
   });
 
   for (const reason of [
@@ -292,7 +280,7 @@ describe('VIL-443 reportGroupPlan', () => {
     expect(p.gate).toHaveBeenCalledWith('f1', 'u-ana', now);
   });
 
-  it('carries no link on a cancel and mints none, keying its last message', async () => {
+  it('carries no link on a cancel and mints none', async () => {
     const off = ['Saturday swim is off.', 'If you added it, you can take it off your calendar.'];
     const p = ports({ compose: vi.fn(async () => off) });
     await reportGroupPlan({ ...PLAN, change: 'cancelled' }, p);
@@ -300,11 +288,7 @@ describe('VIL-443 reportGroupPlan', () => {
     expect(p.compose).toHaveBeenCalledWith(
       expect.objectContaining({ change: 'cancelled', link: null, onCalendarOf: [], notYet: [] }),
     );
-    expect(p.send).toHaveBeenCalledWith(
-      { ...PLAN, change: 'cancelled' },
-      { messages: off, keyed: 1 },
-      'short',
-    );
+    expect(p.send).toHaveBeenCalledWith({ ...PLAN, change: 'cancelled' }, off, 'short');
   });
 
   it('sends nothing canned when the text cannot be written, and records it', async () => {
@@ -326,18 +310,6 @@ describe('VIL-443 reportGroupPlan', () => {
     const p = ports({ mintLink: vi.fn(async () => Promise.reject(new Error('token'))) });
     expect(await reportGroupPlan(PLAN, p)).toBe('errored');
     expect(p.send).not.toHaveBeenCalled();
-  });
-});
-
-describe('VIL-443 keyedMessage', () => {
-  it('is the message carrying the link, wherever the model put it', () => {
-    expect(keyedMessage([`Add it: ${LINK}`, 'See you there.'], LINK)).toBe(0);
-    expect(keyedMessage(['Swim is set.', `Add it: ${LINK}`, 'See you there.'], LINK)).toBe(1);
-  });
-
-  it('is the last message when there is no link', () => {
-    expect(keyedMessage(['Swim is off.'], null)).toBe(0);
-    expect(keyedMessage(['Swim is off.', 'Take it off your calendar.'], null)).toBe(1);
   });
 });
 

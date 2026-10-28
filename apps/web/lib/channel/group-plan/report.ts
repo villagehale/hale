@@ -171,8 +171,10 @@ export function groupPlanReportMessages(drafted: readonly string[]): string[] {
 
 /**
  * Facts only, never wording: nothing to send, a link that is not the one handed, or a
- * handed link that did not make it in exactly once across the messages. Length, how
- * many messages, tone and whether it asks anything are read by the judge, not matched.
+ * handed link that did not make it in exactly once, in the last message. The group counts
+ * as told only once its last message lands, so the link rides there: anywhere earlier, it
+ * could reach the group while what follows it did not. Length, how many messages, tone
+ * and whether it asks anything are read by the judge, not matched.
  */
 export function groupPlanReportRefusals(
   drafted: readonly string[],
@@ -191,6 +193,7 @@ export function groupPlanReportRefusals(
   const copies = text.split(link).length - 1;
   if (copies === 0) found.push('link_missing');
   if (copies > 1) found.push('link_repeated');
+  if (copies === 1 && !messages[messages.length - 1]?.includes(link)) found.push('link_not_last');
   if (urls.some((url) => url.replace(TRAILING_PUNCTUATION, '') !== link)) found.push('other_link');
   return found;
 }

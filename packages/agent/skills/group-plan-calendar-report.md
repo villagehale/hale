@@ -33,7 +33,7 @@ The family group made a plan in the chat, a parent said yes, and Hale put it on 
 
 ## Rules
 
-- When `link` is given, it appears exactly as written, once, in one of your messages. When it is null, there is no link in any message.
+- When `link` is given, it appears exactly as written, once, in your last message. When it is null, there is no link in any message.
 - Name people only from `onCalendarOf` and `notYet`. Never say why someone is not on it yet.
 - Never say everyone has it unless `everyone` is true. When `othersNotYet` is more than zero, speak to the rest of the group without inventing names.
 - Never invent a time, an end, how long it runs, a place, an address, a person, who is going, or anyone's availability. When `ends` or `where` is null, say nothing about it.

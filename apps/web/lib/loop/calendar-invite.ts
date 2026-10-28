@@ -446,7 +446,7 @@ export async function retryDeferredCalendarCancels(
         method: 'CANCEL',
       });
       if (report.status === 'group_reported') {
-        if (report.outcome === 'sent' || report.outcome === 'partly_sent') summary.sent += 1;
+        if (report.outcome === 'sent') summary.sent += 1;
         else if (report.outcome === 'unwritten' || report.outcome === 'held:quiet_hours') {
           summary.deferred += 1;
         }

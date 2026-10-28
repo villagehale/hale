@@ -622,7 +622,6 @@ describe('the tap-to-add link a text-only family gets', () => {
 
   for (const [outcome, counted] of [
     ['sent', { sent: 1, deferred: 0 }],
-    ['partly_sent', { sent: 1, deferred: 0 }],
     ['held:quiet_hours', { sent: 0, deferred: 1 }],
     ['unwritten', { sent: 0, deferred: 1 }],
   ] as const) {

@@ -167,13 +167,19 @@ describe('VIL-443 groupPlanReportRefusals (the link only, never wording)', () =>
     );
   });
 
-  it('reads the link across a few messages: once, in any one of them', () => {
+  it('reads the link across a few messages: once, in the last of them', () => {
     expect(
       groupPlanReportRefusals(
         ['Swim is set for Saturday, 10 to 11, at the Riverside Y.', `Add it here: ${LINK}`],
         input(),
       ),
     ).toEqual([]);
+    expect(
+      groupPlanReportRefusals(
+        [`Swim is set. Add it here: ${LINK}`, 'It runs 10 to 11 at the Riverside Y.'],
+        input(),
+      ),
+    ).toEqual(['link_not_last']);
     expect(groupPlanReportRefusals([`Add it: ${LINK}`, `Or here: ${LINK}`], input())).toEqual([
       'link_repeated',
     ]);

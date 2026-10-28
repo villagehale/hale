@@ -55,8 +55,6 @@ export interface GroupPlanReportRedriveResult {
   /** Past this run's cap: still held, and first in line next tick. */
   deferred: number;
   sent: number;
-  /** The link landed in the group; a message after it did not. */
-  partlySent: number;
   alreadySent: number;
   /** The gate still reads night: kept for the next morning. */
   heldAgain: number;
@@ -81,7 +79,6 @@ export function emptyGroupPlanRedriveResult(): GroupPlanReportRedriveResult {
     due: 0,
     deferred: 0,
     sent: 0,
-    partlySent: 0,
     alreadySent: 0,
     heldAgain: 0,
     toParents: 0,
@@ -225,8 +222,6 @@ function endedBy(report: CalendarInviteReport): Ended {
   switch (report.outcome) {
     case 'sent':
       return 'sent';
-    case 'partly_sent':
-      return 'partlySent';
     case 'already_sent':
       return 'alreadySent';
     case 'held:quiet_hours':
