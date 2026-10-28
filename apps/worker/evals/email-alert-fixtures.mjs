@@ -267,7 +267,7 @@ export const EMAIL_ALERT_REFERENCE_TEXTS = [
     facts: 'Email from Father William Meehan: "RCIA", Thursday Oct 29, 7:30 PM. An adult event.',
     text: 'Father William Meehan has RCIA on Thursday, Oct 29 at 7:30 p.m. Want me to add it to your week?',
     score: 1,
-    why: "An adult's event texted to a parent, in a code-built 'X has Y on <date>' frame with a fixed offer (prod).",
+    why: "An adult's event texted to a parent, and it reads like a filled-in notice rather than a friend passing something along (prod).",
   },
   {
     facts: 'The parent sent an email themselves about Saturday plans.',
