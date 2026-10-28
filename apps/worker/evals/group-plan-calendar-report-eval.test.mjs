@@ -91,6 +91,9 @@ describe('the group plan report runner', { timeout: 60_000 }, () => {
         'm',
       ),
     );
+    expect(run.report).toMatch(
+      /^one group text in production \(no judge\), worst fixture: 4 calls = \$\d+\.\d{4} USD$/m,
+    );
     expect(run.report).toContain('live API calls this run: 0 | nothing written');
     expect(readdirSync(CACHE_DIR)).toHaveLength(recordings);
     expect(run.status).toBe(0);

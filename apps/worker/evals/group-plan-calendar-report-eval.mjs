@@ -146,18 +146,23 @@ async function main() {
     const judgeTool = toolTokens('score', 'Return the score.', JUDGE_SCHEMA);
     const suite = { byModel: {}, calls: 0 };
     const brokenJudge = { byModel: {}, calls: 0 };
+    let oneReport = { byModel: {}, calls: 0 };
     for (const { fixture, input, userMessage } of facts) {
       const turns = [userMessage, report.groupPlanReportUserMessage(input, EVERY_REFUSAL)];
+      const thisReport = { byModel: {}, calls: 0 };
       for (const [index, lane] of lanes.entries()) {
         const sent = tokensAtMost(request.system) + tokensAtMost(turns[index]) + composeTool;
-        addBound(
-          suite,
-          lane.model,
-          CALLS_PER_REQUEST,
-          sent + PER_CALL_OVERHEAD_TOKENS,
-          request.maxTokens,
-        );
+        for (const bound of [suite, thisReport]) {
+          addBound(
+            bound,
+            lane.model,
+            CALLS_PER_REQUEST,
+            sent + PER_CALL_OVERHEAD_TOKENS,
+            request.maxTokens,
+          );
+        }
       }
+      if (totalUsd(thisReport) > totalUsd(oneReport)) oneReport = thisReport;
       const judged = (text) =>
         tokensAtMost(JUDGE_SYSTEM) +
         tokensAtMost(JSON.stringify({ input: userMessage, text, watchFor: fixture.watchFor })) +
@@ -188,6 +193,9 @@ async function main() {
     );
     console.log(
       `the judge's half of --broken, if recorded with it: ${brokenJudge.calls} calls = $${totalUsd(brokenJudge).toFixed(4)} USD`,
+    );
+    console.log(
+      `one group text in production (no judge), worst fixture: ${oneReport.calls} calls = $${totalUsd(oneReport).toFixed(4)} USD`,
     );
     console.log(`live API calls this run: ${cost.liveCalls} | nothing written`);
     process.exit(0);
