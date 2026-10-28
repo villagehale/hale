@@ -1,3 +1,4 @@
+import { boldTextIndex } from '~/lib/channel/bold';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
@@ -345,6 +346,8 @@ async function dispatchTexts(
   adapter: Channel,
 ): Promise<LegResult> {
   const voice = rendered.voice;
+  // VIL-474 · at most one bold per message: only the first text holding the words.
+  const boldAt = boldTextIndex(texts, rendered.bold);
   type Sent = Extract<ChannelSendOutcome, { status: 'sent' }>;
   class Refused extends Error {
     constructor(readonly outcome: Exclude<ChannelSendOutcome, Sent>) {
@@ -356,9 +359,15 @@ async function dispatchTexts(
     setKey: legKey,
     alreadySent: (key) => ports.activeDedupe(key),
     send: async (text) => {
+      const bolded = boldAt >= 0 && text === texts[boldAt] ? rendered.bold : undefined;
       const result = await adapter.send({
         userId: msg.parentUserId,
-        rendered: { kind: 'sms', text, recordBody: rendered.recordBody },
+        rendered: {
+          kind: 'sms',
+          text,
+          recordBody: rendered.recordBody,
+          ...(bolded ? { bold: bolded } : {}),
+        },
       });
       if (result.status === 'error' && result.transient) {
         throw new ChannelRetryableError(channel, result.code, result.message);

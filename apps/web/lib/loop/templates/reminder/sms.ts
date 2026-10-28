@@ -15,5 +15,6 @@ export function renderReminderSms(payload: ReminderPayload): RenderedContent {
     text: payload.texts.join('\n\n'),
     texts: [...payload.texts],
     recordBody: true,
+    ...(payload.bold ? { bold: payload.bold } : {}),
   };
 }

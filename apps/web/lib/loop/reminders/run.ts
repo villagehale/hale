@@ -768,8 +768,9 @@ export async function runReminderCron(
       // The parent's reminder is written whole by the model from facts. No client, or a
       // draft that could not be written, is NOTHING SENT and a logged, audited drop.
       let texts: string[] | null = null;
+      let bold: string | null = null;
       if (!caregiver) {
-        texts =
+        const draft =
           deps.client && nameLevel && language
             ? await deps.composeText(
                 deps.client,
@@ -786,6 +787,8 @@ export async function runReminderCron(
                 group.familyId,
               )
             : null;
+        texts = draft?.texts ?? null;
+        bold = draft?.bold ?? null;
         if (texts === null) {
           console.error(
             { familyId: group.familyId, offset: batch.offset, events: batch.eventRefs.length },
@@ -825,6 +828,7 @@ export async function runReminderCron(
         deepLink,
         unsubscribeUrl: unsubscribeUrl({ userId: parentUserId, emailType: REMINDER_EMAIL_TYPE }),
         texts: texts ?? [],
+        ...(bold ? { bold } : {}),
       };
       // Batch key: the single event for T-1h, the evening for a merged T-24h. The family
       // is part of it because `dedupeActive` matches on the key alone, family-blind — and

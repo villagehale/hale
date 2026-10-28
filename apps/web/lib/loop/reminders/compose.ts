@@ -192,7 +192,10 @@ export function reminderRefusals(texts: readonly string[], facts: ReminderFacts)
   return found;
 }
 
-const outputSchema = z.object({ texts: z.array(z.string()).min(1) });
+const outputSchema = z.object({
+  texts: z.array(z.string()).min(1),
+  bold: z.string().nullish(),
+});
 const outputJsonSchema = {
   type: 'object',
   properties: {
@@ -202,11 +205,23 @@ const outputJsonSchema = {
       minItems: 1,
       description: 'The texts Hale sends the parent, in order. One or more.',
     },
+    bold: {
+      type: 'string',
+      description:
+        'Optional. The exact words, copied from one of your texts, to show in bold. Leave it out for none.',
+    },
   },
   required: ['texts'],
 } as const;
 
 export const REMINDER_MAX_ATTEMPTS = 2;
+
+/** The written reminder: its texts, and the words (if any) the writer chose to bold. */
+export interface ReminderDraft {
+  texts: string[];
+  /** VIL-474 · exact words from one of `texts`, or null. Code finds them; never offsets. */
+  bold: string | null;
+}
 
 /** The whole reminder as its texts, or null after two refused or failed attempts.
  * Null sends nothing: there is no fallback or sorry text. */
@@ -214,7 +229,7 @@ export async function composeReminderTexts(
   client: AgentClient,
   facts: ReminderFacts,
   familyId: string,
-): Promise<string[] | null> {
+): Promise<ReminderDraft | null> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
     skill = await loadCronSkill(REMINDER_SKILL);
@@ -240,7 +255,8 @@ export async function composeReminderTexts(
       });
       const texts = value.texts.map((t) => t.trim());
       const refusals = reminderRefusals(texts, facts);
-      if (refusals.length === 0) return texts;
+      const bold = value.bold?.trim() || null;
+      if (refusals.length === 0) return { texts, bold };
       console.warn({ familyId, attempt, refusals }, 'reminder: draft refused');
     } catch (err) {
       console.warn(
