@@ -165,6 +165,7 @@ export const AUDIT_VERBS = [
   'sms_intake_contact_card',
   'linq_contact_card_shared',
   'linq_tapback',
+  'linq_sticker',
   'linq_link_preview',
   'linq_group_opened',
   'linq_group_claimed',
@@ -692,6 +693,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   linq_tapback: { sentence: 'Hale reacted to your message', family: 'note' },
+  linq_sticker: { sentence: 'Hale put a sticker on your message', family: 'note' },
   linq_link_preview: { sentence: 'Hale sent a link preview', family: 'note' },
   linq_group_opened: {
     sentence: 'Hale opened a household thread in Messages',

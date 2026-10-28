@@ -55,6 +55,7 @@ import {
 } from '~/lib/channel/linq/group';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
+import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
@@ -1053,6 +1054,10 @@ async function routeChannelMessageInner(
       templateKey,
       beforeSend: stopTyping,
       inboundBody: context.body,
+      stickerRead: {
+        audience: inGroup ? 'group' : 'direct',
+        parentAttachments: (context.media ?? []).map((part) => part.kind),
+      },
     });
 
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
@@ -2510,6 +2515,11 @@ async function sendReply(
      * a poll can stand in for the text. Absent on the caregiver line, which
      * keeps its sentence. */
     inboundBody?: string;
+    /** What the VIL-472 sticker read sees beside the two bodies. Absent: no sticker. */
+    stickerRead?: {
+      audience: 'direct' | 'group';
+      parentAttachments: readonly InboundMediaPart['kind'][];
+    };
   },
 ): Promise<string> {
   assertTurnLive();
@@ -2542,6 +2552,9 @@ async function sendReply(
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
+        ...(args.stickerRead
+          ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
+          : {}),
       });
       if (moment.handled) {
         if (args.claim) await args.claim();
