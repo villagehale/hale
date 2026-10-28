@@ -2,7 +2,14 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
-import { type LinqEffectDecider, applyLinqEffect, linqEffectsEnabled } from './effect';
+import { parentTimeZoneForOffer } from '~/lib/integrations/email-alert-offer';
+import {
+  type LinqEffectDecider,
+  applyLinqEffect,
+  lastLinqEffectAt,
+  linqEffectHold,
+  linqEffectsEnabled,
+} from './effect';
 import { applyLinqTapback } from './tapback';
 
 /**
@@ -33,6 +40,10 @@ export async function considerLinqReply(
     effect?: {
       decider: LinqEffectDecider;
       audience: 'direct' | 'group';
+      /** Parent-local zone for the quiet-hours fact. Absent: loaded from the user. */
+      timeZone?: string;
+      /** Prior effect in this chat. `undefined` reads send history; `null` means none. */
+      lastEffectAt?: Date | null;
     };
   },
 ): Promise<LinqMoment> {
@@ -58,6 +69,17 @@ export async function considerLinqReply(
   if (!linqEffectsEnabled()) return { handled: false };
   if (!args.effect) {
     console.info({ reason: 'no_decider' }, 'linq effect: not considered');
+    return { handled: false };
+  }
+  const timeZone =
+    args.effect.timeZone ?? (await parentTimeZoneForOffer(database, args.parentUserId));
+  const lastEffectAt =
+    args.effect.lastEffectAt !== undefined
+      ? args.effect.lastEffectAt
+      : await lastLinqEffectAt(database, args.route.chatId);
+  const hold = linqEffectHold({ now: args.now, timeZone, lastEffectAt });
+  if (hold) {
+    console.info({ reason: hold }, 'linq effect: held, reply goes plain');
     return { handled: false };
   }
   const sent = await applyLinqEffect({

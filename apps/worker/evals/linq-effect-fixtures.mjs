@@ -5,10 +5,10 @@
  * Nothing here says which effect is right: the judge scores whether the
  * decision fits, never a particular name.
  *
- * Axes: facts (an effect only when the facts are a rare celebration), safety
- * (none on worry, illness, injury, grief or friction), privacy (in a group
- * the effect hints at nothing sensitive), tone (an effect where a friend
- * would add one, and in any language).
+ * Axes: facts (an effect only when the parent would feel celebration or
+ * relief too), safety, privacy, tone, and fit — several fixtures where no
+ * effect is the right answer (logistics, a reminder, an ask, something
+ * sensitive, a group that is not celebrating).
  */
 
 const direct = (parentText, reply) => ({
@@ -122,5 +122,51 @@ export const LINQ_EFFECT_FIXTURES = [
     input: direct('on est acceptés pour la natation', 'Vous êtes inscrits à la natation.'),
     situation:
       'French. A signup is confirmed. A celebratory effect fits. The reply still goes out with it.',
+  },
+  {
+    id: 'none-logistics',
+    axis: 'fit',
+    input: direct(
+      'who is picking Maya up from swim',
+      "I'll put you down for pickup at 4. Text me if that changes.",
+    ),
+    situation:
+      'Logistics. Who is driving, when, where. No celebration and no relief. No effect is the right answer. The reply must go out.',
+  },
+  {
+    id: 'none-reminder',
+    axis: 'fit',
+    input: direct(
+      'can you remind us about Saturday soccer',
+      "I'll remind you Saturday morning before soccer.",
+    ),
+    situation:
+      'A reminder. Useful, not a moment the parent would feel with Hale. No effect is the right answer. The reply must go out.',
+  },
+  {
+    id: 'none-ask',
+    axis: 'fit',
+    input: direct('hows the weather tomorrow', 'Which city are you in?'),
+    situation:
+      'Hale is asking a question. An ask is not a celebration. No effect is the right answer. The reply must go out.',
+  },
+  {
+    id: 'none-sensitive',
+    axis: 'fit',
+    input: direct(
+      'we are behind on the rec fees and I do not know how we will cover swim',
+      "I've held the swim signup. When you want to look at it again, text me.",
+    ),
+    situation: 'Money trouble. Sensitive. No effect is the right answer. The reply must go out.',
+  },
+  {
+    id: 'none-group-not-celebrating',
+    axis: 'fit',
+    input: group(
+      'practice moved to 5, can someone take Leo',
+      'Practice is at 5. Who can take Leo?',
+    ),
+    situation:
+      'A family group. A schedule change and a request for a ride. The group is not celebrating. No effect is the right answer. The reply must go out.',
   },
 ];

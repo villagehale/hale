@@ -5073,9 +5073,11 @@ describe('the reply row, written to a real database', () => {
       route: ReplyRoute,
       {
         slow = null,
+        now,
         ...options
       }: Parameters<typeof harness>[0] & {
         slow?: 'screen' | 'compose' | null;
+        now?: Date;
       } = {},
     ) {
       const turn = scripted(slow);
@@ -5086,7 +5088,9 @@ describe('the reply row, written to a real database', () => {
       });
       h.deps.database = db.database;
       // The reply rows are stamped by the database's clock, so the turn reads on it too.
-      h.deps.now = () => new Date();
+      // A pinned `now` keeps quiet-hours facts stable (VIL-473).
+      const clock = now ?? new Date();
+      h.deps.now = () => clock;
       const [inbound] = await db.database
         .insert(schema.channelMessages)
         .values({
@@ -5307,7 +5311,11 @@ describe('the reply row, written to a real database', () => {
           parent,
           'we got in for swim',
           { ...OWN_CHAT, replyToMessageId: 'in-1' },
-          { offDomain: fakeLane(IN_DOMAIN), coach: fakeCoach('You are in for swim.') },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('You are in for swim.'),
+            now: new Date('2026-10-28T16:00:00.000Z'),
+          },
         );
         vi.unstubAllGlobals();
 

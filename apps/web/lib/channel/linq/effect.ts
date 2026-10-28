@@ -1,6 +1,10 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
+import type { Database } from '@hale/db';
+import { schema } from '@hale/db';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -22,9 +26,57 @@ import {
  * skill reads the parent's message and the reply Hale already wrote, and returns
  * the effect or none. Code never picks an effect and has no fallback one: a
  * failed or unusable read sends the reply as a plain bubble.
+ *
+ * Two facts sit in front of the model: no effect during the parent's quiet
+ * hours, and at most one effect per conversation stretch — no repeat in this
+ * chat within 24 hours, read from send history.
  */
 
 export { linqEffectsEnabled };
+
+/** One effect per chat per stretch. A later send in the same chat waits this out. */
+export const LINQ_EFFECT_REPEAT_MS = 24 * 60 * 60 * 1000;
+
+export type LinqEffectHold = 'quiet_hours' | 'recent_in_chat';
+
+/**
+ * Whether an effect may play, from the clock and this chat's send history.
+ * A hold is named; the reply still goes out as a plain bubble.
+ */
+export function linqEffectHold(input: {
+  now: Date;
+  timeZone: string;
+  lastEffectAt: Date | null;
+}): LinqEffectHold | null {
+  if (inProactiveQuietHours(input.now, input.timeZone)) return 'quiet_hours';
+  if (
+    input.lastEffectAt &&
+    input.now.getTime() - input.lastEffectAt.getTime() < LINQ_EFFECT_REPEAT_MS
+  ) {
+    return 'recent_in_chat';
+  }
+  return null;
+}
+
+/** Latest `linq:effect` send in this chat, from the outbound ledger. */
+export async function lastLinqEffectAt(database: Database, chatId: string): Promise<Date | null> {
+  const [row] = await database
+    .select({
+      sentAt: schema.channelMessages.sentAt,
+      createdAt: schema.channelMessages.createdAt,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.providerChatId, chatId),
+        eq(schema.channelMessages.templateKey, 'linq:effect'),
+        eq(schema.channelMessages.direction, 'out'),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.sentAt), desc(schema.channelMessages.createdAt))
+    .limit(1);
+  return row?.sentAt ?? row?.createdAt ?? null;
+}
 
 export interface LinqEffectInput {
   audience: 'direct' | 'group';

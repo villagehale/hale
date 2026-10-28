@@ -3,10 +3,12 @@ import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import {
+  LINQ_EFFECT_REPEAT_MS,
   type LinqEffectDecider,
   type LinqEffectDecision,
   applyLinqEffect,
   createLinqEffectDecider,
+  linqEffectHold,
   linqEffectRefusals,
   linqEffectUserMessage,
   linqEffectsEnabled,
@@ -55,7 +57,12 @@ function linqFetch(status = 201) {
   );
 }
 
-function moment(fake: ReturnType<typeof makeFakeDb>, d: LinqEffectDecider, f: typeof fetch) {
+function moment(
+  fake: ReturnType<typeof makeFakeDb>,
+  d: LinqEffectDecider,
+  f: typeof fetch,
+  extra: { now?: Date; lastEffectAt?: Date | null; timeZone?: string } = {},
+) {
   return considerLinqReply(fake.db, {
     route: { channel: 'imessage', to: '+14165550101', chatId: CHAT, replyToMessageId: 'in-1' },
     inboundBody: READ.parentText,
@@ -63,9 +70,14 @@ function moment(fake: ReturnType<typeof makeFakeDb>, d: LinqEffectDecider, f: ty
     templateKey: null,
     familyId: FAMILY,
     parentUserId: USER,
-    now: NOW,
+    now: extra.now ?? NOW,
     fetch: f,
-    effect: { decider: d, audience: 'direct' },
+    effect: {
+      decider: d,
+      audience: 'direct',
+      timeZone: extra.timeZone ?? 'America/Toronto',
+      lastEffectAt: extra.lastEffectAt ?? null,
+    },
   });
 }
 
@@ -186,6 +198,62 @@ describe('VIL-473 Linq message effects', () => {
       fetch: linqFetch(409),
     });
     expect(refused).toMatchObject({ status: 'not_sent', reason: 'refused', httpStatus: 409 });
+  });
+
+  it('does not play an effect during quiet hours or again in the same chat within 24h', async () => {
+    const torontoAfternoon = new Date('2026-10-28T16:00:00.000Z');
+    const torontoNight = new Date('2026-10-29T03:00:00.000Z');
+    expect(
+      linqEffectHold({
+        now: torontoAfternoon,
+        timeZone: 'America/Toronto',
+        lastEffectAt: null,
+      }),
+    ).toBeNull();
+    expect(
+      linqEffectHold({
+        now: torontoNight,
+        timeZone: 'America/Toronto',
+        lastEffectAt: null,
+      }),
+    ).toBe('quiet_hours');
+    expect(
+      linqEffectHold({
+        now: torontoAfternoon,
+        timeZone: 'America/Toronto',
+        lastEffectAt: new Date(torontoAfternoon.getTime() - 60 * 60 * 1000),
+      }),
+    ).toBe('recent_in_chat');
+    expect(
+      linqEffectHold({
+        now: torontoAfternoon,
+        timeZone: 'America/Toronto',
+        lastEffectAt: new Date(torontoAfternoon.getTime() - LINQ_EFFECT_REPEAT_MS),
+      }),
+    ).toBeNull();
+
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const quiet = makeFakeDb();
+    const quietDecider = decider({ effect: { type: 'screen', name: 'confetti' } });
+    const quietFetch = linqFetch();
+    expect(await moment(quiet, quietDecider, quietFetch, { now: torontoNight })).toEqual({
+      handled: false,
+    });
+    expect(quietDecider.calls).toBe(0);
+    expect(quietFetch).not.toHaveBeenCalled();
+
+    const recent = makeFakeDb();
+    const recentDecider = decider({ effect: { type: 'screen', name: 'confetti' } });
+    const recentFetch = linqFetch();
+    expect(
+      await moment(recent, recentDecider, recentFetch, {
+        now: torontoAfternoon,
+        lastEffectAt: new Date(torontoAfternoon.getTime() - 60 * 60 * 1000),
+      }),
+    ).toEqual({ handled: false });
+    expect(recentDecider.calls).toBe(0);
+    expect(recentFetch).not.toHaveBeenCalled();
   });
 
   it('is never consulted while the flag is off', async () => {
