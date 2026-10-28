@@ -42,14 +42,14 @@ describe('PostHog provider env-gating', () => {
 
 /**
  * The session-replay + error-tracking posture (hard rule #1). Hale shows
- * newborn/child PII on screen, so the recording config MUST: record (replay on),
- * mask every typed value, mask the PII text marked at the render sites, and
- * capture exceptions into the same session. Expected values come from that
- * requirement, not from echoing the config back.
+ * newborn/child PII on screen, so the portal does NOT record (VIL-483: only the
+ * marketing landing page records). The masking pair stays configured in case
+ * recording is ever turned back on, and exceptions are still captured. Expected
+ * values come from that requirement, not from echoing the config back.
  */
 describe('PostHog replay + exception config', () => {
-  it('records sessions — recording is NOT disabled', () => {
-    expect(POSTHOG_INIT_CONFIG.disable_session_recording).toBe(false);
+  it('does not record sessions on the portal', () => {
+    expect(POSTHOG_INIT_CONFIG.disable_session_recording).toBe(true);
   });
 
   it('masks every typed input value in the replay', () => {
@@ -71,11 +71,12 @@ describe('PostHog replay + exception config', () => {
 });
 
 /**
- * The privacy policy's PostHog disclosure must match the actual posture: replay
- * is ON with inputs + personal data masked, error tracking is on, autocapture
- * stays off, identity is an opaque id. The old "session replay turned off" claim
- * is now false and must be gone. Asserted against the page source so the legal
- * copy can't silently drift from the config.
+ * The privacy policy's PostHog disclosure: masked replay, error tracking,
+ * autocapture off, opaque-id identity. Replay still runs on the public website
+ * (consent-gated), so the disclosure stays. Since VIL-483 the portal no longer
+ * records, which makes the in-app wording broader than the practice, not
+ * narrower. Asserted against the page source so the legal copy can't silently
+ * drift from the config.
  *
  * The policy itself now lives on the marketing site (D20 — the app's /privacy is a
  * 308 to it), but the config it describes lives HERE, so the guard stays beside the
