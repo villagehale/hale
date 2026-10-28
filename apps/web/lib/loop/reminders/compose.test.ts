@@ -147,14 +147,24 @@ describe('isAllDay', () => {
 
 describe('reminderRefusals — structure only, never wording', () => {
   const f = facts([ev()]);
-  it('refuses empty, too long, and any link not handed', () => {
-    expect(reminderRefusals('  ', f)).toEqual(['empty']);
-    expect(reminderRefusals('x'.repeat(481), f)).toEqual(['over_char_cap']);
-    expect(reminderRefusals('Voir https://evil.example', f)).toEqual(['other_link']);
-    expect(reminderRefusals('Demain à 15 h, bingo à la bibliothèque.', f)).toEqual([]);
+  it('refuses no texts, an empty text, and any link not handed', () => {
+    expect(reminderRefusals([], f)).toEqual(['empty']);
+    expect(reminderRefusals(['  '], f)).toEqual(['empty']);
+    expect(reminderRefusals(['ok', ' '], f)).toEqual(['empty_text']);
+    expect(reminderRefusals(['ok', 'Voir https://evil.example'], f)).toEqual(['other_link']);
+    expect(reminderRefusals(['Demain à 15 h, bingo à la bibliothèque.'], f)).toEqual([]);
+  });
+  it('has no character cap and no text-count cap (VIL-467)', () => {
+    expect(reminderRefusals(['x'.repeat(2000)], f)).toEqual([]);
+    expect(
+      reminderRefusals(
+        Array.from({ length: 9 }, (_, i) => `text ${i}`),
+        f,
+      ),
+    ).toEqual([]);
   });
   it('allows the handed plan link', () => {
     const withLink = { ...f, planLink: 'https://app.villagehale.com/plan' };
-    expect(reminderRefusals('Plan: https://app.villagehale.com/plan', withLink)).toEqual([]);
+    expect(reminderRefusals(['Plan: https://app.villagehale.com/plan'], withLink)).toEqual([]);
   });
 });

@@ -106,8 +106,9 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     // (the positive controls) still send. The caregiver leg never calls it.
     client: {} as ReminderRunDeps['client'],
     loadLanguage: async () => 'en',
-    composeText: async (_client, facts) =>
+    composeText: async (_client, facts) => [
       facts.events.map((e) => (e.for ? `${e.for}: ${e.what}` : e.what)).join('; '),
+    ],
     loadNameLevel: async () => 'first_name',
     ...over,
   };
