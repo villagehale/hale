@@ -1,9 +1,10 @@
 import type { AgentClient } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { laneEnabled } from '~/lib/channel/lanes';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -25,7 +26,6 @@ import type {
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { getQueue } from '~/lib/queue';
-import type { ReplyLanguage } from '~/lib/channel/language';
 import { composeReminderText, reminderFacts } from './compose';
 import {
   type EventSnapshot,
@@ -87,6 +87,8 @@ export interface LiveEvent extends EventSnapshot {
   /** Where to be. Unused by the parents' copy (they know), and half of what a caregiver's
    * `event_logistics` scope is FOR. */
   location: string | null;
+  /** VIL-468. Parking / what-to-bring facts the source stated, or null. */
+  notes?: FamilyEventNotes | null;
   /**
    * Set when this row mirrors one event on a connected Google Calendar (VIL-416).
    * Null for every Hale-authored event. A mirror is reminded to its owner only —
@@ -244,6 +246,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
           location: schema.familyEvents.location,
+          notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
         })
@@ -362,6 +365,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
           location: schema.familyEvents.location,
+          notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
         })
@@ -458,6 +462,7 @@ interface FiringRow {
   childId: string | null;
   sensitive: boolean;
   location: string | null;
+  notes: FamilyEventNotes | null;
   /** Proven non-null by the fire gate: a row whose recipient holds no seat never gets
    * here. Non-parent roles other than the three caregiver ones are suppressed too, so
    * this is either a parent role or a caregiver one. */
@@ -674,6 +679,7 @@ export async function runReminderCron(
             childId: event.childId,
             sensitive: event.sensitive,
             location: event.location,
+            notes: event.notes ?? null,
             // Non-null past the gate above: role null never survives it.
             role: row.role as FamilyRole,
           });
@@ -751,6 +757,7 @@ export async function runReminderCron(
             ...view,
             endsAt: r.endsAt ? r.endsAt.toISOString() : null,
             location: r.location,
+            notes: r.notes,
           });
         }
       }

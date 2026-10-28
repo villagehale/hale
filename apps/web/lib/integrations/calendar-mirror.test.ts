@@ -22,6 +22,21 @@ function item(overrides: Record<string, unknown> = {}): Record<string, unknown> 
 }
 
 describe('classifyCalendarMirrorItem', () => {
+  it('keeps only the labelled parking and bring facts, never the description (VIL-468)', () => {
+    const classified = classifyCalendarMirrorItem(
+      item({ description: 'Coach notes here.\nParking: Lot B\nBring: water' }),
+      NOW,
+      TZ,
+    );
+    expect(classified).toMatchObject({
+      kind: 'eligible',
+      candidate: { notes: { parking: 'Lot B', bring: 'water' } },
+    });
+    expect(JSON.stringify(classified)).not.toContain('Coach notes');
+    const plain = classifyCalendarMirrorItem(item(), NOW, TZ);
+    expect(plain.kind === 'eligible' && 'notes' in plain.candidate).toBe(false);
+  });
+
   it('keeps a timed event the parent has not declined', () => {
     const classified = classifyCalendarMirrorItem(item(), NOW, TZ);
     expect(classified).toMatchObject({

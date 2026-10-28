@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { children } from './children.js';
 import { familyEventSourceEnum } from './enums.js';
 import { families } from './families.js';
@@ -44,6 +53,9 @@ export const familyEvents = pgTable(
      * occasion and on every row written before the column existed. */
     transparency: text('transparency'),
     location: text('location'),
+    /** VIL-468. Parking and what-to-bring facts the source event stated, or null.
+     * Only the extracted facts, never the raw description (rule #1). */
+    notes: jsonb('notes').$type<FamilyEventNotes>(),
     source: familyEventSourceEnum('source').notNull(),
     /** Privacy-sensitive (health) — set by the calendar_add executor from the week_plan
      * item's privacySensitive (VIL-223). The reminder templates read it to genericize
@@ -138,6 +150,12 @@ export const familyEvents = pgTable(
       .where(sql`${table.googleEventId} IS NOT NULL`),
   }),
 );
+
+/** Logistics facts for one occasion. Each key is present only when the source stated it. */
+export interface FamilyEventNotes {
+  parking?: string;
+  bring?: string;
+}
 
 export type FamilyEvent = typeof familyEvents.$inferSelect;
 export type NewFamilyEvent = typeof familyEvents.$inferInsert;

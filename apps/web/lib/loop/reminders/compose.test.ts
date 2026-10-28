@@ -128,3 +128,29 @@ describe('reminderRefusals — structure only, never wording', () => {
     expect(reminderRefusals('Plan: https://app.villagehale.com/plan', withLink)).toEqual([]);
   });
 });
+
+describe('reminderFacts — parking and what to bring (VIL-468)', () => {
+  it('passes stated parking and bring facts through as written', () => {
+    const [event] = facts([
+      ev({ notes: { parking: 'Lot B behind the rink', bring: 'skates and a helmet' } }),
+    ]).events;
+    expect(event).toMatchObject({ parking: 'Lot B behind the rink', bring: 'skates and a helmet' });
+  });
+
+  it('adds no key when nothing was stated, so the request is unchanged', () => {
+    const plain = reminderUserMessage(facts([ev()]));
+    expect(reminderUserMessage(facts([ev({ notes: null })]))).toBe(plain);
+    expect(reminderUserMessage(facts([ev({ notes: { parking: '  ' } })]))).toBe(plain);
+    expect(facts([ev()]).events[0]).not.toHaveProperty('parking');
+    expect(facts([ev()]).events[0]).not.toHaveProperty('bring');
+  });
+
+  it('a private event carries no logistics, like its place', () => {
+    const [event] = facts([
+      ev({ sensitive: true, notes: { parking: 'Lot B', bring: 'health card' } }),
+    ]).events;
+    expect(event?.location).toBeNull();
+    expect(event).not.toHaveProperty('parking');
+    expect(event).not.toHaveProperty('bring');
+  });
+});

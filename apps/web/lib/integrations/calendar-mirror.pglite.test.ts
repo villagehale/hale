@@ -74,6 +74,25 @@ function audits() {
 }
 
 describe('reconcileCalendarMirrors', () => {
+  it('stores only labelled parking and bring facts, and updates them when they change (VIL-468)', async () => {
+    await reconcile([swim({ description: 'Private coach note\nParking: Lot B\nBring: goggles' })]);
+    let stored = await rows();
+    expect(stored[0]?.notes).toEqual({ parking: 'Lot B', bring: 'goggles' });
+    expect(JSON.stringify(stored[0])).not.toContain('Private coach note');
+
+    const counts = await reconcile([swim({ description: 'Parking: Lot C' })]);
+    expect(counts).toMatchObject({ updated: 1 });
+    stored = await rows();
+    expect(stored[0]?.notes).toEqual({ parking: 'Lot C' });
+
+    expect(await reconcile([swim({ description: 'Parking: Lot C' })])).toMatchObject({
+      updated: 0,
+    });
+    await reconcile([swim()]);
+    stored = await rows();
+    expect(stored[0]?.notes).toBeNull();
+  });
+
   it('mirrors an upcoming swim as a parent event and audits it without the title', async () => {
     const counts = await reconcile([swim()]);
 

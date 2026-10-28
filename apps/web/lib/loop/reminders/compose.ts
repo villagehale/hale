@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
+import type { FamilyEventNotes } from '@hale/db';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -31,6 +32,11 @@ export interface ReminderEventFacts {
   end: string | null;
   /** Where, from the parent's own calendar. Null for a private event or none. */
   location: string | null;
+  /** VIL-468. Parking as the source stated it. Absent when unstated or private, so the
+   * request is byte-identical to before for every event that states none. */
+  parking?: string;
+  /** VIL-468. What to bring as the source stated it. Absent when unstated or private. */
+  bring?: string;
 }
 
 export interface ReminderFacts {
@@ -49,6 +55,7 @@ export interface ReminderFacts {
 export interface ReminderFactEvent extends ReminderEventView {
   endsAt: string | null;
   location: string | null;
+  notes?: FamilyEventNotes | null;
 }
 
 function part(parts: Intl.DateTimeFormatPart[], type: string): string {
@@ -96,6 +103,15 @@ export function isAllDay(startsAt: Date, endsAt: Date | null, timeZone: string):
   return span > 0 && localMinutes(endsAt, timeZone) === 0 && span >= 23 * 3600_000;
 }
 
+/** Only a stated, non-empty fact becomes a key; a private event carries none. */
+function logisticsFacts(
+  notes: FamilyEventNotes | null | undefined,
+): Pick<ReminderEventFacts, 'parking' | 'bring'> {
+  const parking = notes?.parking?.trim();
+  const bring = notes?.bring?.trim();
+  return { ...(parking ? { parking } : {}), ...(bring ? { bring } : {}) };
+}
+
 export function reminderFacts(args: {
   events: readonly ReminderFactEvent[];
   children: readonly ReminderChild[];
@@ -122,6 +138,7 @@ export function reminderFacts(args: {
         start: allDay ? null : localClockFact(start, timeZone),
         end: allDay || !end ? null : localClockFact(end, timeZone),
         location: hidden ? null : event.location?.trim() || null,
+        ...logisticsFacts(hidden ? null : event.notes),
       };
     }),
     planLink: args.planLink,
