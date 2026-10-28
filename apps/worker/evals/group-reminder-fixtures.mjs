@@ -102,10 +102,7 @@ export const GROUP_REMINDER_FIXTURES = [
       set: [sender('grab Maya from swim', '2026-10-29', '16:00')],
       plan: [{ delivery: 'group', moved: null }],
     },
-    confirmMustSay: [
-      'Ruth will be reminded to pick Maya up from swim',
-      'on Thursday at 4 PM',
-    ],
+    confirmMustSay: ['Ruth will be reminded to pick Maya up from swim', 'on Thursday at 4 PM'],
     reminderMustSay: ['it speaks to Ruth by name', 'it reminds her to pick Maya up from swim'],
   },
   {
@@ -148,10 +145,7 @@ export const GROUP_REMINDER_FIXTURES = [
       ],
       plan: [{ delivery: 'group', moved: null, forUser: 'u-dan' }],
     },
-    confirmMustSay: [
-      'Dan will be reminded to pick up the birthday cake',
-      'today at 5:30 PM',
-    ],
+    confirmMustSay: ['Dan will be reminded to pick up the birthday cake', 'today at 5:30 PM'],
     reminderMustSay: [
       'it speaks to Dan by name',
       'it reminds him to pick up the birthday cake',
