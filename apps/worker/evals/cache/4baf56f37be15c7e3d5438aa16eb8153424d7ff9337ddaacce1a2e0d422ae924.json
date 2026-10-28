@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is empty, yet the message names Goldfish Swim School and quotes a $32.50 price. The rubric scores low any price that appears in none of the picks, and an empty list should mean an honest report that nothing was found, not a find with a price. The venue and price do trace to Goldfish's own page in the notes. Attribution ('their site says') and the first-person gap ('I couldn't confirm a day, time') fit page_has_schedule. The watch promise is correctly first person. Still, the message and the extracted picks contradict each other, and the town's own Lifesaving Society preschool program, a strong municipal fit, is never mentioned.",
+    "score": 2
+  }
+}

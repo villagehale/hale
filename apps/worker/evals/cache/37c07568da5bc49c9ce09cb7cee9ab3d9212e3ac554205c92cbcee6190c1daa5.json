@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, that Hale stop sending emails on their behalf without asking first. autonomySwitchOff shows send_email and reply_to_email were turned off this turn, so the confirmation is true. The reply answers in the parent's language, says plainly what changed, and stops. Addressing Sam by name is recall. There is no sign-off, no app referral and no invented detail. \"Listo, Sam\" is a light opener but serves as the acknowledgement, not a greeting.",
+    "score": 5
+  }
+}

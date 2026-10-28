@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for sending and replying to email, so \"Done\" is true. The reply confirms the change in plain words and states the new behaviour: Hale shows each email first and waits for the parent's okay. It has no greeting, no sign-off, no machinery and no extra question, and every detail is traceable to what Hale knew.",
+    "score": 5
+  }
+}

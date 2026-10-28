@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful to what was read. The Term 1 and Term 2 dates come off the PDF exactly as printed, and Tiny Gym's age band and its 45-minute length come off the programs page. Rock n' Roll at 0+ fits the toddler stage. The July 22, 2026 8:00am registration date comes off the homepage and is cited there. Prices are correctly left null, since the site says pricing is only behind the registration login. No figures are borrowed from elsewhere. The garbled day/time grid is honestly flagged as unmatched rather than guessed. The message is mostly right. It leads with Tiny Gym by name and attributes the facts with \"their site says\". It carries the registration date. Under page_has_schedule it puts the gap in the first person (\"I could not pin down the day or price\") rather than saying \"not posted\". It correctly carries the first-person watch commitment since watch is true. It is ASCII, with no link and no question. Weaknesses: Term 1 registration has already passed, yet the message omits the Term 2 block (Nov 2-Dec 20, 2026) that the slot carried, which is the session this parent could still act on. The opening sentence is also awkwardly structured. Those keep it short of a 5.",
+    "score": 4
+  }
+}

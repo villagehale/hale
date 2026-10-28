@@ -1,0 +1,37 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Welcome to the Canadian Children’s Museum! Join us on a global adventure through a Mexican kitchen, an open-air market, and a cargo ship.",
+        "name": "Canadian Children's Museum, Canadian Museum of History (Gatineau, minutes from downtown Ottawa)",
+        "age_evidence": "Child $18 (3–12) Infant FREE (0–2)",
+        "age_fit": "Admission tiers cover infants (0–2) and children (3–12); play exhibits such as the Pakistani bus, market and Mexican house are built for young children",
+        "when": "Published hours for Sept. 8 to Dec. 9, 2026: daily 9 am to 5 pm, Thursday 9 am to 7 pm. Hours for September 4 to 6, 2027 are not posted on this page.",
+        "when_evidence": "Canadian Children's Museum Sept. 8 to Dec. 9, 2026 Monday 9 am to 5 pm Tuesday 9 am to 5 pm Wednesday 9 am to 5 pm Thursday 9 am to 7 pm Friday 9 am to 5 pm Saturday 9 am to 5 pm Sunday 9 am to 5 pm",
+        "schedule_kind": "hours",
+        "price_evidence": "Adult $25 Senior $23 (65+) Student $20 (13–17 & 18+ with student ID) Child $18 (3–12) Infant FREE (0–2) Family $68 (6 max. — up to 2 adults)",
+        "price": "Child $18 (3–12), infant free (0–2), adult $25, family $68 (up to 2 adults, 6 max); taxes not included, fees subject to change",
+        "source_name": "Canadian Museum of History",
+        "source_url": "https://www.historymuseum.ca/childrens-museum",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      },
+      {
+        "name_evidence": "Let the wonders of nature inspire you at the Canadian Museum of Nature. From dinosaurs to climate change, visit our modern and engaging exhibitions located in a beautiful heritage “castle.”",
+        "name": "Canadian Museum of Nature, 240 McLeod Street, Ottawa",
+        "age_evidence": "Tiny Tot (0–2 years) Free Child (3–12 years) $19",
+        "age_fit": "Tiny Tot (0–2) and Child (3–12) admission tiers; a visitor review notes interactive stations everywhere that are great for kids",
+        "when": "Regular hours listed for this week: Saturday and Sunday 9:30 am – 4 pm, Monday 9:30 am – 4 pm, Tuesday closed, Wednesday 9:30 am – 4 pm, Thursday 9:30 am – 8 pm, Friday 9:30 am – 4 pm. Hours for September 4 to 6, 2027 are not posted on this page.",
+        "when_evidence": "Hours This Week Saturday 9:30 am – 4 pm Sunday 9:30 am – 4 pm Monday 9:30 am – 4 pm Tuesday Closed Wednesday 9:30 am – 4 pm Thursday 9:30 am – 8 pm Friday 9:30 am – 4 pm",
+        "schedule_kind": "hours",
+        "price_evidence": "Adult $26 Senior (65+) $19 Tiny Tot (0–2 years) Free Child (3–12 years) $19 Student (13+ years) $19",
+        "price": "Child (3–12) $19, Tiny Tot (0–2) free, adult $26",
+        "source_name": "Canadian Museum of Nature",
+        "source_url": "https://nature.ca/en/visit-us/",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 7430
+}

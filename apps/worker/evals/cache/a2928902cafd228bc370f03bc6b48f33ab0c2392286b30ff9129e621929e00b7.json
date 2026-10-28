@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is about the place the parent named, Cartwheels Gym Centre in Georgetown, Halton Hills, and it attributes its facts to the venue's own site ('site lists'). It has no link and no question. Since watch is TRUE, the first-person 'I'll keep watching and text you' is correct. Under page_has_schedule it uses the right first-person gap wording ('I couldn't confirm current dates') rather than 'not posted yet'. The problems: 1. The pick list is empty, yet the message names three programs and a $140-per-term price. That price appears nowhere in the picks, which the rubric treats as a low-score fault, even though it is on the page. 2. The page Hale opened does publish weekday and weekend Tiny Gym times. The message writes around them instead of giving the parent the published slots or explaining that availability sits behind the registration login. 3. The pick list and the message disagree, so the message is not grounded in what Hale extracted.",
+    "score": 2
+  }
+}

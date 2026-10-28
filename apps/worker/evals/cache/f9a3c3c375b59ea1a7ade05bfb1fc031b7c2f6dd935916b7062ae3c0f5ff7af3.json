@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgUmaKjrp75VPZwGLaYVb",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5ggKEAgTGAI4AUIIdGhpbmtpbmcSDEGCXXjPwosX8c1orhoMHrHozD5bD5LqdFhQIjDKC7yc63m+1g+F3lwMbURWRRSl4U2+wMJIUJqyWuLdC1l+cRAzoYhIPp17jKjr/IMqgwi46BLFXda+AVt9a9xEXgrIRCzImgQ+8omXeFSyPgzxbELmY/R4jdjeDfXQzrCpKVEndfMd+/CLFFYQGUKDfVTJbPbAgTRWSyctU6KCriE1Zq7kzyj1a7v70vt5rOdkP+lYRyfR9BFHZWB4FyCWtlbRCFIytjVYahDi12Eyt/FB5j7uWFoL1rwyoGwP9BRoBpgJYss1ih1Yj05FP28nltT82wqAxfkHM0VYlkHd35gxQoX71QEVGtWOByUbGXfTgF5Yt8ZDIS6P0Wx+d/z2ZyB7MklRyRABh0CqiRPqanT4lu2BuzCVSK0EX7l4cYzntzfUCiRmeqBArjr2Yr+u9NppUTc4HyNy/bUYcwvMulDOlKbmvBftbswsnD8h/2PnBH8/SU+XzPbsWTC9lsq8k0SC10+zrY/GZPMMkyn/BmYFL5rvjO2Dnu5ktX790E2yuHaOnXUz6OIpiuZmako0QL0yI019GE32iXMI4paMj+qIRpvIeB7ghqEY92cfzD/MW0HOZROQV7ui/wIoCUerXSXpOGJXy8jjrQ9uRTLC4nEnAF3gz4sVF6HIsiAYEsXx1GoUGAu//WTrVZXwV5UttspLFr6TOOS4oIOLJMTuNorq6QFfs+0YgZCW4d2rhqd095hGYL8U+L5vYE9EUk/FKUJHyxosZYXFFdR7cEj9PW3H3AecqCoiVqgrcvtzAnXtOcM4feCexIfnK5QhntYC2prygV6DTmblxELpny2GLDvxnobjA4+QSPl2ZBn0Tg3oBN+GvQmuPoNxe849FRzoWyWx6cUyYJ+VSYfS/dpUbpYIHiEyWkG9o19lD4VvqYy+WEwzgin+/6ubKfBP5IiLAzOVIYnXvZ3fiBS+F7D+96QIu4sZPGIcpyMG4UmEKULP+0IIrjVtR2bGhRwXD3Ocl0IVpxKTOUk0ETU8ac3RqLtfQKtUdVsu+PLYD/1z1h2bN2DI1oz8T1IOs3tI5HiCetvIpMV9PXoUtn05jJoHS2oRMTqERDtz0fnFEfsHQpp9WvvtSN09uMuFrFw0c6nckR7YuRLZ9AudqhMJFki6wGy6taag1C4dNodYxo7fNCvu2+Ok6qX+Csebo7LW8mDWKSsmy9kkiZyEYex2LgP3qGq9HSmig/r1j21bhVTLiPs4BIy8NDxS2Yl4ajG6BJKu6TTUeDccMfxc9+XgBTbPPJkWFOdf6jo5ag+8PRx/7HGyYxX3lqucoHcUCUBkuzl/g6kqpWka6Ps7Weck7sO2SS89CrezalnflFkzitqlCJ/90f+R3TsOOrTuTjzf3P5LdBaRwL+ubzLu7dLdnlQoGeB8v9RuQHhM/WWHgK7RpecvPt3BF7Y/w6NRJd3RTIvF4aM3btxDGAE="
+      },
+      {
+        "type": "text",
+        "text": "Cedarvale Park is already on your week for soccer practice, Sat 10:00am. I don't have a separate playground find for you. Riverdale Farm is a free outdoor farm, listed for Sun, Aug 9, if you want something outside that isn't a park. [link-b8b9f6]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1189,
+      "cache_read_input_tokens": 21679,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1189,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 288,
+      "output_tokens_details": {
+        "thinking_tokens": 190
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3680
+}
