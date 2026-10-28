@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { linqGroupPlanRsvpEnabled } from '../config';
-import { type LinqTapback, sendLinqChatMessage } from '../transport';
+import type { LinqTapback } from '../transport';
 import type { GroupPlanRsvpReader } from './reading';
+import { GROUP_PLAN_RSVP_TEMPLATE, sendGroupPlanRsvpLine } from './send';
 import { createPostgresGroupPlanRsvpStore } from './store';
 import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
 import type { GroupPlanRsvpComposer } from './voice';
@@ -55,7 +56,15 @@ export async function considerGroupPlanRsvp(
       store,
       reader: ports.reader,
       composer: ports.composer,
-      send: ports.send ?? ((notice) => sendLinqChatMessage(notice)),
+      send:
+        ports.send ??
+        ((notice) =>
+          sendGroupPlanRsvpLine(ports.database, {
+            chatId: notice.chatId,
+            text: notice.text,
+            templateKey: GROUP_PLAN_RSVP_TEMPLATE,
+            now: ports.now,
+          })),
     },
   );
 }

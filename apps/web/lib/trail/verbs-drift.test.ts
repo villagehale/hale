@@ -87,6 +87,17 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'workstream_followup_deferred',
     'workstream_followup_gave_up',
   ],
+  // VIL-442 — start is a literal; recorded vs edited is a ternary on the same write.
+  'apps/web/lib/channel/linq/group-plan-rsvp/store.ts': [
+    'linq_group_plan_started',
+    'linq_group_plan_rsvp_recorded',
+    'linq_group_plan_rsvp_edited',
+  ],
+  'apps/web/lib/channel/linq/group-plan-rsvp/memory-store.ts': [
+    'linq_group_plan_started',
+    'linq_group_plan_rsvp_recorded',
+    'linq_group_plan_rsvp_edited',
+  ],
   // VIL-399 — one helper writes the shared-group verbs. The literals in the
   // join and leave transactions are scanned directly as well.
   'apps/web/lib/channel/linq/multi-family.ts': [

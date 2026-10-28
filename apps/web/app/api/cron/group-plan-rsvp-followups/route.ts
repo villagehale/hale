@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { linqGroupPlanRsvpEnabled } from '~/lib/channel/linq/config';
 import { runGroupPlanFollowups } from '~/lib/channel/linq/group-plan-rsvp/followups';
+import {
+  GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE,
+  sendGroupPlanRsvpLine,
+} from '~/lib/channel/linq/group-plan-rsvp/send';
 import { createPostgresGroupPlanRsvpStore } from '~/lib/channel/linq/group-plan-rsvp/store';
-import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -24,7 +27,13 @@ export const GET = cronRoute('group-plan-rsvp-followups', async () => {
     }
     const summary = await runGroupPlanFollowups({
       store: createPostgresGroupPlanRsvpStore(db()),
-      send: async ({ chatId, text }) => sendLinqChatMessage({ chatId, text }),
+      send: async ({ chatId, text }) =>
+        sendGroupPlanRsvpLine(db(), {
+          chatId,
+          text,
+          templateKey: GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE,
+          now: new Date(),
+        }),
     });
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } finally {
