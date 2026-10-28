@@ -4906,7 +4906,7 @@ describe('the reply row, written to a real database', () => {
       // 0167 stays unapplied. The reply path now reads inbound media, which
       // arrives in 0173, so that column is present without the pending-ask table.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
-      // Likewise the group bit (0180, VIL-463), which the ledger row now carries.
+      // Likewise the group bit (0182, VIL-463), which the ledger row now carries.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
     });
 
