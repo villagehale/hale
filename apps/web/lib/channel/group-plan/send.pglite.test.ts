@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import type { CalendarInviteReport } from '@hale/worker/executor';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
@@ -440,7 +441,9 @@ describe('VIL-443 production ports, real database', () => {
       now: () => MORNING,
     });
     const handed: unknown[] = [];
-    const inner = { send: vi.fn(async () => ({ status: 'reported', parents: [] }) as const) };
+    const inner = {
+      send: vi.fn(async (): Promise<CalendarInviteReport> => ({ status: 'reported', parents: [] })),
+    };
     const sender = withGroupPlanReport(inner, {
       ...production,
       compose: async (input) => {

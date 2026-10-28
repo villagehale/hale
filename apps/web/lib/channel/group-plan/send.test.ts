@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import type { CalendarInviteRequest } from '@hale/worker/executor';
+import type { CalendarInviteReport, CalendarInviteRequest } from '@hale/worker/executor';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type GroupPlan,
@@ -50,7 +50,9 @@ function ports(overrides: Partial<GroupPlanReportPorts> = {}): GroupPlanReportPo
 }
 
 function innerSender() {
-  return { send: vi.fn(async () => ({ status: 'reported', parents: [] }) as const) };
+  return {
+    send: vi.fn(async (): Promise<CalendarInviteReport> => ({ status: 'reported', parents: [] })),
+  };
 }
 
 afterEach(() => {
