@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import { EXPECTED_FAIL, expectedFailGate } from './email-alert-expected-fail.mjs';
 import {
   EMAIL_ALERT_BROKEN_CASES,
   EMAIL_ALERT_FIXTURES,
@@ -291,8 +292,16 @@ async function main() {
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
-  const allPass = results.every((r) => r.failures.length === 0);
-  if (!broken) process.exit(allPass ? 0 : 1);
+  if (!broken) {
+    // Cached-only (CI) honours EXPECTED_FAIL (VIL-467); a live run still needs every case to pass.
+    const gate = expectedFailGate(
+      results.map((r) => ({ id: r.fixture.id, failed: r.failures.length > 0 })),
+      cachedOnly ? EXPECTED_FAIL : [],
+      EMAIL_ALERT_FIXTURES.map((f) => f.id),
+    );
+    for (const line of gate.lines) console.info(line);
+    process.exit(gate.ok ? 0 : 1);
+  }
   // EVERY broken case must fail, not just one of them.
   const allFail = results.every((r) => r.failures.length > 0);
   console.log(`broken-mode calibration (every case must fail): ${allFail ? 'PASS' : 'FAIL'}`);
