@@ -4,7 +4,7 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
@@ -188,8 +188,8 @@ function spokenFirstName(name: string | null | undefined): string | null {
 }
 
 /**
- * The household's parents first, then everyone seated in its group. A seat is only
- * known when member seating is on; without it the parents are the group Hale knows.
+ * Who is in the group: everyone seated in it. Before anyone is seated (member seating
+ * off), the household's parents are the group Hale knows.
  */
 async function groupMembers(
   database: Database,
@@ -202,7 +202,7 @@ async function groupMembers(
     membership && membership.familyId === familyId
       ? membership.members.map((member) => member.userId)
       : [];
-  const ids = [...new Set([...parentIds, ...seated])];
+  const ids = [...new Set(seated.length > 0 ? seated : parentIds)];
   if (ids.length === 0) return [];
   const rows = await database
     .select({ id: schema.users.id, name: schema.users.name })
@@ -230,12 +230,42 @@ async function wasMoved(database: Database, familyId: string, familyEventId: str
   return moved !== undefined;
 }
 
-async function integrationOwner(database: Database, integrationId: string): Promise<string[]> {
-  const [row] = await database
+const GOOGLE_WRITE_OUTCOMES = [
+  'integration.google_calendar_written',
+  'integration.google_calendar_failed',
+] as const;
+
+/**
+ * Whose own calendar holds this version of the plan: the owner of the Google calendar
+ * Hale created it on, and only while Hale's latest write there landed. A move whose
+ * update failed left the old time on that calendar, so its owner is "not yet" again.
+ */
+async function reachedOwners(
+  database: Database,
+  familyId: string,
+  familyEventId: string,
+  placed: { googleEventId: string | null; integrationId: string | null },
+): Promise<string[]> {
+  if (!placed.googleEventId || !placed.integrationId) return [];
+  const [latest] = await database
+    .select({ actionTaken: schema.auditLog.actionTaken })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.targetTable, 'family_events'),
+        eq(schema.auditLog.targetId, familyEventId),
+        inArray(schema.auditLog.actionTaken, [...GOOGLE_WRITE_OUTCOMES]),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(1);
+  if (latest?.actionTaken !== 'integration.google_calendar_written') return [];
+  const [owner] = await database
     .select({ userId: schema.integrations.userId })
     .from(schema.integrations)
-    .where(eq(schema.integrations.id, integrationId));
-  return row?.userId ? [row.userId] : [];
+    .where(eq(schema.integrations.id, placed.integrationId));
+  return owner?.userId ? [owner.userId] : [];
 }
 
 /**
@@ -300,9 +330,12 @@ export async function loadGroupPlan(
       ? 'cancelled'
       : String(await icsSequence(database, row.familyId, row.id, 'REQUEST'));
   const reachedUserIds =
-    change !== 'cancelled' && placement.placedGoogleEventId && placement.placedGoogleIntegrationId
-      ? await integrationOwner(database, placement.placedGoogleIntegrationId)
-      : [];
+    change === 'cancelled'
+      ? []
+      : await reachedOwners(database, row.familyId, row.id, {
+          googleEventId: placement.placedGoogleEventId,
+          integrationId: placement.placedGoogleIntegrationId,
+        });
   const language = acceptReplyLanguage(family.primaryLanguage) ?? 'en';
   const timeZone = await householdTimezone(database, row.familyId);
   const invite = toInviteEvent(row, { level: 'generic', note: null, sequence: 0 }, now);
