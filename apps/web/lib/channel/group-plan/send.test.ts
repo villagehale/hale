@@ -108,6 +108,7 @@ describe('VIL-443 withGroupPlanReport', () => {
       expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
         status: 'reported',
         parents: [],
+        groupNotTold: `audience:${reason}`,
       });
       expect(inner.send).toHaveBeenCalledWith(REQUEST);
       expect(p.alreadySent).not.toHaveBeenCalled();
@@ -115,6 +116,61 @@ describe('VIL-443 withGroupPlanReport', () => {
       expect(p.send).not.toHaveBeenCalled();
     });
   }
+
+  for (const reason of ['quiet_hours', 'not_enrolled', 'opt_out_unread'] as const) {
+    it(`gives its parents their own invites when the group text is held (${reason})`, async () => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const inner = innerSender();
+      const p = ports({ gate: vi.fn(async () => ({ allowed: false, reason }) as const) });
+      expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+        status: 'reported',
+        parents: [],
+        groupNotTold: `held:${reason}`,
+      });
+      expect(inner.send).toHaveBeenCalledWith(REQUEST);
+      expect(p.send).not.toHaveBeenCalled();
+    });
+  }
+
+  it('gives its parents their own invites when the group text did not land', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = innerSender();
+    const p = ports({ send: vi.fn(async () => 'send_failed' as const) });
+    expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+      status: 'reported',
+      parents: [],
+      groupNotTold: 'send_failed',
+    });
+    expect(inner.send).toHaveBeenCalledWith(REQUEST);
+  });
+
+  it('sends nothing anywhere when the text cannot be written: no fallback for words', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = innerSender();
+    const p = ports({ compose: vi.fn(async () => null) });
+    expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+      status: 'group_reported',
+      outcome: 'unwritten',
+    });
+    expect(inner.send).not.toHaveBeenCalled();
+    expect(p.send).not.toHaveBeenCalled();
+  });
+
+  it('passes the parents’ sender report through when it is not a parents’ list', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = {
+      send: vi.fn(
+        async (): Promise<CalendarInviteReport> => ({ status: 'errored', message: 'dispatch' }),
+      ),
+    };
+    const p = ports({
+      gate: vi.fn(async () => ({ allowed: false, reason: 'quiet_hours' }) as const),
+    });
+    expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+      status: 'errored',
+      message: 'dispatch',
+    });
+  });
 
   it('names an unreadable audience and sends nothing anywhere', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -166,8 +222,8 @@ describe('VIL-443 reportGroupPlan', () => {
     expect(p.send).not.toHaveBeenCalled();
   });
 
-  for (const reason of ['not_enrolled', 'quiet_hours', 'no_watch_consent'] as const) {
-    it(`drops on ${reason}, before minting, composing or sending`, async () => {
+  for (const reason of ['not_enrolled', 'quiet_hours', 'opt_out_unread'] as const) {
+    it(`holds on ${reason}, before minting, composing or sending`, async () => {
       const p = ports({ gate: vi.fn(async () => ({ allowed: false, reason }) as const) });
       expect(await reportGroupPlan(PLAN, p)).toBe(`held:${reason}`);
       expect(p.mintLink).not.toHaveBeenCalled();

@@ -567,6 +567,39 @@ describe('VIL-443 production ports, real database', () => {
     expect(wire.posted).toHaveLength(1);
   });
 
+  async function reportAt(now: Date, wire: ReturnType<typeof linqWire>) {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('GROUP_PLAN_CALENDAR_REPORT_ENABLED', 'true');
+    const s = await seed();
+    const inner = {
+      send: vi.fn(async (): Promise<CalendarInviteReport> => ({ status: 'reported', parents: [] })),
+    };
+    const compose = vi.fn(async (input: { link: string | null }) => `Swim is set: ${input.link}`);
+    const sender = withGroupPlanReport(inner, {
+      ...productionGroupPlanReportPorts(db.database, { fetch: wire.fetch, now: () => now }),
+      compose,
+    });
+    return { report: await sender.send(request(s)), inner, compose };
+  }
+
+  it('gives the parents their own invites when the group text is held for the night', async () => {
+    const wire = linqWire();
+    const { report, inner, compose } = await reportAt(NIGHT, wire);
+    expect(report).toEqual({ status: 'reported', parents: [], groupNotTold: 'held:quiet_hours' });
+    expect(inner.send).toHaveBeenCalledTimes(1);
+    expect(compose).not.toHaveBeenCalled();
+    expect(wire.posted).toEqual([]);
+  });
+
+  it('gives the parents their own invites when Linq refuses the group text', async () => {
+    const wire = linqWire(400);
+    const { report, inner } = await reportAt(MORNING, wire);
+    expect(report).toEqual({ status: 'reported', parents: [], groupNotTold: 'send_failed' });
+    expect(inner.send).toHaveBeenCalledTimes(1);
+    expect(wire.posted).toHaveLength(1);
+  });
+
   describe('with group onboarding v2, the group hears only what everyone in it may', () => {
     async function run(opts: Parameters<typeof seed>[0], setUp: (familyId: string) => unknown) {
       vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -603,7 +636,11 @@ describe('VIL-443 production ports, real database', () => {
       const { report, inner, posted } = await run({ childDob: '2011-02-01' }, (familyId) =>
         roster(familyId, 'confirmed', [{ status: 'known_parent' }]),
       );
-      expect(report).toEqual({ status: 'reported', parents: [] });
+      expect(report).toEqual({
+        status: 'reported',
+        parents: [],
+        groupNotTold: 'audience:group_audience_refused',
+      });
       expect(inner.send).toHaveBeenCalledTimes(1);
       expect(posted).toEqual([]);
     });
@@ -612,7 +649,11 @@ describe('VIL-443 production ports, real database', () => {
       const { report, inner, posted } = await run({}, (familyId) =>
         roster(familyId, 'roles_proposed', [{ status: 'known_parent' }, { status: 'asked' }]),
       );
-      expect(report).toEqual({ status: 'reported', parents: [] });
+      expect(report).toEqual({
+        status: 'reported',
+        parents: [],
+        groupNotTold: 'audience:group_roles_unconfirmed',
+      });
       expect(inner.send).toHaveBeenCalledTimes(1);
       expect(posted).toEqual([]);
     });

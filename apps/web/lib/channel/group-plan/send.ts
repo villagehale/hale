@@ -59,9 +59,10 @@ import { groupPlanChatId } from './stamp';
  * carries the event's ICS sequence, and a re-driven placement never reaches this port.
  *
  * NOTHING CANNED. The model writes the text or nothing goes out; an unwritten text is an
- * audit row and an ops page, and its dedupe key stays unspent. A held send (quiet hours,
- * consent) is dropped like the 1:1 link it replaces. Every way this ends is a named
- * outcome in the execution detail (rule #11); nothing here throws into the executor.
+ * audit row and an ops page, and its dedupe key stays unspent. A group text that is held
+ * (quiet hours, enrolment) or does not land goes to the parents' own invites instead,
+ * so the flag never leaves a family with less than it had. Every way this ends is a
+ * named outcome in the execution detail (rule #11); nothing here throws into the executor.
  */
 
 export const GROUP_PLAN_TEMPLATE_KEY = 'group_plan_calendar';
@@ -186,7 +187,7 @@ export function withGroupPlanReport(
           },
           'group plan report: not for this group - its parents get their own invites',
         );
-        return inner.send(request);
+        return toParents(inner, request, `audience:${audience?.reason ?? 'unread'}`);
       }
       const outcome = await reportGroupPlan(plan, ports);
       console.info(
@@ -198,9 +199,27 @@ export function withGroupPlanReport(
         },
         'group plan report: done',
       );
+      if (outcome === 'send_failed' || outcome.startsWith('held:')) {
+        return toParents(inner, request, outcome);
+      }
       return { status: 'group_reported', outcome };
     },
   };
+}
+
+/**
+ * The group could not be told, so each parent gets what they would get without this
+ * flag. Nothing is retried here: a placement runs once, and a held or lost group text
+ * would otherwise leave nobody with the link. A text the model could not write never
+ * comes here (no fallback for words).
+ */
+async function toParents(
+  inner: CalendarInviteSender,
+  request: CalendarInviteRequest,
+  groupNotTold: string,
+): Promise<CalendarInviteReport> {
+  const report = await inner.send(request);
+  return report.status === 'reported' ? { ...report, groupNotTold } : report;
 }
 
 const PARENT_ROLES = ['primary_parent', 'co_parent'] as const;
