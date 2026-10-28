@@ -348,6 +348,7 @@ async function main() {
   const invented = results.filter((r) => r.failures.some((f) => f.startsWith('forbidden:')));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
   const unargued = results.filter((r) => r.failures.some((f) => f.startsWith('judge-unargued:')));
+  const parseFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge-parse:')));
   const introOpeners = new Set(
     results.filter((r) => r.fixture.request.reason === 'introduction').map((r) => opener(r.body)),
   );
@@ -362,6 +363,9 @@ async function main() {
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
   console.log(
     `verdicts with no argument: ${unargued.length}  (0 required - a score written blind is not a verdict)`,
+  );
+  console.log(
+    `verdicts that did not parse: ${parseFails.length}  (0 required - a score outside 1-5 is wreckage, not a vote)`,
   );
   console.log(
     `distinct intro opens:    ${introOpeners.size}  (>= ${MIN_DISTINCT_OPENERS} required - one template is a preset body)`,
