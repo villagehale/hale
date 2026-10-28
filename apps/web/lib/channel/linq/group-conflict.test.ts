@@ -376,6 +376,42 @@ describe('clashCalendar', () => {
     expect(calendar.plans[0]?.rows).toHaveLength(2);
   });
 
+  it('keeps two items that differ only in their end as two plans, each on its own calendar', () => {
+    const calendar = clashCalendar({
+      blocks: [
+        block({ eventId: 'swim', title: 'Maya swim pickup' }),
+        block({
+          eventId: 'swim-long',
+          integrationId: 'gcal-sam',
+          userId: 'sam',
+          title: 'Maya swim pickup',
+          end: AT_4,
+        }),
+        block({
+          eventId: 'daycare',
+          integrationId: 'gcal-sam',
+          userId: 'sam',
+          title: 'Leo daycare pickup',
+        }),
+      ],
+      events: [],
+      decided: noDecision,
+    });
+    expect(new Set(calendar.plans.map((row) => row.key)).size).toBe(3);
+
+    const [clash, ...rest] = findGroupClashes({ ...calendar, people: [barton, sam], now: NOW });
+    expect(rest).toEqual([]);
+    const second = clash && 'plan' in clash.second ? clash.second.plan : null;
+    expect([clash?.first.title, second?.title, second?.end]).toEqual([
+      'Leo daycare pickup',
+      'Maya swim pickup',
+      AT_4,
+    ]);
+    expect(Object.values(clash?.restsOn ?? {})).toEqual(['sam', 'sam']);
+    // Barton's own swim pickup then keeps him from being called free for either.
+    expect(clash?.suggested).toBeNull();
+  });
+
   it('keeps a non-kid block as busy time only, and skips all-day and cancelled items', () => {
     const calendar = clashCalendar({
       blocks: [

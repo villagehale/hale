@@ -191,37 +191,58 @@ describe('pickupCandidates', () => {
 });
 
 describe('pickupClaimAction', () => {
-  const candidates: PickupCandidate[] = pickupCandidates({
-    ...where,
-    plans: [swim, daycare],
-    sent: [],
-  });
+  const watched = [swim, daycare];
+  const candidates: PickupCandidate[] = pickupCandidates({ ...where, plans: watched, sent: [] });
+  const act = (read: GroupPickupClaimReading | null) =>
+    pickupClaimAction(read, candidates, watched);
 
   it('takes a high-confidence claim or drop of plans that were offered', () => {
-    expect(pickupClaimAction(reading({ pickupRefs: ['p2'] }), candidates)).toEqual({
-      kind: 'claim',
-      plans: [swim],
+    expect(act(reading({ pickupRefs: ['p2'] }))).toEqual({ kind: 'claim', plans: [swim] });
+    expect(act(reading({ intent: 'drop_pickup', pickupRefs: ['p1', 'p1'] }))).toEqual({
+      kind: 'drop',
+      plans: [daycare],
     });
-    expect(
-      pickupClaimAction(reading({ intent: 'drop_pickup', pickupRefs: ['p1', 'p1'] }), candidates),
-    ).toEqual({ kind: 'drop', plans: [daycare] });
-    expect(pickupClaimAction(reading({ pickupRefs: ['p1', 'p2'] }), candidates)?.plans).toEqual([
-      daycare,
-      swim,
-    ]);
+    expect(act(reading({ pickupRefs: ['p1', 'p2'] }))?.plans).toEqual([daycare, swim]);
   });
 
   it('changes nothing for a failed read, a low one, chatter, unclear or no plan', () => {
-    expect(pickupClaimAction(null, candidates)).toBeNull();
-    expect(pickupClaimAction(reading({ confidence: 'low' }), candidates)).toBeNull();
-    expect(pickupClaimAction(reading({ intent: 'chatter' }), candidates)).toBeNull();
-    expect(pickupClaimAction(reading({ intent: 'unclear' }), candidates)).toBeNull();
-    expect(pickupClaimAction(reading({ pickupRefs: [] }), candidates)).toBeNull();
+    expect(act(null)).toBeNull();
+    expect(act(reading({ confidence: 'low' }))).toBeNull();
+    expect(act(reading({ intent: 'chatter' }))).toBeNull();
+    expect(act(reading({ intent: 'unclear' }))).toBeNull();
+    expect(act(reading({ pickupRefs: [] }))).toBeNull();
   });
 
   it('sets the whole reading aside when it names a plan that was not offered', () => {
-    expect(pickupClaimAction(reading({ pickupRefs: ['p1', 'p3'] }), candidates)).toBeNull();
-    expect(pickupClaimAction(reading({ pickupRefs: ['swim'] }), candidates)).toBeNull();
+    expect(act(reading({ pickupRefs: ['p1', 'p3'] }))).toBeNull();
+    expect(act(reading({ pickupRefs: ['swim'] }))).toBeNull();
+  });
+
+  it('sets a reading aside that would change a plan it did not name', () => {
+    const longer = plan({ key: 'swim-long', title: 'Maya  Swim Pickup', end: AT_4 });
+    const both = [swim, longer, daycare];
+    const offered = pickupCandidates({ ...where, plans: both, sent: [] });
+    const ref = (key: string) =>
+      offered.find((candidate) => candidate.plan.key === key)?.offer.ref ?? 'missing';
+
+    expect(pickupClaimAction(reading({ pickupRefs: [ref('swim')] }), offered, both)).toBeNull();
+    expect(
+      pickupClaimAction(
+        reading({ intent: 'drop_pickup', pickupRefs: [ref('swim-long')] }),
+        offered,
+        both,
+      ),
+    ).toBeNull();
+    expect(
+      pickupClaimAction(reading({ pickupRefs: [ref('swim'), ref('swim-long')] }), offered, both)
+        ?.plans.map((row) => row.key)
+        .sort(),
+    ).toEqual(['swim', 'swim-long']);
+    expect(pickupClaimAction(reading({ pickupRefs: [ref('daycare')] }), offered, both)).toEqual({
+      kind: 'claim',
+      plans: [daycare],
+    });
+    expect(pickupClaimAction(reading({ pickupRefs: ['p2'] }), candidates, both)).toBeNull();
   });
 });
 

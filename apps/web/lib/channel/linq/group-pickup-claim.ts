@@ -159,10 +159,14 @@ export const GROUP_PICKUP_CLAIM_MAX_TOKENS = 400;
 /**
  * What a reading does, or null. Only a high-confidence claim or drop naming plans that were
  * offered does anything; one ref that was not offered and the whole reading is set aside.
+ * So is a reading that would change a plan it did not name: plans with one title and start
+ * share one stored decision, so taking one of two that differ only in their end takes both.
  */
 export function pickupClaimAction(
   reading: GroupPickupClaimReading | null,
   candidates: readonly PickupCandidate[],
+  /** Every plan the clash planner watches, offered or not. */
+  watched: readonly ClashPlan[],
 ): { kind: 'claim' | 'drop'; plans: ClashPlan[] } | null {
   if (!reading || reading.confidence !== 'high') return null;
   if (reading.intent !== 'claim_pickup' && reading.intent !== 'drop_pickup') return null;
@@ -174,6 +178,13 @@ export function pickupClaimAction(
     if (!found) return null;
     plans.push(found.plan);
   }
+  const decision = (plan: ClashPlan) => {
+    const key = pickupDecisionKey(plan);
+    return `${key.startIso}|${key.titleNorm}`;
+  };
+  const named = new Set(plans.map((plan) => plan.key));
+  const decided = new Set(plans.map(decision));
+  if (watched.some((plan) => !named.has(plan.key) && decided.has(decision(plan)))) return null;
   return { kind: reading.intent === 'claim_pickup' ? 'claim' : 'drop', plans };
 }
 

@@ -20,6 +20,7 @@ import {
   clashCalendar,
   findGroupClashes,
   groupConflictLineInput,
+  watchedPlan,
 } from './group-conflict';
 import { sharedGroupConflictWriter } from './group-conflict-voice';
 import {
@@ -1375,7 +1376,11 @@ export async function takeGroupPickupClaim(
     })),
   });
   if (!reading) return 'unread';
-  const action = pickupClaimAction(reading, candidates);
+  const action = pickupClaimAction(
+    reading,
+    candidates,
+    plans.filter((plan) => watchedPlan(plan, input.now)),
+  );
   if (!action) return 'not_a_claim';
   if (action.kind === 'drop') {
     let dropped = false;

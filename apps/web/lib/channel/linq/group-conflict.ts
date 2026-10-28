@@ -382,7 +382,7 @@ export function clashCalendar(input: {
       const startIso = block.start.toISOString();
       const word = input.decided(startIso, clashTitleNorm(block.title));
       draft = {
-        key: `cal:${clashTitleNorm(block.title)}@${startIso}`,
+        key: `cal:${clashTitleNorm(block.title)}@${startIso}/${block.end.toISOString()}`,
         title: block.title.trim(),
         start: block.start,
         end: block.end,

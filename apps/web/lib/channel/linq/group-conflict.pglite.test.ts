@@ -590,6 +590,24 @@ function claim(
   );
 }
 
+/** The live who-takes decisions: who has each, from what, and since when. */
+async function liveTakers(familyId: string) {
+  const rows = await db.database
+    .select({
+      factValue: schema.familyMemoryFacts.factValue,
+      validFrom: schema.familyMemoryFacts.validFrom,
+      validUntil: schema.familyMemoryFacts.validUntil,
+    })
+    .from(schema.familyMemoryFacts)
+    .where(eq(schema.familyMemoryFacts.familyId, familyId));
+  return rows
+    .filter((row) => row.validUntil === null)
+    .map((row) => {
+      const value = row.factValue as { takerUserId: string | null; source: string };
+      return { takerUserId: value.takerUserId, source: value.source, since: row.validFrom };
+    });
+}
+
 async function whoTakesFacts(familyId: string) {
   return db.database
     .select({
@@ -1028,5 +1046,30 @@ describe('group pickup claims (VIL-444)', () => {
     });
     expect(writer.calls).toEqual([]);
     expect(await sentRows()).toEqual([]);
+  });
+
+  it('takes nothing when the plan it names shares its decision with one it left out', async () => {
+    const seeded = await seedFamily();
+    await calendarItem(seeded, 'barton', { eventId: 'swim', title: 'Maya swim pickup' });
+    await calendarItem(seeded, 'barton', {
+      eventId: 'swim-long',
+      title: 'Maya swim pickup',
+      end: AT_4,
+    });
+    const ending = (...ends: string[]) =>
+      fakeClaimReader((input) => ({
+        intent: 'claim_pickup',
+        pickupRefs: input.pickups
+          .filter((offer) => ends.includes(offer.end))
+          .map((offer) => offer.ref),
+        confidence: 'high',
+      }));
+
+    expect(await claim(seeded, seeded.samId, ending('15:30'))).toBe('not_a_claim');
+    expect(await whoTakesFacts(seeded.familyId)).toEqual([]);
+    expect(await claim(seeded, seeded.samId, ending('15:30', '16:00'))).toBe('claimed');
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.samId, source: 'claim', since: DAY },
+    ]);
   });
 });

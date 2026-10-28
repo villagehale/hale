@@ -267,6 +267,7 @@ function claimSetup(clash, claim, fixture) {
     sent,
     before,
     candidates,
+    watched: home.plans.filter((row) => clash.watchedPlan(row, now)),
     input: {
       text: fixture.text,
       senderName: home.people.find((person) => person.id === fixture.sender)?.name || null,
@@ -337,7 +338,7 @@ const names = (found, title) =>
 function claimFailures(clash, claim, fixture, setup, reading, { lands = true } = {}) {
   const failures = [];
   const { action: wantKind, pickups = [], alertAfter } = fixture.expect;
-  const action = claim.pickupClaimAction(reading, setup.candidates);
+  const action = claim.pickupClaimAction(reading, setup.candidates, setup.watched);
   const did = action
     ? `${action.kind} ${JSON.stringify(action.plans.map((row) => row.title).sort())}`
     : 'nothing';
