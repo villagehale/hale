@@ -6,6 +6,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 const waitUntil = vi.hoisted(() => vi.fn());
 vi.mock('@vercel/functions', () => ({ waitUntil }));
+const effectDecide = vi.hoisted(() => vi.fn());
+vi.mock('~/lib/channel/linq/effect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/linq/effect')>()),
+  sharedLinqEffectDecider: () => ({ decide: effectDecide }),
+}));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -5280,6 +5285,50 @@ describe('the reply row, written to a real database', () => {
         ]);
         expect(next.said).toEqual([]);
         expect(await keptAsks(parent.familyId)).toEqual([]);
+      });
+
+      it('a reply the model chose an iMessage effect for', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        effectDecide.mockResolvedValue({ effect: null });
+        const sent: unknown[] = [];
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+          if (new URL(url).pathname.endsWith('/messages'))
+            sent.push(JSON.parse(String(init?.body)));
+          return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+        const next = await text(
+          parent,
+          'we got in for swim',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          { offDomain: fakeLane(IN_DOMAIN), coach: fakeCoach('You are in for swim.') },
+        );
+        vi.unstubAllGlobals();
+
+        expect(effectDecide).toHaveBeenCalledWith({
+          audience: 'direct',
+          parentText: 'we got in for swim',
+          reply: 'You are in for swim.',
+        });
+        expect(sent).toEqual([
+          {
+            message: {
+              parts: [{ type: 'text', value: 'You are in for swim.' }],
+              reply_to: { message_id: 'in-1' },
+              effect: { type: 'screen', name: 'confetti' },
+            },
+          },
+        ]);
+        // The words went out through Linq (asserted above), not the harness transport.
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+        effectDecide.mockReset();
       });
     });
 

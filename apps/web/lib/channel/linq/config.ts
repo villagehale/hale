@@ -107,3 +107,12 @@ export function linqGroupOnboardingV2Enabled(): boolean {
 export function linqGroupWelcomeVoiceEnabled(): boolean {
   return trimmed('LINQ_GROUP_WELCOME_VOICE_ENABLED') === 'true';
 }
+
+/**
+ * iMessage screen and bubble effects (VIL-473). Exactly `true` enables them.
+ * Unset, empty, `on`, and `false` stay dark. Default off. Off means the model
+ * is never asked and every send stays a plain bubble.
+ */
+export function linqEffectsEnabled(): boolean {
+  return trimmed('LINQ_EFFECTS_ENABLED') === 'true';
+}

@@ -42,6 +42,7 @@ import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import { sharedLinqEffectDecider } from '~/lib/channel/linq/effect';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -1053,6 +1054,10 @@ async function routeChannelMessageInner(
       templateKey,
       beforeSend: stopTyping,
       inboundBody: context.body,
+      effectRead: {
+        // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+        audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
+      },
     });
 
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
@@ -2510,6 +2515,8 @@ async function sendReply(
      * a poll can stand in for the text. Absent on the caregiver line, which
      * keeps its sentence. */
     inboundBody?: string;
+    /** What the VIL-473 effect read sees beside the two bodies. Absent: no effect. */
+    effectRead?: { audience: 'direct' | 'group' };
   },
 ): Promise<string> {
   assertTurnLive();
@@ -2542,6 +2549,9 @@ async function sendReply(
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
+        ...(args.effectRead
+          ? { effect: { decider: sharedLinqEffectDecider(), ...args.effectRead } }
+          : {}),
       });
       if (moment.handled) {
         if (args.claim) await args.claim();

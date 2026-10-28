@@ -40,6 +40,8 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-473. One recorder writes the tapback and the effect moment.
+  'apps/web/lib/channel/linq/moments.ts': ['linq_tapback', 'linq_effect'],
   // VIL-226. One audit helper writes every verb of the hourly proactive review, and a
   // decider send names the sweep's own verb for a nudge.
   'apps/web/lib/channel/proactive/review.ts': [

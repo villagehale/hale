@@ -199,6 +199,10 @@
     "file": "kid-item-classifier.md",
     "sha256": "db282b366f5d1d5ba3066a425d1782eb93417af74d863b7b3f92233bb9f4211b"
   },
+  "linq-effect.md": {
+    "file": "linq-effect.md",
+    "sha256": "7e2cc5ca9a1d2f0964b55b4d2b24300a7066c8894c4175e7878fcc2e45d0326b"
+  },
   "medical-escalation.md": {
     "file": "medical-escalation.md",
     "sha256": "ecc1c81c4aacbd45cbe1250e1b0df9e38d2683a9484833d12acaca72d4316dfb"
