@@ -2,7 +2,12 @@ import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { REMINDER_HORIZON_MS } from '~/lib/loop/reminders/schedule';
 import { zonedMidnight } from '~/lib/memory/period';
-import { extractEventNotes, sameEventNotes } from './event-notes';
+import {
+  type EventNotesReader,
+  descriptionHash,
+  eventNotesIdle,
+  sameEventNotes,
+} from './event-notes';
 
 /**
  * A connected Google Calendar becomes reminder rows without a YES (VIL-416).
@@ -26,7 +31,7 @@ import { extractEventNotes, sameEventNotes } from './event-notes';
  *
  * A mirror reminds only the parent who connected that calendar. The description
  * and the attendee list are never stored (rule #1). Only the parking and
- * what-to-bring lines the description labelled are kept, in `notes` (VIL-468).
+ * what-to-bring facts the model reads from it are kept, in `notes` (VIL-468).
  */
 
 const TITLE_MAX = 180;
@@ -53,8 +58,8 @@ export interface CalendarMirrorCandidate {
   endsAt: Date | null;
   location: string | null;
   transparency?: 'opaque' | 'transparent' | null;
-  /** Labelled parking / what-to-bring facts from the description, or null. */
-  notes?: FamilyEventNotes | null;
+  /** The event's description, IN MEMORY ONLY: handed to the notes reader, never stored. */
+  description?: string | null;
 }
 
 export type CalendarMirrorClass =
@@ -184,7 +189,7 @@ export function classifyCalendarMirrorItem(
   const location = cleanText(readString(item.location) ?? '', LOCATION_MAX);
 
   const transparency = readString(item.transparency);
-  const notes = extractEventNotes(readString(item.description));
+  const description = readString(item.description)?.trim() || null;
   return {
     kind: 'eligible',
     candidate: {
@@ -194,7 +199,7 @@ export function classifyCalendarMirrorItem(
       endsAt,
       location,
       ...(transparency === 'transparent' || transparency === 'opaque' ? { transparency } : {}),
-      ...(notes ? { notes } : {}),
+      ...(description ? { description } : {}),
     },
   };
 }
@@ -220,6 +225,22 @@ export function knownEventCovers(
  * saw, and does not delete: a missing event is then "we did not see it", not
  * "the parent deleted it".
  */
+/**
+ * The notes for one candidate. No description: null, no call. A description whose hash
+ * matches the stored reading: the stored reading, no call. Otherwise the model reads it;
+ * a failed read is null, so the reminder says nothing extra.
+ */
+async function notesFor(
+  candidate: CalendarMirrorCandidate,
+  stored: FamilyEventNotes | null,
+  readNotes: EventNotesReader = eventNotesIdle,
+): Promise<FamilyEventNotes | null> {
+  const description = candidate.description;
+  if (!description) return null;
+  if (stored?.sourceHash && stored.sourceHash === descriptionHash(description)) return stored;
+  return readNotes({ title: candidate.title, description });
+}
+
 export async function reconcileCalendarMirrors(
   database: Database,
   input: {
@@ -230,6 +251,8 @@ export async function reconcileCalendarMirrors(
     timeZone: string;
     now: Date;
     trustWindow: boolean;
+    /** VIL-468. Reads parking / what-to-bring from a description. Idle (null) by default. */
+    readNotes?: EventNotesReader;
   },
 ): Promise<CalendarMirrorCounts> {
   if (!input.trustWindow && input.items.length === 0) {
@@ -307,6 +330,7 @@ export async function reconcileCalendarMirrors(
     }
     kept.add(candidate.eventId);
     const existing = mirrorByEvent.get(candidate.eventId);
+    const notes = await notesFor(candidate, existing?.notes ?? null, input.readNotes);
     if (!existing) {
       const inserted = await database
         .insert(schema.familyEvents)
@@ -317,7 +341,7 @@ export async function reconcileCalendarMirrors(
           endsAt: candidate.endsAt,
           location: candidate.location,
           transparency: candidate.transparency ?? null,
-          notes: candidate.notes ?? null,
+          notes,
           source: 'parent',
           createdBy: input.userId,
           googleEventId: candidate.eventId,
@@ -346,7 +370,7 @@ export async function reconcileCalendarMirrors(
       (existing.location ?? null) !== candidate.location ||
       (existing.endsAt?.getTime() ?? null) !== (candidate.endsAt?.getTime() ?? null) ||
       (existing.transparency ?? null) !== (candidate.transparency ?? null) ||
-      !sameEventNotes(existing.notes, candidate.notes) ||
+      !sameEventNotes(existing.notes, notes) ||
       existing.deletedAt !== null;
     if (!changed) continue;
     await database
@@ -357,7 +381,7 @@ export async function reconcileCalendarMirrors(
         endsAt: candidate.endsAt,
         location: candidate.location,
         transparency: candidate.transparency ?? null,
-        notes: candidate.notes ?? null,
+        notes,
         deletedAt: null,
         createdBy: input.userId,
       })

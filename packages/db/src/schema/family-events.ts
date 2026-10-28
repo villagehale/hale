@@ -151,10 +151,13 @@ export const familyEvents = pgTable(
   }),
 );
 
-/** Logistics facts for one occasion. Each key is present only when the source stated it. */
+/** Logistics facts for one occasion. Each fact key is present only when the source stated it.
+ * `sourceHash` is a hash of the description the facts were read from (never the text), so an
+ * unchanged description is not read again; a read that found nothing stores only the hash. */
 export interface FamilyEventNotes {
   parking?: string;
   bring?: string;
+  sourceHash?: string;
 }
 
 export type FamilyEvent = typeof familyEvents.$inferSelect;

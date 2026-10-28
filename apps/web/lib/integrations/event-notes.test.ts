@@ -1,48 +1,59 @@
-import { describe, expect, it } from 'vitest';
-import { extractEventNotes, sameEventNotes } from './event-notes';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  createEventNotesReader,
+  descriptionHash,
+  sameEventNotes,
+  toEventNotes,
+} from './event-notes';
 
-describe('extractEventNotes', () => {
-  it('reads labelled parking and what-to-bring lines', () => {
-    expect(
-      extractEventNotes(
-        'Practice for U9.\nParking: Lot B behind the rink\nWhat to bring: skates, helmet, water bottle',
-      ),
-    ).toEqual({ parking: 'Lot B behind the rink', bring: 'skates, helmet, water bottle' });
+describe('toEventNotes', () => {
+  it('keeps stated facts whole, with no length cap', () => {
+    const long = `Lot B behind the rink. ${'Overflow on the street after 6pm. '.repeat(10)}`;
+    expect(toEventNotes({ parking: long, bring: 'skates' }, 'h')).toEqual({
+      parking: long.trim(),
+      bring: 'skates',
+      sourceHash: 'h',
+    });
   });
 
-  it('handles Google HTML descriptions and bullets', () => {
-    expect(
-      extractEventNotes(
-        '<p>Welcome!</p><ul><li>Parking info - street parking on Elm &amp; 3rd</li><li>Bring: a towel</li></ul>',
-      ),
-    ).toEqual({ parking: 'street parking on Elm & 3rd', bring: 'a towel' });
+  it('an empty reading keeps only the hash, so the description is not read again', () => {
+    expect(toEventNotes({ parking: ' ', bring: '' }, 'h')).toEqual({ sourceHash: 'h' });
+  });
+});
+
+describe('createEventNotesReader', () => {
+  const saved = process.env.ANTHROPIC_API_KEY;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = saved;
   });
 
-  it('never infers from prose: no label, no fact', () => {
-    expect(
-      extractEventNotes('There is lots of parking nearby, bring snacks if you like.'),
-    ).toBeNull();
-    expect(extractEventNotes('')).toBeNull();
-    expect(extractEventNotes(null)).toBeNull();
-    expect(extractEventNotes('Parking:   ')).toBeNull();
+  it('with no key there is no call and no notes', async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const client = vi.fn();
+    const read = createEventNotesReader(client);
+    expect(await read({ title: 'Swim', description: 'Use the back lot' })).toBeNull();
+    expect(client).not.toHaveBeenCalled();
   });
 
-  it('keeps only the parking fact when bring is absent, and the first of each label', () => {
-    expect(extractEventNotes('Parking: P1\nParking: P2')).toEqual({ parking: 'P1' });
-  });
-
-  it('caps a runaway value', () => {
-    const notes = extractEventNotes(`Bring: ${'x'.repeat(400)}`);
-    expect(notes?.bring?.length).toBe(160);
-    expect(notes?.bring?.endsWith('…')).toBe(true);
+  it('a failed read is null, so nothing extra is sent', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test-placeholder';
+    const read = createEventNotesReader(() => {
+      throw new Error('boom');
+    });
+    expect(await read({ title: 'Swim', description: 'Use the back lot' })).toBeNull();
   });
 });
 
 describe('sameEventNotes', () => {
-  it('treats null and empty as the same and compares each key', () => {
+  it('compares facts and source hash', () => {
+    const h = descriptionHash('x');
+    expect(sameEventNotes({ parking: 'A', sourceHash: h }, { parking: 'A', sourceHash: h })).toBe(
+      true,
+    );
+    expect(sameEventNotes({ parking: 'A', sourceHash: h }, { parking: 'B', sourceHash: h })).toBe(
+      false,
+    );
     expect(sameEventNotes(null, undefined)).toBe(true);
-    expect(sameEventNotes({ parking: 'A' }, { parking: 'A' })).toBe(true);
-    expect(sameEventNotes({ parking: 'A' }, { parking: 'B' })).toBe(false);
-    expect(sameEventNotes({ bring: 'A' }, null)).toBe(false);
   });
 });

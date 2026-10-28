@@ -1,75 +1,118 @@
+import { createHash } from 'node:crypto';
+import { type AgentClient, pickLane } from '@hale/agent';
 import type { FamilyEventNotes } from '@hale/db';
+import { z } from 'zod';
+import { loadCronSkill } from '~/lib/cron/skill';
+import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
- * VIL-468. Parking and what-to-bring facts from a calendar event's description.
+ * VIL-468. THE MODEL READS PARKING AND WHAT TO BRING.
  *
- * Only a line the organizer LABELLED is a fact ("Parking: lot B behind the rink",
- * "What to bring: skates, helmet"). Nothing is inferred from prose, so the reminder
- * model never receives a detail the event did not state; with no labelled line the
- * key is absent and the model says nothing about it. The raw description is never
- * returned or stored (rule #1), only the labelled values, each capped.
+ * Organizers rarely label these ("use the lot off Elm", "n'oubliez pas vos patins"), and
+ * matching a word like "Parking:" in code is the keyword rule in another form. So one
+ * Haiku call (`event-notes-read`, task: screen) reads the description and returns only
+ * the facts it states, in its own words. No inference, no fixed copy, no length cap.
  *
- * This is the deterministic half. Model extraction from alert mail and provider pages
- * (email-alert.ts, fanout) changes the eval request shape and waits on the re-record
- * budget.
+ * A missing key, a missing skill, or a failed read is `null`: no notes, and the reminder
+ * says nothing extra (rule #11). The raw description is never returned or stored
+ * (rule #1); only the stated facts and a hash of the description, so an unchanged
+ * description is never read twice.
  */
 
-const VALUE_MAX = 160;
+const MAX_TOKENS = 512;
 
-const PARKING_LABEL = /^(?:parking(?:\s+info(?:rmation)?)?)\s*[:\-–—]\s*(.+)$/i;
-const BRING_LABEL =
-  /^(?:what\s+to\s+bring|things\s+to\s+bring|please\s+bring|to\s+bring|bring)\s*[:\-–—]\s*(.+)$/i;
+export const EVENT_NOTES_TOOL = 'read_event_notes';
+export const EVENT_NOTES_TOOL_DESCRIPTION =
+  'Return the parking and what-to-bring facts this event description states, or empty strings.';
 
-const ENTITIES: Record<string, string> = {
-  '&amp;': '&',
-  '&lt;': '<',
-  '&gt;': '>',
-  '&quot;': '"',
-  '&#39;': "'",
-  '&nbsp;': ' ',
-};
+export const eventNotesJsonSchema = {
+  type: 'object',
+  properties: {
+    parking: {
+      type: 'string',
+      description: 'Parking for this event as the description states it, or empty.',
+    },
+    bring: {
+      type: 'string',
+      description: 'What to bring for this event as the description states it, or empty.',
+    },
+  },
+  required: ['parking', 'bring'],
+} as const;
 
-/** Google descriptions are often HTML: line breaks become newlines, tags go. */
-function plainLines(description: string): string[] {
-  return description
-    .replace(/<\s*br\s*\/?>/gi, '\n')
-    .replace(/<\/\s*(p|div|li|h\d)\s*>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (m) => ENTITIES[m] ?? m)
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^[\s*•\-–]+/, '').trim())
-    .filter((line) => line.length > 0);
+const eventNotesSchema = z.object({ parking: z.string(), bring: z.string() });
+
+/** Same bytes the eval replays (run-event-notes-eval.mjs). */
+export function eventNotesUserMessage(title: string, description: string): string {
+  return JSON.stringify({ title, description });
 }
 
-function capped(value: string): string | undefined {
-  const clean = value.replace(/\s+/g, ' ').trim();
-  if (!clean) return undefined;
-  return clean.length > VALUE_MAX ? `${clean.slice(0, VALUE_MAX - 1).trimEnd()}…` : clean;
+export function descriptionHash(description: string): string {
+  return createHash('sha256').update(description).digest('hex').slice(0, 32);
 }
 
-export function extractEventNotes(description: string | null | undefined): FamilyEventNotes | null {
-  if (!description) return null;
-  const notes: FamilyEventNotes = {};
-  for (const line of plainLines(description)) {
-    const parking = notes.parking === undefined ? PARKING_LABEL.exec(line) : null;
-    if (parking?.[1]) {
-      const value = capped(parking[1]);
-      if (value) notes.parking = value;
-      continue;
+/** A reading becomes notes: only non-empty facts become keys. */
+export function toEventNotes(
+  raw: { parking: string; bring: string },
+  sourceHash: string,
+): FamilyEventNotes {
+  const parking = raw.parking.trim();
+  const bring = raw.bring.trim();
+  return { ...(parking ? { parking } : {}), ...(bring ? { bring } : {}), sourceHash };
+}
+
+export type EventNotesReader = (input: {
+  title: string;
+  description: string;
+}) => Promise<FamilyEventNotes | null>;
+
+/** Tests and any caller without a reader. Never calls a model. */
+export const eventNotesIdle: EventNotesReader = async () => null;
+
+function className(err: unknown): string {
+  return err instanceof Error ? err.constructor.name : 'unknown';
+}
+
+export function createEventNotesReader(client: () => AgentClient): EventNotesReader {
+  return async ({ title, description }) => {
+    if (!process.env.ANTHROPIC_API_KEY) return null;
+    let resolved: AgentClient;
+    let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+    try {
+      resolved = client();
+      skill = await loadCronSkill('event-notes-read');
+    } catch (err) {
+      console.info({ reason: 'unavailable', detail: className(err) }, 'event notes read');
+      return null;
     }
-    const bring = notes.bring === undefined ? BRING_LABEL.exec(line) : null;
-    if (bring?.[1]) {
-      const value = capped(bring[1]);
-      if (value) notes.bring = value;
+    try {
+      const { value } = await forceToolJson({
+        client: resolved,
+        lane: pickLane(skill.meta.task),
+        system: skill.instructions,
+        userMessage: eventNotesUserMessage(title, description),
+        toolName: EVENT_NOTES_TOOL,
+        toolDescription: EVENT_NOTES_TOOL_DESCRIPTION,
+        inputJsonSchema: eventNotesJsonSchema,
+        schema: eventNotesSchema,
+        maxTokens: MAX_TOKENS,
+      });
+      return toEventNotes(value, descriptionHash(description));
+    } catch (err) {
+      console.info({ reason: 'model_failed', detail: className(err) }, 'event notes read');
+      return null;
     }
-  }
-  return notes.parking === undefined && notes.bring === undefined ? null : notes;
+  };
 }
 
-/** Same facts, same order: a mirror re-read with an unchanged description is not a change. */
+/** Same facts: a mirror re-read with an unchanged reading is not a change. */
 export function sameEventNotes(
   a: FamilyEventNotes | null | undefined,
   b: FamilyEventNotes | null | undefined,
 ): boolean {
-  return (a?.parking ?? null) === (b?.parking ?? null) && (a?.bring ?? null) === (b?.bring ?? null);
+  return (
+    (a?.parking ?? null) === (b?.parking ?? null) &&
+    (a?.bring ?? null) === (b?.bring ?? null) &&
+    (a?.sourceHash ?? null) === (b?.sourceHash ?? null)
+  );
 }

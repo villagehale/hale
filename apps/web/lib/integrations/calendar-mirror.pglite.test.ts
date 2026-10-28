@@ -1,8 +1,9 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { reconcileCalendarMirrors } from './calendar-mirror';
+import { type EventNotesReader, descriptionHash } from './event-notes';
 
 /**
  * A connected calendar becomes parent-sourced family_events the reminder cron
@@ -47,6 +48,7 @@ function reconcile(
   trustWindow = true,
   id = integrationId,
   userId = family.parentUserId,
+  readNotes?: EventNotesReader,
 ) {
   return reconcileCalendarMirrors(db.database, {
     familyId: family.familyId,
@@ -56,6 +58,7 @@ function reconcile(
     timeZone: TZ,
     now: NOW,
     trustWindow,
+    ...(readNotes ? { readNotes } : {}),
   });
 }
 
@@ -74,23 +77,65 @@ function audits() {
 }
 
 describe('reconcileCalendarMirrors', () => {
-  it('stores only labelled parking and bring facts, and updates them when they change (VIL-468)', async () => {
-    await reconcile([swim({ description: 'Private coach note\nParking: Lot B\nBring: goggles' })]);
+  it('stores only the facts the reader returns, and reads a description once (VIL-468)', async () => {
+    const readNotes = vi.fn(async ({ description }: { title: string; description: string }) =>
+      description.includes('back lot')
+        ? {
+            parking: 'the back lot off Elm',
+            bring: 'goggles',
+            sourceHash: descriptionHash(description),
+          }
+        : { sourceHash: descriptionHash(description) },
+    );
+    const desc = 'Private coach note. Park in the back lot off Elm, and the kids need goggles.';
+    await reconcile(
+      [swim({ description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
     let stored = await rows();
-    expect(stored[0]?.notes).toEqual({ parking: 'Lot B', bring: 'goggles' });
+    expect(stored[0]?.notes).toMatchObject({ parking: 'the back lot off Elm', bring: 'goggles' });
     expect(JSON.stringify(stored[0])).not.toContain('Private coach note');
 
-    const counts = await reconcile([swim({ description: 'Parking: Lot C' })]);
+    expect(
+      await reconcile(
+        [swim({ description: desc })],
+        true,
+        integrationId,
+        family.parentUserId,
+        readNotes,
+      ),
+    ).toMatchObject({ updated: 0 });
+    expect(readNotes).toHaveBeenCalledTimes(1);
+
+    const counts = await reconcile(
+      [swim({ description: 'See you there!' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
     expect(counts).toMatchObject({ updated: 1 });
     stored = await rows();
-    expect(stored[0]?.notes).toEqual({ parking: 'Lot C' });
+    expect(stored[0]?.notes).toEqual({ sourceHash: descriptionHash('See you there!') });
 
-    expect(await reconcile([swim({ description: 'Parking: Lot C' })])).toMatchObject({
-      updated: 0,
-    });
-    await reconcile([swim()]);
+    await reconcile([swim()], true, integrationId, family.parentUserId, readNotes);
     stored = await rows();
     expect(stored[0]?.notes).toBeNull();
+    expect(readNotes).toHaveBeenCalledTimes(2);
+  });
+
+  it('a failed read stores no notes (VIL-468)', async () => {
+    await reconcile(
+      [swim({ description: 'Park in the back lot' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      async () => null,
+    );
+    expect((await rows())[0]?.notes).toBeNull();
   });
 
   it('mirrors an upcoming swim as a parent event and audits it without the title', async () => {

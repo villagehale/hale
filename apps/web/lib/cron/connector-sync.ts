@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
@@ -35,6 +36,7 @@ import {
   emptyEmailAlertCounts,
   gmailAlertSweepInput,
 } from '~/lib/integrations/email-alert';
+import { createEventNotesReader } from '~/lib/integrations/event-notes';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
 import {
@@ -55,7 +57,11 @@ import {
   syncConnection,
 } from '~/lib/integrations/sync';
 import { decryptTokens } from '~/lib/integrations/token-vault';
-import { pipelineClient } from '~/lib/pipeline/client';
+import {
+  CRON_SWEEP_CLIENT_OPTIONS,
+  budgetedAnthropic,
+  pipelineClient,
+} from '~/lib/pipeline/client';
 import {
   type FamilyChildRef,
   classifyChildEventEmail,
@@ -362,7 +368,15 @@ async function mirrorCalendarWindow(
     timeZone,
     now: batch.now,
     trustWindow: batch.trustWindow,
+    readNotes: createEventNotesReader(eventNotesClient),
   });
+}
+
+let eventNotesAnthropic: AgentClient | undefined;
+/** VIL-468. Lazy, so a missing key is a null reading, never a thrown sync. */
+function eventNotesClient(): AgentClient {
+  eventNotesAnthropic ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'classify_event' });
+  return eventNotesAnthropic;
 }
 
 /** Deps for the connect-time backfill kick. The cursor write merges onto the row

@@ -22,19 +22,19 @@ function item(overrides: Record<string, unknown> = {}): Record<string, unknown> 
 }
 
 describe('classifyCalendarMirrorItem', () => {
-  it('keeps only the labelled parking and bring facts, never the description (VIL-468)', () => {
+  it('hands the description to the notes reader in memory, and reads no facts itself (VIL-468)', () => {
     const classified = classifyCalendarMirrorItem(
-      item({ description: 'Coach notes here.\nParking: Lot B\nBring: water' }),
+      item({ description: '  Coach notes here.\nParking: Lot B  ' }),
       NOW,
       TZ,
     );
     expect(classified).toMatchObject({
       kind: 'eligible',
-      candidate: { notes: { parking: 'Lot B', bring: 'water' } },
+      candidate: { description: 'Coach notes here.\nParking: Lot B' },
     });
-    expect(JSON.stringify(classified)).not.toContain('Coach notes');
+    expect(classified.kind === 'eligible' && 'notes' in classified.candidate).toBe(false);
     const plain = classifyCalendarMirrorItem(item(), NOW, TZ);
-    expect(plain.kind === 'eligible' && 'notes' in plain.candidate).toBe(false);
+    expect(plain.kind === 'eligible' && 'description' in plain.candidate).toBe(false);
   });
 
   it('keeps a timed event the parent has not declined', () => {
