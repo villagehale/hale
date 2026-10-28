@@ -130,3 +130,34 @@ describe('the French script', () => {
    * word is covered the day it is written, which a hand-kept list never is.
    */
 });
+
+describe('sourceCodeFromBody — tag anywhere in the first message', () => {
+  it('drops an unknown code', () => {
+    expect(sourceCodeFromBody("Hey Hale, what's going on? (via spring-campaign)")).toBeNull();
+  });
+
+  it('keeps the code when the parent typed after the tag', () => {
+    expect(
+      sourceCodeFromBody("Hey Hale, what's going on? (via earlyon-richmondhill) kids are 3 and 5"),
+    ).toBe('earlyon-richmondhill');
+  });
+
+  it('keeps a launch ad code end to end, with no venue data', () => {
+    expect(sourceCodeFromBody("Hey Hale, what's going on? (via ads-vaughan)")).toBe('ads-vaughan');
+    expect(venueForCode('ads-vaughan')).toBeNull();
+  });
+
+  it('keeps the code when the tag is mid-message', () => {
+    expect(sourceCodeFromBody('Hi there (via ossington), we are in M6J')).toBe('ossington');
+  });
+});
+
+describe('the shared shapes match the intake capability modules', () => {
+  it('referral and join shapes agree with lib/channel/{referral,join}/code.ts', async () => {
+    const shared = await import('@hale/source-codes');
+    const { REFERRAL_CODE_PATTERN } = await import('~/lib/channel/referral/code');
+    const { JOIN_CODE_PATTERN } = await import('~/lib/channel/join/code');
+    expect(shared.REFERRAL_CODE_PATTERN.source).toBe(REFERRAL_CODE_PATTERN.source);
+    expect(shared.JOIN_CODE_PATTERN.source).toBe(JOIN_CODE_PATTERN.source);
+  });
+});

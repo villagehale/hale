@@ -25,6 +25,7 @@
     "@hale/agent": "workspace:*",
     "@hale/db": "workspace:*",
     "@hale/tools-contracts": "workspace:*",
+    "@hale/source-codes": "workspace:*",
     "@hale/types": "workspace:*",
     "@hale/worker": "workspace:*",
     "@langfuse/otel": "^5.6.0",

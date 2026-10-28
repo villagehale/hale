@@ -984,6 +984,9 @@ describe('sweepMessageRetention on a database without migration 0167', () => {
     await before0167.exec(
       'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb',
     );
+    // The current families schema also carries source_code (migration 0182), which this
+    // older database predates; add it so inserts through the schema still work.
+    await before0167.exec('ALTER TABLE families ADD COLUMN IF NOT EXISTS source_code text');
   });
 
   afterAll(async () => {

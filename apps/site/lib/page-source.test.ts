@@ -24,4 +24,13 @@ describe('pageSource', () => {
     expect(await pageSource(Promise.resolve({ src: 'Maya Smith' }))).toBeNull();
     expect(await pageSource()).toBeNull();
   });
+  it('drops a well-shaped code the intake would not keep, and says so', async () => {
+    expect(await pageSource(Promise.resolve({ s: 'spring-campaign' }))).toBeNull();
+    expect(await pageSource(Promise.resolve({ src: 'poster-nowhere' }))).toBeNull();
+  });
+  it('accepts src= and a poster utm_campaign when ?s= is unregistered', async () => {
+    expect(await pageSource(Promise.resolve({ s: 'nope-code', src: 'poster-kensington' }))).toBe(
+      'poster-kensington',
+    );
+  });
 });

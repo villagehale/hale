@@ -1,6 +1,6 @@
-import { parseSourceCode } from '~/lib/text-entry';
+import { parseRegisteredSourceCode } from '~/lib/text-entry';
 
-type SourceParams = {
+export type SourceParams = {
   s?: string | string[];
   src?: string | string[];
   utm_source?: string | string[];
@@ -8,7 +8,8 @@ type SourceParams = {
 };
 
 /**
- * The validated source code on this request, or null. Pages hand it to every Text Hale
+ * The validated, REGISTERED source code on this request, or null (see
+ * parseRegisteredSourceCode). Pages hand it to every Text Hale
  * door so a no-JS client still lands on `/text?s=<code>`.
  *
  * Read order for the SMS pre-fill: `?s=`, then the poster QR's `?src=`, then
@@ -19,8 +20,8 @@ type SourceParams = {
 export async function pageSource(searchParams?: Promise<SourceParams>): Promise<string | null> {
   const params = await searchParams;
   return (
-    parseSourceCode(params?.s) ??
-    parseSourceCode(params?.src) ??
-    (params?.utm_source === 'poster' ? parseSourceCode(params?.utm_campaign) : null)
+    parseRegisteredSourceCode(params?.s) ??
+    parseRegisteredSourceCode(params?.src) ??
+    (params?.utm_source === 'poster' ? parseRegisteredSourceCode(params?.utm_campaign) : null)
   );
 }

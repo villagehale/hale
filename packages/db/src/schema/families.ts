@@ -58,6 +58,10 @@ export const families = pgTable(
     linqGroupChatId: text('linq_group_chat_id'),
     /** Stripe Customer for this household (ENG-1). Null until a paid checkout. */
     stripeCustomerId: text('stripe_customer_id'),
+    /** The source code the family's first text carried (`(via <code>)` or `HALE <CODE>`),
+     * resolved against @hale/source-codes. Null for an untagged arrival or a family that
+     * predates the column and had no intake session to backfill from. */
+    sourceCode: text('source_code'),
     /** Stripe Subscription id. Null on the free plan, set when a subscription is live. */
     stripeSubscriptionId: text('stripe_subscription_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -13,9 +13,9 @@
  *            e.g. earlyon-richmondhill · swim-loyalfitness · daycare-brightpath-milton
  *   In SMS   appended to the pre-filled body as a trailing "(via <code>)" token:
  *              Hey Hale, what's going on? (via earlyon-richmondhill)
- *   Parsed   by the M2 intake with
- *              /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)\s*$/
- *            — strip the match to recover the parent's real message.
+ *   Parsed   by the M2 intake with `sourceCodeFromViaTag` (@hale/source-codes),
+ *            anywhere in the first text, against the same registry the
+ *            site checks before pre-filling (parseRegisteredSourceCode).
  *
  * Human-readable on purpose: the parent sees exactly what they are sending, so
  * the attribution is disclosed rather than smuggled (hard rule #1). Anything
@@ -23,8 +23,7 @@
  * and into an analytics property, so nothing unvalidated may reach either.
  */
 
-const SOURCE_CODE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const SOURCE_CODE_MAX_LENGTH = 48;
+import { SOURCE_CODE_MAX_LENGTH, SOURCE_CODE_PATTERN, resolveSourceCode } from '@hale/source-codes';
 
 /** The site's existing support address — the honest path while the number is unprovisioned. */
 export const CONTACT_EMAIL = 'aloha@villagehale.com';
@@ -51,6 +50,28 @@ export function parseSourceCode(raw: string | string[] | undefined): string | nu
   if (typeof raw !== 'string') return null;
   if (raw.length > SOURCE_CODE_MAX_LENGTH) return null;
   return SOURCE_CODE_PATTERN.test(raw) ? raw : null;
+}
+
+/**
+ * A `?s=` value that the SMS intake will actually keep, or null.
+ *
+ * {@link parseSourceCode} is shape-only, which is right for analytics (an ad's code
+ * still credits the visit) but wrong for the composer: the intake resolves the
+ * `(via <code>)` tag against the shared registry in @hale/source-codes and drops
+ * anything else, so pre-filling an unregistered code puts a tag in the parent's text
+ * that attributes nothing. A well-shaped but unregistered code is rejected here and
+ * logged once per request so a new campaign code shows up in the logs instead of
+ * silently vanishing — register it in packages/source-codes before printing it.
+ */
+export function parseRegisteredSourceCode(
+  raw: string | string[] | undefined,
+  warn: (message: string) => void = console.warn,
+): string | null {
+  const code = parseSourceCode(raw);
+  if (code === null) return null;
+  if (resolveSourceCode(code) !== null) return code;
+  warn(`[source-code] unregistered source code "${code}" dropped from the SMS prefill`);
+  return null;
 }
 
 /**

@@ -183,6 +183,22 @@ describe('provisionFromIntake — lifetime Family comp (EarlyON Georgetown poste
       .filter((row) => row.actionTaken === 'family_plan_comped');
   }
 
+  it('writes the arrival source code onto the family row', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, input('poster-kensington'));
+
+    expect(familyValues(inserts)?.sourceCode).toBe('poster-kensington');
+  });
+
+  it('writes a null source code for an untagged arrival', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, input(null));
+
+    expect(familyValues(inserts)?.sourceCode).toBeNull();
+  });
+
   it('provisions a family arriving via the comped code at the Family tier, for life', async () => {
     const { database, inserts } = fakeDatabase();
 

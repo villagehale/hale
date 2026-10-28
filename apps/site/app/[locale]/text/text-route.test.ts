@@ -153,7 +153,8 @@ describe('/text (unlisted entry surface)', () => {
 const LIVE_NUMBER = '+16475551234';
 
 /** The two tags the bug drops: a co-parent join link, and a per-family referral. */
-const JOIN_CODE = 'join-abc123';
+// A real join tag is `join-<32 hex>`; the intake keeps nothing else, so neither does /text.
+const JOIN_CODE = 'join-0123456789abcdef0123456789abcdef';
 const REFERRAL_CODE = 'friend-0123456789ab';
 
 const LOCALES = ['en', 'fr', 'zh'] as const satisfies readonly Locale[];
@@ -276,6 +277,66 @@ describe('/text composer carries the ?s= code', () => {
       expect(qrPath(html), String(bad)).toBe(qrPath(bare));
       expect(html, String(bad)).not.toContain('?s=');
     }
+    vi.unstubAllEnvs();
+  });
+
+  it('reads a poster QR ?src= and a poster utm_campaign, like every other page', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const viaSrc = renderToStaticMarkup(
+      await TextPage({
+        params: Promise.resolve({ locale: 'en' }),
+        searchParams: Promise.resolve({ src: 'poster-kensington' }),
+      }),
+    );
+    const viaUtm = renderToStaticMarkup(
+      await TextPage({
+        params: Promise.resolve({ locale: 'en' }),
+        searchParams: Promise.resolve({
+          utm_source: 'poster',
+          utm_medium: 'qr',
+          utm_campaign: 'poster-grange-park',
+        } as Record<string, string>),
+      }),
+    );
+    const prefill = intakePrefill('en');
+    expect(qrPath(viaSrc)).toBe(
+      qrPathFor(buildSmsHref(LIVE_NUMBER, 'poster-kensington', prefill, 'cross')),
+    );
+    expect(qrPath(viaUtm)).toBe(
+      qrPathFor(buildSmsHref(LIVE_NUMBER, 'poster-grange-park', prefill, 'cross')),
+    );
+    vi.unstubAllEnvs();
+  });
+
+  it('keeps ?s=ads-vaughan through to the composer with a gclid on either side', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const expected = qrPathFor(
+      buildSmsHref(LIVE_NUMBER, 'ads-vaughan', intakePrefill('en'), 'cross'),
+    );
+    // URLSearchParams order: ?s=ads-vaughan&gclid=abc123 and ?gclid=abc123&s=ads-vaughan.
+    for (const query of ['s=ads-vaughan&gclid=abc123', 'gclid=abc123&s=ads-vaughan']) {
+      const params = Object.fromEntries(new URLSearchParams(query));
+      const html = renderToStaticMarkup(
+        await TextPage({
+          params: Promise.resolve({ locale: 'en' }),
+          searchParams: Promise.resolve(params),
+        }),
+      );
+      expect(qrPath(html), query).toBe(expected);
+      expect(html, query).toContain('?s=ads-vaughan');
+    }
+    vi.unstubAllEnvs();
+  });
+
+  it('drops a well-shaped but unregistered code instead of pre-filling a tag the intake ignores', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', LIVE_NUMBER);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bare = await renderText('en');
+    const html = await renderText('en', 'spring-campaign');
+    expect(qrPath(html)).toBe(qrPath(bare));
+    expect(html).not.toContain('spring-campaign');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('spring-campaign'));
+    warn.mockRestore();
     vi.unstubAllEnvs();
   });
 
