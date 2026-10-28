@@ -32,6 +32,24 @@ export const GROUP_REMINDER_HOUSEHOLDS = {
       { userId: 'u-ruth', phoneHash: 'h-ruth', firstName: 'Ruth', haleCustomer: false },
     ],
   },
+  // Grace signed up. Her brother and her brother-in-law are both Sam, both group only.
+  okafor: {
+    timeZone: 'America/Toronto',
+    language: 'en',
+    groupQuiet: [ONTARIO_QUIET],
+    seats: [
+      {
+        userId: 'u-grace',
+        phoneHash: 'h-grace',
+        firstName: 'Grace',
+        haleCustomer: true,
+        directReachable: true,
+        directQuiet: [ONTARIO_QUIET],
+      },
+      { userId: 'u-sam-o', phoneHash: 'h-sam-o', firstName: 'Sam', haleCustomer: false },
+      { userId: 'u-sam-a', phoneHash: 'h-sam-a', firstName: 'Sam', haleCustomer: false },
+    ],
+  },
   // A Montréal family that writes in French. Jacqueline is the grandmother, group only.
   tremblay: {
     timeZone: 'America/Toronto',
@@ -159,6 +177,35 @@ export const GROUP_REMINDER_FIXTURES = [
       'no reminder was set for Jordan to drop off the car seat',
       'that is because Hale can only remind people who are in this chat',
       'it does not say or imply that Jordan will be reminded some other way',
+    ],
+  },
+  {
+    // Two people in this chat are called Sam, so the reminder cannot be tied to one seat.
+    id: 'name-shared',
+    household: 'okafor',
+    sender: 'Grace',
+    message: 'Hale remind Sam tomorrow at 6 to bring the folding chairs',
+    expect: {
+      request: 'reminders',
+      language: 'en',
+      set: [
+        {
+          for: 'person',
+          name: 'Sam',
+          what: 'bring the folding chairs',
+          date: '2026-10-29',
+          time: '18:00',
+          inMinutes: null,
+          where: ['unsaid', 'group'],
+        },
+      ],
+      plan: [],
+      notSet: 1,
+    },
+    confirmMustSay: [
+      'no reminder was set for Sam to bring the folding chairs',
+      'that is because more than one person in this chat is called Sam, so Hale could not tell which one',
+      'it does not ask which Sam they meant, and does not say or imply that Sam will be reminded',
     ],
   },
   {

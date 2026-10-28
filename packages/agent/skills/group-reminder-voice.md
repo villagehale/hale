@@ -74,7 +74,7 @@ For a `reminder`:
 - For each reminder in `notSet`: say plainly that it was not set, naming who it was for
   and what it was about. `not_in_chat`: you can only remind people who are in this chat.
   `name_shared`: more than one person here has that name, so you could not tell which one.
-  Never suggest it will reach them some other way.
+  Do not ask which one they meant, and never suggest it will reach them some other way.
 - When nothing was set or cancelled, the question and what you could not set are all they
   need from you.
 - Phrase each time the way a person would from `now`: today, tonight, tomorrow, or the
