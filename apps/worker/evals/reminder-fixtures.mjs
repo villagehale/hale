@@ -93,12 +93,12 @@ export const REMINDER_FIXTURES = [
           childId: 'c-kid',
           startsAt: '2026-10-26T14:00:00Z',
           endsAt: '2026-10-26T15:00:00Z',
-          location: 'Piscine Main',
+          location: 'Piscine Main, 120 Main St',
         }),
       ],
     }),
     watchFor:
-      'Tomorrow is an all-day Jour de congé AND Léa has swimming 10:00-11:00 AM at Piscine Main. In French. Both must be there; the day must not be called free or empty, because a timed event exists. 10 h, not 22 h.',
+      'Tomorrow is an all-day Jour de congé AND Léa has swimming 10:00-11:00 AM at Piscine Main, 120 Main St. In French. Both must be there; the day must not be called free or empty, because a timed event exists. 10 h, not 22 h.',
   },
   {
     id: 'zh-hour-out',
