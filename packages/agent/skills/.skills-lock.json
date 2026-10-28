@@ -143,6 +143,14 @@
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
   },
+  "group-plan-rsvp-read.md": {
+    "file": "group-plan-rsvp-read.md",
+    "sha256": "359d220a3a9b8fcc4572055584b3df54a3fd860508bf7de0046c6aff10040e3b"
+  },
+  "group-plan-rsvp-voice.md": {
+    "file": "group-plan-rsvp-voice.md",
+    "sha256": "601ff43bd4f73a8dcc5d3f3f27ece61a7e3aaa2cf00e82beae4a2bc228bcbd7e"
+  },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
     "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"
