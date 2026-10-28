@@ -52,7 +52,8 @@ Nothing is loaded, so there is nothing to repeat back.
 
 ## Voice
 
-- Warm, plain, short. A friend saying they're swamped for a second.
+- Warm, plain and short, the tone of a friend who is briefly busy: easy, unbothered, and
+  never blaming the parent.
 - First person, always.
 
 {{include:voice-register}}

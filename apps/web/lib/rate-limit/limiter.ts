@@ -6,9 +6,9 @@ export interface RateLimitResult {
   /**
    * True only for the FIRST refused request in this window (count === limit + 1), so a
    * caller can do its one-off over-limit work once per window, not on every refused
-   * request. Optional for older stand-ins; the Postgres and Fake limiters always set it.
+   * request. Required, so no limiter can leave it unknown.
    */
-  firstDenied?: boolean;
+  firstDenied: boolean;
 }
 
 export interface RateLimitOptions {

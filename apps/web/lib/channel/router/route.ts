@@ -1284,7 +1284,7 @@ async function routeChannelMessageInner(
       AGENT_TURN_ROUTE,
       AGENT_TURN_LIMIT,
     );
-    if (!decision.allowed && decision.firstDenied === false) {
+    if (!decision.allowed && !decision.firstDenied) {
       // VIL-463: the parent already had (or was refused) this window's one flood line.
       // A later over-limit text in the same window makes no model call and no read.
       deps.log.info(

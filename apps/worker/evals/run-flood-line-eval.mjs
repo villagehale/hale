@@ -9,13 +9,16 @@
 //   node evals/run-flood-line-eval.mjs --dry           # $0, no API: count compose + judge draws, worst-case $
 //   node evals/run-flood-line-eval.mjs --broken        # calibration, $0: must FAIL
 //   node evals/run-flood-line-eval.mjs --cached-only   # replay only, $0 (misses fail)
-//   node --env-file=../../.env evals/run-flood-line-eval.mjs   # live, PAID - needs Barton's yes
+//   node --env-file=../../.env evals/run-flood-line-eval.mjs --live   # live, PAID - needs Barton's yes
+// Any other flag, or none, exits 2 before the spend cap or a client exists
+// (flood-line-flags.mjs).
 //
 // NOT in CI yet: there is no recorded cache, and recording it is a paid run.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { dryClient, parseFloodLineFlags } from './flood-line-flags.mjs';
 import {
   JUDGE_MIN,
   PRICE,
@@ -232,20 +235,28 @@ async function dryRun({ agent, skill, model, subjectLane, judgeModel }) {
 }
 
 async function main() {
-  if (process.argv.includes('--dry')) {
+  let mode;
+  try {
+    mode = parseFloodLineFlags(process.argv.slice(2));
+  } catch (err) {
+    console.error(`flood-line eval: ${err.message}`);
+    process.exit(2);
+  }
+  if (mode === 'dry') {
     const agent = await tsImport(AGENT_SRC, import.meta.url);
     const skill = await agent.loadSkill(SKILL_PATH);
     const model = agent.pickModel(skill.meta.task);
     const subjectLane = agent.pickLane(skill.meta.task);
     const judgeModel = await readJudgeModel();
     console.log(`flood-line eval | mode=dry (no API calls) | compose=${model} judge=${judgeModel}`);
-    await dryRun({ agent, skill, model, subjectLane, judgeModel });
+    await dryRun({ agent, skill, model, subjectLane, judgeModel, getClient: dryClient });
     return;
   }
-  const broken = process.argv.includes('--broken');
-  const cachedOnly = process.argv.includes('--cached-only');
+  const broken = mode === 'broken';
+  const cachedOnly = mode === 'cached-only';
   installEvalSpendCap();
-  const getClient = lazyAnthropic('flood-line');
+  // Belt and braces: only --live ever gets a real client.
+  const getClient = mode === 'live' ? lazyAnthropic('flood-line') : dryClient;
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);

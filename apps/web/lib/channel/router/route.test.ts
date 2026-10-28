@@ -326,7 +326,7 @@ function countingLimiter(): RateLimiter & { checks: number } {
     checks: 0,
     async check() {
       limiter.checks += 1;
-      return { allowed: true, retryAfterSec: 3600 };
+      return { allowed: true, retryAfterSec: 3600, firstDenied: false };
     },
   };
   return limiter;
@@ -4589,7 +4589,7 @@ describe('a slow answer gets one holding line first', () => {
     return {
       async check() {
         await new Promise((resolve) => setTimeout(resolve, ms));
-        return { allowed, retryAfterSec: 0 };
+        return { allowed, retryAfterSec: 0, firstDenied: !allowed };
       },
     };
   }
@@ -5244,7 +5244,9 @@ describe('the reply row, written to a real database', () => {
      * line someone who is not a parent gets, and a tapback that stood in for the words.
      */
     describe('every answer closes the question', () => {
-      const SPENT: RateLimiter = { check: async () => ({ allowed: false, retryAfterSec: 60 }) };
+      const SPENT: RateLimiter = {
+        check: async () => ({ allowed: false, retryAfterSec: 60, firstDenied: true }),
+      };
 
       it.each([
         ['what the coach says', {}, ['coach says hi']],
