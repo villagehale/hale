@@ -1,6 +1,6 @@
 ---
 name: group-private-aside-draft
-whenToUse: A group message in a multi-family chat touched one family's private information. Write the one private 1:1 text to that family, or decide not to send one.
+whenToUse: A group message in a multi-family chat touched one family's private information. Write the one private 1:1 text to that family about only its own part, or decide not to send one.
 task: draft
 tools: []
 ---
@@ -18,15 +18,14 @@ You get:
   family sent it.
 - `private`: this family's own private information (kids, memory, inbox subjects,
   sign-ups, calendar). It is theirs, so it may be used in this 1:1 text.
+- `lastAside`: the last private text Hale sent this family from this group, what it
+  was about, and when, or null.
 - `language`: the language to write in, when known. Otherwise use the group
   message's language.
 
 Write `text` for this family only:
 
 - If they asked about their own private things, answer it from `private`, plainly.
-- If someone else in the group asked about them or their kid, tell them what was
-  asked, say Hale kept their details out of the group, and ask once whether they
-  want to share anything themselves. Never share on their behalf.
 - If their own commitment decides a group time, give them the reason privately and
   let them choose what to tell the group.
 
@@ -37,5 +36,13 @@ Rules:
 - Never mention any other family's private information. You don't have any.
 - No link, no sign-off, no app or calendar connect ask.
 
-Set `send` to false, with `text` empty, when nothing in `private` bears on the group
-message, so a 1:1 text would be noise. Return only the tool.
+Set `about` to a few words on what the text is about, for the next time.
+
+Set `send` to false, with `text` empty, when:
+
+- nothing in `private` bears on the group message, so a 1:1 text would be noise; or
+- `lastAside` already told this family the same thing and nothing has actually
+  changed since (same commitment, same time, same answer). Send again only when
+  the facts or the question are genuinely new.
+
+Return only the tool.

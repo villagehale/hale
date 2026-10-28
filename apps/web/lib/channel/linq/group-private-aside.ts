@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -12,20 +12,23 @@ import { type FamilyPrivateSlice, readFamilySliceForAudience } from './multi-fam
  * VIL-457 — private info goes to that family 1:1, never into the group.
  *
  * In a shared multi-family group, the group line stays VIL-439-safe (busy/free only).
- * When a group message touches one family's private information, this sends AT MOST ONE
- * private text, 1:1, to the family that owns it:
+ * When a group message touches families' OWN private information (a group time that
+ * clashes with their commitments, or a family asking about its own private things), each
+ * of those families gets at most one private text, about only its own part:
  *
- *   1. READ (`group-private-aside-read`): which family's private information the message
- *      touches, as a ref (f1, f2, ...) or `none`. The model reads meaning in any language;
- *      no names or words are matched in code. The read sees refs and kids' first names,
- *      never private content.
- *   2. DRAFT (`group-private-aside-draft`): sees ONLY that family's own consented slice
- *      plus the group message (already public), and writes the 1:1 text or declines.
- *      It cannot leak another family's data because it never has any.
+ *   1. READ (`group-private-aside-read`): the refs (f1, f2, ...) of the families whose own
+ *      private information the answer depends on, possibly none. Meaning in any language;
+ *      no names or words are matched in code. The read sees refs and kids' first names only.
+ *      Another family asking about someone's kid is NOT a reason: that family gets nothing
+ *      (Sloane, #934) and the group reply stays busy/free.
+ *   2. DRAFT (`group-private-aside-draft`), once per picked family: sees ONLY that family's
+ *      consented slice, the public group text, and that family's last delivered aside. It
+ *      writes the text, or declines, including when it would repeat the last aside with
+ *      nothing changed. Code never compares texts or topics.
  *
- * Code checks facts only: the ref names a family with a live, consented join in THIS
- * chat; the draft is non-empty; one aside per inbound group message. Any failed read or
- * draft sends nothing (no fixed copy, no fallback).
+ * Code checks facts only: each ref is a live, consented join in THIS chat; one aside per
+ * (group message, family), keyed on the audit row; the draft is non-empty. A failed read
+ * or draft sends nothing (no fixed copy, no fallback).
  */
 
 export const PRIVATE_ASIDE_AUDIT = 'linq_private_aside_sent';
@@ -37,18 +40,33 @@ export interface PrivateAsideReadInput {
   recent: readonly { from: 'hale' | 'member'; text: string }[];
 }
 
+/** This family's last private aside in this chat, for the repeat call. Null when none. */
+export interface LastPrivateAside {
+  about: string;
+  text: string;
+  at: string;
+}
+
 export interface PrivateAsideDraftInput {
   groupText: string;
   askedByThisFamily: boolean;
   private: Omit<FamilyPrivateSlice, 'familyId'>;
+  lastAside: LastPrivateAside | null;
   language: string | null;
 }
 
+export interface PrivateAsideDraft {
+  send: boolean;
+  /** A short gist of what the text is about, stored for the next repeat call. */
+  about: string;
+  text: string;
+}
+
 export interface PrivateAsideModel {
-  /** A family ref, `none`, or null when the read failed. */
-  read(input: PrivateAsideReadInput): Promise<string | null>;
-  /** `{ send:false }` when the model declines; null when the draft failed. */
-  draft(input: PrivateAsideDraftInput): Promise<{ send: boolean; text: string } | null>;
+  /** Family refs (possibly empty), or null when the read failed. */
+  read(input: PrivateAsideReadInput): Promise<string[] | null>;
+  /** `{ send:false }` when the model declines (incl. a repeat); null when the draft failed. */
+  draft(input: PrivateAsideDraftInput): Promise<PrivateAsideDraft | null>;
 }
 
 export type SendOneToOne = (input: {
@@ -57,19 +75,24 @@ export type SendOneToOne = (input: {
   dedupeKey: string;
 }) => Promise<'sent' | 'suppressed' | 'failed'>;
 
+export type FamilyAsideOutcome =
+  | 'already_handled'
+  | 'no_private_data'
+  | 'draft_failed'
+  | 'declined'
+  | 'sent'
+  | 'suppressed'
+  | 'failed';
+
 export type PrivateAsideOutcome =
   | { outcome: 'no_families' }
-  | { outcome: 'already_handled' }
   | { outcome: 'read_failed' }
   | { outcome: 'none' }
-  | { outcome: 'unknown_ref'; ref: string }
-  | { outcome: 'no_private_data'; familyId: string }
-  | { outcome: 'draft_failed'; familyId: string }
-  | { outcome: 'declined'; familyId: string }
-  | { outcome: 'sent' | 'suppressed' | 'failed'; familyId: string };
+  | { outcome: 'unknown_ref'; refs: string[] }
+  | { outcome: 'ran'; families: { familyId: string; outcome: FamilyAsideOutcome }[] };
 
-const readSchema = z.object({ about: z.string().min(1) });
-const draftSchema = z.object({ send: z.boolean(), text: z.string() });
+const readSchema = z.object({ families: z.array(z.string().min(1)) });
+const draftSchema = z.object({ send: z.boolean(), about: z.string(), text: z.string() });
 
 /** The read's user payload. Shared with the eval so it replays this exact request. */
 export function privateAsideReadMessage(input: PrivateAsideReadInput): string {
@@ -89,15 +112,21 @@ export function privateAsideDraftMessage(input: PrivateAsideDraftInput): string 
 export function privateAsideReadSchema(refs: readonly string[]) {
   return {
     type: 'object',
-    properties: { about: { type: 'string', enum: [...refs, 'none'] } },
-    required: ['about'],
+    properties: {
+      families: { type: 'array', items: { type: 'string', enum: [...refs] }, uniqueItems: true },
+    },
+    required: ['families'],
   } as const;
 }
 
 export const PRIVATE_ASIDE_DRAFT_SCHEMA = {
   type: 'object',
-  properties: { send: { type: 'boolean' }, text: { type: 'string' } },
-  required: ['send', 'text'],
+  properties: {
+    send: { type: 'boolean' },
+    about: { type: 'string' },
+    text: { type: 'string' },
+  },
+  required: ['send', 'about', 'text'],
 } as const;
 
 export const PRIVATE_ASIDE_READ_MAX_TOKENS = 100;
@@ -121,7 +150,12 @@ async function joinedFamilies(database: Database, chatId: string): Promise<strin
   return rows.filter((r) => r.consentRecordId).map((r) => r.familyId);
 }
 
-async function alreadyHandled(database: Database, inboundId: string): Promise<boolean> {
+/** The cap: one aside per (group message, family). */
+async function alreadyHandled(
+  database: Database,
+  inboundId: string,
+  familyId: string,
+): Promise<boolean> {
   const [row] = await database
     .select({ id: schema.auditLog.id })
     .from(schema.auditLog)
@@ -129,10 +163,42 @@ async function alreadyHandled(database: Database, inboundId: string): Promise<bo
       and(
         eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT),
         eq(schema.auditLog.targetId, inboundId),
+        eq(schema.auditLog.familyId, familyId),
       ),
     )
     .limit(1);
   return Boolean(row);
+}
+
+/** This family's last DELIVERED aside in this chat. A fact read; no text is compared. */
+async function lastAsideOf(
+  database: Database,
+  chatId: string,
+  familyId: string,
+): Promise<LastPrivateAside | null> {
+  const rows = await database
+    .select({ after: schema.auditLog.after, at: schema.auditLog.occurredAt })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT),
+        eq(schema.auditLog.familyId, familyId),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(20);
+  for (const row of rows) {
+    const after = row.after as {
+      chatId?: string;
+      delivered?: string;
+      about?: string;
+      text?: string;
+    };
+    if (after?.chatId === chatId && after.delivered === 'sent' && after.text) {
+      return { about: after.about ?? '', text: after.text, at: row.at.toISOString() };
+    }
+  }
+  return null;
 }
 
 function hasPrivateData(slice: FamilyPrivateSlice): boolean {
@@ -146,12 +212,57 @@ function hasPrivateData(slice: FamilyPrivateSlice): boolean {
   );
 }
 
+async function asideForFamily(
+  database: Database,
+  deps: { model: PrivateAsideModel; sendOneToOne: SendOneToOne },
+  input: {
+    chatId: string;
+    inboundId: string;
+    text: string;
+    senderFamilyId: string | null;
+    language: string | null;
+  },
+  familyId: string,
+  slice: FamilyPrivateSlice,
+): Promise<FamilyAsideOutcome> {
+  if (await alreadyHandled(database, input.inboundId, familyId)) return 'already_handled';
+  if (!hasPrivateData(slice)) return 'no_private_data';
+  const { familyId: _owner, ...privateOnly } = slice;
+  const draft = await deps.model.draft({
+    groupText: input.text,
+    askedByThisFamily: input.senderFamilyId === familyId,
+    private: privateOnly,
+    lastAside: await lastAsideOf(database, input.chatId, familyId),
+    language: input.language,
+  });
+  if (draft === null) return 'draft_failed';
+  const text = draft.text.trim();
+  if (!draft.send || text.length === 0) return 'declined';
+  const delivered = await deps.sendOneToOne({
+    familyId,
+    text,
+    dedupeKey: `linq:private_aside:${input.chatId}:${input.inboundId}:${familyId}`,
+  });
+  // Recorded whatever the delivery said, so a retry of the same message never re-sends to
+  // this family. The text and gist are this family's own, kept on its own row so the next
+  // draft can tell a repeat from a change.
+  await database.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: PRIVATE_ASIDE_AUDIT,
+    targetTable: 'channel_messages',
+    targetId: input.inboundId,
+    after: { chatId: input.chatId, delivered, about: draft.about, text },
+  });
+  return delivered;
+}
+
 export async function runPrivateAside(
   database: Database,
   deps: { model: PrivateAsideModel; sendOneToOne: SendOneToOne },
   input: {
     chatId: string;
-    /** The inbound group message id: the one-aside-per-turn key. */
+    /** The inbound group message id: with the family, the one-per-family cap key. */
     inboundId: string;
     text: string;
     senderFamilyId: string | null;
@@ -161,7 +272,6 @@ export async function runPrivateAside(
 ): Promise<PrivateAsideOutcome> {
   const familyIds = await joinedFamilies(database, input.chatId);
   if (familyIds.length === 0) return { outcome: 'no_families' };
-  if (await alreadyHandled(database, input.inboundId)) return { outcome: 'already_handled' };
 
   const slices = new Map<string, FamilyPrivateSlice>();
   for (const familyId of familyIds) {
@@ -175,7 +285,7 @@ export async function runPrivateAside(
   const refOf = new Map(familyIds.map((id, i) => [id, `f${i + 1}`]));
   const idOf = new Map(familyIds.map((id, i) => [`f${i + 1}`, id]));
 
-  const about = await deps.model.read({
+  const refs = await deps.model.read({
     text: input.text,
     senderFamily: input.senderFamilyId ? (refOf.get(input.senderFamilyId) ?? null) : null,
     families: familyIds.map((id) => ({
@@ -184,39 +294,27 @@ export async function runPrivateAside(
     })),
     recent: input.recent,
   });
-  if (about === null) return { outcome: 'read_failed' };
-  if (about === 'none') return { outcome: 'none' };
-  const familyId = idOf.get(about);
-  if (!familyId) return { outcome: 'unknown_ref', ref: about };
+  if (refs === null) return { outcome: 'read_failed' };
+  const unique = [...new Set(refs)];
+  if (unique.length === 0) return { outcome: 'none' };
+  const unknown = unique.filter((ref) => !idOf.has(ref));
+  if (unknown.length > 0) return { outcome: 'unknown_ref', refs: unknown };
 
-  const slice = slices.get(familyId) as FamilyPrivateSlice;
-  if (!hasPrivateData(slice)) return { outcome: 'no_private_data', familyId };
-  const { familyId: _owner, ...privateOnly } = slice;
-  const draft = await deps.model.draft({
-    groupText: input.text,
-    askedByThisFamily: input.senderFamilyId === familyId,
-    private: privateOnly,
-    language: input.language,
-  });
-  if (draft === null) return { outcome: 'draft_failed', familyId };
-  const text = draft.text.trim();
-  if (!draft.send || text.length === 0) return { outcome: 'declined', familyId };
-
-  const delivered = await deps.sendOneToOne({
-    familyId,
-    text,
-    dedupeKey: `linq:private_aside:${input.chatId}:${input.inboundId}`,
-  });
-  // Recorded whatever the delivery said, so a retry of the same inbound never asks twice.
-  await database.insert(schema.auditLog).values({
-    familyId,
-    actor: 'system',
-    actionTaken: PRIVATE_ASIDE_AUDIT,
-    targetTable: 'channel_messages',
-    targetId: input.inboundId,
-    after: { delivered },
-  });
-  return { outcome: delivered, familyId };
+  const families: { familyId: string; outcome: FamilyAsideOutcome }[] = [];
+  for (const ref of unique) {
+    const familyId = idOf.get(ref) as string;
+    families.push({
+      familyId,
+      outcome: await asideForFamily(
+        database,
+        deps,
+        input,
+        familyId,
+        slices.get(familyId) as FamilyPrivateSlice,
+      ),
+    });
+  }
+  return { outcome: 'ran', families };
 }
 
 export function createPrivateAsideModel(
@@ -249,12 +347,13 @@ export function createPrivateAsideModel(
           system: skill.instructions,
           userMessage: privateAsideReadMessage(input),
           toolName: 'private_aside_read',
-          toolDescription: "Return which family's private information this group message touches.",
+          toolDescription:
+            'Return the families whose own private information this group message touches.',
           inputJsonSchema: privateAsideReadSchema(refs),
           schema: readSchema,
           maxTokens: PRIVATE_ASIDE_READ_MAX_TOKENS,
         });
-        return value.about;
+        return value.families;
       }),
     draft: (input) =>
       twice('draft', async () => {

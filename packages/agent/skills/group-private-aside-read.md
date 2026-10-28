@@ -1,6 +1,6 @@
 ---
 name: group-private-aside-read
-whenToUse: A message in a group chat shared by several families. Decide whether a full answer would need one family's private information, and if so which family, in any wording and any language.
+whenToUse: A message in a group chat shared by several families. Decide which families' own private information a full answer depends on, in any wording and any language.
 task: classify
 tools: []
 ---
@@ -23,17 +23,18 @@ You get:
 
 Decide `about`:
 
-- A family ref (`f1`, `f2`, ...) when answering the message properly would draw on
-  that one family's private information. That includes:
-  - someone asking about another family's kid, plans, schedule or whereabouts
-    ("what's Leo doing Saturday?");
-  - a group time or plan where one family's own commitments decide the answer;
-  - a family asking in the group about its own private things (its card, its
-    sign-up, its kid's appointment). Then the ref is the sender's own family.
-- `none` when the message can be answered from what the group already said, or
-  needs no family's private information, or is not for Hale at all.
+- A famiReturn `families`: the refs whose OWN private information the answer depends on.
 
-Pick the single family the private information belongs to. If two families are
-involved, pick the one whose information the answer depends on most. Never pick a
-family because its name or a kid's name merely appears; read what is being asked.
-Read meaning in any language. Return only the tool.
+- A group time or plan where families' own commitments decide the answer: every
+  family whose commitment clashes or decides it. Each of them will get a private
+  text about only its own part.
+- A family asking in the group about its own private things (its card, its
+  sign-up, its kid's appointment): the sender's own family.
+- Someone asking about ANOTHER family's kid, plans or whereabouts ("what's Leo
+  doing Saturday?"): return no ref for that family. Hale does not contact a family
+  because someone else asked about them; the group only hears busy or free.
+- An empty list when the message can be answered from what the group already
+  said, needs no family's private information, or is not for Hale at all.
+
+Never pick a family because its name or a kid's name merely appears; read what is
+being asked. Read meaning in any language. Return only the tool.

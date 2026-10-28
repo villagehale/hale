@@ -107,9 +107,11 @@ async function twoFamilies() {
   return { ada, bao };
 }
 
+type Draft = { send: boolean; about: string; text: string } | null;
+
 function recorder(opts: {
-  read: string | null | Error;
-  draft?: { send: boolean; text: string } | null;
+  read: string[] | null | Error;
+  draft?: Draft | ((input: PrivateAsideDraftInput) => Draft);
 }) {
   const reads: PrivateAsideReadInput[] = [];
   const drafts: PrivateAsideDraftInput[] = [];
@@ -122,7 +124,10 @@ function recorder(opts: {
     },
     async draft(input) {
       drafts.push(input);
-      return opts.draft === undefined ? { send: true, text: 'private note' } : opts.draft;
+      if (typeof opts.draft === 'function') return opts.draft(input);
+      return opts.draft === undefined
+        ? { send: true, about: 'own conflict', text: `note:${input.private.children[0]}` }
+        : opts.draft;
     },
   };
   const sendOneToOne = async (input: { familyId: string; text: string; dedupeKey: string }) => {
@@ -135,58 +140,92 @@ function recorder(opts: {
 const turn = (over: Partial<Parameters<typeof runPrivateAside>[2]> = {}) => ({
   chatId: CHAT,
   inboundId: 'inbound-1',
-  text: "what's Leo doing Saturday?",
+  text: 'Hale can everyone do the park Saturday at 10?',
   senderFamilyId: null,
   recent: [],
   language: null,
   ...over,
 });
 
+async function asideRows() {
+  return db.database
+    .select()
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT));
+}
+
 describe('VIL-457 private aside', () => {
-  it("sends the private part 1:1 to the family it belongs to, and the draft sees only that family's data", async () => {
+  it('a clash across families: each family gets one text, and each draft sees only its own data', async () => {
     const { ada, bao } = await twoFamilies();
-    const r = recorder({ read: 'f2' });
+    const r = recorder({ read: ['f1', 'f2'] });
     const out = await runPrivateAside(db.database, r, turn({ senderFamilyId: ada.familyId }));
 
-    expect(out).toEqual({ outcome: 'sent', familyId: bao.familyId });
-    expect(r.reads[0]?.senderFamily).toBe('f1');
-    expect(r.reads[0]?.families.map((f) => f.ref)).toEqual(['f1', 'f2']);
+    expect(out).toEqual({
+      outcome: 'ran',
+      families: [
+        { familyId: ada.familyId, outcome: 'sent' },
+        { familyId: bao.familyId, outcome: 'sent' },
+      ],
+    });
     // The read gets refs and kid names only: no memory, inbox or sign-ups.
+    expect(r.reads[0]?.senderFamily).toBe('f1');
     expect(JSON.stringify(r.reads[0])).not.toContain('leo-ot-saturday');
-    expect(r.drafts).toHaveLength(1);
-    expect(r.drafts[0]?.askedByThisFamily).toBe(false);
-    expect(r.drafts[0]?.private.memory).toEqual(['leo-ot-saturday']);
-    expect(JSON.stringify(r.drafts[0])).not.toContain('Maya');
-    expect(JSON.stringify(r.drafts[0])).not.toContain('maya-swim-tuesdays');
-    expect(r.sent).toEqual([
-      {
-        familyId: bao.familyId,
-        text: 'private note',
-        dedupeKey: `linq:private_aside:${CHAT}:inbound-1`,
-      },
+    expect(r.drafts).toHaveLength(2);
+    expect(r.drafts[0]?.private.memory).toEqual(['maya-swim-tuesdays']);
+    expect(JSON.stringify(r.drafts[0])).not.toMatch(/Leo|leo-ot-saturday/);
+    expect(r.drafts[1]?.private.memory).toEqual(['leo-ot-saturday']);
+    expect(JSON.stringify(r.drafts[1])).not.toMatch(/Maya|maya-swim-tuesdays/);
+    expect(r.sent.map((s) => [s.familyId, s.text])).toEqual([
+      [ada.familyId, 'note:Maya'],
+      [bao.familyId, 'note:Leo'],
     ]);
+    expect(r.sent[1]?.dedupeKey).toBe(`linq:private_aside:${CHAT}:inbound-1:${bao.familyId}`);
+    expect(await asideRows()).toHaveLength(2);
   });
 
   it("answers a family's own private question 1:1 to that same family", async () => {
     const { ada } = await twoFamilies();
-    const r = recorder({ read: 'f1' });
+    const r = recorder({ read: ['f1'] });
     const out = await runPrivateAside(
       db.database,
       r,
       turn({ text: 'hale did my card get charged for swim?', senderFamilyId: ada.familyId }),
     );
-    expect(out).toEqual({ outcome: 'sent', familyId: ada.familyId });
+    expect(out).toEqual({
+      outcome: 'ran',
+      families: [{ familyId: ada.familyId, outcome: 'sent' }],
+    });
     expect(r.drafts[0]?.askedByThisFamily).toBe(true);
     expect(r.sent.map((s) => s.familyId)).toEqual([ada.familyId]);
   });
 
-  it('sends at most one aside per inbound group message', async () => {
-    await twoFamilies();
-    const r = recorder({ read: 'f2' });
-    await runPrivateAside(db.database, r, turn());
+  it('another family asking about a kid sends nothing 1:1 (the read returns no family)', async () => {
+    const { ada } = await twoFamilies();
+    const r = recorder({ read: [] });
+    const out = await runPrivateAside(
+      db.database,
+      r,
+      turn({ text: "hale what's Leo doing Saturday?", senderFamilyId: ada.familyId }),
+    );
+    expect(out).toEqual({ outcome: 'none' });
+    expect(r.drafts).toHaveLength(0);
+    expect(r.sent).toHaveLength(0);
+    expect(await asideRows()).toHaveLength(0);
+  });
+
+  it('caps at one text per (group message, family)', async () => {
+    const { ada, bao } = await twoFamilies();
+    await runPrivateAside(db.database, recorder({ read: ['f1'] }), turn());
+    const r = recorder({ read: ['f1', 'f2'] });
     const again = await runPrivateAside(db.database, r, turn());
-    expect(again).toEqual({ outcome: 'already_handled' });
-    expect(r.sent).toHaveLength(1);
+    expect(again).toEqual({
+      outcome: 'ran',
+      families: [
+        { familyId: ada.familyId, outcome: 'already_handled' },
+        { familyId: bao.familyId, outcome: 'sent' },
+      ],
+    });
+    expect(r.sent.map((s) => s.familyId)).toEqual([bao.familyId]);
     const rows = await db.database
       .select()
       .from(schema.auditLog)
@@ -196,33 +235,86 @@ describe('VIL-457 private aside', () => {
           eq(schema.auditLog.targetId, 'inbound-1'),
         ),
       );
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("gives the draft that family's own last aside, holds a repeat back, and sends a real change", async () => {
+    const { ada, bao } = await twoFamilies();
+    await runPrivateAside(
+      db.database,
+      recorder({ read: ['f2'], draft: { send: true, about: 'Leo OT Sat 10', text: 'first' } }),
+      turn(),
+    );
+
+    // A second message on the same thing: the draft sees the last aside and declines.
+    const repeat = recorder({ read: ['f1', 'f2'], draft: { send: false, about: '', text: '' } });
+    const held = await runPrivateAside(
+      db.database,
+      repeat,
+      turn({ inboundId: 'inbound-2', text: 'so Saturday at 10 then?' }),
+    );
+    expect(held).toEqual({
+      outcome: 'ran',
+      families: [
+        { familyId: ada.familyId, outcome: 'declined' },
+        { familyId: bao.familyId, outcome: 'declined' },
+      ],
+    });
+    expect(repeat.drafts[0]?.lastAside).toBeNull(); // Ada never got one; Bao's is not hers.
+    expect(repeat.drafts[1]?.lastAside).toMatchObject({ about: 'Leo OT Sat 10', text: 'first' });
+    expect(repeat.sent).toHaveLength(0);
+
+    // The time moves: the draft decides it is new and sends.
+    const change = recorder({
+      read: ['f2'],
+      draft: { send: true, about: 'Leo OT vs Sat 11', text: 'second' },
+    });
+    const sent = await runPrivateAside(
+      db.database,
+      change,
+      turn({ inboundId: 'inbound-3', text: 'actually can we move it to 11?' }),
+    );
+    expect(sent).toEqual({
+      outcome: 'ran',
+      families: [{ familyId: bao.familyId, outcome: 'sent' }],
+    });
+    expect(change.drafts[0]?.lastAside).toMatchObject({ text: 'first' });
+
+    // Next time the newest delivered aside is the one shown.
+    const next = recorder({ read: ['f2'], draft: { send: false, about: '', text: '' } });
+    await runPrivateAside(db.database, next, turn({ inboundId: 'inbound-4' }));
+    expect(next.drafts[0]?.lastAside).toMatchObject({ about: 'Leo OT vs Sat 11', text: 'second' });
   });
 
   it.each([
     ['a failed read', { read: null }, 'read_failed'],
     ['a thrown read', { read: new Error('boom') }, null],
-    ['a failed draft', { read: 'f2', draft: null }, 'draft_failed'],
-    ['a declined draft', { read: 'f2', draft: { send: false, text: '' } }, 'declined'],
-    ['an empty draft', { read: 'f2', draft: { send: true, text: '   ' } }, 'declined'],
-    ['a read of none', { read: 'none' }, 'none'],
-    ['a ref outside this chat', { read: 'f9' }, 'unknown_ref'],
+    ['an empty read', { read: [] }, 'none'],
+    ['a ref outside this chat', { read: ['f2', 'f9'] }, 'unknown_ref'],
+    ['a failed draft', { read: ['f2'], draft: null }, 'draft_failed'],
+    ['a declined draft', { read: ['f2'], draft: { send: false, about: '', text: '' } }, 'declined'],
+    [
+      'an empty draft',
+      { read: ['f2'], draft: { send: true, about: 'x', text: '   ' } },
+      'declined',
+    ],
   ] as const)('sends nothing on %s', async (_label, opts, outcome) => {
     await twoFamilies();
-    const r = recorder(opts as Parameters<typeof recorder>[0]);
+    const r = recorder(opts as unknown as Parameters<typeof recorder>[0]);
     const run = runPrivateAside(db.database, r, turn());
     if (outcome === null) await expect(run).rejects.toThrow();
-    else expect((await run).outcome).toBe(outcome);
+    else {
+      const out = await run;
+      const got = out.outcome === 'ran' ? out.families[0]?.outcome : out.outcome;
+      expect(got).toBe(outcome);
+    }
     expect(r.sent).toHaveLength(0);
-    const rows = await db.database
-      .select()
-      .from(schema.auditLog)
-      .where(eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT));
-    expect(rows).toHaveLength(0);
+    expect(await asideRows()).toHaveLength(0);
   });
 
-  it('never addresses a family that left the chat, and does nothing with no joined family', async () => {
+  it('never addresses a family that left or never joined, and does nothing with no joined family', async () => {
     const { ada, bao } = await twoFamilies();
+    const outsider = await seedFamily('+14165550333', 'Cy', 'Zoe', 'zoe-private');
     await leaveFamilyFromSharedGroup(db.database, {
       chatId: CHAT,
       familyId: bao.familyId,
@@ -231,14 +323,17 @@ describe('VIL-457 private aside', () => {
       now: NOW,
       send: async () => ({ providerMessageId: 'x' }),
     });
-    const r = recorder({ read: 'f2' });
+    const r = recorder({ read: ['f2'] });
     const out = await runPrivateAside(db.database, r, turn({ senderFamilyId: ada.familyId }));
-    expect(out).toEqual({ outcome: 'unknown_ref', ref: 'f2' });
+    expect(out).toEqual({ outcome: 'unknown_ref', refs: ['f2'] });
+    // Only Ada is listed: Bao left and Cy never joined or consented.
     expect(r.reads[0]?.families.map((f) => f.ref)).toEqual(['f1']);
+    expect(JSON.stringify(r.reads[0])).not.toMatch(/Leo|Zoe/);
+    expect(r.sent.map((s) => s.familyId)).not.toContain(outsider.familyId);
     expect(r.sent).toHaveLength(0);
 
     await db.exec('truncate table linq_multi_family_joins cascade');
-    expect(await runPrivateAside(db.database, recorder({ read: 'f1' }), turn())).toEqual({
+    expect(await runPrivateAside(db.database, recorder({ read: ['f1'] }), turn())).toEqual({
       outcome: 'no_families',
     });
   });

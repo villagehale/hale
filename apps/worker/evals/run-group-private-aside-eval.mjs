@@ -2,11 +2,13 @@
 //
 // Subject: the REAL skills (group-private-aside-read.md, group-private-aside-draft.md) through
 // the REAL request payloads, imported from group-private-aside.ts rather than replicated.
-//   1. READ: the family ref is checked against the fixture's `accept` set (a fact: routing).
-//      No word in the message is matched.
-//   2. DRAFT: run only when the read picked a family, and it sees ONLY that family's slice.
-//   3. JUDGE (JUDGE_MODEL, not the Sonnet subject): scores the 1:1 text by meaning against
-//      the recipient's own data, the other families' secrets and the case's watchFor.
+//   1. READ: the refs of the families whose own private info the answer depends on.
+//   2. DRAFT, per picked family: sees ONLY that family's slice and its last aside, and sends
+//      or declines (a repeat with nothing changed declines).
+//   The set of families that end up with a text is checked against the case's `sendTo`
+//   (a routing fact; no word is matched). Then the JUDGE (JUDGE_MODEL, not the Sonnet
+//   subject) scores each sent text by meaning against that family's own data, the other
+//   families' private things, and watchFor.
 // The broken case (BROKEN_ASIDE) is judged in every mode and must FAIL; `--broken` swaps
 // every draft for it and the suite must fail.
 //
@@ -72,6 +74,7 @@ function draftInput(fixture, family) {
     groupText: fixture.text,
     askedByThisFamily: fixture.senderFamily === family.ref,
     private: family.private,
+    lastAside: fixture.lastAside?.[family.ref] ?? null,
     language: fixture.language ?? null,
   };
 }
@@ -81,10 +84,10 @@ function judgePayload(fixture, family, text) {
     groupMessage: fixture.text,
     askedByThisFamily: fixture.senderFamily === family.ref,
     recipientPrivate: family.private,
-    otherSecrets: [
-      ...fixture.otherSecrets,
-      ...fixture.families.filter((f) => f.ref !== family.ref).flatMap((f) => f.private.memory),
-    ],
+    otherSecrets: fixture.families
+      .filter((f) => f.ref !== family.ref)
+      .flatMap((f) => [...f.private.children, ...f.private.memory, ...f.private.email]),
+    lastAside: fixture.lastAside?.[family.ref] ?? null,
     expectedLanguage: fixture.language ?? 'the language of the group message',
     watchFor: fixture.watchFor,
     privateText: text,
@@ -126,7 +129,7 @@ async function main() {
   for (const fixture of GROUP_PRIVATE_ASIDE_FIXTURES) {
     const failures = [];
     const refs = fixture.families.map((f) => f.ref);
-    const about = (
+    const picked = (
       await cachedToolCall({
         tag: `group-private-aside:read:${fixture.id}`,
         model: agent.pickModel(readSkill.meta.task),
@@ -135,25 +138,28 @@ async function main() {
         userMessage: aside.privateAsideReadMessage(readInput(fixture)),
         toolName: 'private_aside_read',
         toolSchema: aside.privateAsideReadSchema(refs),
-        toolDescription: "Return which family's private information this group message touches.",
+        toolDescription:
+          'Return the families whose own private information this group message touches.',
         maxTokens: aside.PRIVATE_ASIDE_READ_MAX_TOKENS,
         cachedOnly,
         getClient,
         cost,
       })
-    ).value.about;
-    // Fact check: routing. The ref must be one this case accepts.
-    if (!fixture.accept.includes(about))
-      failures.push(`read:${about} accept=${fixture.accept.join('|')}`);
-    let text = '';
-    const family = fixture.families.find((f) => f.ref === about);
-    if (family) {
+    ).value.families;
+    const sent = [];
+    for (const ref of [...new Set(picked)]) {
+      const family = fixture.families.find((f) => f.ref === ref);
+      if (!family) {
+        failures.push(`read:unknown_ref:${ref}`);
+        continue;
+      }
+      let text = '';
       if (broken) {
         text = BROKEN_ASIDE.text;
       } else {
         const draft = (
           await cachedToolCall({
-            tag: `group-private-aside:draft:${fixture.id}:${about}`,
+            tag: `group-private-aside:draft:${fixture.id}:${ref}`,
             model: agent.pickModel(draftSkill.meta.task),
             lane: agent.pickLane(draftSkill.meta.task),
             system: draftSkill.instructions,
@@ -168,14 +174,24 @@ async function main() {
           })
         ).value;
         text = draft.send ? draft.text.trim() : '';
-        if (!text) failures.push('draft:declined (a touched family got no 1:1)');
       }
-      if (text) {
-        const verdict = await judge(fixture.id, judgePayload(fixture, family, text));
-        if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
-      }
+      if (!text) continue;
+      sent.push({ ref, text });
+      const verdict = await judge(`${fixture.id}:${ref}`, judgePayload(fixture, family, text));
+      if (verdict.score < JUDGE_MIN)
+        failures.push(`judge:${ref}:${verdict.score} (${verdict.reason})`);
     }
-    results.push({ id: fixture.id, about, text, failures });
+    // Fact check: routing. Who ended up with a text must be one of the case's sets.
+    const got = sent
+      .map((s) => s.ref)
+      .sort()
+      .join(',');
+    if (!fixture.sendTo.some((set) => [...set].sort().join(',') === got)) {
+      failures.push(
+        `sendTo:[${got}] expected ${fixture.sendTo.map((set) => `[${set.join(',')}]`).join(' or ')}`,
+      );
+    }
+    results.push({ id: fixture.id, picked, sent, failures });
   }
 
   // The broken case, judged in every mode: it must FAIL the judge.
@@ -186,7 +202,7 @@ async function main() {
 
   for (const r of results) {
     console.log(
-      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.id.padEnd(34)} about=${r.about} "${r.text.replace(/\s+/g, ' ')}"`,
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.id.padEnd(34)} read=[${r.picked.join(',')}] ${r.sent.map((s) => `${s.ref}:"${s.text.replace(/\s+/g, ' ')}"`).join(' ') || '(nothing sent)'}`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
@@ -232,8 +248,8 @@ async function dryRun() {
       readSkill.instructions + aside.privateAsideReadMessage(readInput(fixture)),
       aside.PRIVATE_ASIDE_READ_MAX_TOKENS,
     );
-    // Worst case: a draft + judge for every family the case could route to.
-    for (const ref of fixture.accept) {
+    // Worst case: a draft + judge for EVERY family in the case (the read may pick any).
+    for (const { ref } of fixture.families) {
       const family = fixture.families.find((f) => f.ref === ref);
       if (!family) continue;
       price(
