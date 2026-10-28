@@ -27,9 +27,8 @@ import { users } from './users.js';
  * reached the chat: an unconfirmed reminder never fires. `sending` is a tick's claim while
  * it checks and writes the text; a STOP or a cancel still takes it back. `in_flight` is
  * the text going out: written, every check passed, and past the point a STOP can take it
- * back. `queued` is a `direct` reminder handed to the loop's channel dispatch; whether
- * that text went out is on the dispatch's ledger row under the dedupe key
- * `group-reminder:<id>`.
+ * back. Either delivery's text is on `channel_messages` under the dedupe key
+ * `linq:group_reminder:<id>` (group) or `linq:group_reminder_direct:<id>` (1:1).
  */
 export const GROUP_REMINDER_STATUSES = [
   'pending',
@@ -37,7 +36,6 @@ export const GROUP_REMINDER_STATUSES = [
   'sending',
   'in_flight',
   'sent',
-  'queued',
   'cancelled',
   'dropped',
   'failed',
@@ -83,7 +81,7 @@ export const groupReminders = pgTable(
   (table) => ({
     statusCheck: check(
       'group_reminders_status_check',
-      sql`${table.status} in ('pending', 'scheduled', 'sending', 'in_flight', 'sent', 'queued', 'cancelled', 'dropped', 'failed')`,
+      sql`${table.status} in ('pending', 'scheduled', 'sending', 'in_flight', 'sent', 'cancelled', 'dropped', 'failed')`,
     ),
     forCheck: check(
       'group_reminders_for_kind_check',

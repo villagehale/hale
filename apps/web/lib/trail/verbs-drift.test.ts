@@ -226,7 +226,6 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // in the same transaction as the guarded update (VIL-448).
   'apps/web/lib/loop/reminders/group/store.ts': [
     'group_reminder_sent',
-    'group_reminder_queued',
     'group_reminder_dropped',
     'group_reminder_failed',
   ],

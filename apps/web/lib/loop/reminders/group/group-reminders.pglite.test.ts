@@ -17,13 +17,14 @@ import type { GroupTurnReader } from '~/lib/channel/linq/group-turn-reader';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { LinqInboundText } from '~/lib/channel/linq/payload';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type GroupReminderTurnPorts, takeGroupReminderTurn } from './capture';
 import { fakeGroupReminderReader, fakeGroupReminderVoice } from './fake';
-import { type ChannelSendJob, runGroupReminderTick } from './fire';
+import { runGroupReminderTick } from './fire';
 import type { ReminderAsk } from './policy';
 import type { GroupReminderReading } from './read';
 import {
@@ -280,11 +281,11 @@ function turnPorts(read: GroupReminderReading | null, options: { voiceFails?: bo
 
 function tickPorts(now: Date, options: { voiceFails?: boolean } = {}) {
   const sends: Array<{ chatId: string; text: string; replyTo?: string }> = [];
-  const jobs: ChannelSendJob[] = [];
+  const direct = new FakeTransport();
   const voice = fakeGroupReminderVoice({ fail: options.voiceFails });
   return {
     sends,
-    jobs,
+    direct,
     voice,
     ports: {
       now,
@@ -293,9 +294,7 @@ function tickPorts(now: Date, options: { voiceFails?: boolean } = {}) {
         sends.push(input);
         return { providerMessageId: `out-tick-${sends.length}` };
       },
-      enqueue: async (job: ChannelSendJob) => {
-        jobs.push(job);
-      },
+      oneToOne: direct,
     },
   };
 }
@@ -351,6 +350,15 @@ async function verbs(familyId: string) {
     .from(schema.auditLog)
     .where(eq(schema.auditLog.familyId, familyId));
   return rows.map((row) => row.actionTaken);
+}
+
+/** What was said in one conversation: a parent's 1:1 thread or the group's. */
+async function threadFor(noteKey: string) {
+  return db.database
+    .select({ role: schema.messages.role, content: schema.messages.content })
+    .from(schema.messages)
+    .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+    .where(eq(schema.conversations.noteKey, noteKey));
 }
 
 describe('asking for a reminder in the group', () => {
@@ -415,7 +423,7 @@ describe('asking for a reminder in the group', () => {
     );
   });
 
-  it("hands a signed-up parent's own reminder to the 1:1 dispatch, and names it queued, not sent", async () => {
+  it("texts a signed-up parent's own reminder to them 1:1, and never into the group", async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const home = await seedHousehold();
     const { ports, voice } = turnPorts(reading([ask()]));
@@ -434,31 +442,40 @@ describe('asking for a reminder in the group', () => {
     const tick = tickPorts(THURSDAY_FOUR);
     expect(await runGroupReminderTick(db.database, tick.ports)).toEqual({
       due: 1,
-      sent: 0,
-      queued: 1,
+      sent: 1,
       dropped: 0,
       failed: 0,
       lost: 0,
       retrying: 0,
     });
     expect(tick.sends).toEqual([]);
-    expect(await onlyReminder()).toMatchObject({ status: 'queued', what: null });
-    const actions = await verbs(home.familyId);
-    expect(actions).toContain('group_reminder_queued');
-    expect(actions).not.toContain('group_reminder_sent');
-    expect(tick.jobs).toEqual([
-      {
-        templateKey: 'member_reminder',
-        familyId: home.familyId,
-        parentUserId: home.priya,
-        category: 'reminder',
-        urgency: 'normal',
-        payload: { text: 'reminder for Priya' },
-        dedupeKey: `group-reminder:${row?.id}`,
-        channel: 'sms',
-      },
-    ]);
+    expect(tick.direct.sent).toEqual([{ to: PRIYA, body: 'reminder for Priya' }]);
     expect(tick.voice.calls[0]).toMatchObject({ kind: 'reminder', audience: 'direct' });
+    expect(await onlyReminder()).toMatchObject({ status: 'sent', statusReason: null, what: null });
+    const [ledger] = await db.database
+      .select()
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.templateKey, 'linq:group_reminder_direct'));
+    expect(ledger).toMatchObject({
+      direction: 'out',
+      parentUserId: home.priya,
+      dedupeKey: `linq:group_reminder_direct:${row?.id}`,
+      providerMessageId: 'fake-out-1',
+      providerChatId: null,
+      body: null,
+    });
+    expect(await verbs(home.familyId)).toEqual(
+      expect.arrayContaining(['group_reminder_sent', 'sms_reply_sent']),
+    );
+    expect(await threadFor(channelSmsNoteKey(home.priya))).toEqual([
+      { role: 'assistant', content: 'reminder for Priya' },
+    ]);
+    expect(await threadFor(channelGroupNoteKey(CHAT))).not.toContainEqual(
+      expect.objectContaining({ content: 'reminder for Priya' }),
+    );
+
+    expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({ due: 0 });
+    expect(tick.direct.sent).toHaveLength(1);
   });
 
   it('keeps that same parent in the group while the loop cannot send 1:1', async () => {
@@ -708,7 +725,6 @@ describe('when a group reminder is due', () => {
     expect(await runGroupReminderTick(db.database, tick.ports)).toEqual({
       due: 1,
       sent: 1,
-      queued: 0,
       dropped: 0,
       failed: 0,
       lost: 0,
@@ -717,6 +733,7 @@ describe('when a group reminder is due', () => {
     expect(tick.sends).toEqual([
       { chatId: CHAT, text: 'reminder for Ruth', replyTo: `in-${RUTH}` },
     ]);
+    expect(tick.direct.sent).toEqual([]);
     expect(tick.voice.calls[0]).toMatchObject({
       forName: 'Ruth',
       askedByName: null,
@@ -907,29 +924,26 @@ describe('when a group reminder is due', () => {
     });
   });
 
-  it('leaves a reminder whose handoff hit an error to a later tick, words intact, and sends it once', async () => {
+  it('texts a 1:1 reminder again after a temporary Linq refusal, words intact, and once', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const home = await seedHousehold();
     await setFor(PRIYA);
-    const { id, delivery } = await onlyReminder();
-    expect(delivery).toBe('direct');
+    expect((await onlyReminder()).delivery).toBe('direct');
 
-    const down = tickPorts(THURSDAY_FOUR);
-    const queueDown = {
-      ...down.ports,
-      enqueue: async () => {
-        throw new Error('queue unreachable');
+    const busy = {
+      ...tickPorts(THURSDAY_FOUR).ports,
+      oneToOne: {
+        send: async () => {
+          throw new LinqSendError('503', 503, false);
+        },
       },
     };
-    expect(await runGroupReminderTick(db.database, queueDown)).toMatchObject({
+    expect(await runGroupReminderTick(db.database, busy)).toMatchObject({
       due: 1,
       retrying: 1,
       failed: 0,
     });
-    expect(await onlyReminder()).toMatchObject({
-      status: 'in_flight',
-      what: 'grab Maya from swim',
-    });
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', what: 'grab Maya from swim' });
     const nextMinute = new Date(THURSDAY_FOUR.getTime() + 60_000);
     expect(await runGroupReminderTick(db.database, tickPorts(nextMinute).ports)).toMatchObject({
       due: 0,
@@ -938,11 +952,127 @@ describe('when a group reminder is due', () => {
     const back = tickPorts(AFTER_STALE);
     expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({
       due: 1,
-      queued: 1,
+      sent: 1,
     });
-    expect(back.jobs.map((job) => job.dedupeKey)).toEqual([`group-reminder:${id}`]);
-    expect(await onlyReminder()).toMatchObject({ status: 'queued', what: null });
+    expect(back.direct.sent).toEqual([{ to: PRIYA, body: 'reminder for Priya' }]);
+    expect(back.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sent', what: null });
     expect(await verbs(home.familyId)).not.toContain('group_reminder_failed');
+  });
+
+  it('lets a STOP that lands while a 1:1 reminder is being written win, and texts nothing', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const home = await seedHousehold();
+    await setFor(PRIYA);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const stoppedMidWrite: GroupReminderVoice = {
+      async write(facts) {
+        await cancelGroupReminders(db.database, {
+          chatId: CHAT,
+          phoneHash: phoneBlindIndex(PRIYA),
+          reason: 'member_stop',
+          now: THURSDAY_FOUR,
+        });
+        return tick.voice.write(facts);
+      },
+    };
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, voice: stoppedMidWrite }),
+    ).toMatchObject({ due: 1, sent: 0, lost: 1 });
+    expect(tick.direct.sent).toEqual([]);
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'member_stop',
+    });
+    expect(await verbs(home.familyId)).not.toContain('group_reminder_sent');
+  });
+
+  it('leaves a 1:1 reminder a STOP reaches as it goes out to land, and the row says it was sent', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const home = await seedHousehold();
+    await setFor(PRIYA);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const stoppedMidSend: Array<number | 'not_migrated'> = [];
+    const ports = {
+      ...tick.ports,
+      oneToOne: {
+        send: async (input: { to: string; body: string }) => {
+          stoppedMidSend.push(
+            await cancelGroupReminders(db.database, {
+              chatId: CHAT,
+              phoneHash: phoneBlindIndex(PRIYA),
+              reason: 'member_stop',
+              now: THURSDAY_FOUR,
+            }),
+          );
+          return tick.direct.send(input);
+        },
+      },
+    };
+
+    expect(await runGroupReminderTick(db.database, ports)).toMatchObject({ sent: 1, lost: 0 });
+    expect(stoppedMidSend).toEqual([0]);
+    expect(tick.direct.sent).toEqual([{ to: PRIYA, body: 'reminder for Priya' }]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sent', what: null });
+    const actions = await verbs(home.familyId);
+    expect(actions).toContain('group_reminder_sent');
+    expect(actions).not.toContain('group_reminder_cancelled');
+  });
+
+  it('does not text a 1:1 reminder again that a tick died sending', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const home = await seedHousehold();
+    await setFor(PRIYA);
+    const { id } = await onlyReminder();
+    const died = await claimReminder(db.database, id, THURSDAY_FOUR);
+    if (!died || !(await commitSend(db.database, died))) throw new Error('expected a commit');
+    await db.database.insert(schema.channelMessages).values({
+      familyId: home.familyId,
+      parentUserId: home.priya,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: 'linq:group_reminder_direct',
+      dedupeKey: `linq:group_reminder_direct:${id}`,
+      status: 'sent',
+      sentAt: THURSDAY_FOUR,
+    });
+
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({ due: 1, sent: 1 });
+    expect(back.direct.sent).toEqual([]);
+    expect(back.voice.calls).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'sent',
+      statusReason: 'already_sent',
+      what: null,
+    });
+  });
+
+  it('drops a 1:1 reminder, by name, once the parent has stopped Hale texting them', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const home = await seedHousehold();
+    await setFor(PRIYA);
+    await db.database
+      .update(schema.parentChannels)
+      .set({ revokedAt: NOW })
+      .where(eq(schema.parentChannels.userId, home.priya));
+
+    const tick = tickPorts(THURSDAY_FOUR);
+    expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({
+      due: 1,
+      dropped: 1,
+      sent: 0,
+    });
+    expect(tick.direct.sent).toEqual([]);
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'dropped',
+      statusReason: 'direct_unreachable',
+      what: null,
+    });
   });
 
   it('tries a group line again after a temporary Linq refusal, and posts it once', async () => {
@@ -1046,9 +1176,9 @@ describe('when a group reminder is due', () => {
     expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({
       due: 1,
       dropped: 1,
-      queued: 0,
+      sent: 0,
     });
-    expect(tick.jobs).toEqual([]);
+    expect(tick.direct.sent).toEqual([]);
     expect(tick.sends).toEqual([]);
     expect(tick.voice.calls).toEqual([]);
     expect(await onlyReminder()).toMatchObject({

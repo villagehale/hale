@@ -1,17 +1,21 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
 import { primaryParentId } from '~/lib/channel/linq/roster-ask';
+import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { threadIfParent } from '~/lib/channel/thread';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
-import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
-import { MEMBER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/member-reminder';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { getQueue } from '~/lib/queue';
 import { reminderFacts } from './facts';
-import { postGroupReminderLine } from './line';
+import {
+  type GroupReminderLineOutcome,
+  postGroupReminderLine,
+  textGroupReminderDirect,
+} from './line';
 import { fireDecision, inQuiet } from './policy';
 import {
   type Seat,
@@ -45,37 +49,28 @@ import { type GroupReminderVoice, sharedGroupReminderVoice } from './voice';
  * sent, and one that lands after the commit finds it already going out and leaves the row
  * to say so. A group line reads the group's audience again as it goes.
  *
- * A group reminder is posted by the tick itself. A 1:1 reminder is handed to the loop's
- * channel dispatch, which owns consent, quiet hours and the ledger for 1:1 texts, and
- * closes as `queued`, not `sent`: the dispatch's ledger row says whether it went out.
+ * The tick sends both kinds itself: a group reminder as a line in the chat, a 1:1
+ * reminder as a text on Hale's 1:1 line to the asker's own verified number. A 1:1 never
+ * goes through the loop's channel dispatch, which carries a household's texts into its
+ * family group.
  *
  * An error mid-send, or a refusal Linq calls temporary, closes nothing: the claim goes
  * stale and a later tick takes the row again and checks everything afresh. A refusal hands
  * the commit back first, so a STOP meanwhile still takes the reminder back. A reminder
  * that keeps failing is tried at most every `SENDING_STALE_MS` and dropped as missed past
- * `LATE_LIMIT_MS`. A line already posted is not posted again (its ledger key), and
- * dispatch dedupes a 1:1 handoff.
+ * `LATE_LIMIT_MS`. A text already sent is never sent again (its ledger key).
  */
 
 export const GROUP_REMINDER_TEMPLATE = 'linq:group_reminder';
-
-export interface ChannelSendJob {
-  templateKey: string;
-  familyId: string;
-  parentUserId: string;
-  category: 'reminder';
-  urgency: 'normal';
-  payload: Record<string, unknown>;
-  dedupeKey: string;
-  channel: 'sms';
-}
+export const GROUP_REMINDER_DIRECT_TEMPLATE = 'linq:group_reminder_direct';
 
 export interface GroupReminderTickPorts {
   now: Date;
   /** Null: no model is configured. Nothing is claimed and nothing is sent. */
   voice: GroupReminderVoice | null;
   send?: GroupLineSend;
-  enqueue(job: ChannelSendJob): Promise<void>;
+  /** Hale's 1:1 line, for a customer's own reminder. */
+  oneToOne: ChannelTransport;
 }
 
 export type GroupReminderTickSummary =
@@ -83,8 +78,6 @@ export type GroupReminderTickSummary =
   | {
       due: number;
       sent: number;
-      /** Handed to the channel dispatch for a 1:1 text, which decides and records the send. */
-      queued: number;
       dropped: number;
       failed: number;
       /** Taken back by a STOP, a cancel or a later tick before this tick sent anything. */
@@ -93,7 +86,7 @@ export type GroupReminderTickSummary =
       retrying: number;
     };
 
-type FireOutcome = 'sent' | 'queued' | 'dropped' | 'failed' | 'lost' | 'retrying';
+type FireOutcome = 'sent' | 'dropped' | 'failed' | 'lost' | 'retrying';
 
 /** Closes the claim, or names it lost when a STOP, a cancel or a later tick took it first. */
 async function close(
@@ -112,6 +105,40 @@ async function committed(database: Database, row: GroupReminderRow): Promise<boo
     'group reminders: taken back before the send, nothing sent',
   );
   return false;
+}
+
+/**
+ * Closes a committed send by what happened to it. A sent text is threaded before the row
+ * closes, so a tick that dies in between leaves a row a later tick closes from the ledger.
+ */
+async function settle(
+  database: Database,
+  row: GroupReminderRow,
+  sent: GroupReminderLineOutcome,
+  now: Date,
+  thread: () => Promise<unknown>,
+): Promise<FireOutcome> {
+  if (sent.outcome === 'held') {
+    return close(database, row, { status: 'dropped', reason: 'audience_held', now });
+  }
+  if (sent.outcome === 'not_sent') {
+    if (sent.retryable) {
+      await releaseSend(database, row);
+      console.warn(
+        { reminderId: row.id, code: sent.code, outcome: 'retrying' },
+        'group reminders: Linq refused for now, left claimed for a later tick',
+      );
+      return 'retrying';
+    }
+    return close(database, row, { status: 'failed', reason: sent.code, now });
+  }
+  if (sent.outcome === 'sent') await thread();
+  await closeReminder(database, row, {
+    status: 'sent',
+    reason: sent.outcome === 'already_sent' ? 'already_sent' : null,
+    now,
+  });
+  return 'sent';
 }
 
 async function familyHoldsChat(database: Database, familyId: string, chatId: string) {
@@ -138,7 +165,7 @@ async function quietNowFor(
   return inQuiet(now, quiet.timeZone, quiet.windows);
 }
 
-async function lineAlreadyPosted(database: Database, dedupeKey: string): Promise<boolean> {
+async function alreadySent(database: Database, dedupeKey: string): Promise<boolean> {
   const [row] = await database
     .select({ id: schema.channelMessages.id })
     .from(schema.channelMessages)
@@ -160,9 +187,11 @@ async function fireOne(
   ports: GroupReminderTickPorts & { voice: GroupReminderVoice },
 ): Promise<FireOutcome> {
   const now = ports.now;
-  // Before every check: a line a dead tick already posted is in the chat whatever changed since.
-  const lineKey = `${GROUP_REMINDER_TEMPLATE}:${row.id}`;
-  if (row.delivery === 'group' && (await lineAlreadyPosted(database, lineKey))) {
+  const templateKey =
+    row.delivery === 'direct' ? GROUP_REMINDER_DIRECT_TEMPLATE : GROUP_REMINDER_TEMPLATE;
+  const sendKey = `${templateKey}:${row.id}`;
+  // Before every check: a text a dead tick already sent was read, whatever changed since.
+  if (await alreadySent(database, sendKey)) {
     return close(database, row, { status: 'sent', reason: 'already_sent', now });
   }
   const seats = await liveSeats(database, row.chatId);
@@ -214,29 +243,25 @@ async function fireOne(
   }
 
   if (row.delivery === 'direct') {
-    // fireDecision already dropped a 1:1 with no asker as unreachable; this narrows the type.
-    if (!row.askedByUserId) {
+    const userId = row.askedByUserId;
+    const to = userId ? await resolveSendablePhone(database, userId) : null;
+    if (!userId || !to) {
       return close(database, row, { status: 'dropped', reason: 'direct_unreachable', now });
     }
     if (!(await committed(database, row))) return 'lost';
-    const dedupeKey = `group-reminder:${row.id}`;
-    await ports.enqueue({
-      templateKey: MEMBER_REMINDER_TEMPLATE_KEY,
+    const texted = await textGroupReminderDirect(database, {
       familyId: row.familyId,
-      parentUserId: row.askedByUserId,
-      category: 'reminder',
-      urgency: 'normal',
-      payload: { text },
-      dedupeKey,
-      channel: 'sms',
-    });
-    await closeReminder(database, row, {
-      status: 'queued',
-      reason: null,
+      userId,
+      to,
+      text,
+      templateKey,
+      dedupeKey: sendKey,
       now,
-      after: { handedTo: 'channel_dispatch', dedupeKey },
+      transport: ports.oneToOne,
     });
-    return 'queued';
+    return settle(database, row, texted, now, () =>
+      threadIfParent(database, { familyId: row.familyId, parentUserId: userId, body: text }),
+    );
   }
 
   const ledgerUserId = (await primaryParentId(database, row.familyId)) ?? row.askedByUserId;
@@ -250,39 +275,19 @@ async function fireOne(
     chatId: row.chatId,
     text,
     replyTo: row.sourceMessageId,
-    templateKey: GROUP_REMINDER_TEMPLATE,
-    dedupeKey: lineKey,
+    templateKey,
+    dedupeKey: sendKey,
     now,
     send: ports.send,
   });
-  if (posted.outcome === 'held') {
-    return close(database, row, { status: 'dropped', reason: 'audience_held', now });
-  }
-  if (posted.outcome === 'not_sent') {
-    if (posted.retryable) {
-      await releaseSend(database, row);
-      console.warn(
-        { reminderId: row.id, code: posted.code, outcome: 'retrying' },
-        'group reminders: Linq refused for now, left claimed for a later tick',
-      );
-      return 'retrying';
-    }
-    return close(database, row, { status: 'failed', reason: posted.code, now });
-  }
-  await closeReminder(database, row, {
-    status: 'sent',
-    reason: posted.outcome === 'already_sent' ? 'already_sent' : null,
-    now,
-  });
-  if (posted.outcome === 'sent') {
+  return settle(database, row, posted, now, async () => {
     const conversationId = await resolveOrCreateNoteConversation(
       row.familyId,
       channelGroupNoteKey(row.chatId),
       database,
     );
     await appendMessage(conversationId, 'assistant', text, database);
-  }
-  return 'sent';
+  });
 }
 
 export async function runGroupReminderTick(
@@ -298,7 +303,6 @@ export async function runGroupReminderTick(
   const summary = {
     due: due.length,
     sent: 0,
-    queued: 0,
     dropped: 0,
     failed: 0,
     lost: 0,
@@ -326,14 +330,11 @@ export async function runGroupReminderTick(
   return summary;
 }
 
-/** Production wiring: the shared voice, the Linq group send, and the channel.send queue. */
+/** Production wiring: the shared voice, the Linq group send, and Hale's 1:1 line. */
 export function groupReminderTickPorts(now: Date): GroupReminderTickPorts {
   return {
     now,
     voice: sharedGroupReminderVoice(),
-    enqueue: async (job) => {
-      const queue = await getQueue();
-      await queue.send(CHANNEL_SEND_QUEUE, job, { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
-    },
+    oneToOne: createOutboundTransport(),
   };
 }

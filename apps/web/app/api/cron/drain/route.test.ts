@@ -65,7 +65,6 @@ describe('GET /api/cron/drain', () => {
     runGroupReminderTickMock.mockReset().mockResolvedValue({
       due: 0,
       sent: 0,
-      queued: 0,
       dropped: 0,
       failed: 0,
       lost: 0,
@@ -162,7 +161,7 @@ describe('GET /api/cron/drain', () => {
     lightGroupReminders();
     const { GET } = await import('./route');
     runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
-    const summary = { due: 3, sent: 1, queued: 1, dropped: 1, failed: 0, lost: 0, retrying: 0 };
+    const summary = { due: 3, sent: 2, dropped: 1, failed: 0, lost: 0, retrying: 0 };
     runGroupReminderTickMock.mockResolvedValue(summary);
 
     const response = await GET(request());
