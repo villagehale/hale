@@ -984,7 +984,7 @@ describe('sweepMessageRetention on a database without migration 0167', () => {
     await before0167.exec(
       'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb',
     );
-    // The group bit (0182, VIL-463) rides on every ledger row too.
+    // The group bit (0185, VIL-463) rides on every ledger row too.
     await before0167.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
   });
 

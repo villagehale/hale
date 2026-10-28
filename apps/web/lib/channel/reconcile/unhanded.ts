@@ -72,7 +72,7 @@ export interface UnhandedInboundRow {
   parentUserId: string;
   providerMessageId: string;
   sentAt: Date | null;
-  /** The door's group bit (migration 0182). Null on rows written before it. */
+  /** The door's group bit (migration 0185). Null on rows written before it. */
   inGroup: boolean | null;
   createdAt: Date;
 }
@@ -170,7 +170,7 @@ export async function reconcileUnhandedInbound(
         // `sent_at` is when the parent actually sent it, which is what the turn should
         // reason about; created_at is only when we wrote the row.
         received_at: (row.sentAt ?? row.createdAt).toISOString(),
-        // VIL-463: the door's bit as the row stored it (migration 0182). A row written
+        // VIL-463: the door's bit as the row stored it (migration 0185). A row written
         // before the column says null, passed on as unknown, and the router refuses an
         // unknown iMessage turn instead of running it on the sender's 1:1 thread.
         in_group: row.inGroup ?? undefined,
