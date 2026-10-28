@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const runDrainCronMock = vi.fn();
 const runFirstReplyRecoveryCronMock = vi.fn();
 const providerPreflightMock = vi.fn();
+const runGroupReminderTickMock = vi.fn();
 
 vi.mock('~/lib/cron/drain', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/cron/drain')>()),
@@ -29,6 +30,16 @@ vi.mock('~/lib/monitoring/provider-health', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/monitoring/provider-health')>()),
   providerPreflight: (...args: unknown[]) => providerPreflightMock(...args),
 }));
+vi.mock('~/lib/loop/reminders/group/fire', async (importActual) => ({
+  ...(await importActual<typeof import('~/lib/loop/reminders/group/fire')>()),
+  runGroupReminderTick: (...args: unknown[]) => runGroupReminderTickMock(...args),
+}));
+
+function lightGroupReminders(): void {
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_TURN_AI_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_REMINDERS_ENABLED', 'true');
+}
 const afterCallbacks: Array<() => Promise<void> | void> = [];
 vi.mock('next/server', async (importActual) => ({
   ...(await importActual<typeof import('next/server')>()),
@@ -51,6 +62,9 @@ describe('GET /api/cron/drain', () => {
       .mockReset()
       .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 });
     providerPreflightMock.mockReset();
+    runGroupReminderTickMock
+      .mockReset()
+      .mockResolvedValue({ due: 0, sent: 0, dropped: 0, failed: 0 });
     afterCallbacks.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -133,6 +147,51 @@ describe('GET /api/cron/drain', () => {
       dropped: 1,
       socialSignup: { skipped: 'flag_off' },
       firstReply: expect.any(Object),
+      groupReminders: { skipped: 'flag_off' },
+    });
+    expect(runGroupReminderTickMock).not.toHaveBeenCalled();
+  });
+
+  it('sends due group reminders every scheduled minute once all three flags are on', async () => {
+    lightGroupReminders();
+    const { GET } = await import('./route');
+    runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
+    runGroupReminderTickMock.mockResolvedValue({ due: 2, sent: 1, dropped: 1, failed: 0 });
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(runGroupReminderTickMock).toHaveBeenCalledTimes(1);
+    expect(await response.json()).toMatchObject({
+      groupReminders: { due: 2, sent: 1, dropped: 1, failed: 0 },
+    });
+  });
+
+  it('keeps the reminder leg dark until the AI turn reader is on too', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_REMINDERS_ENABLED', 'true');
+    const { GET } = await import('./route');
+    runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
+
+    const response = await GET(request());
+
+    expect(await response.json()).toMatchObject({ groupReminders: { skipped: 'flag_off' } });
+    expect(runGroupReminderTickMock).not.toHaveBeenCalled();
+  });
+
+  it('names a failed reminder leg and still drains', async () => {
+    lightGroupReminders();
+    const { GET } = await import('./route');
+    runGroupReminderTickMock.mockRejectedValue(new Error('leg blew up'));
+    runDrainCronMock.mockResolvedValue({ processed: 1, failed: 0, dropped: 0 });
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(runDrainCronMock).toHaveBeenCalledTimes(1);
+    expect(await response.json()).toMatchObject({
+      processed: 1,
+      groupReminders: { skipped: 'tick_failed' },
     });
   });
 
@@ -192,5 +251,6 @@ describe('GET /api/cron/drain', () => {
     await GET(request('https://app.example.com/api/cron/drain?queues=channel.message.received'));
     await afterCallbacks[0]?.();
     expect(runFirstReplyRecoveryCronMock).not.toHaveBeenCalled();
+    expect(runGroupReminderTickMock).not.toHaveBeenCalled();
   });
 });

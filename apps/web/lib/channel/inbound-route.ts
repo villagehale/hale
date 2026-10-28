@@ -138,7 +138,11 @@ export type InboundRouteOutcome =
   /** The share started but Linq had no city locality yet. No nudge. */
   | 'location_unread'
   /** VIL-226 · Linq said a sending line is flagged or throttled, or that it recovered. */
-  | 'line_health';
+  | 'line_health'
+  /** VIL-448 · Linq group: a reminder ask whose confirmation could not be written or
+   * did not land. Nothing was set and nothing was sent. Never folded into `intake`,
+   * which says Hale replied. */
+  | 'group_reminder_unsent';
 
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable
