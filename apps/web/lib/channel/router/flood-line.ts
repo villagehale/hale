@@ -6,8 +6,9 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
- * THE OVER-LIMIT LINE (VIL-463) — what a parent gets, 1:1, when they write in a group
- * and their own hourly turn budget is spent.
+ * THE OVER-LIMIT LINE (VIL-463) — what a parent gets when their own hourly turn budget
+ * is spent. From a group it goes to them privately, never into the group; 1:1 it is the
+ * turn's answer in their own thread.
  *
  * Composed from facts, never recited: no preset body and no fallback. The skill sees only
  * the situation and the language, never the group or anything anyone wrote. When no line
@@ -29,17 +30,23 @@ export type FloodLineCompose =
   | { status: 'composed'; line: string }
   | { status: 'unavailable'; reason: FloodLineFallback };
 
+export interface FloodLineFacts {
+  language: ReplyLanguage | null;
+  /** They wrote in a group chat; the line still goes only to them. */
+  inGroup: boolean;
+}
+
 export interface FloodLineComposer {
-  compose(language: ReplyLanguage | null): Promise<FloodLineCompose>;
+  compose(facts: FloodLineFacts): Promise<FloodLineCompose>;
 }
 
 /** The user-turn payload: facts only. */
-export function floodLineUserMessage(language: ReplyLanguage | null): string {
+export function floodLineUserMessage(facts: FloodLineFacts): string {
   return JSON.stringify({
     situation: 'many_texts_at_once',
-    where_they_wrote: 'a group chat',
+    where_they_wrote: facts.inGroup ? 'a group chat' : 'their own chat with Hale',
     where_this_goes: 'only to them, privately',
-    language,
+    language: facts.language,
   });
 }
 
@@ -53,7 +60,7 @@ const lineJsonSchema = {
 /** The production composer, on a lazily resolved client like the holding line's. */
 export function createFloodLine(client: () => AgentClient): FloodLineComposer {
   return {
-    async compose(language) {
+    async compose(facts) {
       let resolved: AgentClient;
       try {
         resolved = client();
@@ -73,7 +80,7 @@ export function createFloodLine(client: () => AgentClient): FloodLineComposer {
           client: resolved,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
-          userMessage: floodLineUserMessage(language),
+          userMessage: floodLineUserMessage(facts),
           toolName: 'flood_line',
           toolDescription: 'Return the one private line the parent gets.',
           inputJsonSchema: lineJsonSchema,

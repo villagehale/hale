@@ -227,6 +227,26 @@ describe('routing', () => {
     expect(row?.replySource).toBeUndefined();
   });
 
+  it('stores the door\'s group bit on the inbound row and the job (VIL-463)', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-1to1' }),
+      transport: 'imessage',
+      chatId: 'chat-1',
+      isGroup: false,
+    });
+    await routeInboundText(h.deps, inbound({ providerId: 'msg-unsaid' }));
+
+    const rows = h.fake.rows(schema.channelMessages).filter((r) => r.direction === 'in');
+    expect(rows.find((r) => r.providerMessageId === 'msg-1to1')?.inGroup).toBe(false);
+    // The door did not say: stored as unknown, never as a 1:1 text.
+    expect(rows.find((r) => r.providerMessageId === 'msg-unsaid')?.inGroup).toBeNull();
+    expect(h.jobs.map((j) => j.in_group)).toEqual([false, undefined]);
+  });
+
   it('hands a video to the coach the same way, so the model can write the reply', async () => {
     const h = harness();
     enrol(h.fake);

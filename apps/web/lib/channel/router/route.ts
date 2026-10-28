@@ -103,7 +103,7 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
-import { FLOOD_REPLY, clarifyWhichQuestion } from './copy';
+import { clarifyWhichQuestion } from './copy';
 import {
   assertTurnLive,
   isCallTimeout,
@@ -1285,31 +1285,31 @@ async function routeChannelMessageInner(
       AGENT_TURN_LIMIT,
     );
     if (!decision.allowed) {
-      if (inGroup) {
-        // The parent's own budget is spent, which is no one else's news: the line goes
-        // to their phone, outside the group and outside the group's thread. It is
-        // written from facts (flood-line.ts); when it cannot be, nothing is sent.
-        const composed = await deps.floodLine.compose(
-          await familySpeechLanguage(deps.database, job.family_id),
+      // The line is written from facts (flood-line.ts), in a group or 1:1 alike. When it
+      // cannot be written, nothing is sent: there is no fixed line underneath it.
+      const composed = await deps.floodLine.compose({
+        language: await familySpeechLanguage(deps.database, job.family_id),
+        inGroup,
+      });
+      if (composed.status !== 'composed') {
+        deps.log.warn(
+          { reason: composed.reason, inGroup },
+          'channel router: over-limit line not composed, nothing sent',
         );
-        if (composed.status === 'composed') {
-          await sendReply(deps, {
-            route: { channel: 'sms', to: route.to },
-            body: composed.line,
-            job,
-            conversationId: null,
-            templateKey: FLOOD_LINE_TEMPLATE_KEY,
-            claim: claimAnswer,
-            openAsks: { leaves: null },
-          });
-        } else {
-          deps.log.warn(
-            { reason: composed.reason },
-            'channel router: over-limit line not composed, nothing sent',
-          );
-        }
+      } else if (inGroup) {
+        // The parent's own budget is spent, which is no one else's news: the line goes
+        // to their phone, outside the group and outside the group's thread.
+        await sendReply(deps, {
+          route: { channel: 'sms', to: route.to },
+          body: composed.line,
+          job,
+          conversationId: null,
+          templateKey: FLOOD_LINE_TEMPLATE_KEY,
+          claim: claimAnswer,
+          openAsks: { leaves: null },
+        });
       } else {
-        await answer(FLOOD_REPLY);
+        await answer(composed.line);
       }
       return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
     }

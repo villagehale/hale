@@ -324,6 +324,8 @@ async function handOffToConversation(
       // it as the legal instrument of an approval (the locked A2 contract).
       body: inbound.body,
       inboundMedia: persistableMedia(inbound.media),
+      // VIL-463: the door's group bit, so a reconciler re-drive can say it too.
+      inGroup: inbound.isGroup ?? null,
       sentAt: inbound.receivedAt,
     })
     .onConflictDoNothing({

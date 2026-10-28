@@ -1,15 +1,16 @@
 ---
 name: flood-line
-whenToUse: A parent wrote to Hale in a group chat, but they have sent a lot of texts in a short time and Hale is not answering this one. You write the one short private line they get, on their own phone and outside the group.
+whenToUse: A parent has sent Hale a lot of texts in a short time, in their own chat or in a group chat, and Hale is not answering this one. You write the one short private line they get. From a group it goes to their own phone, never into the group.
 task: acknowledge
 tools: []
 ---
 
 # The private line when a lot came in at once
 
-A parent wrote to Hale in a group chat. They have sent many texts in a short time, and
-Hale is not answering this one. This line goes only to them, privately. The rest of the
-group never sees it.
+A parent has sent Hale many texts in a short time, and Hale is not answering this one.
+`where_they_wrote` says whether that was their own chat with Hale or a group chat. Either
+way this line goes only to them, privately; from a group, the rest of the group never
+sees it.
 
 There is no template underneath you and no canned line if you fail. If what you write
 cannot be sent, nothing is sent.
@@ -40,7 +41,7 @@ Nothing is loaded, so there is nothing to repeat back.
 
 - Never say how long to wait or name a number, a limit, or a time. Nobody set one for you.
 - Never promise that Hale will answer the text later. It will not.
-- Never mention anyone else in the group or anything said there.
+- Never mention anyone else in a group or anything said there.
 - No link, no app, no website.
 - Never scold. A parent texting fast is usually busy or stressed.
 

@@ -37,7 +37,7 @@ import {
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
-import { FLOOD_REPLY, capabilityReply, failureReply } from './copy';
+import { capabilityReply, failureReply } from './copy';
 import type {
   DisambiguationOption,
   DisambiguationStore,
@@ -1529,7 +1529,7 @@ describe('flood control', () => {
     const overflow = await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
     expect(overflow.status).toBe('flood_held');
     expect(coach.calls).toBe(AGENT_TURNS_PER_HOUR);
-    expect(h.transport.bodies().at(-1)).toBe(FLOOD_REPLY);
+    expect(h.transport.bodies().at(-1)).toBe('A lot came in at once.');
   });
 
   it('sends the flood line 1:1 on a family-group turn, never into the group', async () => {
@@ -1561,7 +1561,7 @@ describe('flood control', () => {
     // Positive control: the same over-budget turn outside the group answers where it came from.
     const direct = await spent(false);
     expect(direct.result.status).toBe('flood_held');
-    expect(direct.h.transport.sent).toEqual([{ route: groupRoute, body: FLOOD_REPLY }]);
+    expect(direct.h.transport.sent).toEqual([{ route: groupRoute, body: 'A lot came in at once.' }]);
   });
 
   /**
@@ -4677,7 +4677,7 @@ describe('a slow answer gets one holding line first', () => {
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('flood_held');
-    expect(h.transport.bodies()).toEqual([FLOOD_REPLY]);
+    expect(h.transport.bodies()).toEqual(['A lot came in at once.']);
     expect(holding.calls).toBe(0);
   });
 
@@ -4906,6 +4906,8 @@ describe('the reply row, written to a real database', () => {
       // 0167 stays unapplied. The reply path now reads inbound media, which
       // arrives in 0173, so that column is present without the pending-ask table.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
+      // Likewise the group bit (0180, VIL-463), which the ledger row now carries.
+      await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
     });
 
     afterAll(async () => {
@@ -5244,7 +5246,7 @@ describe('the reply row, written to a real database', () => {
 
       it.each([
         ['what the coach says', {}, ['coach says hi']],
-        ['the line a spent budget gets', { limiter: SPENT }, [FLOOD_REPLY]],
+        ['the line a spent budget gets', { limiter: SPENT }, ['A lot came in at once.']],
         [
           'the line a spent budget gets from a group, on their own phone',
           { limiter: SPENT, context: { inGroup: true } },
@@ -5442,6 +5444,53 @@ describe('VIL-463 group scope', () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.relatedConversationId).toBeNull();
     expect(messageRows(h.fake).filter((m) => m.role === 'assistant')).toEqual([]);
+  });
+
+  it('a 1:1 text re-driven by the reconciler with its stored bit (false) runs, in its own thread', async () => {
+    const coach = fakeCoach();
+    const h = harness({ coach, context: { reply: GROUP_ROUTE, inGroup: false } });
+    // `redriven` is the turn ledger's business; the job is the reconciler's shape.
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+    expect(result.status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+    expect(conversationRows(h.fake)).toHaveLength(1);
+  });
+
+  async function overLimitDirectTurn(floodLine: FloodLineComposer) {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const h = harness({ limiter, floodLine });
+    const result = await routeChannelMessage(h.deps, job());
+    return { h, result };
+  }
+
+  it('answers a 1:1 over-limit text with the composed line, told it is 1:1', async () => {
+    const seen: unknown[] = [];
+    const flood: FloodLineComposer = {
+      async compose(facts) {
+        seen.push(facts);
+        return { status: 'composed', line: 'Swamped for a second.' };
+      },
+    };
+    const { h, result } = await overLimitDirectTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(seen).toEqual([{ language: null, inGroup: false }]);
+    expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Swamped for a second.' }]);
+  });
+
+  it('sends nothing on a 1:1 over-limit text when the line cannot be composed', async () => {
+    const { h, result } = await overLimitDirectTurn(
+      fakeFloodLine({ status: 'unavailable', reason: 'model_failed' }),
+    );
+    expect(result.status).toBe('flood_held');
+    expect(h.transport.sent).toEqual([]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([]);
   });
 
   it('sends nothing at all when the over-limit line cannot be composed', async () => {
