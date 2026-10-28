@@ -222,6 +222,14 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // can never be filed under each other's sentence (VIL-354).
   'apps/web/lib/memory/synthesis.ts': ['memory_fact_retired', 'memory_facts_merged'],
   'apps/web/lib/channel/canary/handler.ts': ['sms_canary_answered'],
+  // CLOSE_ACTION[status] — one verb per way a claimed group reminder can close, written
+  // in the same transaction as the guarded update (VIL-448).
+  'apps/web/lib/loop/reminders/group/store.ts': [
+    'group_reminder_sent',
+    'group_reminder_queued',
+    'group_reminder_dropped',
+    'group_reminder_failed',
+  ],
   // `REPLY_SENT_ACTION[carriedBy]` — one verb per door the router can answer
   // through (whatsapp audits under the phone verb), because the trail has to be able
   // to say WHICH one an answer went out of.

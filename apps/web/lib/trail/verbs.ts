@@ -190,6 +190,7 @@ export const AUDIT_VERBS = [
   'group_reminder_set',
   'group_reminder_cancelled',
   'group_reminder_sent',
+  'group_reminder_queued',
   'group_reminder_dropped',
   'group_reminder_failed',
   'group_reminder_unwritten',
@@ -791,6 +792,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   group_reminder_sent: {
     sentence: 'Hale sent a reminder someone in your family group asked for',
     family: 'done',
+  },
+  // Handed to the 1:1 dispatch, whose own ledger row says whether the text went out.
+  group_reminder_queued: {
+    sentence:
+      'Hale passed on a reminder from your family group to be texted privately to the person who asked',
+    family: 'note',
   },
   group_reminder_dropped: {
     sentence:
