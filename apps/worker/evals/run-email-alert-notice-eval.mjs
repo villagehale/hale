@@ -111,7 +111,7 @@ async function dryRun({ agent, lane, skill, notice, judgeModel }) {
     input_schema: notice.EMAIL_ALERT_NOTICE_TOOL_SCHEMA,
   };
   const judgeTool = { name: 'score', description: 'Return the score.' };
-  const longestText = 'x'.repeat(notice.EMAIL_ALERT_NOTICE_MAX_CHARS);
+  const longestText = 'x'.repeat(notice.EMAIL_ALERT_NOTICE_MAX_TOKENS * 4);
   let usd = 0;
   let writerCalls = 0;
   let judgeCalls = 0;

@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SentinelClassification } from '~/lib/sentinel';
 import {
   EMAIL_ALERT_NOTICE_MAX_ATTEMPTS,
-  EMAIL_ALERT_NOTICE_MAX_CHARS,
   type EmailAlertNoticeAnswer,
   type EmailAlertNoticeFacts,
   composeEmailAlertNotice,
@@ -192,16 +191,12 @@ describe('emailAlertNoticeRefusals', () => {
 
   it('refuses the structural failures, and nothing about wording', () => {
     expect(emailAlertNoticeRefusals('  ', facts())).toEqual(['empty']);
-    expect(
-      emailAlertNoticeRefusals(`${'a'.repeat(EMAIL_ALERT_NOTICE_MAX_CHARS)}?`, facts()),
-    ).toEqual(['over_char_cap']);
+    // No length or segment cap: the model decides how long the text is.
+    expect(emailAlertNoticeRefusals(`${'a'.repeat(1200)}?`, facts())).toEqual([]);
     expect(emailAlertNoticeRefusals('See https://maple.example. Add it?', facts())).toEqual([
       'link',
     ]);
-    // Under the char cap, but UCS-2: three segments.
-    expect(emailAlertNoticeRefusals(`${'好'.repeat(150)}?`, facts())).toEqual([
-      'over_segment_budget',
-    ]);
+    expect(emailAlertNoticeRefusals(`${'好'.repeat(150)}?`, facts())).toEqual([]);
     expect(emailAlertNoticeRefusals('Picture day is Friday.', facts())).toEqual(['offer_unasked']);
     expect(emailAlertNoticeRefusals('Swim is off. Okay?', facts({ offer: null }))).toEqual([
       'question_without_offer',

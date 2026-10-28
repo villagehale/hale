@@ -1,7 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ExtractionKind, FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
@@ -20,10 +19,6 @@ export const EMAIL_ALERT_NOTICE_TOOL_DESCRIPTION =
   'Decide whether this email is about the children and clear, and write the one text if so.';
 export const EMAIL_ALERT_NOTICE_MAX_TOKENS = 600;
 export const EMAIL_ALERT_NOTICE_MAX_ATTEMPTS = 2;
-/** A structural cap on length, not a wording rule. */
-export const EMAIL_ALERT_NOTICE_MAX_CHARS = 300;
-/** What one alert may bill: a Unicode text under the char cap can still be five segments. */
-export const EMAIL_ALERT_NOTICE_MAX_SEGMENTS = 2;
 
 /** The kinds a notice may be about. `unclear` never reaches the writer. */
 export type NoticeKind = Exclude<ExtractionKind, 'unclear'>;
@@ -176,7 +171,7 @@ export function emailAlertNoticeUserMessage(facts: EmailAlertNoticeFacts): strin
 const URL_SHAPE = /https?:\/\/\S+|www\.\S+/i;
 
 /**
- * Structural refusals only, never wording: empty, too long or too many SMS segments, a
+ * Structural refusals only, never wording or length: empty, a
  * link, or a question that disagrees with the offer row — a question with no row behind it
  * makes every bare YES in the household ambiguous (#649), and an offer row with no
  * question is a CTA nobody saw.
@@ -185,8 +180,6 @@ export function emailAlertNoticeRefusals(text: string, facts: EmailAlertNoticeFa
   const body = text.trim();
   if (body === '') return ['empty'];
   const found: string[] = [];
-  if (body.length > EMAIL_ALERT_NOTICE_MAX_CHARS) found.push('over_char_cap');
-  if (smsSegments(body) > EMAIL_ALERT_NOTICE_MAX_SEGMENTS) found.push('over_segment_budget');
   if (URL_SHAPE.test(body)) found.push('link');
   const asks = body.includes('?');
   if (facts.offer !== null && !asks) found.push('offer_unasked');
