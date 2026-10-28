@@ -41,6 +41,7 @@ import {
   readModelIds,
   summarizeJudgePlan,
 } from './lib/harness.mjs';
+import { EXPECTED_FAIL, expectedFailGate } from './said-line-expected-fail.mjs';
 import { SAID_LINE_FIXTURES } from './said-line-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -352,6 +353,7 @@ async function main() {
       ]
     : fixtures;
   let failed = 0;
+  const results = [];
   for (const f of runs) {
     const subjectOpts = {
       tag: `said-line:${f.id}`,
@@ -375,6 +377,7 @@ async function main() {
     const text = out?.dryStandIn ? raw : acceptText(raw, f);
     if (text === null) {
       failed += 1;
+      results.push({ id: f.id, failed: true });
       console.info(`FAIL  ${f.id}  facts: a fact or link slot is missing, or a URL was typed`);
       console.info(`      text: ${JSON.stringify(raw)}`);
       continue;
@@ -396,6 +399,7 @@ async function main() {
     });
     const ok = verdict.score >= JUDGE_MIN;
     if (!ok) failed += 1;
+    results.push({ id: f.id, failed: !ok });
     console.info(`${ok ? 'PASS' : 'FAIL'}  ${f.id}  judge:${verdict.score}`);
     if (!ok) {
       console.info(`      text: ${JSON.stringify(text)}`);
@@ -431,7 +435,14 @@ async function main() {
     console.info(`broken-mode calibration (every case must fail): ${caught ? 'PASS' : 'FAIL'}`);
     process.exit(caught ? 0 : 1);
   }
-  if (failed > 0) process.exit(1);
+  // Cached-only (CI) honours EXPECTED_FAIL (VIL-467); a live run still needs every case to pass.
+  const gate = expectedFailGate(
+    results,
+    cachedOnly ? EXPECTED_FAIL : [],
+    SAID_LINE_FIXTURES.map((f) => f.id),
+  );
+  for (const line of gate.lines) console.info(line);
+  process.exit(gate.ok ? 0 : 1);
 }
 
 main().catch((err) => {
