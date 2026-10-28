@@ -192,6 +192,7 @@ export type GroupReminderDropReason =
   | 'recipient_gone'
   | 'missed'
   | 'audience_held'
+  | 'asker_not_customer'
   | 'quiet_hours'
   | 'direct_unreachable';
 
@@ -206,6 +207,11 @@ export interface FireState {
   recipientSeated: boolean | null;
   /** The group may hear this line now. Read for a group delivery only. */
   audienceAllowed: boolean;
+  /**
+   * The asker still counts as a Hale customer, by the rule the reminder was set with.
+   * Read for a direct delivery only.
+   */
+  askerCustomer: boolean;
   quietNow: boolean;
   /** Read for a direct delivery only. */
   directReachable: boolean;
@@ -215,6 +221,8 @@ export interface FireState {
  * Whether a due reminder goes out. A STOP or a removal already cancelled it; this is the
  * check at the moment of sending, so a change since it was set still wins. A reminder is
  * never deferred into a stale one: a quiet-hours hit or a late tick drops it, by name.
+ * A 1:1 reminder whose asker no longer counts as a Hale customer is dropped, not posted
+ * in the group instead: they were told it would come privately.
  */
 export function fireDecision(
   row: { deliverAt: Date; delivery: ReminderDelivery },
@@ -228,6 +236,9 @@ export function fireDecision(
   }
   if (row.delivery === 'group' && !state.audienceAllowed) {
     return { kind: 'drop', reason: 'audience_held' };
+  }
+  if (row.delivery === 'direct' && !state.askerCustomer) {
+    return { kind: 'drop', reason: 'asker_not_customer' };
   }
   if (state.quietNow) return { kind: 'drop', reason: 'quiet_hours' };
   if (row.delivery === 'direct' && !state.directReachable) {

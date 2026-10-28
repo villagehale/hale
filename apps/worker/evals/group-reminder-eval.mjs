@@ -330,6 +330,7 @@ async function main() {
         askerSeated: fire.askerSeated,
         recipientSeated: item.forPhoneHash ? true : null,
         audienceAllowed: true,
+        askerCustomer: item.delivery === 'direct' ? asker.haleCustomer : true,
         quietNow: web.inQuiet(item.deliverAt, quiet.timeZone, quiet.windows),
         directReachable: item.delivery === 'direct' ? reachable : true,
       },

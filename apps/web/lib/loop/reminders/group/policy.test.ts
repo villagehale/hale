@@ -156,6 +156,7 @@ describe('fireDecision', () => {
     askerSeated: true,
     recipientSeated: null,
     audienceAllowed: true,
+    askerCustomer: true,
     quietNow: false,
     directReachable: true,
   };
@@ -190,6 +191,15 @@ describe('fireDecision', () => {
     expect(fireDecision({ ...row, delivery: 'direct' }, { ...ok, audienceAllowed: false })).toEqual(
       { kind: 'send' },
     );
+  });
+
+  it('drops a 1:1 reminder once its asker no longer counts as a customer, never posting it', () => {
+    const direct = { ...row, delivery: 'direct' as const };
+    expect(fireDecision(direct, { ...ok, askerCustomer: false })).toEqual({
+      kind: 'drop',
+      reason: 'asker_not_customer',
+    });
+    expect(fireDecision(row, { ...ok, askerCustomer: false })).toEqual({ kind: 'send' });
   });
 });
 

@@ -808,6 +808,44 @@ describe('when a group reminder is due', () => {
     expect((await reminders())[0]).toMatchObject({ status: 'dropped', statusReason: 'asker_gone' });
   });
 
+  it('drops a 1:1 reminder whose asker is no longer a customer, and never posts it in the group', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const home = await seedHousehold();
+    const [own] = await db.database
+      .insert(schema.consentRecords)
+      .values({
+        userId: home.dan,
+        familyId: home.familyId,
+        consentType: 'sms_service_messages',
+        granted: true,
+        consentScope: 'sms_coparent_invite_reply',
+        policyVersion: 'test',
+        evidence: { interpretation: 'seeded' },
+      })
+      .returning({ id: schema.consentRecords.id });
+    await setFor(DAN);
+    expect((await onlyReminder()).delivery).toBe('direct');
+
+    await db.database
+      .delete(schema.consentRecords)
+      .where(eq(schema.consentRecords.id, own?.id as string));
+    const tick = tickPorts(THURSDAY_FOUR);
+
+    expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({
+      due: 1,
+      dropped: 1,
+      queued: 0,
+    });
+    expect(tick.jobs).toEqual([]);
+    expect(tick.sends).toEqual([]);
+    expect(tick.voice.calls).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'dropped',
+      statusReason: 'asker_not_customer',
+      what: null,
+    });
+  });
+
   it('drops one that comes due inside quiet hours rather than waking the group', async () => {
     await seedHousehold();
     await setFor(RUTH);

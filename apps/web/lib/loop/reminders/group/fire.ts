@@ -20,6 +20,7 @@ import {
   directReachable,
   groupQuiet,
   liveSeats,
+  seatedCustomer,
 } from './standing';
 import {
   type GroupReminderRow,
@@ -36,10 +37,10 @@ import { type GroupReminderVoice, sharedGroupReminderVoice } from './voice';
  * Each due row is claimed before anything is read, then checked at the moment of sending:
  * the family still holds the chat, the asker and the person it is for are still seated
  * (STOP and removal already cancelled theirs; this catches a race), the group may hear
- * it, it is not quiet hours, and a 1:1 still has someone to reach. A failed check drops
- * the reminder by name. A reminder the model could not write is not sent. Once it is
- * written the tick looks at its claim again, so a STOP or a cancel that landed while it
- * was being written still wins and nothing is sent.
+ * it, a 1:1 is still for a Hale customer, it is not quiet hours, and a 1:1 still has
+ * someone to reach. A failed check drops the reminder by name. A reminder the model could
+ * not write is not sent. Once it is written the tick looks at its claim again, so a STOP
+ * or a cancel that landed while it was being written still wins and nothing is sent.
  *
  * A group reminder is posted by the tick itself. A 1:1 reminder is handed to the loop's
  * channel dispatch, which owns consent, quiet hours and the ledger for 1:1 texts, and
@@ -165,6 +166,10 @@ async function fireOne(
     row.delivery === 'group'
       ? (await groupAudienceAllows(database, row.chatId, 'schedule')).allowed
       : true;
+  const askerCustomer =
+    row.delivery === 'direct'
+      ? await seatedCustomer(database, row.chatId, row.askedByUserId)
+      : true;
   const reachable =
     row.delivery === 'direct'
       ? await directReachable(database, row.familyId, row.askedByUserId)
@@ -175,6 +180,7 @@ async function fireOne(
     askerSeated: askerSeat !== null,
     recipientSeated: row.forPhoneHash ? recipientSeat !== null : null,
     audienceAllowed,
+    askerCustomer,
     quietNow: await quietNowFor(database, row, seats, askerSeat, now),
     directReachable: reachable,
   });

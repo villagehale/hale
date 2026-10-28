@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { householdTimezone } from '~/lib/channel/household-timezone';
+import { readGroupMembership } from '~/lib/channel/linq/group-membership';
 import { FLORIDA_OKLAHOMA_QUIET_START, quietStartForPhone } from '~/lib/channel/proactive/quiet';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
@@ -110,6 +111,22 @@ export async function directQuiet(
     { start: phone ? quietStartForPhone(phone) : FLORIDA_OKLAHOMA_QUIET_START, end: QUIET_END },
     { start: prefs.quietHoursStart, end: prefs.quietHoursEnd },
   ];
+}
+
+/**
+ * Whether this person still counts as a Hale customer in the chat, by the same rule a
+ * reminder was set with (decision 2026-10-21): only a customer's reminder goes 1:1.
+ */
+export async function seatedCustomer(
+  database: Database,
+  chatId: string,
+  userId: string | null,
+): Promise<boolean> {
+  if (!userId) return false;
+  const membership = await readGroupMembership(database, chatId);
+  return (
+    membership?.members.some((member) => member.userId === userId && member.haleCustomer) ?? false
+  );
 }
 
 /**
