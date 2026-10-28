@@ -1,7 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { type InboundMediaPart, httpsMediaUrl } from '~/lib/channel/inbound-media';
 import { type InboundRouteDeps, routeInboundText } from '~/lib/channel/inbound-route';
-import { readCapturedSends } from '~/lib/channel/preview-capture-store';
+import { countUncapturedLedgerRows, readCapturedSends } from '~/lib/channel/preview-capture-store';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone';
 
@@ -150,5 +150,8 @@ export async function handlePreviewCapturedRead(
   const to = fakeSender(new URL(req.url).searchParams.get('to'));
   if (!to) return json({ error: 'sender_not_fictional' }, 400);
   const sends = await readCapturedSends(deps.database, to);
-  return json({ to, sends });
+  const uncapturedLedgered = await countUncapturedLedgerRows(deps.database);
+  // `count` is what the proof compares with the replies it expected; a nonzero
+  // `uncapturedLedgered` means a send was ledgered as captured but never persisted.
+  return json({ to, count: sends.length, uncapturedLedgered, sends });
 }

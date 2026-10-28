@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboundRouteDeps } from '~/lib/channel/inbound-route';
-import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { persistCapturedSend } from './preview-capture-store';
 import { createPreviewCaptureTransport } from './preview-capture-transport';
 
@@ -177,8 +177,62 @@ describe('captured sends read back word for word', () => {
       { headers: { authorization: `Bearer ${SECRET}` } },
     );
     const res = await handlePreviewCapturedRead(req, { database: t.database, env: ON });
-    const body = (await res.json()) as { sends: Array<{ body: string }> };
+    const body = (await res.json()) as {
+      count: number;
+      uncapturedLedgered: number;
+      sends: Array<{ body: string }>;
+    };
     expect(body.sends.map((s) => s.body)).toEqual(['Bonjour ! Première ligne.', '第二条']);
+    expect(body.count).toBe(2);
+    expect(body.uncapturedLedgered).toBe(0);
+  });
+
+  it('read-back shows a mismatch when a ledgered capture was never persisted', async () => {
+    const seeded = await seedFamily(t.database);
+    // One persisted capture with its ledger row, one ledger row whose persist failed.
+    await persistCapturedSend(
+      {
+        to: FAKE,
+        body: 'kept',
+        providerMessageId: 'preview-capture-1-1',
+        capturedAt: new Date().toISOString(),
+      },
+      t.database,
+    );
+    for (const providerMessageId of ['preview-capture-1-1', 'preview-capture-1-2']) {
+      await t.database.insert(schema.channelMessages).values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status: 'sent',
+        providerMessageId,
+      });
+    }
+    const req = new Request(
+      `https://preview.example/api/channels/preview/captured?to=${encodeURIComponent(FAKE)}`,
+      { headers: { authorization: `Bearer ${SECRET}` } },
+    );
+    const res = await handlePreviewCapturedRead(req, { database: t.database, env: ON });
+    const body = (await res.json()) as { count: number; uncapturedLedgered: number };
+    expect(body.count).toBe(1);
+    expect(body.uncapturedLedgered).toBe(1);
+  });
+
+  it('the store refuses a real (non 437-555) number and writes nothing', async () => {
+    await expect(
+      persistCapturedSend(
+        {
+          to: '+14165550142',
+          body: 'real parent words',
+          providerMessageId: 'preview-capture-2-1',
+          capturedAt: new Date().toISOString(),
+        },
+        t.database,
+      ),
+    ).rejects.toThrow(/recipient_not_synthetic/);
+    expect(await t.database.select().from(schema.previewCapturedSends)).toHaveLength(0);
   });
 
   it('read route is off in production', async () => {

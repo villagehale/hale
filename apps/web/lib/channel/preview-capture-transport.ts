@@ -1,5 +1,6 @@
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
 import { linqApiKey, linqFromE164 } from '~/lib/channel/linq/config';
+import { isSyntheticProbeNumber } from '~/lib/channels/phone';
 
 /**
  * Preview-only capture door for fake-family proof runs.
@@ -18,7 +19,9 @@ type Env = Readonly<Record<string, string | undefined>>;
 export type CapturedSend = OutboundMessage & { capturedAt: string; providerMessageId: string };
 
 export class PreviewCaptureRefused extends Error {
-  constructor(readonly reason: 'not_preview' | 'flag_off' | 'linq_configured') {
+  constructor(
+    readonly reason: 'not_preview' | 'flag_off' | 'linq_configured' | 'recipient_not_synthetic',
+  ) {
     super(`preview capture transport refused: ${reason}`);
     this.name = 'PreviewCaptureRefused';
   }
@@ -51,6 +54,12 @@ export function createPreviewCaptureTransport(
   let counter = 0;
   return {
     async send(input) {
+      // Only the fictional +1 437-555 fake-family range is captured. Any other
+      // recipient is refused before it is recorded, so no real parent's words
+      // are ever stored in plaintext by a proof run.
+      if (!isSyntheticProbeNumber(input.to)) {
+        throw new PreviewCaptureRefused('recipient_not_synthetic');
+      }
       counter += 1;
       const send: CapturedSend = {
         ...input,

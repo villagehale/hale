@@ -582,7 +582,9 @@ describe('the constraints themselves', () => {
     const id = armed.spotId;
 
     await expect(
-      db.exec(`UPDATE watched_spots SET notified_transitions = open_transitions + 1 WHERE id = '${id}'`),
+      db.exec(
+        `UPDATE watched_spots SET notified_transitions = open_transitions + 1 WHERE id = '${id}'`,
+      ),
     ).rejects.toThrow(/watched_spots_notify_check/);
     await expect(
       db.exec(`UPDATE watched_spots SET released_at = now() WHERE id = '${id}'`),

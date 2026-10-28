@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, like, notExists, sql } from 'drizzle-orm';
+import { isSyntheticProbeNumber } from '~/lib/channels/phone';
 import type { CapturedSend } from '~/lib/channel/preview-capture-transport';
 
 /**
@@ -14,6 +15,10 @@ import type { CapturedSend } from '~/lib/channel/preview-capture-transport';
  * lazily so importing the outbound seam never opens a connection.
  */
 export async function persistCapturedSend(send: CapturedSend, database?: Database): Promise<void> {
+  // Defence in depth beside the transport's own check: never store a real number.
+  if (!isSyntheticProbeNumber(send.to)) {
+    throw new Error('preview capture store refused: recipient_not_synthetic');
+  }
   const target = database ?? (await import('~/lib/db')).db();
   const urls = send.mediaUrls ?? null;
   await target.insert(schema.previewCapturedSends).values({
@@ -37,4 +42,30 @@ export async function readCapturedSends(database: Database, toE164: string) {
     .from(schema.previewCapturedSends)
     .where(eq(schema.previewCapturedSends.toE164, toE164))
     .orderBy(asc(schema.previewCapturedSends.capturedAt));
+}
+
+/**
+ * Ledger rows that say a capture happened (provider id `preview-capture-…`) with
+ * no row in `preview_captured_sends`, i.e. a persist that failed. The proof read-back
+ * reports this beside the captured count so a lost write shows up as a mismatch.
+ * Preview's database holds only fake families, so the count is not scoped further.
+ */
+export async function countUncapturedLedgerRows(database: Database): Promise<number> {
+  const cm = schema.channelMessages;
+  const rows = await database
+    .select({ n: sql<number>`count(*)::int` })
+    .from(cm)
+    .where(
+      and(
+        eq(cm.direction, 'out'),
+        like(cm.providerMessageId, 'preview-capture-%'),
+        notExists(
+          database
+            .select({ one: sql`1` })
+            .from(schema.previewCapturedSends)
+            .where(eq(schema.previewCapturedSends.providerMessageId, cm.providerMessageId)),
+        ),
+      ),
+    );
+  return Number(rows[0]?.n ?? 0);
 }

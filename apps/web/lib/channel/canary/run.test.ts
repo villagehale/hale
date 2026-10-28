@@ -169,9 +169,7 @@ describe('runInboundCanary · the injection', () => {
 
     const [call] = door.calls;
     if (!call) throw new Error('the canary never posted');
-    expect(call.url).toBe(
-      `${APP_URL}/api/channels/linq/inbound?version=${LINQ_WEBHOOK_VERSION}`,
-    );
+    expect(call.url).toBe(`${APP_URL}/api/channels/linq/inbound?version=${LINQ_WEBHOOK_VERSION}`);
 
     expect(
       verifyLinqWebhookSignature({

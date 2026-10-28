@@ -3,6 +3,7 @@ import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import { persistCapturedSend } from '~/lib/channel/preview-capture-store';
 import {
+  PreviewCaptureRefused,
   createPreviewCaptureTransport,
   previewCaptureRequested,
 } from '~/lib/channel/preview-capture-transport';
@@ -22,12 +23,20 @@ export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): Ch
   // flag is on outside preview or beside a configured Linq door.
   if (previewCaptureRequested()) {
     return createPreviewCaptureTransport(process.env, async (send) => {
-      // The capture already happened in memory; a failed write is named, not fatal,
-      // so a proof run still sees the send in this process.
+      // The capture already happened in memory, so the caller's ledger row says
+      // sent. A failed write is logged by name (never the body) and surfaces in the
+      // proof read-back as `uncapturedLedgered` > 0 (countUncapturedLedgerRows).
       try {
         await persistCapturedSend(send);
       } catch (err) {
-        console.error({ err }, 'outbound: preview capture not persisted');
+        console.error(
+          {
+            code: 'preview_capture_persist_failed',
+            providerMessageId: send.providerMessageId,
+            err: err instanceof Error && err.message ? err.message : String(err),
+          },
+          'outbound: preview capture not persisted; read-back will show a mismatch',
+        );
       }
     });
   }
@@ -50,6 +59,10 @@ export function configuredOutboundChannel(): 'imessage' {
 export function readSendRefusal(err: unknown): { code: string; permanent: boolean } | null {
   if (err instanceof LinqSendError) {
     return { code: err.code, permanent: err.permanent };
+  }
+  // A capture run refusing a real recipient is permanent: retrying cannot help.
+  if (err instanceof PreviewCaptureRefused) {
+    return { code: `preview_${err.reason}`, permanent: true };
   }
   return null;
 }

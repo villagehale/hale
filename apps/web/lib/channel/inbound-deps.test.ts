@@ -7,7 +7,11 @@ import {
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
-import { type MessageQueue, type QueueOptions, sendChannelMessageReceived } from '~/lib/channel/inbound-deps';
+import {
+  type MessageQueue,
+  type QueueOptions,
+  sendChannelMessageReceived,
+} from '~/lib/channel/inbound-deps';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 
 /**
