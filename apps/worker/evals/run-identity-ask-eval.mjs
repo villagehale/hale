@@ -45,8 +45,11 @@ import { tsImport } from 'tsx/esm/api';
 import { IDENTITY_ASK_FIXTURES } from './identity-ask-fixtures.mjs';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -228,6 +231,7 @@ const BROKEN_ASK =
   'your email like sam@example.com within 2 days? See www.example.com';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -357,6 +361,10 @@ async function main() {
     results.every((r) => r.failures.length === 0) && introOpeners.size >= MIN_DISTINCT_OPENERS;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('identity-ask', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

@@ -128,16 +128,22 @@ import { inventedName } from './coach-channel-name-gate.mjs';
 import { nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
+  DRY_SUBJECT_PLAN,
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
+  assertRunFlags,
   cacheGet,
   cacheKey,
   cachePut,
+  dryReportLine,
+  dryRequestPlanEntry,
+  dryStandInText,
   evalAnthropicRequest,
   evalRunTag,
   evalSubjectClient,
   evalSubjectRequest,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -827,7 +833,11 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
       record('find_activities');
       // What the model sees: the page's ref, never its URL (activity/tools.ts).
       const { url, ...shown } = webPick;
-      const result = { found: true, source: 'web', picks: [url ? { ...shown, ref: linkRef(url) } : shown] };
+      const result = {
+        found: true,
+        source: 'web',
+        picks: [url ? { ...shown, ref: linkRef(url) } : shown],
+      };
       toolOutputs.push(result);
       return result;
     },
@@ -1158,6 +1168,26 @@ function makeCachedAgentClient(
           return response;
         };
         const cached = await cacheGet(key);
+        if (isDryRun()) {
+          // --dry (VIL-467): price this leg as the guard would, cached or not, and never
+          // call. An uncached leg ends the turn with a max-length stand-in reply, so a
+          // tool loop past it is not priced (the worst case is per leg made, see report).
+          DRY_SUBJECT_PLAN.push({
+            ...dryRequestPlanEntry(`${tag}:agent`, request),
+            cached: Boolean(cached),
+          });
+          if (!cached) {
+            return note({
+              id: 'dry',
+              type: 'message',
+              role: 'assistant',
+              model: request.model,
+              content: [{ type: 'text', text: dryStandInText(request.max_tokens ?? 1024) }],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 0, output_tokens: 0 },
+            });
+          }
+        }
         if (cached) {
           if (Number.isFinite(cached.latencyMs)) subjectLatencies.push(cached.latencyMs);
           return note(cached.response);
@@ -1537,7 +1567,6 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
     }
   }
 
-
   // Language is the judge's. A function-word or script list is not a grade.
 
   // A draft that happened must be described as PENDING. "Moved" / "cancelled" /
@@ -1862,6 +1891,18 @@ const BROKEN_CALLS = [
 ];
 
 async function main() {
+  assertRunFlags([
+    '--broken',
+    '--show',
+    '--severed',
+    '--preflight',
+    '--anthropic-model',
+    '--nonce',
+    '--only',
+    '--min-samples',
+    '--env-file',
+    '--max-usd',
+  ]);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const show = process.argv.includes('--show');
@@ -2404,6 +2445,10 @@ async function main() {
   const allPass =
     accuracy === 1 && fabricating.length === 0 && missedAction.length === 0 && voiceOk;
 
+  if (isDryRun()) {
+    console.log(dryReportLine('coach-channel', [judge.plan]));
+    process.exit(0);
+  }
   console.log('\n--- gate ---');
   if (severed) {
     // EVERY continuity fixture must break, not merely the corpus on aggregate: three

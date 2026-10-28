@@ -214,9 +214,49 @@ describe('--dry needs a real ledger and lists instead of calling (914)', () => {
       );
       const verdict = await judge('case', payload);
       expect(verdict.score).toBe(5);
-      expect(judge.plan).toEqual([{ tag: `${prefix}:judge:case`, cached: true, score: 5 }]);
+      // VIL-467: a cached draw is also priced as if uncached, for the full re-record figure.
+      expect(judge.plan).toEqual([
+        expect.objectContaining({ tag: `${prefix}:judge:case`, cached: true, score: 5 }),
+      ]);
+      expect(judge.plan[0].worstUsd).toBeGreaterThan(0);
     } finally {
       rmSync(file, { force: true });
+    }
+  });
+});
+
+describe('VIL-467 · run flags and schema stand-ins', () => {
+  it('dryStandInValue follows the tool schema shape', async () => {
+    const { dryStandInValue } = await import('./harness.mjs');
+    const v = dryStandInValue(
+      {
+        type: 'object',
+        properties: {
+          texts: { type: 'array', items: { type: 'string' } },
+          ok: { type: 'boolean' },
+        },
+      },
+      2,
+    );
+    expect(v.texts).toEqual(['xxxxxx']);
+    expect(v.ok).toBe(true);
+  });
+
+  it('assertRunFlags exits on an unknown flag and on no mode, before anything runs', async () => {
+    const { assertRunFlags } = await import('./harness.mjs');
+    const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new Error(`exit ${code}`);
+    });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() => assertRunFlags(['--broken'], ['--bogus'])).toThrow('exit 2');
+      expect(() => assertRunFlags(['--broken'], ['--broken'])).toThrow('exit 2');
+      expect(() => assertRunFlags(['--broken'], ['--live', '--dry'])).toThrow('exit 2');
+      expect(() => assertRunFlags(['--broken'], ['--cached-only', '--broken'])).not.toThrow();
+      expect(() => assertRunFlags(['--only'], ['--dry', '--only=x'])).not.toThrow();
+    } finally {
+      exit.mockRestore();
+      err.mockRestore();
     }
   });
 });
