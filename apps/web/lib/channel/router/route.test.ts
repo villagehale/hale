@@ -5423,6 +5423,42 @@ describe('VIL-463 group scope', () => {
     expect((await routeChannelMessage(direct.deps, job())).status).toBe('resolved');
   });
 
+  it('a group text does not spend the menu Hale printed in the 1:1 chat', async () => {
+    function menuSpy() {
+      const spy = {
+        consumed: 0,
+        async pending() {
+          return {
+            id: 'menu-1',
+            polarity: 'yes' as const,
+            numbered: true,
+            options: [] as readonly DisambiguationOption[],
+          };
+        },
+        async mint() {
+          return { status: 'minted' as const };
+        },
+        async consume() {
+          spy.consumed += 1;
+          return 'spent' as const;
+        },
+      };
+      return spy;
+    }
+    const group = harness({ context: { body: '2', reply: GROUP_ROUTE, inGroup: true } });
+    const groupMenu = menuSpy();
+    group.deps.disambiguation = groupMenu as unknown as DisambiguationStore;
+    await routeChannelMessage(group.deps, job({ in_group: true }));
+    expect(groupMenu.consumed).toBe(0);
+
+    // Positive control: the same text in the 1:1 chat spends it.
+    const direct = harness({ context: { body: '2' } });
+    const directMenu = menuSpy();
+    direct.deps.disambiguation = directMenu as unknown as DisambiguationStore;
+    await routeChannelMessage(direct.deps, job());
+    expect(directMenu.consumed).toBe(1);
+  });
+
   async function overLimitGroupTurn(floodLine: FloodLineComposer) {
     const limiter = new FakeRateLimiter(() => NOW.getTime());
     for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {

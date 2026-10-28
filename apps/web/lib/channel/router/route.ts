@@ -1094,7 +1094,12 @@ async function routeChannelMessageInner(
   //
   // A reply that picks nothing falls straight through to the chain below with the menu
   // SPENT — one shot, whatever the outcome.
-  const picked = await consumePendingDisambiguation(deps, turn, answer);
+  // VIL-463: the menu was printed in the parent's own 1:1 chat, so a group text is never
+  // its answer and must not spend it — the same group-to-1:1 leak the open-question skip
+  // above closes.
+  const picked: Awaited<ReturnType<typeof consumePendingDisambiguation>> = inGroup
+    ? { status: 'carry_on', ordinalSpent: false }
+    : await consumePendingDisambiguation(deps, turn, answer);
   if (picked.status === 'handled') {
     return done(deps, job, {
       status: 'resolved',
