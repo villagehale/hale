@@ -122,3 +122,51 @@ function spanFact(title: string, start: Date, end: Date | null, allDay: boolean)
     declined: false,
   };
 }
+
+/**
+ * A STRUCTURED session time from a source (VIL-79). Only a source that publishes a real
+ * instant fills this; a free-text `when` ("Saturdays 9:15am") is never parsed into one,
+ * so a find without it carries no clash facts at all — never a guessed one.
+ */
+export interface StructuredSession {
+  startsAt: string;
+  endsAt: string | null;
+}
+
+/** Minimal read surface — the channel schedule reader satisfies it. */
+export interface KidClashReader {
+  eventsInWeek(familyId: string, start: Date, end: Date): Promise<ScheduleEvent[]>;
+  connectedWeek(
+    familyId: string,
+    start: Date,
+    end: Date,
+    dayKeys: readonly string[],
+  ): Promise<{ blocks: CalendarBlockView[] }>;
+}
+
+/**
+ * Clash facts for a structured session, read live over the session's own span (an
+ * instant reads just that instant). Null when the session is absent or malformed, so the
+ * caller omits the field rather than claiming "no clash".
+ */
+export async function sessionKidClashFacts(
+  reader: KidClashReader,
+  familyId: string,
+  session: StructuredSession | null | undefined,
+): Promise<KidClashFact[] | null> {
+  if (!session) return null;
+  const startsAt = new Date(session.startsAt);
+  const endsAt = session.endsAt ? new Date(session.endsAt) : null;
+  if (Number.isNaN(startsAt.getTime())) return null;
+  if (endsAt && (Number.isNaN(endsAt.getTime()) || endsAt <= startsAt)) return null;
+  const DAY = 24 * 60 * 60 * 1000;
+  // Read a day either side: an all-day or long block that starts earlier still overlaps.
+  const from = new Date(startsAt.getTime() - DAY);
+  const to = new Date((endsAt ?? startsAt).getTime() + DAY);
+  const dayKeys = [from, startsAt, to].map((d) => d.toISOString().slice(0, 10));
+  const [events, connected] = await Promise.all([
+    reader.eventsInWeek(familyId, from, to),
+    reader.connectedWeek(familyId, from, to, dayKeys),
+  ]);
+  return kidClashFacts({ startsAt, endsAt }, events, connected.blocks);
+}
