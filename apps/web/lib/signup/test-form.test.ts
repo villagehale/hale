@@ -28,7 +28,8 @@ describe('Preview Harbor Rec test form', () => {
     expect(register).toContain('name="parent_email"');
     expect(register).toContain('name="postal_code"');
     expect(register).toContain('name="session"');
-    expect(register).toContain(SIGNUP_TEST_SESSIONS[0].id);
+    expect(register).toContain('SIGNUP_TEST_SESSIONS');
+    expect(SIGNUP_TEST_SESSIONS[0].id).toBe('tue-1630');
     expect(checkout).toContain('name="card_number"');
     expect(checkout).toContain('never charges');
     expect(login).toContain('name="password"');

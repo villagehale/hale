@@ -49,11 +49,15 @@ export function HarborField({
   autoComplete?: string;
   children?: ReactNode;
 }) {
+  const id = `harbor-${name}`;
   return (
-    <label style={{ display: 'block', marginBottom: 16 }}>
-      <span style={{ display: 'block', marginBottom: 6 }}>{label}</span>
+    <div style={{ marginBottom: 16 }}>
+      <label htmlFor={id} style={{ display: 'block', marginBottom: 6 }}>
+        {label}
+      </label>
       {children ?? (
         <input
+          id={id}
           name={name}
           type={type}
           required={required}
@@ -61,7 +65,7 @@ export function HarborField({
           style={{ width: '100%', padding: '8px 10px', fontSize: 16 }}
         />
       )}
-    </label>
+    </div>
   );
 }
 

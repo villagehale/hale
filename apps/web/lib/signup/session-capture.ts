@@ -1,9 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { redactSignupAudit } from './audit';
-import {
-  type StoreProviderSessionResult,
-  storeProviderSession,
-} from './browser-use/vault';
+import { type StoreProviderSessionResult, storeProviderSession } from './browser-use/vault';
 import { signupProviderHost } from './consent';
 
 /**

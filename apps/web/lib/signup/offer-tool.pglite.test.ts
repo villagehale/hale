@@ -1,7 +1,7 @@
+import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { invokeTool } from '@hale/agent';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { offerSignupTool } from './offer-tool';
 import { echoOfferWriter } from './test-models';
@@ -22,7 +22,6 @@ describe('offer_signup coach verb', () => {
   it('records an offer from chat facts the parent already wrote', async () => {
     const seeded = await seedFamily(db.database);
     await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
-    FAMILY_CTX.familyId = seeded.familyId;
     const writer = echoOfferWriter();
     const tool = offerSignupTool({
       database: db.database,
@@ -68,7 +67,6 @@ describe('offer_signup coach verb', () => {
   it('refuses a URL the turn never saw', async () => {
     const seeded = await seedFamily(db.database);
     await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
-    FAMILY_CTX.familyId = seeded.familyId;
     const tool = offerSignupTool({
       database: db.database,
       familyId: seeded.familyId,

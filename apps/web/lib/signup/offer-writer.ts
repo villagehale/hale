@@ -8,7 +8,7 @@ import type { SignupSession } from './types';
  * THE TEXT THAT OFFERS A REGISTRATION (VIL-470).
  *
  * Hale's AI writes it from facts Hale actually saw. There is no fixed sentence
- * here, and nothing falls back to offer-copy.ts. A draft that drops the
+ * here, and nothing falls back to a locked parent sentence. A draft that drops the
  * registration URL, adds another one, or leaves out every session Hale saw
  * does not send.
  *
@@ -54,7 +54,11 @@ export function signupOfferViolations(text: string, facts: SignupOfferFacts): st
   if (tidy.length > MAX_CHARS) out.push('too long');
   const urls = tidy.match(URL_PATTERN) ?? [];
   if (!tidy.includes(facts.registrationUrl)) out.push('missing the registration link');
-  if (urls.some((url) => !facts.registrationUrl.startsWith(url) && !url.startsWith(facts.registrationUrl))) {
+  if (
+    urls.some(
+      (url) => !facts.registrationUrl.startsWith(url) && !url.startsWith(facts.registrationUrl),
+    )
+  ) {
     out.push('contains another link');
   }
   const grounded = facts.sessions.some((session) => tidy.includes(session.label));

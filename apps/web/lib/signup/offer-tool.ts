@@ -3,7 +3,11 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { authorizedSignupEnabled } from './flag';
-import { type OfferSignupResult, offerSignupFromFacts, sessionsFromModel } from './offer-from-facts';
+import {
+  type OfferSignupResult,
+  offerSignupFromFacts,
+  sessionsFromModel,
+} from './offer-from-facts';
 import { SIGNUP_OFFER_SOURCES, type SignupOfferWriter } from './offer-writer';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';

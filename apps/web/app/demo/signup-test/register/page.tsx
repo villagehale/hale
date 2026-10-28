@@ -25,7 +25,12 @@ export default async function SignupTestRegisterPage() {
         <HarborField label="Parent email" name="parent_email" type="email" />
         <HarborField label="Postal code" name="postal_code" />
         <HarborField label="Session" name="session">
-          <select name="session" required style={{ width: '100%', padding: '8px 10px', fontSize: 16 }}>
+          <select
+            id="harbor-session"
+            name="session"
+            required
+            style={{ width: '100%', padding: '8px 10px', fontSize: 16 }}
+          >
             <option value="">Choose</option>
             {SIGNUP_TEST_SESSIONS.map((session) => (
               <option key={session.id} value={session.id}>

@@ -11,7 +11,7 @@ import { captureProviderSession } from './session-capture';
 import { echoOfferWriter } from './test-models';
 
 const NOW = new Date('2026-10-28T15:00:00.000Z');
-const URL = 'https://harbor-rec.example/register';
+const HREF = 'https://harbor-rec.example/register';
 const SESSION = {
   id: 'tue-1630',
   label: 'Tue 4:30',
@@ -59,7 +59,7 @@ describe('offerSignupFromFacts (production caller)', () => {
         facts: {
           source: 'email',
           evidence: 'Fall parent and tot swim Tuesday 4:30 forty dollars',
-          registrationUrl: URL,
+          registrationUrl: HREF,
           sessions: [SESSION],
           approvedPriceCents: 4000,
           language: null,
@@ -70,7 +70,7 @@ describe('offerSignupFromFacts (production caller)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected recorded offer');
     expect(result.text).toContain('Tue 4:30');
-    expect(result.text).toContain(URL);
+    expect(result.text).toContain(HREF);
     expect(result.text).not.toContain(SIGNUP_OFFER_SENTENCE_TODO);
     expect(writer.facts[0]?.source).toBe('email');
     expect(writer.facts[0]?.evidence).toContain('Fall parent and tot swim');
@@ -80,8 +80,8 @@ describe('offerSignupFromFacts (production caller)', () => {
       .from(schema.authorizedSignupOffers)
       .where(eq(schema.authorizedSignupOffers.id, result.offerId));
     expect(row?.status).toBe('pending');
-    expect(row?.activityKey).toBe(activityKeyFor(URL));
-    expect(row?.registrationUrl).toBe(URL);
+    expect(row?.activityKey).toBe(activityKeyFor(HREF));
+    expect(row?.registrationUrl).toBe(HREF);
 
     const audits = await db.database
       .select({ after: schema.auditLog.after })
@@ -106,7 +106,7 @@ describe('offerSignupFromFacts (production caller)', () => {
         facts: {
           source: 'chat',
           evidence: 'can you sign us up for tuesday swim at https://harbor-rec.example/register',
-          registrationUrl: URL,
+          registrationUrl: HREF,
           sessions: [SESSION],
           approvedPriceCents: 4000,
           language: null,
@@ -136,7 +136,7 @@ describe('offerSignupFromFacts (production caller)', () => {
           facts: {
             source: 'flyer',
             evidence: '   ',
-            registrationUrl: URL,
+            registrationUrl: HREF,
             sessions: [SESSION],
             approvedPriceCents: null,
             language: null,
@@ -181,7 +181,7 @@ describe('offerSignupFromFacts (production caller)', () => {
         facts: {
           source: 'flyer',
           evidence: 'Harbor Rec parent and tot swim Tue 4:30 $40',
-          registrationUrl: URL,
+          registrationUrl: HREF,
           sessions: [SESSION],
           approvedPriceCents: 4000,
           language: null,
@@ -206,7 +206,7 @@ describe('offerSignupFromFacts (production caller)', () => {
       outcome: 'reached_checkout' as const,
       detail: 'none' as const,
       liveViewUrl: 'https://live.browser-use.com/s/fixture',
-      checkoutUrl: `${URL}/checkout`,
+      checkoutUrl: `${HREF}/checkout`,
       holdExpiresAt: new Date('2026-10-28T15:15:00.000Z'),
       cartTotalCents: 4000,
       confirmationNumber: null,
@@ -234,7 +234,11 @@ describe('offerSignupFromFacts (production caller)', () => {
             return { verdict: 'consent', sessionId: 'tue-1630' };
           },
         },
-        outcomeWriter: { async write() { return null; } },
+        outcomeWriter: {
+          async write() {
+            return null;
+          },
+        },
         browser: null,
         browserUseSignup: { run },
       },
@@ -247,7 +251,10 @@ describe('offerSignupFromFacts (production caller)', () => {
   });
 
   it('is the production caller: offer-copy is not imported', () => {
-    const source = readFileSync(fileURLToPath(new URL('./offer-from-facts.ts', import.meta.url)), 'utf8');
+    const source = readFileSync(
+      fileURLToPath(new URL('./offer-from-facts.ts', import.meta.url)),
+      'utf8',
+    );
     expect(source).toContain('recordSignupOffer');
     expect(source).not.toContain('offer-copy');
     expect(source).not.toContain('signupTryOffer');

@@ -3,7 +3,11 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { redactSignupAudit } from './audit';
-import { type SignupOfferFacts, type SignupOfferWriter, createSignupOfferWriter } from './offer-writer';
+import {
+  type SignupOfferFacts,
+  type SignupOfferWriter,
+  createSignupOfferWriter,
+} from './offer-writer';
 import { recordSignupOffer } from './store';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
@@ -13,8 +17,8 @@ import { registrationUrlAllowed } from './url';
  *
  * Hale's AI writes the offer from facts Hale actually saw — an email, a
  * calendar, a flyer, or this chat — then the row is stored. Nothing here
- * interpolates offer-copy.ts, and a failed write does not fall back to a
- * stock sentence. The parent's yes is someone else's job (`runAuthorizedSignup`).
+ * interpolates a locked parent sentence, and a failed write does not fall
+ * back to stock copy. The parent's yes is someone else's job (`runAuthorizedSignup`).
  */
 
 export type OfferSignupReason =
