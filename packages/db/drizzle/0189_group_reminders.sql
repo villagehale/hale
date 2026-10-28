@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS "group_reminders" (
 	CONSTRAINT "group_reminders_for_kind_check" CHECK ("for_kind" in ('sender', 'person', 'everyone')),
 	CONSTRAINT "group_reminders_delivery_check" CHECK ("delivery" in ('group', 'direct')),
 	CONSTRAINT "group_reminders_direct_sender_check" CHECK ("delivery" = 'group' OR "for_kind" = 'sender'),
+	CONSTRAINT "group_reminders_person_seated_check" CHECK ("for_kind" <> 'person' OR "for_phone_hash" IS NOT NULL),
 	CONSTRAINT "group_reminders_what_length_check" CHECK ("what" IS NULL OR char_length("what") <= 300)
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "group_reminders_source_uniq" ON "group_reminders" ("source_message_id", "ordinal");--> statement-breakpoint

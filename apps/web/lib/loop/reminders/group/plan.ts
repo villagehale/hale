@@ -43,9 +43,20 @@ export interface NeedsTime {
   day: string | null;
 }
 
+/**
+ * A reminder for someone else that no one seat in the chat answers to: nobody in it has
+ * that name, or more than one person does. Nothing is set, and the confirmation says so.
+ */
+export interface NotSet {
+  forName: string;
+  what: string;
+  why: 'not_in_chat' | 'name_shared';
+}
+
 export interface TurnPlan {
   set: PlannedReminder[];
   needsTime: NeedsTime[];
+  notSet: NotSet[];
   cancelIds: string[];
 }
 
@@ -80,9 +91,15 @@ function askedDay(date: string | null, timeZone: string): string | null {
   }
 }
 
+/**
+ * A reminder for someone else is tied to the one seat that has their first name, so it
+ * goes to someone who is in the chat and is dropped if they leave it. One no seat answers
+ * to is not set: posting it would tell the chat a person was reminded who never saw it.
+ */
 export function planReminderTurn(input: PlanInput): TurnPlan {
   const set: PlannedReminder[] = [];
   const needsTime: NeedsTime[] = [];
+  const notSet: NotSet[] = [];
   const seen = new Set<string>();
   for (const ask of input.reading.set.slice(0, MAX_SET_PER_TURN)) {
     const what = cleanWhat(ask.what);
@@ -101,9 +118,17 @@ export function planReminderTurn(input: PlanInput): TurnPlan {
         (seat) => seat.firstName !== null && sameFirstName(named, seat.firstName),
       );
       const match = matches.length === 1 ? matches[0] : undefined;
-      forUserId = match?.userId ?? null;
-      forPhoneHash = match?.phoneHash ?? null;
-      forName = match?.firstName ?? named;
+      if (!match) {
+        notSet.push({
+          forName: named,
+          what,
+          why: matches.length === 0 ? 'not_in_chat' : 'name_shared',
+        });
+        continue;
+      }
+      forUserId = match.userId;
+      forPhoneHash = match.phoneHash;
+      forName = match.firstName;
     }
     const asked = askedInstant(ask, input.now, input.timeZone);
     let delivery = deliveryFor(ask, input.asker);
@@ -137,5 +162,5 @@ export function planReminderTurn(input: PlanInput): TurnPlan {
         .filter((id): id is string => typeof id === 'string'),
     ),
   ];
-  return { set, needsTime, cancelIds };
+  return { set, needsTime, notSet, cancelIds };
 }

@@ -1,6 +1,6 @@
 ---
 name: group-reminder-voice
-whenToUse: Someone in a family group asked Hale for a reminder. Code has worked out the facts — what, when, where it will arrive, and what was cancelled — or it is time to send the reminder itself. You write the whole text.
+whenToUse: Someone in a family group asked Hale for a reminder. Code has worked out the facts — what, when, where it will arrive, what was cancelled and what could not be set — or it is time to send the reminder itself. You write the whole text.
 task: speak
 tools: []
 ---
@@ -16,7 +16,7 @@ the chat who offered to remind everyone would: short, plain, warm, in their lang
 
 - `kind` — which text this is.
   - `confirm` — the reply in the group to the person who just asked. It confirms what was
-    set or cancelled, or asks when.
+    set or cancelled, asks when, and says what could not be set.
   - `reminder` — the reminder itself, at the time it was set for.
 - `language` — write the whole text in this language.
 - `audience` — `group`: the whole chat reads it, even when it speaks to one person by
@@ -42,6 +42,9 @@ For a `confirm`:
 - `cancelled` — each reminder just cancelled, with `what` and `when`.
 - `needsTime` — each reminder they want but gave no time for, with `forName`,
   `forEveryone` and `what` as in `set`, and `day`: the day they named, or null.
+- `notSet` — each reminder they asked for someone else that was not set, with `forName`
+  (the name as they wrote it), `what`, and `why`: `not_in_chat` when nobody in this chat
+  has that name, `name_shared` when more than one person here does.
 
 For a `reminder`:
 
@@ -67,7 +70,12 @@ For a `reminder`:
   in the chat.
 - For each reminder in `cancelled`: say it is cancelled, by what it was about.
 - `needsTime` not empty: ask them when, naming what each one is about; more than one is
-  still a single question. When nothing was set or cancelled, that question is all they
+  still a single question.
+- For each reminder in `notSet`: say plainly that it was not set, naming who it was for
+  and what it was about. `not_in_chat`: you can only remind people who are in this chat.
+  `name_shared`: more than one person here has that name, so you could not tell which one.
+  Never suggest it will reach them some other way.
+- When nothing was set or cancelled, the question and what you could not set are all they
   need from you.
 - Phrase each time the way a person would from `now`: today, tonight, tomorrow, or the
   weekday, with the clock time. Write clock times the way the language naturally writes

@@ -50,6 +50,8 @@ export type GroupReminderHandled =
   | 'group_reminder_set'
   | 'group_reminder_asked_when'
   | 'group_reminder_cancelled'
+  /** Every reminder asked for was for someone no one seat in the chat answers to. */
+  | 'group_reminder_not_set'
   | 'group_reminder_unwritten'
   | 'group_reminder_not_sent'
   /** The group's audience changed during the turn and may not hear the confirmation. */
@@ -168,7 +170,12 @@ export async function takeGroupReminderTurn(
       : null,
     openRefs,
   });
-  if (plan.set.length === 0 && plan.needsTime.length === 0 && plan.cancelIds.length === 0) {
+  if (
+    plan.set.length === 0 &&
+    plan.needsTime.length === 0 &&
+    plan.notSet.length === 0 &&
+    plan.cancelIds.length === 0
+  ) {
     return pass('nothing_usable');
   }
 
@@ -330,11 +337,13 @@ export async function takeGroupReminderTurn(
       set: pending.length,
       cancelled: cancelled.length,
       askedWhen: plan.needsTime.length,
+      notSet: plan.notSet.length,
       direct: pending.filter((row) => row.delivery === 'direct').length,
     },
     'group reminder: confirmed in the group',
   );
   if (pending.length > 0) return { handled: true, outcome: 'group_reminder_set' };
-  if (cancelled.length > 0) return { handled: true, outcome: 'group_reminder_cancelled' };
-  return { handled: true, outcome: 'group_reminder_asked_when' };
+  if (cancelling.length > 0) return { handled: true, outcome: 'group_reminder_cancelled' };
+  if (plan.needsTime.length > 0) return { handled: true, outcome: 'group_reminder_asked_when' };
+  return { handled: true, outcome: 'group_reminder_not_set' };
 }

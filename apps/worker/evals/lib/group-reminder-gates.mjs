@@ -90,9 +90,9 @@ export function readingFailures(expect, reading, { instantOf, sameName }) {
 /**
  * The plan against the case, and the rules every plan must keep whatever the case: a
  * reminder asked for by someone who is not a Hale customer is never a 1:1 text (decision
- * 2026-10-21), nobody is texted 1:1 because someone else asked, and nothing is due inside
- * the quiet hours of where it is going. `quietAt(planned)` answers the last with the
- * runtime's own windows.
+ * 2026-10-21), nobody is texted 1:1 because someone else asked, a reminder for someone else
+ * is tied to their seat in the chat, and nothing is due inside the quiet hours of where it
+ * is going. `quietAt(planned)` answers the last with the runtime's own windows.
  */
 export function planFailures(expect, plan, { askerIsCustomer, quietAt }) {
   const failures = [];
@@ -117,12 +117,19 @@ export function planFailures(expect, plan, { askerIsCustomer, quietAt }) {
   if (plan.needsTime.length !== wantAsk) {
     failures.push(`${plan.needsTime.length} asked when, want ${wantAsk}`);
   }
+  const wantNotSet = expect.notSet ?? 0;
+  if (plan.notSet.length !== wantNotSet) {
+    failures.push(`${plan.notSet.length} not set, want ${wantNotSet}`);
+  }
   for (const [i, got] of plan.set.entries()) {
     if (got.delivery === 'direct' && !askerIsCustomer) {
       failures.push(`reminder ${i + 1}: a non-customer's reminder would be texted 1:1`);
     }
     if (got.delivery === 'direct' && got.forKind !== 'sender') {
       failures.push(`reminder ${i + 1}: someone would be texted 1:1 because another person asked`);
+    }
+    if (got.forKind === 'person' && !got.forPhoneHash) {
+      failures.push(`reminder ${i + 1}: for ${got.forName}, who has no seat in the chat`);
     }
     if (quietAt(got)) failures.push(`reminder ${i + 1}: due inside quiet hours`);
   }

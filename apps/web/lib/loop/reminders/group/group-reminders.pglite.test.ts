@@ -555,6 +555,52 @@ describe('asking for a reminder in the group', () => {
     expect(await verbs(home.familyId)).toContain('group_reminder_sent');
   });
 
+  it('sets nothing for someone who is not in the chat, and tells the group so', async () => {
+    const home = await seedHousehold();
+    const { ports, sends, voice } = turnPorts(
+      reading([ask({ for: 'person', name: 'Jordan', what: 'drop off the car seat' })]),
+    );
+
+    const turn = await takeGroupReminderTurn(
+      db.database,
+      inbound(PRIYA, 'Hale remind Jordan at 4 to drop off the car seat', 'in-jordan'),
+      ports,
+    );
+
+    expect(turn).toEqual({ handled: true, outcome: 'group_reminder_not_set' });
+    expect(voice.calls[0]).toMatchObject({
+      kind: 'confirm',
+      set: [],
+      needsTime: [],
+      notSet: [{ forName: 'Jordan', what: 'drop off the car seat', why: 'not_in_chat' }],
+    });
+    expect(sends).toEqual([
+      { chatId: CHAT, text: 'confirm 0 set, 0 cancelled, 0 asked', replyTo: 'in-jordan' },
+    ]);
+    expect(await reminders()).toEqual([]);
+    expect(await verbs(home.familyId)).not.toContain('group_reminder_set');
+  });
+
+  it('refuses to store a reminder for someone else that no seat is tied to', async () => {
+    const home = await seedHousehold();
+    await expect(
+      db.database.insert(schema.groupReminders).values({
+        familyId: home.familyId,
+        chatId: CHAT,
+        sourceMessageId: 'in-unseated',
+        askedByUserId: home.priya,
+        askedByPhoneHash: phoneBlindIndex(PRIYA),
+        forKind: 'person',
+        forName: 'Jordan',
+        what: 'drop off the car seat',
+        askedForAt: THURSDAY_FOUR,
+        deliverAt: THURSDAY_FOUR,
+        delivery: 'group',
+        status: 'scheduled',
+      }),
+    ).rejects.toThrow(/group_reminders_person_seated_check/);
+  });
+
   it('moves a reminder out of quiet hours and tells the voice why', async () => {
     await seedHousehold();
     const { ports, voice } = turnPorts(reading([ask({ time: '21:30' })]));
@@ -1253,6 +1299,27 @@ describe('when a group reminder is due', () => {
     expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({ dropped: 1 });
     expect(tick.sends).toEqual([]);
     expect((await reminders())[0]).toMatchObject({ status: 'dropped', statusReason: 'asker_gone' });
+  });
+
+  it('drops one for someone who left the chat before it fired, by name', async () => {
+    await seedHousehold();
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(PRIYA, 'remind Dan at 4 to call the coach', 'in-for-dan'),
+      turnPorts(reading([ask({ for: 'person', name: 'Dan', what: 'call the coach' })])).ports,
+    );
+    await db.database
+      .update(schema.linqGroupMembers)
+      .set({ removedAt: NOW })
+      .where(eq(schema.linqGroupMembers.phoneE164Hash, phoneBlindIndex(DAN)));
+
+    const tick = tickPorts(THURSDAY_FOUR);
+    expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({ dropped: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'dropped',
+      statusReason: 'recipient_gone',
+    });
   });
 
   it('drops a 1:1 reminder whose asker is no longer a customer, and never posts it in the group', async () => {

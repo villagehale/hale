@@ -14,7 +14,7 @@ export function confirmFacts(input: {
   memberWords: string;
   now: Date;
   timeZone: string;
-  plan: Pick<TurnPlan, 'set' | 'needsTime'>;
+  plan: Pick<TurnPlan, 'set' | 'needsTime' | 'notSet'>;
   cancelled: readonly { what: string | null; deliverAt: Date }[];
 }): ConfirmFacts {
   const { timeZone } = input;
@@ -45,6 +45,7 @@ export function confirmFacts(input: {
       what: ask.what,
       day: ask.day,
     })),
+    notSet: input.plan.notSet.map(({ forName, what, why }) => ({ forName, what, why })),
   };
 }
 

@@ -40,6 +40,7 @@ const FACTS: ConfirmFacts = {
   ],
   cancelled: [],
   needsTime: [],
+  notSet: [],
 };
 
 afterEach(() => {

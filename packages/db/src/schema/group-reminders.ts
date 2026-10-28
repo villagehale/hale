@@ -22,13 +22,14 @@ import { users } from './users.js';
  * texted 1:1 (decision 2026-10-21).
  *
  * People are held by the group seat's blind index, never by number, so a STOP or a
- * removal can cancel what they asked for or what is for them. `what` is the member's own
- * words; it is cleared when the row closes. `pending` is the row before its confirmation
- * reached the chat: an unconfirmed reminder never fires. `sending` is a tick's claim while
- * it checks and writes the text; a STOP or a cancel still takes it back. `in_flight` is
- * the text going out: written, every check passed, and past the point a STOP can take it
- * back. Either delivery's text is on `channel_messages` under the dedupe key
- * `linq:group_reminder:<id>` (group) or `linq:group_reminder_direct:<id>` (1:1).
+ * removal can cancel what they asked for or what is for them; a `person` reminder always
+ * names the seat it is for. `what` is the member's own words; it is cleared when the row
+ * closes. `pending` is the row before its confirmation reached the chat: an unconfirmed
+ * reminder never fires. `sending` is a tick's claim while it checks and writes the text; a
+ * STOP or a cancel still takes it back. `in_flight` is the text going out: written, every
+ * check passed, and past the point a STOP can take it back. Either delivery's text is on
+ * `channel_messages` under the dedupe key `linq:group_reminder:<id>` (group) or
+ * `linq:group_reminder_direct:<id>` (1:1).
  */
 export const GROUP_REMINDER_STATUSES = [
   'pending',
@@ -94,6 +95,10 @@ export const groupReminders = pgTable(
     directOnlyForSender: check(
       'group_reminders_direct_sender_check',
       sql`${table.delivery} = 'group' OR ${table.forKind} = 'sender'`,
+    ),
+    personSeated: check(
+      'group_reminders_person_seated_check',
+      sql`${table.forKind} <> 'person' OR ${table.forPhoneHash} IS NOT NULL`,
     ),
     whatLength: check(
       'group_reminders_what_length_check',

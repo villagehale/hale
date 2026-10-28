@@ -82,13 +82,39 @@ describe('planReminderTurn', () => {
     });
   });
 
-  it('keeps the name of someone who is not in the chat, with no seat', () => {
-    const plan = planReminderTurn(input({ set: [ask({ for: 'person', name: 'Sam' })] }));
-    expect(plan.set[0]).toMatchObject({ forUserId: null, forPhoneHash: null, forName: 'Sam' });
+  it('sets nothing for someone who is not in the chat, and says who', () => {
+    const plan = planReminderTurn(
+      input({
+        set: [
+          ask({ for: 'person', name: 'Sam' }),
+          ask({ for: 'person', name: 'Sam', what: 'call the vet', time: null }),
+          ask({ for: 'person', name: 'Dan', what: 'bring the chairs' }),
+        ],
+      }),
+    );
+    expect(plan.set.map((planned) => planned.forName)).toEqual(['Dan']);
+    expect(plan.needsTime).toEqual([]);
+    expect(plan.notSet).toEqual([
+      { forName: 'Sam', what: 'pick up Maya from swim', why: 'not_in_chat' },
+      { forName: 'Sam', what: 'call the vet', why: 'not_in_chat' },
+    ]);
+  });
+
+  it('sets nothing for a name two people in the chat share', () => {
+    const secondDan = { userId: 'u-dan-2', phoneHash: 'h-dan-2', firstName: 'Dan' };
+    const plan = planReminderTurn(
+      input({ seats: [GRAN, DAN, PRIYA, secondDan], set: [ask({ for: 'person', name: 'Dan' })] }),
+    );
+    expect(plan.set).toEqual([]);
+    expect(plan.notSet).toEqual([
+      { forName: 'Dan', what: 'pick up Maya from swim', why: 'name_shared' },
+    ]);
   });
 
   it('skips a reminder for a person with no name', () => {
-    expect(planReminderTurn(input({ set: [ask({ for: 'person', name: null })] })).set).toEqual([]);
+    const plan = planReminderTurn(input({ set: [ask({ for: 'person', name: null })] }));
+    expect(plan.set).toEqual([]);
+    expect(plan.notSet).toEqual([]);
   });
 
   it('moves a reminder asked for inside quiet hours and says which way', () => {

@@ -118,12 +118,17 @@ describe('planFailures', () => {
   const want = { plan: [{ delivery: 'group', moved: 'earlier' }] };
 
   it('passes the plan the case wants', () => {
-    const plan = { set: [planned()], needsTime: [], cancelIds: [] };
+    const plan = { set: [planned()], needsTime: [], notSet: [], cancelIds: [] };
     expect(planFailures(want, plan, { askerIsCustomer: false, quietAt })).toEqual([]);
   });
 
   it("never lets a non-customer's reminder go 1:1, whatever the case says", () => {
-    const plan = { set: [planned({ delivery: 'direct' })], needsTime: [], cancelIds: [] };
+    const plan = {
+      set: [planned({ delivery: 'direct' })],
+      needsTime: [],
+      notSet: [],
+      cancelIds: [],
+    };
     const failures = planFailures({ plan: [{ delivery: 'direct', moved: 'earlier' }] }, plan, {
       askerIsCustomer: false,
       quietAt,
@@ -135,6 +140,7 @@ describe('planFailures', () => {
     const plan = {
       set: [planned({ forKind: 'person', delivery: 'direct' })],
       needsTime: [],
+      notSet: [],
       cancelIds: [],
     };
     const failures = planFailures(want, plan, { askerIsCustomer: true, quietAt });
@@ -147,6 +153,7 @@ describe('planFailures', () => {
     const plan = {
       set: [planned({ moved: null, deliverAt: planned().askedFor })],
       needsTime: [],
+      notSet: [],
       cancelIds: [],
     };
     const failures = planFailures({ ...want, needsTime: 1 }, plan, {
@@ -158,6 +165,25 @@ describe('planFailures', () => {
       '0 asked when, want 1',
       'reminder 1: due inside quiet hours',
     ]);
+  });
+
+  it('never sets a reminder for someone with no seat in the chat, whatever the case says', () => {
+    const plan = {
+      set: [planned({ forKind: 'person', forUserId: null, forPhoneHash: null, forName: 'Sam' })],
+      needsTime: [],
+      notSet: [],
+      cancelIds: [],
+    };
+    expect(planFailures(want, plan, { askerIsCustomer: false, quietAt })).toEqual([
+      'reminder 1: for Sam, who has no seat in the chat',
+    ]);
+  });
+
+  it('fails a plan that sets what it should have said it could not', () => {
+    const plan = { set: [planned()], needsTime: [], notSet: [], cancelIds: [] };
+    expect(
+      planFailures({ plan: [], notSet: 1 }, plan, { askerIsCustomer: false, quietAt }),
+    ).toEqual(['1 reminders planned, want 0', '0 not set, want 1']);
   });
 });
 
@@ -184,8 +210,9 @@ describe('fixedCopyFailures', () => {
 describe('the broken arm', () => {
   it('texts the asker 1:1 and keeps the quiet-hours time', () => {
     const plan = brokenPlan({
-      set: [planned(), planned({ forKind: 'person', forName: 'Dan' })],
+      set: [planned(), planned({ forKind: 'person', forName: 'Dan', forPhoneHash: 'h-dan' })],
       needsTime: [],
+      notSet: [],
       cancelIds: [],
     });
     expect(plan.set[0]).toMatchObject({ delivery: 'direct', moved: null });

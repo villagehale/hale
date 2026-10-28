@@ -261,7 +261,7 @@ async function fireOne(
     now,
     groupHeld,
     askerSeated: askerSeat !== null,
-    recipientSeated: row.forPhoneHash ? recipientSeat !== null : null,
+    recipientSeated: row.forKind === 'person' ? recipientSeat !== null : null,
     audienceAllowed,
     askerCustomer,
     quietNow: await quietNowFor(database, row, seats, askerSeat, now),

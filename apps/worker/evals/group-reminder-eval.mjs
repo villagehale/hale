@@ -6,8 +6,9 @@
 // builders, the fire decision and the refusals are imported from
 // apps/web/lib/loop/reminders/group, not replicated. Code gates only structure — the
 // reading's fields, the plan the runtime derives from it (where each reminder goes, quiet
-// hours, a non-customer never 1:1), the STOP drop, the refusals and fixed copy. Whether a
-// text carries its facts, in the right language and register, is the judge's call.
+// hours, a non-customer never 1:1, nobody reminded who is not in the chat), the STOP drop,
+// the refusals and fixed copy. Whether a text carries its facts, in the right language and
+// register, is the judge's call.
 //
 //   node evals/group-reminder-eval.mjs --dry                    # offline: gates + worst case
 //   node evals/group-reminder-eval.mjs --broken --dry           # offline calibration: must FAIL
@@ -328,7 +329,7 @@ async function main() {
         now: item.deliverAt,
         groupHeld: true,
         askerSeated: fire.askerSeated,
-        recipientSeated: item.forPhoneHash ? true : null,
+        recipientSeated: item.forKind === 'person' ? item.forPhoneHash !== null : null,
         audienceAllowed: true,
         askerCustomer: item.delivery === 'direct' ? asker.haleCustomer : true,
         quietNow: web.inQuiet(item.deliverAt, quiet.timeZone, quiet.windows),

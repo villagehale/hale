@@ -12,9 +12,10 @@ import type { QuietShift } from './policy';
  * VIL-448 (T26) — every word a group reminder says, written by the model from facts.
  *
  * Two texts: the `confirm` reply in the group (what was set, when, where it arrives, how to
- * cancel; or the one question asking when), and the `reminder` itself. Code owns the facts
- * and the model owns the words and the shape. There is no fixed copy and no fallback: a
- * text that cannot be written after two attempts is null, and null sends nothing.
+ * cancel; the one question asking when; what could not be set), and the `reminder` itself.
+ * Code owns the facts and the model owns the words and the shape. There is no fixed copy
+ * and no fallback: a text that cannot be written after two attempts is null, and null
+ * sends nothing.
  */
 
 export const GROUP_REMINDER_VOICE_SKILL = 'group-reminder-voice';
@@ -44,6 +45,7 @@ export interface ConfirmFacts {
   set: ConfirmSetFact[];
   cancelled: { what: string; when: string }[];
   needsTime: { forName: string | null; forEveryone: boolean; what: string; day: string | null }[];
+  notSet: { forName: string; what: string; why: 'not_in_chat' | 'name_shared' }[];
 }
 
 export interface ReminderTextFacts {

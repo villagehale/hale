@@ -133,6 +133,35 @@ export const GROUP_REMINDER_FIXTURES = [
     ],
   },
   {
+    // Jordan is not in this chat: nobody seated has the name, so nothing is set.
+    id: 'not-in-chat',
+    household: 'shah',
+    sender: 'Priya',
+    message: 'Hale remind Jordan at 5 today to drop off the car seat',
+    expect: {
+      request: 'reminders',
+      language: 'en',
+      set: [
+        {
+          for: 'person',
+          name: 'Jordan',
+          what: 'drop off the car seat',
+          date: '2026-10-28',
+          time: '17:00',
+          inMinutes: null,
+          where: ['unsaid', 'group'],
+        },
+      ],
+      plan: [],
+      notSet: 1,
+    },
+    confirmMustSay: [
+      'no reminder was set for Jordan to drop off the car seat',
+      'that is because Hale can only remind people who are in this chat',
+      'it does not say or imply that Jordan will be reminded some other way',
+    ],
+  },
+  {
     id: 'quiet-hours',
     household: 'shah',
     sender: 'Ruth',

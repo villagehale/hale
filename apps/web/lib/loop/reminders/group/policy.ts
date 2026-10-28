@@ -205,7 +205,7 @@ export interface FireState {
   /** The family still holds this chat. */
   groupHeld: boolean;
   askerSeated: boolean;
-  /** Null when the reminder names no seated person. */
+  /** Whether the person it is for is still in the chat. Null when it is not for someone else. */
   recipientSeated: boolean | null;
   /** The group may hear this line now. Read for a group delivery only. */
   audienceAllowed: boolean;
