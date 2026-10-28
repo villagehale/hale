@@ -10,6 +10,7 @@ import { CALENDAR_CANCEL_SMS_TEMPLATE_KEY, calendarCancelSmsRenderer } from './c
 import { CALENDAR_INVITE_SMS_TEMPLATE_KEY, calendarInviteSmsRenderer } from './calendar-invite/sms';
 import { caregiverReminderRenderer } from './caregiver';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from './caregiver/keys';
+import { MEMBER_REMINDER_TEMPLATE_KEY, memberReminderRenderer } from './member-reminder';
 import { reminderRenderer } from './reminder';
 
 /**
@@ -37,6 +38,9 @@ export const loopTemplateRenderer: TemplateRenderer = {
     // generic shell and report it as a successful send.
     if (message.templateKey === CAREGIVER_REMINDER_TEMPLATE_KEY) {
       return caregiverReminderRenderer.render(message, channel, nameLevel);
+    }
+    if (message.templateKey === MEMBER_REMINDER_TEMPLATE_KEY) {
+      return memberReminderRenderer.render(message, channel, nameLevel);
     }
     return defaultLoopRenderer.render(message, channel, nameLevel);
   },

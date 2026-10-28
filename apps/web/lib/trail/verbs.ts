@@ -186,6 +186,13 @@ export const AUDIT_VERBS = [
   'linq_group_coach_held',
   'group_line_unsent',
   'group_line_locked_fallback',
+  // VIL-448. A reminder anyone in the family group asked for.
+  'group_reminder_set',
+  'group_reminder_cancelled',
+  'group_reminder_sent',
+  'group_reminder_dropped',
+  'group_reminder_failed',
+  'group_reminder_unwritten',
   'linq_multi_family_joined',
   'linq_multi_family_left',
   'linq_multi_family_unseated',
@@ -772,6 +779,32 @@ const VERBS: Record<AuditVerb, Verb> = {
   group_line_locked_fallback: {
     sentence: 'Hale used its standard wording to ask who is who in your family group',
     family: 'note',
+  },
+  group_reminder_set: {
+    sentence: 'Someone in your family group asked Hale for a reminder',
+    family: 'done',
+  },
+  group_reminder_cancelled: {
+    sentence: 'A reminder asked for in your family group was cancelled',
+    family: 'note',
+  },
+  group_reminder_sent: {
+    sentence: 'Hale sent a reminder someone in your family group asked for',
+    family: 'done',
+  },
+  group_reminder_dropped: {
+    sentence:
+      'Hale did not send a reminder from your family group because it could no longer go out as asked',
+    family: 'note',
+  },
+  group_reminder_failed: {
+    sentence: 'A reminder asked for in your family group could not be sent',
+    family: 'problem',
+  },
+  group_reminder_unwritten: {
+    sentence:
+      'Hale did not answer a reminder request in your family group because it could not write the reply well',
+    family: 'problem',
   },
   linq_multi_family_joined: {
     sentence: 'A family joined a shared thread',

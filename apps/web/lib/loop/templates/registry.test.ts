@@ -40,4 +40,21 @@ describe('loopTemplateRenderer', () => {
     const empty = msg({ templateKey: 'reminder_t1h', payload: {} });
     expect(() => loopTemplateRenderer.render(empty, 'sms', 'generic')).toThrow(/no text/i);
   });
+
+  it('sends a group-asked reminder 1:1 exactly as the model wrote it (VIL-448)', () => {
+    const written = 'Priya, grab Maya from swim. You asked me in the family chat.';
+    const sms = loopTemplateRenderer.render(
+      msg({ templateKey: 'member_reminder', payload: { text: written } }),
+      'sms',
+      'generic',
+    );
+    expect(sms).toEqual({ kind: 'sms', text: written, recordBody: true });
+    expect(() =>
+      loopTemplateRenderer.render(
+        msg({ templateKey: 'member_reminder', payload: { text: ' ' } }),
+        'sms',
+        'generic',
+      ),
+    ).toThrow(/missing text/);
+  });
 });
