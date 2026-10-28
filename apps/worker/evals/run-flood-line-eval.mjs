@@ -44,7 +44,7 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'flood-line.md
 const MIN_DISTINCT = 3;
 
 const WATCH =
-  'Tells the parent, privately, that a lot came in at once and Hale is not answering this one now, and that they can text again later. No promise Hale will answer this text later, no wait time, no scolding, no mention of anyone else.';
+  'Tells the parent, privately, that a lot came in at once and that this one will not get a reply. Must not imply Hale will come back to this message on its own. Saying they can text again and Hale will answer that new text is true and allowed.';
 
 const FIXTURES = [
   ...Array.from({ length: 4 }, (_, i) => ({
@@ -136,14 +136,20 @@ const JUDGE_SYSTEM = [
   'parent who has sent many texts in a short time. Hale is not answering their latest text.',
   'Hale composed it BLIND: it saw only that situation, whether they wrote in a group chat or',
   'their own chat, and the language. Links and digits are ALREADY verified mechanically;',
-  "length, sentence count and punctuation are the writer's own. Judge only MEANING and voice.",
+  "length, sentence count and punctuation are the writer's own. Judge only MEANING.",
   'You are given the message, the language and watchFor. Score 1-5.',
-  'A 5 tells them plainly, warmly and in the first person, in the requested language, that a',
-  'lot came in at once, Hale is not answering this one now, and they can text again later.',
-  'A LOW score is any of: promising Hale will answer this text later; naming or implying a',
-  'specific wait or limit; scolding or blaming the parent; mentioning other people in a group',
-  'or what was said; support-desk language; third person ("Hale is"); the wrong language;',
-  'pretending to answer their question.',
+  'Score ONLY these facts, by meaning, not wording, and apply them the same way every time:',
+  '(1) the line says a lot came in at once;',
+  '(2) the line says this one will not get a reply;',
+  '(3) the line must not imply Hale will come back to this message on its own.',
+  'A 5 has all three, in the requested language, in the first person.',
+  'A LOW score is missing (1) or (2), or implying Hale will pick this same message up later',
+  'by itself. Apply (3) by meaning: any implication that Hale will return to THIS message',
+  'without the parent sending it again is a miss.',
+  'Do NOT penalize a conditional that they can text again and Hale will answer that new',
+  'text. That is true. The idea "text me again and I will answer then", in any wording or',
+  'language, is allowed. It is not a promise to come back to this message. Apply that the',
+  'same way every time: do not score one wording of it as a 2 and another as a 4.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
