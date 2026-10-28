@@ -126,7 +126,7 @@ const REMINDER_REFERENCE_TEXTS = [
       'Event "Parent & Tot Skate", Tuesday Oct 27, 10:30 AM. Now: Monday evening. Language: English.',
     text: 'Parent & Tot Skate is tomorrow morning at 10:30.',
     score: 5,
-    why: "Every fact given is there: the event, the day from now, and the time. Nothing invented.",
+    why: 'Every fact given is there: the event, the day from now, and the time. Nothing invented.',
   },
   {
     facts: 'Event "Soccer", tomorrow 5:30-6:30 PM. Language: Chinese.',
