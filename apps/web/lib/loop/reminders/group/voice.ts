@@ -19,6 +19,7 @@ import type { QuietShift } from './policy';
 
 export const GROUP_REMINDER_VOICE_SKILL = 'group-reminder-voice';
 export const GROUP_REMINDER_VOICE_TOOL = 'group_reminder_text';
+export const GROUP_REMINDER_VOICE_TOOL_DESCRIPTION = 'The one text Hale sends.';
 export const GROUP_REMINDER_VOICE_MAX_TOKENS = 300;
 export const GROUP_REMINDER_MAX_CHARS = 400;
 export const GROUP_REMINDER_MAX_ATTEMPTS = 2;
@@ -122,7 +123,7 @@ export function createGroupReminderVoice(
             system: skill.instructions,
             userMessage: groupReminderVoiceUserMessage(facts),
             toolName: GROUP_REMINDER_VOICE_TOOL,
-            toolDescription: 'The one text Hale sends.',
+            toolDescription: GROUP_REMINDER_VOICE_TOOL_DESCRIPTION,
             inputJsonSchema: GROUP_REMINDER_VOICE_SCHEMA,
             schema: outputSchema,
             maxTokens: GROUP_REMINDER_VOICE_MAX_TOKENS,

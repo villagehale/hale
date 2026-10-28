@@ -19,6 +19,8 @@ import type { ReminderAsk } from './policy';
 export const GROUP_REMINDER_READ_SKILL = 'group-reminder-read';
 export const GROUP_REMINDER_READ_TOOL = 'group_reminder_read';
 export const GROUP_REMINDER_READ_MAX_TOKENS = 600;
+export const GROUP_REMINDER_READ_TOOL_DESCRIPTION =
+  'Return whether this group message asks for reminders, and each one.';
 /** How many earlier group lines the read sees. */
 export const GROUP_REMINDER_RECENT_LINES = 6;
 
@@ -66,7 +68,7 @@ const askSchema = z.object({
   where: z.enum(['group', 'private', 'unsaid']),
 });
 
-const outputSchema = z.object({
+export const groupReminderReadingSchema = z.object({
   request: z.enum(['reminders', 'other']),
   set: z.array(askSchema),
   cancel: z.array(z.string()),
@@ -141,9 +143,9 @@ export function createGroupReminderReader(
       system: skill.instructions,
       userMessage: groupReminderReadUserMessage(input),
       toolName: GROUP_REMINDER_READ_TOOL,
-      toolDescription: 'Return whether this group message asks for reminders, and each one.',
+      toolDescription: GROUP_REMINDER_READ_TOOL_DESCRIPTION,
       inputJsonSchema: GROUP_REMINDER_READ_SCHEMA,
-      schema: outputSchema,
+      schema: groupReminderReadingSchema,
       maxTokens: GROUP_REMINDER_READ_MAX_TOKENS,
     });
     return value;
