@@ -154,6 +154,54 @@ describe('sendLinqChatMessage', () => {
     warn.mockRestore();
   });
 
+  it('puts one mention on the text part', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(201, { message: { id: 'msg-out-mention' } });
+
+    const sent = await sendLinqChatMessage({
+      chatId: CHAT,
+      text: 'Swim is at 4.',
+      mention: '+14155551234',
+      fetch: fetchMock,
+    });
+
+    expect(sent).toEqual({ providerMessageId: 'msg-out-mention' });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }],
+      },
+    });
+  });
+
+  it('sends the answer without a mention when Linq refuses the handle', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bodies: unknown[] = [];
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      if (bodies.length === 1) {
+        return Response.json({ error: { status: 400, code: 2023 } }, { status: 400 });
+      }
+      return Response.json({ message: { id: 'msg-plain' } }, { status: 201 });
+    });
+
+    const sent = await sendLinqChatMessage({
+      chatId: CHAT,
+      text: 'Swim is at 4.',
+      mention: '+14155551234',
+      fetch: fetchMock,
+    });
+
+    expect(sent).toEqual({ providerMessageId: 'msg-plain' });
+    expect(bodies).toEqual([
+      { message: { parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }] } },
+      { message: { parts: [{ type: 'text', value: 'Swim is at 4.' }] } },
+    ]);
+    expect(JSON.stringify(warn.mock.calls[0])).not.toContain('+14155551234');
+    expect(JSON.stringify(warn.mock.calls[0])).not.toContain(CHAT);
+    warn.mockRestore();
+  });
+
   it('does not drop a retryable refusal just because a thread target was set', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
     const down = vi.fn(async () => Response.json({ error: { code: 3006 } }, { status: 500 }));
@@ -170,6 +218,24 @@ describe('sendLinqChatMessage', () => {
 });
 
 describe('createLinqTextTransport', () => {
+  it('attaches the mention the resolver named', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(201, { message: { id: 'msg-ack' } });
+    const transport = createLinqTextTransport({
+      chatId: CHAT,
+      mentionFor: async () => '+14155551234',
+      fetch: fetchMock,
+    });
+
+    await transport.send({ to: '+12025559876', body: 'Swim is at 4.' });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      message: {
+        parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }],
+      },
+    });
+  });
+
   it('threads the within-turn reply under the inbound message', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
     const fetchMock = jsonFetch(201, { message: { id: 'msg-ack' } });

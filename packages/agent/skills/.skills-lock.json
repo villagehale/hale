@@ -183,6 +183,10 @@
     "file": "group-conflict-alert.md",
     "sha256": "7a2cfe7a208fbde4847195a07a8f30e7f00bbbad7444ecfc359bfc55543ce0ef"
   },
+  "group-mention-read.md": {
+    "file": "group-mention-read.md",
+    "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
+  },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
@@ -245,7 +249,7 @@
   },
   "group-turn-read.md": {
     "file": "group-turn-read.md",
-    "sha256": "d71b65072598da1529eaed76fc46ae07f9cb45157da5aca46760106161ef04df"
+    "sha256": "21aa179d2e1c6818828928dd05cde2536f1ccbe82e37caaf4762bf17e0101951"
   },
   "holding-line.md": {
     "file": "holding-line.md",

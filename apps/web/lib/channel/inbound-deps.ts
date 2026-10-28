@@ -27,6 +27,7 @@ import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
+import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import {
   createChatReplyTransport,
   createOutboundTransport,
@@ -76,6 +77,9 @@ export function buildIntakeDeps(
       ? createChatReplyTransport({
           chatId: linq?.chatId ?? null,
           replyToMessageId: linq?.replyToMessageId ?? null,
+          mentionFor: linq?.chatId
+            ? (text) => resolveGroupMention({ database, chatId: linq.chatId, text })
+            : undefined,
         })
       : createOutboundTransport();
   return {
