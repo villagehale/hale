@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the all-day PD Day is tomorrow with no clock time, and it is in English. However, the phrasing 'it is having PD Day the whole of day, school is not' is unidiomatic and reads like a word-for-word translation; a native speaker would say 'Tomorrow is a PD Day all day, so there is no school.' Per the native speaker check this caps the score at 3.",
+    "score": 3
+  }
+}

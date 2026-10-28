@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly names the all-day PD Day tomorrow with no clock time. However, 'so there is no school' is an unstated inference: the facts only give the title 'PD Day', not that school is closed. 'Hope you can plan around it' is unrequested filler, a wish/advice sentence not in the facts, so it caps the score at 3 at most.",
+    "score": 2
+  }
+}

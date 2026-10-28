@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: story time at 11 AM tomorrow (明天早上11点), soccer 5:30-6:30 PM tomorrow (下午5点半到6点半). However, the soccer end time is given, and the text does include 6点半 so that is fine. The phrasing 还有足球训练 is a title rewritten as 足球训练 (soccer practice), which changes the event name 'Soccer' into a claim it is practice, a fact not in the facts. Also the text omits the plan link, which is optional per watchFor. Changing the title to 'training' is a fact failure, capping this at low.",
+    "score": 2
+  }
+}

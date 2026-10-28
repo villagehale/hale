@@ -29,6 +29,8 @@ import {
   readJudgeModel,
   readModelIds,
   scoreFirstJudgeSchema,
+  dryReportLine,
+  isDryRun,
 } from './lib/harness.mjs';
 import { SAID_LINE_FIXTURES } from './said-line-fixtures.mjs';
 
@@ -172,7 +174,8 @@ async function main() {
       })
     )?.value;
     const raw = out?.text ?? '';
-    const text = acceptText(raw, f);
+    // --dry: the stand-in reply carries no slots, so price the judge on it as written.
+    const text = isDryRun() ? raw : acceptText(raw, f);
     if (text === null) {
       failed += 1;
       console.info(`FAIL  ${f.id}  facts: a fact or link slot is missing, or a URL was typed`);
@@ -200,6 +203,10 @@ async function main() {
       console.info(`      text: ${JSON.stringify(text)}`);
       console.info(`      judge: ${verdict.reason ?? ''}`);
     }
+  }
+  if (isDryRun()) {
+    console.info(dryReportLine('said-line', [judge.plan]));
+    process.exit(0);
   }
   if (failed > 0) process.exit(1);
 }

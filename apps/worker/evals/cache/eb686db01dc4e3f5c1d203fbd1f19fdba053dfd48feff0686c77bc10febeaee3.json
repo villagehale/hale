@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives an all-day Jour de congé a clock time of 3:00, which is invented since the facts say all-day with no start. It omits Léa's swimming entirely (10:00-11:00 AM at Piscine Main), and calls the day open with 'un peu de répit', which the rules forbid when a timed event exists. Also not in French: 'Tomorrow's a day off' and 'breathing room' are English.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: both events present, tomorrow is true from Sunday evening, 11:00 AM rendered as 上午11点, soccer 5:30-6:30 PM as 下午5:30到6:30 (start and end both given), no invented details, planLink used exactly once. Language is Chinese throughout. The phrasing is mostly natural, and 足球 for Soccer is fine, but a native speaker would more likely write 5点半到6点半 or 5:30到6:30 with 有足球训练; bare '有足球' is slightly clipped, and writing 5:30 with colon digits in running Chinese is a little stiff. The closing line '你的安排在这里:' is a mild extra sentence beyond the calendar facts. Together these keep it from fully reading like a friend's text, so it is capped at 3.",
+    "score": 3
+  }
+}
