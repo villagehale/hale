@@ -571,7 +571,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // placement is reported back to the group. Code writes it; the model never sees it.
         draftPort: groupPlanDraftPort(
           productionChannelDraftPort(database, anthropicClient(), turn.now),
-          turn.audience,
+          turn,
           productionRecordGroupPlanOrigin(database),
         ),
         // The turn's offer ledger, written by the search verb and read by the add verb:

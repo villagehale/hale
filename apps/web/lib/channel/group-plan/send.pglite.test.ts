@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { loadEventInvite } from '~/lib/loop/ics-invite';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
@@ -60,7 +61,14 @@ async function user(name: string) {
 }
 
 async function seed(
-  opts: { group?: boolean; sensitive?: boolean; language?: string; childDob?: string } = {},
+  opts: {
+    group?: boolean;
+    /** The chat whose thread drafted the plan, when it is not the family's own group. */
+    draftedIn?: string;
+    sensitive?: boolean;
+    language?: string;
+    childDob?: string;
+  } = {},
 ) {
   const [family] = await db.database
     .insert(schema.families)
@@ -134,10 +142,20 @@ async function seed(
     .returning({ id: schema.familyEvents.id });
   const familyEventId = placed?.id as string;
   await audit(familyId, 'action.calendar_placed', familyEventId);
+  let origin: string | null = null;
   if (opts.group ?? true) {
-    await productionRecordGroupPlanOrigin(db.database)({ familyId, actor: ana, actionId });
+    const [thread] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId, noteKey: channelGroupNoteKey(opts.draftedIn ?? GROUP) })
+      .returning({ id: schema.conversations.id });
+    origin = await productionRecordGroupPlanOrigin(db.database)({
+      familyId,
+      actor: ana,
+      actionId,
+      conversationId: thread?.id as string,
+    });
   }
-  return { familyId, ana, sam, actionId, familyEventId, payload: action?.payload };
+  return { familyId, ana, sam, actionId, familyEventId, origin, payload: action?.payload };
 }
 
 async function audit(familyId: string, actionTaken: string, familyEventId: string) {
@@ -248,6 +266,38 @@ const request = (
 describe('VIL-443 loadGroupPlan, real database', () => {
   it('is not a group plan when the add was drafted 1:1', async () => {
     const s = await seed({ group: false });
+    expect(await loadGroupPlan(db.database, request(s), MORNING)).toBeNull();
+  });
+
+  it('records the origin, naming the chat, only for a plan made in the household group', async () => {
+    const s = await seed();
+    expect(s.origin).toBe('recorded');
+    const [row] = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_plan.drafted'));
+    expect(row).toMatchObject({ targetTable: 'actions', targetId: s.actionId, actor: s.ana });
+    expect(row?.after).toEqual({ chatId: GROUP });
+  });
+
+  it('is not a group plan when it was made in another group chat', async () => {
+    const s = await seed({ draftedIn: 'chat-shared-with-another-family' });
+    expect(s.origin).toBe('outside_household_group');
+    expect(
+      await db.database
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'group_plan.drafted')),
+    ).toEqual([]);
+    expect(await loadGroupPlan(db.database, request(s), MORNING)).toBeNull();
+  });
+
+  it('is not a group plan once the family group is another chat', async () => {
+    const s = await seed();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: 'chat-claimed-later' })
+      .where(eq(schema.families.id, s.familyId));
     expect(await loadGroupPlan(db.database, request(s), MORNING)).toBeNull();
   });
 

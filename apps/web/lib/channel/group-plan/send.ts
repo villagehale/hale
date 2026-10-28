@@ -39,7 +39,7 @@ import {
   groupPlanReportInput,
   planWhenLabel,
 } from './report';
-import { isGroupPlanAction } from './stamp';
+import { groupPlanChatId } from './stamp';
 
 /**
  * VIL-443 (T17) 2/2 — a group's plan, reported back to the group.
@@ -293,8 +293,9 @@ async function reachedOwners(
 
 /**
  * Read-only: the group plan behind a placed row, or null when the row was not placed by
- * a group turn's calendar_add, the family has no group chat, or a REQUEST arrives for a
- * row that is already gone. The event is rendered at the same privacy floor as the file
+ * a calendar_add drafted in the family's group chat, that chat is no longer the family's
+ * group, or a REQUEST arrives for a row that is already gone. The event is rendered at
+ * the same privacy floor as the file
  * behind the link (generic: a teen's or sensitive event loses its title and place), since
  * the group can include people who are not parents.
  */
@@ -318,7 +319,8 @@ export async function loadGroupPlan(
   const placedByActionId = placement?.placedByActionId;
   if (!placement || !placedByActionId) return null;
 
-  if (!(await isGroupPlanAction(database, row.familyId, placedByActionId))) return null;
+  const draftedIn = await groupPlanChatId(database, row.familyId, placedByActionId);
+  if (!draftedIn) return null;
 
   const [family] = await database
     .select({
@@ -327,7 +329,7 @@ export async function loadGroupPlan(
     })
     .from(schema.families)
     .where(eq(schema.families.id, row.familyId));
-  if (!family?.chatId) return null;
+  if (!family?.chatId || family.chatId !== draftedIn) return null;
   const chatId = family.chatId;
 
   const parents = await database

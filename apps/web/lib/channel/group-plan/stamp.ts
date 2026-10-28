@@ -1,16 +1,22 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import type { ChannelDraftPort } from '~/lib/channel/coach/draft';
+import { channelGroupNoteKey } from '~/lib/coach/note-key';
 
 /**
  * VIL-443 (T17) — which placements are a group's plan.
  *
- * A calendar_add drafted on a family-group turn gets one audit row naming that origin,
- * so the executor's invite port can report the placement back to the group once a parent
- * has said yes. Code writes it after the draft is minted: the model's tools, the payload
- * and the reviewer's input are all unchanged, so the model can neither set nor forget it.
- * A move or cancel is not marked. It is found through the row's own placing action, so
- * editing a group's plan from a 1:1 thread still tells the group.
+ * A calendar_add drafted on a turn in the family's own group chat gets one audit row
+ * naming that chat, so the executor's invite port can report the placement back to the
+ * same group once a parent has said yes. Code writes it after the draft is minted: the
+ * model's tools, the payload and the reviewer's input are all unchanged, so the model can
+ * neither set nor forget it. A move or cancel is not marked. It is found through the
+ * row's own placing action, so editing a group's plan from a 1:1 thread still tells the
+ * group.
+ *
+ * ONLY THE FAMILY'S OWN GROUP. Every group message runs as a group turn, including one
+ * in a chat shared with other families or one nobody claimed. A plan made there is not
+ * the household group's to hear about, so it is not marked and keeps its 1:1 invites.
  */
 
 export interface GroupPlanOrigin {
@@ -18,26 +24,37 @@ export interface GroupPlanOrigin {
   /** The parent whose group message drafted it. */
   actor: string;
   actionId: string;
+  /** The group turn's thread, which is keyed by the chat it runs in. */
+  conversationId: string;
 }
 
-export type RecordGroupPlanOrigin = (origin: GroupPlanOrigin) => Promise<void>;
+export type GroupPlanOriginOutcome = 'recorded' | 'outside_household_group';
+
+export type RecordGroupPlanOrigin = (origin: GroupPlanOrigin) => Promise<GroupPlanOriginOutcome>;
 
 export function groupPlanDraftPort(
   inner: ChannelDraftPort,
-  audience: 'direct' | 'group',
+  turn: { audience: 'direct' | 'group'; conversationId: string },
   recordOrigin: RecordGroupPlanOrigin,
 ): ChannelDraftPort {
-  if (audience !== 'group') return inner;
+  if (turn.audience !== 'group') return inner;
   return {
     async draft(input) {
       const result = await inner.draft(input);
       if (input.actionType !== 'calendar_add') return result;
       try {
-        await recordOrigin({
+        const outcome = await recordOrigin({
           familyId: input.familyId,
           actor: input.actor,
           actionId: result.actionId,
+          conversationId: turn.conversationId,
         });
+        if (outcome === 'outside_household_group') {
+          console.info(
+            { familyId: input.familyId, actionId: result.actionId },
+            'group plan: drafted outside the household group - 1:1 invites, not a group report',
+          );
+        }
       } catch (err) {
         console.error(
           {
@@ -54,25 +71,44 @@ export function groupPlanDraftPort(
 }
 
 export function productionRecordGroupPlanOrigin(database: Database): RecordGroupPlanOrigin {
-  return async ({ familyId, actor, actionId }) => {
+  return async ({ familyId, actor, actionId, conversationId }) => {
+    const [thread] = await database
+      .select({
+        noteKey: schema.conversations.noteKey,
+        chatId: schema.families.linqGroupChatId,
+      })
+      .from(schema.conversations)
+      .innerJoin(schema.families, eq(schema.families.id, schema.conversations.familyId))
+      .where(
+        and(
+          eq(schema.conversations.id, conversationId),
+          eq(schema.conversations.familyId, familyId),
+        ),
+      );
+    const chatId = thread?.chatId;
+    if (!chatId || thread.noteKey !== channelGroupNoteKey(chatId)) {
+      return 'outside_household_group';
+    }
     await database.insert(schema.auditLog).values({
       familyId,
       actor,
       actionTaken: 'group_plan.drafted',
       targetTable: 'actions',
       targetId: actionId,
+      after: { chatId },
     });
+    return 'recorded';
   };
 }
 
-/** True only when a group turn drafted this action. */
-export async function isGroupPlanAction(
+/** The family group chat a group turn drafted this action in, or null when none did. */
+export async function groupPlanChatId(
   database: Database,
   familyId: string,
   actionId: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const [row] = await database
-    .select({ id: schema.auditLog.id })
+    .select({ after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
@@ -83,5 +119,6 @@ export async function isGroupPlanAction(
       ),
     )
     .limit(1);
-  return row !== undefined;
+  const chatId = (row?.after as { chatId?: unknown } | null | undefined)?.chatId;
+  return typeof chatId === 'string' ? chatId : null;
 }
