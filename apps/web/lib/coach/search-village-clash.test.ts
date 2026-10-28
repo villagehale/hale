@@ -55,7 +55,13 @@ describe('search_village · kid clash facts only on a structured session (VIL-79
 
   it('a find with only free-text when gets NO clashes field and no read', async () => {
     reads = 0;
-    const [c] = await attachKidClashes(reader, 'fam', [{ title: 'Art', when: 'Saturdays 10am' }]);
+    const [c] = await attachKidClashes(reader, 'fam', [
+      { title: 'Art', when: 'Saturdays 10am' } as {
+        title: string;
+        when: string;
+        session?: undefined;
+      },
+    ]);
     expect(c).not.toHaveProperty('clashes');
     expect(reads).toBe(0);
   });
