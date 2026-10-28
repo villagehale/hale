@@ -25,6 +25,7 @@ import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
+import { type KidClashCandidate, kidClashFacts } from './kid-clash';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
   type GmailDraftNoticeBox,
@@ -478,6 +479,35 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     return event;
   }
 
+  /**
+   * VIL-79 · the live kid-clash read for one local day, at decision time. Same reads as
+   * lookup_week (Hale's household events + connected Google blocks), nothing stored.
+   * Facts only — the coach words any mention itself. A failed read is logged and gives
+   * no facts rather than blocking the draft (a clash never blocks; see kid-clash.ts).
+   */
+  async function liveKidClashes(date: string, timeZone: string, candidate: KidClashCandidate) {
+    try {
+      const start = zonedLocalInstant(date, '00:00', timeZone);
+      const end = zonedLocalInstant(date, '23:59', timeZone);
+      const [events, connected] = await Promise.all([
+        reader.eventsInWeek(familyId, start, end),
+        reader.connectedWeek(familyId, start, end, [date]),
+      ]);
+      return kidClashFacts(candidate, events, connected.blocks).map((fact) => ({
+        childId: fact.childId,
+        what: fact.what,
+        when: fact.allDay
+          ? dayLabel(new Date(fact.startsAt), timeZone)
+          : localWhen(new Date(fact.startsAt), timeZone),
+        until: !fact.allDay && fact.endsAt ? localWhen(new Date(fact.endsAt), timeZone) : null,
+        allDay: fact.allDay,
+      }));
+    } catch (error) {
+      console.warn({ familyId, err: (error as Error).name }, 'kid clash read failed');
+      return [];
+    }
+  }
+
   const lookupWeek = defineTool({
     name: 'lookup_week',
     description:
@@ -582,11 +612,19 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
+      // The moved item keeps its own real length; one with no end stays an instant.
+      const length = event.endsAt ? event.endsAt.getTime() - event.startsAt.getTime() : null;
+      const clashes = await liveKidClashes(input.date, timeZone, {
+        startsAt,
+        endsAt: length !== null ? new Date(startsAt.getTime() + length) : null,
+        eventId: event.eventId,
+      });
       return {
         drafted: true as const,
         actionId,
         newWhen: localWhen(startsAt, timeZone),
         when: longWhen(startsAt, timeZone),
+        clashes,
       };
     },
   });
@@ -708,7 +746,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
-      return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
+      const clashes = await liveKidClashes(input.date, timeZone, { startsAt, endsAt: null });
+      return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone), clashes };
     },
   });
 

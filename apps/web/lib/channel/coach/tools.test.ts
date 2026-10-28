@@ -713,3 +713,87 @@ describe('watch_for_opening — registered only when the whole wiring is there',
     expect(build({ onWatch: () => {} })).not.toContain('watch_for_opening');
   });
 });
+
+describe('propose_calendar_add · live kid clash facts (VIL-79)', () => {
+  const MAYA = '66666666-6666-4666-8666-666666666666';
+  // Sat Aug 1 2026, 10:00–11:00 Toronto.
+  const SAT_CLASS = scheduleEvent({
+    id: THU_SWIM,
+    title: 'Saturday art class',
+    startsAt: new Date('2026-08-01T14:00:00.000Z'),
+    endsAt: new Date('2026-08-01T15:00:00.000Z'),
+    childId: MAYA,
+  });
+
+  function withBlocks(events: ScheduleEvent[], blocks: { title: string | null }[]) {
+    const reader = fakeReader(events);
+    reader.connectedWeek = async () => ({
+      calendarSync: 'connected',
+      blocks: blocks.map((b) => ({
+        startsAt: new Date('2026-08-01T13:30:00.000Z'),
+        endsAt: new Date('2026-08-01T16:00:00.000Z'),
+        allDay: false,
+        title: b.title,
+      })),
+      mailSync: 'not_connected',
+      processedCount: 0,
+      since: null,
+      activities: [],
+      trips: [],
+    });
+    const port = fakePort();
+    const tools = buildChannelCoachTools({
+      familyId: FAMILY,
+      reader,
+      draftPort: port,
+      villageTool: null,
+      activity: null,
+      spots: null,
+      now: NOW,
+    });
+    const tool = tools.find((t) => t.name === 'propose_calendar_add');
+    if (!tool) throw new Error('no propose_calendar_add');
+    return (input: unknown) =>
+      invokeTool(
+        tool,
+        input,
+        { familyId: FAMILY, actor: PARENT },
+        guardDeps([], new Set()),
+      ) as Promise<{
+        drafted: boolean;
+        clashes: { childId: string | null; what: string; when: string; until: string | null }[];
+      }>;
+  }
+
+  it('returns the overlapping kid event as a fact, and still drafts', async () => {
+    const add = withBlocks([SAT_CLASS], [{ title: null }]);
+    const result = await add({
+      title: 'Soccer',
+      date: '2026-08-01',
+      time: '10:30',
+      weekday: 'sat',
+    });
+    expect(result.drafted).toBe(true);
+    expect(result.clashes).toEqual([
+      {
+        childId: MAYA,
+        what: 'Saturday art class',
+        when: expect.any(String),
+        until: expect.any(String),
+        allDay: false,
+      },
+    ]);
+  });
+
+  it('back-to-back gives no clash, and an adult block never surfaces', async () => {
+    const add = withBlocks([SAT_CLASS], [{ title: null }]);
+    const result = await add({
+      title: 'Soccer',
+      date: '2026-08-01',
+      time: '11:00',
+      weekday: 'sat',
+    });
+    expect(result.clashes).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain('busy');
+  });
+});
