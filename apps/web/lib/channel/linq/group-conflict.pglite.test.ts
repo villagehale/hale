@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,16 +9,27 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { GroupConflictLineInput } from './group-conflict';
 import { setGroupConflictWriter } from './group-conflict-voice';
-import { narrateHouseholdCalendar } from './household-calendar';
+import type {
+  GroupPickupClaimReadInput,
+  GroupPickupClaimReader,
+  GroupPickupClaimReading,
+} from './group-pickup-claim';
+import { narrateHouseholdCalendar, takeGroupPickupClaim } from './household-calendar';
+import { handleLinqInboundRequest } from './inbound';
 
 /**
  * VIL-444 (T24) in the household group: one alert per clash, written by the model, sent
  * once into the group chat with no poll. Covered overlaps, a writer that fails, and quiet
- * hours send nothing. A private plan reaches the writer only as busy. A fake writer
- * stands in for the model here; the judged eval grades the real one.
+ * hours send nothing. A private plan reaches the writer only as busy. A pickup someone
+ * takes in the group is settled and never alerted. Fakes stand in for the model's writer
+ * and reader here; the judged eval grades the real ones.
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
+const SECRET_BYTES = Buffer.alloc(32, 9);
+const HALE = '+14165550100';
+const BARTON_PHONE = '+14165550111';
+const SAM_PHONE = '+19055550182';
 const GROUP = 'chat-clash-group';
 const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
 /** 14:00 America/Toronto, two pickups at 15:00. */
@@ -121,8 +133,8 @@ async function seedFamily() {
   ]);
   await db.database.insert(schema.parentChannels).values(
     [
-      [bartonId, '+14165550111'],
-      [samId, '+19055550182'],
+      [bartonId, BARTON_PHONE],
+      [samId, SAM_PHONE],
     ].map(([userId, phone]) => ({
       userId: userId as string,
       familyId,
@@ -210,9 +222,33 @@ async function calendarItem(
   });
 }
 
-async function twoPickupsOnBarton(seeded: Seeded) {
-  await calendarItem(seeded, 'barton', { eventId: 'swim', title: 'Maya swim pickup' });
-  await calendarItem(seeded, 'barton', { eventId: 'daycare', title: 'Leo daycare pickup' });
+async function twoPickupsOnBarton(seeded: Seeded, announced = false) {
+  await calendarItem(seeded, 'barton', { eventId: 'swim', title: 'Maya swim pickup', announced });
+  await calendarItem(seeded, 'barton', {
+    eventId: 'daycare',
+    title: 'Leo daycare pickup',
+    announced,
+  });
+}
+
+async function seatCaregiver(seeded: Seeded, name: string, phone: string): Promise<string> {
+  const [user] = await db.database
+    .insert(schema.users)
+    .values({
+      externalAuthId: `sms:${name}-${seeded.familyId}`,
+      name,
+      timezone: 'America/Toronto',
+    })
+    .returning({ id: schema.users.id });
+  await db.database.insert(schema.linqGroupMembers).values({
+    familyId: seeded.familyId,
+    chatId: GROUP,
+    userId: user?.id as string,
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    role: 'caregiver',
+  });
+  return user?.id as string;
 }
 
 async function sentRows() {
@@ -445,22 +481,7 @@ describe('group clash alerts (VIL-444)', () => {
     const seeded = await seedFamily();
     await twoPickupsOnBarton(seeded);
     await calendarItem(seeded, 'sam', { eventId: 'work', title: null, end: AT_4 });
-    const [rosa] = await db.database
-      .insert(schema.users)
-      .values({
-        externalAuthId: `sms:rosa-${seeded.familyId}`,
-        name: 'Rosa',
-        timezone: 'America/Toronto',
-      })
-      .returning({ id: schema.users.id });
-    await db.database.insert(schema.linqGroupMembers).values({
-      familyId: seeded.familyId,
-      chatId: GROUP,
-      userId: rosa?.id as string,
-      phoneE164Encrypted: encryptString('+14165550199'),
-      phoneE164Hash: phoneBlindIndex('+14165550199'),
-      role: 'caregiver',
-    });
+    await seatCaregiver(seeded, 'Rosa', '+14165550199');
     const writer = fakeWriter();
     const line = wire();
 
@@ -520,5 +541,492 @@ describe('group clash alerts (VIL-444)', () => {
 
     expect(writer.calls).toEqual([]);
     expect((await sentRows()).some((row) => row.templateKey === 'linq:group_clash')).toBe(false);
+  });
+});
+
+const MINUTE = 60 * 1000;
+
+function fakeClaimReader(
+  answer: (input: GroupPickupClaimReadInput) => GroupPickupClaimReading | null,
+): GroupPickupClaimReader & { calls: GroupPickupClaimReadInput[] } {
+  const calls: GroupPickupClaimReadInput[] = [];
+  return {
+    calls,
+    async read(input) {
+      calls.push(input);
+      return answer(input);
+    },
+  };
+}
+
+/** A reading of the plan offered under this title, as the model would return it. */
+function reads(
+  title: string,
+  intent: GroupPickupClaimReading['intent'] = 'claim_pickup',
+): (input: GroupPickupClaimReadInput) => GroupPickupClaimReading {
+  return (input) => ({
+    intent,
+    pickupRefs: [input.pickups.find((offer) => offer.title === title)?.ref ?? 'not-offered'],
+    confidence: 'high',
+  });
+}
+
+function claim(
+  seeded: Seeded,
+  senderUserId: string,
+  reader: GroupPickupClaimReader,
+  over: { text?: string; now?: Date; chatId?: string } = {},
+) {
+  return takeGroupPickupClaim(
+    db.database,
+    {
+      familyId: seeded.familyId,
+      chatId: over.chatId ?? GROUP,
+      senderUserId,
+      text: over.text ?? 'got it',
+      now: over.now ?? DAY,
+    },
+    { reader },
+  );
+}
+
+async function whoTakesFacts(familyId: string) {
+  return db.database
+    .select({
+      factValue: schema.familyMemoryFacts.factValue,
+      inferredBy: schema.familyMemoryFacts.inferredBy,
+      validUntil: schema.familyMemoryFacts.validUntil,
+    })
+    .from(schema.familyMemoryFacts)
+    .where(eq(schema.familyMemoryFacts.familyId, familyId));
+}
+
+async function familyAudits(familyId: string) {
+  return db.database
+    .select({
+      actor: schema.auditLog.actor,
+      action: schema.auditLog.actionTaken,
+      after: schema.auditLog.after,
+    })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.familyId, familyId));
+}
+
+function signed(body: unknown): Request {
+  const raw = JSON.stringify(body);
+  const ts = String(Math.floor(DAY.getTime() / 1000));
+  const mac = createHmac('sha256', SECRET_BYTES).update(`evt_claim.${ts}.${raw}`).digest('base64');
+  return new Request('https://app.villagehale.com/api/channels/linq/inbound?version=2026-02-03', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'webhook-id': 'evt_claim',
+      'webhook-timestamp': ts,
+      'webhook-signature': `v1,${mac}`,
+    },
+    body: raw,
+  });
+}
+
+function groupMessage(from: string, text: string, messageId: string) {
+  return {
+    api_version: 'v3',
+    webhook_version: '2026-02-03',
+    event_type: 'message.received',
+    event_id: 'evt_claim',
+    created_at: DAY.toISOString(),
+    data: {
+      chat: { id: GROUP, is_group: true },
+      id: messageId,
+      direction: 'inbound',
+      sender_handle: { handle: from, is_me: false },
+      parts: [{ type: 'text', value: text }],
+      sent_at: DAY.toISOString(),
+      service: 'iMessage',
+    },
+  };
+}
+
+describe('group pickup claims (VIL-444)', () => {
+  it('settles a pickup someone takes before any alert, so its clash is never sent', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded, true);
+    const reader = fakeClaimReader(reads('Leo daycare pickup'));
+
+    expect(await claim(seeded, seeded.samId, reader, { text: "I'll grab Leo from daycare" })).toBe(
+      'claimed',
+    );
+
+    expect(reader.calls).toEqual([
+      {
+        text: "I'll grab Leo from daycare",
+        senderName: 'Sam',
+        recent: [],
+        pickups: [
+          {
+            ref: 'p1',
+            title: 'Leo daycare pickup',
+            day: 'Friday, September 25',
+            start: '15:00',
+            end: '15:30',
+            has: 'Barton',
+            inAlert: false,
+            askedOf: null,
+          },
+          {
+            ref: 'p2',
+            title: 'Maya swim pickup',
+            day: 'Friday, September 25',
+            start: '15:00',
+            end: '15:30',
+            has: 'Barton',
+            inAlert: false,
+            askedOf: null,
+          },
+        ],
+      },
+    ]);
+    expect(await whoTakesFacts(seeded.familyId)).toEqual([
+      {
+        factValue: expect.objectContaining({
+          kind: 'who_takes',
+          status: 'decided',
+          startIso: AT_3.toISOString(),
+          titleNorm: 'leo daycare pickup',
+          takerUserId: seeded.samId,
+          source: 'claim',
+        }),
+        inferredBy: 'linq_pickup_claim',
+        validUntil: null,
+      },
+    ]);
+    expect(await familyAudits(seeded.familyId)).toContainEqual({
+      actor: seeded.samId,
+      action: 'logistics_decision_recorded',
+      after: { kind: 'who_takes', status: 'decided', source: 'claim' },
+    });
+
+    const writer = fakeWriter();
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toEqual([]);
+    expect(line.urls()).toEqual([]);
+    expect(await sentRows()).toEqual([]);
+  });
+
+  it('after an alert, a pickup someone takes is settled and the group hears nothing more', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded);
+    const writer = fakeWriter();
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(1);
+    expect(writer.calls[0]?.suggested).toEqual({ name: 'Sam', takes: 'Maya swim pickup' });
+
+    const later = new Date(DAY.getTime() + 5 * MINUTE);
+    const keeps = fakeClaimReader(reads('Maya swim pickup'));
+    expect(await claim(seeded, seeded.bartonId, keeps, { text: "I'll do swim", now: later })).toBe(
+      'claimed',
+    );
+    expect(keeps.calls[0]?.pickups).toEqual([
+      expect.objectContaining({ title: 'Leo daycare pickup', inAlert: true, askedOf: null }),
+      expect.objectContaining({ title: 'Maya swim pickup', inAlert: true, askedOf: 'Sam' }),
+    ]);
+    expect(await claim(seeded, seeded.bartonId, keeps, { now: later })).toBe('already_claimed');
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + 15 * MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(1);
+    expect(line.urls()).toEqual([GROUP_MESSAGES]);
+
+    const takes = fakeClaimReader(reads('Leo daycare pickup'));
+    expect(await claim(seeded, seeded.samId, takes, { now: later })).toBe('claimed');
+    expect(takes.calls[0]?.pickups).toEqual([
+      expect.objectContaining({ title: 'Leo daycare pickup', has: 'Barton', inAlert: true }),
+      expect.objectContaining({ title: 'Maya swim pickup', has: 'Barton', inAlert: false }),
+    ]);
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + 30 * MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(1);
+    expect(line.urls()).toEqual([GROUP_MESSAGES]);
+  });
+
+  it('changes nothing for chatter, a low or failed read, or a plan that was not offered', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded);
+    const readings: Array<GroupPickupClaimReading | null> = [
+      { intent: 'chatter', pickupRefs: [], confidence: 'high' },
+      { intent: 'claim_pickup', pickupRefs: ['p1'], confidence: 'low' },
+      null,
+      { intent: 'claim_pickup', pickupRefs: ['p1', 'p7'], confidence: 'high' },
+    ];
+    const outcomes: string[] = [];
+    for (const reading of readings) {
+      outcomes.push(
+        await claim(
+          seeded,
+          seeded.samId,
+          fakeClaimReader(() => reading),
+        ),
+      );
+    }
+    expect(outcomes).toEqual(['not_a_claim', 'not_a_claim', 'unread', 'not_a_claim']);
+    expect(await whoTakesFacts(seeded.familyId)).toEqual([]);
+
+    const writer = fakeWriter();
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(1);
+    expect(line.urls()).toEqual([GROUP_MESSAGES]);
+  });
+
+  it('lets only the taker give a pickup back, and then the clash is alerted after all', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded);
+    const daycare = (intent: GroupPickupClaimReading['intent']) =>
+      fakeClaimReader(reads('Leo daycare pickup', intent));
+    expect(await claim(seeded, seeded.samId, daycare('claim_pickup'))).toBe('claimed');
+    expect(await claim(seeded, seeded.bartonId, daycare('drop_pickup'))).toBe('nothing_to_drop');
+
+    const later = new Date(DAY.getTime() + MINUTE);
+    expect(await claim(seeded, seeded.samId, daycare('drop_pickup'), { now: later })).toBe(
+      'dropped',
+    );
+    expect(await whoTakesFacts(seeded.familyId)).toEqual([
+      expect.objectContaining({ validUntil: later }),
+    ]);
+    expect(await familyAudits(seeded.familyId)).toContainEqual({
+      actor: seeded.samId,
+      action: 'logistics_decision_withheld',
+      after: { kind: 'who_takes', stored: false, source: 'claim' },
+    });
+
+    const writer = fakeWriter();
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + 2 * MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(1);
+    expect(line.urls()).toEqual([GROUP_MESSAGES]);
+  });
+
+  it("never offers the reader a private plan, a teen's plan or one under way", async () => {
+    const seeded = await seedFamily();
+    await db.database
+      .insert(schema.children)
+      .values({ familyId: seeded.familyId, name: 'Kestrel', dateOfBirth: '2012-01-01' });
+    await db.database.insert(schema.familyEvents).values([
+      {
+        familyId: seeded.familyId,
+        childId: seeded.mayaId,
+        title: 'Maya allergist',
+        startsAt: AT_3,
+        endsAt: AT_4,
+        source: 'parent',
+        sensitive: true,
+        dutyOwnerKind: 'parent',
+        dutyOwnerUserId: seeded.bartonId,
+      },
+      {
+        familyId: seeded.familyId,
+        title: 'Kestrel orthodontist',
+        startsAt: AT_330,
+        endsAt: AT_4,
+        source: 'parent',
+      },
+    ]);
+    await calendarItem(seeded, 'sam', {
+      eventId: 'swim',
+      title: 'Maya swim pickup',
+      announced: true,
+    });
+    await calendarItem(seeded, 'sam', {
+      eventId: 'nap',
+      title: 'Leo nap pickup',
+      start: new Date(DAY.getTime() - 30 * MINUTE),
+      end: new Date(DAY.getTime() + 30 * MINUTE),
+      announced: true,
+    });
+    const reader = fakeClaimReader(() => ({
+      intent: 'claim_pickup',
+      pickupRefs: ['p1'],
+      confidence: 'high',
+    }));
+
+    expect(await claim(seeded, seeded.bartonId, reader, { text: 'I can do all of them' })).toBe(
+      'claimed',
+    );
+
+    expect(reader.calls[0]?.pickups.map((offer) => offer.title)).toEqual(['Maya swim pickup']);
+    expect(JSON.stringify(reader.calls[0]?.pickups)).not.toMatch(/allergist|kestrel|orthodont/i);
+    expect(
+      (await whoTakesFacts(seeded.familyId)).map(
+        (row) => (row.factValue as { titleNorm: string }).titleNorm,
+      ),
+    ).toEqual(['maya swim pickup']);
+  });
+
+  it('lets a caregiver seated in the chat take a pickup, and nobody outside it', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded, true);
+    const rosa = await seatCaregiver(seeded, 'Rosa', '+14165550199');
+    const [outsider] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:jo-${seeded.familyId}`, name: 'Jo', timezone: 'UTC' })
+      .returning({ id: schema.users.id });
+    const ignored = fakeClaimReader(reads('Leo daycare pickup'));
+    expect(await claim(seeded, outsider?.id as string, ignored)).toBe('not_a_member');
+    expect(ignored.calls).toEqual([]);
+
+    const reader = fakeClaimReader(reads('Leo daycare pickup'));
+    expect(await claim(seeded, rosa, reader, { text: 'I can get Leo, no problem' })).toBe(
+      'claimed',
+    );
+    expect(reader.calls[0]?.senderName).toBe('Rosa');
+
+    const writer = fakeWriter();
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toEqual([]);
+    expect(line.urls()).toEqual([]);
+  });
+
+  it('lets a claim outrank a duty owner set before it, and a duty owner set after it win', async () => {
+    const seeded = await seedFamily();
+    const [piano] = await db.database
+      .insert(schema.familyEvents)
+      .values({
+        familyId: seeded.familyId,
+        title: 'Leo piano pickup',
+        startsAt: AT_3,
+        endsAt: AT_330,
+        source: 'parent',
+        dutyOwnerKind: 'parent',
+        dutyOwnerUserId: seeded.bartonId,
+        dutySetAt: new Date(DAY.getTime() - 60 * MINUTE),
+      })
+      .returning({ id: schema.familyEvents.id });
+    await calendarItem(seeded, 'barton', { eventId: 'work', title: null, end: AT_4 });
+
+    expect(await claim(seeded, seeded.samId, fakeClaimReader(reads('Leo piano pickup')))).toBe(
+      'claimed',
+    );
+    const writer = fakeWriter();
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toEqual([]);
+
+    await db.database
+      .update(schema.familyEvents)
+      .set({ dutySetAt: new Date(DAY.getTime() + 2 * MINUTE) })
+      .where(eq(schema.familyEvents.id, piano?.id as string));
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + 3 * MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(1);
+    expect(writer.calls[0]?.items).toEqual([
+      expect.objectContaining({ kind: 'plan', title: 'Leo piano pickup', has: 'Barton' }),
+      { kind: 'busy', who: 'Barton' },
+    ]);
+  });
+
+  it('reads nothing while the flag is off, or for a chat that is not the household group', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded, true);
+    const reader = fakeClaimReader(reads('Leo daycare pickup'));
+
+    expect(await claim(seeded, seeded.samId, reader, { chatId: 'chat-elsewhere' })).toBe(
+      'not_household_group',
+    );
+    vi.stubEnv('LINQ_GROUP_CONFLICT_ALERTS_ENABLED', 'yes');
+    expect(await claim(seeded, seeded.samId, reader)).toBe('flag_off');
+
+    expect(reader.calls).toEqual([]);
+    expect(await whoTakesFacts(seeded.familyId)).toEqual([]);
+  });
+
+  it('reads a claim at the group door, and the alert for that slot never goes', async () => {
+    vi.stubEnv('LINQ_FROM_E164', HALE);
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded, true);
+    const line = wire();
+    const reader = fakeClaimReader(reads('Leo daycare pickup'));
+    const sends: string[] = [];
+    const deps = {
+      database: db.database,
+      enqueue: async () => {},
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async () => {},
+      now: () => DAY,
+      listChatHandles: async () => ({
+        status: 'ok',
+        handles: [BARTON_PHONE, SAM_PHONE],
+        isGroup: true,
+      }),
+      sendGroupText: async (input: { text: string }) => {
+        sends.push(input.text);
+        return { providerMessageId: `out-${sends.length}` };
+      },
+      groupPickupClaimReader: reader,
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
+
+    const response = await handleLinqInboundRequest(
+      signed(groupMessage(SAM_PHONE, "I'll grab Leo from daycare", 'in-claim')),
+      deps,
+    );
+
+    expect(await response.json()).toEqual({ outcome: 'group_duty_statement' });
+    expect(reader.calls).toHaveLength(1);
+    expect(reader.calls[0]).toMatchObject({
+      text: "I'll grab Leo from daycare",
+      senderName: 'Sam',
+    });
+    expect(await whoTakesFacts(seeded.familyId)).toEqual([
+      expect.objectContaining({
+        factValue: expect.objectContaining({ takerUserId: seeded.samId, source: 'claim' }),
+      }),
+    ]);
+    expect(sends).toEqual([]);
+
+    const writer = fakeWriter();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toEqual([]);
+    expect(await sentRows()).toEqual([]);
   });
 });

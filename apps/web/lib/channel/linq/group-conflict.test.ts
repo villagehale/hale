@@ -19,7 +19,15 @@ const sam: ClashPerson = { id: 'sam', name: 'Sam', calendar: true };
 const rosa: ClashPerson = { id: 'rosa', name: 'Rosa', calendar: false };
 
 function plan(over: Partial<ClashPlan> & Pick<ClashPlan, 'key' | 'title'>): ClashPlan {
-  return { start: AT_3, end: AT_330, holders: [], takerId: null, rows: [], ...over };
+  return {
+    start: AT_3,
+    end: AT_330,
+    holders: [],
+    takerId: null,
+    claimed: false,
+    rows: [],
+    ...over,
+  };
 }
 
 function block(over: Partial<ClashSourceBlock> & Pick<ClashSourceBlock, 'eventId'>) {
@@ -231,6 +239,72 @@ describe('findGroupClashes', () => {
     expect(new Set(clashes.map((clash) => clash.dedupeKey)).size).toBe(2);
   });
 
+  it('never alerts about a plan someone took in the group, even against their calendar', () => {
+    const swim = plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] });
+    const daycare = plan({ key: 'b', title: 'Leo daycare pickup', holders: ['barton'] });
+    expect(
+      findGroupClashes({ plans: [swim, daycare], busy: [], people: [barton, sam], now: NOW }),
+    ).toHaveLength(1);
+    const taken = { ...daycare, takerId: 'sam', claimed: true };
+    expect(
+      findGroupClashes({ plans: [swim, taken], busy: [], people: [barton, sam], now: NOW }),
+    ).toEqual([]);
+    expect(
+      findGroupClashes({
+        plans: [swim, taken],
+        busy: [{ key: 'busy:sam', personId: 'sam', start: AT_3, end: AT_4, known: false }],
+        people: [barton, sam],
+        now: NOW,
+      }),
+    ).toEqual([]);
+  });
+
+  it('holds whoever took a plan busy then, for every other plan', () => {
+    const [clash, ...rest] = findGroupClashes({
+      plans: [
+        plan({
+          key: 'a',
+          title: 'Maya swim pickup',
+          holders: ['barton'],
+          takerId: 'sam',
+          claimed: true,
+        }),
+        plan({ key: 'b', title: 'Leo daycare pickup', holders: ['sam'] }),
+      ],
+      busy: [],
+      people: [barton, sam],
+      now: NOW,
+    });
+    expect(rest).toEqual([]);
+    expect(clash?.first.key).toBe('b');
+    expect(clash && 'busy' in clash.second && clash.second.busy).toMatchObject({
+      key: 'a',
+      personId: 'sam',
+      known: true,
+    });
+    expect(clash?.suggested).toEqual({ personId: 'barton', planKey: 'b' });
+  });
+
+  it('keeps the dedupe key when someone takes one of the plans the group was told about', () => {
+    const swim = plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] });
+    const daycare = plan({ key: 'b', title: 'Leo daycare pickup', holders: ['barton'] });
+    const [told] = findGroupClashes({
+      plans: [swim, daycare],
+      busy: [],
+      people: [barton, sam],
+      now: NOW,
+    });
+    const [after] = findGroupClashes({
+      plans: [{ ...swim, takerId: 'barton', claimed: true }, daycare],
+      busy: [],
+      people: [barton, sam],
+      now: NOW,
+    });
+    expect(after?.first.key).toBe('b');
+    expect(after && 'busy' in after.second && after.second.busy.key).toBe('a');
+    expect(after?.dedupeKey).toBe(told?.dedupeKey);
+  });
+
   it('ignores plans already started, and plans past the lookahead', () => {
     expect(
       findGroupClashes({
@@ -261,10 +335,11 @@ describe('clashCalendar', () => {
           end: AT_4,
           private: true,
           owner: { kind: 'parent', userId: 'barton' },
+          ownerSince: null,
           placedGoogleEventId: 'placed-allergist',
         },
       ],
-      decidedTaker: noDecision,
+      decided: noDecision,
     });
     expect(calendar.plans.map((row) => row.title)).toEqual(['Maya swim pickup']);
     expect(calendar.busy.map((row) => row.personId)).toEqual(['barton', 'barton']);
@@ -294,7 +369,7 @@ describe('clashCalendar', () => {
         }),
       ],
       events: [],
-      decidedTaker: noDecision,
+      decided: noDecision,
     });
     expect(calendar.plans).toHaveLength(1);
     expect(calendar.plans[0]?.holders).toEqual(['barton', 'sam']);
@@ -316,10 +391,11 @@ describe('clashCalendar', () => {
           end: null,
           private: false,
           owner: null,
+          ownerSince: null,
           placedGoogleEventId: null,
         },
       ],
-      decidedTaker: noDecision,
+      decided: noDecision,
     });
     expect(calendar.plans).toEqual([]);
     expect(calendar.busy).toEqual([
@@ -338,10 +414,11 @@ describe('clashCalendar', () => {
           end: null,
           private: true,
           owner: null,
+          ownerSince: null,
           placedGoogleEventId: 'placed-allergist',
         },
       ],
-      decidedTaker: noDecision,
+      decided: noDecision,
     });
     expect(calendar.plans).toEqual([]);
     expect(calendar.busy.map((row) => row.personId)).toEqual(['barton']);
@@ -358,17 +435,85 @@ describe('clashCalendar', () => {
           end: AT_330,
           private: false,
           owner: { kind: 'named', label: 'Grandma' },
+          ownerSince: NOW,
           placedGoogleEventId: null,
         },
       ],
-      decidedTaker: (startIso, titleNorm) =>
-        startIso === AT_3.toISOString() && titleNorm === 'maya swim pickup' ? 'sam' : null,
+      decided: (startIso, titleNorm) =>
+        startIso === AT_3.toISOString() && titleNorm === 'maya swim pickup'
+          ? { takerId: 'sam', at: NOW, claim: false }
+          : null,
     });
-    expect(calendar.plans.map((row) => [row.title, row.takerId])).toEqual([
-      ['Leo piano pickup', 'named:Grandma'],
-      ['Maya swim pickup', 'sam'],
+    expect(calendar.plans.map((row) => [row.title, row.takerId, row.claimed])).toEqual([
+      ['Leo piano pickup', 'named:Grandma', false],
+      ['Maya swim pickup', 'sam', false],
     ]);
     expect(calendar.named).toEqual([{ id: 'named:Grandma', name: 'Grandma', calendar: false }]);
+  });
+
+  it('settles a calendar plan someone took in the group', () => {
+    const calendar = clashCalendar({
+      blocks: [block({ eventId: 'swim', title: 'Maya swim pickup' })],
+      events: [],
+      decided: () => ({ takerId: 'sam', at: NOW, claim: true }),
+    });
+    expect(calendar.plans.map((row) => [row.takerId, row.claimed])).toEqual([['sam', true]]);
+  });
+
+  it('lets a claim outrank a duty owner set before it, never one set after', () => {
+    const piano = {
+      id: 'piano',
+      title: 'Leo piano pickup',
+      start: AT_3,
+      end: AT_330,
+      private: false,
+      owner: { kind: 'named' as const, label: 'Grandma' },
+      ownerSince: NOW,
+      placedGoogleEventId: null,
+    };
+    const claimAt = (offsetMs: number) => () => ({
+      takerId: 'sam',
+      at: new Date(NOW.getTime() + offsetMs),
+      claim: true,
+    });
+    const taker = (calendar: ReturnType<typeof clashCalendar>) =>
+      calendar.plans.map((row) => [row.takerId, row.claimed]);
+
+    const newer = clashCalendar({ blocks: [], events: [piano], decided: claimAt(60_000) });
+    expect(taker(newer)).toEqual([['sam', true]]);
+    expect(newer.named).toEqual([]);
+
+    const older = clashCalendar({ blocks: [], events: [piano], decided: claimAt(-60_000) });
+    expect(taker(older)).toEqual([['named:Grandma', false]]);
+    expect(older.named).toEqual([{ id: 'named:Grandma', name: 'Grandma', calendar: false }]);
+
+    const unowned = clashCalendar({
+      blocks: [],
+      events: [{ ...piano, owner: null, ownerSince: null }],
+      decided: claimAt(-60_000),
+    });
+    expect(taker(unowned)).toEqual([['sam', true]]);
+  });
+
+  it('never lets a claim reach a private plan', () => {
+    const calendar = clashCalendar({
+      blocks: [],
+      events: [
+        {
+          id: 'allergist',
+          title: 'Maya allergist',
+          start: AT_3,
+          end: AT_4,
+          private: true,
+          owner: { kind: 'parent', userId: 'barton' },
+          ownerSince: null,
+          placedGoogleEventId: null,
+        },
+      ],
+      decided: () => ({ takerId: 'sam', at: NOW, claim: true }),
+    });
+    expect(calendar.plans).toEqual([]);
+    expect(calendar.busy.map((row) => row.personId)).toEqual(['barton']);
   });
 });
 

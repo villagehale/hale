@@ -147,6 +147,10 @@
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
   },
+  "group-pickup-claim-read.md": {
+    "file": "group-pickup-claim-read.md",
+    "sha256": "a932bc46688dac5c1f9b60973dc26668eb965e8e436ceab93b3663dcaf90fb7e"
+  },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
     "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"

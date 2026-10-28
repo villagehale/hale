@@ -40,6 +40,15 @@ export interface LogisticsSlot {
 
 export type LogisticsStatus = 'open' | 'decided' | 'declined';
 
+/** `claim`: the model read the sender taking it themselves in the group (VIL-444). */
+export type LogisticsSource = 'poll' | 'text' | 'claim';
+
+const INFERRED_BY: Record<LogisticsSource, string> = {
+  poll: 'linq_logistics_poll',
+  text: 'linq_logistics_text',
+  claim: 'linq_pickup_claim',
+};
+
 export interface RememberedLogistics {
   factKey: string;
   kind: 'who_takes' | 'both_free';
@@ -53,6 +62,10 @@ export interface RememberedLogistics {
   event: string | null;
   day: string | null;
   slots: readonly LogisticsSlot[];
+  /** Null on a row written before the source was kept. */
+  source: LogisticsSource | null;
+  /** When this decision was stored. */
+  since: Date;
 }
 
 interface LogisticsFactValue {
@@ -67,7 +80,7 @@ interface LogisticsFactValue {
   event: string | null;
   day: string | null;
   slots: LogisticsSlot[];
-  source: 'poll' | 'text';
+  source: LogisticsSource;
 }
 
 export function whoTakesPrompt(
@@ -235,7 +248,7 @@ export function readSlotReply(
   return { slot: match };
 }
 
-function asFact(value: unknown, factKey: string): RememberedLogistics | null {
+function asFact(value: unknown, factKey: string, since: Date): RememberedLogistics | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as Partial<LogisticsFactValue>;
   if (row.kind !== 'who_takes' && row.kind !== 'both_free') return null;
@@ -262,6 +275,9 @@ function asFact(value: unknown, factKey: string): RememberedLogistics | null {
     event: typeof row.event === 'string' ? row.event : null,
     day: typeof row.day === 'string' ? row.day : null,
     slots,
+    source:
+      row.source === 'poll' || row.source === 'text' || row.source === 'claim' ? row.source : null,
+    since,
   };
 }
 
@@ -276,6 +292,7 @@ export async function loadRememberedLogistics(
       factValue: schema.familyMemoryFacts.factValue,
       factType: schema.familyMemoryFacts.factType,
       familyId: schema.familyMemoryFacts.familyId,
+      validFrom: schema.familyMemoryFacts.validFrom,
       validUntil: schema.familyMemoryFacts.validUntil,
     })
     .from(schema.familyMemoryFacts)
@@ -290,7 +307,7 @@ export async function loadRememberedLogistics(
   for (const row of rows) {
     if (row.familyId !== familyId || row.factType !== 'logistic' || row.validUntil) continue;
     if (!row.factKey.startsWith('who-takes/') && !row.factKey.startsWith('both-free/')) continue;
-    const parsed = asFact(row.factValue, row.factKey);
+    const parsed = asFact(row.factValue, row.factKey, row.validFrom);
     if (parsed) remembered.push(parsed);
   }
   return remembered;
@@ -326,7 +343,7 @@ export async function writeLogisticsDecision(
     factKey: input.factKey,
     factValue: input.value,
     confidence: 1,
-    inferredBy: input.value.source === 'poll' ? 'linq_logistics_poll' : 'linq_logistics_text',
+    inferredBy: INFERRED_BY[input.value.source],
     validFrom: input.now,
   };
   const audit = {
@@ -417,7 +434,7 @@ export async function withholdWhoTakes(
     parentUserId: string;
     factKey: string;
     now: Date;
-    source: 'poll' | 'text';
+    source: LogisticsSource;
   },
 ): Promise<void> {
   const audit = {

@@ -9,7 +9,9 @@ import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
  * that person busy then, or two plans at once that the people free on the calendars Hale
  * can see cannot split between them. Two parents covering is not a clash. Nobody is called
  * free from a calendar Hale cannot see; the alert may ask them instead. A private block
- * arrives here as an owner and a time, and leaves as "busy".
+ * arrives here as an owner and a time, and leaves as "busy". A plan someone took in the
+ * group (a claim the model read, group-pickup-claim.ts) is settled: it is never in an
+ * alert, and the person who took it is not free for anything else then.
  *
  * The model writes the alert from {@link groupConflictLineInput}. Nothing here is copy.
  */
@@ -42,6 +44,8 @@ export interface ClashPlan {
   holders: readonly string[];
   /** The taker the family stored. Null falls back to the one calendar it is on. */
   takerId: string | null;
+  /** The taker took it themselves in the group. Their word outranks any calendar. */
+  claimed: boolean;
   /** Calendar rows the alert names, stamped announced once it lands. */
   rows: readonly { integrationId: string; eventId: string }[];
 }
@@ -91,9 +95,15 @@ function takesTime(plan: ClashPlan, now: Date): boolean {
   return length > 0 && length <= CONTAINER_MS && plan.end.getTime() > now.getTime();
 }
 
-function watched(plan: ClashPlan, now: Date): boolean {
+/** Ahead in the next two weeks and ties up an adult: a plan someone has to take. */
+export function watchedPlan(plan: ClashPlan, now: Date): boolean {
   const start = plan.start.getTime();
   return takesTime(plan, now) && start > now.getTime() && start <= now.getTime() + LOOKAHEAD_MS;
+}
+
+/** The person a plan rests on now: its stored taker, else the one calendar it is on. */
+export function planRestsOn(plan: ClashPlan): string | null {
+  return plan.takerId ?? (plan.holders.length === 1 ? (plan.holders[0] ?? null) : null);
 }
 
 function spanKey(key: string, span: Span): string {
@@ -106,16 +116,18 @@ function spanKey(key: string, span: Span): string {
  */
 export function findGroupClashes(input: GroupClashInput): GroupClash[] {
   const plans = input.plans
-    .filter((plan) => watched(plan, input.now))
+    .filter((plan) => !plan.claimed && watchedPlan(plan, input.now))
     .sort((a, b) => a.start.getTime() - b.start.getTime() || a.key.localeCompare(b.key));
   const people = new Map(input.people.map((person) => [person.id, person]));
   const visible = input.people.filter((person) => person.calendar).map((person) => person.id);
   const named = (id: string) => (people.get(id)?.name ?? '').length > 0;
-  const restsOn = (plan: ClashPlan): string | null =>
-    plan.takerId ?? (plan.holders.length === 1 ? (plan.holders[0] ?? null) : null);
-  // A plan already under way is no new clash, but whoever has it is not free until it ends.
-  const underway: ClashBusy[] = input.plans
-    .filter((plan) => takesTime(plan, input.now) && plan.start.getTime() <= input.now.getTime())
+  // A plan under way, or one someone took in the group, is no clash of its own, but
+  // whoever has it is not free until it ends.
+  const held: ClashBusy[] = input.plans
+    .filter(
+      (plan) =>
+        takesTime(plan, input.now) && (plan.claimed || plan.start.getTime() <= input.now.getTime()),
+    )
     .flatMap((plan) =>
       (plan.takerId ? [plan.takerId] : plan.holders).map((personId) => ({
         key: plan.key,
@@ -125,7 +137,7 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
         known: plan.takerId !== null,
       })),
     );
-  const taken = [...input.busy, ...underway];
+  const taken = [...input.busy, ...held];
   const busyThen = (id: string, span: Span): ClashBusy | null =>
     taken.find(
       (block) =>
@@ -137,12 +149,12 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
     people.get(id)?.calendar === true &&
     busyThen(id, plan) === null &&
     !plans.some(
-      (other) => other.key !== plan.key && restsOn(other) === id && overlaps(other, plan),
+      (other) => other.key !== plan.key && planRestsOn(other) === id && overlaps(other, plan),
     );
   // Who could do it as things stand: the person it rests on unless their calendar shows
   // them busy, else anyone free on a calendar Hale can see.
   const options = (plan: ClashPlan): string[] => {
-    const owner = restsOn(plan);
+    const owner = planRestsOn(plan);
     if (owner !== null && busyThen(owner, plan) === null) return [owner];
     return visible.filter((id) => freeFor(id, plan));
   };
@@ -155,7 +167,7 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
     let alsoFree: string[] = [];
     for (const plan of [...pair].reverse()) {
       const [pick, ...rest] = visible.filter(
-        (id) => id !== restsOn(plan) && freeFor(id, plan) && named(id),
+        (id) => id !== planRestsOn(plan) && freeFor(id, plan) && named(id),
       );
       if (pick) {
         suggested = { personId: pick, planKey: plan.key };
@@ -163,13 +175,16 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
         break;
       }
     }
+    // Sorted: a collision is the set of things in it, so a claim that turns one of its plans
+    // into the claimer's busy time is still the alert the group already has.
     const parts = pair.map((plan) => spanKey(plan.key, plan));
     if ('busy' in second) parts.push(spanKey(second.busy.key, second.busy));
+    parts.sort();
     return {
       dedupeKey: `linq-group:clash:${createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 32)}`,
       first,
       second,
-      restsOn: Object.fromEntries(pair.map((plan) => [plan.key, restsOn(plan)])),
+      restsOn: Object.fromEntries(pair.map((plan) => [plan.key, planRestsOn(plan)])),
       suggested,
       alsoFree,
       busy: input.people
@@ -182,7 +197,9 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
           (person) =>
             !person.calendar &&
             person.name.length > 0 &&
-            !pair.some((plan) => restsOn(plan) === person.id || busyThen(person.id, plan) !== null),
+            !pair.some(
+              (plan) => planRestsOn(plan) === person.id || busyThen(person.id, plan) !== null,
+            ),
         )
         .map((person) => person.id),
     };
@@ -192,7 +209,7 @@ export function findGroupClashes(input: GroupClashInput): GroupClash[] {
   const told = new Set<string>();
   for (const [index, plan] of plans.entries()) {
     if (told.has(plan.key)) continue;
-    const owner = restsOn(plan);
+    const owner = planRestsOn(plan);
     const blocked = owner === null ? null : busyThen(owner, plan);
     if (blocked) {
       clashes.push(describe(plan, { busy: blocked }));
@@ -242,7 +259,16 @@ export interface ClashSourceEvent {
   /** A teen's or a health item: its taker is busy then, and nothing else is said. */
   private: boolean;
   owner: { kind: 'parent'; userId: string } | { kind: 'named'; label: string } | null;
+  /** When the owner was set. A claim made in the group after it wins. */
+  ownerSince: Date | null;
   placedGoogleEventId: string | null;
+}
+
+/** A stored who-takes decision: who, since when, and whether they took it themselves. */
+export interface ClashDecision {
+  takerId: string;
+  at: Date;
+  claim: boolean;
 }
 
 /** The same normalization the stored who-takes decisions are keyed by. */
@@ -254,13 +280,14 @@ export function clashTitleNorm(title: string): string {
  * Plans, busy time, and named takers from what Hale may read. A kid item on two calendars,
  * or a plan Hale placed on a calendar, is one plan with every holder. An all-day item is
  * not a taken hour (Google marks most of them free), so it neither clashes nor makes
- * anyone busy. An item with no end is skipped: no end time is invented.
+ * anyone busy. An item with no end is skipped: no end time is invented. On a plan Hale
+ * holds, a claim made in the group outranks a duty owner set before it, never after.
  */
 export function clashCalendar(input: {
   blocks: readonly ClashSourceBlock[];
   events: readonly ClashSourceEvent[];
   /** A stored who-takes decision for this start and title, or null. */
-  decidedTaker: (startIso: string, titleNorm: string) => string | null;
+  decided: (startIso: string, titleNorm: string) => ClashDecision | null;
 }): { plans: ClashPlan[]; busy: ClashBusy[]; named: ClashPerson[] } {
   interface Draft {
     key: string;
@@ -269,6 +296,7 @@ export function clashCalendar(input: {
     end: Date;
     holders: Set<string>;
     takerId: string | null;
+    claimed: boolean;
     rows: { integrationId: string; eventId: string }[];
   }
   const drafts: Draft[] = [];
@@ -284,13 +312,14 @@ export function clashCalendar(input: {
     if (event.private && event.placedGoogleEventId) privatePlaced.add(event.placedGoogleEventId);
     if (!event.end || event.end.getTime() <= event.start.getTime()) continue;
     let takerId: string | null = null;
+    let label: string | null = null;
     if (event.owner?.kind === 'parent') takerId = event.owner.userId;
     if (event.owner?.kind === 'named' && event.owner.label.trim()) {
-      const label = event.owner.label.trim();
+      label = event.owner.label.trim();
       takerId = `named:${label}`;
-      named.set(takerId, { id: takerId, name: label, calendar: false });
     }
     if (event.private) {
+      if (label && takerId) named.set(takerId, { id: takerId, name: label, calendar: false });
       if (takerId) {
         busy.push({
           key: `plan:${event.id}`,
@@ -302,6 +331,16 @@ export function clashCalendar(input: {
       }
       continue;
     }
+    const word = input.decided(event.start.toISOString(), clashTitleNorm(event.title));
+    const claim =
+      word?.claim &&
+      (takerId === null ||
+        event.ownerSince === null ||
+        word.at.getTime() >= event.ownerSince.getTime())
+        ? word
+        : null;
+    if (claim) takerId = claim.takerId;
+    else if (label && takerId) named.set(takerId, { id: takerId, name: label, calendar: false });
     const draft: Draft = {
       key: `plan:${event.id}`,
       title: event.title,
@@ -309,6 +348,7 @@ export function clashCalendar(input: {
       end: event.end,
       holders: new Set(),
       takerId,
+      claimed: claim !== null,
       rows: [],
     };
     drafts.push(draft);
@@ -340,13 +380,15 @@ export function clashCalendar(input: {
     let draft = bySignature.get(sig);
     if (!draft) {
       const startIso = block.start.toISOString();
+      const word = input.decided(startIso, clashTitleNorm(block.title));
       draft = {
         key: `cal:${clashTitleNorm(block.title)}@${startIso}`,
         title: block.title.trim(),
         start: block.start,
         end: block.end,
         holders: new Set(),
-        takerId: input.decidedTaker(startIso, clashTitleNorm(block.title)),
+        takerId: word?.takerId ?? null,
+        claimed: word?.claim ?? false,
         rows: [],
       };
       drafts.push(draft);
@@ -399,6 +441,19 @@ function localClock(date: Date, timeZone: string): string {
   return `${read('hour')}:${read('minute')}`;
 }
 
+/** A plan's local day and 24-hour start and end, as the model is given them. */
+export function planWhen(
+  plan: Pick<ClashPlan, 'start' | 'end'>,
+  timeZone: string,
+  language: ReplyLanguage,
+): { day: string; start: string; end: string } {
+  return {
+    day: localDay(plan.start, timeZone, language),
+    start: localClock(plan.start, timeZone),
+    end: localClock(plan.end, timeZone),
+  };
+}
+
 export function groupConflictLineInput(
   clash: GroupClash,
   context: {
@@ -415,9 +470,7 @@ export function groupConflictLineInput(
   const plan = (row: ClashPlan): GroupConflictItem => ({
     kind: 'plan',
     title: row.title,
-    day: localDay(row.start, context.timeZone, context.language),
-    start: localClock(row.start, context.timeZone),
-    end: localClock(row.end, context.timeZone),
+    ...planWhen(row, context.timeZone, context.language),
     has: nameOf(clash.restsOn[row.key]),
   });
   const second: GroupConflictItem =
