@@ -96,7 +96,7 @@ describe('VIL-472 Linq stickers', () => {
   });
 
   it('accepts one emoji of any shape and refuses what a peel cannot carry', () => {
-    for (const sticker of ['🎉', '👍🏽', '❤️', '🇨🇦', '👨‍👩‍👧']) {
+    for (const sticker of ['🎉', '👍🏽', '❤️', '🇨🇦', '👨‍👩‍👧', '1️⃣', '#️⃣']) {
       expect(linqStickerRefusals({ sticker, sendReply: false })).toEqual([]);
     }
     expect(linqStickerRefusals({ sticker: null, sendReply: true })).toEqual([]);
@@ -198,6 +198,20 @@ describe('VIL-472 Linq stickers', () => {
     const both = await moment(beside, decider({ sticker: '🙌', sendReply: true }), linqFetch());
     expect(both).toEqual({ handled: false });
     expect(beside.rows(schema.auditLog).map((r) => r.actionTaken)).toEqual(['linq_sticker']);
+  });
+
+  it('does not peel a second sticker when a failed reply re-drives the turn', async () => {
+    vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const fake = makeFakeDb();
+    await moment(fake, decider({ sticker: '🙌', sendReply: true }), linqFetch());
+
+    const again = decider({ sticker: '🙌', sendReply: true });
+    const f = linqFetch();
+    expect(await moment(fake, again, f)).toEqual({ handled: false });
+    expect(again.calls).toBe(0);
+    expect(f).not.toHaveBeenCalled();
+    expect(fake.rows(schema.auditLog)).toHaveLength(1);
   });
 
   it('lets the reply go out and writes nothing when the model fails or the peel is refused', async () => {

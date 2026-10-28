@@ -1,5 +1,6 @@
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
@@ -64,6 +65,34 @@ export async function considerLinqReply(
       { reason: args.sticker ? 'no_inbound_message_id' : 'no_decider' },
       'linq sticker: not considered',
     );
+    return { handled: false };
+  }
+  // Stickers stack and a peel cannot be removed, so a re-driven turn whose reply failed
+  // after the peel must not peel a second one onto the same message.
+  const earlier = await database
+    .select({
+      templateKey: schema.channelMessages.templateKey,
+      providerMessageId: schema.channelMessages.providerMessageId,
+      familyId: schema.channelMessages.familyId,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, args.familyId),
+        eq(schema.channelMessages.providerMessageId, inboundMessageId),
+        eq(schema.channelMessages.templateKey, 'linq:sticker'),
+      ),
+    )
+    .limit(1);
+  if (
+    earlier.some(
+      (row) =>
+        row.templateKey === 'linq:sticker' &&
+        row.providerMessageId === inboundMessageId &&
+        row.familyId === args.familyId,
+    )
+  ) {
+    console.info({ reason: 'already_peeled' }, 'linq sticker: not considered');
     return { handled: false };
   }
   const sticker = await applyLinqSticker({

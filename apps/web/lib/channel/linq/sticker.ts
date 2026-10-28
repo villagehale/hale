@@ -64,7 +64,7 @@ export function linqStickerUserMessage(input: LinqStickerInput): string {
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-const PICTOGRAPH = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
+const PICTOGRAPH = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
 
 /**
  * Why a reading cannot be acted on. Linq's peel takes exactly one emoji, and a turn

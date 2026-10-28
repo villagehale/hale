@@ -1055,7 +1055,8 @@ async function routeChannelMessageInner(
       beforeSend: stopTyping,
       inboundBody: context.body,
       stickerRead: {
-        audience: inGroup ? 'group' : 'direct',
+        // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+        audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
         parentAttachments: (context.media ?? []).map((part) => part.kind),
       },
     });
