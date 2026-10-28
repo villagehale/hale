@@ -196,7 +196,9 @@ function upcomingLine(
       : residentGone
         ? `residents opened ${pastPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`
         : `residents ${upcomingPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`;
-  const nouns = labelNeedsNouns(event.cycleLabel, townEvents) ? `${joinNouns(event.domains)} ` : '';
+  const nouns = labelNeedsNouns(event.cycleLabel, townEvents)
+    ? `${joinNouns(event.domains)} `
+    : '';
   const line = endSentence(
     `${townLabel(city)} ${asciiCopy(event.cycleLabel)} ${nouns}registration: ${halves}`,
   );

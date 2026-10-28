@@ -5,7 +5,11 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { FakeTransport } from './transport';
-import { MAX_REDRIVE_PER_RUN, REDRIVE_HOUR_LOCAL, isRedriveSlot } from '~/lib/channel/redrive-slot';
+import {
+  MAX_REDRIVE_PER_RUN,
+  REDRIVE_HOUR_LOCAL,
+  isRedriveSlot,
+} from '~/lib/channel/redrive-slot';
 import { runWelcomeCardRedrive } from './welcome-card-redrive';
 import {
   CONTACT_CARD_URL,
@@ -228,11 +232,7 @@ describe('the 08:00 re-drive of a contact card quiet hours held', () => {
       { to: household.phone, body: WELCOME_CARD_BODY, mediaUrls: [CONTACT_CARD_URL] },
     ]);
     expect(threaded).toEqual([
-      {
-        familyId: household.familyId,
-        parentUserId: household.parentUserId,
-        body: WELCOME_CARD_BODY,
-      },
+      { familyId: household.familyId, parentUserId: household.parentUserId, body: WELCOME_CARD_BODY },
     ]);
     const rows = await cardRows(household.familyId);
     expect(rows).toHaveLength(2);

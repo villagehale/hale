@@ -92,7 +92,10 @@ interface HeldCard {
  * be the same wrong hundred every morning until the seven-day bound ages the rest out
  * unserved.
  */
-export async function selectHeldWelcomeCards(database: Database, now: Date): Promise<HeldCard[]> {
+export async function selectHeldWelcomeCards(
+  database: Database,
+  now: Date,
+): Promise<HeldCard[]> {
   const held = await database
     .select({
       familyId: schema.channelMessages.familyId,
@@ -104,7 +107,10 @@ export async function selectHeldWelcomeCards(database: Database, now: Date): Pro
         eq(schema.channelMessages.templateKey, WELCOME_CARD_TEMPLATE_KEY),
         eq(schema.channelMessages.status, 'suppressed_quiet_hours'),
         isNull(schema.channelMessages.dedupeKey),
-        gte(schema.channelMessages.createdAt, new Date(now.getTime() - REDRIVE_MAX_AGE_MS)),
+        gte(
+          schema.channelMessages.createdAt,
+          new Date(now.getTime() - REDRIVE_MAX_AGE_MS),
+        ),
       ),
     )
     .orderBy(asc(schema.channelMessages.createdAt));

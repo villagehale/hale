@@ -5,7 +5,11 @@ import {
   type CoParentInvite,
   supersedeOpenInviteOnEnrollment,
 } from '~/lib/channel/caregiver/invites';
-import { loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from '~/lib/channel/join/invites';
+import {
+  loadOpenJoinInvite,
+  mintJoinInvite,
+  redeemJoinInvite,
+} from '~/lib/channel/join/invites';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { createTestDb, type TestDb } from '~/lib/testing/pglite';
@@ -296,7 +300,9 @@ describe('the one seat, at the moment of seating', () => {
       .values({ externalAuthId: `sms:${tag}` })
       .returning({ id: schema.users.id });
     const userId = other?.id as string;
-    await db.database.insert(schema.familyMembers).values({ familyId, userId, role: 'co_parent' });
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId, role: 'co_parent' });
     return userId;
   }
 

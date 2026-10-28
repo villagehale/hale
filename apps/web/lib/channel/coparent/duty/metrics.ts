@@ -154,8 +154,7 @@ export async function loadDutyMetrics(
       row.startsAt.getTime() <= horizon.getTime(),
   );
   const owned = upcoming.filter(
-    (row) =>
-      row.dutySetAt !== null && (row.dutyOwnerUserId || row.dutyOwnerLabel || row.dutyOwnerKind),
+    (row) => row.dutySetAt !== null && (row.dutyOwnerUserId || row.dutyOwnerLabel || row.dutyOwnerKind),
   );
 
   const audits = await database

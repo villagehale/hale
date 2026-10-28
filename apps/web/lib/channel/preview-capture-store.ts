@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, like, notExists, sql } from 'drizzle-orm';
-import { isSyntheticProbeNumber } from '~/lib/channels/phone';
 import type { CapturedSend } from '~/lib/channel/preview-capture-transport';
+import { isSyntheticProbeNumber } from '~/lib/channels/phone';
 
 /**
  * VIL-466 · The capture transport's sink on a deployed Preview.

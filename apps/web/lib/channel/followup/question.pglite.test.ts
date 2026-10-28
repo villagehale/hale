@@ -77,9 +77,9 @@ describe('daycareFollowupQuestion', () => {
     const seeded = await seedFamily();
     await seedAsk(seeded);
 
-    expect(await daycareFollowupQuestion(db.database, { ...seeded, now: SAME_DAY })).toMatchObject({
-      askedAt: ASKED_AT,
-    });
+    expect(await daycareFollowupQuestion(db.database, { ...seeded, now: SAME_DAY })).toMatchObject(
+      { askedAt: ASKED_AT },
+    );
   });
 
   it('closes the moment anything else goes out', async () => {

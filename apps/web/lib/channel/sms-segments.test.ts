@@ -11,7 +11,7 @@ import { smsEncoding, smsSegments } from './sms-segments.js';
 
 describe('smsEncoding', () => {
   it('is gsm7 for plain ASCII copy', () => {
-    expect(smsEncoding('Want me to keep an eye on all of this for you?')).toBe('gsm7');
+    expect(smsEncoding("Want me to keep an eye on all of this for you?")).toBe('gsm7');
   });
 
   it('is gsm7 for the accented + currency characters GSM-7 actually covers', () => {
@@ -20,7 +20,7 @@ describe('smsEncoding', () => {
 
   it('is ucs2 as soon as one character falls outside GSM-7 (an em dash, a curly quote)', () => {
     expect(smsEncoding('Hale — your week')).toBe('ucs2');
-    expect(smsEncoding('Hale’s week')).toBe('ucs2');
+    expect(smsEncoding("Hale’s week")).toBe('ucs2');
   });
 });
 

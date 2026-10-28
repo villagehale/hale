@@ -78,7 +78,9 @@ function recurrenceKey(factKey: string): { key: string; speakable: boolean } | n
   const speakable = dutyTitleMayBeSpoken(decoded);
   const raw = `${decoded.toLowerCase()}|${match[2]}`;
   return {
-    key: speakable ? raw : `h:${createHash('sha256').update(raw).digest('hex').slice(0, 12)}`,
+    key: speakable
+      ? raw
+      : `h:${createHash('sha256').update(raw).digest('hex').slice(0, 12)}`,
     speakable,
   };
 }
@@ -275,3 +277,4 @@ export async function noteDutyBurden(
   }
   return summary;
 }
+
