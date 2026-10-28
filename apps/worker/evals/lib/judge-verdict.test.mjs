@@ -32,7 +32,13 @@ describe('a judge verdict is a verdict only if it carries a rubric score', () =>
     ['reason written, score truncated off the end', { reason: 'a long argument' }],
     ['score present but not a number', { score: '4', reason: 'x' }],
     ['nothing at all', undefined],
-    ['out-of-range score from a truncated quote', { score: -1, reason: 'The message ties the ask directly to the introduction the parent agreed to (' }],
+    [
+      'out-of-range score from a truncated quote',
+      {
+        score: -1,
+        reason: 'The message ties the ask directly to the introduction the parent agreed to (',
+      },
+    ],
     ['score below the rubric', { score: 0, reason: 'a long argument about the reply' }],
     ['score above the rubric', { score: 6, reason: 'a long argument about the reply' }],
     ['non-integer score', { score: 4.5, reason: 'a long argument about the reply' }],
