@@ -1,17 +1,18 @@
 import { spawn } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { GROUP_PLAN_CALENDAR_REPORT_FIXTURES } from './group-plan-calendar-report-fixtures.mjs';
 import { CACHE_DIR } from './lib/harness.mjs';
 
 /**
- * The group plan report's runner (VIL-443), run as a process with no API key. Its corpus
- * is not recorded until a price is agreed, so what runs here is what runs before that:
- * the calibration, whose gate is the exit code, and the price, which calls no model and
- * writes no recording.
+ * The group plan report's runner (VIL-443), run as a process with no API key: the
+ * calibration, whose gate is the exit code, the price, which calls no model and writes
+ * no recording, and the spend cap, which has to refuse before any call.
  */
-const RUNNER = fileURLToPath(new URL('./group-plan-calendar-report-eval.mjs', import.meta.url));
+const RUNNER = fileURLToPath(new URL('./run-group-plan-calendar-report-eval.mjs', import.meta.url));
 const FIXTURES_URL = new URL('./group-plan-calendar-report-fixtures.mjs', import.meta.url).href;
 
 /** Waits on the child without blocking the vitest worker's event loop. Nothing it could
@@ -100,12 +101,33 @@ describe('the group plan report runner', { timeout: 60_000 }, () => {
   });
 
   it('refuses a live run with no spend cap before it calls anything', async () => {
-    const recordings = readdirSync(CACHE_DIR).length;
-    const run = await runRunner([]);
+    // The corpus is recorded, so against the real cache every request would replay and
+    // never reach the cap. Point the cache lookups at an empty temp dir instead, so the
+    // first request has to go live and the cap has to refuse it.
+    const empty = mkdtempSync(join(tmpdir(), 'group-plan-report-cache-'));
+    const emptyCache = `data:text/javascript,${encodeURIComponent(
+      `import fs from 'node:fs';
+       import { syncBuiltinESMExports } from 'node:module';
+       import { basename } from 'node:path';
+       const cache = ${JSON.stringify(CACHE_DIR)};
+       const empty = ${JSON.stringify(empty)};
+       const exists = fs.existsSync;
+       fs.existsSync = (path) =>
+         exists(String(path).startsWith(cache) ? join(empty, basename(String(path))) : path);
+       function join(dir, name) { return dir + '/' + name; }
+       syncBuiltinESMExports();`,
+    )}`;
+    try {
+      const recordings = readdirSync(CACHE_DIR).length;
+      const run = await runRunner([], [emptyCache]);
 
-    expect(run.report).toContain('spend-cap: a live model call needs BOTH a cap');
-    expect(run.report).not.toMatch(/^(PASS|FAIL) {2}/m);
-    expect(readdirSync(CACHE_DIR)).toHaveLength(recordings);
-    expect(run.status).toBe(2);
+      expect(run.report).toContain('spend-cap: a live model call needs BOTH a cap');
+      expect(run.report).not.toMatch(/^(PASS|FAIL) {2}/m);
+      expect(readdirSync(CACHE_DIR)).toHaveLength(recordings);
+      expect(readdirSync(empty)).toHaveLength(0);
+      expect(run.status).toBe(2);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 });

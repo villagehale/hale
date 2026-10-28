@@ -9,13 +9,12 @@
 // link to whoever it is not on yet, never invents time, end, place, attendees or
 // availability. One message or a few is the model's call. Nothing matches words.
 //
-// NOT RECORDED YET. A recording is paid and needs Barton's OK with a price first, so this
-// file is not named run-*.mjs: the Monday sweep replays every run-*.mjs cached-only and a
-// miss fails it. Price it, record it, then rename it:
-//   node evals/group-plan-calendar-report-eval.mjs --dry           # worst case $, 0 calls
-//   node evals/group-plan-calendar-report-eval.mjs --broken        # calibration: must FAIL, 0 calls
-//   node evals/group-plan-calendar-report-eval.mjs --max-usd 0.10  # live (HALE_SPEND_LEDGER), caches
-//   node evals/group-plan-calendar-report-eval.mjs --cached-only   # replay; a miss exits 1
+// Recorded (VIL-443, cap $0.0484, ledger $0.0020); the Monday sweep replays it
+// cached-only like every run-*.mjs, and a miss fails it.
+//   node evals/run-group-plan-calendar-report-eval.mjs --dry           # worst case $, 0 calls
+//   node evals/run-group-plan-calendar-report-eval.mjs --broken        # calibration: must FAIL, 0 calls
+//   node evals/run-group-plan-calendar-report-eval.mjs --max-usd 0.10  # live (HALE_SPEND_LEDGER), caches
+//   node evals/run-group-plan-calendar-report-eval.mjs --cached-only   # replay; a miss exits 1
 // `--broken --judge` also asks the judge about the broken text (live unless --cached-only).
 
 import { dirname, join } from 'node:path';
