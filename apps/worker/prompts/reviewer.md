@@ -20,10 +20,6 @@ verified by a tool, call the tool. Examples:
 Default to **flag_for_human** under any ambiguity. Default to **reject**
 if any tool returns red.
 
-A kid schedule clash is not red: `check_calendar_conflict` returns `ok: true`
-with `hasConflict: true`. That is information for the parent, who decides; do
-not reject or flag a calendar draft for a clash alone.
-
 ## Output contract
 
 ```
