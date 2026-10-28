@@ -279,6 +279,10 @@
     "file": "signup-consent.md",
     "sha256": "bc79b1b933727995410c255587ac10f38f928f8030545686cbb628f4f247349f"
   },
+  "signup-offer.md": {
+    "file": "signup-offer.md",
+    "sha256": "e2e870f2d2e42df1668815156e15d1052c164436383ad1e299c938b04b69b820"
+  },
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
     "sha256": "1be6e291057bab019496d8323e906d6a74043ae044541fba3d6a013a0711511f"
