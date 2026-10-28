@@ -19,13 +19,15 @@
 //   node evals/run-group-private-aside-eval.mjs --broken        # calibration, cache only
 //   node evals/run-group-private-aside-eval.mjs --cached-only   # CI: replay only, $0
 //   node --env-file=../../.env evals/run-group-private-aside-eval.mjs --live   # PAID
+//   ... --only=<id>[,<id>]   with any one mode: just those cases; the broken calibration
+//                            runs only when its fixture is selected
 // Exactly one mode (lib/eval-flags.mjs): anything else exits 2 before a client exists.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { BROKEN_ASIDE, GROUP_PRIVATE_ASIDE_FIXTURES } from './group-private-aside-fixtures.mjs';
-import { estimateTokens, noClient, parseEvalFlagsOrExit, worstCaseUsd } from './lib/eval-flags.mjs';
+import { estimateTokens, noClient, parseEvalArgsOrExit, worstCaseUsd } from './lib/eval-flags.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
@@ -120,9 +122,23 @@ async function loadSubject() {
   return { agent, aside, readSkill, draftSkill };
 }
 
+/** The cases this run covers, and whether the broken calibration (tied to one fixture) runs. */
+function selectCases(only) {
+  const fixtures = only
+    ? GROUP_PRIVATE_ASIDE_FIXTURES.filter((f) => only.includes(f.id))
+    : GROUP_PRIVATE_ASIDE_FIXTURES;
+  const runBroken = !only || only.includes(BROKEN_ASIDE.fixture);
+  return { fixtures, runBroken };
+}
+
 async function main() {
-  const mode = parseEvalFlagsOrExit('group-private-aside');
-  if (mode === 'dry') return dryRun();
+  const { mode, only } = parseEvalArgsOrExit(
+    'group-private-aside',
+    GROUP_PRIVATE_ASIDE_FIXTURES.map((f) => f.id),
+  );
+  const { fixtures, runBroken } = selectCases(only);
+  if (only) console.log(`--only: ${fixtures.map((f) => f.id).join(',')}`);
+  if (mode === 'dry') return dryRun(fixtures, runBroken);
   const broken = mode === 'broken';
   const cachedOnly = mode !== 'live';
   installEvalSpendCap();
@@ -144,7 +160,7 @@ async function main() {
   );
 
   const results = [];
-  for (const fixture of GROUP_PRIVATE_ASIDE_FIXTURES) {
+  for (const fixture of fixtures) {
     const failures = [];
     const refs = fixture.families.map((f) => f.ref);
     const picked = (
@@ -213,10 +229,15 @@ async function main() {
   }
 
   // The broken case, judged in every mode: it must FAIL the judge.
-  const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === BROKEN_ASIDE.fixture);
-  const bfam = bf.families.find((f) => f.ref === BROKEN_ASIDE.family);
-  const bverdict = await judge(BROKEN_ASIDE.id, judgePayload(bf, bfam, BROKEN_ASIDE.text));
-  const brokenCaught = bverdict.score < JUDGE_MIN;
+  let brokenCaught = true;
+  let brokenScore = 'skipped (--only)';
+  if (runBroken) {
+    const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === BROKEN_ASIDE.fixture);
+    const bfam = bf.families.find((f) => f.ref === BROKEN_ASIDE.family);
+    const bverdict = await judge(BROKEN_ASIDE.id, judgePayload(bf, bfam, BROKEN_ASIDE.text));
+    brokenCaught = bverdict.score < JUDGE_MIN;
+    brokenScore = bverdict.score;
+  }
 
   for (const r of results) {
     console.log(
@@ -225,7 +246,7 @@ async function main() {
     for (const f of r.failures) console.log(`      · ${f}`);
   }
   console.log(
-    `${brokenCaught ? 'PASS' : 'FAIL'}  ${BROKEN_ASIDE.id.padEnd(34)} (must be failed by the judge) judge:${bverdict.score}`,
+    `${brokenCaught ? 'PASS' : 'FAIL'}  ${BROKEN_ASIDE.id.padEnd(34)} (must be failed by the judge) judge:${brokenScore}`,
   );
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
@@ -238,7 +259,7 @@ async function main() {
 }
 
 /** $0: no spend cap, no client. Every call priced uncached at its full output cap. */
-async function dryRun() {
+async function dryRun(fixtures, runBroken) {
   const { agent, aside, readSkill, draftSkill } = await loadSubject();
   const readModel = agent.pickModel(readSkill.meta.task);
   const draftModel = agent.pickModel(draftSkill.meta.task);
@@ -259,7 +280,7 @@ async function dryRun() {
   };
   const judgeIn = (fixture, family, text) =>
     JUDGE_SYSTEM + JSON.stringify(judgePayload(fixture, family, text));
-  for (const fixture of GROUP_PRIVATE_ASIDE_FIXTURES) {
+  for (const fixture of fixtures) {
     price(
       `read:${fixture.id}`,
       readModel,
@@ -285,14 +306,16 @@ async function dryRun() {
       );
     }
   }
-  const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === BROKEN_ASIDE.fixture);
-  const bfam = bf.families.find((f) => f.ref === BROKEN_ASIDE.family);
-  price(
-    `judge:${BROKEN_ASIDE.id}`,
-    judgeModel,
-    judgeIn(bf, bfam, BROKEN_ASIDE.text),
-    JUDGE_MAX_OUT,
-  );
+  if (runBroken) {
+    const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === BROKEN_ASIDE.fixture);
+    const bfam = bf.families.find((f) => f.ref === BROKEN_ASIDE.family);
+    price(
+      `judge:${BROKEN_ASIDE.id}`,
+      judgeModel,
+      judgeIn(bf, bfam, BROKEN_ASIDE.text),
+      JUDGE_MAX_OUT,
+    );
+  }
   console.log(`DRY summary | ${calls} calls, all priced as uncached | worst $${worst.toFixed(5)}`);
   console.log('DRY: input tokens are an offline estimate (1 per 3 bytes); live calls: 0');
 }
