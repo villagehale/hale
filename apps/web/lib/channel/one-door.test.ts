@@ -86,6 +86,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'the household outbound resolver; proactive callers ledger the row beside deliverFamilyOutbound, postGroupDecisionSync inserts its own channel_messages row before the Linq send, and sendClaimedGroupLine does the same before mirroring a memory decision into the claimed group only',
   'apps/web/lib/channel/linq/poll.ts':
     'sends the placeholder question and the poll, then writes linq:poll and linq_poll_sent',
+  'apps/web/lib/channel/linq/group-poll-offer.ts':
+    'stuck-group text offer; sendOfferText writes the channel_messages row (reply, template linq:group_offer) after sendLinqChatMessage lands and audits linq_group_offer_sent on that row — no native poll card',
   'apps/web/lib/channel/router/reply-transport.ts':
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/connect/connected-notice.ts':

@@ -197,6 +197,7 @@ export const AUDIT_VERBS = [
   'linq_multi_family_private_withheld',
   'linq_multi_family_data_refused',
   'linq_poll_sent',
+  'linq_group_offer_sent',
   // A live logistics fact: an open ask, a named taker, a chosen time, or
   // "none of these" ending the both-free ask. One verb, because every one of
   // those writes goes through the same audit row.
@@ -814,6 +815,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   linq_poll_sent: { sentence: 'Hale sent you a short choice', family: 'note' },
+  linq_group_offer_sent: {
+    sentence: 'Hale named the options in the group chat',
+    family: 'note',
+  },
   // True for an open ask, a named taker, a chosen time, and a both-free
   // "none of these". It does not say who, or that a taker was named, because
   // this same verb is also the open ask and the ended ask.
