@@ -20,6 +20,7 @@ import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import { handleLinqInboundRequest } from './inbound';
+import type { GroupTurnReadInput, GroupTurnReader, GroupTurnReading } from './group-turn-reader';
 import type { ListChatHandles } from './roster';
 
 /**
@@ -55,6 +56,7 @@ beforeEach(() => {
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
   vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_TURN_AI_ENABLED', 'true');
 });
 
 afterEach(async () => {
@@ -155,7 +157,20 @@ function groupMessage(text: string, messageId: string) {
   };
 }
 
-function door() {
+/** A scripted reader: the reading is chosen by the test, never by the words. */
+function scriptedReader(reading: GroupTurnReading | null) {
+  const seen: GroupTurnReadInput[] = [];
+  const reader: GroupTurnReader = {
+    async read(input) {
+      seen.push(input);
+      return reading;
+    },
+  };
+  return { reader, seen };
+}
+
+function door(reading: GroupTurnReading | null = 'chatter') {
+  const scripted = scriptedReader(reading);
   const jobs: ChannelMessageReceivedJob[] = [];
   const outcomes: string[] = [];
   const sends: Array<{ chatId: string; text: string }> = [];
@@ -193,12 +208,13 @@ function door() {
     groupVoice: fakeGroupOnboardingComposer(),
     listChatHandles: listHandles,
     groupLimiter: new PostgresRateLimiter(db.database),
+    groupTurnReader: scripted.reader,
     sendGroupText: async (input: { chatId: string; text: string }) => {
       sends.push(input);
       return { providerMessageId: `out-${sends.length}` };
     },
   } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
-  return { deps, jobs, outcomes, sends, transport };
+  return { deps, jobs, outcomes, sends, transport, readerSeen: scripted.seen };
 }
 
 async function budgetRows() {
@@ -235,7 +251,7 @@ describe('a message in the family group', () => {
 
   it('goes to the coach when it names Hale, spending the chat budget and not the sender’s', async () => {
     const { familyId } = await seedClaimedHousehold();
-    const { deps, jobs } = door();
+    const { deps, jobs } = door('addressed');
 
     const response = await handleLinqInboundRequest(
       signed(groupMessage('Hale, is swim still on tomorrow', 'in-addressed')),
@@ -250,7 +266,7 @@ describe('a message in the family group', () => {
 
   it('goes to the coach for a question about one of the family’s kids', async () => {
     await seedClaimedHousehold();
-    const { deps, jobs } = door();
+    const { deps, jobs } = door('question_for_hale');
 
     const response = await handleLinqInboundRequest(
       signed(groupMessage('what time is Maya done tonight?', 'in-kid')),
@@ -264,7 +280,7 @@ describe('a message in the family group', () => {
   it('answers nothing into a confirmed group whose audience may hear no household facts', async () => {
     const { familyId, userId } = await seedClaimedHousehold();
     await seedRoster(familyId, userId, 'confirmed', { status: 'not_family', confirmedRole: null });
-    const { deps, jobs, outcomes, sends, transport } = door();
+    const { deps, jobs, outcomes, sends, transport } = door('addressed');
 
     const response = await handleLinqInboundRequest(
       signed(groupMessage('Hale, is swim still on tomorrow', 'in-empty-audience')),
@@ -291,7 +307,7 @@ describe('a message in the family group', () => {
   it('answers nothing while someone in the group has not yet said who they are', async () => {
     const { familyId, userId } = await seedClaimedHousehold();
     await seedRoster(familyId, userId, 'roles_proposed', { status: 'asked', confirmedRole: null });
-    const { deps, jobs } = door();
+    const { deps, jobs } = door('addressed');
 
     const response = await handleLinqInboundRequest(
       signed(groupMessage('Hale, is swim still on tomorrow', 'in-asking')),
@@ -311,7 +327,7 @@ describe('a message in the family group', () => {
       status: 'confirmed',
       confirmedRole: 'co_parent',
     });
-    const { deps, jobs } = door();
+    const { deps, jobs } = door('addressed');
 
     const response = await handleLinqInboundRequest(
       signed(groupMessage('Hale, is swim still on tomorrow', 'in-parents')),
@@ -325,7 +341,7 @@ describe('a message in the family group', () => {
 
   it(`holds the chat at ${RATE_LIMITS['linq-group-inbound'].limit} coach turns an hour, silently`, async () => {
     const { familyId } = await seedClaimedHousehold();
-    const { deps, jobs, sends, transport } = door();
+    const { deps, jobs, sends, transport } = door('addressed');
     const limit = RATE_LIMITS['linq-group-inbound'].limit;
     const spend = new PostgresRateLimiter(db.database);
     for (let i = 0; i < limit; i += 1) {
@@ -340,6 +356,60 @@ describe('a message in the family group', () => {
     expect(await response.json()).toEqual({ outcome: 'group_rate_limited' });
     expect(jobs).toEqual([]);
     expect(await inboundRows(familyId)).toEqual([]);
+    expect(sends).toEqual([]);
+    expect(transport.bodies()).toEqual([]);
+  });
+
+  it('item 5: reads the turn by the model, not by the words — a message naming Hale read as chatter stays silent', async () => {
+    const { familyId } = await seedClaimedHousehold();
+    const { deps, jobs, sends, transport, readerSeen } = door('chatter');
+
+    const response = await handleLinqInboundRequest(
+      signed(groupMessage('Hale, what time is Maya done?', 'in-named-chatter')),
+      deps,
+    );
+
+    expect(await response.json()).toEqual({ outcome: 'group_chatter_ignored' });
+    expect(readerSeen.map((input) => input.text)).toEqual(['Hale, what time is Maya done?']);
+    expect(jobs).toEqual([]);
+    expect(await inboundRows(familyId)).toEqual([]);
+    expect(sends).toEqual([]);
+    expect(transport.bodies()).toEqual([]);
+  });
+
+  it('item 5: a failed read sends nothing, records nothing and spends nothing', async () => {
+    const { familyId } = await seedClaimedHousehold();
+    const { deps, jobs, outcomes, sends, transport } = door(null);
+
+    const response = await handleLinqInboundRequest(
+      signed(groupMessage('Hale, is swim still on tomorrow?', 'in-unread')),
+      deps,
+    );
+
+    expect(await response.json()).toEqual({ outcome: 'group_turn_unread' });
+    expect(outcomes).toEqual(['ignored']);
+    expect(jobs).toEqual([]);
+    expect(await inboundRows(familyId)).toEqual([]);
+    expect(await budgetRows()).toEqual([]);
+    expect(sends).toEqual([]);
+    expect(transport.bodies()).toEqual([]);
+  });
+
+  it('item 5: with the reader dark there is no keyword fallback — Hale stays silent even when named', async () => {
+    vi.stubEnv('LINQ_GROUP_TURN_AI_ENABLED', '');
+    const { familyId } = await seedClaimedHousehold();
+    const { deps, jobs, sends, transport, readerSeen } = door('addressed');
+
+    const response = await handleLinqInboundRequest(
+      signed(groupMessage('Hale, is swim still on tomorrow?', 'in-reader-off')),
+      deps,
+    );
+
+    expect(await response.json()).toEqual({ outcome: 'group_turn_reader_off' });
+    expect(readerSeen).toEqual([]);
+    expect(jobs).toEqual([]);
+    expect(await inboundRows(familyId)).toEqual([]);
+    expect(await budgetRows()).toEqual([]);
     expect(sends).toEqual([]);
     expect(transport.bodies()).toEqual([]);
   });
