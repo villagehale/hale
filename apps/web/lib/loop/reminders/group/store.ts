@@ -241,13 +241,15 @@ export async function claimHeld(database: Database, claim: Claim): Promise<boole
 
 const CLOSE_ACTION = {
   sent: 'group_reminder_sent',
+  queued: 'group_reminder_queued',
   dropped: 'group_reminder_dropped',
   failed: 'group_reminder_failed',
 } as const;
 
 /**
- * Closes a claimed reminder as sent, dropped or failed, together with its audit row.
- * False: the claim was no longer this tick's, so nothing changed and nothing is audited.
+ * Closes a claimed reminder as sent, queued for a 1:1 text, dropped or failed, together
+ * with its audit row. False: the claim was no longer this tick's, so nothing changed and
+ * nothing is audited.
  */
 export async function closeReminder(
   database: Database,

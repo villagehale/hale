@@ -382,7 +382,7 @@ describe('asking for a reminder in the group', () => {
     );
   });
 
-  it("sends a signed-up parent's own reminder 1:1 when the loop can reach her", async () => {
+  it("hands a signed-up parent's own reminder to the 1:1 dispatch, and names it queued, not sent", async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const home = await seedHousehold();
     const { ports, voice } = turnPorts(reading([ask()]));
@@ -401,13 +401,18 @@ describe('asking for a reminder in the group', () => {
     const tick = tickPorts(THURSDAY_FOUR);
     expect(await runGroupReminderTick(db.database, tick.ports)).toEqual({
       due: 1,
-      sent: 1,
+      sent: 0,
+      queued: 1,
       dropped: 0,
       failed: 0,
       lost: 0,
       retrying: 0,
     });
     expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'queued', what: null });
+    const actions = await verbs(home.familyId);
+    expect(actions).toContain('group_reminder_queued');
+    expect(actions).not.toContain('group_reminder_sent');
     expect(tick.jobs).toEqual([
       {
         templateKey: 'member_reminder',
@@ -606,6 +611,7 @@ describe('when a group reminder is due', () => {
     expect(await runGroupReminderTick(db.database, tick.ports)).toEqual({
       due: 1,
       sent: 1,
+      queued: 0,
       dropped: 0,
       failed: 0,
       lost: 0,
@@ -747,9 +753,12 @@ describe('when a group reminder is due', () => {
     });
 
     const back = tickPorts(AFTER_STALE);
-    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({ due: 1, sent: 1 });
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({
+      due: 1,
+      queued: 1,
+    });
     expect(back.jobs.map((job) => job.dedupeKey)).toEqual([`group-reminder:${id}`]);
-    expect(await onlyReminder()).toMatchObject({ status: 'sent', what: null });
+    expect(await onlyReminder()).toMatchObject({ status: 'queued', what: null });
     expect(await verbs(home.familyId)).not.toContain('group_reminder_failed');
   });
 

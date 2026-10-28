@@ -24,13 +24,16 @@ import { users } from './users.js';
  * People are held by the group seat's blind index, never by number, so a STOP or a
  * removal can cancel what they asked for or what is for them. `what` is the member's own
  * words; it is cleared when the row closes. `pending` is the row before its confirmation
- * reached the chat: an unconfirmed reminder never fires.
+ * reached the chat: an unconfirmed reminder never fires. `queued` is a `direct` reminder
+ * handed to the loop's channel dispatch; whether that text went out is on the dispatch's
+ * ledger row under the dedupe key `group-reminder:<id>`.
  */
 export const GROUP_REMINDER_STATUSES = [
   'pending',
   'scheduled',
   'sending',
   'sent',
+  'queued',
   'cancelled',
   'dropped',
   'failed',
@@ -76,7 +79,7 @@ export const groupReminders = pgTable(
   (table) => ({
     statusCheck: check(
       'group_reminders_status_check',
-      sql`${table.status} in ('pending', 'scheduled', 'sending', 'sent', 'cancelled', 'dropped', 'failed')`,
+      sql`${table.status} in ('pending', 'scheduled', 'sending', 'sent', 'queued', 'cancelled', 'dropped', 'failed')`,
     ),
     forCheck: check(
       'group_reminders_for_kind_check',

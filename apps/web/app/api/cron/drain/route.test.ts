@@ -62,9 +62,15 @@ describe('GET /api/cron/drain', () => {
       .mockReset()
       .mockResolvedValue({ evaluated: 0, sent: 0, skipped: 0, failed: 0, deferred: 0 });
     providerPreflightMock.mockReset();
-    runGroupReminderTickMock
-      .mockReset()
-      .mockResolvedValue({ due: 0, sent: 0, dropped: 0, failed: 0 });
+    runGroupReminderTickMock.mockReset().mockResolvedValue({
+      due: 0,
+      sent: 0,
+      queued: 0,
+      dropped: 0,
+      failed: 0,
+      lost: 0,
+      retrying: 0,
+    });
     afterCallbacks.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -156,15 +162,14 @@ describe('GET /api/cron/drain', () => {
     lightGroupReminders();
     const { GET } = await import('./route');
     runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
-    runGroupReminderTickMock.mockResolvedValue({ due: 2, sent: 1, dropped: 1, failed: 0 });
+    const summary = { due: 3, sent: 1, queued: 1, dropped: 1, failed: 0, lost: 0, retrying: 0 };
+    runGroupReminderTickMock.mockResolvedValue(summary);
 
     const response = await GET(request());
 
     expect(response.status).toBe(200);
     expect(runGroupReminderTickMock).toHaveBeenCalledTimes(1);
-    expect(await response.json()).toMatchObject({
-      groupReminders: { due: 2, sent: 1, dropped: 1, failed: 0 },
-    });
+    expect(await response.json()).toMatchObject({ groupReminders: summary });
   });
 
   it('keeps the reminder leg dark until the AI turn reader is on too', async () => {

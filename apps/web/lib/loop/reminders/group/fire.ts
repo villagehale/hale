@@ -42,7 +42,8 @@ import { type GroupReminderVoice, sharedGroupReminderVoice } from './voice';
  * was being written still wins and nothing is sent.
  *
  * A group reminder is posted by the tick itself. A 1:1 reminder is handed to the loop's
- * channel dispatch, which owns consent, quiet hours and the ledger for 1:1 texts.
+ * channel dispatch, which owns consent, quiet hours and the ledger for 1:1 texts, and
+ * closes as `queued`, not `sent`: the dispatch's ledger row says whether it went out.
  *
  * An error mid-send, or a refusal Linq calls temporary, closes nothing: the claim goes
  * stale and a later tick takes the row again and checks everything afresh, so a reminder
@@ -77,6 +78,8 @@ export type GroupReminderTickSummary =
   | {
       due: number;
       sent: number;
+      /** Handed to the channel dispatch for a 1:1 text, which decides and records the send. */
+      queued: number;
       dropped: number;
       failed: number;
       /** Taken back by a STOP, a cancel or a later tick before this tick sent anything. */
@@ -85,7 +88,7 @@ export type GroupReminderTickSummary =
       retrying: number;
     };
 
-type FireOutcome = 'sent' | 'dropped' | 'failed' | 'lost' | 'retrying';
+type FireOutcome = 'sent' | 'queued' | 'dropped' | 'failed' | 'lost' | 'retrying';
 
 /** Closes the claim, or names it lost when a STOP, a cancel or a later tick took it first. */
 async function close(
@@ -205,6 +208,7 @@ async function fireOne(
       return close(database, row, { status: 'dropped', reason: 'direct_unreachable', now });
     }
     if (!(await stillHeld(database, row))) return 'lost';
+    const dedupeKey = `group-reminder:${row.id}`;
     await ports.enqueue({
       templateKey: MEMBER_REMINDER_TEMPLATE_KEY,
       familyId: row.familyId,
@@ -212,16 +216,16 @@ async function fireOne(
       category: 'reminder',
       urgency: 'normal',
       payload: { text },
-      dedupeKey: `group-reminder:${row.id}`,
+      dedupeKey,
       channel: 'sms',
     });
     await closeReminder(database, row, {
-      status: 'sent',
+      status: 'queued',
       reason: null,
       now,
-      after: { handedTo: 'channel_dispatch' },
+      after: { handedTo: 'channel_dispatch', dedupeKey },
     });
-    return 'sent';
+    return 'queued';
   }
 
   const ledgerUserId = (await primaryParentId(database, row.familyId)) ?? row.askedByUserId;
@@ -276,7 +280,15 @@ export async function runGroupReminderTick(
     return { skipped: 'voice_unavailable' };
   }
   const due = await dueReminders(database, ports.now);
-  const summary = { due: due.length, sent: 0, dropped: 0, failed: 0, lost: 0, retrying: 0 };
+  const summary = {
+    due: due.length,
+    sent: 0,
+    queued: 0,
+    dropped: 0,
+    failed: 0,
+    lost: 0,
+    retrying: 0,
+  };
   for (const candidate of due) {
     const row = await claimReminder(database, candidate.id, ports.now);
     if (!row) continue;
