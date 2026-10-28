@@ -1284,9 +1284,19 @@ async function routeChannelMessageInner(
       AGENT_TURN_ROUTE,
       AGENT_TURN_LIMIT,
     );
+    if (!decision.allowed && decision.firstDenied === false) {
+      // VIL-463: the parent already had (or was refused) this window's one flood line.
+      // A later over-limit text in the same window makes no model call and no read.
+      deps.log.info(
+        { inGroup },
+        'channel router: over limit, flood line already spent this window',
+      );
+      return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
+    }
     if (!decision.allowed) {
-      // The line is written from facts (flood-line.ts), in a group or 1:1 alike. When it
-      // cannot be written, nothing is sent: there is no fixed line underneath it.
+      // The line is written from facts (flood-line.ts), in a group or 1:1 alike, ONCE per
+      // budget window (the first refused text). When it cannot be written, nothing is
+      // sent: there is no fixed line underneath it.
       const composed = await deps.floodLine.compose({
         language: await familySpeechLanguage(deps.database, job.family_id),
         inGroup,
@@ -1309,7 +1319,7 @@ async function routeChannelMessageInner(
           openAsks: { leaves: null },
         });
       } else {
-        await answer(composed.line);
+        await answer(composed.line, null, null, FLOOD_LINE_TEMPLATE_KEY);
       }
       return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
     }

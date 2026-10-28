@@ -360,7 +360,8 @@ async function processChannelMessageJob(
     return 'dropped';
   }
   // A job queued before the bit existed has no `in_group`; it is passed on as unknown
-  // (VIL-463), never as a 1:1 turn.
+  // (VIL-463), never as a 1:1 turn. Not a no-op: the schema's `in_group` is optional and
+  // the job's is REQUIRED (`boolean | undefined`), so the key is written out explicitly.
   await deps.handlers.channelMessage({ ...parsed.data, in_group: parsed.data.in_group });
   return 'processed';
 }

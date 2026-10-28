@@ -1561,7 +1561,9 @@ describe('flood control', () => {
     // Positive control: the same over-budget turn outside the group answers where it came from.
     const direct = await spent(false);
     expect(direct.result.status).toBe('flood_held');
-    expect(direct.h.transport.sent).toEqual([{ route: groupRoute, body: 'A lot came in at once.' }]);
+    expect(direct.h.transport.sent).toEqual([
+      { route: groupRoute, body: 'A lot came in at once.' },
+    ]);
   });
 
   /**
@@ -5482,6 +5484,50 @@ describe('VIL-463 group scope', () => {
     expect(result.status).toBe('flood_held');
     expect(seen).toEqual([{ language: null, inGroup: false }]);
     expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Swamped for a second.' }]);
+  });
+
+  it('records the 1:1 over-limit answer under the flood line template key', async () => {
+    const { h } = await overLimitDirectTurn(
+      fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' }),
+    );
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: 'flood_line' }),
+    ]);
+  });
+
+  it('composes the over-limit line once per budget window: later texts make no model call', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const flood = fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' });
+    const h = harness({ limiter, floodLine: flood });
+    const results = [];
+    for (let i = 0; i < 3; i += 1) {
+      results.push((await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR + i))).status);
+    }
+    expect(results).toEqual(['flood_held', 'flood_held', 'flood_held']);
+    expect(flood.calls).toBe(1);
+    expect(h.transport.bodies()).toEqual(['Swamped for a second.']);
+  });
+
+  it('a failed compose still spends the window: the next over-limit text does not retry it', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const flood = fakeFloodLine({ status: 'unavailable', reason: 'model_failed' });
+    const h = harness({ limiter, floodLine: flood });
+    await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
+    await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR + 1));
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([]);
   });
 
   it('sends nothing on a 1:1 over-limit text when the line cannot be composed', async () => {
