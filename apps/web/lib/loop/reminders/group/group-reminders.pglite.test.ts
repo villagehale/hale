@@ -649,6 +649,46 @@ describe('asking for a reminder in the group', () => {
     expect(again.sends).toEqual([]);
     expect(await reminders()).toHaveLength(1);
   });
+
+  it('confirms nothing when reminders for the message already exist', async () => {
+    const home = await seedHousehold();
+    const [earlier] = await db.database
+      .insert(schema.groupReminders)
+      .values({
+        familyId: home.familyId,
+        chatId: CHAT,
+        sourceMessageId: 'in-ruth-two',
+        ordinal: 0,
+        askedByUserId: home.ruth,
+        askedByPhoneHash: phoneBlindIndex(RUTH),
+        forKind: 'sender',
+        what: 'grab Maya from swim',
+        askedForAt: THURSDAY_FOUR,
+        deliverAt: THURSDAY_FOUR,
+        delivery: 'group',
+        status: 'scheduled',
+      })
+      .returning({ id: schema.groupReminders.id });
+    const { ports, sends, voice } = turnPorts(
+      reading([ask(), ask({ what: 'pack the snack', time: '17:00' })]),
+    );
+
+    const turn = await takeGroupReminderTurn(
+      db.database,
+      inbound(RUTH, 'remind me at 4 for swim and at 5 for the snack', 'in-ruth-two'),
+      ports,
+    );
+
+    expect(turn).toEqual({ handled: true, outcome: 'already_answered' });
+    expect(voice.calls).toEqual([]);
+    expect(sends).toEqual([]);
+    const rows = await reminders();
+    expect(rows.find((row) => row.id === earlier?.id)?.status).toBe('scheduled');
+    expect(rows.find((row) => row.ordinal === 1)).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'confirm_not_sent',
+    });
+  });
 });
 
 describe('when a group reminder is due', () => {

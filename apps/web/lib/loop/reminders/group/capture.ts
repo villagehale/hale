@@ -198,6 +198,21 @@ export async function takeGroupReminderTurn(
     })),
   );
   const pendingIds = pending.map((row) => row.id);
+  if (pending.length !== plan.set.length) {
+    // Rows for this message already exist, so the confirmation would describe reminders
+    // this turn did not set. The turn that wrote them owns the answer.
+    await cancelReminders(database, {
+      ids: pendingIds,
+      reason: 'confirm_not_sent',
+      actor: 'system',
+      now,
+    });
+    console.warn(
+      { outcome: 'group_reminder_conflict', planned: plan.set.length, written: pending.length },
+      'group reminder: this message already has reminders, nothing sent',
+    );
+    return { handled: true, outcome: 'already_answered' };
+  }
   const cancelling = open.filter((row) => plan.cancelIds.includes(row.id));
 
   const facts = confirmFacts({
