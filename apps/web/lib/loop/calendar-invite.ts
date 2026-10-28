@@ -7,7 +7,7 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, asc, eq, gt, gte, inArray, isNotNull, like, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, like, ne, notLike, or, sql } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
 import { GROUP_PLAN_TEMPLATE_KEY } from '~/lib/channel/group-plan/send';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
@@ -209,7 +209,8 @@ function parentOutcome(
 }
 
 /** Whether this parent was texted the tap-to-add link for this event — any revision,
- * 1:1 or in the family's group, where one link went to the whole household (VIL-443). */
+ * 1:1 or in the family's group, where one link went to the whole household (VIL-443).
+ * In the group, only the revision's keyed row carried the link; its `#n` rows did not. */
 async function wasTextedTheLink(
   database: Database,
   job: InviteJob,
@@ -232,6 +233,7 @@ async function wasTextedTheLink(
           and(
             eq(m.templateKey, GROUP_PLAN_TEMPLATE_KEY),
             like(m.dedupeKey, `${GROUP_PLAN_TEMPLATE_KEY}:${job.familyEventId}:%`),
+            notLike(m.dedupeKey, '%#%'),
             ne(m.dedupeKey, `${GROUP_PLAN_TEMPLATE_KEY}:${job.familyEventId}:cancelled`),
           ),
         ),

@@ -93,7 +93,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/calendar-write/send.ts':
     'VIL-454 calendar write notice: claims a channel_messages row (templateKey calendar_write_notice) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
   'apps/web/lib/channel/group-plan/send.ts':
-    "VIL-443 group plan report: claims a channel_messages row (category calendar_alert, template group_plan_calendar, a dedupe key per revision, provider chat id is the family's claimed group) before sendLinqChatMessage, stamps the provider id or failedSendPatch after, and audits group_plan.calendar_reported only after the send lands",
+    "VIL-443 group plan report: claims the revision's channel_messages row (category calendar_alert, template group_plan_calendar, a dedupe key per revision, provider chat id is the family's claimed group) before any sendLinqChatMessage, and one row per further message (that key plus #n) before each, stamps the provider id or failedSendPatch after, stops at the first message that does not land, and audits group_plan.calendar_reported only once the keyed message has landed",
   'apps/web/lib/channel/connect/fresh-link.ts':
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
 };

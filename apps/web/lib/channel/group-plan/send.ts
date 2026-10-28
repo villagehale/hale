@@ -37,6 +37,7 @@ import {
   composeGroupPlanReport,
   groupPlanReportEnabled,
   groupPlanReportInput,
+  planEndLabel,
   planWhenLabel,
 } from './report';
 import { groupPlanChatId } from './stamp';
@@ -46,17 +47,19 @@ import { groupPlanChatId } from './stamp';
  *
  * A decorator on the executor's calendar-invite port. When
  * `GROUP_PLAN_CALENDAR_REPORT_ENABLED` is exactly `true` and the placed row belongs to a
- * plan a family-group turn drafted, the group gets ONE AI-written text carrying the
- * add-to-calendar link, instead of each parent getting the same link 1:1: a parent in the
- * group would otherwise have it twice, and grandparents or a nanny in the chat would not
- * have it at all. Every other placement goes to the inner sender untouched, and so does a
- * group plan the group may not hear (its audience gate: a teen's or health event, a roster
- * not yet confirmed, someone in the chat whose role does not cover it): its parents get
- * their own invites, as they would without this flag.
+ * plan a family-group turn drafted, the group gets an AI-written text (one message or a
+ * few) carrying the add-to-calendar link, instead of each parent getting the same link
+ * 1:1: a parent in the group would otherwise have it twice, and grandparents or a nanny
+ * in the chat would not have it at all. Every other placement goes to the inner sender
+ * untouched, and so does a group plan the group may not hear (its audience gate: a teen's
+ * or health event, a roster not yet confirmed, someone in the chat whose role does not
+ * cover it): its parents get their own invites, as they would without this flag.
  *
  * Moves and cancels find the plan through the row's placing action, so the same group
- * hears about every revision. One send per revision (and one per cancel): the dedupe key
+ * hears about every revision. One text per revision (and one per cancel): the dedupe key
  * carries the event's ICS sequence, and a re-driven placement never reaches this port.
+ * The key rides on the message carrying the link (on a cancel, the last one), so it
+ * marks exactly whether the group has what it needs; any other message is keyed off it.
  *
  * NOTHING CANNED. The model writes the text or nothing goes out; an unwritten text is an
  * audit row and an ops page, and its dedupe key stays unspent. A group text that is held
@@ -68,7 +71,11 @@ import { groupPlanChatId } from './stamp';
 
 export const GROUP_PLAN_TEMPLATE_KEY = 'group_plan_calendar';
 
-export type GroupLineSendOutcome = 'sent' | 'already_sent' | 'send_failed';
+/**
+ * `partly_sent`: the keyed message landed, so the group has the link, but a message
+ * after it did not. `send_failed`: the keyed message did not land.
+ */
+export type GroupLineSendOutcome = 'sent' | 'partly_sent' | 'already_sent' | 'send_failed';
 
 export type GroupPlanReportOutcome =
   | GroupLineSendOutcome
@@ -109,10 +116,27 @@ export interface GroupPlanReportPorts {
   gate(familyId: string, parentUserId: string, now: Date): Promise<ProactiveSendVerdict>;
   /** The per-event add-to-calendar link, minted on the family. */
   mintLink(familyId: string, familyEventId: string): Promise<string>;
-  compose(input: GroupPlanReportInput): Promise<string | null>;
-  send(plan: GroupPlan, text: string, optOut: OptOutForm): Promise<GroupLineSendOutcome>;
+  /** The messages, in order, or null when none could be written. */
+  compose(input: GroupPlanReportInput): Promise<string[] | null>;
+  send(plan: GroupPlan, lines: GroupPlanLines, optOut: OptOutForm): Promise<GroupLineSendOutcome>;
   /** Records and pages a text the model could not write. Nothing was sent. */
   unsent(plan: GroupPlan): Promise<void>;
+}
+
+/** What goes into the group, in order. */
+export interface GroupPlanLines {
+  messages: string[];
+  /** The message the revision's key rides on: the one carrying the link, or the last. */
+  keyed: number;
+}
+
+/**
+ * The message that carries the link, or the last when there is none (a cancel): once it
+ * has landed, so has everything the group needs from this text.
+ */
+export function keyedMessage(messages: readonly string[], link: string | null): number {
+  const carrying = link === null ? -1 : messages.findIndex((message) => message.includes(link));
+  return carrying === -1 ? messages.length - 1 : carrying;
 }
 
 /** Exported for tests: one group plan's text, start to finish. Never throws. */
@@ -135,12 +159,16 @@ export async function reportGroupPlan(
       language: plan.language,
     });
     if (!input) return 'no_link';
-    const text = await ports.compose(input);
-    if (!text) {
+    const messages = await ports.compose(input);
+    if (!messages || messages.length === 0) {
       await ports.unsent(plan);
       return 'unwritten';
     }
-    return await ports.send(plan, text, verdict.optOut);
+    return await ports.send(
+      plan,
+      { messages, keyed: keyedMessage(messages, input.link) },
+      verdict.optOut,
+    );
   } catch (err) {
     console.error(
       {
@@ -406,7 +434,8 @@ export async function loadGroupPlan(
     dedupeKey: `${GROUP_PLAN_TEMPLATE_KEY}:${row.id}:${revision}`,
     event: {
       title: invite.summary,
-      when: planWhenLabel(row.startsAt, timeZone, language),
+      starts: planWhenLabel(row.startsAt, timeZone, language),
+      ends: planEndLabel(row.startsAt, row.endsAt, timeZone, language),
       where: invite.location,
     },
     members: await groupMembers(
@@ -442,57 +471,91 @@ export function productionGroupPlanReportPorts(
       ),
     mintLink: (familyId, familyEventId) => mintEventInviteLink(database, familyId, familyEventId),
     compose: (input) => composeGroupPlanReport(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
-    async send(plan, text, optOut) {
-      const body = withOptOut(text, optOut);
-      const [claimed] = await database
-        .insert(schema.channelMessages)
-        .values({
-          familyId: plan.familyId,
-          parentUserId: plan.gateUserId,
-          channel: 'imessage',
-          direction: 'out',
-          category: PROACTIVE_CATEGORY.calendar_alert,
-          templateKey: GROUP_PLAN_TEMPLATE_KEY,
-          dedupeKey: plan.dedupeKey,
-          providerChatId: plan.chatId,
-          status: acceptedStatus('imessage'),
-          sentAt: clock(),
-        })
-        .onConflictDoNothing()
-        .returning({ id: schema.channelMessages.id });
-      if (!claimed) return 'already_sent';
-      let providerMessageId: string;
-      try {
-        ({ providerMessageId } = await sendLinqChatMessage({
-          chatId: plan.chatId,
-          text: body,
-          fetch: options.fetch,
-        }));
-      } catch (err) {
-        const code = err instanceof LinqSendError ? err.code : 'unknown';
-        await database
-          .update(schema.channelMessages)
-          .set(failedSendPatch(code))
-          .where(eq(schema.channelMessages.id, claimed.id));
-        console.warn(
-          { familyId: plan.familyId, code },
-          'group plan report: group text did not land',
-        );
-        return 'send_failed';
+    /**
+     * The revision is claimed before anything goes, on the keyed message's row; every
+     * other message gets its own row, keyed off it, just before it is sent. In order, one
+     * at a time, and the first that does not land stops the rest: what follows it could
+     * read wrong without it. A keyed message that never went is failed with the reason.
+     */
+    async send(plan, lines, optOut) {
+      const claim = async (dedupeKey: string) => {
+        const [row] = await database
+          .insert(schema.channelMessages)
+          .values({
+            familyId: plan.familyId,
+            parentUserId: plan.gateUserId,
+            channel: 'imessage',
+            direction: 'out',
+            category: PROACTIVE_CATEGORY.calendar_alert,
+            templateKey: GROUP_PLAN_TEMPLATE_KEY,
+            dedupeKey,
+            providerChatId: plan.chatId,
+            status: acceptedStatus('imessage'),
+            sentAt: clock(),
+          })
+          .onConflictDoNothing()
+          .returning({ id: schema.channelMessages.id });
+        return row;
+      };
+      const keyed = await claim(plan.dedupeKey);
+      if (!keyed) return 'already_sent';
+      let landed = 0;
+      let keyedLanded = false;
+      for (const [index, text] of lines.messages.entries()) {
+        const isKeyed = index === lines.keyed;
+        const row = isKeyed ? keyed : await claim(`${plan.dedupeKey}#${index}`);
+        if (!row) {
+          // Already out for this revision, on an earlier claim released as not configured.
+          landed += 1;
+          continue;
+        }
+        try {
+          const { providerMessageId } = await sendLinqChatMessage({
+            chatId: plan.chatId,
+            text: withOptOut(text, optOut),
+            fetch: options.fetch,
+          });
+          await database
+            .update(schema.channelMessages)
+            .set({ providerMessageId, sentAt: clock() })
+            .where(eq(schema.channelMessages.id, row.id));
+          landed += 1;
+          keyedLanded ||= isKeyed;
+        } catch (err) {
+          const code = err instanceof LinqSendError ? err.code : 'unknown';
+          const unsent = keyedLanded || isKeyed ? [row.id] : [row.id, keyed.id];
+          await database
+            .update(schema.channelMessages)
+            .set(failedSendPatch(code))
+            .where(inArray(schema.channelMessages.id, unsent));
+          console.warn(
+            {
+              familyId: plan.familyId,
+              code,
+              message: index + 1,
+              of: lines.messages.length,
+              keyedLanded,
+            },
+            'group plan report: a group message did not land - nothing after it is sent',
+          );
+          break;
+        }
       }
-      await database
-        .update(schema.channelMessages)
-        .set({ providerMessageId })
-        .where(eq(schema.channelMessages.id, claimed.id));
+      if (!keyedLanded) return 'send_failed';
       await database.insert(schema.auditLog).values({
         familyId: plan.familyId,
         actor: 'system',
         actionTaken: 'group_plan.calendar_reported',
         targetTable: 'channel_messages',
-        targetId: claimed.id,
-        after: { familyEventId: plan.familyEventId, change: plan.change },
+        targetId: keyed.id,
+        after: {
+          familyEventId: plan.familyEventId,
+          change: plan.change,
+          messages: lines.messages.length,
+          landed,
+        },
       });
-      return 'sent';
+      return landed === lines.messages.length ? 'sent' : 'partly_sent';
     },
     async unsent(plan) {
       await database.insert(schema.auditLog).values({

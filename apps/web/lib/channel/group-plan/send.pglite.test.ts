@@ -30,6 +30,8 @@ const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/me
 const MORNING = new Date('2026-11-06T15:00:00.000Z'); // 10:00 Toronto
 const NIGHT = new Date('2026-11-07T04:00:00.000Z'); // 23:00 Toronto
 const STARTS = new Date('2026-11-07T15:00:00.000Z'); // Sat 10:00 Toronto
+const ENDS = new Date('2026-11-07T16:00:00.000Z'); // Sat 11:00 Toronto
+const PLACE = 'Riverside Y, 120 Main St, Toronto';
 
 let db: TestDb;
 let n = 0;
@@ -69,6 +71,7 @@ async function seed(
     sensitive?: boolean;
     language?: string;
     childDob?: string;
+    endsAt?: Date | null;
   } = {},
 ) {
   const [family] = await db.database
@@ -134,7 +137,8 @@ async function seed(
       familyId,
       title: 'Swim lesson',
       startsAt: STARTS,
-      location: 'Y on Main',
+      endsAt: opts.endsAt === undefined ? ENDS : opts.endsAt,
+      location: PLACE,
       source: 'placement',
       sensitive: opts.sensitive ?? false,
       childId: child?.id ?? null,
@@ -250,15 +254,23 @@ async function counts() {
   return out;
 }
 
-function linqWire(status = 200) {
+/** Linq, answering `status` to every send after the first `landsFirst`. */
+function linqWire(status = 200, landsFirst = 0) {
   const posted: Array<{ url: string; body: unknown }> = [];
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
     posted.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
-    if (status !== 200)
+    if (status !== 200 && posted.length > landsFirst)
       return new Response(JSON.stringify({ error: { code: status } }), { status });
     return new Response(JSON.stringify({ message: { id: `m-${posted.length}` } }), { status: 200 });
   });
   return { fetch: fetchImpl as unknown as typeof fetch, posted };
+}
+
+/** The text of each message posted, in order. */
+function postedTexts(posted: Array<{ body: unknown }>) {
+  return posted.map(
+    (p) => (p.body as { message: { parts: Array<{ value: string }> } }).message.parts[0]?.value,
+  );
 }
 
 const request = (
@@ -326,7 +338,7 @@ describe('VIL-443 loadGroupPlan, real database', () => {
       gateUserId: s.ana,
       change: 'added',
       dedupeKey: `group_plan_calendar:${s.familyEventId}:1`,
-      event: { title: 'Swim lesson', where: 'Y on Main' },
+      event: { title: 'Swim lesson', where: PLACE },
       reachedUserIds: [],
       language: 'en',
     });
@@ -337,8 +349,17 @@ describe('VIL-443 loadGroupPlan, real database', () => {
         { userId: s.sam, firstName: 'Sam' },
       ]),
     );
-    expect(plan?.event.when).toMatch(/Sat/);
-    expect(plan?.event.when).toMatch(/10:00/);
+    expect(plan?.event.starts).toMatch(/Sat/);
+    expect(plan?.event.starts).toMatch(/10:00/);
+    expect(plan?.event.ends).toMatch(/11:00/);
+    expect(plan?.event.ends).not.toMatch(/Sat/);
+  });
+
+  it('says no end for a plan placed without one, rather than guessing', async () => {
+    const s = await seed({ endsAt: null });
+    const plan = await loadGroupPlan(db.database, request(s), MORNING);
+    expect(plan?.event.ends).toBeNull();
+    expect(plan?.event.starts).toMatch(/10:00/);
   });
 
   it('reads the seated group, including people who are not parents', async () => {
@@ -430,7 +451,8 @@ describe('VIL-443 loadGroupPlan, real database', () => {
     const s = await seed({ language: 'fr' });
     const plan = await loadGroupPlan(db.database, request(s), MORNING);
     expect(plan?.language).toBe('fr');
-    expect(plan?.event.when).toMatch(/sam/);
+    expect(plan?.event.starts).toMatch(/sam/);
+    expect(plan?.event.ends).toMatch(/11( h |:)00/);
   });
 
   it('is nothing for a family with no group chat', async () => {
@@ -497,10 +519,11 @@ describe('VIL-443 production ports, real database', () => {
       now: () => MORNING,
     });
     const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
-    expect(await ports.send(plan, 'Swim is set. Add it here: https://x.test/l', 'short')).toBe(
+    const one = (text: string) => ({ messages: [text], keyed: 0 });
+    expect(await ports.send(plan, one('Swim is set. Add it here: https://x.test/l'), 'short')).toBe(
       'sent',
     );
-    expect(await ports.send(plan, 'Swim is set again.', 'short')).toBe('already_sent');
+    expect(await ports.send(plan, one('Swim is set again.'), 'short')).toBe('already_sent');
     expect(wire.posted.map((p) => p.url)).toEqual([GROUP_MESSAGES]);
     expect(await ports.alreadySent(plan.dedupeKey)).toBe(true);
 
@@ -528,7 +551,112 @@ describe('VIL-443 production ports, real database', () => {
       );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ targetTable: 'channel_messages', targetId: message?.id });
-    expect(rows[0]?.after).toEqual({ familyEventId: s.familyEventId, change: 'added' });
+    expect(rows[0]?.after).toEqual({
+      familyEventId: s.familyEventId,
+      change: 'added',
+      messages: 1,
+      landed: 1,
+    });
+  });
+
+  /** Each of the family's outbound rows, in the order the messages went. */
+  async function rowsOf(familyId: string) {
+    return db.database
+      .select({
+        dedupeKey: schema.channelMessages.dedupeKey,
+        status: schema.channelMessages.status,
+        providerMessageId: schema.channelMessages.providerMessageId,
+        errorCode: schema.channelMessages.errorCode,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId))
+      .orderBy(schema.channelMessages.providerMessageId);
+  }
+
+  it('sends a few messages in order, keying the revision on the one carrying the link', async () => {
+    const s = await seed();
+    const wire = linqWire();
+    const ports = productionGroupPlanReportPorts(db.database, {
+      fetch: wire.fetch,
+      now: () => MORNING,
+    });
+    const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
+    const messages = ['Swim is set for Saturday.', 'Add it: https://x.test/l', 'See you there.'];
+    expect(await ports.send(plan, { messages, keyed: 1 }, 'short')).toBe('sent');
+    expect(postedTexts(wire.posted)).toEqual(messages);
+    expect(await rowsOf(s.familyId)).toEqual([
+      {
+        dedupeKey: `${plan.dedupeKey}#0`,
+        status: 'sent',
+        providerMessageId: 'm-1',
+        errorCode: null,
+      },
+      { dedupeKey: plan.dedupeKey, status: 'sent', providerMessageId: 'm-2', errorCode: null },
+      {
+        dedupeKey: `${plan.dedupeKey}#2`,
+        status: 'sent',
+        providerMessageId: 'm-3',
+        errorCode: null,
+      },
+    ]);
+    const [audited] = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported'));
+    expect(audited?.after).toEqual({
+      familyEventId: s.familyEventId,
+      change: 'added',
+      messages: 3,
+      landed: 3,
+    });
+    expect(await ports.send(plan, { messages, keyed: 1 }, 'short')).toBe('already_sent');
+    expect(wire.posted).toHaveLength(3);
+  });
+
+  it('stops at a message that did not land, and fails the link it never got to', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const s = await seed();
+    const wire = linqWire(400, 1);
+    const ports = productionGroupPlanReportPorts(db.database, { fetch: wire.fetch });
+    const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
+    const messages = [
+      'Swim is set for Saturday.',
+      '10 to 11 at the Y.',
+      'Add it: https://x.test/l',
+    ];
+    expect(await ports.send(plan, { messages, keyed: 2 }, 'short')).toBe('send_failed');
+    expect(postedTexts(wire.posted)).toEqual(messages.slice(0, 2));
+    expect(
+      Object.fromEntries((await rowsOf(s.familyId)).map((r) => [r.dedupeKey, r.status])),
+    ).toEqual({
+      [`${plan.dedupeKey}#0`]: 'sent',
+      [`${plan.dedupeKey}#1`]: 'failed',
+      [plan.dedupeKey]: 'failed',
+    });
+    expect(
+      await db.database
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported')),
+    ).toEqual([]);
+  });
+
+  it('is partly sent when the link landed and a message after it did not', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const s = await seed();
+    const wire = linqWire(400, 1);
+    const ports = productionGroupPlanReportPorts(db.database, { fetch: wire.fetch });
+    const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
+    const messages = ['Swim is set. Add it: https://x.test/l', 'See you there.'];
+    expect(await ports.send(plan, { messages, keyed: 0 }, 'short')).toBe('partly_sent');
+    expect(
+      Object.fromEntries((await rowsOf(s.familyId)).map((r) => [r.dedupeKey, r.status])),
+    ).toEqual({ [plan.dedupeKey]: 'sent', [`${plan.dedupeKey}#1`]: 'failed' });
+    const [audited] = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported'));
+    expect(audited?.after).toMatchObject({ messages: 2, landed: 1 });
   });
 
   it('marks a send Linq refused as failed, and keeps the revision spent so it never doubles', async () => {
@@ -536,7 +664,9 @@ describe('VIL-443 production ports, real database', () => {
     const s = await seed();
     const ports = productionGroupPlanReportPorts(db.database, { fetch: linqWire(400).fetch });
     const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
-    expect(await ports.send(plan, 'Swim is set.', 'short')).toBe('send_failed');
+    expect(await ports.send(plan, { messages: ['Swim is set.'], keyed: 0 }, 'short')).toBe(
+      'send_failed',
+    );
     const [message] = await db.database
       .select({ status: schema.channelMessages.status })
       .from(schema.channelMessages)
@@ -588,7 +718,7 @@ describe('VIL-443 production ports, real database', () => {
       ...production,
       compose: async (input) => {
         handed.push(input);
-        return `Swim is set for Saturday at 10. Add it here: ${input.link}`;
+        return ['Swim is set for Saturday, 10 to 11.', `Add it here: ${input.link}`];
       },
     });
     expect(await sender.send(request(s))).toEqual({ status: 'group_reported', outcome: 'sent' });
@@ -600,14 +730,16 @@ describe('VIL-443 production ports, real database', () => {
         notYet: expect.arrayContaining(['Ana', 'Sam']),
         everyone: false,
         link: expect.stringContaining(`/api/ics/event/${s.familyEventId}.`),
+        event: expect.objectContaining({ where: PLACE, ends: expect.stringMatching(/11:00/) }),
       }),
     ]);
-    expect(JSON.stringify(wire.posted[0]?.body)).toContain(`/api/ics/event/${s.familyEventId}.`);
+    expect(wire.posted).toHaveLength(2);
+    expect(JSON.stringify(wire.posted[1]?.body)).toContain(`/api/ics/event/${s.familyEventId}.`);
     expect(await sender.send(request(s))).toEqual({
       status: 'group_reported',
       outcome: 'already_sent',
     });
-    expect(wire.posted).toHaveLength(1);
+    expect(wire.posted).toHaveLength(2);
   });
 
   async function reportAt(now: Date, wire: ReturnType<typeof linqWire>) {
@@ -618,7 +750,7 @@ describe('VIL-443 production ports, real database', () => {
     const inner = {
       send: vi.fn(async (): Promise<CalendarInviteReport> => ({ status: 'reported', parents: [] })),
     };
-    const compose = vi.fn(async (input: { link: string | null }) => `Swim is set: ${input.link}`);
+    const compose = vi.fn(async (input: { link: string | null }) => [`Swim is set: ${input.link}`]);
     const sender = withGroupPlanReport(inner, {
       ...productionGroupPlanReportPorts(db.database, { fetch: wire.fetch, now: () => now }),
       compose,
@@ -658,7 +790,7 @@ describe('VIL-443 production ports, real database', () => {
       };
       const sender = withGroupPlanReport(inner, {
         ...productionGroupPlanReportPorts(db.database, { fetch: wire.fetch, now: () => MORNING }),
-        compose: async (input) => `Swim is set. Add it here: ${input.link}`,
+        compose: async (input) => [`Swim is set. Add it here: ${input.link}`],
       });
       return { report: await sender.send(request(s)), inner, posted: wire.posted };
     }

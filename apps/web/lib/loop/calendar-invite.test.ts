@@ -480,7 +480,7 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(cancelCalls).toEqual([]);
   });
 
-  /** The one text the family group got for a plan it made (VIL-443). */
+  /** A message the family group got for a plan it made (VIL-443). */
   async function groupText(
     familyId: string,
     parentUserId: string,
@@ -526,6 +526,22 @@ describe('the tap-to-add link a text-only family gets', () => {
       `group_plan_calendar:${familyEventId}:cancelled`,
       'sent',
     );
+    await softDelete(familyEventId);
+
+    const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(report).toEqual({
+      status: 'reported',
+      parents: [{ parentUserId, channel: 'sms', outcome: 'never_linked' }],
+    });
+    expect(cancelCalls).toEqual([]);
+  });
+
+  it('VIL-443 · a group message that landed without the link is not a link', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await groupText(familyId, parentUserId, `group_plan_calendar:${familyEventId}:1#0`, 'sent');
+    await groupText(familyId, parentUserId, `group_plan_calendar:${familyEventId}:1`, 'failed');
     await softDelete(familyEventId);
 
     const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });

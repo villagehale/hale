@@ -62,7 +62,7 @@ describe('the group plan report runner', { timeout: 60_000 }, () => {
   it('exits 1 when the stand-in gets through on any fixture', async () => {
     const passesOnTheCancel = `data:text/javascript,${encodeURIComponent(
       `import { GROUP_PLAN_CALENDAR_REPORT_BROKEN } from ${JSON.stringify(FIXTURES_URL)};
-       GROUP_PLAN_CALENDAR_REPORT_BROKEN.text = 'La clase de natación del sábado ya no va.';`,
+       GROUP_PLAN_CALENDAR_REPORT_BROKEN.messages = ['La clase de natación del sábado ya no va.'];`,
     )}`;
     const run = await runRunner(['--broken'], [passesOnTheCancel]);
 

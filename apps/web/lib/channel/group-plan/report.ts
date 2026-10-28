@@ -3,17 +3,19 @@ import { z } from 'zod';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { dayKeyIn } from '~/lib/plan/spine';
 
 /**
- * VIL-443 (T17) 1/2 — the text that tells the family group where its plan landed.
+ * VIL-443 (T17) 1/2 — what tells the family group where its plan landed.
  *
  * A plan the group made, approved by a parent, is placed on the household's calendar by
  * the executor (and on the approver's own Google calendar when T6 writes it). This module
- * turns what code knows about that placement into the facts for ONE AI-written group text
- * (skill `group-plan-calendar-report`): whose own calendars it reached, who it is not on
- * yet, and the one add-to-calendar link anyone in the chat can tap, Hale customer or not.
- * Code owns the facts and the link; the model writes the words. There is no fixed copy and
- * no word check, only structural gates, and a draft refused twice sends nothing.
+ * turns what code knows about that placement into the facts for an AI-written group text
+ * (skill `group-plan-calendar-report`), one message or a few as the model sees fit: when
+ * it starts and ends and where, whose own calendars it reached, who it is not on yet, and
+ * the one add-to-calendar link anyone in the chat can tap, Hale customer or not. Code
+ * owns the facts and the link; the model writes the words. There is no fixed copy and no
+ * word check, only the link is checked, and a draft refused twice sends nothing.
  */
 
 export const GROUP_PLAN_REPORT_SKILL = 'group-plan-calendar-report';
@@ -28,10 +30,14 @@ export function groupPlanReportEnabled(
 
 export type GroupPlanChange = 'added' | 'moved' | 'cancelled';
 
+/** Every time is already rendered in the family's time zone and language. */
 export interface GroupPlanEvent {
   title: string;
-  /** Already rendered in the family's time zone and language. */
-  when: string;
+  starts: string;
+  /** The time alone when it ends the day it starts. Null when the plan holds no end. */
+  ends: string | null;
+  /** The place exactly as the plan holds it, venue and address together when both were
+   * given. Null when there is none, or when the event is private. */
   where: string | null;
 }
 
@@ -63,6 +69,28 @@ export function planWhenLabel(startsAt: Date, timeZone: string, language: ReplyL
     minute: '2-digit',
     timeZone,
   }).format(startsAt);
+}
+
+/**
+ * When the plan ends, the same way: the time alone when it ends the day it starts, the
+ * day and time when it runs past it. Null when the row holds no end, or one that is not
+ * after the start: an end that cannot be right is left out rather than said.
+ */
+export function planEndLabel(
+  startsAt: Date,
+  endsAt: Date | null,
+  timeZone: string,
+  language: ReplyLanguage,
+): string | null {
+  if (!endsAt || endsAt.getTime() <= startsAt.getTime()) return null;
+  if (dayKeyIn(endsAt, timeZone) !== dayKeyIn(startsAt, timeZone)) {
+    return planWhenLabel(endsAt, timeZone, language);
+  }
+  return new Intl.DateTimeFormat(localeFor(language), {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone,
+  }).format(endsAt);
 }
 
 function distinct(names: readonly string[]): string[] {
@@ -136,14 +164,23 @@ export function groupPlanReportUserMessage(
 const URL_SHAPE = /https?:\/\/\S+/gi;
 const TRAILING_PUNCTUATION = /[.,;:!)\]}"'\u00BB\u201D\u2019\u3002\uFF0C]+$/u;
 
+/** The messages as they would go out, in order: trimmed, with any blank one dropped. */
+export function groupPlanReportMessages(drafted: readonly string[]): string[] {
+  return drafted.map((message) => message.trim()).filter((message) => message !== '');
+}
+
 /**
- * Facts only, never wording: an empty draft, a link that is not the one handed, or a
- * handed link that did not make it in exactly once. Length, tone and whether it asks
- * anything are read by the judge, not matched here.
+ * Facts only, never wording: nothing to send, a link that is not the one handed, or a
+ * handed link that did not make it in exactly once across the messages. Length, how
+ * many messages, tone and whether it asks anything are read by the judge, not matched.
  */
-export function groupPlanReportRefusals(body: string, input: GroupPlanReportInput): string[] {
-  const text = body.trim();
-  if (text === '') return ['empty'];
+export function groupPlanReportRefusals(
+  drafted: readonly string[],
+  input: GroupPlanReportInput,
+): string[] {
+  const messages = groupPlanReportMessages(drafted);
+  if (messages.length === 0) return ['empty'];
+  const text = messages.join('\n');
   const found: string[] = [];
   const urls = text.match(URL_SHAPE) ?? [];
   const link = input.link;
@@ -158,14 +195,18 @@ export function groupPlanReportRefusals(body: string, input: GroupPlanReportInpu
   return found;
 }
 
-const outputSchema = z.object({ text: z.string() });
-/** Exported with the description and lanes so the eval sends the runtime's exact request. */
+const outputSchema = z.object({ messages: z.array(z.string()) });
+/**
+ * Exported with the description and lanes so the eval sends the runtime's exact request.
+ * An array compiles to the strict output grammar, so it cannot come back as a string.
+ */
 export const GROUP_PLAN_REPORT_TOOL_SCHEMA = {
   type: 'object',
-  properties: { text: { type: 'string' } },
-  required: ['text'],
+  properties: { messages: { type: 'array', items: { type: 'string' } } },
+  required: ['messages'],
 } as const;
-export const GROUP_PLAN_REPORT_TOOL_DESCRIPTION = 'The one text Hale sends the family group.';
+export const GROUP_PLAN_REPORT_TOOL_DESCRIPTION =
+  'What Hale sends the family group: one message, or a few, in the order they go out.';
 
 /** The second attempt's lane: the small model with thinking off. */
 export const GROUP_PLAN_REPORT_RETRY_LANE: LaneConfig = {
@@ -173,17 +214,18 @@ export const GROUP_PLAN_REPORT_RETRY_LANE: LaneConfig = {
   thinking: 'disabled',
   effort: 'medium',
 };
-export const GROUP_PLAN_REPORT_MAX_TOKENS = 300;
+/** Room for a few short messages with a full address, plus the JSON around them. */
+export const GROUP_PLAN_REPORT_MAX_TOKENS = 400;
 
 /**
- * One text, or null when both attempts were refused or failed. The first runs on the
- * skill's lane, the second on the small lane with the refusal reasons. Null sends nothing:
- * a group text that can't be written well is not replaced by canned copy.
+ * The messages, in order, or null when both attempts were refused or failed. The first
+ * runs on the skill's lane, the second on the small lane with the refusal reasons. Null
+ * sends nothing: a group text that can't be written well is not replaced by canned copy.
  */
 export async function composeGroupPlanReport(
   client: AgentClient,
   input: GroupPlanReportInput,
-): Promise<string | null> {
+): Promise<string[] | null> {
   const skill = await loadCronSkill(GROUP_PLAN_REPORT_SKILL);
   const lanes = [pickLane(skill.meta.task), GROUP_PLAN_REPORT_RETRY_LANE];
   let refused: string[] = [];
@@ -200,9 +242,8 @@ export async function composeGroupPlanReport(
         schema: outputSchema,
         maxTokens: GROUP_PLAN_REPORT_MAX_TOKENS,
       });
-      const text = value.text.trim();
-      refused = groupPlanReportRefusals(text, input);
-      if (refused.length === 0) return text;
+      refused = groupPlanReportRefusals(value.messages, input);
+      if (refused.length === 0) return groupPlanReportMessages(value.messages);
       console.warn({ attempt: index + 1, refusals: refused }, 'group plan report: draft refused');
     } catch (err) {
       console.warn(

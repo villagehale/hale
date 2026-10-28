@@ -4,9 +4,10 @@
 // the REAL facts, request and gates, all imported from
 // apps/web/lib/channel/group-plan/report.ts, and the runtime's two attempts: the skill's
 // lane, then the small lane told what the first draft got wrong. A judge scores facts and
-// tone against the group-chat bar (VIL-399): says what changed, says whose calendars it
-// reached and nobody else's, hands the link to whoever it is not on yet, never invents
-// time, place, attendees or availability. Nothing matches words.
+// tone against the group-chat bar (VIL-399): says what changed, with its start, end and
+// full place when given, says whose calendars it reached and nobody else's, hands the
+// link to whoever it is not on yet, never invents time, end, place, attendees or
+// availability. One message or a few is the model's call. Nothing matches words.
 //
 // NOT RECORDED YET. A recording is paid and needs Barton's OK with a price first, so this
 // file is not named run-*.mjs: the Monday sweep replays every run-*.mjs cached-only and a
@@ -49,22 +50,26 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const TAG = 'group-plan-calendar-report';
 
 const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text Hale sends into a family group chat after a plan',
-  'the group made was put on the household calendar, moved, or called off. Everyone in the chat',
-  'reads it, including people who are not Hale customers. You are given the facts the writer was',
-  'handed (input: change, event, onCalendarOf, notYet, othersNotYet, everyone, link, language),',
-  'the text and watchFor notes. Score 1-5 on FACTS and BEHAVIOUR, not wording. A 5 says plainly',
-  'what changed; uses only the event as given; says it is on the calendars of exactly the people',
+  'You are a strict reviewer scoring what Hale sends into a family group chat after a plan the',
+  'group made was put on the household calendar, moved, or called off: one message or a few, in',
+  'the order they go out, read together. Everyone in the chat reads them, including people who',
+  'are not Hale customers. You are given the facts the writer was handed (input: change, event',
+  'with title, starts, ends and where, onCalendarOf, notYet, othersNotYet, everyone, link,',
+  'language), the messages and watchFor notes. Score 1-5 on FACTS and BEHAVIOUR, not wording.',
+  'A 5 says plainly what changed; for a placement or move, gives the start, the end when ends is',
+  'given and the place in full (venue and address) when where is given, so nobody has to look',
+  'anything up; uses only the event as given; says it is on the calendars of exactly the people',
   'in onCalendarOf and of nobody else; hands the link to the people it is not on yet, or to the',
   'whole group when onCalendarOf is empty; says everyone has it only when everyone is true; for a',
   'cancel, says it is off, with no link and no names; asks nothing of anyone, because the plan is',
   'made; is in input.language (French: vous to the group); first person; plain and short, the way',
-  'a friend in the chat would say it. A LOW score is any of: saying it is on the calendar of',
-  'someone not in onCalendarOf, or that everyone has it when everyone is false; a time, place,',
-  'person, attendee, availability or next step that is not in the input; saying why someone does',
-  'not have it; no link when one is given, or any link on a cancel; asking the group anything (a',
-  'question, a vote, an RSVP, a confirmation, a reply with a word); the wrong language; system talk',
-  'or hype; far more words than the facts need.',
+  'a friend in the chat would say it, however many messages. A LOW score is any of: saying it is',
+  'on the calendar of someone not in onCalendarOf, or that everyone has it when everyone is false;',
+  'leaving out the start, a given end or a given place on a placement or move; a time, end,',
+  'length, place, address, person, attendee, availability or next step that is not in the input;',
+  'saying why someone does not have it; no link when one is given, or any link on a cancel;',
+  'asking the group anything (a question, a vote, an RSVP, a confirmation, a reply with a word);',
+  'the wrong language; system talk or hype; far more words than the facts need.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -156,19 +161,19 @@ async function main() {
         }
       }
       if (totalUsd(thisReport) > totalUsd(oneReport)) oneReport = thisReport;
-      const judged = (text) =>
+      const judged = (messages) =>
         tokensAtMost(JUDGE_SYSTEM) +
-        tokensAtMost(JSON.stringify({ input: userMessage, text, watchFor: fixture.watchFor })) +
+        tokensAtMost(JSON.stringify({ input: userMessage, messages, watchFor: fixture.watchFor })) +
         judgeTool +
         PER_CALL_OVERHEAD_TOKENS;
-      // The text is the draft, at most its own ceiling, counted twice for JSON escaping.
-      const draftCeiling = judged('') + 2 * request.maxTokens;
+      // The messages are the draft, at most its own ceiling, counted twice for JSON escaping.
+      const draftCeiling = judged([]) + 2 * request.maxTokens;
       addBound(suite, judgeModel, CALLS_PER_REQUEST, draftCeiling, JUDGE_MAX_TOKENS);
       addBound(
         brokenJudge,
         judgeModel,
         CALLS_PER_REQUEST,
-        judged(GROUP_PLAN_CALENDAR_REPORT_BROKEN.text),
+        judged(GROUP_PLAN_CALENDAR_REPORT_BROKEN.messages),
         JUDGE_MAX_TOKENS,
       );
     }
@@ -197,11 +202,13 @@ async function main() {
   const results = [];
   for (const { fixture, input, userMessage } of facts) {
     const failures = [];
-    let body = '';
+    let messages = [];
     let drafts = 0;
     if (broken) {
-      body = GROUP_PLAN_CALENDAR_REPORT_BROKEN.text;
-      failures.push(...report.groupPlanReportRefusals(body, input).map((r) => `unsendable:${r}`));
+      messages = report.groupPlanReportMessages(GROUP_PLAN_CALENDAR_REPORT_BROKEN.messages);
+      failures.push(
+        ...report.groupPlanReportRefusals(messages, input).map((r) => `unsendable:${r}`),
+      );
     } else {
       // The runtime's own loop: a refused or failed first draft gets the small lane, told
       // what was wrong; when neither draft is accepted, nothing is sent.
@@ -219,8 +226,9 @@ async function main() {
             getClient,
             cost,
           });
-          body = String(value.text ?? '').trim();
-          refused = report.groupPlanReportRefusals(body, input);
+          const drafted = Array.isArray(value.messages) ? value.messages.map(String) : [];
+          messages = report.groupPlanReportMessages(drafted);
+          refused = report.groupPlanReportRefusals(drafted, input);
           if (refused.length === 0) {
             accepted = true;
             break;
@@ -240,17 +248,18 @@ async function main() {
     if (judged && failures.every((f) => !f.startsWith('unsent:'))) {
       const verdict = await judge(fixture.id, {
         input: userMessage,
-        text: body,
+        messages,
         watchFor: fixture.watchFor,
       });
       if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
     }
-    results.push({ fixture, body, drafts, failures });
+    results.push({ fixture, messages, drafts, failures });
   }
   for (const r of results) {
     const second = r.drafts > 1 ? ' [second draft]' : '';
+    const said = r.messages.map((m) => `"${m}"`).join(' + ');
     console.log(
-      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(24)} "${r.body}"${second}`,
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(24)} ${said}${second}`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
