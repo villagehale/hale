@@ -37,7 +37,7 @@ export const TALLY_FIXTURES = [
         text(JULIE, 'sunday pls, sat is swim'),
       ],
     },
-    accept: { ana: ['opt-sat'], min: [null], bart: ['opt-sat'], wei: [null], julie: ['opt-sun'] },
+    accept: { ana: ['opt-sat'], min: ['opt-sat'], bart: ['opt-sat'], wei: ['opt-sat'], julie: ['opt-sun'] },
   },
   {
     id: 'changed-mind-vote-then-text',
@@ -51,7 +51,7 @@ export const TALLY_FIXTURES = [
         vote(BART, SUN, true),
       ],
     },
-    accept: { ana: ['opt-sun'], min: [null], bart: [null], wei: [null], julie: [null] },
+    accept: { ana: ['opt-sun'], min: ['opt-sun'], bart: [null], wei: [null], julie: [null] },
   },
   {
     id: 'fr-zh-emoji',
@@ -65,7 +65,7 @@ export const TALLY_FIXTURES = [
         text(ANA, '👍'),
       ],
     },
-    accept: { ana: [null], min: [null], bart: [null], wei: ['opt-sat'], julie: ['opt-sun'] },
+    accept: { ana: ['opt-sun'], min: ['opt-sun'], bart: ['opt-sat'], wei: ['opt-sat'], julie: ['opt-sun'] },
   },
   {
     id: 'whatever-works-is-no-pick',
@@ -102,7 +102,7 @@ export const TALLY_FIXTURES = [
     accept: {
       ana: ['opt-sat'],
       min: ['opt-sat'],
-      bart: [null],
+      bart: ['opt-sun'],
       wei: ['opt-sun'],
       julie: [null],
     },
