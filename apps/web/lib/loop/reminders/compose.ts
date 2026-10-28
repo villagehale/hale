@@ -134,36 +134,47 @@ export function reminderUserMessage(facts: ReminderFacts): string {
   return JSON.stringify(facts);
 }
 
-export const REMINDER_MAX_CHARS = 480;
 const URL_SHAPE = /https?:\/\/\S+/gi;
 
-/** Structural refusals only, never wording: empty, too long, or a link not handed. */
-export function reminderRefusals(body: string, facts: ReminderFacts): string[] {
-  const text = body.trim();
-  if (text === '') return ['empty'];
+/**
+ * Structural refusals only, never wording or length: no texts, an empty text, or a
+ * link that was not handed. The model decides how many texts and where to split
+ * (VIL-467); there is no maximum and no character cap.
+ */
+export function reminderRefusals(texts: readonly string[], facts: ReminderFacts): string[] {
+  const trimmed = texts.map((t) => t.trim());
+  if (trimmed.length === 0 || trimmed.every((t) => t === '')) return ['empty'];
   const found: string[] = [];
-  if (text.length > REMINDER_MAX_CHARS) found.push('over_char_cap');
-  const urls = text.match(URL_SHAPE) ?? [];
+  if (trimmed.some((t) => t === '')) found.push('empty_text');
+  const urls = trimmed.flatMap((t) => t.match(URL_SHAPE) ?? []);
   const link = facts.planLink;
   if (urls.some((url) => link === null || !url.startsWith(link))) found.push('other_link');
   return found;
 }
 
-const outputSchema = z.object({ text: z.string() });
+const outputSchema = z.object({ texts: z.array(z.string()).min(1) });
 const outputJsonSchema = {
   type: 'object',
-  properties: { text: { type: 'string' } },
-  required: ['text'],
+  properties: {
+    texts: {
+      type: 'array',
+      items: { type: 'string', minLength: 1 },
+      minItems: 1,
+      description: 'The texts Hale sends the parent, in order. One or more.',
+    },
+  },
+  required: ['texts'],
 } as const;
 
 export const REMINDER_MAX_ATTEMPTS = 2;
 
-/** The whole reminder, or null after two refused or failed attempts. Null sends nothing. */
-export async function composeReminderText(
+/** The whole reminder as its texts, or null after two refused or failed attempts.
+ * Null sends nothing: there is no fallback or sorry text. */
+export async function composeReminderTexts(
   client: AgentClient,
   facts: ReminderFacts,
   familyId: string,
-): Promise<string | null> {
+): Promise<string[] | null> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
     skill = await loadCronSkill(REMINDER_SKILL);
@@ -181,15 +192,15 @@ export async function composeReminderText(
         lane: pickLane(skill.meta.task),
         system: skill.instructions,
         userMessage: reminderUserMessage(facts),
-        toolName: 'reminder_text',
-        toolDescription: 'The one text Hale sends the parent.',
+        toolName: 'reminder_texts',
+        toolDescription: 'The texts Hale sends the parent, in order.',
         inputJsonSchema: outputJsonSchema,
         schema: outputSchema,
-        maxTokens: 300,
+        maxTokens: 1024,
       });
-      const text = value.text.trim();
-      const refusals = reminderRefusals(text, facts);
-      if (refusals.length === 0) return text;
+      const texts = value.texts.map((t) => t.trim());
+      const refusals = reminderRefusals(texts, facts);
+      if (refusals.length === 0) return texts;
       console.warn({ familyId, attempt, refusals }, 'reminder: draft refused');
     } catch (err) {
       console.warn(

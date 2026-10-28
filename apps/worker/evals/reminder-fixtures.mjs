@@ -11,6 +11,8 @@ const TZ = 'America/Toronto';
 const SUN_6PM = '2026-10-25T22:00:00Z';
 const PLAN = 'https://app.villagehale.com/plan';
 const KID = { id: 'c-kid', name: 'Léa', dateOfBirth: '2019-04-02', gender: 'girl' };
+// A fake second kid, for the two-kid next-day reminder (VIL-467). Never real family data.
+const SIB = { id: 'c-sib', name: 'Theo', dateOfBirth: '2022-06-14', gender: 'boy' };
 const TEEN = { id: 'c-teen', name: 'Rowan', dateOfBirth: '2011-03-01', gender: null };
 
 function ev(over) {
@@ -169,5 +171,31 @@ export const REMINDER_FIXTURES = [
     }),
     watchFor:
       "Sent at 7:00 AM on the event's own day. It is today, not tomorrow. 10:00 AM to 11:00 AM.",
+  },
+  {
+    id: 'en-next-day-multi-event',
+    args: args({
+      children: [KID, SIB],
+      events: [
+        ev({
+          eventRef: 'e1',
+          childId: 'c-sib',
+          title: 'Montessori tour',
+          startsAt: '2026-10-26T14:00:00Z',
+          endsAt: '2026-10-26T15:00:00Z',
+          location: 'Little Oaks Montessori, 41 Mill St',
+        }),
+        ev({
+          eventRef: 'e2',
+          childId: 'c-kid',
+          title: 'Storytime',
+          startsAt: '2026-10-26T17:30:00Z',
+          endsAt: '2026-10-26T18:15:00Z',
+          location: 'Georgetown Branch, 9 Church St',
+        }),
+      ],
+    }),
+    watchFor:
+      "Fake family, two kids, two events tomorrow (VIL-467). The prod miss read like a filled-in template: a stiff list of events with times and places, not a friend texting. The reminder may be one text or several; read them in order as one message. FACTS GUARDRAIL, by meaning: across the texts, EVERY event keeps its start time, its end time or duration, and its specific venue name and address as given (Montessori tour 10 to 11 AM at Little Oaks Montessori, 41 Mill St; storytime 1:30 to 2:15 PM at Georgetown Branch, 9 Church St), so the parent never has to look anything up. Any event's time, end or place missing or vague is a LOW score. A list-like, calendar-export feel is also a LOW score.",
   },
 ];

@@ -36,10 +36,18 @@ const COMPOSE_SRC = join(WEB_ROOT, 'lib', 'loop', 'reminders', 'compose.ts');
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
+// Mirrors compose.ts (VIL-467): the model returns the texts it chose to send, in order.
 const TOOL_SCHEMA = {
   type: 'object',
-  properties: { text: { type: 'string' } },
-  required: ['text'],
+  properties: {
+    texts: {
+      type: 'array',
+      items: { type: 'string', minLength: 1 },
+      minItems: 1,
+      description: 'The texts Hale sends the parent, in order. One or more.',
+    },
+  },
+  required: ['texts'],
 };
 
 const JUDGE_SYSTEM = [
@@ -67,6 +75,11 @@ const JUDGE_SYSTEM = [
 const BROKEN =
   "Mon, Oct 26: Jour de congé at 3:00 Tomorrow's a day off, so you've got a bit of breathing room.";
 
+function readTexts(value) {
+  const texts = Array.isArray(value?.texts) ? value.texts : [];
+  return texts.map((t) => String(t ?? '').trim());
+}
+
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -88,9 +101,9 @@ async function main() {
   for (const fixture of REMINDER_FIXTURES) {
     const facts = compose.reminderFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     const userMessage = compose.reminderUserMessage(facts);
-    const body = broken
-      ? BROKEN
-      : String(
+    const texts = broken
+      ? [BROKEN]
+      : readTexts(
           (
             await cachedToolCall({
               tag: `reminder:${fixture.id}`,
@@ -98,17 +111,19 @@ async function main() {
               lane,
               system: skill.instructions,
               userMessage,
-              toolName: 'reminder_text',
+              toolName: 'reminder_texts',
               toolSchema: TOOL_SCHEMA,
-              toolDescription: 'The one text Hale sends the parent.',
-              maxTokens: 300,
+              toolDescription: 'The texts Hale sends the parent, in order.',
+              maxTokens: 1024,
               cachedOnly,
               getClient,
               cost,
             })
-          ).value.text ?? '',
-        ).trim();
-    const failures = compose.reminderRefusals(body, facts).map((r) => `unsendable:${r}`);
+          ).value,
+        );
+    // The judge reads the texts in the order the parent receives them, one per line.
+    const body = texts.join('\n');
+    const failures = compose.reminderRefusals(texts, facts).map((r) => `unsendable:${r}`);
     const verdict = await judge(fixture.id, {
       input: userMessage,
       text: body,
@@ -119,7 +134,7 @@ async function main() {
   }
   for (const r of results) {
     console.log(
-      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(26)} "${r.body}"`,
+      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(26)} ${JSON.stringify(r.body.split('\n'))}`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }

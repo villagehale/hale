@@ -26,7 +26,7 @@ import type {
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { getQueue } from '~/lib/queue';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { composeReminderText, reminderFacts } from './compose';
+import { composeReminderTexts, reminderFacts } from './compose';
 import {
   type EventSnapshot,
   REMINDER_HORIZON_MS,
@@ -201,7 +201,7 @@ export interface ReminderRunDeps {
   /** The family's language tag, for the model-written reminder. */
   loadLanguage: (db: Database, familyId: string) => Promise<ReplyLanguage>;
   /** Writes the whole reminder from facts, or null (nothing is sent). */
-  composeText: typeof composeReminderText;
+  composeText: typeof composeReminderTexts;
   /** VIL-229 · the parent's resolved child-name-level dial, for the SAME redacted view
    * (rule #1) the voice stage hands the model and the template later renders. */
   loadNameLevel: (db: Database, userId: string) => Promise<ChildNameLevel>;
@@ -418,7 +418,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
         .where(eq(schema.families.id, familyId));
       return row?.primaryLanguage ?? 'en';
     },
-    composeText: composeReminderText,
+    composeText: composeReminderTexts,
     loadNameLevel: async (db, userId) => (await loadLoopPrefsView(userId, db)).childNameLevel,
   };
 }
@@ -767,9 +767,9 @@ export async function runReminderCron(
 
       // The parent's reminder is written whole by the model from facts. No client, or a
       // draft that could not be written, is NOTHING SENT and a logged, audited drop.
-      let text: string | null = null;
+      let texts: string[] | null = null;
       if (!caregiver) {
-        text =
+        texts =
           deps.client && nameLevel && language
             ? await deps.composeText(
                 deps.client,
@@ -786,7 +786,7 @@ export async function runReminderCron(
                 group.familyId,
               )
             : null;
-        if (text === null) {
+        if (texts === null) {
           console.error(
             { familyId: group.familyId, offset: batch.offset, events: batch.eventRefs.length },
             'reminder: no text written, nothing sent',
@@ -824,7 +824,7 @@ export async function runReminderCron(
         children,
         deepLink,
         unsubscribeUrl: unsubscribeUrl({ userId: parentUserId, emailType: REMINDER_EMAIL_TYPE }),
-        text: text ?? '',
+        texts: texts ?? [],
       };
       // Batch key: the single event for T-1h, the evening for a merged T-24h. The family
       // is part of it because `dedupeActive` matches on the key alone, family-blind — and
