@@ -12,6 +12,10 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * No fallback sentence. Two attempts, then nothing is sent and #ops is paged.
  */
 
+export const CARPOOL_VOICE_ATTEMPTS = 2;
+export const CARPOOL_VOICE_MAX_TOKENS = 200;
+export const CARPOOL_VOICE_RETRY_MAX_TOKENS = 120;
+
 export const CARPOOL_VOICE_KINDS = [
   'ask_driver',
   'night_before_group',
@@ -103,7 +107,7 @@ export function createCarpoolComposer(options?: {
           familyId: options.familyId,
           agentName: 'reply-copy',
           traceName: 'reply-copy',
-          maxTokens: 200,
+          maxTokens: CARPOOL_VOICE_MAX_TOKENS,
         });
         if (!composed.voice) {
           await pageUnsent(input.kind, composed.reason ?? 'unusable');
@@ -111,7 +115,7 @@ export function createCarpoolComposer(options?: {
         }
         return composed.voice.line;
       }
-      for (let attempt = 0; attempt < 2; attempt += 1) {
+      for (let attempt = 0; attempt < CARPOOL_VOICE_ATTEMPTS; attempt += 1) {
         try {
           const { value } = await forceToolJson({
             client,
@@ -127,7 +131,7 @@ export function createCarpoolComposer(options?: {
               required: ['line'],
             },
             schema: lineSchema,
-            maxTokens: attempt === 1 ? 120 : 200,
+            maxTokens: attempt === 1 ? CARPOOL_VOICE_RETRY_MAX_TOKENS : CARPOOL_VOICE_MAX_TOKENS,
           });
           if (carpoolLineUsable(value.line, input.kind)) return value.line.trim();
         } catch (err) {

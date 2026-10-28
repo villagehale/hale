@@ -13,6 +13,9 @@ import type { CarpoolIntent } from './carpool-cadence';
  * Tapbacks on Hale's ask are a structured yes from that person, not a keyword.
  */
 
+export const CARPOOL_READ_ATTEMPTS = 2;
+export const CARPOOL_READING_MAX_TOKENS = 300;
+
 export const CARPOOL_INTENTS = [
   'driver_claim',
   'driver_swap',
@@ -150,13 +153,13 @@ export function createCarpoolReader(
       toolDescription: 'Who is driving after this group message.',
       inputJsonSchema: readingJsonSchema,
       schema: readingSchema,
-      maxTokens: 300,
+      maxTokens: CARPOOL_READING_MAX_TOKENS,
     });
     return parseCarpoolReading(value);
   };
   return {
     async read(input) {
-      for (let attempt = 1; attempt <= 2; attempt += 1) {
+      for (let attempt = 1; attempt <= CARPOOL_READ_ATTEMPTS; attempt += 1) {
         try {
           const reading = await once(input);
           if (reading.intent !== 'unclear' || reading.confidence === 'high') return reading;
@@ -181,4 +184,3 @@ export function sharedCarpoolReader(): CarpoolReader {
 }
 
 export const CARPOOL_READING_TOOL_SCHEMA = readingJsonSchema;
-export const CARPOOL_READING_MAX_TOKENS = 300;

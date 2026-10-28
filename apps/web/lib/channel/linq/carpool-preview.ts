@@ -11,11 +11,11 @@ import { readingFromTapback } from './carpool-reading';
 import type { CarpoolVoiceInput } from './carpool-voice';
 
 /**
- * VIL-445 Preview proof — several people from fake families, no real SMS.
+ * VIL-445 cadence fixture — several people from fake families, no real SMS.
  *
- * The runner never opens a network door. It applies the same cadence and
- * reading fold as production. The composer is injected so a Preview capture
- * can still show a conversation when Anthropic is unset.
+ * This is not carpool-voice. Hale lines here are kind tags so a test can
+ * see that cadence chose to speak. A parent-facing line waits on a paid
+ * model run Barton has not approved.
  */
 
 export type PreviewSpeaker = 'Hale' | 'Maya Chen' | 'Luis Rivera' | 'Priya Shah';
@@ -155,6 +155,7 @@ function play(script: ScriptTurn[], enabled: boolean): { lines: PreviewLine[]; n
       continue;
     }
     const person = PEOPLE[turn.who];
+    if (!person) continue;
     const at = turn.at ?? new Date('2026-10-08T16:00:00.000Z');
     if ('tapback' in turn) {
       push(person.speaker, `(tapback ${turn.tapback} on Hale's ask)`, at);

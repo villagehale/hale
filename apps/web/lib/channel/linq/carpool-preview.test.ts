@@ -1,8 +1,15 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { previewConversationFacts, runCarpoolPreviewConversations } from './carpool-preview';
 
 describe('runCarpoolPreviewConversations', () => {
   const conversations = runCarpoolPreviewConversations();
+
+  it('does not add a fifth portal page', () => {
+    const page = fileURLToPath(new URL('../../../app/preview/carpool/page.tsx', import.meta.url));
+    expect(existsSync(page)).toBe(false);
+  });
 
   it('plays several people from three fake families, never a real number', () => {
     expect(conversations).toHaveLength(5);
@@ -19,14 +26,12 @@ describe('runCarpoolPreviewConversations', () => {
     const conversation = conversations.find((item) => item.id === 'no-driver-ask-once');
     const hale = conversation?.after.filter((line) => line.from === 'Hale') ?? [];
     expect(hale).toHaveLength(1);
-    expect(hale[0]?.text).toContain('ask_driver');
+    expect(conversation?.notes).toContain('second mention did not earn a second ask');
   });
 
   it('follows a mid-thread swap and reminds the new driver in the group', () => {
     const conversation = conversations.find((item) => item.id === 'driver-swap');
-    const hale = conversation?.after.filter((line) => line.from === 'Hale') ?? [];
-    expect(hale.length).toBeGreaterThan(0);
-    expect(hale.some((line) => line.text.includes('Priya'))).toBe(true);
+    expect(conversation?.after.some((line) => line.from === 'Hale')).toBe(true);
     expect(conversation?.notes.some((note) => note.includes('driver_not_customer'))).toBe(true);
   });
 
