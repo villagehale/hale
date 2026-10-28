@@ -139,6 +139,10 @@
     "file": "gmail-draft-notice.md",
     "sha256": "bbc089b1b8eda41ced0e4b6d8f0e209d101046fd6a05636d62efbb1fcab4d44b"
   },
+  "group-conflict-alert.md": {
+    "file": "group-conflict-alert.md",
+    "sha256": "e886d9659bf4380c6ef141274e5d4a621c245746bf59f7c173819214750d41da"
+  },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
