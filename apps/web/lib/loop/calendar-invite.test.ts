@@ -553,20 +553,26 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(cancelCalls).toEqual([]);
   });
 
-  it('VIL-443 · the retry sweep counts a cancel told to the family group', async () => {
-    const { familyId } = await textOnlyFamily();
-    const familyEventId = await seedPlacement(familyId);
-    await cancelGenuinely(familyId, familyEventId);
-    const group = {
-      send: async () => ({ status: 'group_reported', outcome: 'sent' }),
-    } as unknown as CalendarInviteSender;
-    expect(await retryDeferredCalendarCancels(db.database, group, NOON)).toEqual({
-      events: 1,
-      sent: 1,
-      deferred: 0,
-      failed: 0,
+  for (const [outcome, counted] of [
+    ['sent', { sent: 1, deferred: 0 }],
+    ['partly_sent', { sent: 1, deferred: 0 }],
+    ['held:quiet_hours', { sent: 0, deferred: 1 }],
+    ['unwritten', { sent: 0, deferred: 1 }],
+  ] as const) {
+    it(`VIL-443 · the retry sweep counts a family group's cancel that ended ${outcome}`, async () => {
+      const { familyId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      await cancelGenuinely(familyId, familyEventId);
+      const group = {
+        send: async () => ({ status: 'group_reported', outcome }),
+      } as unknown as CalendarInviteSender;
+      expect(await retryDeferredCalendarCancels(db.database, group, NOON)).toEqual({
+        events: 1,
+        failed: 0,
+        ...counted,
+      });
     });
-  });
+  }
 
   it('names no_channel for a parent with neither an address nor a live SMS channel', async () => {
     // No parent_channels row at all — a parent who never enrolled.

@@ -56,6 +56,7 @@ function ports(overrides: Partial<GroupPlanReportPorts> = {}): GroupPlanReportPo
     compose: vi.fn(async () => MESSAGES),
     send: vi.fn(async () => 'sent' as const),
     unsent: vi.fn(async () => {}),
+    hold: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -137,7 +138,38 @@ describe('VIL-443 withGroupPlanReport', () => {
     });
   }
 
-  for (const reason of ['quiet_hours', 'not_enrolled', 'opt_out_unread'] as const) {
+  it('holds a night’s text for the group’s morning, and texts no parent 1:1 tonight', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = innerSender();
+    const p = ports({
+      gate: vi.fn(async () => ({ allowed: false, reason: 'quiet_hours' }) as const),
+    });
+    expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+      status: 'group_reported',
+      outcome: 'held:quiet_hours',
+    });
+    expect(p.hold).toHaveBeenCalledWith(PLAN);
+    expect(inner.send).not.toHaveBeenCalled();
+    expect(p.compose).not.toHaveBeenCalled();
+    expect(p.send).not.toHaveBeenCalled();
+  });
+
+  it('names a night hold it could not record, and texts no parent 1:1 tonight', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const inner = innerSender();
+    const p = ports({
+      gate: vi.fn(async () => ({ allowed: false, reason: 'quiet_hours' }) as const),
+      hold: vi.fn(async () => Promise.reject(new Error('db'))),
+    });
+    expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+      status: 'errored',
+      message: 'group_plan_hold_unrecorded',
+    });
+    expect(inner.send).not.toHaveBeenCalled();
+  });
+
+  for (const reason of ['not_enrolled', 'opt_out_unread', 'no_watch_consent'] as const) {
     it(`gives its parents their own invites when the group text is held (${reason})`, async () => {
       vi.spyOn(console, 'info').mockImplementation(() => {});
       const inner = innerSender();
@@ -149,6 +181,7 @@ describe('VIL-443 withGroupPlanReport', () => {
       });
       expect(inner.send).toHaveBeenCalledWith(REQUEST);
       expect(p.send).not.toHaveBeenCalled();
+      expect(p.hold).not.toHaveBeenCalled();
     });
   }
 
@@ -184,7 +217,7 @@ describe('VIL-443 withGroupPlanReport', () => {
       ),
     };
     const p = ports({
-      gate: vi.fn(async () => ({ allowed: false, reason: 'quiet_hours' }) as const),
+      gate: vi.fn(async () => ({ allowed: false, reason: 'not_enrolled' }) as const),
     });
     expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
       status: 'errored',

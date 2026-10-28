@@ -29,6 +29,7 @@ import {
 } from '~/lib/loop/ics-invite';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { recordGroupPlanHold } from './redrive';
 import {
   type GroupPlanChange,
   type GroupPlanEvent,
@@ -62,11 +63,14 @@ import { groupPlanChatId } from './stamp';
  * marks exactly whether the group has what it needs; any other message is keyed off it.
  *
  * NOTHING CANNED. The model writes the text or nothing goes out; an unwritten text is an
- * audit row and an ops page, and its dedupe key stays unspent. A group text that is held
- * (quiet hours, enrolment) or does not land goes to the parents' own invites instead,
- * exactly as with this flag off: a hold or a lost send is not the model failing. Every
- * way this ends is a named outcome in the execution detail (rule #11); nothing here
- * throws into the executor.
+ * audit row and an ops page, and its dedupe key stays unspent.
+ *
+ * A group text quiet hours hold waits for the morning re-drive (redrive.ts) and goes to
+ * the group then: switching it to each parent's time-sensitive 1:1 invite would cross the
+ * quiet hours that held it. One held for anything else (enrolment, an unread stop) or that
+ * does not land goes to the parents' own invites instead, exactly as with this flag off:
+ * a hold or a lost send is not the model failing. Every way this ends is a named outcome
+ * in the execution detail (rule #11); nothing here throws into the executor.
  */
 
 export const GROUP_PLAN_TEMPLATE_KEY = 'group_plan_calendar';
@@ -121,6 +125,8 @@ export interface GroupPlanReportPorts {
   send(plan: GroupPlan, lines: GroupPlanLines, optOut: OptOutForm): Promise<GroupLineSendOutcome>;
   /** Records and pages a text the model could not write. Nothing was sent. */
   unsent(plan: GroupPlan): Promise<void>;
+  /** Records a text quiet hours held, for the morning re-drive. Nothing was sent. */
+  hold(plan: GroupPlan): Promise<void>;
 }
 
 /** What goes into the group, in order. */
@@ -228,6 +234,22 @@ export function withGroupPlanReport(
         },
         'group plan report: done',
       );
+      if (outcome === 'held:quiet_hours') {
+        try {
+          await ports.hold(plan);
+        } catch (err) {
+          console.error(
+            {
+              familyId: request.familyId,
+              familyEventId: request.familyEventId,
+              err: err instanceof Error ? err.name : 'unknown',
+            },
+            'group plan report: could not record the night hold - nothing sent',
+          );
+          return { status: 'errored', message: 'group_plan_hold_unrecorded' };
+        }
+        return { status: 'group_reported', outcome };
+      }
       if (outcome === 'send_failed' || outcome.startsWith('held:')) {
         return toParents(inner, request, outcome);
       }
@@ -238,9 +260,9 @@ export function withGroupPlanReport(
 
 /**
  * The group could not be told, so each parent gets what they would get without this
- * flag. Nothing is retried here: a placement runs once, and a held or lost group text
- * would otherwise leave nobody with the link. A text the model could not write never
- * comes here (no fallback for words).
+ * flag. Nothing is retried here: a placement runs once, and a lost group text, or one
+ * held for anything but the night, would otherwise leave nobody with the link. A text
+ * the model could not write never comes here (no fallback for words).
  */
 async function toParents(
   inner: CalendarInviteSender,
@@ -580,5 +602,6 @@ export function productionGroupPlanReportPorts(
       );
       console.warn({ page }, 'group plan report: ops paged');
     },
+    hold: (plan) => recordGroupPlanHold(database, plan, clock()),
   };
 }

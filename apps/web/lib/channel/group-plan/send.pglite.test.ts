@@ -1,14 +1,25 @@
 import { schema } from '@hale/db';
-import type { CalendarInviteReport } from '@hale/worker/executor';
+import type {
+  CalendarInviteReport,
+  CalendarInviteRequest,
+  CalendarInviteSender,
+} from '@hale/worker/executor';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { MAX_REDRIVE_PER_RUN } from '~/lib/channel/redrive-slot';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadEventInvite } from '~/lib/loop/ics-invite';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import {
+  emptyGroupPlanRedriveResult,
+  runGroupPlanReportRedrive,
+  selectOpenGroupPlanHolds,
+} from './redrive';
+import type { GroupPlanReportInput } from './report';
 import {
   type GroupPlan,
   loadGroupPlan,
@@ -19,9 +30,10 @@ import { productionRecordGroupPlanOrigin } from './stamp';
 
 /**
  * VIL-443 (T17) 2/2 against a real database: which placements are a group's plan, the
- * facts read for its text (writing nothing), the real link anyone can open, and the
- * group send — once per revision, with an audit row that carries no title or names.
- * No model runs here: where a text is needed, the composer port returns a fixed one.
+ * facts read for its text (writing nothing), the real link anyone can open, the group
+ * send — once per revision, with an audit row that carries no title or names — and the
+ * night hold its 08:00 re-drive sends. No model runs here: where a text is needed, the
+ * composer port returns a fixed one.
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -755,16 +767,36 @@ describe('VIL-443 production ports, real database', () => {
       ...productionGroupPlanReportPorts(db.database, { fetch: wire.fetch, now: () => now }),
       compose,
     });
-    return { report: await sender.send(request(s)), inner, compose };
+    return { report: await sender.send(request(s)), inner, compose, sender, s };
   }
 
-  it('gives the parents their own invites when the group text is held for the night', async () => {
+  it('holds the group text for the morning, once, and texts no parent tonight', async () => {
     const wire = linqWire();
-    const { report, inner, compose } = await reportAt(NIGHT, wire);
-    expect(report).toEqual({ status: 'reported', parents: [], groupNotTold: 'held:quiet_hours' });
-    expect(inner.send).toHaveBeenCalledTimes(1);
+    const { report, inner, compose, sender, s } = await reportAt(NIGHT, wire);
+    expect(report).toEqual({ status: 'group_reported', outcome: 'held:quiet_hours' });
+    expect(await sender.send(request(s))).toEqual(report);
+    expect(inner.send).not.toHaveBeenCalled();
     expect(compose).not.toHaveBeenCalled();
     expect(wire.posted).toEqual([]);
+    const plan = (await loadGroupPlan(db.database, request(s), NIGHT)) as GroupPlan;
+    const holds = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_plan.report_held'));
+    expect(holds).toHaveLength(1);
+    expect(holds[0]).toMatchObject({
+      familyId: s.familyId,
+      targetTable: 'actions',
+      targetId: s.actionId,
+      occurredAt: NIGHT,
+    });
+    expect(holds[0]?.after).toEqual({
+      familyEventId: s.familyEventId,
+      dedupeKey: plan.dedupeKey,
+      method: 'REQUEST',
+      change: 'added',
+      gateUserId: s.ana,
+    });
   });
 
   it('gives the parents their own invites when Linq refuses the group text', async () => {
@@ -832,5 +864,277 @@ describe('VIL-443 production ports, real database', () => {
       expect(inner.send).toHaveBeenCalledTimes(1);
       expect(posted).toEqual([]);
     });
+  });
+});
+
+describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
+  const DAWN = new Date('2026-11-07T13:12:00.000Z'); // Sat 08:12 Toronto
+  const NEXT_DAWN = new Date('2026-11-08T13:12:00.000Z'); // Sun 08:12 Toronto
+  const LATER_NIGHT = new Date(NIGHT.getTime() + 30 * 60_000); // 23:30 Toronto
+
+  beforeEach(() => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('GROUP_PLAN_CALENDAR_REPORT_ENABLED', 'true');
+  });
+
+  /** The placement's own sender, as the cron builds it, on a fake Linq and a stand-in
+   * composer. */
+  function senderAt(
+    now: Date,
+    opts: {
+      wire?: ReturnType<typeof linqWire>;
+      compose?: (input: GroupPlanReportInput) => Promise<string[] | null>;
+    } = {},
+  ) {
+    const wire = opts.wire ?? linqWire();
+    const inner = {
+      send: vi.fn(async (): Promise<CalendarInviteReport> => ({ status: 'reported', parents: [] })),
+    };
+    const sender = withGroupPlanReport(inner, {
+      ...productionGroupPlanReportPorts(db.database, { fetch: wire.fetch, now: () => now }),
+      compose:
+        opts.compose ??
+        (async (input) => [
+          input.link ? `Swim is set. Add it here: ${input.link}` : 'Swim is off.',
+        ]),
+    });
+    return { sender, inner, wire };
+  }
+
+  async function holdAt(
+    at: Date,
+    s: { familyId: string; familyEventId: string },
+    method: 'REQUEST' | 'CANCEL' = 'REQUEST',
+  ) {
+    expect(await senderAt(at).sender.send(request(s, method))).toEqual({
+      status: 'group_reported',
+      outcome: 'held:quiet_hours',
+    });
+  }
+
+  const redrive = (sender: CalendarInviteSender, at: Date) =>
+    runGroupPlanReportRedrive(db.database, { sender }, at);
+
+  /** Each release row's `after`, the outcomes sorted. */
+  async function releases(familyId: string) {
+    const rows = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, familyId),
+          eq(schema.auditLog.actionTaken, 'group_plan.report_released'),
+        ),
+      );
+    return rows
+      .map((row) => row.after as { dedupeKey: string; outcome: string })
+      .sort((a, b) => a.outcome.localeCompare(b.outcome));
+  }
+
+  it('sends the held text into the group at 08:00 with its real link, once, and closes the hold', async () => {
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    const plan = (await loadGroupPlan(db.database, request(s), DAWN)) as GroupPlan;
+    const dawn = senderAt(DAWN);
+    expect(await redrive(dawn.sender, DAWN)).toEqual({
+      ...emptyGroupPlanRedriveResult(),
+      open: 1,
+      due: 1,
+      sent: 1,
+    });
+    expect(dawn.inner.send).not.toHaveBeenCalled();
+    expect(postedTexts(dawn.wire.posted)).toEqual([
+      expect.stringContaining(`/api/ics/event/${s.familyEventId}.`),
+    ]);
+    expect(await releases(s.familyId)).toEqual([
+      { familyEventId: s.familyEventId, dedupeKey: plan.dedupeKey, outcome: 'sent' },
+    ]);
+
+    const later = new Date(DAWN.getTime() + 30 * 60_000);
+    expect(await redrive(senderAt(later, { wire: dawn.wire }).sender, later)).toMatchObject({
+      open: 0,
+      due: 0,
+      sent: 0,
+    });
+    expect(dawn.wire.posted).toHaveLength(1);
+  });
+
+  it('sends nothing outside the 08:00 hour, and still owes the text', async () => {
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    const { sender, wire, inner } = senderAt(DAWN);
+    for (const at of [new Date('2026-11-07T12:12:00.000Z'), new Date('2026-11-07T14:12:00.000Z')]) {
+      expect(await redrive(sender, at)).toMatchObject({ open: 1, due: 0, sent: 0 });
+    }
+    expect(wire.posted).toEqual([]);
+    expect(inner.send).not.toHaveBeenCalled();
+    expect(await releases(s.familyId)).toEqual([]);
+    expect(await selectOpenGroupPlanHolds(db.database, DAWN)).toHaveLength(1);
+  });
+
+  it('sends a plan moved overnight once, at its latest time', async () => {
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    await db.database
+      .update(schema.familyEvents)
+      .set({
+        startsAt: new Date(STARTS.getTime() + 3_600_000),
+        endsAt: new Date(ENDS.getTime() + 3_600_000),
+      })
+      .where(eq(schema.familyEvents.id, s.familyEventId));
+    await audit(s.familyId, 'action.calendar_moved', s.familyEventId);
+    await holdAt(LATER_NIGHT, s);
+    const handed: GroupPlanReportInput[] = [];
+    const dawn = senderAt(DAWN, {
+      compose: async (input) => {
+        handed.push(input);
+        return [`Swim moved. Add it here: ${input.link}`];
+      },
+    });
+    expect(await redrive(dawn.sender, DAWN)).toMatchObject({
+      open: 2,
+      due: 2,
+      sent: 1,
+      alreadySent: 1,
+    });
+    expect(handed).toEqual([
+      expect.objectContaining({
+        change: 'moved',
+        event: expect.objectContaining({ starts: expect.stringMatching(/11:00/) }),
+      }),
+    ]);
+    expect(dawn.wire.posted).toHaveLength(1);
+    expect((await releases(s.familyId)).map((r) => r.outcome)).toEqual(['alreadySent', 'sent']);
+  });
+
+  it('releases a plan already under way by its morning, unsent', async () => {
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    const { sender, wire, inner } = senderAt(NEXT_DAWN);
+    expect(await redrive(sender, NEXT_DAWN)).toMatchObject({ open: 1, due: 1, started: 1 });
+    expect(wire.posted).toEqual([]);
+    expect(inner.send).not.toHaveBeenCalled();
+    expect((await releases(s.familyId)).map((r) => r.outcome)).toEqual(['started']);
+  });
+
+  it('drops an added plan removed overnight, and tells the group it is off', async () => {
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    await db.database
+      .update(schema.familyEvents)
+      .set({ deletedAt: LATER_NIGHT })
+      .where(eq(schema.familyEvents.id, s.familyEventId));
+    await holdAt(LATER_NIGHT, s, 'CANCEL');
+    const dawn = senderAt(DAWN);
+    expect(await redrive(dawn.sender, DAWN)).toMatchObject({
+      open: 2,
+      due: 2,
+      gone: 1,
+      sent: 1,
+    });
+    expect(postedTexts(dawn.wire.posted)).toEqual(['Swim is off.']);
+    expect(dawn.inner.send).not.toHaveBeenCalled();
+    expect((await releases(s.familyId)).map((r) => r.outcome)).toEqual(['gone', 'sent']);
+  });
+
+  it('gives the parents their own invites by day when Linq refuses the group text at 08:00', async () => {
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    const dawn = senderAt(DAWN, { wire: linqWire(400) });
+    expect(await redrive(dawn.sender, DAWN)).toMatchObject({ due: 1, toParents: 1 });
+    expect(dawn.inner.send).toHaveBeenCalledWith(request(s));
+    expect((await releases(s.familyId)).map((r) => r.outcome)).toEqual(['toParents']);
+  });
+
+  it('sends nothing canned when the model writes nothing at 08:00, and does not ask again', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    const dawn = senderAt(DAWN, { compose: async () => null });
+    expect(await redrive(dawn.sender, DAWN)).toMatchObject({ due: 1, unwritten: 1 });
+    expect(dawn.wire.posted).toEqual([]);
+    expect(dawn.inner.send).not.toHaveBeenCalled();
+    expect((await releases(s.familyId)).map((r) => r.outcome)).toEqual(['unwritten']);
+    expect(await selectOpenGroupPlanHolds(db.database, DAWN)).toEqual([]);
+  });
+
+  it('keeps a hold for the next morning when the gate still reads night or the send throws', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    const stillNight = {
+      send: vi.fn(
+        async (): Promise<CalendarInviteReport> => ({
+          status: 'group_reported',
+          outcome: 'held:quiet_hours',
+        }),
+      ),
+    };
+    expect(await redrive(stillNight, DAWN)).toMatchObject({ due: 1, heldAgain: 1 });
+    const throwing = { send: vi.fn(async () => Promise.reject(new Error('db'))) };
+    expect(await redrive(throwing, DAWN)).toMatchObject({ due: 1, errored: 1 });
+    expect(await releases(s.familyId)).toEqual([]);
+    expect(await selectOpenGroupPlanHolds(db.database, DAWN)).toHaveLength(1);
+  });
+
+  it('stops re-driving a hold once it is a week old', async () => {
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    const weekOn = new Date('2026-11-14T13:12:00.000Z'); // Sat 08:12 Toronto, a week on
+    const { sender, wire } = senderAt(weekOn);
+    expect(await redrive(sender, weekOn)).toMatchObject({ open: 0, due: 0 });
+    expect(wire.posted).toEqual([]);
+  });
+
+  it('serves the longest-held first and counts what its cap defers', async () => {
+    const s = await seed();
+    const over = MAX_REDRIVE_PER_RUN + 1;
+    const events = await db.database
+      .insert(schema.familyEvents)
+      .values(
+        Array.from({ length: over }, (_, i) => ({
+          familyId: s.familyId,
+          title: `Plan ${i}`,
+          startsAt: STARTS,
+          source: 'placement' as const,
+        })),
+      )
+      .returning({ id: schema.familyEvents.id });
+    // Inserted newest-first, so a read that trusts heap order serves the wrong end.
+    await db.database.insert(schema.auditLog).values(
+      events.map((event, i) => ({
+        familyId: s.familyId,
+        actor: 'system',
+        actionTaken: 'group_plan.report_held',
+        targetTable: 'actions',
+        targetId: s.actionId,
+        occurredAt: new Date(NIGHT.getTime() - i * 60_000),
+        after: {
+          familyEventId: event.id,
+          dedupeKey: `group_plan_calendar:${event.id}:1`,
+          method: 'REQUEST',
+          change: 'added',
+          gateUserId: s.ana,
+        },
+      })),
+    );
+    const sender = {
+      send: vi.fn(
+        async (_request: CalendarInviteRequest): Promise<CalendarInviteReport> => ({
+          status: 'group_reported',
+          outcome: 'sent',
+        }),
+      ),
+    };
+    expect(await redrive(sender, DAWN)).toMatchObject({
+      open: over,
+      due: over,
+      deferred: 1,
+      sent: MAX_REDRIVE_PER_RUN,
+    });
+    const served = sender.send.mock.calls.map(([req]) => req.familyEventId);
+    expect(served).not.toContain(events[0]?.id);
+    expect(served[0]).toBe(events[over - 1]?.id);
   });
 });

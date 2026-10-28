@@ -268,6 +268,8 @@ export const AUDIT_VERBS = [
   'group_plan.drafted',
   'group_plan.calendar_reported',
   'group_plan.line_unsent',
+  'group_plan.report_held',
+  'group_plan.report_released',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
   'travel_booking_passed_over',
@@ -1029,6 +1031,16 @@ const VERBS: Record<AuditVerb, Verb> = {
   'group_plan.line_unsent': {
     sentence: "Hale held back a group calendar text it couldn't write well",
     family: 'problem',
+  },
+  // Quiet hours held the group's text; the 08:00 re-drive sends it to the group.
+  'group_plan.report_held': {
+    sentence: 'Hale waited until morning to text the household group about its plan',
+    family: 'note',
+  },
+  // The hold is closed: sent, or no longer the group's to hear. History hides this one.
+  'group_plan.report_released': {
+    sentence: 'Hale finished waiting to text the household group about its plan',
+    family: 'note',
   },
   // A booking email said the family is going somewhere with the children. 'note', not
   // 'done': nothing was sent yet and nothing was decided - Hale read a confirmation and
@@ -1831,6 +1843,7 @@ export const INTERNAL_TRAIL_VERBS = [
   'autonomy_notice_covered',
   'autonomy_notice_cover_released',
   'group_plan.drafted',
+  'group_plan.report_released',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

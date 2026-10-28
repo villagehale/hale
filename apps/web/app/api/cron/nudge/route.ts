@@ -8,6 +8,7 @@ import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redr
 import { sweepDutyAsks } from '~/lib/channel/coparent/duty/asks';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { runFollowupSweep } from '~/lib/channel/followup/run';
+import { runGroupPlanReportRedrive } from '~/lib/channel/group-plan/redrive';
 import { productionGroupPlanReportPorts, withGroupPlanReport } from '~/lib/channel/group-plan/send';
 import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/inbound-deps';
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
@@ -80,12 +81,14 @@ export const maxDuration = 300;
  * must not silently start reading that household's booking emails.
  *
  * THE 08:00 RE-DRIVES ride here last of all — the contact card a family's intake owed
- * them, and the departure notice a co-parent's erasure owed the parent who stayed. They
- * are one leg in two halves and not two mechanisms: the same local hour, the same
- * staleness bound and the same per-run cap, all read from lib/channel/redrive-slot.ts.
- * Neither carries a dark-launch flag of its own, because neither is a class of message —
- * each is a send another module already owed and quiet hours deferred, reaching the same
- * function, spending the same key and writing the same audit verb.
+ * them, the departure notice a co-parent's erasure owed the parent who stayed, and the
+ * plan text a family group's approval owed that group (VIL-443). They are one leg and not
+ * several mechanisms: the same local hour, the same staleness bound and the same per-run
+ * cap, all read from lib/channel/redrive-slot.ts. None carries a dark-launch flag of its
+ * own, because none is a class of message — each is a send another module already owed
+ * and quiet hours deferred, reaching the same function, spending the same key and writing
+ * the same audit verb. The group plan's re-drive shares its sender with the cancel retry
+ * below and runs first, so a cancel quiet hours held goes to the group once, at 08:00.
  *
  * THE REVIEW CAPTURE runs after every one of them, and it is the only stage that neither
  * interrupts a parent nor discharges a debt: it sends nothing at all, it only reads what
@@ -134,6 +137,15 @@ export const GET = cronRoute('nudge', async () => {
     const autonomyNotices = await runAutonomyNoticeRedrive(db(), {
       ports: autonomyNoticePorts(db()),
     });
+    const calendarInvites = withGroupPlanReport(
+      createCalendarInviteSender(db(), {
+        channels: productionChannels(db()),
+        renderer: loopTemplateRenderer,
+        cancelVoice: productionCalendarCancelVoice(),
+      }),
+      productionGroupPlanReportPorts(db()),
+    );
+    const groupPlanReports = await runGroupPlanReportRedrive(db(), { sender: calendarInvites });
     const reviewCapture = await runReviewCapture(db(), {
       askOpen: activityFollowupAskOpen,
       verdict: createVerdictReader(reviewVerdictClient),
@@ -152,17 +164,7 @@ export const GET = cronRoute('nudge', async () => {
     // VIL-449 · cancellation texts that were deferred (or held) get another try, hourly,
     // through the same sender: dedupe, consent and quiet hours apply in the dispatch. A
     // plan the family group made is called off in that group (VIL-443), as it was added.
-    const calendarCancelRetries = await retryDeferredCalendarCancels(
-      db(),
-      withGroupPlanReport(
-        createCalendarInviteSender(db(), {
-          channels: productionChannels(db()),
-          renderer: loopTemplateRenderer,
-          cancelVoice: productionCalendarCancelVoice(),
-        }),
-        productionGroupPlanReportPorts(db()),
-      ),
-    );
+    const calendarCancelRetries = await retryDeferredCalendarCancels(db(), calendarInvites);
     return NextResponse.json(
       {
         ok: true,
@@ -177,6 +179,7 @@ export const GET = cronRoute('nudge', async () => {
         welcomeCards,
         departureNotices,
         autonomyNotices,
+        groupPlanReports,
         reviewCapture,
         midActivityAsks,
         midActivityAnswers,
