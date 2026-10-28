@@ -269,6 +269,54 @@ export function brokenFooter(results) {
   return { ok: calibrated && normalFailed.length === 0, calibrated, slipped, normalFailed, lines };
 }
 
+/**
+ * Cached-only expected-fail list (VIL-467, https://linear.app/villagehale/issue/VIL-467).
+ * Sloane's design call on #914: the judge is right on these four; the fix belongs in the
+ * writer (coach-skill batch), not the judge. They must pass before launch. The batch
+ * removes an id here once its reply passes; a listed case that passes turns the check red
+ * so the list can never go stale.
+ */
+export const EXPECTED_FAIL = Object.freeze([
+  'fr-jour-de-conge-timed',
+  'en-pd-day-timed',
+  'en-pd-day-all-day',
+  'zh-hour-out',
+]);
+
+/**
+ * The real-mode gate. Every case must pass except the ones on `expectedFail`, which must
+ * still fail. A listed id with no matching case is also an error (renamed or removed fixture).
+ * @param {{ fixture: { id: string }, failures: string[] }[]} results
+ * @param {readonly string[]} expectedFail
+ */
+export function expectedFailGate(results, expectedFail) {
+  const listed = new Set(expectedFail);
+  const ids = new Set(results.map((r) => r.fixture.id));
+  const unexpectedFail = results
+    .filter((r) => r.failures.length > 0 && !listed.has(r.fixture.id))
+    .map((r) => r.fixture.id);
+  const unexpectedPass = results
+    .filter((r) => r.failures.length === 0 && listed.has(r.fixture.id))
+    .map((r) => r.fixture.id);
+  const unknown = expectedFail.filter((id) => !ids.has(id));
+  const expectedFailed = results
+    .filter((r) => r.failures.length > 0 && listed.has(r.fixture.id))
+    .map((r) => r.fixture.id);
+  const lines = [];
+  if (expectedFailed.length > 0)
+    lines.push(`expected-fail (VIL-467, still failing as listed): ${expectedFailed.join(', ')}`);
+  if (unexpectedFail.length > 0)
+    lines.push(`FAIL unexpected failures: ${unexpectedFail.join(', ')}`);
+  if (unexpectedPass.length > 0)
+    lines.push(
+      `FAIL expected-fail case now passes, remove it from EXPECTED_FAIL (VIL-467): ${unexpectedPass.join(', ')}`,
+    );
+  if (unknown.length > 0)
+    lines.push(`FAIL EXPECTED_FAIL lists unknown case ids: ${unknown.join(', ')}`);
+  const ok = unexpectedFail.length === 0 && unexpectedPass.length === 0 && unknown.length === 0;
+  return { ok, unexpectedFail, unexpectedPass, unknown, expectedFailed, lines };
+}
+
 /** The --dry listing: every compose and judge call, then subtotals and a grand total. */
 export function dryPlanLines(plans, { spentUsd, capUsd }) {
   const lines = [];
@@ -425,8 +473,12 @@ async function main() {
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
-  const allPass = results.every((r) => r.failures.length === 0);
-  if (!broken) process.exit(allPass ? 0 : 1);
+  if (!broken) {
+    // Cached-only (CI) honours EXPECTED_FAIL; a live or --rescore run still needs every case to pass.
+    const gate = expectedFailGate(results, cachedOnly ? EXPECTED_FAIL : []);
+    for (const line of gate.lines) console.log(line);
+    process.exit(gate.ok ? 0 : 1);
+  }
   const footer = brokenFooter(results);
   for (const line of footer.lines) console.log(line);
   process.exit(footer.ok ? 0 : 1);
