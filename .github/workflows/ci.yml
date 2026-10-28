@@ -292,6 +292,12 @@ jobs:
       - name: Reminder eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder
 
+      # The calibration only: the code-built line main used to send must fail every silent
+      # fixture. It needs no model and no cache. The judged replay (eval:email-alert-notice)
+      # joins this job once its recordings are committed.
+      - name: Email alert notice eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:email-alert-notice:broken
+
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
   # skipped job. Fails when workspace checks fail or when evals were required and
