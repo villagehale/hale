@@ -2,9 +2,12 @@
 //
 // Subject: the REAL skills (group-private-aside-read.md, group-private-aside-draft.md) through
 // the REAL request payloads, imported from group-private-aside.ts rather than replicated.
-//   1. READ: the refs of the families whose own private info the answer depends on.
-//   2. DRAFT, per picked family: sees ONLY that family's slice and its last aside, and sends
-//      or declines (a repeat with nothing changed declines).
+//   1. READ: the refs of the families whose own private info the answer depends on
+//      (clock-shaped plan/event times are facts; a family is listed only when those
+//      facts actually clash).
+//   2. DRAFT, per picked family: sees ONLY that family's slice, its last aside, and
+//      the same clock facts, and sends or declines (no clash, or a repeat with
+//      nothing changed, declines).
 //   The set of families that end up with a text is checked against the case's `sendTo`
 //   (a routing fact; no word is matched). Then the JUDGE (JUDGE_MODEL, not the Sonnet
 //   subject) scores each sent text by meaning against that family's own data, the other
@@ -60,20 +63,35 @@ const JUDGE_SYSTEM = [
   'Judge meaning, not wording. Reply with ONLY the score tool.',
 ].join(' ');
 
-function readInput(fixture) {
+function familyTimes(family, aside) {
+  return aside.clockBearingFacts([
+    ...(family.private.memory ?? []),
+    ...(family.private.calendar ?? []),
+    ...(family.private.signups ?? []),
+  ]);
+}
+
+function readInput(fixture, aside) {
   return {
     text: fixture.text,
     senderFamily: fixture.senderFamily,
-    families: fixture.families.map((f) => ({ ref: f.ref, kids: f.kids })),
+    families: fixture.families.map((f) => ({
+      ref: f.ref,
+      kids: f.kids,
+      times: familyTimes(f, aside),
+    })),
+    planTimes: aside.clockBearingFacts([fixture.text]),
     recent: fixture.recent ?? [],
   };
 }
 
-function draftInput(fixture, family) {
+function draftInput(fixture, family, aside) {
   return {
     groupText: fixture.text,
     askedByThisFamily: fixture.senderFamily === family.ref,
+    planTimes: aside.clockBearingFacts([fixture.text]),
     private: family.private,
+    ownTimes: familyTimes(family, aside),
     lastAside: fixture.lastAside?.[family.ref] ?? null,
     language: fixture.language ?? null,
   };
@@ -135,7 +153,7 @@ async function main() {
         model: agent.pickModel(readSkill.meta.task),
         lane: agent.pickLane(readSkill.meta.task),
         system: readSkill.instructions,
-        userMessage: aside.privateAsideReadMessage(readInput(fixture)),
+        userMessage: aside.privateAsideReadMessage(readInput(fixture, aside)),
         toolName: 'private_aside_read',
         toolSchema: aside.privateAsideReadSchema(refs),
         toolDescription:
@@ -163,7 +181,7 @@ async function main() {
             model: agent.pickModel(draftSkill.meta.task),
             lane: agent.pickLane(draftSkill.meta.task),
             system: draftSkill.instructions,
-            userMessage: aside.privateAsideDraftMessage(draftInput(fixture, family)),
+            userMessage: aside.privateAsideDraftMessage(draftInput(fixture, family, aside)),
             toolName: 'private_aside',
             toolSchema: aside.PRIVATE_ASIDE_DRAFT_SCHEMA,
             toolDescription: 'Return the private 1:1 text for this family, or send false.',
@@ -245,7 +263,7 @@ async function dryRun() {
     price(
       `read:${fixture.id}`,
       readModel,
-      readSkill.instructions + aside.privateAsideReadMessage(readInput(fixture)),
+      readSkill.instructions + aside.privateAsideReadMessage(readInput(fixture, aside)),
       aside.PRIVATE_ASIDE_READ_MAX_TOKENS,
     );
     // Worst case: a draft + judge for EVERY family in the case (the read may pick any).
@@ -255,7 +273,8 @@ async function dryRun() {
       price(
         `draft:${fixture.id}:${ref}`,
         draftModel,
-        draftSkill.instructions + aside.privateAsideDraftMessage(draftInput(fixture, family)),
+        draftSkill.instructions +
+          aside.privateAsideDraftMessage(draftInput(fixture, family, aside)),
         aside.PRIVATE_ASIDE_DRAFT_MAX_TOKENS,
       );
       price(

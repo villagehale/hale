@@ -9,6 +9,7 @@ import {
   type PrivateAsideDraftInput,
   type PrivateAsideModel,
   type PrivateAsideReadInput,
+  clockBearingFacts,
   runPrivateAside,
 } from './group-private-aside';
 import { joinFamilyToSharedGroup, leaveFamilyFromSharedGroup } from './multi-family';
@@ -167,8 +168,11 @@ describe('VIL-457 private aside', () => {
         { familyId: bao.familyId, outcome: 'sent' },
       ],
     });
-    // The read gets refs and kid names only: no memory, inbox or sign-ups.
+    // The read gets refs, kid names, and clock facts: no memory, inbox or sign-ups.
     expect(r.reads[0]?.senderFamily).toBe('f1');
+    expect(r.reads[0]?.planTimes).toEqual([]);
+    expect(r.reads[0]?.families.map((f) => f.times)).toEqual([[], []]);
+    expect(r.drafts[0]?.ownTimes).toEqual([]);
     expect(JSON.stringify(r.reads[0])).not.toContain('leo-ot-saturday');
     expect(r.drafts).toHaveLength(2);
     expect(r.drafts[0]?.private.memory).toEqual(['maya-swim-tuesdays']);
@@ -336,5 +340,61 @@ describe('VIL-457 private aside', () => {
     expect(await runPrivateAside(db.database, recorder({ read: ['f1'] }), turn())).toEqual({
       outcome: 'no_families',
     });
+  });
+
+  it("hands the read and draft the plan and this family's event times as facts", async () => {
+    const ada = await seedFamily(
+      '+14165550111',
+      'Ada',
+      'Maya',
+      'Maya sees a speech therapist on Saturdays at 10am',
+    );
+    const bao = await seedFamily(
+      '+14165550222',
+      'Bao',
+      'Leo',
+      'Leo has occupational therapy Saturday 10-11am at Bloorview',
+    );
+    await join(ada, NOW);
+    await join(bao, new Date(NOW.getTime() + 1000));
+    const r = recorder({ read: ['f2'] });
+    await runPrivateAside(
+      db.database,
+      r,
+      turn({ text: 'Hale, on peut tous se retrouver au parc samedi à 9h, pour une heure ?' }),
+    );
+    expect(r.reads[0]?.planTimes).toEqual([
+      'Hale, on peut tous se retrouver au parc samedi à 9h, pour une heure ?',
+    ]);
+    expect(r.reads[0]?.families.map((f) => [f.ref, f.times])).toEqual([
+      ['f1', ['Maya sees a speech therapist on Saturdays at 10am']],
+      ['f2', ['Leo has occupational therapy Saturday 10-11am at Bloorview']],
+    ]);
+    expect(JSON.stringify(r.reads[0]?.families[0])).not.toMatch(/Leo|Bloorview/);
+    expect(r.drafts[0]?.planTimes).toEqual(r.reads[0]?.planTimes);
+    expect(r.drafts[0]?.ownTimes).toEqual([
+      'Leo has occupational therapy Saturday 10-11am at Bloorview',
+    ]);
+    expect(JSON.stringify(r.drafts[0])).not.toMatch(/Maya|speech/);
+  });
+});
+
+describe('clockBearingFacts', () => {
+  it('keeps strings that carry a clock, and drops ones that do not', () => {
+    expect(
+      clockBearingFacts([
+        'Hale, on peut tous se retrouver au parc samedi à 9h, pour une heure ?',
+        'Maya sees a speech therapist on Saturdays at 10am',
+        'Leo has occupational therapy Saturday 10-11am at Bloorview',
+        'Zoé est en garde partagée, chez son père le samedi',
+        'Natation, samedi 9h',
+        'Receipt: Little Fins Swim, fall session, $240 charged to Visa ending 4411',
+      ]),
+    ).toEqual([
+      'Hale, on peut tous se retrouver au parc samedi à 9h, pour une heure ?',
+      'Maya sees a speech therapist on Saturdays at 10am',
+      'Leo has occupational therapy Saturday 10-11am at Bloorview',
+      'Natation, samedi 9h',
+    ]);
   });
 });

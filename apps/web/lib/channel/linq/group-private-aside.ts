@@ -18,13 +18,16 @@ import { type FamilyPrivateSlice, readFamilySliceForAudience } from './multi-fam
  *
  *   1. READ (`group-private-aside-read`): the refs (f1, f2, ...) of the families whose own
  *      private information the answer depends on, possibly none. Meaning in any language;
- *      no names or words are matched in code. The read sees refs and kids' first names only.
- *      Another family asking about someone's kid is NOT a reason: that family gets nothing
- *      (Sloane, #934) and the group reply stays busy/free.
+ *      no names or words are matched in code. The read sees refs, kids' first names, and
+ *      clock-shaped plan/event times as facts (not a word list). A private aside goes
+ *      only to a family whose own facts actually clash with the plan; no clash means no
+ *      text. Another family asking about someone's kid is NOT a reason: that family gets
+ *      nothing (Sloane, #934) and the group reply stays busy/free.
  *   2. DRAFT (`group-private-aside-draft`), once per picked family: sees ONLY that family's
- *      consented slice, the public group text, and that family's last delivered aside. It
- *      writes the text, or declines, including when it would repeat the last aside with
- *      nothing changed. Code never compares texts or topics.
+ *      consented slice, the public group text, that family's last delivered aside, and
+ *      the same clock-shaped plan/event times. It writes the text, or declines, including
+ *      when nothing overlaps or it would repeat the last aside with nothing changed. Code
+ *      never compares texts or topics, and never decides a clash by keyword.
  *
  * Code checks facts only: each ref is a live, consented join in THIS chat; one aside per
  * (group message, family), keyed on the audit row; the draft is non-empty. A failed read
@@ -36,7 +39,9 @@ export const PRIVATE_ASIDE_AUDIT = 'linq_private_aside_sent';
 export interface PrivateAsideReadInput {
   text: string;
   senderFamily: string | null;
-  families: readonly { ref: string; kids: readonly string[] }[];
+  families: readonly { ref: string; kids: readonly string[]; times: readonly string[] }[];
+  /** Clock-shaped facts from the group message, when code could read a clock. */
+  planTimes: readonly string[];
   recent: readonly { from: 'hale' | 'member'; text: string }[];
 }
 
@@ -50,7 +55,11 @@ export interface LastPrivateAside {
 export interface PrivateAsideDraftInput {
   groupText: string;
   askedByThisFamily: boolean;
+  /** Clock-shaped facts from the group message, when code could read a clock. */
+  planTimes: readonly string[];
   private: Omit<FamilyPrivateSlice, 'familyId'>;
+  /** This family's own clock-shaped event times, when code could read a clock. */
+  ownTimes: readonly string[];
   lastAside: LastPrivateAside | null;
   language: string | null;
 }
@@ -94,12 +103,29 @@ export type PrivateAsideOutcome =
 const readSchema = z.object({ families: z.array(z.string().min(1)) });
 const draftSchema = z.object({ send: z.boolean(), about: z.string(), text: z.string() });
 
+/**
+ * Clock-shaped strings the model may compare as facts. A digit plus a clock mark
+ * (`9h`, `10am`, `4:30pm`) — not a word list of event types.
+ */
+const CLOCK_MARK = /\d{1,2}\s*h(?:\d{2})?\b|\d{1,2}:\d{2}|\d{1,2}\s*(?:a\.?m\.?|p\.?m\.?)\b/i;
+
+export function clockBearingFacts(texts: readonly string[]): string[] {
+  return [...new Set(texts.filter((text) => CLOCK_MARK.test(text)))];
+}
+
+export function privateTimesOf(
+  slice: Pick<FamilyPrivateSlice, 'memory' | 'calendar' | 'signups'>,
+): string[] {
+  return clockBearingFacts([...slice.memory, ...slice.calendar, ...slice.signups]);
+}
+
 /** The read's user payload. Shared with the eval so it replays this exact request. */
 export function privateAsideReadMessage(input: PrivateAsideReadInput): string {
   return JSON.stringify({
     text: input.text,
     senderFamily: input.senderFamily,
-    families: input.families.map((f) => ({ ref: f.ref, kids: [...f.kids] })),
+    families: input.families.map((f) => ({ ref: f.ref, kids: [...f.kids], times: [...f.times] })),
+    planTimes: [...input.planTimes],
     recent: input.recent.slice(-6),
   });
 }
@@ -231,7 +257,9 @@ async function asideForFamily(
   const draft = await deps.model.draft({
     groupText: input.text,
     askedByThisFamily: input.senderFamilyId === familyId,
+    planTimes: clockBearingFacts([input.text]),
     private: privateOnly,
+    ownTimes: privateTimesOf(slice),
     lastAside: await lastAsideOf(database, input.chatId, familyId),
     language: input.language,
   });
@@ -291,7 +319,9 @@ export async function runPrivateAside(
     families: familyIds.map((id) => ({
       ref: refOf.get(id) as string,
       kids: slices.get(id)?.children ?? [],
+      times: privateTimesOf(slices.get(id) ?? { memory: [], calendar: [], signups: [] }),
     })),
+    planTimes: clockBearingFacts([input.text]),
     recent: input.recent,
   });
   if (refs === null) return { outcome: 'read_failed' };
