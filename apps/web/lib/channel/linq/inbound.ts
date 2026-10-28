@@ -81,7 +81,12 @@ import {
 import { captureLogisticsText } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
-import { takeMultiFamilyTurn, unseatMultiFamilyMember } from './multi-family';
+import {
+  noticeSharedGroupAdded,
+  takeMultiFamilyReaction,
+  takeMultiFamilyTurn,
+  unseatMultiFamilyMember,
+} from './multi-family';
 import {
   type LinqInboundText,
   type LinqLocationSignal,
@@ -94,6 +99,7 @@ import { askParticipantAdded, askRoster, sayNoFamilyYet } from './roster-ask';
 import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
+import type { SharedGroupComposer } from './shared-group-voice';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
 import { type LinqEffectResult, markLinqChatRead } from './transport';
 
@@ -160,6 +166,8 @@ export async function handleLinqInboundRequest(
     readSharedLocality?: typeof readSharedLocality;
     /** Test seam for group onboarding v2's lines. Production composes with the model. */
     groupVoice?: GroupOnboardingComposer;
+    /** Test seam for VIL-456 shared-group lines. Production composes with the model. */
+    sharedGroupVoice?: SharedGroupComposer;
     /** Test seam for reading a roster reply. Production uses the model. */
     readGroupReply?: (text: string) => Promise<RosterReading>;
     /** Test seam for GET /chats/{id}. Production calls Linq. */
@@ -447,6 +455,14 @@ function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
   };
 }
 
+function multiFamilyPorts(deps: LinqDoorDeps) {
+  return {
+    send: deps.sendGroupText,
+    listHandles: deps.listChatHandles,
+    composer: deps.sharedGroupVoice,
+  };
+}
+
 /**
  * A group is the household year only once Hale has claimed it. The trigger
  * from an enrolled parent of one family is that claim. Anyone else is held,
@@ -454,6 +470,35 @@ function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
  * the opt-out does not wait on the claim.
  */
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  if (linqMultiFamilyGroupsEnabled()) {
+    const shared = await takeMultiFamilyTurn(
+      deps.database,
+      {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        providerMessageId: message.messageId,
+        receivedAt: message.receivedAt,
+        now: deps.now?.() ?? new Date(),
+        send: deps.sendGroupText,
+      },
+      {
+        ...multiFamilyPorts(deps),
+        optOut: async (text) => {
+          const intent = await optOutIntentOf(text);
+          return intent === 'stop' || intent === 'start' ? intent : 'none';
+        },
+      },
+    );
+    if (shared.handled) {
+      deps.log.info({ outcome: shared.outcome }, 'linq inbound: multi-family group');
+      await deps.countOutcome(shared.count);
+      return json({
+        outcome: shared.outcome,
+        ...(shared.notice ? { notice: shared.notice } : {}),
+      });
+    }
+  }
   if (linqGroupOnboardingV2Enabled()) {
     const stopped = await stopInGroup(deps.database, message, rosterPorts(deps));
     if (stopped.handled) {
@@ -483,25 +528,6 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 
   // #868: stop/start read by the model in any wording; one cached read for this turn.
   const optOut = await optOutIntentOf(message.text);
-  if (optOut !== 'stop') {
-    const shared = await takeMultiFamilyTurn(deps.database, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-      providerMessageId: message.messageId,
-      receivedAt: message.receivedAt,
-      now: deps.now?.() ?? new Date(),
-      send: deps.sendGroupText,
-    });
-    if (shared.handled) {
-      deps.log.info({ outcome: shared.outcome }, 'linq inbound: multi-family group');
-      await deps.countOutcome(shared.count);
-      return json({
-        outcome: shared.outcome,
-        ...(shared.notice ? { notice: shared.notice } : {}),
-      });
-    }
-  }
 
   if (!linqGroupOnboardingV2Enabled() && (await shouldHoldGroupStranger(deps.database, message))) {
     if (optOut === 'stop') {
@@ -937,6 +963,26 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     'linq signal',
   );
   const rosterTrigger = groupRosterTrigger(signal);
+  if (rosterTrigger && linqMultiFamilyGroupsEnabled()) {
+    const added = await noticeSharedGroupAdded(
+      deps.database,
+      {
+        chatId: rosterTrigger.chatId,
+        adderHandle: signal.actorHandle ?? signal.senderHandle ?? null,
+        now: deps.now?.() ?? new Date(),
+        handles: rosterTrigger.handles ?? signal.handles,
+      },
+      multiFamilyPorts(deps),
+    );
+    if (added.handled) {
+      deps.log.info({ outcome: added.outcome }, 'linq inbound: multi-family Hale added');
+      await deps.countOutcome(added.count);
+      return json({
+        outcome: added.outcome,
+        ...(added.notice ? { notice: added.notice } : {}),
+      });
+    }
+  }
   if (rosterTrigger && linqGroupOnboardingV2Enabled()) {
     const ports = rosterPorts(deps);
     const roster = await startGroupRoster(deps.database, {
@@ -1094,6 +1140,26 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     }
     await deps.countOutcome(outcome);
     return json({ outcome });
+  }
+  if (signal.event === 'participant.added' && signal.chatId && linqMultiFamilyGroupsEnabled()) {
+    const added = await noticeSharedGroupAdded(
+      deps.database,
+      {
+        chatId: signal.chatId,
+        adderHandle: signal.actorHandle ?? signal.senderHandle ?? null,
+        now: deps.now?.() ?? new Date(),
+        handles: signal.participantHandle ? [signal.participantHandle] : [],
+      },
+      multiFamilyPorts(deps),
+    );
+    if (added.handled) {
+      deps.log.info({ outcome: added.outcome }, 'linq inbound: multi-family Hale added');
+      await deps.countOutcome(added.count);
+      return json({
+        outcome: added.outcome,
+        ...(added.notice ? { notice: added.notice } : {}),
+      });
+    }
   }
   if (
     signal.event === 'participant.added' &&
@@ -1269,6 +1335,32 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         await deps.countOutcome('intake');
         return json({ outcome: 'group_coparent_seated', notice });
       }
+    }
+  }
+  if (
+    linqMultiFamilyGroupsEnabled() &&
+    signal.event === 'reaction.added' &&
+    signal.senderHandle &&
+    signal.chatId
+  ) {
+    const reacted = await takeMultiFamilyReaction(
+      deps.database,
+      {
+        chatId: signal.chatId,
+        senderHandle: signal.senderHandle,
+        reactionType: signal.reactionType,
+        providerMessageId: signal.messageId ?? `reaction:${signal.chatId}:${Date.now()}`,
+        now: deps.now?.() ?? new Date(),
+      },
+      multiFamilyPorts(deps),
+    );
+    if (reacted.handled) {
+      deps.log.info({ outcome: reacted.outcome }, 'linq inbound: multi-family tapback');
+      await deps.countOutcome(reacted.count);
+      return json({
+        outcome: reacted.outcome,
+        ...(reacted.notice ? { notice: reacted.notice } : {}),
+      });
     }
   }
   if (

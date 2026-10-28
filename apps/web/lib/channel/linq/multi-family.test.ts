@@ -1,11 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { linqMultiFamilyGroupsEnabled } from './config';
-import {
-  MULTI_FAMILY_PARENT_COPY,
-  classifySharedGroupIntent,
-  replyStaysInThread,
-  sharedThreadContext,
-} from './multi-family';
+import { sharedThreadContext } from './multi-family';
 
 describe('LINQ_MULTI_FAMILY_GROUPS_ENABLED', () => {
   afterEach(() => {
@@ -26,25 +22,27 @@ describe('LINQ_MULTI_FAMILY_GROUPS_ENABLED', () => {
   });
 });
 
-describe('shared group intent', () => {
-  it('joins or leaves only on the explicit phrase', () => {
-    expect(classifySharedGroupIntent('our family is in this group')).toBe('join');
-    expect(classifySharedGroupIntent('Notre famille est dans ce groupe.')).toBe('join');
-    expect(classifySharedGroupIntent('our family is leaving this group')).toBe('leave');
-    expect(classifySharedGroupIntent('notre famille quitte ce groupe')).toBe('leave');
-    expect(classifySharedGroupIntent('I think the other family is in')).toBe('none');
-    expect(classifySharedGroupIntent('add the Chens')).toBe('none');
-  });
-});
+describe('shared group path has no keyword and no fixed line', () => {
+  const files = [
+    'multi-family.ts',
+    'shared-group-reading.ts',
+    'shared-group-line-input.ts',
+    'shared-group-voice.ts',
+    'inbound.ts',
+  ];
 
-describe('shared thread copy', () => {
-  it('is a design placeholder and carries no opt-out wording', () => {
-    for (const line of MULTI_FAMILY_PARENT_COPY) {
-      expect(line.startsWith('TODO-Design:')).toBe(true);
-      expect(line.toLowerCase()).not.toContain('stop');
+  it('grep: no TODO-Design, no join phrase, no classifySharedGroupIntent', () => {
+    for (const file of files) {
+      const source = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
+      expect(source, file).not.toContain('TODO-Design:');
+      expect(source, file).not.toMatch(/our family is in this group/i);
+      expect(source, file).not.toMatch(/notre famille est dans ce groupe/i);
+      expect(source, file).not.toMatch(/our family is leaving this group/i);
+      expect(source, file).not.toMatch(/notre famille quitte ce groupe/i);
+      expect(source, file).not.toContain('classifySharedGroupIntent');
+      expect(source, file).not.toContain('MULTI_FAMILY_JOINED_TEXT');
+      expect(source, file).not.toContain('MULTI_FAMILY_SHARED_REPLY');
     }
-    expect(replyStaysInThread(MULTI_FAMILY_PARENT_COPY[0])).toBe(true);
-    expect(replyStaysInThread('Zephyrina has soccer on Thursday')).toBe(false);
   });
 
   it('keeps memory, calendar, email, children, and signups out of the reply context', () => {

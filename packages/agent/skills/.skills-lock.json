@@ -275,6 +275,14 @@
     "file": "said-line.md",
     "sha256": "f25938b6caaf9e7664754a1bd29633145d1f18fd379cdd1a7b7aa43b2e06cf79"
   },
+  "shared-group-reading.md": {
+    "file": "shared-group-reading.md",
+    "sha256": "49ae89f6cea447333a6636bfc764775e031f568fc40eedae6acf587b886aac3f"
+  },
+  "shared-group-voice.md": {
+    "file": "shared-group-voice.md",
+    "sha256": "73fb13e669ba67a8fa1eebd654a61d6eb5016538ae5846c7b3d5ab5558b928e1"
+  },
   "signup-consent.md": {
     "file": "signup-consent.md",
     "sha256": "bc79b1b933727995410c255587ac10f38f928f8030545686cbb628f4f247349f"
