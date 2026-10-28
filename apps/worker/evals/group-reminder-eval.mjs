@@ -236,10 +236,11 @@ async function main() {
     const now = new Date(GROUP_REMINDER_NOW);
     const timeZone = household.timeZone;
     const asker = household.seats.find((seat) => seat.firstName === fixture.sender);
-    const seats = household.seats.map(({ userId, phoneHash, firstName }) => ({
+    const seats = household.seats.map(({ userId, phoneHash, firstName, fullName }) => ({
       userId,
       phoneHash,
       firstName,
+      fullName: fullName ?? null,
     }));
     const open = fixture.open ?? [];
     const result = { arm, fixture, failures: [], notes: [], texts: [] };

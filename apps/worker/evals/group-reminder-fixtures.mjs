@@ -46,8 +46,20 @@ export const GROUP_REMINDER_HOUSEHOLDS = {
         directReachable: true,
         directQuiet: [ONTARIO_QUIET],
       },
-      { userId: 'u-sam-o', phoneHash: 'h-sam-o', firstName: 'Sam', haleCustomer: false },
-      { userId: 'u-sam-a', phoneHash: 'h-sam-a', firstName: 'Sam', haleCustomer: false },
+      {
+        userId: 'u-sam-o',
+        phoneHash: 'h-sam-o',
+        firstName: 'Sam',
+        fullName: 'Sam Okafor',
+        haleCustomer: false,
+      },
+      {
+        userId: 'u-sam-a',
+        phoneHash: 'h-sam-a',
+        firstName: 'Sam',
+        fullName: 'Sam Adeyemi',
+        haleCustomer: false,
+      },
     ],
   },
   // A Montréal family that writes in French. Jacqueline is the grandmother, group only.
@@ -199,8 +211,9 @@ export const GROUP_REMINDER_FIXTURES = [
       notSet: 1,
     },
     confirmMustSay: [
-      'no reminder was set for Sam to bring the folding chairs',
+      'no reminder is set yet for Sam to bring the folding chairs',
       'that is because more than one person in this chat is called Sam, so Hale did not guess',
+      'it asks Grace, once, which Sam she meant',
       'it does not say a reminder is set, and does not suggest Sam will be reached some other way',
     ],
   },
@@ -377,6 +390,41 @@ export const GROUP_REMINDER_FIXTURES = [
       'it speaks to Ruth by name',
       'it reminds her to call the pharmacy about the refill',
     ],
+  },
+  {
+    // The answer to the name-shared ask: the whole name settles it to one seat.
+    id: 'name-shared-answer',
+    household: 'okafor',
+    sender: 'Grace',
+    recent: [
+      { from: 'member', text: 'Hale remind Sam tomorrow at 6 to bring the folding chairs' },
+      {
+        from: 'hale',
+        text: 'There are two Sams in here, so I held off. Which Sam did you mean?',
+      },
+    ],
+    message: 'Sam Okafor',
+    expect: {
+      request: 'reminders',
+      language: 'en',
+      set: [
+        {
+          for: 'person',
+          name: 'Sam Okafor',
+          what: 'bring the folding chairs',
+          date: '2026-10-29',
+          time: '18:00',
+          inMinutes: null,
+          where: ['unsaid', 'group'],
+        },
+      ],
+      plan: [{ delivery: 'group', moved: null, forUser: 'u-sam-o' }],
+    },
+    confirmMustSay: [
+      'Sam will be reminded to bring the folding chairs',
+      'tomorrow (Thursday) at 6 PM',
+    ],
+    reminderMustSay: ['it speaks to Sam by name', 'it reminds them to bring the folding chairs'],
   },
   {
     id: 'not-a-reminder',

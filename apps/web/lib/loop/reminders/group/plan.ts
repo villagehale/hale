@@ -1,5 +1,5 @@
-import { localDateFact } from '~/lib/loop/reminders/compose';
-import { zonedLocalInstant } from '~/lib/plan/spine';
+import { localDateFact } from "~/lib/loop/reminders/compose";
+import { zonedLocalInstant } from "~/lib/plan/spine";
 import {
   type AskerStanding,
   type QuietShift,
@@ -11,8 +11,8 @@ import {
   deliveryFor,
   quietSafeAt,
   sameFirstName,
-} from './policy';
-import type { GroupReminderReading } from './read';
+} from "./policy";
+import type { GroupReminderReading } from "./read";
 
 /**
  * VIL-448 (T26) — what one reminder turn does, from the model's reading. Pure: every
@@ -50,7 +50,7 @@ export interface NeedsTime {
 export interface NotSet {
   forName: string;
   what: string;
-  why: 'not_in_chat' | 'name_shared';
+  why: "not_in_chat" | "name_shared";
 }
 
 export interface TurnPlan {
@@ -64,6 +64,29 @@ export interface PlanSeat {
   userId: string;
   phoneHash: string;
   firstName: string | null;
+  /** The whole name Hale knows them by, when it has one: what settles two seats sharing a first name. */
+  fullName?: string | null;
+}
+
+/** The one seat among `matches` whose whole name is the name asked for, else undefined. */
+function byFullName(
+  named: string,
+  matches: readonly PlanSeat[],
+): PlanSeat | undefined {
+  const fold = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .join(" ");
+  const want = fold(named);
+  if (!want.includes(" ")) return undefined;
+  const whole = matches.filter(
+    (seat) => seat.fullName && fold(seat.fullName) === want,
+  );
+  return whole.length === 1 ? whole[0] : undefined;
 }
 
 export interface PlanInput {
@@ -85,7 +108,7 @@ const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 function askedDay(date: string | null, timeZone: string): string | null {
   if (date === null || !DAY_KEY.test(date)) return null;
   try {
-    return localDateFact(zonedLocalInstant(date, '12:00', timeZone), timeZone);
+    return localDateFact(zonedLocalInstant(date, "12:00", timeZone), timeZone);
   } catch {
     return null;
   }
@@ -107,22 +130,24 @@ export function planReminderTurn(input: PlanInput): TurnPlan {
     let forUserId: string | null = null;
     let forPhoneHash: string | null = null;
     let forName: string | null = null;
-    if (ask.for === 'sender') {
+    if (ask.for === "sender") {
       forUserId = input.asker.userId;
       forPhoneHash = input.asker.phoneHash;
       forName = input.asker.firstName;
-    } else if (ask.for === 'person') {
+    } else if (ask.for === "person") {
       const named = ask.name?.trim();
       if (!named) continue;
       const matches = input.seats.filter(
-        (seat) => seat.firstName !== null && sameFirstName(named, seat.firstName),
+        (seat) =>
+          seat.firstName !== null && sameFirstName(named, seat.firstName),
       );
-      const match = matches.length === 1 ? matches[0] : undefined;
+      const match =
+        matches.length === 1 ? matches[0] : byFullName(named, matches);
       if (!match) {
         notSet.push({
           forName: named,
           what,
-          why: matches.length === 0 ? 'not_in_chat' : 'name_shared',
+          why: matches.length === 0 ? "not_in_chat" : "name_shared",
         });
         continue;
       }
@@ -132,14 +157,24 @@ export function planReminderTurn(input: PlanInput): TurnPlan {
     }
     const asked = askedInstant(ask, input.now, input.timeZone);
     let delivery = deliveryFor(ask, input.asker);
-    if (delivery === 'direct' && !input.directQuiet) delivery = 'group';
-    const quiet = delivery === 'direct' && input.directQuiet ? input.directQuiet : input.groupQuiet;
-    const safe = asked ? quietSafeAt(asked, input.now, quiet.timeZone, quiet.windows) : null;
+    if (delivery === "direct" && !input.directQuiet) delivery = "group";
+    const quiet =
+      delivery === "direct" && input.directQuiet
+        ? input.directQuiet
+        : input.groupQuiet;
+    const safe = asked
+      ? quietSafeAt(asked, input.now, quiet.timeZone, quiet.windows)
+      : null;
     if (!asked || !safe) {
-      needsTime.push({ forKind: ask.for, forName, what, day: askedDay(ask.date, input.timeZone) });
+      needsTime.push({
+        forKind: ask.for,
+        forName,
+        what,
+        day: askedDay(ask.date, input.timeZone),
+      });
       continue;
     }
-    const key = `${ask.for}|${forUserId ?? forName ?? ''}|${what}|${safe.at.toISOString()}`;
+    const key = `${ask.for}|${forUserId ?? forName ?? ""}|${what}|${safe.at.toISOString()}`;
     if (seen.has(key)) continue;
     seen.add(key);
     set.push({
@@ -152,14 +187,14 @@ export function planReminderTurn(input: PlanInput): TurnPlan {
       deliverAt: safe.at,
       moved: safe.moved,
       delivery,
-      privateAsked: ask.for === 'sender' && ask.where === 'private',
+      privateAsked: ask.for === "sender" && ask.where === "private",
     });
   }
   const cancelIds = [
     ...new Set(
       input.reading.cancel
         .map((ref) => input.openRefs.get(ref))
-        .filter((id): id is string => typeof id === 'string'),
+        .filter((id): id is string => typeof id === "string"),
     ),
   ];
   return { set, needsTime, notSet, cancelIds };

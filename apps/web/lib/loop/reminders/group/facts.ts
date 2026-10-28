@@ -32,6 +32,7 @@ export function confirmFacts(input: {
       when: whenFact(planned.deliverAt, timeZone),
       askedFor: planned.moved ? whenFact(planned.askedFor, timeZone) : null,
       moved: planned.moved,
+      movedBecause: planned.moved ? ('quiet_hours' as const) : null,
       arrives: planned.delivery === 'direct' ? 'private_text' : 'here',
       privateAsked: planned.privateAsked,
     })),
