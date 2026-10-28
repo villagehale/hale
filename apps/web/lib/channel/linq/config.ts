@@ -110,7 +110,8 @@ export function linqGroupWelcomeVoiceEnabled(): boolean {
 
 /**
  * VIL-444 (T24) — a clash in the household group gets one model-written alert with a
- * suggested fix, in place of the household conflict line. Exactly `true` enables it.
+ * suggested fix, in place of the household conflict line, and a pickup someone takes in
+ * that group settles it (group-pickup-claim.ts). Exactly `true` enables it.
  * Default off: off plans and sends exactly what it did before.
  */
 export function linqGroupConflictAlertsEnabled(): boolean {
