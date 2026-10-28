@@ -38,16 +38,16 @@ afterEach(() => {
 describe('requireSpendGuard', () => {
   it('refuses with no ledger path', () => {
     vi.stubEnv('HALE_MAX_USD', '0.095');
-    delete process.env.HALE_SPEND_LEDGER;
+    Reflect.deleteProperty(process.env, 'HALE_SPEND_LEDGER');
     expect(() => requireSpendGuard('t')).toThrow(/no ledger path/);
   });
   it('refuses with no cap', () => {
     vi.stubEnv('HALE_SPEND_LEDGER', join(dir, 'l.json'));
-    delete process.env.HALE_MAX_USD;
+    Reflect.deleteProperty(process.env, 'HALE_MAX_USD');
     expect(() => requireSpendGuard('t')).toThrow(/no --max-usd/);
   });
   it('installEvalSpendCap refuses with no ledger path (no /tmp default since #925)', () => {
-    delete process.env.HALE_SPEND_LEDGER;
+    Reflect.deleteProperty(process.env, 'HALE_SPEND_LEDGER');
     process.argv = [...argv, '--max-usd', '0.095'];
     expect(() => installEvalSpendCap()).toThrow(/HALE_SPEND_LEDGER/);
     expect(() => requireSpendGuard('t')).toThrow(/no ledger path/);
@@ -58,8 +58,8 @@ describe('requireSpendGuard', () => {
     expect(() => requireSpendGuard('t')).not.toThrow();
   });
   it('lazyAnthropic throws before building a client when unguarded', () => {
-    delete process.env.HALE_SPEND_LEDGER;
-    delete process.env.HALE_MAX_USD;
+    Reflect.deleteProperty(process.env, 'HALE_SPEND_LEDGER');
+    Reflect.deleteProperty(process.env, 'HALE_MAX_USD');
     expect(() => lazyAnthropic('t')()).toThrow(/spend-guard/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
