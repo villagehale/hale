@@ -17,6 +17,9 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * says nothing extra (rule #11). The raw description is never returned or stored
  * (rule #1); only the stated facts and a hash of the description, so an unchanged
  * description is never read twice.
+ *
+ * A model failure is distinct from "unavailable": the reader returns EVENT_NOTES_FAILED so the
+ * mirror can count it against the description hash and stop after EVENT_NOTES_MAX_FAILED_READS.
  */
 
 const MAX_TOKENS = 512;
@@ -61,10 +64,16 @@ export function toEventNotes(
   return { ...(parking ? { parking } : {}), ...(bring ? { bring } : {}), sourceHash };
 }
 
+/** A read was attempted and failed (model error, bad output). Counted per description hash. */
+export const EVENT_NOTES_FAILED = 'failed' as const;
+/** Failed reads of one unchanged description before the mirror stops retrying it. */
+export const EVENT_NOTES_MAX_FAILED_READS = 3;
+
+/** `null`: no read was attempted (no key, no skill); nothing is counted. */
 export type EventNotesReader = (input: {
   title: string;
   description: string;
-}) => Promise<FamilyEventNotes | null>;
+}) => Promise<FamilyEventNotes | typeof EVENT_NOTES_FAILED | null>;
 
 /** Tests and any caller without a reader. Never calls a model. */
 export const eventNotesIdle: EventNotesReader = async () => null;
@@ -100,7 +109,7 @@ export function createEventNotesReader(client: () => AgentClient): EventNotesRea
       return toEventNotes(value, descriptionHash(description));
     } catch (err) {
       console.info({ reason: 'model_failed', detail: className(err) }, 'event notes read');
-      return null;
+      return EVENT_NOTES_FAILED;
     }
   };
 }
@@ -113,6 +122,7 @@ export function sameEventNotes(
   return (
     (a?.parking ?? null) === (b?.parking ?? null) &&
     (a?.bring ?? null) === (b?.bring ?? null) &&
-    (a?.sourceHash ?? null) === (b?.sourceHash ?? null)
+    (a?.sourceHash ?? null) === (b?.sourceHash ?? null) &&
+    (a?.failedReads ?? 0) === (b?.failedReads ?? 0)
   );
 }

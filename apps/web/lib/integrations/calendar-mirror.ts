@@ -3,6 +3,8 @@ import { and, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { REMINDER_HORIZON_MS } from '~/lib/loop/reminders/schedule';
 import { zonedMidnight } from '~/lib/memory/period';
 import {
+  EVENT_NOTES_FAILED,
+  EVENT_NOTES_MAX_FAILED_READS,
   type EventNotesReader,
   descriptionHash,
   eventNotesIdle,
@@ -227,8 +229,11 @@ export function knownEventCovers(
  */
 /**
  * The notes for one candidate. No description: null, no call. A description whose hash
- * matches the stored reading: the stored reading, no call. Otherwise the model reads it;
- * a failed read is null, so the reminder says nothing extra.
+ * matches a stored successful reading: the stored reading, no call. A failed read stores
+ * only the hash and a failure count (no facts, so the reminder says nothing extra); the
+ * same hash is retried until EVENT_NOTES_MAX_FAILED_READS failures, then left alone until
+ * the description changes. A new hash or a success resets the count. A reader that did
+ * not attempt a read (null: no key or skill) changes nothing.
  */
 async function notesFor(
   candidate: CalendarMirrorCandidate,
@@ -237,8 +242,16 @@ async function notesFor(
 ): Promise<FamilyEventNotes | null> {
   const description = candidate.description;
   if (!description) return null;
-  if (stored?.sourceHash && stored.sourceHash === descriptionHash(description)) return stored;
-  return readNotes({ title: candidate.title, description });
+  const hash = descriptionHash(description);
+  const sameHash = stored?.sourceHash === hash;
+  const priorFailures = sameHash ? (stored?.failedReads ?? 0) : 0;
+  if (sameHash && (priorFailures === 0 || priorFailures >= EVENT_NOTES_MAX_FAILED_READS)) {
+    return stored;
+  }
+  const read = await readNotes({ title: candidate.title, description });
+  if (read === EVENT_NOTES_FAILED) return { sourceHash: hash, failedReads: priorFailures + 1 };
+  if (read === null) return sameHash ? stored : null;
+  return read;
 }
 
 export async function reconcileCalendarMirrors(

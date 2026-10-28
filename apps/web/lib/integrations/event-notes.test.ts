@@ -44,6 +44,14 @@ describe('createEventNotesReader', () => {
 });
 
 describe('sameEventNotes', () => {
+  it('a changed failure count is a change', () => {
+    const h = descriptionHash('x');
+    expect(
+      sameEventNotes({ sourceHash: h, failedReads: 1 }, { sourceHash: h, failedReads: 2 }),
+    ).toBe(false);
+    expect(sameEventNotes({ sourceHash: h }, { sourceHash: h, failedReads: 0 })).toBe(true);
+  });
+
   it('compares facts and source hash', () => {
     const h = descriptionHash('x');
     expect(sameEventNotes({ parking: 'A', sourceHash: h }, { parking: 'A', sourceHash: h })).toBe(

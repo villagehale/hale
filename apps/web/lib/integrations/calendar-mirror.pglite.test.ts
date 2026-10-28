@@ -3,7 +3,12 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { reconcileCalendarMirrors } from './calendar-mirror';
-import { type EventNotesReader, descriptionHash } from './event-notes';
+import {
+  EVENT_NOTES_FAILED,
+  EVENT_NOTES_MAX_FAILED_READS,
+  type EventNotesReader,
+  descriptionHash,
+} from './event-notes';
 
 /**
  * A connected calendar becomes parent-sourced family_events the reminder cron
@@ -127,7 +132,7 @@ describe('reconcileCalendarMirrors', () => {
     expect(readNotes).toHaveBeenCalledTimes(2);
   });
 
-  it('a failed read stores no notes (VIL-468)', async () => {
+  it('a no-attempt read (no key) stores nothing and counts nothing (VIL-468)', async () => {
     await reconcile(
       [swim({ description: 'Park in the back lot' })],
       true,
@@ -136,6 +141,42 @@ describe('reconcileCalendarMirrors', () => {
       async () => null,
     );
     expect((await rows())[0]?.notes).toBeNull();
+  });
+
+  it('a transient failure is retried and a success resets the count (VIL-468)', async () => {
+    const desc = 'Park in the back lot';
+    const h = descriptionHash(desc);
+    const readNotes = vi
+      .fn<EventNotesReader>()
+      .mockResolvedValueOnce(EVENT_NOTES_FAILED)
+      .mockResolvedValueOnce({ parking: 'the back lot', sourceHash: h });
+    const run = () =>
+      reconcile([swim({ description: desc })], true, integrationId, family.parentUserId, readNotes);
+    await run();
+    expect((await rows())[0]?.notes).toEqual({ sourceHash: h, failedReads: 1 });
+    await run();
+    expect((await rows())[0]?.notes).toEqual({ parking: 'the back lot', sourceHash: h });
+    await run();
+    expect(readNotes).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops after 3 failures of one description, and a new description resets (VIL-468)', async () => {
+    const readNotes = vi.fn<EventNotesReader>(async () => EVENT_NOTES_FAILED);
+    const run = (description: string) =>
+      reconcile([swim({ description })], true, integrationId, family.parentUserId, readNotes);
+    for (let i = 0; i < 5; i += 1) await run('Park in the back lot');
+    expect(readNotes).toHaveBeenCalledTimes(EVENT_NOTES_MAX_FAILED_READS);
+    let notes = (await rows())[0]?.notes;
+    expect(notes).toEqual({
+      sourceHash: descriptionHash('Park in the back lot'),
+      failedReads: 3,
+    });
+    expect(notes).not.toHaveProperty('parking');
+
+    await run('Park on Elm instead');
+    expect(readNotes).toHaveBeenCalledTimes(4);
+    notes = (await rows())[0]?.notes;
+    expect(notes).toEqual({ sourceHash: descriptionHash('Park on Elm instead'), failedReads: 1 });
   });
 
   it('mirrors an upcoming swim as a parent event and audits it without the title', async () => {
