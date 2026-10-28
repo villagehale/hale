@@ -15,11 +15,15 @@ import { schema } from '@hale/db';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
-import { captureAgentError } from '~/lib/analytics/server-capture';
-import { POLICY_VERSION } from '~/lib/consent';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import {
+  type InboundMediaPart,
+  type ReadInboundMedia,
+  readInboundMedia,
+} from '~/lib/channel/inbound-media';
+import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
@@ -39,6 +43,7 @@ import {
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
+import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -50,7 +55,14 @@ import {
   offeredSubject,
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
+import {
+  type ProviderWatchContext,
+  loadProviderWatchContext,
+} from '~/lib/signup/browser-use/watch/context';
+import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
+import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
+import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
@@ -59,19 +71,13 @@ import {
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
-import {
-  type ProviderWatchContext,
-  loadProviderWatchContext,
-} from '~/lib/signup/browser-use/watch/context';
-import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
-import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
+import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
-import { type ReplyChild, ReplyNeedsShorter, redactTeenNames, replyCharacterRoom, toSmsReply } from './reply';
-import { shortenOverBudgetReply } from './shorten';
+import { type ReplyChild, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
   buildChannelCoachTools,
@@ -222,6 +228,11 @@ export interface ChannelCoachPorts {
    * approvals". Deferring it means the key is only required by the turn that needs one.
    */
   client(): AgentClient;
+  /**
+   * Fetch this turn's images into content blocks. Absent is a named gap: the
+   * parts are still told to the model as unwatched, and nothing is fetched.
+   */
+  readInboundMedia?(parts: readonly InboundMediaPart[]): Promise<ReadInboundMedia>;
   runAgent(args: RunAgentArgs): Promise<RunAgentResult>;
   recordRun(run: ChannelRunRecord): Promise<void>;
   now(): Date;
@@ -331,6 +342,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // the ordinary turn's prompt bytes and cache prefix are untouched.
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
       };
+      const media = await mediaForTurn(turn, ports);
+      if (media.unwatched.length > 0) {
+        Object.assign(context, { arrivedMedia: media.unwatched });
+      }
+      // VIL-439 (T18): every group turn sees only group-safe context and tools. No flag:
+      // the router sets the group audience for any message the door marked in_group.
+      const groupScoped = turn.audience === 'group';
+      const turnContext = groupScoped ? groupScopedContext(context) : context;
 
       return traceAgentRun(
         {
@@ -344,7 +363,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           const startedAt = Date.now();
           // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
           // reused set would spend this text's budget on the last one's.
-          const tools = ports.buildTools(
+          const builtTools = ports.buildTools(
             turn,
             (actionId) => draftedActionIds.push(actionId),
             (offer) => {
@@ -365,19 +384,23 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               gmailNotice = notice;
             },
           );
+          // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
+          // are busy-only, on every group turn.
+          const tools = groupScoped ? groupScopedTools(builtTools) : builtTools;
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
           const result = await ports
             .runAgent({
               skill,
-              context,
+              context: turnContext,
               tools,
               client: ports.client(),
               maxSteps: MAX_STEPS,
               maxTokens: MAX_TOKENS,
               toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
               guardDeps: ports.guardDeps,
+              ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
             })
             .catch((err: unknown) => {
               throw failed(
@@ -437,11 +460,6 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             offer === null && share === null
               ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
               : null;
-          // What the trim threw away, reported HERE rather than from inside the string
-          // function: an answer past the two-segment ceiling is work this turn already
-          // paid a model (and sometimes a 50s web search) for, and nothing downstream can
-          // tell a trimmed reply from one that fit. A count makes it a rate.
-          let trimmedOverBy: number | null = null;
           const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
           const spoken =
             gmailNotice !== null && gmailNotice.status === 'ready'
@@ -454,7 +472,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               new GmailDraftNoticeUnsent(),
             );
           }
-          const smsArgs = {
+          // VIL-434: the model's answer goes out whole. Length is the model's judgment
+          // (the skill, or a rewrite the model chooses). Code does not cut it, and it
+          // does not call a shorten pass because a sentence ran past two segments.
+          const reply = toSmsReply(spoken, {
             children,
             now,
             ...(noticeReady
@@ -463,71 +484,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
                   activityLinks: [
-                    ...offeredThisTurn.read().flatMap((item) =>
-                      item.url ? [{ title: item.title, url: item.url, venue: item.venue }] : [],
-                    ),
-                    ...offeredThisTurn.links(),
-                  ],
+                    ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
+                    ...offeredThisTurn.links().map((link) => link.url),
+                  ].map((url) => ({ ref: linkRef(url), url })),
                   nearby: nearby ?? undefined,
-                  onTrimmed: (overBy: number) => {
-                    trimmedOverBy = overBy;
-                  },
                 }),
-          };
-          // A first sentence that does not fit is not trimmed. One rewrite, from the
-          // shorten skill, then the same fit. A second miss fails the turn: the router
-          // owns the honesty line, and this path never substitutes a fixed sentence.
-          let reply: string;
-          try {
-            reply = toSmsReply(spoken, smsArgs);
-          } catch (err) {
-            if (!(err instanceof ReplyNeedsShorter)) throw err;
-            const suffix = noticeReady
-              ? ''
-              : redactTeenNames(
-                  [offer?.sentence, share ? referralBlock(share) : undefined]
-                    .map((part) => part?.trim() ?? '')
-                    .filter((part) => part !== '')
-                    .join(' '),
-                  children,
-                  now,
-                );
-            let shorter: string | null;
-            try {
-              shorter = await shortenOverBudgetReply(
-                ports.client(),
-                spoken,
-                replyCharacterRoom(suffix),
-              );
-            } catch (cause) {
-              await ports.recordRun(record('failed'));
-              throw failed('channel coach: shorter rewrite failed', cause);
-            }
-            if (!shorter) {
-              await ports.recordRun(record('failed'));
-              throw failed('channel coach: shorter rewrite was empty');
-            }
-            try {
-              reply = toSmsReply(shorter, smsArgs);
-            } catch (again) {
-              await ports.recordRun(record('failed'));
-              throw failed(
-                again instanceof ReplyNeedsShorter
-                  ? 'channel coach: shorter rewrite still had no complete sentence inside the segment budget'
-                  : again instanceof Error
-                    ? again.message
-                    : 'channel coach: shorter rewrite could not be sent',
-                again,
-              );
-            }
-          }
-          if (trimmedOverBy !== null) {
-            await captureAgentError({
-              lane: 'reply_budget',
-              overBy: trimmedOverBy,
-              familyId: turn.familyId,
-            });
-          }
+          });
           await ports.recordRun(record('completed'));
           return { reply, planOffer, activityPromise, spotWatch };
         },
@@ -569,10 +531,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForProviderWatch(
         augmentCoachSkillForAutonomySwitchOff(
-        await augmentCoachSkillForGoogleDrafts(
-          await loadCronSkill('coach-channel-sms'),
-          parentUserId,
-        ),
+          await augmentCoachSkillForGoogleDrafts(
+            await loadCronSkill('coach-channel-sms'),
+            parentUserId,
+          ),
           await familyHasAutonomyGrant(familyId, database),
         ),
         browserUseWatchEnabled(),
@@ -643,6 +605,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         },
         parentUserId: turn.parentUserId,
         now: turn.now,
+        activitySignup: midActivitySignupToolEnabled()
+          ? {
+              database,
+              familyId: turn.familyId,
+              parentUserId: turn.parentUserId,
+              now: turn.now,
+              timeZone: () => channelScheduleReader(database, turn.now).timeZone(turn.familyId),
+              offeredThisTurn: offered.read,
+            }
+          : null,
         providerWatch: browserUseWatchEnabled()
           ? {
               database,
@@ -680,7 +652,24 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       });
     },
     now: () => new Date(),
+    readInboundMedia,
   };
+}
+
+async function mediaForTurn(
+  turn: ChannelTurn,
+  ports: ChannelCoachPorts,
+): Promise<ReadInboundMedia> {
+  const parts = turn.inboundMedia ?? [];
+  if (parts.length === 0) return { blocks: [], unwatched: [] };
+  if (!ports.readInboundMedia) {
+    console.info(
+      { reason: 'not_configured', count: parts.length },
+      'channel coach: inbound media unread',
+    );
+    return { blocks: [], unwatched: parts.map((part) => ({ kind: part.kind })) };
+  }
+  return ports.readInboundMedia(parts);
 }
 
 async function loadReplyChildren(database: Database, familyId: string): Promise<ReplyChild[]> {

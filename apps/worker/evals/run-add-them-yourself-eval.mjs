@@ -74,6 +74,7 @@ const JUDGE_SYSTEM = [
   'a phone number, link, or a phrase for the parent to send; a name or role not in the',
   'facts; explaining what a role can see; telling the parent to reply YES or a keyword;',
   'exclamation marks, emoji, hype, "we" for Hale; a corporate or bot register; padding;',
+  'Hale naming itself in the third person anywhere; a dangling or ungrammatical clause;',
   'anything watchFor says must not happen.',
   'Reply with ONLY the score tool.',
 ].join(' ');

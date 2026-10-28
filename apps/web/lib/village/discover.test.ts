@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readCandidates } from '~/lib/channel/intake/radar';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { discoverForFamily } from './discover';
-import { findFamilyActivities } from './live';
+import { findFamilyActivities, recordActivityOffers, unofferedActivityPicks } from './live';
 
 let db: TestDb;
 beforeAll(async () => {
@@ -38,13 +38,20 @@ const pick = {
 describe('live recommendations without a catalog', () => {
   it('accepts the current main Finder URL without inventing a dated session', async () => {
     const familyId = await family();
-    const legacy = { name: pick.name, ageFit: pick.ageFit, when: null, price: null,
-      sourceName: pick.sourceName, source: 'web' as const, url: pick.sourceUrl };
+    const legacy = {
+      name: pick.name,
+      ageFit: pick.ageFit,
+      when: null,
+      price: null,
+      sourceName: pick.sourceName,
+      source: 'web' as const,
+      url: pick.sourceUrl,
+    };
     const finder = { find: async () => ({ found: true as const, picks: [legacy] }) };
     const result = await findFamilyActivities(db.database, familyId, { finder });
     expect(result.picks[0]?.sourceUrl).toBe(pick.sourceUrl);
     expect(result.picks[0]?.eventDate).toBeUndefined();
-    expect(await readCandidates(db.database, familyId, { finder })).toEqual([]);
+    expect([...(await readCandidates(db.database, familyId, { finder }))]).toEqual([]);
   });
   it('passes the existing Finder municipality without leaking the postal prefix', async () => {
     const familyId = await family(36, 'Burlington');
@@ -247,5 +254,49 @@ describe('live recommendations without a catalog', () => {
         .from(schema.familyActivityHistory)
         .where(eq(schema.familyActivityHistory.familyId, familyId)),
     ).toEqual([]);
+  });
+});
+
+describe('VIL-452 · intake offer receipts keep the Finder url', () => {
+  const urlOnly = {
+    name: 'Toddler gym',
+    ageFit: 'ages 1-3',
+    when: 'Saturday 10am',
+    price: null,
+    sourceName: 'Town rec centre',
+    source: 'web' as const,
+    url: 'https://rec.example/gym',
+    eventDate: '2026-10-31',
+  };
+
+  it('stores a url-only pick under source_url', async () => {
+    const familyId = await family();
+    const [row] = await recordActivityOffers(db.database, familyId, [urlOnly]);
+    expect(row?.sourceUrl).toBe('https://rec.example/gym');
+  });
+
+  it('keeps an existing sourceUrl over url', async () => {
+    const familyId = await family();
+    const [row] = await recordActivityOffers(db.database, familyId, [
+      { ...urlOnly, sourceUrl: 'https://rec.example/canonical' },
+    ]);
+    expect(row?.sourceUrl).toBe('https://rec.example/canonical');
+  });
+
+  it('never stores an unsafe link', async () => {
+    const familyId = await family();
+    const [row] = await recordActivityOffers(db.database, familyId, [
+      { ...urlOnly, url: 'javascript:alert(1)' },
+    ]);
+    expect(row?.sourceUrl).toBeNull();
+  });
+
+  it('lets a later identical activity match history for dedupe', async () => {
+    const familyId = await family();
+    await recordActivityOffers(db.database, familyId, [urlOnly]);
+    const again = await unofferedActivityPicks(db.database, familyId, [
+      { ...urlOnly, sourceUrl: urlOnly.url },
+    ]);
+    expect(again).toEqual([]);
   });
 });

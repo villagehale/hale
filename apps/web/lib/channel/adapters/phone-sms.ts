@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { captureAgentError } from '~/lib/analytics/server-capture';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { copyLanguage } from '~/lib/channel/language';
 import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import {
   type FamilyOutboundTarget,
@@ -10,6 +11,7 @@ import {
 import { groupBothReaderFrench } from '~/lib/channel/linq/group-coparent-copy';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
+import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import type { Channel } from '../types';
 
 /**
@@ -50,8 +52,11 @@ export interface SmsChannelDeps {
   database?: Database;
 }
 
+/** Linq is provisioned, or a Preview proof run asked for the capture door. The capture
+ * transport itself refuses outside preview and beside any Linq key or line, so this can
+ * never let a send through to a real phone. */
 function defaultOutboundConfigured(): boolean {
-  return linqPhoneOutboundConfigured();
+  return linqPhoneOutboundConfigured() || previewCaptureRequested();
 }
 
 export function createSmsChannel(deps: SmsChannelDeps): Channel {
@@ -79,8 +84,15 @@ export function createSmsChannel(deps: SmsChannelDeps): Channel {
         if (target.channel === 'group') {
           const database = deps.database ?? ({} as Database);
           const speech = await familySpeech(database, target.familyId, userId);
-          const body =
-            speech.language === 'fr' ? groupBothReaderFrench(rendered.text) : rendered.text;
+          const key = copyLanguage(speech.language);
+          if (!key) {
+            console.error(
+              { familyId: target.familyId },
+              'sms adapter: no group line for this language - nothing sent',
+            );
+            return { status: 'skipped', reason: 'disabled' };
+          }
+          const body = key === 'fr' ? groupBothReaderFrench(rendered.text) : rendered.text;
           const delivered = await deliverFamilyOutbound(database, {
             familyId: target.familyId,
             body,

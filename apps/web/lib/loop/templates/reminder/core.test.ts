@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventDescriptor, eventLine, localDayLabel, localTimeLabel } from './core';
+import { eventDescriptor, localDayLabel, localTimeLabel } from './core';
 import type { ReminderChild, ReminderEventView } from './payload';
 
 /**
@@ -11,12 +11,23 @@ import type { ReminderChild, ReminderEventView } from './payload';
 const NOW = new Date('2026-07-25T12:00:00Z');
 const TZ = 'America/Toronto';
 
-const maya: ReminderChild = { id: 'c-maya', name: 'Maya', dateOfBirth: '2019-03-10', gender: 'girl' };
+const maya: ReminderChild = {
+  id: 'c-maya',
+  name: 'Maya',
+  dateOfBirth: '2019-03-10',
+  gender: 'girl',
+};
 // 2011 DOB is ~15y at NOW → deriveStage 'teenager' → forced generic.
 const teen: ReminderChild = { id: 'c-teen', name: 'Sam', dateOfBirth: '2011-01-01', gender: 'boy' };
 
 function ev(over: Partial<ReminderEventView> = {}): ReminderEventView {
-  return { eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T14:00:00Z', childId: null, ...over };
+  return {
+    eventRef: 'e1',
+    title: 'Swim class',
+    startsAt: '2026-07-25T14:00:00Z',
+    childId: null,
+    ...over,
+  };
 }
 
 describe("localDayLabel — the event's own family-local day, never a word for its distance", () => {
@@ -74,14 +85,6 @@ describe('eventDescriptor — teen gate + name-level dial', () => {
   it('a childless event shows its title as placed', () => {
     expect(eventDescriptor(ev({ title: 'Parent-teacher night' }), [], 'first_name', NOW)).toBe(
       'Parent-teacher night',
-    );
-  });
-});
-
-describe('eventLine — descriptor + family-local time', () => {
-  it('joins the descriptor and the clock label', () => {
-    expect(eventLine(ev({ childId: 'c-maya' }), [maya], 'first_name', NOW, TZ)).toBe(
-      'Maya — Swim class at 10:00',
     );
   });
 });

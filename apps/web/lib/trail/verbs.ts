@@ -375,6 +375,7 @@ export const AUDIT_VERBS = [
   'ics_feed_shared',
   'ics_feed_revoked',
   'ics_event_link_minted',
+  'calendar_cancel.retry_attempt',
   'notification_pref_updated',
   // ── connected assistants (MCP) ──────────────────────────────────────────
   'mcp.authorization_approved',
@@ -839,7 +840,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale wrote a reply from the facts it already had',
     family: 'note',
   },
-  reply_copy_fallback: { sentence: 'Hale sent the fixed reply', family: 'note' },
+  reply_copy_fallback: { sentence: 'Hale held a reply the model did not write', family: 'note' },
   voice_call_received: {
     // Hale keeps no audio and no transcript — only that a call arrived.
     sentence: 'a call came in to Hale’s number',
@@ -1377,6 +1378,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   ics_feed_shared: { sentence: 'you turned on your calendar subscription', family: 'done' },
   ics_feed_revoked: { sentence: 'you turned off your calendar subscription', family: 'done' },
+  // VIL-449 · one re-drive of a cancellation text that had not landed yet.
+  'calendar_cancel.retry_attempt': {
+    sentence: 'tried again to text you that an event was cancelled',
+    family: 'note',
+  },
   // NOT the subscription: a per-event link is a one-way HMAC over the same secret and
   // discloses one entry, so the sentence says the entry and never the feed (rule #1).
   ics_event_link_minted: {

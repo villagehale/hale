@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { actions } from './actions.js';
 import { conversations } from './conversations.js';
 import {
@@ -22,10 +22,11 @@ import { users } from './users.js';
  *   - outbound_sends (executor exactly-once) is a different domain and is
  *     UNTOUCHED.
  *
- * `body` is nullable and populated for direction:'in' ONLY — the verbatim inbound
- * reply, which C3 treats as the approval's legal instrument (locked cross-ticket
- * contract). Outbound rows never store a rendered body: it is reconstructable from
- * template + payload, and storing rendered child-data is a liability (rule #1).
+ * `body` is nullable. Inbound rows carry the verbatim reply, which C3 treats as the
+ * approval's legal instrument (locked cross-ticket contract). An outbound row carries
+ * a body only when the message was written whole by the model from the parent's own
+ * facts and is no longer reconstructable from template + payload (the reminder, via
+ * `RenderedContent.recordBody`). Every other outbound row stores none (rule #1).
  */
 
 /**
@@ -142,8 +143,8 @@ export const channelMessages = pgTable(
     providerChatId: text('provider_chat_id'),
     status: channelMessageStatusEnum('status').notNull(),
     errorCode: text('error_code'),
-    /** Verbatim body — direction:'in' ONLY (A3 writes it; C3's legal instrument).
-     * Outbound rows leave this null (rule #1). */
+    /** Verbatim inbound body (A3 writes it; C3's legal instrument), or the sent text of
+     * a model-written outbound message that asked for it (`recordBody`). */
     body: text('body'),
     relatedActionId: uuid('related_action_id').references(() => actions.id, {
       onDelete: 'set null',
@@ -174,6 +175,15 @@ export const channelMessages = pgTable(
      * failed enqueue read as a handled message forever (the retry saw the row and said
      * 'duplicate'). The reconciler re-drives rows left null. */
     handedOffAt: timestamp('handed_off_at', { withTimezone: true }),
+    /**
+     * INBOUND only: Linq parts that were not text (kind, https url, mime). Null when
+     * the turn carried none. Bytes are never stored — the coach fetches an image
+     * when it answers, and a re-drive reads this column rather than the job.
+     */
+    inboundMedia:
+      jsonb('inbound_media').$type<
+        Array<{ kind: 'image' | 'video' | 'file'; url: string | null; mime: string | null }>
+      >(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

@@ -1,245 +1,59 @@
 /**
- * WHAT LANGUAGE HALE ANSWERS IN, decided from the message in front of it and nothing
- * else.
+ * A language Hale may store and hand to a model.
  *
- * Hale already WRITES French — the coach and the general-answer skill both reply in the
- * language the parent wrote in (coach-channel-sms.md, general-answer.md), and the
- * deterministic yes/no table already READS it (affirmative.ts). What did not move was the
- * fixed copy: the greeting, the consent ask, the acknowledgments, the 811 line. Those are
- * the promises, and a francophone parent got every one of them in English — including the
- * very first sentence Hale ever says to them, and including the one they get when a
- * medical turn falls closed (medical.ts rejects a non-GSM-7 body, so an accented French
- * answer lands on the fixed safety line by construction).
- *
- * PER MESSAGE, NOT PER FAMILY, and that is a deliberate limit rather than a first cut at
- * a preference column. A remembered language is a stored fact about a person, which is a
- * privacy decision and a migration; this is a function of the text that just arrived, it
- * holds nothing, and it is wrong for exactly one turn when it is wrong. What it costs is
- * stated where it bites, and #868 limits it: a model is only ever told French when this
- * is certain (`certainLanguageHint`), and the parent's own words decide the reply.
- *
- * IT DEFAULTS TO ENGLISH, always. Answering an anglophone in French is the expensive
- * error — it happens at first contact, it reads as a broken product rather than a
- * thoughtful one, and the parent has no way to correct it. Answering a francophone in
- * English is the status quo. So the rule below is built to be under-eager, and the two
- * tiers are two different standards of proof rather than a score.
+ * The tag is the model's, or a value already stored for the family. A sentence is
+ * not a tag: code does not classify the words in front of it. The parent's own
+ * words decide the reply; `certainLanguageHint` only forwards a tag that was
+ * already accepted.
  */
 
-export type ReplyLanguage = 'en' | 'fr';
+/** A BCP-47 language tag (`en`, `fr`, `zh`, `ar`, `fr-ca`). */
+export type ReplyLanguage = string;
 
-/**
- * Words that settle it alone.
- *
- * THE BAR: the word has no ordinary use in an English text message. Not "mostly French" —
- * a word that turns up in an English sentence at all belongs in the tier below, because
- * one appearance here is a whole message answered in the wrong language.
- *
- * That bar is what keeps `aide` out (an English noun), `mon` out (Monday), `est` out
- * (the timezone) and `pardon` out, and it is why the list is this short. `arret` is here
- * for a reason of its own: a parent who texts it has unmistakably written French, whether
- * or not the whole body is the bare CASL keyword.
- *
- * IT IS NOT WHAT ANSWERS A STOP. The opt-out reader writes that confirmation in the
- * sender's own language (#868).
- */
-const FRENCH_ALONE = new Set([
-  'bonjour',
-  'bonsoir',
-  'salut',
-  'allo',
-  'merci',
-  'oui',
-  'non',
-  'svp',
-  'stp',
-  'cest',
-  'jai',
-  'daccord',
-  'pourquoi',
-  'combien',
-  'arret',
-  // The two words Hale's own French copy teaches a parent to text back
-  // (email/forward-request.ts). Neither has an English use — the English word is
-  // "transfer" — and both had to be here for the same reason `arret` is: a parent doing
-  // exactly what the French reply told them to do was being answered in English, which
-  // for the turn-off confirm meant "Reply YES" in front of a French sentence.
-  'desactiver',
-  'transfert',
-]);
+/** English or French, for tu/vous and the leftover 1:1 memory frames. A sentence is not chosen here. */
+export type CopyLanguage = 'en' | 'fr';
 
-/**
- * Words that need a second one.
- *
- * THE BAR is weaker on purpose — these need only be words an English sentence does not
- * normally contain, because two of them together is the evidence, not one. That is what
- * lets the list carry the ordinary machinery of a French sentence (`je`, `vous`, `que`,
- * `avec`) without a single one of them being able to decide anything.
- *
- * WHAT IS DELIBERATELY ABSENT, because each is also an English word and would have
- * flipped a real message: `a`, `as`, `ai`, `on`, `or`, `ou`, `un`, `est`, `son`, `ton`,
- * `mon`, `ma`, `ta`, `sa`, `nos`, `car`, `pour`, `sans`, `plus`, `comment`, `encore`,
- * `main`, `pain`, `chat`, `coin`, `fin`, `but`, `part`, `note`, `sale`, `la`. The
- * accent-fold below is what makes them collide in the first place (`ou` and `où` are the
- * same token here), so the omissions have to be judged on the folded spelling.
- */
-const FRENCH_MARKERS = new Set([
-  // pronouns and determiners
-  'je',
-  'tu',
-  'il',
-  'elle',
-  'ils',
-  'elles',
-  'vous',
-  'nous',
-  'mes',
-  'tes',
-  'ses',
-  'votre',
-  'vos',
-  'notre',
-  'leurs',
-  'une',
-  'des',
-  'du',
-  'le',
-  'les',
-  'aux',
-  'cette',
-  'cet',
-  'ces',
-  'celle',
-  'celui',
-  'ceux',
-  // prepositions, conjunctions, adverbs
-  'et',
-  'avec',
-  'dans',
-  'sous',
-  'sur',
-  'chez',
-  'vers',
-  'depuis',
-  'pendant',
-  'apres',
-  'avant',
-  'mais',
-  'donc',
-  'alors',
-  'aussi',
-  'tres',
-  'trop',
-  'beaucoup',
-  'toujours',
-  'jamais',
-  'deja',
-  'maintenant',
-  'demain',
-  'hier',
-  'ici',
-  'ne',
-  'pas',
-  'rien',
-  'tout',
-  'tous',
-  'toute',
-  'toutes',
-  'chaque',
-  'plusieurs',
-  // interrogatives
-  'que',
-  'qui',
-  'quoi',
-  'quand',
-  'quel',
-  'quelle',
-  'quels',
-  'quelles',
-  // verbs
-  'suis',
-  'sont',
-  'etait',
-  'avez',
-  'avons',
-  'ont',
-  'fait',
-  'faire',
-  'veux',
-  'veut',
-  'voulez',
-  'peux',
-  'peut',
-  'pouvez',
-  'dois',
-  'doit',
-  'sais',
-  'sait',
-  'dites',
-  'dit',
-  'aimerais',
-  'voudrais',
-  'besoin',
-  // the nouns this product's messages are actually made of
-  'enfant',
-  'enfants',
-  'garderie',
-  'ecole',
-  'semaine',
-  'mois',
-  'annee',
-  'ans',
-  'matin',
-  'soir',
-  'journee',
-  'medecin',
-  'sante',
-  'naissance',
-  'prenom',
-  'aide',
-]);
+const TAG = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/;
 
-/**
- * A body reduced to the words it is made of, on the same two conventions
- * {@link normalizeReply} established next door (affirmative.ts): the accent is folded
- * onto its base letter so one table entry covers however a given phone spelled the word,
- * and the apostrophe is CLOSED UP rather than split on, which is what turns "j'ai" and
- * "c'est" into the single high-signal tokens `jai` and `cest` instead of the useless
- * fragments `j` and `c`.
- *
- * Digits and everything else fall out as separators. There is no stemming and no
- * scoring: a word either is in a table or it is not, which is what makes a wrong verdict
- * traceable to one line of one list.
- */
-function words(body: string): string[] {
-  return body
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{M}+/gu, '')
-    .replace(/['’ʼ`]/g, '')
-    .split(/[^a-z]+/)
-    .filter(Boolean);
+/** A stored tag, or null. Free text, including a sentence, is not a tag. */
+export function acceptReplyLanguage(value: string | null | undefined): ReplyLanguage | null {
+  if (typeof value !== 'string') return null;
+  const tag = value.trim().toLowerCase();
+  return TAG.test(tag) ? tag : null;
 }
 
 /**
- * #868: what a MODEL is told about language. The detector is not the source of truth:
- * it only proves French (positive markers) and otherwise defaults to English, which is
- * a guess for a Chinese or Arabic text. So the model gets a hint only when it is
- * certain, and the parent's own words decide the language and script of the reply.
+ * The same check as {@link acceptReplyLanguage}. Kept under the old name so a
+ * stored column (`en`, `fr`, `zh`) still round-trips, and a message body does not.
  */
-export function certainLanguageHint(language: ReplyLanguage | null | undefined): 'fr' | null {
-  return language === 'fr' ? 'fr' : null;
+export function replyLanguage(value: string | null | undefined): ReplyLanguage | null {
+  return acceptReplyLanguage(value);
 }
 
-/** The language Hale's fixed copy should go out in for THIS message. English unless the
- * message proves otherwise — see the two bars above. */
-export function replyLanguage(body: string): ReplyLanguage {
-  const seen = new Set<string>();
-  for (const word of words(body)) {
-    if (FRENCH_ALONE.has(word)) return 'fr';
-    if (FRENCH_MARKERS.has(word)) {
-      seen.add(word);
-      if (seen.size >= 2) return 'fr';
-    }
-  }
-  return 'en';
+/** What a model is told. Any stored tag, including `zh` and `ar`. A sentence is not a hint. */
+export function certainLanguageHint(
+  language: ReplyLanguage | null | undefined,
+): ReplyLanguage | null {
+  return acceptReplyLanguage(language);
+}
+
+/** `en` or `fr` when the tag is one of those, including `en-ca` and `fr-ca`. Otherwise null. */
+export function copyLanguage(language: ReplyLanguage | null | undefined): CopyLanguage | null {
+  const tag = acceptReplyLanguage(language);
+  if (!tag) return null;
+  if (tag === 'fr' || tag.startsWith('fr-')) return 'fr';
+  if (tag === 'en' || tag.startsWith('en-')) return 'en';
+  return null;
+}
+
+/**
+ * An Intl locale for a stored tag. A bare `en` or `fr` keeps the Canadian
+ * default those tags have always used. Any other tag is handed to Intl as-is.
+ * A missing tag formats dates as `en-CA` for the model fact sheet only.
+ */
+export function localeFor(language: ReplyLanguage | null | undefined): string {
+  const tag = acceptReplyLanguage(language);
+  if (!tag || tag === 'en') return 'en-CA';
+  if (tag === 'fr') return 'fr-CA';
+  return tag;
 }

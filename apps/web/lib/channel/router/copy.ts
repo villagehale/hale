@@ -247,10 +247,8 @@ export function outOfRangeReply(pendingCount: number): string {
  * because nothing recorded that these options had been offered at all. A parent quoted one
  * back verbatim on 2026-08-24 and reached the general coach (VIL-304).
  *
- * So both readings exist now and neither is a keyword: the ordinal, and the parent's own
- * words, resolved against the menu this sentence is minted alongside
- * (router/disambiguation.ts). "Reply 1 or 2, or just say which" is that offer stated
- * plainly — the number is the shortcut, never the grammar, and the sentence says so.
+ * The sentence names the choices. A digit is not a choice, and the model places which
+ * question the next reply means (router/disambiguation.ts).
  *
  * THE ORDER IS THE MINT'S ORDER. The row written when this goes out stores the options in
  * exactly the sequence printed here, which is what makes an ordinal point at the option a
@@ -270,7 +268,7 @@ export function outOfRangeReply(pendingCount: number): string {
  * The overflow is disclosed and points nowhere (skill audit P0 #4): the list is re-read
  * every turn, so answering the ones in front is what brings the next ones up.
  */
-export function whichOneReply(subjects: readonly string[], numbered: boolean): string {
+export function whichOneReply(subjects: readonly string[], _numbered: boolean): string {
   const shown = subjects.slice(0, MAX_LISTED_APPROVALS);
   if (shown.length === 0) {
     // Both callers ask only when they are holding at least two, so this is unreachable —
@@ -281,21 +279,10 @@ export function whichOneReply(subjects: readonly string[], numbered: boolean): s
   }
   const overflow = subjects.length - shown.length;
   const tail = overflow > 0 ? ` (${overflow} more behind those.)` : '';
-  if (!numbered) {
-    const head = shown.slice(0, -1);
-    const last = shown.at(-1) as string;
-    const named = head.length === 0 ? last : `${head.join(', ')} or ${last}`;
-    return `Which one - ${named}?${tail}`;
-  }
-  const list = shown.map((subject, i) => `${i + 1}) ${subject}`).join(', ');
-  return `Which one - ${list}? Reply ${orJoinNumbers(shown.length)}, or just say which.${tail}`;
-}
-
-/** "1, 2 or 3" — the numbers on offer, serial-comma joined like every other Hale list. */
-function orJoinNumbers(count: number): string {
-  if (count === 1) return '1';
-  const head = Array.from({ length: count - 1 }, (_, i) => String(i + 1));
-  return `${head.join(', ')} or ${count}`;
+  const head = shown.slice(0, -1);
+  const last = shown.at(-1) as string;
+  const named = head.length === 0 ? last : `${head.join(', ')} or ${last}`;
+  return `Which one - ${named}?${tail}`;
 }
 
 /**

@@ -1,7 +1,6 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -24,16 +23,14 @@ export type ConsentAsk =
   | { kind: 'caregiver_scope'; name: string; role: string }
   | { kind: 'caregiver_invite'; who: string; role: string }
   | { kind: 'caregiver_nudge' }
-  | { kind: 'coparent_scope'; name: string; language: ReplyLanguage }
-  | { kind: 'coparent_invite'; inviterName: string; language: ReplyLanguage }
-  | { kind: 'coparent_nudge'; language: ReplyLanguage }
-  | { kind: 'forward_revoke'; language: ReplyLanguage };
+  | { kind: 'coparent_scope'; name: string; language: ReplyLanguage | null }
+  | { kind: 'coparent_invite'; inviterName: string; language: ReplyLanguage | null }
+  | { kind: 'coparent_nudge'; language: ReplyLanguage | null }
+  | { kind: 'forward_revoke'; language: ReplyLanguage | null };
 
 export interface ConsentAskWriter {
   write(ask: ConsentAsk): Promise<string | null>;
 }
-
-const MAX_SEGMENTS = 2;
 
 export const CONSENT_ASK_MAX_TOKENS = 256;
 
@@ -83,11 +80,9 @@ function unwritten(reason: string, detail?: string): null {
   return null;
 }
 
-/** A draft that can go on the wire: no keyword instruction, GSM-7, two segments. */
+/** A draft that can go on the wire: no keyword instruction. Length is not a hold. */
 export function acceptConsentAsk(text: string): string | null {
   if (instructsConsentKeyword(text)) return unwritten('instructs_keyword');
-  if (smsEncoding(text) !== 'gsm7') return unwritten('not_gsm7');
-  if (smsSegments(text) > MAX_SEGMENTS) return unwritten('over_segment_cap');
   return text;
 }
 

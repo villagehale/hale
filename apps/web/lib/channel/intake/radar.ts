@@ -131,7 +131,7 @@ export interface RadarInput {
   /** The coarse area (FSA), never the full postal code (rule #1). */
   areaCoarse: string | null;
   /** The kids-and-postal text. The empty year-find has a French twin. */
-  language?: ReplyLanguage;
+  language?: ReplyLanguage | null;
   /**
    * Onboarding step 4: run one search per age-fit category and return the
    * grouped map instead of the single three-line year find. The message is
@@ -305,31 +305,45 @@ async function readHealthRoster(
 export async function readCandidates(
   database: Database,
   familyId: string,
-  options: { window?: string; now?: Date; finder?: ActivityFinder } = {},
-): Promise<RadarCandidate[]> {
+  options: { window?: string; subject?: string; now?: Date; finder?: ActivityFinder } = {},
+): Promise<LiveCandidates> {
   const found = await findFamilyActivities(database, familyId, {
     ...options,
     excludePreviouslyOffered: true,
   });
-  return found.picks
-    .filter((pick) => !!pick.eventDate && !!pick.sourceUrl)
-    .map((pick) => ({
-      id: activityRecommendationKey(pick)!,
-      title: pick.name,
-      venueName: pick.sourceName,
-      ageRange: pick.ageFit,
-      priceLevel: pick.price && /^(free|\\$0\\b|no cost)/i.test(pick.price) ? 'free' : null,
-      indoorOutdoor: pick.indoorOutdoor ?? null,
-      eventDate: pick.eventDate!,
-      seasons: null,
-      childId: null,
-      confidence: 1,
-      source: 'web',
-      sourceUrl: pick.sourceUrl!,
-      access: pick.access ?? null,
-      whenLabel: pick.when,
-    }));
+  // A proactive find asserts a day and a page, so a pick without both is dropped, and
+  // WHY it was dropped is kept for the skip audit (no silent empties).
+  const dropped: Record<string, number> = {};
+  const kept = found.picks.filter((pick) => {
+    const reason = !pick.sourceUrl ? 'no_url' : !pick.eventDate ? 'no_date' : null;
+    if (reason) dropped[reason] = (dropped[reason] ?? 0) + 1;
+    return reason === null;
+  });
+  const rows: RadarCandidate[] = kept.map((pick) => ({
+    id: activityRecommendationKey(pick)!,
+    title: pick.name,
+    venueName: pick.sourceName,
+    ageRange: pick.ageFit,
+    priceLevel: pick.price && /^(free|\\$0\\b|no cost)/i.test(pick.price) ? 'free' : null,
+    indoorOutdoor: pick.indoorOutdoor ?? null,
+    eventDate: pick.eventDate!,
+    seasons: null,
+    childId: null,
+    confidence: 1,
+    source: 'web',
+    sourceUrl: pick.sourceUrl!,
+    access: pick.access ?? null,
+    whenLabel: pick.when,
+  }));
+  return Object.assign(rows, { searchReason: found.reason, dropped });
 }
+
+/** Live finds plus why the search came back short: the search's own failure reason
+ * (`no_area`, `no_picks`, ...) and per-reason counts of picks dropped at this boundary. */
+export type LiveCandidates = RadarCandidate[] & {
+  searchReason?: string | null;
+  dropped?: Record<string, number>;
+};
 
 export async function readWindows(database: Database, areaCoarse: string) {
   const municipalities = resolveMunicipalities(areaCoarse);

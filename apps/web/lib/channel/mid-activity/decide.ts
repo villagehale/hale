@@ -1,33 +1,33 @@
-/**
- * VIL-393 — when a household may be asked, once, how an activity is going.
- *
- * The post-activity "how did it go?" ask already exists (VIL-366). This gate is
- * the mid-series node: not every text, and not a one-off the day after. Fewer
- * asks wins every tie. A missing parent preference is the stricter gate, not
- * the evening check-in's daily default.
- */
+import { addDaysToKey, dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 
-export type ActivityCadence = 'once' | 'weekly' | 'often';
+/**
+ * VIL-393 — when a household may be asked, once, how a new activity is going.
+ *
+ * One ask, the evening after the FIRST session ends. Not every text, and a missed
+ * evening is not caught up later (fewer asks wins every tie). A parent who turned
+ * check-ins off is never asked.
+ */
 
 /** How often this household wants Hale to ask. `fewer` is the unset default. */
 export type AskPreference = 'off' | 'fewer' | 'regular';
 
 export type CheckInCadence = 'daily' | 'weekly' | 'off';
 
-export type MidActivitySkipReason =
-  | 'already_asked'
-  | 'preference_off'
-  | 'too_rare'
-  | 'too_soon'
-  | 'past_window';
+export type MidActivitySkipReason = 'already_asked' | 'preference_off' | 'too_soon' | 'past_window';
 
 export type MidActivityDecision =
-  | { ask: true; atSession: number }
+  | { ask: true; opensAt: Date; closesAt: Date }
   | { ask: false; reason: MidActivitySkipReason };
 
-const DAY_MS = 24 * 3_600_000;
-/** Gaps shorter than this are one day with several slots, not a series with a middle. */
-const SAME_DAY_MS = 20 * 3_600_000;
+/** The local evening the ask belongs to. Inside the quiet-hours day on purpose. */
+export const ASK_EVENING_OPENS = '18:00';
+/** A session that ends after this asks the NEXT evening, not at bedtime. */
+export const ASK_EVENING_LAST_START = '21:00';
+/** The ask lapses the next local morning: a stale "how was it" is noise. */
+export const ASK_LAPSES_AT = '08:00';
+
+/** A session with no stored end is taken to last this long. */
+export const DEFAULT_SESSION_MS = 60 * 60 * 1000;
 
 /**
  * No stored check-in row means the parent has not asked to hear from Hale more
@@ -41,75 +41,54 @@ export function preferenceFromCheckIn(row: { cadence: CheckInCadence } | null): 
   return 'regular';
 }
 
-/** Median gap between session starts. One start, a same-day cluster, or a rare gap is `once`. */
-export function cadenceFromSessionStarts(starts: readonly Date[]): ActivityCadence {
-  if (starts.length < 2) return 'once';
-  const sorted = [...starts].sort((a, b) => a.getTime() - b.getTime());
-  const gaps: number[] = [];
-  for (let i = 1; i < sorted.length; i += 1) {
-    const prev = sorted[i - 1];
-    const next = sorted[i];
-    if (prev === undefined || next === undefined) continue;
-    gaps.push(next.getTime() - prev.getTime());
+/** The first session's end, from its own end or its start plus a default length. */
+export function firstSessionEnd(
+  sessions: readonly { startsAt: Date; endsAt: Date | null }[],
+): Date | null {
+  let first: { startsAt: Date; endsAt: Date | null } | null = null;
+  for (const session of sessions) {
+    if (Number.isNaN(session.startsAt.getTime())) continue;
+    if (first === null || session.startsAt.getTime() < first.startsAt.getTime()) first = session;
   }
-  gaps.sort((a, b) => a - b);
-  const median = gaps[Math.floor(gaps.length / 2)] ?? DAY_MS;
-  if (median < SAME_DAY_MS) return 'once';
-  if (median < 5 * DAY_MS) return 'often';
-  if (median <= 10 * DAY_MS) return 'weekly';
-  return 'once';
-}
-
-export function sessionsElapsed(starts: readonly Date[], now: Date): number {
-  return starts.filter((start) => start.getTime() <= now.getTime()).length;
+  if (first === null) return null;
+  const end = first.endsAt;
+  if (end && !Number.isNaN(end.getTime()) && end.getTime() > first.startsAt.getTime()) return end;
+  return new Date(first.startsAt.getTime() + DEFAULT_SESSION_MS);
 }
 
 /**
- * The one session count at which this activity may be asked about.
- * Null means the series is too short or too rare to have a middle worth interrupting for.
- *
- * A planned series asks on the session just past halfway, and one later when the
- * parent prefers fewer — still before the last session. An open-ended series
- * (no end on the row) has one fixed node, later for `fewer`.
+ * The evening after the first session: opens at 18:00 local on the day it ended (or
+ * when it ended, if later), and moves to the next evening when it ended after 21:00.
+ * Closes at 08:00 the following local morning.
  */
-export function midpointSession(input: {
-  cadence: ActivityCadence;
-  preference: AskPreference;
-  sessionsPlanned: number | null;
-}): number | null {
-  if (input.preference === 'off' || input.cadence === 'once') return null;
-
-  if (input.sessionsPlanned !== null) {
-    const minimum = input.preference === 'fewer' ? 6 : 4;
-    if (input.sessionsPlanned < minimum) return null;
-    const halfway = Math.ceil(input.sessionsPlanned / 2);
-    if (input.preference === 'fewer') {
-      return Math.min(halfway + 1, input.sessionsPlanned - 1);
-    }
-    return halfway;
+export function firstSessionAskWindow(
+  endedAt: Date,
+  timeZone: string,
+): { opensAt: Date; closesAt: Date } {
+  let day = dayKeyIn(endedAt, timeZone);
+  let opensAt = zonedLocalInstant(day, ASK_EVENING_OPENS, timeZone);
+  if (endedAt.getTime() >= zonedLocalInstant(day, ASK_EVENING_LAST_START, timeZone).getTime()) {
+    day = addDaysToKey(day, 1);
+    opensAt = zonedLocalInstant(day, ASK_EVENING_OPENS, timeZone);
+  } else if (endedAt.getTime() > opensAt.getTime()) {
+    opensAt = endedAt;
   }
-
-  if (input.cadence === 'weekly') return input.preference === 'fewer' ? 4 : 3;
-  return input.preference === 'fewer' ? 6 : 4;
+  const closesAt = zonedLocalInstant(addDaysToKey(day, 1), ASK_LAPSES_AT, timeZone);
+  return { opensAt, closesAt };
 }
 
-/**
- * Ask on exactly one session count. The next session is `past_window` — a missed
- * node is not caught up later. That is the fewer-asks rule, and it is also what
- * stops an hourly tick from asking on every later text.
- */
+/** Ask once, inside the window. Before it is `too_soon`; after it is `past_window`. */
 export function decideMidActivityAsk(input: {
-  cadence: ActivityCadence;
   preference: AskPreference;
-  sessionsElapsed: number;
-  sessionsPlanned: number | null;
+  firstSessionEndedAt: Date;
+  timeZone: string;
+  now: Date;
   alreadyAsked: boolean;
 }): MidActivityDecision {
   if (input.alreadyAsked) return { ask: false, reason: 'already_asked' };
   if (input.preference === 'off') return { ask: false, reason: 'preference_off' };
-  const atSession = midpointSession(input);
-  if (atSession === null) return { ask: false, reason: 'too_rare' };
-  if (input.sessionsElapsed < atSession) return { ask: false, reason: 'too_soon' };
-  if (input.sessionsElapsed > atSession) return { ask: false, reason: 'past_window' };
-  return { ask: true, atSession };
+  const { opensAt, closesAt } = firstSessionAskWindow(input.firstSessionEndedAt, input.timeZone);
+  if (input.now.getTime() < opensAt.getTime()) return { ask: false, reason: 'too_soon' };
+  if (input.now.getTime() >= closesAt.getTime()) return { ask: false, reason: 'past_window' };
+  return { ask: true, opensAt, closesAt };
 }

@@ -4,7 +4,6 @@ import { invokeTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
@@ -36,6 +35,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
+import { isStage } from '~/lib/testing/structured-reply';
 
 /**
  * "I'LL COME BACK TO YOU ON IT" — the 2026-08-20 18:13-18:19 UTC transcript, replayed.
@@ -956,9 +956,8 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     expect(standing.map((q) => q.kind)).toEqual(['approval']);
     expect(standing[0]?.id).toBe(flaggedActionId);
 
-    // ...so the bare affirmative is claimed by the approvals grammar and answered with a
-    // line about a draft the parent never mentioned. This is the message that was
-    // actually sent on 2026-08-20.
+    // An unplaced yes is the coach's. The approvals grammar no longer claims it
+    // from the words, so removing the promise write does not steal the turn.
     const transport = new FakeTransport();
     const base = channelRouterDeps(database);
     await route(
@@ -976,7 +975,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         },
       ),
     );
-    expect(transport.bodies()[0]).toBe(conflictReply('not_reviewer_approved'));
+    expect(transport.bodies()[0]).toBe('never reached');
 
     // And no sweep can ever select them.
     const result = await runActivityFollowUpSweep(

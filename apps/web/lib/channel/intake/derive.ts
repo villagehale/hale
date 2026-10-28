@@ -1,4 +1,7 @@
+import { matchPostalToken } from '~/lib/channel/off-domain/place';
+import { deriveAreaCoarse } from '~/lib/family/location-input';
 import type { AgePrecision, ExtractedChild } from './extract';
+import { timezoneForIntakePostal } from './postal-zone';
 
 /**
  * VIL-237 · M2 — the pure derivations between "what the parent texted" and "what gets
@@ -14,35 +17,34 @@ import type { AgePrecision, ExtractedChild } from './extract';
 export interface PostalContext {
   postalCode: string | null;
   areaCoarse: string;
+  /** Display name stored on `families.country` (`Canada` or `United States`). */
+  country: 'Canada' | 'United States';
+  countryCode: 'CA' | 'US';
+  /** IANA zone derived from the code. Never a Toronto default. */
+  timezone: string;
 }
 
 /**
- * Canadian postal code, with the LDU (the "1A1" half) optional: `L3R` and `M5V 2T6`
- * are both complete answers to "where are you". The first letter is restricted to the
- * 18 Canada Post assigns, which is what keeps the region gate honest at FSA length —
- * `W1A` is a London outward code, and without the whitelist it is shaped exactly like
- * an FSA (rule #1: Hale is compliance-cleared for Canada only).
+ * A Canadian postal code (FSA, LDU optional) or a US ZIP / ZIP+4. The shape comes
+ * from the off-domain postal tables; the coarse area from the family location helper
+ * (FSA, or ZIP3). Null means the token is not a US or Canadian code — a UK postcode,
+ * a city name — and the model writes the reply. Nothing here guesses a country.
  */
-const CANADIAN_POSTAL = /^([ABCEGHJKLMNPRSTVXY]\d[A-Za-z])(?:[ -]?(\d[A-Za-z]\d))?$/i;
-
-/**
- * The family's location as a postal token establishes it, or null when the token is
- * not Canadian at all. Null is the REGION GATE tripping, not a formatting nit: a US
- * ZIP or a neighbourhood name reaches here as null and provisioning refuses rather
- * than guessing a country.
- */
-export function parseCanadianPostal(raw: string | null): PostalContext | null {
+export function parseIntakePostal(raw: string | null): PostalContext | null {
   if (!raw) return null;
-  const match = CANADIAN_POSTAL.exec(raw.trim());
-  if (!match) return null;
-  const areaCoarse = (match[1] as string).toUpperCase();
-  const ldu = match[2]?.toUpperCase();
-  return { postalCode: ldu ? `${areaCoarse} ${ldu}` : null, areaCoarse };
+  const matched = matchPostalToken(raw);
+  if (!matched) return null;
+  const stored = matched.postalCode ?? matched.areaKey;
+  const areaCoarse = deriveAreaCoarse(stored, null);
+  if (!areaCoarse) return null;
+  return {
+    postalCode: matched.postalCode,
+    areaCoarse,
+    country: matched.countryName === 'United States' ? 'United States' : 'Canada',
+    countryCode: matched.country,
+    timezone: timezoneForIntakePostal(matched.country, matched.areaKey),
+  };
 }
-
-/** The country a Canadian postal code implies — matched against the onboarding region
- * gate's own alias set (lib/family/location-input), never a free-typed string. */
-export const INTAKE_COUNTRY = 'Canada';
 
 /**
  * Months to add to a stated age to reach the MIDPOINT of the band that statement
@@ -63,11 +65,7 @@ const MIDPOINT_CORRECTION_MONTHS: Record<AgePrecision, number> = { years: 6, mon
  * birthday — that stamp is what earns the ±6-month early-edge tolerance in the
  * registration and health matchers.
  */
-export function deriveDateOfBirth(
-  ageMonths: number,
-  precision: AgePrecision,
-  now: Date,
-): string {
+export function deriveDateOfBirth(ageMonths: number, precision: AgePrecision, now: Date): string {
   const months = ageMonths + MIDPOINT_CORRECTION_MONTHS[precision];
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth() - months;

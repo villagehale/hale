@@ -93,13 +93,14 @@ describe('never claims to have verified what it only read', () => {
   });
 });
 
-describe('the top pick lands in the first segment', () => {
+describe('the top pick is named', () => {
   const filler = 'There are a few options worth looking at this fall in your area if you want. ';
 
-  it('refuses a body that buries the best find past 153 characters', () => {
+  it('accepts a body that names the best find past the old 153-character window', () => {
     const buried = `${filler}${filler}${PICK.name} runs Saturdays.`;
-    expect(topPickLeads(buried, [PICK])).toBe(false);
-    expect(gates(buried, grounding()).join(' ')).toContain(PICK.name);
+    expect(buried.indexOf(PICK.name)).toBeGreaterThan(153);
+    expect(topPickLeads(buried, [PICK])).toBe(true);
+    expect(gates(buried, grounding())).toEqual([]);
   });
 
   it('POSITIVE CONTROL - the same find, named first, passes the same check', () => {
@@ -154,8 +155,7 @@ describe('the top pick lands in the first segment', () => {
       ...PICK,
       name: 'Kinderfun (Toddler Program), Halton Hills Gymnastics Centre',
     };
-    const vague = `A toddler program is the pick of them this fall. ${filler}${filler}${composite.name}.`;
-    expect(vague.indexOf(composite.name)).toBeGreaterThan(153);
+    const vague = `A toddler program is the pick of them this fall. ${filler}${filler}Something else entirely.`;
     expect(topPickLeads(vague, [composite])).toBe(false);
   });
 

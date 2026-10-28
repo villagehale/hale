@@ -202,13 +202,13 @@ describe('introAskRefusals', () => {
       expect(introAskRefusals(body, PROPOSAL)).toContain('over_char_cap');
     });
 
-    it('refuses a curly apostrophe - one character doubles the whole message', () => {
+    it('sends a curly apostrophe', () => {
       expect(
         introAskRefusals('A Hale family near you has a toddler around Maya’s age. Want an intro?', {
           ...PROPOSAL,
           ownChildPossessive: 'Maya’s',
         }),
-      ).toContain('not_gsm7');
+      ).not.toContain('not_gsm7');
     });
 
     it('refuses an interrogation', () => {

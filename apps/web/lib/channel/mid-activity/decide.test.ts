@@ -1,17 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  cadenceFromSessionStarts,
+  DEFAULT_SESSION_MS,
   decideMidActivityAsk,
-  midpointSession,
+  firstSessionAskWindow,
+  firstSessionEnd,
   preferenceFromCheckIn,
-  sessionsElapsed,
 } from './decide';
 
-const WEEK = 7 * 24 * 3_600_000;
-
-function weeklyStarts(count: number, first = Date.parse('2026-05-06T14:00:00.000Z')): Date[] {
-  return Array.from({ length: count }, (_, i) => new Date(first + i * WEEK));
-}
+const TZ = 'America/Toronto';
 
 describe('preferenceFromCheckIn', () => {
   it('treats a missing row as fewer, not the evening check-in daily default', () => {
@@ -25,138 +21,79 @@ describe('preferenceFromCheckIn', () => {
   });
 });
 
-describe('cadenceFromSessionStarts', () => {
-  it('calls one start, a same-day cluster, and a rare gap once', () => {
-    const day = Date.parse('2026-06-01T14:00:00.000Z');
-    expect(cadenceFromSessionStarts([new Date(day)])).toBe('once');
+describe('firstSessionEnd', () => {
+  it('takes the earliest session, its own end, or its start plus the default length', () => {
+    const a = new Date('2026-06-02T14:00:00.000Z');
+    const b = new Date('2026-06-09T14:00:00.000Z');
     expect(
-      cadenceFromSessionStarts([
-        new Date(day),
-        new Date(day + 2 * 3_600_000),
-        new Date(day + 4 * 3_600_000),
+      firstSessionEnd([
+        { startsAt: b, endsAt: null },
+        { startsAt: a, endsAt: new Date('2026-06-02T15:30:00.000Z') },
       ]),
-    ).toBe('once');
-    expect(cadenceFromSessionStarts([new Date(day), new Date(day + 21 * 24 * 3_600_000)])).toBe(
-      'once',
+    ).toEqual(new Date('2026-06-02T15:30:00.000Z'));
+    expect(firstSessionEnd([{ startsAt: a, endsAt: a }])).toEqual(
+      new Date(a.getTime() + DEFAULT_SESSION_MS),
     );
+    expect(firstSessionEnd([])).toBeNull();
+  });
+});
+
+describe('firstSessionAskWindow', () => {
+  it('opens at 18:00 local the day a morning session ends, closes 08:00 next morning', () => {
+    const w = firstSessionAskWindow(new Date('2026-06-02T15:00:00.000Z'), TZ); // 11:00 EDT
+    expect(w.opensAt).toEqual(new Date('2026-06-02T22:00:00.000Z'));
+    expect(w.closesAt).toEqual(new Date('2026-06-03T12:00:00.000Z'));
   });
 
-  it('calls a weekly gap weekly and a twice-a-week gap often', () => {
-    expect(cadenceFromSessionStarts(weeklyStarts(8))).toBe('weekly');
-    const first = Date.parse('2026-05-06T14:00:00.000Z');
-    const twice = Array.from({ length: 6 }, (_, i) => new Date(first + i * 3 * 24 * 3_600_000));
-    expect(cadenceFromSessionStarts(twice)).toBe('often');
+  it('opens when an early-evening session ends, and moves a late one to the next evening', () => {
+    const early = firstSessionAskWindow(new Date('2026-06-02T23:30:00.000Z'), TZ); // 19:30
+    expect(early.opensAt).toEqual(new Date('2026-06-02T23:30:00.000Z'));
+    const late = firstSessionAskWindow(new Date('2026-06-03T01:30:00.000Z'), TZ); // 21:30
+    expect(late.opensAt).toEqual(new Date('2026-06-03T22:00:00.000Z'));
+    expect(late.closesAt).toEqual(new Date('2026-06-04T12:00:00.000Z'));
   });
 });
 
 describe('decideMidActivityAsk', () => {
-  const now = new Date('2026-06-03T15:00:00.000Z');
-  const starts = weeklyStarts(8);
+  const ended = new Date('2026-06-02T15:00:00.000Z');
+  const base = { preference: 'fewer' as const, firstSessionEndedAt: ended, timeZone: TZ };
 
-  it('asks once, on the later middle session, when the parent has not asked for more', () => {
-    expect(sessionsElapsed(starts, now)).toBe(5);
-    expect(
-      decideMidActivityAsk({
-        cadence: 'weekly',
-        preference: 'fewer',
-        sessionsElapsed: 5,
-        sessionsPlanned: 8,
-        alreadyAsked: false,
-      }),
-    ).toEqual({ ask: true, atSession: 5 });
-    expect(midpointSession({ cadence: 'weekly', preference: 'fewer', sessionsPlanned: 8 })).toBe(5);
+  it('asks once, the evening after the first session', () => {
+    const at = new Date('2026-06-02T23:00:00.000Z');
+    expect(decideMidActivityAsk({ ...base, now: at, alreadyAsked: false })).toMatchObject({
+      ask: true,
+    });
+    expect(decideMidActivityAsk({ ...base, now: at, alreadyAsked: true })).toEqual({
+      ask: false,
+      reason: 'already_asked',
+    });
   });
 
-  it('asks one session earlier when the parent chose the regular cadence', () => {
+  it('waits for the evening, and does not catch up the next day', () => {
     expect(
       decideMidActivityAsk({
-        cadence: 'weekly',
-        preference: 'regular',
-        sessionsElapsed: 4,
-        sessionsPlanned: 8,
-        alreadyAsked: false,
-      }),
-    ).toEqual({ ask: true, atSession: 4 });
-  });
-
-  it('does not ask again, and does not catch up after the node', () => {
-    expect(
-      decideMidActivityAsk({
-        cadence: 'weekly',
-        preference: 'fewer',
-        sessionsElapsed: 5,
-        sessionsPlanned: 8,
-        alreadyAsked: true,
-      }),
-    ).toEqual({ ask: false, reason: 'already_asked' });
-    expect(
-      decideMidActivityAsk({
-        cadence: 'weekly',
-        preference: 'fewer',
-        sessionsElapsed: 6,
-        sessionsPlanned: 8,
-        alreadyAsked: false,
-      }),
-    ).toEqual({ ask: false, reason: 'past_window' });
-    expect(
-      decideMidActivityAsk({
-        cadence: 'weekly',
-        preference: 'fewer',
-        sessionsElapsed: 4,
-        sessionsPlanned: 8,
+        ...base,
+        now: new Date('2026-06-02T18:00:00.000Z'),
         alreadyAsked: false,
       }),
     ).toEqual({ ask: false, reason: 'too_soon' });
-  });
-
-  it('stays quiet when the parent turned asks off, or the series is too short or rare', () => {
     expect(
       decideMidActivityAsk({
-        cadence: 'weekly',
+        ...base,
+        now: new Date('2026-06-03T13:00:00.000Z'),
+        alreadyAsked: false,
+      }),
+    ).toEqual({ ask: false, reason: 'past_window' });
+  });
+
+  it('stays quiet when the parent turned asks off', () => {
+    expect(
+      decideMidActivityAsk({
+        ...base,
         preference: 'off',
-        sessionsElapsed: 5,
-        sessionsPlanned: 8,
+        now: new Date('2026-06-02T23:00:00.000Z'),
         alreadyAsked: false,
       }),
     ).toEqual({ ask: false, reason: 'preference_off' });
-    expect(
-      decideMidActivityAsk({
-        cadence: 'once',
-        preference: 'regular',
-        sessionsElapsed: 1,
-        sessionsPlanned: 1,
-        alreadyAsked: false,
-      }),
-    ).toEqual({ ask: false, reason: 'too_rare' });
-    expect(
-      decideMidActivityAsk({
-        cadence: 'weekly',
-        preference: 'fewer',
-        sessionsElapsed: 3,
-        sessionsPlanned: 5,
-        alreadyAsked: false,
-      }),
-    ).toEqual({ ask: false, reason: 'too_rare' });
-  });
-
-  it('uses one later node for an open-ended series when the parent prefers fewer', () => {
-    expect(midpointSession({ cadence: 'weekly', preference: 'fewer', sessionsPlanned: null })).toBe(
-      4,
-    );
-    expect(
-      midpointSession({ cadence: 'weekly', preference: 'regular', sessionsPlanned: null }),
-    ).toBe(3);
-    expect(midpointSession({ cadence: 'often', preference: 'fewer', sessionsPlanned: null })).toBe(
-      6,
-    );
-    expect(
-      decideMidActivityAsk({
-        cadence: 'often',
-        preference: 'regular',
-        sessionsElapsed: 4,
-        sessionsPlanned: null,
-        alreadyAsked: false,
-      }),
-    ).toEqual({ ask: true, atSession: 4 });
   });
 });

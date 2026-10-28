@@ -1,6 +1,10 @@
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
 import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import {
+  createPreviewCaptureTransport,
+  previewCaptureRequested,
+} from '~/lib/channel/preview-capture-transport';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 
 /**
@@ -13,6 +17,9 @@ import type { MessageTransport } from '~/lib/channel/transport-address';
  * Callers ledger beside the send. This module does not.
  */
 export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
+  // Preview proof runs only. Throws (never falls through to Linq) when the
+  // flag is on outside preview or beside a configured Linq door.
+  if (previewCaptureRequested()) return createPreviewCaptureTransport();
   if (!linqPhoneOutboundConfigured()) {
     return {
       async send() {

@@ -198,16 +198,6 @@ function harness(
     // Mirrors prod: the suppression set is the union of what the family was already
     // TOLD (read back off the ledger the sweep itself writes) and what they said is
     // DONE. Faking only the latter would hide the fall-through this feature depends on.
-    loadSuppressedCheckpoints: async (_db, familyId) => {
-      const prefix = `nudge:${familyId}:health:`;
-      // SEAM: prod's reader strips the recipient qualifier before parsing the ref
-      // (health/told.ts loadToldCheckpointRefs) — two parents told the same checkpoint
-      // is one fact about the household, written twice because the key is unique.
-      const told = [...dedupeKeys]
-        .filter((key) => key.startsWith(prefix))
-        .map((key) => key.slice(prefix.length).split('#')[0] as string);
-      return new Set([...told, ...(options.doneCheckpoints ?? [])]);
-    },
     loadClaimedWindowIds: async () => options.claimedWindowIds ?? new Set<string>(),
     loadWeekdayCareContext: async () =>
       options.weekdayCare ?? { stated: [], askedBefore: false, weekendFindSent: false },
@@ -269,10 +259,6 @@ function harness(
       return { status: 'none_open' };
     },
     // The offer half of the same seam, recorded rather than executed for the same reason.
-    recordCheckupOffer: async (_db, input) => {
-      offers.push({ ref: input.ref, channelMessageId: input.channelMessageId });
-      return { status: 'not_an_offer' };
-    },
     recordActivityOffers: async (_db, familyId, picks) => {
       for (const pick of picks)
         writes.push({ table: schema.familyActivityHistory, payload: { familyId, ...pick } });
@@ -602,6 +588,14 @@ describe('runNudgeCron — the outbound gate', () => {
     const loadCandidates = vi.fn(async () => []);
     await runNudgeCron(db(), { ...h.deps, loadCandidates }, FRIDAY_10AM);
     expect(loadCandidates).not.toHaveBeenCalled();
+  });
+
+  it("hands the family's language to the live search", async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ families: [family({ language: 'zh' })] });
+    const loadCandidates = vi.fn(async () => []);
+    await runNudgeCron(db(), { ...h.deps, loadCandidates }, FRIDAY_10AM);
+    expect(loadCandidates).toHaveBeenCalledWith(expect.anything(), 'fam-1', FRIDAY_10AM, TZ, 'zh');
   });
 });
 
@@ -1018,8 +1012,8 @@ describe('runNudgeCron — the weekday drop-in', () => {
       seasons: null,
       childId: null,
       confidence: 0.9,
-      source: 'civic_registry',
-      sourceUrl: null,
+      source: 'web',
+      sourceUrl: 'https://venue.example/dropin',
       access: null,
       whenLabel: null,
     },
@@ -1164,8 +1158,8 @@ describe('runNudgeCron — the weekday-care ask', () => {
       seasons: null,
       childId: null,
       confidence: 0.9,
-      source: 'civic_registry',
-      sourceUrl: null,
+      source: 'web',
+      sourceUrl: 'https://venue.example/dropin',
       access: null,
       whenLabel: null,
     },
@@ -1344,7 +1338,7 @@ describe('the call-name line after a find', () => {
           seasons: null,
           childId: null,
           confidence: 0.9,
-          source: 'civic_registry',
+          source: 'web',
           sourceUrl: null,
           access: null,
           whenLabel: null,
@@ -1374,7 +1368,7 @@ describe('runNudgeCron — empty Saturday', () => {
         candidate({
           id: 'sat-1',
           title: 'EarlyON Saturday',
-          source: 'civic_registry',
+          source: 'web',
           eventDate: SATURDAY,
           sourceUrl: 'https://tpl.example/earlyon',
         }),
@@ -1398,9 +1392,7 @@ describe('runNudgeCron — empty Saturday', () => {
     const h = harness({
       enrolled: false,
       saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
-      candidates: [
-        candidate({ source: 'civic_registry', eventDate: SATURDAY, title: 'EarlyON Saturday' }),
-      ],
+      candidates: [candidate({ source: 'web', eventDate: SATURDAY, title: 'EarlyON Saturday' })],
     });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
     expect(result.sent).toBe(0);

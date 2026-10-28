@@ -128,6 +128,7 @@ export interface ProactiveReviewDeps {
   compose(input: {
     items: readonly ToolCandidate[];
     client: AgentClient | null;
+    language?: string | null;
   }): Promise<WriterResult>;
   buildGate(database: Database): OutboundGatePorts;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
@@ -264,7 +265,7 @@ export async function runProactiveReview(
       // are only that kind is decided as live, so the model can keep a pace it heard.
       // A nudge sitting beside it stays on the shadow path.
       const familyMode: 'shadow' | 'live' =
-        mode === 'shadow' && items.every((item) => item.kind === 'evening_check_in')
+        mode === 'shadow' && items.every((item) => DECIDER_ONLY_KINDS.includes(item.kind))
           ? 'live'
           : mode;
       await reviewFamily(database, deps, { familyId, items, now, mode: familyMode, summary });
@@ -296,7 +297,7 @@ async function reviewEveningCheckIns(
     .where(
       and(
         inArray(schema.proactiveCandidates.status, ['queued', 'held']),
-        eq(schema.proactiveCandidates.kind, 'evening_check_in'),
+        inArray(schema.proactiveCandidates.kind, [...DECIDER_ONLY_KINDS]),
       ),
     );
   for (const { familyId } of families) {
@@ -307,7 +308,7 @@ async function reviewEveningCheckIns(
         now,
         'live',
         summary,
-        'evening_check_in',
+        DECIDER_ONLY_KINDS,
       );
       if (items.length === 0) continue;
       summary.families += 1;
@@ -323,7 +324,7 @@ async function reviewEveningCheckIns(
  * This family's actionable rows, oldest first and at most `FAMILY_ROWS` of them, then its
  * holds still on their clock, newest first and at most `WAITING_ROWS` of them.
  *
- * `onlyKind` limits both reads. The off-flag pass uses it so a nudge is neither offered
+ * `onlyKinds` limits both reads. The off-flag pass uses it so a nudge is neither offered
  * nor settled.
  */
 async function loadOpenItems(
@@ -332,9 +333,10 @@ async function loadOpenItems(
   now: Date,
   mode: 'shadow' | 'live',
   summary: ProactiveReviewSummary,
-  onlyKind?: ProactiveSendKind,
+  onlyKinds?: readonly ProactiveSendKind[],
 ): Promise<QueuedItem[]> {
-  const kindIs = onlyKind === undefined ? undefined : eq(schema.proactiveCandidates.kind, onlyKind);
+  const kindIs =
+    onlyKinds === undefined ? undefined : inArray(schema.proactiveCandidates.kind, [...onlyKinds]);
   const actionable = await database
     .select()
     .from(schema.proactiveCandidates)
@@ -459,6 +461,12 @@ async function loadOpenItems(
   }
   return items;
 }
+
+/**
+ * Kinds with no sweep of their own left to send them: the evening check-in and the
+ * VIL-393 mid-activity ask. They are reviewed live even while the cadence flag is off.
+ */
+const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = ['evening_check_in', 'mid_activity_ask'];
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CATEGORY, kind);
@@ -926,8 +934,8 @@ async function reviewFamily(
   if (mode === 'shadow') {
     // A check-in in a mixed batch has no old path left. The rest of the batch is
     // still shadowed: lighting shadow must not start sending nudges.
-    const checkIns = chosen.filter((item) => item.kind === 'evening_check_in');
-    const rest = chosen.filter((item) => item.kind !== 'evening_check_in');
+    const checkIns = chosen.filter((item) => DECIDER_ONLY_KINDS.includes(item.kind));
+    const rest = chosen.filter((item) => !DECIDER_ONLY_KINDS.includes(item.kind));
     if (rest.length > 0) {
       await mark(
         database,
@@ -944,11 +952,17 @@ async function reviewFamily(
       summary.shadowed += 1;
     }
     if (checkIns.length > 0) {
-      await sendChosen(database, deps, { familyId, chosen: checkIns, now, summary });
+      await sendChosen(database, deps, {
+        familyId,
+        chosen: checkIns,
+        now,
+        summary,
+        language: context.language,
+      });
     }
     return;
   }
-  await sendChosen(database, deps, { familyId, chosen, now, summary });
+  await sendChosen(database, deps, { familyId, chosen, now, summary, language: context.language });
 }
 
 /**
@@ -989,6 +1003,8 @@ async function sendChosen(
     chosen: QueuedItem[];
     now: Date;
     summary: ProactiveReviewSummary;
+    /** The family's stored language tag, for the writer (VIL-393). */
+    language?: string | null;
   },
 ): Promise<void> {
   const { familyId, now, summary } = input;
@@ -1076,7 +1092,11 @@ async function sendChosen(
     const setKey = [...distinct.keys()].sort().join('\n\n');
     let written = writtenFor.get(setKey);
     if (!written) {
-      written = await deps.compose({ items: [...distinct.values()], client: deps.client });
+      written = await deps.compose({
+        items: [...distinct.values()],
+        client: deps.client,
+        language: input.language ?? null,
+      });
       writtenFor.set(setKey, written);
     }
     if ('skipped' in written) {

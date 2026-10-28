@@ -103,8 +103,6 @@ const MAX_PICKS = 3;
 const MAX_SEARCHES = 3;
 const MAX_INLINE_FETCHES = 3;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
-const FIRST_SEGMENT_CHARS = 153;
-
 // ── the lane's request shapes, replicated from lane.ts ───────────────────────
 
 const PICKS_TOOL_SCHEMA = {
@@ -509,7 +507,7 @@ function identifyingWords(name) {
 function topPickLeads(body, picks) {
   const top = picks[0];
   if (!top) return true;
-  const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  const head = body.toLowerCase();
   // A find is identified by its programme OR by its place: a composite `name` that reduces
   // to a programme stream ("...Preschool and Kinderfun") is not what a parent reads.
   const venue = identifyingWords(top.sourceName ?? top.source_name ?? '');
@@ -595,7 +593,7 @@ function followUpViolations(body, picks, pageEvidence, watch, commitsToReturn) {
   if (!topPickLeads(body, picks)) {
     violations.push({
       tag: 'buried_top_pick',
-      reason: `The best find (${picks[0]?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+      reason: `The best find (${picks[0]?.name}) is not named. Lead with it.`,
     });
   }
   if (body.includes('?')) {

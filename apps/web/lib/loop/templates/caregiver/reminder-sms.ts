@@ -11,7 +11,7 @@ import type { CaregiverReminderEvent, CaregiverReminderPayload } from './payload
  * and diverges in the two places the recipient differs. It carries the LOCATION, which is
  * the half of "event logistics" the parents' copy never needed. And it runs no voice
  * stage: the reminder voice is composed once per parent batch against that parent's own
- * name dial (loop/voice/reminder-voice.ts), so pointing it at a caregiver would spend a
+ * name dial (loop/reminders/compose.ts), so pointing it at a caregiver would spend a
  * model call to write a stranger a sentence in somebody else's register.
  *
  * No genericization branch here, and that is not an omission: an event a caregiver may

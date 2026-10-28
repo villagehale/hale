@@ -916,7 +916,7 @@ describe('decideRadar — the registration line carries its page', () => {
 describe('decideRadar — what the weekend pick says to do about itself', () => {
   const civic = (over: Partial<RadarCandidate> = {}) =>
     candidate({
-      source: 'civic_registry',
+      source: 'web',
       eventDate: SATURDAY_DATE,
       sourceUrl: 'https://www.torontopubliclibrary.ca/events/abc',
       access: 'drop_in',

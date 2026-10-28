@@ -15,27 +15,20 @@ describe('placeFromMessage', () => {
     expect(placeFromMessage('416')).toBeNull();
   });
 
-  it('accepts a city as the whole message, including the ambiguous names', () => {
-    expect(placeFromMessage('Toronto')).toMatchObject({
-      kind: 'city',
-      municipality: 'toronto',
-      city: 'Toronto',
+  it('reads a US ZIP and does not treat a city name as a place', () => {
+    expect(placeFromMessage('we are in 10001')).toMatchObject({
+      kind: 'postal',
+      areaCoarse: '100',
+      postalCode: '10001',
     });
-    expect(placeFromMessage('Sharon')).toMatchObject({
-      kind: 'city',
-      municipality: 'east_gwillimbury',
+    expect(placeFromMessage('90210')).toMatchObject({
+      kind: 'postal',
+      postalCode: '90210',
+      areaCoarse: '902',
     });
-    expect(placeFromMessage('York')).toMatchObject({ kind: 'city', municipality: 'toronto' });
-    expect(placeFromMessage('King')).toMatchObject({ kind: 'city', municipality: 'king' });
-  });
-
-  it('does not treat those ambiguous names as a place when they sit inside a sentence', () => {
-    expect(placeFromMessage('Sharon is 4')).toBeNull();
-    expect(placeFromMessage('we live in York')).toBeNull();
-    expect(placeFromMessage('King is coming')).toBeNull();
-    expect(placeFromMessage('north york please')).toMatchObject({
-      kind: 'city',
-      municipality: 'toronto',
-    });
+    expect(placeFromMessage('Toronto')).toBeNull();
+    expect(placeFromMessage('Chicago')).toBeNull();
+    expect(placeFromMessage('north york please')).toBeNull();
+    expect(placeFromMessage('SW1A 1AA')).toBeNull();
   });
 });

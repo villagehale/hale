@@ -28,15 +28,6 @@ export interface ReminderEventView {
   sensitive?: boolean;
 }
 
-/**
- * VIL-229 reminder voice object — voice-only fields (facts stay slots, never generated).
- * One human line for now; an object (not a bare string) so it matches the generic
- * composeVoice<TVoice> seam and can grow (e.g. an opener) without a breaking field change.
- */
-export interface ReminderVoice {
-  line: string;
-}
-
 export interface ReminderPayload {
   offset: '-P1D' | '-PT1H';
   /** The family IANA timezone — the event time labels ("10:00") are family-local. */
@@ -48,24 +39,11 @@ export interface ReminderPayload {
   /** CASL unsubscribe for the email leg; null only when email is not a target. */
   unsubscribeUrl: string | null;
   /**
-   * VIL-229 voice slot — the LLM-composed human line, composed at the evening converge
-   * tick from the SAME redacted view the template renders (teen-gated, sensitive-
-   * genericized, name-leveled), so the email shell renders it verbatim without a second
-   * privacy gate. The email uses `voice.line` as the serif signature line (single) or a
-   * serif lead above the list (batch); facts (the time) stay slot-injected, never in the
-   * voice string. Absent/null (composeVoice degraded) → the deterministic line is the
-   * fail-open fallback (rule #8).
-   *
-   * BOTH CHANNELS READ IT. This line used to end "Email-only; SMS/push keep their terse
-   * deterministic copy", and that was a contract the SMS renderer honoured by throwing a
-   * composed sentence away on the surface a parent actually reads. The SMS now folds it in
-   * behind a measured gate (sms.ts, `foldReminderVoice`): GSM-7 byte identity, zero
-   * questions, the deterministic day lead kept in front of it, and the whole message
-   * still inside ONE segment — the glance this template promises. Every refusal is named
-   * and leaves the renderer on `RenderedContent.voice`, so "the composer degraded" and
-   * "the fold refused it" are never the same silence.
+   * The whole text, written by the model from facts in the parent's language
+   * (loop/reminders/compose.ts). The renderer sends it as is: no lead, no event line,
+   * no appended link. A reminder whose text could not be written is never enqueued.
    */
-  voice?: ReminderVoice | null;
+  text: string;
 }
 
 function isReminderEventView(value: unknown): value is ReminderEventView {
@@ -91,5 +69,8 @@ export function asReminderPayload(payload: Record<string, unknown>): ReminderPay
     throw new Error('reminder payload: malformed events');
   }
   if (!Array.isArray(payload.children)) throw new Error('reminder payload: missing children');
+  if (typeof payload.text !== 'string' || payload.text.trim() === '') {
+    throw new Error('reminder payload: missing text');
+  }
   return payload as unknown as ReminderPayload;
 }

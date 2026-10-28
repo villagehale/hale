@@ -1,6 +1,6 @@
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { type BookMe4Model, type SpotTransitionKind, fragment } from './availability';
 
 /**
@@ -155,7 +155,6 @@ export function spotOpenViolations(body: string, context: SpotOpenContext): stri
     violations.push('unbacked_digit');
   }
 
-  if (!isGsm7(body)) violations.push('not_gsm7');
   if (smsSegments(withOptOut(body, 'full')) > MAX_SPOT_OPEN_SEGMENTS) {
     violations.push('too_many_segments');
   }

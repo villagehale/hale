@@ -801,7 +801,16 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // through. Both execution paths get it: an approved placement (actions.approved) and
   // an autonomous one (events.ingested). Unbound, a placement would land on Hale's
   // calendar and nowhere else, which is the hole this closes.
-  const googlePlacement = createGoogleCalendarPlacement(db());
+  const { productionCalendarWriteNoticePorts, withCalendarWriteNotice } = await import(
+    '~/lib/channel/calendar-write/send'
+  );
+  // VIL-454 (T6): the parent hears how the write to their own calendar went. The
+  // decorator returns the report untouched and only texts when
+  // CALENDAR_WRITE_NOTICE_ENABLED is exactly `true` (default off).
+  const googlePlacement = withCalendarWriteNotice(
+    createGoogleCalendarPlacement(db()),
+    productionCalendarWriteNoticePorts(db()),
+  );
   const calendarInvites = createCalendarInviteSender(db(), {
     channels,
     renderer: loopTemplateRenderer,

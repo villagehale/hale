@@ -8,7 +8,6 @@ import {
   lopsidedConsentCopy,
 } from './burden';
 import {
-  COPARENT_DUTY_COPY_LOCKED_ENV,
   DUTY_CHANGE_NEXT_EN,
   DUTY_CHANGE_NEXT_FR,
   DUTY_NIGHT_BEFORE_COPY_EN,
@@ -47,7 +46,6 @@ const BANNED_SEND = /reply stop|unsubscribe/i;
 describe('duty guardrails', () => {
   it('keeps the five group lines locked, and a token cannot leave', () => {
     expect(burdenMayLeave()).toBe(false);
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     vi.stubEnv('COPARENT_DUTY_BURDEN_SURFACE_ENABLED', 'true');
     expect(DUTY_UNDO_TEXT_TODO).toBe("Undone. Say so here if I've got it wrong.");
     expect(DUTY_UNDO_TEXT_FR).toBe("C'est annule. Dites-le ici si je me trompe.");
@@ -123,17 +121,6 @@ describe('duty guardrails', () => {
         time: '3:00pm',
       }),
     ).toBeNull();
-    expect(
-      dutyOwnerEcho('en', {
-        name: 'Barton',
-        kid: 'Maya',
-        event: 'swim',
-        day: 'Saturday',
-        time: '3:00pm',
-      }),
-    ).toBeNull();
-
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     const line = dutyOwnerEcho('en', {
       name: 'Barton',
       kid: 'Maya',

@@ -192,7 +192,11 @@ describe('disconnect by text, end to end', () => {
     expect(await revokeRows()).toHaveLength(0);
   });
 
-  it('answers a French instruction in French', async () => {
+  it('answers a French household in French', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, family.familyId));
     await connect(family.parentUserId);
 
     const verdict = await text('deconnectez mon agenda svp');

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
+import { productionChannels } from '~/lib/channel/adapters/production';
 import { runAutonomyNoticeRedrive } from '~/lib/channel/autonomy/dispatch';
 import { autonomyNoticePorts } from '~/lib/channel/autonomy/ports';
 import { runEveningCheckInSweep } from '~/lib/channel/checkin/sweep';
@@ -15,6 +16,12 @@ import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
+import {
+  createCalendarInviteSender,
+  retryDeferredCalendarCancels,
+} from '~/lib/loop/calendar-invite';
+import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
+import { productionCalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
 import { runWorkstreamFollowupSweep } from '~/lib/memory/workstream-followup';
 import { reviewVerdictClient, runReviewCapture } from '~/lib/reviews/capture';
 import { createVerdictReader } from '~/lib/reviews/verdict';
@@ -141,6 +148,16 @@ export const GET = cronRoute('nudge', async () => {
       now: answeredAt,
     });
     const workstreamFollowups = await runWorkstreamFollowupSweep(db());
+    // VIL-449 · cancellation texts that were deferred (or held) get another try, hourly,
+    // through the same sender: dedupe, consent and quiet hours apply in the dispatch.
+    const calendarCancelRetries = await retryDeferredCalendarCancels(
+      db(),
+      createCalendarInviteSender(db(), {
+        channels: productionChannels(db()),
+        renderer: loopTemplateRenderer,
+        cancelVoice: productionCalendarCancelVoice(),
+      }),
+    );
     return NextResponse.json(
       {
         ok: true,
@@ -159,6 +176,7 @@ export const GET = cronRoute('nudge', async () => {
         midActivityAsks,
         midActivityAnswers,
         workstreamFollowups,
+        calendarCancelRetries,
       },
       { status: 200 },
     );

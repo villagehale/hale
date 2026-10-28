@@ -1,4 +1,3 @@
-import { replyLanguage } from '~/lib/channel/language';
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import { type OptOutReading, isIdentityReading } from './opt-out-reader';
 
@@ -62,7 +61,7 @@ export async function identityChallengeReply(
   }
   const written = await writer.write({
     purpose: 'identity',
-    language: replyLanguage(body),
+    language: null,
     parentWords: body,
     facts: { ...IDENTITY_FACTS },
     mustInclude: [IDENTITY_FACTS.website, IDENTITY_FACTS.contactEmail],

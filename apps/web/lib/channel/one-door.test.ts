@@ -90,6 +90,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/connect/connected-notice.ts':
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
+  'apps/web/lib/channel/calendar-write/send.ts':
+    'VIL-454 calendar write notice: claims a channel_messages row (templateKey calendar_write_notice) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
   'apps/web/lib/channel/connect/fresh-link.ts':
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
 };

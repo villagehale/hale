@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own. Autonomy was switched off this turn for send_email and reply_to_email, so Hale really will ask before each one. The reply confirms that in one plain sentence, in the parent's language. It invents nothing and has no question, greeting or sign-off. Nothing needed drafting.",
+    "score": 5
+  }
+}

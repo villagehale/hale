@@ -124,7 +124,6 @@ function inputFor(
     // deciding between a registration date and a weekend.
     healthChildren: [],
     areaCoarse: null,
-    suppressedCheckpointRefs: new Set<string>(),
     // VIL-242 · no M7 sequence has claimed anything by default.
     claimedWindowIds: new Set<string>(),
     // VIL-360 · the weekday legs are off unless a case arms them, so every case
@@ -468,7 +467,7 @@ describe('decideNudge — no health checkpoint', () => {
  * VIL-360 · priority 4 — the WEEKDAY civic drop-in.
  *
  * Expectations come from the brief's rules, not from the code: a weekday time claim
- * may rest ONLY on a civic_registry row (R4); a row the weekly sweep dated to a day
+ * may rest ONLY on a dated live web find with its page (R4); a row the weekly sweep dated to a day
  * that has already gone may never be offered (R8); and the three care states are
  * three DIFFERENT skip reasons, because "they said daycare" and "nobody told us" call
  * for opposite next moves (R9, rule #11).
@@ -496,7 +495,8 @@ describe('decideNudge — priority 4: a weekday civic drop-in', () => {
       id: 'civic-1',
       title: 'EarlyON drop-in',
       venueName: 'Armour Heights',
-      source: 'civic_registry',
+      source: 'web',
+      sourceUrl: 'https://venue.example/dropin',
       // The Tuesday after FRIDAY.
       eventDate: '2026-08-04',
       ...overrides,
@@ -719,7 +719,8 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
     return candidate({
       id: 'civic-1',
       title: 'EarlyON drop-in',
-      source: 'civic_registry',
+      source: 'web',
+      sourceUrl: 'https://venue.example/dropin',
       eventDate: '2026-08-04',
       ...overrides,
     });
@@ -1014,7 +1015,8 @@ describe('decideNudge — an empty Saturday', () => {
       id: 'sat-1',
       title: 'EarlyON Saturday',
       venueName: 'Armour Heights',
-      source: 'civic_registry',
+      source: 'web',
+      sourceUrl: 'https://venue.example/saturday',
       eventDate: SATURDAY,
       confidence: 0.5,
       ...overrides,

@@ -22,13 +22,14 @@ describe('acceptConsentAsk', () => {
     vi.restoreAllMocks();
   });
 
-  it('drops a keyword instruction, a non-GSM-7 draft, and an over-long draft', () => {
+  it('drops a keyword instruction and keeps a long draft in another script', () => {
     const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const long = `${'Want me to keep this change? '.repeat(20)}`;
     expect(acceptConsentAsk('Reply YES today.')).toBeNull();
-    expect(acceptConsentAsk('帮我问问他们')).toBeNull();
-    expect(acceptConsentAsk(`${'Want me to keep this change? '.repeat(20)}`)).toBeNull();
+    expect(acceptConsentAsk('帮我问问他们')).toBe('帮我问问他们');
+    expect(acceptConsentAsk(long)).toBe(long);
     expect(acceptConsentAsk('Want me to send your note?')).toBe('Want me to send your note?');
-    expect(JSON.stringify(logged.mock.calls)).not.toContain('帮我');
+    expect(JSON.stringify(logged.mock.calls)).not.toContain('over_segment_cap');
   });
 });
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in Chinese, says tomorrow, lists library story time at 11:00 morning and soccer 5:30-6:30 afternoon, correct AM/PM, no invented details, no link (planLink not required), calm tone. Minor issue: uses 上午11点 and 下午5:30 which is accurate; no extra facts.",
+    "score": 5
+  }
+}

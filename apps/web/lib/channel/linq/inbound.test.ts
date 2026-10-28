@@ -19,11 +19,11 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
-  LINQ_GROUP_CLAIM_REFUSED_TEXT,
-  LINQ_GROUP_LINE_MISSING_TEXT,
   LINQ_GROUP_OPEN_TEXT,
   LINQ_GROUP_TRIGGER_PHRASE,
   linqCoParentAsk,
+  linqGroupClaimRefused,
+  linqGroupLineMissing,
   linqGroupMakeInstruction,
   linqGroupTriggerInOneToOne,
 } from './group';
@@ -194,35 +194,38 @@ afterEach(() => {
 });
 
 describe('design-locked claim copy', () => {
-  it('keeps the approved sentences byte for byte', () => {
-    expect(LINQ_GROUP_CLAIM_REFUSED_TEXT).toEqual({
-      en: "I can't use this thread as your kids' year.",
-      fr: "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
-    });
-    expect(LINQ_GROUP_LINE_MISSING_TEXT).toEqual({
-      en: "I don't have a number for you to add to a group yet.",
-      fr: "Je n'ai pas encore de numero a ajouter a un groupe.",
-    });
+  it('keeps the approved sentences byte for byte', async () => {
+    expect(await linqGroupClaimRefused('en')).toBe("I can't use this thread as your kids' year.");
+    expect(await linqGroupClaimRefused('fr')).toBe(
+      "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
+    );
+    expect(await linqGroupClaimRefused('fr')).not.toBe(await linqGroupClaimRefused('en'));
+    expect(await linqGroupLineMissing('en')).toBe(
+      "I don't have a number for you to add to a group yet.",
+    );
+    expect(await linqGroupLineMissing('fr')).toBe(
+      "Je n'ai pas encore de numero a ajouter a un groupe.",
+    );
     expect(LINQ_GROUP_TRIGGER_PHRASE).toEqual({
       en: 'this is our year',
       fr: 'cest notre annee',
     });
-    expect(linqGroupMakeInstruction('+1 646-235-2164', 'en')).toBe(
+    expect(await linqGroupMakeInstruction('+1 646-235-2164', 'en')).toBe(
       'Start an iMessage group with them and this number: +1 646-235-2164. In that group, send: this is our year.',
     );
-    expect(linqGroupMakeInstruction('+1 646-235-2164', 'fr')).toBe(
+    expect(await linqGroupMakeInstruction('+1 646-235-2164', 'fr')).toBe(
       'Ouvre un groupe iMessage avec eux et ce numero: +1 646-235-2164. Dans ce groupe, envoie: cest notre annee.',
     );
-    expect(linqCoParentAsk('+1 646-235-2164', 'en')).toBe(
+    expect(await linqCoParentAsk('+1 646-235-2164', 'en')).toBe(
       "Want the other parent on the kids' year too? Start an iMessage group with them and this number: +1 646-235-2164. In that group, send: this is our year.",
     );
-    expect(linqCoParentAsk('+1 646-235-2164', 'fr')).toBe(
+    expect(await linqCoParentAsk('+1 646-235-2164', 'fr')).toBe(
       "Tu veux l'autre parent sur l'annee des enfants aussi? Ouvre un groupe iMessage avec eux et ce numero: +1 646-235-2164. Dans ce groupe, envoie: cest notre annee.",
     );
-    expect(linqGroupTriggerInOneToOne('+1 646-235-2164', 'en')).toBe(
+    expect(await linqGroupTriggerInOneToOne('+1 646-235-2164', 'en')).toBe(
       'That phrase belongs in the group. Start an iMessage group with them and +1 646-235-2164, then send: this is our year.',
     );
-    expect(linqGroupTriggerInOneToOne('+1 646-235-2164', 'fr')).toBe(
+    expect(await linqGroupTriggerInOneToOne('+1 646-235-2164', 'fr')).toBe(
       'Cette phrase va dans le groupe. Ouvrez un groupe iMessage avec eux et +1 646-235-2164, puis envoyez: cest notre annee.',
     );
     expect(LINQ_GROUP_OPEN_TEXT).toBe("This thread is your kids' year — both of you, and me.");
@@ -443,7 +446,7 @@ describe('handleLinqInboundRequest', () => {
       claim: 'claimed_by_other_family',
       notice: 'sent',
     });
-    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: LINQ_GROUP_CLAIM_REFUSED_TEXT.en }]);
+    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: await linqGroupClaimRefused('en') }]);
     expect(h.jobs).toHaveLength(0);
     const mine = h.fake.rows(schema.families).find((row) => row.id === familyId);
     const other = h.fake.rows(schema.families).find((row) => row.id === otherId);
@@ -474,7 +477,7 @@ describe('handleLinqInboundRequest', () => {
       outcome: 'group_claim_refused',
       claim: 'claimed_by_other_family',
     });
-    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: LINQ_GROUP_CLAIM_REFUSED_TEXT.fr }]);
+    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: await linqGroupClaimRefused('fr') }]);
     const mine = h.fake.rows(schema.families).find((row) => row.id === familyId);
     expect(mine?.linqGroupChatId ?? null).toBeNull();
   });
@@ -500,7 +503,7 @@ describe('handleLinqInboundRequest', () => {
     expect(h.sends).toEqual([
       {
         chatId: CHAT_ID,
-        text: linqGroupTriggerInOneToOne('+1 646-235-2164', 'en'),
+        text: await linqGroupTriggerInOneToOne('+1 646-235-2164', 'en'),
       },
     ]);
     const family = h.fake.rows(schema.families).find((row) => row.id === familyId);

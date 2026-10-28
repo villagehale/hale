@@ -85,9 +85,9 @@ describe('intake answer · what may not go out', () => {
     expect(problems('OHIP covers it.', 'Want me keeping an eye on it?')).toEqual([]);
   });
 
-  it('refuses an invented time and a body a carrier would bill twice', () => {
+  it('refuses an invented time and sends an accented reply', () => {
     expect(problems('Clinics near you open at 9:30 most days.')).toContain('invented_fact');
-    expect(problems('OHIP covers it — free every year.')).toContain('not_gsm7');
+    expect(problems('OHIP covers it — free every year.')).not.toContain('not_gsm7');
     // The cap is on the JOINED body, because that is what a carrier bills: a long half
     // riding behind a short one is a message that sends perfectly well.
     expect(problems('x'.repeat(MAX_REPLY_CHARS), RETURN)).toContain('over_char_cap');

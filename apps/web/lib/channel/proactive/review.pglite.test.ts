@@ -1862,9 +1862,11 @@ describe('runProactiveReview', () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     await storedPaceAndPriorHold();
     const handed: string[][] = [];
+    const languages: (string | null | undefined)[] = [];
     const h = harness(sendAll, {
       compose: async (input): Promise<WriterResult> => {
         handed.push(Object.keys(input).sort());
+        languages.push(input.language);
         return { message: MESSAGE };
       },
     });
@@ -1873,7 +1875,9 @@ describe('runProactiveReview', () => {
 
     expect(summary).toMatchObject({ sent: 1 });
     expect(h.snapshots[0]?.frequencyPreference).toEqual({ direction: 'less' });
-    expect(handed).toEqual([['client', 'items']]);
+    // VIL-393 · the family's stored language tag rides along; no pace words do.
+    expect(handed).toEqual([['client', 'items', 'language']]);
+    expect(languages).toEqual(['en']);
   });
 
   it('reads only the newest parent texts the decider is shown on its first look', async () => {

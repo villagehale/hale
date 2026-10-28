@@ -39,7 +39,9 @@ describe('toPublicActivity — the closed allow-list (rule #1)', () => {
   });
 
   it('never echoes childId — the projection has no field to carry it', () => {
-    const serialized = JSON.stringify(toPublicActivity(familyWideCandidate({ childId: 'child-uuid' })));
+    const serialized = JSON.stringify(
+      toPublicActivity(familyWideCandidate({ childId: 'child-uuid' })),
+    );
     expect(serialized).not.toContain('childId');
     expect(serialized).not.toContain('child-uuid');
   });
@@ -57,7 +59,9 @@ describe('toPublicActivity — untrusted text/URL hardening (rule #1)', () => {
       toPublicActivity(familyWideCandidate({ sourceUrl: 'data:text/html,<script>1</script>' }))
         .sourceUrl,
     ).toBeNull();
-    expect(toPublicActivity(familyWideCandidate({ sourceUrl: '/relative/path' })).sourceUrl).toBeNull();
+    expect(
+      toPublicActivity(familyWideCandidate({ sourceUrl: '/relative/path' })).sourceUrl,
+    ).toBeNull();
   });
 
   it('keeps a valid absolute http and https sourceUrl', () => {

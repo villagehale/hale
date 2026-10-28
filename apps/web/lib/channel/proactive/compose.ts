@@ -27,6 +27,8 @@ export { WRITER_TOOL_SCHEMA, type WriterResult, readWriterText, withActivityLink
 export async function composeProactiveBatch(input: {
   items: readonly ToolCandidate[];
   client: AgentClient | null;
+  /** The family's stored language tag, handed to the writer as-is. */
+  language?: string | null;
 }): Promise<WriterResult> {
   if (!input.client) return { skipped: 'no_client' };
   const skill = await loadCronSkill(WRITER_SKILL);
@@ -37,7 +39,7 @@ export async function composeProactiveBatch(input: {
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
       // No cadence note: a parent's words about pace are not stored (preference.ts).
-      userMessage: writerContext(input.items, null),
+      userMessage: writerContext(input.items, null, input.language ?? null),
       toolName: WRITER_TOOL,
       toolDescription: 'The one text Hale sends.',
       inputJsonSchema: WRITER_TOOL_SCHEMA,
