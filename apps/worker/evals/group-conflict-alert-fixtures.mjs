@@ -13,6 +13,7 @@
 const TORONTO = 'America/Toronto';
 const barton = { id: 'barton', name: 'Barton', calendar: true };
 const sam = { id: 'sam', name: 'Sam', calendar: true };
+const nana = { id: 'nana', name: 'Nana', calendar: false };
 
 const twoPickups = [
   {
@@ -189,5 +190,251 @@ export const GROUP_CONFLICT_ALERT_FIXTURES = [
     ],
     events: [],
     expect: null,
+  },
+];
+
+// Pickup claims: one group message read for whether the sender took, or gave back, a plan.
+//
+// The household is stated the same way, plus the who-takes decisions already stored
+// (`decisions`), when an earlier sweep sent the alert (`alertSentAt`), who wrote (`sender`),
+// what they wrote, and the chat lines before it (`recent`). The runner builds what the
+// reader is offered with the real code (group-pickup-claim.ts).
+//
+// `expect.action` is what the reading must do: take (`claim`) or give back (`drop`) exactly
+// the `pickups` named by title, or nothing (null). `expect.alertAfter` is whether the group
+// still has an alert coming once that is stored: a claimed pickup is settled, so no alert
+// names it. Every fixture offers at least two pickups and expects fewer than all of them,
+// so a reader that takes everything fails each one.
+
+const hasBothAlert = {
+  from: 'hale',
+  text: "Maya's swim pickup and Leo's daycare pickup are both Friday at 3, and Barton has both. Sam, could you take Maya's swim pickup?",
+};
+
+export const GROUP_PICKUP_CLAIM_FIXTURES = [
+  {
+    id: 'en-handoff-before-alert',
+    language: 'en',
+    timeZone: TORONTO,
+    now: '2026-09-24T14:00:00.000Z',
+    people: [barton, sam],
+    blocks: twoPickups,
+    events: [],
+    sender: 'sam',
+    text: "I'll pick Maya up from swim tomorrow. Barton, you've got Leo.",
+    recent: [{ from: 'member', text: 'Friday at 3 I somehow have both pickups' }],
+    expect: { action: 'claim', pickups: ['Maya swim pickup'], alertAfter: false },
+  },
+  {
+    id: 'en-short-yes-to-ask',
+    language: 'en',
+    timeZone: TORONTO,
+    alertSentAt: '2026-09-24T13:00:00.000Z',
+    now: '2026-09-24T13:20:00.000Z',
+    people: [barton, sam],
+    blocks: twoPickups,
+    events: [],
+    sender: 'sam',
+    text: 'yep can do',
+    recent: [hasBothAlert],
+    expect: { action: 'claim', pickups: ['Maya swim pickup'], alertAfter: false },
+  },
+  {
+    id: 'en-keeps-one-asks-other',
+    language: 'en',
+    timeZone: TORONTO,
+    alertSentAt: '2026-09-24T13:00:00.000Z',
+    now: '2026-09-24T13:25:00.000Z',
+    people: [barton, sam],
+    blocks: twoPickups,
+    events: [],
+    sender: 'barton',
+    text: "I'd rather do Maya's swim myself. Sam, can you grab Leo from daycare instead?",
+    recent: [hasBothAlert],
+    expect: { action: 'claim', pickups: ['Maya swim pickup'], alertAfter: false },
+  },
+  {
+    id: 'en-gives-back-own',
+    language: 'en',
+    timeZone: TORONTO,
+    now: '2026-09-24T22:00:00.000Z',
+    people: [barton, sam],
+    blocks: twoPickups,
+    events: [],
+    decisions: [
+      {
+        title: 'Maya swim pickup',
+        start: '2026-09-25T19:00:00.000Z',
+        takerId: 'sam',
+        at: '2026-09-23T20:00:00.000Z',
+        claim: true,
+      },
+    ],
+    sender: 'sam',
+    text: "Sorry, my shift moved and I can't do Maya's swim pickup tomorrow after all.",
+    recent: [],
+    expect: { action: 'drop', pickups: ['Maya swim pickup'], alertAfter: true },
+  },
+  {
+    id: 'fr-takes-the-other-one',
+    language: 'fr',
+    timeZone: TORONTO,
+    alertSentAt: '2026-10-01T13:00:00.000Z',
+    now: '2026-10-01T13:30:00.000Z',
+    people: [
+      { id: 'emilie', name: 'Émilie', calendar: true },
+      { id: 'julien', name: 'Julien', calendar: true },
+    ],
+    blocks: [
+      {
+        owner: 'emilie',
+        eventId: 'natation',
+        title: 'Ramener Léa de la natation',
+        start: '2026-10-02T21:30:00.000Z',
+        end: '2026-10-02T22:00:00.000Z',
+      },
+      {
+        owner: 'emilie',
+        eventId: 'soccer',
+        title: 'Conduire Chloé au soccer',
+        start: '2026-10-02T21:30:00.000Z',
+        end: '2026-10-02T22:00:00.000Z',
+      },
+    ],
+    events: [],
+    sender: 'julien',
+    text: 'Je ne peux pas pour la natation, mais je conduis Chloé au soccer.',
+    recent: [
+      {
+        from: 'hale',
+        text: 'Ramener Léa de la natation et conduire Chloé au soccer tombent tous les deux vendredi à 17 h 30, et Émilie a les deux. Julien, pourriez-vous ramener Léa de la natation ?',
+      },
+    ],
+    expect: { action: 'claim', pickups: ['Conduire Chloé au soccer'], alertAfter: false },
+  },
+  {
+    id: 'en-takes-hale-held-plan',
+    language: 'en',
+    timeZone: TORONTO,
+    now: '2026-09-24T14:00:00.000Z',
+    people: [barton, sam],
+    blocks: [
+      {
+        owner: 'barton',
+        eventId: 'hockey',
+        title: 'Leo hockey drop-off',
+        start: '2026-09-26T14:00:00.000Z',
+        end: '2026-09-26T14:30:00.000Z',
+      },
+    ],
+    events: [
+      {
+        id: 'swim-lesson',
+        title: 'Maya swim lesson',
+        start: '2026-09-26T14:00:00.000Z',
+        end: '2026-09-26T15:00:00.000Z',
+        private: false,
+        owner: { kind: 'parent', userId: 'barton' },
+        ownerSince: '2026-09-20T12:00:00.000Z',
+        placedGoogleEventId: null,
+      },
+    ],
+    sender: 'sam',
+    text: "I'll take Maya to her swim lesson on Saturday.",
+    recent: [],
+    expect: { action: 'claim', pickups: ['Maya swim lesson'], alertAfter: false },
+  },
+  {
+    id: 'en-should-i-question',
+    language: 'en',
+    timeZone: TORONTO,
+    now: '2026-09-24T14:00:00.000Z',
+    people: [barton, sam],
+    blocks: twoPickups,
+    events: [],
+    sender: 'sam',
+    text: 'Should I get Maya from swim on Friday?',
+    recent: [],
+    expect: { action: null, alertAfter: true },
+  },
+  {
+    id: 'en-maybe-after-checking',
+    language: 'en',
+    timeZone: TORONTO,
+    now: '2026-09-24T14:00:00.000Z',
+    people: [barton, sam],
+    blocks: twoPickups,
+    events: [],
+    sender: 'sam',
+    text: "Maybe, if I can get out of work early. I'll check and let you know.",
+    recent: [{ from: 'member', text: 'Can anyone take Maya to swim Friday at 3?' }],
+    expect: { action: null, alertAfter: true },
+  },
+  {
+    id: 'en-someone-else-said',
+    language: 'en',
+    timeZone: TORONTO,
+    now: '2026-09-24T14:00:00.000Z',
+    people: [barton, sam, nana],
+    blocks: twoPickups,
+    events: [],
+    sender: 'nana',
+    text: "Sam said he'd grab Maya from swim on Friday.",
+    recent: [],
+    expect: { action: null, alertAfter: true },
+  },
+  {
+    id: 'en-which-one-unclear',
+    language: 'en',
+    timeZone: TORONTO,
+    now: '2026-09-24T14:00:00.000Z',
+    people: [barton, sam, nana],
+    blocks: twoPickups,
+    events: [],
+    sender: 'nana',
+    text: 'I could take one of them if that helps!',
+    recent: [{ from: 'member', text: 'I have both pickups Friday at 3, ugh' }],
+    expect: { action: null, alertAfter: true },
+  },
+  {
+    id: 'en-private-never-offered',
+    language: 'en',
+    timeZone: TORONTO,
+    now: '2026-09-24T14:00:00.000Z',
+    people: [barton, sam],
+    blocks: [
+      twoPickups[0],
+      {
+        owner: 'barton',
+        eventId: 'placed-allergist',
+        title: 'Leo allergist',
+        start: '2026-09-25T19:00:00.000Z',
+        end: '2026-09-25T20:00:00.000Z',
+      },
+      {
+        owner: 'sam',
+        eventId: 'daycare-late',
+        title: 'Leo daycare pickup',
+        start: '2026-09-25T21:00:00.000Z',
+        end: '2026-09-25T21:30:00.000Z',
+      },
+    ],
+    events: [
+      {
+        id: 'allergist',
+        title: 'Leo allergist',
+        start: '2026-09-25T19:00:00.000Z',
+        end: '2026-09-25T20:00:00.000Z',
+        private: true,
+        owner: { kind: 'parent', userId: 'barton' },
+        ownerSince: null,
+        placedGoogleEventId: 'placed-allergist',
+      },
+    ],
+    sender: 'sam',
+    text: "I'll take Leo to his allergist appointment on Friday.",
+    recent: [],
+    expect: { action: null, alertAfter: true },
+    mustNotLeak: ['allergist'],
   },
 ];

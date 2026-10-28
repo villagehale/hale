@@ -1,9 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { GROUP_PICKUP_CLAIM_FIXTURES } from './group-conflict-alert-fixtures.mjs';
 
 // The modes that cost nothing run on every test pass, with no key in the environment:
-// --dry grades the planner and prices one recording, --broken must fail every fixture.
+// --dry grades the planner and the claim fixtures and prices one recording, --broken must
+// fail every fixture.
 
 const RUNNER = fileURLToPath(new URL('./run-group-conflict-alert-eval.mjs', import.meta.url));
 const KEYLESS = Object.fromEntries(
@@ -13,6 +15,7 @@ const KEYLESS = Object.fromEntries(
 );
 const run = (args) =>
   spawnSync(process.execPath, [RUNNER, ...args], { env: KEYLESS, encoding: 'utf8' });
+const count = (text, pattern) => (text.match(pattern) ?? []).length;
 
 describe('run-group-conflict-alert-eval.mjs', () => {
   it.each([[[]], [['--dyr']], [['--dry', '--cached-only']], [['--max-usd', '0.2']]])(
@@ -31,11 +34,13 @@ describe('run-group-conflict-alert-eval.mjs', () => {
     expect(result.stderr).toMatch(/spend cap/);
   });
 
-  it('--dry passes the planner, makes no calls, and prints the worst case', () => {
+  it('--dry passes the planner and every claim fixture, makes no calls, and prints the worst case', () => {
     const result = run(['--dry']);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).not.toMatch(/planner FAIL/);
+    expect(result.stdout).not.toMatch(/claim FAIL/);
+    expect(count(result.stdout, /claim PASS/g)).toBe(GROUP_PICKUP_CLAIM_FIXTURES.length);
     expect(result.stdout).toMatch(/DRY summary .* worst \$\d+\.\d{5}/);
     expect(result.stdout).toMatch(/live calls: 0/);
   }, 60_000);
@@ -46,5 +51,9 @@ describe('run-group-conflict-alert-eval.mjs', () => {
     expect(result.stdout).toMatch(/live API calls this run: 0/);
     expect(result.stdout).toMatch(/broken-mode calibration \(must fail\): PASS/);
     expect(result.stdout).not.toMatch(/^PASS /m);
+    expect(count(result.stdout, /^FAIL {2}claim:/gm)).toBe(GROUP_PICKUP_CLAIM_FIXTURES.length);
+    expect(count(result.stdout, /^FAIL {2}store:/gm)).toBe(
+      GROUP_PICKUP_CLAIM_FIXTURES.filter((fixture) => fixture.expect.action).length,
+    );
   }, 60_000);
 });
