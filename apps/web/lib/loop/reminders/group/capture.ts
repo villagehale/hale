@@ -32,7 +32,8 @@ import { type GroupReminderVoice, whenFact } from './voice';
  * failed read, or nothing usable leaves the turn to the coach exactly as before.
  * Otherwise this turn owns the reply: the reminders are written `pending`, the
  * confirmation is composed and posted in the group, and only once it lands are they
- * armed. A confirmation the model could not write sends nothing and arms nothing.
+ * armed. A confirmation the model could not write, or the group may no longer hear,
+ * sends nothing and arms nothing.
  */
 
 export const GROUP_REMINDER_CONFIRM_TEMPLATE = 'linq:group_reminder_confirm';
@@ -51,6 +52,8 @@ export type GroupReminderHandled =
   | 'group_reminder_cancelled'
   | 'group_reminder_unwritten'
   | 'group_reminder_not_sent'
+  /** The group's audience changed during the turn and may not hear the confirmation. */
+  | 'group_reminder_held'
   | 'already_answered';
 
 export type GroupReminderTurn =
@@ -239,6 +242,27 @@ export async function takeGroupReminderTurn(
     now,
     send: ports.send,
   });
+  if (posted.outcome === 'held') {
+    await cancelReminders(database, {
+      ids: pendingIds,
+      reason: 'confirm_held',
+      actor: 'system',
+      now,
+    });
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'group_reminder_held',
+      targetTable: 'channel_messages',
+      targetId: recorded,
+      after: { kind: 'confirm', reason: posted.reason },
+    });
+    console.info(
+      { outcome: 'group_reminder_held', reason: posted.reason },
+      'group reminder: the group may not hear the confirmation now, nothing sent',
+    );
+    return { handled: true, outcome: 'group_reminder_held' };
+  }
   if (posted.outcome !== 'sent') {
     await cancelReminders(database, {
       ids: pendingIds,

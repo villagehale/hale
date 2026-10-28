@@ -194,6 +194,7 @@ export const AUDIT_VERBS = [
   'group_reminder_dropped',
   'group_reminder_failed',
   'group_reminder_unwritten',
+  'group_reminder_held',
   'linq_multi_family_joined',
   'linq_multi_family_left',
   'linq_multi_family_unseated',
@@ -812,6 +813,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence:
       'Hale did not answer a reminder request in your family group because it could not write the reply well',
     family: 'problem',
+  },
+  group_reminder_held: {
+    sentence:
+      'Hale did not answer a reminder request in your family group because not everyone there may hear it',
+    family: 'note',
   },
   linq_multi_family_joined: {
     sentence: 'A family joined a shared thread',

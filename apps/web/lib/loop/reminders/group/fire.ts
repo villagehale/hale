@@ -40,7 +40,8 @@ import { type GroupReminderVoice, sharedGroupReminderVoice } from './voice';
  * it, a 1:1 is still for a Hale customer, it is not quiet hours, and a 1:1 still has
  * someone to reach. A failed check drops the reminder by name. A reminder the model could
  * not write is not sent. Once it is written the tick looks at its claim again, so a STOP
- * or a cancel that landed while it was being written still wins and nothing is sent.
+ * or a cancel that landed while it was being written still wins and nothing is sent, and
+ * a group line reads the group's audience again as it goes.
  *
  * A group reminder is posted by the tick itself. A 1:1 reminder is handed to the loop's
  * channel dispatch, which owns consent, quiet hours and the ledger for 1:1 texts, and
@@ -250,6 +251,9 @@ async function fireOne(
     now,
     send: ports.send,
   });
+  if (posted.outcome === 'held') {
+    return close(database, row, { status: 'dropped', reason: 'audience_held', now });
+  }
   if (posted.outcome === 'not_sent') {
     if (posted.retryable) {
       console.warn(

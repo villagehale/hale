@@ -770,7 +770,11 @@ async function groupReminderTurn(
 
 function reminderCount(outcome: GroupReminderHandled): InboundRouteOutcome {
   if (outcome === 'already_answered') return 'duplicate';
-  if (outcome === 'group_reminder_unwritten' || outcome === 'group_reminder_not_sent') {
+  if (
+    outcome === 'group_reminder_unwritten' ||
+    outcome === 'group_reminder_not_sent' ||
+    outcome === 'group_reminder_held'
+  ) {
     return 'group_reminder_unsent';
   }
   return 'intake';

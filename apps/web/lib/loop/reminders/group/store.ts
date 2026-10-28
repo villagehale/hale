@@ -27,7 +27,8 @@ export type CancelReason =
   | 'member_removed'
   | 'group_ejected'
   | 'confirm_unwritten'
-  | 'confirm_not_sent';
+  | 'confirm_not_sent'
+  | 'confirm_held';
 
 /** Open reminders this person may move or cancel: ones they asked for, or that are for them. */
 export async function openRemindersFor(

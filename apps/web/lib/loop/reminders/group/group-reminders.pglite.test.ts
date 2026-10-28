@@ -47,6 +47,7 @@ const HALE = '+14165550100';
 const PRIYA = '+14165550111';
 const DAN = '+14165550131';
 const RUTH = '+14165550132';
+const NEWCOMER = '+14165550133';
 const CHAT = 'chat-family-group';
 const TZ = 'America/Toronto';
 // Wednesday 2026-10-28, 14:00 in Toronto.
@@ -312,6 +313,38 @@ async function onlyReminder() {
 /** A tick this long after the first one finds that first claim stale. */
 const AFTER_STALE = new Date(THURSDAY_FOUR.getTime() + SENDING_STALE_MS + 60_000);
 
+/** Someone is added to the chat and has not said who they are yet. */
+async function someoneJoins() {
+  const [roster] = await db.database
+    .select({ id: schema.linqGroupRosters.id })
+    .from(schema.linqGroupRosters)
+    .where(eq(schema.linqGroupRosters.chatId, CHAT));
+  await db.database.insert(schema.linqGroupRosterMembers).values({
+    rosterId: roster?.id as string,
+    chatId: CHAT,
+    phoneE164Encrypted: encryptString(NEWCOMER),
+    phoneE164Hash: phoneBlindIndex(NEWCOMER),
+    status: 'asked',
+  });
+}
+
+/** A voice that adds someone to the chat while it writes, then writes as usual. */
+function joinsWhileWriting(voice: GroupReminderVoice): GroupReminderVoice {
+  return {
+    async write(facts) {
+      await someoneJoins();
+      return voice.write(facts);
+    },
+  };
+}
+
+async function outboundLines() {
+  return db.database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.direction, 'out'));
+}
+
 async function verbs(familyId: string) {
   const rows = await db.database
     .select({ actionTaken: schema.auditLog.actionTaken })
@@ -552,6 +585,30 @@ describe('asking for a reminder in the group', () => {
     expect(await runGroupReminderTick(db.database, tickPorts(THURSDAY_FOUR).ports)).toMatchObject({
       due: 0,
     });
+  });
+
+  it('holds the confirmation, and sets nothing, when someone joins while it is written', async () => {
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+    const voice = joinsWhileWriting(fakeGroupReminderVoice());
+
+    const turn = await takeGroupReminderTurn(
+      db.database,
+      inbound(RUTH, 'remind me thursday at 4 to grab Maya', 'in-ruth-held'),
+      { ...ports, voice },
+    );
+
+    expect(turn).toEqual({ handled: true, outcome: 'group_reminder_held' });
+    expect(sends).toEqual([]);
+    expect(await outboundLines()).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'confirm_held',
+      what: null,
+    });
+    const actions = await verbs(home.familyId);
+    expect(actions).toContain('group_reminder_held');
+    expect(actions).not.toContain('group_reminder_set');
   });
 
   it('leaves anything that is not a reminder ask to the coach, untouched', async () => {
@@ -842,6 +899,25 @@ describe('when a group reminder is due', () => {
     expect(await onlyReminder()).toMatchObject({
       status: 'dropped',
       statusReason: 'asker_not_customer',
+      what: null,
+    });
+  });
+
+  it('drops a group line, by name, when someone joins the chat while it is written', async () => {
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+
+    expect(
+      await runGroupReminderTick(db.database, {
+        ...tick.ports,
+        voice: joinsWhileWriting(tick.voice),
+      }),
+    ).toMatchObject({ due: 1, dropped: 1, sent: 0 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'dropped',
+      statusReason: 'audience_held',
       what: null,
     });
   });

@@ -1,19 +1,31 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import {
+  type GroupHoldReason,
+  type GroupLineClass,
+  groupAudienceAllows,
+} from '~/lib/channel/linq/group-audience';
 import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 
 /**
- * One already-written group reminder line into the chat: claimed on `channel_messages`
- * by its dedupe key before the send, so a replayed webhook or a second tick cannot post
- * it twice, stamped with the provider id once it lands, and audited `sms_reply_sent`.
- * A refused send marks the row failed and releases the key.
+ * One already-written group reminder line into the chat. The group's audience is read
+ * at the moment of sending, after the model has written the line, so someone added or
+ * re-roled since the turn began still holds it. The line is then claimed on
+ * `channel_messages` by its dedupe key, so a replayed webhook or a second tick cannot
+ * post it twice, stamped with the provider id once it lands, and audited
+ * `sms_reply_sent`. A refused send marks the row failed and releases the key.
  */
+
+/** Every reminder line says what is due and when, so it is gated as a schedule line. */
+const REMINDER_LINE: GroupLineClass = 'schedule';
 
 export type GroupReminderLineOutcome =
   | { outcome: 'sent'; channelMessageId: string }
   | { outcome: 'already_sent' }
+  /** The group may not hear a schedule line now. Nothing was claimed or sent. */
+  | { outcome: 'held'; reason: GroupHoldReason }
   /**
    * `retryable`: Linq answered with a refusal it calls temporary, so the line did not
    * land and trying again later cannot post it twice. A timeout or a dropped connection
@@ -36,6 +48,9 @@ export async function postGroupReminderLine(
     send?: GroupLineSend;
   },
 ): Promise<GroupReminderLineOutcome> {
+  const audience = await groupAudienceAllows(database, input.chatId, REMINDER_LINE);
+  if (!audience.allowed) return { outcome: 'held', reason: audience.reason };
+
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
