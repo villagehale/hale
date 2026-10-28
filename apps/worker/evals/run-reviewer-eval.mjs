@@ -132,8 +132,7 @@ function makeCachedClient(tag, { anthropicModel, directModel, maxTokens }) {
           const rates = priceRates(request.model);
           const inTokens = Math.ceil(JSON.stringify(request).length / 3);
           const calls = REVIEWER_MAX_TURNS - (dryHits.get(tag) ?? 0);
-          const worst =
-            calls * ((inTokens / 1e6) * rates.input + (maxTokens / 1e6) * rates.output);
+          const worst = calls * ((inTokens / 1e6) * rates.input + (maxTokens / 1e6) * rates.output);
           dryTotals.uncachedCalls += calls;
           dryTotals.worstUsd += worst;
           dryLines.push(
