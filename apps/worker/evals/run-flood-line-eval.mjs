@@ -44,7 +44,7 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'flood-line.md
 const MIN_DISTINCT = 3;
 
 const WATCH =
-  'Tells the parent, privately, that a lot came in at once and that this one will not get a reply. Must not imply Hale will come back to this message on its own. Saying they can text again and Hale will answer that new text is true and allowed.';
+  'Tells the parent, privately, that a lot came in at once and Hale is not answering this one now, and that they can send it again later. No promise Hale will answer this text later, no promise of an answer if they text again (a resend right away gets no reply either), no wait time, no scolding, no mention of anyone else.';
 
 const FIXTURES = [
   ...Array.from({ length: 4 }, (_, i) => ({
@@ -95,7 +95,8 @@ function floodLineUserMessage({ language, inGroup }) {
   });
 }
 
-const MAX_TOKENS = 96;
+// A runaway ceiling only, never a length rule: the writer decides how long the line is.
+const MAX_TOKENS = 256;
 
 /** Mirrors `plainText` in apps/web/lib/channel/coach/reply.ts. */
 const GSM7_SUBSTITUTIONS = [
@@ -138,18 +139,17 @@ const JUDGE_SYSTEM = [
   'their own chat, and the language. Links and digits are ALREADY verified mechanically;',
   "length, sentence count and punctuation are the writer's own. Judge only MEANING.",
   'You are given the message, the language and watchFor. Score 1-5.',
-  'Score ONLY these facts, by meaning, not wording, and apply them the same way every time:',
-  '(1) the line says a lot came in at once;',
-  '(2) the line says this one will not get a reply;',
-  '(3) the line must not imply Hale will come back to this message on its own.',
-  'A 5 has all three, in the requested language, in the first person.',
-  'A LOW score is missing (1) or (2), or implying Hale will pick this same message up later',
-  'by itself. Apply (3) by meaning: any implication that Hale will return to THIS message',
-  'without the parent sending it again is a miss.',
-  'Do NOT penalize a conditional that they can text again and Hale will answer that new',
-  'text. That is true. The idea "text me again and I will answer then", in any wording or',
-  'language, is allowed. It is not a promise to come back to this message. Apply that the',
-  'same way every time: do not score one wording of it as a 2 and another as a 4.',
+  'A 5 tells them plainly, warmly and in the first person, in the requested language, that a',
+  'lot came in at once, Hale is not answering this one now, and they can send it again later.',
+  'FACT: for a while every further text from this parent also gets no reply, so a resend right',
+  'away gets silence. A LOW score (2 or below) is any of: promising Hale will answer this text',
+  'later; promising, by meaning in any wording or language, that Hale will answer or get back',
+  'to them if they text again (for example "text again in a bit and I will get back to you");',
+  'naming or implying a specific wait or limit; scolding or blaming the parent; mentioning',
+  'other people in a group or what was said; support-desk language; third person ("Hale is");',
+  'the wrong language; pretending to answer their question. Simply inviting them to send it',
+  'again later, with no promise that it will be answered, read or picked up, is TRUE and fine;',
+  'do not mark it down. Apply all of this strictly and the same way every time.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 

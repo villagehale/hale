@@ -18,7 +18,8 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 /** The ledger's name for this line, so a read-back can tell it from a turn's answer. */
 export const FLOOD_LINE_TEMPLATE_KEY = 'flood_line';
 
-const MAX_TOKENS = 96;
+// A runaway ceiling only, never a length rule: the writer decides how long the line is.
+const MAX_TOKENS = 256;
 
 export type FloodLineFallback =
   | 'client_unavailable'
