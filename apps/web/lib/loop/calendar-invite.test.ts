@@ -480,28 +480,55 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(cancelCalls).toEqual([]);
   });
 
-  /** A message the family group got for a plan it made (VIL-443). */
+  /**
+   * A message the family group got for a plan it made (VIL-443), with the report naming
+   * who was in the chat as it went.
+   */
   async function groupText(
     familyId: string,
     parentUserId: string,
     dedupeKey: string,
     status: 'sent' | 'failed',
+    inChat: string[] = [parentUserId],
   ): Promise<void> {
-    await db.database.insert(schema.channelMessages).values({
+    const [message] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'calendar_alert',
+        templateKey: 'group_plan_calendar',
+        dedupeKey,
+        providerChatId: 'chat-family-group',
+        status,
+        sentAt: NOON,
+      })
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.auditLog).values({
       familyId,
-      parentUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'calendar_alert',
-      templateKey: 'group_plan_calendar',
-      dedupeKey,
-      providerChatId: 'chat-family-group',
-      status,
-      sentAt: NOON,
+      actor: 'system',
+      actionTaken: 'group_plan.calendar_reported',
+      targetTable: 'channel_messages',
+      targetId: message?.id as string,
+      after: { inChat },
     });
   }
 
-  it('VIL-443 · texts the cancel to a parent whose family group was sent the link', async () => {
+  /** A second parent of the family, reachable by text. */
+  async function textingCoParent(familyId: string): Promise<string> {
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ email: `co-${familyId}@example.test`, name: 'Sam', timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
+    const userId = user?.id as string;
+    await db.database.insert(schema.familyMembers).values({ familyId, userId, role: 'co_parent' });
+    await enrollSms(familyId, userId);
+    return userId;
+  }
+
+  it('VIL-443 · texts the cancel to a parent who was in the family group when its link landed', async () => {
     const { familyId, parentUserId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);
     await groupText(familyId, parentUserId, `group_plan_calendar:${familyEventId}:0`, 'sent');
@@ -514,6 +541,46 @@ describe('the tap-to-add link a text-only family gets', () => {
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
     expect(cancelCalls).toHaveLength(1);
+  });
+
+  it('VIL-443 · texts no cancel to a parent who was not in the family group when its link landed', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const sam = await textingCoParent(familyId);
+    const familyEventId = await seedPlacement(familyId);
+    await groupText(familyId, parentUserId, `group_plan_calendar:${familyEventId}:0`, 'sent');
+    await softDelete(familyEventId);
+
+    const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(report).toEqual({
+      status: 'reported',
+      parents: [
+        { parentUserId, channel: 'sms', outcome: 'sent' },
+        { parentUserId: sam, channel: 'sms', outcome: 'never_linked' },
+      ],
+    });
+    expect(sms.calls).toHaveLength(1);
+  });
+
+  it('VIL-443 · texts the cancel to a parent who was in the family group for any revision of its link', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const sam = await textingCoParent(familyId);
+    const familyEventId = await seedPlacement(familyId);
+    await groupText(familyId, parentUserId, `group_plan_calendar:${familyEventId}:0`, 'sent');
+    await groupText(familyId, parentUserId, `group_plan_calendar:${familyEventId}:1`, 'sent', [
+      parentUserId,
+      sam,
+    ]);
+    await softDelete(familyEventId);
+
+    const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(report).toMatchObject({
+      parents: [
+        { parentUserId, outcome: 'sent' },
+        { parentUserId: sam, outcome: 'sent' },
+      ],
+    });
   });
 
   it('VIL-443 · a group text that never landed, or the group’s own cancel, is not a link', async () => {

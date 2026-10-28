@@ -215,6 +215,7 @@ async function roster(
   members: Array<{
     status: 'known_parent' | 'confirmed' | 'asked';
     confirmedRole?: 'grandparent' | 'nanny';
+    knownUserId?: string;
   }>,
 ) {
   const [row] = await db.database
@@ -229,6 +230,7 @@ async function roster(
       phoneE164Hash: phoneBlindIndex(`+1647555${7000 + n}`),
       status: member.status,
       confirmedRole: member.confirmedRole ?? null,
+      knownUserId: member.knownUserId ?? null,
     });
   }
 }
@@ -568,7 +570,49 @@ describe('VIL-443 production ports, real database', () => {
       change: 'added',
       messages: 1,
       landed: 1,
+      inChat: [s.ana],
     });
+  });
+
+  it('names on its report only who was in the chat as it went', async () => {
+    const s = await seed();
+    const gran = await user('Gran');
+    const gone = await user('Gone');
+    const elsewhere = await user('Elsewhere');
+    await seat(s.familyId, gran, 'other_family');
+    await seat(s.familyId, gone, 'other_family');
+    await db.database
+      .update(schema.linqGroupMembers)
+      .set({ removedAt: MORNING })
+      .where(eq(schema.linqGroupMembers.userId, gone));
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: s.familyId,
+      chatId: 'chat-another-group',
+      userId: elsewhere,
+      phoneE164Encrypted: encryptString('+19055550001'),
+      phoneE164Hash: phoneBlindIndex('+19055550001'),
+      role: 'other_family',
+    });
+    await roster(s.familyId, 'confirmed', [
+      { status: 'known_parent', knownUserId: s.sam },
+      { status: 'asked' },
+    ]);
+    const ports = productionGroupPlanReportPorts(db.database, {
+      fetch: linqWire().fetch,
+      now: () => MORNING,
+    });
+    const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
+    expect(
+      await ports.send(plan, { messages: ['Swim: https://x.test/l'], keyed: 0 }, 'short'),
+    ).toBe('sent');
+
+    const [report] = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported'));
+    expect(((report?.after as { inChat: string[] }).inChat ?? []).sort()).toEqual(
+      [gran, s.sam, s.ana].sort(),
+    );
   });
 
   /** Each of the family's outbound rows, in the order the messages went. */
@@ -620,6 +664,7 @@ describe('VIL-443 production ports, real database', () => {
       change: 'added',
       messages: 3,
       landed: 3,
+      inChat: [s.ana],
     });
     expect(await ports.send(plan, { messages, keyed: 1 }, 'short')).toBe('already_sent');
     expect(wire.posted).toHaveLength(3);

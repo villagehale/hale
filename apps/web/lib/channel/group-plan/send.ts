@@ -4,12 +4,13 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, ne, notLike } from 'drizzle-orm';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { type GroupAudienceVerdict, groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import { readGroupMembership } from '~/lib/channel/linq/group-membership';
+import { isUndefinedTable } from '~/lib/channel/linq/roster';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -471,6 +472,57 @@ export async function loadGroupPlan(
   };
 }
 
+/**
+ * Who Hale can place in the chat as its text goes: a live seat there, the chat's roster
+ * naming a parent Hale knows (group onboarding v2 never seats that parent), or the
+ * parent whose message there drafted the plan. Written on the report, so a cancel the
+ * group cannot hear goes to who had the link and nobody else (`hadGroupPlanLink`).
+ */
+async function inChatUserIds(database: Database, plan: GroupPlan): Promise<string[]> {
+  const seats = await database
+    .select({ userId: schema.linqGroupMembers.userId })
+    .from(schema.linqGroupMembers)
+    .where(
+      and(
+        eq(schema.linqGroupMembers.chatId, plan.chatId),
+        eq(schema.linqGroupMembers.familyId, plan.familyId),
+        isNull(schema.linqGroupMembers.removedAt),
+      ),
+    );
+  let known: Array<{ userId: string | null }> = [];
+  try {
+    known = await database
+      .select({ userId: schema.linqGroupRosterMembers.knownUserId })
+      .from(schema.linqGroupRosterMembers)
+      .innerJoin(
+        schema.linqGroupRosters,
+        eq(schema.linqGroupRosters.id, schema.linqGroupRosterMembers.rosterId),
+      )
+      .where(
+        and(
+          eq(schema.linqGroupRosters.chatId, plan.chatId),
+          eq(schema.linqGroupRosters.familyId, plan.familyId),
+          eq(schema.linqGroupRosterMembers.status, 'known_parent'),
+        ),
+      );
+  } catch (err) {
+    if (!isUndefinedTable(err)) throw err;
+  }
+  const drafted = await database
+    .select({ userId: schema.auditLog.actor })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, plan.familyId),
+        eq(schema.auditLog.targetTable, 'actions'),
+        eq(schema.auditLog.targetId, plan.placedByActionId),
+        eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
+      ),
+    );
+  const ids = [...seats, ...known, ...drafted].map((row) => row.userId);
+  return [...new Set(ids.filter((id): id is string => id !== null))];
+}
+
 /** Production ports. The only door is the family's claimed Linq group chat. */
 export function productionGroupPlanReportPorts(
   database: Database,
@@ -500,6 +552,7 @@ export function productionGroupPlanReportPorts(
      * read wrong without it. A keyed message that never went is failed with the reason.
      */
     async send(plan, lines, optOut) {
+      const inChat = await inChatUserIds(database, plan);
       const claim = async (dedupeKey: string) => {
         const [row] = await database
           .insert(schema.channelMessages)
@@ -575,6 +628,7 @@ export function productionGroupPlanReportPorts(
           change: plan.change,
           messages: lines.messages.length,
           landed,
+          inChat,
         },
       });
       return landed === lines.messages.length ? 'sent' : 'partly_sent';
@@ -604,4 +658,51 @@ export function productionGroupPlanReportPorts(
     },
     hold: (plan) => recordGroupPlanHold(database, plan, clock()),
   };
+}
+
+/**
+ * Whether this person had the group's add-to-calendar link for this event: a revision's
+ * keyed message landed in the family group while its report names them as in the chat.
+ * The `#n` messages and the group's own cancel never carried the link, and a parent
+ * outside the chat never saw it.
+ */
+export async function hadGroupPlanLink(
+  database: Database,
+  familyId: string,
+  familyEventId: string,
+  userId: string,
+): Promise<boolean> {
+  const m = schema.channelMessages;
+  const links = await database
+    .select({ id: m.id })
+    .from(m)
+    .where(
+      and(
+        eq(m.familyId, familyId),
+        eq(m.templateKey, GROUP_PLAN_TEMPLATE_KEY),
+        like(m.dedupeKey, `${GROUP_PLAN_TEMPLATE_KEY}:${familyEventId}:%`),
+        notLike(m.dedupeKey, '%#%'),
+        ne(m.dedupeKey, `${GROUP_PLAN_TEMPLATE_KEY}:${familyEventId}:cancelled`),
+        inArray(m.status, ['queued', 'sent', 'delivered']),
+      ),
+    );
+  if (links.length === 0) return false;
+  const reports = await database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported'),
+        eq(schema.auditLog.targetTable, 'channel_messages'),
+        inArray(
+          schema.auditLog.targetId,
+          links.map((link) => link.id),
+        ),
+      ),
+    );
+  return reports.some((report) => {
+    const inChat = (report.after as { inChat?: unknown } | null)?.inChat;
+    return Array.isArray(inChat) && inChat.includes(userId);
+  });
 }

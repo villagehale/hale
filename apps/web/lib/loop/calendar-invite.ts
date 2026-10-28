@@ -7,9 +7,9 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, asc, eq, gt, gte, inArray, isNotNull, like, ne, notLike, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, like, sql } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
-import { GROUP_PLAN_TEMPLATE_KEY } from '~/lib/channel/group-plan/send';
+import { hadGroupPlanLink } from '~/lib/channel/group-plan/send';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { composeEventCancel, composeEventLink } from '~/lib/loop/ics-invite';
@@ -209,8 +209,7 @@ function parentOutcome(
 }
 
 /** Whether this parent was texted the tap-to-add link for this event — any revision,
- * 1:1 or in the family's group, where one link went to the whole household (VIL-443).
- * In the group, only the revision's keyed row carried the link; its `#n` rows did not. */
+ * 1:1 or in the family's group while they were in it (VIL-443). */
 async function wasTextedTheLink(
   database: Database,
   job: InviteJob,
@@ -223,24 +222,15 @@ async function wasTextedTheLink(
     .where(
       and(
         eq(m.familyId, job.familyId),
+        eq(m.parentUserId, parentUserId),
+        eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
+        like(m.dedupeKey, `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${job.familyEventId}:%`),
         inArray(m.status, ['queued', 'sent', 'delivered']),
-        or(
-          and(
-            eq(m.parentUserId, parentUserId),
-            eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
-            like(m.dedupeKey, `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${job.familyEventId}:%`),
-          ),
-          and(
-            eq(m.templateKey, GROUP_PLAN_TEMPLATE_KEY),
-            like(m.dedupeKey, `${GROUP_PLAN_TEMPLATE_KEY}:${job.familyEventId}:%`),
-            notLike(m.dedupeKey, '%#%'),
-            ne(m.dedupeKey, `${GROUP_PLAN_TEMPLATE_KEY}:${job.familyEventId}:cancelled`),
-          ),
-        ),
       ),
     )
     .limit(1);
-  return rows.length > 0;
+  if (rows.length > 0) return true;
+  return hadGroupPlanLink(database, job.familyId, job.familyEventId, parentUserId);
 }
 
 /** Whether this parent already has the cancellation text for this event. Checked
