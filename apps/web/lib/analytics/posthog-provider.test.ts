@@ -71,11 +71,10 @@ describe('PostHog replay + exception config', () => {
 });
 
 /**
- * The privacy policy's PostHog disclosure: masked replay, error tracking,
- * autocapture off, opaque-id identity. Replay still runs on the public website
- * (consent-gated), so the disclosure stays. Since VIL-483 the portal no longer
- * records, which makes the in-app wording broader than the practice, not
- * narrower. Asserted against the page source so the legal copy can't silently
+ * The privacy policy's PostHog disclosure must match the actual posture (VIL-483):
+ * session replay runs only on the marketing site, masked, after cookie consent, and
+ * the app does not record. Error tracking is on, autocapture stays off, identity is
+ * an opaque id. Asserted against the page source so the legal copy can't silently
  * drift from the config.
  *
  * The policy itself now lives on the marketing site (D20 — the app's /privacy is a
@@ -92,8 +91,14 @@ describe('privacy page PostHog disclosure', () => {
     expect(source).not.toContain('session replay turned off');
   });
 
+  it('says the app does not record and replay runs only on the marketing site', () => {
+    expect(source).not.toContain('Session replay is on');
+    expect(source).toContain('Session replay runs only on the marketing site');
+    expect(source).toContain('only after the visitor taps Accept in the cookie banner');
+    expect(source).toContain('app at app.villagehale.com does not record session replays');
+  });
+
   it('discloses masked session replay, error tracking, and opaque-id identity', () => {
-    expect(source).toContain('Session replay is on');
     expect(source).toContain('masked');
     expect(source).toContain('Error tracking');
     expect(source).toContain('opaque account id');
