@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { eq, sql } from 'drizzle-orm';
+import { schema } from '@hale/db';
+import { sql } from 'drizzle-orm';
 import { answerParentDutyAsk } from '~/lib/channel/coparent/duty/asks';
 import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
