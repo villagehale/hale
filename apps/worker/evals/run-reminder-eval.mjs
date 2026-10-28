@@ -248,12 +248,7 @@ export function brokenFooter(results) {
  * removes an id here once its reply passes; a listed case that passes turns the check red
  * so the list can never go stale.
  */
-export const EXPECTED_FAIL = Object.freeze([
-  'fr-jour-de-conge-timed',
-  'en-pd-day-timed',
-  'en-pd-day-all-day',
-  'zh-hour-out',
-]);
+export const EXPECTED_FAIL = Object.freeze([]);
 
 /**
  * The real-mode gate. Every case must pass except the ones on `expectedFail`, which must

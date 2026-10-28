@@ -30,10 +30,8 @@ describe('reminder cached-only expected-fail gate (VIL-467)', () => {
     expect(expectedFailGate([r('a', true)], []).ok).toBe(false);
     expect(expectedFailGate([r('a', false)], []).ok).toBe(true);
   });
-  it('lists exactly the four cases from the #914 design call, all real fixtures', () => {
-    expect([...EXPECTED_FAIL].sort()).toEqual(
-      ['en-pd-day-all-day', 'en-pd-day-timed', 'fr-jour-de-conge-timed', 'zh-hour-out'].sort(),
-    );
+  it('is empty: the four #914 cases pass after the VIL-467 re-record', () => {
+    expect([...EXPECTED_FAIL]).toEqual([]);
     const ids = REMINDER_FIXTURES.map((f) => f.id);
     for (const id of EXPECTED_FAIL) expect(ids).toContain(id);
   });
