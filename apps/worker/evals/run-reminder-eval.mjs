@@ -3,11 +3,12 @@
 // The subject is the REAL skill (packages/agent/skills/reminder.md) over the REAL facts
 // and gates: `reminderFacts`, `reminderUserMessage` and `reminderRefusals` are imported
 // from apps/web/lib/loop/reminders/compose.ts. The model writes the WHOLE text; a judge
-// scores facts (including a fact check on logistics such as departure or travel time),
-// AM/PM, language, never claiming free time over a timed event, and tone.
+// scores FACTS only (including a fact check on logistics such as departure or travel
+// time, AM/PM, language, and never claiming free time over a timed event). Phrasing,
+// sentence shape, an untranslated place name, and a title quoted as-is are not faults.
 // Nothing matches words.
 //
-// Recorded 2026-10-27 (8/8, ledger 914-evals; every --broken case fails, incl. an added wish and one unnatural-but-factual reply per language). CI replays it cached-only:
+// Recorded 2026-10-27 (8/8, ledger 914-evals). CI replays it cached-only:
 //   node evals/run-reminder-eval.mjs --max-usd <ledger total + allowance>   # live, then caches
 //   node evals/run-reminder-eval.mjs --broken                               # calibration: must FAIL
 //   node evals/run-reminder-eval.mjs --cached-only                          # CI: replay only
@@ -17,7 +18,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import {
-  GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
   cachedToolCall,
   formatDraws,
@@ -67,21 +67,25 @@ const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE reminder text Hale sends a parent about what is on',
   'their calendar. The model wrote the whole text; nothing is added around it. You are given',
   'the facts (offset, now, events with date, allDay, start, end, location; planLink; language),',
-  'the text and watchFor notes. Score 1-5 on FACTS, LANGUAGE and TONE, not wording.',
+  'the text and watchFor notes. Score 1-5 on FACTS only: whether every event keeps the facts',
+  'it was given, and whether anything was invented. Do not score phrasing, sentence shape,',
+  'register, whether a place name is translated or left as given, or whether a title is quoted',
+  'as-is, woven in, or left bare.',
   'planLink is OPTIONAL: the writer may include it or leave it out. Its absence is never a',
   'fault and never lowers the score; only a link other than planLink is.',
-  'A 5: every event is there with its facts as given and nothing invented; each time given is',
-  'correct INCLUDING morning versus afternoon or evening (AM/PM or the natural equivalent in',
-  'that language); no clock time for an all-day event; the day phrased truly from now (tomorrow',
-  'versus today); entirely in the requested language; short, calm, warm, like a friend.',
-  'A LOW score (1-2) is any of: implying the family has nothing to be at, or that the day is',
-  'open, free, quiet, a break or breathing room, when ANY event has a start time, whatever its',
-  'title says (naming an all-day item as what the day is, such as a PD day or day off, is a',
-  'true fact and fine, as long as the timed events are also clearly there); a wrong or',
-  'ambiguous AM/PM; a wrong time, date, or place; an invented detail (what to bring, who is',
-  'going, how it will go); guessing what a generic "an appointment" is; the wrong language or',
-  'mixed languages; a link other than planLink; hype, exclamation marks, emoji, a question or',
-  'asking them to reply with a word.',
+  'A 5: every event is there with every fact it was given — its day (said truly from now),',
+  'its start, and when given its end, its venue name and its address, and who it is for —',
+  'and nothing invented; each time given is correct INCLUDING morning versus afternoon or',
+  'evening (AM/PM or the natural equivalent in that language); no clock time for an all-day',
+  'event; entirely in the requested language.',
+  'A LOW score (1-2) is any of: a missing or vague start, end, venue name, or address that',
+  'the facts gave; implying the family has nothing to be at, or that the day is open, free,',
+  'quiet, a break or breathing room, when ANY event has a start time, whatever its title',
+  'says (naming an all-day item as what the day is, such as a PD day or day off, is a true',
+  'fact and fine, as long as the timed events are also clearly there); a wrong or ambiguous',
+  'AM/PM; a wrong time, date, or place; an invented detail (what to bring, who is going, how',
+  'it will go); guessing what a generic "an appointment" is; the wrong language or mixed',
+  'languages; a link other than planLink.',
   'FACT CHECK every logistics claim against the facts you are given: when to leave or set',
   'off, how long getting there takes, traffic, parking, arrival or pickup times, and any',
   'other timing or travel detail. If the facts do not contain it (there is never a travel',
@@ -89,74 +93,60 @@ const JUDGE_SYSTEM = [
   'LOW score (1-2), in any language, however it is phrased. Saying how far away the event',
   'is from now (in about an hour, tomorrow afternoon) is a true fact from now and start, and',
   'fine; turning that into when to leave is not.',
-  'JUDGE WHAT EACH SENTENCE DOES, not its words: the text is only there to tell the parent',
-  'what is on the calendar. Any sentence whose job is something else that nobody asked for,',
-  'such as a wish, hope or blessing for them, advice or a suggestion on what to do or how to',
-  'plan, or a comment or opinion about the day or the family, is unrequested filler. It is',
-  `not a fact from the facts you are given, so it caps the score at ${JUDGE_MIN - 1} at most, in`,
-  'any language and however it is phrased, even when every fact is right.',
-  'NATIVE SPEAKER CHECK, on the WHOLE text: read it as a native speaker of its language',
-  'receiving it from a friend. Would a native speaker text exactly this, as written? Clumsy',
-  'or unidiomatic phrasing, wrong grammar, a missing or wrong article or particle, a calque',
-  'or word-for-word translation, an unnatural way of saying a time range or a day, or a',
-  'title dropped in where the sentence does not flow, makes it NOT natural. Judge the reply',
-  'as a whole by how it reads, never against a list of phrases. Do it this way: first say to',
-  'yourself how a native speaker would text these same facts; then compare. If the text differs',
-  'from that in grammar, idiom or construction (not just in word choice or order a native would',
-  'also use), it is not natural, however close it is and however small the slip. If a native speaker would',
-  `not send it as written, it caps the score at ${JUDGE_MIN - 1} at most, in any language, even when`,
-  'every fact is right; say what reads unnaturally in the reason.',
-  'NOTHING GIVEN MAY BE LEFT OUT: check every date, start and end in the facts against the',
-  "text. Each event's day (said truly from now, such as tomorrow or today, or as a date), its",
-  'start time and, when the facts give one, its end time must all be in the text, in any natural',
-  'form for the language. A text that drops any one of them, such as giving only the start when',
-  'an end is given, leaves out a fact the parent needs: that is a fact failure and a LOW score',
-  '(1-2), however natural the rest reads. Name in the reason which time or date is missing.',
+  'NOTHING GIVEN MAY BE LEFT OUT: check every date, start, end, venue name and address in',
+  "the facts against the text. Each event's day (said truly from now, such as tomorrow or",
+  'today, or as a date), its start time and, when the facts give one, its end time, its',
+  'venue name and its street address must all be in the text, in any natural form for the',
+  'language. A text that drops any one of them, such as giving only the start when an end',
+  'is given, or a venue name with no address when an address was given, leaves out a fact',
+  'the parent needs: that is a fact failure and a LOW score (1-2), however the rest reads.',
+  'Name in the reason which fact is missing.',
   "KEEP EACH TITLE AS THE EVENT'S NAME: the title is what the event is called, not a",
   'statement about the day or the family. Turning a title into a claim it does not make, such',
   'as recasting it as what the day is, what is closed, or what the event involves, changes a',
   'fact: that is a fact failure and a LOW score (1-2), in any language, even when every time',
-  'and place is right. Keeping the name never excuses grammar: the title still needs the',
-  'article, quotation or connecting words a native speaker would give a named event, and a',
-  'bare title dropped into a sentence where it does not fit still fails the native speaker',
-  'check. Changing what the title says is a fact failure; say in the reason how it changed.',
+  'and place is right. Quoting the title as-is, leaving it bare, or weaving it into a sentence',
+  'are all fine as long as what the title means is unchanged. Changing what the title says is',
+  'a fact failure; say in the reason how it changed.',
   'NO UNSTATED INFERENCES: state only what the facts say. A consequence the text draws from a',
   'title or from the facts (what is closed or open, who is affected, why it is happening, what',
   'it means for the family) is not in the facts, even when it is likely: stating it as fact is a',
   'fact failure and a LOW score (1-2), in any language, however it is phrased.',
-  'NO CALENDAR TALK: the parent knows they have a calendar. A sentence that explains how the',
-  'event is stored or classified (that it is on the calendar, timed, all-day, an entry) instead',
-  'of telling them what is on is unrequested filler and caps the score at',
-  `${JUDGE_MIN - 1} at most, in any language and however it is phrased.`,
-  'TEXTS LIKE A FRIEND, NOT A NOTIFICATION: on top of grammar, ask whether a friend who knows',
-  'the family would text it this way. A reply that reads like a system notification or a',
-  'calendar readout rather than a person is correct but not how a friend texts. Judge the',
-  'whole reply by its meaning and register, never by whether it uses or avoids any particular',
-  'phrase, construction or opener. Do it this way: first picture the',
-  'same facts as a quick, warm text from a friend; then ask whether this reply sounds like that',
-  'or like an automated alert that only states the entry and its times. Correct and polite is',
-  'not enough: if it sounds like the alert, it fails this check. It caps the score at',
-  `${JUDGE_MIN - 1} at most, in any language, even when every fact is right; say why in the reason.`,
-  'CAPS ARE CEILINGS: complete, correct facts never lift a capped score. If your reason names',
-  'any phrasing a native speaker would write differently, the score is at most',
-  `${JUDGE_MIN - 1}, however minor you think it is.`,
+  'Do not lower the score for how the sentence is shaped, whether it reads like a list or a',
+  'notification, whether a generic place word stayed in the source language, or whether the',
+  'title is quoted or bare. Those are not fact failures.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
-// Reminder-specific scored references, on top of the shared general set.
+// Reminder-specific scored references. Facts only: a list shape or an untranslated
+// place name still scores 5 when every given fact is there.
 const REMINDER_REFERENCE_TEXTS = [
   {
     facts:
       'Event "Parent & Tot Skate", Tuesday Oct 27, 10:30 AM. Now: Monday evening. Language: English.',
     text: 'Parent & Tot Skate is tomorrow morning at 10:30.',
     score: 5,
-    why: "The same skate as Barton's prod sample, said the way a friend would: when, from now, and the time. Nothing invented.",
+    why: "Every fact given is there: the event, the day from now, and the time. Nothing invented.",
   },
   {
     facts: 'Event "Soccer", tomorrow 5:30-6:30 PM. Language: Chinese.',
     text: '明天下午5点半到6点半有足球训练。',
     score: 5,
-    why: '足球训练 is the normal way to say a kids\' "Soccer" session in Chinese. It is a natural rendering of the title, NOT a changed title or a fact failure.',
+    why: '足球训练 keeps the meaning of the title "Soccer". That is not a changed title or a fact failure.',
+  },
+  {
+    facts:
+      'Event "Jour de congé", tomorrow 3:00-4:00 PM at Georgetown library, 9 Church St. Language: French.',
+    text: 'Demain, lundi, "Jour de congé" de 15 h à 16 h à Georgetown library, 9 Church St.',
+    score: 5,
+    why: 'Every given fact is there. The title is quoted as-is and the place name is left untranslated. Those are not fact failures.',
+  },
+  {
+    facts:
+      'Event "Soccer", tomorrow 5:30-6:30 PM at Riverside Field, 22 Park Rd. Language: Chinese.',
+    text: '明天下午5点半到6点半有足球训练。',
+    score: 2,
+    why: 'The time is right but the venue name and address were given and are missing. That is a fact failure.',
   },
 ];
 
@@ -174,41 +164,28 @@ export const REMINDER_JUDGE_MAX_OUTPUT_TOKENS = 512;
 const BROKEN =
   "Mon, Oct 26: Jour de congé at 3:00 Tomorrow's a day off, so you've got a bit of breathing room.";
 
-// Targeted broken cases: each is a believable reply with one defect the judge must catch.
-// The facts are right; one thing is wrong (an unrequested wish, unnatural phrasing, or a
-// given time left out).
+// Targeted broken cases: each is a believable reply with one FACT defect the judge
+// must catch (a given time, venue or address left out; a title turned into a claim;
+// an inferred consequence; the wrong event). Style-only replies are not listed.
 export const BROKEN_CASES = [
-  {
-    fixtureId: 'en-pd-day-all-day',
-    tag: 'en-pd-day-all-day:added-wish',
-    body: 'Tomorrow is a PD Day, so there is no school. Hope you can plan around it.',
-  },
-  // Clumsy-but-factual, one per fixture language: every fact is right, but no native
-  // speaker would text it as written. The judge must fail each on naturalness alone.
-  {
-    fixtureId: 'fr-jour-de-conge-timed',
-    tag: 'fr-jour-de-conge-timed:unnatural',
-    body: "Demain, lundi 26 octobre, à 15 h jusqu'à 16 h, il y a Jour de congé à la bibliothèque de Georgetown.",
-  },
-  // Omitted fact: natural French with every fact right except the end time, which is
-  // dropped. The judge must fail it on the missing time alone.
+  // Omitted fact: every fact right except the end time, which is dropped.
   {
     fixtureId: 'fr-jour-de-conge-timed',
     tag: 'fr-jour-de-conge-timed:omits-end',
-    body: 'Demain à 15 h, tu as « Jour de congé » à la bibliothèque de Georgetown.',
+    body: 'Demain à 15 h, tu as « Jour de congé » à Georgetown library, 9 Church St.',
   },
-  // Reinterpreted title: Sloane-failed recorded sample. "un jour de congé" turns the event's
-  // name into a claim that the day is a day off; the judge must fail it on that alone.
+  // Venue given, street address dropped.
+  {
+    fixtureId: 'fr-jour-de-conge-timed',
+    tag: 'fr-jour-de-conge-timed:omits-address',
+    body: "Demain à 15 h, tu as « Jour de congé » à Georgetown library jusqu'à 16 h.",
+  },
+  // Reinterpreted title: "un jour de congé" turns the event's name into a claim that
+  // the day is a day off; the judge must fail it on that alone.
   {
     fixtureId: 'fr-jour-de-conge-timed',
     tag: 'fr-jour-de-conge-timed:reinterprets-title',
-    body: "Rappel : demain à 15 h, il y a un jour de congé à la bibliothèque de Georgetown, jusqu'à 16 h.",
-  },
-  // Calendar metadata explained back to the parent (recorded en-pd-day-timed reply).
-  {
-    fixtureId: 'en-pd-day-timed',
-    tag: 'en-pd-day-timed:calendar-talk',
-    body: "Tomorrow there's a PD Day from 9:30 AM to 12:00 PM at the Northside community centre. It's on the calendar as a timed event, so you'll want to plan around it.",
+    body: "Rappel : demain à 15 h, il y a un jour de congé à Georgetown library, 9 Church St, jusqu'à 16 h.",
   },
   // Unstated inference: the facts say only "PD Day", all day; school closure is inferred.
   {
@@ -216,51 +193,21 @@ export const BROKEN_CASES = [
     tag: 'en-pd-day-all-day:inferred-closure',
     body: 'Tomorrow is a PD Day, so school is closed for students.',
   },
-  {
-    fixtureId: 'en-pd-day-all-day',
-    tag: 'en-pd-day-all-day:unnatural',
-    body: 'Tomorrow, it is having PD Day the whole of day, school is not.',
-  },
-  {
-    fixtureId: 'zh-hour-out',
-    tag: 'zh-hour-out:unnatural',
-    body: '在大约一个小时以后，从晚上7点到8点，有钢琴课它是在Ms. Chen studio。',
-  },
-  // Title set after a colon as a label: recorded fr reply Sloane failed. Reads as a
-  // statement that the day is a day off, not as the event's name.
-  {
-    fixtureId: 'fr-jour-de-conge-timed',
-    tag: 'fr-jour-de-conge-timed:colon-label',
-    body: 'Demain, lundi 26 octobre, à 15 h 00 à la bibliothèque de Georgetown : jour de congé. Ça se termine à 16 h 00.',
-  },
-  // Notification-style but factually correct (Sloane's samples, recorded replies): a
-  // friend would not text these. The judge must cap each on naturalness alone.
-  {
-    fixtureId: 'en-late-same-day',
-    tag: 'en-late-same-day:notification',
-    body: 'Swim class is today at 10:00 AM, running until 11:00 AM.',
-  },
-  {
-    fixtureId: 'en-teen-generic',
-    tag: 'en-teen-generic:notification',
-    body: 'Tomorrow you have an appointment from 4:45 to 5:45 PM.',
-  },
-  // Storytime calendar readout (the pattern of Barton's prod Storytime sample) on the real
-  // zh facts: every fact right, but an entry list, not a text from a friend.
+  // Both events, neither venue nor address (the zh prod miss).
   {
     fixtureId: 'zh-evening-with-plan',
-    tag: 'zh-evening-with-plan:storytime-readout',
+    tag: 'zh-evening-with-plan:omits-place',
     body: 'Library story time：10月26日 上午11:00。Soccer：10月26日 下午5:30-6:30。',
   },
   // Barton's prod text. No fixture has these facts; it rides on en-late-same-day, so it
-  // also fails on facts. Kept as the bar's reference sample.
+  // fails on facts. Kept as the bar's reference sample.
   {
     fixtureId: 'en-late-same-day',
     tag: 'en-late-same-day:prod-notification',
     body: 'Parent & Tot Skate on Tuesday, Oct 27 at 10:30 a.m.',
   },
-  // VIL-467 facts guardrail: friendly multi-text, every fact right except storytime's
-  // place, which is vague ("the library", no branch or address). Must fail on that alone.
+  // VIL-467 facts guardrail: every fact right except storytime's place, which is vague
+  // ("the library", no branch or address). Must fail on that alone.
   {
     fixtureId: 'en-next-day-multi-event',
     tag: 'en-next-day-multi-event:vague-place',
@@ -268,16 +215,6 @@ export const BROKEN_CASES = [
       'hey, heads up for tomorrow',
       "Theo's Montessori tour is at 10 at Little Oaks Montessori, 41 Mill St, about an hour",
       'then storytime for Léa at the library, 1:30 to 2:15',
-    ].join('\n'),
-  },
-  // Same, with every fact present but set out as a calendar export, not a friend texting.
-  {
-    fixtureId: 'en-next-day-multi-event',
-    tag: 'en-next-day-multi-event:template-list',
-    body: [
-      'Reminder for Mon, Oct 26:',
-      '- Montessori tour (Theo): 10:00 AM to 11:00 AM at Little Oaks Montessori, 41 Mill St',
-      '- Storytime (Léa): 1:30 PM to 2:15 PM at Georgetown Branch, 9 Church St',
     ].join('\n'),
   },
 ];
@@ -401,7 +338,7 @@ async function main() {
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'reminder', cachedOnly, getClient, cost, {
     samples: 3,
     aggregate: 'min',
-    references: [...GENERAL_REFERENCE_TEXTS, ...REMINDER_REFERENCE_TEXTS],
+    references: REMINDER_REFERENCE_TEXTS,
     logCost: true,
     maxOutputTokens: REMINDER_JUDGE_MAX_OUTPUT_TOKENS,
   });

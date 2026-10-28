@@ -2,10 +2,11 @@
 //
 // Expectations come from the SPEC (packages/agent/skills/reminder.md): the model writes
 // the WHOLE reminder from facts, in the parent's language. No fixed copy and no wording
-// checks: a judge reads facts, AM/PM, language and tone. Each fixture is the input to
-// `reminderFacts` (apps/web/lib/loop/reminders/compose.ts), so the eval replays the exact
-// facts production builds. Includes timed 'Jour de congé' and 'PD Day' events (the title
-// names the day, the event still has a time), all-day events, and fr, zh and en parents.
+// checks: a judge reads facts only (including AM/PM and language). Each fixture is the
+// input to `reminderFacts` (apps/web/lib/loop/reminders/compose.ts), so the eval replays
+// the exact facts production builds. Includes timed 'Jour de congé' and 'PD Day' events
+// (the title names the day, the event still has a time), all-day events, and fr, zh and
+// en parents.
 
 const TZ = 'America/Toronto';
 const SUN_6PM = '2026-10-25T22:00:00Z';
@@ -42,12 +43,12 @@ export const REMINDER_FIXTURES = [
           title: 'Jour de congé',
           startsAt: '2026-10-26T19:00:00Z',
           endsAt: '2026-10-26T20:00:00Z',
-          location: 'Georgetown library',
+          location: 'Georgetown library, 9 Church St',
         }),
       ],
     }),
     watchFor:
-      'The prod bug. The family\'s calendar has an event titled "Jour de congé" (day off) from 3:00 to 4:00 PM tomorrow at Georgetown library: something they go to at the library, not a closure, and the facts say nothing more about what it is. In French; states tomorrow, 15 h or 3 PM to 16 h or 4 PM (both times), and the place, naming the event by its title as a native speaker would. Saying the library is closed, guessing what the activity is, or calling the day free, quiet, a break or breathing room is a LOW score.',
+      'The prod bug. The family\'s calendar has an event titled "Jour de congé" (day off) from 3:00 to 4:00 PM tomorrow at Georgetown library, 9 Church St: something they go to at that venue, not a closure, and the facts say nothing more about what it is. In French; states tomorrow, 15 h or 3 PM to 16 h or 4 PM (both times), the venue name and the street address. A missing start, end, venue or address is a LOW score. Saying the library is closed, guessing what the activity is, or calling the day free, quiet, a break or breathing room is a LOW score. Leaving the place name untranslated or quoting the title as-is is not a fault.',
   },
   {
     id: 'en-pd-day-timed',
@@ -128,17 +129,19 @@ export const REMINDER_FIXTURES = [
           title: 'Soccer',
           startsAt: '2026-10-26T21:30:00Z',
           endsAt: '2026-10-26T22:30:00Z',
+          location: 'Riverside Field, 22 Park Rd',
         }),
         ev({
           eventRef: 'e2',
           title: 'Library story time',
           startsAt: '2026-10-26T15:00:00Z',
           endsAt: null,
+          location: 'Georgetown library, 9 Church St',
         }),
       ],
     }),
     watchFor:
-      'In Chinese. Two things tomorrow: story time at 11:00 AM and soccer 5:30-6:30 PM. Both with correct morning/afternoon. The plan link may appear once, exactly; no other link.',
+      'In Chinese. Two things tomorrow: story time at 11:00 AM at Georgetown library, 9 Church St, and soccer 5:30-6:30 PM at Riverside Field, 22 Park Rd. Both with correct morning/afternoon, and each with the venue name and street address it was given. A missing start, end, venue or address is a LOW score. The plan link may appear once, exactly; no other link.',
   },
   {
     id: 'en-teen-generic',
@@ -196,6 +199,6 @@ export const REMINDER_FIXTURES = [
       ],
     }),
     watchFor:
-      "Fake family, two kids, two events tomorrow (VIL-467). The prod miss read like a filled-in template: a stiff list of events with times and places, not a friend texting. The reminder may be one text or several; read them in order as one message. FACTS GUARDRAIL, by meaning: across the texts, EVERY event keeps its start time, its end time or duration, and its specific venue name and address as given (Montessori tour 10 to 11 AM at Little Oaks Montessori, 41 Mill St; storytime 1:30 to 2:15 PM at Georgetown Branch, 9 Church St), so the parent never has to look anything up. Any event's time, end or place missing or vague is a LOW score. A list-like, calendar-export feel is also a LOW score.",
+      "Fake family, two kids, two events tomorrow (VIL-467). The reminder may be one text or several; read them in order as one message. FACTS GUARDRAIL, by meaning: across the texts, EVERY event keeps its start time, its end time or duration, and its specific venue name and address as given (Montessori tour 10 to 11 AM at Little Oaks Montessori, 41 Mill St; storytime 1:30 to 2:15 PM at Georgetown Branch, 9 Church St), so the parent never has to look anything up. Any event's time, end or place missing or vague is a LOW score. Sentence shape, a list, or leaving a place name as given is not a fault.",
   },
 ];
