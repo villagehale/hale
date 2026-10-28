@@ -128,6 +128,11 @@ import { inventedName } from './coach-channel-name-gate.mjs';
 import { nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
+  CLASH_CHILDREN,
+  CLASH_JUDGE_SYSTEM,
+  COACH_CLASH_FIXTURES,
+} from './coach-clash-fixtures.mjs';
+import {
   DRY_SUBJECT_PLAN,
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -2432,6 +2437,55 @@ async function main() {
     );
   }
 
+  // VIL-79 COACH-CLASH CASES (coach-clash-fixtures.mjs), graded in this batch by their own
+  // clash judge, median of three. Each case's reference reply must land on `shouldPass`;
+  // `clash-dropped` is the broken case the judge MUST fail. Under --broken every case's
+  // broken reply is graded and must fail. Same tag prefix as run-coach-clash-eval.mjs, so
+  // the two runners share verdicts. Skipped for --severed (a thread calibration) and when
+  // --only names no clash case.
+  const clashCases = severed
+    ? []
+    : COACH_CLASH_FIXTURES.filter((f) => !only || only.split(',').includes(f.id)).map(
+        (fixture) => ({
+          fixture,
+          reply: broken ? fixture.sample.broken : fixture.sample.reply,
+          shouldPass: broken ? false : fixture.clashJudge.shouldPass,
+          tag: `${fixture.id}${broken ? ':broken' : ''}`,
+        }),
+      );
+  const clashJudge = makeJudge(
+    judgeModel,
+    CLASH_JUDGE_SYSTEM,
+    'coach-clash',
+    cachedOnly,
+    getJudgeClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
+  const clashWrong = [];
+  if (clashCases.length > 0) console.log('\n--- coach-clash cases (VIL-79) ---');
+  for (const c of clashCases) {
+    const verdict = await clashJudge(c.tag, {
+      parentText: c.fixture.text,
+      children: CLASH_CHILDREN.map((k) => ({ id: k.id, name: k.name })),
+      calendarBlocks: c.fixture.calendarBlocks,
+      toolResult: c.fixture.toolResult,
+      reply: c.reply,
+    });
+    if (verdict.dry) {
+      console.log(`  dry  ${c.tag} (not scored)`);
+      continue;
+    }
+    const ok = verdict.score >= JUDGE_MIN === c.shouldPass;
+    if (!ok) clashWrong.push(c.tag);
+    console.log(
+      `  ${ok ? 'ok  ' : 'FAIL'} ${c.tag} judge:${verdict.score}${verdict.samples ? ` (${verdict.samples.join('/')})` : ''} expect ${c.shouldPass ? 'pass' : 'fail'}`,
+    );
+  }
+  if (clashCases.length > 0 && !isDryRun()) {
+    console.log(`coach-clash cases wrong:      ${clashWrong.length}  (0 required)`);
+  }
+
   console.log('\n--- cost telemetry ---');
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
@@ -2443,10 +2497,14 @@ async function main() {
   }
 
   const allPass =
-    accuracy === 1 && fabricating.length === 0 && missedAction.length === 0 && voiceOk;
+    accuracy === 1 &&
+    fabricating.length === 0 &&
+    missedAction.length === 0 &&
+    voiceOk &&
+    (broken || clashWrong.length === 0);
 
   if (isDryRun()) {
-    console.log(dryReportLine('coach-channel', [judge.plan]));
+    console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan]));
     process.exit(0);
   }
   console.log('\n--- gate ---');
@@ -2467,7 +2525,8 @@ async function main() {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);
   }
-  const calibrated = !allPass;
+  // Every clash broken reply must fail on its own, not hide behind another gate.
+  const calibrated = !allPass && clashWrong.length === 0;
   console.log(
     `broken-mode calibration (must fail at least one gate): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
   );
