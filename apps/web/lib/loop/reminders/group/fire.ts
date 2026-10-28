@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
@@ -58,7 +58,8 @@ import { type GroupReminderVoice, sharedGroupReminderVoice } from './voice';
  * stale and a later tick takes the row again and checks everything afresh. A refusal hands
  * the commit back first, so a STOP meanwhile still takes the reminder back. A reminder
  * that keeps failing is tried at most every `SENDING_STALE_MS` and dropped as missed past
- * `LATE_LIMIT_MS`. A text already sent is never sent again (its ledger key).
+ * `LATE_LIMIT_MS`. A send that reached Linq, or may have, is never made again: its ledger
+ * key holds it, and the later tick closes the reminder as sent only on Linq's message id.
  */
 
 export const GROUP_REMINDER_TEMPLATE = 'linq:group_reminder';
@@ -107,6 +108,59 @@ async function committed(database: Database, row: GroupReminderRow): Promise<boo
   return false;
 }
 
+const SEND_UNCONFIRMED = 'send_unconfirmed';
+
+/** What a send under this key left on the ledger, if one was ever claimed. */
+async function priorSend(database: Database, dedupeKey: string) {
+  const [row] = await database
+    .select({
+      id: schema.channelMessages.id,
+      status: schema.channelMessages.status,
+      errorCode: schema.channelMessages.errorCode,
+      providerMessageId: schema.channelMessages.providerMessageId,
+    })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.dedupeKey, dedupeKey))
+    .limit(1);
+  return row ?? null;
+}
+
+type PriorSend = NonNullable<Awaited<ReturnType<typeof priorSend>>>;
+
+/**
+ * Closes a reminder whose send was already made, or begun: its key holds it, so it is not
+ * sent again. It is sent only on Linq's message id. A send Linq refused closes failed by
+ * its code. One with no answer recorded may or may not have landed, and closes failed as
+ * unconfirmed, its ledger row with it.
+ */
+async function closeFromLedger(
+  database: Database,
+  row: GroupReminderRow,
+  prior: PriorSend,
+  now: Date,
+): Promise<FireOutcome> {
+  if (prior.providerMessageId) {
+    return close(database, row, { status: 'sent', reason: 'already_sent', now });
+  }
+  if (prior.status === 'failed') {
+    return close(database, row, { status: 'failed', reason: prior.errorCode ?? 'unknown', now });
+  }
+  await database
+    .update(schema.channelMessages)
+    .set({ status: 'failed', errorCode: SEND_UNCONFIRMED })
+    .where(
+      and(
+        eq(schema.channelMessages.id, prior.id),
+        isNull(schema.channelMessages.providerMessageId),
+      ),
+    );
+  console.warn(
+    { reminderId: row.id, outcome: SEND_UNCONFIRMED },
+    'group reminders: a send with no answer from Linq on record, not sent again',
+  );
+  return close(database, row, { status: 'failed', reason: SEND_UNCONFIRMED, now });
+}
+
 /**
  * Closes a committed send by what happened to it. A sent text is threaded before the row
  * closes, so a tick that dies in between leaves a row a later tick closes from the ledger.
@@ -114,6 +168,7 @@ async function committed(database: Database, row: GroupReminderRow): Promise<boo
 async function settle(
   database: Database,
   row: GroupReminderRow,
+  sendKey: string,
   sent: GroupReminderLineOutcome,
   now: Date,
   thread: () => Promise<unknown>,
@@ -132,12 +187,12 @@ async function settle(
     }
     return close(database, row, { status: 'failed', reason: sent.code, now });
   }
-  if (sent.outcome === 'sent') await thread();
-  await closeReminder(database, row, {
-    status: 'sent',
-    reason: sent.outcome === 'already_sent' ? 'already_sent' : null,
-    now,
-  });
+  if (sent.outcome === 'already_sent') {
+    const prior = await priorSend(database, sendKey);
+    return prior ? closeFromLedger(database, row, prior, now) : 'retrying';
+  }
+  await thread();
+  await closeReminder(database, row, { status: 'sent', reason: null, now });
   return 'sent';
 }
 
@@ -165,15 +220,6 @@ async function quietNowFor(
   return inQuiet(now, quiet.timeZone, quiet.windows);
 }
 
-async function alreadySent(database: Database, dedupeKey: string): Promise<boolean> {
-  const [row] = await database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
-    .where(eq(schema.channelMessages.dedupeKey, dedupeKey))
-    .limit(1);
-  return Boolean(row);
-}
-
 async function pageUnwritten(): Promise<void> {
   const page = await postOpsSlack(
     'Hale group reminder: a due reminder was not sent because it could not be written. Nothing went out.',
@@ -190,10 +236,9 @@ async function fireOne(
   const templateKey =
     row.delivery === 'direct' ? GROUP_REMINDER_DIRECT_TEMPLATE : GROUP_REMINDER_TEMPLATE;
   const sendKey = `${templateKey}:${row.id}`;
-  // Before every check: a text a dead tick already sent was read, whatever changed since.
-  if (await alreadySent(database, sendKey)) {
-    return close(database, row, { status: 'sent', reason: 'already_sent', now });
-  }
+  // Before every check: a send a dead tick made, or began, decides it, whatever changed since.
+  const prior = await priorSend(database, sendKey);
+  if (prior) return closeFromLedger(database, row, prior, now);
   const seats = await liveSeats(database, row.chatId);
   const askerSeat = seats.find((seat) => seat.phoneHash === row.askedByPhoneHash) ?? null;
   const recipientSeat = row.forPhoneHash
@@ -259,7 +304,7 @@ async function fireOne(
       now,
       transport: ports.oneToOne,
     });
-    return settle(database, row, texted, now, () =>
+    return settle(database, row, sendKey, texted, now, () =>
       threadIfParent(database, { familyId: row.familyId, parentUserId: userId, body: text }),
     );
   }
@@ -280,7 +325,7 @@ async function fireOne(
     now,
     send: ports.send,
   });
-  return settle(database, row, posted, now, async () => {
+  return settle(database, row, sendKey, posted, now, async () => {
     const conversationId = await resolveOrCreateNoteConversation(
       row.familyId,
       channelGroupNoteKey(row.chatId),

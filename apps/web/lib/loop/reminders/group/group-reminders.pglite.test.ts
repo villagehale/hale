@@ -361,6 +361,40 @@ async function threadFor(noteKey: string) {
     .where(eq(schema.conversations.noteKey, noteKey));
 }
 
+/**
+ * A tick that committed a 1:1 send, wrote its ledger claim and died: with Linq's message
+ * id when Linq took the text first, without one when Linq never answered.
+ */
+async function diedSendingDirect(home: Household, id: string, providerMessageId: string | null) {
+  const died = await claimReminder(db.database, id, THURSDAY_FOUR);
+  if (!died || !(await commitSend(db.database, died))) throw new Error('expected a commit');
+  await db.database.insert(schema.channelMessages).values({
+    familyId: home.familyId,
+    parentUserId: home.priya,
+    channel: 'imessage',
+    direction: 'out',
+    category: 'reply',
+    templateKey: 'linq:group_reminder_direct',
+    dedupeKey: `linq:group_reminder_direct:${id}`,
+    providerMessageId,
+    status: 'sent',
+    sentAt: THURSDAY_FOUR,
+  });
+}
+
+async function directLedger() {
+  const [row] = await db.database
+    .select({
+      status: schema.channelMessages.status,
+      errorCode: schema.channelMessages.errorCode,
+      providerMessageId: schema.channelMessages.providerMessageId,
+      dedupeKey: schema.channelMessages.dedupeKey,
+    })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.templateKey, 'linq:group_reminder_direct'));
+  return row;
+}
+
 describe('asking for a reminder in the group', () => {
   it("confirms a grandparent's reminder in the group and keeps it there, even asked privately", async () => {
     const home = await seedHousehold();
@@ -891,6 +925,7 @@ describe('when a group reminder is due', () => {
       category: 'reply',
       templateKey: 'linq:group_reminder',
       dedupeKey: `linq:group_reminder:${id}`,
+      providerMessageId: 'out-died',
       providerChatId: CHAT,
       status: 'sent',
       sentAt: THURSDAY_FOUR,
@@ -1021,23 +1056,83 @@ describe('when a group reminder is due', () => {
     expect(actions).not.toContain('group_reminder_cancelled');
   });
 
-  it('does not text a 1:1 reminder again that a tick died sending', async () => {
+  it('does not text a 1:1 reminder again that a tick died after Linq took', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const home = await seedHousehold();
     await setFor(PRIYA);
     const { id } = await onlyReminder();
-    const died = await claimReminder(db.database, id, THURSDAY_FOUR);
-    if (!died || !(await commitSend(db.database, died))) throw new Error('expected a commit');
-    await db.database.insert(schema.channelMessages).values({
-      familyId: home.familyId,
-      parentUserId: home.priya,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'reply',
-      templateKey: 'linq:group_reminder_direct',
-      dedupeKey: `linq:group_reminder_direct:${id}`,
+    await diedSendingDirect(home, id, 'out-died');
+
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({ due: 1, sent: 1 });
+    expect(back.direct.sent).toEqual([]);
+    expect(back.voice.calls).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
       status: 'sent',
-      sentAt: THURSDAY_FOUR,
+      statusReason: 'already_sent',
+      what: null,
+    });
+  });
+
+  it('closes a 1:1 reminder a tick died sending before Linq answered as unconfirmed, and texts nothing', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const home = await seedHousehold();
+    await setFor(PRIYA);
+    const { id } = await onlyReminder();
+    await diedSendingDirect(home, id, null);
+
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({
+      due: 1,
+      sent: 0,
+      failed: 1,
+    });
+    expect(back.direct.sent).toEqual([]);
+    expect(back.voice.calls).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'failed',
+      statusReason: 'send_unconfirmed',
+      what: null,
+    });
+    expect(await directLedger()).toMatchObject({
+      status: 'failed',
+      errorCode: 'send_unconfirmed',
+      dedupeKey: `linq:group_reminder_direct:${id}`,
+    });
+    const actions = await verbs(home.familyId);
+    expect(actions).toContain('group_reminder_failed');
+    expect(actions).not.toContain('group_reminder_sent');
+  });
+
+  it('keeps the key of a 1:1 text Linq took when recording it fails, and texts it once', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const home = await seedHousehold();
+    await setFor(PRIYA);
+    const { id } = await onlyReminder();
+    await db.exec(`
+      create or replace function refuse_reply_audit() returns trigger as $$
+      begin raise exception 'audit write refused'; end;
+      $$ language plpgsql;
+      create trigger refuse_reply_audit_trg before insert on audit_log
+        for each row when (new.action_taken = 'sms_reply_sent')
+        execute function refuse_reply_audit();
+    `);
+    const tick = tickPorts(THURSDAY_FOUR);
+    try {
+      expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({
+        due: 1,
+        sent: 0,
+        failed: 0,
+        retrying: 1,
+      });
+    } finally {
+      await db.exec('drop trigger refuse_reply_audit_trg on audit_log;');
+    }
+    expect(tick.direct.sent).toEqual([{ to: PRIYA, body: 'reminder for Priya' }]);
+    expect(await directLedger()).toMatchObject({
+      status: 'sent',
+      providerMessageId: 'fake-out-1',
+      dedupeKey: `linq:group_reminder_direct:${id}`,
     });
 
     const back = tickPorts(AFTER_STALE);
@@ -1049,6 +1144,7 @@ describe('when a group reminder is due', () => {
       statusReason: 'already_sent',
       what: null,
     });
+    expect(await verbs(home.familyId)).toContain('group_reminder_sent');
   });
 
   it('drops a 1:1 reminder, by name, once the parent has stopped Hale texting them', async () => {
@@ -1133,7 +1229,16 @@ describe('when a group reminder is due', () => {
       },
     };
     expect(await runGroupReminderTick(db.database, timedOut)).toMatchObject({ failed: 1 });
-    expect(await onlyReminder()).toMatchObject({ status: 'failed', statusReason: 'timeout' });
+    const row = await onlyReminder();
+    expect(row).toMatchObject({ status: 'failed', statusReason: 'timeout' });
+    const [line] = await db.database
+      .select({
+        status: schema.channelMessages.status,
+        dedupeKey: schema.channelMessages.dedupeKey,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.templateKey, 'linq:group_reminder'));
+    expect(line).toEqual({ status: 'failed', dedupeKey: `linq:group_reminder:${row.id}` });
   });
 
   it('drops one whose asker left the chat before it fired, by name', async () => {

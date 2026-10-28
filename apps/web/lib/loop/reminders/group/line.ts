@@ -17,8 +17,11 @@ import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
  * audience at the moment of sending, after the model has written it, so someone added
  * or re-roled since the turn began still holds it. Either send is claimed on
  * `channel_messages` by its dedupe key, so a replayed webhook or a second tick cannot
- * send it twice, stamped with the provider id once it lands, and audited
- * `sms_reply_sent`. A refused send marks the row failed and releases the key.
+ * send it twice, stamped with Linq's message id once Linq takes it, and audited
+ * `sms_reply_sent`. That id is the only proof a later tick has that it landed. A refusal
+ * Linq calls temporary marks the row failed and frees the key for a later try. Any other
+ * failure, and anything that fails once Linq has taken it, keeps the key: the text may
+ * have landed, so it is never sent again.
  */
 
 /** Every reminder line says what is due and when, so it is gated as a schedule line. */
@@ -70,37 +73,39 @@ async function sendOnce(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { outcome: 'already_sent' };
 
+  let sent: { providerMessageId: string; chatId?: string | null };
   try {
-    const sent = await send();
-    await database
-      .update(schema.channelMessages)
-      .set({
-        providerMessageId: sent.providerMessageId,
-        providerChatId: entry.providerChatId ?? sent.chatId ?? null,
-      })
-      .where(eq(schema.channelMessages.id, claimed.id));
-    await database.insert(schema.auditLog).values({
-      familyId: entry.familyId,
-      actor: entry.ledgerUserId,
-      actionTaken: 'sms_reply_sent',
-      targetTable: 'channel_messages',
-      targetId: claimed.id,
-      after: { templateKey: entry.templateKey, source: 'composed' },
-    });
-    return { outcome: 'sent', channelMessageId: claimed.id };
+    sent = await send();
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
     const retryable = err instanceof LinqSendError && !err.permanent && err.httpStatus >= 400;
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code, dedupeKey: null })
+      .set({ status: 'failed', errorCode: code, ...(retryable ? { dedupeKey: null } : {}) })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.warn(
       { familyId: entry.familyId, templateKey: entry.templateKey, code, retryable },
-      'group reminder: the text did not land',
+      'group reminder: the send failed',
     );
     return { outcome: 'not_sent', code, retryable };
   }
+  // Linq has it: a failure from here throws with the key still claimed.
+  await database
+    .update(schema.channelMessages)
+    .set({
+      providerMessageId: sent.providerMessageId,
+      providerChatId: entry.providerChatId ?? sent.chatId ?? null,
+    })
+    .where(eq(schema.channelMessages.id, claimed.id));
+  await database.insert(schema.auditLog).values({
+    familyId: entry.familyId,
+    actor: entry.ledgerUserId,
+    actionTaken: 'sms_reply_sent',
+    targetTable: 'channel_messages',
+    targetId: claimed.id,
+    after: { templateKey: entry.templateKey, source: 'composed' },
+  });
+  return { outcome: 'sent', channelMessageId: claimed.id };
 }
 
 export async function postGroupReminderLine(
