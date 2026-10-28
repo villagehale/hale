@@ -13,6 +13,7 @@ import type { FamilyChildRef } from '~/lib/sentinel';
  */
 export interface ScriptedNoticeWriter {
   familyChildren: () => Promise<readonly FamilyChildRef[]>;
+  familyLanguage: () => Promise<string>;
   writeNotice: (facts: EmailAlertNoticeFacts, familyId: string) => Promise<EmailAlertNotice>;
   seen: EmailAlertNoticeFacts[];
 }
@@ -20,6 +21,7 @@ export interface ScriptedNoticeWriter {
 export function scriptedNoticeWriter(
   options: {
     children?: readonly FamilyChildRef[];
+    language?: string;
     answer?: EmailAlertNotice | ((facts: EmailAlertNoticeFacts) => EmailAlertNotice);
   } = {},
 ): ScriptedNoticeWriter {
@@ -28,6 +30,7 @@ export function scriptedNoticeWriter(
   return {
     seen,
     familyChildren: async () => children,
+    familyLanguage: async () => options.language ?? 'en',
     writeNotice: async (facts) => {
       seen.push(facts);
       const answer = options.answer;

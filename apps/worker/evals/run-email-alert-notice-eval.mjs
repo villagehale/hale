@@ -59,16 +59,17 @@ const JUDGE_SYSTEM = [
   'otherHaleFamiliesGoing; private; language), the text and watchFor notes. Score 1-5 on',
   'FACTS, PRIVACY and TONE, not wording.',
   'A 5: says what the occasion is and what happened with only the facts given; every date and',
-  'time is correct INCLUDING morning versus afternoon; nothing invented; one or two short,',
-  'calm sentences, like a friend; ends on ONE question offering to add it exactly when `offer`',
+  'time is correct INCLUDING morning versus afternoon; nothing invented; in facts.language;',
+  'chill and casual, like a friend texting; asks whether to add it exactly when `offer`',
   'is not null, and asks nothing when it is null; when `otherHaleFamiliesGoing` is a number,',
   'says that many other Hale families, never just "families"; when `private` is true, says only',
   'the generic category and that details were kept out, with no sender, time, place or subject.',
   'A LOW score (1-2) is any of: a wrong or ambiguous AM/PM, time, date or place; an invented',
   'detail; quoting the subject line, an order or confirmation number, an amount or a surname;',
-  'a vague "sent something about" sentence; a question when `offer` is null or no question',
-  'when it is not; offering to add something already on the calendar; a link, emoji,',
-  'exclamation mark or "reply YES"; anything a private text must withhold.',
+  'a vague "sent something about" sentence; an ask to add it when `offer` is null or no ask',
+  'when it is not; offering to add something already on the calendar; a link or "reply YES"',
+  'keyword teaching; the wrong language; a form-letter or company register; anything a',
+  'private text must withhold.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -168,8 +169,8 @@ async function dryRun({ agent, lane, skill, notice, judgeModel }) {
 }
 
 function factsFor(notice, fixture) {
-  const { now, ...rest } = fixture.args;
-  return notice.emailAlertNoticeFacts({ ...rest, now: new Date(now) });
+  const { now, language = 'en', ...rest } = fixture.args;
+  return notice.emailAlertNoticeFacts({ ...rest, language, now: new Date(now) });
 }
 
 async function main() {

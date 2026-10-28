@@ -209,6 +209,7 @@ function alertPorts(
   return {
     familyChildren: async () => CHILDREN,
     writeNotice: writer.writeNotice,
+    familyLanguage: writer.familyLanguage,
     classify: async (envelope, familyTimezone) =>
       classifyChildEventEmail(envelope, {
         client: recorded.client(),

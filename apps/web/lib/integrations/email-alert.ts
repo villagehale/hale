@@ -245,6 +245,8 @@ export interface EmailAlertPorts {
   classify(envelope: InboxEnvelope, familyTimezone: string): Promise<SentinelClassification>;
   /** This family's children, the notice writer's context for "is this about them". */
   familyChildren(): Promise<readonly FamilyChildRef[]>;
+  /** The family's reply language tag (`families.primary_language`): the notice is written in it. */
+  familyLanguage(): Promise<string>;
   /** The notice writer: one model call that decides and writes, or sends nothing. Its
    * quality is the eval's job (rule #8); a port here, like `classify`. */
   writeNotice(facts: EmailAlertNoticeFacts, familyId: string): Promise<EmailAlertNotice>;
@@ -433,6 +435,7 @@ export async function alertParentForEmail(
           ? 'add_to_calendar'
           : 'add_to_week',
     otherHaleFamiliesGoing: counted?.shown ? counted.others : null,
+    language: await ports.familyLanguage(),
     timeZone: input.timeZone,
     now,
   });

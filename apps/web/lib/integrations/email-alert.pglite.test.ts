@@ -137,6 +137,7 @@ function harness(
     ports: {
       familyChildren: writer.familyChildren,
       writeNotice: writer.writeNotice,
+      familyLanguage: writer.familyLanguage,
       classify: async () => {
         h.classifyCalls += 1;
         if (over.classifyThrows) throw new Error('gmail messages.get 503');

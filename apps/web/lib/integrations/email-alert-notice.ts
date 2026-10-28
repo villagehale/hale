@@ -125,6 +125,8 @@ export function emailAlertNoticeFacts(input: {
   fromParentsOwnCalendar: boolean;
   offer: NoticeOffer | null;
   otherHaleFamiliesGoing: number | null;
+  /** The family's reply language (`families.primary_language`), any tag. */
+  language: string;
   timeZone: string;
   now: Date;
 }): EmailAlertNoticeFacts {
@@ -159,7 +161,7 @@ export function emailAlertNoticeFacts(input: {
     offer: hidden ? null : input.offer,
     otherHaleFamiliesGoing: hidden ? null : input.otherHaleFamiliesGoing,
     private: hidden,
-    language: 'en',
+    language: input.language,
   };
 }
 
@@ -171,20 +173,22 @@ export function emailAlertNoticeUserMessage(facts: EmailAlertNoticeFacts): strin
 const URL_SHAPE = /https?:\/\/\S+|www\.\S+/i;
 
 /**
- * Structural refusals only, never wording or length: empty, a
- * link, or a question that disagrees with the offer row — a question with no row behind it
- * makes every bare YES in the household ambiguous (#649), and an offer row with no
- * question is a CTA nobody saw.
+ * Structural refusals only, never wording or length: empty, or a link. Whether the text
+ * asks to add it is the model's own structured `asks_to_add`, held to the offer row in
+ * {@link readEmailAlertNotice} — a question with no row behind it makes every bare YES in
+ * the household ambiguous (#649), and an offer row with no ask is a CTA nobody saw.
  */
-export function emailAlertNoticeRefusals(text: string, facts: EmailAlertNoticeFacts): string[] {
+export function emailAlertNoticeRefusals(text: string): string[] {
   const body = text.trim();
   if (body === '') return ['empty'];
-  const found: string[] = [];
-  if (URL_SHAPE.test(body)) found.push('link');
-  const asks = body.includes('?');
-  if (facts.offer !== null && !asks) found.push('offer_unasked');
-  if (facts.offer === null && asks) found.push('question_without_offer');
-  return found;
+  return URL_SHAPE.test(body) ? ['link'] : [];
+}
+
+/** The model's `asks_to_add` against the offer row: a fact check, not a punctuation one. */
+export function offerMismatch(asksToAdd: boolean, facts: EmailAlertNoticeFacts): string[] {
+  if (facts.offer !== null && !asksToAdd) return ['offer_unasked'];
+  if (facts.offer === null && asksToAdd) return ['ask_without_offer'];
+  return [];
 }
 
 export const emailAlertNoticeOutputSchema = z.object({
@@ -192,6 +196,7 @@ export const emailAlertNoticeOutputSchema = z.object({
   about_the_kids: z.enum(['yes', 'no', 'unsure']),
   clear: z.boolean(),
   text: z.string(),
+  asks_to_add: z.boolean(),
 });
 
 export type EmailAlertNoticeAnswer = z.infer<typeof emailAlertNoticeOutputSchema>;
@@ -203,8 +208,9 @@ export const EMAIL_ALERT_NOTICE_TOOL_SCHEMA = {
     about_the_kids: { type: 'string', enum: ['yes', 'no', 'unsure'] },
     clear: { type: 'boolean' },
     text: { type: 'string' },
+    asks_to_add: { type: 'boolean' },
   },
-  required: ['reason', 'about_the_kids', 'clear', 'text'],
+  required: ['reason', 'about_the_kids', 'clear', 'text', 'asks_to_add'],
 } as const;
 
 /**
@@ -221,7 +227,7 @@ export function readEmailAlertNotice(
   }
   if (!answer.clear) return { notice: { send: false, why: 'unclear' } };
   const text = answer.text.trim();
-  const refusals = emailAlertNoticeRefusals(text, facts);
+  const refusals = [...emailAlertNoticeRefusals(text), ...offerMismatch(answer.asks_to_add, facts)];
   if (refusals.length > 0) return { refused: refusals };
   return { notice: { send: true, text } };
 }

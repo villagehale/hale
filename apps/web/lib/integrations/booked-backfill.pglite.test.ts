@@ -98,6 +98,7 @@ function harness(classification: SentinelClassification = classified()): {
     ports: {
       familyChildren: writer.familyChildren,
       writeNotice: writer.writeNotice,
+      familyLanguage: writer.familyLanguage,
       classify: async () => {
         classifyCalls.n += 1;
         return classification;

@@ -8,6 +8,7 @@ import {
   composeEmailAlertNotice,
   emailAlertNoticeFacts,
   emailAlertNoticeRefusals,
+  offerMismatch,
   quietBeforeWriting,
   readEmailAlertNotice,
   senderLabel,
@@ -57,6 +58,7 @@ function facts(over: Partial<Parameters<typeof emailAlertNoticeFacts>[0]> = {}) 
     fromParentsOwnCalendar: false,
     offer: 'add_to_week',
     otherHaleFamiliesGoing: null,
+    language: 'en',
     timeZone: 'America/Toronto',
     now: NOW,
     ...over,
@@ -69,6 +71,7 @@ function answer(over: Partial<EmailAlertNoticeAnswer> = {}): EmailAlertNoticeAns
     about_the_kids: 'yes',
     clear: true,
     text: 'Picture day at Maple is Friday at 9. Want me to add it to your week?',
+    asks_to_add: true,
     ...over,
   };
 }
@@ -184,23 +187,23 @@ describe('senderLabel', () => {
 });
 
 describe('emailAlertNoticeRefusals', () => {
-  it('passes a plain text that asks exactly when there is an offer', () => {
-    expect(emailAlertNoticeRefusals(answer().text, facts())).toEqual([]);
-    expect(emailAlertNoticeRefusals('Swim is off Saturday.', facts({ offer: null }))).toEqual([]);
-  });
-
-  it('refuses the structural failures, and nothing about wording', () => {
-    expect(emailAlertNoticeRefusals('  ', facts())).toEqual(['empty']);
+  it('refuses only an empty text or a link, and nothing about wording or punctuation', () => {
+    expect(emailAlertNoticeRefusals(answer().text)).toEqual([]);
+    expect(emailAlertNoticeRefusals('Swim is off Saturday. Okay?')).toEqual([]);
+    expect(emailAlertNoticeRefusals('  ')).toEqual(['empty']);
     // No length or segment cap: the model decides how long the text is.
-    expect(emailAlertNoticeRefusals(`${'a'.repeat(1200)}?`, facts())).toEqual([]);
-    expect(emailAlertNoticeRefusals('See https://maple.example. Add it?', facts())).toEqual([
-      'link',
-    ]);
-    expect(emailAlertNoticeRefusals(`${'好'.repeat(150)}?`, facts())).toEqual([]);
-    expect(emailAlertNoticeRefusals('Picture day is Friday.', facts())).toEqual(['offer_unasked']);
-    expect(emailAlertNoticeRefusals('Swim is off. Okay?', facts({ offer: null }))).toEqual([
-      'question_without_offer',
-    ]);
+    expect(emailAlertNoticeRefusals(`${'a'.repeat(1200)}?`)).toEqual([]);
+    expect(emailAlertNoticeRefusals('See https://maple.example. Add it?')).toEqual(['link']);
+    expect(emailAlertNoticeRefusals(`${'好'.repeat(150)}?`)).toEqual([]);
+  });
+});
+
+describe('offerMismatch', () => {
+  it('holds the model’s own asks_to_add to the offer row', () => {
+    expect(offerMismatch(true, facts())).toEqual([]);
+    expect(offerMismatch(false, facts({ offer: null }))).toEqual([]);
+    expect(offerMismatch(false, facts())).toEqual(['offer_unasked']);
+    expect(offerMismatch(true, facts({ offer: null }))).toEqual(['ask_without_offer']);
   });
 });
 
@@ -226,7 +229,7 @@ describe('readEmailAlertNotice', () => {
   });
 
   it('a refused draft is not a notice', () => {
-    expect(readEmailAlertNotice(answer({ text: 'Picture day is Friday.' }), facts())).toEqual({
+    expect(readEmailAlertNotice(answer({ asks_to_add: false }), facts())).toEqual({
       refused: ['offer_unasked'],
     });
   });

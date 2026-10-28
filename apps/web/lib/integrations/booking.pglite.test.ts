@@ -158,6 +158,7 @@ function harness(
     ports: {
       familyChildren: writer.familyChildren,
       writeNotice: writer.writeNotice,
+      familyLanguage: writer.familyLanguage,
       classify: async (envelope) => {
         const base = over.byMessage?.[envelope.messageId] ?? over.classification ?? classified();
         if (!over.correlate || base.extraction === null) return base;
