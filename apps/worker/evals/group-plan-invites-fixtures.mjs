@@ -66,7 +66,7 @@ export const ATTENDANCE_FIXTURES = [
         },
       ],
     },
-    accept: { 'fam-lee': ['in'], 'fam-dong': ['out'], 'fam-tremblay': ['in'] },
+    accept: { 'fam-lee': ['unclear'], 'fam-dong': ['out'], 'fam-tremblay': ['in'] },
   },
   {
     id: 'maybe-and-question',
