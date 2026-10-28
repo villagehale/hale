@@ -87,6 +87,15 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'workstream_followup_deferred',
     'workstream_followup_gave_up',
   ],
+  // VIL-445 — one helper writes every carpool verb from a parameter.
+  'apps/web/lib/channel/linq/carpool.ts': [
+    'group_line_unsent',
+    'linq_carpool_updated',
+    'linq_carpool_cancelled',
+    'linq_carpool_reminder_held',
+    'linq_carpool_reminder_skipped',
+    'linq_carpool_reminder_sent',
+  ],
   // VIL-399 — one helper writes the shared-group verbs. The literals in the
   // join and leave transactions are scanned directly as well.
   'apps/web/lib/channel/linq/multi-family.ts': [

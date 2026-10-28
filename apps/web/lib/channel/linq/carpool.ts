@@ -15,6 +15,7 @@ import { type CarpoolComposer, createCarpoolComposer } from './carpool-voice';
 import { linqGroupCarpoolEnabled } from './config';
 import { deliverLinqGroupNotice } from './group';
 import { groupMemberByPhone, readGroupMembership } from './group-membership';
+import { sendLinqChatMessage } from './transport';
 
 /**
  * VIL-445 (T16) — persist who is driving and send the night-before reminder.
@@ -62,9 +63,13 @@ export interface CarpoolTurnInput {
   now: Date;
   addressed?: boolean;
   language?: string | null;
-  send: CarpoolGroupSend;
+  send?: CarpoolGroupSend;
   reader?: CarpoolReader;
   voice?: CarpoolComposer;
+}
+
+function defaultGroupSend(notice: { chatId: string; text: string }) {
+  return sendLinqChatMessage(notice);
 }
 
 function haleCustomerFlag(value: string | boolean): boolean {
@@ -235,6 +240,7 @@ export async function considerCarpoolTurn(
   input: CarpoolTurnInput,
 ): Promise<CarpoolTurnOutcome> {
   if (!linqGroupCarpoolEnabled()) return { handled: false, outcome: 'flag_off' };
+  const send = input.send ?? defaultGroupSend;
   const membership = await readGroupMembership(database, input.chatId);
   const familyId = membership?.familyId ?? input.familyId;
   if (!familyId) return { handled: false, outcome: 'no_family' };
@@ -307,7 +313,7 @@ export async function considerCarpoolTurn(
       templateKey: 'linq:carpool_ask_driver',
       now: input.now,
       send: async (notice) => {
-        const result = await input.send(notice);
+        const result = await send(notice);
         providerMessageId = result.providerMessageId;
         return result;
       },
@@ -352,7 +358,7 @@ export async function considerCarpoolTapback(
     messageId: string;
     reactionType: string | null;
     now: Date;
-    send: CarpoolGroupSend;
+    send?: CarpoolGroupSend;
     voice?: CarpoolComposer;
   },
 ): Promise<CarpoolTurnOutcome> {
@@ -382,13 +388,14 @@ export async function runCarpoolReminders(
   database: Database,
   input: {
     now: Date;
-    send: CarpoolGroupSend;
+    send?: CarpoolGroupSend;
     sendDriver?: CarpoolDriverSend;
     voice?: CarpoolComposer;
   },
 ): Promise<CarpoolReminderRun> {
   const summary: CarpoolReminderRun = { considered: 0, fired: 0, held: 0, skipped: 0 };
   if (!linqGroupCarpoolEnabled()) return summary;
+  const send = input.send ?? defaultGroupSend;
 
   const due = await database
     .select()
@@ -489,7 +496,7 @@ export async function runCarpoolReminders(
       text: groupLine,
       templateKey: 'linq:carpool_night_before',
       now: input.now,
-      send: input.send,
+      send,
     });
     if (groupSent !== 'sent') {
       await audit(

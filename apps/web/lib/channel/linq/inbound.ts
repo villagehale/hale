@@ -99,7 +99,7 @@ import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
-import { type LinqEffectResult, markLinqChatRead, sendLinqChatMessage } from './transport';
+import { type LinqEffectResult, markLinqChatRead } from './transport';
 
 /**
  * VIL-335 — POST /api/channels/linq/inbound.
@@ -645,7 +645,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           senderName: null,
           text: message.text,
           now: deps.now?.() ?? new Date(),
-          send: deps.sendGroupText ?? ((notice) => sendLinqChatMessage(notice)),
+          send: deps.sendGroupText,
           reader: deps.carpoolReader,
           voice: deps.carpoolVoice,
         });
@@ -1376,7 +1376,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
           messageId: signal.messageId,
           reactionType: signal.reactionType,
           now: deps.now?.() ?? new Date(),
-          send: deps.sendGroupText ?? ((notice) => sendLinqChatMessage(notice)),
+          send: deps.sendGroupText,
           voice: deps.carpoolVoice,
         });
         if (carpool.handled) {

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runCarpoolReminders } from '~/lib/channel/linq/carpool';
 import { linqGroupCarpoolEnabled } from '~/lib/channel/linq/config';
-import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -18,10 +17,7 @@ export const GET = cronRoute('carpool-reminders', async () => {
     if (!linqGroupCarpoolEnabled()) {
       return NextResponse.json({ ok: true, skipped: 'flag_off' }, { status: 200 });
     }
-    const summary = await runCarpoolReminders(db(), {
-      now: new Date(),
-      send: (notice) => sendLinqChatMessage(notice),
-    });
+    const summary = await runCarpoolReminders(db(), { now: new Date() });
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } finally {
     await flushTelemetry();
