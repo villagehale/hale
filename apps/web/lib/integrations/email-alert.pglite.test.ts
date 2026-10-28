@@ -20,8 +20,8 @@ import {
   emailAlertDedupeKey,
   emailAlertOfferDraft,
 } from './email-alert';
-import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import type { EmailAlertNotice } from './email-alert-notice';
+import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, sessionKey } from './going';
 
 /**
@@ -137,7 +137,7 @@ function harness(
     ports: {
       familyChildren: writer.familyChildren,
       writeNotice: writer.writeNotice,
-      familyLanguage: writer.familyLanguage,
+      parentLanguage: writer.parentLanguage,
       classify: async () => {
         h.classifyCalls += 1;
         if (over.classifyThrows) throw new Error('gmail messages.get 503');

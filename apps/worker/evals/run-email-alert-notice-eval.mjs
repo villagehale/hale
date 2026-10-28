@@ -10,7 +10,7 @@
 //   - THE DECISION, in code: every fixture says whether anything may be sent. A text for
 //     a 'silent' fixture, or silence for a 'send' fixture, fails.
 //   - THE TEXT, by a judge, for 'send' fixtures whose decision passed: facts, privacy,
-//     the one question, tone.
+//     whether it asks to add it exactly when there is an offer, tone.
 //
 //   node evals/run-email-alert-notice-eval.mjs --max-usd <cap>   # live, then caches
 //   node evals/run-email-alert-notice-eval.mjs --cached-only      # replay only

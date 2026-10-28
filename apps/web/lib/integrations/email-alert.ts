@@ -38,16 +38,16 @@ import {
   recordActivityBooking,
 } from './booking';
 import {
-  type EmailAlertOfferDraft,
-  recordEmailAlertOffer,
-  withdrawEmailAlertOffer,
-} from './email-alert-offer';
-import {
   type EmailAlertNotice,
   type EmailAlertNoticeFacts,
   emailAlertNoticeFacts,
   quietBeforeWriting,
 } from './email-alert-notice';
+import {
+  type EmailAlertOfferDraft,
+  recordEmailAlertOffer,
+  withdrawEmailAlertOffer,
+} from './email-alert-offer';
 import {
   type GoingCount,
   type GoingOutcome,
@@ -245,8 +245,8 @@ export interface EmailAlertPorts {
   classify(envelope: InboxEnvelope, familyTimezone: string): Promise<SentinelClassification>;
   /** This family's children, the notice writer's context for "is this about them". */
   familyChildren(): Promise<readonly FamilyChildRef[]>;
-  /** The family's reply language tag (`families.primary_language`): the notice is written in it. */
-  familyLanguage(): Promise<string>;
+  /** The language this parent texts Hale in (`readNoticeLanguage`): the notice is written in it. */
+  parentLanguage(parentUserId: string, now: Date): Promise<string>;
   /** The notice writer: one model call that decides and writes, or sends nothing. Its
    * quality is the eval's job (rule #8); a port here, like `classify`. */
   writeNotice(facts: EmailAlertNoticeFacts, familyId: string): Promise<EmailAlertNotice>;
@@ -335,31 +335,11 @@ export async function alertParentForEmail(
   // answer.
   const booked = bookedDetectionEnabledFor(familyId);
 
-  // THE PROVIDER CANCELLED IT, so Hale stops holding it — and this runs ABOVE THE GATE,
-  // which is the whole point of where it sits. A hold returns before every post-send line,
-  // and the Gmail cursor advanced past this message the moment the sweep read it, so
-  // nothing will offer it again: a closer placed after the send would leave a 23:40
-  // cancellation permanently unread and the follow-up asking, four days later, how a class
-  // the provider called off went. Closing a booking is not speaking to anybody, so the
-  // chokepoint has no say in it.
-  //
   // ONE KEY, TWO USES: the closer matches the table on it, and the sweep remembers it.
   const cancellationKey = bookingCancellationKey(
     input.envelope.from,
     sanitizedTitle(extraction.event.title),
   );
-  if (booked && extraction.kind === 'cancellation') {
-    await closeBookingsFor(database, {
-      familyId,
-      from: input.envelope.from,
-      title: extraction.event.title,
-      now,
-    });
-    // ...AND THE REST OF THIS SWEEP HEARS ABOUT IT. The closer above can only stamp rows
-    // that already exist, and the receipt for this class may still be three envelopes
-    // away — older, therefore read later.
-    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
-  }
 
   // A RECEIPT FOR A CLASS THIS SWEEP HAS ALREADY BEEN TOLD IS OFF. Nothing true is left to
   // say: the batch is newest-first, so this email is older than the cancellation, and
@@ -435,7 +415,7 @@ export async function alertParentForEmail(
           ? 'add_to_calendar'
           : 'add_to_week',
     otherHaleFamiliesGoing: counted?.shown ? counted.others : null,
-    language: await ports.familyLanguage(),
+    language: await ports.parentLanguage(parentUserId, now),
     timeZone: input.timeZone,
     now,
   });
@@ -445,6 +425,26 @@ export async function alertParentForEmail(
   if (!notice.send) {
     console.info({ familyId, outcome: notice.why }, 'email alert: nothing sent');
     return { alert: NOT_SENT[notice.why], booking: null, going: null };
+  }
+
+  // THE PROVIDER CANCELLED IT, so Hale stops holding it — but only once the writer has
+  // said this email is about these children and clear. A cancellation the model calls
+  // not about the kids (or cannot read) must not close a child's booking on a sender and
+  // title key alone. It still runs ABOVE THE GATE: a hold returns before every post-send
+  // line, and the Gmail cursor advanced past this message the moment the sweep read it,
+  // so a closer placed after the send would leave a 23:40 cancellation permanently
+  // unread. Closing a booking is not speaking to anybody, so the chokepoint has no say.
+  if (booked && extraction.kind === 'cancellation') {
+    await closeBookingsFor(database, {
+      familyId,
+      from: input.envelope.from,
+      title: extraction.event.title,
+      now,
+    });
+    // ...AND THE REST OF THIS SWEEP HEARS ABOUT IT. The closer above can only stamp rows
+    // that already exist, and the receipt for this class may still be three envelopes
+    // away — older, therefore read later.
+    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
   }
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
@@ -634,10 +634,7 @@ export async function alertParentForEmail(
   };
 }
 
-const NOT_SENT: Record<
-  Extract<EmailAlertNotice, { send: false }>['why'],
-  EmailAlertOutcome
-> = {
+const NOT_SENT: Record<Extract<EmailAlertNotice, { send: false }>['why'], EmailAlertOutcome> = {
   not_about_the_kids: 'not_about_the_kids',
   unclear: 'unclear',
   unwritten: 'notice_unwritten',

@@ -123,7 +123,7 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
       ),
     }),
     watchFor:
-      'Says Storytime this Saturday (Sept 19, 1 PM) is cancelled. It is already on their calendar. No question.',
+      'Says Storytime this Saturday (Sept 19, 1 PM) is cancelled. It is already on their calendar. Does not offer to add anything.',
   },
   {
     id: 'storytime-matched-rescheduled',
@@ -143,7 +143,7 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
         { matchedEventRef: STORYTIME_EVENT },
       ),
     }),
-    watchFor: 'Moved from Saturday Sept 19 to Sunday Sept 20, both at 1 PM. No question.',
+    watchFor: 'Moved from Saturday Sept 19 to Sunday Sept 20, both at 1 PM. Does not offer to add anything.',
   },
 
   // ── THE WRITER SAYS NO ────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
         originalTime: '2026-09-19T13:00:00.000Z',
       }),
     }),
-    watchFor: "Robin's parent and tot swim on Saturday Sept 19 at 9 AM is off. No question.",
+    watchFor: "Robin's parent and tot swim on Saturday Sept 19 at 9 AM is off. Does not offer to add anything.",
   },
   {
     id: 'picture-day-offer',
@@ -194,7 +194,27 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
       }),
     }),
     watchFor:
-      'Picture day Friday Oct 2 at 9 AM. Ends on ONE question offering to add it to their week.',
+      'Picture day Friday Oct 2 at 9 AM. Asks whether to add it to their week.',
+  },
+  {
+    // The parent texts Hale in French: the notice is written in French (blocker 3).
+    id: 'picture-day-offer-fr',
+    expect: 'send',
+    args: args({
+      from: 'Maple Daycare <office@maple-daycare.example>',
+      subject: 'Picture day next Friday',
+      kind: 'new_event',
+      offer: 'add_to_week',
+      language: 'fr',
+      extraction: extraction('new_event', {
+        title: 'Picture day',
+        childRef: 'child-robin',
+        newTime: '2026-10-02T13:00:00.000Z',
+        location: 'the daycare',
+      }),
+    }),
+    watchFor:
+      'Written in French. Picture day Friday Oct 2 at 9 AM. Asks whether to add it to their week.',
   },
   {
     id: 'swim-booked-with-count',
@@ -213,7 +233,7 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
       }),
     }),
     watchFor:
-      'Robin is registered for Swim Level 1, first class Saturday Sept 26 at 9 AM. Mentions two other Hale families (never just "families"). ONE question offering to add it to the calendar.',
+      'Robin is registered for Swim Level 1, first class Saturday Sept 26 at 9 AM. Mentions two other Hale families (never just "families"). Asks whether to add it to the calendar.',
   },
   {
     id: 'teen-private',
@@ -236,6 +256,6 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
       ),
     }),
     watchFor:
-      'Private: says only that there was a message about school and that details were kept out. No sender, time, place or subject. No question.',
+      'Private: says only that there was a message about school and that details were kept out. No sender, time, place or subject. Does not offer to add anything.',
   },
 ];

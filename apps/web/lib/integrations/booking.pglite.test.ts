@@ -3,10 +3,9 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type {
   ExtractedEvent,
   ExtractionKind,
@@ -18,6 +17,7 @@ import { correlateExtraction } from '~/lib/sentinel/correlate';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
 import { type ScriptedNoticeWriter, scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { isStage } from '~/lib/testing/structured-reply';
 import {
   BOOKING_CONFIDENCE_FLOOR,
   bookingDraft,
@@ -158,7 +158,7 @@ function harness(
     ports: {
       familyChildren: writer.familyChildren,
       writeNotice: writer.writeNotice,
-      familyLanguage: writer.familyLanguage,
+      parentLanguage: writer.parentLanguage,
       classify: async (envelope) => {
         const base = over.byMessage?.[envelope.messageId] ?? over.classification ?? classified();
         if (!over.correlate || base.extraction === null) return base;
@@ -664,6 +664,20 @@ describe('a provider cancellation closes what it cancelled', () => {
       now: later,
     });
     expect(open.map((offer) => offer.title)).toEqual(['Skating Level 1']);
+  });
+
+  it('closes nothing when the writer says the cancellation is not about the kids', async () => {
+    await booked();
+    for (const why of ['not_about_the_kids', 'unclear', 'unwritten'] as const) {
+      const h = cancellation('Swim Level 2');
+      h.ports.writeNotice = async () => ({ send: false, why });
+      await alert(h, `m-${why}`);
+      expect(h.transport.sent).toEqual([]);
+      await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toBeNull();
+    }
+    // The writer's yes is what closes it.
+    await alert(cancellation('Swim Level 2'), 'm-yes');
+    await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toEqual(NOW);
   });
 
   it('leaves a different class from the same provider alone', async () => {

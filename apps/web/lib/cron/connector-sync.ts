@@ -3,7 +3,6 @@ import { schema } from '@hale/db';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { ageInMonths } from '@hale/types';
 import { eq } from 'drizzle-orm';
-import { acceptReplyLanguage } from '~/lib/channel/language';
 import type PgBoss from 'pg-boss';
 import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import { laneEnabled } from '~/lib/channel/lanes';
@@ -39,6 +38,7 @@ import {
 import { composeEmailAlertNotice } from '~/lib/integrations/email-alert-notice';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
+import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import {
   type ActiveConnectorConnection,
   type SweepableConnectorConnection,
@@ -495,14 +495,8 @@ function emailAlertPorts(
       });
     },
     familyChildren: async () => (await loadContext()).children,
-    familyLanguage: async () => {
-      const [row] = await database
-        .select({ primaryLanguage: schema.families.primaryLanguage })
-        .from(schema.families)
-        .where(eq(schema.families.id, familyId))
-        .limit(1);
-      return acceptReplyLanguage(row?.primaryLanguage) ?? 'en';
-    },
+    parentLanguage: (parentUserId, now) =>
+      readNoticeLanguage(database, { familyId, parentUserId, now }),
     writeNotice: (facts, family) => composeEmailAlertNotice(pipelineClient(), facts, family),
   };
 }

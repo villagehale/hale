@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SentinelClassification } from '~/lib/sentinel';
+import { correlateExtraction } from '~/lib/sentinel/correlate';
 import {
   EMAIL_ALERT_NOTICE_MAX_ATTEMPTS,
   type EmailAlertNoticeAnswer,
@@ -75,6 +76,42 @@ function answer(over: Partial<EmailAlertNoticeAnswer> = {}): EmailAlertNoticeAns
     ...over,
   };
 }
+
+describe('the Storytime duplicate, through the real correlator', () => {
+  it('a reminder for an occasion already on the calendar is quiet before the writer', () => {
+    const candidates = [
+      {
+        ref: { table: 'family_events' as const, id: 'evt-storytime' },
+        title: 'Storytime at the library',
+        startsAt: '2026-10-31T14:30:00.000Z',
+      },
+    ];
+    const matchedEventRef = correlateExtraction(
+      {
+        kind: 'reminder_only',
+        title: 'Storytime',
+        originalTime: '2026-10-31T14:30:00.000Z',
+        newTime: null,
+      },
+      candidates,
+    );
+    expect(matchedEventRef).toEqual({ table: 'family_events', id: 'evt-storytime' });
+    expect(quietBeforeWriting({ kind: 'reminder_only', matchedEventRef })).toBe(
+      'already_on_calendar',
+    );
+    // A reminder for something the family does not hold still reaches the writer.
+    const unmatched = correlateExtraction(
+      {
+        kind: 'reminder_only',
+        title: 'Bake sale',
+        originalTime: '2026-10-31T14:30:00.000Z',
+        newTime: null,
+      },
+      candidates,
+    );
+    expect(quietBeforeWriting({ kind: 'reminder_only', matchedEventRef: unmatched })).toBeNull();
+  });
+});
 
 describe('quietBeforeWriting', () => {
   const matched = { table: 'family_events' as const, id: 'evt-1' };
