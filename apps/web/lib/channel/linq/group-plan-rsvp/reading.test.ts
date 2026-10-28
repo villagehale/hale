@@ -52,9 +52,24 @@ describe('groupPlanRsvpUserMessage', () => {
         },
         recent: [{ from: 'member', text: 'museum Saturday?' }],
       }),
-    ) as { text: string; plan: { title: string } };
-    expect(payload.text).toBe('count the Chens in for Saturday');
-    expect(payload.plan.title).toBe('museum Saturday');
-    expect(JSON.stringify(payload)).not.toMatch(/reply yes|RSVP|poll/i);
+    ) as {
+      text: string;
+      tapback: null;
+      senderName: string;
+      plan: { title: string; deadline: string; yesNames: string[]; waitingNames: string[] };
+      recent: { from: string; text: string }[];
+    };
+    expect(payload).toEqual({
+      text: 'count the Chens in for Saturday',
+      tapback: null,
+      senderName: 'Maya',
+      plan: {
+        title: 'museum Saturday',
+        deadline: 'Friday',
+        yesNames: ['Priya'],
+        waitingNames: ['Sam'],
+      },
+      recent: [{ from: 'member', text: 'museum Saturday?' }],
+    });
   });
 });

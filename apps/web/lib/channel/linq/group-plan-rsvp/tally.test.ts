@@ -191,6 +191,20 @@ describe('planTallyFacts', () => {
     expect(facts.yesHeads).toBe(4);
     expect(facts.toGo).toBe(1);
     expect(facts.waitingNames).toEqual(['Sam']);
-    expect(JSON.stringify(facts)).not.toMatch(/coming|to go|RSVP/i);
+    expect(Object.keys(facts).sort()).toEqual(
+      [
+        'maybeCount',
+        'maybeHeads',
+        'maybeNames',
+        'noCount',
+        'noNames',
+        'toGo',
+        'waitingCount',
+        'waitingNames',
+        'yesCount',
+        'yesHeads',
+        'yesNames',
+      ].sort(),
+    );
   });
 });

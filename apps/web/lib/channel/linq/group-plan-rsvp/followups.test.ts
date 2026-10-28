@@ -68,9 +68,11 @@ describe('runGroupPlanFollowups', () => {
     );
     expect(first.sent).toBe(1);
     expect(first.deduped).toBe(0);
-    expect(texts[0]).toContain('soccer Saturday');
-    expect(texts[0]).toContain('Ben');
-    expect(texts[0]).toContain('?');
+    expect(texts).toHaveLength(1);
+    expect(composer.calls[0]?.input.kind).toBe('follow_up');
+    expect(composer.calls[0]?.input.facts.title).toBe('soccer Saturday');
+    expect(composer.calls[0]?.input.facts.waitingNames).toEqual(['Ben']);
+    expect(composer.calls[0]?.input.questions).toBe(1);
 
     const second = await runGroupPlanFollowups(
       {

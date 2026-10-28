@@ -12,6 +12,7 @@ import type { GroupPlanRsvpStore } from './store';
 import { type PlanTally, isMeaningfulTallyChange } from './tally';
 import {
   type GroupPlanRsvpComposer,
+  type GroupPlanRsvpVoiceSkip,
   composeGroupPlanRsvpLine,
   productionGroupPlanRsvpComposer,
 } from './voice';
@@ -35,7 +36,7 @@ export type GroupPlanRsvpTurnOutcome =
         | 'group_plan_unread'
         | 'group_plan_line_unsent';
       count: 'ignored' | 'intake';
-      notice?: 'sent' | { skipped: 'voice_unavailable' | 'model_failed' | 'unusable' | 'not_sent' };
+      notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' };
       tally?: PlanTally;
     };
 

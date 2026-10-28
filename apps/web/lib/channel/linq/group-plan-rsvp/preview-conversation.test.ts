@@ -15,12 +15,8 @@ describe('runPreviewGroupPlanConversations', () => {
 
     const picnic = conversations[0];
     expect(picnic?.people.some((p) => !p.haleCustomer)).toBe(true);
-    expect(
-      picnic?.transcript.some((line) => line.kind === 'person' && line.text.includes('tapback')),
-    ).toBe(true);
-    expect(
-      picnic?.transcript.some((line) => line.kind === 'note' && /quiet/i.test(line.text)),
-    ).toBe(true);
+    expect(picnic?.transcript.some((line) => line.event === 'tapback')).toBe(true);
+    expect(picnic?.transcript.some((line) => line.event === 'banter')).toBe(true);
     expect(picnic?.tally?.noCount).toBe(1);
     expect(picnic?.transcript.filter((line) => line.kind === 'hale').length).toBeGreaterThanOrEqual(
       2,
@@ -33,10 +29,10 @@ describe('runPreviewGroupPlanConversations', () => {
     expect(museum?.tally?.waitingNames).not.toContain('Wei');
 
     const soccer = conversations[2];
-    expect(soccer?.transcript.some((line) => /quiet hours/i.test(line.text))).toBe(true);
-    expect(soccer?.transcript.some((line) => /deduped/i.test(line.text))).toBe(true);
-    expect(
-      soccer?.transcript.some((line) => line.kind === 'hale' && /soccer Saturday/.test(line.text)),
-    ).toBe(true);
+    expect(soccer?.transcript.some((line) => line.event === 'quiet_hours')).toBe(true);
+    expect(soccer?.transcript.some((line) => line.event === 'deduped')).toBe(true);
+    expect(soccer?.transcript.filter((line) => line.kind === 'hale').length).toBeGreaterThanOrEqual(
+      2,
+    );
   });
 });

@@ -68,6 +68,7 @@ function worldWithPicnic() {
 async function startPicnic(world = worldWithPicnic()) {
   const store = createMemoryGroupPlanRsvpStore(world);
   const texts: string[] = [];
+  const composer = fakeGroupPlanRsvpComposer();
   const start = await takeGroupPlanRsvpTurn(
     {
       chatId: CHAT,
@@ -92,7 +93,7 @@ async function startPicnic(world = worldWithPicnic()) {
         coversNames: [],
         confidence: 'high',
       }),
-      composer: fakeGroupPlanRsvpComposer(),
+      composer,
       send: async ({ text }) => {
         texts.push(text);
         return { providerMessageId: `msg-${texts.length}` };
@@ -100,7 +101,7 @@ async function startPicnic(world = worldWithPicnic()) {
       enabled: () => true,
     },
   );
-  return { world, store, texts, start };
+  return { world, store, texts, start, composer };
 }
 
 describe('takeGroupPlanRsvpTurn', () => {
@@ -128,13 +129,17 @@ describe('takeGroupPlanRsvpTurn', () => {
   });
 
   it('starts tracking any plan and speaks once with the waiting names', async () => {
-    const { start, texts } = await startPicnic();
+    const { start, texts, composer } = await startPicnic();
     expect(start.handled).toBe(true);
     if (!start.handled) return;
     expect(start.outcome).toBe('group_plan_spoken');
     expect(start.tally?.toGo).toBe(3);
-    expect(texts[0]).toContain('Saturday picnic');
-    expect(texts[0]).toContain('Priya');
+    expect(start.tally?.waitingNames).toEqual(['Priya', 'Sam', 'Maya']);
+    expect(texts).toHaveLength(1);
+    expect(composer.calls[0]?.input.kind).toBe('tracking_started');
+    expect(composer.calls[0]?.input.facts.title).toBe('Saturday picnic');
+    expect(composer.calls[0]?.input.facts.waitingNames).toEqual(['Priya', 'Sam', 'Maya']);
+    expect(composer.calls[0]?.input.questions).toBe(1);
   });
 
   it('records an ordinary yes from a non-customer and stays quiet', async () => {

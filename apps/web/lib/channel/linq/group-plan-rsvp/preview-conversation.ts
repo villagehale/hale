@@ -30,10 +30,13 @@ export interface PreviewLine {
   reading: GroupPlanRsvpReading;
 }
 
+export type PreviewTranscriptEvent = 'tapback' | 'banter' | 'recorded' | 'quiet_hours' | 'deduped';
+
 export interface PreviewTranscriptLine {
   speaker: string;
   text: string;
   kind: 'person' | 'hale' | 'hale_skipped' | 'note';
+  event?: PreviewTranscriptEvent;
 }
 
 export interface PreviewConversationResult {
@@ -100,6 +103,7 @@ async function play(input: {
       speaker: line.from,
       text: line.tapback ? `(${line.tapback} tapback)` : line.text,
       kind: 'person',
+      event: line.tapback ? 'tapback' : undefined,
     });
     const texts: string[] = [];
     const outcome = await takeGroupPlanRsvpTurn(
@@ -149,12 +153,14 @@ async function play(input: {
         speaker: 'note',
         text: 'Hale stayed quiet (banter).',
         kind: 'note',
+        event: 'banter',
       });
     } else if (outcome.handled && outcome.outcome === 'group_plan_recorded') {
       transcript.push({
         speaker: 'note',
         text: `Recorded. ${lastTally?.yesCount ?? 0} yes, ${lastTally?.toGo ?? 0} to go.`,
         kind: 'note',
+        event: 'recorded',
       });
     }
   }
@@ -167,6 +173,7 @@ async function play(input: {
         ? 'Follow-up tick during quiet hours: nothing sent.'
         : 'Follow-up tick was not in quiet hours.',
       kind: 'note',
+      event: quiet ? 'quiet_hours' : undefined,
     });
     await runGroupPlanFollowups(
       {
@@ -212,6 +219,7 @@ async function play(input: {
         speaker: 'note',
         text: 'Second follow-up tick: deduped, nothing sent.',
         kind: 'note',
+        event: 'deduped',
       });
     }
   }

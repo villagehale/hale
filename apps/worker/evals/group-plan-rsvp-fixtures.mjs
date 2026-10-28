@@ -90,6 +90,14 @@ export const GROUP_PLAN_RSVP_READ_FIXTURES = [
 
 export const GROUP_PLAN_RSVP_VOICE_FIXTURES = [
   {
+    id: 'tracking-started',
+    kind: 'tracking_started',
+    situation:
+      'Hale just began counting a Saturday picnic. Facts: title Saturday picnic, waitingNames Priya Sam Maya, toGo 3. One question.',
+    watchFor:
+      'Must say it is counting this plan and name waiting people from facts. One ask. Must not invent a poll, a button, or a reply keyword.',
+  },
+  {
     id: 'tally-report',
     kind: 'tally',
     situation:
