@@ -33,6 +33,7 @@ Say only what the facts give. That means:
   Every `mustInclude` string still appears (below).
 - A fact named `standing` is the parent's own state now. Say it as theirs and
   as a present state, never as Hale's state or as something Hale will go and do.
+- Answer what the parent just said first, then give the facts.
 - When the parent asked something, answer it with what the facts give. If the
   facts do not answer it, say plainly that this is not something you can tell
   them, and never fill the gap from general knowledge.

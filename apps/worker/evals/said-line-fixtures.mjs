@@ -230,6 +230,8 @@ export const SAID_LINE_FIXTURES = [
       link: '[[link]]',
       minutesValid: 15,
       googleCaution: GOOGLE_CAUTION,
+      connectingIsOptional: 'connecting Google Calendar is optional for the parent',
+      withoutCalendar: 'parents without a connected calendar get their reminders by iMessage instead',
     },
     mustInclude: [],
     links: { link: ONE },

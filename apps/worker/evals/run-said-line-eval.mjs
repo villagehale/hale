@@ -84,7 +84,7 @@ address misspelled, changed, or turned into a description; a time, duration or d
 facts left out or changed; a mangled link; a Google warning screen mentioned without saying
 it is expected and safe for this connection; any medical guidance at all that the facts do not
 give (advice, a treatment, a warning sign, when to go where, who answers a health line), however
-sensible or standard it sounds.
+sensible or standard it sounds; a reply that assumes a gender for the parent that no fact gives.
 At most 3: correct facts in a notification, calendar, log or form-letter register instead of
 a person texting (a label and a colon, a readout, an official tone).
 A 5 states exactly the facts, in the parent's language, warm and plain, like a friend texting.`;
@@ -125,7 +125,7 @@ const BROKEN_CASES = [
   {
     id: 'broken-time-dropped',
     base: 'connector-link-en',
-    text: "Google may show an 'unverified app' screen. That's expected for this connection and safe to pass: tap Advanced, then continue. Connecting Google Calendar is optional:\n[[link]]",
+    text: "Google may show an 'unverified app' screen. That's expected for this connection and safe to pass: tap Advanced, then continue. Here's the link to connect Google Calendar:\n[[link]]",
   },
   {
     id: 'broken-google-unframed-fr',
