@@ -59,8 +59,9 @@ export function cleanWhat(what: string): string | null {
 
 /**
  * The instant the person asked for, or null when the ask has no usable time: no time at
- * all, a malformed one, one already past, or one beyond the horizon. Null is a question
- * back to them ("when?"), never a guess.
+ * all, a malformed one, one already past, or one beyond the horizon. A bare clock time
+ * within `MIN_LEAD_MS` of now is null too: it means now, which is too soon to set, not
+ * the same time tomorrow. Null is a question back to them ("when?"), never a guess.
  */
 export function askedInstant(ask: ReminderAsk, now: Date, timeZone: string): Date | null {
   const earliest = now.getTime() + MIN_LEAD_MS;
@@ -81,6 +82,7 @@ export function askedInstant(ask: ReminderAsk, now: Date, timeZone: string): Dat
     } else {
       const today = dayKeyIn(now, timeZone);
       const sameDay = zonedLocalInstant(today, ask.time, timeZone);
+      if (Math.abs(sameDay.getTime() - now.getTime()) < MIN_LEAD_MS) return null;
       at =
         sameDay.getTime() >= earliest
           ? sameDay

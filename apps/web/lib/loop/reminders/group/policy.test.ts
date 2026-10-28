@@ -51,6 +51,18 @@ describe('askedInstant', () => {
     );
   });
 
+  it('asks again, rather than moving to tomorrow, for a bare clock time about now', () => {
+    expect(askedInstant(ask({ time: '14:01' }), NOW, TZ)).toBeNull();
+    expect(askedInstant(ask({ time: '14:00' }), NOW, TZ)).toBeNull();
+    expect(askedInstant(ask({ time: '13:59' }), NOW, TZ)).toBeNull();
+    expect(askedInstant(ask({ time: '14:02' }), NOW, TZ)?.toISOString()).toBe(
+      '2026-10-28T18:02:00.000Z',
+    );
+    expect(askedInstant(ask({ time: '13:58' }), NOW, TZ)?.toISOString()).toBe(
+      '2026-10-29T17:58:00.000Z',
+    );
+  });
+
   it('crosses the November DST change on the wall clock', () => {
     const at = askedInstant(ask({ date: '2026-11-02', time: '09:00' }), NOW, TZ);
     expect(at?.toISOString()).toBe('2026-11-02T14:00:00.000Z');
