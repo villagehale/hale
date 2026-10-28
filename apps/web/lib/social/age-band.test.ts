@@ -55,6 +55,32 @@ describe('parseStatedAgeBand — the forms these feeds really publish', () => {
     expect(parseStatedAgeBand('Sunday Lego Club, for kids under 12 years')).toEqual(band(0, 143));
   });
 
+  it('reads an inclusive up-to bound only when an age unit is stated', () => {
+    expect(parseStatedAgeBand('babies or children up to 6 years of age')).toEqual(band(0, 83));
+    expect(parseStatedAgeBand('children up to 18 months')).toEqual(band(0, 18));
+    expect(parseStatedAgeBand('children up to 6')).toBeNull();
+    expect(parseStatedAgeBand('a visit lasting up to 6 minutes')).toBeNull();
+  });
+
+  it('reads explicit universal and minimum ages without interpreting opening hours', () => {
+    expect(parseStatedAgeBand('All ages welcome')).toEqual(band(0, 215));
+    expect(parseStatedAgeBand('Ages 2+')).toEqual(band(24, 215));
+    expect(parseStatedAgeBand('2 and up')).toEqual(band(24, 215));
+    expect(parseStatedAgeBand('2 and older')).toEqual(band(24, 215));
+    expect(parseStatedAgeBand('18 months and up')).toEqual(band(18, 215));
+    expect(parseStatedAgeBand('Open 2+ hours')).toBeNull();
+    expect(parseStatedAgeBand('Admission $2 and up')).toBeNull();
+  });
+
+  it('keeps explicit numeric restrictions ahead of a general all-ages description', () => {
+    expect(
+      parseStatedAgeBand('Children of all ages can visit, but this workshop is for ages 6–8 years'),
+    ).toEqual(band(72, 107));
+    expect(parseStatedAgeBand('All ages can visit. This workshop is for ages 2+')).toEqual(
+      band(24, 215),
+    );
+  });
+
   it('survives the HTML and entities these descriptions are stored with', () => {
     expect(parseStatedAgeBand('<p>Ages:&nbsp;0&ndash;12 months</p>')).toEqual(band(0, 12));
     // RHPL leaves a zero-width no-break space inside its own titles.

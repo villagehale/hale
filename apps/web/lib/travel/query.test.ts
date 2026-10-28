@@ -45,6 +45,17 @@ describe('travelWindow', () => {
   });
 });
 
+describe('travelDestination location qualification', () => {
+  it('uses existing geography to qualify a city and state, not a state code alone', () => {
+    expect(travelDestination('New York', 'NY')).toBe('New York, NY, United States');
+    expect(travelDestination('San Francisco', 'CA')).toBe('San Francisco, CA, United States');
+    expect(travelDestination('Burlington', 'VT')).toBe('Burlington, VT, United States');
+    expect(travelDestination('Burlington', 'ON')).toBe('Burlington, Ontario, Canada');
+    expect(travelDestination('Toronto', 'NY')).toBe('Toronto, NY');
+    expect(travelDestination('Paris', 'France')).toBe('Paris, France');
+  });
+});
+
 describe('the composed query survives the scrub, and the ISO form does not', () => {
   it('carries the window through gateFreeText byte for byte', () => {
     const composed = travelWindow('2026-09-12', '2026-09-15');
@@ -86,7 +97,7 @@ describe('the composed query survives the scrub, and the ISO form does not', () 
     if (!result.ok) return;
     // The comma is CODE'S, composed from two columns. `destinationShape` refuses one in
     // either column at the parse boundary, so this is the only place one can appear.
-    expect(result.query.town).toBe('New York, NY');
+    expect(result.query.town).toBe('New York, NY, United States');
     expect(travelDestination('Ottawa', null)).toBe('Ottawa');
     expect(travelDestination('Ottawa', '  ')).toBe('Ottawa');
   });

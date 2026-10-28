@@ -1,0 +1,52 @@
+{
+  "response": {
+    "id": "msg_011CgUmG74rzhmXZQGan3rkf",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5wYKEAgTGAI4AUIIdGhpbmtpbmcSDOAbrJOvD7Wj88HRzRoM/ID9P8BhAiJjf1G+IjB7KIvhgRcTLL3da565moZ3pEL8DfJ9s/DEOTu9Dk/fjaBibvLgs6S5l8KfzhBPwX0qhAZW42+OwkhX2DpiIB7GEIogV3Z0B5nPnvWUa60etDC77mm8FqiAKs/pQBn8ZdkS+67cQmfCGnI96aPGTtKfRXhqwgTAU9yb6Racsw1R3MJYSOlOGTgkOb6ldj8S8/eAvDRdJdiJBU8HBSCA0I60+5o3PaN3U1RYQBJcv46/usDPW+rMx27SFpxQlLzCNpAp2na1xeNCiY6Ach9rV3uIHDYekIM6/Qc6kA+6h8P0qU8PI/tejXoPAeJN+HoacZTKH4x9eGX4rDYuVPt5W7pEoQs4bF7/oVtjqlqOln3yCzwVGkyBsmkmlK2Msuto7aIfcxG/VwpLSi4t7LT2wnQ7N3e0Ie/k1vwY2oYsZPl6ny6Ns9D5+A5M4Wd1u/j0vD1Q1hsiRCeWY2k/GnSriVyrbiU1ZLOxIHubHJzPL2fcxmJ+9681EovLY+rdozYQJVwN7KaNcX95qgq/tE/ieuTYnegvogGP+sPE56OrUqf2zQ+k5DesDLeZxbBFaESmR701cfYaTFaBoy+y8oCYkDQNpJY3wSfmjgCBh9oPqye2+9kmJxt9NqjUjtYLzI0OXrdxfzhnSTOyLJ18IN512O9j23E1Bi7K/lNq/bFLIK4dbhJkT4qorgpD8SzYbjbt0NeOzSa+ho7x0oSFRjcGaEod4VLKhxnaBeBvDOPifYecD6qAY6vhoE5RwhqTzA0KdsebUowel075B+QR/iT+BYB+laviD70wSWcXksvnJdNm2QcRrvubFQ9AcAim8LmtG0UPkCW9ugbe5CC4bmvQy3grmgvdWO5u6jGud+rH8HOT0qFiFZPlbH/cD91XWaIWRyvUG0iexjLG4LdySmzgPm3mwvH8XhUXEA65Fyt9+axg7jpzB2ycG8cVibCafymYZhMMXb6nkOQz2sLJODEqhgyvSCJ4wMkkTOwEk7rfXEs9sCJgWdDCAg6gb7BbjaF8k5bBhAItisA2FUa/tMnIPEqfp/Lft4HdgTNjRb4AxipMvC86Ui4di6DSFn3YUHujMr/+yd97ikvcGAE="
+      },
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnwgKEQgTGAI4AUIJbmFycmF0aW9uEgzeDHAHQc6wtuTYXUwaDDHce2fd8H8zCXYiFCIwupGXCdd3gMzy4qiypivmp649/mNibXyd40qJLtB8fXWAJBZsBBbNyUA3Ccc0Wy/dKrsH+1JLJAtcW288O8eQrwKt3Q4/gi6BTYXmr+I5i+lA5nAfu8etm/WtoIHyH12rsZsP9oa16ES2ZrGnZ8F3H9FtrJH1VoZKNlZcz4R14VyjhbI2IcKVtII/bWxGy1AbYAudqd8dtStL3c3GIy1VzyEctbuRFC+pkHZQhfwzkBeDjewRAopIgAv0/8AwevPO+8m0IVqTarD1Ex046n2c91YlNagZyAfhD+zenLJsAaki1sl69MBDxe/hGeKsOxbafxhPPIDdvzx78Xf7u2ESvzKSO/4MksZt9XiJeHlbAhCk+ikL+nZ6nXpRVqovzYZro22ghDtVoTy1QrP8yCH1P8FzVRWzlVVOAjRJTOiCaSEZ/zuu4W/NyhWlyGPmc9FAs5GIZhfuoa7HBc3uIhaRpHx3M/XvL3dmuijfaqoiqYUXKtrqh6FzVlEgwKJtbg6mQp84iLCSyZ08Bw+lXWz6NiqF3rNEweAFwvPQQsMDtL5s4DAu4kEulPkeYEKMrN+71SACgr9zA84dGixXQ8HY553Rv6r7e0gzlwuPbtBo5gemlDtg0nEBg57UmzCimIxFM+gkA/WkJSsGCxizyjbcnYO+9Hr2mHwe4APy/e/ccsn7lzuQ7+p0iCtJrx7o7nvjewwKUAq6sYBCXcy6xw1SSr+RTr2X/sEJ32bm2saWl934R9CYoHBgSOiFh18mZeZrEj+B7d+Bv5T03DaZ5Tz5vRGhqL6JzH10wT5y7AnaP2fyui1V6ebT0DuAWJz4hKB/yhX6wx3bOZHk9fpO/kMgpmi8OIPvvQDBAkkskYgsrmEqKK5Lc0NJtf61/MPc13w4DCVCFCwHaYscyH59DDNFHXEZMs3qUSeFLbu848CUwLBoVEf3qikPqSheETZLxK2dkJWLrSEXtM1uWBoPX78dVsGp5f4DO7un6Myz8R/CwRHonm9JNkOhLF88X4VMKadqz719hC5lg1yIiFmxaSS49gAidEDDw7tMoMQy+EXhDhHwseUZs5vmdpnsrKr/nRQxvlMQauzQ/kyHoPts1zIs32j9NSk3HghlXScZ+SoNVKY7yf2yVHYlAWVP/zKZ96z9AA+/em+ijdTJ8G/RtP/6EulyP2bCDoqsX2rqk2qd206lmJ7b5sph9ILHgsO3XBeHMnXeYCTY0YcfbLmibaoj9XlObI5rlh4LFewZ2ZBw1GtOHpksjzHyAqVlSpWVPhJED2KBT6GSRIXrDPEhiASVxc8uGNe15eujszEVZxIhV1TPNHPbO/Mgpb+tdQtpNBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01KS6aP7xnQiMPXnYA3hRtRU",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full plan for Ada's night waking?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 855,
+      "cache_read_input_tokens": 21679,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 855,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 362,
+      "output_tokens_details": {
+        "thinking_tokens": 244
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 5011
+}

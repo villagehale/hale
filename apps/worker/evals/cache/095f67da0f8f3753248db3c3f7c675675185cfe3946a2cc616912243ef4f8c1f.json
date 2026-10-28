@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so \"Done\" is true. The reply confirms the change plainly and says what happens next, which is exactly what Sam asked for. It is short, has no greeting or sign-off, and invents nothing.",
+    "score": 5
+  }
+}

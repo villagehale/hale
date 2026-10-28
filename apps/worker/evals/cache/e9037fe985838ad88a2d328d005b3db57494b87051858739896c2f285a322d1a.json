@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message leads with the place the parent named, Cartwheels Gym Centre's Tiny Gym, a parent-and-toddler class that fits the stage, and attributes it ('their site says'). Under page_has_schedule it correctly uses the first person for the gap ('I could not pin down a fall day'). Watch is true and the first-person follow-up promise is present. It is plain text with no link and no question. However, the pick list is empty while the message states a $140-per-term price that appears in no pick. The rubric treats that as a low-score fault. The page also hedges that pricing varies by term and needs a login, which the message skips. It adds a second venue, Halton Hills Gymnastics Centre, alongside the named one. That is clearly labelled rather than passed off as Cartwheels, but it is still drift from a one-place question. The substance is accurate, but the price is not backed by any pick.",
+    "score": 3
+  }
+}

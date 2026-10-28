@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgUkyb7MrHQywxR8XSHbf",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwwYKEAgTGAI4AUIIdGhpbmtpbmcSDLjwU+vHqqXGvNVbYRoMY6b9t2oMOMqXu2lnIjBeaoOXU1TIwr2+6uNkMJtyCZVpk9W9uDZhepT3q+eXj+GP4iBgHRmP605fWu8OsXIq4AWQffCDo4Qw7iNCAynK5jC4MD9IZlK9XQd+Oe2Nup55qheit++Ee5o6eoHVVYoDgHq/dv2RJp19swlUImQdQQlBNiTnTU/InSvAFK5Uc+qTnpWlTMkKE3gqwxkp1PlSipQdMU8ikO/0VPBFzfnFHi9b2dyFlkLM0xHoQDBMn5ypOKMMrFOl9M07NLuYFmmAOHRae5efJ8L4PrD/tviytWJ3mbo5tJxLXBwuwBCv18mCXxnpmWtK8dS5Z/fzdKCjsSph4b/FIgyyY93mWJhLdSP2l8KZub7mVcf20zWNfZ6ZhXl6L9Ec1BGyfGBOuXVheZ50Yn2pNEV+FDoSbm+/L+Ex0XJFCUc8/EDJx370C7WL6bGJRQZVc4AnCe0Qt4lRNk4CXXqBgEPzJxROPG5VMee8aeE1+amCJveIGHPUczzPqSIVFdm2GW64JInzH+T9Dbg5TxndLccRI93IEYJgpzhWbA5OXsSpUdy49bA76kkzgoa2wkfqLp+1zOrfSLFzN6CK3yuxWa2MJDkab6kitB/VmhP1oWOmpSTqUegVvoVrfS8zmK7OQ7Fmk5mp+BNKQG9/qVa9wW4ygnXxw8Ki/fLiJ2s1bL0VdOCDWPh+cwbL144ITxgo48MyYM3hif3nqc7jqgtT8GEgJ77NNsWKdh3dWQ7dX+4mwdnzRwKaNGM8DX5AoIXecXD7MzILexMyNZFpRjvwDW7U0zMdX1QYNzfK1RPKUKqBXNYVSIEwsz/cCzB1M4CtilCkHuYDQMUKeTTvK/8AD2nv6EFL4F6B5PETvkbqvFOoZkezB18sJfDp5eDd8EvtoZB4KKJBi/YNjPogvYJ1p7mbLr4s+rBZ6hMmCgARXzMM8C8dtGQB+oU2Ny9IRxEp4SmdYv73AnNa2Z/W5ZlqrekG2n/0P5Z+nq7UEpV5zNzg/gNF8dF7NZXMBpSTohp1PP44d21/QkoIOPZ877K4GRLM7k2F3jIrEKFZGAE="
+      },
+      {
+        "type": "text",
+        "text": "There's a private item Tue 3:45pm. What it is isn't mine to share. Nothing else is on Tuesday."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 857,
+      "cache_read_input_tokens": 21679,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 857,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 144,
+      "output_tokens_details": {
+        "thinking_tokens": 103
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2433
+}

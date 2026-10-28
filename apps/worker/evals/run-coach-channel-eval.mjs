@@ -139,6 +139,7 @@ import {
   evalSubjectRequest,
   installEvalSpendCap,
   lazyAnthropic,
+  loadAgent,
   makeCost,
   makeJudge,
   noteUsage,
@@ -150,7 +151,6 @@ import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
-const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 /** The REAL framework-guidance tool (pure, no DB) — imported rather than replicated
  * because the skill's frontmatter now requires it and a replica would drift from the
  * one definition both runtimes share (#409). */
@@ -1890,7 +1890,7 @@ async function main() {
     throw new Error('--min-samples must be a positive integer');
   }
 
-  const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const agent = await loadAgent();
   ({ spokenFind } = await tsImport(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
     import.meta.url,

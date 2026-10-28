@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own. Autonomy was turned off this turn for both send_email and reply_to_email, so the reply's promise to ask before every email is true, and replying in the parent's own language fits. It is one short confirming line with no greeting, no machinery and no extra question, which is the right shape for a message that needs nothing else done.",
+    "score": 5
+  }
+}

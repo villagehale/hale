@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B for ages 3-5, with the Saturday times and the Sept 12 to Nov 28 dates as printed. Price is correctly null because the page sets no fee. Each slot carries the full registration text (Aug 11, 7 a.m., browse from Aug 4) and cites the page it came from. There is no invented third slot and no borrowed figure. The message names Preschool A first, attributes with 'their site says', keeps the Aug 11 7 a.m. registration date and owns the price gap in the first person ('I couldn't pin down the price'), which is right for page_has_schedule. Watch is true, and it correctly makes the first-person 'I'll keep watching and text you' commitment. It is plain ASCII with no link and no question. One small gap: it could have mentioned that the page says fees are in the Recreation Guide.",
+    "score": 5
+  }
+}

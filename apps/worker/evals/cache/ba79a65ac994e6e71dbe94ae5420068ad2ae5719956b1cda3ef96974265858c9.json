@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The slots are faithful to what Hale read. The Tiny Gym age band (1 and walking to 3, with a parent) comes from programs.php. Both term dates (Sept 14-Nov 1 and Nov 2-Dec 20, 2026) come from the PDF, which was opened and cited. The July 22, 2026 8:00am registration date comes from the homepage and is cited there. No borrowed figures appear. Price is correctly left null, since the page says pricing is only shown behind the registration login. Hale admits it could not tie times to weekdays from the PDF grid.\n\nThe message leads with Tiny Gym by name and attributes with \"their site says\". It carries the registration date in the past tense, which is right because it has passed. Under page_has_schedule it uses the correct first-person gap: \"I could not pin down the day or price\". The watch is true, so the first-person keep-watching line is backed by a real promise. It is ASCII, has no link and asks no question.\n\nThe deductions are for withholding:\n- It reports only Term 1 (already underway, registration closed). It drops Term 2 (Nov 2-Dec 20), which the slots carry and which is the actionable block for this parent.\n- It says it could not pin down the price instead of relaying what the site says, that pricing is only visible after logging in to their registration site.",
+    "score": 4
+  }
+}

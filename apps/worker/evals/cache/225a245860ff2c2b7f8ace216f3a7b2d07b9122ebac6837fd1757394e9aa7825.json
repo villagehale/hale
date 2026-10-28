@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is good on its face. It leads with a real named Oakville venue sourced from that venue's own page, and Junior (3-4 years) fits the preschool stage. It attributes with \"their site says\" and asks no question. The watch promise is first person and correct with watch=true. The gap is stated in first person (\"I couldn't confirm a day, time\"), which suits page_has_schedule. However, the pick list is empty while the message presents Goldfish as a find. That leaves the $32.50 price and the age bands appearing nowhere in the picks, which the rubric scores low. With no picks, the message should instead have said plainly what was searched and found nothing. It also passes over the Town of Oakville's Lifesaving Society preschool lessons, the municipal staple the watchFor notes expect.",
+    "score": 2
+  }
+}

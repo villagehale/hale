@@ -1,9 +1,19 @@
 import { readFileSync } from 'node:fs';
+const liveSourceText = new Map<string, string>();
+vi.mock('~/lib/registration/page', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/registration/page')>()),
+  createRegistrationPageFetch: () => async (url: string) => liveSourceText.get(url) ?? '',
+}));
 import { join } from 'node:path';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type ActivityPick, createActivityFinder } from '~/lib/channel/activity/lane';
+import {
+  type ActivityFindResult,
+  type ActivityPick,
+  createActivityFinder,
+} from '~/lib/channel/activity/lane';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -14,6 +24,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import { fetchGmailMessageBody } from '~/lib/sentinel';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordedModel } from '~/lib/testing/recorded-model';
+import { isStage } from '~/lib/testing/structured-reply';
 import { detectTravelBookingsForSweep } from '~/lib/travel/detect';
 import { extractTravelBooking } from '~/lib/travel/extract';
 import { defaultTravelBriefDeps, runTravelBriefSweep } from '~/lib/travel/sweep';
@@ -121,6 +132,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // The Finder reads today's date independently of the sweep's explicit clock.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(BRIEF_AT);
   process.env.APP_ENCRYPTION_KEY = APP_KEY;
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('TRAVEL_BRIEF_ENABLED', 'true');
@@ -133,6 +147,7 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -375,14 +390,86 @@ async function runSync(subject = SUBJECT) {
 
 async function runBrief() {
   const sent: Array<{ to: string; body: string }> = [];
-  const web = model();
+  const picks = recordedPicks();
+  const requests: string[] = [];
+  const urls = picks.map((_, index) => `https://sources.example/fixture/${index}`);
+  liveSourceText.clear();
+  picks.forEach((pick, index) =>
+    liveSourceText.set(
+      urls[index]!,
+      `New York, NY, United States. Ongoing program. ${JSON.stringify(pick)}`,
+    ),
+  );
+  // The new page-read contract is exercised against public fixture facts from the
+  // recording. Booking extraction still uses the content-addressed model recording.
+  const client = () => {
+    // biome-ignore lint/suspicious/noExplicitAny: fixture SDK request shape
+    const respond = async (req: any) => {
+      requests.push(req.messages[0].content);
+      return {
+        content: isStage(req, 'activity_picks', 'picks')
+          ? [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  picks: picks.map((pick, index) => ({
+                    name: pick.name,
+                    name_evidence: pick.name,
+                    age_fit: pick.ageFit,
+                    age_evidence: pick.ageFit,
+                    when: pick.when,
+                    when_evidence: pick.when,
+                    schedule_kind: 'hours',
+                    price: pick.price,
+                    price_evidence: pick.price,
+                    source_name: pick.sourceName,
+                    source_url: urls[index],
+                    location_quote: 'New York, NY',
+                    relevance: 'current',
+                    relevance_quote: 'Ongoing program',
+                    when_quote: pick.when,
+                    price_quote: pick.price,
+                  })),
+                }),
+              },
+            ]
+          : [
+              {
+                type: 'web_search_tool_result',
+                tool_use_id: 'search',
+                content: urls.map((url) => ({
+                  type: 'web_search_result',
+                  url,
+                  title: 'Recorded public program',
+                  encrypted_content: 'x',
+                })),
+              },
+            ],
+        usage: { input_tokens: 10, output_tokens: 10 },
+        stop_reason: 'end_turn',
+      };
+    };
+    return {
+      messages: {
+        create: respond,
+        stream: (req: unknown) => ({ finalMessage: () => respond(req) }),
+      },
+    } as unknown as AgentClient;
+  };
+  const finder = createActivityFinder(client);
+  const finds: ActivityFindResult[] = [];
   const result = await runTravelBriefSweep(
     db.database,
     {
       ...defaultTravelBriefDeps(),
-      // THE REAL FINDER over a RECORDED model. An injected fake could never fail on the
-      // lane's behaviour with a travel-shaped query, and that is the only new thing here.
-      finder: createActivityFinder(web.client),
+      // Production Finder over fixture web responses; booking extraction uses a recording.
+      finder: {
+        find: async (query) => {
+          const found = await finder.find(query);
+          finds.push(found);
+          return found;
+        },
+      },
       buildGate: (database) => buildOutboundGatePorts(database),
       resolvePhone: async () => PHONE,
       transport: {
@@ -397,10 +484,10 @@ async function runBrief() {
   // The de-identified SEARCH payload, picked out of everything that reached the wire by
   // the one field only it carries. The compose turn that follows it is excluded by
   // `research_notes`, which holds the page text and is a different disclosure.
-  const searched = web.requests.filter(
+  const searched = requests.filter(
     (request) => request.includes('"town"') && !request.includes('research_notes'),
   );
-  return { result, sent, searched };
+  return { result, sent, searched, found: finds.at(-1) };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -483,7 +570,7 @@ describe(
       expect(extractionLeg).not.toContain(parentUserId);
 
       // ── T-7d: the hourly nudge leg ───────────────────────────────────────────
-      const { result, sent, searched } = await runBrief();
+      const { result, sent, searched, found } = await runBrief();
       expect(result.sent).toBe(1);
       expect(result.due).toBe(1);
 
@@ -534,6 +621,17 @@ describe(
         Boolean(name) && (body.includes(name ?? '') || fold(body).includes(fold(name ?? '')));
       expect(picks.some((pick) => named(pick.name))).toBe(true);
 
+      // The recorded museum age is explicit; the zoo's "Child (3 - 12)" tariff
+      // does not establish an activity age band and stays a caveated reference.
+      expect(found?.found).toBe(true);
+      if (!found?.found) throw new Error('expected a supported travel recommendation');
+      const sentPicks = found.picks.filter((pick) => named(pick.name));
+      const sentReferences = (found.references ?? []).filter((reference) => named(reference.name));
+      expect(sentPicks.map((pick) => pick.name)).toEqual([picks[0]?.name]);
+      expect(sentReferences.map((reference) => reference.name)).toEqual([picks[1]?.name]);
+      expect(body).toContain('dates and age fit not confirmed for your trip');
+      expect(body).not.toContain(picks[1]?.price);
+
       // NOTHING WAS INVENTED: every price figure in the body is one a stored pick carries
       // (none at all when no pick has a price), and at least one stored `when` reaches the
       // parent, so the check cannot pass by the renderer dropping everything.
@@ -542,11 +640,11 @@ describe(
         expect(storedPrices, `price ${figure} is not one a stored pick carries`).toContain(figure);
       }
       expect(
-        picks.some((pick) => Boolean(pick.when) && fold(body).includes(fold(pick.when ?? ''))),
+        sentPicks.some((pick) => Boolean(pick.when) && fold(body).includes(fold(pick.when ?? ''))),
       ).toBe(true);
 
       // It claims nothing about anyone having been, and it asks nothing.
-      expect(body).toContain("not from anyone who's been");
+      expect(body).toContain('These are source listings, not confirmed plans.');
       expect(body).not.toContain('?');
       expect(body).not.toContain('Reply STOP');
       expect(body).not.toContain('STOP to opt out.');
@@ -580,10 +678,10 @@ describe(
       // The receipt counts the picks the parent got, not a number typed here: the renderer
       // keeps a pick only while the body stays under the SMS segment ceiling
       // (travel/copy.ts renderTravelBrief), so a long recorded name can leave one pick out.
-      const sentPicks = picks.filter((pick) => named(pick.name)).length;
-      expect(sentPicks).toBeGreaterThan(0);
+      expect(sentPicks.length).toBeGreaterThan(0);
       expect(audit.find((e) => e.verb === 'travel_brief_sent')?.after).toEqual({
-        picks: sentPicks,
+        picks: sentPicks.length,
+        references: sentReferences.length,
         merged: 0,
       });
       expect(JSON.stringify(audit)).not.toContain('New York');

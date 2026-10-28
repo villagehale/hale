@@ -420,8 +420,16 @@ async function briefOne(
     return;
   }
 
-  const found = await deps.finder.find(deidentified.query);
-  if (!found.found) {
+  const found = await deps.finder.find({
+    ...deidentified.query,
+    dateRange: { start: trip.startsOn, end: trip.endsOn },
+  });
+  const references = found.found
+    ? (found.references ?? [])
+    : found.reason === 'no_picks'
+      ? (found.searched?.references ?? [])
+      : [];
+  if (!found.found && references.length === 0) {
     if (found.reason === 'no_picks') {
       // The search ran and there is nothing on. The trip is LEFT OPEN: a search that found
       // nothing is not a brief the parent received. Record the attempt and the next one,
@@ -451,7 +459,8 @@ async function briefOne(
       startsOn: trip.startsOn,
       endsOn: trip.endsOn,
       childNames: names.namable,
-      picks: found.picks,
+      picks: found.found ? found.picks : [],
+      references,
       teenNames: names.teens,
       forGroup: target.channel === 'group',
     });
@@ -594,7 +603,13 @@ async function briefOne(
     // `rendered.length`, not `found.picks.length`: the lane may hand up three and the
     // assembly renders at most two, so the finder's count is a receipt that disagrees with
     // the message the parent got.
-    after: { picks: rendered.rendered.length, merged: merged.length },
+    after: {
+      picks: rendered.rendered.length,
+      ...(rendered.renderedReferences.length
+        ? { references: rendered.renderedReferences.length }
+        : {}),
+      merged: merged.length,
+    },
   });
 
   result.sent += 1;

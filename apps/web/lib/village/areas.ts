@@ -55,6 +55,7 @@ export interface SavedArea {
 export interface SavedAreaLabel {
   city: string;
   province: string | null;
+  country?: string;
 }
 
 /** The coarse fields a client may save. Precise coordinates are NOT part of the
@@ -340,10 +341,20 @@ export async function readActiveArea(
     return { city: active.city, province: active.province };
   }
   const rows = await database
-    .select({ city: schema.families.city, province: schema.families.province })
+    .select({
+      city: schema.families.city,
+      province: schema.families.province,
+      country: schema.families.country,
+    })
     .from(schema.families)
     .where(eq(schema.families.id, familyId))
     .limit(1);
   const family = rows[0];
-  return family?.city ? { city: family.city, province: family.province } : null;
+  return family?.city
+    ? {
+        city: family.city,
+        province: family.province,
+        ...(family.country ? { country: family.country } : {}),
+      }
+    : null;
 }

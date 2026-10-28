@@ -210,7 +210,7 @@ export interface ChannelCoachToolArgs {
    */
   offeredThisTurn?: () => readonly OfferedCandidate[];
   /** Live-web pages this turn found, appended when the reply names the pick. */
-  recordActivityLinks?: (links: readonly { title: string; url: string }[]) => void;
+  recordActivityLinks?: (links: readonly NamedLink[]) => void;
   /**
    * The live web-search lane and the family facts phase 0 needs, or null in a test that
    * is not exercising them. The two travel together on purpose: a finder with no reader

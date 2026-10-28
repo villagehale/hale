@@ -567,7 +567,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // The turn's offer ledger, written by the search verb and read by the add verb:
         // a placement should carry what placed it, and the process already holds the row.
         // Never shown to the model, which is the whole point.
-        villageTool: searchVillageTool(database, offered.record),
+        villageTool: searchVillageTool(database, offered.record, undefined, offered.recordLinks),
         recordActivityLinks: offered.recordLinks,
         offeredThisTurn: offered.read,
         // The second activity source. Same key, same fail-closed resolver shape as the
