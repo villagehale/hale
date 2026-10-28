@@ -99,7 +99,7 @@ export const ATTENDANCE_FIXTURES = [
         },
       ],
     },
-    accept: { 'fam-lee': ['in'], 'fam-dong': ['in'], 'fam-tremblay': ['in', 'unclear'] },
+    accept: { 'fam-lee': ['in'], 'fam-dong': ['in'], 'fam-tremblay': ['unclear'] },
   },
   {
     id: 'someone-elses-yes-is-not-yours',

@@ -245,9 +245,10 @@ export function createGroupPlanNoteWriter(
 // ─── Per-family copies (group-plan-scoped dedupe) ─────────────────────────────
 
 /**
- * The copy's claim key: a UUID derived from (group plan, family). It rides the existing
- * `family_events_placed_by_action_uniq` partial index, so a concurrent or redelivered
- * fan-out conflicts instead of placing a second copy. No migration.
+ * The copy's claim key: a UUID derived from (group plan, family), stored in
+ * `family_events.group_plan_copy_key` (migration 0188) with its own partial unique index,
+ * so a concurrent or redelivered fan-out conflicts instead of placing a second copy.
+ * `placed_by_action_id` stays null: readers join it to `actions`.
  */
 export function groupPlanCopyKey(groupPlanId: string, familyId: string): string {
   const h = createHash('sha256').update(`group-plan:${groupPlanId}:${familyId}`).digest();
@@ -282,17 +283,17 @@ export function createFamilyEventsCopyStore(database: Database): GroupPlanCopySt
       };
       const [inserted] = await database
         .insert(fe)
-        .values({ familyId, source: 'placement', placedByActionId: key, ...values })
+        .values({ familyId, source: 'placement', groupPlanCopyKey: key, ...values })
         .onConflictDoNothing({
-          target: fe.placedByActionId,
-          where: sql`${fe.placedByActionId} IS NOT NULL`,
+          target: fe.groupPlanCopyKey,
+          where: sql`${fe.groupPlanCopyKey} IS NOT NULL`,
         })
         .returning({ id: fe.id });
       if (inserted) return { status: 'written', familyEventId: inserted.id };
       const [row] = await database
         .select()
         .from(fe)
-        .where(and(eq(fe.placedByActionId, key), eq(fe.familyId, familyId)))
+        .where(and(eq(fe.groupPlanCopyKey, key), eq(fe.familyId, familyId)))
         .limit(1);
       if (!row) throw new Error('group plan copy key held by another family');
       const same =
@@ -313,7 +314,7 @@ export function createFamilyEventsCopyStore(database: Database): GroupPlanCopySt
       const [row] = await database
         .update(fe)
         .set({ deletedAt: new Date() })
-        .where(and(eq(fe.placedByActionId, key), eq(fe.familyId, familyId), isNull(fe.deletedAt)))
+        .where(and(eq(fe.groupPlanCopyKey, key), eq(fe.familyId, familyId), isNull(fe.deletedAt)))
         .returning({ id: fe.id });
       return row?.id ?? null;
     },
@@ -331,7 +332,7 @@ export async function existingCopyFamilies(
   const rows = await database
     .select({ familyId: schema.familyEvents.familyId })
     .from(schema.familyEvents)
-    .where(inArray(schema.familyEvents.placedByActionId, keys));
+    .where(inArray(schema.familyEvents.groupPlanCopyKey, keys));
   return new Set(rows.map((r) => r.familyId));
 }
 
@@ -386,6 +387,21 @@ export function inviteDelivered(report: CalendarInviteReport): boolean {
   );
 }
 
+/**
+ * Only a family's own members can put that family in or out. A family with no message of
+ * its own in the thread is `unclear`, whatever the read says: one parent must not put
+ * another family's calendar or contact details in play.
+ */
+export function ownWordOnly(
+  attendance: ReadonlyMap<string, GroupPlanAttendance>,
+  messages: readonly GroupPlanMessage[],
+): Map<string, GroupPlanAttendance> {
+  const spoke = new Set(messages.map((m) => m.familyId).filter((id): id is string => !!id));
+  return new Map(
+    [...attendance].map(([familyId, a]) => [familyId, spoke.has(familyId) ? a : 'unclear']),
+  );
+}
+
 export async function driveGroupPlan(
   deps: GroupPlanInviteDeps,
   plan: GroupPlan,
@@ -398,8 +414,9 @@ export async function driveGroupPlan(
 
   let attendance: Map<string, GroupPlanAttendance> | null = null;
   if (!plan.cancelled) {
-    attendance = await deps.reader.read({ plan, families, messages });
-    if (!attendance) return { status: 'unread' };
+    const read = await deps.reader.read({ plan, families, messages });
+    if (!read) return { status: 'unread' };
+    attendance = ownWordOnly(read, messages);
   }
 
   const results: FamilyFanOutResult[] = [];

@@ -24,9 +24,10 @@ For every family key, decide one `attendance`:
   answering, or answered in a way that could go either way ("maybe", "we'll
   see", "depends on nap").
 
-A message from one family never decides another family's attendance, unless a
-parent clearly speaks for the other family by name ("the Lees are coming too")
-and nobody from that family contradicts it.
+Only a family's own members can make that family `in` or `out`. A message from
+one family never decides another family's attendance, even when a parent speaks
+for the other family by name ("the Lees are coming too"): that other family stays
+`unclear` until someone from it says so themselves.
 
 Read the meaning, not keywords. When unsure, choose `unclear`: a calendar invite
 sent to a family that never agreed is the harm to avoid.

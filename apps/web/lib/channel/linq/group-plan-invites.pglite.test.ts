@@ -8,6 +8,7 @@ import {
   type GroupPlanAttendance,
   type GroupPlanFamily,
   type GroupPlanInviteDeps,
+  type GroupPlanMessage,
   attendanceFromAnswer,
   attendanceUserMessage,
   createFamilyEventsCopyStore,
@@ -100,6 +101,9 @@ function harness(
   };
 }
 
+/** One message from each family: every family has spoken for itself. */
+const said = (fs: GroupPlanFamily[]): GroupPlanMessage[] =>
+  fs.map((f) => ({ familyId: f.familyId, senderName: f.memberFirstNames[0] ?? null, text: '…' }));
 const ids = (fs: GroupPlanFamily[]) => fs.map((f) => f.familyId);
 const liveCopies = async (familyId: string) =>
   db.database.select().from(schema.familyEvents).where(eq(schema.familyEvents.familyId, familyId));
@@ -116,7 +120,7 @@ describe('VIL-455 group plan fan-out', () => {
         [c, 'in'],
       ]),
     );
-    const report = await driveGroupPlan(h.deps, PLAN, [], new Set());
+    const report = await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     expect(report.status).toBe('done');
     expect(h.invites.map((i) => [i.familyId, i.method]).sort()).toEqual(
       [
@@ -126,7 +130,9 @@ describe('VIL-455 group plan fan-out', () => {
     );
     expect(await liveCopies(b)).toHaveLength(0);
     const [copy] = await liveCopies(a);
-    expect(copy?.placedByActionId).toBe(groupPlanCopyKey(PLAN.groupPlanId, a));
+    expect(copy?.groupPlanCopyKey).toBe(groupPlanCopyKey(PLAN.groupPlanId, a));
+    // Never the action claim key: readers join placed_by_action_id to actions.
+    expect(copy?.placedByActionId).toBeNull();
     expect(copy?.source).toBe('placement');
   });
 
@@ -134,9 +140,9 @@ describe('VIL-455 group plan fan-out', () => {
     const fams = await seedFamilies(2);
     const reading = new Map(ids(fams).map((id) => [id, 'in' as const]));
     const h = harness(fams, reading);
-    await driveGroupPlan(h.deps, PLAN, [], new Set());
+    await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     const existing = await existingCopyFamilies(db.database, PLAN, ids(fams));
-    await driveGroupPlan(h.deps, PLAN, [], existing);
+    await driveGroupPlan(h.deps, PLAN, said(fams), existing);
     expect(h.invites).toHaveLength(2);
     for (const id of ids(fams)) expect(await liveCopies(id)).toHaveLength(1);
   });
@@ -145,8 +151,8 @@ describe('VIL-455 group plan fan-out', () => {
     const fams = await seedFamilies(1);
     const reading = new Map([[fams[0]?.familyId as string, 'in' as const]]);
     const h = harness(fams, reading);
-    await driveGroupPlan(h.deps, PLAN, [], new Set());
-    await driveGroupPlan(h.deps, { ...PLAN, groupPlanId: 'plan-2' }, [], new Set());
+    await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
+    await driveGroupPlan(h.deps, { ...PLAN, groupPlanId: 'plan-2' }, said(fams), new Set());
     expect(await liveCopies(fams[0]?.familyId as string)).toHaveLength(2);
     expect(h.invites).toHaveLength(2);
   });
@@ -155,10 +161,10 @@ describe('VIL-455 group plan fan-out', () => {
     const fams = await seedFamilies(2);
     const reading = new Map(ids(fams).map((id) => [id, 'in' as const]));
     const h = harness(fams, reading);
-    await driveGroupPlan(h.deps, PLAN, [], new Set());
+    await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     const moved = { ...PLAN, startsAt: new Date('2026-11-08T15:00:00Z'), endsAt: null };
     const existing = await existingCopyFamilies(db.database, PLAN, ids(fams));
-    await driveGroupPlan(h.deps, moved, [], existing);
+    await driveGroupPlan(h.deps, moved, said(fams), existing);
     expect(h.invites).toHaveLength(4);
     for (const id of ids(fams)) {
       const [row] = await liveCopies(id);
@@ -170,14 +176,14 @@ describe('VIL-455 group plan fan-out', () => {
     const fams = await seedFamilies(2);
     const reading = new Map(ids(fams).map((id) => [id, 'in' as const]));
     const h = harness(fams, reading);
-    await driveGroupPlan(h.deps, PLAN, [], new Set());
+    await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     const existing = await existingCopyFamilies(db.database, PLAN, ids(fams));
     h.deps.reader = {
       read: async () => {
         throw new Error('a cancel must not read attendance');
       },
     };
-    await driveGroupPlan(h.deps, { ...PLAN, cancelled: true }, [], existing);
+    await driveGroupPlan(h.deps, { ...PLAN, cancelled: true }, said(fams), existing);
     expect(h.invites.filter((i) => i.method === 'CANCEL')).toHaveLength(2);
     for (const id of ids(fams)) expect((await liveCopies(id))[0]?.deletedAt).not.toBeNull();
   });
@@ -192,7 +198,7 @@ describe('VIL-455 group plan fan-out', () => {
         [b, 'in'],
       ]),
     );
-    await driveGroupPlan(h.deps, PLAN, [], new Set());
+    await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     h.deps.reader = {
       read: async () =>
         new Map([
@@ -200,7 +206,12 @@ describe('VIL-455 group plan fan-out', () => {
           [b, 'out'],
         ]),
     };
-    await driveGroupPlan(h.deps, PLAN, [], await existingCopyFamilies(db.database, PLAN, [a, b]));
+    await driveGroupPlan(
+      h.deps,
+      PLAN,
+      said(fams),
+      await existingCopyFamilies(db.database, PLAN, [a, b]),
+    );
     expect(h.invites.filter((i) => i.method === 'CANCEL').map((i) => i.familyId)).toEqual([b]);
     expect((await liveCopies(a))[0]?.deletedAt).toBeNull();
   });
@@ -208,7 +219,7 @@ describe('VIL-455 group plan fan-out', () => {
   it('a failed read places nothing and sends nothing', async () => {
     const fams = await seedFamilies(2);
     const h = harness(fams, null);
-    expect(await driveGroupPlan(h.deps, PLAN, [], new Set())).toEqual({ status: 'unread' });
+    expect(await driveGroupPlan(h.deps, PLAN, said(fams), new Set())).toEqual({ status: 'unread' });
     expect(h.invites).toHaveLength(0);
     expect(h.notes).toHaveLength(0);
     for (const id of ids(fams)) expect(await liveCopies(id)).toHaveLength(0);
@@ -234,7 +245,7 @@ describe('VIL-455 group plan fan-out', () => {
               parents: [{ parentUserId: 'u', channel: 'sms', outcome: 'sent' }],
             },
     );
-    const report = await driveGroupPlan(h.deps, PLAN, [], new Set());
+    const report = await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     expect(h.notes.map((n) => n.familyId)).toEqual([b]);
     expect(h.noteAsks).toEqual(['invite_failed']);
     if (report.status !== 'done') throw new Error('expected done');
@@ -258,8 +269,73 @@ describe('VIL-455 group plan fan-out', () => {
         };
       },
     );
-    await driveGroupPlan(h.deps, PLAN, [], new Set());
+    await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     expect(h.notes.map((n) => n.familyId)).toEqual([a]);
+  });
+
+  it('suppressed, no_channel and not_configured legs get no note; send_failed does', async () => {
+    const fams = await seedFamilies(4);
+    const [a, b, c, d] = ids(fams) as [string, string, string, string];
+    const outcomeFor = new Map([
+      [a, 'suppressed'],
+      [b, 'no_channel'],
+      [c, 'not_configured'],
+      [d, 'send_failed'],
+    ] as const);
+    const h = harness(fams, new Map(ids(fams).map((id) => [id, 'in'] as const)), async (r) => ({
+      status: 'reported',
+      parents: [
+        { parentUserId: 'u', channel: 'sms', outcome: outcomeFor.get(r.familyId) ?? 'sent' },
+      ],
+    }));
+    const report = await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
+    expect(h.notes.map((n) => n.familyId)).toEqual([d]);
+    expect(h.noteAsks).toEqual(['invite_failed']);
+    if (report.status !== 'done') throw new Error('expected done');
+    for (const id of [a, b, c]) {
+      const r = report.families.find((f) => f.familyId === id);
+      expect(r?.outcome).toBe('invited');
+      expect(r?.note).toBeUndefined();
+    }
+  });
+
+  it('one family cannot put another in: a family that never spoke stays unclear', async () => {
+    const fams = await seedFamilies(3);
+    const [a, b, c] = ids(fams) as [string, string, string];
+    // Fake reader that wrongly takes b's word for c ("the Tremblays are coming too").
+    const h = harness(
+      fams,
+      new Map([
+        [a, 'in'],
+        [b, 'in'],
+        [c, 'in'],
+      ]),
+    );
+    const messages: GroupPlanMessage[] = [
+      { familyId: a, senderName: 'P0', text: 'Saturday at the park, 10am' },
+      { familyId: b, senderName: 'P1', text: 'we are in, and the Fam2s are coming too' },
+    ];
+    const report = await driveGroupPlan(h.deps, PLAN, messages, new Set());
+    if (report.status !== 'done') throw new Error('expected done');
+    expect(report.families.find((f) => f.familyId === c)).toMatchObject({
+      attendance: 'unclear',
+      outcome: 'not_in',
+    });
+    expect(h.invites.map((i) => i.familyId).sort()).toEqual([a, b].sort());
+    expect(await liveCopies(c)).toHaveLength(0);
+    // Same for out: another family can't take c out either; c's own word can.
+    const h2 = harness(
+      fams,
+      new Map([
+        [a, 'in'],
+        [b, 'in'],
+        [c, 'in'],
+      ]),
+    );
+    const own = [...messages, { familyId: c, senderName: 'P2', text: 'we will come' }];
+    const r2 = await driveGroupPlan(h2.deps, { ...PLAN, groupPlanId: 'plan-own' }, own, new Set());
+    if (r2.status !== 'done') throw new Error('expected done');
+    expect(r2.families.find((f) => f.familyId === c)?.attendance).toBe('in');
   });
 
   it('when the note draft fails, nothing is sent (no fixed fallback)', async () => {
@@ -270,7 +346,7 @@ describe('VIL-455 group plan fan-out', () => {
       message: 'x',
     }));
     h.setNoteText(null);
-    const report = await driveGroupPlan(h.deps, PLAN, [], new Set());
+    const report = await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     expect(h.notes).toHaveLength(0);
     if (report.status !== 'done') throw new Error('expected done');
     expect(report.families[0]?.note).toBe('draft_failed');
@@ -286,7 +362,7 @@ describe('VIL-455 group plan fan-out', () => {
       },
       cancelCopy: async () => null,
     };
-    await driveGroupPlan(h.deps, PLAN, [], new Set());
+    await driveGroupPlan(h.deps, PLAN, said(fams), new Set());
     expect(h.invites).toHaveLength(0);
     expect(h.noteAsks).toEqual(['placement_failed']);
     expect(h.notes.map((n) => n.familyId)).toEqual([a]);

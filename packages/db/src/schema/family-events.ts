@@ -68,6 +68,10 @@ export const familyEvents = pgTable(
      * (migration 0106; the outbound_sends idiom on this table). Deliberately no FK:
      * the stamp is a claim key, and both tables already cascade on family deletion. */
     placedByActionId: uuid('placed_by_action_id'),
+    /** VIL-455. A group plan's per-family copy claim key, derived from (group plan,
+     * family). Null on every other row. Separate from `placedByActionId`, which readers
+     * join to `actions` (migration 0188). */
+    groupPlanCopyKey: uuid('group_plan_copy_key'),
     /**
      * VIL-383. Who currently owns this kid occasion. Overwritten in place;
      * the previous owner stays in `audit_log` and in the superseded duty
@@ -130,6 +134,10 @@ export const familyEvents = pgTable(
     placedByActionUniq: uniqueIndex('family_events_placed_by_action_uniq')
       .on(table.placedByActionId)
       .where(sql`${table.placedByActionId} IS NOT NULL`),
+    // One copy per (group plan, family) — the group fan-out's claim (migration 0188).
+    groupPlanCopyKeyUniq: uniqueIndex('family_events_group_plan_copy_key_uniq')
+      .on(table.groupPlanCopyKey)
+      .where(sql`${table.groupPlanCopyKey} IS NOT NULL`),
     dutyFactIdx: index('family_events_duty_fact_idx')
       .on(table.familyId, table.dutyFactKey)
       .where(sql`${table.dutyFactKey} IS NOT NULL`),
