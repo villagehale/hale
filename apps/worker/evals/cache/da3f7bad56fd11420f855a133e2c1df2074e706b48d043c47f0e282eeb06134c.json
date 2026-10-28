@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct facts: tomorrow (Monday) story time at 11 AM rendered as 上午11点, soccer 5:30-6:30 PM rendered as 下午5:30到6:30, so the AM/PM is right and the end time is included. No invented details, no travel or logistics claims, no filler, and the only link is the exact planLink. Language is entirely Chinese. 足球课 is a natural rendering of Soccer, and 图书馆讲故事时间 is a natural rendering of Library story time. The sentence reads like a quick text from a friend, ordered chronologically, with no notification-style phrasing.",
+    "score": 5
+  }
+}

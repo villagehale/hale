@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: tomorrow Monday is the all-day Jour de congé, and Léa's Natation runs 10 h to 11 h at Piscine Main, all named and timed correctly. However, 'Demain lundi, c'est un jour de congé' reads like a calendar label; a native French speaker would more naturally say 'Demain, c'est congé' or 'Demain lundi, jour de congé'. The phrasing 'et Léa a natation' is also a bit stiff: a friend would write 'Léa a natation' or 'Léa a sa natation'. Clumsy, not idiomatic, so capped at 3.",
+    "score": 3
+  }
+}
