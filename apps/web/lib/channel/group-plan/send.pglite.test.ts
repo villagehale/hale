@@ -213,9 +213,10 @@ async function roster(
   familyId: string,
   status: 'confirmed' | 'roles_proposed',
   members: Array<{
-    status: 'known_parent' | 'confirmed' | 'asked';
-    confirmedRole?: 'grandparent' | 'nanny';
+    status: 'known_parent' | 'confirmed' | 'asked' | 'left' | 'removed';
+    confirmedRole?: 'co_parent' | 'grandparent' | 'nanny';
     knownUserId?: string;
+    userId?: string;
   }>,
 ) {
   const [row] = await db.database
@@ -231,6 +232,7 @@ async function roster(
       status: member.status,
       confirmedRole: member.confirmedRole ?? null,
       knownUserId: member.knownUserId ?? null,
+      userId: member.userId ?? null,
     });
   }
 }
@@ -579,6 +581,8 @@ describe('VIL-443 production ports, real database', () => {
     const gran = await user('Gran');
     const gone = await user('Gone');
     const elsewhere = await user('Elsewhere');
+    const backfilled = await user('Kai');
+    const removed = await user('Lee');
     await seat(s.familyId, gran, 'other_family');
     await seat(s.familyId, gone, 'other_family');
     await db.database
@@ -595,6 +599,14 @@ describe('VIL-443 production ports, real database', () => {
     });
     await roster(s.familyId, 'confirmed', [
       { status: 'known_parent', knownUserId: s.sam },
+      // The backfill confirms a matched co-parent without ever seating them.
+      {
+        status: 'confirmed',
+        confirmedRole: 'co_parent',
+        knownUserId: backfilled,
+        userId: backfilled,
+      },
+      { status: 'removed', knownUserId: removed },
       { status: 'asked' },
     ]);
     const ports = productionGroupPlanReportPorts(db.database, {
@@ -611,9 +623,42 @@ describe('VIL-443 production ports, real database', () => {
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported'));
     expect(((report?.after as { inChat: string[] }).inChat ?? []).sort()).toEqual(
-      [gran, s.sam, s.ana].sort(),
+      [gran, s.sam, backfilled, s.ana].sort(),
     );
   });
+
+  for (const how of ['its seat closed', 'the roster says they left'] as const) {
+    it(`leaves the parent who drafted the plan off its report once ${how}`, async () => {
+      const s = await seed();
+      if (how === 'its seat closed') {
+        await seat(s.familyId, s.ana, 'parent');
+        await db.database
+          .update(schema.linqGroupMembers)
+          .set({ removedAt: MORNING })
+          .where(eq(schema.linqGroupMembers.userId, s.ana));
+        await seat(s.familyId, s.sam, 'co_parent');
+      } else {
+        await roster(s.familyId, 'confirmed', [
+          { status: 'left', knownUserId: s.ana },
+          { status: 'known_parent', knownUserId: s.sam },
+        ]);
+      }
+      const ports = productionGroupPlanReportPorts(db.database, {
+        fetch: linqWire().fetch,
+        now: () => MORNING,
+      });
+      const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
+      expect(
+        await ports.send(plan, { messages: ['Swim: https://x.test/l'], keyed: 0 }, 'short'),
+      ).toBe('sent');
+
+      const [report] = await db.database
+        .select({ after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'group_plan.calendar_reported'));
+      expect((report?.after as { inChat: string[] }).inChat).toEqual([s.sam]);
+    });
+  }
 
   /** Each of the family's outbound rows, in the order the messages went. */
   async function rowsOf(familyId: string) {

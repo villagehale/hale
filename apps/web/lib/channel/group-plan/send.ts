@@ -4,7 +4,7 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, desc, eq, inArray, isNull, like, ne, notLike } from 'drizzle-orm';
+import { and, desc, eq, inArray, like, ne, notLike } from 'drizzle-orm';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
@@ -472,27 +472,41 @@ export async function loadGroupPlan(
   };
 }
 
+const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
+
 /**
- * Who Hale can place in the chat as its text goes: a live seat there, the chat's roster
- * naming a parent Hale knows (group onboarding v2 never seats that parent), or the
- * parent whose message there drafted the plan. Written on the report, so a cancel the
- * group cannot hear goes to who had the link and nobody else (`hadGroupPlanLink`).
+ * Who Hale can place in the chat as its text goes: a live seat there, a live roster row
+ * naming someone Hale knows (group onboarding v2 seats a known parent only on their own
+ * reply, and a co-parent the backfill confirmed not at all), or the parent whose message
+ * there drafted the plan, unless a closed seat or a roster row says they have left since.
+ * Written on the report, so a cancel the group cannot hear goes to who had the link and
+ * nobody else (`hadGroupPlanLink`).
  */
 async function inChatUserIds(database: Database, plan: GroupPlan): Promise<string[]> {
   const seats = await database
-    .select({ userId: schema.linqGroupMembers.userId })
+    .select({
+      userId: schema.linqGroupMembers.userId,
+      removedAt: schema.linqGroupMembers.removedAt,
+    })
     .from(schema.linqGroupMembers)
     .where(
       and(
         eq(schema.linqGroupMembers.chatId, plan.chatId),
         eq(schema.linqGroupMembers.familyId, plan.familyId),
-        isNull(schema.linqGroupMembers.removedAt),
       ),
     );
-  let known: Array<{ userId: string | null }> = [];
+  let listed: Array<{
+    userId: string | null;
+    knownUserId: string | null;
+    status: schema.LinqRosterMemberStatus;
+  }> = [];
   try {
-    known = await database
-      .select({ userId: schema.linqGroupRosterMembers.knownUserId })
+    listed = await database
+      .select({
+        userId: schema.linqGroupRosterMembers.userId,
+        knownUserId: schema.linqGroupRosterMembers.knownUserId,
+        status: schema.linqGroupRosterMembers.status,
+      })
       .from(schema.linqGroupRosterMembers)
       .innerJoin(
         schema.linqGroupRosters,
@@ -502,7 +516,6 @@ async function inChatUserIds(database: Database, plan: GroupPlan): Promise<strin
         and(
           eq(schema.linqGroupRosters.chatId, plan.chatId),
           eq(schema.linqGroupRosters.familyId, plan.familyId),
-          eq(schema.linqGroupRosterMembers.status, 'known_parent'),
         ),
       );
   } catch (err) {
@@ -519,8 +532,18 @@ async function inChatUserIds(database: Database, plan: GroupPlan): Promise<strin
         eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
       ),
     );
-  const ids = [...seats, ...known, ...drafted].map((row) => row.userId);
-  return [...new Set(ids.filter((id): id is string => id !== null))];
+
+  const inChat = new Set<string>();
+  const left = new Set<string>();
+  for (const seat of seats) (seat.removedAt === null ? inChat : left).add(seat.userId);
+  for (const member of listed) {
+    const gone = GONE.includes(member.status);
+    for (const id of [member.userId, member.knownUserId]) {
+      if (id) (gone ? left : inChat).add(id);
+    }
+  }
+  for (const { userId } of drafted) if (!left.has(userId)) inChat.add(userId);
+  return [...inChat];
 }
 
 /** Production ports. The only door is the family's claimed Linq group chat. */
