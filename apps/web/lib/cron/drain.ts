@@ -811,11 +811,20 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
     createGoogleCalendarPlacement(db()),
     productionCalendarWriteNoticePorts(db()),
   );
-  const calendarInvites = createCalendarInviteSender(db(), {
-    channels,
-    renderer: loopTemplateRenderer,
-    cancelVoice: productionCalendarCancelVoice(),
-  });
+  const { productionGroupPlanReportPorts, withGroupPlanReport } = await import(
+    '~/lib/channel/group-plan/send'
+  );
+  // VIL-443 (T17): a plan the family group made is reported back to that group, one
+  // AI-written text with the add-to-calendar link, instead of a link to each parent.
+  // Only when GROUP_PLAN_CALENDAR_REPORT_ENABLED is exactly `true` (default off).
+  const calendarInvites = withGroupPlanReport(
+    createCalendarInviteSender(db(), {
+      channels,
+      renderer: loopTemplateRenderer,
+      cancelVoice: productionCalendarCancelVoice(),
+    }),
+    productionGroupPlanReportPorts(db()),
+  );
   // Approved send_email actions leave from the approving parent's own Gmail.
   const sendEmail = createGmailEmailSender(db());
 

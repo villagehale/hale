@@ -19,6 +19,10 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import {
+  groupPlanDraftPort,
+  productionRecordGroupPlanOrigin,
+} from '~/lib/channel/group-plan/stamp';
+import {
   type InboundMediaPart,
   type ReadInboundMedia,
   readInboundMedia,
@@ -563,7 +567,13 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
-        draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
+        // VIL-443: a calendar_add drafted in the family group records that origin, so its
+        // placement is reported back to the group. Code writes it; the model never sees it.
+        draftPort: groupPlanDraftPort(
+          productionChannelDraftPort(database, anthropicClient(), turn.now),
+          turn.audience,
+          productionRecordGroupPlanOrigin(database),
+        ),
         // The turn's offer ledger, written by the search verb and read by the add verb:
         // a placement should carry what placed it, and the process already holds the row.
         // Never shown to the model, which is the whole point.
