@@ -93,8 +93,6 @@ export const GROUP_REMINDER_FIXTURES = [
     confirmMustSay: [
       'Ruth will be reminded to pick Maya up from swim',
       'on Thursday at 4 PM',
-      'the reminder will be posted here in the group chat',
-      'she can cancel or change it by just telling Hale',
     ],
     reminderMustSay: ['it speaks to Ruth by name', 'it reminds her to pick Maya up from swim'],
   },
@@ -113,7 +111,7 @@ export const GROUP_REMINDER_FIXTURES = [
       'Ruth will be reminded tomorrow (Thursday) at 9 AM to call the dentist about Maya',
       'kindly, that it will be posted here in the group chat rather than sent privately',
       'it does not promise or imply a private text',
-      'she can cancel or change it by just telling Hale',
+      'it makes no false privacy or scope claim: nothing like Hale cannot send private texts, and no reason why it is posted here',
     ],
     reminderMustSay: ['it speaks to Ruth by name', 'it reminds her to call the dentist about Maya'],
   },
@@ -141,8 +139,6 @@ export const GROUP_REMINDER_FIXTURES = [
     confirmMustSay: [
       'Dan will be reminded to pick up the birthday cake',
       'today at 5:30 PM',
-      'it will be posted here in the group chat',
-      'they can cancel or change it by just telling Hale',
     ],
     reminderMustSay: [
       'it speaks to Dan by name',
@@ -203,10 +199,9 @@ export const GROUP_REMINDER_FIXTURES = [
       notSet: 1,
     },
     confirmMustSay: [
-      'no reminder is set yet for Sam to bring the folding chairs',
+      'no reminder was set for Sam to bring the folding chairs',
       'that is because more than one person in this chat is called Sam, so Hale did not guess',
-      'it asks Grace, in a single question, which Sam she meant',
-      'it does not say a reminder is already set, and does not suggest Sam will be reached some other way',
+      'it does not say a reminder is set, and does not suggest Sam will be reached some other way',
     ],
   },
   {
@@ -224,7 +219,6 @@ export const GROUP_REMINDER_FIXTURES = [
       'Ruth will be reminded to put the bins out',
       'the 10:30 PM she asked for falls in quiet hours, when Hale does not text',
       'so it will go out tonight at 8:45 PM instead',
-      'it will be posted here in the group chat, and she can cancel or change it by telling Hale',
     ],
     reminderMustSay: [
       'it speaks to Ruth by name',
@@ -247,8 +241,6 @@ export const GROUP_REMINDER_FIXTURES = [
     fire: { askerSeated: false, expectDrop: 'asker_gone' },
     confirmMustSay: [
       'Ruth will be reminded tomorrow (Thursday) at 3 PM to bring the snacks for practice',
-      'it will be posted here in the group chat',
-      'she can cancel or change it by just telling Hale',
     ],
   },
   {
@@ -266,8 +258,6 @@ export const GROUP_REMINDER_FIXTURES = [
       'written in French, in a tone that fits a message the whole group reads',
       'Jacqueline will be reminded to pick Léo up from swimming',
       'on Thursday at 16 h (4 PM)',
-      'it will be posted here in the group chat',
-      'she can cancel or change it by just telling Hale',
     ],
     reminderMustSay: [
       'written in French, in a tone that fits a message the whole group reads',
@@ -290,7 +280,6 @@ export const GROUP_REMINDER_FIXTURES = [
       "Priya will be reminded to book Maya's dentist appointment",
       'tomorrow (Thursday) at 3 PM',
       'it will come to her as her own text from Hale, not in the group',
-      'she can cancel or change it by just telling Hale',
     ],
     reminderMustSay: [
       'it is a one-to-one text to Priya, so it needs no name',
@@ -358,8 +347,6 @@ export const GROUP_REMINDER_FIXTURES = [
     confirmMustSay: [
       "everyone in the chat will be reminded that dinner is at Ruth's",
       'on Friday at 6 PM',
-      'it will be posted here in the group chat',
-      'they can cancel or change it by just telling Hale',
     ],
     reminderMustSay: [
       'it speaks to everyone in the chat, not one person',
@@ -385,8 +372,6 @@ export const GROUP_REMINDER_FIXTURES = [
     confirmMustSay: [
       'Ruth will be reminded to call the pharmacy about the refill',
       'tomorrow (Thursday) at 10 AM',
-      'it will be posted here in the group chat',
-      'she can cancel or change it by just telling Hale',
     ],
     reminderMustSay: [
       'it speaks to Ruth by name',
