@@ -57,6 +57,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | `true` (trimmed) | off | empty, or `false` | Noah (copy: Sloane) |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | `true` | off | `false` | Noah |
 | `LINQ_POLLS` | `on` | off | empty, or `off` | Sloane |
+| `LINQ_GROUP_POLLS_ENABLED` | `true` | off | `false` | Noah (copy: Sloane) |
 | `LOOP_SEND_ENABLED` | `true` | off | `false` | Noah |
 | `MEMORY_DIGEST_APPLY` | `true` | off | `false` | Noah |
 | `MEMORY_SYNTHESIS_APPLY` | `true` | off | `false` | Noah |
@@ -162,6 +163,7 @@ Code is merged. The repo still has these off. Flip one at a time, during a week 
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | One Linq group can hold more than one family. | A message in the shared thread that names another family's child. | `false` | Noah |
 | `LINQ_POLLS` | After a find with two or more hits, Hale can ask which to look at first. | A poll on an empty find, a conflict, or a receipt. | empty, or `off` | Sloane |
+| `LINQ_GROUP_POLLS_ENABLED` | A parent can start a poll in a Linq group; others vote in their own words or on a native card, and Hale reads the tally back. The card also needs `LINQ_POLLS`. Needs migration `0190_linq_group_polls`. | A poll started while the flag is off, or a tally that invents a winner. | `false` | Noah (copy: Sloane) |
 | `LOOP_SEND_ENABLED` | Calendar reminders are allowed to send. | `channel_messages` for reminders with status `failed`, and new `email_opt_outs`. | `false` | Noah |
 | `WEEKDAY_CARE_ENABLED` | Hale asks once how the household covers weekdays. | A second weekday question to the same family. | `false` | Sloane |
 | `WATCHED_SPOTS_ENABLED` | Hale polls a spot the parent asked to watch. | Spot texts with status `failed`, or a text for a spot the parent did not name. | `false` | Noah |
