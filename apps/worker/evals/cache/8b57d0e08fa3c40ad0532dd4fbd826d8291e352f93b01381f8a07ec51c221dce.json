@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch for sending and replying to email was turned off this turn, so 'Done' is true. The reply confirms the new behaviour in one plain line and stops: no greeting, no sign-off, no machinery, no invented detail.",
+    "score": 5
+  }
+}

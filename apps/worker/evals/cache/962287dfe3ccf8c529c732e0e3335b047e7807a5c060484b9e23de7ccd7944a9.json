@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The text names exactly one event, the Thursday 5:15pm swim at East pool, so drafting the move is correct. The reply names the change and asks in an ordinary sentence whether to go ahead, without demanding a YES keyword. Every detail traces to the week, and there is no greeting or sign-off. Mentioning East pool is a helpful confirming detail, not padding.",
+    "reason": "The text names exactly one event, the Thursday swim, so the reference is resolved. Hale drafted the move and the reply names it with its real venue and new time, then asks in one plain sentence whether to go ahead. It does not claim the change is made and does not ask for a YES keyword. No greeting, no padding.",
     "score": 5
   }
 }

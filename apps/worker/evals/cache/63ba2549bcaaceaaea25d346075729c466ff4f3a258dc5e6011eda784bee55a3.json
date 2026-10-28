@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single slot is real and matches the programme page exactly: age band, days, times and session dates, cited to the preschool-play URL. Price is correctly null. Neither rental figure ($185 or $95) is borrowed, and there is no registration date on the page to carry. The message leads with the program by name and attributes the facts ('their site says'). It is plain ASCII with no link and no question. With watch=true, the first-person 'I'll keep watching and text you' backs a commitment that exists. Under page_has_schedule, the gap is owned in the first person ('I could not pin down the price') rather than claimed as 'not posted'. Minor nit: the message could have relayed that the page says fees are available from the front desk or reception.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot traces to a page that was actually read. Tiny Gym's age band (1 and walking to 3, with a parent) is from the programs page. The Term 1 (Sept 14-Nov 1) and Term 2 (Nov 2-Dec 20) dates are from the schedule PDF and cited to it. The registration (Wed July 22, 2026, 8:00am online) is from the home page and cited there. No price is invented, which is right because the page says pricing sits behind the registration login. Hale honestly says it could not tie the grid times to weekdays. No figures are borrowed from other programs and no age bands are wrong. The message leads with Tiny Gym by name, attributes with \"their site says\" and carries the registration date. It uses the correct first-person gap wording for page_has_schedule (\"I could not pin down the day or price\") and the first-person watch commitment, since watch is true. It is plain ASCII with no link and no question. Minor nit: the message omits Term 2 and could have noted that pricing is behind the login, but neither is a fault under the rubric.",
+    "score": 5
+  }
+}

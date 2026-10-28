@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Positives: the message stays on the venue the parent asked about (Cartwheels, Georgetown/Halton Hills) and attributes to it ('site lists'). Under page_has_schedule it correctly uses first person ('I couldn't confirm current dates') rather than 'not posted yet'. With watch true, the first-person promise ('I'll keep watching and text you') is earned. It has no link and no question. Problems: the pick list is empty, yet the message names three programs and quotes a price ($140 per term) that appears nowhere in the picks, so the message and the extracted picks disagree, which the rubric scores low. The site itself says pricing varies term by term and is only available behind the registration login, so stating $140 flatly glosses over that caveat. Tumble & Learn is a drop-off program, not parent-and-tot, so it does not fit the request. The page does publish Tiny Gym weekday and weekend times, and the message does not name them.",
+    "score": 2
+  }
+}

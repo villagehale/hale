@@ -1,0 +1,46 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Kids & Me is a free weekly 1.5-hour parenting and early learning drop-in program for families with babies or children up to 6 years of age.",
+        "name": "Kids & Me drop-in neighbourhood group, St. Andrew's United Church, Georgetown",
+        "age_evidence": "for families with babies or children up to 6 years of age",
+        "age_fit": "babies and children up to 6 years",
+        "when": "Tuesdays from 9:30 to 11 a.m. (follows the school calendar; closed during the December/January holidays, spring/summer breaks and all statutory holidays)",
+        "when_evidence": "St. Andrew's United Church, Georgetown (Google Maps link) Tuesdays from 9:30 to 11 a.m.",
+        "schedule_kind": "recurring",
+        "price_evidence": "Kids & Me is a free weekly 1.5-hour parenting and early learning drop-in program",
+        "price": "Free",
+        "source_name": "Halton Region",
+        "source_url": "https://www.halton.ca/for-residents/children-and-parenting/parenting-supports",
+        "access": "drop_in"
+      },
+      {
+        "name_evidence": "Halton Hills Halton Hills Public Library – Acton Branch (Google Maps link) Thursdays from 10:30 a.m. to 12 p.m.",
+        "name": "Kids & Me drop-in neighbourhood group, Halton Hills Public Library – Acton Branch",
+        "age_evidence": "for families with babies or children up to 6 years of age",
+        "age_fit": "babies and children up to 6 years",
+        "when": "Thursdays from 10:30 a.m. to 12 p.m. (follows the school calendar; closed during the December/January holidays, spring/summer breaks and all statutory holidays)",
+        "when_evidence": "Halton Hills Public Library – Acton Branch (Google Maps link) Thursdays from 10:30 a.m. to 12 p.m.",
+        "schedule_kind": "recurring",
+        "price_evidence": "Kids & Me is a free weekly 1.5-hour parenting and early learning drop-in program",
+        "price": "Free",
+        "source_name": "Halton Region",
+        "source_url": "https://www.halton.ca/for-residents/children-and-parenting/parenting-supports",
+        "access": "drop_in"
+      },
+      {
+        "name_evidence": "Free drop-in programs offer children up to the age of six, their parents, and their caregivers a place to learn, play, meet people, and get advice from professionals trained in early childhood development.",
+        "name": "Links2Care - Georgetown - James St - EarlyON Child and Family Centre",
+        "age_evidence": "Free drop-in programs offer children up to the age of six, their parents, and their caregivers a place to learn, play",
+        "age_fit": "children up to age 6 with their parents/caregivers",
+        "price_evidence": "Free drop-in programs offer children up to the age of six",
+        "price": "Free",
+        "source_name": "Mississauga Halton Healthline",
+        "source_url": "https://www.mississaugahaltonhealthline.ca/listServicesDetailed.aspx?id=10600&region=HaltonHills",
+        "access": "drop_in"
+      }
+    ]
+  },
+  "latencyMs": 6314
+}

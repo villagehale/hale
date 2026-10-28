@@ -1,0 +1,22 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "The Canada Agriculture and Food Museum is a national agricultural museum in Ottawa, Ontario, Canada. Occupying several buildings within the Central Experimental Farm, the museum operates as a \"working farm\"",
+        "name": "Canada Agriculture and Food Museum, 901 Prince of Wales Dr, Ottawa",
+        "age_evidence": "We enjoyed our visit. Children are ages 4, 7 & 9 and no one had any complaints.",
+        "age_fit": "Good for kids (listed as \"Good for Kids\"; a reviewer visited with children aged 4, 7 and 9)",
+        "when": "Every day 9:00 AM – 5:00 PM (regular hours; the September 4 to 6, 2027 dates themselves could not be confirmed)",
+        "when_evidence": "Hours Every Day 9:00 AM – 5:00 PM",
+        "schedule_kind": "hours",
+        "price_evidence": "Admission is free every day from 4 p.m. to 5 p.m.",
+        "price": "Free admission every day from 4 p.m. to 5 p.m.; general admission tickets otherwise (ticket prices not shown on the page)",
+        "source_name": "Ingenium",
+        "source_url": "https://tickets.ingenium.ca/agriculture/",
+        "indoor_outdoor": "both",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 4367
+}

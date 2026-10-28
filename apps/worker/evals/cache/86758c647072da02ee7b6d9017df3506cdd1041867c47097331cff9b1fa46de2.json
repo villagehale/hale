@@ -1,6 +1,6 @@
 {
   "parsed": {
-    "reason": "The window is set to watching, so 'already watching it' is true. The Sep 1, 7:00 a.m. resident date is stated flat, as recall should be, and 'I'll text you before it opens' matches the ladder. The reply is short and exact, with no greeting, sign-off or menu. The one possible quibble is that the window covers fall recreation programs in general rather than swim specifically, but swim falls within it.",
+    "reason": "The registration window has watching: true, so 'already watching' and 'I'll text you before it opens' are true statements. The resident date Sep 1, 7:00 a.m. is stated flat as recall, which is correct. No invention, no handback, no greeting or sign-off, and the reply stops once the job is done. The window is fall recreation programs rather than swim specifically, but stating it is right.",
     "score": 5
   }
 }
