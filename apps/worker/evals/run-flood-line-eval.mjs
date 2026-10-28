@@ -6,6 +6,7 @@
 // and model routing are imported live, so a skill edit re-keys the cache.
 //
 // Usage (from apps/worker):
+//   node evals/run-flood-line-eval.mjs --dry           # $0, no API: count compose + judge draws, worst-case $
 //   node evals/run-flood-line-eval.mjs --broken        # calibration, $0: must FAIL
 //   node evals/run-flood-line-eval.mjs --cached-only   # replay only, $0 (misses fail)
 //   node --env-file=../../.env evals/run-flood-line-eval.mjs   # live, PAID - needs Barton's yes
@@ -17,6 +18,9 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
+  PRICE,
+  cacheGet,
+  cacheKey,
   cachedToolCall,
   installEvalSpendCap,
   lazyAnthropic,
@@ -143,7 +147,101 @@ const JUDGE_SYSTEM = [
 const BROKEN_LINE =
   'Hale is rate-limited: you sent 30 texts! Please wait 60 minutes, I will answer this one then. See https://villagehale.com';
 
+/** Offline token estimate, the same 1-per-3-bytes ratio the other dry runs use. */
+const tokensFor = (text) => Math.ceil(text.length / 3);
+
+function worstUsd(model, inTokens, maxOut) {
+  const rates = PRICE[model];
+  if (!rates) throw new Error(`no price for ${model}`);
+  return (inTokens / 1e6) * rates.input + (maxOut / 1e6) * rates.output;
+}
+
+/**
+ * --dry: no client, no spend cap, no model call. Keys every compose draw exactly as
+ * cachedToolCall does and every judge draw exactly as makeJudge does, and prices each
+ * miss at its full output ceiling. A judge draw whose compose is not cached has no
+ * message to key yet, so it is priced as uncached with a MAX_TOKENS-long message.
+ */
+async function dryRun({ agent, skill, model, subjectLane, judgeModel }) {
+  const judgeMaxOut = judgeModel === agent.HAIKU_MODEL ? 4096 : 8192;
+  const draws = { compose: [0, 0], judge: [0, 0] };
+  let worst = 0;
+  for (const fixture of FIXTURES) {
+    const tag = `flood-line:${fixture.id}`;
+    const userMessage = floodLineUserMessage(fixture);
+    const key = cacheKey(
+      tag,
+      JSON.stringify({
+        model,
+        system: skill.instructions,
+        userMessage,
+        toolName: 'flood_line',
+        toolSchema: LINE_TOOL_SCHEMA,
+        lane: subjectLane,
+      }),
+    );
+    const cached = await cacheGet(key);
+    let judgeMessage;
+    if (cached) {
+      draws.compose[0] += 1;
+      console.log(`DRY  cached    ${tag}`);
+      judgeMessage = JSON.stringify({
+        message: flatten(String(cached.value?.line ?? '')),
+        language: fixture.language,
+        watchFor: fixture.watchFor,
+      });
+    } else {
+      const inTokens = tokensFor(skill.instructions + userMessage);
+      const usd = worstUsd(model, inTokens, MAX_TOKENS);
+      draws.compose[1] += 1;
+      worst += usd;
+      console.log(
+        `DRY  uncached  ${tag}  ~${inTokens} in + ${MAX_TOKENS} max out  worst $${usd.toFixed(5)}`,
+      );
+    }
+    const judgeTag = `flood-line:judge:${fixture.id}`;
+    if (judgeMessage !== undefined) {
+      const judgeKey = cacheKey(judgeTag, `${judgeModel}\n${JUDGE_SYSTEM}\n${judgeMessage}`);
+      if (await cacheGet(judgeKey)) {
+        draws.judge[0] += 1;
+        console.log(`DRY  cached    ${judgeTag}`);
+        continue;
+      }
+    }
+    const message =
+      judgeMessage ??
+      JSON.stringify({
+        message: 'x'.repeat(MAX_TOKENS * 4),
+        language: fixture.language,
+        watchFor: fixture.watchFor,
+      });
+    const inTokens = tokensFor(JUDGE_SYSTEM + message);
+    const usd = worstUsd(judgeModel, inTokens, judgeMaxOut);
+    draws.judge[1] += 1;
+    worst += usd;
+    console.log(
+      `DRY  uncached  ${judgeTag}  ~${inTokens} in + ${judgeMaxOut} max out  worst $${usd.toFixed(5)}`,
+    );
+  }
+  const [cc, cu] = draws.compose;
+  const [jc, ju] = draws.judge;
+  console.log(
+    `DRY summary | compose draws ${cc + cu} (cached ${cc}, uncached ${cu}) | judge draws ${jc + ju} (cached ${jc}, uncached ${ju}) worst $${worst.toFixed(5)}`,
+  );
+  console.log('DRY: input tokens are an offline estimate (1 per 3 bytes); live calls: 0');
+}
+
 async function main() {
+  if (process.argv.includes('--dry')) {
+    const agent = await tsImport(AGENT_SRC, import.meta.url);
+    const skill = await agent.loadSkill(SKILL_PATH);
+    const model = agent.pickModel(skill.meta.task);
+    const subjectLane = agent.pickLane(skill.meta.task);
+    const judgeModel = await readJudgeModel();
+    console.log(`flood-line eval | mode=dry (no API calls) | compose=${model} judge=${judgeModel}`);
+    await dryRun({ agent, skill, model, subjectLane, judgeModel });
+    return;
+  }
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
