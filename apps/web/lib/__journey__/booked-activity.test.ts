@@ -19,6 +19,7 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
+import { fakeEmailAlertWriter } from '~/lib/integrations/email-alert-compose.fake';
 import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
 import { pipelineClient } from '~/lib/pipeline/client';
 import type { FamilyChildRef } from '~/lib/sentinel';
@@ -215,6 +216,7 @@ function alertPorts(transport: FakeTransport): EmailAlertPorts {
     transport,
     threadMessage: threadProactiveMessage,
     timeZone: async () => FAMILY_TIMEZONE,
+    ...fakeEmailAlertWriter,
   };
 }
 
@@ -304,13 +306,12 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     expect(outcomes).toEqual([{ alert: 'sent', booking: 'recorded', going: 'going_dark' }]);
     expect(transport.sent).toHaveLength(1);
     const text = transport.sent[0]?.body ?? '';
-    // The provider is the subject, the first session is named, and the one question is
-    // the CTA. The model chose the title; the frame is Hale's.
-    expect(text).toContain(
-      "City of Brookfield Recreation says you're in for Preschool Swim Level 2",
-    );
-    expect(text).toContain('first one Saturday, Aug 1 at 9:00 a.m.');
-    expect(text).toContain('Want it on your calendar?');
+    // The writer is handed the provider, the class, the first session and the one
+    // question it may ask; the words are the model's (the stand-in echoes the facts).
+    expect(text).toContain('City of Brookfield Recreation');
+    expect(text).toContain('Preschool Swim Level 2');
+    expect(text).toContain('2026-08-01 09:00');
+    expect(text).toContain('<offer>');
     // The receipt's own details have no column and never reach the wire.
     expect(text).not.toContain('RC-88214');
     expect(text).not.toContain('96.00');

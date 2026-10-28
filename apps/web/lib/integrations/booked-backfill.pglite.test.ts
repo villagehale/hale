@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { fakeEmailAlertWriter } from '~/lib/integrations/email-alert-compose.fake';
 import type { ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
@@ -106,6 +107,7 @@ function harness(classification: SentinelClassification = classified()): {
         return 'conv-1';
       },
       timeZone: async () => 'America/Toronto',
+      ...fakeEmailAlertWriter,
     },
     transport,
     threaded,

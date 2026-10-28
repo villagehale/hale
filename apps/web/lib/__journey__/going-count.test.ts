@@ -11,6 +11,7 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type EmailAlertPorts, alertParentForGmailSweep } from '~/lib/integrations/email-alert';
+import { fakeEmailAlertWriter } from '~/lib/integrations/email-alert-compose.fake';
 import { GOING_COUNT_ENABLED_ENV } from '~/lib/integrations/going';
 import { pipelineClient } from '~/lib/pipeline/client';
 import type { FamilyChildRef } from '~/lib/sentinel';
@@ -213,6 +214,7 @@ function alertPorts(who: Household, transport: FakeTransport, body: string): Ema
     transport,
     threadMessage: threadProactiveMessage,
     timeZone: async () => FAMILY_TIMEZONE,
+    ...fakeEmailAlertWriter,
   };
 }
 
@@ -304,7 +306,7 @@ describe('the third family into the class hears a number', () => {
     const thirdIn = await receiptArrives(c, RECEIPT_ONE);
     expect(thirdIn.going).toBe('shown');
     expect(thirdIn.booking).toBe('recorded');
-    expect(thirdIn.text).toContain('with two other Hale families');
+    expect(thirdIn.text).toContain('with 2 other Hale families');
     // The population is named. A bare "two other families" would be a claim about the
     // class roster Hale cannot back.
     expect(thirdIn.text).not.toMatch(/(?<!Hale )other families/);
@@ -382,7 +384,7 @@ describe('the third family into the class hears a number', () => {
     // assertion that would go red if the count stopped reading `cancelled_at`: it would
     // say three, about a household the provider had already released.
     expect(fourthIn.going).toBe('shown');
-    expect(fourthIn.text).toContain('with two other Hale families');
+    expect(fourthIn.text).toContain('with 2 other Hale families');
     expect(fourthIn.text).not.toContain('three');
     // (And the state UNDER the floor is A's and B's own texts at the top of this arc: not
     // a zero, not a "you're the first" - the absence of a sentence.)

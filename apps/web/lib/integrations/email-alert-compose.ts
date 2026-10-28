@@ -1,0 +1,155 @@
+import type { AgentClient } from '@hale/agent';
+import { pickLane } from '@hale/agent';
+import { z } from 'zod';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { loadCronSkill } from '~/lib/cron/skill';
+import type { EmailAlertPassportFacts } from '~/lib/passport/ingest';
+import { forceToolJson } from '~/lib/pipeline/structured';
+import type { ExtractionKind } from '~/lib/sentinel';
+
+/**
+ * The email alert text. The model writes the WHOLE message from facts, in the parent's
+ * language: no code-built sentence, no fixed title, no appended question. Code owns the
+ * facts (teen mail already reduced to a category, sender folded to a display name or
+ * domain, never a line of the email) and whether a question MAY be asked, because a
+ * question needs a row behind it. The model owns every word and the shape.
+ *
+ * A text that cannot be written is NOTHING SENT: there is no fallback copy.
+ */
+
+export const EMAIL_ALERT_SKILL = 'email-alert';
+
+/** One time, as separate facts in the parent's zone; the writer phrases it in their
+ * language. `isoWeekday` is 1 (Monday) to 7 (Sunday); `time` is 24-hour HH:MM. */
+export interface EmailAlertWhen {
+  date: string;
+  isoWeekday: number;
+  time: string;
+  relativeDay: 'today' | 'tomorrow' | null;
+}
+
+export interface EmailAlertFacts {
+  kind: ExtractionKind;
+  /** Display name or bare domain; null for category-only mail or none. */
+  from: string | null;
+  /** The email's own name for the thing, folded; null when none survives. */
+  what: string | null;
+  when: { was: EmailAlertWhen | null; now: EmailAlertWhen | null };
+  where: string | null;
+  categoryOnly: boolean;
+  fromCalendar: boolean;
+  /** Other Hale families holding this session, or null when nothing may be said. */
+  going: number | null;
+  /** The event is not on the family's calendar yet (not from their calendar, not an
+   * occasion Hale already holds). A FACT, not an instruction. */
+  notOnTheirCalendarYet: boolean;
+  /** Hale can add it if they want: a dated, future, non-teen occasion an offer row can keep.
+   * The writer decides whether to mention it and says so in `offered`. */
+  haleCanAddIt: boolean;
+  /** This parent's own latest texts, oldest first, so the writer can match how they write
+   * (form of address included). Nobody else's words, never a group chat's. */
+  recentParentWords: string[];
+  language: ReplyLanguage;
+  /** Interest passport facts (flag on, a receipt Hale will keep on the child's record), or
+   * null. The model says it inside the text; code adds no line for it. */
+  passport: EmailAlertPassportFacts | null;
+}
+
+/** The user turn. Shared with the eval, which replays this request shape. */
+export function emailAlertUserMessage(facts: EmailAlertFacts): string {
+  return JSON.stringify(facts);
+}
+
+export const EMAIL_ALERT_MAX_CHARS = 480;
+const URL_SHAPE = /https?:\/\/\S+/i;
+const EMAIL_SHAPE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+
+/** Structural refusals only, never wording. */
+export function emailAlertRefusals(
+  body: string,
+  facts: EmailAlertFacts,
+  offered = false,
+): string[] {
+  const text = body.trim();
+  if (text === '') return ['empty'];
+  const found: string[] = [];
+  if (text.length > EMAIL_ALERT_MAX_CHARS) found.push('over_char_cap');
+  if (URL_SHAPE.test(text)) found.push('link');
+  if (EMAIL_SHAPE.test(text)) found.push('email_address');
+  // An offer Hale cannot keep is a promise with no row behind it (#649).
+  if (offered && !facts.haleCanAddIt) found.push('unbacked_offer');
+  // A question with no offer row behind it is consent read against nothing (#649).
+  if (!offered && /[?？¿]/.test(text)) found.push('unbacked_question');
+  return found;
+}
+
+const outputSchema = z.object({ text: z.string(), offered: z.boolean() });
+export const EMAIL_ALERT_OUTPUT_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    text: { type: 'string' },
+    offered: {
+      type: 'boolean',
+      description: 'True when the text offers to add the event for them; false otherwise.',
+    },
+  },
+  required: ['text', 'offered'],
+} as const;
+
+/** What the writer returns: the text and whether it offered to add the event. Code keeps
+ * an offer row only when `offered` is true. */
+export interface EmailAlertWritten {
+  text: string;
+  offered: boolean;
+}
+
+export const EMAIL_ALERT_MAX_ATTEMPTS = 2;
+
+/**
+ * The whole alert, or null after two refused or failed attempts. Null sends nothing.
+ *
+ * LOGS CARRY NO EMAIL CONTENT: family id, attempt, refusal names and the error CLASS
+ * only. A model rejection or a draft can quote the title or the sender (rule #1).
+ */
+export async function composeEmailAlertText(
+  client: AgentClient,
+  facts: EmailAlertFacts,
+  familyId: string,
+): Promise<EmailAlertWritten | null> {
+  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  try {
+    skill = await loadCronSkill(EMAIL_ALERT_SKILL);
+  } catch (err) {
+    console.error(
+      { familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'email alert: skill load failed, nothing sent',
+    );
+    return null;
+  }
+  for (let attempt = 1; attempt <= EMAIL_ALERT_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const { value } = await forceToolJson({
+        client,
+        lane: pickLane(skill.meta.task),
+        system: skill.instructions,
+        userMessage: emailAlertUserMessage(facts),
+        toolName: 'email_alert_text',
+        toolDescription: 'The one text Hale sends the parent about this email.',
+        inputJsonSchema: EMAIL_ALERT_OUTPUT_JSON_SCHEMA,
+        schema: outputSchema,
+        maxTokens: 300,
+      });
+      const text = value.text.trim();
+      const refusals = emailAlertRefusals(text, facts, value.offered);
+      if (refusals.length === 0) return { text, offered: value.offered };
+      console.warn({ familyId, attempt, refusals }, 'email alert: draft refused');
+    } catch (err) {
+      console.warn(
+        { familyId, attempt, err: err instanceof Error ? err.name : 'unknown' },
+        'email alert: compose failed',
+      );
+    }
+  }
+  console.error({ familyId, outcome: 'email_alert_unwritten' }, 'email alert: nothing sent');
+  return null;
+}

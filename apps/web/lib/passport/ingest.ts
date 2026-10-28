@@ -1,9 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { composePassportLine } from './copy';
 import { interestPassportEnabled } from './flag';
-import { appendPassportLine, decideCalendar, decideGmail, progressLabel } from './signals';
+import { decideCalendar, decideGmail, progressLabel } from './signals';
 import {
   calendarSourceRef,
   commitInferredStamp,
@@ -13,8 +11,7 @@ import {
 } from './store';
 
 export interface EmailPassportInput {
-  body: string;
-  /** False on the quiet backfill path: a stamp may be written, a text may not. */
+  /** False on the quiet backfill path: a stamp may be written, the parent is told nothing. */
   sending: boolean;
   familyId: string;
   parentUserId: string;
@@ -29,14 +26,37 @@ export interface EmailPassportInput {
 }
 
 /**
+ * What the email-alert writer is handed about the interest passport: FACTS, never a
+ * sentence. The alert's model says it inside its own text, in the parent's language, or
+ * the alert is not sent at all. Code adds no line, prefix or suffix.
+ */
+export interface EmailAlertPassportFacts {
+  /** The child the receipt was for, or null when it could not be told. */
+  childName: string | null;
+  activity: string;
+  /** e.g. "Fall 2026, week 3 of 12", or null. */
+  progress: string | null;
+  /** What the passport is: Hale's running record of what this child does, so later finds
+   * fit (next season, what comes after). The parent can correct it by replying. */
+  purpose: 'activity_record';
+  seenIn: 'gmail_receipt';
+}
+
+export interface EmailPassportResult {
+  facts: EmailAlertPassportFacts | null;
+  /** `told` = the written alert carrying these facts went out. */
+  afterSend: (told: boolean) => Promise<void>;
+}
+
+/**
  * Flag off does not read the database. The subject and title are the signal.
  * This function has no parameter for a body, a snippet, or quote evidence.
  */
-export async function attachPassportToEmailAlert(
+export async function passportForEmailAlert(
   database: Database,
   input: EmailPassportInput,
-): Promise<{ body: string; afterSend: () => Promise<void> }> {
-  const untouched = { body: input.body, afterSend: async () => {} };
+): Promise<EmailPassportResult> {
+  const untouched: EmailPassportResult = { facts: null, afterSend: async () => {} };
   if (!interestPassportEnabled()) return untouched;
   try {
     const [owner, children] = await Promise.all([
@@ -55,33 +75,27 @@ export async function attachPassportToEmailAlert(
       now: input.now,
     });
     if (!decision.stamp) return untouched;
-    let sentence: string | null = null;
-    if (input.sending) {
-      const child = children.find((item) => item.id === decision.draft.childId);
-      const line = await composePassportLine(await resolveReplyClient(undefined), {
-        job: 'confirm',
-        acknowledgment: null,
-        language: 'en',
-        childName: child?.name ?? null,
-        activity: decision.draft.activity,
-        seasonLabel: progressLabel({
-          kind: decision.draft.kind,
-          seasonLabel: decision.draft.seasonLabel,
-          weeksTotal: decision.draft.weeksTotal,
-          weeksElapsed: decision.draft.weeksElapsed,
-          sessionStart: decision.draft.sessionStart,
-          completed: decision.draft.completed,
-          now: input.now,
-        }),
-        sourceLabel: 'Seen in your Gmail receipt',
-        nextStep: null,
-      });
-      sentence = line.ok ? line.text : null;
-    }
-    const appended = appendPassportLine(input.body, sentence, input.sending);
+    const child = children.find((item) => item.id === decision.draft.childId);
+    const facts: EmailAlertPassportFacts | null = input.sending
+      ? {
+          childName: child?.name ?? null,
+          activity: decision.draft.activity,
+          progress: progressLabel({
+            kind: decision.draft.kind,
+            seasonLabel: decision.draft.seasonLabel,
+            weeksTotal: decision.draft.weeksTotal,
+            weeksElapsed: decision.draft.weeksElapsed,
+            sessionStart: decision.draft.sessionStart,
+            completed: decision.draft.completed,
+            now: input.now,
+          }),
+          purpose: 'activity_record',
+          seenIn: 'gmail_receipt',
+        }
+      : null;
     return {
-      body: appended.body,
-      afterSend: async () => {
+      facts,
+      afterSend: async (told) => {
         try {
           await commitInferredStamp(database, {
             familyId: input.familyId,
@@ -92,7 +106,7 @@ export async function attachPassportToEmailAlert(
             subject: input.subject,
             seenOn: input.now.toISOString().slice(0, 10),
             draft: decision.draft,
-            asked: appended.included,
+            asked: facts !== null && told,
             now: input.now,
           });
         } catch (err) {

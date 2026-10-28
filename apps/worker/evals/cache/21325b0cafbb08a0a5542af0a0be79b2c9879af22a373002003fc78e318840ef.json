@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct (sender, Mia's conference, Wed Nov 4, 3:30 p.m., Room 2), with nothing invented, and the date comes across clearly. The offer is a single question, allowed since haleCanAddIt is true, and offered=true matches the text. However, the structure 'X set up Y for <date> at <time> in <place>. Want me to put it on your calendar?' reads close to a code-built frame with a fixed offer, a bit stiff and service-like rather than the casual aside a friend would use, and it uses an abbreviated 'Wed Nov 4' and 'p.m.' readout style.",
+    "score": 3
+  }
+}

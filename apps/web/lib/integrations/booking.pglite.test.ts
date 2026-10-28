@@ -3,10 +3,10 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
+import { fakeEmailAlertWriter } from '~/lib/integrations/email-alert-compose.fake';
 import type {
   ExtractedEvent,
   ExtractionKind,
@@ -17,6 +17,7 @@ import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { correlateExtraction } from '~/lib/sentinel/correlate';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { isStage } from '~/lib/testing/structured-reply';
 import {
   BOOKING_CONFIDENCE_FLOOR,
   bookingDraft,
@@ -189,6 +190,7 @@ function harness(
         return 'conv-1';
       },
       timeZone: async () => 'America/Toronto',
+      ...fakeEmailAlertWriter,
     },
   };
 }
@@ -1064,8 +1066,8 @@ describe('the booking write', () => {
     const h = harness();
     await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
     await expect(bookingRows()).resolves.toHaveLength(0);
-    expect(h.transport.sent[0]?.body).toContain('Want me to add it to your week?');
-    expect(h.transport.sent[0]?.body).not.toContain('Want it on your calendar?');
+    expect(h.transport.sent[0]?.body).toContain('[new_event]');
+    expect(h.transport.sent[0]?.body).not.toContain('[booking_confirmation]');
   });
 
   it('counts a booking that never reached the decision as null, not as a refusal', async () => {
@@ -1231,7 +1233,7 @@ describe('the offer that must not be made twice', () => {
       going: 'going_dark',
     });
 
-    expect(h.transport.sent[0]?.body).toContain('Want it on your calendar?');
+    expect(h.transport.sent[0]?.body).toContain('<offer>');
     await expect(offerRows()).resolves.toHaveLength(1);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBeNull();

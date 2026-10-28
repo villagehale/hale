@@ -6,23 +6,26 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
-import { extractStateClaims } from '~/lib/channel/reconcile/claims';
-import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
+import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
+import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import type { EmailAlertFacts } from '~/lib/integrations/email-alert-compose';
+import { fakeEmailAlertWriter } from '~/lib/integrations/email-alert-compose.fake';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   EMAIL_ALERT_TEMPLATE_KEY,
   type EmailAlertOutcome,
   type EmailAlertPorts,
-  type EmailAlertRenderInput,
   type EmailAlertResult,
   type GmailAlertEnvelope,
   alertParentForEmail,
   alertParentForGmailSweep,
+  alreadyOnCalendarUnchanged,
   emailAlertDedupeKey,
-  emailAlertOfferDraft,
-  renderEmailAlert,
+  emailAlertFacts,
 } from './email-alert';
+import { readEmailAlertParentWords, venue } from './email-alert';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, type GoingCount, sessionKey } from './going';
 
@@ -108,7 +111,7 @@ const TRIAGED_OUT: SentinelClassification = {
 interface Harness {
   ports: EmailAlertPorts;
   transport: FakeTransport;
-  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  threaded: Array<{ familyId: string; parentUserId: string; body: string; source?: unknown }>;
   classifyCalls: number;
 }
 
@@ -147,6 +150,7 @@ function harness(
         return 'conv-1';
       },
       timeZone: async () => 'America/Toronto',
+      ...fakeEmailAlertWriter,
     },
   };
   return h;
@@ -473,16 +477,6 @@ describe('alertParentForGmailSweep', () => {
   });
 });
 
-/**
- * The BODY only.
- *
- * `renderEmailAlert` returns the sentence AND what the going count actually did, because
- * the measured fold can drop the clause and `over_segment_budget` has to be able to leave
- * the renderer (rule #11). Every assertion about the WORDS reads the first half through
- * here; the tests that are about the count read the second half directly.
- */
-const sentence = (input: EmailAlertRenderInput): string => renderEmailAlert(input).body;
-
 describe('the email_alert lane', () => {
   const offerable = () =>
     classified({
@@ -589,557 +583,6 @@ describe('the email_alert lane', () => {
   });
 });
 
-describe('the text itself', () => {
-  const RENDER = {
-    from: 'Riverside Pool <info@riverside.example>',
-    kind: 'cancellation' as ExtractionKind,
-    event: {
-      title: 'Saturday swim class cancelled',
-      childRef: null,
-      originalTime: '2026-09-19T13:00:00.000Z',
-      newTime: null,
-      location: null,
-    },
-    teenContent: false,
-    matchedEventRef: null,
-    // DARK by default, so every frame below is asserted against the behaviour every
-    // family has today. The booking frame's own describe arms it explicitly.
-    booked: false,
-    going: null,
-    timeZone: 'America/Toronto',
-    now: NOW,
-  };
-
-  /**
-   * The ONE clause this render may add after its sentence — see `emailAlertOfferDraft`.
-   *
-   * The frame tests below are about the SENTENCE, so they read the body with the clause
-   * taken off, in one place rather than as `+ CTA` on seventeen table rows. Whether the
-   * clause is there at all, and where it lands, is what `the offer at the end` asserts —
-   * including every shape that must NOT carry it, so stripping here cannot hide one.
-   */
-  const CTA = ' Want me to add it to your week?';
-  const frame = (input: EmailAlertRenderInput): string => sentence(input).replace(CTA, '');
-
-  it('is a plain sentence: the sender did it, the time is a clause, and it ends there', () => {
-    // The first cut opened "From your email:" and closed "I can add it to your week -
-    // reply YES", and the founder's note on both was the same one: a person telling you
-    // about a text does not narrate where they read it, and does not offer what they
-    // cannot do. NOTHING consumes that YES — an email alert registers no open question of
-    // any kind (lib/channel/router/open-questions.ts: nine kinds, none of them this), so
-    // a parent who replied YES either got the coach or, with one unrelated draft pending,
-    // approved THAT. The offer is gone until something can keep it.
-    const body = sentence(RENDER);
-    expect(body).toBe(
-      'Riverside Pool cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
-    );
-    expect(body).not.toContain('From your email');
-    expect(body).not.toContain('YES');
-  });
-
-  it('never says the change twice, whatever the extraction put in the title', () => {
-    // The skill's contract for `title` is bare (`"title": string`) and the shipped
-    // fixtures carry the verb — 'Swim Class - CANCELLED', 'Soccer practice moved'
-    // (lib/sentinel/correlate.test.ts). So Hale takes the vendor's trailing verb off and
-    // says it itself; where the word is EMBEDDED and cannot be cleanly removed, it
-    // relays the title under "says" and adds no second verb.
-    const cancelled: Array<[string, string]> = [
-      ['Saturday swim class cancelled', 'Riverside Pool cancelled Saturday swim class'],
-      ['Swim Class - CANCELLED', 'Riverside Pool cancelled Swim Class'],
-      ['Swim class is cancelled', 'Riverside Pool cancelled Swim class'],
-      // Two auxiliaries, which is how a vendor writes it: the tail has to take the whole
-      // 'is now cancelled' or it leaves a dangling 'is' behind as the occasion.
-      ['Swim class is now cancelled', 'Riverside Pool cancelled Swim class'],
-      ['Swim class cancelled!', 'Riverside Pool cancelled Swim class'],
-      ['Cancellation of Tuesday practice', 'Riverside Pool says Cancellation of Tuesday practice'],
-      // The CONTROL. Without it every row above passes on a renderer that simply never
-      // says "cancelled" — which is the other way to lose the sentence.
-      ['Swim lessons', 'Riverside Pool cancelled Swim lessons'],
-    ];
-    for (const [title, head] of cancelled) {
-      const body = frame({ ...RENDER, event: { ...RENDER.event, title } });
-      expect(body).toBe(`${head} - it was Saturday, Sep 19 at 9:00 a.m.`);
-      expect(body).not.toMatch(/cancelled[^.]*\bcancelled\b/i);
-    }
-
-    // A reschedule's destination is the half that doubles: a title carrying the verb in
-    // its MIDDLE is relayed under "says", and "says Practice moved to 5pm TO Saturday" is
-    // the vendor's sentence and Hale's welded into one. Relayed titles get the same dash
-    // clause a relayed cancellation gets.
-    const moved: Array<[string, string]> = [
-      ['Soccer practice moved', 'Riverside Pool moved Soccer practice to Saturday, Sep 26'],
-      // The CONTROL: a title with no verb in it at all must still say what happened.
-      ['Soccer practice', 'Riverside Pool moved Soccer practice to Saturday, Sep 26'],
-      ['Practice moved to 5pm', 'Riverside Pool says Practice moved to 5pm - now Saturday, Sep 26'],
-      // The PRESENT tense of the same sentence. A frame that tests for 'moved' and not
-      // 'moves' writes Hale's destination onto the vendor's, and the sentence carries two.
-      ['Practice moves to 5pm', 'Riverside Pool says Practice moves to 5pm - now Saturday, Sep 26'],
-      [
-        'Swim class rescheduled to Friday',
-        'Riverside Pool says Swim class rescheduled to Friday - now Saturday, Sep 26',
-      ],
-      [
-        'New time for swim class',
-        'Riverside Pool says New time for swim class - now Saturday, Sep 26',
-      ],
-    ];
-    for (const [title, head] of moved) {
-      const body = frame({
-        ...RENDER,
-        kind: 'reschedule',
-        event: { ...RENDER.event, title, newTime: '2026-09-26T14:30:00.000Z' },
-      });
-      expect(body).toBe(`${head} at 10:30 a.m. (was Sep 19).`);
-      // One destination per sentence, whichever frame carried it.
-      expect(body).not.toMatch(/\bto\b[^.]*\bto\b/);
-      expect(body).not.toMatch(/moved[^.]*\bmoved\b/i);
-    }
-  });
-
-  it('drops the vendor label in front of a subject line, and keeps a real colon', () => {
-    // 'Reminder:', 'Cancelled -', 'New:' are the sender's own filing system. Hale's
-    // sentence already says which kind of thing this is, so relaying the label says it
-    // twice in someone else's voice.
-    const sentence = (over: Partial<EmailAlertRenderInput>) =>
-      frame({ ...RENDER, ...over } as EmailAlertRenderInput);
-
-    expect(sentence({ event: { ...RENDER.event, title: 'Cancelled: Saturday swim class' } })).toBe(
-      'Riverside Pool cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
-    );
-    expect(
-      sentence({
-        kind: 'reschedule',
-        event: {
-          ...RENDER.event,
-          title: 'Rescheduled: Picture day',
-          newTime: '2026-09-26T14:30:00.000Z',
-        },
-      }),
-    ).toBe('Riverside Pool moved Picture day to Saturday, Sep 26 at 10:30 a.m. (was Sep 19).');
-    expect(
-      sentence({
-        kind: 'reminder_only',
-        from: 'YRDSB <registrar@yrdsb.example>',
-        event: { ...RENDER.event, title: 'Reminder: the field trip form is due' },
-      }),
-    ).toBe('YRDSB says the field trip form is due - Saturday, Sep 19 at 9:00 a.m.');
-    // The CONTROL: a colon that is part of what the school actually said stays.
-    expect(sentence({ event: { ...RENDER.event, title: 'Swim class: bring goggles' } })).toBe(
-      'Riverside Pool cancelled Swim class: bring goggles - it was Saturday, Sep 19 at 9:00 a.m.',
-    );
-  });
-
-  it("names the occasion in Hale's own word when the title is only the change", () => {
-    // 'CANCELLED' as the whole title leaves nothing to name. Relaying it under "says"
-    // puts a vendor's shout in Hale's mouth; the frame keeps its verb and its own object.
-    for (const title of ['CANCELLED', '']) {
-      expect(frame({ ...RENDER, event: { ...RENDER.event, title } })).toBe(
-        'Riverside Pool cancelled something - it was Saturday, Sep 19 at 9:00 a.m.',
-      );
-    }
-  });
-
-  it('has a sentence for every kind the extraction can return', () => {
-    const sentence = (over: Partial<EmailAlertRenderInput>) =>
-      frame({ ...RENDER, ...over } as EmailAlertRenderInput);
-
-    // A reschedule Hale only knows the OLD time for still says what happened.
-    expect(
-      sentence({ kind: 'reschedule', event: { ...RENDER.event, title: 'Swim lessons' } }),
-    ).toBe('Riverside Pool moved Swim lessons - it was Saturday, Sep 19 at 9:00 a.m.');
-    expect(
-      sentence({
-        kind: 'new_event',
-        event: {
-          ...RENDER.event,
-          title: 'Picture day',
-          originalTime: null,
-          newTime: '2026-10-02T13:00:00.000Z',
-          location: 'the gym',
-        },
-      }),
-    ).toBe('Riverside Pool has Picture day at the gym on Friday, Oct 2 at 9:00 a.m.');
-    // A title that is already a CLAUSE cannot be the object of "has". Ollie's own frame
-    // for this exact line is "Cartwheels says Fall/Term 1 registration is open".
-    expect(
-      sentence({
-        kind: 'new_event',
-        from: 'Cartwheels Gym <hello@cartwheels.example>',
-        event: {
-          ...RENDER.event,
-          title: 'Fall registration is open',
-          originalTime: null,
-          newTime: '2026-10-02T13:00:00.000Z',
-        },
-      }),
-    ).toBe('Cartwheels Gym says Fall registration is open - Friday, Oct 2 at 9:00 a.m.');
-    // Ollie's canonical registration line has a finite verb and no copula — the shape a
-    // copula-only test lets through, and "has Term 1 registration opens Monday" is what
-    // that costs.
-    expect(
-      sentence({
-        kind: 'new_event',
-        from: 'Cartwheels Gym <hello@cartwheels.example>',
-        event: {
-          ...RENDER.event,
-          title: 'Term 1 registration opens Monday',
-          originalTime: null,
-          newTime: '2026-10-02T13:00:00.000Z',
-        },
-      }),
-    ).toBe('Cartwheels Gym says Term 1 registration opens Monday - Friday, Oct 2 at 9:00 a.m.');
-    expect(
-      sentence({
-        kind: 'reminder_only',
-        from: 'YRDSB <registrar@yrdsb.example>',
-        event: { ...RENDER.event, title: 'the field trip permission form is due' },
-      }),
-    ).toBe('YRDSB says the field trip permission form is due - Saturday, Sep 19 at 9:00 a.m.');
-    expect(
-      sentence({
-        kind: 'unclear',
-        event: { ...RENDER.event, title: 'a possible schedule change', originalTime: null },
-      }),
-    ).toBe('Riverside Pool sent something about a possible schedule change.');
-  });
-
-  it('picks the frame by ONE question — does the title already carry a verb', () => {
-    // The class of bug this table exists to end: each round found another inflection the
-    // frame had not been told about ('moved' but not 'moves', 'is' but not 'opens'), and
-    // each fix named that one word. So the frame is decided ONCE, by a single question
-    // about the title, and each answer has exactly one shape:
-    //   YES, it carries a verb -> relay it whole under "says" and hang the time off a
-    //        dash. Never a second verb, never a second destination.
-    //   NO, it is a noun phrase -> Hale supplies the verb (cancelled / moved / has).
-    // A TRAILING change word comes off first, and what is left is what gets asked.
-    const MOVED_TO = '2026-09-26T14:30:00.000Z';
-    const WAS = 'it was Saturday, Sep 19 at 9:00 a.m.';
-    const NOW_AT = 'Saturday, Sep 26 at 10:30 a.m.';
-    const rows: Array<{ kind: ExtractionKind; title: string; from?: string; body: string }> = [
-      // Noun phrase: Hale's verb, and the time on Hale's preposition.
-      {
-        kind: 'cancellation',
-        title: 'Swim lessons',
-        body: `Riverside Pool cancelled Swim lessons - ${WAS}`,
-      },
-      // Past tense as a tail: taken off, then the noun phrase underneath.
-      {
-        kind: 'cancellation',
-        title: 'Saturday swim class cancelled',
-        body: `Riverside Pool cancelled Saturday swim class - ${WAS}`,
-      },
-      // 'is now' — two auxiliaries in front of the tail.
-      {
-        kind: 'cancellation',
-        title: 'Swim class is now cancelled',
-        body: `Riverside Pool cancelled Swim class - ${WAS}`,
-      },
-      // A vendor label is the sender's filing system, not a verb.
-      {
-        kind: 'cancellation',
-        title: 'Cancelled: Saturday swim class',
-        body: `Riverside Pool cancelled Saturday swim class - ${WAS}`,
-      },
-      // The change word is EMBEDDED and cannot come off cleanly: relay, no second verb.
-      {
-        kind: 'cancellation',
-        title: 'Cancellation of Tuesday practice',
-        body: `Riverside Pool says Cancellation of Tuesday practice - ${WAS}`,
-      },
-      {
-        kind: 'reschedule',
-        title: 'Soccer practice',
-        body: `Riverside Pool moved Soccer practice to ${NOW_AT} (was Sep 19).`,
-      },
-      {
-        kind: 'reschedule',
-        title: 'Soccer practice moved',
-        body: `Riverside Pool moved Soccer practice to ${NOW_AT} (was Sep 19).`,
-      },
-      // Present progressive as a tail.
-      {
-        kind: 'reschedule',
-        title: 'Swim class is moving',
-        body: `Riverside Pool moved Swim class to ${NOW_AT} (was Sep 19).`,
-      },
-      // Present tense with the vendor's OWN destination in it: relayed, dash clause, one
-      // 'to' in the whole sentence.
-      {
-        kind: 'reschedule',
-        title: 'Practice moves to 5pm',
-        body: `Riverside Pool says Practice moves to 5pm - now ${NOW_AT} (was Sep 19).`,
-      },
-      {
-        kind: 'reschedule',
-        title: 'Rescheduled: Picture day',
-        body: `Riverside Pool moved Picture day to ${NOW_AT} (was Sep 19).`,
-      },
-      {
-        kind: 'new_event',
-        title: 'Picture day',
-        body: `Riverside Pool has Picture day on ${NOW_AT}`,
-      },
-      // Ollie's registration line, present tense and no copula.
-      {
-        kind: 'new_event',
-        title: 'Term 1 registration opens Monday',
-        body: `Riverside Pool says Term 1 registration opens Monday - ${NOW_AT}`,
-      },
-      {
-        kind: 'new_event',
-        title: 'Fall registration is open',
-        body: `Riverside Pool says Fall registration is open - ${NOW_AT}`,
-      },
-      // A display name carries the sender's full stop the way a subject line does, and it
-      // lands in the middle of Hale's sentence.
-      {
-        kind: 'new_event',
-        title: 'Picture day',
-        from: 'Riverside Pool. <info@riverside.example>',
-        body: `Riverside Pool has Picture day on ${NOW_AT}`,
-      },
-      // A reminder that is a noun phrase is an occasion, not a thing to say out loud:
-      // "says Pediatric checkup - Saturday" is a dash standing in for the verb.
-      {
-        kind: 'reminder_only',
-        title: 'Pediatric checkup',
-        body: 'Riverside Pool has Pediatric checkup on Saturday, Sep 19 at 9:00 a.m.',
-      },
-      {
-        kind: 'reminder_only',
-        title: 'the field trip form is due',
-        body: 'Riverside Pool says the field trip form is due - Saturday, Sep 19 at 9:00 a.m.',
-      },
-      {
-        kind: 'reminder_only',
-        title: 'Registration opens Monday',
-        body: 'Riverside Pool says Registration opens Monday - Saturday, Sep 19 at 9:00 a.m.',
-      },
-      {
-        kind: 'unclear',
-        title: 'a possible schedule change',
-        body: 'Riverside Pool sent something about a possible schedule change.',
-      },
-    ];
-
-    for (const row of rows) {
-      const body = frame({
-        ...RENDER,
-        kind: row.kind,
-        from: row.from ?? RENDER.from,
-        event: {
-          ...RENDER.event,
-          title: row.title,
-          newTime: row.kind === 'reschedule' || row.kind === 'new_event' ? MOVED_TO : null,
-        },
-      });
-      expect(body).toBe(row.body);
-      // On EVERY row: one destination per sentence. Two 'to's is the vendor's verb and
-      // Hale's both carrying the new time.
-      expect(body).not.toMatch(/\bto\b[^.]*\bto\b/);
-    }
-  });
-
-  it('keeps a street address out of the sentence and a short place in it', () => {
-    // A room number or a street line is the one thing in a school email a text should not
-    // repeat: it is long, it is the part a parent already knows, and it is the part that
-    // makes an SMS a copy of the email.
-    const newEvent = (location: string) =>
-      frame({
-        ...RENDER,
-        kind: 'new_event',
-        event: {
-          ...RENDER.event,
-          title: 'Picture day',
-          originalTime: null,
-          newTime: '2026-10-02T13:00:00.000Z',
-          location,
-        },
-      });
-    expect(newEvent('the gym')).toContain('at the gym on');
-    expect(newEvent('120 Main St W, Markham ON L3P 1X4')).toBe(
-      'Riverside Pool has Picture day on Friday, Oct 2 at 9:00 a.m.',
-    );
-  });
-
-  it('falls back to the bare DOMAIN as the subject, never the full address', () => {
-    // An address in a text is a mailbox anyone holding the phone can write to. A domain
-    // reads perfectly well as the subject of a sentence.
-    const body = frame({ ...RENDER, from: 'registrar.k12@yrdsb.example' });
-    expect(body).toBe(
-      'yrdsb.example cancelled Saturday swim class - it was Saturday, Sep 19 at 9:00 a.m.',
-    );
-    expect(body).not.toContain('registrar.k12');
-  });
-
-  it('drops a display NAME that is itself an address — the commonest no-reply header', () => {
-    // `"noreply@school.example" <noreply@school.example>` is what school and daycare
-    // systems put in From, so reading the display name is reading the address out loud.
-    // Any '@' in the label means the domain is the honest half of it.
-    const body = frame({
-      ...RENDER,
-      from: '"noreply@school.example" <noreply@school.example>',
-    });
-    expect(body).toContain('school.example cancelled ');
-    expect(body).not.toContain('noreply@');
-  });
-
-  it('says only what happened when the extraction found no usable time', () => {
-    expect(
-      frame({
-        ...RENDER,
-        kind: 'reminder_only',
-        event: { ...RENDER.event, title: 'the field trip form is due', originalTime: null },
-      }),
-    ).toBe('Riverside Pool says the field trip form is due.');
-  });
-
-  it('drops a time the model did not write as a date', () => {
-    // `original_time` is a model's free text. "Invalid Date" in a parent's phone is worse
-    // than no time at all.
-    expect(frame({ ...RENDER, event: { ...RENDER.event, originalTime: 'this Saturday' } })).toBe(
-      'Riverside Pool cancelled Saturday swim class.',
-    );
-  });
-
-  it('carries the YEAR on a date in another year, in both halves of a reschedule', () => {
-    expect(
-      frame({
-        ...RENDER,
-        kind: 'reschedule',
-        event: {
-          ...RENDER.event,
-          title: 'Swim lessons',
-          originalTime: '2026-12-30T14:00:00.000Z',
-          newTime: '2027-01-05T14:00:00.000Z',
-        },
-      }),
-    ).toBe('Riverside Pool moved Swim lessons to Tuesday, Jan 5, 2027 at 9:00 a.m. (was Dec 30).');
-  });
-
-  it('bounds a runaway title at a word boundary and still ends the sentence', () => {
-    const body = frame({
-      ...RENDER,
-      event: {
-        ...RENDER.event,
-        title: 'Saturday swim class for beginners and improvers at the west end pool this term',
-      },
-    });
-    expect(body).toBe(
-      'Riverside Pool cancelled Saturday swim class for beginners and improvers at the west - it was Saturday, Sep 19 at 9:00 a.m.',
-    );
-  });
-
-  it('tells a teen parent the CATEGORY and nothing else — no sender, no time, no offer', () => {
-    // The pipeline has already genericized the title by the time this sees it; dropping
-    // the sender and the time is this renderer's half of rule #1, because a clinic's
-    // domain and a Thursday 4pm are the disclosure.
-    const body = frame({
-      ...RENDER,
-      kind: 'unclear',
-      teenContent: true,
-      from: 'Maple Counselling <intake@maplecounselling.example>',
-      event: { ...RENDER.event, title: 'A possible schedule change' },
-    });
-
-    expect(body).toBe("A possible schedule change. I've kept the details out of this text.");
-    expect(body).not.toContain('maplecounselling');
-    expect(body).not.toContain('Maple Counselling');
-    expect(body).not.toContain('Sep 19');
-  });
-
-  it('folds a typographic subject line back into GSM-7 rather than paying UCS-2 for it', () => {
-    // One curly apostrophe flips the WHOLE body to UCS-2 and halves the segment budget,
-    // for a difference nobody reading it on a phone can see.
-    const body = frame({
-      ...RENDER,
-      from: '"Riverside’s Pool" <a@b.example>',
-      event: { ...RENDER.event, title: 'Leo’s class — cancelled…' },
-    });
-    expect(body).toContain("Riverside's Pool cancelled Leo's class");
-    expect(isPrintableGsm7Basic(body)).toBe(true);
-  });
-
-  it('still names the change when the header carries no sender at all', () => {
-    // `senderLabel` returns '' for a malformed From with no '@'. With no subject there is
-    // no Ollie sentence to write, so the occasion becomes the subject — never a stand-in
-    // sender, which would be a fact Hale invented.
-    expect(frame({ ...RENDER, from: 'no-at-sign-at-all' })).toBe(
-      'Saturday swim class cancelled - it was Saturday, Sep 19 at 9:00 a.m.',
-    );
-  });
-
-  it('holds two GSM-7 segments including the FULL opt-out, for every shape it can render', () => {
-    // The budget is what makes the clamps load-bearing: remove SENDER_MAX or TITLE_MAX and
-    // one verbose school subject line becomes a three-segment bill per family per email.
-    // The OFFER CLAUSE is inside this bound too — `renderEmailAlert` is called here, not
-    // `frame` — because the shapes that can carry it are exactly the long ones.
-    //
-    // ...AND SO IS THE GOING CLAUSE, in the same matrix rather than in a second test that
-    // could prove the bound on a different sentence. Two additions earn their place: a
-    // FIVE-LETTER count word ("three"), which is the longest form the spelled range has,
-    // and a WEDNESDAY-NOON OTHER-YEAR instant, whose `longWhen` is the 37-septet worst
-    // case ("Wednesday, Sep 29, 2027 at 12:00 p.m.") that the January dates below are two
-    // short of. Together they are the 287-of-306 arithmetic, executed.
-    const nasty = 'Registration — '.repeat(40);
-    const kinds: ExtractionKind[] = [
-      'cancellation',
-      'reschedule',
-      'new_event',
-      'reminder_only',
-      'unclear',
-      'booking_confirmation',
-    ];
-    const goings: Array<GoingCount | null> = [
-      null,
-      { shown: true, others: 2 },
-      { shown: true, others: 3 },
-      { shown: true, others: 99 },
-      { shown: false, reason: 'below_floor' },
-    ];
-    /** The January pair the matrix started with, and the Wednesday-noon 2027 worst case. */
-    const instants: Array<{ originalTime: string; newTime: string }> = [
-      { originalTime: '2027-01-05T13:00:00.000Z', newTime: '2027-01-06T13:00:00.000Z' },
-      { originalTime: '2027-09-28T16:00:00.000Z', newTime: '2027-09-29T16:00:00.000Z' },
-    ];
-    for (const kind of kinds) {
-      for (const teenContent of [false, true]) {
-        // BOTH flag states, because the booking frame and its longer CTA only exist in
-        // one of them: a bound proved dark is a bound proved on the old sentence.
-        for (const booked of [false, true]) {
-          for (const going of goings) {
-            for (const times of instants) {
-              for (const from of [
-                `"${nasty}" <${'a'.repeat(60)}@${'d'.repeat(60)}.example>`,
-                `${'x'.repeat(200)}@${'y'.repeat(80)}.example`,
-                'no-at-sign-at-all',
-                '',
-              ]) {
-                const body = sentence({
-                  ...RENDER,
-                  from,
-                  kind,
-                  teenContent,
-                  booked,
-                  going,
-                  event: {
-                    title: nasty,
-                    childRef: null,
-                    ...times,
-                    location: 'somewhere',
-                  },
-                });
-                expect(isPrintableGsm7Basic(body)).toBe(true);
-                expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-});
-
 /**
  * THE BOOKING SENTENCE — a provider's receipt, and the one question it may end on.
  *
@@ -1149,93 +592,6 @@ describe('the text itself', () => {
  * tests below keep them apart on purpose, because the way this ships wrong is a frame
  * that carries the question itself.
  */
-describe('the booking frame', () => {
-  const BOOKING: EmailAlertRenderInput = {
-    from: 'Riverside Pool <info@riverside.example>',
-    kind: 'booking_confirmation',
-    teenContent: false,
-    matchedEventRef: null,
-    booked: true,
-    going: null,
-    timeZone: 'America/Toronto',
-    now: NOW,
-    event: {
-      title: 'Swim Level 2',
-      childRef: null,
-      originalTime: null,
-      newTime: '2026-09-26T13:00:00.000Z',
-      location: 'the Leisure Centre',
-    },
-  };
-
-  it('relays the provider as the subject, names the first session, and ends on the one ask', () => {
-    expect(sentence(BOOKING)).toBe(
-      "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
-        ' at the Leisure Centre. Want it on your calendar?',
-    );
-  });
-
-  it('carries NO question in the frame - only the CTA slot may ask one', () => {
-    // The class is already on the family's calendar, so `emailAlertOfferDraft` refuses and
-    // no CTA is appended. What is left IS the composed frame, and it must not ask
-    // anything: a question with no offer row behind it is #649 verbatim, and after the
-    // correlation fix this is the most common draft-null booking there is.
-    const tracked = sentence({
-      ...BOOKING,
-      matchedEventRef: { table: 'family_events', id: randomUUID() },
-    });
-    expect(tracked).toBe(
-      "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
-        ' at the Leisure Centre.',
-    );
-    expect(tracked).not.toContain('?');
-    // MUTATION: move 'Want it on your calendar?' inside `compose` and this goes red,
-    // while the happy-path assertion above stays green. That asymmetry is the test.
-    expect(sentence(BOOKING).match(/\?/g)).toHaveLength(1);
-  });
-
-  it('asserts no row Hale does not hold - the claim taxonomy, with its mutation', () => {
-    // SCHEDULED_ASSERTION matches "you're registered", "is confirmed", "is on your
-    // calendar". "you're in for" and "Want it on your calendar?" clear it, and the
-    // email-alert path runs no `refuseUnbackedSend`, so this file is the only gate.
-    expect(extractStateClaims(sentence(BOOKING))).toEqual([]);
-
-    // THE MUTATION, as an executable control rather than a note: the same sentence with
-    // the banned wording DOES produce a claim. Without it this is an absence test, and
-    // absence tests fail open.
-    const banned = "Riverside Pool says you're registered for Swim Level 2.";
-    expect(extractStateClaims(banned).map((claim) => claim.kind)).toEqual(['scheduled_event']);
-  });
-
-  it('renders byte-identically to a new_event while the flag is off', () => {
-    // The WHOLE claim of the dark state, asserted rather than narrated. Same extraction,
-    // same instant, same everything: dark, a booking IS a new_event on the wire.
-    const dark = sentence({ ...BOOKING, booked: false });
-    const asNewEvent = sentence({ ...BOOKING, kind: 'new_event', booked: false });
-    expect(dark).toBe(asNewEvent);
-    expect(dark).toBe(
-      'Riverside Pool has Swim Level 2 at the Leisure Centre on Saturday, Sep 26 at 9:00 a.m.' +
-        ' Want me to add it to your week?',
-    );
-  });
-
-  it('says only what it has when the receipt named no first session', () => {
-    const undated = sentence({
-      ...BOOKING,
-      event: { ...BOOKING.event, newTime: null, location: null },
-    });
-    // No instant means no offer (`emailAlertOfferDraft`'s concrete-time condition), so no
-    // CTA either - the sentence stops where the evidence does.
-    expect(undated).toBe("Riverside Pool says you're in for Swim Level 2.");
-  });
-
-  it('keeps the teen text category-only, as every other kind does', () => {
-    expect(sentence({ ...BOOKING, teenContent: true })).toBe(
-      "Swim Level 2. I've kept the details out of this text.",
-    );
-  });
-});
-
 const RENDER_FOR_OFFER = {
   from: 'Riverside Pool <info@riverside.example>',
   kind: 'new_event' as ExtractionKind,
@@ -1244,6 +600,7 @@ const RENDER_FOR_OFFER = {
   booked: false,
   going: null as GoingCount | null,
   timeZone: 'America/Toronto',
+  language: 'en' as const,
   now: NOW,
 };
 
@@ -1258,7 +615,7 @@ describe('the offer at the end', () => {
    * row with no clause is a question nobody was asked that makes every bare affirmative in
    * the household ambiguous for a day.
    */
-  const CTA = 'Want me to add it to your week?';
+  const CTA = '<offer>';
 
   const future = (
     over: Partial<ExtractedEvent> & { kind?: ExtractionKind; teenContent?: boolean } = {},
@@ -1355,9 +712,7 @@ describe('the offer at the end', () => {
     await expect(offerRows()).resolves.toHaveLength(0);
   });
 
-  it('names a Google Calendar event and does not offer to add it', async () => {
-    // The event is already on the parent's calendar. "Reply YES and it goes on your
-    // week" asks them to add it again. The notice is the name and the time.
+  it('hands the writer a Google Calendar event as fromCalendar, with no sender and no ask', async () => {
     const when = '2026-10-01T20:15:00.000Z';
     const from = 'Google Calendar <calendar-notification@google.com>';
     const event = {
@@ -1367,63 +722,51 @@ describe('the offer at the end', () => {
       newTime: null,
       location: 'the gym',
     };
-    const notice = sentence({
-      ...RENDER_FOR_OFFER,
-      from,
-      kind: 'reminder_only',
-      event,
+    const facts = emailAlertFacts({ ...RENDER_FOR_OFFER, from, kind: 'reminder_only', event });
+    expect(facts).toMatchObject({
+      fromCalendar: true,
+      from: null,
+      what: 'Gymnastics',
+      haleCanAddIt: false,
+      notOnTheirCalendarYet: false,
     });
-    expect(notice).toBe('Gymnastics on Thursday, Oct 1 at 4:15 p.m.');
-    expect(notice).not.toContain('YES');
-    expect(notice).not.toContain('STOP');
-    expect(notice).not.toContain('Google Calendar');
-    // The classifier may file the same reminder as a new date. Same notice, and the
-    // place stays off it: the parent already has the event.
-    expect(
-      sentence({
-        ...RENDER_FOR_OFFER,
-        from,
-        kind: 'new_event',
-        event: { ...event, originalTime: null, newTime: when },
-      }),
-    ).toBe(notice);
-    expect(
-      emailAlertOfferDraft({
-        kind: 'reminder_only',
-        event,
-        teenContent: false,
-        matchedEventRef: null,
-        booked: false,
-        from,
-        now: NOW,
-      }),
-    ).toBeNull();
-
+    // Separate facts, never a built-up English label: the writer phrases it in its language.
+    expect(facts.when.was).toEqual({
+      date: '2026-10-01',
+      isoWeekday: 4,
+      time: '16:15',
+      relativeDay: null,
+    });
     // The address alone is enough. A display name that is not Google Calendar is not.
     expect(
-      sentence({
+      emailAlertFacts({
         ...RENDER_FOR_OFFER,
         from: 'calendar-notification@google.com',
         kind: 'reminder_only',
         event,
-      }),
-    ).toBe(notice);
-    const school = sentence({
+      }).fromCalendar,
+    ).toBe(true);
+    const school = emailAlertFacts({
       ...RENDER_FOR_OFFER,
       from: 'Google Classroom <classroom-noreply@google.com>',
       kind: 'new_event',
       event: { ...event, originalTime: null, newTime: when, location: null },
     });
-    expect(school).toBe(
-      'Google Classroom has Gymnastics on Thursday, Oct 1 at 4:15 p.m. Want me to add it to your week?',
-    );
+    expect(school).toMatchObject({
+      fromCalendar: false,
+      from: 'Google Classroom',
+      haleCanAddIt: true,
+      notOnTheirCalendarYet: true,
+    });
 
+    // A calendar mail about a CHANGE is news (an unchanged one sends nothing; see below),
+    // and still carries no ask: it is already on their calendar.
     const h = harness({
       classification: classified({
-        kind: 'reminder_only',
+        kind: 'reschedule',
         title: 'Gymnastics',
         originalTime: when,
-        newTime: null,
+        newTime: '2026-10-02T20:15:00.000Z',
         location: 'the gym',
       }),
     });
@@ -1437,74 +780,32 @@ describe('the offer at the end', () => {
         },
       }),
     ).resolves.toMatchObject({ alert: 'sent' });
-    expect(h.transport.sent[0]?.body).toBe(notice);
-    expect(h.threaded[0]?.body).toBe(notice);
+    expect(h.transport.sent[0]?.body).not.toContain('ask:');
     await expect(offerRows()).resolves.toHaveLength(0);
   });
 
-  it('keeps a calendar cancellation as the change, still with no offer', () => {
-    const body = sentence({
+  it('never hands a teen text an ask, a sender, a time or a place', () => {
+    const facts = emailAlertFacts({
       ...RENDER_FOR_OFFER,
-      from: 'Google Calendar <calendar-notification@google.com>',
-      kind: 'cancellation',
+      teenContent: true,
       event: {
-        title: 'Gymnastics',
-        childRef: null,
-        originalTime: '2026-10-01T20:15:00.000Z',
-        newTime: null,
-        location: null,
-      },
-    });
-    expect(body).toBe('Google Calendar cancelled Gymnastics - it was Thursday, Oct 1 at 4:15 p.m.');
-    expect(body).not.toContain('YES');
-    // A move is still the change. It is already on the calendar, so it is not an offer.
-    const moved = sentence({
-      ...RENDER_FOR_OFFER,
-      from: 'Google Calendar <calendar-notification@google.com>',
-      kind: 'reschedule',
-      event: {
-        title: 'Gymnastics',
-        childRef: null,
-        originalTime: '2026-10-01T20:15:00.000Z',
-        newTime: '2026-10-02T20:15:00.000Z',
-        location: null,
-      },
-    });
-    expect(moved).toBe(
-      'Google Calendar moved Gymnastics to Friday, Oct 2 at 4:15 p.m. (was Oct 1).',
-    );
-    expect(moved).not.toContain('YES');
-  });
-
-  it('puts the clause after the sentence ends, once, and never inside a teen text', () => {
-    const body = sentence({
-      ...RENDER_FOR_OFFER,
-      event: {
-        title: 'Picture day',
+        title: 'a message about school',
         childRef: null,
         originalTime: null,
         newTime: '2026-10-02T13:00:00.000Z',
-        location: null,
+        location: 'the clinic',
       },
     });
-    expect(body).toBe(`Riverside Pool has Picture day on Friday, Oct 2 at 9:00 a.m. ${CTA}`);
-    expect(body.match(/Want me to add it to your week\?/g)).toHaveLength(1);
-    expect(body).not.toMatch(/Reply YES/i);
-
-    // The teen text is category-only and returns before the frame runs at all.
-    expect(
-      sentence({
-        ...RENDER_FOR_OFFER,
-        teenContent: true,
-        event: {
-          title: 'a message about school',
-          childRef: null,
-          originalTime: null,
-          newTime: '2026-10-02T13:00:00.000Z',
-          location: null,
-        },
-      }),
-    ).not.toContain('YES');
+    expect(facts).toMatchObject({
+      categoryOnly: true,
+      from: null,
+      when: { was: null, now: null },
+      where: null,
+      going: null,
+      haleCanAddIt: false,
+      recentParentWords: [],
+      what: 'a message about school',
+    });
   });
 });
 
@@ -1523,121 +824,6 @@ describe('the gate registration', () => {
  * what the audit row carries, and — the one that cannot be seen from the count's side —
  * that a dark sweep never issues the query at all.
  */
-describe('who else is going', () => {
-  const BOOKING: EmailAlertRenderInput = {
-    from: 'Riverside Pool <info@riverside.example>',
-    kind: 'booking_confirmation',
-    teenContent: false,
-    matchedEventRef: null,
-    booked: true,
-    going: null,
-    timeZone: 'America/Toronto',
-    now: NOW,
-    event: {
-      title: 'Swim Level 2',
-      childRef: null,
-      originalTime: null,
-      newTime: '2026-09-26T13:00:00.000Z',
-      location: 'the Leisure Centre',
-    },
-  };
-
-  it('rides INSIDE the frame, before the full stop and before the CTA', () => {
-    // A clause, never its own sentence: `coach-channel-sms.md`'s house rule, and the shape
-    // the D25 voice brief is trying to keep. A bolted-on second sentence would also land
-    // AFTER the period, which is how "with two other Hale families" stops being part of
-    // the thing it counts.
-    const { body, going } = renderEmailAlert({ ...BOOKING, going: { shown: true, others: 2 } });
-    expect(body).toBe(
-      "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
-        ' at the Leisure Centre, with two other Hale families. Want it on your calendar?',
-    );
-    expect(going).toEqual({ shown: true, others: 2 });
-  });
-
-  it('names the POPULATION it counts — Hale families, never families', () => {
-    // The one wording rule that is not negotiable. "two other families are in this swim
-    // class" is a claim about the class roster Hale cannot back; "two other Hale families"
-    // is true about a set Hale can enumerate.
-    const { body } = renderEmailAlert({ ...BOOKING, going: { shown: true, others: 3 } });
-    expect(body).toContain('three other Hale families');
-    // The positive above pairs with this negative: the bare phrase must not appear, and a
-    // search that allowed "other Hale families" to satisfy it would prove nothing.
-    expect(body).not.toMatch(/(?<!Hale )other families/);
-  });
-
-  it('adds NO state claim, and the banned wording does — the mutation, executed', () => {
-    // SCHEDULED_ASSERTION (channel/reconcile/claims.ts) needs a first-person verb or a
-    // copula before `booked|scheduled|confirmed`. A bare prepositional clause has neither.
-    const { body } = renderEmailAlert({ ...BOOKING, going: { shown: true, others: 2 } });
-    expect(extractStateClaims(body)).toEqual([]);
-    // THE MUTATION: the same clause written as an assertion DOES produce a claim, so this
-    // is a gate rather than an absence test.
-    expect(
-      extractStateClaims(
-        body
-          .replace(', with two other Hale families', '')
-          .replace('.', ' and two other Hale families are booked.'),
-      ).length,
-    ).toBeGreaterThan(0);
-  });
-
-  it('measures the clause against the bound, at the clamp maxima, and reports what it did', () => {
-    // EVERY CLAMP AT ITS MAXIMUM and the longest of everything: a 40-septet sender, a
-    // 60-septet title, a 30-septet place, the 37-septet Wednesday-noon other-year instant,
-    // the five-letter count word, the booking CTA and the FULL opt-out.
-    const max: EmailAlertRenderInput = {
-      ...BOOKING,
-      from: `"${'S'.repeat(60)}" <info@brookfield.example>`,
-      event: {
-        title: 'T'.repeat(80),
-        childRef: null,
-        originalTime: null,
-        newTime: '2027-09-29T16:00:00.000Z',
-        location: 'L'.repeat(30),
-      },
-    };
-    const withCount = renderEmailAlert({ ...max, going: { shown: true, others: 3 } });
-    const wire = `${withCount.body}\n\n${OPT_OUT_LINE}`;
-    // R2's ARITHMETIC, EXECUTED rather than argued: 287 septets of 306. The exact number,
-    // not `<= 2`, because the claim that matters is the HEADROOM — nineteen septets — and
-    // only an exact assertion notices it being spent. Widen TITLE_MAX by twenty and this
-    // goes red before a parent gets a three-segment bill.
-    expect(wire.length).toBe(287);
-    expect(smsSegments(wire)).toBe(2);
-    // ...so at the maximum the clause SURVIVES, and the renderer says so.
-    expect(withCount.body).toContain(', with three other Hale families');
-    expect(withCount.going).toEqual({ shown: true, others: 3 });
-
-    // AND THE FOLD ITSELF, stated rather than faked. Nineteen septets of headroom means NO
-    // input today's clamps admit can cross the bound - the longest count word is five
-    // letters and the longest numeral `String` will print is twenty-one digits, both inside
-    // it - so `over_segment_budget` is a GUARD and not a live path. It is kept because the
-    // frame is the thing that moves (a longer CTA, a wider clamp, the D25 re-wording) and a
-    // third segment is billed per family per email; and it returns a named outcome rather
-    // than dropping quietly, so the day it does fire the cron summary says so instead of a
-    // parent's bill. What is asserted here is the trigger it reads: twenty more septets and
-    // this body is over, which is exactly when the clause has to go.
-    const overBound = `${withCount.body.slice(0, -1)}${'x'.repeat(20)}.`;
-    expect(smsSegments(`${overBound}\n\n${OPT_OUT_LINE}`)).toBeGreaterThan(2);
-  });
-
-  it('is byte-identical to the booked chain’s frame when there is no count', () => {
-    // The dark state, asserted rather than narrated: the same input with `going: null` is
-    // the sentence every booked family gets today.
-    expect(renderEmailAlert({ ...BOOKING, going: null }).body).toBe(
-      "Riverside Pool says you're in for Swim Level 2 - first one Saturday, Sep 26 at 9:00 a.m." +
-        ' at the Leisure Centre. Want it on your calendar?',
-    );
-    // ...and so is every refusal, including the ones that mean something happened.
-    for (const reason of ['below_floor', 'no_session', 'repeat_receipt', 'going_dark'] as const) {
-      expect(renderEmailAlert({ ...BOOKING, going: { shown: false, reason } }).body).toBe(
-        renderEmailAlert({ ...BOOKING, going: null }).body,
-      );
-    }
-  });
-});
-
 /**
  * ...and the same feature through the REAL alert path, where the question is not what the
  * words are but whether the query runs at all.
@@ -1745,7 +931,7 @@ describe('the going count in the alert path', () => {
       booking: 'recorded',
       going: 'shown',
     });
-    expect(h.transport.sent[0]?.body).toContain('with two other Hale families');
+    expect(h.transport.sent[0]?.body).toContain('with 2 other Hale families');
 
     const sent = (await auditRows()).find((row) => row.actionTaken === 'email_alert_sent');
     // `toEqual` rather than `toMatchObject`: the rule for this row is enums and flags only,
@@ -1825,7 +1011,7 @@ describe('the going count in the alert path', () => {
       booking: 'recorded',
       going: 'shown',
     });
-    expect(first.transport.sent[0]?.body).toContain('with two other Hale families');
+    expect(first.transport.sent[0]?.body).toContain('with 2 other Hale families');
 
     // The invoice said 1:00; the receipt says 1:30 and spells the title differently.
     // Same class, same UTC day. A second row would be a second follow-up, and a
@@ -1875,7 +1061,7 @@ describe('the going count in the alert path', () => {
     const { sql, out } = await statementsDuring(() => alertPair(dark, 'm2', { envelope: RECEIPT }));
     expect(out.going).toBe('going_dark');
     expect(sql.some((text) => text.includes(COUNT_QUERY))).toBe(false);
-    expect(dark.transport.sent[0]?.body).toBe(spoken.replace(', with two other Hale families', ''));
+    expect(dark.transport.sent[0]?.body).toBe(spoken.replace(' with 2 other Hale families', ''));
     // The positive control for the observation itself: a LIT run of a class this
     // family does not already hold does issue the count query. A second receipt of
     // the class above returns before that query — it is already a repeat.
@@ -1941,7 +1127,7 @@ describe('the going count in the alert path', () => {
     // count that fell because one household was never in it would prove nothing.
     const control = await sweepDetail('Third', 'm1');
     expect(control.result.going).toBe('shown');
-    expect(control.body).toContain('with two other Hale families');
+    expect(control.body).toContain('with 2 other Hale families');
 
     // The cascade IS the erasure path - `runDeletionSweep` issues one DELETE FROM families
     // and lets it take the bookings - so it is asserted rather than trusted, and the count
@@ -1978,4 +1164,598 @@ describe('the going count in the alert path', () => {
     );
     return { familyId: household.familyId, result, body: h.transport.sent[0]?.body ?? '' };
   }
+});
+
+describe('the model writes the whole text', () => {
+  it('writer returns null after its 2 attempts: nothing sent, no row, key unspent', async () => {
+    const h = harness();
+    let calls = 0;
+    h.ports.composeText = async () => {
+      calls += 1;
+      return null;
+    };
+    await expect(alertPair(h)).resolves.toMatchObject({ alert: 'alert_unwritten' });
+    expect(calls).toBe(1);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.threaded).toHaveLength(0);
+    const rows = await ledgerRows();
+    expect(rows.filter((row) => row.dedupeKey !== null)).toHaveLength(0);
+    // The key is unspent: a later sweep whose writer succeeds still sends.
+    const later = harness();
+    await expect(alert(later)).resolves.toBe('sent');
+  });
+
+  it('the thread write carries the Gmail id and snippet; the audit row and logs carry no email', async () => {
+    const spies = (['error', 'warn', 'info', 'log'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation(() => {}),
+    );
+    const h = harness();
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(h.threaded[0]).toMatchObject({
+      source: { gmailMessageId: 'm1', snippet: ENVELOPE.snippet, eventId: null },
+    });
+    const audits = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, family.familyId));
+    const trail = JSON.stringify([audits, spies.flatMap((spy) => spy.mock.calls)]);
+    for (const content of [ENVELOPE.snippet, ENVELOPE.subject, 'swim class', 'Riverside']) {
+      expect(trail).not.toContain(content);
+    }
+    for (const spy of spies) spy.mockRestore();
+  });
+});
+
+describe('the interest passport rides as FACTS to the writer, never as code-written text', () => {
+  const RECEIPT = {
+    subject: 'Registration confirmed: Little Dragons Karate, Fall session, 12 weeks',
+    from: 'Little Dragons <hello@dragons.example>',
+    snippet: 'You are registered for Little Dragons Karate.',
+    receivedAt: '2026-09-17T14:00:00.000Z',
+  };
+
+  async function passportHousehold(): Promise<{ integrationId: string }> {
+    await db.database
+      .insert(schema.children)
+      .values({ familyId: family.familyId, name: 'Mia', dateOfBirth: '2019-03-02' });
+    const [row] = await db.database
+      .insert(schema.integrations)
+      .values({
+        familyId: family.familyId,
+        userId: family.parentUserId,
+        provider: 'gmail',
+        status: 'active',
+      })
+      .returning({ id: schema.integrations.id });
+    return { integrationId: row?.id as string };
+  }
+
+  function karate(): SentinelClassification {
+    return classified({
+      kind: 'booking_confirmation',
+      title: 'Little Dragons Karate',
+      originalTime: null,
+      // No dated first session, so no calendar offer: the passport is the one thing.
+      newTime: null,
+      location: null,
+    });
+  }
+
+  async function run(flag: 'true' | undefined) {
+    if (flag) vi.stubEnv('INTEREST_PASSPORT_ENABLED', flag);
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    const { integrationId } = await passportHousehold();
+    const h = harness({ classification: karate() });
+    const seen: EmailAlertFacts[] = [];
+    // The writer's text is a sentinel string: anything else on the wire was added by code.
+    const WRITTEN = 'MODEL-WRITTEN-ALERT';
+    h.ports.composeText = async (facts) => {
+      seen.push(facts);
+      return { text: WRITTEN, offered: false };
+    };
+    const result = await alertParentForEmail(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId,
+        messageId: 'm-karate',
+        envelope: RECEIPT,
+        cancelledThisSweep: new Set<string>(),
+        timeZone: 'America/Toronto',
+        now: NOW,
+      },
+      h.ports,
+    );
+    return { h, seen, result, WRITTEN };
+  }
+
+  it('flag on: the passport facts reach the writer, and the wire body is exactly what it wrote', async () => {
+    const { h, seen, result, WRITTEN } = await run('true');
+    expect(result.alert).toBe('sent');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.passport).toMatchObject({
+      childName: 'Mia',
+      activity: 'Little Dragons Karate',
+      purpose: 'activity_record',
+      seenIn: 'gmail_receipt',
+    });
+    // No code-joined sentence, prefix or suffix: the outgoing text is the model's, byte for
+    // byte (the opt-out line is off under the default verdict here).
+    expect(h.transport.sent[0]?.body).toBe(WRITTEN);
+    expect(h.threaded[0]?.body).toBe(WRITTEN);
+    // And the stamp records that the parent was told.
+    const rows = await db.database
+      .select({ askedAt: schema.kidInterests.askedAt })
+      .from(schema.kidInterests)
+      .where(eq(schema.kidInterests.familyId, family.familyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.askedAt).not.toBeNull();
+  });
+
+  it('flag off: the writer gets passport null and nothing else changes', async () => {
+    const { h, seen, WRITTEN } = await run(undefined);
+    expect(seen[0]?.passport).toBeNull();
+    expect(h.transport.sent[0]?.body).toBe(WRITTEN);
+  });
+
+  it('flag on, writer fails: nothing is sent and no stamp says the parent was asked', async () => {
+    vi.stubEnv('INTEREST_PASSPORT_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    const { integrationId } = await passportHousehold();
+    const h = harness({ classification: karate() });
+    h.ports.composeText = async () => null;
+    const result = await alertParentForEmail(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId,
+        messageId: 'm-karate',
+        envelope: RECEIPT,
+        cancelledThisSweep: new Set<string>(),
+        timeZone: 'America/Toronto',
+        now: NOW,
+      },
+      h.ports,
+    );
+    expect(result.alert).toBe('alert_unwritten');
+    expect(h.transport.sent).toHaveLength(0);
+  });
+});
+
+describe('messages.source (0183) on the real DDL', () => {
+  it('the thread write stores the event id, Gmail id and snippet on the coach transcript row', async () => {
+    await threadProactiveMessage(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: 'Saturday swim is off this week.',
+      source: { kind: 'gmail', eventId: null, gmailMessageId: 'm1', snippet: ENVELOPE.snippet },
+    });
+    const rows = await db.database
+      .select({ content: schema.messages.content, source: schema.messages.source })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+      .where(eq(schema.conversations.familyId, family.familyId));
+    expect(rows).toEqual([
+      {
+        content: 'Saturday swim is off this week.',
+        source: { kind: 'gmail', eventId: null, gmailMessageId: 'm1', snippet: ENVELOPE.snippet },
+      },
+    ]);
+  });
+
+  it('every other writer leaves it null', async () => {
+    await threadProactiveMessage(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: 'Plain note.',
+    });
+    const rows = await db.database
+      .select({ source: schema.messages.source })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+      .where(eq(schema.conversations.familyId, family.familyId));
+    expect(rows).toEqual([{ source: null }]);
+  });
+});
+
+describe('screens before any alert (prod samples, Oct 2026)', () => {
+  it('RCIA: the kid judge says adult, so nothing is sent and no offer is made', async () => {
+    const h = harness({
+      classification: classified({
+        kind: 'new_event',
+        title: 'RCIA',
+        originalTime: null,
+        newTime: '2026-10-29T23:30:00.000Z',
+      }),
+    });
+    const asked: string[] = [];
+    h.ports.kidRelevance = async (item) => {
+      asked.push(item.title);
+      return 'adult';
+    };
+    await expect(alert(h)).resolves.toBe('not_kid');
+    expect(asked).toEqual(['RCIA']);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.threaded).toHaveLength(0);
+    expect(await ledgerRows()).toHaveLength(0);
+    const offers = await db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.familyId, family.familyId));
+    expect(offers).toHaveLength(0);
+  });
+
+  it('House Supper: unsure is not a yes either', async () => {
+    const h = harness({ classification: classified({ kind: 'new_event', title: 'House Supper' }) });
+    h.ports.kidRelevance = async () => 'unsure';
+    await expect(alert(h)).resolves.toBe('not_kid');
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('a kid judge that cannot answer sends nothing, under its own name', async () => {
+    const h = harness();
+    h.ports.kidRelevance = async () => 'held';
+    await expect(alert(h)).resolves.toBe('kid_judge_held');
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('Parent & Tot Skate: a calendar notification for a mirrored calendar is not texted twice', async () => {
+    const h = harness();
+    h.ports.calendarMirrored = async () => true;
+    const result = await alertPair(h, 'm-skate', {
+      envelope: {
+        ...ENVELOPE,
+        subject: 'Notification: Parent & Tot Skate @ Tue Oct 27, 2026 10:30am',
+        from: 'Google Calendar <calendar-notification@google.com>',
+      },
+    });
+    expect(result.alert).toBe('calendar_mirrored');
+    expect(h.classifyCalls).toBe(0);
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('a calendar notification with NO mirrored calendar still reaches the writer', async () => {
+    const h = harness();
+    h.ports.calendarMirrored = async () => false;
+    const result = await alertPair(h, 'm-skate', {
+      envelope: { ...ENVELOPE, from: 'Google Calendar <calendar-notification@google.com>' },
+    });
+    expect(result.alert).toBe('sent');
+  });
+
+  it('Barton Dong sent something about…: mail the parent sent themselves is ignored', async () => {
+    const h = harness();
+    h.ports.parentAddresses = async () => ['barton@example.test'];
+    const result = await alertPair(h, 'm-self', {
+      envelope: { ...ENVELOPE, from: 'Barton Dong <Barton@Example.test>' },
+    });
+    expect(result.alert).toBe('self_sent');
+    expect(h.classifyCalls).toBe(0);
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('the "has X on" / "sent something about" / fixed-CTA frames are gone from the alert path', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const source = await readFile(new URL('./email-alert.ts', import.meta.url), 'utf8');
+    for (const frame of [
+      'sent something about',
+      'OFFER_CTA',
+      'BOOKING_CTA',
+      'calendarNotice',
+      "'Want me to add it to your week?'",
+      "? 'says' : 'has'",
+    ]) {
+      expect(source).not.toContain(frame);
+    }
+    // And on the wire the text is the writer's, byte for byte.
+    const h = harness();
+    h.ports.composeText = async () => ({ text: 'WRITER-ONLY', offered: false });
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(h.transport.sent[0]?.body).toBe('WRITER-ONLY');
+  });
+});
+
+describe('one thing per text, and silence when there is nothing new', () => {
+  const PASSPORT = {
+    childName: 'Mia',
+    activity: 'Karate',
+    progress: null,
+    purpose: 'activity_record' as const,
+    seenIn: 'gmail_receipt' as const,
+  };
+  const base = {
+    from: 'Little Dragons <hello@dragons.example>',
+    teenContent: false,
+    matchedEventRef: null,
+    booked: true,
+    going: null,
+    timeZone: 'America/Toronto',
+    language: 'en' as const,
+    now: NOW,
+  };
+
+  it('an offer and a passport note never reach the writer together: the offer wins', () => {
+    const facts = emailAlertFacts({
+      ...base,
+      kind: 'booking_confirmation',
+      event: {
+        title: 'Karate',
+        childRef: null,
+        originalTime: null,
+        newTime: '2026-09-26T13:00:00.000Z',
+        location: null,
+      },
+      passport: PASSPORT,
+    });
+    expect(facts.haleCanAddIt).toBe(true);
+    expect(facts.notOnTheirCalendarYet).toBe(true);
+    expect(facts.passport).toBeNull();
+  });
+
+  it('with no offer, the passport is the one thing', () => {
+    const facts = emailAlertFacts({
+      ...base,
+      kind: 'booking_confirmation',
+      event: { title: 'Karate', childRef: null, originalTime: null, newTime: null, location: null },
+      passport: PASSPORT,
+    });
+    expect(facts.haleCanAddIt).toBe(false);
+    expect(facts.passport).toEqual(PASSPORT);
+  });
+
+  it('already on their calendar and unchanged: nothing is sent, the writer is never asked', async () => {
+    const h = harness({
+      classification: classified({
+        kind: 'reminder_only',
+        title: 'Pizza lunch',
+        originalTime: '2026-09-18T16:00:00.000Z',
+      }),
+    });
+    let asked = 0;
+    h.ports.composeText = async () => {
+      asked += 1;
+      return { text: 'x', offered: false };
+    };
+    const result = await alertPair(h, 'm-pizza', {
+      envelope: { ...ENVELOPE, from: 'Google Calendar <calendar-notification@google.com>' },
+    });
+    expect(result.alert).toBe('already_on_calendar');
+    expect(asked).toBe(0);
+    expect(h.transport.sent).toHaveLength(0);
+    expect(await ledgerRows()).toHaveLength(0);
+  });
+
+  it('a calendar mail about a CHANGE is still news', () => {
+    const from = 'Google Calendar <calendar-notification@google.com>';
+    expect(alreadyOnCalendarUnchanged({ from, kind: 'reschedule' })).toBe(false);
+    expect(alreadyOnCalendarUnchanged({ from, kind: 'cancellation' })).toBe(false);
+    expect(alreadyOnCalendarUnchanged({ from, kind: 'reminder_only' })).toBe(true);
+    expect(alreadyOnCalendarUnchanged({ from: ENVELOPE.from, kind: 'reminder_only' })).toBe(false);
+  });
+});
+
+describe('the writer gets parts, not a built-up label (prod: clumsy French)', () => {
+  const base = {
+    from: 'Village Montessori <office@villagemontessori.example>',
+    teenContent: false,
+    matchedEventRef: null,
+    booked: false,
+    going: null,
+    timeZone: 'America/Toronto',
+    now: new Date('2026-11-12T14:00:00.000Z'),
+  };
+  it('a French move: sender, event, place and each time arrive as separate facts', () => {
+    const facts = emailAlertFacts({
+      ...base,
+      language: 'fr',
+      kind: 'reschedule',
+      event: {
+        title: 'Sortie de classe à la ferme',
+        childRef: null,
+        originalTime: '2026-11-06T13:30:00.000Z',
+        newTime: '2026-11-13T13:30:00.000Z',
+        location: 'Ferme Brookside',
+      },
+    });
+    expect(facts.from).toBe('Village Montessori');
+    expect(facts.what).toBe('Sortie de classe à la ferme');
+    expect(facts.where).toBe('Ferme Brookside');
+    expect(facts.when.now).toEqual({
+      date: '2026-11-13',
+      isoWeekday: 5,
+      time: '08:30',
+      relativeDay: 'tomorrow',
+    });
+    expect(facts.when.was?.relativeDay).toBeNull();
+    // No English words for the writer to translate.
+    const wire = JSON.stringify(facts);
+    for (const english of ['Friday', 'Nov', ' at ', 'a.m.', 'p.m.']) {
+      expect(wire).not.toContain(english);
+    }
+  });
+  it('an unreadable time is no time, never "Invalid Date"', () => {
+    const facts = emailAlertFacts({
+      ...base,
+      language: 'en',
+      kind: 'new_event',
+      event: {
+        title: 'Picnic',
+        childRef: null,
+        originalTime: null,
+        newTime: 'next tuesday-ish',
+        location: null,
+      },
+    });
+    expect(facts.when.now).toBeNull();
+  });
+});
+
+describe('the writer decides the offer; code keeps a row only when it did (VIL-433)', () => {
+  const picture = () =>
+    classified({
+      kind: 'new_event',
+      title: 'Picture day',
+      originalTime: null,
+      newTime: '2026-10-02T13:00:00.000Z',
+    });
+  const offerRows = () =>
+    db.database
+      .select()
+      .from(schema.emailAlertOffers)
+      .where(eq(schema.emailAlertOffers.familyId, family.familyId));
+  const familyEvents = () =>
+    db.database
+      .select()
+      .from(schema.familyEvents)
+      .where(eq(schema.familyEvents.familyId, family.familyId));
+
+  it('passes the facts, never an instruction: not on their calendar yet, and Hale can add it', async () => {
+    const h = harness({ classification: picture() });
+    const seen: EmailAlertFacts[] = [];
+    h.ports.composeText = async (facts) => {
+      seen.push(facts);
+      return { text: 'Picture day is Friday.', offered: false };
+    };
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(seen[0]).toMatchObject({ notOnTheirCalendarYet: true, haleCanAddIt: true });
+    expect(seen[0]).not.toHaveProperty('ask');
+  });
+
+  it('offered=false: the text goes, and NO offer row is created', async () => {
+    const h = harness({ classification: picture() });
+    h.ports.composeText = async () => ({ text: 'Picture day is Friday.', offered: false });
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(h.transport.sent[0]?.body).toBe('Picture day is Friday.');
+    await expect(offerRows()).resolves.toHaveLength(0);
+  });
+
+  it('offered=true: exactly one offer row backs the text', async () => {
+    const h = harness({ classification: picture() });
+    h.ports.composeText = async () => ({
+      text: 'Picture day Friday, I can pop it in.',
+      offered: true,
+    });
+    await expect(alert(h)).resolves.toBe('sent');
+    await expect(offerRows()).resolves.toHaveLength(1);
+  });
+
+  it('a parent YES after a text with no offer row creates no calendar event', async () => {
+    const h = harness({ classification: picture() });
+    h.ports.composeText = async () => ({ text: 'Picture day is Friday.', offered: false });
+    await expect(alert(h)).resolves.toBe('sent');
+    await expect(offerRows()).resolves.toHaveLength(0);
+
+    const open = await defaultOpenQuestionReader().open(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+    const verdict = await emailAlertAddHandler({
+      writeReceipt: { write: async (facts) => `${facts.happened}|${facts.title}` },
+    }).handle(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      conversationId: randomUUID(),
+      body: 'yes',
+      send: async () => ({ providerMessageId: 'prov-1', channel: 'sms' as const }),
+      now: NOW,
+      resolved: null,
+      openQuestions: async () => open,
+      inboundChannelMessageId: randomUUID(),
+    });
+    expect(verdict).toEqual({ claimed: false });
+    await expect(familyEvents()).resolves.toHaveLength(0);
+  });
+
+  it("hands the writer this parent's own recent words from the port", async () => {
+    const h = harness({ classification: picture() });
+    h.ports.recentParentWords = async () => ['salut, merci!'];
+    const seen: EmailAlertFacts[] = [];
+    h.ports.composeText = async (facts) => {
+      seen.push(facts);
+      return { text: 'x', offered: false };
+    };
+    await expect(alert(h)).resolves.toBe('sent');
+    expect(seen[0]?.recentParentWords).toEqual(['salut, merci!']);
+  });
+});
+
+describe('readEmailAlertParentWords: only this parent, only one-to-one', () => {
+  let at = 0;
+  async function inbound(
+    who: { familyId: string; parentUserId: string },
+    body: string,
+    over: { chatId?: string; direction?: 'in' | 'out' } = {},
+  ) {
+    at += 1;
+    await db.database.insert(schema.channelMessages).values({
+      familyId: who.familyId,
+      parentUserId: who.parentUserId,
+      channel: 'imessage',
+      direction: over.direction ?? 'in',
+      category: 'reply',
+      providerChatId: over.chatId ?? 'chat-1to1',
+      status: 'delivered',
+      body,
+      createdAt: new Date(NOW.getTime() - 60_000 * (100 - at)),
+    });
+  }
+
+  it("returns the parent's latest three one-to-one texts, oldest first, and nobody else's", async () => {
+    const other = await seedFamily(db.database, 'Other family');
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: family.familyId,
+      chatId: 'chat-group',
+      userId: family.parentUserId,
+      phoneE164Encrypted: 'enc',
+      phoneE164Hash: 'hash',
+      role: 'parent',
+    });
+    await inbound(family, 'oldest, dropped by the limit');
+    await inbound(family, 'un');
+    await inbound(family, 'deux');
+    await inbound(other, 'another family');
+    await inbound(family, 'votre groupe', { chatId: 'chat-group' });
+    await inbound(family, 'Hale wrote this', { direction: 'out' });
+    await inbound(family, 'trois');
+
+    await expect(
+      readEmailAlertParentWords(db.database, family.familyId, family.parentUserId),
+    ).resolves.toEqual(['un', 'deux', 'trois']);
+  });
+
+  it('is empty for a parent who has never texted', async () => {
+    await expect(
+      readEmailAlertParentWords(db.database, family.familyId, family.parentUserId),
+    ).resolves.toEqual([]);
+  });
+});
+
+describe('venue: a place reaches the writer, a street address never does (VIL-433)', () => {
+  it.each(['Room 2', 'Studio 3B', 'Gym 2', 'Salle 4', 'the gym', 'Ferme Brookside', 'Rink 1'])(
+    'lets %s through',
+    (place) => {
+      expect(venue(place)).toBe(place);
+    },
+  );
+
+  it.each([
+    '123 Main St',
+    '45 King Street West',
+    '12-B Elm Ave',
+    '200 rue Sainte-Catherine',
+    'Dojo, 88 Queen St E',
+    'Toronto M5V 2T6',
+    'Unit 4 10001',
+  ])('drops the street address %s', (place) => {
+    expect(venue(place)).toBeNull();
+  });
+
+  it('still drops an over-long place and an empty one', () => {
+    expect(venue('x'.repeat(31))).toBeNull();
+    expect(venue('')).toBeNull();
+    expect(venue(null)).toBeNull();
+  });
 });
