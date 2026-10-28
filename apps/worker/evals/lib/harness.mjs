@@ -1081,9 +1081,16 @@ export const JUDGE_SAMPLES_MEDIAN = 3;
  * Read on the way OUT of the cache as well as into it, because the bad draws are already
  * committed. A cached non-verdict is treated as absent: re-drawn live, or reported as the
  * honest cache miss it always was under `--cached-only`.
+ *
+ * A number is not enough. The schema is an integer 1-5; Anthropic does not hard-enforce
+ * min/max, and a truncated or confused draw has already arrived as `{ score: -1 }` with a
+ * reason cut mid-quote (identity-ask `intro-both`, VIL-467 live run). That is wreckage,
+ * not a vote: `-1` sorted first and failed the case as `judge:-1`. Only a score the
+ * rubric can actually emit counts.
  */
 export function isVerdict(parsed) {
-  return typeof parsed?.score === 'number';
+  const score = parsed?.score;
+  return Number.isInteger(score) && score >= 1 && score <= 5;
 }
 
 /**

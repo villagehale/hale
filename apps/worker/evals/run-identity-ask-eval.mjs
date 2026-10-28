@@ -50,6 +50,7 @@ import {
   dryReportLine,
   installEvalSpendCap,
   isDryRun,
+  isVerdict,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -231,9 +232,11 @@ const BROKEN_ASK =
   'your email like sam@example.com within 2 days? See www.example.com';
 
 async function main() {
-  assertRunFlags(['--broken', '--env-file', '--max-usd']);
+  assertRunFlags(['--broken', '--env-file', '--max-usd', '--only']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const onlyArg = process.argv.find((a) => a.startsWith('--only='));
+  const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null;
   installEvalSpendCap();
   const getClient = lazyAnthropic('identity-ask');
   const cost = makeCost();
@@ -244,16 +247,22 @@ async function main() {
   const subjectLane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'identity-ask', cachedOnly, getClient, cost);
+  const fixtures = only
+    ? IDENTITY_ASK_FIXTURES.filter((fixture) => only.has(fixture.id))
+    : IDENTITY_ASK_FIXTURES;
+  if (only && fixtures.length === 0) {
+    throw new Error(`fixture did not match --only=${[...only].join(',')}`);
+  }
 
   console.log(
     `identity-ask eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
   console.log(
-    `corpus: ${IDENTITY_ASK_FIXTURES.length} asks | tail budget ${MAX_TAIL_ASK_CHARS} chars, standalone ${MAX_ASK_CHARS}\n`,
+    `corpus: ${fixtures.length} asks | tail budget ${MAX_TAIL_ASK_CHARS} chars, standalone ${MAX_ASK_CHARS}\n`,
   );
 
   const results = [];
-  for (const fixture of IDENTITY_ASK_FIXTURES) {
+  for (const fixture of fixtures) {
     const userMessage = identityAskUserMessage(fixture.request, fixture.rejected ?? []);
     const raw = broken
       ? BROKEN_ASK
@@ -296,10 +305,16 @@ async function main() {
       message: body,
       watchFor: fixture.watchFor,
     });
-    if ((verdict.reason ?? '').trim().length < MIN_JUDGE_REASON_CHARS) {
-      failures.push(`judge-unargued:${verdict.score} ("${verdict.reason ?? ''}")`);
-    } else if (verdict.score < JUDGE_MIN) {
-      failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    // A score outside 1-5 is wreckage (truncated quote, confused draw), not a
+    // content fail. --dry returns NaN; leave it unscored.
+    if (!verdict.dry) {
+      if (!isVerdict(verdict)) {
+        failures.push(`judge-parse:${String(verdict.score)} ("${verdict.reason ?? ''}")`);
+      } else if ((verdict.reason ?? '').trim().length < MIN_JUDGE_REASON_CHARS) {
+        failures.push(`judge-unargued:${verdict.score} ("${verdict.reason ?? ''}")`);
+      } else if (verdict.score < JUDGE_MIN) {
+        failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      }
     }
 
     results.push({ fixture, body, failures });

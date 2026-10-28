@@ -26,18 +26,26 @@ import {
  * for a good reason (a score emitted first is a score reasoned backwards from), and the
  * price of that order is that `score` is exactly what truncation eats.
  */
-describe('a judge verdict is a verdict only if it carries a number', () => {
+describe('a judge verdict is a verdict only if it carries a rubric score', () => {
   it.each([
     ['truncated to nothing', {}],
     ['reason written, score truncated off the end', { reason: 'a long argument' }],
     ['score present but not a number', { score: '4', reason: 'x' }],
     ['nothing at all', undefined],
+    ['out-of-range score from a truncated quote', { score: -1, reason: 'The message ties the ask directly to the introduction the parent agreed to (' }],
+    ['score below the rubric', { score: 0, reason: 'a long argument about the reply' }],
+    ['score above the rubric', { score: 6, reason: 'a long argument about the reply' }],
+    ['non-integer score', { score: 4.5, reason: 'a long argument about the reply' }],
   ])('refuses %s', (_label, parsed) => {
     expect(isVerdict(parsed)).toBe(false);
   });
 
   it('POSITIVE CONTROL - a whole verdict is one', () => {
     expect(isVerdict({ score: 2, reason: 'the watch sentence blames the page' })).toBe(true);
+  });
+
+  it.each([1, 2, 3, 4, 5])('accepts rubric score %s', (score) => {
+    expect(isVerdict({ score, reason: 'a long argument about the reply' })).toBe(true);
   });
 });
 
