@@ -551,43 +551,55 @@ export function productionGroupPlanReportPorts(
     mintLink: (familyId, familyEventId) => mintEventInviteLink(database, familyId, familyEventId),
     compose: (input) => composeGroupPlanReport(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
     /**
-     * The revision is claimed before anything goes, on the last message's row; every
-     * other message gets its own row, keyed off it, just before it is sent. In order, one
-     * at a time, and the first that does not land stops the rest, the last included: the
-     * group gets the link only once everything before it has landed. A last message that
-     * never went is failed with the reason.
+     * Every message is claimed before anything goes, in one transaction: the revision on
+     * the last message's row, each other message keyed off it. A setup that fails claims
+     * nothing, so the revision stays unspent and a text quiet hours held keeps its place
+     * for the morning. Then in order, one at a time; the first that does not land stops
+     * the rest, and it and every message after it, the link included, are failed with
+     * its reason: the group gets the link only once everything before it has landed.
      */
     async send(plan, messages, optOut) {
       const inChat = await inChatUserIds(database, plan);
-      const claim = async (dedupeKey: string) => {
-        const [row] = await database
-          .insert(schema.channelMessages)
-          .values({
-            familyId: plan.familyId,
-            parentUserId: plan.gateUserId,
-            channel: 'imessage',
-            direction: 'out',
-            category: PROACTIVE_CATEGORY.calendar_alert,
-            templateKey: GROUP_PLAN_TEMPLATE_KEY,
-            dedupeKey,
-            providerChatId: plan.chatId,
-            status: acceptedStatus('imessage'),
-            sentAt: clock(),
-          })
-          .onConflictDoNothing()
-          .returning({ id: schema.channelMessages.id });
-        return row;
-      };
-      const keyed = await claim(plan.dedupeKey);
-      if (!keyed) return 'already_sent';
       const last = messages.length - 1;
-      for (const [index, text] of messages.entries()) {
-        const row = index === last ? keyed : await claim(`${plan.dedupeKey}#${index}`);
-        if (!row) continue;
+      const claimed = await database.transaction(async (rawTx) => {
+        const tx = rawTx as unknown as Database;
+        const claim = async (dedupeKey: string) => {
+          const [row] = await tx
+            .insert(schema.channelMessages)
+            .values({
+              familyId: plan.familyId,
+              parentUserId: plan.gateUserId,
+              channel: 'imessage',
+              direction: 'out',
+              category: PROACTIVE_CATEGORY.calendar_alert,
+              templateKey: GROUP_PLAN_TEMPLATE_KEY,
+              dedupeKey,
+              providerChatId: plan.chatId,
+              status: acceptedStatus('imessage'),
+              sentAt: clock(),
+            })
+            .onConflictDoNothing()
+            .returning({ id: schema.channelMessages.id });
+          return row?.id ?? null;
+        };
+        const keyed = await claim(plan.dedupeKey);
+        if (!keyed) return null;
+        const rows: Array<{ id: string; text: string }> = [];
+        for (const [index, text] of messages.entries()) {
+          const id = index === last ? keyed : await claim(`${plan.dedupeKey}#${index}`);
+          if (!id) {
+            throw new Error('group plan report: a message of this revision is already claimed');
+          }
+          rows.push({ id, text });
+        }
+        return { keyed, rows };
+      });
+      if (!claimed) return 'already_sent';
+      for (const [index, row] of claimed.rows.entries()) {
         try {
           const { providerMessageId } = await sendLinqChatMessage({
             chatId: plan.chatId,
-            text: withOptOut(text, optOut),
+            text: withOptOut(row.text, optOut),
             fetch: options.fetch,
           });
           await database
@@ -599,7 +611,12 @@ export function productionGroupPlanReportPorts(
           await database
             .update(schema.channelMessages)
             .set(failedSendPatch(code))
-            .where(inArray(schema.channelMessages.id, [...new Set([row.id, keyed.id])]));
+            .where(
+              inArray(
+                schema.channelMessages.id,
+                claimed.rows.slice(index).map((unsent) => unsent.id),
+              ),
+            );
           console.warn(
             { familyId: plan.familyId, code, message: index + 1, of: messages.length },
             'group plan report: a group message did not land - nothing after it is sent, the link included',
@@ -612,7 +629,7 @@ export function productionGroupPlanReportPorts(
         actor: 'system',
         actionTaken: 'group_plan.calendar_reported',
         targetTable: 'channel_messages',
-        targetId: keyed.id,
+        targetId: claimed.keyed,
         after: {
           familyEventId: plan.familyEventId,
           change: plan.change,

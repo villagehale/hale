@@ -781,6 +781,72 @@ describe('VIL-443 production ports, real database', () => {
     ).toEqual([]);
   });
 
+  it('fails every message from the one that did not land, none of them left reading as sent', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const s = await seed();
+    const wire = linqWire(400);
+    const ports = productionGroupPlanReportPorts(db.database, { fetch: wire.fetch });
+    const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
+    const messages = [
+      'Swim is set for Saturday.',
+      '10 to 11 at the Y.',
+      'Add it: https://x.test/l',
+    ];
+    expect(await ports.send(plan, messages, 'short')).toBe('send_failed');
+    expect(postedTexts(wire.posted)).toEqual(messages.slice(0, 1));
+    expect(
+      Object.fromEntries((await rowsOf(s.familyId)).map((r) => [r.dedupeKey, r.status])),
+    ).toEqual({
+      [`${plan.dedupeKey}#0`]: 'failed',
+      [`${plan.dedupeKey}#1`]: 'failed',
+      [plan.dedupeKey]: 'failed',
+    });
+  });
+
+  it('claims nothing when one of its messages cannot be claimed, so the revision stays unspent', async () => {
+    const s = await seed();
+    const wire = linqWire();
+    const ports = productionGroupPlanReportPorts(db.database, { fetch: wire.fetch });
+    const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
+    await db.database.insert(schema.channelMessages).values({
+      familyId: s.familyId,
+      parentUserId: s.ana,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'calendar_alert',
+      templateKey: 'group_plan_calendar',
+      dedupeKey: `${plan.dedupeKey}#0`,
+      status: 'failed',
+    });
+    await expect(
+      ports.send(plan, ['Swim is set for Saturday.', 'Add it: https://x.test/l'], 'short'),
+    ).rejects.toThrow('already claimed');
+    expect(wire.posted).toEqual([]);
+    expect(await ports.alreadySent(plan.dedupeKey)).toBe(false);
+    expect((await rowsOf(s.familyId)).map((r) => r.dedupeKey)).toEqual([`${plan.dedupeKey}#0`]);
+  });
+
+  it('releases every claim when Linq is not configured, so the revision can still go', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('LINQ_API_KEY', '');
+    const s = await seed();
+    const wire = linqWire();
+    const ports = productionGroupPlanReportPorts(db.database, { fetch: wire.fetch });
+    const plan = (await loadGroupPlan(db.database, request(s), MORNING)) as GroupPlan;
+    const messages = ['Swim is set for Saturday.', 'Add it: https://x.test/l'];
+    expect(await ports.send(plan, messages, 'short')).toBe('send_failed');
+    expect(wire.posted).toEqual([]);
+    expect(await rowsOf(s.familyId)).toEqual([
+      { dedupeKey: null, status: 'failed', providerMessageId: null, errorCode: 'not_configured' },
+      { dedupeKey: null, status: 'failed', providerMessageId: null, errorCode: 'not_configured' },
+    ]);
+
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    expect(await ports.alreadySent(plan.dedupeKey)).toBe(false);
+    expect(await ports.send(plan, messages, 'short')).toBe('sent');
+    expect(postedTexts(wire.posted)).toEqual(messages);
+  });
+
   it('records an unwritten text against the placing action and sends nothing', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -1164,6 +1230,43 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
     expect(await redrive(throwing, DAWN)).toMatchObject({ due: 1, errored: 1 });
     expect(await releases(s.familyId)).toEqual([]);
     expect(await selectOpenGroupPlanHolds(db.database, DAWN)).toHaveLength(1);
+  });
+
+  it('keeps its place when its messages could not all be claimed, and goes once they can', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const s = await seed();
+    await holdAt(NIGHT, s);
+    const plan = (await loadGroupPlan(db.database, request(s), DAWN)) as GroupPlan;
+    const stray = `${plan.dedupeKey}#0`;
+    await db.database.insert(schema.channelMessages).values({
+      familyId: s.familyId,
+      parentUserId: s.ana,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'calendar_alert',
+      templateKey: 'group_plan_calendar',
+      dedupeKey: stray,
+      status: 'failed',
+    });
+    const twoMessages = async (input: GroupPlanReportInput) => [
+      'Swim is set for Saturday, 10 to 11 at the Y.',
+      `Add it here: ${input.link}`,
+    ];
+    const dawn = senderAt(DAWN, { compose: twoMessages });
+    expect(await redrive(dawn.sender, DAWN)).toMatchObject({ due: 1, errored: 1 });
+    expect(dawn.wire.posted).toEqual([]);
+    expect(dawn.inner.send).not.toHaveBeenCalled();
+    expect(await releases(s.familyId)).toEqual([]);
+    expect(await selectOpenGroupPlanHolds(db.database, DAWN)).toHaveLength(1);
+
+    await db.database
+      .delete(schema.channelMessages)
+      .where(eq(schema.channelMessages.dedupeKey, stray));
+    const later = new Date(DAWN.getTime() + 30 * 60_000);
+    const retry = senderAt(later, { compose: twoMessages });
+    expect(await redrive(retry.sender, later)).toMatchObject({ due: 1, sent: 1 });
+    expect(postedTexts(retry.wire.posted)).toHaveLength(2);
+    expect((await releases(s.familyId)).map((r) => r.outcome)).toEqual(['sent']);
   });
 
   it('stops re-driving a hold once it is a week old', async () => {
