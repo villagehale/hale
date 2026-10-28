@@ -616,6 +616,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
         familyId: mapped.familyId,
         parentUserId: mapped.userId,
         body: message.text,
+        sentAt: message.receivedAt,
         now: deps.now?.() ?? new Date(),
       });
     } catch (err) {
@@ -633,6 +634,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           chatId: message.chatId,
           senderUserId: mapped.userId,
           text: message.text,
+          sentAt: message.receivedAt,
           now: deps.now?.() ?? new Date(),
         },
         { reader: deps.groupPickupClaimReader },

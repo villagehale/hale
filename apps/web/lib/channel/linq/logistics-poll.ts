@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
 import { closeFacts, writeFact } from '~/lib/memory/facts';
@@ -323,6 +323,48 @@ export function rememberedWhoTakes(
       (row) => row.kind === 'who_takes' && row.startIso === startIso && row.titleNorm === titleNorm,
     ) ?? null
   );
+}
+
+/**
+ * Whether this who-takes decision changed after a message was sent: its live fact began
+ * later, or a later one was withheld or given back with nothing in its place. A group
+ * message read again on a webhook retry, or delivered late, must not undo what came after
+ * it. A later decision that already names `taker` does not count: saying so again undoes
+ * nothing.
+ */
+export async function whoTakesChangedSince(
+  database: Database,
+  input: {
+    familyId: string;
+    factKey: string;
+    sentAt: Date;
+    remembered: readonly RememberedLogistics[];
+    taker: string | null;
+  },
+): Promise<boolean> {
+  const live = input.remembered.find((row) => row.factKey === input.factKey);
+  if (
+    live &&
+    live.since.getTime() > input.sentAt.getTime() &&
+    !(input.taker && live.status === 'decided' && live.takerUserId === input.taker)
+  ) {
+    return true;
+  }
+  if (typeof database.select !== 'function') return false;
+  const withheld = await database
+    .select({ id: schema.familyMemoryFacts.id })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, input.familyId),
+        eq(schema.familyMemoryFacts.factType, 'logistic'),
+        eq(schema.familyMemoryFacts.factKey, input.factKey),
+        isNull(schema.familyMemoryFacts.supersededBy),
+        gt(schema.familyMemoryFacts.validUntil, input.sentAt),
+      ),
+    )
+    .limit(1);
+  return withheld.length > 0;
 }
 
 export async function writeLogisticsDecision(

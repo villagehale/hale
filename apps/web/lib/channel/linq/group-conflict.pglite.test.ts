@@ -575,7 +575,7 @@ function claim(
   seeded: Seeded,
   senderUserId: string,
   reader: GroupPickupClaimReader,
-  over: { text?: string; now?: Date; chatId?: string } = {},
+  over: { text?: string; sentAt?: Date; now?: Date; chatId?: string } = {},
 ) {
   return takeGroupPickupClaim(
     db.database,
@@ -584,6 +584,7 @@ function claim(
       chatId: over.chatId ?? GROUP,
       senderUserId,
       text: over.text ?? 'got it',
+      sentAt: over.sentAt ?? over.now ?? DAY,
       now: over.now ?? DAY,
     },
     { reader },
@@ -646,20 +647,20 @@ function signed(body: unknown): Request {
   });
 }
 
-function groupMessage(from: string, text: string, messageId: string) {
+function groupMessage(from: string, text: string, messageId: string, sentAt = DAY) {
   return {
     api_version: 'v3',
     webhook_version: '2026-02-03',
     event_type: 'message.received',
     event_id: 'evt_claim',
-    created_at: DAY.toISOString(),
+    created_at: sentAt.toISOString(),
     data: {
       chat: { id: GROUP, is_group: true },
       id: messageId,
       direction: 'inbound',
       sender_handle: { handle: from, is_me: false },
       parts: [{ type: 'text', value: text }],
-      sent_at: DAY.toISOString(),
+      sent_at: sentAt.toISOString(),
       service: 'iMessage',
     },
   };
@@ -1048,6 +1049,36 @@ describe('group pickup claims (VIL-444)', () => {
     expect(await sentRows()).toEqual([]);
   });
 
+  it('never lets a message read again, or delivered late, undo what was decided after it', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded, true);
+    const rosa = await seatCaregiver(seeded, 'Rosa', '+14165550199');
+    const daycare = (intent: GroupPickupClaimReading['intent'] = 'claim_pickup') =>
+      fakeClaimReader(reads('Leo daycare pickup', intent));
+    const at = (minutes: number) => new Date(DAY.getTime() + minutes * MINUTE);
+
+    expect(await claim(seeded, seeded.samId, daycare(), { now: at(0) })).toBe('claimed');
+    expect(await claim(seeded, rosa, daycare(), { now: at(2) })).toBe('claimed');
+    expect(await claim(seeded, seeded.samId, daycare(), { sentAt: at(0), now: at(5) })).toBe(
+      'superseded',
+    );
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: rosa, source: 'claim', since: at(2) },
+    ]);
+
+    expect(await claim(seeded, rosa, daycare('drop_pickup'), { now: at(6) })).toBe('dropped');
+    expect(await claim(seeded, rosa, daycare(), { sentAt: at(2), now: at(8) })).toBe('superseded');
+    expect(await liveTakers(seeded.familyId)).toEqual([]);
+
+    expect(await claim(seeded, rosa, daycare(), { sentAt: at(9), now: at(10) })).toBe('claimed');
+    expect(await claim(seeded, rosa, daycare('drop_pickup'), { sentAt: at(6), now: at(11) })).toBe(
+      'superseded',
+    );
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: rosa, source: 'claim', since: at(9) },
+    ]);
+  });
+
   it('takes nothing when the plan it names shares its decision with one it left out', async () => {
     const seeded = await seedFamily();
     await calendarItem(seeded, 'barton', { eventId: 'swim', title: 'Maya swim pickup' });
@@ -1070,6 +1101,52 @@ describe('group pickup claims (VIL-444)', () => {
     expect(await claim(seeded, seeded.samId, ending('15:30', '16:00'))).toBe('claimed');
     expect(await liveTakers(seeded.familyId)).toEqual([
       { takerUserId: seeded.samId, source: 'claim', since: DAY },
+    ]);
+  });
+
+  it('reads a retried claim at the group door without undoing who took the pickup since', async () => {
+    vi.stubEnv('LINQ_FROM_E164', HALE);
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded, true);
+    const reader = fakeClaimReader(reads('Leo daycare pickup'));
+    let clock = DAY;
+    const deps = {
+      database: db.database,
+      enqueue: async () => {},
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async () => {},
+      now: () => clock,
+      listChatHandles: async () => ({
+        status: 'ok',
+        handles: [BARTON_PHONE, SAM_PHONE],
+        isGroup: true,
+      }),
+      sendGroupText: async () => ({ providerMessageId: 'out-1' }),
+      groupPickupClaimReader: reader,
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
+    const post = async (from: string, text: string, id: string, sentAt: Date, readAt: Date) => {
+      clock = readAt;
+      await handleLinqInboundRequest(signed(groupMessage(from, text, id, sentAt)), deps);
+    };
+    const samSays = "I'll take Leo daycare pickup";
+    const at = (minutes: number) => new Date(DAY.getTime() + minutes * MINUTE);
+
+    await post(SAM_PHONE, samSays, 'in-sam', DAY, new Date(DAY.getTime() + 1000));
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.samId, source: 'claim', since: DAY },
+    ]);
+    expect(await whoTakesFacts(seeded.familyId)).toContainEqual(
+      expect.objectContaining({ inferredBy: 'linq_logistics_text', validUntil: expect.any(Date) }),
+    );
+
+    await post(BARTON_PHONE, 'Actually I can do daycare', 'in-barton', at(2), at(2));
+    await post(SAM_PHONE, samSays, 'in-sam', DAY, at(4));
+
+    expect(reader.calls).toHaveLength(3);
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.bartonId, source: 'claim', since: at(2) },
     ]);
   });
 });

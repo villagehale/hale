@@ -58,6 +58,7 @@ import {
   readSlotReply,
   readWhoTakesReply,
   rememberedWhoTakes,
+  whoTakesChangedSince,
   whoTakesFactKey,
   whoTakesPollOptions,
   whoTakesPrompt,
@@ -1313,7 +1314,8 @@ export type GroupPickupClaimOutcome =
   | 'claimed'
   | 'already_claimed'
   | 'dropped'
-  | 'nothing_to_drop';
+  | 'nothing_to_drop'
+  | 'superseded';
 
 /**
  * VIL-444 (T24) — a pickup a group member took, or gave back, read by the model by meaning.
@@ -1322,11 +1324,21 @@ export type GroupPickupClaimOutcome =
  * alerts about it and holds the sender busy then, and the evening poll does not ask who
  * takes it. A drop closes the sender's own stored decision. Only a parent, or a caregiver
  * seated in this chat, can do either, and only on plans the planner watches, so a private
- * plan never reaches the model. Nothing is sent from here.
+ * plan never reaches the model. Either is stored as of when it was said, and never over
+ * anything stored about that plan after it: Linq can retry a message, or deliver it late,
+ * after someone else took or gave back the pickup (`superseded`). Nothing is sent from here.
  */
 export async function takeGroupPickupClaim(
   database: Database,
-  input: { familyId: string; chatId: string; senderUserId: string; text: string; now: Date },
+  input: {
+    familyId: string;
+    chatId: string;
+    senderUserId: string;
+    text: string;
+    /** When the sender sent it: the payload's own time, the same on every retry. */
+    sentAt: Date;
+    now: Date;
+  },
   ports: { reader?: GroupPickupClaimReader } = {},
 ): Promise<GroupPickupClaimOutcome> {
   if (!linqGroupCoparentEnabled() || !linqGroupConflictAlertsEnabled()) return 'flag_off';
@@ -1382,34 +1394,56 @@ export async function takeGroupPickupClaim(
     plans.filter((plan) => watchedPlan(plan, input.now)),
   );
   if (!action) return 'not_a_claim';
+  const saidAt = input.sentAt.getTime() < input.now.getTime() ? input.sentAt : input.now;
+  const changedSince = (factKey: string, taker: string | null) =>
+    whoTakesChangedSince(database, {
+      familyId: input.familyId,
+      factKey,
+      sentAt: saidAt,
+      remembered,
+      taker,
+    });
+  let superseded = false;
   if (action.kind === 'drop') {
     let dropped = false;
     for (const plan of action.plans) {
       const key = pickupDecisionKey(plan);
+      const factKey = whoTakesFactKey(key.startIso, key.titleNorm);
       const memory = rememberedWhoTakes(remembered, key.startIso, key.titleNorm);
       if (memory?.status !== 'decided' || memory.takerUserId !== input.senderUserId) continue;
+      if (await changedSince(factKey, null)) {
+        superseded = true;
+        continue;
+      }
       await withholdWhoTakes(database, {
         familyId: input.familyId,
         parentUserId: input.senderUserId,
-        factKey: whoTakesFactKey(key.startIso, key.titleNorm),
-        now: input.now,
+        factKey,
+        now: saidAt,
         source: 'claim',
       });
       dropped = true;
     }
-    return dropped ? 'dropped' : 'nothing_to_drop';
+    return dropped ? 'dropped' : superseded ? 'superseded' : 'nothing_to_drop';
   }
   let claimed = false;
   for (const plan of action.plans) {
     if (plan.claimed && plan.takerId === input.senderUserId) continue;
     const key = pickupDecisionKey(plan);
+    const factKey = whoTakesFactKey(key.startIso, key.titleNorm);
+    // This message's own text capture runs just before and names the sender, so a later
+    // decision that already has them is no reason to stop.
+    if (await changedSince(factKey, input.senderUserId)) {
+      superseded = true;
+      continue;
+    }
     const parts = splitKidEvent(plan.title, context.childNames);
     await writeLogisticsDecision(database, {
       familyId: input.familyId,
       parentUserId: input.senderUserId,
-      factKey: whoTakesFactKey(key.startIso, key.titleNorm),
+      factKey,
       childId: null,
-      now: input.now,
+      now: saidAt,
       value: {
         kind: 'who_takes',
         status: 'decided',
@@ -1427,7 +1461,7 @@ export async function takeGroupPickupClaim(
     });
     claimed = true;
   }
-  return claimed ? 'claimed' : 'already_claimed';
+  return claimed ? 'claimed' : superseded ? 'superseded' : 'already_claimed';
 }
 
 async function loadHandoffStatements(
@@ -1801,7 +1835,8 @@ export async function rememberBothFreeAsked(
 /**
  * A clear who-takes or slot reply, in the group or in a 1:1 the parent
  * started. Stored on the family so the evening handoff can read it. Does not
- * send. An unclear sentence is left alone.
+ * send. An unclear sentence is left alone. With `sentAt`, a who-takes reply
+ * never undoes a decision stored after the message was sent.
  */
 export async function captureLogisticsText(
   database: Database,
@@ -1809,6 +1844,8 @@ export async function captureLogisticsText(
     familyId: string;
     parentUserId: string;
     body: string;
+    /** A group message: Linq can retry it before anything dedupes it. */
+    sentAt?: Date;
     now: Date;
   },
 ): Promise<'stored' | 'skipped' | 'withheld'> {
@@ -1826,13 +1863,25 @@ export async function captureLogisticsText(
   const remembered = await loadRememberedLogistics(database, input.familyId);
   const blocks = await loadFamilyBlocks(database, input.familyId);
   const who = readWhoTakesReply(input.body, parents, input.parentUserId);
+  const changedSince = async (factKey: string): Promise<boolean> =>
+    input.sentAt
+      ? whoTakesChangedSince(database, {
+          familyId: input.familyId,
+          factKey,
+          sentAt: input.sentAt,
+          remembered,
+          taker: null,
+        })
+      : false;
   if (who && 'declined' in who) {
     const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
     if (target) {
+      const factKey = whoTakesFactKey(target.startIso, target.titleNorm);
+      if (await changedSince(factKey)) return 'skipped';
       await withholdWhoTakes(database, {
         familyId: input.familyId,
         parentUserId: input.parentUserId,
-        factKey: whoTakesFactKey(target.startIso, target.titleNorm),
+        factKey,
         now: input.now,
         source: 'text',
       });
@@ -1842,10 +1891,12 @@ export async function captureLogisticsText(
   if (who) {
     const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
     if (!target) return 'skipped';
+    const factKey = whoTakesFactKey(target.startIso, target.titleNorm);
+    if (await changedSince(factKey)) return 'skipped';
     await writeLogisticsDecision(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
-      factKey: whoTakesFactKey(target.startIso, target.titleNorm),
+      factKey,
       childId: null,
       now: input.now,
       value: {
