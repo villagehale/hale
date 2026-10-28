@@ -70,6 +70,9 @@ import {
   unseatParticipantRemoved,
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
+import { type GroupRsvpPorts, takeGroupRsvpTurn } from './group-rsvp';
+import type { GroupRsvpReader } from './group-rsvp-read';
+import type { GroupRsvpComposer } from './group-rsvp-voice';
 import { decideGroupTurn } from './group-turn-policy';
 import {
   type GroupTurnReader,
@@ -170,6 +173,9 @@ export async function handleLinqInboundRequest(
     groupLimiter?: RateLimiter;
     /** VIL-440 test seam. Production uses the shared model reader when the flag is on. */
     groupTurnReader?: GroupTurnReader;
+    /** VIL-102 test seam. Production uses the shared reader and composer when keys are set. */
+    groupRsvpReader?: GroupRsvpReader | null;
+    groupRsvpVoice?: GroupRsvpComposer;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -435,6 +441,51 @@ function coparentPorts(deps: LinqDoorDeps): GroupCoparentPorts {
   };
 }
 
+function rsvpPorts(deps: LinqDoorDeps): GroupRsvpPorts {
+  return {
+    reader: deps.groupRsvpReader,
+    voice: deps.groupRsvpVoice,
+    send: deps.sendGroupText,
+  };
+}
+
+async function tryTakeGroupRsvp(
+  deps: LinqDoorDeps,
+  message: {
+    chatId: string;
+    senderHandle: string | null;
+    text: string;
+    messageId: string;
+    receivedAt: Date;
+  },
+  tapback: string | null,
+): Promise<Response | null> {
+  const rsvp = await takeGroupRsvpTurn(
+    deps.database,
+    {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+      tapback,
+      providerMessageId: message.messageId,
+      receivedAt: message.receivedAt,
+      now: deps.now?.() ?? new Date(),
+      replyTo: message.messageId,
+    },
+    rsvpPorts(deps),
+  );
+  if (!rsvp.handled) return null;
+  deps.log.info(
+    { outcome: rsvp.outcome },
+    tapback ? 'linq inbound: group rsvp tapback' : 'linq inbound: group rsvp',
+  );
+  await deps.countOutcome(rsvp.count);
+  return json({
+    outcome: rsvp.outcome,
+    ...(rsvp.notice ? { notice: rsvp.notice } : {}),
+  });
+}
+
 function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
   return {
     now: deps.now?.() ?? new Date(),
@@ -484,6 +535,8 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
   // #868: stop/start read by the model in any wording; one cached read for this turn.
   const optOut = await optOutIntentOf(message.text);
   if (optOut !== 'stop') {
+    const rsvp = await tryTakeGroupRsvp(deps, message, null);
+    if (rsvp) return rsvp;
     const shared = await takeMultiFamilyTurn(deps.database, {
       chatId: message.chatId,
       senderHandle: message.senderHandle,
@@ -561,6 +614,11 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 }
 
 async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  const claimedOptOut = await optOutIntentOf(message.text);
+  if (claimedOptOut !== 'stop') {
+    const rsvp = await tryTakeGroupRsvp(deps, message, null);
+    if (rsvp) return rsvp;
+  }
   const mapped = await mapGroupHandlesToFamily(deps.database, {
     sender: message.senderHandle,
     others: [],
@@ -975,6 +1033,22 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
   if (signal.isFromMe) {
     await deps.countOutcome('ignored');
     return json({ outcome: 'signal_from_me' });
+  }
+  if (signal.event === 'reaction.added' && signal.chatId) {
+    const reactor = signal.senderHandle ?? signal.actorHandle;
+    const now = deps.now?.() ?? new Date();
+    const rsvp = await tryTakeGroupRsvp(
+      deps,
+      {
+        chatId: signal.chatId,
+        senderHandle: reactor,
+        text: '',
+        messageId: signal.messageId ?? `tapback:${signal.chatId}:${reactor ?? 'unknown'}`,
+        receivedAt: now,
+      },
+      signal.reactionType,
+    );
+    if (rsvp) return rsvp;
   }
   if (
     signal.event === 'poll.vote.added' &&

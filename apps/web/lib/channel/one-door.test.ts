@@ -76,6 +76,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     "group onboarding v2's 1:1 lines (the connect-link identification line, each link part, the group_quiet_notice to the primary parent); sendOneToOne and sendLinkPart insert the channel_messages row (reply, template linq:connect_link_1to1 or linq:group_quiet_notice, dedupe key) before createLinqPhoneTransport / sendLinqParts, stamp the provider id and audit sms_reply_sent after it lands, and a refusal marks the row failed and releases the key",
   'apps/web/lib/channel/linq/multi-family.ts':
     'shared-group notices and thread-only replies; sendOnce inserts the channel_messages row (reply, template linq:multi_family_joined, linq:multi_family_left, linq:multi_family_join_needed, linq:multi_family_reply, or linq:multi_family_ask, dedupe key) on the speaking family before sendLinqChatMessage, and audits sms_reply_sent only after the send lands',
+  'apps/web/lib/channel/linq/group-rsvp-voice.ts':
+    'VIL-102 group RSVP lines; sendGroupRsvpLine inserts the channel_messages row (reply, template linq:group_rsvp_started, linq:group_rsvp_tally, or linq:group_rsvp_calendar, dedupe key) on the host family before sendLinqChatMessage, and audits sms_reply_sent only after the send lands. A line the model could not write is group_line_unsent and never posted',
   'apps/web/lib/channel/linq/household-calendar.ts':
     'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
   'apps/web/lib/channel/coparent/duty/asks.ts':

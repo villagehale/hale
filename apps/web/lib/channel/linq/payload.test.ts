@@ -202,6 +202,30 @@ describe('parseLinqWebhook', () => {
       },
     });
 
+    expect(
+      parseLinqWebhook(
+        {
+          ...received(),
+          event_type: 'reaction.added',
+          data: {
+            chat_id: '8f392755-6865-4b18-880a-227f9d8b458f',
+            message_id: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+            reaction_type: 'like',
+            is_from_me: false,
+            from_handle: { handle: '+14165550222', is_me: false },
+          },
+        },
+        FALLBACK,
+      ),
+    ).toMatchObject({
+      kind: 'signal',
+      signal: {
+        event: 'reaction.added',
+        senderHandle: '+14165550222',
+        reactionType: 'like',
+      },
+    });
+
     const added = parseLinqWebhook(
       {
         ...received(),

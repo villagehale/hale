@@ -295,6 +295,7 @@ function parseSignal(payload: Record<string, unknown>, event: LinqSignalEvent): 
     participant?.is_me === true;
   const senderHandle =
     stringField(sender?.handle) ||
+    stringField(fromHandle?.handle) ||
     stringField(from?.handle) ||
     (typeof data.from === 'string' ? data.from : '');
   const participantHandle =

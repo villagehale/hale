@@ -147,6 +147,14 @@
     "file": "group-roster-reading.md",
     "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"
   },
+  "group-rsvp-read.md": {
+    "file": "group-rsvp-read.md",
+    "sha256": "2d54a2b6d2c40b5ca14d3b3af4826fcca74d03dde75eaaa6f9212e1f4711cf4c"
+  },
+  "group-rsvp-voice.md": {
+    "file": "group-rsvp-voice.md",
+    "sha256": "4f2e964cd7f0cb70e58f4fb522dd51f5c5cffee4534f9e72c8315b196f3ad5a9"
+  },
   "group-turn-read.md": {
     "file": "group-turn-read.md",
     "sha256": "d71b65072598da1529eaed76fc46ae07f9cb45157da5aca46760106161ef04df"

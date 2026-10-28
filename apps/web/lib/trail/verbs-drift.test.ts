@@ -87,6 +87,14 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'workstream_followup_deferred',
     'workstream_followup_gave_up',
   ],
+  // VIL-102 — one helper writes the RSVP plan verbs; the calendar and voice
+  // files keep their own literals and are scanned directly.
+  'apps/web/lib/channel/linq/group-rsvp.ts': [
+    'linq_group_rsvp_started',
+    'linq_group_rsvp_recorded',
+    'linq_group_rsvp_reported',
+    'linq_group_rsvp_calendar_refused',
+  ],
   // VIL-399 — one helper writes the shared-group verbs. The literals in the
   // join and leave transactions are scanned directly as well.
   'apps/web/lib/channel/linq/multi-family.ts': [

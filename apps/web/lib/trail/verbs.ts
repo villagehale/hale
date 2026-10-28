@@ -184,6 +184,11 @@ export const AUDIT_VERBS = [
   'linq_group_sends_held',
   'linq_group_stop',
   'linq_group_coach_held',
+  'linq_group_rsvp_started',
+  'linq_group_rsvp_recorded',
+  'linq_group_rsvp_reported',
+  'linq_group_rsvp_calendar_written',
+  'linq_group_rsvp_calendar_refused',
   'group_line_unsent',
   'group_line_locked_fallback',
   'linq_multi_family_joined',
@@ -764,6 +769,26 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_group_coach_held: {
     sentence: 'Hale kept an answer out of your family group until everyone there may hear it',
     family: 'awaiting',
+  },
+  linq_group_rsvp_started: {
+    sentence: 'Hale started keeping a count of who is coming in your group',
+    family: 'done',
+  },
+  linq_group_rsvp_recorded: {
+    sentence: 'Hale recorded who is coming from a reply in your group',
+    family: 'done',
+  },
+  linq_group_rsvp_reported: {
+    sentence: 'Hale told the group the current count of who is coming',
+    family: 'done',
+  },
+  linq_group_rsvp_calendar_written: {
+    sentence: 'Hale put the group plan on a household calendar after they said yes',
+    family: 'done',
+  },
+  linq_group_rsvp_calendar_refused: {
+    sentence: 'A household asked Hale not to put the group plan on their calendar',
+    family: 'note',
   },
   group_line_unsent: {
     sentence: 'Hale held a message for your family group because it could not write it well',
