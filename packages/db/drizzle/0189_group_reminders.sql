@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS "group_reminders" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"closed_at" timestamp with time zone,
-	CONSTRAINT "group_reminders_status_check" CHECK ("status" in ('pending', 'scheduled', 'sending', 'sent', 'queued', 'cancelled', 'dropped', 'failed')),
+	CONSTRAINT "group_reminders_status_check" CHECK ("status" in ('pending', 'scheduled', 'sending', 'in_flight', 'sent', 'queued', 'cancelled', 'dropped', 'failed')),
 	CONSTRAINT "group_reminders_for_kind_check" CHECK ("for_kind" in ('sender', 'person', 'everyone')),
 	CONSTRAINT "group_reminders_delivery_check" CHECK ("delivery" in ('group', 'direct')),
 	CONSTRAINT "group_reminders_direct_sender_check" CHECK ("delivery" = 'group' OR "for_kind" = 'sender'),

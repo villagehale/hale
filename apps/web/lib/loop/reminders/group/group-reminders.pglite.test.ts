@@ -29,9 +29,9 @@ import type { GroupReminderReading } from './read';
 import {
   SENDING_STALE_MS,
   cancelGroupReminders,
-  claimHeld,
   claimReminder,
   closeReminder,
+  commitSend,
 } from './store';
 import type { GroupReminderVoice } from './voice';
 
@@ -803,7 +803,42 @@ describe('when a group reminder is due', () => {
     expect(actions).not.toContain('group_reminder_sent');
   });
 
-  it('audits only a close that happened: a stale tick cannot close the newer claim', async () => {
+  it('leaves a reminder a STOP reaches as it goes out to land, and the row says it was sent', async () => {
+    const home = await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const stoppedMidSend: Array<number | 'not_migrated'> = [];
+    const ports = {
+      ...tick.ports,
+      send: async (input: { chatId: string; text: string; replyTo?: string }) => {
+        stoppedMidSend.push(
+          await cancelGroupReminders(db.database, {
+            chatId: CHAT,
+            phoneHash: phoneBlindIndex(RUTH),
+            reason: 'member_stop',
+            now: THURSDAY_FOUR,
+          }),
+        );
+        return tick.ports.send(input);
+      },
+    };
+
+    expect(await runGroupReminderTick(db.database, ports)).toMatchObject({
+      due: 1,
+      sent: 1,
+      lost: 0,
+    });
+    expect(stoppedMidSend).toEqual([0]);
+    expect(tick.sends).toEqual([
+      { chatId: CHAT, text: 'reminder for Ruth', replyTo: `in-${RUTH}` },
+    ]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sent', what: null });
+    const actions = await verbs(home.familyId);
+    expect(actions).toContain('group_reminder_sent');
+    expect(actions).not.toContain('group_reminder_cancelled');
+  });
+
+  it('audits only a close that happened: a stale tick can neither commit nor close the newer claim', async () => {
     const home = await seedHousehold();
     await setFor(RUTH);
     const { id } = await onlyReminder();
@@ -811,17 +846,65 @@ describe('when a group reminder is due', () => {
     const fresh = await claimReminder(db.database, id, AFTER_STALE);
     if (!stale || !fresh) throw new Error('expected both claims');
 
-    expect(await claimHeld(db.database, stale)).toBe(false);
+    expect(await commitSend(db.database, stale)).toBe(false);
     expect(
       await closeReminder(db.database, stale, { status: 'sent', reason: null, now: AFTER_STALE }),
     ).toBe(false);
     expect(await onlyReminder()).toMatchObject({ status: 'sending', what: 'grab Maya from swim' });
     expect(await verbs(home.familyId)).not.toContain('group_reminder_sent');
 
+    expect(await commitSend(db.database, fresh)).toBe(true);
     expect(
       await closeReminder(db.database, fresh, { status: 'sent', reason: null, now: AFTER_STALE }),
     ).toBe(true);
     expect(await verbs(home.familyId)).toContain('group_reminder_sent');
+  });
+
+  it('takes back a reminder a tick died sending, and does not post a line that already landed', async () => {
+    const home = await seedHousehold();
+    await setFor(RUTH);
+    const { id } = await onlyReminder();
+    const died = await claimReminder(db.database, id, THURSDAY_FOUR);
+    if (!died || !(await commitSend(db.database, died))) throw new Error('expected a commit');
+    await db.database.insert(schema.channelMessages).values({
+      familyId: home.familyId,
+      parentUserId: home.priya,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: 'linq:group_reminder',
+      dedupeKey: `linq:group_reminder:${id}`,
+      providerChatId: CHAT,
+      status: 'sent',
+      sentAt: THURSDAY_FOUR,
+    });
+    await db.database
+      .update(schema.linqGroupMembers)
+      .set({ removedAt: THURSDAY_FOUR })
+      .where(eq(schema.linqGroupMembers.phoneE164Hash, phoneBlindIndex(RUTH)));
+    expect(
+      await cancelGroupReminders(db.database, {
+        chatId: CHAT,
+        phoneHash: phoneBlindIndex(RUTH),
+        reason: 'member_stop',
+        now: THURSDAY_FOUR,
+      }),
+    ).toBe(0);
+
+    const nextMinute = tickPorts(new Date(THURSDAY_FOUR.getTime() + 60_000));
+    expect(await runGroupReminderTick(db.database, nextMinute.ports)).toMatchObject({ due: 0 });
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({
+      due: 1,
+      sent: 1,
+    });
+    expect(back.sends).toEqual([]);
+    expect(back.voice.calls).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'sent',
+      statusReason: 'already_sent',
+      what: null,
+    });
   });
 
   it('leaves a reminder whose handoff hit an error to a later tick, words intact, and sends it once', async () => {
@@ -843,7 +926,10 @@ describe('when a group reminder is due', () => {
       retrying: 1,
       failed: 0,
     });
-    expect(await onlyReminder()).toMatchObject({ status: 'sending', what: 'grab Maya from swim' });
+    expect(await onlyReminder()).toMatchObject({
+      status: 'in_flight',
+      what: 'grab Maya from swim',
+    });
     const nextMinute = new Date(THURSDAY_FOUR.getTime() + 60_000);
     expect(await runGroupReminderTick(db.database, tickPorts(nextMinute).ports)).toMatchObject({
       due: 0,
@@ -876,6 +962,35 @@ describe('when a group reminder is due', () => {
     expect(back.sends).toEqual([
       { chatId: CHAT, text: 'reminder for Ruth', replyTo: `in-${RUTH}` },
     ]);
+  });
+
+  it('lets a STOP take back a reminder Linq refused for now, before it is tried again', async () => {
+    await seedHousehold();
+    await setFor(RUTH);
+    const busy = {
+      ...tickPorts(THURSDAY_FOUR).ports,
+      send: async () => {
+        throw new LinqSendError('503', 503, false);
+      },
+    };
+    expect(await runGroupReminderTick(db.database, busy)).toMatchObject({ retrying: 1 });
+    expect(
+      await cancelGroupReminders(db.database, {
+        chatId: CHAT,
+        phoneHash: phoneBlindIndex(RUTH),
+        reason: 'member_stop',
+        now: THURSDAY_FOUR,
+      }),
+    ).toBe(1);
+
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({ due: 0 });
+    expect(back.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'member_stop',
+      what: null,
+    });
   });
 
   it('never tries again after a timeout, which may have landed', async () => {

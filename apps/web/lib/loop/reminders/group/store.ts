@@ -7,17 +7,22 @@ import { isUndefinedTable } from '~/lib/channel/linq/roster';
  *
  * Every state change is one guarded UPDATE, so two ticks or a STOP racing a send cannot
  * both win. A tick's claim is the `updated_at` it stamped: once a STOP, a cancel or a
- * later tick has taken the row, the tick's close and its check before sending both find
- * the claim gone and do nothing. Every close clears `what`, the member's own words, and
- * only a close that happened writes an audit row.
+ * later tick has taken the row, the tick's commit and its close both find the claim gone
+ * and do nothing. The commit is the one moment a send becomes certain: before it a STOP
+ * wins and nothing goes out, after it the STOP leaves the row alone and the row says
+ * what the chat saw. Every close clears `what`, the member's own words, and only a close
+ * that happened writes an audit row.
  */
 
-/** A `sending` claim older than this is a tick that died or failed mid-send; it may be taken again. */
+/** A claim older than this is a tick that died or failed mid-send; it may be taken again. */
 export const SENDING_STALE_MS = 10 * 60_000;
 export const DUE_BATCH = 25;
 
-/** Not sent yet, so a cancel or a STOP still wins, even over a tick that has claimed it. */
+/** Not committed to a send yet, so a cancel or a STOP still wins, even over a tick that has claimed it. */
 const CANCELLABLE: schema.GroupReminderStatus[] = ['pending', 'scheduled', 'sending'];
+
+/** A tick holds the row: checking and writing it (`sending`), or sending it now (`in_flight`). */
+const CLAIMED: schema.GroupReminderStatus[] = ['sending', 'in_flight'];
 
 export type GroupReminderRow = schema.GroupReminder;
 
@@ -129,7 +134,8 @@ export async function cancelReminders(
 /**
  * STOP works per member. A member who stops Hale in the group, or is taken out of the
  * chat, loses every unsent reminder they asked for and every one that is for them,
- * including one a tick is sending right now. Hale leaving the group (`phoneHash` absent)
+ * including one a tick has claimed and is still writing. One already going out
+ * (`in_flight`) is left to land and close as sent. Hale leaving the group (`phoneHash` absent)
  * cancels the whole chat's. Silent: a STOP is acknowledged once by the roster flow, and
  * nothing more is said. A database without the table has nothing to cancel, and says so
  * by name rather than failing the STOP.
@@ -185,7 +191,7 @@ function claimable(now: Date) {
   const stale = new Date(now.getTime() - SENDING_STALE_MS);
   return or(
     eq(schema.groupReminders.status, 'scheduled'),
-    and(eq(schema.groupReminders.status, 'sending'), lt(schema.groupReminders.updatedAt, stale)),
+    and(inArray(schema.groupReminders.status, CLAIMED), lt(schema.groupReminders.updatedAt, stale)),
   );
 }
 
@@ -222,22 +228,33 @@ export async function claimReminder(
 
 type Claim = Pick<GroupReminderRow, 'id' | 'updatedAt'>;
 
-function heldClaim(claim: Claim) {
+function heldClaim(claim: Claim, statuses: schema.GroupReminderStatus[] = CLAIMED) {
   return and(
     eq(schema.groupReminders.id, claim.id),
-    eq(schema.groupReminders.status, 'sending'),
+    inArray(schema.groupReminders.status, statuses),
     eq(schema.groupReminders.updatedAt, claim.updatedAt),
   );
 }
 
-/** The tick still holds this claim: no STOP, cancel or later tick has taken the row since. */
-export async function claimHeld(database: Database, claim: Claim): Promise<boolean> {
+/**
+ * Commits the tick to sending, once the text is written and just before it goes. False:
+ * a STOP, a cancel or a later tick took the row first, and nothing may be sent.
+ */
+export async function commitSend(database: Database, claim: Claim): Promise<boolean> {
   const [row] = await database
-    .select({ id: schema.groupReminders.id })
-    .from(schema.groupReminders)
-    .where(heldClaim(claim))
-    .limit(1);
+    .update(schema.groupReminders)
+    .set({ status: 'in_flight' })
+    .where(heldClaim(claim, ['sending']))
+    .returning({ id: schema.groupReminders.id });
   return Boolean(row);
+}
+
+/** A send that did not land and may be tried again: until then, a STOP or a cancel may take it back. */
+export async function releaseSend(database: Database, claim: Claim): Promise<void> {
+  await database
+    .update(schema.groupReminders)
+    .set({ status: 'sending' })
+    .where(heldClaim(claim, ['in_flight']));
 }
 
 const CLOSE_ACTION = {
