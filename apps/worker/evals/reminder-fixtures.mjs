@@ -201,4 +201,64 @@ export const REMINDER_FIXTURES = [
     watchFor:
       "Fake family, two kids, two events tomorrow (VIL-467). The reminder may be one text or several; read them in order as one message. FACTS GUARDRAIL, by meaning: across the texts, EVERY event keeps its start time, its end time or duration, and its specific venue name and address as given (Montessori tour 10 to 11 AM at Little Oaks Montessori, 41 Mill St; storytime 1:30 to 2:15 PM at Georgetown Branch, 9 Church St), so the parent never has to look anything up. Any event's time, end or place missing or vague is a LOW score. Sentence shape, a list, or leaving a place name as given is not a fault.",
   },
+  {
+    id: 'en-voice-not-template',
+    args: args({
+      children: [KID, SIB],
+      events: [
+        ev({
+          eventRef: 'e1',
+          childId: 'c-sib',
+          title: 'Montessori tour',
+          startsAt: '2026-10-26T14:00:00Z',
+          endsAt: '2026-10-26T15:00:00Z',
+          location: 'Little Oaks Montessori, 41 Mill St',
+        }),
+        ev({
+          eventRef: 'e2',
+          childId: 'c-kid',
+          title: 'Toddler Storytime',
+          startsAt: '2026-10-26T17:30:00Z',
+          endsAt: '2026-10-26T18:00:00Z',
+          location: 'Georgetown Branch, 9 Church St',
+        }),
+        ev({
+          eventRef: 'e3',
+          childId: 'c-kid',
+          title: 'Swim',
+          startsAt: '2026-10-26T21:00:00Z',
+          endsAt: '2026-10-26T21:45:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+        }),
+      ],
+    }),
+    watchFor:
+      'Fake family (P0, Oct 28 prod text). VOICE CHECK: three events tomorrow. Every fact must be there (tour 10 to 11 AM at Little Oaks Montessori, 41 Mill St; storytime 1:30 to 2 PM at Georgetown Branch, 9 Church St; swim 5 to 5:45 PM at Mold-Masters SportsPlex, 221 Guelph St). Then judge by meaning whether it reads like a friend texting about tomorrow, or like the same frame ("X is at T1 to T2 at P") filled in three times. A filled-in frame scores at most 3 even with every fact right.',
+  },
+  {
+    id: 'en-split-two-events',
+    args: args({
+      children: [KID],
+      events: [
+        ev({
+          eventRef: 'e1',
+          childId: 'c-kid',
+          title: 'Parent & Tot Skate',
+          startsAt: '2026-10-26T14:30:00Z',
+          endsAt: '2026-10-26T15:20:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+        }),
+        ev({
+          eventRef: 'e2',
+          childId: 'c-kid',
+          title: 'Toddler Storytime',
+          startsAt: '2026-10-26T17:30:00Z',
+          endsAt: '2026-10-26T18:00:00Z',
+          location: 'Georgetown Branch, 9 Church St',
+        }),
+      ],
+    }),
+    watchFor:
+      'Fake family (P0, Oct 27 18:12 prod text that put two events in one long block). VOICE CHECK: two events tomorrow. Each must keep its start, end, venue name and address (skate 10:30 to 11:20 AM at Mold-Masters SportsPlex, 221 Guelph St; storytime 1:30 to 2 PM at Georgetown Branch, 9 Church St). Then judge by meaning whether they reach the parent as short texts a person takes in at a glance, rather than both packed into one long block. One long block holding both events scores at most 3 even with every fact right; how the texts are split is otherwise up to the writer.',
+  },
 ];

@@ -117,6 +117,13 @@ const JUDGE_SYSTEM = [
   'Do not lower the score for how the sentence is shaped, whether it reads like a list or a',
   'notification, whether a generic place word stayed in the source language, or whether the',
   'title is quoted or bare. Those are not fact failures.',
+  'The text arrives as one or more numbered texts ([text 1], [text 2]...) sent in that order;',
+  'read them together as one reminder.',
+  'VOICE CHECK, ONLY when watchFor asks for it: then also judge, by meaning, whether the',
+  'texts read like a person texting or like a form filled in, such as every event poured',
+  'into the same sentence frame with only the facts swapped, or several events packed into',
+  'one long block. A text that reads like a filled-in frame or one long block scores at most',
+  '3 even with every fact right. With no VOICE CHECK in watchFor, phrasing is never scored.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -379,7 +386,8 @@ async function main() {
               })
             ).value,
           );
-    const body = texts.join('\n');
+    // Numbered, so the judge can see where the model split (P0 split / voice cases).
+    const body = texts.map((t, i) => `[text ${i + 1}] ${t}`).join('\n');
     const failures = compose.reminderRefusals(texts, facts).map((r) => `unsendable:${r}`);
     const verdict = await judge(fixture.id, {
       input: userMessage,
