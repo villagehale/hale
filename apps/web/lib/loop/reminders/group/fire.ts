@@ -21,7 +21,13 @@ import {
   groupQuiet,
   liveSeats,
 } from './standing';
-import { type GroupReminderRow, claimReminder, closeReminder, dueReminders } from './store';
+import {
+  type GroupReminderRow,
+  claimHeld,
+  claimReminder,
+  closeReminder,
+  dueReminders,
+} from './store';
 import { type GroupReminderVoice, sharedGroupReminderVoice } from './voice';
 
 /**
@@ -31,10 +37,18 @@ import { type GroupReminderVoice, sharedGroupReminderVoice } from './voice';
  * the family still holds the chat, the asker and the person it is for are still seated
  * (STOP and removal already cancelled theirs; this catches a race), the group may hear
  * it, it is not quiet hours, and a 1:1 still has someone to reach. A failed check drops
- * the reminder by name. A reminder the model could not write is not sent.
+ * the reminder by name. A reminder the model could not write is not sent. Once it is
+ * written the tick looks at its claim again, so a STOP or a cancel that landed while it
+ * was being written still wins and nothing is sent.
  *
  * A group reminder is posted by the tick itself. A 1:1 reminder is handed to the loop's
  * channel dispatch, which owns consent, quiet hours and the ledger for 1:1 texts.
+ *
+ * An error mid-send, or a refusal Linq calls temporary, closes nothing: the claim goes
+ * stale and a later tick takes the row again and checks everything afresh, so a reminder
+ * that keeps failing is tried at most every `SENDING_STALE_MS` and dropped as missed past
+ * `LATE_LIMIT_MS`. A line already posted is not posted again (its ledger key), and
+ * dispatch dedupes a 1:1 handoff.
  */
 
 export const GROUP_REMINDER_TEMPLATE = 'linq:group_reminder';
@@ -60,9 +74,37 @@ export interface GroupReminderTickPorts {
 
 export type GroupReminderTickSummary =
   | { skipped: 'voice_unavailable' }
-  | { due: number; sent: number; dropped: number; failed: number };
+  | {
+      due: number;
+      sent: number;
+      dropped: number;
+      failed: number;
+      /** Taken back by a STOP, a cancel or a later tick before this tick sent anything. */
+      lost: number;
+      /** An error mid-send: left claimed, so a later tick tries again once the claim is stale. */
+      retrying: number;
+    };
 
-type FireOutcome = 'sent' | 'dropped' | 'failed';
+type FireOutcome = 'sent' | 'dropped' | 'failed' | 'lost' | 'retrying';
+
+/** Closes the claim, or names it lost when a STOP, a cancel or a later tick took it first. */
+async function close(
+  database: Database,
+  row: GroupReminderRow,
+  input: Parameters<typeof closeReminder>[2],
+): Promise<FireOutcome> {
+  return (await closeReminder(database, row, input)) ? input.status : 'lost';
+}
+
+/** Looked at once the text is written, just before it goes: a STOP or a cancel meanwhile wins. */
+async function stillHeld(database: Database, row: GroupReminderRow): Promise<boolean> {
+  if (await claimHeld(database, row)) return true;
+  console.info(
+    { reminderId: row.id, outcome: 'claim_lost' },
+    'group reminders: taken back before the send, nothing sent',
+  );
+  return false;
+}
 
 async function familyHoldsChat(database: Database, familyId: string, chatId: string) {
   const [row] = await database
@@ -134,17 +176,12 @@ async function fireOne(
     directReachable: reachable,
   });
   if (decision.kind === 'drop') {
-    await closeReminder(database, row, { status: 'dropped', reason: decision.reason, now });
-    return 'dropped';
+    return close(database, row, { status: 'dropped', reason: decision.reason, now });
   }
-  if (!row.what) {
-    await closeReminder(database, row, { status: 'failed', reason: 'no_what', now });
-    return 'failed';
-  }
+  if (!row.what) return close(database, row, { status: 'failed', reason: 'no_what', now });
   const lineKey = `${GROUP_REMINDER_TEMPLATE}:${row.id}`;
   if (row.delivery === 'group' && (await lineAlreadyPosted(database, lineKey))) {
-    await closeReminder(database, row, { status: 'sent', reason: 'already_sent', now });
-    return 'sent';
+    return close(database, row, { status: 'sent', reason: 'already_sent', now });
   }
 
   const timeZone = await askerTimeZone(database, row.familyId, row.askedByUserId);
@@ -157,12 +194,17 @@ async function fireOne(
   });
   const text = await ports.voice.write(facts);
   if (!text) {
-    await closeReminder(database, row, { status: 'failed', reason: 'unwritten', now });
+    const outcome = await close(database, row, { status: 'failed', reason: 'unwritten', now });
     await pageUnwritten();
-    return 'failed';
+    return outcome;
   }
 
-  if (row.delivery === 'direct' && row.askedByUserId) {
+  if (row.delivery === 'direct') {
+    // fireDecision already dropped a 1:1 with no asker as unreachable; this narrows the type.
+    if (!row.askedByUserId) {
+      return close(database, row, { status: 'dropped', reason: 'direct_unreachable', now });
+    }
+    if (!(await stillHeld(database, row))) return 'lost';
     await ports.enqueue({
       templateKey: MEMBER_REMINDER_TEMPLATE_KEY,
       familyId: row.familyId,
@@ -184,9 +226,9 @@ async function fireOne(
 
   const ledgerUserId = (await primaryParentId(database, row.familyId)) ?? row.askedByUserId;
   if (!ledgerUserId) {
-    await closeReminder(database, row, { status: 'failed', reason: 'no_ledger_owner', now });
-    return 'failed';
+    return close(database, row, { status: 'failed', reason: 'no_ledger_owner', now });
   }
+  if (!(await stillHeld(database, row))) return 'lost';
   const posted = await postGroupReminderLine(database, {
     familyId: row.familyId,
     ledgerUserId,
@@ -199,8 +241,14 @@ async function fireOne(
     send: ports.send,
   });
   if (posted.outcome === 'not_sent') {
-    await closeReminder(database, row, { status: 'failed', reason: posted.code, now });
-    return 'failed';
+    if (posted.retryable) {
+      console.warn(
+        { reminderId: row.id, code: posted.code, outcome: 'retrying' },
+        'group reminders: Linq refused for now, left claimed for a later tick',
+      );
+      return 'retrying';
+    }
+    return close(database, row, { status: 'failed', reason: posted.code, now });
   }
   await closeReminder(database, row, {
     status: 'sent',
@@ -228,7 +276,7 @@ export async function runGroupReminderTick(
     return { skipped: 'voice_unavailable' };
   }
   const due = await dueReminders(database, ports.now);
-  const summary = { due: due.length, sent: 0, dropped: 0, failed: 0 };
+  const summary = { due: due.length, sent: 0, dropped: 0, failed: 0, lost: 0, retrying: 0 };
   for (const candidate of due) {
     const row = await claimReminder(database, candidate.id, ports.now);
     if (!row) continue;
@@ -237,11 +285,14 @@ export async function runGroupReminderTick(
       outcome = await fireOne(database, row, { ...ports, voice });
     } catch (err) {
       console.error(
-        { reminderId: row.id, err: err instanceof Error ? err.name : 'unknown' },
-        'group reminders: send failed',
+        {
+          reminderId: row.id,
+          err: err instanceof Error ? err.name : 'unknown',
+          outcome: 'retrying',
+        },
+        'group reminders: send failed, left claimed for a later tick',
       );
-      await closeReminder(database, row, { status: 'failed', reason: 'error', now: ports.now });
-      outcome = 'failed';
+      outcome = 'retrying';
     }
     summary[outcome] += 1;
   }

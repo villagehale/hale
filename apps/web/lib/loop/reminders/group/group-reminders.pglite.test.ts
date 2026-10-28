@@ -16,6 +16,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { GroupTurnReader } from '~/lib/channel/linq/group-turn-reader';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { LinqInboundText } from '~/lib/channel/linq/payload';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -25,7 +26,14 @@ import { fakeGroupReminderReader, fakeGroupReminderVoice } from './fake';
 import { type ChannelSendJob, runGroupReminderTick } from './fire';
 import type { ReminderAsk } from './policy';
 import type { GroupReminderReading } from './read';
-import { cancelGroupReminders } from './store';
+import {
+  SENDING_STALE_MS,
+  cancelGroupReminders,
+  claimHeld,
+  claimReminder,
+  closeReminder,
+} from './store';
+import type { GroupReminderVoice } from './voice';
 
 /**
  * VIL-448 (T26): anyone in the family group can ask Hale for their own reminder. These
@@ -295,6 +303,15 @@ async function reminders() {
   return db.database.select().from(schema.groupReminders);
 }
 
+async function onlyReminder() {
+  const [row] = await reminders();
+  if (!row) throw new Error('expected one reminder');
+  return row;
+}
+
+/** A tick this long after the first one finds that first claim stale. */
+const AFTER_STALE = new Date(THURSDAY_FOUR.getTime() + SENDING_STALE_MS + 60_000);
+
 async function verbs(familyId: string) {
   const rows = await db.database
     .select({ actionTaken: schema.auditLog.actionTaken })
@@ -387,6 +404,8 @@ describe('asking for a reminder in the group', () => {
       sent: 1,
       dropped: 0,
       failed: 0,
+      lost: 0,
+      retrying: 0,
     });
     expect(tick.sends).toEqual([]);
     expect(tick.jobs).toEqual([
@@ -589,6 +608,8 @@ describe('when a group reminder is due', () => {
       sent: 1,
       dropped: 0,
       failed: 0,
+      lost: 0,
+      retrying: 0,
     });
     expect(tick.sends).toEqual([
       { chatId: CHAT, text: 'reminder for Ruth', replyTo: `in-${RUTH}` },
@@ -647,6 +668,121 @@ describe('when a group reminder is due', () => {
     const tick = tickPorts(THURSDAY_FOUR);
     await runGroupReminderTick(db.database, tick.ports);
     expect(tick.sends).toEqual([{ chatId: CHAT, text: 'reminder for Dan', replyTo: `in-${DAN}` }]);
+  });
+
+  it('lets a STOP that lands while the reminder is being written win, and sends nothing', async () => {
+    const home = await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const stoppedMidWrite: GroupReminderVoice = {
+      async write(facts) {
+        await cancelGroupReminders(db.database, {
+          chatId: CHAT,
+          phoneHash: phoneBlindIndex(RUTH),
+          reason: 'member_stop',
+          now: THURSDAY_FOUR,
+        });
+        return tick.voice.write(facts);
+      },
+    };
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, voice: stoppedMidWrite }),
+    ).toMatchObject({ due: 1, sent: 0, lost: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'member_stop',
+      what: null,
+    });
+    const actions = await verbs(home.familyId);
+    expect(actions).toContain('group_reminder_cancelled');
+    expect(actions).not.toContain('group_reminder_sent');
+  });
+
+  it('audits only a close that happened: a stale tick cannot close the newer claim', async () => {
+    const home = await seedHousehold();
+    await setFor(RUTH);
+    const { id } = await onlyReminder();
+    const stale = await claimReminder(db.database, id, THURSDAY_FOUR);
+    const fresh = await claimReminder(db.database, id, AFTER_STALE);
+    if (!stale || !fresh) throw new Error('expected both claims');
+
+    expect(await claimHeld(db.database, stale)).toBe(false);
+    expect(
+      await closeReminder(db.database, stale, { status: 'sent', reason: null, now: AFTER_STALE }),
+    ).toBe(false);
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', what: 'grab Maya from swim' });
+    expect(await verbs(home.familyId)).not.toContain('group_reminder_sent');
+
+    expect(
+      await closeReminder(db.database, fresh, { status: 'sent', reason: null, now: AFTER_STALE }),
+    ).toBe(true);
+    expect(await verbs(home.familyId)).toContain('group_reminder_sent');
+  });
+
+  it('leaves a reminder whose handoff hit an error to a later tick, words intact, and sends it once', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const home = await seedHousehold();
+    await setFor(PRIYA);
+    const { id, delivery } = await onlyReminder();
+    expect(delivery).toBe('direct');
+
+    const down = tickPorts(THURSDAY_FOUR);
+    const queueDown = {
+      ...down.ports,
+      enqueue: async () => {
+        throw new Error('queue unreachable');
+      },
+    };
+    expect(await runGroupReminderTick(db.database, queueDown)).toMatchObject({
+      due: 1,
+      retrying: 1,
+      failed: 0,
+    });
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', what: 'grab Maya from swim' });
+    const nextMinute = new Date(THURSDAY_FOUR.getTime() + 60_000);
+    expect(await runGroupReminderTick(db.database, tickPorts(nextMinute).ports)).toMatchObject({
+      due: 0,
+    });
+
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({ due: 1, sent: 1 });
+    expect(back.jobs.map((job) => job.dedupeKey)).toEqual([`group-reminder:${id}`]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sent', what: null });
+    expect(await verbs(home.familyId)).not.toContain('group_reminder_failed');
+  });
+
+  it('tries a group line again after a temporary Linq refusal, and posts it once', async () => {
+    await seedHousehold();
+    await setFor(RUTH);
+    const busy = {
+      ...tickPorts(THURSDAY_FOUR).ports,
+      send: async () => {
+        throw new LinqSendError('503', 503, false);
+      },
+    };
+    expect(await runGroupReminderTick(db.database, busy)).toMatchObject({ retrying: 1 });
+    expect((await onlyReminder()).status).toBe('sending');
+
+    const back = tickPorts(AFTER_STALE);
+    expect(await runGroupReminderTick(db.database, back.ports)).toMatchObject({ sent: 1 });
+    expect(back.sends).toEqual([
+      { chatId: CHAT, text: 'reminder for Ruth', replyTo: `in-${RUTH}` },
+    ]);
+  });
+
+  it('never tries again after a timeout, which may have landed', async () => {
+    await seedHousehold();
+    await setFor(RUTH);
+    const timedOut = {
+      ...tickPorts(THURSDAY_FOUR).ports,
+      send: async () => {
+        throw new LinqSendError('timeout', 0, false);
+      },
+    };
+    expect(await runGroupReminderTick(db.database, timedOut)).toMatchObject({ failed: 1 });
+    expect(await onlyReminder()).toMatchObject({ status: 'failed', statusReason: 'timeout' });
   });
 
   it('drops one whose asker left the chat before it fired, by name', async () => {

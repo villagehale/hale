@@ -6,12 +6,18 @@ import { isUndefinedTable } from '~/lib/channel/linq/roster';
  * VIL-448 (T26) — the `group_reminders` rows: set, armed, cancelled, claimed and closed.
  *
  * Every state change is one guarded UPDATE, so two ticks or a STOP racing a send cannot
- * both win. Every close clears `what`, the member's own words, and writes its audit row.
+ * both win. A tick's claim is the `updated_at` it stamped: once a STOP, a cancel or a
+ * later tick has taken the row, the tick's close and its check before sending both find
+ * the claim gone and do nothing. Every close clears `what`, the member's own words, and
+ * only a close that happened writes an audit row.
  */
 
-/** A `sending` claim older than this is a tick that died mid-send; it may be taken again. */
+/** A `sending` claim older than this is a tick that died or failed mid-send; it may be taken again. */
 export const SENDING_STALE_MS = 10 * 60_000;
 export const DUE_BATCH = 25;
+
+/** Not sent yet, so a cancel or a STOP still wins, even over a tick that has claimed it. */
+const CANCELLABLE: schema.GroupReminderStatus[] = ['pending', 'scheduled', 'sending'];
 
 export type GroupReminderRow = schema.GroupReminder;
 
@@ -70,14 +76,16 @@ export async function armReminders(database: Database, ids: string[], now: Date)
     );
 }
 
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
 async function auditCancelled(
-  database: Database,
-  rows: readonly Pick<GroupReminderRow, 'id' | 'familyId' | 'askedByUserId'>[],
+  tx: Tx,
+  rows: readonly Pick<GroupReminderRow, 'id' | 'familyId'>[],
   reason: CancelReason,
   actor: string,
 ): Promise<void> {
   if (rows.length === 0) return;
-  await database.insert(schema.auditLog).values(
+  await tx.insert(schema.auditLog).values(
     rows.map((row) => ({
       familyId: row.familyId,
       actor,
@@ -89,38 +97,41 @@ async function auditCancelled(
   );
 }
 
-/** Cancels these reminders while they are still open. Returns the ones it closed. */
+/** Cancels these reminders while they are still unsent. Returns the ones it closed. */
 export async function cancelReminders(
   database: Database,
   input: { ids: string[]; reason: CancelReason; actor: string; now: Date },
 ): Promise<GroupReminderRow[]> {
   if (input.ids.length === 0) return [];
-  const closed = await database
-    .update(schema.groupReminders)
-    .set({
-      status: 'cancelled',
-      statusReason: input.reason,
-      what: null,
-      closedAt: input.now,
-      updatedAt: input.now,
-    })
-    .where(
-      and(
-        inArray(schema.groupReminders.id, input.ids),
-        inArray(schema.groupReminders.status, ['pending', 'scheduled']),
-      ),
-    )
-    .returning();
-  await auditCancelled(database, closed, input.reason, input.actor);
-  return closed;
+  return database.transaction(async (tx) => {
+    const closed = await tx
+      .update(schema.groupReminders)
+      .set({
+        status: 'cancelled',
+        statusReason: input.reason,
+        what: null,
+        closedAt: input.now,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          inArray(schema.groupReminders.id, input.ids),
+          inArray(schema.groupReminders.status, CANCELLABLE),
+        ),
+      )
+      .returning();
+    await auditCancelled(tx, closed, input.reason, input.actor);
+    return closed;
+  });
 }
 
 /**
  * STOP works per member. A member who stops Hale in the group, or is taken out of the
- * chat, loses every open reminder they asked for and every one that is for them. Hale
- * leaving the group (`phoneHash` absent) cancels the whole chat's. Silent: a STOP is
- * acknowledged once by the roster flow, and nothing more is said. A database without the
- * table has nothing to cancel, and says so by name rather than failing the STOP.
+ * chat, loses every unsent reminder they asked for and every one that is for them,
+ * including one a tick is sending right now. Hale leaving the group (`phoneHash` absent)
+ * cancels the whole chat's. Silent: a STOP is acknowledged once by the roster flow, and
+ * nothing more is said. A database without the table has nothing to cancel, and says so
+ * by name rather than failing the STOP.
  */
 export async function cancelGroupReminders(
   database: Database,
@@ -134,29 +145,32 @@ export async function cancelGroupReminders(
     : undefined;
   let closed: GroupReminderRow[];
   try {
-    closed = await database
-      .update(schema.groupReminders)
-      .set({
-        status: 'cancelled',
-        statusReason: input.reason,
-        what: null,
-        closedAt: input.now,
-        updatedAt: input.now,
-      })
-      .where(
-        and(
-          eq(schema.groupReminders.chatId, input.chatId),
-          inArray(schema.groupReminders.status, ['pending', 'scheduled']),
-          scope,
-        ),
-      )
-      .returning();
+    closed = await database.transaction(async (tx) => {
+      const rows = await tx
+        .update(schema.groupReminders)
+        .set({
+          status: 'cancelled',
+          statusReason: input.reason,
+          what: null,
+          closedAt: input.now,
+          updatedAt: input.now,
+        })
+        .where(
+          and(
+            eq(schema.groupReminders.chatId, input.chatId),
+            inArray(schema.groupReminders.status, CANCELLABLE),
+            scope,
+          ),
+        )
+        .returning();
+      await auditCancelled(tx, rows, input.reason, 'system');
+      return rows;
+    });
   } catch (err) {
     if (!isUndefinedTable(err)) throw err;
     console.warn({ outcome: 'not_migrated' }, 'group reminders: table missing, nothing cancelled');
     return 'not_migrated';
   }
-  await auditCancelled(database, closed, input.reason, 'system');
   if (closed.length > 0) {
     console.info(
       { outcome: 'group_reminders_cancelled', reason: input.reason, count: closed.length },
@@ -188,7 +202,10 @@ export async function dueReminders(
     .limit(limit);
 }
 
-/** Takes one due reminder for this tick. Null: another tick, a STOP or a cancel got it first. */
+/**
+ * Takes one due reminder for this tick. The returned row's `updatedAt` is the claim.
+ * Null: another tick, a STOP or a cancel got it first.
+ */
 export async function claimReminder(
   database: Database,
   id: string,
@@ -202,51 +219,76 @@ export async function claimReminder(
   return row ?? null;
 }
 
-/** Closes a claimed reminder as sent, dropped or failed, and audits it. */
+type Claim = Pick<GroupReminderRow, 'id' | 'updatedAt'>;
+
+function heldClaim(claim: Claim) {
+  return and(
+    eq(schema.groupReminders.id, claim.id),
+    eq(schema.groupReminders.status, 'sending'),
+    eq(schema.groupReminders.updatedAt, claim.updatedAt),
+  );
+}
+
+/** The tick still holds this claim: no STOP, cancel or later tick has taken the row since. */
+export async function claimHeld(database: Database, claim: Claim): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.groupReminders.id })
+    .from(schema.groupReminders)
+    .where(heldClaim(claim))
+    .limit(1);
+  return Boolean(row);
+}
+
+const CLOSE_ACTION = {
+  sent: 'group_reminder_sent',
+  dropped: 'group_reminder_dropped',
+  failed: 'group_reminder_failed',
+} as const;
+
+/**
+ * Closes a claimed reminder as sent, dropped or failed, together with its audit row.
+ * False: the claim was no longer this tick's, so nothing changed and nothing is audited.
+ */
 export async function closeReminder(
   database: Database,
-  row: Pick<GroupReminderRow, 'id' | 'familyId' | 'askedByUserId' | 'delivery'>,
+  row: Claim & Pick<GroupReminderRow, 'familyId' | 'delivery'>,
   input: {
-    status: 'sent' | 'dropped' | 'failed';
+    status: keyof typeof CLOSE_ACTION;
     reason: string | null;
     now: Date;
     after?: Record<string, unknown>;
   },
-): Promise<void> {
-  await database
-    .update(schema.groupReminders)
-    .set({
-      status: input.status,
-      statusReason: input.reason,
-      what: null,
-      closedAt: input.now,
-      updatedAt: input.now,
-    })
-    .where(and(eq(schema.groupReminders.id, row.id), eq(schema.groupReminders.status, 'sending')));
-  const audit = {
-    familyId: row.familyId,
-    actor: 'system',
-    targetTable: 'group_reminders',
-    targetId: row.id,
-    after: { delivery: row.delivery, reason: input.reason, ...input.after },
-  };
-  switch (input.status) {
-    case 'sent':
-      await database
-        .insert(schema.auditLog)
-        .values({ ...audit, actionTaken: 'group_reminder_sent' });
-      return;
-    case 'dropped':
-      await database
-        .insert(schema.auditLog)
-        .values({ ...audit, actionTaken: 'group_reminder_dropped' });
-      return;
-    case 'failed':
-      await database
-        .insert(schema.auditLog)
-        .values({ ...audit, actionTaken: 'group_reminder_failed' });
-      return;
+): Promise<boolean> {
+  const closed = await database.transaction(async (tx) => {
+    const [taken] = await tx
+      .update(schema.groupReminders)
+      .set({
+        status: input.status,
+        statusReason: input.reason,
+        what: null,
+        closedAt: input.now,
+        updatedAt: input.now,
+      })
+      .where(heldClaim(row))
+      .returning({ id: schema.groupReminders.id });
+    if (!taken) return false;
+    await tx.insert(schema.auditLog).values({
+      familyId: row.familyId,
+      actor: 'system',
+      actionTaken: CLOSE_ACTION[input.status],
+      targetTable: 'group_reminders',
+      targetId: row.id,
+      after: { delivery: row.delivery, reason: input.reason, ...input.after },
+    });
+    return true;
+  });
+  if (!closed) {
+    console.warn(
+      { reminderId: row.id, outcome: 'claim_lost', status: input.status },
+      'group reminders: the claim was taken, not closed',
+    );
   }
+  return closed;
 }
 
 /** The chat's ledger row for an inbound message already exists: a webhook replay. */

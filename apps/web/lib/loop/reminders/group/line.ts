@@ -14,7 +14,12 @@ import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport
 export type GroupReminderLineOutcome =
   | { outcome: 'sent'; channelMessageId: string }
   | { outcome: 'already_sent' }
-  | { outcome: 'not_sent'; code: string };
+  /**
+   * `retryable`: Linq answered with a refusal it calls temporary, so the line did not
+   * land and trying again later cannot post it twice. A timeout or a dropped connection
+   * may have landed, so it is never retryable.
+   */
+  | { outcome: 'not_sent'; code: string; retryable: boolean };
 
 export async function postGroupReminderLine(
   database: Database,
@@ -72,11 +77,15 @@ export async function postGroupReminderLine(
     return { outcome: 'sent', channelMessageId: claimed.id };
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
+    const retryable = err instanceof LinqSendError && !err.permanent && err.httpStatus >= 400;
     await database
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: code, dedupeKey: null })
       .where(eq(schema.channelMessages.id, claimed.id));
-    console.warn({ familyId: input.familyId, code }, 'group reminder: the line did not land');
-    return { outcome: 'not_sent', code };
+    console.warn(
+      { familyId: input.familyId, code, retryable },
+      'group reminder: the line did not land',
+    );
+    return { outcome: 'not_sent', code, retryable };
   }
 }
