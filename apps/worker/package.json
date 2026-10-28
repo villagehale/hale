@@ -59,6 +59,7 @@
     "eval:proactive-writer": "node evals/run-proactive-writer-eval.mjs --cached-only",
     "eval:weekday-care-ask": "node evals/run-weekday-care-ask-eval.mjs --cached-only",
     "eval:weekday-care-reply": "node evals/weekday-care-reply-eval.mjs --estimate",
+    "eval:carpool": "node evals/carpool-eval.mjs --estimate",
     "eval:autonomy-notice": "node evals/run-autonomy-notice-eval.mjs --cached-only",
     "eval:calendar-write-notice": "node evals/run-calendar-write-notice-eval.mjs --cached-only",
     "eval:coach-plan": "node evals/run-coach-plan-eval.mjs --cached-only",

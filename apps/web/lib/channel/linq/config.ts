@@ -107,3 +107,11 @@ export function linqGroupOnboardingV2Enabled(): boolean {
 export function linqGroupWelcomeVoiceEnabled(): boolean {
   return trimmed('LINQ_GROUP_WELCOME_VOICE_ENABLED') === 'true';
 }
+
+/**
+ * VIL-445 (T16) — read who is driving from the group and remind the night before.
+ * Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function linqGroupCarpoolEnabled(): boolean {
+  return trimmed('LINQ_GROUP_CARPOOL_ENABLED') === 'true';
+}
