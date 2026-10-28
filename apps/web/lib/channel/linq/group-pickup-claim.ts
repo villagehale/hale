@@ -24,8 +24,9 @@ import {
  * contract, read once per group turn alongside RSVPs and votes. #938 is not merged, so the
  * contract lives here, shaped like it (intent, refs, high or low confidence, null when the
  * read fails). When #938 lands:
- *   - `claim_pickup` and `drop_pickup` join GROUP_PLAN_RSVP_INTENTS, `pickups`
- *     ({@link PickupOffer}[]) joins GroupPlanRsvpReadInput, and `pickupRefs` its reading;
+ *   - in its group-plan-rsvp/reading.ts, `claim_pickup` and `drop_pickup` join
+ *     GROUP_PLAN_RSVP_INTENTS, `pickups` ({@link PickupOffer}[]) joins
+ *     GroupPlanRsvpReadInput, and `pickupRefs` its reading;
  *   - the rules in group-pickup-claim-read.md move into group-plan-rsvp-read.md;
  *   - the turn that reader already takes hands a claim reading to `takeGroupPickupClaim`
  *     through a {@link GroupPickupClaimReader} adapter, and the separate read in
