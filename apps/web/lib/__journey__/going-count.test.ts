@@ -16,6 +16,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
+import { scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordedModel } from '~/lib/testing/recorded-model';
 
@@ -195,10 +196,19 @@ async function household(displayName: string): Promise<Household> {
 }
 
 /** The real alert ports: the REAL sentinel over a recorded model, the REAL gate, the REAL
- * phone read, the REAL thread. Only the wire and Gmail's body endpoint are stand-ins. */
-function alertPorts(who: Household, transport: FakeTransport, body: string): EmailAlertPorts {
+ * phone read, the REAL thread. The wire, Gmail's body endpoint and the notice writer are
+ * stand-ins; the writer's words are the email-alert-notice eval's job, and what is under
+ * test here is the count it is handed. */
+function alertPorts(
+  who: Household,
+  transport: FakeTransport,
+  body: string,
+  writer: ReturnType<typeof scriptedNoticeWriter>,
+): EmailAlertPorts {
   const recorded = recordedModel(RECORDINGS, pipelineClient);
   return {
+    familyChildren: async () => CHILDREN,
+    writeNotice: writer.writeNotice,
     classify: async (envelope, familyTimezone) =>
       classifyChildEventEmail(envelope, {
         client: recorded.client(),
@@ -221,8 +231,14 @@ async function receiptArrives(
   who: Household,
   receipt: typeof RECEIPT_ONE,
   over: { messageId?: string } = {},
-): Promise<{ text: string; going: string | null; booking: string | null }> {
+): Promise<{
+  text: string;
+  others: number | null;
+  going: string | null;
+  booking: string | null;
+}> {
   const transport = new FakeTransport();
+  const writer = scriptedNoticeWriter({ children: CHILDREN });
   const [outcome] = await alertParentForGmailSweep(
     db.database,
     {
@@ -233,10 +249,11 @@ async function receiptArrives(
       envelopes: [{ ...receipt.envelope, messageId: over.messageId ?? receipt.envelope.messageId }],
       now: RECEIPT_AT,
     },
-    alertPorts(who, transport, receipt.body),
+    alertPorts(who, transport, receipt.body, writer),
   );
   return {
     text: transport.sent[0]?.body ?? '',
+    others: writer.seen[0]?.otherHaleFamiliesGoing ?? null,
     going: outcome?.going ?? null,
     booking: outcome?.booking ?? null,
   };
@@ -291,23 +308,22 @@ describe('the third family into the class hears a number', () => {
     const b = await household('Family B');
     const firstIn = await receiptArrives(a, RECEIPT_ONE);
     expect(firstIn.going).toBe('below_floor');
-    expect(firstIn.text).not.toContain('Hale families');
+    expect(firstIn.others).toBeNull();
 
     const secondIn = await receiptArrives(b, RECEIPT_ONE);
     // One other family is a SINGLETON: hear that one neighbour uses Hale and you have
     // learned their child's weekly schedule. The floor is what closes that.
     expect(secondIn.going).toBe('below_floor');
-    expect(secondIn.text).not.toContain('Hale families');
+    expect(secondIn.others).toBeNull();
 
     // ── C IS THE THIRD, AND C IS TOLD ────────────────────────────────────────
     const c = await household('Family C');
     const thirdIn = await receiptArrives(c, RECEIPT_ONE);
     expect(thirdIn.going).toBe('shown');
     expect(thirdIn.booking).toBe('recorded');
-    expect(thirdIn.text).toContain('with two other Hale families');
-    // The population is named. A bare "two other families" would be a claim about the
-    // class roster Hale cannot back.
-    expect(thirdIn.text).not.toMatch(/(?<!Hale )other families/);
+    // The writer is handed the number; naming the population ("Hale families") is the
+    // email-alert-notice skill's rule and its eval's check.
+    expect(thirdIn.others).toBe(2);
     // ...and the receipt's own details still never reach the wire.
     for (const secret of ['RC-88214', '96.00', '4412', 'Tremblay']) {
       expect(thirdIn.text).not.toContain(secret);
@@ -382,8 +398,7 @@ describe('the third family into the class hears a number', () => {
     // assertion that would go red if the count stopped reading `cancelled_at`: it would
     // say three, about a household the provider had already released.
     expect(fourthIn.going).toBe('shown');
-    expect(fourthIn.text).toContain('with two other Hale families');
-    expect(fourthIn.text).not.toContain('three');
+    expect(fourthIn.others).toBe(2);
     // (And the state UNDER the floor is A's and B's own texts at the top of this arc: not
     // a zero, not a "you're the first" - the absence of a sentence.)
 
@@ -393,6 +408,6 @@ describe('the third family into the class hears a number', () => {
     // learn that exactly one household registered in between.
     const repeat = await receiptArrives(c, RECEIPT_ONE, { messageId: 'gmail-rc-88214-payment' });
     expect(repeat.going).toBe('repeat_receipt');
-    expect(repeat.text).not.toContain('Hale families');
+    expect(repeat.others).toBeNull();
   });
 });

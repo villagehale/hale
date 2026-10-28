@@ -35,6 +35,7 @@ import {
   emptyEmailAlertCounts,
   gmailAlertSweepInput,
 } from '~/lib/integrations/email-alert';
+import { composeEmailAlertNotice } from '~/lib/integrations/email-alert-notice';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
 import {
@@ -492,6 +493,8 @@ function emailAlertPorts(
         correlationCandidates: candidates,
       });
     },
+    familyChildren: async () => (await loadContext()).children,
+    writeNotice: (facts, family) => composeEmailAlertNotice(pipelineClient(), facts, family),
   };
 }
 

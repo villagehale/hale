@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ExtractionKind, SentinelClassification } from '~/lib/sentinel';
+import { scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   type EmailAlertPorts,
@@ -92,8 +93,11 @@ function harness(classification: SentinelClassification = classified()): {
   const transport = new FakeTransport();
   const threaded: string[] = [];
   const classifyCalls = { n: 0 };
+  const writer = scriptedNoticeWriter();
   return {
     ports: {
+      familyChildren: writer.familyChildren,
+      writeNotice: writer.writeNotice,
       classify: async () => {
         classifyCalls.n += 1;
         return classification;
