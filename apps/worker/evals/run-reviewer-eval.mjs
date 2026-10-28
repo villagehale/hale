@@ -357,7 +357,7 @@ async function main() {
     }
     if (dry) {
       dryTotals.fixtures += 1;
-      if (!dryLines.some((line) => line.includes(`reviewer:${fx.id}  `))) {
+      if (verdictKind !== 'ERROR:dry') {
         dryTotals.cachedFixtures += 1;
         dryLines.push(`DRY  cached    reviewer:${fx.id}  replays, 0 live calls`);
       }
