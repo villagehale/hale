@@ -20,6 +20,7 @@ describe('catalog history cutover', () => {
       '0177_provider_watch',
       '0178_user_timezone_from_postal',
       '0179_channel_inbound_media',
+      '0180_linq_group_carpools',
     ]);
   });
 });
