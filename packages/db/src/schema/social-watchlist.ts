@@ -12,7 +12,6 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { civicVenues } from './civic.js';
 import { families } from './families.js';
 
 /**
@@ -120,7 +119,6 @@ export const watchedSources = pgTable(
     geoFsa: text('geo_fsa'),
     lat: doublePrecision('lat'),
     lng: doublePrecision('lng'),
-    civicVenueId: uuid('civic_venue_id').references(() => civicVenues.id, { onDelete: 'set null' }),
     languages: text('languages').array().notNull().default(['en']),
     /** 1 = poll often (sell-out and weekly schedules). */
     priority: integer('priority').notNull().default(2),

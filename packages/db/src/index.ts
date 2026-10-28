@@ -32,12 +32,6 @@ export type {
   SocialCategory,
   SocialPlatform,
 } from './schema/social-watchlist.js';
-export type {
-  CivicExtraction,
-  CivicRecurrence,
-  CivicSystem,
-  CivicVenueKind,
-} from './schema/civic.js';
 export type { CandidateAccess } from './schema/village.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
 export type {

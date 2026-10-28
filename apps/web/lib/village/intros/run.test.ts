@@ -1066,7 +1066,6 @@ describe('phase 2 - the same-class signal', () => {
       familyBChildId: 'child-1',
       fsa: 'M4K',
       stage: 'toddler',
-      civicSessionId: null,
       expiresAt: new Date('2026-08-18T15:00:00Z'),
     });
     // Provenance lands on the trail instead, for BOTH families (rule #6).
