@@ -13,6 +13,7 @@ import {
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
+import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
@@ -38,9 +39,16 @@ import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
 import {
   type AgentContext,
   type LoadAgentContextInput,
+  _internal as contextInternal,
   loadAgentContext,
 } from '~/lib/coach/context';
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
+import {
+  type StoredThreadSummary,
+  dbThreadSummaryStore,
+  haikuThreadSummarizer,
+  refreshThreadSummary,
+} from '~/lib/coach/thread-summary';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -187,6 +195,15 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
+  /** VIL-144: the stored running summary of this thread's older turns. Optional, and
+   * the production port also schedules the background re-fold (internal context, not
+   * family data — the one write a texted turn's ports may cause, off the reply path).
+   * A failure resolves null and the turn keeps the retrieved digest. */
+  loadThreadSummary?(
+    conversationId: string,
+    familyId: string,
+    transcript: readonly TranscriptMessage[],
+  ): Promise<StoredThreadSummary | null>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -291,6 +308,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const skill =
         turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
 
+      const threadSummary = ports.loadThreadSummary
+        ? await ports.loadThreadSummary(turn.conversationId, turn.familyId, transcript)
+        : null;
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
         question: turn.body,
@@ -300,6 +320,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         focusedChildId: null,
         transcript,
         sourceNote: null,
+        threadSummary,
       });
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
@@ -541,6 +562,32 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       ),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
+    loadThreadSummary: async (conversationId, familyId, transcript) => {
+      const store = dbThreadSummaryStore(database);
+      const stored = await store.load(conversationId, familyId).catch((err: unknown) => {
+        console.error(
+          { fault: err instanceof Error ? err.name : typeof err },
+          'coach: thread summary unavailable',
+        );
+        return null;
+      });
+      waitUntil(
+        refreshThreadSummary({
+          store,
+          summarize: haikuThreadSummarizer(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+          conversationId,
+          familyId,
+          transcript,
+          verbatimTurns: contextInternal.TRANSCRIPT_VERBATIM_TURNS,
+        }).catch((err: unknown) => {
+          console.error(
+            { fault: err instanceof Error ? err.name : typeof err },
+            'coach: thread summary refresh failed',
+          );
+        }),
+      );
+      return stored;
+    },
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, index, uniqueIndex, check, integer } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { families } from './families.js';
 import { children } from './children.js';
@@ -88,3 +88,25 @@ export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+
+/**
+ * VIL-144 — the running summary of a conversation's OLDER turns (the ones past the
+ * coach's verbatim window). Internal model context only, never parent copy. One row
+ * per conversation; `coveredTurns` is how many of the oldest live turns the summary
+ * spans, so the next refresh folds in only what fell out of the window since.
+ * Family-scoped like its conversation (rule #1); cascades with it.
+ */
+export const conversationSummaries = pgTable('conversation_summaries', {
+  conversationId: uuid('conversation_id')
+    .primaryKey()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  familyId: uuid('family_id')
+    .notNull()
+    .references(() => families.id, { onDelete: 'cascade' }),
+  summary: text('summary').notNull(),
+  coveredTurns: integer('covered_turns').notNull(),
+  model: text('model').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ConversationSummary = typeof conversationSummaries.$inferSelect;
