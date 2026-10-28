@@ -135,13 +135,13 @@ export const REMINDER_FIXTURES = [
           eventRef: 'e2',
           title: 'Library story time',
           startsAt: '2026-10-26T15:00:00Z',
-          endsAt: null,
+          endsAt: '2026-10-26T15:45:00Z',
           location: 'Georgetown library, 9 Church St',
         }),
       ],
     }),
     watchFor:
-      'In Chinese. Two things tomorrow: story time at 11:00 AM at Georgetown library, 9 Church St, and soccer 5:30-6:30 PM at Riverside Field, 22 Park Rd. Both with correct morning/afternoon, and each with the venue name and street address it was given. A missing start, end, venue or address is a LOW score. The plan link may appear once, exactly; no other link.',
+      'In Chinese. Two things tomorrow: story time 11:00-11:45 AM at Georgetown library, 9 Church St, and soccer 5:30-6:30 PM at Riverside Field, 22 Park Rd. Both with correct morning/afternoon, and each with its start, its end or duration, the venue name and the street address it was given. A missing start, end, venue or address is a LOW score. The plan link may appear once, exactly; no other link.',
   },
   {
     id: 'en-teen-generic',
