@@ -17,6 +17,11 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  *   - maps the answer back and rejects a missing or invented key (null = no tally),
  *   - counts: one vote per family when the question is per family, else per person.
  *
+ * Per family (Sloane, #935): any parent can answer for the household; the model then
+ * sets that choice for every member of the family. A member who later picks a
+ * different option makes the family split, so it is pending until they agree. Nobody
+ * answers for another family.
+ *
  * A changed mind is the model's read of the latest word, so re-reading the whole
  * thread after each answer keeps the tally right; nothing is stored here yet.
  * Offering a poll, posting the result, and follow-ups come in later slices.

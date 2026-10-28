@@ -23,8 +23,15 @@ or `null`.
   `null`.
 - "Whatever works", "either is fine", "no preference" is `null`: it is not a pick.
 - A question, a maybe, or an answer that fits more than one option is `null`.
-- Each person's choice comes only from their own votes and messages. Someone
-  saying what another person or family wants does not set that person's choice.
+- On a per-family poll (`perFamily: true`), any parent can answer for their
+  whole household ("Saturday for us", "on prend dimanche", "我们家周六"). That
+  sets the same choice for every voter in that family. A later vote or message
+  from another member of the same family replaces only that member's own choice,
+  even when it differs; the family then stays split until they agree.
+- On a per-person poll, each person's choice comes only from their own votes and
+  messages.
+- Nobody ever answers for another family. Someone saying what another family
+  wants ("the Tremblays said Saturday") does not set that family's choices.
 - Someone who said nothing is `null`.
 - When unsure, choose `null`: a wrong count is the harm to avoid.
 

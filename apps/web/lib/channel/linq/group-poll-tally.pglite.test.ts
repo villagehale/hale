@@ -142,6 +142,35 @@ describe('group poll tally (VIL-458 slice 1)', () => {
     expect(t2.everyoneAnswered).toBe(true);
   });
 
+  it('parent answers for household; a member who later differs makes the family pending', () => {
+    const voters: GroupPollVoter[] = [
+      { voterId: 'ana', familyId: 'lee', firstName: 'Ana' },
+      { voterId: 'min', familyId: 'lee', firstName: 'Min' },
+      { voterId: 'julie', familyId: 'tremblay', firstName: 'Julie' },
+    ];
+    // Model read of "Saturday for us" from Ana: every Lee voter set to Saturday.
+    const reading: GroupPollReading = new Map([
+      ['ana', 'opt-sat'],
+      ['min', 'opt-sat'],
+      ['julie', 'opt-sun'],
+    ]);
+    const t = tallyPoll({ poll: POLL(true), voters }, reading);
+    expect([t.counts.get('opt-sat'), t.counts.get('opt-sun')]).toEqual([1, 1]);
+    expect(t.everyoneAnswered).toBe(true);
+    // Min later picks Sunday: Lee is split, back to pending, not counted.
+    reading.set('min', 'opt-sun');
+    const t2 = tallyPoll({ poll: POLL(true), voters }, reading);
+    expect([t2.counts.get('opt-sat'), t2.counts.get('opt-sun')]).toEqual([0, 1]);
+    expect(t2.splitFamilies).toEqual(['lee']);
+    expect(t2.waitingOn).toEqual(['lee']);
+    expect(t2.everyoneAnswered).toBe(false);
+    // They agree again: counted once.
+    reading.set('ana', 'opt-sun');
+    const t3 = tallyPoll({ poll: POLL(true), voters }, reading);
+    expect(t3.counts.get('opt-sun')).toBe(2);
+    expect(t3.everyoneAnswered).toBe(true);
+  });
+
   it('per person: each person is one ballot', () => {
     const voters: GroupPollVoter[] = [
       { voterId: 'ana', familyId: 'lee', firstName: 'Ana' },

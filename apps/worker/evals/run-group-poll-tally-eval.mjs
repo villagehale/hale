@@ -97,6 +97,16 @@ async function main() {
           .filter(([id, ok]) => !ok.includes(reading.get(id) ?? null))
           .map(([id]) => `${id}=${reading.get(id) ?? null}`)
       : ['unmappable answer'];
+    if (reading && f.tally) {
+      const t = src.tallyPoll(f.input, reading);
+      const counts = Object.fromEntries(t.counts);
+      if (JSON.stringify(counts) !== JSON.stringify(f.tally.counts))
+        misses.push(`counts=${JSON.stringify(counts)}`);
+      if (JSON.stringify([...t.waitingOn].sort()) !== JSON.stringify(f.tally.waitingOn))
+        misses.push(`waitingOn=${[...t.waitingOn].sort()}`);
+      if (JSON.stringify([...t.splitFamilies].sort()) !== JSON.stringify(f.tally.split))
+        misses.push(`split=${[...t.splitFamilies].sort()}`);
+    }
     results.push({ id: f.id, pass: misses.length === 0, detail: misses.join(' ') });
   }
   for (const r of results)

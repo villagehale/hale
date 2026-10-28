@@ -87,18 +87,39 @@ export const TALLY_FIXTURES = [
       voters: ALL,
       answers: [
         text(ANA, 'Saturday for us, and I think the Tremblays said Saturday too'),
-        text(BART, 'Wei wants Sunday'),
+        text(BART, 'pretty sure the Tremblays want Sunday'),
       ],
     },
-    accept: { ana: ['opt-sat'], min: [null], bart: [null], wei: [null], julie: [null] },
+    accept: { ana: ['opt-sat'], min: ['opt-sat'], bart: [null], wei: [null], julie: [null] },
   },
   {
-    id: 'per-person-native-flip',
+    id: 'parent-for-household',
     input: {
-      poll: poll(false),
-      voters: [ANA, MIN],
-      answers: [vote(ANA, SAT), vote(MIN, SAT), vote(MIN, SAT, true), vote(MIN, SUN)],
+      poll: poll(true),
+      voters: ALL,
+      answers: [text(ANA, 'Saturday for us!'), text(WEI, '我们家周日比较好')],
     },
-    accept: { ana: ['opt-sat'], min: ['opt-sun'] },
+    accept: {
+      ana: ['opt-sat'],
+      min: ['opt-sat'],
+      bart: [null],
+      wei: ['opt-sun'],
+      julie: [null],
+    },
+    tally: { counts: { 'opt-sat': 1, 'opt-sun': 1 }, waitingOn: ['tremblay'], split: [] },
+  },
+  {
+    id: 'household-then-member-differs-is-pending',
+    input: {
+      poll: poll(true),
+      voters: ALL,
+      answers: [vote(ANA, SAT), text(ANA, "we're all good with Saturday"), vote(MIN, SUN)],
+    },
+    accept: { ana: ['opt-sat'], min: ['opt-sun'], bart: [null], wei: [null], julie: [null] },
+    tally: {
+      counts: { 'opt-sat': 0, 'opt-sun': 0 },
+      waitingOn: ['dong', 'lee', 'tremblay'],
+      split: ['lee'],
+    },
   },
 ];
