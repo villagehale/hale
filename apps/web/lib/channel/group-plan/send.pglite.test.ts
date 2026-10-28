@@ -3,9 +3,10 @@ import type { CalendarInviteReport } from '@hale/worker/executor';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
+import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { loadEventInvite } from '~/lib/loop/ics-invite';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
@@ -432,6 +433,29 @@ describe('VIL-443 production ports, real database', () => {
       allowed: false,
       reason: 'quiet_hours',
     });
+  });
+
+  it('does not ask for watch consent: a parent said yes to the plan', async () => {
+    const s = await seed();
+    await recordWatchConsent(
+      db.database,
+      {
+        familyId: s.familyId,
+        userId: s.ana,
+        granted: false,
+        verbatimReply: 'no thanks',
+        interpretation: 'the parent declined being watched',
+        channelMessageId: null,
+      },
+      new Date(MORNING.getTime() + 60_000),
+    );
+    const proactive = await assertProactiveSendAllowed(
+      { familyId: s.familyId, parentUserId: s.ana, kind: 'calendar_alert', now: MORNING },
+      buildOutboundGatePorts(db.database),
+    );
+    expect(proactive).toEqual({ allowed: false, reason: 'no_watch_consent' });
+    const ports = productionGroupPlanReportPorts(db.database);
+    expect(await ports.gate(s.familyId, s.ana, MORNING)).toMatchObject({ allowed: true });
   });
 
   it('mints a link anyone in the group can open, at the generic floor', async () => {

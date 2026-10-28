@@ -427,7 +427,10 @@ export function productionGroupPlanReportPorts(
     gate: (familyId, parentUserId, now) =>
       assertProactiveSendAllowed(
         { familyId, parentUserId, kind: 'calendar_alert', now },
-        buildOutboundGatePorts(database),
+        // A parent said yes to this plan: the standing of the 1:1 approval link it
+        // replaces, which never asks for the household's watch consent. Enrolment, an
+        // unread stop and quiet hours still hold it.
+        { ...buildOutboundGatePorts(database), watchConsentGranted: async () => true },
       ),
     mintLink: (familyId, familyEventId) => mintEventInviteLink(database, familyId, familyEventId),
     compose: (input) => composeGroupPlanReport(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
