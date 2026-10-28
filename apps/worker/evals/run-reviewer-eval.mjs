@@ -183,7 +183,7 @@ const brokenClient = {
 // action_hash surface as ok:false — the exact ISSUE-5 failure mode. The results are
 // scripted rather than contract-shaped, so this eval says nothing about the real door's
 // output projection (VIL-270); that is pinned by output-contract.test.ts instead.
-function makeInvokeTool(checkPolicy) {
+function makeInvokeTool(checkPolicy, checkResults = {}) {
   return async (name, rawInput) => {
     const spec = REVIEWER_TOOLS[name];
     if (!spec) return { tool: name, ok: false, result: { error: `unknown tool ${name}` } };
@@ -196,7 +196,8 @@ function makeInvokeTool(checkPolicy) {
       return { tool: name, ok: false, result: { error: `invalid input: ${err.message}` } };
     }
     const ok = checkPolicy[name] ?? true;
-    return { tool: name, ok, result: { simulated: true, ok } };
+    // A fixture may script the result body too (VIL-79: a passing clash report).
+    return { tool: name, ok, result: checkResults[name] ?? { simulated: true, ok } };
   };
 }
 
@@ -318,7 +319,7 @@ async function main() {
                   maxTokens,
                 },
               ),
-          invokeTool: makeInvokeTool(fx.checkPolicy ?? {}),
+          invokeTool: makeInvokeTool(fx.checkPolicy ?? {}, fx.checkResults ?? {}),
           loadChildNames: async () => [],
         },
       );
