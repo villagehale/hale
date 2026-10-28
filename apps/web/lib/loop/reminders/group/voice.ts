@@ -21,7 +21,6 @@ export const GROUP_REMINDER_VOICE_SKILL = 'group-reminder-voice';
 export const GROUP_REMINDER_VOICE_TOOL = 'group_reminder_text';
 export const GROUP_REMINDER_VOICE_TOOL_DESCRIPTION = 'The one text Hale sends.';
 export const GROUP_REMINDER_VOICE_MAX_TOKENS = 300;
-export const GROUP_REMINDER_MAX_CHARS = 400;
 export const GROUP_REMINDER_MAX_ATTEMPTS = 2;
 
 export interface ConfirmSetFact {
@@ -80,14 +79,14 @@ export function groupReminderVoiceUserMessage(facts: GroupReminderFacts): string
 
 const URL_SHAPE = /https?:\/\/\S+|www\.\S+/i;
 
-/** Structural refusals only, never wording: empty, too long, or a link. */
+/**
+ * Structural refusals only, never wording: empty, or a link. Length is the skill's to
+ * judge; `GROUP_REMINDER_VOICE_MAX_TOKENS` keeps a draft far inside one Linq text part.
+ */
 export function groupReminderRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  const found: string[] = [];
-  if (text.length > GROUP_REMINDER_MAX_CHARS) found.push('over_char_cap');
-  if (URL_SHAPE.test(text)) found.push('link');
-  return found;
+  return URL_SHAPE.test(text) ? ['link'] : [];
 }
 
 const outputSchema = z.object({ text: z.string() });

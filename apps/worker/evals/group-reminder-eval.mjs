@@ -384,11 +384,12 @@ async function main() {
       result.failures.push(`${kind}: this case should not produce one`);
       return true;
     }
-    // --dry judges nothing; it prices the judge on the longest text the refusals let through.
+    // --dry judges nothing; it prices the judge on the longest text the voice's output
+    // limit lets through, at four characters a token.
     const payload = {
       kind,
       facts,
-      text: body ?? 'x'.repeat(web.GROUP_REMINDER_MAX_CHARS),
+      text: body ?? 'x'.repeat(web.GROUP_REMINDER_VOICE_MAX_TOKENS * 4),
       mustSay,
     };
     price({ ...entry, kind: `judge ${kind}` }, judgeRequest(payload), judgeLane, 1);

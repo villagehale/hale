@@ -2,7 +2,6 @@ import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type ConfirmFacts,
-  GROUP_REMINDER_MAX_CHARS,
   createGroupReminderVoice,
   groupReminderRefusals,
   groupReminderVoiceUserMessage,
@@ -54,12 +53,10 @@ describe('group reminder voice', () => {
     );
   });
 
-  it('refuses only structure: empty, too long, or a link', () => {
+  it('refuses only structure: empty, or a link, and never for length', () => {
     expect(groupReminderRefusals('Done, Ruth.')).toEqual([]);
     expect(groupReminderRefusals('   ')).toEqual(['empty']);
-    expect(groupReminderRefusals('x'.repeat(GROUP_REMINDER_MAX_CHARS + 1))).toEqual([
-      'over_char_cap',
-    ]);
+    expect(groupReminderRefusals('Done, Ruth. '.repeat(60))).toEqual([]);
     expect(groupReminderRefusals('see https://hale.app/r')).toEqual(['link']);
   });
 
