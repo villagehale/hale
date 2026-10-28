@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message 1 states start, end, full venue and address accurately. Message 2 correctly says it is not on anyone's calendar yet, hands the link to Ana and Sam, and asks nothing. Minor issue: the second message says 'Ana and Sam' rather than the whole group as the watchFor note expects, but both are in notYet and the link is still shared, so it reads fine. Plain, first person, English, no system talk.",
+    "score": 5
+  }
+}
