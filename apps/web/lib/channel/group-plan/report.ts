@@ -133,24 +133,19 @@ export function groupPlanReportUserMessage(
   return JSON.stringify(lastDraftRefused.length > 0 ? { ...input, lastDraftRefused } : input);
 }
 
-/** A backstop over the skill's "about 160", measured without the link. */
-export const GROUP_PLAN_REPORT_MAX_CHARS = 200;
 const URL_SHAPE = /https?:\/\/\S+/gi;
-const QUESTION_MARK = /[?\uFF1F\u00BF]/;
 const TRAILING_PUNCTUATION = /[.,;:!)\]}"'\u00BB\u201D\u2019\u3002\uFF0C]+$/u;
 
 /**
- * Structural refusals only, never wording: empty, too long, a question, a link that is not
- * the one handed, or a handed link that did not make it in exactly once.
+ * Facts only, never wording: an empty draft, a link that is not the one handed, or a
+ * handed link that did not make it in exactly once. Length, tone and whether it asks
+ * anything are read by the judge, not matched here.
  */
 export function groupPlanReportRefusals(body: string, input: GroupPlanReportInput): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
   const found: string[] = [];
   const urls = text.match(URL_SHAPE) ?? [];
-  const words = text.replace(URL_SHAPE, '').trim();
-  if (words.length > GROUP_PLAN_REPORT_MAX_CHARS) found.push('over_char_cap');
-  if (QUESTION_MARK.test(words)) found.push('asks_question');
   const link = input.link;
   if (link === null) {
     if (urls.length > 0) found.push('carries_link');

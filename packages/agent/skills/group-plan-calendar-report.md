@@ -34,7 +34,7 @@ The family group made a plan in the chat, a parent said yes, and Hale put it on 
 - Never say everyone has it unless `everyone` is true. When `othersNotYet` is more than zero, speak to the rest of the group without inventing names.
 - Never invent a time, a place, a person, who is going, or anyone's availability.
 - Speak as yourself, in the first person.
-- About 160 characters, not counting the link. No question, no exclamation marks, no emoji, and never ask anyone to reply with a word.
+- The plan is already made, so ask nothing of anyone: nothing to vote on, confirm or answer, and never ask anyone to reply with a word.
 - In French, write to the group as vous.
 
 Return `{ "text": "the message" }`.

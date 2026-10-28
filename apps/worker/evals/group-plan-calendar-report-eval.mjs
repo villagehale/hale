@@ -53,17 +53,18 @@ const JUDGE_SYSTEM = [
   'the group made was put on the household calendar, moved, or called off. Everyone in the chat',
   'reads it, including people who are not Hale customers. You are given the facts the writer was',
   'handed (input: change, event, onCalendarOf, notYet, othersNotYet, everyone, link, language),',
-  'the text and watchFor notes. Score 1-5 on FACTS and TONE, not wording. A 5 says plainly what',
-  'changed; uses only the event as given; says it is on the calendars of exactly the people in',
-  'onCalendarOf and of nobody else; hands the link to the people it is not on yet, or to the whole',
-  'group when onCalendarOf is empty; says everyone has it only when everyone is true; for a',
-  'cancel, says it is off, with no link and no names; is in input.language (French: vous to the',
-  'group); first person; one short plain text a friend in the chat would send. A LOW score is any',
-  'of: saying it is on the calendar of someone not in onCalendarOf, or that everyone has it when',
-  'everyone is false; a time, place, person, attendee, availability or next step that is not in',
-  'the input; saying why someone does not have it; no link when one is given, or any link on a',
-  'cancel; a question, a vote, an RSVP or an ask to reply with a word; the wrong language; system',
-  'talk, hype, emoji, exclamation marks; more than about two short sentences plus the link.',
+  'the text and watchFor notes. Score 1-5 on FACTS and BEHAVIOUR, not wording. A 5 says plainly',
+  'what changed; uses only the event as given; says it is on the calendars of exactly the people',
+  'in onCalendarOf and of nobody else; hands the link to the people it is not on yet, or to the',
+  'whole group when onCalendarOf is empty; says everyone has it only when everyone is true; for a',
+  'cancel, says it is off, with no link and no names; asks nothing of anyone, because the plan is',
+  'made; is in input.language (French: vous to the group); first person; plain and short, the way',
+  'a friend in the chat would say it. A LOW score is any of: saying it is on the calendar of',
+  'someone not in onCalendarOf, or that everyone has it when everyone is false; a time, place,',
+  'person, attendee, availability or next step that is not in the input; saying why someone does',
+  'not have it; no link when one is given, or any link on a cancel; asking the group anything (a',
+  'question, a vote, an RSVP, a confirmation, a reply with a word); the wrong language; system talk',
+  'or hype; far more words than the facts need.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -77,15 +78,7 @@ const PER_CALL_OVERHEAD_TOKENS = 500;
 /** The judge's output ceiling for a Haiku judge (harness makeJudge). */
 const JUDGE_MAX_TOKENS = 4096;
 /** Every reason a draft can be refused, so the retry's turn is at its longest. */
-const EVERY_REFUSAL = [
-  'empty',
-  'over_char_cap',
-  'asks_question',
-  'carries_link',
-  'link_missing',
-  'link_repeated',
-  'other_link',
-];
+const EVERY_REFUSAL = ['empty', 'carries_link', 'link_missing', 'link_repeated', 'other_link'];
 
 /** Rounded up: a third of a token per Latin character, two for anything else. */
 function tokensAtMost(text) {

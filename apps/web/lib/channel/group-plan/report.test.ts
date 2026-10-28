@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GROUP_PLAN_REPORT_MAX_CHARS,
   type GroupPlanReportInput,
   groupPlanReportEnabled,
   groupPlanReportInput,
@@ -137,7 +136,7 @@ describe('VIL-443 groupPlanReportInput', () => {
   });
 });
 
-describe('VIL-443 groupPlanReportRefusals (structure only, never wording)', () => {
+describe('VIL-443 groupPlanReportRefusals (the link only, never wording)', () => {
   it('passes a text that carries the link once, even with closing punctuation', () => {
     expect(
       groupPlanReportRefusals(`Swim is set for Saturday. Add it here: ${LINK}.`, input()),
@@ -164,20 +163,21 @@ describe('VIL-443 groupPlanReportRefusals (structure only, never wording)', () =
     expect(groupPlanReportRefusals(`Swim is off. ${LINK}`, cancelled)).toEqual(['carries_link']);
   });
 
-  it('refuses a question in any script, but not a query string inside the link', () => {
-    expect(groupPlanReportRefusals(`Can you all make it? ${LINK}`, input())).toContain(
-      'asks_question',
-    );
-    expect(groupPlanReportRefusals(`Vous venez？ ${LINK}`, input())).toContain('asks_question');
-    expect(groupPlanReportRefusals(`¿Vienen ${LINK}`, input())).toContain('asks_question');
-    const queried = `${LINK}?v=2`;
-    expect(groupPlanReportRefusals(`Add it: ${queried}`, input({ link: queried }))).toEqual([]);
+  it('leaves length, punctuation and emoji to the judge', () => {
+    const long = 'Swim is set for Saturday at the Y. '.repeat(20);
+    expect(groupPlanReportRefusals(`${long}Add it: ${LINK}`, input())).toEqual([]);
+    for (const text of [
+      `Can you all make it? ${LINK}`,
+      `Vous venez？ ${LINK}`,
+      `¡Listo! 🎉 ${LINK}`,
+    ]) {
+      expect(groupPlanReportRefusals(text, input())).toEqual([]);
+    }
   });
 
-  it('measures the cap without the link', () => {
-    const atCap = 'a'.repeat(GROUP_PLAN_REPORT_MAX_CHARS);
-    expect(groupPlanReportRefusals(`${atCap} ${LINK}`, input())).toEqual([]);
-    expect(groupPlanReportRefusals(`${atCap}a ${LINK}`, input())).toEqual(['over_char_cap']);
+  it('reads a handed link with a query string as the handed link', () => {
+    const queried = `${LINK}?v=2`;
+    expect(groupPlanReportRefusals(`Add it: ${queried}`, input({ link: queried }))).toEqual([]);
   });
 });
 
