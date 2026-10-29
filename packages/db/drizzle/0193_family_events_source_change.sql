@@ -1,5 +1,6 @@
 -- VIL-474 · the last change a provider made to an event, recorded from source data
--- only (the calendar mirror saw a different start or venue than Hale had stored).
+-- only: a provider's email (reschedule notice or re-sent receipt) named a different start
+-- or venue than Hale had stored. The calendar mirror records nothing here.
 -- Add-only: four nullable columns, no default, no backfill, no row rewrite.
 -- Reversible:
 --   ALTER TABLE "family_events" DROP COLUMN "source_changed_field";

@@ -305,9 +305,10 @@ export async function recordActivityBooking(
       .where(eq(schema.activityBookings.id, existing.id));
     const linkedEventId = existing.eventId ?? input.draft.eventId;
     if (input.timeZone && linkedEventId) {
-      // Only the booking's FIRST-SESSION event moves: `expectStartsAt` refuses a linked
-      // event that is not at the booking's first session, so a later session in the
-      // series is never dragged onto the first-session date (#955 review, point 7).
+      // A re-sent receipt arrives by live email, so it RECORDS the change only and never
+      // moves the event (#955 re-review, blocker 1). Moving from email is the follow-up.
+      // `expectStartsAt` still limits this to the booking's first-session event, so a later
+      // session in the series is never marked changed (#955 review, point 7).
       await applyProviderChange(database, {
         familyId: input.familyId,
         eventId: linkedEventId,
@@ -315,7 +316,7 @@ export async function recordActivityBooking(
         source: { startsAt: input.draft.firstSessionAt, location: input.draft.location },
         timeZone: input.timeZone,
         now: new Date(),
-        move: true,
+        move: false,
         expectStartsAt: existing.firstSessionAt,
       });
     }

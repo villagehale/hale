@@ -139,7 +139,7 @@ async function event(id: string) {
 }
 
 describe('applyProviderChange', () => {
-  it('a provider time move records the field and its old start, moves the end, and bolds', async () => {
+  it('a provider time move records the field and its old start, and moves the end', async () => {
     const id = await seedEmailEvent();
     await linkBooking(id);
     const change = await applyProviderChange(db.database, {
@@ -159,7 +159,7 @@ describe('applyProviderChange', () => {
     expect(row.sourceChangedField).toBe('time');
     expect(row.sourceChangedFromStartsAt?.toISOString()).toBe(START.toISOString());
     expect(row.sourceChangedFromLocation).toBeNull();
-    // The reminder reads exactly this back (run.ts → changeFromColumns): bold fires.
+    // The reminder reads exactly this back (run.ts → changeFromColumns).
     expect(changeFromColumns(row, NOW)).toEqual({ field: 'time', previousStartsAt: START });
   });
 
@@ -302,7 +302,7 @@ describe('applyProviderChange', () => {
 });
 
 describe('registration path (recordActivityBooking refresh)', () => {
-  it('a re-sent receipt with a new time moves the linked first-session event and records it', async () => {
+  it('a re-sent receipt with a new time and venue records the change and moves nothing (#955 re-review)', async () => {
     const id = await seedEmailEvent();
     const { base, draft } = await linkBooking(id);
     expect((await event(id)).sourceChangedField).toBeNull();
@@ -310,13 +310,16 @@ describe('registration path (recordActivityBooking refresh)', () => {
     const second = await recordActivityBooking(db.database, {
       ...base,
       messageId: 'm2',
-      draft: { ...draft, firstSessionAt: later, sessionKey: 'k2' },
+      draft: { ...draft, firstSessionAt: later, location: 'Main St pool', sessionKey: 'k2' },
     });
     expect(second.outcome).toBe('refreshed');
     const row = await event(id);
-    expect(row.startsAt.toISOString()).toBe(later.toISOString());
+    expect(row.startsAt.toISOString()).toBe(START.toISOString());
+    expect(row.endsAt?.toISOString()).toBe(END.toISOString());
+    expect(row.location).toBe('The pool');
     expect(row.sourceChangedField).toBe('time');
     expect(row.sourceChangedFromStartsAt?.toISOString()).toBe(START.toISOString());
+    expect(row.sourceChangedFromLocation).toBe('The pool');
   });
 
   it('never moves a later session onto the first-session date (review point 7)', async () => {
