@@ -588,6 +588,28 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
     expect(payload).not.toHaveProperty('bold');
   });
 
+  it('VIL-474: a source-data change on the live event reaches the writer as a fact', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () =>
+        liveEvent({
+          location: 'Main St pool',
+          change: { field: 'venue', previousLocation: 'Georgetown library' },
+        }),
+    });
+    await runReminderCron({} as never, deps, NOW_T1H);
+    expect(composeText).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        events: [
+          expect.objectContaining({ changed: { field: 'venue', from: 'Georgetown library' } }),
+        ],
+      }),
+      expect.anything(),
+    );
+  });
+
   it('VIL-474: carries the writer’s bold words onto the payload untouched', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     composeText.mockResolvedValue({ texts: ['Swim moved to 4:30 today.'], bold: '4:30' });

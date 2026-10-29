@@ -333,4 +333,41 @@ export const REMINDER_FIXTURES = [
     watchFor:
       'Fake family, two kids, three events tomorrow: Theo swim 9 to 9:45 AM at Mold-Masters SportsPlex, 221 Guelph St; Léa dentist 11 AM at Bright Smiles Dental, 12 Main St (no end given); Léa piano 5 to 5:30 PM at Halton Music, 5 Queen St. Every fact must be there; inventing an end for the dentist is a LOW score. BOLD CHECK: at most one thing; bolding several facts or a whole text scores at most 3. No bold is fine.',
   },
+  // VIL-474 · bold clearly right: the provider moved the time / changed the venue, so the
+  // `changed` fact is set from source data and the new value is the fact to act on.
+  {
+    id: 'en-bold-moved-time',
+    args: args({
+      children: [KID],
+      events: [
+        ev({
+          childId: 'c-kid',
+          title: 'Swim',
+          startsAt: '2026-10-26T20:30:00Z',
+          endsAt: '2026-10-26T21:15:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+          change: { field: 'time', previousStartsAt: new Date('2026-10-26T21:00:00Z') },
+        }),
+      ],
+    }),
+    watchFor:
+      'Fake family. Léa swim tomorrow, MOVED from 5 PM to 4:30 PM (until 5:15 PM) at Mold-Masters SportsPlex, 221 Guelph St. CHANGED FACT: the text must give the new time 4:30 PM and make clear it changed. BOLD CHECK: bold on the new time is right; no bold at all scores at most 3; bold on anything else scores at most 3.',
+  },
+  {
+    id: 'fr-bold-changed-venue',
+    args: args({
+      language: 'fr',
+      events: [
+        ev({
+          title: 'Natation',
+          startsAt: '2026-10-26T21:00:00Z',
+          endsAt: '2026-10-26T21:45:00Z',
+          location: 'Piscine Centennial, 5 Lake Rd',
+          change: { field: 'venue', previousLocation: 'Mold-Masters SportsPlex, 221 Guelph St' },
+        }),
+      ],
+    }),
+    watchFor:
+      "Fake family, in French. Swim tomorrow 17 h to 17 h 45; the VENUE CHANGED from Mold-Masters SportsPlex, 221 Guelph St to Piscine Centennial, 5 Lake Rd. CHANGED FACT: the text must give the new venue name and address and make clear it changed. BOLD CHECK: bold on the new venue is right; no bold at all scores at most 3; bold on anything else scores at most 3.",
+  },
 ];

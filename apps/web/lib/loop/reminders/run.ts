@@ -1,3 +1,4 @@
+import type { SourceChange } from './change';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
@@ -87,6 +88,9 @@ export interface LiveEvent extends EventSnapshot {
   /** Where to be. Unused by the parents' copy (they know), and half of what a caregiver's
    * `event_logistics` scope is FOR. */
   location: string | null;
+  /** VIL-474 · a change recorded from source data only (reminders/change.ts). Absent
+   * until a loader reads one from a provider value; never inferred from wording. */
+  change?: SourceChange | null;
   /**
    * Set when this row mirrors one event on a connected Google Calendar (VIL-416).
    * Null for every Hale-authored event. A mirror is reminded to its owner only —
@@ -458,6 +462,7 @@ interface FiringRow {
   childId: string | null;
   sensitive: boolean;
   location: string | null;
+  change: SourceChange | null;
   /** Proven non-null by the fire gate: a row whose recipient holds no seat never gets
    * here. Non-parent roles other than the three caregiver ones are suppressed too, so
    * this is either a parent role or a caregiver one. */
@@ -674,6 +679,7 @@ export async function runReminderCron(
             childId: event.childId,
             sensitive: event.sensitive,
             location: event.location,
+            change: event.change ?? null,
             // Non-null past the gate above: role null never survives it.
             role: row.role as FamilyRole,
           });
@@ -751,6 +757,7 @@ export async function runReminderCron(
             ...view,
             endsAt: r.endsAt ? r.endsAt.toISOString() : null,
             location: r.location,
+            change: r.change,
           });
         }
       }

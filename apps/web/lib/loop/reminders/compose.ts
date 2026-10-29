@@ -1,3 +1,4 @@
+import type { SourceChange } from './change';
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
@@ -36,6 +37,12 @@ export interface ReminderEventFacts {
   end: string | null;
   /** Where, from the parent's own calendar. Null for a private event or none. */
   location: string | null;
+  /**
+   * VIL-474 · what changed, recorded only from source data (a provider's value that
+   * differs from what Hale had stored, reminders/change.ts), with its old value in the
+   * same form as the new one. Null when nothing changed or the source said nothing.
+   */
+  changed: { field: 'time' | 'date' | 'venue'; from: string } | null;
 }
 
 export interface ReminderFacts {
@@ -54,6 +61,26 @@ export interface ReminderFacts {
 export interface ReminderFactEvent extends ReminderEventView {
   endsAt: string | null;
   location: string | null;
+  /** VIL-474 · a source-data change (reminders/change.ts), or absent. */
+  change?: SourceChange | null;
+}
+
+/** The change as a fact, in the same form as the new value. A private event's old
+ * venue is withheld exactly as its venue is. */
+function changedFact(
+  change: SourceChange | null | undefined,
+  timeZone: string,
+  hidden: boolean,
+): ReminderEventFacts['changed'] {
+  if (!change) return null;
+  if (change.field === 'venue') {
+    return hidden ? null : { field: 'venue', from: change.previousLocation };
+  }
+  const from =
+    change.field === 'time'
+      ? localClockFact(change.previousStartsAt, timeZone)
+      : `${localDateFact(change.previousStartsAt, timeZone)}, ${localClockFact(change.previousStartsAt, timeZone)}`;
+  return { field: change.field, from };
 }
 
 function part(parts: Intl.DateTimeFormatPart[], type: string): string {
@@ -162,6 +189,7 @@ export function reminderFacts(args: {
         start: allDay ? null : localClockFact(start, timeZone),
         end: allDay || !end ? null : localClockFact(end, timeZone),
         location: hidden ? null : event.location?.trim() || null,
+        changed: changedFact(event.change, timeZone, hidden),
       };
     }),
     planLink: args.planLink,
