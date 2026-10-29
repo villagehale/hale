@@ -240,6 +240,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'duty projection — reads a title only to refuse a non-kid row, writes owner columns, and never sends the title; the venue link reads calendar ids only, household rows only',
   ],
   [
+    'lib/channel/coparent/duty/asks.ts',
+    'duty asks venue — joins family_events through activity_bookings.event_id for the event ids and family id only; the venue comes from the booking, never a title or an event location',
+  ],
+  [
     'lib/channel/coparent/duty/metrics.ts',
     'duty metrics — start time and owner columns only, never a title or a location',
   ],
