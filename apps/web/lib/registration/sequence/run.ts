@@ -862,27 +862,23 @@ async function runLegForSequence(
   let body: string;
   if (leg === 'battle_plan') {
     const decision = battlePlanDecision(legInput);
-    if (decision.kind === 'fixed') {
-      body = decision.text;
-    } else {
-      const written = await writeEvening(database, deps, sequence.familyId, decision.facts);
-      if (!written) {
-        await deps.audit(database, {
-          familyId: sequence.familyId,
-          actor: 'system',
-          actionTaken: 'registration_evening_unwritten',
-          targetTable: 'registration_sequences',
-          targetId: sequence.sequenceId,
-          after: {
-            leg,
-            windowId: sequence.window.id,
-            outcome: 'registration_evening_unwritten',
-          },
-        });
-        return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
-      }
-      body = written;
+    const written = await writeEvening(database, deps, sequence.familyId, decision.facts);
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_evening_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: {
+          leg,
+          windowId: sequence.window.id,
+          outcome: 'registration_evening_unwritten',
+        },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
     }
+    body = written;
   } else {
     body = renderSequenceLeg(leg, legInput);
   }

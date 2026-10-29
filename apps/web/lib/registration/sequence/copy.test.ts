@@ -573,12 +573,6 @@ const PREPARED = (over = {}): PrepVerdict => ({
   ...coursePage(over),
 });
 
-/** A rendered battle plan, or nothing when that evening is composed from facts. */
-function fixedBattlePlan(input: LegCopyInput): string | null {
-  const decision = battlePlanDecision(input);
-  return decision.kind === 'fixed' ? decision.text : null;
-}
-
 function composeFacts(input: LegCopyInput) {
   const decision = battlePlanDecision(input);
   if (decision.kind !== 'compose') {
@@ -597,20 +591,10 @@ function everyPortalBody(): Record<string, string> {
       portalInput({ readinessReady: ready }),
     );
     bodies[`go unbound/${ready}`] = renderSequenceLeg('go', portalInput({ readinessReady: ready }));
-    const unboundPlan = fixedBattlePlan(portalInput({ readinessReady: ready }));
-    if (unboundPlan) bodies[`battle_plan unbound/${ready}`] = unboundPlan;
     bodies[`go prepared/${ready}`] = renderSequenceLeg(
       'go',
       bound(PREPARED(capsPage), { readinessReady: ready }),
     );
-    const preparedPlan = fixedBattlePlan(bound(PREPARED(capsPage), { readinessReady: ready }));
-    if (preparedPlan) bodies[`battle_plan prepared/${ready}`] = preparedPlan;
-    const unnamedPlan = fixedBattlePlan(bound(PREPARED(), { readinessReady: ready }));
-    if (unnamedPlan) bodies[`battle_plan prepared_unnamed/${ready}`] = unnamedPlan;
-    const unreadablePlan = fixedBattlePlan(
-      bound({ kind: 'page_unreadable', reason: 'fetch_failed' }, { readinessReady: ready }),
-    );
-    if (unreadablePlan) bodies[`battle_plan unreadable/${ready}`] = unreadablePlan;
   }
   const failures: [string, PrepVerdict][] = [
     // A clean read whose own clock is NOT the anchor, and a clean read whose own name
@@ -641,8 +625,6 @@ function everyPortalBody(): Record<string, string> {
   ];
   for (const [name, verdict] of failures) {
     bodies[`go ${name}`] = renderSequenceLeg('go', bound(verdict));
-    const plan = fixedBattlePlan(bound(verdict));
-    if (plan) bodies[`battle_plan ${name}`] = plan;
   }
   return bodies;
 }
@@ -842,7 +824,7 @@ describe('VIL-338 · the forbidden sentence is unsayable', () => {
     // template, which prints no page value and therefore never reached the gate.
     const spliced = `${everyPortalBody()['go page_unreadable']} You are all set.`;
     expect(gateViolations(spliced)).toContain('unattributed_readiness');
-    const claimed = `${everyPortalBody()['battle_plan late_by_drift']} Everything is filled in.`;
+    const claimed = `${everyPortalBody()['go late_by_drift']} Everything is filled in.`;
     expect(gateViolations(claimed)).toContain('forbidden_claim');
   });
 });
@@ -1089,9 +1071,16 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
   });
 
   it('moves the morning in the plan when the page moved it to another day', () => {
-    const nextDay = bodies['battle_plan window_moved_next_day'] as string;
-    expect(nextDay).toContain('That is not tomorrow');
-    expect(nextDay).toContain('Sep 16');
+    const nextDay = composeFacts(
+      bound({
+        kind: 'window_moved',
+        ...coursePage({ facts: { EventName: NAME_AT_CAP }, clock: MOVED_NEXT_DAY }),
+      }),
+    );
+    expect(nextDay.situation).toBe('moved_day');
+    expect(nextDay.pageShows?.date).toContain('September 16');
+    expect(nextDay.link).toBe(COURSE_URL);
+    expect(nextDay.courseName).toBe(NAME_AT_CAP);
     // A move INSIDE tomorrow is not news — the anchor was refreshed and the plan simply
     // prints the new time, which is true now.
     const sameDay = composeFacts(
@@ -1103,6 +1092,22 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
     expect(sameDay.situation).toBe('course');
     expect(sameDay.opensAt).toBe('11:30 a.m.');
     expect(sameDay.courseName).toBe(NAME_AT_CAP);
+    expect(sameDay.pageShows).toBeNull();
+  });
+
+  it('hands an already-open course as facts, with no sentence built in code', () => {
+    const late = composeFacts(
+      bound({
+        kind: 'late_by_drift',
+        ...coursePage({
+          facts: { EventName: NAME_AT_CAP },
+          clock: new Date('2026-09-15T13:30:00.000Z'),
+        }),
+      }),
+    );
+    expect(late.situation).toBe('already_open');
+    expect(late.pageShows).toEqual({ date: 'Tuesday, September 15, 2026', time: '9:30 a.m.' });
+    expect(late.link).toBe(DEEP_LINK);
   });
 });
 

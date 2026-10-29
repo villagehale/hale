@@ -52,8 +52,8 @@ import type { FitNote, Shortlist } from './shortlist.js';
  * VIL-484 · THE EVENING BATTLE PLAN IS NOT RENDERED HERE. The sentences that
  * named an open are facts (`battlePlanDecision`) for evening-compose.ts. The
  * model writes the whole text. A draft that cannot be written sends nothing.
- * Two heads-up sentences stay in this file, because they are not that text:
- * the page already open, and a morning moved to another day.
+ * That includes the page already open and a morning moved to another day: both
+ * are situations in the facts, with no sentence built here.
  */
 
 /**
@@ -376,7 +376,9 @@ export type EveningSituation =
   | 'page_unreadable'
   | 'course_gone'
   | 'registration_closed'
-  | 'age_outside';
+  | 'age_outside'
+  | 'already_open'
+  | 'moved_day';
 
 /**
  * Facts for the evening-before registration text. English date and clock labels
@@ -398,11 +400,13 @@ export interface EveningFacts {
   courseName: string | null;
   ageBand: string | null;
   children: number;
+  /** The clock the page shows now, when it disagrees with `opensAt`/`opensOn`:
+   * already open since (`already_open`) or opening on another day (`moved_day`).
+   * Null in every other situation. */
+  pageShows: { date: string; time: string } | null;
 }
 
-export type BattlePlanDecision =
-  | { kind: 'fixed'; text: string }
-  | { kind: 'compose'; facts: EveningFacts };
+export type BattlePlanDecision = { kind: 'compose'; facts: EveningFacts };
 
 function writtenDate(instant: Date, timeZone: string): string {
   return asciiSpaces(
@@ -426,7 +430,12 @@ function composeEvening(
   portal: SpotPortal | null,
   situation: EveningSituation,
   link: string | null,
-  extra: { courseName?: string | null; ageBand?: string | null; opensAt?: string } = {},
+  extra: {
+    courseName?: string | null;
+    ageBand?: string | null;
+    opensAt?: string;
+    pageShows?: Date;
+  } = {},
 ): BattlePlanDecision {
   return {
     kind: 'compose',
@@ -446,14 +455,20 @@ function composeEvening(
       courseName: extra.courseName ?? null,
       ageBand: extra.ageBand ?? null,
       children: input.shortlist.fitNotes.length,
+      pageShows:
+        extra.pageShows === undefined
+          ? null
+          : {
+              date: writtenDate(extra.pageShows, input.timeZone),
+              time: timeOfDay(extra.pageShows, input.timeZone),
+            },
     },
   };
 }
 
 /**
- * The evening-before plan. A compose decision is facts only — the model writes
- * the text. A fixed decision is one of the two heads-up sentences that are not
- * that text (already open, or moved to another day).
+ * The evening-before plan. Always facts only: the model writes the text, and a
+ * draft that cannot be written sends nothing.
  */
 export function battlePlanDecision(input: LegCopyInput): BattlePlanDecision {
   const portal = input.portal ?? null;
@@ -477,7 +492,6 @@ function preparedDecision(
 ): BattlePlanDecision | null {
   const link = courseSignInUrl(prep.courseUrl);
   if (link === null) return null;
-  const label = portal.portalLabel;
   const verdict = prep.verdict;
   const municipal = input.shortlist.sourceUrl;
 
@@ -493,10 +507,10 @@ function preparedDecision(
     case 'late_by_drift': {
       const clock = verdict.clock;
       if (clock === null) return composeEvening(input, portal, 'municipal', municipal);
-      return {
-        kind: 'fixed',
-        text: `Heads up: ${label} shows this course already open since ${when(clock.at, input.timeZone, input.now)} Sign in, then Register: ${link}`,
-      };
+      return composeEvening(input, portal, 'already_open', link, {
+        courseName: printable(verdict.facts.EventName, verdict.backed),
+        pageShows: clock.at,
+      });
     }
     case 'age_ineligible':
       return composeEvening(input, portal, 'age_outside', prep.courseUrl, {
@@ -510,19 +524,10 @@ function preparedDecision(
       // A move to another day is news, and the key is spent, so this is the only
       // evening text that says the morning moved.
       if (dayKeyIn(clock.at, input.timeZone) !== dayKeyIn(input.anchor, input.timeZone)) {
-        const name = printable(verdict.facts.EventName, verdict.backed);
-        const moved = `Heads up: ${label} now shows ${name} opening ${when(clock.at, input.timeZone, input.now)} That is not tomorrow, so I have moved your morning to it. ${prep.courseUrl}`;
-        const unnamed = `Heads up: ${label} now shows that course opening ${when(clock.at, input.timeZone, input.now)} That is not tomorrow, so I have moved your morning to it. ${prep.courseUrl}`;
-        if (name === null) return { kind: 'fixed', text: unnamed };
-        return {
-          kind: 'fixed',
-          text: guarded(moved, unnamed, {
-            url: prep.courseUrl,
-            printed: [name],
-            backed: verdict.backed,
-            optOut: 'full',
-          }),
-        };
+        return composeEvening(input, portal, 'moved_day', prep.courseUrl, {
+          courseName: printable(verdict.facts.EventName, verdict.backed),
+          pageShows: clock.at,
+        });
       }
       return composeEvening(input, portal, 'course', prep.courseUrl, {
         courseName: printable(verdict.facts.EventName, verdict.backed),
@@ -670,8 +675,6 @@ export function renderSequenceLeg(leg: SequenceLeg, input: LegCopyInput): string
       // heads-up is exactly what the scheduler would have chosen instead.
       return input.portal == null ? headsUp(input) : readiness(input, input.portal);
     case 'battle_plan': {
-      const decision = battlePlanDecision(input);
-      if (decision.kind === 'fixed') return decision.text;
       throw new Error('registration sequence: the evening text is composed from facts');
     }
     case 'go':

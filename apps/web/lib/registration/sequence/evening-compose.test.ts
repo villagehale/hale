@@ -16,6 +16,7 @@ const FACTS: EveningComposeInput = {
   courseName: null,
   ageBand: null,
   children: 1,
+  pageShows: null,
 };
 
 describe('evening refusals', () => {

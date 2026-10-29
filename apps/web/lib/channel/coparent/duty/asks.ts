@@ -363,6 +363,7 @@ function occasionFor(input: {
   eventKey: string;
   role: DutyRole;
   startsAt: Date;
+  endsAt: Date | null;
   title: string | null;
   cancelled: boolean;
   state: DutyState | null;
@@ -380,6 +381,10 @@ function occasionFor(input: {
     eventKey: input.eventKey,
     role: input.role,
     startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    // parent_calendar_blocks holds no location by design (rule #1), so there is
+    // no vetted venue to hand yet. See the PR body: sourcing it is a schema call.
+    venue: null,
     hasOwner: state?.status === 'confirmed' && state.owner !== null,
     conflict: state?.status === 'conflict',
     needsWhichKid: needsWhichKid(input.title, input.childNames),
@@ -427,6 +432,7 @@ async function buildOccasions(
       eventId: schema.parentCalendarBlocks.eventId,
       userId: schema.parentCalendarBlocks.userId,
       startAt: schema.parentCalendarBlocks.startAt,
+      endAt: schema.parentCalendarBlocks.endAt,
       title: schema.parentCalendarBlocks.title,
       status: schema.parentCalendarBlocks.status,
       kidRelated: schema.parentCalendarBlocks.kidRelated,
@@ -462,6 +468,7 @@ async function buildOccasions(
     const shared = {
       eventKey,
       startsAt: sample.startAt,
+      endsAt: sample.endAt ?? null,
       title,
       cancelled,
       childNames: home.childNames,
@@ -757,7 +764,9 @@ export function dutyNightFacts(
       kid: occasion.kid ?? null,
       event,
       time: dutyClockLabel(occasion.startsAt, ctx.timeZone, 'en'),
+      endTime: occasion.endsAt ? dutyClockLabel(occasion.endsAt, ctx.timeZone, 'en') : null,
       date: englishStamp(occasion.startsAt, ctx.timeZone).date,
+      venue: occasion.venue ?? null,
     },
     unowned:
       reaskOccasion && reaskEvent
