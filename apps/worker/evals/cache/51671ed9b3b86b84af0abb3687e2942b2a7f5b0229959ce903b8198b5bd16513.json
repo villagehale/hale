@@ -12,10 +12,7 @@
         "id": "toolu_011Mbhs2EzvtNBEjTooSSbXG",
         "name": "turn_off_autonomy",
         "input": {
-          "kinds": [
-            "send_email",
-            "reply_to_email"
-          ],
+          "kinds": ["send_email", "reply_to_email"],
           "interpretation": "They want Hale to stop sending emails on their behalf without showing them first."
         },
         "caller": {

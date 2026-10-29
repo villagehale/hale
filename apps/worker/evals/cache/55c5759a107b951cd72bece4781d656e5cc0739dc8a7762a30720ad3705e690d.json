@@ -13,10 +13,7 @@
         "date": "Friday",
         "reason": "PD day"
       },
-      "action_items": [
-        "Send extra set of clothes",
-        "Send labelled water bottle"
-      ],
+      "action_items": ["Send extra set of clothes", "Send labelled water bottle"],
       "timeline": "next week",
       "activity_summary": "tummy time and music"
     },

@@ -20,7 +20,9 @@ function cutSuffix(hay, needle) {
 
 export function stripTrailingActivityUrls(text, links, ignoreCase = false) {
   const urls = [
-    ...new Set((links ?? []).map((link) => link?.url).filter((url) => typeof url === 'string' && url !== '')),
+    ...new Set(
+      (links ?? []).map((link) => link?.url).filter((url) => typeof url === 'string' && url !== ''),
+    ),
   ].sort((a, b) => b.length - a.length);
   let out = String(text).trim();
   let changed = true;
@@ -40,7 +42,10 @@ export function stripTrailingActivityUrls(text, links, ignoreCase = false) {
  * Model prose only. Strips a trailing activity URL, then a trailing nearby
  * clause, then the plan-offer / referral block — the same join `toSmsReply` uses.
  */
-export function modelProse(text, { appended = '', nearbyClause = '', links = [], ignoreCase = false } = {}) {
+export function modelProse(
+  text,
+  { appended = '', nearbyClause = '', links = [], ignoreCase = false } = {},
+) {
   let out = stripTrailingActivityUrls(text, links, ignoreCase);
   if (nearbyClause && endsWith(out, nearbyClause, ignoreCase)) out = cutSuffix(out, nearbyClause);
   if (appended && endsWith(out, appended, ignoreCase)) out = cutSuffix(out, appended);

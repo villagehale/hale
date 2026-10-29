@@ -827,7 +827,11 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
       record('find_activities');
       // What the model sees: the page's ref, never its URL (activity/tools.ts).
       const { url, ...shown } = webPick;
-      const result = { found: true, source: 'web', picks: [url ? { ...shown, ref: linkRef(url) } : shown] };
+      const result = {
+        found: true,
+        source: 'web',
+        picks: [url ? { ...shown, ref: linkRef(url) } : shown],
+      };
       toolOutputs.push(result);
       return result;
     },
@@ -1536,7 +1540,6 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
       failures.push(`says ${JSON.stringify(token)}, which is a leak or an invention`);
     }
   }
-
 
   // Language is the judge's. A function-word or script list is not a grade.
 

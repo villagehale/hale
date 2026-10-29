@@ -6,11 +6,7 @@
     "payload": {
       "asset_id": "IMG_4471",
       "captured_at": "2026-06-10T15:22:00-04:00",
-      "detected_labels": [
-        "infant",
-        "sitting_unassisted",
-        "smiling"
-      ],
+      "detected_labels": ["infant", "sitting_unassisted", "smiling"],
       "milestone_type": "sitting_unassisted",
       "child_age_months": 6,
       "scene": "living_room"

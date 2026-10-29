@@ -2,9 +2,7 @@
   "value": {
     "reason": "Thursday 6 PM local is the pre-weekend evening send moment; the Saturday afternoon find fits an open free window, is still before its worthless-after time, and the parent is engaged with no frequency limits.",
     "action": "send_now",
-    "item_ids": [
-      "sat-find"
-    ],
+    "item_ids": ["sat-find"],
     "hold_until": null,
     "frequency_direction": null,
     "frequency_note": null

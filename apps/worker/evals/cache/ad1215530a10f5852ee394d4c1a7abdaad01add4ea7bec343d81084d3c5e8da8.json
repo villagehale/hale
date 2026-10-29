@@ -12,10 +12,7 @@
         "id": "toolu_01PUPF6RWPSUanPmR7iexKrF",
         "name": "turn_off_autonomy",
         "input": {
-          "kinds": [
-            "send_email",
-            "reply_to_email"
-          ],
+          "kinds": ["send_email", "reply_to_email"],
           "interpretation": "Sam wants to review emails before they go out, not have Hale send them automatically."
         },
         "caller": {

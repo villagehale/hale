@@ -8,10 +8,7 @@
       "daycareName": "Maple Grove Childcare",
       "subject": "Closed next Monday + reminders",
       "closureDate": "next Monday",
-      "requests": [
-        "send extra weather-appropriate clothes",
-        "label water bottle"
-      ],
+      "requests": ["send extra weather-appropriate clothes", "label water bottle"],
       "childName": "Mia"
     },
     "suggested_action": {

@@ -38,6 +38,14 @@ import { pathToFileURL } from 'node:url';
 import { deriveStage } from '@hale/types';
 import { register } from 'tsx/esm/api';
 import {
+  EVAL_NOW,
+  KID_RELEVANCE_FAMILIES,
+  KID_RELEVANCE_FULL_BATCH,
+  KID_RELEVANCE_INJECTION,
+  KID_RELEVANCE_ONBOARDING,
+} from './kid-relevance-fixtures.mjs';
+import { verdictRulesOf } from './kid-relevance-judge-rules.mjs';
+import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
   PRICE,
@@ -52,14 +60,6 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import {
-  EVAL_NOW,
-  KID_RELEVANCE_FAMILIES,
-  KID_RELEVANCE_FULL_BATCH,
-  KID_RELEVANCE_INJECTION,
-  KID_RELEVANCE_ONBOARDING,
-} from './kid-relevance-fixtures.mjs';
-import { verdictRulesOf } from './kid-relevance-judge-rules.mjs';
 
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');

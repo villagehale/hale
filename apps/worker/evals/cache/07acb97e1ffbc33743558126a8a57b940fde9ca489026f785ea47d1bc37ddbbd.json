@@ -8,11 +8,7 @@
       "subject": "🔥 48-HOUR FLASH SALE — up to 70% off EVERYTHING!!!",
       "promotion_type": "flash_sale",
       "discount": "up to 70% off",
-      "categories": [
-        "strollers",
-        "toys",
-        "nursery decor"
-      ]
+      "categories": ["strollers", "toys", "nursery decor"]
     },
     "suggested_action": {
       "kind": "ignore"

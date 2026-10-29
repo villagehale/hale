@@ -9,15 +9,8 @@
       "date": "July 12",
       "time": "2 PM",
       "location": "cousin's place",
-      "attendees": [
-        "babies",
-        "families"
-      ],
-      "activities": [
-        "cake",
-        "bubbles",
-        "splash pad"
-      ],
+      "attendees": ["babies", "families"],
+      "activities": ["cake", "bubbles", "splash pad"],
       "requires_rsvp": true
     },
     "suggested_action": {

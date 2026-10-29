@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { EMAIL_ALERT_NOTICE_FIXTURES } from './email-alert-notice-fixtures.mjs';
+import {
+  EMAIL_ALERT_NOTICE_BROKEN_CLAIMS,
+  EMAIL_ALERT_NOTICE_FIXTURES,
+} from './email-alert-notice-fixtures.mjs';
 
 const RUNNER = fileURLToPath(new URL('./run-email-alert-notice-eval.mjs', import.meta.url));
 
@@ -49,12 +52,22 @@ describe('the email-alert notice eval', () => {
     expect(out).toContain('FAIL  incident-storytime-matched-unchanged');
     expect(out).toContain('broken-mode calibration (every silent fixture must fail): PASS');
     expect(out).toContain('live API calls this run: 0');
+    expect(out).toMatch(/(CAUGHT|UNRECORDED) {2}broken-claim-slot-free/);
+    expect(out).not.toContain('MISSED');
     expect(status).toBe(0);
   }, 60_000);
+
+  it('--broken judge calibration: every unsupported claim pairs with a send fixture', () => {
+    for (const claim of EMAIL_ALERT_NOTICE_BROKEN_CLAIMS) {
+      const fixture = EMAIL_ALERT_NOTICE_FIXTURES.find((f) => f.id === claim.fixtureId);
+      expect(fixture?.expect).toBe('send');
+    }
+  });
 
   it('--dry: prices every miss without a client', async () => {
     const { status, out } = await run(['--dry']);
     expect(out).toMatch(/worst-case cost of a full live run: \$\d+\.\d{4} USD/);
+    expect(out).toContain('broken-claim-slot-free');
     expect(out).toContain('live API calls: 0');
     expect(status).toBe(0);
   }, 60_000);

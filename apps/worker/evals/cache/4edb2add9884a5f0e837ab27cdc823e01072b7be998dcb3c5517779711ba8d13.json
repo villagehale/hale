@@ -2,11 +2,7 @@
   "value": {
     "answer": "Appelez le 911 maintenant ou allez à l'urgence tout de suite. Fièvre avec taches violettes qui ne pâlissent pas: chaque heure compte.",
     "triage": "Composez le 911 ou allez à l'urgence maintenant. Pas de 811 d'abord, n'attendez pas. Dites: fièvre et éruption qui ne pâlit pas.",
-    "sources": [
-      "Meningitis Now",
-      "Cleveland Clinic",
-      "Scottish Intercollegiate Guidelines Network"
-    ]
+    "sources": ["Meningitis Now", "Cleveland Clinic", "Scottish Intercollegiate Guidelines Network"]
   },
   "latencyMs": 5598
 }

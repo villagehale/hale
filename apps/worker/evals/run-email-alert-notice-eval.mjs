@@ -20,16 +20,24 @@
 // --broken replays what main sent before this change: the code-built "<sender> sent
 // something about <title>" line for every email, matched or not. It fails on the decision
 // check alone, so it needs no model, no judge and no cache.
+// --broken also calibrates the judge: each EMAIL_ALERT_NOTICE_BROKEN_CLAIMS text gets the
+// facts right and adds one claim the facts do not support. The judge must fail it. That
+// is one judge call per case, recorded with the live run; --cached-only before it is
+// recorded reports the case as unrecorded instead of guessing.
 
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { EMAIL_ALERT_NOTICE_FIXTURES } from './email-alert-notice-fixtures.mjs';
+import {
+  EMAIL_ALERT_NOTICE_BROKEN_CLAIMS,
+  EMAIL_ALERT_NOTICE_FIXTURES,
+} from './email-alert-notice-fixtures.mjs';
 import {
   JUDGE_MIN,
   PRICE,
   REPO_ROOT,
   cacheGet,
+  cacheKey,
   evalRunTag,
   installEvalSpendCap,
   lazyAnthropic,
@@ -90,6 +98,16 @@ function decisionFailures(fixture, sent) {
   if (fixture.expect === 'send' && sent === null) return ['silent when it must send'];
   return [];
 }
+
+const brokenClaimFixture = (claim) => {
+  const fixture = EMAIL_ALERT_NOTICE_FIXTURES.find((f) => f.id === claim.fixtureId);
+  if (!fixture || fixture.expect !== 'send') {
+    throw new Error(
+      `email-alert-notice: ${claim.id} needs a 'send' fixture, got ${claim.fixtureId}`,
+    );
+  }
+  return fixture;
+};
 
 // --- --dry: the worst case, every call a miss, output at max_tokens -----------------
 
@@ -163,6 +181,19 @@ async function dryRun({ agent, lane, skill, notice, judgeModel }) {
     lines.push(
       `  ${fixture.id.padEnd(38)} writer ${hit ? 'hit ' : 'miss'}${fixture.expect === 'send' ? ' + judge' : ''}  $${row.toFixed(4)}`,
     );
+  }
+  for (const claim of EMAIL_ALERT_NOTICE_BROKEN_CLAIMS) {
+    const fixture = brokenClaimFixture(claim);
+    const facts = factsFor(notice, fixture);
+    const judgeInput =
+      estimateTokens(JUDGE_SYSTEM) +
+      estimateTokens({ facts, text: claim.text, watchFor: fixture.watchFor }) +
+      estimateTokens(judgeTool) +
+      200;
+    const row = priced(judgeModel, judgeInput, JUDGE_MAX_TOKENS);
+    judgeCalls += 1;
+    usd += row;
+    lines.push(`  ${claim.id.padEnd(38)} --broken judge  $${row.toFixed(4)}`);
   }
   return [
     `email-alert-notice | --dry | every miss, output at max_tokens | writer=${lane.model} judge=${judgeModel} | fixtures=${EMAIL_ALERT_NOTICE_FIXTURES.length}`,
@@ -308,7 +339,32 @@ async function main() {
   console.info(
     `broken-mode calibration (every silent fixture must fail): ${caught ? 'PASS' : 'FAIL'} (${silent.filter((r) => r.failures.length > 0).length}/${silent.length} caught)`,
   );
-  process.exit(caught ? 0 : 1);
+  // Judge calibration: a text that claims what the facts do not support must fail.
+  let claimsCaught = true;
+  for (const claim of EMAIL_ALERT_NOTICE_BROKEN_CLAIMS) {
+    const fixture = brokenClaimFixture(claim);
+    const facts = factsFor(notice, fixture);
+    const payload = { facts, text: claim.text, watchFor: fixture.watchFor };
+    const tag = `broken:${claim.id}`;
+    const key = cacheKey(
+      `email-alert-notice:judge:${tag}`,
+      `${judgeModel}\n${JUDGE_SYSTEM}\n${JSON.stringify(payload)}`,
+    );
+    if (cachedOnly && (await cacheGet(key)) === undefined) {
+      console.info(`UNRECORDED  ${claim.id.padEnd(38)} judge not recorded yet (key ${key})`);
+      continue;
+    }
+    const verdict = await judge(tag, payload);
+    const failed = verdict.score < JUDGE_MIN;
+    if (!failed) claimsCaught = false;
+    console.info(
+      `${failed ? 'CAUGHT' : 'MISSED'}  ${claim.id.padEnd(38)} judge:${verdict.score} (${verdict.reason}) unsupported: ${claim.unsupported}`,
+    );
+  }
+  console.info(
+    `broken-mode judge calibration (every unsupported claim must fail): ${claimsCaught ? 'PASS' : 'FAIL'}`,
+  );
+  process.exit(caught && claimsCaught ? 0 : 1);
 }
 
 main().catch((err) => {

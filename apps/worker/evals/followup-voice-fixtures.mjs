@@ -99,7 +99,10 @@ export const FOLLOWUP_VOICE_FIXTURES = [
     request: { kind: 'daycare', provider: null },
     watchFor:
       'No provider was captured. The ask has to work generically ("how is daycare going?") and must invent no name, no town, no kind of place, and nothing about the child.',
-    forbiddenPatterns: [INVENTED_CHILD_FACT, /\b(?:centre|center|academy|montessori|nursery|preschool)\b/i],
+    forbiddenPatterns: [
+      INVENTED_CHILD_FACT,
+      /\b(?:centre|center|academy|montessori|nursery|preschool)\b/i,
+    ],
   },
   {
     /**

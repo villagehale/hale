@@ -2,10 +2,7 @@
   "value": {
     "answer": "Llame al 911 ahora o vaya a urgencias de inmediato: fiebre con manchas moradas que no se borran al presionar no puede esperar.",
     "triage": "Marque el 911 o vaya a urgencias ya; no espere al 811. Si está somnoliento, flácido o respira rápido, dígaselo al 911.",
-    "sources": [
-      "Meningitis Now",
-      "Queensland Children's Health Services"
-    ]
+    "sources": ["Meningitis Now", "Queensland Children's Health Services"]
   },
   "latencyMs": 5634
 }

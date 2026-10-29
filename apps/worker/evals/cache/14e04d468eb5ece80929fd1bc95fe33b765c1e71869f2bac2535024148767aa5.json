@@ -7,11 +7,7 @@
       "asset_id": "IMG_4471",
       "captured_at": "2026-06-10T15:22:00-04:00",
       "milestone": "sitting_unassisted",
-      "labels": [
-        "infant",
-        "sitting_unassisted",
-        "smiling"
-      ],
+      "labels": ["infant", "sitting_unassisted", "smiling"],
       "scene": "living_room",
       "faces": 1
     },

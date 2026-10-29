@@ -9,10 +9,7 @@
       "visit_type": "6-month checkup",
       "action_required": "pick a slot",
       "available_times": "Mon-Thu mornings, next two weeks",
-      "contact_methods": [
-        "call",
-        "patient portal"
-      ],
+      "contact_methods": ["call", "patient portal"],
       "sender_email": "frontdesk@littlesprout-pediatrics.ca"
     },
     "suggested_action": {

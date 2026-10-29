@@ -5,11 +5,7 @@
     "rationale": "Registration announcement for toddler programs opening at a specific time is a time-boxed activity signup notice.",
     "payload": {
       "provider": "cityrec.ca",
-      "programs": [
-        "Tumble Tots",
-        "Toddler Swim",
-        "Music & Movement"
-      ],
+      "programs": ["Tumble Tots", "Toddler Swim", "Music & Movement"],
       "ageRange": "2-3 years",
       "registrationOpens": "Thursday 9:00 AM"
     },

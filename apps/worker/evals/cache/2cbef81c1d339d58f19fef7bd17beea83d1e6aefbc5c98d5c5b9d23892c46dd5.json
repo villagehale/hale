@@ -6,11 +6,7 @@
     "payload": {
       "jurisdiction": "ON",
       "milestone": "G1 learner's permit eligibility",
-      "requirements": [
-        "vision test",
-        "knowledge test",
-        "two pieces of ID"
-      ],
+      "requirements": ["vision test", "knowledge test", "two pieces of ID"],
       "location": "DriveTest centre",
       "appointmentRequired": false
     },

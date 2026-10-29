@@ -10,14 +10,8 @@
         "day": "Friday",
         "reason": "PD day"
       },
-      "requested_items": [
-        "extra set of clothes",
-        "labelled water bottle"
-      ],
-      "week_highlights": [
-        "tummy time",
-        "music"
-      ],
+      "requested_items": ["extra set of clothes", "labelled water bottle"],
+      "week_highlights": ["tummy time", "music"],
       "room": "Infant Room"
     },
     "suggested_action": {

@@ -8,10 +8,7 @@
       "daycare": "Maple Grove Childcare",
       "room": "Infant Room",
       "closure_notice": "Friday is a PD day; centre closed",
-      "requested_items": [
-        "extra set of clothes",
-        "labelled water bottle"
-      ],
+      "requested_items": ["extra set of clothes", "labelled water bottle"],
       "items_due": "next week"
     },
     "suggested_action": {

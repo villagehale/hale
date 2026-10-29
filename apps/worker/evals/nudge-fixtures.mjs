@@ -115,7 +115,11 @@ export const NUDGE_FIXTURES = [
     id: 'weather-swap-cold-indoor',
     // COLD, not wet. Saying "rain" here would be a fabrication with a correct conclusion.
     nudge: swap({
-      candidateRef: { id: 'cand-2', title: 'Family swim', venueName: 'Angus Glen Community Centre' },
+      candidateRef: {
+        id: 'cand-2',
+        title: 'Family swim',
+        venueName: 'Angus Glen Community Centre',
+      },
       day: 'sunday',
       weatherFact: 'the weekend forecast is cold',
       whyFacts: ['paid ($$)', 'indoor'],

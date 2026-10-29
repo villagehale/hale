@@ -28,9 +28,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "childId"
-          ],
+          "required": ["childId"],
           "additionalProperties": false
         },
         "strict": true,
@@ -52,22 +50,13 @@
             },
             "factType": {
               "type": "string",
-              "enum": [
-                "preference",
-                "routine",
-                "medical",
-                "logistic",
-                "relationship",
-                "voice"
-              ]
+              "enum": ["preference", "routine", "medical", "logistic", "relationship", "voice"]
             },
             "includeHistory": {
               "type": "boolean"
             }
           },
-          "required": [
-            "query"
-          ],
+          "required": ["query"],
           "additionalProperties": false
         },
         "strict": true,
@@ -119,9 +108,7 @@
               "type": "boolean"
             }
           },
-          "required": [
-            "factId"
-          ],
+          "required": ["factId"],
           "additionalProperties": false
         },
         "strict": true,
@@ -142,9 +129,7 @@
               "format": "uuid"
             }
           },
-          "required": [
-            "factId"
-          ],
+          "required": ["factId"],
           "additionalProperties": false
         },
         "strict": true,
@@ -162,14 +147,7 @@
           "properties": {
             "factType": {
               "type": "string",
-              "enum": [
-                "preference",
-                "routine",
-                "medical",
-                "logistic",
-                "relationship",
-                "voice"
-              ]
+              "enum": ["preference", "routine", "medical", "logistic", "relationship", "voice"]
             },
             "factKey": {
               "type": "string",
@@ -185,19 +163,11 @@
             },
             "memoryClass": {
               "type": "string",
-              "enum": [
-                "enduring",
-                "obligation",
-                "curiosity"
-              ]
+              "enum": ["enduring", "obligation", "curiosity"]
             },
             "disposition": {
               "type": "string",
-              "enum": [
-                "confirmed",
-                "declined",
-                "asked"
-              ]
+              "enum": ["confirmed", "declined", "asked"]
             },
             "expiresAt": {
               "type": "string"
@@ -207,11 +177,7 @@
               "description": "At least 1 characters."
             }
           },
-          "required": [
-            "factType",
-            "factKey",
-            "confidence"
-          ],
+          "required": ["factType", "factKey", "confidence"],
           "additionalProperties": false
         },
         "input_examples": [
@@ -240,9 +206,7 @@
               "format": "uuid"
             }
           },
-          "required": [
-            "factId"
-          ],
+          "required": ["factId"],
           "additionalProperties": false
         },
         "strict": true,
@@ -260,22 +224,14 @@
           "properties": {
             "stage": {
               "type": "string",
-              "enum": [
-                "newborn",
-                "toddler",
-                "preschool",
-                "child",
-                "teenager"
-              ]
+              "enum": ["newborn", "toddler", "preschool", "child", "teenager"]
             },
             "ageMonths": {
               "type": "integer",
               "description": "At least 0. At most 215."
             }
           },
-          "required": [
-            "stage"
-          ],
+          "required": ["stage"],
           "additionalProperties": false
         },
         "strict": true,
@@ -322,9 +278,7 @@
               "description": "At least 1 characters. At most 256 characters."
             }
           },
-          "required": [
-            "query"
-          ],
+          "required": ["query"],
           "additionalProperties": false
         },
         "strict": true,

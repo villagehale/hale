@@ -2,11 +2,7 @@
   "value": {
     "answer": "Allez à l'urgence maintenant, sans attendre : fièvre, forte douleur à la tête, nuque raide et lumière qui fait mal, ensemble, exigent une évaluation urgente.",
     "triage": "Composez le 911 si l'enfant est difficile à réveiller, confus, convulse, a une éruption qui s'étend ou respire mal. N'appelez pas le 811 d'abord.",
-    "sources": [
-      "Raising Children Network",
-      "Penn Medicine",
-      "Cleveland Clinic"
-    ]
+    "sources": ["Raising Children Network", "Penn Medicine", "Cleveland Clinic"]
   },
   "latencyMs": 5512
 }

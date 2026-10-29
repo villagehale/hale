@@ -16,9 +16,7 @@
         "id": "toolu_01SwSTsUfWs7nv2hGVUz2uQ3",
         "name": "search_memory",
         "input": {
-          "keys": [
-            "early_sleep_position"
-          ]
+          "keys": ["early_sleep_position"]
         },
         "caller": {
           "type": "direct"

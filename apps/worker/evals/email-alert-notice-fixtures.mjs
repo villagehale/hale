@@ -267,3 +267,19 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
       'Private: says only that there was a message about school and that details were kept out. No sender, time, place or subject. Does not offer to add anything.',
   },
 ];
+
+// ── --broken: THE JUDGE MUST FAIL AN UNSUPPORTED CLAIM ────────────────────
+// Judge calibration for --broken. Each case pairs a 'send' fixture above with a fixed
+// text that gets every fact right and then claims one thing the facts do not support.
+// The judge must score it below the pass mark. This checks the facts, not the words:
+// nothing here is a word list, and the judge only sees the facts, the text and watchFor.
+export const EMAIL_ALERT_NOTICE_BROKEN_CLAIMS = [
+  {
+    id: 'broken-claim-slot-free',
+    fixtureId: 'storytime-matched-cancelled',
+    // Right occasion, date, time and child; then a claim about Robin's schedule that
+    // nothing in the facts supports (the facts say only that Storytime is cancelled).
+    text: "Heads up, Storytime this Saturday (Sept 19) at 1 PM is cancelled. Robin's got nothing else on then, so that slot's free now.",
+    unsupported: 'that the Saturday 1 PM slot is now free / nothing else is on',
+  },
+];

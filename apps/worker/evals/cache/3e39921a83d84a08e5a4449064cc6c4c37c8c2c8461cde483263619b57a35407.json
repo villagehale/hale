@@ -37,11 +37,7 @@
         "id": "toolu_01GmZxd7iSKLFnysf4L9Y3Sz",
         "name": "get_endorsement_signals",
         "input": {
-          "candidateIds": [
-            "swim",
-            "story",
-            "teen"
-          ]
+          "candidateIds": ["swim", "story", "teen"]
         },
         "caller": {
           "type": "direct"
