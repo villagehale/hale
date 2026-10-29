@@ -1,17 +1,19 @@
 // VIL-444 (T24) group clash alert · judged eval (hard rule #8: no LLM mocking).
 //
 // The subject is the REAL path: calendars become plans and busy time with `clashCalendar`,
-// `findGroupClashes` decides whether the group hears anything, `groupConflictLineInput`
-// builds what the model sees, the REAL skill (packages/agent/skills/group-conflict-alert.md)
-// writes it through the lane its frontmatter names, with the writer's own tool and token
-// cap, and `groupConflictTextUsable` is the only code gate on the text. All imported from
+// `findGroupClashes` decides whether the group hears anything, `clashPollOffer` offers the
+// who-takes poll when the fixture has LINQ_POLLS on, `groupConflictLineInput` builds what
+// the model sees, the REAL skill (packages/agent/skills/group-conflict-alert.md) writes it
+// through the lane its frontmatter names, with the writer's own tool and token cap, and
+// `groupConflictAlertUsable` is the only code gate on what it wrote. All imported from
 // apps/web/lib/channel/linq/group-conflict.ts, not replicated.
 //
 // Code grades the planner: no alert where the group should hear nothing (two parents
 // covering, a clash already sent, a container), and for a real clash what the second item
-// is, who is suggested, who is busy, and who may be asked. A private title must never
-// reach the model. The judge (median of three) grades the message on facts, privacy and
-// tone, never wording, and must also fail a known-bad message for every alert fixture.
+// is, who is suggested, who is busy, who may be asked, and the poll offered. A private title
+// must never reach the model. Code checks that a poll goes only where the fixture says. The
+// judge (median of three) grades the message and the poll after it on facts, privacy, one
+// ask and tone, never wording, and must also fail a known-bad alert for every alert fixture.
 //
 // Pickup claims: the REAL skill (packages/agent/skills/group-pickup-claim-read.md) reads one
 // group message through the reader's lane, tool and token cap, offered the pickups
@@ -21,7 +23,9 @@
 // nothing. Then, with that stored, the real planner must hold each claimed pickup settled on
 // the sender, send no alert naming it, and leave an alert coming only where the fixture
 // says. A private plan must never be offered. Two $0 controls must fail: a reader that takes
-// every pickup it is offered, and a store where nothing the reader decided lands.
+// every pickup it is offered, and a store where nothing the reader decided lands. So must
+// two $0 poll controls: a last option that is a name on the poll, and a poll that goes where
+// the fixture says it must not (or is left out where it must go).
 //
 //   node evals/run-group-conflict-alert-eval.mjs --dry           # $0, no API: checks the planner, prints the worst case
 //   node evals/run-group-conflict-alert-eval.mjs --broken        # $0, no API: calibration, must FAIL
@@ -73,25 +77,36 @@ const SUBJECT_SENDS = 3;
 const TOOL_OVERHEAD_TOKENS = 500;
 /** The longest message a 400-token answer can be, for pricing the judge before it exists. */
 const LONGEST_MESSAGE = 'x'.repeat(1600);
+/** The --broken poll controls' message: fine on its own, so only the poll can fail it. */
+const BROKEN_POLL_TEXT = 'Who can take it?';
+const BROKEN_POLL_PASS = "We'll figure it out";
 
 const JUDGE_SYSTEM = [
   "You are a strict reviewer scoring ONE message Hale (a kids' year planner) posts in a family",
-  'group chat about two things the family has on that collide. Everyone in the chat reads it.',
+  'group chat about two things the family has on that collide, and the who-takes poll Hale',
+  'posts right after it when one goes. Everyone in the chat reads both.',
   'You get the input code checked (language, kids, the two items, who is suggested, who else is',
-  'free, who is busy, who may be asked), the message, and watchFor notes.',
+  'free, who is busy, who may be asked, the poll Hale could post), the message, the poll that',
+  'goes (its options, or null when none goes), and watchFor notes.',
   'Score 1-5 on FACTS, PRIVACY, ONE ASK and TONE, never on wording.',
   'Facts: it names both things and when, plainly, with the kid; it gives the fix as one ask:',
   'the suggested person by name taking the plan in suggested.takes; with no suggested person it',
   'says nobody looks free on the calendars and asks who can, and may name the couldAsk people;',
   'when both items are the same child it says the child is double-booked and asks which one,',
   'instead of handing a plan to someone.',
+  'Poll: when one goes, the message is its question and asks who takes input.poll.takes; the',
+  'message and the poll are one ask. Its options are input.poll.choices, then one the writer',
+  'wrote: it names no one and means "we\'ll figure it out", in input.language. When none goes,',
+  'the message mentions no poll.',
   'Tone: it reads like a friend texting, chill and casual, in input.language as a native',
   'speaker writes it.',
   'A LOW score is any of: a missing or wrong fact; anything invented (a time, place, person,',
   'reason, cause, or anyone being free); calling a couldAsk person free; saying what a busy item',
   'is, that its details are hidden, or its own times; more than one ask of the group; asking',
-  'anyone to send a number or a keyword; a link; the wrong language for input.language; a',
-  'corporate, formal or bot register; a spelling, elision or accent error.',
+  'anyone to send a number or a keyword; a link; a poll on two items that are the same',
+  "child's, where a name does not answer which one; a last option that names someone or is not",
+  'in input.language; a message that mentions a poll when none goes; the wrong language for',
+  'input.language; a corporate, formal or bot register; a spelling, elision or accent error.',
   'Never mark it down for its length, its punctuation, emoji, exclamation marks, a greeting,',
   'or "we".',
   'Reply with ONLY the score tool.',
@@ -180,6 +195,7 @@ function plan(clash, fixture) {
     kids: fixture.kids,
     timeZone: fixture.timeZone,
     language: fixture.language,
+    poll: fixture.polls ? clash.clashPollOffer(found, home.people) : null,
   });
 }
 
@@ -203,15 +219,55 @@ function brokenMessage(fixture) {
   return `${titles} collide. Who takes it? Or skip one? Reply 1 or 2, or vote at https://hale.example/fix`;
 }
 
+/** The broken message, with a poll whose last option is a name on it when a poll is offered. */
+function brokenAlert(fixture, line) {
+  return { text: brokenMessage(fixture), figureItOut: line?.poll?.choices[0] ?? null };
+}
+
+/**
+ * The --broken poll controls, on a message that is fine on its own: the last option is a
+ * name on the poll (a tap on it reads as that person), and the poll goes where the fixture
+ * says it must not, or is left out where it must go.
+ */
+function brokenPolls(fixture, line) {
+  return [
+    {
+      id: `pass:${fixture.id}`,
+      alert: { text: BROKEN_POLL_TEXT, figureItOut: line.poll.choices[0] },
+    },
+    {
+      id: `poll:${fixture.id}`,
+      alert: { text: BROKEN_POLL_TEXT, figureItOut: fixture.expectPoll ? null : BROKEN_POLL_PASS },
+    },
+  ];
+}
+
+/** What the judge reads: the input, the message, and the poll after it as the group sees it. */
+function judgePayload(fixture, line, alert) {
+  return {
+    input: line,
+    message: alert.text,
+    poll:
+      line.poll && alert.figureItOut !== null
+        ? { options: [...line.poll.choices, alert.figureItOut] }
+        : null,
+    watchFor: fixture.watchFor,
+  };
+}
+
 function plannerFailures(fixture, line) {
   if (fixture.expect === null) return line ? ['alerted where the group should hear nothing'] : [];
   if (!line) return ['no alert for a real clash'];
   const failures = [];
+  if (line.poll && typeof fixture.expectPoll !== 'boolean') {
+    failures.push('a poll is offered and the fixture does not say whether it goes (expectPoll)');
+  }
   const got = {
     second: line.items[1]?.kind,
     suggested: line.suggested?.name ?? null,
     busy: line.busy,
     couldAsk: line.couldAsk,
+    poll: line.poll,
   };
   for (const [field, want] of Object.entries(fixture.expect)) {
     if (JSON.stringify(got[field]) !== JSON.stringify(want)) {
@@ -227,13 +283,23 @@ function plannerFailures(fixture, line) {
   return failures;
 }
 
-function textFailures(clash, fixture, text) {
+/** What the writer returned, through the runtime gate, then where the fixture says a poll goes. */
+function alertFailures(clash, fixture, line, written) {
   const failures = [];
-  if (clash.groupConflictTextUsable(text) === null) {
-    failures.push('unusable: empty, or a link');
+  const alert = clash.groupConflictAlertUsable(line, written);
+  if (alert === null) {
+    failures.push(
+      'unusable: an empty message or a link, or a last poll option that is a link or a name on the poll',
+    );
   }
+  const said = `${written.text} ${written.figureItOut ?? ''}`.toLowerCase();
   for (const word of fixture.mustNotLeak ?? []) {
-    if (text.toLowerCase().includes(word)) failures.push(`private "${word}" in the message`);
+    if (said.includes(word)) failures.push(`private "${word}" in the message`);
+  }
+  if (alert && typeof fixture.expectPoll === 'boolean') {
+    const polled = alert.figureItOut !== null;
+    if (polled && !fixture.expectPoll) failures.push('a poll went where a name does not answer');
+    if (!polled && fixture.expectPoll) failures.push('no poll where the ask is who takes it');
   }
   return failures;
 }
@@ -477,29 +543,33 @@ async function main() {
         cost,
       })
     ).value;
-    const text = typeof value?.text === 'string' ? value.text.trim() : '';
-    failures.push(...textFailures(clash, fixture, text));
-    const verdict = await judge(fixture.id, {
-      input: line,
-      message: text,
-      watchFor: fixture.watchFor,
-    });
+    const written = {
+      text: typeof value?.text === 'string' ? value.text.trim() : '',
+      figureItOut: typeof value?.figureItOut === 'string' ? value.figureItOut.trim() : null,
+    };
+    failures.push(...alertFailures(clash, fixture, line, written));
+    const sent = clash.groupConflictAlertUsable(line, written) ?? {
+      text: written.text,
+      figureItOut: null,
+    };
+    const shown = judgePayload(fixture, line, sent);
+    const verdict = await judge(fixture.id, shown);
     if (verdict.score < JUDGE_MIN) {
       failures.push(`judge:${verdict.score} of ${verdict.samples?.join('/')} (${verdict.reason})`);
     }
-    const control = await judge(`${fixture.id}:broken-control`, {
-      input: line,
-      message: brokenMessage(fixture),
-      watchFor: fixture.watchFor,
-    });
+    const control = await judge(
+      `${fixture.id}:broken-control`,
+      judgePayload(fixture, line, brokenAlert(fixture, line)),
+    );
     if (control.score >= JUDGE_MIN) {
       failures.push(
         `judge passed the broken control at ${control.score}: the rubric is not biting`,
       );
     }
+    const poll = shown.poll ? ` poll:[${shown.poll.options.join(' | ')}]` : '';
     results.push({
       id: fixture.id,
-      detail: `judge:${verdict.score} control:${control.score} "${text}"`,
+      detail: `judge:${verdict.score} control:${control.score} "${written.text}"${poll}`,
       failures,
     });
   }
@@ -567,14 +637,16 @@ function dryRun({ clash, claim, skill, claimSkill, model, claimModel, judgeModel
     const subjectIn =
       estimateTokens(skill.instructions + clash.groupConflictUserMessage(line)) + toolTokens;
     const subject = SUBJECT_SENDS * worstCaseUsd(model, subjectIn, clash.GROUP_CONFLICT_MAX_TOKENS);
-    const judgeIn = (message) =>
-      estimateTokens(
-        JUDGE_SYSTEM + JSON.stringify({ input: line, message, watchFor: fixture.watchFor }),
-      ) + TOOL_OVERHEAD_TOKENS;
+    const judgeIn = (alert) =>
+      estimateTokens(JUDGE_SYSTEM + JSON.stringify(judgePayload(fixture, line, alert))) +
+      TOOL_OVERHEAD_TOKENS;
+    // The message and the poll's last option share one output cap: the longest message
+    // leaves the last option empty.
+    const longest = { text: LONGEST_MESSAGE, figureItOut: line.poll ? '' : null };
     const judged =
       JUDGE_SAMPLES_MEDIAN *
-      (worstCaseUsd(judgeModel, judgeIn(LONGEST_MESSAGE), JUDGE_MAX_TOKENS) +
-        worstCaseUsd(judgeModel, judgeIn(brokenMessage(fixture)), JUDGE_MAX_TOKENS));
+      (worstCaseUsd(judgeModel, judgeIn(longest), JUDGE_MAX_TOKENS) +
+        worstCaseUsd(judgeModel, judgeIn(brokenAlert(fixture, line)), JUDGE_MAX_TOKENS));
     worst += subject + judged;
     calls += SUBJECT_SENDS + 2 * JUDGE_SAMPLES_MEDIAN;
     console.info(
@@ -613,19 +685,33 @@ function dryRun({ clash, claim, skill, claimSkill, model, claimModel, judgeModel
 
 /**
  * $0, every result must FAIL: a planner that alerts on every overlap and a message that
- * breaks the bar (alert fixtures), a reader that takes every pickup it is offered
- * (`claim:`), and the right reading with nothing stored (`store:`).
+ * breaks the bar (alert fixtures), a poll gone wrong on a message that is fine (`pass:`,
+ * `poll:`), a reader that takes every pickup it is offered (`claim:`), and the right
+ * reading with nothing stored (`store:`).
  */
 function brokenRun(clash, claim) {
-  const results = GROUP_CONFLICT_ALERT_FIXTURES.map((fixture) => {
+  const results = [];
+  for (const fixture of GROUP_CONFLICT_ALERT_FIXTURES) {
     const alerts = brokenPlanAlerts(fixture);
+    const line = plan(clash, fixture);
     const failures = [];
     if (fixture.expect === null && alerts)
       failures.push('alerted where the group should hear nothing');
     if (fixture.expect !== null && !alerts) failures.push('no alert for a real clash');
-    if (alerts) failures.push(...textFailures(clash, fixture, brokenMessage(fixture)));
-    return { id: fixture.id, failures };
-  });
+    if (alerts) {
+      failures.push(
+        ...alertFailures(clash, fixture, line ?? { poll: null }, brokenAlert(fixture, line)),
+      );
+    }
+    results.push({ id: fixture.id, failures });
+    if (!line?.poll) continue;
+    for (const control of brokenPolls(fixture, line)) {
+      results.push({
+        id: control.id,
+        failures: alertFailures(clash, fixture, line, control.alert),
+      });
+    }
+  }
   for (const fixture of GROUP_PICKUP_CLAIM_FIXTURES) {
     const setup = claimSetup(clash, claim, fixture);
     results.push({

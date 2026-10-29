@@ -7,8 +7,11 @@
 // states the clash; it states the calendars.
 //
 // `expect` is the planner's answer: no alert, or the alert's shape (what the second item
-// is, who is suggested, who may be asked). `mustNotLeak` lists private words that must not
-// reach the model or the group. `watchFor` is for the judge only.
+// is, who is suggested, who may be asked, the who-takes poll offered). `polls` is LINQ_POLLS
+// on for that household; without it no poll is offered and the alert asks in words.
+// `expectPoll` is whether the poll offered goes with the alert: the writer leaves it out when
+// a name does not answer its ask. `mustNotLeak` lists private words that must not reach the
+// model or the group. `watchFor` is for the judge only.
 
 const TORONTO = 'America/Toronto';
 const barton = { id: 'barton', name: 'Barton', calendar: true };
@@ -42,9 +45,17 @@ export const GROUP_CONFLICT_ALERT_FIXTURES = [
     people: [barton, sam],
     blocks: twoPickups,
     events: [],
-    expect: { second: 'plan', suggested: 'Sam', busy: [], couldAsk: [] },
+    polls: true,
+    expect: {
+      second: 'plan',
+      suggested: 'Sam',
+      busy: [],
+      couldAsk: [],
+      poll: { takes: 'Maya swim pickup', choices: ['Barton', 'Sam'] },
+    },
+    expectPoll: true,
     watchFor:
-      "Both pickups are Friday at 3 and both are Barton's. Sam is free then on their calendar, so the fix is Sam taking Maya's swim pickup.",
+      "Both pickups are Friday at 3 and both are Barton's. Sam is free then on their calendar, so the fix is Sam taking Maya's swim pickup. The who-takes poll goes after it: Barton, Sam, and a last option that names no one.",
   },
   {
     id: 'en-private-busy',
@@ -107,9 +118,16 @@ export const GROUP_CONFLICT_ALERT_FIXTURES = [
       },
     ],
     events: [],
-    expect: { second: 'plan', suggested: null, busy: [], couldAsk: ['Julien', 'Mamie'] },
+    polls: true,
+    expect: {
+      second: 'plan',
+      suggested: null,
+      busy: [],
+      couldAsk: ['Julien', 'Mamie'],
+      poll: null,
+    },
     watchFor:
-      "Chloé's soccer practice now falls on Léa's piano recital, Friday at 18:00, and Émilie has both. Nobody is free on a calendar Hale can see: it should say so and ask Julien or Mamie whether one of them can take one, without calling either of them free.",
+      "Chloé's soccer practice now falls on Léa's piano recital, Friday at 18:00, and Émilie has both. Nobody is free on a calendar Hale can see: it should say so and ask Julien or Mamie whether one of them can take one, without calling either of them free. No poll goes: there is no one plan to hand over.",
   },
   {
     id: 'en-same-kid',
@@ -129,9 +147,17 @@ export const GROUP_CONFLICT_ALERT_FIXTURES = [
       },
     ],
     events: [],
-    expect: { second: 'plan', suggested: 'Sam', busy: [], couldAsk: [] },
+    polls: true,
+    expect: {
+      second: 'plan',
+      suggested: 'Sam',
+      busy: [],
+      couldAsk: [],
+      poll: { takes: 'Maya swim pickup', choices: ['Barton', 'Sam'] },
+    },
+    expectPoll: false,
     watchFor:
-      "Both items are Maya's, Friday at 3: a second driver does not fix that, because Maya cannot be in two places. It should say Maya is double-booked and ask which one she is going to, not hand Sam one of them.",
+      "Both items are Maya's, Friday at 3: a second driver does not fix that, because Maya cannot be in two places. It should say Maya is double-booked and ask which one she is going to, not hand Sam one of them. No poll goes with it: a name does not answer which one.",
   },
   {
     id: 'en-recital-practice-covered',

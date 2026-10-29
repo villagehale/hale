@@ -1,11 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { GROUP_PICKUP_CLAIM_FIXTURES } from './group-conflict-alert-fixtures.mjs';
+import {
+  GROUP_CONFLICT_ALERT_FIXTURES,
+  GROUP_PICKUP_CLAIM_FIXTURES,
+} from './group-conflict-alert-fixtures.mjs';
 
 // The modes that cost nothing run on every test pass, with no key in the environment:
 // --dry grades the planner and the claim fixtures and prices one recording, --broken must
-// fail every fixture.
+// fail every fixture, and both poll controls on every alert that offers a poll.
 
 const RUNNER = fileURLToPath(new URL('./run-group-conflict-alert-eval.mjs', import.meta.url));
 const KEYLESS = Object.fromEntries(
@@ -55,5 +58,9 @@ describe('run-group-conflict-alert-eval.mjs', () => {
     expect(count(result.stdout, /^FAIL {2}store:/gm)).toBe(
       GROUP_PICKUP_CLAIM_FIXTURES.filter((fixture) => fixture.expect.action).length,
     );
+    const polled = GROUP_CONFLICT_ALERT_FIXTURES.filter((fixture) => fixture.expect?.poll).length;
+    expect(polled).toBeGreaterThan(0);
+    expect(count(result.stdout, /^FAIL {2}pass:/gm)).toBe(polled);
+    expect(count(result.stdout, /^FAIL {2}poll:/gm)).toBe(polled);
   }, 60_000);
 });
