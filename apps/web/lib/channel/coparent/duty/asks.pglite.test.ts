@@ -675,8 +675,10 @@ describe('duty ask sweep', () => {
     tag: string;
     bookings: Array<{
       location: string | null;
-      linked: 'this' | 'other' | 'none';
+      linked: 'this' | 'other' | 'none' | 'mirror';
       sessionKey?: string | null;
+      /** A location on the linked `family_events` row itself (a calendar's, not the provider's). */
+      eventLocation?: string | null;
     }>;
     /** Other families joined to this family's group chat, with the sessions they hold. */
     others?: Array<{ sessionKeys: string[] }>;
@@ -707,9 +709,16 @@ describe('duty ask sweep', () => {
             familyId: family.familyId,
             title: 'Swim level 2',
             startsAt: MONDAY,
-            source: 'email',
-            placedGoogleEventId:
-              booking.linked === 'this' ? eventKey : `evt-elsewhere-${input.tag}-${index}`,
+            source: booking.linked === 'mirror' ? 'parent' : 'email',
+            location: booking.eventLocation ?? null,
+            // 'mirror' is a parent's own calendar event copied in (`google_event_id`),
+            // not a household row Hale placed.
+            ...(booking.linked === 'mirror'
+              ? { googleEventId: eventKey, integrationId: mail }
+              : {
+                  placedGoogleEventId:
+                    booking.linked === 'this' ? eventKey : `evt-elsewhere-${input.tag}-${index}`,
+                }),
           })
           .returning({ id: schema.familyEvents.id });
         eventId = row?.id ?? null;
@@ -835,5 +844,29 @@ describe('duty ask sweep', () => {
         others: [{ sessionKeys: [SESSION] }],
       }),
     ).toEqual([{ name: POOL, address: null }]);
+  });
+
+  it('never fills the venue or address from a calendar event, only from the booking', async () => {
+    expect(
+      await venueScenario({
+        tag: 'calendar-location',
+        bookings: [{ location: null, linked: 'this', eventLocation: '12 Private Lane' }],
+      }),
+    ).toEqual([null]);
+    expect(
+      await venueScenario({
+        tag: 'calendar-location-booked',
+        bookings: [{ location: POOL, linked: 'this', eventLocation: '12 Private Lane' }],
+      }),
+    ).toEqual([{ name: POOL, address: null }]);
+  });
+
+  it("never lends a venue through a parent's private calendar event", async () => {
+    expect(
+      await venueScenario({
+        tag: 'private-mirror',
+        bookings: [{ location: POOL, linked: 'mirror', eventLocation: '12 Private Lane' }],
+      }),
+    ).toEqual([null]);
   });
 });
