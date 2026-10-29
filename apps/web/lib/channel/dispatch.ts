@@ -1,6 +1,6 @@
-import { boldTextIndex } from '~/lib/channel/bold';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
+import { boldTextIndex } from '~/lib/channel/bold';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
@@ -358,8 +358,9 @@ async function dispatchTexts(
     texts,
     setKey: legKey,
     alreadySent: (key) => ports.activeDedupe(key),
-    send: async (text) => {
-      const bolded = boldAt >= 0 && text === texts[boldAt] ? rendered.bold : undefined;
+    send: async (text, index) => {
+      // By position, not by text: two identical texts must not both carry the bold.
+      const bolded = index === boldAt ? rendered.bold : undefined;
       const result = await adapter.send({
         userId: msg.parentUserId,
         rendered: {
