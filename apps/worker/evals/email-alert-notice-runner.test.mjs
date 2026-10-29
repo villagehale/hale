@@ -54,7 +54,9 @@ describe('the email-alert notice eval', () => {
     expect(out).toContain('live API calls this run: 0');
     expect(out).toMatch(/CAUGHT {2}broken-claim-slot-free/);
     expect(out).not.toContain('UNRECORDED');
-    expect(out).toContain('broken-mode judge calibration (every unsupported claim must fail): PASS');
+    expect(out).toContain(
+      'broken-mode judge calibration (every unsupported claim must fail): PASS',
+    );
     expect(out).not.toContain('MISSED');
     expect(status).toBe(0);
   }, 60_000);
