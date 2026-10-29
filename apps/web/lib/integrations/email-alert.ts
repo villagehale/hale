@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -1427,7 +1427,13 @@ export async function matchedDurationMinutes(
   const [row] = await database
     .select({ startsAt: schema.familyEvents.startsAt, endsAt: schema.familyEvents.endsAt })
     .from(schema.familyEvents)
-    .where(and(eq(schema.familyEvents.id, ref.id), eq(schema.familyEvents.familyId, familyId)))
+    .where(
+      and(
+        eq(schema.familyEvents.id, ref.id),
+        eq(schema.familyEvents.familyId, familyId),
+        householdFamilyEvent(),
+      ),
+    )
     .limit(1);
   if (!row?.endsAt) return null;
   const minutes = Math.round((row.endsAt.getTime() - row.startsAt.getTime()) / 60_000);
