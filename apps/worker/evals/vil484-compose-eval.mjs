@@ -1,4 +1,4 @@
-// VIL-484 · evening and moved-morning registration texts, and co-parent night-before text.
+// VIL-484 · evening and morning-of registration texts, and co-parent night-before text.
 //
 // The model writes the whole text from facts. The night-before group text is then
 // fact-checked by a second model call (duty-night-check.md) before it can send. This
@@ -55,7 +55,7 @@ const EVENING_TOOL = {
 };
 const MORNING_TOOL = {
   name: 'registration_morning_text',
-  description: 'The one text Hale sends the parent just before registration, when the page moved.',
+  description: 'The one text Hale sends the parent just before registration opens.',
 };
 const DUTY_TOOL = {
   name: 'duty_night_text',
@@ -158,32 +158,115 @@ const EVENING_FIXTURES = [
   },
 ];
 
+const MORNING_BASE = {
+  now: { date: 'Tuesday, September 15, 2026', time: '10:15 a.m.' },
+  window: 'Oakville Fall 2026 programs',
+  portal: "Oakville's portal",
+  link: 'https://townofoakville.example/signin?return=course',
+  had: '10:30 a.m.',
+  setup: 'told_done',
+  ageBand: null,
+  children: 1,
+  pageShows: null,
+};
+const OAKVILLE_COURSE = 'https://townofoakville.example/courses/swim-3';
+
 const MORNING_FIXTURES = [
   {
     id: 'morning-moved',
     facts: {
+      ...MORNING_BASE,
       language: 'en',
-      now: { date: 'Tuesday, September 15, 2026', time: '10:15 a.m.' },
-      window: 'Oakville Fall 2026 programs',
-      portal: "Oakville's portal",
-      link: 'https://townofoakville.example/signin?return=course',
       situation: 'moved',
-      had: '10:30 a.m.',
       pageShows: { date: 'Tuesday, September 15, 2026', time: '11:30 a.m.' },
     },
   },
   {
     id: 'morning-already-open-fr',
     facts: {
+      ...MORNING_BASE,
       language: 'fr',
-      now: { date: 'Tuesday, September 15, 2026', time: '10:15 a.m.' },
-      window: 'Oakville Fall 2026 programs',
-      portal: "Oakville's portal",
-      link: 'https://townofoakville.example/signin?return=course',
       situation: 'already_open',
-      had: '10:30 a.m.',
       pageShows: { date: 'Tuesday, September 15, 2026', time: '9:30 a.m.' },
     },
+  },
+  {
+    id: 'morning-municipal',
+    facts: {
+      ...MORNING_BASE,
+      language: 'en',
+      now: { date: 'Tuesday, September 15, 2026', time: '6:15 a.m.' },
+      window: 'Richmond Hill Fall 2026 recreation programs',
+      portal: null,
+      link: 'https://www.richmondhill.ca/programs',
+      had: '6:30 a.m.',
+      setup: null,
+      situation: 'opens',
+    },
+  },
+  {
+    id: 'morning-prepared-not-told',
+    facts: { ...MORNING_BASE, language: 'en', setup: 'not_told', situation: 'opens' },
+  },
+  {
+    id: 'morning-page-unreadable-fr',
+    facts: { ...MORNING_BASE, language: 'fr', situation: 'page_unreadable' },
+  },
+  {
+    id: 'morning-course-gone',
+    facts: {
+      ...MORNING_BASE,
+      language: 'en',
+      link: OAKVILLE_COURSE,
+      setup: null,
+      situation: 'course_gone',
+    },
+  },
+  {
+    id: 'morning-registration-closed',
+    facts: {
+      ...MORNING_BASE,
+      language: 'en',
+      link: OAKVILLE_COURSE,
+      setup: null,
+      situation: 'registration_closed',
+    },
+  },
+  {
+    id: 'morning-age-ineligible',
+    facts: {
+      ...MORNING_BASE,
+      language: 'en',
+      situation: 'age_ineligible',
+      ageBand: '6 to 9 y',
+      children: 2,
+    },
+  },
+];
+
+const MORNING_BY_ID = Object.fromEntries(MORNING_FIXTURES.map((f) => [f.id, f.facts]));
+/** Judged live: drafts that pass the structural gate but claim a wrong fact. The
+ * judge must score every one 2 or lower, or the run fails. */
+const MORNING_BROKEN = [
+  {
+    id: 'broken-morning-gone-opens',
+    facts: MORNING_BY_ID['morning-course-gone'],
+    text: `Oakville Fall 2026 programs opens at 10:30 a.m. Go here: ${OAKVILLE_COURSE}`,
+  },
+  {
+    id: 'broken-morning-registered',
+    facts: MORNING_BY_ID['morning-prepared-not-told'],
+    text: `Opens at 10:30 a.m. I registered Maya for you and your account is all set: ${MORNING_BASE.link}`,
+  },
+  {
+    id: 'broken-morning-already-open-later',
+    facts: MORNING_BY_ID['morning-already-open-fr'],
+    text: `Les inscriptions ouvrent à 11 h 30 aujourd'hui : ${MORNING_BASE.link}`,
+  },
+  {
+    id: 'broken-morning-unreadable-detail',
+    facts: MORNING_BY_ID['morning-page-unreadable-fr'],
+    text: `Le cours de natation a encore 4 places à 85 $. Ça ouvre à 10 h 30 : ${MORNING_BASE.link}`,
   },
 ];
 
@@ -296,11 +379,17 @@ function brokenOffline(evening, duty, morning) {
     morning.morningRefusals('  ', morningFacts),
     morning.morningRefusals('It moved to 11:30.', morningFacts),
     morning.morningRefusals(`${morningFacts.link} https://evil.example/phish`, morningFacts),
+    // The course page, not the sign-in link, is the one link on a gone course.
+    morning.morningRefusals(`Check ${MORNING_BASE.link}`, MORNING_BY_ID['morning-course-gone']),
   ];
   const kept = [
     evening.eveningRefusals('Have https://www.richmondhill.ca/programs open.', eveningFacts),
     duty.dutyNightRefusals('Sam has the swim.'),
     morning.morningRefusals(`Now 11:30: ${morningFacts.link}`, morningFacts),
+    morning.morningRefusals(
+      `Check the page: ${OAKVILLE_COURSE}`,
+      MORNING_BY_ID['morning-course-gone'],
+    ),
   ];
   return failures.every((f) => f.length > 0) && kept.every((f) => f.length === 0);
 }
@@ -398,6 +487,25 @@ async function main() {
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       calls += 2 * duty.DUTY_NIGHT_MAX_ATTEMPTS + 1;
     }
+    let morningUsd = 0;
+    for (const f of MORNING_FIXTURES) {
+      const msg = JSON.stringify(f.facts);
+      morningUsd +=
+        morning.MORNING_MAX_ATTEMPTS *
+          worst(
+            morningLane.model,
+            tokensFor(morningSkill.instructions) + tokensFor(msg) + 200,
+            morning.MORNING_MAX_TOKENS,
+          ) +
+        worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
+    }
+    for (const b of MORNING_BROKEN) {
+      const msg = JSON.stringify({ facts: b.facts, text: b.text });
+      const one = worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
+      usd += one;
+      morningUsd += one;
+      calls += 1;
+    }
     for (const b of BROKEN_DRAFTS) {
       const msg = duty.dutyNightCheckMessage(b.facts, b.text);
       usd += worst(
@@ -408,6 +516,9 @@ async function main() {
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg), judgeMaxOut);
       calls += 2;
     }
+    console.info(
+      `DRY morning-only (re-keyed by this change) | worst $${morningUsd.toFixed(6)} | ${MORNING_FIXTURES.length} fixtures + ${MORNING_BROKEN.length} broken`,
+    );
     console.info(
       `DRY total | worst $${usd.toFixed(6)} | ${calls} calls at most | compose=${eveningLane.model}/${dutyLane.model} check=${checkLane.model} judge=${judgeModel} | live calls: 0`,
     );
@@ -562,8 +673,16 @@ async function main() {
       `${caught ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | check ${checked.supported ? 'pass' : `blocked ${JSON.stringify(checked.unsupported)}`} | judge ${verdict.score}`,
     );
   }
+  for (const b of MORNING_BROKEN) {
+    const verdict = await judge(b.id, { facts: b.facts, text: b.text });
+    const caught = verdict.score <= 2;
+    if (caught) brokenCaught += 1;
+    console.info(
+      `${caught ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | judge ${verdict.score}`,
+    );
+  }
   const offline = brokenOffline(evening, duty, morning);
-  const brokenOk = brokenCaught === BROKEN_DRAFTS.length && offline;
+  const brokenOk = brokenCaught === BROKEN_DRAFTS.length + MORNING_BROKEN.length && offline;
   console.info(`broken-mode calibration (must fail): ${brokenOk ? 'PASS' : 'FAIL'}`);
 
   const total = EVENING_FIXTURES.length + MORNING_FIXTURES.length + DUTY_FIXTURES.length;

@@ -9,6 +9,9 @@ const FACTS: MorningComposeInput = {
   link: 'https://cityofmarkham.perfectmind.com/x',
   situation: 'moved',
   had: '6:30 a.m.',
+  setup: 'told_done',
+  ageBand: null,
+  children: 1,
   pageShows: { date: 'Tuesday, September 15, 2026', time: '7:30 a.m.' },
 };
 

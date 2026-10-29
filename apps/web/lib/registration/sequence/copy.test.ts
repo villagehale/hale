@@ -77,7 +77,7 @@ const LEG_INPUT: LegCopyInput = {
 };
 
 describe('renderSequenceLeg', () => {
-  const legs = ['heads_up', 'go', 'check_in'] as const;
+  const legs = ['heads_up', 'check_in'] as const;
 
   it.each(legs)('renders %s inside the segment budget, in GSM-7', (leg) => {
     const body = renderSequenceLeg(leg, LEG_INPUT);
@@ -168,7 +168,7 @@ describe('renderSequenceLeg', () => {
     const evening = battlePlanDecision(LEG_INPUT);
     expect(evening.kind).toBe('compose');
     if (evening.kind === 'compose') expect(evening.facts.link).toBe(LONGEST_URL);
-    expect(renderSequenceLeg('go', LEG_INPUT)).toContain(LONGEST_URL);
+    expect(morningFacts(LEG_INPUT).link).toBe(LONGEST_URL);
     // The heads-up is a week out; a link nobody can use yet just eats the budget the
     // hedge and the kids' names need.
     expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain(LONGEST_URL);
@@ -584,39 +584,15 @@ function composeFacts(input: LegCopyInput) {
 
 /** Every portal-leg body a real send can carry, at the reader's caps. */
 function everyPortalBody(): Record<string, string> {
-  const capsPage = { facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP } };
   const bodies: Record<string, string> = {};
   for (const ready of [true, false, null] as const) {
     bodies[`readiness/${ready}`] = renderSequenceLeg(
       'readiness',
       portalInput({ readinessReady: ready }),
     );
-    bodies[`go unbound/${ready}`] = renderSequenceLeg('go', portalInput({ readinessReady: ready }));
-    bodies[`go prepared/${ready}`] = renderSequenceLeg(
-      'go',
-      bound(PREPARED(capsPage), { readinessReady: ready }),
-    );
   }
-  const failures: [string, PrepVerdict][] = [
-    // A clean read whose own clock is NOT the anchor, and a clean read whose own name
-    // the sentence cannot carry. Both are `prepared` — the two shapes where the
-    // composer has something true in hand and must still not print it.
-    ['prepared_drifted', PREPARED({ ...capsPage, clock: DRIFTED_INSIDE_TOLERANCE })],
-    ['prepared_asks', PREPARED({ facts: { EventName: NAME_WITH_QUESTION } })],
-    ['page_unreadable', { kind: 'page_unreadable', reason: 'fetch_failed' }],
-    ['course_gone', { kind: 'course_gone' }],
-    ['registration_closed', { kind: 'registration_closed', ...coursePage(capsPage) }],
-    ['age_ineligible', { kind: 'age_ineligible', ...coursePage(capsPage) }],
-    [
-      'age_ineligible_no_band',
-      { kind: 'age_ineligible', ...coursePage({ facts: { EventName: NAME_AT_CAP } }) },
-    ],
-    // VIL-484 · window_moved and late_by_drift are composed by the model from
-    // `morningFacts`; there is no code sentence for them to sweep.
-  ];
-  for (const [name, verdict] of failures) {
-    bodies[`go ${name}`] = renderSequenceLeg('go', bound(verdict));
-  }
+  // VIL-484 · every go-leg (morning-of) text is composed by the model from
+  // `morningFacts`; there is no code sentence for any of them to sweep.
   return bodies;
 }
 
@@ -651,18 +627,20 @@ describe('VIL-338 · every portal variant fits three segments at the reader’s 
     // The link is the whole point of the flagship text, and it is never withheld
     // because Hale had a bad fetch — a mutation that dropped it on page_unreadable
     // would leave a parent with a sentence and nowhere to go.
-    for (const name of ['prepared/true', 'prepared/false', 'prepared/null']) {
-      expect(everyPortalBody()[`go ${name}`]).toContain(DEEP_LINK);
+    for (const ready of [true, false, null] as const) {
+      expect(morningFacts(bound(PREPARED(), { readinessReady: ready })).link).toBe(DEEP_LINK);
     }
-    for (const name of ['page_unreadable', 'age_ineligible']) {
-      expect(everyPortalBody()[`go ${name}`]).toContain(DEEP_LINK);
-    }
+    expect(morningFacts(bound({ kind: 'page_unreadable', reason: 'fetch_failed' })).link).toBe(
+      DEEP_LINK,
+    );
+    expect(morningFacts(bound({ kind: 'age_ineligible', ...coursePage() })).link).toBe(DEEP_LINK);
     // A course the portal no longer serves, or one it has closed, is not a course to
     // sign in and register for: those two send the page itself.
-    for (const name of ['course_gone', 'registration_closed']) {
-      const body = everyPortalBody()[`go ${name}`] as string;
-      expect(body).toContain(COURSE_URL);
-      expect(body).not.toContain(DEEP_LINK);
+    for (const verdict of [
+      { kind: 'course_gone' },
+      { kind: 'registration_closed', ...coursePage() },
+    ] as PrepVerdict[]) {
+      expect(morningFacts(bound(verdict)).link).toBe(COURSE_URL);
     }
   });
 });
@@ -685,15 +663,7 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
 
   it('prints the anchor’s own time on every variant that names the morning', () => {
     const bodies = everyPortalBody();
-    const namesTheMorning = [
-      'readiness/null',
-      'go prepared_drifted',
-      'go unbound/null',
-      'go prepared/null',
-      'go page_unreadable',
-      'go course_gone',
-      'go age_ineligible',
-    ];
+    const namesTheMorning = ['readiness/null'];
     const missing = namesTheMorning.filter(
       (name) => !(bodies[name] as string).includes(ANCHOR_TIME),
     );
@@ -711,6 +681,8 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
     ];
     const wrong = evening.filter((input) => composeFacts(input).opensAt !== ANCHOR_TIME);
     expect(wrong).toEqual([]);
+    const wrongMorning = evening.filter((input) => morningFacts(input).had !== ANCHOR_TIME);
+    expect(wrongMorning).toEqual([]);
   });
 
   it('prints the anchor even where this read’s clock drifted inside the tolerance', () => {
@@ -719,10 +691,12 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
     // a composer reaching for it would name a minute the ladder does not fire on. Every
     // other prepared fixture has a page clock EQUAL to the anchor, which is exactly the
     // shape that cannot tell the two apart.
-    const bodies = everyPortalBody();
     const DRIFTED_TIME = '10:40 a.m.';
-    expect(bodies['go prepared_drifted']).toContain(ANCHOR_TIME);
-    expect(bodies['go prepared_drifted']).not.toContain(DRIFTED_TIME);
+    const morning = morningFacts(
+      bound(PREPARED({ facts: { EventName: NAME_AT_CAP }, clock: DRIFTED_INSIDE_TOLERANCE })),
+    );
+    expect(morning.had).toBe(ANCHOR_TIME);
+    expect(morning.pageShows).toBeNull();
     const drifted = composeFacts(
       bound(
         PREPARED({
@@ -744,8 +718,8 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
         ...coursePage({ facts: { EventName: NAME_AT_CAP }, clock: MOVED_LATER }),
       }),
     );
-    expect(morning?.had).toBe('10:30 a.m.');
-    expect(morning?.pageShows.time).toBe('11:30 a.m.');
+    expect(morning.had).toBe('10:30 a.m.');
+    expect(morning.pageShows?.time).toBe('11:30 a.m.');
     const moved = composeFacts(
       bound({
         kind: 'window_moved',
@@ -827,14 +801,11 @@ describe('VIL-338 · the forbidden sentence is unsayable', () => {
 
 describe('VIL-338 · readiness is always attributed to the parent who said it', () => {
   it('emits only the two "you told me" / "you have not told me" forms', () => {
-    expect(readinessClause(true, 'evening')).toBe('You told me the setup is done.');
-    expect(readinessClause(true, 'morning')).toBe('You told me the setup is done.');
-    expect(readinessClause(false, 'evening')).toMatch(/^You have not told me the setup is done/);
+    expect(readinessClause(true)).toBe('You told me the setup is done.');
+    expect(readinessClause(false)).toMatch(/^You have not told me the setup is done/);
     // Silence is the same state as a NO for the copy: neither is a claim that anything
     // is done, and both are the parent's, not Hale's.
-    expect(readinessClause(null, 'evening')).toBe(readinessClause(false, 'evening'));
-    expect(readinessClause(null, 'morning')).toBe(readinessClause(false, 'morning'));
-    expect(readinessClause(false, 'morning')).not.toBe(readinessClause(false, 'evening'));
+    expect(readinessClause(null)).toBe(readinessClause(false));
   });
 
   it('refuses a body that asserts the state instead of attributing it', () => {
@@ -847,9 +818,7 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
       expect(preparedCopyViolations(body, ctx)).toContain('unattributed_readiness');
     }
     // The positive control: an absence test that cannot fail open.
-    expect(preparedCopyViolations(`Tomorrow. ${readinessClause(true, 'evening')}`, ctx)).toEqual(
-      [],
-    );
+    expect(preparedCopyViolations(`Tomorrow. ${readinessClause(true)}`, ctx)).toEqual([]);
   });
 
   it('says which leg prints the ask, so the ledger and the copy cannot drift', () => {
@@ -893,18 +862,7 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
     // template that dropped `${clause}` altogether sent a flagship text that said
     // nothing about the parent's own setup and no test moved. The clause IS the leg's
     // content for a household that has answered nothing.
-    const bodies = everyPortalBody();
     const missing: string[] = [];
-    const expected = (ready: string) =>
-      ready === 'true'
-        ? 'You told me the setup is done.'
-        : 'You have not told me the setup is done - sign in now and check it.';
-    for (const shape of ['prepared', 'unbound']) {
-      for (const ready of ['true', 'false', 'null']) {
-        const name = `go ${shape}/${ready}`;
-        if (!(bodies[name] as string).includes(expected(ready))) missing.push(name);
-      }
-    }
     const setupFor = (ready: boolean | null) => (ready === true ? 'told_done' : 'not_told');
     for (const ready of [true, false, null] as const) {
       for (const input of [
@@ -915,25 +873,10 @@ describe('VIL-338 · readiness is always attributed to the parent who said it', 
         }),
       ]) {
         if (composeFacts(input).setup !== setupFor(ready)) missing.push(`evening/${ready}`);
+        if (morningFacts(input).setup !== setupFor(ready)) missing.push(`morning/${ready}`);
       }
     }
     expect(missing).toEqual([]);
-  });
-
-  it('renders the flagship text byte for byte, both tails', () => {
-    // The two go bodies whole, because the difference between them is one clause and
-    // three words and neither is reachable by a contains-check: a parent who has told
-    // Hale nothing has just been told to sign in, so repeating it in the tail is noise;
-    // a parent who has told Hale they are set has NOT been told to sign in anywhere
-    // else in the message, and this is the one text where the tap has to be spelled out.
-    const bodies = everyPortalBody();
-    expect(bodies['go prepared/true']).toBe(
-      `Oakville's portal opens 10:30 a.m. You told me the setup is done. Sign in, then Register: ${DEEP_LINK}`,
-    );
-    expect(bodies['go prepared/false']).toBe(
-      `Oakville's portal opens 10:30 a.m. You have not told me the setup is done - sign in now and check it. Then Register: ${DEEP_LINK}`,
-    );
-    expect(bodies['go prepared/null']).toBe(bodies['go prepared/false']);
   });
 });
 
@@ -976,10 +919,8 @@ describe('VIL-338 · the readiness checklist', () => {
 });
 
 describe('VIL-338 · each failure verdict has its own true sentence', () => {
-  const bodies = everyPortalBody();
-
   it('says the course is gone only where the portal said so', () => {
-    expect(bodies['go course_gone']).toContain('is not showing the course you sent me');
+    expect(morningFacts(bound({ kind: 'course_gone' })).situation).toBe('course_gone');
     const gone = composeFacts(bound({ kind: 'course_gone' }));
     expect(gone.situation).toBe('course_gone');
     expect(gone.link).toBe(LONGEST_URL);
@@ -987,8 +928,9 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
   });
 
   it('says registration is closed without claiming anything changed on Hale’s side', () => {
-    expect(bodies['go registration_closed']).toContain('closed to online registration');
-    expect(bodies['go registration_closed']).toContain('Nothing changed on my side');
+    expect(morningFacts(bound({ kind: 'registration_closed', ...coursePage() })).situation).toBe(
+      'registration_closed',
+    );
     const closed = composeFacts(
       bound({ kind: 'registration_closed', ...coursePage({ facts: { EventName: NAME_AT_CAP } }) }),
     );
@@ -1002,10 +944,7 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
     // states something that read did not carry — and the parent it is being told to is
     // fifteen minutes from a phone. Hale's own record is still sayable, because it is
     // attributed to Hale rather than to the portal.
-    for (const name of ['go course_gone', 'go registration_closed']) {
-      expect(bodies[name]).not.toMatch(/opens/);
-    }
-    expect(bodies['go course_gone']).toContain('I had 10:30 a.m. for it');
+    expect(morningFacts(bound({ kind: 'course_gone' })).had).toBe('10:30 a.m.');
     // The evening plan degrades to the MUNICIPAL window and its general link, which is
     // a different claim about a different page — and never to the course's own sign-in
     // link, which is the one tap this verdict has no course to offer.
@@ -1020,13 +959,15 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
   });
 
   it('says only that it could not read the page — never anything about the course', () => {
-    const body = bodies['go page_unreadable'] as string;
-    expect(body).toContain('I could not read');
-    expect(body).toContain('I cannot tell you what it says');
-    // The false-safe property: an unreadable page says NOTHING about the class, so the
-    // sentence may not carry a name, a band, a price or a seat count.
-    expect(body).not.toContain(NAME_AT_CAP);
-    expect(body).not.toContain(BAND_AT_CAP);
+    // The false-safe property: an unreadable page hands NOTHING about the class, so the
+    // facts carry no name, band, price or seat count.
+    const morning = JSON.stringify(
+      morningFacts(
+        bound({ kind: 'page_unreadable', reason: 'fetch_failed' }, { readinessReady: true }),
+      ),
+    );
+    expect(morning).not.toContain(NAME_AT_CAP);
+    expect(morning).not.toContain(BAND_AT_CAP);
     const unread = composeFacts(bound({ kind: 'page_unreadable', reason: 'fetch_failed' }));
     expect(unread.situation).toBe('page_unreadable');
     expect(unread.link).toBe(COURSE_URL);
@@ -1035,11 +976,19 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
   });
 
   it('names the page’s own band when it has one, and never invents one when it does not', () => {
-    expect(bodies['go age_ineligible']).toContain(`ages ${BAND_AT_CAP}`);
-    expect(bodies['go age_ineligible']).toContain('outside');
-    const noBand = bodies['go age_ineligible_no_band'] as string;
-    expect(noBand).toContain('outside the age band');
-    expect(noBand).not.toContain('ages y');
+    expect(
+      morningFacts(
+        bound({
+          kind: 'age_ineligible',
+          ...coursePage({ facts: { AgeRestrictions: BAND_AT_CAP } }),
+        }),
+      ).ageBand,
+    ).toBe(BAND_AT_CAP);
+    expect(
+      morningFacts(
+        bound({ kind: 'age_ineligible', ...coursePage({ facts: { EventName: NAME_AT_CAP } }) }),
+      ).ageBand,
+    ).toBeNull();
     const outside = composeFacts(
       bound({
         kind: 'age_ineligible',
@@ -1078,9 +1027,6 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
       link: DEEP_LINK,
       pageShows: { date: 'Tuesday, September 15, 2026', time: '9:30 a.m.' },
     });
-    // Every other morning is not this text's to write.
-    expect(morningFacts(bound({ kind: 'course_gone' }))).toBeNull();
-    expect(morningFacts(portalInput())).toBeNull();
     // And the renderer refuses to build one rather than falling back to a sentence.
     expect(() =>
       renderSequenceLeg(
@@ -1439,7 +1385,6 @@ describe('VIL-338 · a non-portal municipality renders byte-identically to today
   const TODAY = {
     heads_up:
       "Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Max. I'll send your plan the evening before.",
-    go: `Richmond Hill Fall 2026 recreation programs opens 6:30 a.m.. Your link: ${LONGEST_URL}`,
     check_in:
       'How did Richmond Hill Fall 2026 recreation programs go? Reply "got in", "waitlisted #12" or "missed it".',
   } as const;
@@ -1454,7 +1399,12 @@ describe('VIL-338 · a non-portal municipality renders byte-identically to today
     // Same asymmetry as schedule.ts: an absent portal renders the sentence that
     // shipped, rather than reaching into a portal label nobody looked up.
     const unwired = { ...LEG_INPUT, portal: undefined } as unknown as LegCopyInput;
-    expect(renderSequenceLeg('go', unwired)).toBe(TODAY.go);
+    expect(() => renderSequenceLeg('go', unwired)).toThrow(/composed from facts/);
+    expect(morningFacts(unwired)).toMatchObject({
+      situation: 'opens',
+      portal: null,
+      link: LONGEST_URL,
+    });
     expect(() => renderSequenceLeg('battle_plan', unwired)).toThrow(/composed from facts/);
     const evening = battlePlanDecision(unwired);
     expect(evening.kind).toBe('compose');
@@ -1503,6 +1453,81 @@ describe('VIL-338 · a non-portal municipality renders byte-identically to today
       expect(renderShortlistRationale(shortlist(), TZ, NOW, portal)).toContain(
         'I never register for you.',
       );
+    }
+  });
+});
+
+describe('VIL-484 · every morning-of case is facts for the model, never fixed copy', () => {
+  const caps = { facts: { EventName: NAME_AT_CAP, AgeRestrictions: BAND_AT_CAP } };
+  const cases: [string, LegCopyInput, Record<string, unknown>][] = [
+    ['municipal', LEG_INPUT, { situation: 'opens', portal: null, setup: null, link: LONGEST_URL }],
+    ['portal, nothing bound', portalInput(), { situation: 'opens', setup: 'not_told' }],
+    [
+      'prepared, told done',
+      bound(PREPARED(caps), { readinessReady: true }),
+      { situation: 'opens', setup: 'told_done', link: DEEP_LINK, pageShows: null },
+    ],
+    [
+      'page_unreadable',
+      bound({ kind: 'page_unreadable', reason: 'fetch_failed' }),
+      { situation: 'page_unreadable', link: DEEP_LINK },
+    ],
+    [
+      'course_gone',
+      bound({ kind: 'course_gone' }),
+      { situation: 'course_gone', link: COURSE_URL, setup: null },
+    ],
+    [
+      'registration_closed',
+      bound({ kind: 'registration_closed', ...coursePage(caps) }),
+      { situation: 'registration_closed', link: COURSE_URL, setup: null },
+    ],
+    [
+      'age_ineligible',
+      bound({ kind: 'age_ineligible', ...coursePage(caps) }),
+      { situation: 'age_ineligible', ageBand: BAND_AT_CAP, link: DEEP_LINK },
+    ],
+    [
+      'age_ineligible, no band',
+      bound({ kind: 'age_ineligible', ...coursePage({ facts: { EventName: NAME_AT_CAP } }) }),
+      { situation: 'age_ineligible', ageBand: null },
+    ],
+    [
+      'window_moved, no clock (bare)',
+      bound({ kind: 'window_moved', ...coursePage({ facts: {} }), clock: null }),
+      { situation: 'opens', link: DEEP_LINK, pageShows: null },
+    ],
+    [
+      'late_by_drift, no clock (bare)',
+      bound({ kind: 'late_by_drift', ...coursePage({ facts: {} }), clock: null }),
+      { situation: 'opens', link: DEEP_LINK, pageShows: null },
+    ],
+  ];
+
+  it.each(cases)('builds facts for %s, and the renderer refuses to write it', (_n, input, want) => {
+    const facts = morningFacts(input);
+    expect(facts).toMatchObject(want);
+    expect(facts.had).toMatch(/^\d{1,2}:\d\d [ap]\.m\.$/);
+    expect(facts.now.date).toMatch(/2026/);
+    expect(() => renderSequenceLeg('go', input)).toThrow(/composed from facts/);
+  });
+
+  it('leaves no fixed morning-of sentence in copy.ts', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('./copy.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/function go\(|function goPrepared\(|function ageSentence\(/);
+    expect(src).not.toMatch(/READINESS_UNTOLD_MORNING|'morning'\)/);
+    for (const phrase of [
+      'Your link:',
+      'Sign in, then Register',
+      'Then Register:',
+      'I could not read',
+      'is not showing the course',
+      'closed to online registration. Nothing changed',
+      'sign in now and check it',
+      'Check the page yourself',
+    ]) {
+      expect(src).not.toContain(phrase);
     }
   });
 });

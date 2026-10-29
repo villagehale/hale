@@ -929,8 +929,9 @@ async function runLegForSequence(
       return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
     }
     body = written;
-  } else if (leg === 'go' && morningFacts(legInput) !== null) {
-    const facts = morningFacts(legInput) as MorningFacts;
+  } else if (leg === 'go') {
+    // VIL-484 · EVERY morning-of case is composed from facts; nothing is rendered.
+    const facts: MorningFacts = morningFacts(legInput);
     const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
     const written =
       deps.client && language

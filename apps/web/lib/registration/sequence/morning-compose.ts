@@ -7,8 +7,8 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 import type { MorningFacts } from './copy';
 
 /**
- * VIL-484 · the morning-of text when the course page disagrees with the time Hale
- * had. The model writes the WHOLE message from facts. A draft that cannot be
+ * VIL-484 · EVERY morning-of (go leg) registration text. The model writes the
+ * WHOLE message from facts, whatever this morning's read found. A draft that cannot be
  * written is NOTHING SENT: there is no fallback sentence.
  */
 
@@ -65,8 +65,7 @@ export async function composeRegistrationMorning(
         system: skill.instructions,
         userMessage: JSON.stringify(facts),
         toolName: 'registration_morning_text',
-        toolDescription:
-          'The one text Hale sends the parent just before registration, when the page moved.',
+        toolDescription: 'The one text Hale sends the parent just before registration opens.',
         inputJsonSchema: outputJsonSchema,
         schema: outputSchema,
         maxTokens: MORNING_MAX_TOKENS,
