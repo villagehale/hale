@@ -244,7 +244,7 @@ describe('preview fake group inbound door', () => {
 
   it('needs the bearer', async () => {
     const res = await handlePreviewFakeGroupInbound(post({}, 'Bearer nope'), deps());
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it('refuses a real participant, a sender outside the group, and a real chat id', async () => {

@@ -197,7 +197,7 @@ describe('preview reminder trigger gates', () => {
         post('/api/channels/preview/reminders', { phone: FAKE }, secret),
         { database: t.database, env: ON, runCron },
       );
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(403);
     }
     expect(runCron).not.toHaveBeenCalled();
   });

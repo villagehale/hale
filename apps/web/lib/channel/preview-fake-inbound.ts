@@ -96,7 +96,7 @@ export function previewRouteGate(req: Request, env: Env): Response | null {
   const refusal = previewFakeInboundRefusal(env);
   if (refusal === 'not_preview') return plainNotFound();
   if (refusal) return json({ error: 'not_found', reason: refusal }, 404);
-  if (!authorized(req, env)) return json({ error: 'unauthorized' }, 401);
+  if (!authorized(req, env)) return json({ error: 'forbidden' }, 403);
   return null;
 }
 

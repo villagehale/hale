@@ -97,7 +97,7 @@ describe('preview fake inbound gate', () => {
         post({ from: FAKE, text: 'hi' }, secret),
         deps(ON),
       );
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(403);
     }
     expect(routeInboundText).not.toHaveBeenCalled();
   });
@@ -247,5 +247,44 @@ describe('captured sends read back word for word', () => {
       env: { ...ON, VERCEL_ENV: 'production' },
     });
     expect(res.status).toBe(404);
+  });
+
+  it('read route fails closed: 404 with no secret set, 403 on a wrong or missing bearer, no texts', async () => {
+    await persistCapturedSend(
+      {
+        to: FAKE,
+        body: 'captured text that must not leak',
+        capturedAt: new Date().toISOString(),
+        providerMessageId: 'preview-capture-closed-1',
+      },
+      t.database,
+    );
+    const read = (bearer: string | null) =>
+      new Request(`https://x/api/channels/preview/captured?to=${encodeURIComponent(FAKE)}`, {
+        headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+      });
+
+    for (const env of [
+      { ...ON, PREVIEW_FAKE_INBOUND_SECRET: undefined },
+      { ...ON, PREVIEW_FAKE_INBOUND_SECRET: '  ' },
+    ]) {
+      const res = await handlePreviewCapturedRead(read(SECRET), { database: t.database, env });
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain('captured text');
+    }
+    for (const bearer of ['wrong', null]) {
+      const res = await handlePreviewCapturedRead(read(bearer), { database: t.database, env: ON });
+      expect(res.status).toBe(403);
+      expect(await res.text()).not.toContain('captured text');
+    }
+  });
+
+  it('inbound route is 404 when its secret is unset, even with the right bearer', async () => {
+    const res = await handlePreviewFakeInbound(
+      post({ from: FAKE, text: 'hi' }),
+      deps({ ...ON, PREVIEW_FAKE_INBOUND_SECRET: undefined }),
+    );
+    expect(res.status).toBe(404);
+    expect(routeInboundText).not.toHaveBeenCalled();
   });
 });
