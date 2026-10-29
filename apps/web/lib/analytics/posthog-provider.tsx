@@ -22,13 +22,16 @@ const PostHogContext = createContext<PostHog | null>(null);
 
 /**
  * The single posthog-js init config, privacy-first (hard rule #1). Exported as a
- * pure value so the privacy posture is unit-tested directly (the test asserts
- * recording is enabled AND masked, and exception capture is on) without a DOM.
+ * pure value so the privacy posture is unit-tested directly; posthog-replay.test.ts
+ * also boots the real client on each portal route and asserts no recorder starts.
  *
  *  - autocapture OFF — we only send the hand-picked key-loop events; no clicks,
  *    no form interactions are inferred.
- *  - session_recording ON, fully MASKED — Hale shows newborn/child PII, so the
- *    replay must never carry it:
+ *  - session recording OFF on every portal page (VIL-483). Only the marketing
+ *    landing page records, after cookie consent (apps/site). This flag wins over
+ *    a project-level "record sessions" setting in PostHog, so the portal never
+ *    loads the recorder. The masking below stays as defence in depth, in case
+ *    recording is ever turned back on here:
  *      · maskAllInputs masks EVERY <input>/<textarea> value (names, DOB, email,
  *        address) — so anything a parent TYPES records as masked.
  *      · maskTextSelector masks the rendered TEXT inside any element tagged
@@ -37,8 +40,7 @@ const PostHogContext = createContext<PostHog | null>(null);
  *        the DOM replay keeps layout/labels/buttons while the PII reads as
  *        masked.
  *  - capture_exceptions ON — unhandled errors + promise rejections are captured
- *    into the SAME session, so an error is linkable to its replay. Console
- *    errors are left out (they may carry PII).
+ *    with the session id. Console errors are left out (they may carry PII).
  *  - respect_dnt ON, plus opt-out-by-default capturing honoured by the browser.
  *  - capture_pageview ON — URLs only (our routes carry no PII).
  *  - persistence is the minimal first-party cookie+localStorage default.
@@ -49,7 +51,7 @@ export const POSTHOG_PII_SELECTOR = '[data-hale-pii]';
 export const POSTHOG_INIT_CONFIG = {
   autocapture: false,
   capture_pageview: true,
-  disable_session_recording: false,
+  disable_session_recording: true,
   session_recording: {
     maskAllInputs: true,
     maskTextSelector: POSTHOG_PII_SELECTOR,

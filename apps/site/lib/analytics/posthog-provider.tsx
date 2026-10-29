@@ -39,8 +39,9 @@ export function analyticsEnabled(): boolean {
  *    anonymous, and watching where paid visitors stall is the one signal the funnel
  *    events cannot carry. Inputs are masked (`session_recording.maskAllInputs`), and
  *    `persistence: 'memory'` is unchanged, so a recording still writes nothing to the
- *    visitor's device and the legal pages' no-cookie claim stays true. (The APP
- *    records too, masked, and says so — apps/web/lib/analytics/posthog-provider.tsx.)
+ *    visitor's device and the legal pages' no-cookie claim stays true. The portal
+ *    does NOT record (VIL-483, apps/web/lib/analytics/posthog-provider.tsx), so this
+ *    landing page is the only place Hale records a session.
  *  - `capture_pageview: 'history_change'` + `capture_pageleave: true` — posthog-js
  *    captures the first pageview and every client-side navigation, plus page leaves.
  *    `source_code` and `locale` are REGISTERED as super properties in the `loaded`
