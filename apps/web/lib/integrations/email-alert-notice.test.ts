@@ -61,6 +61,7 @@ function facts(over: Partial<Parameters<typeof emailAlertNoticeFacts>[0]> = {}) 
     otherHaleFamiliesGoing: null,
     language: 'en',
     durationMinutes: null,
+    recentNotices: [],
     timeZone: 'America/Toronto',
     now: NOW,
     ...over,
@@ -181,6 +182,7 @@ describe('emailAlertNoticeFacts', () => {
       otherHaleFamiliesGoing: null,
       private: false,
       language: 'en',
+      recentNotices: [],
     } satisfies EmailAlertNoticeFacts);
   });
 

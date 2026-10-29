@@ -53,6 +53,8 @@ export interface EmailAlertNoticeFacts {
   otherHaleFamiliesGoing: number | null;
   private: boolean;
   language: string;
+  /** Notices already sent to this parent in this same 1:1, newest first. Context only. */
+  recentNotices: string[];
 }
 
 /** The two kinds that are news about an occasion the family already holds. */
@@ -131,6 +133,8 @@ export function emailAlertNoticeFacts(input: {
   language: string;
   /** The occasion's length when its source has an end (the matched calendar row). */
   durationMinutes: number | null;
+  /** `readRecentNotices`: what this parent was already sent here, newest first. */
+  recentNotices: readonly string[];
   timeZone: string;
   now: Date;
 }): EmailAlertNoticeFacts {
@@ -167,6 +171,7 @@ export function emailAlertNoticeFacts(input: {
     otherHaleFamiliesGoing: hidden ? null : input.otherHaleFamiliesGoing,
     private: hidden,
     language: input.language,
+    recentNotices: [...input.recentNotices],
   };
 }
 

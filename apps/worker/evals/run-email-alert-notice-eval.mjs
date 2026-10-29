@@ -56,7 +56,7 @@ const JUDGE_SYSTEM = [
   'connected Gmail. A model wrote the whole text from the facts; nothing is added around it.',
   'You are given the facts (now; children; email with sender, subject, kind, title,',
   'namedChild, was, when, location; fromParentsOwnCalendar; alreadyOnCalendar; offer;',
-  'otherHaleFamiliesGoing; private; language), the text and watchFor notes. Score 1-5 on',
+  'otherHaleFamiliesGoing; private; language; recentNotices), the text and watchFor notes. Score 1-5 on',
   'FACTS, PRIVACY and TONE, not wording.',
   'A 5: says what the occasion is and what happened with only the facts given; every date and',
   'time is correct INCLUDING morning versus afternoon; nothing invented; in facts.language;',
@@ -64,8 +64,13 @@ const JUDGE_SYSTEM = [
   'is not null, and asks nothing when it is null; when `otherHaleFamiliesGoing` is a number,',
   'says that many other Hale families, never just "families"; when `private` is true, says only',
   'the generic category and that details were kept out, with no sender, time, place or subject.',
-  'A LOW score (1-2) is any of: a wrong or ambiguous AM/PM, time, date or place; an invented',
-  'detail; quoting the subject line, an order or confirmation number, an amount or a surname;',
+  'Every claim in the text must be supported by the facts. `recentNotices` is only what Hale',
+  'already texted this parent; it supports no claim about this email.',
+  'A LOW score (1-2) is any of: a wrong or ambiguous AM/PM, time, date or place; ANY claim',
+  'the facts do not support, however small or plausible (for example "nothing on the',
+  'schedule for that slot now", "the rest of the week is unchanged", a reason, a refund, a',
+  'make-up date, or what the family should do instead); a detail taken from recentNotices;',
+  'an invented detail; quoting the subject line, an order or confirmation number, an amount or a surname;',
   'a vague "sent something about" sentence; an ask to add it when `offer` is null or no ask',
   'when it is not; offering to add something already on the calendar; a link or "reply YES"',
   'keyword teaching; the wrong language; a form-letter or company register; anything a',
@@ -169,8 +174,20 @@ async function dryRun({ agent, lane, skill, notice, judgeModel }) {
 }
 
 function factsFor(notice, fixture) {
-  const { now, language = 'en', durationMinutes = null, ...rest } = fixture.args;
-  return notice.emailAlertNoticeFacts({ ...rest, language, durationMinutes, now: new Date(now) });
+  const {
+    now,
+    language = 'en',
+    durationMinutes = null,
+    recentNotices = [],
+    ...rest
+  } = fixture.args;
+  return notice.emailAlertNoticeFacts({
+    ...rest,
+    language,
+    durationMinutes,
+    recentNotices,
+    now: new Date(now),
+  });
 }
 
 async function main() {

@@ -144,7 +144,8 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
         { matchedEventRef: STORYTIME_EVENT },
       ),
     }),
-    watchFor: 'Moved from Saturday Sept 19 to Sunday Sept 20, both at 1 PM. Does not offer to add anything.',
+    watchFor:
+      'Moved from Saturday Sept 19 to Sunday Sept 20, both at 1 PM. Does not offer to add anything.',
   },
 
   // ── THE WRITER SAYS NO ────────────────────────────────────────────────────
@@ -168,6 +169,10 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
     id: 'swim-cancelled',
     expect: 'send',
     args: args({
+      recentNotices: [
+        "Heads up — Maple Daycare's picture day is Friday Oct 2 at 9 AM. Want me to add it to your week?",
+        "Heads up: Robin's storytime moved to Sunday at 10 AM.",
+      ],
       from: 'Riverside Pool <info@riverside.example>',
       subject: 'Swim class cancelled Saturday',
       kind: 'cancellation',
@@ -177,7 +182,8 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
         originalTime: '2026-09-19T13:00:00.000Z',
       }),
     }),
-    watchFor: "Robin's parent and tot swim on Saturday Sept 19 at 9 AM is off. Does not offer to add anything.",
+    watchFor:
+      "Robin's parent and tot swim on Saturday Sept 19 at 9 AM is off. Does not offer to add anything.",
   },
   {
     id: 'picture-day-offer',
@@ -194,14 +200,14 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
         location: 'the daycare',
       }),
     }),
-    watchFor:
-      'Picture day Friday Oct 2 at 9 AM. Asks whether to add it to their week.',
+    watchFor: 'Picture day Friday Oct 2 at 9 AM. Asks whether to add it to their week.',
   },
   {
     // The parent texts Hale in French: the notice is written in French (blocker 3).
     id: 'picture-day-offer-fr',
     expect: 'send',
     args: args({
+      recentNotices: ['Petit mot : la natation de Robin samedi à 9h est annulée.'],
       from: 'Maple Daycare <office@maple-daycare.example>',
       subject: 'Picture day next Friday',
       kind: 'new_event',
@@ -221,6 +227,7 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
     id: 'swim-booked-with-count',
     expect: 'send',
     args: args({
+      recentNotices: ["Heads up — Robin's parent and tot swim Saturday at 9 AM is off."],
       from: 'Brookfield Recreation <noreply@recreation.brookfield.example>',
       subject: 'Registration Confirmation - Swim Level 1',
       kind: 'booking_confirmation',

@@ -33,6 +33,7 @@ There is no line above or below your text, no template, no fallback. If you do n
 - `otherHaleFamiliesGoing` — how many other Hale families hold the same session, or null. Only ever a count of Hale families, never of the class.
 - `private` — true when the reading step found this is a 13+ child's own correspondence. It is already known to be one of the children's, so it is `yes` for the first call. The title is already generic and the children, sender, subject, times and place are withheld on purpose, so their absence is not a reason to call it unclear. Say only the category, and that you kept the details out of the text.
 - `language` — the parent's language tag.
+- `recentNotices` — the last few texts you already sent this parent in this same 1:1, newest first (empty when there are none). Context only: it is what they have just read from you. Nothing in it is a fact about this email.
 
 ## First call: is this about these children?
 

@@ -56,6 +56,7 @@ import {
   goingOutcome,
   readSessionGoing,
 } from './going';
+import { readRecentNotices } from './recent-notices';
 
 /**
  * A parenting email in a connected Gmail becomes ONE text to the parent.
@@ -416,6 +417,7 @@ export async function alertParentForEmail(
           : 'add_to_week',
     otherHaleFamiliesGoing: counted?.shown ? counted.others : null,
     language: await ports.parentLanguage(parentUserId, now),
+    recentNotices: await readRecentNotices(database, { familyId, parentUserId }),
     durationMinutes: await matchedDurationMinutes(database, familyId, extraction.matchedEventRef),
     timeZone: input.timeZone,
     now,
