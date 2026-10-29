@@ -25,8 +25,8 @@ import {
  * preview-linq-capture.ts and read back with GET ?chatId=.
  *
  * Gated like #924's door (Preview, capture on, no Linq key/line/secret, bearer)
- * plus PREVIEW_CAPTURE_GROUPS=on. Off, the route is a 404 with reason
- * `group_capture_off`; outside Preview it is a plain empty 404.
+ * plus PREVIEW_CAPTURE_GROUPS=on. Off, the route is the same empty 404 (no reason).
+ * Outside Preview it is the same empty 404.
  */
 type Env = Readonly<Record<string, string | undefined>>;
 type GroupDoorDeps = Parameters<typeof handleLinqGroupMessage>[0] & {
@@ -45,7 +45,7 @@ function gate(req: Request, env: Env): Response | null {
   const shut = previewRouteGate(req, env);
   if (shut) return shut;
   if (!previewGroupCaptureOpen(env)) {
-    return json({ error: 'not_found', reason: 'group_capture_off' }, 404);
+    return new Response(null, { status: 404 });
   }
   return null;
 }

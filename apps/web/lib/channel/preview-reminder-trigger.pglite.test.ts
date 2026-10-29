@@ -179,13 +179,13 @@ describe('every Preview route is a plain empty 404 outside Preview', () => {
     }
   });
 
-  it('keeps the reason code when it is actually Preview', async () => {
+  it('is an empty 404 with no reason code, even on Preview', async () => {
     const res = await handlePreviewReminderTrigger(
       post('/api/channels/preview/reminders', { phone: FAKE }),
       { database: t.database, env: { ...ON, PREVIEW_CAPTURE_TRANSPORT: 'off' } },
     );
     expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: 'not_found', reason: 'capture_off' });
+    expect(await res.text()).toBe('');
   });
 });
 

@@ -23,7 +23,7 @@ import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone
  * family can be created or reached through it.
  *
  * Outside Preview every route answers a plain, empty 404, so a production deploy
- * gives no sign the door exists. On Preview a refusal is a 404 with a reason code,
+ * gives no sign the door exists. On Preview a refusal is the same empty 404,
  * never a line a parent would read.
  */
 
@@ -95,7 +95,7 @@ function plainNotFound(): Response {
 export function previewRouteGate(req: Request, env: Env): Response | null {
   const refusal = previewFakeInboundRefusal(env);
   if (refusal === 'not_preview') return plainNotFound();
-  if (refusal) return json({ error: 'not_found', reason: refusal }, 404);
+  if (refusal) return plainNotFound();
   if (!authorized(req, env)) return json({ error: 'forbidden' }, 403);
   return null;
 }

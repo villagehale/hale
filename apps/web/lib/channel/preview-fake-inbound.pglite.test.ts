@@ -287,4 +287,31 @@ describe('captured sends read back word for word', () => {
     expect(res.status).toBe(404);
     expect(routeInboundText).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['capture is off', { PREVIEW_CAPTURE_TRANSPORT: 'off' }],
+    ['LINQ_API_KEY is set', { LINQ_API_KEY: 'configured' }],
+    ['LINQ_FROM_E164 is set', { LINQ_FROM_E164: 'configured' }],
+    ['LINQ_WEBHOOK_SECRET is set', { LINQ_WEBHOOK_SECRET: 'configured' }],
+  ])('read route is an empty 404 when %s', async (_label, over) => {
+    await persistCapturedSend(
+      {
+        to: FAKE,
+        body: 'captured text that must not leak',
+        capturedAt: new Date().toISOString(),
+        providerMessageId: 'preview-capture-gate-1',
+      },
+      t.database,
+    );
+    const req = new Request(
+      `https://x/api/channels/preview/captured?to=${encodeURIComponent(FAKE)}`,
+      { headers: { authorization: `Bearer ${SECRET}` } },
+    );
+    const res = await handlePreviewCapturedRead(req, {
+      database: t.database,
+      env: { ...ON, ...over },
+    });
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe('');
+  });
 });

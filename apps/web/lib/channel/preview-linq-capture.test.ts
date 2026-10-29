@@ -8,7 +8,10 @@ import {
   setPreviewGroupCaptureSinkForTest,
   startLinqTyping,
 } from './linq/transport';
-import { handlePreviewFakeGroupInbound } from './preview-fake-group-inbound';
+import {
+  handlePreviewFakeGroupInbound,
+  handlePreviewGroupCapturedRead,
+} from './preview-fake-group-inbound';
 import {
   type CapturedLinqCall,
   type GroupCaptureSink,
@@ -233,14 +236,51 @@ describe('preview fake group inbound door', () => {
     expect(await res.text()).toBe('');
   });
 
-  it('is a 404 with reason when the group flag is off', async () => {
+  it('is an empty 404, with no reason, when the group flag is off', async () => {
     const res = await handlePreviewFakeGroupInbound(
       post({}),
       deps({ env: { ...env, PREVIEW_CAPTURE_GROUPS: '' } }),
     );
     expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ reason: 'group_capture_off' });
+    expect(await res.text()).toBe('');
   });
+
+  const read = (auth = 'Bearer s3cret') =>
+    new Request(`https://preview.example/api/channels/preview/group-captured?chatId=${CHAT}`, {
+      headers: { authorization: auth },
+    });
+
+  it.each([
+    ['capture transport off', { PREVIEW_CAPTURE_TRANSPORT: 'off' }],
+    ['group capture off', { PREVIEW_CAPTURE_GROUPS: '' }],
+  ])('group inbound and group read are an empty 404 when %s', async (_label, over) => {
+    const off = { ...env, ...over };
+    const inbound = await handlePreviewFakeGroupInbound(post({}), deps({ env: off }));
+    expect(inbound.status).toBe(404);
+    expect(await inbound.text()).toBe('');
+    const res = await handlePreviewGroupCapturedRead(read(), { database: {} as never, env: off });
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe('');
+    expect(sink.calls).toHaveLength(0);
+  });
+
+  it.each(['LINQ_API_KEY', 'LINQ_FROM_E164', 'LINQ_WEBHOOK_SECRET'])(
+    'group inbound and group read are an empty 404 when %s is set',
+    async (name) => {
+      vi.stubEnv(name, 'configured');
+      const withLinq = { ...env, [name]: 'configured' };
+      const inbound = await handlePreviewFakeGroupInbound(post({}), deps({ env: withLinq }));
+      expect(inbound.status).toBe(404);
+      expect(await inbound.text()).toBe('');
+      const res = await handlePreviewGroupCapturedRead(read(), {
+        database: {} as never,
+        env: withLinq,
+      });
+      expect(res.status).toBe(404);
+      expect(await res.text()).toBe('');
+      expect(sink.calls).toHaveLength(0);
+    },
+  );
 
   it('needs the bearer', async () => {
     const res = await handlePreviewFakeGroupInbound(post({}, 'Bearer nope'), deps());
