@@ -373,6 +373,7 @@ function occasionFor(input: {
   soloCalendarName: string | null;
   language: 'en' | 'fr';
   reasked: boolean;
+  venue: DutyOccasion['venue'];
 }): DutyOccasion {
   const state = input.state;
   const split = input.title ? splitKidEvent(input.title, input.childNames) : null;
@@ -382,9 +383,9 @@ function occasionFor(input: {
     role: input.role,
     startsAt: input.startsAt,
     endsAt: input.endsAt,
-    // parent_calendar_blocks holds no location by design (rule #1), so there is
-    // no vetted venue to hand yet. See the PR body: sourcing it is a schema call.
-    venue: null,
+    // From the activity's own booking row, never from parent_calendar_blocks,
+    // which holds no location by design (rule #1). Null leaves venue out.
+    venue: input.venue,
     hasOwner: state?.status === 'confirmed' && state.owner !== null,
     conflict: state?.status === 'conflict',
     needsWhichKid: needsWhichKid(input.title, input.childNames),
@@ -400,6 +401,42 @@ function occasionFor(input: {
     spokenUserIds: state ? [...new Set(state.claims.map((row) => row.userId))] : [],
     childFirstNames: input.childFirstNames,
   };
+}
+
+/**
+ * VENUES FROM BOOKINGS. `activity_bookings.location` came from the provider's
+ * confirmation or the registration, so it is the activity's own record. Keyed by
+ * the first session instant; an instant two bookings disagree on is no venue.
+ */
+async function bookingVenues(
+  database: Database,
+  familyId: string,
+): Promise<Map<number, string | null>> {
+  const rows = await database
+    .select({
+      familyId: schema.activityBookings.familyId,
+      firstSessionAt: schema.activityBookings.firstSessionAt,
+      location: schema.activityBookings.location,
+    })
+    .from(schema.activityBookings)
+    .where(eq(schema.activityBookings.familyId, familyId));
+  const venues = new Map<number, string | null>();
+  for (const row of rows) {
+    if (row.familyId !== familyId || !row.firstSessionAt) continue;
+    const at = row.firstSessionAt.getTime();
+    const place = row.location?.trim() || null;
+    if (!venues.has(at)) venues.set(at, place);
+    else if (venues.get(at) !== place) venues.set(at, null);
+  }
+  return venues;
+}
+
+export function venueFor(
+  venues: ReadonlyMap<number, string | null>,
+  startsAt: Date,
+): DutyOccasion['venue'] {
+  const place = venues.get(startsAt.getTime()) ?? null;
+  return place === null ? null : { name: place, address: null };
 }
 
 async function buildOccasions(
@@ -452,6 +489,7 @@ async function buildOccasions(
     byEvent.set(block.eventId, list);
   }
 
+  const venueAt = await bookingVenues(database, familyId);
   const occasions: DutyOccasion[] = [];
   for (const [eventKey, rows] of byEvent) {
     const active = rows.filter((row) => row.status !== 'cancelled');
@@ -476,6 +514,7 @@ async function buildOccasions(
       parentNames: home.parentNames,
       soloCalendarName,
       language: home.language,
+      venue: venueFor(venueAt, sample.startAt),
     };
     if (matching.length === 0) {
       const role = roleFromTitle(title);

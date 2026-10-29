@@ -44,13 +44,16 @@ import { type FetchPage, createFetchBody, pageCache } from '~/lib/registration/v
 import { loadClaimedWindowIds } from './claims.js';
 import {
   type EveningFacts,
+  type MorningFacts,
   battlePlanDecision,
   headsUpPromisesPlan,
+  morningFacts,
   renderSequenceLeg,
   renderShortlistRationale,
   windowPhrase,
 } from './copy.js';
 import { composeRegistrationEvening } from './evening-compose.js';
+import { composeRegistrationMorning } from './morning-compose.js';
 import {
   GO_FETCH_TIMEOUT_MS,
   type PrepInput,
@@ -315,7 +318,16 @@ export interface SequenceRunDeps {
   loadLanguage(database: Database, familyId: string): Promise<ReplyLanguage>;
   /** Facts in, one text out. Null means nothing is sent. */
   composeEvening: typeof composeRegistrationEvening;
+  /** VIL-484 · the morning-of text when the page moved. Null means nothing is sent. */
+  composeMorning: typeof composeRegistrationMorning;
+  /** The wall clock the already-open retry reads its deadline against. Defaults to
+   * real time; tests pin it. */
+  clock?: () => Date;
 }
+
+/** How many times an already-open evening draft is written before the miss is
+ * logged for #ops. Each try is a full compose; only one text can leave. */
+export const ALREADY_OPEN_DRAFT_TRIES = 3;
 
 /**
  * What a send-time read produced, by name — the verdict kinds, the one thing a read can
@@ -862,8 +874,45 @@ async function runLegForSequence(
   let body: string;
   if (leg === 'battle_plan') {
     const decision = battlePlanDecision(legInput);
-    const written = await writeEvening(database, deps, sequence.familyId, decision.facts);
+    // VIL-484 · THE ALREADY-OPEN RETRY. The anchor has just moved to the page's past
+    // clock, so no later tick reaches this leg again: a miss here is a parent who is
+    // never told. It is written again while the text can still arrive before the
+    // morning the ladder named, and never after.
+    const retryable = decision.facts.situation === 'already_open';
+    const tries = retryable ? ALREADY_OPEN_DRAFT_TRIES : 1;
+    const clock = deps.clock ?? (() => new Date());
+    let written: string | null = null;
+    let attempts = 0;
+    while (attempts < tries) {
+      if (attempts > 0 && clock().getTime() >= anchor.getTime()) break;
+      attempts += 1;
+      written = await writeEvening(database, deps, sequence.familyId, decision.facts);
+      if (written) break;
+    }
+    // IDEMPOTENT: a slow retry may overlap another tick. A key spent meanwhile means
+    // that tick sent it, so this one sends nothing.
+    if (written && attempts > 1) {
+      for (let index = allowed.length - 1; index >= 0; index -= 1) {
+        const entry = allowed[index];
+        if (entry && (await deps.dedupeActive(database, entry.dedupeKey))) {
+          allowed.splice(index, 1);
+          deduped += 1;
+        }
+      }
+      if (allowed.length === 0) return emptyTally({ deduped, held, ...effects });
+    }
     if (!written) {
+      if (retryable) {
+        console.error(
+          {
+            sequenceId: sequence.sequenceId,
+            outcome: 'registration_evening_unwritten',
+            situation: 'already_open',
+            attempts,
+          },
+          'registration sequence: already-open evening text unwritten after retries, nothing sent - for the #ops post',
+        );
+      }
       await deps.audit(database, {
         familyId: sequence.familyId,
         actor: 'system',
@@ -874,6 +923,31 @@ async function runLegForSequence(
           leg,
           windowId: sequence.window.id,
           outcome: 'registration_evening_unwritten',
+          ...(retryable ? { situation: 'already_open', attempts, ops: true } : {}),
+        },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
+  } else if (leg === 'go' && morningFacts(legInput) !== null) {
+    const facts = morningFacts(legInput) as MorningFacts;
+    const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
+    const written =
+      deps.client && language
+        ? await deps.composeMorning(deps.client, { ...facts, language }, sequence.familyId)
+        : null;
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_morning_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: {
+          leg,
+          windowId: sequence.window.id,
+          outcome: 'registration_morning_unwritten',
+          situation: facts.situation,
         },
       });
       return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
@@ -1484,6 +1558,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     client: voiceClient(),
     loadLanguage: familyLanguage,
     composeEvening: composeRegistrationEvening,
+    composeMorning: composeRegistrationMorning,
     refreshCourseAnchor: async (database, input) => {
       const [row] = await database
         .update(schema.registrationSequences)

@@ -8,6 +8,7 @@ import {
   type LegCopyInput,
   MAX_PORTAL_SEGMENTS,
   battlePlanDecision,
+  morningFacts,
   preparedCopyViolations,
   printsReadinessAsk,
   readinessClause,
@@ -610,18 +611,8 @@ function everyPortalBody(): Record<string, string> {
       'age_ineligible_no_band',
       { kind: 'age_ineligible', ...coursePage({ facts: { EventName: NAME_AT_CAP } }) },
     ],
-    ['window_moved', { kind: 'window_moved', ...coursePage({ ...capsPage, clock: MOVED_LATER }) }],
-    [
-      'window_moved_next_day',
-      { kind: 'window_moved', ...coursePage({ ...capsPage, clock: MOVED_NEXT_DAY }) },
-    ],
-    [
-      'late_by_drift',
-      {
-        kind: 'late_by_drift',
-        ...coursePage({ ...capsPage, clock: new Date('2026-09-15T13:30:00.000Z') }),
-      },
-    ],
+    // VIL-484 · window_moved and late_by_drift are composed by the model from
+    // `morningFacts`; there is no code sentence for them to sweep.
   ];
   for (const [name, verdict] of failures) {
     bodies[`go ${name}`] = renderSequenceLeg('go', bound(verdict));
@@ -663,7 +654,7 @@ describe('VIL-338 · every portal variant fits three segments at the reader’s 
     for (const name of ['prepared/true', 'prepared/false', 'prepared/null']) {
       expect(everyPortalBody()[`go ${name}`]).toContain(DEEP_LINK);
     }
-    for (const name of ['page_unreadable', 'age_ineligible', 'window_moved', 'late_by_drift']) {
+    for (const name of ['page_unreadable', 'age_ineligible']) {
       expect(everyPortalBody()[`go ${name}`]).toContain(DEEP_LINK);
     }
     // A course the portal no longer serves, or one it has closed, is not a course to
@@ -747,9 +738,14 @@ describe('VIL-338 · a bound ladder names ONE morning', () => {
   it('names both instants only where the page itself moved the morning', () => {
     // The two branches whose whole content is the disagreement are allowed a second
     // instant, and they say which is which; nothing else may carry two times.
-    const bodies = everyPortalBody();
-    expect(bodies['go window_moved']).toContain('I had 10:30 a.m. for this');
-    expect(bodies['go window_moved']).toContain('11:30 a.m.');
+    const morning = morningFacts(
+      bound({
+        kind: 'window_moved',
+        ...coursePage({ facts: { EventName: NAME_AT_CAP }, clock: MOVED_LATER }),
+      }),
+    );
+    expect(morning?.had).toBe('10:30 a.m.');
+    expect(morning?.pageShows.time).toBe('11:30 a.m.');
     const moved = composeFacts(
       bound({
         kind: 'window_moved',
@@ -824,7 +820,7 @@ describe('VIL-338 · the forbidden sentence is unsayable', () => {
     // template, which prints no page value and therefore never reached the gate.
     const spliced = `${everyPortalBody()['go page_unreadable']} You are all set.`;
     expect(gateViolations(spliced)).toContain('unattributed_readiness');
-    const claimed = `${everyPortalBody()['go late_by_drift']} Everything is filled in.`;
+    const claimed = `${everyPortalBody()['go page_unreadable']} Everything is filled in.`;
     expect(gateViolations(claimed)).toContain('forbidden_claim');
   });
 });
@@ -1061,13 +1057,37 @@ describe('VIL-338 · each failure verdict has its own true sentence', () => {
     expect(unbanded.ageBand).toBeNull();
   });
 
-  it('names both instants when the page has moved, and never says "opens" after the open', () => {
-    const moved = bodies['go window_moved'] as string;
-    expect(moved).toContain('10:30 a.m.');
-    expect(moved).toContain('11:30 a.m.');
-    const late = bodies['go late_by_drift'] as string;
-    expect(late).toContain('now shows this opened at');
-    expect(late).not.toContain('opens');
+  it('hands a moved morning as facts with both instants, and builds no sentence', () => {
+    const moved = morningFacts(
+      bound({ kind: 'window_moved', ...coursePage({ facts: {}, clock: MOVED_LATER }) }),
+    );
+    expect(moved).toMatchObject({
+      situation: 'moved',
+      had: '10:30 a.m.',
+      link: DEEP_LINK,
+      pageShows: { time: '11:30 a.m.' },
+    });
+    const late = morningFacts(
+      bound({
+        kind: 'late_by_drift',
+        ...coursePage({ facts: {}, clock: new Date('2026-09-15T13:30:00.000Z') }),
+      }),
+    );
+    expect(late).toMatchObject({
+      situation: 'already_open',
+      link: DEEP_LINK,
+      pageShows: { date: 'Tuesday, September 15, 2026', time: '9:30 a.m.' },
+    });
+    // Every other morning is not this text's to write.
+    expect(morningFacts(bound({ kind: 'course_gone' }))).toBeNull();
+    expect(morningFacts(portalInput())).toBeNull();
+    // And the renderer refuses to build one rather than falling back to a sentence.
+    expect(() =>
+      renderSequenceLeg(
+        'go',
+        bound({ kind: 'window_moved', ...coursePage({ facts: {}, clock: MOVED_LATER }) }),
+      ),
+    ).toThrow(/composed from facts/);
   });
 
   it('moves the morning in the plan when the page moved it to another day', () => {

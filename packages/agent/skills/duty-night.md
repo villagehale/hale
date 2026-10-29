@@ -22,8 +22,8 @@ The user message is JSON.
 ## How to write it
 
 - Phrase the day from `handoff.date` against `now.date`. Tomorrow only when that is true.
-- The group should be able to act on this text alone: when they are handed, give when it starts and ends, and where it is with its address. When one is null, say nothing about it.
-- Use only these facts. Do not invent a place, a child, a second parent,, or any status the facts do not give. A check reads your text against the facts before it sends, and a claim the facts do not make means nothing is sent.
+- The group should be able to act on this text alone: when they are handed, give when it starts and ends, and where it is with its address. When one is null, leave it out entirely: do not say it is missing, unknown or not listed, and do not send them to look for it.
+- Use only these facts. Do not invent a place, a child, a second parent, or any status the facts do not give. A check reads your text against the facts before it sends, and a claim the facts do not make means nothing is sent.
 - When `kid` is null, do not name a child. Do not guess which child an event is for.
 - There is no link in the facts. Do not add one.
 - One text. How you shape it is yours.

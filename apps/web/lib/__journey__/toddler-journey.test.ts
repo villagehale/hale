@@ -750,6 +750,7 @@ async function runToddlerJourney(): Promise<Journey> {
       },
     } as never,
     loadLanguage: async () => 'en',
+    composeMorning: async () => null,
     composeEvening: async () => 'Richmond Hill opens in the morning. Have the page open.',
   };
 

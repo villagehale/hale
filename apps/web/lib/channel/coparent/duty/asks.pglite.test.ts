@@ -669,4 +669,72 @@ describe('duty ask sweep', () => {
     });
     expect(view).toEqual({ skipped: 'single_parent' });
   });
+  it('hands the venue from the activity booking, and none when the booking has no location', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    for (const location of ['Pan Am Centre pool', null]) {
+      const family = await seedDutyFamily(`Venue ${location ?? 'none'}`);
+      await secondParent(family.familyId, 'Sam');
+      await claimGroup(family.familyId, `chat-venue-${location ? 'set' : 'none'}`);
+      await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
+      await kidBlock({
+        familyId: family.familyId,
+        userId: family.parentUserId,
+        eventId: 'evt-venue',
+        title: 'Maya swim',
+        start: MONDAY,
+      });
+      const integrationId = await seedIntegration(
+        db.database,
+        family.familyId,
+        family.parentUserId,
+        'gmail',
+      );
+      await db.database.insert(schema.activityBookings).values({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId,
+        messageId: `msg-venue-${location ? 'set' : 'none'}`,
+        providerHost: 'pool.example.ca',
+        title: 'Swim level 2',
+        firstSessionAt: MONDAY,
+        location,
+      });
+      await commitDutyUpdate(db.database, {
+        mode: 'write',
+        familyId: family.familyId,
+        actorUserId: family.parentUserId,
+        parentCount: 2,
+        subjectKey: 'evt-venue',
+        eventTitle: 'Maya swim',
+        childNames: ['Maya'],
+        slot: {
+          role: 'pickup',
+          claim: 'self',
+          name: null,
+          userId: family.parentUserId,
+          confidence: 1,
+        },
+        prior: null,
+        source: 'text',
+        now: SUNDAY_EVENING,
+        childId: null,
+        question: false,
+        askWhichKid: false,
+      });
+      const seen: Array<{ venue: unknown }> = [];
+      await sweepDutyAsks(db.database, {
+        now: SUNDAY_EVENING,
+        ports: sendPorts(vi.fn(async () => ({ providerMessageId: 'linq-venue' }))),
+        replyClient: scriptedReply(MODEL_NIGHT),
+        composeNight: async (_client, facts, familyId) => {
+          if (familyId === family.familyId) seen.push({ venue: facts.handoff?.venue });
+          return MODEL_NIGHT;
+        },
+      });
+      expect(seen.length).toBeGreaterThan(0);
+      for (const row of seen) {
+        expect(row).toEqual({ venue: location ? { name: location, address: null } : null });
+      }
+    }
+  });
 });

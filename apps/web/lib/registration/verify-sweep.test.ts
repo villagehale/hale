@@ -1,7 +1,6 @@
 import { type Server, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CycleIdentity, ExtractedWindow, StoredWindow } from './verify-window';
 import {
   DISCOVERY_TARGETS,
   MAX_PAGE_BYTES,
@@ -13,6 +12,7 @@ import {
   runRegistrationVerifySweep,
   verifyWeekStart,
 } from './verify-sweep';
+import type { CycleIdentity, ExtractedWindow, StoredWindow } from './verify-window';
 
 /**
  * VIL-259 — the weekly sweep's orchestration.

@@ -1,4 +1,4 @@
-// VIL-484 · evening registration text and co-parent night-before text.
+// VIL-484 · evening and moved-morning registration texts, and co-parent night-before text.
 //
 // The model writes the whole text from facts. The night-before group text is then
 // fact-checked by a second model call (duty-night-check.md) before it can send. This
@@ -38,6 +38,7 @@ const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const EVENING_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/evening-compose.ts');
+const MORNING_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/morning-compose.ts');
 const DUTY_SRC = join(REPO_ROOT, 'apps/web/lib/channel/coparent/duty/night-compose.ts');
 
 register({ tsconfig: WEB_TSCONFIG });
@@ -51,6 +52,10 @@ const TEXT_SCHEMA = {
 const EVENING_TOOL = {
   name: 'registration_evening_text',
   description: 'The one text Hale sends the parent the evening before registration opens.',
+};
+const MORNING_TOOL = {
+  name: 'registration_morning_text',
+  description: 'The one text Hale sends the parent just before registration, when the page moved.',
 };
 const DUTY_TOOL = {
   name: 'duty_night_text',
@@ -72,6 +77,8 @@ const JUDGE_SYSTEM = [
   'asking that parent whether they can take it is a wrong fact.',
   'For an evening registration text, when pageShows is set it is what the page shows now and',
   'it supersedes opensAt and opensOn, which are what Hale had before.',
+  'For a morning-of registration text, pageShows is what the page shows now and supersedes',
+  'had; when situation is already_open, saying registration opens later is a wrong fact.',
   'Score 2 or lower for any claim the facts do not make (that something is booked, paid,',
   'registered, held or confirmed; a place, an address, a time, a child, a link or a price',
   'not in the facts), a wrong day or time, the wrong language, or a named child the facts',
@@ -147,6 +154,35 @@ const EVENING_FIXTURES = [
       situation: 'moved_day',
       courseName: 'Preschool Sports',
       pageShows: { date: 'Thursday, September 17, 2026', time: '7:00 a.m.' },
+    },
+  },
+];
+
+const MORNING_FIXTURES = [
+  {
+    id: 'morning-moved',
+    facts: {
+      language: 'en',
+      now: { date: 'Tuesday, September 15, 2026', time: '10:15 a.m.' },
+      window: 'Oakville Fall 2026 programs',
+      portal: "Oakville's portal",
+      link: 'https://townofoakville.example/signin?return=course',
+      situation: 'moved',
+      had: '10:30 a.m.',
+      pageShows: { date: 'Tuesday, September 15, 2026', time: '11:30 a.m.' },
+    },
+  },
+  {
+    id: 'morning-already-open-fr',
+    facts: {
+      language: 'fr',
+      now: { date: 'Tuesday, September 15, 2026', time: '10:15 a.m.' },
+      window: 'Oakville Fall 2026 programs',
+      portal: "Oakville's portal",
+      link: 'https://townofoakville.example/signin?return=course',
+      situation: 'already_open',
+      had: '10:30 a.m.',
+      pageShows: { date: 'Tuesday, September 15, 2026', time: '9:30 a.m.' },
     },
   },
 ];
@@ -231,17 +267,22 @@ const BROKEN_DRAFTS = [
 
 // ── offline gate calibration ($0) ───────────────────────────────────────────
 
-function brokenOffline(evening, duty) {
+function brokenOffline(evening, duty, morning) {
+  const morningFacts = MORNING_FIXTURES[0].facts;
   const eveningFacts = EVENING_FIXTURES[0].facts;
   const failures = [
     evening.eveningRefusals('   ', eveningFacts),
     evening.eveningRefusals('See https://evil.example/phish tonight.', eveningFacts),
     duty.dutyNightRefusals('  '),
     duty.dutyNightRefusals('See https://evil.example/phish'),
+    morning.morningRefusals('  ', morningFacts),
+    morning.morningRefusals('It moved to 11:30.', morningFacts),
+    morning.morningRefusals(`${morningFacts.link} https://evil.example/phish`, morningFacts),
   ];
   const kept = [
     evening.eveningRefusals('Have https://www.richmondhill.ca/programs open.', eveningFacts),
     duty.dutyNightRefusals('Sam has the swim.'),
+    morning.morningRefusals(`Now 11:30: ${morningFacts.link}`, morningFacts),
   ];
   return failures.every((f) => f.length > 0) && kept.every((f) => f.length === 0);
 }
@@ -273,9 +314,10 @@ async function main() {
   const agent = await importTs(AGENT_SRC);
   const evening = await importTs(EVENING_SRC);
   const duty = await importTs(DUTY_SRC);
+  const morning = await importTs(MORNING_SRC);
 
   if (broken) {
-    const ok = brokenOffline(evening, duty);
+    const ok = brokenOffline(evening, duty, morning);
     console.info(`broken-mode calibration (must fail): ${ok ? 'PASS' : 'FAIL'}`);
     console.info('live calls: 0');
     process.exit(ok ? 0 : 1);
@@ -283,6 +325,8 @@ async function main() {
 
   const eveningSkill = await agent.loadSkill(join(SKILLS, 'registration-evening.md'));
   const dutySkill = await agent.loadSkill(join(SKILLS, 'duty-night.md'));
+  const morningSkill = await agent.loadSkill(join(SKILLS, 'registration-morning.md'));
+  const morningLane = agent.pickLane(morningSkill.meta.task);
   const checkSkill = await agent.loadSkill(join(SKILLS, 'duty-night-check.md'));
   const eveningLane = agent.pickLane(eveningSkill.meta.task);
   const dutyLane = agent.pickLane(dutySkill.meta.task);
@@ -306,6 +350,18 @@ async function main() {
         );
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       calls += evening.EVENING_MAX_ATTEMPTS + 1;
+    }
+    for (const f of MORNING_FIXTURES) {
+      const msg = JSON.stringify(f.facts);
+      usd +=
+        morning.MORNING_MAX_ATTEMPTS *
+        worst(
+          morningLane.model,
+          tokensFor(morningSkill.instructions) + tokensFor(msg) + 200,
+          morning.MORNING_MAX_TOKENS,
+        );
+      usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
+      calls += morning.MORNING_MAX_ATTEMPTS + 1;
     }
     for (const f of DUTY_FIXTURES) {
       const msg = duty.dutyNightUserMessage(f.facts);
@@ -410,6 +466,35 @@ async function main() {
     if (!ok) console.info(`     reason: ${verdict.reason}`);
   }
 
+  for (const f of MORNING_FIXTURES) {
+    const msg = JSON.stringify(f.facts);
+    let text = null;
+    for (let attempt = 1; attempt <= morning.MORNING_MAX_ATTEMPTS && text === null; attempt += 1) {
+      const draft = await compose(
+        f.id,
+        morningLane,
+        morningSkill,
+        MORNING_TOOL,
+        msg,
+        morning.MORNING_MAX_TOKENS,
+        attempt,
+      );
+      if (morning.morningRefusals(draft, f.facts).length === 0) text = draft;
+    }
+    if (text === null) {
+      failed += 1;
+      console.info(`FAIL ${f.id} | nothing sent`);
+      continue;
+    }
+    const verdict = await judge(f.id, { facts: f.facts, text });
+    const ok = verdict.score >= JUDGE_MIN;
+    if (!ok) failed += 1;
+    console.info(
+      `${ok ? 'PASS' : 'FAIL'} ${f.id} | judge ${verdict.score} | ${JSON.stringify(text)}`,
+    );
+    if (!ok) console.info(`     reason: ${verdict.reason}`);
+  }
+
   for (const f of DUTY_FIXTURES) {
     const msg = duty.dutyNightUserMessage(f.facts);
     let text = null;
@@ -459,11 +544,11 @@ async function main() {
       `${caught ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | check ${checked.supported ? 'pass' : `blocked ${JSON.stringify(checked.unsupported)}`} | judge ${verdict.score}`,
     );
   }
-  const offline = brokenOffline(evening, duty);
+  const offline = brokenOffline(evening, duty, morning);
   const brokenOk = brokenCaught === BROKEN_DRAFTS.length && offline;
   console.info(`broken-mode calibration (must fail): ${brokenOk ? 'PASS' : 'FAIL'}`);
 
-  const total = EVENING_FIXTURES.length + DUTY_FIXTURES.length;
+  const total = EVENING_FIXTURES.length + MORNING_FIXTURES.length + DUTY_FIXTURES.length;
   console.info(
     `vil484 | ${total - failed} of ${total} passed | live calls: ${cost.liveCalls} | spent $${totalUsd(cost).toFixed(6)}`,
   );

@@ -623,18 +623,56 @@ function goPrepared(input: LegCopyInput, prep: PrepCopyInput, portal: SpotPortal
       return `${label} shows that course as closed to online registration. Nothing changed on my side - check the page: ${prep.courseUrl}`;
     case 'age_ineligible':
       return ageSentence(verdict, input, label, link, `Opens ${at} ${link}`);
-    case 'window_moved': {
-      const clock = verdict.clock;
-      if (clock === null) return bare;
-      return `Heads up: I had ${at} for this and ${label} now shows ${when(clock.at, input.timeZone, input.now)} Go by the page: ${link}`;
-    }
+    case 'window_moved':
     case 'late_by_drift': {
-      const clock = verdict.clock;
-      if (clock === null) return bare;
-      // The word "opens" never appears in a text sent after the page's own open.
-      return `Heads up: ${label} now shows this opened at ${when(clock.at, input.timeZone, input.now)} Sign in, then Register: ${link}`;
+      if (verdict.clock === null) return bare;
+      // VIL-484 · composed from `morningFacts` by the model; run.ts never renders it.
+      throw new Error('registration sequence: a moved morning is composed from facts');
     }
   }
+}
+
+/** Facts for the morning-of text when the page disagrees with the anchor. The
+ * model writes the whole text; null when this morning is not one of those. */
+export interface MorningFacts {
+  now: { date: string; time: string };
+  window: string;
+  portal: string;
+  /** The one URL the text may carry: the course's sign-in link. */
+  link: string;
+  /** `moved`: the page shows another open time. `already_open`: it shows the
+   * open has already passed. */
+  situation: 'moved' | 'already_open';
+  /** The time Hale had told the parent. */
+  had: string;
+  /** What the page shows now. */
+  pageShows: { date: string; time: string };
+}
+
+export function morningFacts(input: LegCopyInput): MorningFacts | null {
+  const portal = input.portal ?? null;
+  const prep = input.prep;
+  if (portal === null || prep === null) return null;
+  const verdict = prep.verdict;
+  if (verdict.kind !== 'window_moved' && verdict.kind !== 'late_by_drift') return null;
+  const clock = verdict.clock;
+  const link = courseSignInUrl(prep.courseUrl);
+  if (clock === null || link === null) return null;
+  return {
+    now: {
+      date: writtenDate(input.now, input.timeZone),
+      time: timeOfDay(input.now, input.timeZone),
+    },
+    window: windowPhrase(input.shortlist),
+    portal: portal.portalLabel,
+    link,
+    situation: verdict.kind === 'late_by_drift' ? 'already_open' : 'moved',
+    had: timeOfDay(input.anchor, input.timeZone),
+    pageShows: {
+      date: writtenDate(clock.at, input.timeZone),
+      time: timeOfDay(clock.at, input.timeZone),
+    },
+  };
 }
 
 function checkIn(input: LegCopyInput): string {

@@ -10,6 +10,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { FetchPage } from '~/lib/registration/verify-sweep';
 import type { EveningComposeInput } from './evening-compose.js';
+import type { MorningComposeInput } from './morning-compose.js';
 import {
   type LiveSequence,
   type SequenceFamily,
@@ -123,6 +124,7 @@ interface Harness {
   anchors: Array<{ sequenceId: string; courseUrl: string; courseOpensAt: Date }>;
   /** Facts handed to the evening composer. The stub writes these; it does not call a model. */
   composed: EveningComposeInput[];
+  composedMorning: MorningComposeInput[];
 }
 
 function harness(
@@ -159,6 +161,10 @@ function harness(
     client?: AgentClient | null;
     /** Facts in, one text out. Undefined records the facts and returns a sendable stub. */
     composeEvening?: SequenceRunDeps['composeEvening'];
+    /** The morning-of composer. Undefined records the facts and returns a sendable stub. */
+    composeMorning?: SequenceRunDeps['composeMorning'];
+    /** The already-open retry's wall clock. */
+    clock?: () => Date;
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -171,6 +177,7 @@ function harness(
   const threaded: Harness['threaded'] = [];
   const anchors: Harness['anchors'] = [];
   const composed: EveningComposeInput[] = [];
+  const composedMorning: MorningComposeInput[] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
@@ -290,6 +297,13 @@ function harness(
         composed.push(facts);
         return `composed evening ${facts.situation}`;
       }),
+    composeMorning:
+      options.composeMorning ??
+      (async (_client, facts) => {
+        composedMorning.push(facts);
+        return `composed morning ${facts.situation} ${facts.link}`;
+      }),
+    ...(options.clock ? { clock: options.clock } : {}),
   };
 
   return {
@@ -305,6 +319,7 @@ function harness(
     threaded,
     anchors,
     composed,
+    composedMorning,
   };
 }
 
@@ -1239,7 +1254,8 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(result.prep.window_moved).toBe(1);
     expect(result.prep.anchor_moved).toBe(0);
     expect(h.anchors).toEqual([]);
-    expect(h.transport.bodies()[0]).toContain('Go by the page:');
+    expect(h.composedMorning).toMatchObject([{ situation: 'moved', had: '6:30 a.m.' }]);
+    expect(h.transport.bodies()[0]).toContain('composed morning moved');
   });
 
   it('names every degraded reading with its own true sentence', async () => {
@@ -1265,7 +1281,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
       [
         'late_by_drift',
         async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-15T05:00' }),
-        'now shows this opened at',
+        'composed morning already_open',
       ],
       [
         'age_ineligible',
@@ -1767,5 +1783,140 @@ describe('the ladder reaches both parents, on their own numbers', () => {
 
     expect(second).toMatchObject({ sent: 0, deduped: 2 });
     expect(h.transport.sent).toHaveLength(2);
+  });
+});
+
+describe('VIL-484 · the already-open evening draft is retried, sends at most once', () => {
+  const OPEN_PAGE = async () =>
+    coursePage({ PublicRegistrationStartDateValue: '2026-09-14T06:30' });
+
+  it('writes it again after a miss and sends the one text that came back', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    let calls = 0;
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: OPEN_PAGE,
+      clock: () => BATTLE_PLAN_TICK,
+      composeEvening: async (_client, facts) => {
+        calls += 1;
+        return calls < 3 ? null : `written ${facts.situation}`;
+      },
+    });
+    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+    expect(calls).toBe(3);
+    expect(result).toMatchObject({ sent: 1, failed: 0 });
+    expect(h.transport.bodies()).toHaveLength(1);
+    expect(h.transport.bodies()[0]).toContain('written already_open');
+  });
+
+  it('sends nothing and logs for #ops when every try fails', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    let calls = 0;
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: OPEN_PAGE,
+      clock: () => BATTLE_PLAN_TICK,
+      composeEvening: async () => {
+        calls += 1;
+        return null;
+      },
+    });
+    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+    expect(calls).toBe(3);
+    expect(result).toMatchObject({ sent: 0, unwritten: 1 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect([...h.dedupeKeys]).toEqual([]);
+    const row = h.writes.find((w) => w.payload.actionTaken === 'registration_evening_unwritten');
+    expect(row?.payload).toMatchObject({
+      after: { situation: 'already_open', attempts: 3, ops: true },
+    });
+  });
+
+  it('stops retrying once the text could no longer arrive in time', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    let calls = 0;
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: OPEN_PAGE,
+      // The wall clock has passed the morning the ladder named.
+      clock: () => new Date('2026-09-15T11:00:00.000Z'),
+      composeEvening: async () => {
+        calls += 1;
+        return null;
+      },
+    });
+    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+    expect(calls).toBe(1);
+    expect(result).toMatchObject({ sent: 0, unwritten: 1 });
+  });
+
+  it('sends nothing when another tick spent the key during a retry', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    let calls = 0;
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: OPEN_PAGE,
+      clock: () => BATTLE_PLAN_TICK,
+      composeEvening: async () => {
+        calls += 1;
+        return calls === 1 ? null : 'written';
+      },
+    });
+    // A concurrent tick sends the leg while this one is retrying.
+    const original = h.deps.dedupeActive;
+    let checks = 0;
+    h.deps.dedupeActive = async (database, key) => {
+      checks += 1;
+      return calls >= 2 ? true : original(database, key);
+    };
+    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+    expect(checks).toBeGreaterThan(1);
+    expect(result).toMatchObject({ sent: 0 });
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('does not retry an ordinary evening draft', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    let calls = 0;
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: async () => coursePage(),
+      clock: () => BATTLE_PLAN_TICK,
+      composeEvening: async () => {
+        calls += 1;
+        return null;
+      },
+    });
+    await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+    expect(calls).toBe(1);
+  });
+});
+
+describe('VIL-484 · the moved morning is composed, with no fallback', () => {
+  it('sends nothing when the morning text cannot be written', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-15T07:30' }),
+      composeMorning: async () => null,
+    });
+    const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+    expect(result).toMatchObject({ sent: 0, unwritten: 1 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect([...h.dedupeKeys]).toEqual([]);
+    const row = h.writes.find((w) => w.payload.actionTaken === 'registration_morning_unwritten');
+    expect(row?.payload).toMatchObject({
+      after: { leg: 'go', outcome: 'registration_morning_unwritten', situation: 'moved' },
+    });
+  });
+
+  it('hands the page’s past open as already_open', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      sequences: [bound()],
+      fetchBody: async () => coursePage({ PublicRegistrationStartDateValue: '2026-09-15T05:00' }),
+    });
+    await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+    expect(h.composedMorning).toMatchObject([{ situation: 'already_open', language: 'en' }]);
   });
 });
