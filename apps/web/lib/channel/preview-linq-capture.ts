@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, isNotNull, like, notExists, sql } from 'drizzle-orm';
-import { linqApiKey, linqFromE164 } from '~/lib/channel/linq/config';
+import { linqApiKey, linqFromE164, linqWebhookSecret } from '~/lib/channel/linq/config';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone';
 
@@ -18,7 +18,7 @@ import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone
  *   - VERCEL_ENV is exactly `preview`;
  *   - PREVIEW_CAPTURE_TRANSPORT is exactly `on` (#924) and PREVIEW_CAPTURE_GROUPS
  *     is exactly `on` (this door);
- *   - no LINQ_API_KEY or LINQ_FROM_E164 is set.
+ *   - no LINQ_API_KEY, LINQ_FROM_E164 or LINQ_WEBHOOK_SECRET is set.
  * Every captured call must target a `preview-chat-…` chat or a `preview-…`
  * message, and a chat create must name only +1 437-555 handles. Anything else
  * is refused, so no real group can be captured or reached.
@@ -35,7 +35,8 @@ export function previewGroupCaptureOpen(env: Env = process.env): boolean {
     previewCaptureRequested(env) &&
     env.PREVIEW_CAPTURE_GROUPS?.trim() === 'on' &&
     linqApiKey() === null &&
-    linqFromE164() === null
+    linqFromE164() === null &&
+    linqWebhookSecret() === null
   );
 }
 
@@ -244,12 +245,70 @@ export async function captureLinqCall(
   return { status: method === 'DELETE' ? 204 : 200, payload: method === 'DELETE' ? null : {} };
 }
 
+/** Body keys that name a person on the line. Every string under one must be fake. */
+const RECIPIENT_KEYS = new Set([
+  'to',
+  'from',
+  'handle',
+  'handles',
+  'phone',
+  'participant',
+  'participants',
+  'recipient',
+  'recipients',
+]);
+
+/** Every recipient-like string a captured body carries, at any depth. */
+export function recipientsInBody(body: unknown): string[] {
+  const out: string[] = [];
+  const take = (v: unknown): void => {
+    if (typeof v === 'string') out.push(v);
+    else if (Array.isArray(v)) for (const item of v) take(item);
+    else if (isRecord(v)) {
+      if (typeof v.handle === 'string') out.push(v.handle);
+      walk(v);
+    }
+  };
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) for (const item of v) walk(item);
+    else if (isRecord(v)) {
+      for (const [key, value] of Object.entries(v)) {
+        if (RECIPIENT_KEYS.has(key)) take(value);
+        else walk(value);
+      }
+    }
+  };
+  walk(body);
+  return out;
+}
+
+function isFakeHandle(raw: string): boolean {
+  const phone = normalizePhoneE164(raw);
+  return phone !== null && isSyntheticProbeNumber(phone);
+}
+
+/**
+ * Defence in depth beside captureLinqCall, mirroring preview-capture-store.ts:
+ * a real chat id, or any handle outside +1 437-555 in `handles` or in the body,
+ * throws before anything is stored.
+ */
+export function assertCapturable(call: CapturedLinqCall): void {
+  if (!isFakeChatId(call.chatId)) throw new PreviewGroupCaptureRefused('not_fake_chat');
+  for (const h of call.handles ?? []) {
+    if (!isFakeHandle(h)) throw new PreviewGroupCaptureRefused('not_fake_handle');
+  }
+  for (const h of recipientsInBody(call.body)) {
+    if (!isFakeHandle(h)) throw new PreviewGroupCaptureRefused('not_fake_handle');
+  }
+}
+
 /** The deployed sink: Preview's own Postgres. */
 export function databaseGroupCaptureSink(database?: Database): GroupCaptureSink {
   const db = async () => database ?? (await import('~/lib/db')).db();
   const t = schema.previewCapturedLinqCalls;
   return {
     async record(call) {
+      assertCapturable(call);
       await (await db()).insert(t).values({
         chatId: call.chatId,
         kind: call.kind,

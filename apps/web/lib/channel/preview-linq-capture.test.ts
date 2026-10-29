@@ -96,6 +96,13 @@ describe('preview group capture gate', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('is closed when LINQ_WEBHOOK_SECRET is set', () => {
+    openEnv();
+    expect(previewGroupCaptureOpen()).toBe(true);
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', 'whsec_configured');
+    expect(previewGroupCaptureOpen()).toBe(false);
+  });
+
   it('refuses on production even with both flags on', async () => {
     openEnv();
     vi.stubEnv('VERCEL_ENV', 'production');
