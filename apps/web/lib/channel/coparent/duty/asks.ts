@@ -37,6 +37,7 @@ import {
   matchParentDutyAsk,
   planDutyCadence,
 } from './cadence';
+import { householdEventCalendarIds } from './calendar';
 import {
   type DutyCopyParams,
   type DutyWeekEntry,
@@ -433,19 +434,17 @@ async function bookingVenues(database: Database, familyId: string): Promise<Book
       location: schema.activityBookings.location,
       sessionKey: schema.activityBookings.sessionKey,
       cancelledAt: schema.activityBookings.cancelledAt,
-      googleEventId: schema.familyEvents.googleEventId,
-      placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
-      eventFamilyId: schema.familyEvents.familyId,
+      eventId: schema.activityBookings.eventId,
     })
     .from(schema.activityBookings)
-    .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.activityBookings.eventId))
     .where(eq(schema.activityBookings.familyId, familyId));
+  const linked = rows.filter((row) => row.eventId);
+  if (linked.length === 0) return [];
+  const calendarIds = await householdEventCalendarIds(database, familyId);
   const venues: BookingVenue[] = [];
-  for (const row of rows) {
-    if (row.familyId !== familyId || row.eventFamilyId !== familyId) continue;
-    if (row.cancelledAt || !row.firstSessionAt) continue;
-    for (const eventKey of new Set([row.googleEventId, row.placedGoogleEventId])) {
-      if (!eventKey) continue;
+  for (const row of linked) {
+    if (row.familyId !== familyId || row.cancelledAt || !row.firstSessionAt) continue;
+    for (const eventKey of calendarIds.get(row.eventId as string) ?? []) {
       venues.push({
         eventKey,
         startsAt: row.firstSessionAt.getTime(),

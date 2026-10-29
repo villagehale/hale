@@ -708,7 +708,7 @@ describe('duty ask sweep', () => {
             title: 'Swim level 2',
             startsAt: MONDAY,
             source: 'email',
-            googleEventId:
+            placedGoogleEventId:
               booking.linked === 'this' ? eventKey : `evt-elsewhere-${input.tag}-${index}`,
           })
           .returning({ id: schema.familyEvents.id });
