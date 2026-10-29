@@ -1,4 +1,3 @@
-import { changeColumns, changeFromSource } from '~/lib/loop/reminders/change';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { REMINDER_HORIZON_MS } from '~/lib/loop/reminders/schedule';
@@ -341,20 +340,11 @@ export async function reconcileCalendarMirrors(
       (existing.transparency ?? null) !== (candidate.transparency ?? null) ||
       existing.deletedAt !== null;
     if (!changed) continue;
-    // VIL-474 · the provider's own values differ from what Hale stored: record which
-    // field changed and its old value. A restored (deleted) row is not a change.
-    const sourceChange =
-      existing.deletedAt === null
-        ? changeFromSource({
-            stored: { startsAt: existing.startsAt, location: existing.location },
-            source: { startsAt: candidate.startsAt, location: candidate.location },
-            timeZone: input.timeZone,
-          })
-        : null;
+    // VIL-474 · NOT a provider change. A mirror is the parent's own private calendar, so
+    // an edit here records nothing (reminders/provider-change.ts is the only writer).
     await database
       .update(schema.familyEvents)
       .set({
-        ...(sourceChange ? changeColumns(sourceChange, input.now) : {}),
         title: candidate.title,
         startsAt: candidate.startsAt,
         endsAt: candidate.endsAt,
@@ -402,7 +392,16 @@ async function softDeleteMirror(
   // NULL, so it is emptied rather than nulled.
   await database
     .update(schema.familyEvents)
-    .set({ deletedAt: input.now, title: '', location: null, dutyOwnerLabel: null })
+    .set({
+      deletedAt: input.now,
+      title: '',
+      location: null,
+      dutyOwnerLabel: null,
+      sourceChangedField: null,
+      sourceChangedFromStartsAt: null,
+      sourceChangedFromLocation: null,
+      sourceChangedAt: null,
+    })
     .where(and(eq(schema.familyEvents.id, id), isNull(schema.familyEvents.deletedAt)));
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,

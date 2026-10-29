@@ -45,7 +45,8 @@ export const familyEvents = pgTable(
     transparency: text('transparency'),
     location: text('location'),
     /** VIL-474 · the last provider change to this event: 'time', 'date' or 'venue'. Set
-     * only from source data (the calendar mirror), never inferred. Null when none. */
+     * only from provider sources (a provider email or registration, via
+     * reminders/provider-change.ts), never a parent's calendar mirror, never inferred. Null when none. */
     sourceChangedField: text('source_changed_field'),
     /** The start before that change (time/date), or null. */
     sourceChangedFromStartsAt: timestamp('source_changed_from_starts_at', { withTimezone: true }),

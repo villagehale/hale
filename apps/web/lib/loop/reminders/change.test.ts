@@ -36,7 +36,11 @@ describe('VIL-474 · changeFromSource', () => {
   it('nothing differs, or no source value: null', () => {
     expect(changeFromSource({ stored: STORED, source: { ...STORED }, timeZone: TZ })).toBeNull();
     expect(
-      changeFromSource({ stored: STORED, source: { startsAt: null, location: null }, timeZone: TZ }),
+      changeFromSource({
+        stored: STORED,
+        source: { startsAt: null, location: null },
+        timeZone: TZ,
+      }),
     ).toBeNull();
   });
 });
@@ -56,8 +60,13 @@ describe('VIL-474 · the stored columns round-trip', () => {
       sourceChangedAt: null,
     };
     expect(changeFromColumns(none, NOW)).toBeNull();
-    const old = changeColumns({ field: 'venue', previousLocation: 'x' }, new Date(NOW.getTime() - CHANGE_FRESH_MS - 1));
+    const old = changeColumns(
+      { field: 'venue', previousLocation: 'x' },
+      new Date(NOW.getTime() - CHANGE_FRESH_MS - 1),
+    );
     expect(changeFromColumns(old, NOW)).toBeNull();
-    expect(changeFromColumns({ ...none, sourceChangedField: 'moved', sourceChangedAt: NOW }, NOW)).toBeNull();
+    expect(
+      changeFromColumns({ ...none, sourceChangedField: 'moved', sourceChangedAt: NOW }, NOW),
+    ).toBeNull();
   });
 });

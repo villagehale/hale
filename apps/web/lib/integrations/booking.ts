@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm';
+import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { promoteMatchingInferredFacts } from '~/lib/memory/store';
 import type { CorrelatedEventRef, ExtractedEvent, ExtractionKind } from '~/lib/sentinel';
 import { sessionKey } from './going';
@@ -267,6 +268,9 @@ export async function recordActivityBooking(
      * outbound row. */
     channelMessageId: string | null;
     draft: BookingDraft;
+    /** Set on live mail only. With it, a refresh whose booking is linked to a Hale event
+     * applies the provider's new time or venue there and records the change (VIL-474). */
+    timeZone?: string;
   },
 ): Promise<{ outcome: 'recorded' | 'already_recorded' | 'refreshed'; bookingId: string | null }> {
   const [sameEmail] = await database
@@ -299,6 +303,16 @@ export async function recordActivityBooking(
         eventId: existing.eventId ?? input.draft.eventId,
       })
       .where(eq(schema.activityBookings.id, existing.id));
+    const linkedEventId = existing.eventId ?? input.draft.eventId;
+    if (input.timeZone && linkedEventId) {
+      await applyProviderChange(database, {
+        familyId: input.familyId,
+        eventId: linkedEventId,
+        source: { startsAt: input.draft.firstSessionAt, location: input.draft.location },
+        timeZone: input.timeZone,
+        now: new Date(),
+      });
+    }
     await noteBookingMemory(database, input.familyId, input.draft.title);
     return { outcome: 'refreshed', bookingId: existing.id };
   }

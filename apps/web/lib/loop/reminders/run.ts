@@ -1,10 +1,10 @@
-import { changeFromColumns, type SourceChange } from './change';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { laneEnabled } from '~/lib/channel/lanes';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -26,7 +26,7 @@ import type {
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { getQueue } from '~/lib/queue';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type SourceChange, changeFromColumns } from './change';
 import { composeReminderText, reminderFacts } from './compose';
 import {
   type EventSnapshot,
@@ -387,7 +387,12 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
       return {
         ...event,
         change: changeFromColumns(
-          { sourceChangedField, sourceChangedFromStartsAt, sourceChangedFromLocation, sourceChangedAt },
+          {
+            sourceChangedField,
+            sourceChangedFromStartsAt,
+            sourceChangedFromLocation,
+            sourceChangedAt,
+          },
           new Date(),
         ),
       };

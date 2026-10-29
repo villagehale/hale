@@ -175,18 +175,9 @@ describe('reconcileCalendarMirrors', () => {
     expect((await audits()).map((row) => row.actionTaken)).toContain('calendar_mirror_removed');
   });
 
-  it('VIL-474: records a provider move and a venue change from source data, with the old value', async () => {
+  it('VIL-474: a parent moving their own calendar event records no change at all', async () => {
     await reconcile([swim()]);
     const later = new Date('2026-10-04T16:30:00.000Z');
-    await reconcile([
-      swim({ start: { dateTime: later.toISOString() }, end: { dateTime: '2026-10-04T17:30:00.000Z' } }),
-    ]);
-    let row = (await rows())[0];
-    expect(row?.sourceChangedField).toBe('time');
-    expect(row?.sourceChangedFromStartsAt?.toISOString()).toBe(SWIM_START.toISOString());
-    expect(row?.sourceChangedFromLocation).toBeNull();
-    expect(row?.sourceChangedAt).not.toBeNull();
-
     await reconcile([
       swim({
         start: { dateTime: later.toISOString() },
@@ -194,18 +185,34 @@ describe('reconcileCalendarMirrors', () => {
         location: 'Main St pool',
       }),
     ]);
-    row = (await rows())[0];
-    expect(row?.sourceChangedField).toBe('venue');
-    expect(row?.sourceChangedFromLocation).toBe('The pool');
+    const row = (await rows())[0];
+    expect(row?.startsAt.toISOString()).toBe(later.toISOString());
+    expect(row?.sourceChangedField).toBeNull();
     expect(row?.sourceChangedFromStartsAt).toBeNull();
+    expect(row?.sourceChangedFromLocation).toBeNull();
+    expect(row?.sourceChangedAt).toBeNull();
   });
 
-  it('VIL-474: a title that says it moved, with the same time and place, records no change', async () => {
+  it('VIL-474: a removed mirror clears all four source_changed_* columns', async () => {
     await reconcile([swim()]);
-    await reconcile([swim({ summary: 'RESCHEDULED: Swim moved' })]);
+    const [seeded] = await rows();
+    if (!seeded) throw new Error('no mirror');
+    // A row written before mirrors stopped recording changes still carries them.
+    await db.database
+      .update(schema.familyEvents)
+      .set({
+        sourceChangedField: 'venue',
+        sourceChangedFromStartsAt: SWIM_START,
+        sourceChangedFromLocation: 'The pool',
+        sourceChangedAt: NOW,
+      })
+      .where(eq(schema.familyEvents.id, seeded.id));
+    await reconcile([]);
     const row = (await rows())[0];
-    expect(row?.title).toBe('RESCHEDULED: Swim moved');
+    expect(row?.deletedAt).not.toBeNull();
     expect(row?.sourceChangedField).toBeNull();
+    expect(row?.sourceChangedFromStartsAt).toBeNull();
+    expect(row?.sourceChangedFromLocation).toBeNull();
     expect(row?.sourceChangedAt).toBeNull();
   });
 

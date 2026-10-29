@@ -62,7 +62,10 @@ export function changeFromColumns(
   if (!row.sourceChangedAt || now.getTime() - row.sourceChangedAt.getTime() > CHANGE_FRESH_MS) {
     return null;
   }
-  if ((row.sourceChangedField === 'time' || row.sourceChangedField === 'date') && row.sourceChangedFromStartsAt) {
+  if (
+    (row.sourceChangedField === 'time' || row.sourceChangedField === 'date') &&
+    row.sourceChangedFromStartsAt
+  ) {
     return { field: row.sourceChangedField, previousStartsAt: row.sourceChangedFromStartsAt };
   }
   if (row.sourceChangedField === 'venue' && row.sourceChangedFromLocation) {

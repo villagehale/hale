@@ -19,6 +19,7 @@ import {
 import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { formatDayHeading } from '~/lib/format/datetime';
+import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
 import type {
   CorrelatedEventRef,
@@ -330,6 +331,25 @@ export async function alertParentForEmail(
     if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
   }
 
+  // VIL-474 · THE PROVIDER MOVED IT, so Hale's event moves too, and the change is recorded
+  // (field + old value) for the reminder to bold. Above the gate for the cancellation
+  // closer's reason: writing down a provider fact is not speaking to anybody. Only a
+  // provider's own mail counts: a Google Calendar notification is the parent's private
+  // calendar, and applyProviderChange refuses mirror rows on its own as well.
+  if (
+    extraction.kind === 'reschedule' &&
+    extraction.matchedEventRef?.table === 'family_events' &&
+    !fromParentsCalendar(input.envelope.from)
+  ) {
+    await applyProviderChange(database, {
+      familyId,
+      eventId: extraction.matchedEventRef.id,
+      source: { startsAt: instant(extraction.event.newTime), location: extraction.event.location },
+      timeZone: input.timeZone,
+      now,
+    });
+  }
+
   // A RECEIPT FOR A CLASS THIS SWEEP HAS ALREADY BEEN TOLD IS OFF. Nothing true is left to
   // say: the batch is newest-first, so this email is older than the cancellation, and
   // "you're in for Swim Level 2" would contradict a text this same run put on the same
@@ -529,6 +549,7 @@ export async function alertParentForEmail(
     channelMessageId: claimed.id,
     draft,
     message,
+    timeZone: input.timeZone,
   });
   await passport.afterSend();
 
@@ -733,6 +754,9 @@ async function recordBooking(
     /** `null` when booked detection is dark — the one state that is not a refusal. */
     draft: BookingDraftResult | null;
     message: string;
+    /** Live mail only: a registration refresh may apply the provider's move (VIL-474).
+     * The backfill leaves it unset, because historical mail is not today's schedule. */
+    timeZone?: string;
   },
 ): Promise<BookingOutcome> {
   const { draft } = input;
@@ -748,6 +772,7 @@ async function recordBooking(
       messageId: input.messageId,
       channelMessageId: input.channelMessageId,
       draft: draft.draft,
+      timeZone: input.timeZone,
     });
   } catch (err) {
     // The CLASS only — a rejection here can carry a title or an address in its message
