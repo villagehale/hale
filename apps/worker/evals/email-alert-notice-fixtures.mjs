@@ -129,6 +129,7 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
     id: 'storytime-matched-rescheduled',
     expect: 'send',
     args: args({
+      durationMinutes: 45,
       from: 'Maplewood Library <events@maplewood-library.example>',
       subject: 'Storytime moved to Sunday',
       kind: 'reschedule',

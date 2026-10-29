@@ -169,8 +169,8 @@ async function dryRun({ agent, lane, skill, notice, judgeModel }) {
 }
 
 function factsFor(notice, fixture) {
-  const { now, language = 'en', ...rest } = fixture.args;
-  return notice.emailAlertNoticeFacts({ ...rest, language, now: new Date(now) });
+  const { now, language = 'en', durationMinutes = null, ...rest } = fixture.args;
+  return notice.emailAlertNoticeFacts({ ...rest, language, durationMinutes, now: new Date(now) });
 }
 
 async function main() {

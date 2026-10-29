@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { laneEnabled } from '~/lib/channel/lanes';
@@ -416,6 +416,7 @@ export async function alertParentForEmail(
           : 'add_to_week',
     otherHaleFamiliesGoing: counted?.shown ? counted.others : null,
     language: await ports.parentLanguage(parentUserId, now),
+    durationMinutes: await matchedDurationMinutes(database, familyId, extraction.matchedEventRef),
     timeZone: input.timeZone,
     now,
   });
@@ -1411,4 +1412,24 @@ function clamp(text: string, max: number): string {
   const cut = text.slice(0, max);
   const space = cut.lastIndexOf(' ');
   return (space > max / 2 ? cut.slice(0, space) : cut).trimEnd();
+}
+
+/**
+ * How long the matched calendar occasion lasts, from its own `ends_at`. Only a
+ * `family_events` row carries an end; a week-plan item or a row with none is null.
+ */
+export async function matchedDurationMinutes(
+  database: Database,
+  familyId: string,
+  ref: CorrelatedEventRef | null,
+): Promise<number | null> {
+  if (ref === null || ref.table !== 'family_events') return null;
+  const [row] = await database
+    .select({ startsAt: schema.familyEvents.startsAt, endsAt: schema.familyEvents.endsAt })
+    .from(schema.familyEvents)
+    .where(and(eq(schema.familyEvents.id, ref.id), eq(schema.familyEvents.familyId, familyId)))
+    .limit(1);
+  if (!row?.endsAt) return null;
+  const minutes = Math.round((row.endsAt.getTime() - row.startsAt.getTime()) / 60_000);
+  return minutes > 0 ? minutes : null;
 }

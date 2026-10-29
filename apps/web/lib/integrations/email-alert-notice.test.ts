@@ -60,6 +60,7 @@ function facts(over: Partial<Parameters<typeof emailAlertNoticeFacts>[0]> = {}) 
     offer: 'add_to_week',
     otherHaleFamiliesGoing: null,
     language: 'en',
+    durationMinutes: null,
     timeZone: 'America/Toronto',
     now: NOW,
     ...over,
@@ -113,6 +114,17 @@ describe('the Storytime duplicate, through the real correlator', () => {
   });
 });
 
+describe('the occasion length', () => {
+  it('is handed to the writer when the source has an end, and withheld for a private email', () => {
+    expect(facts({ durationMinutes: 45 }).email.durationMinutes).toBe(45);
+    expect(facts().email.durationMinutes).toBeNull();
+    expect(
+      facts({ durationMinutes: 45, extraction: extraction({ teenContent: true }) }).email
+        .durationMinutes,
+    ).toBeNull();
+  });
+});
+
 describe('quietBeforeWriting', () => {
   const matched = { table: 'family_events' as const, id: 'evt-1' };
 
@@ -160,6 +172,7 @@ describe('emailAlertNoticeFacts', () => {
         namedChild: 'Robin',
         was: null,
         when: { date: 'Friday, October 2, 2026', time: '9:00 AM' },
+        durationMinutes: null,
         location: 'the gym',
       },
       fromParentsOwnCalendar: false,
@@ -191,6 +204,7 @@ describe('emailAlertNoticeFacts', () => {
       namedChild: null,
       was: null,
       when: null,
+      durationMinutes: null,
       location: null,
     });
   });

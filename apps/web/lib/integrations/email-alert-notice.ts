@@ -43,6 +43,8 @@ export interface EmailAlertNoticeFacts {
     namedChild: string | null;
     was: NoticeMoment | null;
     when: NoticeMoment | null;
+    /** How long the occasion lasts, in minutes, when the source has an end; else null. */
+    durationMinutes: number | null;
     location: string | null;
   };
   fromParentsOwnCalendar: boolean;
@@ -127,6 +129,8 @@ export function emailAlertNoticeFacts(input: {
   otherHaleFamiliesGoing: number | null;
   /** The family's reply language (`families.primary_language`), any tag. */
   language: string;
+  /** The occasion's length when its source has an end (the matched calendar row). */
+  durationMinutes: number | null;
   timeZone: string;
   now: Date;
 }): EmailAlertNoticeFacts {
@@ -154,6 +158,7 @@ export function emailAlertNoticeFacts(input: {
       namedChild: hidden ? null : (named?.name.trim() ?? null),
       was: hidden ? null : moment(extraction.event.originalTime, timeZone),
       when: hidden ? null : moment(extraction.event.newTime, timeZone),
+      durationMinutes: hidden ? null : input.durationMinutes,
       location: hidden ? null : extraction.event.location?.trim() || null,
     },
     fromParentsOwnCalendar: input.fromParentsOwnCalendar,
