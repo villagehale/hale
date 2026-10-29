@@ -10,7 +10,7 @@ import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conv
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { confirmFacts } from './facts';
+import { confirmFacts, readRecentGroupLines } from './facts';
 import { postGroupReminderLine } from './line';
 import { planReminderTurn } from './plan';
 import { GROUP_REMINDER_RECENT_LINES, type GroupReminderReader, readerNow } from './read';
@@ -230,6 +230,7 @@ export async function takeGroupReminderTurn(
     timeZone,
     plan,
     cancelled: cancelling,
+    recentFromYou: await readRecentGroupLines(database, { familyId, chatId: message.chatId }),
   });
 
   const text = ports.voice ? await ports.voice.write(facts) : null;

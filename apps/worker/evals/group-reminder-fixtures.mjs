@@ -129,6 +129,10 @@ export const GROUP_REMINDER_FIXTURES = [
     household: 'shah',
     sender: 'Priya',
     message: 'Hale remind Dan at 5:30 today to pick up the birthday cake',
+    recentFromYou: [
+      "Got it — I'll remind you Thursday at 4 to grab Maya from swim.",
+      "Got it, Priya — tomorrow at 3 I'll text you about the snacks.",
+    ],
     expect: {
       request: 'reminders',
       language: 'en',
@@ -216,6 +220,10 @@ export const GROUP_REMINDER_FIXTURES = [
     household: 'shah',
     sender: 'Ruth',
     message: 'Hale remind me tonight at 10:30 to put the bins out',
+    recentFromYou: [
+      "Got it — I'll remind Dan at 5:30 to pick up the cake.",
+      "Got it — Saturday at 8 I'll remind you about the hockey bag.",
+    ],
     expect: {
       request: 'reminders',
       language: 'en',
@@ -335,6 +343,11 @@ export const GROUP_REMINDER_FIXTURES = [
     household: 'shah',
     sender: 'Priya',
     message: "Hale remind everyone Friday at 6 that dinner is at Ruth's",
+    recentFromYou: [
+      "Got it — I'll remind you tonight at 10:30 to put the bins out.",
+      "Got it, I'll text Jordan at 5 about the car seat.",
+      'Got it — tomorrow at 6 for Sam and the folding chairs.',
+    ],
     expect: {
       request: 'reminders',
       language: 'en',

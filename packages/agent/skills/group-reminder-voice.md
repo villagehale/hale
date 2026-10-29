@@ -25,6 +25,9 @@ the chat who offered to remind everyone would: short, plain, warm, in their lang
   familiar singular.
 - `asker` — the first name of the person who asked, or null.
 - `memberWords` — what they wrote, for a `confirm`. Null for a `reminder`.
+- `recentFromYou` — for a `confirm`, the last few things you already said in this same
+  chat, newest first (empty when there are none). Context only: it is what the people
+  reading this have just seen from you. Nothing in it is a fact about this request.
 - `now` — the date and time this text is sent, where the family lives.
 
 For a `confirm`:

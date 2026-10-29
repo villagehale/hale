@@ -310,6 +310,7 @@ async function main() {
       language,
       asker: asker.firstName,
       memberWords: fixture.message,
+      recentFromYou: fixture.recentFromYou ?? [],
       now,
       timeZone,
       plan,

@@ -1,4 +1,8 @@
+import { type Database, schema } from '@hale/db';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { resolveNoteConversation } from '~/lib/coach/conversation';
+import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import type { TurnPlan } from './plan';
 import type { ReminderFor } from './policy';
 import { type ConfirmFacts, type ReminderTextFacts, whenFact } from './voice';
@@ -16,7 +20,9 @@ export function confirmFacts(input: {
   timeZone: string;
   plan: Pick<TurnPlan, 'set' | 'needsTime' | 'notSet'>;
   cancelled: readonly { what: string | null; deliverAt: Date }[];
-}): ConfirmFacts {
+  /** `readRecentGroupLines`: what Hale already said in this chat, newest first. */
+  recentFromYou?: readonly string[];
+}): ConfirmFacts & { recentFromYou: string[] } {
   const { timeZone } = input;
   return {
     kind: 'confirm',
@@ -24,6 +30,7 @@ export function confirmFacts(input: {
     audience: 'group',
     asker: input.asker,
     memberWords: input.memberWords,
+    recentFromYou: [...(input.recentFromYou ?? [])],
     now: whenFact(input.now, timeZone),
     set: input.plan.set.map((planned) => ({
       forName: planned.forKind === 'person' ? planned.forName : null,
@@ -107,4 +114,38 @@ export function reminderFacts(input: {
     moved,
     movedBecause: moved === null ? null : 'quiet_hours',
   };
+}
+
+/** How many of Hale's newest lines in the chat a confirm's writer sees: context only. */
+export const RECENT_GROUP_LINES = 3;
+
+/**
+ * What Hale already said in THIS group chat, newest first, so a confirm can read as its
+ * own. Only the chat's own thread (channelGroupNoteKey): never another group, never a
+ * parent's 1:1, so nothing anyone was told privately can reach the group's writer. It
+ * reads, and never creates, the thread.
+ */
+export async function readRecentGroupLines(
+  database: Database,
+  input: { familyId: string; chatId: string },
+): Promise<string[]> {
+  const conversationId = await resolveNoteConversation(
+    input.familyId,
+    channelGroupNoteKey(input.chatId),
+    database,
+  );
+  if (!conversationId) return [];
+  const rows = await database
+    .select({ content: schema.messages.content })
+    .from(schema.messages)
+    .where(
+      and(
+        eq(schema.messages.conversationId, conversationId),
+        eq(schema.messages.role, 'assistant'),
+        isNull(schema.messages.deletedAt),
+      ),
+    )
+    .orderBy(desc(schema.messages.createdAt))
+    .limit(RECENT_GROUP_LINES);
+  return rows.map((row) => row.content.trim()).filter((line) => line !== '');
 }
