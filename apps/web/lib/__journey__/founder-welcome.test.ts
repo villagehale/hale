@@ -345,6 +345,7 @@ describe("the founder's welcome note", () => {
       channel_message_id: (row as { id: string }).id,
       provider_message_id: `SM-founder-${n}`,
       received_at: at.toISOString(),
+      in_group: false,
     });
     return transport;
   }

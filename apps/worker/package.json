@@ -37,6 +37,8 @@
     "eval:activity-deep": "node evals/run-activity-deep-eval.mjs --cached-only",
     "eval:turn-apology": "node evals/run-turn-apology-eval.mjs --cached-only",
     "eval:holding-line": "node evals/run-holding-line-eval.mjs --cached-only",
+    "eval:flood-line:dry": "node evals/run-flood-line-eval.mjs --dry",
+    "eval:flood-line:broken": "node evals/run-flood-line-eval.mjs --broken",
     "eval:followup-voice": "node evals/run-followup-voice-eval.mjs --cached-only",
     "eval:identity-ask": "node evals/run-identity-ask-eval.mjs --cached-only",
     "eval:add-them-yourself": "node evals/run-add-them-yourself-eval.mjs --cached-only",

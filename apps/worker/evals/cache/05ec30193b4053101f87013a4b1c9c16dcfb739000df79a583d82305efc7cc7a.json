@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in English, first person, warm, and tells the parent a lot came in at once and Hale isn't answering this one now, inviting them to text again later. It does promise Hale will answer later ('I'll answer then') and implies a wait ('in a little while'), both of which the watchFor explicitly disallows, so it is only a partial fit.",
+    "score": 2
+  }
+}
