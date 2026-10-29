@@ -22,6 +22,7 @@ describe('catalog history cutover', () => {
       '0179_channel_inbound_media',
       '0184_preview_captured_sends',
       '0192_preview_captured_linq_calls',
+      '0185_channel_inbound_in_group',
     ]);
   });
 });

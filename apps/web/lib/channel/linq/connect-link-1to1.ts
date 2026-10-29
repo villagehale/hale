@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { createOutboundTransport, sendLinqParts } from '~/lib/channel/outbound-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -18,7 +19,7 @@ import {
 } from './group-onboarding-voice';
 import { isUndefinedTable } from './roster';
 import { familyLanguage, firstName, primaryParentId } from './roster-ask';
-import { LinqSendError, createLinqPhoneTransport, sendLinqParts } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — the flow's 1:1 lines.
@@ -47,7 +48,7 @@ export interface OneToOneSend {
 }
 
 export function defaultOneToOneSend(): OneToOneSend {
-  const transport = createLinqPhoneTransport();
+  const transport = createOutboundTransport();
   return {
     text: async (input) => {
       const sent = await transport.send({ to: input.to, body: input.body });

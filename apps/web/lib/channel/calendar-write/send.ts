@@ -8,7 +8,6 @@ import { eq } from 'drizzle-orm';
 import { offerConnectorLink } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -22,6 +21,7 @@ import {
   createOutboundTransport,
   failedSendPatch,
   readSendRefusal,
+  sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
