@@ -1,0 +1,9 @@
+{
+  "value": {
+    "care": "home",
+    "provider": null,
+    "confidence": "high",
+    "reason": "parent says child stays home on weekdays"
+  },
+  "latencyMs": 2365
+}
