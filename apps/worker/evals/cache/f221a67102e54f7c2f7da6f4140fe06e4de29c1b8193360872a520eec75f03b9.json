@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event in the facts is 'an appointment' tomorrow (Monday, Oct 26) from 4:45 PM to 5:45 PM. The text instead names a different event ('Jour de congé'), gives the wrong time (3:00, with no AM/PM), drops the 4:45 PM start and the 5:45 PM end, and never mentions an appointment. It also invents that the day is a day off and calls it 'breathing room', implying nothing to be at when a timed event exists. These are wrong time, missing start/end, invented detail, and a wrong event.",
+    "score": 1
+  }
+}

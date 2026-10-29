@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event (Swim class), the correct day (today), the start (10) and end (11) with morning stated, matching 10:00 AM to 11:00 AM. No location was given, so none is needed, and nothing is invented. The title is kept as the event's name. Bold is none, which is fine.",
+    "score": 5
+  }
+}
