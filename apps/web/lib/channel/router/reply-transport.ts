@@ -1,6 +1,5 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
-import { sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { sendLinqChatMessage, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import type { ReplySent, ReplyTransport } from './reply-route';
 
 /**
