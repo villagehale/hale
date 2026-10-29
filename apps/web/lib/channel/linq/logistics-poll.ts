@@ -419,9 +419,9 @@ export async function recordLogisticsVote(
   const existing = (await loadRememberedLogistics(database, input.familyId)).find(
     (row) => row.factKey === input.subjectKey,
   );
-  // A who-takes poll is only asked about a plan nobody has taken in the group (a claimed
-  // plan is in no clash alert, and the evening poll asks only about plans with nothing
-  // stored), so a claim came after every poll about it: a late tap does not undo it.
+  // A claim is the taker's own word, and every who-takes poll about its plan was planned
+  // before Hale knew of it (a claimed plan is in no clash alert, and the evening poll asks
+  // only about plans with nothing stored): a tap on one does not undo it.
   if (existing?.source === 'claim' && existing.status === 'decided') return 'ignored';
   if (input.choiceKind === 'figure_it_out') {
     await withholdWhoTakes(database, {
