@@ -72,6 +72,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.0.3
         version: 19.2.3(@types/react@19.2.15)
+      happy-dom:
+        specifier: ^20.14.6
+        version: 20.14.6
       tailwindcss:
         specifier: ^4.0.0
         version: 4.3.0
