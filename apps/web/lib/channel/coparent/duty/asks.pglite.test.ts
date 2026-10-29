@@ -669,72 +669,171 @@ describe('duty ask sweep', () => {
     });
     expect(view).toEqual({ skipped: 'single_parent' });
   });
-  it('hands the venue from the activity booking, and none when the booking has no location', async () => {
+  /** One duty family with a settled Monday swim on the calendar, and what the
+   * night-before composer was handed as its venue. */
+  async function venueScenario(input: {
+    tag: string;
+    bookings: Array<{
+      location: string | null;
+      linked: 'this' | 'other' | 'none';
+      sessionKey?: string | null;
+    }>;
+    /** Other families joined to this family's group chat, with the sessions they hold. */
+    others?: Array<{ sessionKeys: string[] }>;
+  }): Promise<unknown[]> {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    for (const location of ['Pan Am Centre pool', null]) {
-      const family = await seedDutyFamily(`Venue ${location ?? 'none'}`);
-      await secondParent(family.familyId, 'Sam');
-      await claimGroup(family.familyId, `chat-venue-${location ? 'set' : 'none'}`);
-      await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
-      await kidBlock({
-        familyId: family.familyId,
-        userId: family.parentUserId,
-        eventId: 'evt-venue',
-        title: 'Maya swim',
-        start: MONDAY,
-      });
-      const integrationId = await seedIntegration(
-        db.database,
-        family.familyId,
-        family.parentUserId,
-        'gmail',
-      );
+    const chatId = `chat-venue-${input.tag}`;
+    const eventKey = `evt-venue-${input.tag}`;
+    const family = await seedDutyFamily(`Venue ${input.tag}`);
+    await secondParent(family.familyId, 'Sam');
+    await claimGroup(family.familyId, chatId);
+    await seedChild(db.database, family.familyId, 'Maya', 36, undefined, SUNDAY_EVENING);
+    await kidBlock({
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      eventId: eventKey,
+      title: 'Maya swim',
+      start: MONDAY,
+    });
+    const mail = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gmail');
+    let index = 0;
+    for (const booking of input.bookings) {
+      index += 1;
+      let eventId: string | null = null;
+      if (booking.linked !== 'none') {
+        const [row] = await db.database
+          .insert(schema.familyEvents)
+          .values({
+            familyId: family.familyId,
+            title: 'Swim level 2',
+            startsAt: MONDAY,
+            source: 'email',
+            googleEventId:
+              booking.linked === 'this' ? eventKey : `evt-elsewhere-${input.tag}-${index}`,
+          })
+          .returning({ id: schema.familyEvents.id });
+        eventId = row?.id ?? null;
+      }
       await db.database.insert(schema.activityBookings).values({
         familyId: family.familyId,
         parentUserId: family.parentUserId,
-        integrationId,
-        messageId: `msg-venue-${location ? 'set' : 'none'}`,
+        integrationId: mail,
+        messageId: `msg-venue-${input.tag}-${index}`,
         providerHost: 'pool.example.ca',
         title: 'Swim level 2',
         firstSessionAt: MONDAY,
-        location,
+        location: booking.location,
+        sessionKey: booking.sessionKey ?? null,
+        eventId,
       });
-      await commitDutyUpdate(db.database, {
-        mode: 'write',
-        familyId: family.familyId,
-        actorUserId: family.parentUserId,
-        parentCount: 2,
-        subjectKey: 'evt-venue',
-        eventTitle: 'Maya swim',
-        childNames: ['Maya'],
-        slot: {
-          role: 'pickup',
-          claim: 'self',
-          name: null,
-          userId: family.parentUserId,
-          confidence: 1,
-        },
-        prior: null,
-        source: 'text',
-        now: SUNDAY_EVENING,
-        childId: null,
-        question: false,
-        askWhichKid: false,
+    }
+    for (const [n, other] of (input.others ?? []).entries()) {
+      const neighbour = await seedDutyFamily(`Venue ${input.tag} neighbour ${n}`);
+      await db.database.insert(schema.linqMultiFamilyJoins).values({
+        chatId,
+        familyId: neighbour.familyId,
+        joinedAt: SUNDAY_AFTERNOON,
       });
-      const seen: Array<{ venue: unknown }> = [];
-      await sweepDutyAsks(db.database, {
-        now: SUNDAY_EVENING,
-        ports: sendPorts(vi.fn(async () => ({ providerMessageId: 'linq-venue' }))),
-        replyClient: scriptedReply(MODEL_NIGHT),
-        composeNight: async (_client, facts, familyId) => {
-          if (familyId === family.familyId) seen.push({ venue: facts.handoff?.venue });
-          return MODEL_NIGHT;
-        },
-      });
-      expect(seen.length).toBeGreaterThan(0);
-      for (const row of seen) {
-        expect(row).toEqual({ venue: location ? { name: location, address: null } : null });
+      const theirMail = await seedIntegration(
+        db.database,
+        neighbour.familyId,
+        neighbour.parentUserId,
+        'gmail',
+      );
+      for (const [m, sessionKey] of other.sessionKeys.entries()) {
+        await db.database.insert(schema.activityBookings).values({
+          familyId: neighbour.familyId,
+          parentUserId: neighbour.parentUserId,
+          integrationId: theirMail,
+          messageId: `msg-neighbour-${input.tag}-${n}-${m}`,
+          providerHost: 'pool.example.ca',
+          title: 'Swim level 2',
+          firstSessionAt: MONDAY,
+          location: 'Their own pool',
+          sessionKey,
+        });
       }
     }
+    await commitDutyUpdate(db.database, {
+      mode: 'write',
+      familyId: family.familyId,
+      actorUserId: family.parentUserId,
+      parentCount: 2,
+      subjectKey: eventKey,
+      eventTitle: 'Maya swim',
+      childNames: ['Maya'],
+      slot: {
+        role: 'pickup',
+        claim: 'self',
+        name: null,
+        userId: family.parentUserId,
+        confidence: 1,
+      },
+      prior: null,
+      source: 'text',
+      now: SUNDAY_EVENING,
+      childId: null,
+      question: false,
+      askWhichKid: false,
+    });
+    const seen: unknown[] = [];
+    await sweepDutyAsks(db.database, {
+      now: SUNDAY_EVENING,
+      ports: sendPorts(vi.fn(async () => ({ providerMessageId: `linq-${input.tag}` }))),
+      replyClient: scriptedReply(MODEL_NIGHT),
+      composeNight: async (_client, facts, familyId) => {
+        if (familyId === family.familyId) seen.push(facts.handoff?.venue);
+        return MODEL_NIGHT;
+      },
+    });
+    expect(seen.length).toBeGreaterThan(0);
+    return [...new Set(seen.map((v) => JSON.stringify(v)))].map((v) => JSON.parse(v));
+  }
+
+  const POOL = 'Pan Am Centre pool';
+  const SESSION = 'pool.example.ca|swim level 2|2026-09-28T19:00:00.000Z';
+
+  it('hands the venue name from a booking linked to this event, with no invented address', async () => {
+    expect(
+      await venueScenario({ tag: 'own', bookings: [{ location: POOL, linked: 'this' }] }),
+    ).toEqual([{ name: POOL, address: null }]);
+  });
+
+  it('hands no venue when the linked booking has no location', async () => {
+    expect(
+      await venueScenario({ tag: 'blank', bookings: [{ location: null, linked: 'this' }] }),
+    ).toEqual([null]);
+  });
+
+  it('never lets an unrelated booking at the same start time lend its venue', async () => {
+    expect(
+      await venueScenario({
+        tag: 'unrelated',
+        bookings: [
+          { location: 'Some other gym', linked: 'other' },
+          { location: 'Unlinked arena', linked: 'none' },
+        ],
+      }),
+    ).toEqual([null]);
+  });
+
+  it('never sends one family’s venue into a multi-family group for an event only they have', async () => {
+    expect(
+      await venueScenario({
+        tag: 'multi-private',
+        bookings: [{ location: POOL, linked: 'this', sessionKey: SESSION }],
+        others: [{ sessionKeys: ['pool.example.ca|piano|2026-09-28T19:00:00.000Z'] }],
+      }),
+    ).toEqual([null]);
+  });
+
+  it('sends the venue into a multi-family group only for the activity the group shares', async () => {
+    expect(
+      await venueScenario({
+        tag: 'multi-shared',
+        bookings: [{ location: POOL, linked: 'this', sessionKey: SESSION }],
+        others: [{ sessionKeys: [SESSION] }],
+      }),
+    ).toEqual([{ name: POOL, address: null }]);
   });
 });

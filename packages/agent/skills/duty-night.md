@@ -15,7 +15,7 @@ The user message is JSON.
 
 - `language` — `en` or `fr`. Write the whole text in that language.
 - `now` — when this is sent, in the family's own time zone. English labels are facts. Restate them.
-- `handoff` — who has the event, or null. It is already settled: `name` is the parent who has it, so the text tells the group, and does not ask them whether they can take it. `kid` is the child, or null when no child may be named. `event` is what it is. `time` is the start clock and `endTime` the end clock (or null), both handed in English; write them the way that language writes a clock time, so morning versus afternoon or evening stays clear. `date` is the day. `venue` is where it is, or null: `name` is the place and `address` its street address, or null.
+- `handoff` — who has the event, or null. It is already settled: `name` is the parent who has it, so the text tells the group, and does not ask them whether they can take it. `kid` is the child, or null when no child may be named. `event` is what it is. `time` is the start clock and `endTime` the end clock (or null), both handed in English; write them the way that language writes a clock time, so morning versus afternoon or evening stays clear. `date` is the day. `venue` is where it is, or null: `name` is the place and `address` its street address, or null. When `address` is null, give the place name only: never supply, complete or guess an address.
 - `unowned` — another event in this same note that nobody has yet, or null. When it is present, the group still needs to hear that nobody has it. You may ask once, about who is taking it.
 - `quiet` — a parent who has not answered an open question, or null. `name` is that parent. When it is set, you may name them once. Do not invent a second ask.
 

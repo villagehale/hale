@@ -403,40 +403,131 @@ function occasionFor(input: {
   };
 }
 
+/** One booking's venue, keyed to the calendar event it is ON. */
+export interface BookingVenue {
+  /** The calendar event id (`parent_calendar_blocks.event_id`) the booking is linked to. */
+  eventKey: string;
+  startsAt: number;
+  /** The provider's own location string, verbatim. */
+  place: string | null;
+  /** The provider's street address, when Hale holds one apart from the place. No
+   * booking or provider row carries one today, so this is null and the text gives
+   * the place name only. */
+  address: string | null;
+  /** The session identity, for the multi-family shared-activity check. */
+  sessionKey: string | null;
+}
+
 /**
  * VENUES FROM BOOKINGS. `activity_bookings.location` came from the provider's
- * confirmation or the registration, so it is the activity's own record. Keyed by
- * the first session instant; an instant two bookings disagree on is no venue.
+ * confirmation or the registration, so it is the activity's own record. A booking
+ * attaches only through its OWN event link (`event_id` → `family_events` → the
+ * calendar event id) AND the same first session instant, so an unrelated booking at
+ * the same start time cannot lend its venue.
  */
-async function bookingVenues(
-  database: Database,
-  familyId: string,
-): Promise<Map<number, string | null>> {
+async function bookingVenues(database: Database, familyId: string): Promise<BookingVenue[]> {
   const rows = await database
     .select({
       familyId: schema.activityBookings.familyId,
       firstSessionAt: schema.activityBookings.firstSessionAt,
       location: schema.activityBookings.location,
+      sessionKey: schema.activityBookings.sessionKey,
+      cancelledAt: schema.activityBookings.cancelledAt,
+      googleEventId: schema.familyEvents.googleEventId,
+      placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+      eventFamilyId: schema.familyEvents.familyId,
     })
     .from(schema.activityBookings)
+    .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.activityBookings.eventId))
     .where(eq(schema.activityBookings.familyId, familyId));
-  const venues = new Map<number, string | null>();
+  const venues: BookingVenue[] = [];
   for (const row of rows) {
-    if (row.familyId !== familyId || !row.firstSessionAt) continue;
-    const at = row.firstSessionAt.getTime();
-    const place = row.location?.trim() || null;
-    if (!venues.has(at)) venues.set(at, place);
-    else if (venues.get(at) !== place) venues.set(at, null);
+    if (row.familyId !== familyId || row.eventFamilyId !== familyId) continue;
+    if (row.cancelledAt || !row.firstSessionAt) continue;
+    for (const eventKey of new Set([row.googleEventId, row.placedGoogleEventId])) {
+      if (!eventKey) continue;
+      venues.push({
+        eventKey,
+        startsAt: row.firstSessionAt.getTime(),
+        place: row.location?.trim() || null,
+        address: null,
+        sessionKey: row.sessionKey,
+      });
+    }
   }
   return venues;
 }
 
+/**
+ * The other families in this group's chat, and the sessions each holds. Empty for a
+ * family's own group. Read at send time, every sweep.
+ */
+async function sharedGroupSessions(
+  database: Database,
+  familyId: string,
+  chatId: string | null,
+): Promise<Array<Set<string>>> {
+  if (!chatId) return [];
+  const joins = await database
+    .select({
+      familyId: schema.linqMultiFamilyJoins.familyId,
+      chatId: schema.linqMultiFamilyJoins.chatId,
+      joinedAt: schema.linqMultiFamilyJoins.joinedAt,
+      leftAt: schema.linqMultiFamilyJoins.leftAt,
+    })
+    .from(schema.linqMultiFamilyJoins)
+    .where(eq(schema.linqMultiFamilyJoins.chatId, chatId));
+  const others = [
+    ...new Set(
+      joins
+        .filter((row) => row.chatId === chatId && row.joinedAt != null && row.leftAt == null)
+        .map((row) => row.familyId)
+        .filter((id) => id !== familyId),
+    ),
+  ];
+  const sessions: Array<Set<string>> = [];
+  for (const other of others) {
+    const rows = await database
+      .select({
+        familyId: schema.activityBookings.familyId,
+        sessionKey: schema.activityBookings.sessionKey,
+        cancelledAt: schema.activityBookings.cancelledAt,
+      })
+      .from(schema.activityBookings)
+      .where(eq(schema.activityBookings.familyId, other));
+    sessions.push(
+      new Set(
+        rows
+          .filter((row) => row.familyId === other && !row.cancelledAt && row.sessionKey)
+          .map((row) => row.sessionKey as string),
+      ),
+    );
+  }
+  return sessions;
+}
+
+/**
+ * The venue for one calendar event, or null. The booking must be linked to THIS
+ * event and start at its instant; two such bookings that disagree are no venue. In a
+ * multi-family group (`otherFamilies` non-empty) the venue goes only when every other
+ * family there holds the same session: the activity the group shares.
+ */
 export function venueFor(
-  venues: ReadonlyMap<number, string | null>,
+  venues: readonly BookingVenue[],
+  eventKey: string,
   startsAt: Date,
+  otherFamilies: ReadonlyArray<ReadonlySet<string>> = [],
 ): DutyOccasion['venue'] {
-  const place = venues.get(startsAt.getTime()) ?? null;
-  return place === null ? null : { name: place, address: null };
+  const hits = venues.filter((v) => v.eventKey === eventKey && v.startsAt === startsAt.getTime());
+  const first = hits[0];
+  if (!first?.place) return null;
+  if (hits.some((v) => v.place !== first.place || v.address !== first.address)) return null;
+  if (otherFamilies.length > 0) {
+    const key = first.sessionKey;
+    if (!key || hits.some((v) => v.sessionKey !== key)) return null;
+    if (!otherFamilies.every((held) => held.has(key))) return null;
+  }
+  return { name: first.place, address: first.address };
 }
 
 async function buildOccasions(
@@ -444,7 +535,7 @@ async function buildOccasions(
   familyId: string,
   home: Pick<
     Household,
-    'childNames' | 'childFirstNames' | 'teenNames' | 'parentNames' | 'language'
+    'childNames' | 'childFirstNames' | 'teenNames' | 'parentNames' | 'language' | 'chatId'
   >,
   now: Date,
 ): Promise<{
@@ -489,7 +580,8 @@ async function buildOccasions(
     byEvent.set(block.eventId, list);
   }
 
-  const venueAt = await bookingVenues(database, familyId);
+  const venueRows = await bookingVenues(database, familyId);
+  const otherFamilies = await sharedGroupSessions(database, familyId, home.chatId);
   const occasions: DutyOccasion[] = [];
   for (const [eventKey, rows] of byEvent) {
     const active = rows.filter((row) => row.status !== 'cancelled');
@@ -514,7 +606,7 @@ async function buildOccasions(
       parentNames: home.parentNames,
       soloCalendarName,
       language: home.language,
-      venue: venueFor(venueAt, sample.startAt),
+      venue: venueFor(venueRows, eventKey, sample.startAt, otherFamilies),
     };
     if (matching.length === 0) {
       const role = roleFromTitle(title);

@@ -227,6 +227,24 @@ const DUTY_FIXTURES = [
     },
   },
   {
+    id: 'duty-night-venue-name-only',
+    facts: {
+      language: 'en',
+      now: NOW_DUTY,
+      handoff: {
+        name: 'Sam',
+        kid: 'Maya',
+        event: 'swim lesson',
+        time: '3:00pm',
+        endTime: '4:00pm',
+        date: 'Monday, September 28, 2026',
+        venue: { name: 'Pan Am Centre pool', address: null },
+      },
+      unowned: null,
+      quiet: null,
+    },
+  },
+  {
     id: 'duty-night-no-venue-no-end',
     facts: {
       language: 'en',
