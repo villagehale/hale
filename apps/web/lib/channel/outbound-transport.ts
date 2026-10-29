@@ -141,11 +141,23 @@ export function outboundChatConfigured(): boolean {
 }
 
 /**
+ * A fake 437-555 number (never assignable) that stands in for Hale's line when
+ * capture is on. It is a valid E.164 number because callers normalise the line
+ * and compare it against roster handles.
+ */
+export const PREVIEW_CAPTURE_LINE = '+14375550100';
+
+/**
  * The line a new chat is opened from, or null when there is none. Capture on
- * returns a placeholder so a proof run reaches the (captured) create call.
+ * returns PREVIEW_CAPTURE_LINE so a proof run reaches the (captured) create call.
+ * Anywhere else it is exactly the production line (null when Linq is unconfigured).
  */
 export function outboundLineFrom(): string | null {
-  if (previewCaptureRequested()) return 'preview-capture-line';
+  // Preview only: the placeholder never leaves a preview deploy, even if the flag
+  // were set in production (the send itself then throws PreviewCaptureRefused).
+  if (previewCaptureRequested() && process.env.VERCEL_ENV === 'preview') {
+    return PREVIEW_CAPTURE_LINE;
+  }
   return linqApiKey() !== null ? linqFromE164() : null;
 }
 

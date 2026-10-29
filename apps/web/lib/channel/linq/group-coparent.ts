@@ -8,7 +8,7 @@ import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
-import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import {
   type SaidLineWriter,
@@ -217,7 +217,7 @@ export async function steerNotedCoparentOneToOne(
   const noted = await notedInviteForPhone(database, senderPhone, ports.now);
   if (!noted) return { type: 'none' };
   const language = await familySpeechLanguage(database, noted.familyId);
-  const from = linqFromE164();
+  const from = outboundLineFrom();
   const text = from
     ? await linqGroupMakeInstruction(formatLinqLineForParent(from), language)
     : await linqGroupLineMissing(language);

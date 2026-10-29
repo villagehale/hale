@@ -6,6 +6,7 @@ import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
   addLinqParticipant,
   createLinqChat,
+  outboundLineFrom,
   removeLinqParticipant,
   sendLinqChatMessage,
   updateLinqGroupChat,
@@ -13,7 +14,6 @@ import {
 import { speak } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
-import { linqFromE164 } from './config';
 import { haleContactImageUrl } from './contact-card';
 import { groupAudienceAllows } from './group-audience';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
@@ -358,7 +358,7 @@ export async function openHouseholdLinqGroup(
       };
     }
     chatIdForDegrade = door.chatId;
-    const from = linqFromE164();
+    const from = outboundLineFrom();
     if (!from) {
       console.warn(
         { familyId: args.familyId },

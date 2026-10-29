@@ -13,7 +13,7 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { loadOpenSession } from '~/lib/channel/intake/session';
-import { markLinqChatRead } from '~/lib/channel/outbound-transport';
+import { markLinqChatRead, outboundLineFrom } from '~/lib/channel/outbound-transport';
 import {
   lineStatusKnown,
   lineStatusPauses,
@@ -29,7 +29,6 @@ import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
 import { considerSocialForward } from '~/lib/social/forward';
 import {
-  linqFromE164,
   linqGroupCoparentEnabled,
   linqGroupMembersEnabled,
   linqGroupOnboardingV2Enabled,
@@ -859,7 +858,7 @@ async function answerGroupTriggerInOneToOne(
   const recorded = await recordHandledInbound(deps, message, mapped);
   if (!recorded) return { count: 'duplicate', body: { outcome: 'duplicate' } };
 
-  const from = linqFromE164();
+  const from = outboundLineFrom();
   const text = from
     ? await linqGroupTriggerInOneToOne(formatLinqLineForParent(from), language)
     : await linqGroupLineMissing(language);
