@@ -1233,6 +1233,13 @@
       "when": 1781556222000,
       "tag": "0192_preview_captured_linq_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1781556223000,
+      "tag": "0185_channel_inbound_in_group",
+      "breakpoints": true
     }
   ]
 }
