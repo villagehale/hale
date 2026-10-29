@@ -1,3 +1,4 @@
+import { changeFromColumns, type SourceChange } from './change';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
@@ -87,6 +88,8 @@ export interface LiveEvent extends EventSnapshot {
   /** Where to be. Unused by the parents' copy (they know), and half of what a caregiver's
    * `event_logistics` scope is FOR. */
   location: string | null;
+  /** VIL-474 · a change recorded from source data only (reminders/change.ts). */
+  change?: SourceChange | null;
   /**
    * Set when this row mirrors one event on a connected Google Calendar (VIL-416).
    * Null for every Hale-authored event. A mirror is reminded to its owner only —
@@ -364,11 +367,30 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           location: schema.familyEvents.location,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
+          sourceChangedField: schema.familyEvents.sourceChangedField,
+          sourceChangedFromStartsAt: schema.familyEvents.sourceChangedFromStartsAt,
+          sourceChangedFromLocation: schema.familyEvents.sourceChangedFromLocation,
+          sourceChangedAt: schema.familyEvents.sourceChangedAt,
         })
         .from(schema.familyEvents)
         .where(eq(schema.familyEvents.id, eventRef))
         .limit(1);
-      return rows[0] ?? null;
+      const row = rows[0];
+      if (!row) return null;
+      const {
+        sourceChangedField,
+        sourceChangedFromStartsAt,
+        sourceChangedFromLocation,
+        sourceChangedAt,
+        ...event
+      } = row;
+      return {
+        ...event,
+        change: changeFromColumns(
+          { sourceChangedField, sourceChangedFromStartsAt, sourceChangedFromLocation, sourceChangedAt },
+          new Date(),
+        ),
+      };
     },
     // C3 (reply↔event link) isn't wired yet: the classify path carries rule #3, the
     // data link lands with C3. Until then no reminder is suppressed as 'interacted'.

@@ -44,6 +44,15 @@ export const familyEvents = pgTable(
      * occasion and on every row written before the column existed. */
     transparency: text('transparency'),
     location: text('location'),
+    /** VIL-474 · the last provider change to this event: 'time', 'date' or 'venue'. Set
+     * only from source data (the calendar mirror), never inferred. Null when none. */
+    sourceChangedField: text('source_changed_field'),
+    /** The start before that change (time/date), or null. */
+    sourceChangedFromStartsAt: timestamp('source_changed_from_starts_at', { withTimezone: true }),
+    /** The venue before that change, or null. */
+    sourceChangedFromLocation: text('source_changed_from_location'),
+    /** When Hale saw that change. */
+    sourceChangedAt: timestamp('source_changed_at', { withTimezone: true }),
     source: familyEventSourceEnum('source').notNull(),
     /** Privacy-sensitive (health) — set by the calendar_add executor from the week_plan
      * item's privacySensitive (VIL-223). The reminder templates read it to genericize

@@ -175,6 +175,40 @@ describe('reconcileCalendarMirrors', () => {
     expect((await audits()).map((row) => row.actionTaken)).toContain('calendar_mirror_removed');
   });
 
+  it('VIL-474: records a provider move and a venue change from source data, with the old value', async () => {
+    await reconcile([swim()]);
+    const later = new Date('2026-10-04T16:30:00.000Z');
+    await reconcile([
+      swim({ start: { dateTime: later.toISOString() }, end: { dateTime: '2026-10-04T17:30:00.000Z' } }),
+    ]);
+    let row = (await rows())[0];
+    expect(row?.sourceChangedField).toBe('time');
+    expect(row?.sourceChangedFromStartsAt?.toISOString()).toBe(SWIM_START.toISOString());
+    expect(row?.sourceChangedFromLocation).toBeNull();
+    expect(row?.sourceChangedAt).not.toBeNull();
+
+    await reconcile([
+      swim({
+        start: { dateTime: later.toISOString() },
+        end: { dateTime: '2026-10-04T17:30:00.000Z' },
+        location: 'Main St pool',
+      }),
+    ]);
+    row = (await rows())[0];
+    expect(row?.sourceChangedField).toBe('venue');
+    expect(row?.sourceChangedFromLocation).toBe('The pool');
+    expect(row?.sourceChangedFromStartsAt).toBeNull();
+  });
+
+  it('VIL-474: a title that says it moved, with the same time and place, records no change', async () => {
+    await reconcile([swim()]);
+    await reconcile([swim({ summary: 'RESCHEDULED: Swim moved' })]);
+    const row = (await rows())[0];
+    expect(row?.title).toBe('RESCHEDULED: Swim moved');
+    expect(row?.sourceChangedField).toBeNull();
+    expect(row?.sourceChangedAt).toBeNull();
+  });
+
   it("a removed mirror keeps none of the parent's words, and a live one is untouched", async () => {
     const piano = swim({
       id: 'ev-piano',
