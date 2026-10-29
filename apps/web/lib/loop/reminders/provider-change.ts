@@ -3,23 +3,35 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { type SourceChange, changeColumns, changeFromSource } from './change';
 
 /**
- * VIL-474 · apply a PROVIDER's move to a Hale event and record what changed.
+ * VIL-474 · record a PROVIDER's change to a Hale event, and (registration path only)
+ * apply it.
  *
- * The only writer of the source_changed_* columns. Callers are provider sources: a
- * provider email (a reschedule the sentinel matched to a family_events row) and a
- * registration receipt refreshing a booking linked to its event. A parent's private
- * calendar is never a source: a Google Calendar mirror row (googleEventId set) is
- * refused here, so a parent editing their own calendar records nothing and no venue
- * from a private calendar is ever stored as "changed from".
+ * The only writer of the source_changed_* columns. It refuses any event the provider
+ * does not own: the event must be linked from one of this family's activity_bookings
+ * rows for `providerHost`. A parent-authored event (source 'parent' or any createdBy)
+ * and a Google Calendar mirror row (googleEventId set) are refused outright, so a
+ * parent's own or private calendar entry is never moved and never recorded.
+ *
+ * `move: false` (the email path, per #955 review) records the field and old value(s)
+ * and leaves the event exactly as it is. Moving from email is a follow-up gated on a
+ * model confirming the exact event, ambiguity meaning no move, a confidence floor,
+ * provider-owned events only, and an audit_log undo row.
+ *
+ * `expectStartsAt` (registration path): apply only when the event is still at that
+ * instant, i.e. it is the booking's first session, so a later session in a series is
+ * never moved onto the first-session date.
  */
 export async function applyProviderChange(
   database: Database,
   input: {
     familyId: string;
     eventId: string;
+    providerHost: string;
     source: { startsAt: Date | null; location: string | null };
     timeZone: string;
     now: Date;
+    move: boolean;
+    expectStartsAt?: Date;
   },
 ): Promise<SourceChange | null> {
   const [row] = await database
@@ -28,6 +40,8 @@ export async function applyProviderChange(
       endsAt: schema.familyEvents.endsAt,
       location: schema.familyEvents.location,
       googleEventId: schema.familyEvents.googleEventId,
+      source: schema.familyEvents.source,
+      createdBy: schema.familyEvents.createdBy,
     })
     .from(schema.familyEvents)
     .where(
@@ -39,16 +53,46 @@ export async function applyProviderChange(
     )
     .limit(1);
   if (!row || row.googleEventId !== null) return null;
+  if (row.source === 'parent' || row.createdBy !== null) return null;
+  const [owned] = await database
+    .select({ id: schema.activityBookings.id })
+    .from(schema.activityBookings)
+    .where(
+      and(
+        eq(schema.activityBookings.familyId, input.familyId),
+        eq(schema.activityBookings.eventId, input.eventId),
+        eq(schema.activityBookings.providerHost, input.providerHost.trim().toLowerCase()),
+      ),
+    )
+    .limit(1);
+  if (!owned) return null;
+  if (input.expectStartsAt && row.startsAt.getTime() !== input.expectStartsAt.getTime()) {
+    return null;
+  }
   const change = changeFromSource({
     stored: { startsAt: row.startsAt, location: row.location },
     source: input.source,
     timeZone: input.timeZone,
   });
   if (!change) return null;
-  const startsAt = change.field === 'venue' ? row.startsAt : (input.source.startsAt as Date);
+  if (!input.move) {
+    await database
+      .update(schema.familyEvents)
+      .set(changeColumns(change, input.now))
+      .where(
+        and(
+          eq(schema.familyEvents.id, input.eventId),
+          eq(schema.familyEvents.familyId, input.familyId),
+        ),
+      );
+    return change;
+  }
+  const startMoved = change.field !== 'venue';
+  const venueMoved = change.previousLocation !== undefined;
+  const startsAt = startMoved ? (input.source.startsAt as Date) : row.startsAt;
   // A moved start carries its end with it, so the duration the provider set survives.
   const endsAt =
-    row.endsAt && change.field !== 'venue'
+    row.endsAt && startMoved
       ? new Date(row.endsAt.getTime() + (startsAt.getTime() - row.startsAt.getTime()))
       : row.endsAt;
   await database
@@ -57,7 +101,7 @@ export async function applyProviderChange(
       ...changeColumns(change, input.now),
       startsAt,
       endsAt,
-      location: change.field === 'venue' ? (input.source.location?.trim() ?? null) : row.location,
+      location: venueMoved ? (input.source.location?.trim() ?? null) : row.location,
     })
     .where(
       and(

@@ -305,12 +305,18 @@ export async function recordActivityBooking(
       .where(eq(schema.activityBookings.id, existing.id));
     const linkedEventId = existing.eventId ?? input.draft.eventId;
     if (input.timeZone && linkedEventId) {
+      // Only the booking's FIRST-SESSION event moves: `expectStartsAt` refuses a linked
+      // event that is not at the booking's first session, so a later session in the
+      // series is never dragged onto the first-session date (#955 review, point 7).
       await applyProviderChange(database, {
         familyId: input.familyId,
         eventId: linkedEventId,
+        providerHost: input.draft.providerHost,
         source: { startsAt: input.draft.firstSessionAt, location: input.draft.location },
         timeZone: input.timeZone,
         now: new Date(),
+        move: true,
+        expectStartsAt: existing.firstSessionAt,
       });
     }
     await noteBookingMemory(database, input.familyId, input.draft.title);
@@ -682,7 +688,7 @@ export async function readDueBookings(
  * display name (which can carry a child's program name) or the local part (which can be
  * `parent.name@`).
  */
-function senderHost(from: string): string {
+export function senderHost(from: string): string {
   const address = /<([^>]*)>/.exec(from)?.[1] ?? from;
   return (address.split('@')[1] ?? '').trim().toLowerCase();
 }
