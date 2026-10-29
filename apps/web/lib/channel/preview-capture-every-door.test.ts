@@ -80,8 +80,9 @@ describe('every outbound door is captured or refused on a Preview capture run', 
     const text = FILES.find((f) => f.rel === 'apps/web/lib/channel/linq/transport.ts')?.text ?? '';
     expect(text.match(/(?<![\w.])fetch\(/g) ?? []).toEqual([]);
     expect(text.match(/doFetch\(/g) ?? []).toHaveLength(1);
+    // PREVIEW_CAPTURE_GROUPS on captures a fake group's call (preview-linq-capture.ts).
     const gate = text.indexOf(
-      "if (previewCaptureRequested()) throw new LinqSendError('preview_capture'",
+      "if (!previewGroupCaptureOpen()) throw new LinqSendError('preview_capture'",
     );
     expect(gate).toBeGreaterThan(text.indexOf('async function linqRequest('));
     expect(gate).toBeLessThan(text.indexOf('doFetch('));
