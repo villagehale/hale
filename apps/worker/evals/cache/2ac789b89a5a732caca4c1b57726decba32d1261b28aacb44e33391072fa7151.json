@@ -5,7 +5,11 @@
     "rationale": "City recreation program announcing registration open for fall parent-and-baby activities; family has a 5-month-old infant, matching the age range for these programs.",
     "payload": {
       "sender": "programs@cityrec.ca",
-      "program_types": ["Aquatots", "Baby Music", "Infant Massage"],
+      "program_types": [
+        "Aquatots",
+        "Baby Music",
+        "Infant Massage"
+      ],
       "registration_opens": "2025-06-18T09:00:00-04:00",
       "season": "Fall",
       "note": "Popular sessions fill within minutes"

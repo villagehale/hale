@@ -1,6 +1,8 @@
 {
   "value": {
-    "pages_read": ["https://www.oakville.ca/recreation/swimming/learn-to-swim.html"],
+    "pages_read": [
+      "https://www.oakville.ca/recreation/swimming/learn-to-swim.html"
+    ],
     "slots": [
       {
         "name": "Learn to Swim: Preschool A, Town of Oakville",

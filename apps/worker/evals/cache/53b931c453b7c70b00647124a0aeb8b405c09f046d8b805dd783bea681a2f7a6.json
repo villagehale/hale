@@ -6,7 +6,11 @@
     "payload": {
       "sender": "shipping@everydaybasics.ca",
       "status": "out_for_delivery",
-      "items": ["paper towels", "diapers", "wipes"],
+      "items": [
+        "paper towels",
+        "diapers",
+        "wipes"
+      ],
       "delivery_window": "2-6 PM today"
     },
     "suggested_action": {

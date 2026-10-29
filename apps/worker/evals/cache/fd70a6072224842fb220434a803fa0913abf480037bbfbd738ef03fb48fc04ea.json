@@ -17,7 +17,10 @@
         "id": "toolu_01BYtTknrnNAT3TzGdPmP3ri",
         "name": "turn_off_autonomy",
         "input": {
-          "kinds": ["send_email", "reply_to_email"],
+          "kinds": [
+            "send_email",
+            "reply_to_email"
+          ],
           "interpretation": "家长要求以后发邮件前先询问，不要自动代发。"
         },
         "caller": {

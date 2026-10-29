@@ -39,7 +39,7 @@ export const APOLOGY_FIXTURES = [
     rejected: [],
     countsTowardVariance: true,
     watchFor:
-      "One sentence. Must own the fault as Hale's AND say nothing was changed. No cause named (it does not know one), no fix time, no app, no question.",
+      'One sentence. Must own the fault as Hale\'s AND say nothing was changed. No cause named (it does not know one), no fix time, no app, no question.',
   })),
 
   {

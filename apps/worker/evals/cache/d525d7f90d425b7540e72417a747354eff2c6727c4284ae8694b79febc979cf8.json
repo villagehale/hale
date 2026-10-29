@@ -4,7 +4,11 @@
     "confidence": 0.95,
     "rationale": "This is a one-way delivery notification for a household order with no action needed.",
     "payload": {
-      "orderContents": ["paper towels", "diapers", "wipes"],
+      "orderContents": [
+        "paper towels",
+        "diapers",
+        "wipes"
+      ],
       "deliveryWindow": "2 PM - 6 PM today",
       "sender": "shipping@everydaybasics.ca"
     },

@@ -8,15 +8,7 @@
   },
   "expect": {
     "maxConfidence": 0.95,
-    "forbiddenStageTokens": [
-      "driver",
-      "driving lessons",
-      "driver-prep",
-      "pacifier",
-      "tummy time",
-      "swaddle",
-      "parent-and-baby"
-    ],
+    "forbiddenStageTokens": ["driver", "driving lessons", "driver-prep", "pacifier", "tummy time", "swaddle", "parent-and-baby"],
     "forbiddenLocationTokens": []
   }
 }

@@ -10,7 +10,11 @@
       "age_trigger": 16,
       "child_age_months": 192,
       "action_required": "Apply at DriveTest centre",
-      "requirements": ["Vision test", "Knowledge test", "Two pieces of identification"],
+      "requirements": [
+        "Vision test",
+        "Knowledge test",
+        "Two pieces of identification"
+      ],
       "note": "No appointment required for knowledge test"
     },
     "suggested_action": {

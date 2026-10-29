@@ -1043,13 +1043,7 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(
-        body,
-        inText,
-        pageEvidence,
-        watch,
-        composed.commits_to_return === true,
-      );
+      violations = followUpViolations(body, inText, pageEvidence, watch, composed.commits_to_return === true);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }

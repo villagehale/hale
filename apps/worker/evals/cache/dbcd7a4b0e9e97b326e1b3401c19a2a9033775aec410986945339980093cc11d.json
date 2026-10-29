@@ -2,7 +2,10 @@
   "value": {
     "answer": "Souvent un simple rhume, qui passe en 7 à 10 jours. Qu'il mange et joue normalement est rassurant. Repos, liquides, gouttes salines.",
     "triage": "Appelez le 811 si fièvre ou plus de 10 jours. Allez à l'urgence ou composez le 911 si respiration difficile, lèvres bleues ou grande somnolence.",
-    "sources": ["Société canadienne de pédiatrie", "Seattle Children's"]
+    "sources": [
+      "Société canadienne de pédiatrie",
+      "Seattle Children's"
+    ]
   },
   "latencyMs": 6506
 }

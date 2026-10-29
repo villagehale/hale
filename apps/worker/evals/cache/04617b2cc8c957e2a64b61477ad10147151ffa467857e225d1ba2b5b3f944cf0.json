@@ -1,7 +1,11 @@
 {
   "value": {
     "verdict": "worth_it",
-    "tags": ["hard_parking", "pricey", "well_run"]
+    "tags": [
+      "hard_parking",
+      "pricey",
+      "well_run"
+    ]
   },
   "stopReason": "tool_use"
 }

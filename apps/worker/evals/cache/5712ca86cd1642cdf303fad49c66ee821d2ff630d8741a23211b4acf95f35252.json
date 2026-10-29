@@ -17,7 +17,10 @@
         "id": "toolu_012qarpkbpLnwQZzSFfBTsLZ",
         "name": "turn_off_autonomy",
         "input": {
-          "kinds": ["send_email", "reply_to_email"],
+          "kinds": [
+            "send_email",
+            "reply_to_email"
+          ],
           "interpretation": "Le parent demande que Hale arrete d'envoyer des courriels en son nom sans lui demander d'abord."
         },
         "caller": {

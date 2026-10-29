@@ -6,7 +6,11 @@
     "payload": {
       "sender": "register@cityrec.ca",
       "program_name": "Fall toddler programs",
-      "programs_offered": ["Tumble Tots", "Toddler Swim", "Music & Movement"],
+      "programs_offered": [
+        "Tumble Tots",
+        "Toddler Swim",
+        "Music & Movement"
+      ],
       "age_range": "2-3 years",
       "registration_opens": "Thursday 9:00 AM",
       "availability_note": "Limited spots, fill within minutes",

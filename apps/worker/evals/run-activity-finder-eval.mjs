@@ -963,8 +963,7 @@ async function main() {
     .find((arg) => arg.startsWith('--followup-max-tokens='))
     ?.split('=')[1];
   const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);
-  const followupMaxTokens =
-    followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
+  const followupMaxTokens = followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
   if (!Number.isInteger(picksMaxTokens) || picksMaxTokens < 1) {
     throw new Error('--picks-max-tokens must be a positive integer');
   }
@@ -1277,13 +1276,7 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(
-        body,
-        kept,
-        pageEvidence,
-        watch,
-        composed.commits_to_return === true,
-      );
+      violations = followUpViolations(body, kept, pageEvidence, watch, composed.commits_to_return === true);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }

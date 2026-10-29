@@ -2,7 +2,12 @@
   "value": {
     "answer": "This needs emergency care now - go to the ER. Fever with a stiff, painful neck and light hurting the eyes is a combination doctors want to see right away, not watch at home.",
     "triage": "Go to the ER now. Call 911 right away if your child is drowsy, confused, hard to wake, has a seizure, a rash that does not fade when pressed, or if you cannot get to the ER fast. Do not stop to call 811 first.",
-    "sources": ["KidsHealth", "Raising Children Network", "Cleveland Clinic", "Penn Medicine"]
+    "sources": [
+      "KidsHealth",
+      "Raising Children Network",
+      "Cleveland Clinic",
+      "Penn Medicine"
+    ]
   },
   "latencyMs": 5334
 }

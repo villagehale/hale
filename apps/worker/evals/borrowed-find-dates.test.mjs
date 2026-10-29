@@ -31,8 +31,8 @@ describe('borrowedFindDates', () => {
 
   it('allows a find its own date', () => {
     expect(borrowedFindDates('Riverdale Farm is open Sunday Aug 9.', [STORY, FARM])).toEqual([]);
-    expect(borrowedFindDates('Central Library story time is Sat, Aug 8.', [STORY, FARM])).toEqual(
-      [],
-    );
+    expect(
+      borrowedFindDates('Central Library story time is Sat, Aug 8.', [STORY, FARM]),
+    ).toEqual([]);
   });
 });

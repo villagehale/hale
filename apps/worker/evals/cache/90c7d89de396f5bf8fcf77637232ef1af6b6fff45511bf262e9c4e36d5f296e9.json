@@ -5,7 +5,11 @@
     "rationale": "City recreation notice that Fall parent-and-baby program registration opens June 18 at 9 AM, relevant to a 5-month-old.",
     "payload": {
       "sender": "programs@cityrec.ca",
-      "programs": ["Aquatots", "Baby Music", "Infant Massage"],
+      "programs": [
+        "Aquatots",
+        "Baby Music",
+        "Infant Massage"
+      ],
       "season": "Fall",
       "opens_date": "Wednesday June 18",
       "opens_time": "9 AM",

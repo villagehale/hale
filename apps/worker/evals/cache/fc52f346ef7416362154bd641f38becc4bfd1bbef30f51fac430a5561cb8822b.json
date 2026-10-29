@@ -2,7 +2,9 @@
   "value": {
     "reason": "Thursday 6 PM local is the pre-weekend evening send moment; sun-lib (Sunday 2 PM) fits the 12:30-20:00 free window after the morning study block, so send it now, while sat-lib conflicts with Saturday's all-day commitment and is not sent.",
     "action": "send_now",
-    "item_ids": ["sun-lib"],
+    "item_ids": [
+      "sun-lib"
+    ],
     "hold_until": null,
     "frequency_direction": null,
     "frequency_note": null

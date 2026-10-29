@@ -2,7 +2,12 @@
   "value": {
     "answer": "立即带孩子去急诊,马上出发。发烧加脖子僵硬、怕光,需要医生马上检查,越早处理越好,不要等它自己好。",
     "triage": "如果无法尽快到达急诊,或孩子嗜睡、意识混乱、叫不醒、呕吐、抽搐,或出现按压不褪色的皮疹,立即拨打911。现在不要观察等待;811只适用于较轻的情况,这次请直接去急诊或拨打911。",
-    "sources": ["Raising Children Network", "KidsHealth", "Cleveland Clinic", "Penn Medicine"]
+    "sources": [
+      "Raising Children Network",
+      "KidsHealth",
+      "Cleveland Clinic",
+      "Penn Medicine"
+    ]
   },
   "latencyMs": 5352
 }

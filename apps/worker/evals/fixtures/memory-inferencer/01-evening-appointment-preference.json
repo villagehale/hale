@@ -5,27 +5,15 @@
     "recentEvents": [
       {
         "eventType": "pediatric_appointment_request",
-        "payload": {
-          "from": "frontdesk@littlesprout-pediatrics.ca",
-          "proposed_time": "2026-05-12 17:30",
-          "accepted": true
-        }
+        "payload": { "from": "frontdesk@littlesprout-pediatrics.ca", "proposed_time": "2026-05-12 17:30", "accepted": true }
       },
       {
         "eventType": "pediatric_appointment_request",
-        "payload": {
-          "from": "frontdesk@littlesprout-pediatrics.ca",
-          "proposed_time": "2026-05-26 18:00",
-          "accepted": true
-        }
+        "payload": { "from": "frontdesk@littlesprout-pediatrics.ca", "proposed_time": "2026-05-26 18:00", "accepted": true }
       },
       {
         "eventType": "pediatric_appointment_request",
-        "payload": {
-          "from": "frontdesk@littlesprout-pediatrics.ca",
-          "proposed_time": "2026-06-09 17:45",
-          "accepted": true
-        }
+        "payload": { "from": "frontdesk@littlesprout-pediatrics.ca", "proposed_time": "2026-06-09 17:45", "accepted": true }
       }
     ],
     "recentActions": [

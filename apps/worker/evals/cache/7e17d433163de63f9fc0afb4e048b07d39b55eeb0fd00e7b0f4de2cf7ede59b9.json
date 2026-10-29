@@ -5,7 +5,11 @@
     "rationale": "Routine delivery notification from a supplier explicitly stating \"No action needed\"—a one-way status update that requires no reply.",
     "payload": {
       "sender": "shipping@everydaybasics.ca",
-      "order_items": ["paper towels", "diapers", "wipes"],
+      "order_items": [
+        "paper towels",
+        "diapers",
+        "wipes"
+      ],
       "delivery_window": "2 PM to 6 PM today",
       "delivery_date": "today",
       "action_required": false

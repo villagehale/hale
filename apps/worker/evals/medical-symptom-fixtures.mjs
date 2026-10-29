@@ -127,7 +127,7 @@ export const MEDICAL_FIXTURES = [
   },
   {
     id: 'sibling-strep-throat',
-    text: 'This is Priya - my son Arjun is 4 and his big sister Anaya had strep last week. Now Arjun has a sore throat and a fever. What should I do?',
+    text: "This is Priya - my son Arjun is 4 and his big sister Anaya had strep last week. Now Arjun has a sore throat and a fever. What should I do?",
     redFlag: false,
     dropsFromQuery: ['priya', 'arjun', 'anaya'],
     mustSurviveInQuery: ['throat'],
@@ -136,7 +136,7 @@ export const MEDICAL_FIXTURES = [
   },
   {
     id: 'phone-dehydration',
-    text: 'Please call me on 416-555-0142 - my daughter Lily is 1, she has vomited everything for two days, has watery diarrhea, and now she is floppy, hard to wake, with sunken eyes and no wet diaper in over 12 hours.',
+    text: "Please call me on 416-555-0142 - my daughter Lily is 1, she has vomited everything for two days, has watery diarrhea, and now she is floppy, hard to wake, with sunken eyes and no wet diaper in over 12 hours.",
     redFlag: true,
     dropsFromQuery: ['lily', '416'],
     mustSurviveInQuery: ['vomit'],

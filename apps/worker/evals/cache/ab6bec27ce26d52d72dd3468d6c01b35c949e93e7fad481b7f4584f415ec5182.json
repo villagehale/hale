@@ -9,7 +9,10 @@
       "child_reference": "Baby Chen",
       "response_window": "next two weeks",
       "availability": "Mon-Thu mornings",
-      "response_channels": ["phone", "portal"]
+      "response_channels": [
+        "phone",
+        "portal"
+      ]
     },
     "suggested_action": {
       "kind": "autonomous_action",

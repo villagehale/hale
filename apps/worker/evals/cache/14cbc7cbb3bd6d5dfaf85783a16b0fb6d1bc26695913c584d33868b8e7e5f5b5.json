@@ -6,7 +6,11 @@
     "payload": {
       "sender": "contact@brightpath-family.ca",
       "organization_name": "Brightpath Family",
-      "topics": ["open_house_rescheduled", "pending_form_submission", "fee_information"],
+      "topics": [
+        "open_house_rescheduled",
+        "pending_form_submission",
+        "fee_information"
+      ],
       "status": "awaiting_parent_action",
       "next_step": "parent_to_submit_form_and_coordinate_open_house_date"
     },

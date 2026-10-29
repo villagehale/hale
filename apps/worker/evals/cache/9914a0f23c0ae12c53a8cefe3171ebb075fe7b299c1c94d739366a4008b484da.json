@@ -9,7 +9,10 @@
       "appointment_type": "6-month checkup",
       "requested_action": "confirm_and_schedule",
       "available_timeframe": "next two weeks, Mon-Thu mornings",
-      "contact_methods": ["phone", "portal"],
+      "contact_methods": [
+        "phone",
+        "portal"
+      ],
       "source_email": "frontdesk@littlesprout-pediatrics.ca"
     },
     "suggested_action": {

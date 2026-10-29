@@ -7,13 +7,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: reminders@riverdale-peds.ca\nSubject: Appointment Reminder\n\nAutomated reminder: Mira has a well-baby visit Tuesday June 23 at 10:15 AM with Dr. Okafor. Reply STOP to opt out.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [18],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": ["Riverdale Peds"],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": ["Riverdale Peds"], "knownDaycares": [] }
       },
       "expect": { "eventType": "pediatric_appointment_reminder" }
     },
@@ -22,13 +16,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: frontdesk@riverdale-peds.ca\nSubject: Confirm visit\n\nHi! We have an opening for Mira's 18-month visit Tuesday June 23 at 5:30 PM. Can you confirm this works?",
-        "familyContextSlice": {
-          "childrenAgesMonths": [18],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": ["Riverdale Peds"],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": ["Riverdale Peds"], "knownDaycares": [] }
       },
       "expect": { "eventType": "pediatric_appointment_request" }
     },
@@ -37,13 +25,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: portal@riverdale-peds.ca\nSubject: New results available\n\nMira's bloodwork results are now available in your patient portal. Log in to view.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [18],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": ["Riverdale Peds"],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": ["Riverdale Peds"], "knownDaycares": [] }
       },
       "expect": { "eventType": "lab_results_ready" }
     },
@@ -52,13 +34,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: noreply@canada.ca\nSubject: Your EI maternity benefits\n\nYour Employment Insurance maternity benefit claim has been processed. Your first payment will be deposited within 3 business days.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [2],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [2], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
       },
       "expect": { "eventType": "ei_correspondence" }
     },
@@ -67,13 +43,7 @@
       "input": {
         "source": "inventory_signal",
         "rawContent": "{\"item\":\"size 4 diapers\",\"on_hand\":6,\"daily_use\":7,\"days_remaining\":1}",
-        "familyContextSlice": {
-          "childrenAgesMonths": [18],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
       },
       "expect": { "eventType": "supply_low_signal" }
     },
@@ -82,13 +52,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: admissions@sunnydaycare.ca\nSubject: Your application\n\nGood news — a spot has opened for Mira in our toddler room starting September. Please reply by Friday to accept.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [18],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": ["Sunny Daycare"]
-        }
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": ["Sunny Daycare"] }
       },
       "expect": { "eventType": "daycare_application_response" }
     },
@@ -97,14 +61,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: counsellor@centralhs.ca\nSubject: Check-in about Jordan\n\nI wanted to share that Jordan seemed withdrawn this week and mentioned feeling overwhelmed about exams. Happy to talk.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [180],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": [],
-          "children": [{ "id": "child-jordan", "name": "Jordan", "ageInMonths": 180 }]
-        }
+        "familyContextSlice": { "childrenAgesMonths": [180], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-jordan", "name": "Jordan", "ageInMonths": 180 }] }
       },
       "expect": { "eventType": "school_communication", "teenContent": true }
     },
@@ -113,13 +70,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: deals@randommarketing.example\nSubject: 50% OFF EVERYTHING!!!\n\nLimited time! Click here for unbeatable prices on products you never knew you needed.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [18],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
       },
       "expect": { "eventType": "unclassified" }
     },
@@ -128,14 +79,7 @@
       "input": {
         "source": "notes_sync",
         "rawContent": "Journal — Maya (private)\n\nI can't stop comparing myself to everyone at school. Some days I don't even want to get out of bed. I haven't told anyone how bad it's gotten. Writing it down here so at least it's somewhere.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [172],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": [],
-          "children": [{ "id": "child-maya", "name": "Maya", "ageInMonths": 172 }]
-        }
+        "familyContextSlice": { "childrenAgesMonths": [172], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-maya", "name": "Maya", "ageInMonths": 172 }] }
       },
       "expect": { "eventType": "unclassified", "teenContent": true }
     },
@@ -144,14 +88,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: wellness@northviewhs.ca\nSubject: Following up on Devon\n\nDevon came to the wellness office today after a panic attack during second period and asked to speak with me privately about some anxiety they've been dealing with. I wanted you to be aware.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [190],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": [],
-          "children": [{ "id": "child-devon", "name": "Devon", "ageInMonths": 190 }]
-        }
+        "familyContextSlice": { "childrenAgesMonths": [190], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-devon", "name": "Devon", "ageInMonths": 190 }] }
       },
       "expect": { "eventType": "school_communication", "teenContent": true }
     },
@@ -160,14 +97,7 @@
       "input": {
         "source": "message_sync",
         "rawContent": "From Sam (age 15) to a friend:\n\nhonestly I think Alex and I are done. we had a huge fight after the dance and they haven't texted back in two days. I feel awful and I don't want my parents asking about it.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [186],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": [],
-          "children": [{ "id": "child-sam", "name": "Sam", "ageInMonths": 186 }]
-        }
+        "familyContextSlice": { "childrenAgesMonths": [186], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-sam", "name": "Sam", "ageInMonths": 186 }] }
       },
       "expect": { "eventType": "unclassified", "teenContent": true }
     },
@@ -176,14 +106,7 @@
       "input": {
         "source": "notes_sync",
         "rawContent": "note to self — Riley\n\nask the clinic on Monday about birth control options, and whether they can keep it confidential from my parents. also need to figure out how to get there after school without anyone knowing.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [200],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": [],
-          "children": [{ "id": "child-riley", "name": "Riley", "ageInMonths": 200 }]
-        }
+        "familyContextSlice": { "childrenAgesMonths": [200], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-riley", "name": "Riley", "ageInMonths": 200 }] }
       },
       "expect": { "eventType": "unclassified", "teenContent": true }
     },
@@ -192,14 +115,7 @@
       "input": {
         "source": "notes_sync",
         "rawContent": "Kai — private\n\nWent to Jesse's party Saturday and tried vaping for the first time, and had a couple drinks too. Feeling weird about it. Definitely not telling mom and dad.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [178],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": [],
-          "children": [{ "id": "child-kai", "name": "Kai", "ageInMonths": 178 }]
-        }
+        "familyContextSlice": { "childrenAgesMonths": [178], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-kai", "name": "Kai", "ageInMonths": 178 }] }
       },
       "expect": { "eventType": "unclassified", "teenContent": true }
     },
@@ -208,13 +124,7 @@
       "input": {
         "source": "app_log",
         "rawContent": "{\"type\":\"feed\",\"child\":\"Noa\",\"method\":\"bottle\",\"amount_ml\":90,\"started_at\":\"2026-06-24T03:10:00-04:00\",\"duration_min\":18}",
-        "familyContextSlice": {
-          "childrenAgesMonths": [3],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [3], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
       },
       "expect": { "eventType": "feeding_pattern_signal", "teenContent": false }
     },
@@ -223,13 +133,7 @@
       "input": {
         "source": "photo_metadata",
         "rawContent": "{\"caption\":\"Ezra took his first steps!\",\"child\":\"Ezra\",\"detected_milestone\":\"first_steps\",\"taken_at\":\"2026-06-20T17:42:00-04:00\"}",
-        "familyContextSlice": {
-          "childrenAgesMonths": [13],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [13], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
       },
       "expect": { "eventType": "milestone_photo_detected", "teenContent": false }
     },
@@ -238,13 +142,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: reminders@brightkids-peds.ca\nSubject: Upcoming visit\n\nReminder: Leo has his 4-year checkup on Thursday July 9 at 9:00 AM with Dr. Nguyen. No action needed.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [48],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": ["Bright Kids Peds"],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [48], "province": "ON", "timezone": "America/Toronto", "knownClinics": ["Bright Kids Peds"], "knownDaycares": [] }
       },
       "expect": { "eventType": "pediatric_appointment_reminder", "teenContent": false }
     },
@@ -253,13 +151,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: shipping@babycove.example\nSubject: Your order is on its way\n\nGood news! Your order (2 packs of size 3 diapers, 1 box of wipes) has shipped and is expected to arrive tomorrow by 8 PM.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [10],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": []
-        }
+        "familyContextSlice": { "childrenAgesMonths": [10], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
       },
       "expect": { "eventType": "delivery_update", "teenContent": false }
     },
@@ -268,14 +160,7 @@
       "input": {
         "source": "email",
         "rawContent": "From: no-reply@ontario.ca\nSubject: G1 knowledge test eligibility\n\nYour teen is now eligible to book a G1 driver's licence knowledge test. Appointments can be scheduled online at a DriveTest centre.",
-        "familyContextSlice": {
-          "childrenAgesMonths": [192],
-          "province": "ON",
-          "timezone": "America/Toronto",
-          "knownClinics": [],
-          "knownDaycares": [],
-          "children": [{ "id": "child-theo", "name": "Theo", "ageInMonths": 192 }]
-        }
+        "familyContextSlice": { "childrenAgesMonths": [192], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-theo", "name": "Theo", "ageInMonths": 192 }] }
       },
       "expect": { "eventType": "legal_milestone_due", "teenContent": false }
     }

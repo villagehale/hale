@@ -4,7 +4,10 @@
     "confidence": 0.95,
     "rationale": "This is a one-way shipping notification about an order's expected delivery time.",
     "payload": {
-      "orderContents": ["2 packs of size 3 diapers", "1 box of wipes"],
+      "orderContents": [
+        "2 packs of size 3 diapers",
+        "1 box of wipes"
+      ],
       "expectedArrival": "tomorrow by 8 PM",
       "sender": "shipping@babycove.example"
     },

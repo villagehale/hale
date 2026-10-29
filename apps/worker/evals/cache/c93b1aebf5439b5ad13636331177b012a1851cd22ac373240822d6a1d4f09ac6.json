@@ -5,7 +5,11 @@
     "rationale": "One-way delivery notification from a supplier with a scheduled delivery window and explicit \"no action needed.\"",
     "payload": {
       "sender": "shipping@everydaybasics.ca",
-      "items": ["paper towels", "diapers", "wipes"],
+      "items": [
+        "paper towels",
+        "diapers",
+        "wipes"
+      ],
       "delivery_window": "2 PM - 6 PM",
       "delivery_date": "today",
       "status": "out_for_delivery"

@@ -6,7 +6,11 @@
         "source": "Service Canada",
         "summary": "Your next EI parental benefit report is due July 7. Late reports may delay payment.",
         "priority": "high",
-        "tags": ["ei", "deadline", "benefits"]
+        "tags": [
+          "ei",
+          "deadline",
+          "benefits"
+        ]
       }
     },
     "confidence": 0.95,
