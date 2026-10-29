@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "Library storytime naming the 3-year-old, clear reschedule with old and new times, already on calendar, no offer",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, Maplewood Library bumped Robin's Storytime from Saturday to Sunday, Sept 20 at 1:00 PM. Still runs about 45 minutes, so it wraps up around 1:45 PM.",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}
