@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
+import {
+  type GroupCaptureSink,
+  PreviewGroupCaptureRefused,
+  captureLinqCall,
+  databaseGroupCaptureSink,
+  previewGroupCaptureOpen,
+} from '~/lib/channel/preview-linq-capture';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { linqApiKey, linqFromE164 } from './config';
 
@@ -141,6 +149,17 @@ type LinqHttpResult = {
   retryAfterMs: number | null;
 };
 
+let groupSinkOverride: GroupCaptureSink | null = null;
+
+/** Test seam: route captured group calls to an in-memory sink. */
+export function setPreviewGroupCaptureSinkForTest(sink: GroupCaptureSink | null): void {
+  groupSinkOverride = sink;
+}
+
+function groupCaptureSink(): GroupCaptureSink {
+  return groupSinkOverride ?? databaseGroupCaptureSink();
+}
+
 async function linqRequest(input: {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
@@ -148,6 +167,25 @@ async function linqRequest(input: {
   fetch?: typeof fetch;
   idempotencyKey?: string;
 }): Promise<LinqHttpResult> {
+  // VIL-466 · a Preview capture run never reaches Linq, whatever else is set. Every
+  // partner call (1:1, group, tapback, typing, poll, contact card) passes here, so a
+  // send the capture transport does not own is refused, permanently, before any fetch.
+  // VIL-466 groups · with PREVIEW_CAPTURE_GROUPS also on, a fake group's call is
+  // captured (preview-linq-capture.ts) and answered in Linq's shape; anything else,
+  // or any call outside a `preview-chat-` chat, stays refused before any fetch.
+  if (previewCaptureRequested()) {
+    if (!previewGroupCaptureOpen()) throw new LinqSendError('preview_capture', 0, true);
+    let captured: { status: number; payload: unknown };
+    try {
+      captured = await captureLinqCall(input, groupCaptureSink());
+    } catch (err) {
+      if (err instanceof PreviewGroupCaptureRefused) {
+        throw new LinqSendError(`preview_${err.reason}`, 0, true);
+      }
+      throw err;
+    }
+    return { ok: true, code: 'ok', permanent: false, retryAfterMs: null, ...captured };
+  }
   const apiKey = linqApiKey();
   if (!apiKey) throw new LinqSendError('not_configured', 0, true);
 

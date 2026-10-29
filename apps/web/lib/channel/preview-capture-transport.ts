@@ -1,5 +1,6 @@
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
 import { linqApiKey, linqFromE164 } from '~/lib/channel/linq/config';
+import { isSyntheticProbeNumber } from '~/lib/channels/phone';
 
 /**
  * Preview-only capture door for fake-family proof runs.
@@ -9,14 +10,18 @@ import { linqApiKey, linqFromE164 } from '~/lib/channel/linq/config';
  * start when any Linq key or line is configured, so a capture run can never sit
  * beside a real phone door.
  *
- * Nothing sets the flag in this tree, and the module seeds no families.
+ * Nothing sets the flag in this tree, and the module seeds no families. The
+ * deployed door persists each capture (preview-capture-store.ts) so a proof run
+ * can be read back word for word; the sink here is the seam for that.
  */
 type Env = Readonly<Record<string, string | undefined>>;
 
 export type CapturedSend = OutboundMessage & { capturedAt: string; providerMessageId: string };
 
 export class PreviewCaptureRefused extends Error {
-  constructor(readonly reason: 'not_preview' | 'flag_off' | 'linq_configured') {
+  constructor(
+    readonly reason: 'not_preview' | 'flag_off' | 'linq_configured' | 'recipient_not_synthetic',
+  ) {
     super(`preview capture transport refused: ${reason}`);
     this.name = 'PreviewCaptureRefused';
   }
@@ -39,7 +44,7 @@ export function clearCapturedSends(): void {
 
 export function createPreviewCaptureTransport(
   env: Env = process.env,
-  sink: (send: CapturedSend) => void = () => {},
+  sink: (send: CapturedSend) => void | Promise<void> = () => {},
 ): ChannelTransport {
   if (env.VERCEL_ENV !== 'preview') throw new PreviewCaptureRefused('not_preview');
   if (!previewCaptureRequested(env)) throw new PreviewCaptureRefused('flag_off');
@@ -49,6 +54,12 @@ export function createPreviewCaptureTransport(
   let counter = 0;
   return {
     async send(input) {
+      // Only the fictional +1 437-555 fake-family range is captured. Any other
+      // recipient is refused before it is recorded, so no real parent's words
+      // are ever stored in plaintext by a proof run.
+      if (!isSyntheticProbeNumber(input.to)) {
+        throw new PreviewCaptureRefused('recipient_not_synthetic');
+      }
       counter += 1;
       const send: CapturedSend = {
         ...input,
@@ -56,7 +67,7 @@ export function createPreviewCaptureTransport(
         providerMessageId: `preview-capture-${Date.now()}-${counter}`,
       };
       captured.push(send);
-      sink(send);
+      await sink(send);
       console.info({ to: input.to, captured: true }, 'outbound: preview capture, not sent');
       return { providerMessageId: send.providerMessageId };
     },
