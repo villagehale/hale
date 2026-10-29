@@ -11,7 +11,12 @@ export type ChangedField = 'time' | 'date' | 'venue';
 
 /** The raw change as the source gave it: which field and what it was before. */
 export type SourceChange =
-  | { field: 'time' | 'date'; previousStartsAt: Date }
+  | {
+      field: 'time' | 'date';
+      previousStartsAt: Date;
+      /** Set when the venue changed in the same provider move: both are kept. */
+      previousLocation?: string;
+    }
   | { field: 'venue'; previousLocation: string };
 
 function localDay(instant: Date, timeZone: string): string {
@@ -24,9 +29,10 @@ function localDay(instant: Date, timeZone: string): string {
 }
 
 /**
- * The one change between `stored` and `source`, or null. A start that moved to another
+ * The change between `stored` and `source`, or null. A start that moved to another
  * family-local day is `date`; same day, different clock time is `time`. A start change
- * wins over a venue change: the parent cannot be at the right place at the wrong time.
+ * leads (the parent cannot be at the right place at the wrong time), and a venue that
+ * changed in the same move rides along as `previousLocation` instead of being dropped.
  * A venue only counts when both sides name one and they differ.
  */
 export function changeFromSource(args: {
@@ -35,13 +41,60 @@ export function changeFromSource(args: {
   timeZone: string;
 }): SourceChange | null {
   const { stored, source, timeZone } = args;
+  const before = stored.location?.trim() || null;
+  const after = source.location?.trim() || null;
+  const venueMoved = before !== null && after !== null && before !== after;
   if (source.startsAt && source.startsAt.getTime() !== stored.startsAt.getTime()) {
     const field =
       localDay(source.startsAt, timeZone) === localDay(stored.startsAt, timeZone) ? 'time' : 'date';
-    return { field, previousStartsAt: stored.startsAt };
+    return venueMoved
+      ? { field, previousStartsAt: stored.startsAt, previousLocation: before }
+      : { field, previousStartsAt: stored.startsAt };
   }
-  const before = stored.location?.trim() || null;
-  const after = source.location?.trim() || null;
-  if (before && after && before !== after) return { field: 'venue', previousLocation: before };
+  if (venueMoved) return { field: 'venue', previousLocation: before };
   return null;
+}
+
+/** How long a recorded change stays news for a reminder. */
+export const CHANGE_FRESH_MS = 7 * 24 * 3600_000;
+
+/** The stored columns back as a change, or null when absent, stale or malformed. */
+export function changeFromColumns(
+  row: {
+    sourceChangedField: string | null;
+    sourceChangedFromStartsAt: Date | null;
+    sourceChangedFromLocation: string | null;
+    sourceChangedAt: Date | null;
+  },
+  now: Date,
+): SourceChange | null {
+  if (!row.sourceChangedAt || now.getTime() - row.sourceChangedAt.getTime() > CHANGE_FRESH_MS) {
+    return null;
+  }
+  if (
+    (row.sourceChangedField === 'time' || row.sourceChangedField === 'date') &&
+    row.sourceChangedFromStartsAt
+  ) {
+    return row.sourceChangedFromLocation
+      ? {
+          field: row.sourceChangedField,
+          previousStartsAt: row.sourceChangedFromStartsAt,
+          previousLocation: row.sourceChangedFromLocation,
+        }
+      : { field: row.sourceChangedField, previousStartsAt: row.sourceChangedFromStartsAt };
+  }
+  if (row.sourceChangedField === 'venue' && row.sourceChangedFromLocation) {
+    return { field: 'venue', previousLocation: row.sourceChangedFromLocation };
+  }
+  return null;
+}
+
+/** The columns a change writes. */
+export function changeColumns(change: SourceChange, now: Date) {
+  return {
+    sourceChangedField: change.field,
+    sourceChangedFromStartsAt: change.field === 'venue' ? null : change.previousStartsAt,
+    sourceChangedFromLocation: change.previousLocation ?? null,
+    sourceChangedAt: now,
+  };
 }

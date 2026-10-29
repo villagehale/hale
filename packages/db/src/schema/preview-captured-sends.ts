@@ -15,6 +15,11 @@ export const previewCapturedSends = pgTable(
     toE164: text('to_e164').notNull(),
     body: text('body').notNull(),
     mediaUrls: jsonb('media_urls').$type<string[]>(),
+    /** VIL-474 · Linq text decorations the send carried (bold ranges). Null when none. */
+    decorations:
+      jsonb('decorations').$type<
+        { range: readonly [number, number]; style?: string; animation?: string }[]
+      >(),
     providerMessageId: text('provider_message_id').notNull(),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
   },
