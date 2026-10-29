@@ -77,6 +77,6 @@ export async function rateLimitStatus(
     return await limiter().check(identifier, route, RATE_LIMITS[route]);
   } catch (err) {
     console.error({ err, route }, 'rate-limit check failed — failing open');
-    return { allowed: true, retryAfterSec: 0 };
+    return { allowed: true, retryAfterSec: 0, firstDenied: false };
   }
 }

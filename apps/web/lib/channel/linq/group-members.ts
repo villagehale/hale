@@ -3,6 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { speak } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -10,9 +11,9 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { linqFromE164, linqGroupMembersEnabled, linqGroupWelcomeVoiceEnabled } from './config';
+import { linqGroupMembersEnabled, linqGroupWelcomeVoiceEnabled } from './config';
 import { type GroupOnboardingComposer, composeOnboardingLine } from './group-onboarding-voice';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError } from './transport';
 
 type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver';
 
@@ -190,7 +191,7 @@ async function liveSeats(database: Database) {
 }
 
 function haleLine(phone: string): boolean {
-  const from = linqFromE164();
+  const from = outboundLineFrom();
   if (!from) return false;
   return normalizePhoneE164(from) === phone;
 }

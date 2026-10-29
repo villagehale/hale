@@ -8,8 +8,8 @@ import {
   groupAudienceAllows,
 } from '~/lib/channel/linq/group-audience';
 import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
-import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
-import { sendResolvingNewChat } from '~/lib/channel/outbound-transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
+import { sendLinqChatMessage, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 
 /**
  * One already-written group reminder, sent: as a line into the family group, or as a
