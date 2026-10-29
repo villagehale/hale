@@ -329,7 +329,8 @@ export function rememberedWhoTakes(
  * Whether this who-takes decision changed after a message was sent: its live fact began
  * later, or a later one was withheld or given back with nothing in its place. A group
  * message read again on a webhook retry, or delivered late, must not undo what came after
- * it. Holds only while group messages are stored as of when they were sent.
+ * it. An open ask is no decision: a message sent just before a poll went out still counts.
+ * Holds only while group messages are stored as of when they were sent.
  */
 export async function whoTakesChangedSince(
   database: Database,
@@ -341,7 +342,9 @@ export async function whoTakesChangedSince(
   },
 ): Promise<boolean> {
   const live = input.remembered.find((row) => row.factKey === input.factKey);
-  if (live && live.since.getTime() > input.sentAt.getTime()) return true;
+  if (live && live.status !== 'open' && live.since.getTime() > input.sentAt.getTime()) {
+    return true;
+  }
   if (typeof database.select !== 'function') return false;
   const withheld = await database
     .select({ id: schema.familyMemoryFacts.id })
@@ -416,8 +419,9 @@ export async function recordLogisticsVote(
   const existing = (await loadRememberedLogistics(database, input.familyId)).find(
     (row) => row.factKey === input.subjectKey,
   );
-  // A who-takes poll is only asked while nothing is stored for its plan, so a pickup someone
-  // took in the group came after every poll about it: a late tap does not undo it.
+  // A who-takes poll is only asked about a plan nobody has taken in the group (a claimed
+  // plan is in no clash alert, and the evening poll asks only about plans with nothing
+  // stored), so a claim came after every poll about it: a late tap does not undo it.
   if (existing?.source === 'claim' && existing.status === 'decided') return 'ignored';
   if (input.choiceKind === 'figure_it_out') {
     await withholdWhoTakes(database, {

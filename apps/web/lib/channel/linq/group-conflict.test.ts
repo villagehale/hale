@@ -3,8 +3,13 @@ import {
   type ClashPerson,
   type ClashPlan,
   type ClashSourceBlock,
+  type GroupClash,
   clashCalendar,
+  clashPollOffer,
+  clashPollOptions,
+  clashPollPass,
   findGroupClashes,
+  groupConflictAlertUsable,
   groupConflictLineInput,
   groupConflictTextUsable,
 } from './group-conflict';
@@ -351,8 +356,10 @@ describe('clashCalendar', () => {
       kids: ['Maya'],
       timeZone: 'America/Toronto',
       language: 'en',
+      poll: clashPollOffer(clash as NonNullable<typeof clash>, [barton, sam]),
     });
     expect(line.items[1]).toEqual({ kind: 'busy', who: 'Barton' });
+    expect(line.poll).toEqual({ takes: 'Maya swim pickup', choices: ['Barton', 'Sam'] });
     expect(JSON.stringify(line)).not.toMatch(/allergist/i);
     expect(line.suggested).toEqual({ name: 'Sam', takes: 'Maya swim pickup' });
   });
@@ -569,6 +576,7 @@ describe('groupConflictLineInput', () => {
       kids: ['Maya', 'Leo'],
       timeZone: 'America/Toronto',
       language: 'fr',
+      poll: null,
     });
     expect(line).toEqual({
       language: 'fr',
@@ -595,7 +603,29 @@ describe('groupConflictLineInput', () => {
       alsoFree: [],
       busy: [],
       couldAsk: ['Rosa'],
+      poll: null,
     });
+  });
+
+  it('gives the model the poll it may send: the plan it asks about and the names on it', () => {
+    const [clash] = findGroupClashes({
+      plans: [
+        plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] }),
+        plan({ key: 'b', title: 'Leo daycare pickup', holders: ['barton'] }),
+      ],
+      busy: [],
+      people: [barton, sam, rosa],
+      now: NOW,
+    });
+    const offer = clashPollOffer(clash as GroupClash, [barton, sam, rosa]);
+    const line = groupConflictLineInput(clash as GroupClash, {
+      people: [barton, sam, rosa],
+      kids: ['Maya', 'Leo'],
+      timeZone: 'America/Toronto',
+      language: 'en',
+      poll: offer,
+    });
+    expect(line.poll).toEqual({ takes: 'Leo daycare pickup', choices: ['Barton', 'Sam', 'Rosa'] });
   });
 });
 
@@ -616,5 +646,143 @@ describe('groupConflictTextUsable', () => {
     expect(groupConflictTextUsable('   ')).toBeNull();
     expect(groupConflictTextUsable('Pick a time: https://hale.example/fix')).toBeNull();
     expect(groupConflictTextUsable('See www.hale.example')).toBeNull();
+  });
+});
+
+describe('clashPollOffer', () => {
+  const twoOnBarton = () =>
+    findGroupClashes({
+      plans: [
+        plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] }),
+        plan({ key: 'b', title: 'Leo daycare pickup', holders: ['barton'] }),
+      ],
+      busy: [],
+      people: [barton, sam, rosa],
+      now: NOW,
+    })[0] as GroupClash;
+
+  it('asks who takes the plan the alert hands over, with everyone in the chat by name', () => {
+    const offer = clashPollOffer(twoOnBarton(), [barton, sam, rosa]);
+    expect(offer?.plan.key).toBe('b');
+    expect(offer?.people).toEqual([
+      { id: 'barton', name: 'Barton' },
+      { id: 'sam', name: 'Sam' },
+      { id: 'rosa', name: 'Rosa' },
+    ]);
+  });
+
+  it('asks about the one plan when its taker is busy, even with nobody free', () => {
+    const [clash] = findGroupClashes({
+      plans: [plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] })],
+      busy: [
+        { key: 'work-b', personId: 'barton', start: AT_3, end: AT_4, known: false },
+        { key: 'work-s', personId: 'sam', start: AT_3, end: AT_4, known: false },
+      ],
+      people: [barton, sam],
+      now: NOW,
+    });
+    expect(clash?.suggested).toBeNull();
+    expect(clashPollOffer(clash as GroupClash, [barton, sam])?.plan.key).toBe('a');
+  });
+
+  it('offers no poll for two plans with nobody to hand one to', () => {
+    const [clash] = findGroupClashes({
+      plans: [
+        plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] }),
+        plan({ key: 'b', title: 'Leo daycare pickup', holders: ['barton'] }),
+      ],
+      busy: [{ key: 'work', personId: 'sam', start: AT_3, end: AT_4, known: false }],
+      people: [barton, sam, rosa],
+      now: NOW,
+    });
+    expect(clash?.suggested).toBeNull();
+    expect(clashPollOffer(clash as GroupClash, [barton, sam, rosa])).toBeNull();
+  });
+
+  it('never puts a taker with no account on it, and needs two names told apart', () => {
+    const clash = twoOnBarton();
+    const grandma: ClashPerson = { id: 'named:Grandma', name: 'Grandma', calendar: false };
+    expect(clashPollOffer(clash, [barton, sam, grandma])?.people.map((row) => row.id)).toEqual([
+      'barton',
+      'sam',
+    ]);
+    expect(clashPollOffer(clash, [barton, grandma])).toBeNull();
+    expect(clashPollOffer(clash, [barton, { ...sam, name: '' }])).toBeNull();
+    expect(clashPollOffer(clash, [barton, sam, { ...rosa, name: ' sam ' }])).toBeNull();
+  });
+});
+
+describe('clashPollPass and clashPollOptions', () => {
+  const offer = {
+    plan: plan({ key: 'b', title: 'Leo daycare pickup' }),
+    people: [
+      { id: 'barton', name: 'Barton' },
+      { id: 'sam', name: 'Sam' },
+    ],
+  };
+
+  it('takes the pass the model wrote, and refuses one that is empty, a link, or a name on it', () => {
+    expect(clashPollPass(['Barton', 'Sam'], "  We'll figure it out ")).toBe("We'll figure it out");
+    expect(clashPollPass(['Barton', 'Sam'], 'On verra !')).toBe('On verra !');
+    expect(clashPollPass(['Barton', 'Sam'], '  ')).toBeNull();
+    expect(clashPollPass(['Barton', 'Sam'], 'Decide at https://hale.example')).toBeNull();
+    expect(clashPollPass(['Barton', 'Sam'], ' sam ')).toBeNull();
+  });
+
+  it('puts each name on the poll as stored, then the pass, all for one plan', () => {
+    expect(clashPollOptions(offer, 'No idea yet', 'who-takes/x')).toEqual([
+      {
+        text: 'Barton',
+        pollKind: 'who_takes',
+        subjectKey: 'who-takes/x',
+        choiceKind: 'parent',
+        choiceValue: 'barton',
+      },
+      {
+        text: 'Sam',
+        pollKind: 'who_takes',
+        subjectKey: 'who-takes/x',
+        choiceKind: 'parent',
+        choiceValue: 'sam',
+      },
+      {
+        text: 'No idea yet',
+        pollKind: 'who_takes',
+        subjectKey: 'who-takes/x',
+        choiceKind: 'figure_it_out',
+        choiceValue: null,
+      },
+    ]);
+    expect(clashPollOptions(offer, 'Barton', 'who-takes/x')).toBeNull();
+  });
+});
+
+describe('groupConflictAlertUsable', () => {
+  const poll = { takes: 'Leo daycare pickup', choices: ['Barton', 'Sam'] };
+
+  it('sends the poll only when one was offered and the model wrote its last option', () => {
+    expect(
+      groupConflictAlertUsable({ poll }, { text: ' Sam, daycare? ', figureItOut: 'TBD' }),
+    ).toEqual({ text: 'Sam, daycare?', figureItOut: 'TBD' });
+    expect(groupConflictAlertUsable({ poll }, { text: 'Sam, daycare?' })).toEqual({
+      text: 'Sam, daycare?',
+      figureItOut: null,
+    });
+    expect(groupConflictAlertUsable({ poll }, { text: 'Sam, daycare?', figureItOut: ' ' })).toEqual(
+      { text: 'Sam, daycare?', figureItOut: null },
+    );
+    expect(
+      groupConflictAlertUsable({ poll: null }, { text: 'Sam, daycare?', figureItOut: 'TBD' }),
+    ).toEqual({ text: 'Sam, daycare?', figureItOut: null });
+  });
+
+  it('refuses the whole alert when its text or the poll it was written for cannot go', () => {
+    expect(groupConflictAlertUsable({ poll }, { text: '', figureItOut: 'TBD' })).toBeNull();
+    expect(
+      groupConflictAlertUsable({ poll }, { text: 'Vote below', figureItOut: 'Sam' }),
+    ).toBeNull();
+    expect(
+      groupConflictAlertUsable({ poll }, { text: 'Vote below', figureItOut: 'www.hale.example' }),
+    ).toBeNull();
   });
 });

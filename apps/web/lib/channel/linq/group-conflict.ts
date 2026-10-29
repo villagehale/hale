@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
+import type { PollOptionWrite } from './poll';
 
 /**
  * VIL-444 (T24) — one group alert when two things a family has on collide.
@@ -9,11 +10,14 @@ import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
  * that person busy then, or two plans at once that the people free on the calendars Hale
  * can see cannot split between them. Two parents covering is not a clash. Nobody is called
  * free from a calendar Hale cannot see; the alert may ask them instead. A private block
- * arrives here as an owner and a time, and leaves as "busy". A plan someone took in the
- * group (a claim the model read, group-pickup-claim.ts) is settled: it is never in an
- * alert, and the person who took it is not free for anything else then.
+ * arrives here as an owner and a time, and leaves as "busy". A plan settled in the group
+ * (a claim the model read, group-pickup-claim.ts, or a vote on a who-takes poll) is never
+ * in an alert, and the person it names is not free for anything else then.
  *
- * The model writes the alert from {@link groupConflictLineInput}. Nothing here is copy.
+ * The model writes the alert from {@link groupConflictLineInput}. With LINQ_POLLS on, the
+ * alert may carry the who-takes poll ({@link clashPollOffer}): the names are the people in
+ * the chat as stored, the last option is the model's, and the model decides whether the
+ * poll fits the ask at all. Nothing here is copy.
  */
 
 const LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
@@ -44,7 +48,7 @@ export interface ClashPlan {
   holders: readonly string[];
   /** The taker the family stored. Null falls back to the one calendar it is on. */
   takerId: string | null;
-  /** The taker took it themselves in the group. Their word outranks any calendar. */
+  /** Settled in the group: the taker took it, or a poll vote named them. It outranks any calendar. */
   claimed: boolean;
   /** Calendar rows the alert names, stamped announced once it lands. */
   rows: readonly { integrationId: string; eventId: string }[];
@@ -264,10 +268,11 @@ export interface ClashSourceEvent {
   placedGoogleEventId: string | null;
 }
 
-/** A stored who-takes decision: who, since when, and whether they took it themselves. */
+/** A stored who-takes decision: who, since when, and whether the group settled it. */
 export interface ClashDecision {
   takerId: string;
   at: Date;
+  /** Said in the group: the taker took it themselves, or a poll vote named them. */
   claim: boolean;
 }
 
@@ -419,6 +424,82 @@ export interface GroupConflictLineInput {
   alsoFree: readonly string[];
   busy: readonly string[];
   couldAsk: readonly string[];
+  /** A who-takes poll Hale can send after the alert: the plan it asks about, the names on it. */
+  poll: { takes: string; choices: readonly string[] } | null;
+}
+
+/** The who-takes poll a clash alert may carry. */
+export interface ClashPollOffer {
+  /** The plan it asks who takes. */
+  plan: ClashPlan;
+  /** Everyone on it, by the name the group knows, each with an account a vote can name. */
+  people: readonly { id: string; name: string }[];
+}
+
+/**
+ * The poll a clash may carry, or null. It asks who takes one plan: the one the alert hands
+ * over, or the one plan in a clash with someone's busy time. Two plans with nobody to hand
+ * one to stay an open ask in words. The names are everyone in the chat with an account, as
+ * stored, so none is invented; fewer than two, or two that read the same, is no poll.
+ */
+export function clashPollOffer(
+  clash: GroupClash,
+  people: readonly ClashPerson[],
+): ClashPollOffer | null {
+  const pair = 'plan' in clash.second ? [clash.first, clash.second.plan] : [clash.first];
+  const plan = clash.suggested
+    ? pair.find((row) => row.key === clash.suggested?.planKey)
+    : 'busy' in clash.second
+      ? clash.first
+      : undefined;
+  if (!plan) return null;
+  const named = people
+    .filter((person) => !person.id.startsWith('named:'))
+    .map((person) => ({ id: person.id, name: person.name.trim() }))
+    .filter((person) => person.name.length > 0);
+  const distinct = new Set(named.map((person) => person.name.toLowerCase()));
+  if (named.length < 2 || distinct.size < named.length) return null;
+  return { plan, people: named };
+}
+
+/**
+ * The poll's last option as the model wrote it, or null: empty, a link, or a name on the
+ * poll, which a tap could not be told apart from.
+ */
+export function clashPollPass(choices: readonly string[], pass: string): string | null {
+  const body = groupConflictTextUsable(pass);
+  if (!body) return null;
+  const lower = body.toLowerCase();
+  return choices.some((name) => name.trim().toLowerCase() === lower) ? null : body;
+}
+
+/** The poll as it goes: each name as stored, then the model's pass, all about one plan. */
+export function clashPollOptions(
+  offer: ClashPollOffer,
+  pass: string,
+  subjectKey: string,
+): PollOptionWrite[] | null {
+  const trailing = clashPollPass(
+    offer.people.map((person) => person.name),
+    pass,
+  );
+  if (!trailing) return null;
+  return [
+    ...offer.people.map((person) => ({
+      text: person.name,
+      pollKind: 'who_takes',
+      subjectKey,
+      choiceKind: 'parent',
+      choiceValue: person.id,
+    })),
+    {
+      text: trailing,
+      pollKind: 'who_takes',
+      subjectKey,
+      choiceKind: 'figure_it_out',
+      choiceValue: null,
+    },
+  ];
 }
 
 function localDay(date: Date, timeZone: string, language: ReplyLanguage): string {
@@ -461,6 +542,8 @@ export function groupConflictLineInput(
     kids: readonly string[];
     timeZone: string;
     language: ReplyLanguage;
+    /** The poll Hale may send with it: null when LINQ_POLLS is off or none fits. */
+    poll: ClashPollOffer | null;
   },
 ): GroupConflictLineInput {
   const nameOf = (id: string | null | undefined): string | null =>
@@ -488,6 +571,12 @@ export function groupConflictLineInput(
     alsoFree: names(clash.alsoFree),
     busy: names(clash.busy),
     couldAsk: names(clash.couldAsk),
+    poll: context.poll
+      ? {
+          takes: context.poll.plan.title,
+          choices: context.poll.people.map((person) => person.name),
+        }
+      : null,
   };
 }
 
@@ -502,7 +591,7 @@ export const GROUP_CONFLICT_TOOL = {
   inputSchema: {
     type: 'object',
     additionalProperties: false,
-    properties: { text: { type: 'string' } },
+    properties: { text: { type: 'string' }, figureItOut: { type: 'string' } },
     required: ['text'],
   },
 } as const;
@@ -519,4 +608,21 @@ export function groupConflictTextUsable(text: string): string | null {
   if (body.length === 0) return null;
   if (/https?:\/\/|www\./i.test(body)) return null;
   return body;
+}
+
+/**
+ * The alert as it may go out, or null. A poll goes only when one was offered and the model
+ * wrote its last option; leaving that out is no poll. A message written for a poll whose
+ * last option cannot go is refused whole: it would ask about a poll that is not there.
+ */
+export function groupConflictAlertUsable(
+  input: Pick<GroupConflictLineInput, 'poll'>,
+  value: { text: string; figureItOut?: string | null },
+): { text: string; figureItOut: string | null } | null {
+  const text = groupConflictTextUsable(value.text);
+  if (!text) return null;
+  const pass = input.poll ? (value.figureItOut ?? '').trim() : '';
+  if (!input.poll || !pass) return { text, figureItOut: null };
+  const figureItOut = clashPollPass(input.poll.choices, pass);
+  return figureItOut ? { text, figureItOut } : null;
 }

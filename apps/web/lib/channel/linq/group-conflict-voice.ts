@@ -8,7 +8,7 @@ import {
   GROUP_CONFLICT_MAX_TOKENS,
   GROUP_CONFLICT_TOOL,
   type GroupConflictLineInput,
-  groupConflictTextUsable,
+  groupConflictAlertUsable,
   groupConflictUserMessage,
 } from './group-conflict';
 
@@ -16,14 +16,20 @@ import {
  * VIL-444 (T24) — the model writes the group's clash alert (skill `group-conflict-alert`).
  *
  * The skill's lane first, then a smaller model, then nothing: null means no alert goes
- * out on this pass. There is no fallback sentence.
+ * out on this pass. There is no fallback sentence, and no fallback poll option.
  */
 
-export interface GroupConflictWriter {
-  write(input: GroupConflictLineInput): Promise<string | null>;
+export interface GroupConflictAlert {
+  text: string;
+  /** The who-takes poll's last option, written with the alert. Null: no poll goes with it. */
+  figureItOut: string | null;
 }
 
-const outputSchema = z.object({ text: z.string() });
+export interface GroupConflictWriter {
+  write(input: GroupConflictLineInput): Promise<GroupConflictAlert | null>;
+}
+
+const outputSchema = z.object({ text: z.string(), figureItOut: z.string().nullish() });
 
 export function createGroupConflictWriter(client: () => AgentClient): GroupConflictWriter {
   return {
@@ -54,9 +60,12 @@ export function createGroupConflictWriter(client: () => AgentClient): GroupConfl
             schema: outputSchema,
             maxTokens: GROUP_CONFLICT_MAX_TOKENS,
           });
-          const accepted = groupConflictTextUsable(value.text);
+          const accepted = groupConflictAlertUsable(input, value);
           if (accepted) return accepted;
-          console.warn({ attempt: attempt + 1 }, 'group conflict alert: unusable text');
+          console.warn(
+            { attempt: attempt + 1, poll: input.poll !== null },
+            'group conflict alert: unusable text',
+          );
         } catch (err) {
           console.error(
             { attempt: attempt + 1, err: err instanceof Error ? err.name : 'unknown' },

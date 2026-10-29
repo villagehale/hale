@@ -18,6 +18,8 @@ import {
   type ClashPlan,
   type GroupClash,
   clashCalendar,
+  clashPollOffer,
+  clashPollOptions,
   findGroupClashes,
   groupConflictLineInput,
   watchedPlan,
@@ -65,7 +67,7 @@ import {
   withholdWhoTakes,
   writeLogisticsDecision,
 } from './logistics-poll';
-import { sendChoicePoll } from './poll';
+import { type PollOptionWrite, sendChoicePoll } from './poll';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
@@ -90,6 +92,11 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * taker and no conflict uses that same prompt. Flag off keeps the locked
  * conflict text and does not poll. "We'll figure it out" stores no taker
  * and does not ask again that day.
+ *
+ * VIL-444: with LINQ_GROUP_CONFLICT_ALERTS_ENABLED the model-written clash alert takes
+ * the conflict's turn. With LINQ_POLLS on it may carry the who-takes poll after it: the
+ * names as stored, the last option the model's. A vote is stored as the who-takes
+ * decision, and the clash planner reads it the way it reads a claim.
  *
  * Kid-event, conflict, handoff, and post-event notices leave only through the
  * family's `linq_group_chat_id`. A Linq refusal is `not_sent`. Nothing on this
@@ -148,6 +155,16 @@ export interface HouseholdNotice {
   mark: Array<{ integrationId: string; eventId: string; field: 'announced' | 'followup' }>;
   /** Set when this bubble may be followed by a who-takes poll. */
   whoTakes?: WhoTakesAsk;
+  /** A clash alert's own who-takes poll, sent after it lands. */
+  clashPoll?: { ask: WhoTakesPollSubject; options: readonly PollOptionWrite[] };
+}
+
+/** The plan a who-takes poll asks about, as its open ask is stored. */
+interface WhoTakesPollSubject {
+  startIso: string;
+  titleNorm: string;
+  kid: string | null;
+  event: string | null;
 }
 
 /** Who-takes-it lines are pickup duty; a kid event or how-it-went is that event's logistics. */
@@ -1016,6 +1033,18 @@ export async function narrateHouseholdCalendar(
       fetch: input.fetch,
     });
   }
+  if (sent === 'sent' && notice.clashPoll) {
+    await sendWhoTakesPoll(database, {
+      familyId: input.familyId,
+      chatId: context.chatId,
+      parentUserId: notice.recipientUserId,
+      ask: notice.clashPoll.ask,
+      options: notice.clashPoll.options,
+      idempotencyKey: `poll:${notice.dedupeKey}`,
+      now: input.now,
+      fetch: input.fetch,
+    });
+  }
   if (sent !== 'sent') return;
   for (const mark of notice.mark) {
     await database
@@ -1042,7 +1071,8 @@ export async function narrateHouseholdCalendar(
  * to write. `unsent`: the model could not write it, so nothing goes out on this pass and
  * the next one asks again. People in the chat with no calendar Hale can read (a
  * caregiver, a parent who has not connected one) may be asked; the alert never calls
- * them free.
+ * them free. With LINQ_POLLS on, the writer is offered the who-takes poll, and the
+ * alert carries it only when the model wrote its last option.
  */
 async function clashNotice(
   database: Database,
@@ -1082,31 +1112,53 @@ async function clashNotice(
       );
       return 'held';
     }
-    const text = await sharedGroupConflictWriter().write(
+    const poll = linqPollsEnabled() ? clashPollOffer(clash, people) : null;
+    const alert = await sharedGroupConflictWriter().write(
       groupConflictLineInput(clash, {
         people,
         kids,
         timeZone: input.timeZone,
         language: input.language,
+        poll,
       }),
     );
-    if (!text) {
+    const key = poll ? pickupDecisionKey(poll.plan) : null;
+    const options =
+      poll && key && alert?.figureItOut
+        ? clashPollOptions(poll, alert.figureItOut, whoTakesFactKey(key.startIso, key.titleNorm))
+        : null;
+    // A message written for a poll that cannot go would ask about a poll that is not there.
+    if (!alert || (alert.figureItOut && !options)) {
       console.warn(
         { familyId: input.familyId, outcome: 'group_clash_unsent' },
         'household calendar: clash alert not written, nothing sent',
       );
       return 'unsent';
     }
+    const parts = poll
+      ? splitKidEvent(
+          poll.plan.title,
+          input.children.map((child) => child.name),
+        )
+      : null;
     return {
       kind: 'clash',
       dedupeKey: clash.dedupeKey,
       gateKind: 'activity_followup',
       category: 'calendar_alert',
-      text,
+      text: alert.text,
       recipientUserId: recipient,
       mark: pair.flatMap((plan) =>
         plan.rows.map((row) => ({ ...row, field: 'announced' as const })),
       ),
+      ...(key && options
+        ? {
+            clashPoll: {
+              ask: { ...key, kid: parts?.kid ?? null, event: parts?.event ?? null },
+              options,
+            },
+          }
+        : {}),
     };
   }
   return null;
@@ -1130,7 +1182,8 @@ interface ClashPlanningInput {
 /**
  * What the clash planner reads for one household group: the parents and the caregivers
  * seated in this chat, every calendar row, the plans Hale holds (a private one only as its
- * taker's busy time), and the stored who-takes decisions, claims included.
+ * taker's busy time), and the stored who-takes decisions. A claim and a vote on a
+ * who-takes poll both settle a plan in the group.
  */
 async function planClashes(
   database: Database,
@@ -1241,7 +1294,11 @@ async function planClashes(
     decided: (startIso, titleNorm) => {
       const memory = rememberedWhoTakes(input.remembered, startIso, titleNorm);
       return memory?.status === 'decided' && memory.takerUserId
-        ? { takerId: memory.takerUserId, at: memory.since, claim: memory.source === 'claim' }
+        ? {
+            takerId: memory.takerUserId,
+            at: memory.since,
+            claim: memory.source === 'claim' || memory.source === 'poll',
+          }
         : null;
     },
   });
@@ -1553,17 +1610,55 @@ async function attachWhoTakesPoll(
   const factKey = whoTakesFactKey(input.ask.startIso, input.ask.titleNorm);
   const options = await whoTakesPollOptions(input.language, input.parents, factKey);
   if (!options) return;
+  await sendWhoTakesPoll(database, {
+    familyId: input.familyId,
+    chatId: input.chatId,
+    parentUserId: input.parentUserId,
+    ask: input.ask,
+    options,
+    idempotencyKey: `poll:${factKey}:${input.familyId}`.slice(0, 180),
+    now: input.now,
+    fetch: input.fetch,
+  });
+}
+
+/**
+ * The poll alone, its bubble already landed, then the plan held open until someone
+ * answers: no evening ask or handoff names a taker meanwhile. A decision stored by the
+ * time the poll lands (a claim read while the alert was written, a reply by text) stays;
+ * the open ask never writes over it.
+ */
+async function sendWhoTakesPoll(
+  database: Database,
+  input: {
+    familyId: string;
+    chatId: string;
+    parentUserId: string;
+    ask: WhoTakesPollSubject;
+    options: readonly PollOptionWrite[];
+    idempotencyKey: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<void> {
+  const factKey = whoTakesFactKey(input.ask.startIso, input.ask.titleNorm);
   const poll = await sendChoicePoll(database, {
     chatId: input.chatId,
     prompt: null,
-    options,
+    options: input.options,
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     now: input.now,
     fetch: input.fetch,
-    idempotencyKey: `poll:${factKey}:${input.familyId}`.slice(0, 180),
+    idempotencyKey: input.idempotencyKey,
   });
   if (poll.status !== 'sent' && poll.status !== 'prompted') return;
+  const live = rememberedWhoTakes(
+    await loadRememberedLogistics(database, input.familyId),
+    input.ask.startIso,
+    input.ask.titleNorm,
+  );
+  if (live && live.status !== 'open') return;
   await writeLogisticsDecision(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,

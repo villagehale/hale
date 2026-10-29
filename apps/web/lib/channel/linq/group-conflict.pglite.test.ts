@@ -24,7 +24,8 @@ import { recordLogisticsVote, whoTakesFactKey, writeLogisticsDecision } from './
 
 /**
  * VIL-444 (T24) in the household group: one alert per clash, written by the model, sent
- * once into the group chat with no poll. Covered overlaps, a writer that fails, and quiet
+ * once into the group chat. With LINQ_POLLS on it may carry the who-takes poll, and a vote
+ * settles the plan the way a claim does. Covered overlaps, a writer that fails, and quiet
  * hours send nothing. A private plan reaches the writer only as busy. A pickup someone
  * takes in the group is settled and never alerted. Fakes stand in for the model's writer
  * and reader here; the judged eval grades the real ones.
@@ -37,6 +38,7 @@ const BARTON_PHONE = '+14165550111';
 const SAM_PHONE = '+19055550182';
 const GROUP = 'chat-clash-group';
 const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
+const GROUP_POLLS = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/polls`;
 /** 14:00 America/Toronto, two pickups at 15:00. */
 const DAY = new Date('2026-09-25T18:00:00.000Z');
 const QUIET = new Date('2026-09-25T03:00:00.000Z');
@@ -44,6 +46,7 @@ const AT_3 = new Date('2026-09-25T19:00:00.000Z');
 const AT_330 = new Date('2026-09-25T19:30:00.000Z');
 const AT_4 = new Date('2026-09-25T20:00:00.000Z');
 const FAKE_LINE = 'FAKE writer line for the clash';
+const FAKE_PASS = 'FAKE pass option';
 
 let db: TestDb;
 
@@ -71,20 +74,30 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
-function fakeWriter(text: string | null = FAKE_LINE): { calls: GroupConflictLineInput[] } {
+/** The alert as the writer would return it; its pass goes only when a poll was offered. */
+function fakeWriter(
+  text: string | null = FAKE_LINE,
+  figureItOut: string | null = null,
+): { calls: GroupConflictLineInput[] } {
   const calls: GroupConflictLineInput[] = [];
   setGroupConflictWriter({
     async write(input) {
       calls.push(input);
-      return text;
+      return text === null ? null : { text, figureItOut: input.poll ? figureItOut : null };
     },
   });
   return { calls };
 }
 
-function wire(): { fetch: typeof fetch; urls: () => string[]; bodies: () => string } {
+function wire(): {
+  fetch: typeof fetch;
+  urls: () => string[];
+  bodies: () => string;
+  polls: () => string[][];
+} {
   const urls: string[] = [];
   const bodies: string[] = [];
+  const polls: string[][] = [];
   const note = (url: string, init?: RequestInit) => {
     urls.push(String(url));
     if (init?.body) bodies.push(String(init.body));
@@ -98,12 +111,32 @@ function wire(): { fetch: typeof fetch; urls: () => string[]; bodies: () => stri
   );
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
     note(url, init);
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as { poll?: { options?: { text: string }[] } })
+      : null;
+    const options = body?.poll?.options;
+    if (options) {
+      polls.push(options.map((option) => option.text));
+      return new Response(
+        JSON.stringify({
+          message_id: `poll-${urls.length}`,
+          poll: {
+            options: options.map((option, index) => ({
+              option_id: `opt-${urls.length}-${index}`,
+              text: option.text,
+            })),
+          },
+        }),
+        { status: 202 },
+      );
+    }
     return new Response(JSON.stringify({ message: { id: `m-${urls.length}` } }), { status: 200 });
   });
   return {
     fetch: fetchImpl as unknown as typeof fetch,
     urls: () => [...urls],
     bodies: () => bodies.join('\n'),
+    polls: () => polls.map((options) => [...options]),
   };
 }
 
@@ -309,6 +342,7 @@ describe('group clash alerts (VIL-444)', () => {
       alsoFree: [],
       busy: [],
       couldAsk: [],
+      poll: null,
     });
     expect(await sentRows()).toEqual([
       {
@@ -1238,6 +1272,268 @@ describe('group pickup claims (VIL-444)', () => {
     expect(await reply(seeded.samId, takes, at(0), at(14))).toBe('skipped');
     expect(await liveTakers(seeded.familyId)).toEqual([
       { takerUserId: seeded.samId, source: 'text', since: at(8) },
+    ]);
+  });
+});
+
+async function pollOptionRows() {
+  return db.database
+    .select({
+      optionId: schema.linqPollOptions.optionId,
+      text: schema.linqPollOptions.optionText,
+      pollKind: schema.linqPollOptions.pollKind,
+      subjectKey: schema.linqPollOptions.subjectKey,
+      choiceKind: schema.linqPollOptions.choiceKind,
+      choiceValue: schema.linqPollOptions.choiceValue,
+    })
+    .from(schema.linqPollOptions);
+}
+
+function pollVote(from: string, optionId: string) {
+  return {
+    api_version: 'v3',
+    webhook_version: '2026-02-03',
+    event_type: 'poll.vote.added',
+    event_id: 'evt_claim',
+    created_at: DAY.toISOString(),
+    data: {
+      chat_id: GROUP,
+      message_id: 'poll-clash',
+      option_id: optionId,
+      sender_handle: { handle: from, is_me: false },
+    },
+  };
+}
+
+describe('the who-takes poll on a clash alert (VIL-444, LINQ_POLLS on)', () => {
+  beforeEach(() => {
+    vi.stubEnv('LINQ_POLLS', 'on');
+  });
+
+  it('sends the poll after the alert, and a vote on it settles the plan the way a claim does', async () => {
+    vi.stubEnv('LINQ_FROM_E164', HALE);
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded);
+    const writer = fakeWriter(FAKE_LINE, FAKE_PASS);
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(writer.calls).toHaveLength(1);
+    expect(writer.calls[0]?.poll).toEqual({
+      takes: 'Maya swim pickup',
+      choices: ['Barton', 'Sam'],
+    });
+    expect(line.urls()).toEqual([GROUP_MESSAGES, GROUP_POLLS]);
+    expect(line.polls()).toEqual([['Barton', 'Sam', FAKE_PASS]]);
+    const subjectKey = whoTakesFactKey(AT_3.toISOString(), 'maya swim pickup');
+    const options = await pollOptionRows();
+    expect(options.map(({ optionId: _, ...option }) => option)).toEqual([
+      {
+        text: 'Barton',
+        pollKind: 'who_takes',
+        subjectKey,
+        choiceKind: 'parent',
+        choiceValue: seeded.bartonId,
+      },
+      {
+        text: 'Sam',
+        pollKind: 'who_takes',
+        subjectKey,
+        choiceKind: 'parent',
+        choiceValue: seeded.samId,
+      },
+      {
+        text: FAKE_PASS,
+        pollKind: 'who_takes',
+        subjectKey,
+        choiceKind: 'figure_it_out',
+        choiceValue: null,
+      },
+    ]);
+    expect(await whoTakesFacts(seeded.familyId)).toEqual([
+      {
+        factValue: expect.objectContaining({
+          kind: 'who_takes',
+          status: 'open',
+          startIso: AT_3.toISOString(),
+          titleNorm: 'maya swim pickup',
+          takerUserId: null,
+          kid: 'Maya',
+          event: 'swim pickup',
+          source: 'poll',
+        }),
+        inferredBy: 'linq_logistics_poll',
+        validUntil: null,
+      },
+    ]);
+    expect((await sentRows()).map((row) => row.templateKey)).toEqual([
+      'linq:group_clash',
+      'linq:poll',
+    ]);
+    expect(await familyAudits(seeded.familyId)).toContainEqual(
+      expect.objectContaining({ actor: seeded.samId, action: 'linq_poll_sent' }),
+    );
+
+    const votedAt = new Date(DAY.getTime() + 2 * MINUTE);
+    const deps = {
+      database: db.database,
+      enqueue: async () => {},
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async () => {},
+      now: () => votedAt,
+      markRead: async () => ({ status: 'accepted' }),
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
+    const sam = options.find((option) => option.text === 'Sam')?.optionId as string;
+    const response = await handleLinqInboundRequest(signed(pollVote(SAM_PHONE, sam)), deps);
+    expect(await response.json()).toEqual({ outcome: 'poll_logistics' });
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.samId, source: 'poll', since: votedAt },
+    ]);
+
+    await calendarItem(seeded, 'sam', { eventId: 'work', title: null });
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + 15 * MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(1);
+    expect(line.urls()).toEqual([GROUP_MESSAGES, GROUP_POLLS]);
+  });
+
+  it('sends the alert alone when the model leaves the poll out', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded);
+    const writer = fakeWriter(FAKE_LINE, null);
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(writer.calls[0]?.poll).toEqual({
+      takes: 'Maya swim pickup',
+      choices: ['Barton', 'Sam'],
+    });
+    expect(line.urls()).toEqual([GROUP_MESSAGES]);
+    expect(await pollOptionRows()).toEqual([]);
+    expect(await whoTakesFacts(seeded.familyId)).toEqual([]);
+  });
+
+  it('leaves a decision already stored by text in place when its poll goes out', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded);
+    const before = new Date(DAY.getTime() - 5 * MINUTE);
+    expect(
+      await captureLogisticsText(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.bartonId,
+        body: "I'll take Maya swim pickup",
+        sentAt: before,
+        now: before,
+      }),
+    ).toBe('stored');
+    const writer = fakeWriter(FAKE_LINE, FAKE_PASS);
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(writer.calls[0]?.poll).toEqual({
+      takes: 'Maya swim pickup',
+      choices: ['Barton', 'Sam'],
+    });
+    expect(line.polls()).toEqual([['Barton', 'Sam', FAKE_PASS]]);
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.bartonId, source: 'text', since: before },
+    ]);
+  });
+
+  it('lets a vote outrank a duty owner set before it, as a claim does, and one set after it win', async () => {
+    const seeded = await seedFamily();
+    const [piano] = await db.database
+      .insert(schema.familyEvents)
+      .values({
+        familyId: seeded.familyId,
+        title: 'Leo piano pickup',
+        startsAt: AT_3,
+        endsAt: AT_330,
+        source: 'parent',
+        dutyOwnerKind: 'parent',
+        dutyOwnerUserId: seeded.bartonId,
+        dutySetAt: new Date(DAY.getTime() - 60 * MINUTE),
+      })
+      .returning({ id: schema.familyEvents.id });
+    await calendarItem(seeded, 'barton', { eventId: 'work', title: null, end: AT_4 });
+    expect(
+      await recordLogisticsVote(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.bartonId,
+        subjectKey: whoTakesFactKey(AT_3.toISOString(), 'leo piano pickup'),
+        pollKind: 'who_takes',
+        choiceKind: 'parent',
+        choiceValue: seeded.samId,
+        optionText: 'Sam',
+        now: DAY,
+      }),
+    ).toBe('decided');
+    const writer = fakeWriter();
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toEqual([]);
+
+    await db.database
+      .update(schema.familyEvents)
+      .set({ dutySetAt: new Date(DAY.getTime() + 2 * MINUTE) })
+      .where(eq(schema.familyEvents.id, piano?.id as string));
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: new Date(DAY.getTime() + 3 * MINUTE),
+      fetch: line.fetch,
+    });
+    expect(writer.calls).toHaveLength(1);
+    expect(writer.calls[0]?.items).toEqual([
+      expect.objectContaining({ kind: 'plan', title: 'Leo piano pickup', has: 'Barton' }),
+      { kind: 'busy', who: 'Barton' },
+    ]);
+  });
+
+  it('lets a claim sent just before the poll went out still land', async () => {
+    const seeded = await seedFamily();
+    await twoPickupsOnBarton(seeded);
+    fakeWriter(FAKE_LINE, FAKE_PASS);
+    const line = wire();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+    expect(line.urls()).toEqual([GROUP_MESSAGES, GROUP_POLLS]);
+
+    const sentAt = new Date(DAY.getTime() - MINUTE);
+    expect(
+      await claim(seeded, seeded.samId, fakeClaimReader(reads('Maya swim pickup')), {
+        text: "I'll do swim",
+        sentAt,
+        now: new Date(DAY.getTime() + MINUTE),
+      }),
+    ).toBe('claimed');
+    expect(await liveTakers(seeded.familyId)).toEqual([
+      { takerUserId: seeded.samId, source: 'claim', since: sentAt },
     ]);
   });
 });
