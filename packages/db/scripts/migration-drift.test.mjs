@@ -21,6 +21,8 @@ describe('catalog history cutover', () => {
       '0178_user_timezone_from_postal',
       '0179_channel_inbound_media',
       '0189_group_reminders',
+      '0184_preview_captured_sends',
+      '0192_preview_captured_linq_calls',
     ]);
   });
 });

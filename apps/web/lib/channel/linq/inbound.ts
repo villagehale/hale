@@ -469,6 +469,14 @@ function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
  * and a STOP from them sends nothing. A STOP from a parent still routes, so
  * the opt-out does not wait on the claim.
  */
+/** VIL-466 groups · the Preview group door runs this same handler, unsigned. */
+export function handleLinqGroupMessage(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+): Promise<Response> {
+  return handleLinqGroup(deps, message);
+}
+
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
   if (linqGroupOnboardingV2Enabled()) {
     const stopped = await stopInGroup(deps.database, message, rosterPorts(deps));
