@@ -79,19 +79,21 @@ const JUDGE_SYSTEM = [
   'group chat about two things the family has on that collide. Everyone in the chat reads it.',
   'You get the input code checked (language, kids, the two items, who is suggested, who else is',
   'free, who is busy, who may be asked), the message, and watchFor notes.',
-  'Score 1-5 on FACTS, PRIVACY and TONE, not on wording.',
-  'Facts: it names both things and when, plainly, with the kid; it gives the fix as one question:',
+  'Score 1-5 on FACTS, PRIVACY, ONE ASK and TONE, never on wording.',
+  'Facts: it names both things and when, plainly, with the kid; it gives the fix as one ask:',
   'the suggested person by name taking the plan in suggested.takes; with no suggested person it',
   'says nobody looks free on the calendars and asks who can, and may name the couldAsk people;',
   'when both items are the same child it says the child is double-booked and asks which one,',
   'instead of handing a plan to someone.',
+  'Tone: it reads like a friend texting, chill and casual, in input.language as a native',
+  'speaker writes it.',
   'A LOW score is any of: a missing or wrong fact; anything invented (a time, place, person,',
   'reason, cause, or anyone being free); calling a couldAsk person free; saying what a busy item',
-  'is, that its details are hidden, or its own times; more than one question; a list, numbered',
-  'options, a keyword to reply with, a poll or a link; the wrong language for input.language;',
-  'in French, tu instead of vous; a greeting or sign-off, emoji, exclamation marks, "we"/"us" for',
-  'Hale; more than about three short sentences; a corporate or bot register; a spelling, elision',
-  'or accent error.',
+  'is, that its details are hidden, or its own times; more than one ask of the group; asking',
+  'anyone to send a number or a keyword; a link; the wrong language for input.language; a',
+  'corporate, formal or bot register; a spelling, elision or accent error.',
+  'Never mark it down for its length, its punctuation, emoji, exclamation marks, a greeting,',
+  'or "we".',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -190,7 +192,7 @@ function brokenPlanAlerts(fixture) {
   return spans.some((a, i) => spans.some((b, j) => i !== j && a.start < b.end && b.start < a.end));
 }
 
-/** A message that breaks the bar: hype, a link, two questions, every title said, private ones too. */
+/** A message that breaks the guardrails: two asks, a reply keyword, a link, every title said, private ones too. */
 function brokenMessage(fixture) {
   const titles = [
     ...fixture.blocks.map((row) => row.title),
@@ -198,7 +200,7 @@ function brokenMessage(fixture) {
   ]
     .filter(Boolean)
     .join(' and ');
-  return `Heads up!! ${titles} collide. Who takes it? Or skip one? Vote at https://hale.example/fix`;
+  return `${titles} collide. Who takes it? Or skip one? Reply 1 or 2, or vote at https://hale.example/fix`;
 }
 
 function plannerFailures(fixture, line) {
@@ -228,7 +230,7 @@ function plannerFailures(fixture, line) {
 function textFailures(clash, fixture, text) {
   const failures = [];
   if (clash.groupConflictTextUsable(text) === null) {
-    failures.push('unusable: empty, a link, or more than one question');
+    failures.push('unusable: empty, or a link');
   }
   for (const word of fixture.mustNotLeak ?? []) {
     if (text.toLowerCase().includes(word)) failures.push(`private "${word}" in the message`);

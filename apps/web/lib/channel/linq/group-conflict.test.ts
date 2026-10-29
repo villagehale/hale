@@ -600,14 +600,20 @@ describe('groupConflictLineInput', () => {
 });
 
 describe('groupConflictTextUsable', () => {
-  it('takes one plain message with one question at most', () => {
+  it('refuses only an empty message or a link, whatever its length or punctuation', () => {
     expect(groupConflictTextUsable('  Maya and Leo both need pickup at 3. Sam, can you?  ')).toBe(
       'Maya and Leo both need pickup at 3. Sam, can you?',
     );
+    for (const text of [
+      'Can Sam? Or Barton?',
+      'Sam peut-il ? Ou Barton ？',
+      'Oh no! Both at 3 🙃 we can sort it, right?',
+      `${'Maya swim and Leo daycare are both at 3. '.repeat(40)}Sam, can you grab swim?`,
+    ]) {
+      expect(groupConflictTextUsable(text)).toBe(text);
+    }
     expect(groupConflictTextUsable('')).toBeNull();
     expect(groupConflictTextUsable('   ')).toBeNull();
-    expect(groupConflictTextUsable('Can Sam? Or Barton?')).toBeNull();
-    expect(groupConflictTextUsable('Sam peut-il ? Ou Barton ？')).toBeNull();
     expect(groupConflictTextUsable('Pick a time: https://hale.example/fix')).toBeNull();
     expect(groupConflictTextUsable('See www.hale.example')).toBeNull();
   });

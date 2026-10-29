@@ -507,16 +507,16 @@ export const GROUP_CONFLICT_TOOL = {
   },
 } as const;
 
+/** A spend bound on the write (rule #7), not a length for the message. */
 export const GROUP_CONFLICT_MAX_TOKENS = 400;
 
 /**
- * The alert as it may go out, or null: empty, a link, or more than one question (one ask
- * per turn). Whether it carries the facts in the family's voice is the eval judge's call.
+ * The text as it may go out, or null: empty, or a link. Its facts, privacy, one ask and
+ * voice are the eval judge's call, not a count of anything here.
  */
 export function groupConflictTextUsable(text: string): string | null {
   const body = text.trim();
   if (body.length === 0) return null;
   if (/https?:\/\/|www\./i.test(body)) return null;
-  if ((body.match(/[?？؟]/g) ?? []).length > 1) return null;
   return body;
 }

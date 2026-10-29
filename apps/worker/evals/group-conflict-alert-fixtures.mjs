@@ -109,7 +109,7 @@ export const GROUP_CONFLICT_ALERT_FIXTURES = [
     events: [],
     expect: { second: 'plan', suggested: null, busy: [], couldAsk: ['Julien', 'Mamie'] },
     watchFor:
-      "Chloé's soccer practice now falls on Léa's piano recital, Friday at 18:00, and Émilie has both. Nobody is free on a calendar Hale can see: it should say so and ask Julien or Mamie whether one of them can take one, without calling either of them free. French, vous.",
+      "Chloé's soccer practice now falls on Léa's piano recital, Friday at 18:00, and Émilie has both. Nobody is free on a calendar Hale can see: it should say so and ask Julien or Mamie whether one of them can take one, without calling either of them free.",
   },
   {
     id: 'en-same-kid',
