@@ -13,6 +13,7 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { loadOpenSession } from '~/lib/channel/intake/session';
+import { markLinqChatRead } from '~/lib/channel/outbound-transport';
 import {
   lineStatusKnown,
   lineStatusPauses,
@@ -95,7 +96,7 @@ import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
-import { type LinqEffectResult, markLinqChatRead } from './transport';
+import type { LinqEffectResult } from './transport';
 
 /**
  * VIL-335 — POST /api/channels/linq/inbound.

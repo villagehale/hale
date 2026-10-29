@@ -2,9 +2,10 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { sendLinqChatMessage, sendLinqPoll } from '~/lib/channel/outbound-transport';
 import { speak } from '~/lib/channel/spoken-line';
 import { linqPollsEnabled } from './config';
-import { LinqSendError, sendLinqChatMessage, sendLinqPoll } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * VIL-335 — the year-find poll, behind LINQ_POLLS=on.
