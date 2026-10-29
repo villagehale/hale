@@ -4,6 +4,7 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { createLinqIntroGroupOpener } from '~/lib/village/intros/group';
 import { defaultOneToOneSend } from './linq/connect-link-1to1';
 import { sendClaimedGroupLine } from './linq/family-outbound';
+import { setPreviewGroupCaptureSinkForTest } from './linq/transport';
 import * as door from './outbound-transport';
 import {
   PreviewCaptureRefused,
@@ -12,6 +13,7 @@ import {
   clearCapturedChatOps,
   clearCapturedSends,
 } from './preview-capture-transport';
+import { databaseGroupCaptureSink } from './preview-linq-capture';
 
 /**
  * With PREVIEW_CAPTURE_TRANSPORT=on on a Preview deploy with no Linq door, every
@@ -49,17 +51,27 @@ afterEach(async () => {
   vi.restoreAllMocks();
   clearCapturedSends();
   clearCapturedChatOps();
-  await db.exec('truncate table families, users cascade');
+  setPreviewGroupCaptureSinkForTest(null);
+  await db.exec('truncate table families, users, preview_captured_linq_calls cascade');
 });
 
 describe('former bypasses are captured', () => {
   it('connect-link 1:1 text (was createLinqPhoneTransport) and its link part', async () => {
     const send = defaultOneToOneSend();
-    const text = await send.text({ to: '+15550000001', body: 'hello' });
+    const text = await send.text({ to: '+14375550001', body: 'hello' });
     expect(text.providerMessageId).toMatch(/^preview-capture-/);
-    expect(capturedSends()).toMatchObject([{ to: '+15550000001', body: 'hello' }]);
+    expect(capturedSends()).toMatchObject([{ to: '+14375550001', body: 'hello' }]);
     await send.link({ chatId: 'chat-1', url: 'https://example.com/x' });
     expect(capturedChatOps().map((o) => o.op)).toEqual(['parts']);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('connect-link 1:1 refuses a real recipient (VIL-466 fake-family gate)', async () => {
+    const send = defaultOneToOneSend();
+    await expect(send.text({ to: '+15550000001', body: 'hello' })).rejects.toBeInstanceOf(
+      PreviewCaptureRefused,
+    );
+    expect(capturedSends()).toHaveLength(0);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -146,6 +158,23 @@ describe('former bypasses are captured', () => {
     await expect(
       door.reactToLinqMessage({ messageId: 'm', operation: 'add', type: 'like' }),
     ).rejects.toBeInstanceOf(PreviewCaptureRefused);
+  });
+
+  it('with group capture on, a fake-chat send persists and a real chat is refused', async () => {
+    vi.stubEnv('PREVIEW_CAPTURE_GROUPS', 'on');
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', '');
+    setPreviewGroupCaptureSinkForTest(databaseGroupCaptureSink(db.database));
+    const chatId = 'preview-chat-household-1';
+    const sent = await door.sendLinqChatMessage({ chatId, text: 'see you at 4' });
+    expect(sent.providerMessageId).toMatch(/^preview-gcapture-/);
+    const rows = await db.database.select().from(schema.previewCapturedLinqCalls);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ chatId, kind: 'message' });
+    await expect(
+      door.sendLinqChatMessage({ chatId: 'chat_real_123', text: 'x' }),
+    ).rejects.toMatchObject({ code: 'preview_not_fake_chat' });
+    expect(capturedChatOps()).toHaveLength(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

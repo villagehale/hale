@@ -2,11 +2,14 @@ import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/tra
 import { linqApiKey, linqFromE164, linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
 import * as linq from '~/lib/channel/linq/transport';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import { persistCapturedSend } from '~/lib/channel/preview-capture-store';
 import {
+  PreviewCaptureRefused,
   capturePreviewChatOp,
   createPreviewCaptureTransport,
   previewCaptureRequested,
 } from '~/lib/channel/preview-capture-transport';
+import { previewGroupCaptureOpen } from '~/lib/channel/preview-linq-capture';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 
 /**
@@ -21,7 +24,25 @@ import type { MessageTransport } from '~/lib/channel/transport-address';
 export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   // Preview proof runs only. Throws (never falls through to Linq) when the
   // flag is on outside preview or beside a configured Linq door.
-  if (previewCaptureRequested()) return createPreviewCaptureTransport();
+  if (previewCaptureRequested()) {
+    return createPreviewCaptureTransport(process.env, async (send) => {
+      // The capture already happened in memory, so the caller's ledger row says
+      // sent. A failed write is logged by name (never the body) and surfaces in the
+      // proof read-back as `uncapturedLedgered` > 0 (countUncapturedLedgerRows).
+      try {
+        await persistCapturedSend(send);
+      } catch (err) {
+        console.error(
+          {
+            code: 'preview_capture_persist_failed',
+            providerMessageId: send.providerMessageId,
+            err: err instanceof Error && err.message ? err.message : String(err),
+          },
+          'outbound: preview capture not persisted; read-back will show a mismatch',
+        );
+      }
+    });
+  }
   if (!linqPhoneOutboundConfigured()) {
     return {
       async send() {
@@ -41,6 +62,10 @@ export function configuredOutboundChannel(): 'imessage' {
 export function readSendRefusal(err: unknown): { code: string; permanent: boolean } | null {
   if (err instanceof LinqSendError) {
     return { code: err.code, permanent: err.permanent };
+  }
+  // A capture run refusing a real recipient is permanent: retrying cannot help.
+  if (err instanceof PreviewCaptureRefused) {
+    return { code: `preview_${err.reason}`, permanent: true };
   }
   return null;
 }
@@ -124,15 +149,29 @@ export async function sendResolvingNewChat(
  * (one-door.test.ts enforces it).
  *
  * Capture flag off: each one is exactly the linq/transport call, same arguments,
- * same result, same throw. Capture flag on: the call is recorded and nothing goes
- * to the network, after the same refusals as `createOutboundTransport` (preview
- * only, no Linq key, no Linq line).
+ * same result, same throw. Capture flag on without group capture: the call is
+ * recorded in-process (`capturePreviewChatOp`) and nothing goes to the network,
+ * after the same refusals as `createOutboundTransport` (preview only, no Linq
+ * key, no Linq line). Capture flag on with PREVIEW_CAPTURE_GROUPS: the call is
+ * handed to linq/transport so `linqRequest` persists it through the #924 group
+ * capture door (fake chat / 437-555 refusals included).
  */
 
 type In<F extends (...args: never[]) => unknown> = Parameters<F>[0];
 
 function captured(op: string, input: object): string {
   return capturePreviewChatOp(op, input as Record<string, unknown>).providerMessageId;
+}
+
+function captureOrLinq<T>(
+  input: object,
+  op: string,
+  send: () => Promise<T>,
+  asCaptured: (id: string) => T,
+): Promise<T> {
+  if (!previewCaptureRequested()) return send();
+  if (previewGroupCaptureOpen()) return send();
+  return Promise.resolve(asCaptured(captured(op, input)));
 }
 
 /** True when a chat-addressed send can be attempted: a Linq key, or capture on. */
@@ -164,141 +203,123 @@ export function outboundLineFrom(): string | null {
 export async function sendLinqChatMessage(
   input: In<typeof linq.sendLinqChatMessage>,
 ): Promise<{ providerMessageId: string }> {
-  if (previewCaptureRequested()) return { providerMessageId: captured('chat_message', input) };
-  return linq.sendLinqChatMessage(input);
+  return captureOrLinq(input, 'chat_message', () => linq.sendLinqChatMessage(input), (id) => ({
+    providerMessageId: id,
+  }));
 }
 
 export async function sendLinqParts(
   input: In<typeof linq.sendLinqParts>,
 ): Promise<{ providerMessageId: string }> {
-  if (previewCaptureRequested()) return { providerMessageId: captured('parts', input) };
-  return linq.sendLinqParts(input);
+  return captureOrLinq(input, 'parts', () => linq.sendLinqParts(input), (id) => ({
+    providerMessageId: id,
+  }));
 }
 
 export async function sendLinqEffect(
   input: In<typeof linq.sendLinqEffect>,
 ): Promise<{ providerMessageId: string }> {
-  if (previewCaptureRequested()) return { providerMessageId: captured('effect', input) };
-  return linq.sendLinqEffect(input);
+  return captureOrLinq(input, 'effect', () => linq.sendLinqEffect(input), (id) => ({
+    providerMessageId: id,
+  }));
 }
 
 export async function reactToLinqMessage(
   input: In<typeof linq.reactToLinqMessage>,
 ): Promise<{ accepted: true }> {
-  if (previewCaptureRequested()) {
-    captured('reaction', input);
-    return { accepted: true };
-  }
-  return linq.reactToLinqMessage(input);
+  return captureOrLinq(input, 'reaction', () => linq.reactToLinqMessage(input), () => ({
+    accepted: true as const,
+  }));
 }
 
 export async function createLinqChat(
   input: In<typeof linq.createLinqChat>,
 ): Promise<{ chatId: string; providerMessageId: string }> {
-  if (previewCaptureRequested()) {
-    const id = captured('create_chat', input);
-    return { chatId: `${id}-chat`, providerMessageId: id };
-  }
-  return linq.createLinqChat(input);
+  return captureOrLinq(input, 'create_chat', () => linq.createLinqChat(input), (id) => ({
+    chatId: `${id}-chat`,
+    providerMessageId: id,
+  }));
 }
 
 export async function updateLinqGroupChat(
   input: In<typeof linq.updateLinqGroupChat>,
 ): Promise<linq.LinqEffectResult> {
-  if (previewCaptureRequested()) {
-    captured('update_group', input);
-    return { status: 'accepted' };
-  }
-  return linq.updateLinqGroupChat(input);
+  return captureOrLinq(input, 'update_group', () => linq.updateLinqGroupChat(input), () => ({
+    status: 'accepted' as const,
+  }));
 }
 
 export async function addLinqParticipant(
   input: In<typeof linq.addLinqParticipant>,
 ): Promise<{ accepted: true }> {
-  if (previewCaptureRequested()) {
-    captured('add_participant', input);
-    return { accepted: true };
-  }
-  return linq.addLinqParticipant(input);
+  return captureOrLinq(input, 'add_participant', () => linq.addLinqParticipant(input), () => ({
+    accepted: true as const,
+  }));
 }
 
 export async function removeLinqParticipant(
   input: In<typeof linq.removeLinqParticipant>,
 ): Promise<{ accepted: true }> {
-  if (previewCaptureRequested()) {
-    captured('remove_participant', input);
-    return { accepted: true };
-  }
-  return linq.removeLinqParticipant(input);
+  return captureOrLinq(input, 'remove_participant', () => linq.removeLinqParticipant(input), () => ({
+    accepted: true as const,
+  }));
 }
 
 export async function shareLinqContactCard(
   input: In<typeof linq.shareLinqContactCard>,
 ): Promise<{ accepted: true }> {
-  if (previewCaptureRequested()) {
-    captured('share_contact_card', input);
-    return { accepted: true };
-  }
-  return linq.shareLinqContactCard(input);
+  return captureOrLinq(input, 'share_contact_card', () => linq.shareLinqContactCard(input), () => ({
+    accepted: true as const,
+  }));
 }
 
 export async function setupLinqContactCard(
   input: In<typeof linq.setupLinqContactCard>,
 ): Promise<linq.LinqEffectResult> {
-  if (previewCaptureRequested()) {
-    captured('setup_contact_card', input);
-    return { status: 'accepted' };
-  }
-  return linq.setupLinqContactCard(input);
+  return captureOrLinq(input, 'setup_contact_card', () => linq.setupLinqContactCard(input), () => ({
+    status: 'accepted' as const,
+  }));
 }
 
 export async function patchLinqContactCard(
   input: In<typeof linq.patchLinqContactCard>,
 ): Promise<linq.LinqEffectResult> {
-  if (previewCaptureRequested()) {
-    captured('patch_contact_card', input);
-    return { status: 'accepted' };
-  }
-  return linq.patchLinqContactCard(input);
+  return captureOrLinq(input, 'patch_contact_card', () => linq.patchLinqContactCard(input), () => ({
+    status: 'accepted' as const,
+  }));
 }
 
 export async function sendLinqPoll(
   input: In<typeof linq.sendLinqPoll>,
 ): Promise<{ messageId: string; options: linq.LinqPollOptionRef[] }> {
-  if (previewCaptureRequested()) {
-    const id = captured('poll', input);
-    return {
-      messageId: id,
-      options: input.options.map((text, i) => ({ optionId: `${id}-option-${i}`, text })),
-    };
-  }
-  return linq.sendLinqPoll(input);
-}
-
-function capturedEffect(op: string, input: object): Promise<linq.LinqEffectResult> {
-  captured(op, input);
-  return Promise.resolve({ status: 'accepted' });
+  return captureOrLinq(input, 'poll', () => linq.sendLinqPoll(input), (id) => ({
+    messageId: id,
+    options: input.options.map((text, i) => ({ optionId: `${id}-option-${i}`, text })),
+  }));
 }
 
 export function markLinqChatRead(
   input: In<typeof linq.markLinqChatRead>,
 ): Promise<linq.LinqEffectResult> {
-  if (previewCaptureRequested()) return capturedEffect('mark_read', input);
-  return linq.markLinqChatRead(input);
+  return captureOrLinq(input, 'mark_read', () => linq.markLinqChatRead(input), () => ({
+    status: 'accepted' as const,
+  }));
 }
 
 export function startLinqTyping(
   input: In<typeof linq.startLinqTyping>,
 ): Promise<linq.LinqEffectResult> {
-  if (previewCaptureRequested()) return capturedEffect('typing_start', input);
-  return linq.startLinqTyping(input);
+  return captureOrLinq(input, 'typing_start', () => linq.startLinqTyping(input), () => ({
+    status: 'accepted' as const,
+  }));
 }
 
 export function stopLinqTyping(
   input: In<typeof linq.stopLinqTyping>,
 ): Promise<linq.LinqEffectResult> {
-  if (previewCaptureRequested()) return capturedEffect('typing_stop', input);
-  return linq.stopLinqTyping(input);
+  return captureOrLinq(input, 'typing_stop', () => linq.stopLinqTyping(input), () => ({
+    status: 'accepted' as const,
+  }));
 }
 
 /**
@@ -309,7 +330,9 @@ export function stopLinqTyping(
 export function createChatReplyTransport(
   deps: In<typeof linq.createLinqTextTransport>,
 ): ChannelTransport {
-  if (!previewCaptureRequested()) return linq.createLinqTextTransport(deps);
+  if (!previewCaptureRequested() || previewGroupCaptureOpen()) {
+    return linq.createLinqTextTransport(deps);
+  }
   return {
     async send(input) {
       if (input.mediaUrls) throw new LinqSendError('media_unsupported', 400, true);
