@@ -351,6 +351,8 @@ async function main() {
       `${judgeModel}\n${JUDGE_SYSTEM}\n${JSON.stringify(payload)}`,
     );
     if (cachedOnly && (await cacheGet(key)) === undefined) {
+      // An unrecorded calibration is not a pass: CI must see every claim CAUGHT.
+      claimsCaught = false;
       console.info(`UNRECORDED  ${claim.id.padEnd(38)} judge not recorded yet (key ${key})`);
       continue;
     }

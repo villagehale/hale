@@ -224,6 +224,31 @@ export const EMAIL_ALERT_NOTICE_FIXTURES = [
       'Written in French. Picture day Friday Oct 2 at 9 AM. Asks whether to add it to their week.',
   },
   {
+    // Openings kept repeating (5 of 7 recorded texts led the same way). Here the parent's
+    // last three texts from Hale all opened alike, so the writer has to start this one
+    // from what happened. Judged on tone only: no word list.
+    id: 'gym-moved-after-same-openings',
+    expect: 'send',
+    args: args({
+      recentNotices: [
+        "Heads up, Robin's swim Saturday at 9 AM is off.",
+        'Heads up: picture day at Maple Daycare is Friday Oct 2 at 9 AM. Want me to add it to your week?',
+        "Heads up, Robin's storytime moved to Sunday at 10 AM.",
+      ],
+      from: 'Little Movers Gym <hello@littlemovers.example>',
+      subject: 'Class time change',
+      kind: 'reschedule',
+      extraction: extraction('reschedule', {
+        title: 'Tumble class',
+        childRef: 'child-robin',
+        originalTime: '2026-09-22T21:30:00.000Z',
+        newTime: '2026-09-22T22:30:00.000Z',
+      }),
+    }),
+    watchFor:
+      "Robin's Tumble class on Tuesday Sept 22 moved from 5:30 PM to 6:30 PM. Asks nothing. TONE: recentNotices are the last three texts this parent read from Hale and all opened with the same stock lead-in; a text that opens the same way again reads as a repeated form-letter opener and is a tone failure (score 2). It should open from what happened, like a friend would.",
+  },
+  {
     id: 'swim-booked-with-count',
     expect: 'send',
     args: args({

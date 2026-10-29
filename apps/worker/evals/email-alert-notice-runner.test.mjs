@@ -52,8 +52,18 @@ describe('the email-alert notice eval', () => {
     expect(out).toContain('FAIL  incident-storytime-matched-unchanged');
     expect(out).toContain('broken-mode calibration (every silent fixture must fail): PASS');
     expect(out).toContain('live API calls this run: 0');
-    expect(out).toMatch(/(CAUGHT|UNRECORDED) {2}broken-claim-slot-free/);
+    expect(out).toMatch(/CAUGHT {2}broken-claim-slot-free/);
+    expect(out).not.toContain('UNRECORDED');
+    expect(out).toContain('broken-mode judge calibration (every unsupported claim must fail): PASS');
     expect(out).not.toContain('MISSED');
+    expect(status).toBe(0);
+  }, 60_000);
+
+  it('the judged replay passes every fixture from committed recordings, with no model call', async () => {
+    const { status, out } = await run(['--cached-only']);
+    expect(out).toContain('PASS  gym-moved-after-same-openings');
+    expect(out).not.toMatch(/^FAIL /m);
+    expect(out).toContain('live API calls this run: 0');
     expect(status).toBe(0);
   }, 60_000);
 
