@@ -21,6 +21,7 @@ export interface Seat {
   phoneHash: string;
   phoneEncrypted: string;
   firstName: string | null;
+  fullName: string | null;
 }
 
 export function firstName(name: string | null | undefined): string | null {
@@ -46,6 +47,7 @@ export async function liveSeats(database: Database, chatId: string): Promise<Sea
     phoneHash: row.phoneHash,
     phoneEncrypted: row.phoneEncrypted,
     firstName: firstName(row.name),
+    fullName: row.name?.trim() || null,
   }));
 }
 

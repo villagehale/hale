@@ -555,6 +555,71 @@ describe('asking for a reminder in the group', () => {
     expect(await verbs(home.familyId)).toContain('group_reminder_sent');
   });
 
+  it('sets the reminder for one of two Sams once the asker answers with her whole name', async () => {
+    const home = await seedHousehold();
+    const sams = [
+      { phone: '+14165550151', name: 'Sam Okafor' },
+      { phone: '+14165550152', name: 'Sam Adeyemi' },
+    ];
+    const [roster] = await db.database
+      .select({ id: schema.linqGroupRosters.id })
+      .from(schema.linqGroupRosters)
+      .where(eq(schema.linqGroupRosters.chatId, CHAT));
+    const ids: string[] = [];
+    for (const sam of sams) {
+      const id = await person({
+        familyId: home.familyId,
+        phone: sam.phone,
+        name: sam.name,
+        role: 'grandparent',
+        seat: 'other_family',
+        customer: false,
+      });
+      ids.push(id);
+      await db.database.insert(schema.linqGroupRosterMembers).values({
+        rosterId: roster?.id as string,
+        chatId: CHAT,
+        phoneE164Encrypted: encryptString(sam.phone),
+        phoneE164Hash: phoneBlindIndex(sam.phone),
+        userId: id,
+        status: 'confirmed',
+        confirmedRole: 'grandparent',
+      });
+    }
+
+    // First name only: two seats match, so nothing is set.
+    const first = turnPorts(
+      reading([ask({ for: 'person', name: 'Sam', what: 'bring the chairs' })]),
+    );
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(PRIYA, 'remind Sam at 4 to bring the chairs', 'in-sam-1'),
+      first.ports,
+    );
+    expect(first.voice.calls[0]).toMatchObject({
+      notSet: [{ forName: 'Sam', what: 'bring the chairs', why: 'name_shared' }],
+    });
+    expect(await reminders()).toEqual([]);
+
+    // The answer, with one Sam's whole name: it is set, for that Sam.
+    const answer = turnPorts(
+      reading([ask({ for: 'person', name: 'Sam Adeyemi', what: 'bring the chairs' })]),
+    );
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(PRIYA, 'Sam Adeyemi', 'in-sam-2'),
+      answer.ports,
+    );
+    const [row] = await reminders();
+    expect(row).toMatchObject({
+      forKind: 'person',
+      forUserId: ids[1],
+      forPhoneHash: phoneBlindIndex(sams[1]?.phone as string),
+      forName: 'Sam',
+      delivery: 'group',
+    });
+  });
+
   it('sets nothing for someone who is not in the chat, and tells the group so', async () => {
     const home = await seedHousehold();
     const { ports, sends, voice } = turnPorts(
