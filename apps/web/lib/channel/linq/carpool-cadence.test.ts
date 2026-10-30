@@ -12,8 +12,10 @@ const TZ = 'America/Toronto';
 const PICKUP = new Date('2026-10-10T12:00:00.000Z');
 /** Friday 9 Oct 2026, 18:00 Toronto — inside the night-before window. */
 const FRIDAY_EVENING = new Date('2026-10-09T22:00:00.000Z');
-/** Friday 9 Oct 2026, 21:30 Toronto — quiet hours. */
-const FRIDAY_QUIET = new Date('2026-10-10T01:30:00.000Z');
+/** Friday 9 Oct 2026, 22:15 Toronto — quiet hours (default 21:30 start). */
+const FRIDAY_LATE = new Date('2026-10-10T02:15:00.000Z');
+/** Saturday 10 Oct 2026, 7:05 Toronto — quiet over, pickup at 8:00 still ahead. */
+const SATURDAY_DAWN = new Date('2026-10-10T11:05:00.000Z');
 /** Friday 9 Oct 2026, 16:00 Toronto — before the window. */
 const FRIDAY_AFTERNOON = new Date('2026-10-09T20:00:00.000Z');
 
@@ -129,17 +131,56 @@ describe('decideCarpoolReminder', () => {
     ).toEqual({ action: 'fire' });
   });
 
-  it('holds during quiet hours inside the window', () => {
+  it('holds during quiet hours with default prefs (21:30 quiet start)', () => {
     expect(
       decideCarpoolReminder({
         plan: assigned(),
-        now: FRIDAY_EVENING,
-        localMinutes: localMinutesIn(FRIDAY_EVENING, TZ),
+        now: FRIDAY_LATE,
+        localMinutes: localMinutesIn(FRIDAY_LATE, TZ),
         quiet: true,
-        quietStartMin: 21 * 60,
+        quietStartMin: 21 * 60 + 30,
         timeZone: TZ,
       }),
     ).toEqual({ action: 'hold', reason: 'quiet_hours' });
+  });
+
+  it('catches up after quiet hours end when pickup is still ahead', () => {
+    expect(
+      decideCarpoolReminder({
+        plan: assigned(),
+        now: SATURDAY_DAWN,
+        localMinutes: localMinutesIn(SATURDAY_DAWN, TZ),
+        quiet: false,
+        quietStartMin: 21 * 60 + 30,
+        timeZone: TZ,
+      }),
+    ).toEqual({ action: 'fire' });
+  });
+
+  it('drops once pickup has passed', () => {
+    expect(
+      decideCarpoolReminder({
+        plan: assigned(),
+        now: new Date(PICKUP.getTime() + 60_000),
+        localMinutes: localMinutesIn(new Date(PICKUP.getTime() + 60_000), TZ),
+        quiet: false,
+        quietStartMin: 21 * 60 + 30,
+        timeZone: TZ,
+      }),
+    ).toEqual({ action: 'skip', reason: 'window_closed' });
+  });
+
+  it('still holds a cancelled plan as cancelled during quiet hours', () => {
+    expect(
+      decideCarpoolReminder({
+        plan: assigned({ status: 'cancelled', reminderStatus: 'skipped_cancelled' }),
+        now: FRIDAY_LATE,
+        localMinutes: localMinutesIn(FRIDAY_LATE, TZ),
+        quiet: true,
+        quietStartMin: 21 * 60 + 30,
+        timeZone: TZ,
+      }),
+    ).toEqual({ action: 'skip', reason: 'cancelled' });
   });
 
   it('sends nothing after the plan is cancelled', () => {
@@ -179,19 +220,6 @@ describe('decideCarpoolReminder', () => {
         timeZone: TZ,
       }),
     ).toEqual({ action: 'wait' });
-  });
-
-  it('drops after quiet hours close the window', () => {
-    expect(
-      decideCarpoolReminder({
-        plan: assigned(),
-        now: FRIDAY_QUIET,
-        localMinutes: localMinutesIn(FRIDAY_QUIET, TZ),
-        quiet: true,
-        quietStartMin: 21 * 60,
-        timeZone: TZ,
-      }),
-    ).toEqual({ action: 'skip', reason: 'window_closed' });
   });
 
   it('does not fire a reminder that already left', () => {

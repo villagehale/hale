@@ -69,6 +69,10 @@ export interface CarpoolReminderInput {
   timeZone: string;
 }
 
+function localDateIn(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(at);
+}
+
 /** Minutes since local midnight in `timeZone`. */
 export function localMinutesIn(now: Date, timeZone: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -119,8 +123,9 @@ export function decideCarpoolTurn(input: CarpoolTurnInput): CarpoolTurnDecision 
 }
 
 /**
- * Cron: the night-before reminder. Re-reads the live plan. Quiet hours hold
- * inside the window; after the window closes the send is dropped.
+ * Cron: the night-before reminder. Re-reads the live plan. Fires in the evening
+ * window; quiet hours hold it; after quiet ends it catches up if pickup is still
+ * ahead. Past pickup it is dropped.
  */
 export function decideCarpoolReminder(input: CarpoolReminderInput): CarpoolReminderDecision {
   const { plan } = input;
@@ -137,15 +142,19 @@ export function decideCarpoolReminder(input: CarpoolReminderInput): CarpoolRemin
     return { action: 'skip', reason: 'window_closed' };
   }
   if (input.now.getTime() < plan.reminderFireAt.getTime()) return { action: 'wait' };
-  const inWindow = inNightBeforeWindow(input.localMinutes, input.quietStartMin);
-  if (input.quiet && inWindow) return { action: 'hold', reason: 'quiet_hours' };
-  if (input.quiet || !inWindow) {
-    const afterWindow = input.localMinutes >= input.quietStartMin;
-    const pastFireDay = input.now.getTime() - plan.reminderFireAt.getTime() > 6 * 60 * 60 * 1000;
-    if (afterWindow || pastFireDay) return { action: 'skip', reason: 'window_closed' };
-    return { action: 'wait' };
+  // Quiet hours that fall between the reminder and pickup hold it (row stays
+  // pending). Default prefs make quiet start where the evening window ends, so
+  // this must not depend on also being inside the window.
+  if (input.quiet) return { action: 'hold', reason: 'quiet_hours' };
+  if (inNightBeforeWindow(input.localMinutes, input.quietStartMin)) return { action: 'fire' };
+  // Outside the window and not quiet. On pickup's own day the night has passed
+  // (we held through quiet hours, or cron missed the evening): catch up, since
+  // pickup is still ahead. Earlier days: wait for the evening window.
+  if (localDateIn(input.now, input.timeZone) === localDateIn(plan.pickupAt, input.timeZone)) {
+    return { action: 'fire' };
   }
-  return { action: 'fire' };
+  if (input.localMinutes < NIGHT_BEFORE_START_MIN) return { action: 'wait' };
+  return { action: 'skip', reason: 'window_closed' };
 }
 
 export { NIGHT_BEFORE_START_MIN };
