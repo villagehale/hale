@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct (dates, AM/PM as \ber\ba, end time) and nothing is invented, but the text reads like a calendar readout: \"title\ff1a date time\" labels with a formal date instead of saying \"tomorrow\" (\ba\b2). It also leaves the titles in English ('Soccer', 'Library story time') inside a Chinese text instead of natural Chinese names (e.g. \b2\b3\b4\b5), so it is mixed-language and not how a native friend would text it. No friendly sentence, just two stiff entries. Fails the friend-not-notification and native speaker checks.",
+    "score": 2
+  }
+}

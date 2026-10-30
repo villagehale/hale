@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French, tells the parent that many messages came in at once and Hale is not answering this one, and invites them to resend later while explicitly not promising a quick answer. It contains no promise of a later answer, no wait time, no scolding, and no mention of others, so it matches the watchFor requirements closely.",
+    "score": 5
+  }
+}

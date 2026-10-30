@@ -7,6 +7,7 @@ import {
   composeUserMessage,
   createActivityFinder,
   groundUserMessage,
+  stampReadPageUrl,
   toPicks,
 } from './lane';
 
@@ -576,5 +577,115 @@ describe('an empty find says what it searched', () => {
       searched: { town: 'Halton Hills' },
     });
     expect(result.found === false && result.searched?.notes.length).toBeGreaterThan(0);
+  });
+});
+
+describe('VIL-499 · source_url stamped from pages read this turn', () => {
+  const studio = {
+    name: 'Fall Art Classes',
+    age_fit: 'ages 5-12',
+    source_name: 'The Danforth Art Studio',
+  };
+  const page = {
+    url: 'https://example-studio.test/fall-classes',
+    text: 'The Danforth Art Studio — Fall Art Classes, 6-week session, ages 5 to 12.',
+  };
+
+  it('stamps the one read https page that names the pick when compose omits source_url', () => {
+    const [pick] = toPicks([studio], [page]);
+    expect(pick?.url).toBe(page.url);
+  });
+
+  it('keeps the model url when compose supplied one', () => {
+    const [pick] = toPicks([{ ...studio, source_url: 'https://other.test/x' }], [page]);
+    expect(pick?.url).toBe('https://other.test/x');
+  });
+
+  it('no page read, no https, or no page naming the pick: still no url', () => {
+    expect(toPicks([studio], [])[0]?.url).toBeUndefined();
+    expect(
+      toPicks([studio], [{ ...page, url: 'http://example-studio.test/x' }])[0]?.url,
+    ).toBeUndefined();
+    expect(
+      toPicks([studio], [{ url: 'https://unrelated.test/', text: 'Library storytime hours.' }])[0]
+        ?.url,
+    ).toBeUndefined();
+  });
+
+  it('two different pages naming the pick: no guess', () => {
+    const second = { ...page, url: 'https://aggregator.test/danforth' };
+    expect(
+      stampReadPageUrl({ name: studio.name, sourceName: studio.source_name }, [page, second]),
+    ).toBeNull();
+  });
+
+  it('punctuation and a leading "The" do not block the match', () => {
+    const [pick] = toPicks(
+      [{ ...studio, name: 'Fall Art Classes - 6-Week Session' }],
+      [{ url: page.url, text: 'Danforth Art Studio: Fall Art Classes 6 Week Session' }],
+    );
+    expect(pick?.url).toBe(page.url);
+  });
+
+  it('no page text names it: falls back to the one web_search result that does', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://danforthartstudio.example/fall', title: 'Fall classes' },
+        { url: 'https://library.example/storytime', title: 'Storytime' },
+      ],
+    );
+    expect(pick?.url).toBe('https://danforthartstudio.example/fall');
+  });
+
+  it('search results that do not name the pick stamp nothing', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [{ url: 'https://library.example/x', title: 'Storytime' }],
+    );
+    expect(pick?.url).toBeUndefined();
+  });
+
+  it('several matching pages on one host (the venue site): the first opened page is used', () => {
+    const second = { ...page, url: 'https://example-studio.test/drawing' };
+    expect(
+      stampReadPageUrl({ name: studio.name, sourceName: studio.source_name }, [page, second]),
+    ).toBe(page.url);
+  });
+
+  it('opened pages win over search results when both match', () => {
+    const [pick] = toPicks(
+      [studio],
+      [page],
+      [{ url: 'https://other.test/danforth-art-studio', title: 'The Danforth Art Studio' }],
+    );
+    expect(pick?.url).toBe(page.url);
+  });
+
+  it('several hosts: the one whose hostname carries the venue name wins', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://listings.example/toronto-art', title: 'The Danforth Art Studio — kids' },
+        { url: 'https://thedanforthartstudio.example/collections/kids', title: 'Kids classes' },
+        { url: 'https://thedanforthartstudio.example/drawing', title: 'Drawing' },
+      ],
+    );
+    expect(pick?.url).toBe('https://thedanforthartstudio.example/collections/kids');
+  });
+
+  it('several hosts and none carries the venue name: nothing', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://listings.example/a', title: 'The Danforth Art Studio' },
+        { url: 'https://other.example/b', title: 'Danforth Art Studio fall' },
+      ],
+    );
+    expect(pick?.url).toBeUndefined();
   });
 });

@@ -74,7 +74,9 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     );
 
     expect(skill.instructions).toContain('Text like a friend: chill, casual, and brief.');
-    expect(skill.instructions).not.toMatch(/\b(one|two|three) (short )?sentences?\b(?! (in this file|is true))/i);
+    expect(skill.instructions).not.toMatch(
+      /\b(one|two|three) (short )?sentences?\b(?! (in this file|is true))/i,
+    );
     expect(skill.instructions).not.toContain('gets cut off');
     expect(toSmsReply(long, { children: [], now: new Date('2026-10-12T14:07:00.000Z') })).toBe(
       long,

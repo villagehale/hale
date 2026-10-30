@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French, not the requested Chinese (zh). It also omits both timed events (story time 11:00 AM and soccer 5:30-6:30 PM), invents a 3:00 time, rewrites the day as a day off with breathing room (implying the day is open despite timed events), and omits the plan link.",
+    "score": 1
+  }
+}

@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { SequenceState } from './schedule.js';
-import type { Shortlist } from './shortlist.js';
 import {
   type AwaitingSequence,
   type SequenceReplyDeps,
@@ -8,6 +6,8 @@ import {
   loadAwaitingSequence,
   matchCheckInReply,
 } from './reply.js';
+import type { SequenceState } from './schedule.js';
+import type { Shortlist } from './shortlist.js';
 
 /**
  * VIL-242 · M7 — what a parent's answer to "how did it go?" is allowed to do.

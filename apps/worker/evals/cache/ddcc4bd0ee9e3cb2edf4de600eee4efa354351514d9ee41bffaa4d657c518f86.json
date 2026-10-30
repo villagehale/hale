@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Text omits the time 5:30 PM and the day today, so the mustSay items about Dan being reminded at 5:30 today to pick up the cake are not conveyed; it only says Reminder set without naming the task or time."
+  }
+}

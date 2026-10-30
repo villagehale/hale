@@ -295,6 +295,22 @@ jobs:
       - name: Linq sticker eval (cached-only)
         run: pnpm --filter @hale/worker eval:linq-sticker
 
+      - name: Group reminder eval (cached-only)
+        working-directory: apps/worker
+        run: node evals/group-reminder-eval.mjs --cached-only
+
+      - name: Group reminder eval, broken arm must fail (cached-only)
+        working-directory: apps/worker
+        run: node evals/group-reminder-eval.mjs --cached-only --broken
+
+      - name: Email alert notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:email-alert-notice
+
+      # Calibration: the code-built line main used to send must fail every silent fixture,
+      # and the judge must catch every unsupported claim (recorded; UNRECORDED fails CI).
+      - name: Email alert notice eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:email-alert-notice:broken
+
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
   # skipped job. Fails when workspace checks fail or when evals were required and

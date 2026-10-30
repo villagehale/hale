@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French (\"Jour de congé\") while the requested language is English, a mixed-language failure. It also gives a wrong time (3:00 instead of 9:30 AM to 12:00 PM), omits the location, and says tomorrow is a day off with breathing room, implying the day is free even though a timed event exists. Multiple fact failures and a language failure.",
+    "score": 1
+  }
+}

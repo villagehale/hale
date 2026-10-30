@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French ('Jour de congé') while the requested language is English, and the event is given as a 3:00 time instead of the 9:30 AM to 12:00 PM window. It also says the day is free with breathing room, which is false because a timed event exists. Missing the start, end, location, and wrong language all fail the facts.",
+    "score": 1
+  }
+}

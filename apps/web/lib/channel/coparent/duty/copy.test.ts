@@ -6,8 +6,6 @@ import {
   DUTY_BOTH_CLAIMED_COPY,
   DUTY_BOTH_CLAIMED_COPY_FR,
   DUTY_COPY_TEMPLATES,
-  DUTY_NIGHT_BEFORE_COPY_EN,
-  DUTY_NIGHT_BEFORE_COPY_FR,
   DUTY_PARENT_ASK_COPY_EN,
   DUTY_PARENT_ASK_COPY_FR,
   DUTY_PARENT_OWNED_COPY_EN,
@@ -67,7 +65,7 @@ describe('duty copy lock', () => {
       expect(dutyCopyMayLeave(line)).toBe(false);
     }
     expect(dutyCopyMayLeave('TODO-Design: which kid?')).toBe(false);
-    expect(absorbDutyLine('This week: swim.', DUTY_NIGHT_BEFORE_COPY_EN)).toBe('This week: swim.');
+    expect(absorbDutyLine('This week: swim.', 'Tomorrow: {name} has it.')).toBe('This week: swim.');
     expect(absorbDutyLine('This week: swim.', 'Sam is booked for swim.')).toBe('This week: swim.');
   });
 
@@ -158,17 +156,15 @@ describe('duty copy lock', () => {
     expect(
       dutyCopy('reask_48h', 'fr', { kid: 'Maya', event: 'natation', day: 'lundi', time: '15:00' }),
     ).toBe("Toujours personne pour s'occuper de natation pour Maya, lundi a 15:00. Qui le prend?");
-    expect(dutyCopy('night_before', 'en', OWNED)).toBe(
-      "Tomorrow: Sam has Maya's swim at 3:00pm. Say so here if that changes.",
-    );
-    expect(
+    expect(() => dutyCopy('night_before', 'en', OWNED)).toThrow(DutyCopyError);
+    expect(() =>
       dutyCopy('night_before', 'fr', {
         name: 'Sam',
         kid: 'Maya',
         event: 'natation',
         time: '15:00',
       }),
-    ).toBe("Demain: Sam s'occupe de natation pour Maya a 15:00. Dites-le ici si ca change.");
+    ).toThrow(DutyCopyError);
     expect(dutyCopy('silent_parent', 'en', { name: 'Barton', event: 'swim', day: 'Monday' })).toBe(
       'Barton, over to you on swim, Monday.',
     );
@@ -245,12 +241,6 @@ describe('duty copy lock', () => {
     );
     expect(DUTY_REASK_COPY_FR).toBe(
       "Toujours personne pour s'occuper de {event} pour {kid}, {day} a {time}. Qui le prend?",
-    );
-    expect(DUTY_NIGHT_BEFORE_COPY_EN).toBe(
-      "Tomorrow: {name} has {kid}'s {event} at {time}. Say so here if that changes.",
-    );
-    expect(DUTY_NIGHT_BEFORE_COPY_FR).toBe(
-      "Demain: {name} s'occupe de {event} pour {kid} a {time}. Dites-le ici si ca change.",
     );
     expect(DUTY_SILENT_PARENT_COPY_EN).toBe('{name}, over to you on {event}, {day}.');
     expect(DUTY_SILENT_PARENT_COPY_FR).toBe('{name}, a toi de nous dire pour {event}, {day}.');

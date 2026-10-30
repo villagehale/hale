@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event in the facts is Swim class today, 10:00-11:00 AM. The text names a different event (Jour de congé) at 3:00, never mentions Swim class or its 10:00-11:00 AM time, and says tomorrow is a day off with breathing room, which is invented and wrongly implies the day is free when a timed event exists. Wrong event, wrong time, wrong day, with invented details.",
+    "score": 1
+  }
+}

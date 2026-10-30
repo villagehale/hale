@@ -27,11 +27,6 @@ export const DUTY_REASK_COPY_EN =
 export const DUTY_REASK_COPY_FR =
   "Toujours personne pour s'occuper de {event} pour {kid}, {day} a {time}. Qui le prend?";
 
-export const DUTY_NIGHT_BEFORE_COPY_EN =
-  "Tomorrow: {name} has {kid}'s {event} at {time}. Say so here if that changes.";
-export const DUTY_NIGHT_BEFORE_COPY_FR =
-  "Demain: {name} s'occupe de {event} pour {kid} a {time}. Dites-le ici si ca change.";
-
 export const DUTY_PARENT_OWNED_COPY_EN = "{name} has {kid}'s {event}, {day} at {time}.";
 export const DUTY_PARENT_OWNED_COPY_FR = "{name} s'occupe de {event} pour {kid}, {day} a {time}.";
 
@@ -57,8 +52,6 @@ export const DUTY_COPY_TEMPLATES = [
   DUTY_WEEK_OVERVIEW_COPY_FR,
   DUTY_REASK_COPY_EN,
   DUTY_REASK_COPY_FR,
-  DUTY_NIGHT_BEFORE_COPY_EN,
-  DUTY_NIGHT_BEFORE_COPY_FR,
   DUTY_PARENT_OWNED_COPY_EN,
   DUTY_PARENT_OWNED_COPY_FR,
   DUTY_PARENT_ASK_COPY_EN,
@@ -108,19 +101,20 @@ const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const BANNED = /\b(booked|enrolled|signed up)\b/i;
 const TOKEN_TEST = /\{[a-zA-Z]+\}/;
 
-const SIMPLE: Record<Exclude<DutyCopyId, 'parent_initiated'>, { en: string; fr: string }> = {
+const SIMPLE: Record<
+  Exclude<DutyCopyId, 'parent_initiated' | 'night_before'>,
+  { en: string; fr: string }
+> = {
   week_overview: { en: DUTY_WEEK_OVERVIEW_COPY_EN, fr: DUTY_WEEK_OVERVIEW_COPY_FR },
   reask_48h: { en: DUTY_REASK_COPY_EN, fr: DUTY_REASK_COPY_FR },
-  night_before: { en: DUTY_NIGHT_BEFORE_COPY_EN, fr: DUTY_NIGHT_BEFORE_COPY_FR },
   which_kid: { en: DUTY_WHICH_KID_COPY, fr: DUTY_WHICH_KID_COPY_FR },
   both_claimed: { en: DUTY_BOTH_CLAIMED_COPY, fr: DUTY_BOTH_CLAIMED_COPY_FR },
   silent_parent: { en: DUTY_SILENT_PARENT_COPY_EN, fr: DUTY_SILENT_PARENT_COPY_FR },
 };
 
-const REQUIRED: Record<DutyCopyId, readonly (keyof DutyCopyParams)[]> = {
+const REQUIRED: Record<Exclude<DutyCopyId, 'night_before'>, readonly (keyof DutyCopyParams)[]> = {
   week_overview: ['list'],
   reask_48h: ['kid', 'event', 'day', 'time'],
-  night_before: ['name', 'kid', 'event', 'time'],
   parent_initiated: ['kid', 'event', 'day', 'time'],
   which_kid: ['name', 'kids'],
   both_claimed: ['event', 'day', 'parentA', 'parentB'],
@@ -168,6 +162,9 @@ export function dutyCopy(
   language: DutyCopyLanguage,
   params: DutyCopyParams = {},
 ): string {
+  if (id === 'night_before') {
+    throw new DutyCopyError('night_before is composed from facts');
+  }
   if (id === 'parent_initiated' && filled(params.name)) {
     return renderTemplate(
       language === 'fr' ? DUTY_PARENT_OWNED_COPY_FR : DUTY_PARENT_OWNED_COPY_EN,
@@ -296,9 +293,8 @@ export function absorbDutyLine(weekly: string, line: string | null | undefined):
 }
 
 /**
- * The second sentence of the locked night-before line. Appended so a duty
- * echo ends on one next step. Not a new sentence: both night-before
- * templates already end with these words.
+ * The next step on a duty echo. The night-before text is composed, so this
+ * sentence is only appended to the owner echo.
  */
 export const DUTY_CHANGE_NEXT_EN = 'Say so here if that changes.';
 export const DUTY_CHANGE_NEXT_FR = 'Dites-le ici si ca change.';
@@ -317,8 +313,6 @@ export function dutyTitleMayBeSpoken(title: string | null | undefined): boolean 
  */
 export function dutyOwnerEcho(language: DutyCopyLanguage, params: DutyCopyParams): string | null {
   if (!dutyTitleMayBeSpoken(params.event)) return null;
-  if (!DUTY_NIGHT_BEFORE_COPY_EN.endsWith(DUTY_CHANGE_NEXT_EN)) return null;
-  if (!DUTY_NIGHT_BEFORE_COPY_FR.endsWith(DUTY_CHANGE_NEXT_FR)) return null;
   let owner: string;
   try {
     owner = dutyCopy('parent_initiated', language, params);

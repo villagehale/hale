@@ -23,6 +23,8 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
+import { type GroupLeaveEligibility, groupLeaveEligibility } from '~/lib/channel/linq/group-leave';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -65,18 +67,29 @@ import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
+import {
+  type ExperienceCardIntent,
+  augmentCoachSkillForExperienceCards,
+  shareExperienceCardTool,
+} from './experience-card-tool';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
   type GmailDraftNoticeBox,
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
+import {
+  type GroupLeaveIntent,
+  augmentCoachSkillForGroupLeave,
+  leaveGroupChatTool,
+} from './group-leave-tool';
 import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
+import { redactTeenNames } from './reply';
 import { type ReplyChild, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
@@ -219,6 +232,20 @@ export interface ChannelCoachPorts {
   ): Promise<{ clause: string; title: string; otherTitles: string[] } | null>;
   guardDeps: GuardDeps;
   /**
+   * VIL-497 — whether Linq experience cards are lit (`LINQ_EXPERIENCES_ENABLED`). Absent
+   * or false: the card verb is not registered and the skill is untouched, so a dark turn's
+   * prompt bytes and cache prefix are exactly main's. Never offered on a group turn.
+   */
+  experienceCardsEnabled?(): boolean;
+  /**
+   * VIL-477 — whether Hale may leave a group on a member's explicit ask
+   * (`LINQ_GROUP_LEAVE_ENABLED`). Absent or false: the verb is not registered and the
+   * skill is untouched. Only ever offered on a group turn.
+   */
+  groupLeaveEnabled?(): boolean;
+  /** VIL-477 — the leave guard, run before the reply so a decline is told to the model. */
+  groupLeaveCheck?(chatId: string): Promise<GroupLeaveEligibility>;
+  /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
    *
    * The router builds its deps for EVERY inbound text, including the ones a
@@ -273,6 +300,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // read about is the one in the sentence it ended up writing.
       let spotWatch: SpotWatchIntent | null = null;
       let gmailNotice: GmailDraftNoticeBox | null = null;
+      // VIL-497: the one find this turn chose to send as a card. LAST CALL WINS.
+      let experienceCard: ExperienceCardIntent | null = null;
+      // VIL-477: a member asked Hale to leave this group. LAST CALL WINS.
+      let groupLeave: GroupLeaveIntent | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -288,8 +319,27 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         : [];
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
-      const skill =
+      const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
+      const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
+      const baseSkill =
         turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+      // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
+      // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
+      // the card when the answer is one venue's page (VIL-500).
+      const skill = augmentCoachSkillForGroupLeave(
+        augmentCoachSkillForExperienceCards(
+          baseSkill,
+          cardsLit ? await loadCronSkill('experience-card-coach') : null,
+        ),
+        leaveLit,
+      );
+      // The ref→page table for this turn: the same list the reply's [link-…] markers
+      // resolve against, so a card and a cited link can never point at different pages.
+      const turnLinks = () =>
+        [
+          ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
+          ...offeredThisTurn.links().map((link) => link.url),
+        ].map((url) => ({ ref: linkRef(url), url }));
 
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
@@ -386,7 +436,49 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           );
           // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
           // are busy-only, on every group turn.
-          const tools = groupScoped ? groupScopedTools(builtTools) : builtTools;
+          const tools = [
+            ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
+            ...(cardsLit
+              ? [
+                  shareExperienceCardTool({
+                    links: turnLinks,
+                    onCard: (card) => {
+                      experienceCard = card;
+                    },
+                  }),
+                ]
+              : []),
+            ...(leaveLit
+              ? [
+                  leaveGroupChatTool({
+                    memberWords: turn.body,
+                    onLeave: (intent) => {
+                      groupLeave = intent;
+                    },
+                    ...(ports.groupLeaveCheck
+                      ? {
+                          check: async () => {
+                            const chatId = turn.groupChatId;
+                            if (!chatId)
+                              return { ok: false as const, reason: 'not_group' as const };
+                            const g = await ports.groupLeaveCheck!(chatId);
+                            if (g.status === 'eligible') return { ok: true as const };
+                            if (g.status === 'failed')
+                              return { ok: false as const, reason: 'unavailable' as const };
+                            return {
+                              ok: false as const,
+                              reason:
+                                g.reason === 'no_explicit_ask'
+                                  ? ('unavailable' as const)
+                                  : g.reason,
+                            };
+                          },
+                        }
+                      : {}),
+                  }),
+                ]
+              : []),
+          ];
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
@@ -483,15 +575,26 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               : {
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
-                  activityLinks: [
-                    ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
-                    ...offeredThisTurn.links().map((link) => link.url),
-                  ].map((url) => ({ ref: linkRef(url), url })),
+                  activityLinks: turnLinks(),
                   nearby: nearby ?? undefined,
                 }),
           });
           await ports.recordRun(record('completed'));
-          return { reply, planOffer, activityPromise, spotWatch };
+          const card = experienceCard as ExperienceCardIntent | null;
+          return {
+            reply,
+            planOffer,
+            activityPromise,
+            spotWatch,
+            // The title passes the same age-derived teen floor as the answer (rule #1).
+            experienceCard:
+              card && !noticeReady
+                ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+                : null,
+            groupLeave: groupLeave
+              ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
+              : null,
+          };
         },
       );
     },
@@ -528,6 +631,9 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
+    experienceCardsEnabled: linqExperiencesEnabled,
+    groupLeaveEnabled: linqGroupLeaveEnabled,
+    groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForProviderWatch(
         augmentCoachSkillForAutonomySwitchOff(

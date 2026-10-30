@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The text omits the reminder's content and time: it never says Sam will be reminded to bring the folding chairs or gives the Thursday 6 PM time, so two mustSay items are missing."
+  }
+}
