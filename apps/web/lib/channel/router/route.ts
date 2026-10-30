@@ -1568,6 +1568,7 @@ async function routeChannelMessageInner(
       turn,
       answer,
       hasAnswered: () => answered,
+      claimSilence: claimAnswer,
       conversationId,
       // Every coach turn is told what Hale is waiting on; an UNPLACED answer additionally
       // gets the canned choice sentence as its fallback, because that turn is the one where
@@ -1958,6 +1959,9 @@ async function runAgentTurn(
     answer: (body: string) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
+    /** VIL-516 — durably claims the turn when the coach chose silence, so a
+     * redelivery is gated as answered and never re-runs the coach's tool writes. */
+    claimSilence: () => Promise<void>;
     conversationId: string;
     /** What Hale is holding an answer for — the coach gets their subjects (see
      * ChannelTurn), and a coach that cannot run gets the choice sentence built from them. */
@@ -2001,6 +2005,14 @@ async function runAgentTurn(
         { outcome: 'empty_reply' },
         'channel router: coach wrote nothing - nothing sent',
       );
+      // VIL-516 · silence is still this turn's TERMINAL outcome. The coach already ran,
+      // and its tool writes (drafts, etc.) already landed. Without a durable claim,
+      // stageOf reads a redelivered job as 'fresh', the coach runs again, and every one
+      // of those writes is duplicated. Claim the turn as answered — with nothing sent —
+      // so a redelivery stops at GATE 0. Never throws: a failed claim must not fall into
+      // the failed-turn path, which could text the parent for a turn that chose silence.
+      await claimSilentTurn(deps, args.job, args.claimSilence);
+      await noteUnanswered(deps, args.job, 'empty_reply');
       return done(deps, args.job, {
         status: 'agent_replied',
         handler: null,
@@ -2949,6 +2961,26 @@ async function noteUnanswered(
     deps.log.error(
       { code: err instanceof Error ? err.name : 'unknown', outcome: reason },
       'channel router: could not record the unanswered step',
+    );
+  }
+}
+
+/** VIL-516 · the durable claim for a turn that ended in silence. Logged, never thrown. */
+async function claimSilentTurn(
+  deps: ChannelRouterDeps,
+  job: ChannelMessageReceivedJob,
+  claim: () => Promise<void>,
+): Promise<void> {
+  try {
+    await claim();
+  } catch (err) {
+    deps.log.error(
+      {
+        channelMessageId: job.channel_message_id,
+        code: err instanceof Error ? err.name : 'unknown',
+        outcome: 'empty_reply',
+      },
+      'channel router: could not claim the silent turn',
     );
   }
 }

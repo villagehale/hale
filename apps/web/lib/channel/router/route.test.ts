@@ -2138,6 +2138,45 @@ describe('a re-driven turn never answers twice', () => {
     expect(JSON.stringify(h.logs)).not.toContain('brokeAfterAnswering');
   });
 
+  /**
+   * VIL-516 · a coach that wrote nothing still RAN — its tool writes (drafts,
+   * promises, watches) landed. Silence must be a durable terminal outcome: the turn
+   * is claimed with no text sent, so a redelivered job stops at GATE 0 instead of
+   * running the coach (and every one of its writes) a second time.
+   */
+  it('claims an empty coach reply in silence so a redelivery never re-runs the coach', async () => {
+    const turns = fakeTurnLedger();
+    const coach = fakeCoach('   ');
+    const first = harness({ coach, turns });
+
+    const result = await routeChannelMessage(first.deps, job());
+    expect(result.status).toBe('agent_replied');
+    expect(first.transport.sent).toEqual([]);
+    expect(turns.answered).toEqual([job().channel_message_id]);
+    expect(turns.unanswered).toEqual([
+      { channelMessageId: job().channel_message_id, reason: 'empty_reply' },
+    ]);
+    expect(coach.calls).toBe(1);
+
+    const redriven = harness({ coach, turns });
+    expect((await routeChannelMessage(redriven.deps, job())).status).toBe('already_answered');
+    expect(redriven.transport.sent).toEqual([]);
+    expect(coach.calls).toBe(1);
+  });
+
+  it('stays silent and never apologises when the silent-turn claim itself throws', async () => {
+    const turns = fakeTurnLedger();
+    turns.recordAnswered = async () => {
+      throw new Error('UNSAFE_TRANSACTION');
+    };
+    const h = harness({ coach: fakeCoach(''), turns });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(h.transport.sent).toEqual([]);
+    expect(turns.failed).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('could not claim the silent turn');
+  });
+
   it('claims the caregiver line too — it is an answer like any other', async () => {
     const turns = fakeTurnLedger();
     const first = harness({ context: { role: 'nanny' }, turns });
