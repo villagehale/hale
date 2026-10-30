@@ -432,6 +432,7 @@ export const AUDIT_VERBS = [
   'registration_sequence_leg_sent',
   'registration_evening_unwritten',
   'registration_morning_unwritten',
+  'registration_heads_up_unwritten',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -1534,6 +1535,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   registration_morning_unwritten: {
     sentence: 'Hale did not send the morning-of registration text',
+    family: 'note',
+  },
+  registration_heads_up_unwritten: {
+    sentence: 'Hale did not send the registration heads-up text',
     family: 'note',
   },
   registration_outcome_recorded: {

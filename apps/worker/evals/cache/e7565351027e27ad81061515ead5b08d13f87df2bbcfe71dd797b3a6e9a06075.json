@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts say registration opens Tuesday, September 15, 2026 at 6:30 a.m., but the text says 'demain' (tomorrow), which is wrong since now is Tuesday, September 8. The text is otherwise in French, names Max as the facts give, and offers help that morning as next=offer requires, but the wrong day is a disqualifying error.",
+    "score": 2
+  }
+}

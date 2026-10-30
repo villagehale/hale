@@ -751,6 +751,8 @@ async function runToddlerJourney(): Promise<Journey> {
     } as never,
     loadLanguage: async () => 'en',
     composeMorning: async () => null,
+    composeHeadsUp: async (_client, facts) =>
+      `${facts.window} opens ${facts.opensOn} for ${facts.who}.`,
     composeEvening: async () => 'Richmond Hill opens in the morning. Have the page open.',
   };
 

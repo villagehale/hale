@@ -8,6 +8,7 @@ import {
   type LegCopyInput,
   MAX_PORTAL_SEGMENTS,
   battlePlanDecision,
+  headsUpFacts,
   morningFacts,
   preparedCopyViolations,
   printsReadinessAsk,
@@ -77,7 +78,7 @@ const LEG_INPUT: LegCopyInput = {
 };
 
 describe('renderSequenceLeg', () => {
-  const legs = ['heads_up', 'check_in'] as const;
+  const legs = ['check_in'] as const;
 
   it.each(legs)('renders %s inside the segment budget, in GSM-7', (leg) => {
     const body = renderSequenceLeg(leg, LEG_INPUT);
@@ -125,43 +126,41 @@ describe('renderSequenceLeg', () => {
     expect(bannedOpener.test('Waitlisted #12, noted. Richmond Hill gives 36h.')).toBe(false);
   });
 
-  it('names the town, the cycle and the family-local open time in the heads-up', () => {
-    const body = renderSequenceLeg('heads_up', LEG_INPUT);
-    expect(body).toContain('Richmond Hill');
-    expect(body).toContain('Fall 2026');
-    expect(body).toContain('6:30 a.m.');
-    expect(body).toContain('Max');
+  it('hands the heads-up composer the town, the cycle, the open time and who', () => {
+    const facts = headsUpFacts(LEG_INPUT);
+    expect(facts.window).toContain('Richmond Hill');
+    expect(facts.window).toContain('Fall 2026');
+    expect(facts.opensAt).toBe('6:30 a.m.');
+    expect(facts.who).toBe('Max');
   });
 
-  it('asks a pending family for the approval IN THE THREAD, never in the app', () => {
-    // Doctrine: approvals happen in-thread (channel/router/copy.ts). The shortlist is an
-    // ordinary drafted_for_approval row, so a texted YES approves it through the same
-    // spine the app button calls — pointing at the app buys the parent nothing and is
-    // the dead end the F14 voice rules refuse.
-    const pending = renderSequenceLeg('heads_up', { ...LEG_INPUT, optIn: 'pending' });
-    expect(pending).toContain('Want me to run the morning with you?');
-    expect(pending).not.toMatch(/Reply YES/i);
-    expect(pending).not.toContain('Open Hale');
-    expect(pending.toLowerCase()).not.toContain('the app');
-    expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain('Reply YES');
+  it('does not render the heads-up from a template (VIL-488)', () => {
+    expect(() => renderSequenceLeg('heads_up', LEG_INPUT)).toThrow(/composed from facts/);
+    expect(() => renderSequenceLeg('heads_up', { ...LEG_INPUT, optIn: 'pending' })).toThrow(
+      /composed from facts/,
+    );
   });
 
-  it('hedges the heads-up when the match rests on a spoken-age tolerance', () => {
-    const hedged = renderSequenceLeg('heads_up', {
-      ...LEG_INPUT,
-      shortlist: shortlist({ ageApproximate: true }),
-    });
-    expect(hedged).toContain('if');
-    expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain('if');
+  it('tells the composer whether a plan was promised or is still being offered', () => {
+    expect(headsUpFacts(LEG_INPUT).next).toBe('plan_promised');
+    expect(headsUpFacts({ ...LEG_INPUT, optIn: 'pending' }).next).toBe('offer');
   });
 
-  it('names the resident head start only where the family has one', () => {
-    const resident = renderSequenceLeg('heads_up', {
-      ...LEG_INPUT,
-      shortlist: shortlist({ isResidentWindow: true, residentPriorityDays: 7 }),
-    });
-    expect(resident).toContain('residents');
-    expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain('residents');
+  it('hands the spoken-age hedge as a fact', () => {
+    expect(headsUpFacts(LEG_INPUT).ageApproximate).toBe(false);
+    expect(
+      headsUpFacts({ ...LEG_INPUT, shortlist: shortlist({ ageApproximate: true }) }).ageApproximate,
+    ).toBe(true);
+  });
+
+  it('hands the resident head start only where the family has one', () => {
+    expect(headsUpFacts(LEG_INPUT).residentsFirst).toBe(false);
+    expect(
+      headsUpFacts({
+        ...LEG_INPUT,
+        shortlist: shortlist({ isResidentWindow: true, residentPriorityDays: 7 }),
+      }).residentsFirst,
+    ).toBe(true);
   });
 
   it('hands the municipal link to the evening composer, and prints it on the go', () => {
@@ -169,9 +168,8 @@ describe('renderSequenceLeg', () => {
     expect(evening.kind).toBe('compose');
     if (evening.kind === 'compose') expect(evening.facts.link).toBe(LONGEST_URL);
     expect(morningFacts(LEG_INPUT).link).toBe(LONGEST_URL);
-    // The heads-up is a week out; a link nobody can use yet just eats the budget the
-    // hedge and the kids' names need.
-    expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain(LONGEST_URL);
+    // The heads-up is a week out and is handed no link at all.
+    expect(JSON.stringify(headsUpFacts(LEG_INPUT))).not.toContain(LONGEST_URL);
   });
 
   it('tells the check-in exactly which three answers it can read', () => {
@@ -198,11 +196,11 @@ describe('renderSequenceLeg', () => {
       expect(evening.facts.who).not.toContain('null');
     }
     // The generic task naming still says WHOSE registration it is, without a name.
-    expect(renderSequenceLeg('heads_up', teen)).toContain('your teen');
+    expect(headsUpFacts(teen).who).toBe('your teen');
   });
 
   it('names two children in one line rather than sending two messages', () => {
-    const body = renderSequenceLeg('heads_up', {
+    const facts = headsUpFacts({
       ...LEG_INPUT,
       shortlist: shortlist({
         fitNotes: [
@@ -211,7 +209,7 @@ describe('renderSequenceLeg', () => {
         ],
       }),
     });
-    expect(body).toContain('Max and Mia');
+    expect(facts.who).toBe('Max and Mia');
   });
 
   it('hands three children to the evening composer as one who, on the longest URL', () => {
@@ -909,12 +907,10 @@ describe('VIL-338 · the readiness checklist', () => {
     expect(renderSequenceLeg('readiness', portalInput())).toContain('Sep 15');
   });
 
-  it('falls back to the heads-up where there is no portal to name', () => {
-    // dueLeg never routes a portal-less sequence here, but a renderer that threw or
-    // named an undefined portal would take the family's whole tick with it.
-    expect(renderSequenceLeg('readiness', LEG_INPUT)).toBe(
-      renderSequenceLeg('heads_up', LEG_INPUT),
-    );
+  it('leaves a portal-less readiness leg to the heads-up composer', () => {
+    // The runner composes the heads-up from facts for this case (VIL-488); the renderer
+    // has no sentence to print.
+    expect(() => renderSequenceLeg('readiness', LEG_INPUT)).toThrow(/composed from facts/);
   });
 });
 
@@ -1383,8 +1379,6 @@ describe('VIL-338 · the readiness answer ack', () => {
  */
 describe('VIL-338 · a non-portal municipality renders byte-identically to today', () => {
   const TODAY = {
-    heads_up:
-      "Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Max. I'll send your plan the evening before.",
     check_in:
       'How did Richmond Hill Fall 2026 recreation programs go? Reply "got in", "waitlisted #12" or "missed it".',
   } as const;
@@ -1416,17 +1410,11 @@ describe('VIL-338 · a non-portal municipality renders byte-identically to today
       expect(evening.facts.setup).toBeNull();
       expect(evening.facts.portal).toBeNull();
     }
-    expect(renderSequenceLeg('readiness', unwired)).toBe(TODAY.heads_up);
+    expect(() => renderSequenceLeg('readiness', unwired)).toThrow(/composed from facts/);
     // Same for the thing being consented to: an unwired caller must not enumerate a
     // fourth text nobody wired the leg for.
     expect(renderShortlistRationale(shortlist(), TZ, NOW, undefined as unknown as null)).toContain(
       'Approving this asks me to text you a week ahead, the evening before, and 15 minutes before it opens.',
-    );
-  });
-
-  it('renders the pending household’s heads-up exactly as it did before', () => {
-    expect(renderSequenceLeg('heads_up', { ...LEG_INPUT, optIn: 'pending' })).toBe(
-      'Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Max. Want me to run the morning with you?',
     );
   });
 

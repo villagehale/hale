@@ -46,6 +46,7 @@ import {
   type EveningFacts,
   type MorningFacts,
   battlePlanDecision,
+  headsUpFacts,
   headsUpPromisesPlan,
   morningFacts,
   renderSequenceLeg,
@@ -53,6 +54,7 @@ import {
   windowPhrase,
 } from './copy.js';
 import { composeRegistrationEvening } from './evening-compose.js';
+import { composeRegistrationHeadsUp } from './heads-up-compose.js';
 import { composeRegistrationMorning } from './morning-compose.js';
 import {
   GO_FETCH_TIMEOUT_MS,
@@ -320,6 +322,8 @@ export interface SequenceRunDeps {
   composeEvening: typeof composeRegistrationEvening;
   /** VIL-484 · the morning-of text when the page moved. Null means nothing is sent. */
   composeMorning: typeof composeRegistrationMorning;
+  /** VIL-488 · the heads-up text, written from facts. Null means nothing is sent. */
+  composeHeadsUp: typeof composeRegistrationHeadsUp;
   /** The wall clock the already-open retry reads its deadline against. Defaults to
    * real time; tests pin it. */
   clock?: () => Date;
@@ -954,6 +958,30 @@ async function runLegForSequence(
       return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
     }
     body = written;
+  } else if (leg === 'heads_up' || (leg === 'readiness' && portal == null)) {
+    // VIL-488 · the heads-up is composed from facts; there is no code sentence.
+    const facts = headsUpFacts(legInput);
+    const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
+    const written =
+      deps.client && language
+        ? await deps.composeHeadsUp(deps.client, { ...facts, language }, sequence.familyId)
+        : null;
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_heads_up_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: {
+          leg,
+          windowId: sequence.window.id,
+          outcome: 'registration_heads_up_unwritten',
+        },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
   } else {
     body = renderSequenceLeg(leg, legInput);
   }
@@ -1560,6 +1588,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     loadLanguage: familyLanguage,
     composeEvening: composeRegistrationEvening,
     composeMorning: composeRegistrationMorning,
+    composeHeadsUp: composeRegistrationHeadsUp,
     refreshCourseAnchor: async (database, input) => {
       const [row] = await database
         .update(schema.registrationSequences)
