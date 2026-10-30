@@ -724,6 +724,8 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           'linq inbound: group turn',
         );
         await deps.countOutcome(reminderCount(reminder));
+        // Released for redelivery: Linq retries a 503 and the turn runs again from the top.
+        if (reminder === 'group_reminder_retry') return json({ outcome: reminder }, 503);
         return json({ outcome: reminder });
       }
     }
@@ -780,6 +782,7 @@ function reminderCount(outcome: GroupReminderHandled): InboundRouteOutcome {
   if (outcome === 'already_answered') return 'duplicate';
   if (
     outcome === 'group_reminder_unwritten' ||
+    outcome === 'group_reminder_retry' ||
     outcome === 'group_reminder_not_sent' ||
     outcome === 'group_reminder_held'
   ) {

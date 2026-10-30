@@ -74,7 +74,12 @@ function byFullName(named: string, matches: readonly PlanSeat[]): PlanSeat | und
     s.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase().split(/\s+/).join(' ');
   const want = fold(named);
   if (!want.includes(' ')) return undefined;
-  const whole = matches.filter((seat) => seat.fullName && fold(seat.fullName) === want);
+  const bare = (s: string) => fold(s).replace(/\./g, '');
+  const whole = matches.filter(
+    (seat) =>
+      (seat.fullName && fold(seat.fullName) === want) ||
+      (seat.firstName !== null && bare(seat.firstName) === bare(named)),
+  );
   return whole.length === 1 ? whole[0] : undefined;
 }
 

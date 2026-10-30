@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { realHumanPhone } from '~/lib/channel/linq/group-coparent';
 import { groupMemberByPhone } from '~/lib/channel/linq/group-membership';
@@ -21,6 +22,7 @@ import {
   inboundAlreadyRecorded,
   insertPendingReminders,
   openRemindersFor,
+  releasePendingReminders,
 } from './store';
 import { type GroupReminderVoice, whenFact } from './voice';
 
@@ -53,6 +55,8 @@ export type GroupReminderHandled =
   /** Every reminder asked for was for someone no one seat in the chat answers to. */
   | 'group_reminder_not_set'
   | 'group_reminder_unwritten'
+  /** Released for Linq to redeliver: the door answers 503. */
+  | 'group_reminder_retry'
   | 'group_reminder_not_sent'
   /** The group's audience changed during the turn and may not hear the confirmation. */
   | 'group_reminder_held'
@@ -86,6 +90,31 @@ async function pageUnsent(reason: string): Promise<void> {
     `Hale group reminder: a confirmation was not sent (${reason}). Nothing was set and nothing went to the group.`,
   );
   console.warn({ reason, page }, 'group reminder: confirmation not sent');
+}
+
+/**
+ * A confirmation that failed for a reason that may pass: the unarmed rows and the inbound
+ * ledger row go, so the same message, redelivered, is read and answered from the start
+ * instead of being skipped as a replay. Nothing was armed and nothing reached the group.
+ */
+async function releaseForRetry(
+  database: Database,
+  input: { pendingIds: string[]; recorded: string; familyId: string; why: string },
+): Promise<GroupReminderTurn> {
+  await releasePendingReminders(database, input.pendingIds);
+  await database
+    .delete(schema.channelMessages)
+    .where(eq(schema.channelMessages.id, input.recorded));
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'group_reminder_unwritten',
+    targetTable: 'channel_messages',
+    targetId: input.recorded,
+    after: { kind: 'confirm', retry: true, why: input.why },
+  });
+  console.warn({ why: input.why }, 'group reminder: confirmation failed, released for redelivery');
+  return { handled: true, outcome: 'group_reminder_retry' };
 }
 
 /** Who an open reminder is for, as the reader is shown it. */
@@ -127,10 +156,12 @@ export async function takeGroupReminderTurn(
     chatId: message.chatId,
     senderUserId: member.userId,
   });
+  // The asker's seat reads "Sam K." when another Sam sits in the chat.
+  const askerName = askerSeat?.firstName ?? context.senderName;
 
   const reading = await ports.reader.read({
     message: message.text,
-    sender: context.senderName,
+    sender: askerName,
     people: seats
       .filter((seat) => seat.phoneHash !== phoneHash)
       .map((seat) => seat.firstName)
@@ -159,7 +190,7 @@ export async function takeGroupReminderTurn(
     asker: {
       userId: member.userId,
       phoneHash,
-      firstName: context.senderName,
+      firstName: askerName,
       haleCustomer: member.haleCustomer,
       directReachable: reachable,
     },
@@ -224,7 +255,7 @@ export async function takeGroupReminderTurn(
 
   const facts = confirmFacts({
     language,
-    asker: context.senderName,
+    asker: askerName,
     memberWords: message.text,
     now,
     timeZone,
@@ -234,6 +265,11 @@ export async function takeGroupReminderTurn(
   });
 
   const text = ports.voice ? await ports.voice.write(facts) : null;
+  if (!text && ports.voice) {
+    // The model failed this once. Nobody has seen these reminders yet, so they are
+    // released, not dropped: the door answers 503 and Linq's redelivery runs the turn again.
+    return releaseForRetry(database, { pendingIds, recorded, familyId, why: 'model_failed' });
+  }
   if (!text) {
     await cancelReminders(database, {
       ids: pendingIds,
@@ -285,6 +321,9 @@ export async function takeGroupReminderTurn(
       'group reminder: the group may not hear the confirmation now, nothing sent',
     );
     return { handled: true, outcome: 'group_reminder_held' };
+  }
+  if (posted.outcome === 'not_sent' && posted.retryable) {
+    return releaseForRetry(database, { pendingIds, recorded, familyId, why: posted.code });
   }
   if (posted.outcome !== 'sent') {
     await cancelReminders(database, {

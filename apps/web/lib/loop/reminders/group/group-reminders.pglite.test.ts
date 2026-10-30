@@ -615,9 +615,35 @@ describe('asking for a reminder in the group', () => {
       forKind: 'person',
       forUserId: ids[1],
       forPhoneHash: phoneBlindIndex(sams[1]?.phone as string),
-      forName: 'Sam',
+      forName: 'Sam A.',
       delivery: 'group',
     });
+    // Two Sams are never named by the bare first name: the reader and the confirmation
+    // both carry the last initial.
+    expect(first.reader.calls[0]?.people).toEqual(expect.arrayContaining(['Sam O.', 'Sam A.']));
+    expect(first.reader.calls[0]?.people).not.toContain('Sam');
+    expect(answer.voice.calls[0]).toMatchObject({ set: [{ forName: 'Sam A.' }] });
+
+    // The group answering with the initial the confirmation used also settles it.
+    const byInitial = turnPorts(
+      reading([ask({ for: 'person', name: 'Sam O', what: 'bring the cooler' })]),
+    );
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(PRIYA, 'and Sam O to bring the cooler', 'in-sam-3'),
+      byInitial.ports,
+    );
+    expect((await reminders()).find((r) => r.what === 'bring the cooler')).toMatchObject({
+      forUserId: ids[0],
+      forName: 'Sam O.',
+    });
+
+    // When the reminder fires, the line names that Sam by initial too.
+    const tick = tickPorts(THURSDAY_FOUR);
+    await runGroupReminderTick(db.database, tick.ports);
+    const named = tick.voice.calls.map((call) => (call as { forName?: string | null }).forName);
+    expect(named).toEqual(expect.arrayContaining(['Sam A.', 'Sam O.']));
+    expect(named).not.toContain('Sam');
   });
 
   it('sets nothing for someone who is not in the chat, and tells the group so', async () => {
@@ -729,7 +755,7 @@ describe('asking for a reminder in the group', () => {
     expect(await verbs(home.familyId)).toContain('group_reminder_cancelled');
   });
 
-  it('sends nothing and sets nothing when the confirmation cannot be written', async () => {
+  it('keeps the reminder when the confirmation fails to write: the redelivery sets it', async () => {
     const home = await seedHousehold();
     const { ports, sends } = turnPorts(reading([ask()]), { voiceFails: true });
 
@@ -739,14 +765,70 @@ describe('asking for a reminder in the group', () => {
       ports,
     );
 
+    expect(turn).toEqual({ handled: true, outcome: 'group_reminder_retry' });
+    expect(sends).toEqual([]);
+    // Nothing armed, nothing half-set, and the message is not marked answered.
+    expect(await reminders()).toEqual([]);
+    expect(await verbs(home.familyId)).toContain('group_reminder_unwritten');
+
+    // Linq redelivers the same message; this time the confirmation is written and posted.
+    const again = turnPorts(reading([ask()]));
+    expect(
+      await takeGroupReminderTurn(
+        db.database,
+        inbound(RUTH, 'remind me at 4', 'in-x'),
+        again.ports,
+      ),
+    ).toEqual({ handled: true, outcome: 'group_reminder_set' });
+    expect(again.sends).toHaveLength(1);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'scheduled',
+      what: 'grab Maya from swim',
+    });
+    const tick = tickPorts(THURSDAY_FOUR);
+    expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({ sent: 1 });
+  });
+
+  it('keeps the reminder when Linq refuses the confirmation for now: the redelivery sets it', async () => {
+    await seedHousehold();
+    const { ports } = turnPorts(reading([ask()]));
+    const busy = {
+      ...ports,
+      send: async () => {
+        throw new LinqSendError('503', 503, false);
+      },
+    };
+    expect(
+      await takeGroupReminderTurn(db.database, inbound(RUTH, 'remind me at 4', 'in-busy'), busy),
+    ).toEqual({ handled: true, outcome: 'group_reminder_retry' });
+    expect(await reminders()).toEqual([]);
+
+    const again = turnPorts(reading([ask()]));
+    expect(
+      await takeGroupReminderTurn(
+        db.database,
+        inbound(RUTH, 'remind me at 4', 'in-busy'),
+        again.ports,
+      ),
+    ).toEqual({ handled: true, outcome: 'group_reminder_set' });
+    expect(await onlyReminder()).toMatchObject({ status: 'scheduled' });
+  });
+
+  it('sets nothing, and says so to ops, when no voice is configured at all', async () => {
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+    const turn = await takeGroupReminderTurn(
+      db.database,
+      inbound(RUTH, 'remind me at 4', 'in-novoice'),
+      { ...ports, voice: null },
+    );
     expect(turn).toEqual({ handled: true, outcome: 'group_reminder_unwritten' });
     expect(sends).toEqual([]);
-    const [row] = await reminders();
-    expect(row).toMatchObject({ status: 'cancelled', statusReason: 'confirm_unwritten' });
-    expect(await verbs(home.familyId)).toContain('group_reminder_unwritten');
-    expect(await runGroupReminderTick(db.database, tickPorts(THURSDAY_FOUR).ports)).toMatchObject({
-      due: 0,
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'confirm_unwritten',
     });
+    expect(await verbs(home.familyId)).toContain('group_reminder_unwritten');
   });
 
   it('holds the confirmation, and sets nothing, when someone joins while it is written', async () => {
@@ -1585,6 +1667,29 @@ describe('the Linq door', () => {
       );
     expect(inboundRow).toMatchObject({ familyId: home.familyId, parentUserId: home.ruth });
     expect((await reminders())[0]).toMatchObject({ status: 'scheduled', delivery: 'group' });
+  });
+
+  it('answers 503 when the confirmation fails, so Linq redelivers and the reminder is set', async () => {
+    await seedHousehold();
+    const failing = door(reading([ask()]));
+    const body = groupMessage(RUTH, 'Hale, remind me Thursday at 4 to grab Maya', 'in-door-retry');
+
+    const first = await handleLinqInboundRequest(signed(body), {
+      ...failing.deps,
+      groupReminderVoice: fakeGroupReminderVoice({ fail: true }),
+    } as typeof failing.deps);
+    expect(first.status).toBe(503);
+    expect(await first.json()).toEqual({ outcome: 'group_reminder_retry' });
+    expect(failing.jobs).toEqual([]);
+    expect(failing.sends).toEqual([]);
+    expect(await reminders()).toEqual([]);
+
+    const again = door(reading([ask()]));
+    const second = await handleLinqInboundRequest(signed(body), again.deps);
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ outcome: 'group_reminder_set' });
+    expect(again.sends).toHaveLength(1);
+    expect((await reminders())[0]).toMatchObject({ status: 'scheduled' });
   });
 
   it('hands anything else to the coach exactly as before', async () => {

@@ -71,6 +71,16 @@ export async function insertPendingReminders(
     .returning();
 }
 
+/** Unarmed rows whose confirmation never went out, removed so a redelivery can set them. */
+export async function releasePendingReminders(database: Database, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await database
+    .delete(schema.groupReminders)
+    .where(
+      and(inArray(schema.groupReminders.id, ids), eq(schema.groupReminders.status, 'pending')),
+    );
+}
+
 /** The confirmation reached the chat: the reminders may now fire. */
 export async function armReminders(database: Database, ids: string[], now: Date): Promise<void> {
   if (ids.length === 0) return;

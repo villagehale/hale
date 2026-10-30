@@ -42,13 +42,54 @@ export async function liveSeats(database: Database, chatId: string): Promise<Sea
     .where(
       and(eq(schema.linqGroupMembers.chatId, chatId), isNull(schema.linqGroupMembers.removedAt)),
     );
-  return rows.map((row) => ({
-    userId: row.userId,
-    phoneHash: row.phoneHash,
-    phoneEncrypted: row.phoneEncrypted,
-    firstName: firstName(row.name),
-    fullName: row.name?.trim() || null,
-  }));
+  return disambiguateSeats(
+    rows.map((row) => ({
+      userId: row.userId,
+      phoneHash: row.phoneHash,
+      phoneEncrypted: row.phoneEncrypted,
+      firstName: firstName(row.name),
+      fullName: row.name?.trim() || null,
+    })),
+  );
+}
+
+const foldName = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
+
+function lastInitial(fullName: string | null): string | null {
+  const parts = fullName?.trim().split(/\s+/) ?? [];
+  if (parts.length < 2) return null;
+  return (parts[parts.length - 1] ?? '').charAt(0).toUpperCase() || null;
+}
+
+/**
+ * Two seats with one first name are never named by that first name alone: the group
+ * could not tell which Sam a line is about. Each gets their first name and last initial
+ * ("Sam K."), or their whole name when the initials match too. A seat Hale knows only
+ * by a first name keeps it; the planner then refuses to guess between them.
+ */
+export function disambiguateSeats<T extends { firstName: string | null; fullName: string | null }>(
+  seats: readonly T[],
+): T[] {
+  const groups = new Map<string, T[]>();
+  for (const seat of seats) {
+    if (!seat.firstName) continue;
+    const key = foldName(seat.firstName);
+    groups.set(key, [...(groups.get(key) ?? []), seat]);
+  }
+  const label = new Map<T, string>();
+  for (const same of groups.values()) {
+    if (same.length < 2) continue;
+    for (const seat of same) {
+      const initial = lastInitial(seat.fullName);
+      if (!initial || !seat.fullName) continue;
+      const clash = same.some((other) => other !== seat && lastInitial(other.fullName) === initial);
+      label.set(seat, clash ? seat.fullName : `${seat.firstName} ${initial}.`);
+    }
+  }
+  return seats.map((seat) => {
+    const named = label.get(seat);
+    return named ? { ...seat, firstName: named } : seat;
+  });
 }
 
 function seatPhone(seat: Pick<Seat, 'phoneEncrypted'>): string | null {
