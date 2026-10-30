@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Happy to set up a poll for Saturday! What are the choices you want the group to pick between?",
+    "why": "poll_needs_options"
+  },
+  "latencyMs": 1122
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "daycare sender names the child, picture day with date, time and place given, add offer available",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, Maple Daycare has picture day for Robin on Friday, October 2 at 9:00 AM at the daycare. Want me to add it to the week?",
+    "asks_to_add": true
+  },
+  "stopReason": "tool_use"
+}

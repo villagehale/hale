@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
@@ -15,7 +16,7 @@ import {
   type GroupOnboardingRequest,
   groupOnboardingLineInput,
 } from './group-onboarding-line-input';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — say one who's-who line into the group.

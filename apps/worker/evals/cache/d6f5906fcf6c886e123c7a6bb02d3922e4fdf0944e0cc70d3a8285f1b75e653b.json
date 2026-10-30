@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives an all-day event a clock time (3:00), omits Léa's 10:00 AM swimming at Piscine Main entirely, is not in French, and calls the day a break with breathing room even though a timed event exists. Multiple serious factual and language failures.",
+    "score": 1
+  }
+}

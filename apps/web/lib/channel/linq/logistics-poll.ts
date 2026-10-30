@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
 import { closeFacts, writeFact } from '~/lib/memory/facts';
@@ -40,6 +40,15 @@ export interface LogisticsSlot {
 
 export type LogisticsStatus = 'open' | 'decided' | 'declined';
 
+/** `claim`: the model read the sender taking it themselves in the group (VIL-444). */
+export type LogisticsSource = 'poll' | 'text' | 'claim';
+
+const INFERRED_BY: Record<LogisticsSource, string> = {
+  poll: 'linq_logistics_poll',
+  text: 'linq_logistics_text',
+  claim: 'linq_pickup_claim',
+};
+
 export interface RememberedLogistics {
   factKey: string;
   kind: 'who_takes' | 'both_free';
@@ -53,6 +62,10 @@ export interface RememberedLogistics {
   event: string | null;
   day: string | null;
   slots: readonly LogisticsSlot[];
+  /** Null on a row written before the source was kept. */
+  source: LogisticsSource | null;
+  /** When this decision was stored. */
+  since: Date;
 }
 
 interface LogisticsFactValue {
@@ -67,7 +80,7 @@ interface LogisticsFactValue {
   event: string | null;
   day: string | null;
   slots: LogisticsSlot[];
-  source: 'poll' | 'text';
+  source: LogisticsSource;
 }
 
 export function whoTakesPrompt(
@@ -235,7 +248,7 @@ export function readSlotReply(
   return { slot: match };
 }
 
-function asFact(value: unknown, factKey: string): RememberedLogistics | null {
+function asFact(value: unknown, factKey: string, since: Date): RememberedLogistics | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as Partial<LogisticsFactValue>;
   if (row.kind !== 'who_takes' && row.kind !== 'both_free') return null;
@@ -262,6 +275,9 @@ function asFact(value: unknown, factKey: string): RememberedLogistics | null {
     event: typeof row.event === 'string' ? row.event : null,
     day: typeof row.day === 'string' ? row.day : null,
     slots,
+    source:
+      row.source === 'poll' || row.source === 'text' || row.source === 'claim' ? row.source : null,
+    since,
   };
 }
 
@@ -276,6 +292,7 @@ export async function loadRememberedLogistics(
       factValue: schema.familyMemoryFacts.factValue,
       factType: schema.familyMemoryFacts.factType,
       familyId: schema.familyMemoryFacts.familyId,
+      validFrom: schema.familyMemoryFacts.validFrom,
       validUntil: schema.familyMemoryFacts.validUntil,
     })
     .from(schema.familyMemoryFacts)
@@ -290,7 +307,7 @@ export async function loadRememberedLogistics(
   for (const row of rows) {
     if (row.familyId !== familyId || row.factType !== 'logistic' || row.validUntil) continue;
     if (!row.factKey.startsWith('who-takes/') && !row.factKey.startsWith('both-free/')) continue;
-    const parsed = asFact(row.factValue, row.factKey);
+    const parsed = asFact(row.factValue, row.factKey, row.validFrom);
     if (parsed) remembered.push(parsed);
   }
   return remembered;
@@ -306,6 +323,43 @@ export function rememberedWhoTakes(
       (row) => row.kind === 'who_takes' && row.startIso === startIso && row.titleNorm === titleNorm,
     ) ?? null
   );
+}
+
+/**
+ * Whether this who-takes decision changed after a message was sent: its live fact began
+ * later, or a later one was withheld or given back with nothing in its place. A group
+ * message read again on a webhook retry, or delivered late, must not undo what came after
+ * it. An open ask is no decision: a message sent just before a poll went out still counts.
+ * Holds only while group messages are stored as of when they were sent.
+ */
+export async function whoTakesChangedSince(
+  database: Database,
+  input: {
+    familyId: string;
+    factKey: string;
+    sentAt: Date;
+    remembered: readonly RememberedLogistics[];
+  },
+): Promise<boolean> {
+  const live = input.remembered.find((row) => row.factKey === input.factKey);
+  if (live && live.status !== 'open' && live.since.getTime() > input.sentAt.getTime()) {
+    return true;
+  }
+  if (typeof database.select !== 'function') return false;
+  const withheld = await database
+    .select({ id: schema.familyMemoryFacts.id })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, input.familyId),
+        eq(schema.familyMemoryFacts.factType, 'logistic'),
+        eq(schema.familyMemoryFacts.factKey, input.factKey),
+        isNull(schema.familyMemoryFacts.supersededBy),
+        gt(schema.familyMemoryFacts.validUntil, input.sentAt),
+      ),
+    )
+    .limit(1);
+  return withheld.length > 0;
 }
 
 export async function writeLogisticsDecision(
@@ -326,7 +380,7 @@ export async function writeLogisticsDecision(
     factKey: input.factKey,
     factValue: input.value,
     confidence: 1,
-    inferredBy: input.value.source === 'poll' ? 'linq_logistics_poll' : 'linq_logistics_text',
+    inferredBy: INFERRED_BY[input.value.source],
     validFrom: input.now,
   };
   const audit = {
@@ -362,6 +416,13 @@ export async function recordLogisticsVote(
   },
 ): Promise<'decided' | 'declined' | 'passed' | 'ignored'> {
   if (!input.subjectKey) return 'ignored';
+  const existing = (await loadRememberedLogistics(database, input.familyId)).find(
+    (row) => row.factKey === input.subjectKey,
+  );
+  // A claim is the taker's own word, and every who-takes poll about its plan was planned
+  // before Hale knew of it (a claimed plan is in no clash alert, and the evening poll asks
+  // only about plans with nothing stored): a tap on one does not undo it.
+  if (existing?.source === 'claim' && existing.status === 'decided') return 'ignored';
   if (input.choiceKind === 'figure_it_out') {
     await withholdWhoTakes(database, {
       familyId: input.familyId,
@@ -372,9 +433,6 @@ export async function recordLogisticsVote(
     });
     return 'passed';
   }
-  const existing = (await loadRememberedLogistics(database, input.familyId)).find(
-    (row) => row.factKey === input.subjectKey,
-  );
   const parsed = parseWhoTakesKey(input.subjectKey);
   if (input.choiceKind === 'parent' && !input.choiceValue) return 'ignored';
   if (input.choiceKind === 'slot' && !input.choiceValue) return 'ignored';
@@ -417,7 +475,7 @@ export async function withholdWhoTakes(
     parentUserId: string;
     factKey: string;
     now: Date;
-    source: 'poll' | 'text';
+    source: LogisticsSource;
   },
 ): Promise<void> {
   const audit = {

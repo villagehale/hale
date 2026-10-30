@@ -27,8 +27,10 @@ import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
-import { createLinqTextTransport } from '~/lib/channel/linq/transport';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import {
+  createChatReplyTransport,
+  createOutboundTransport,
+} from '~/lib/channel/outbound-transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import type { MessageTransport } from '~/lib/channel/transport-address';
@@ -71,7 +73,7 @@ export function buildIntakeDeps(
   // the STOP ack or the media line on SMS, which is a different app.
   const transport =
     inboundTransport === 'imessage'
-      ? createLinqTextTransport({
+      ? createChatReplyTransport({
           chatId: linq?.chatId ?? null,
           replyToMessageId: linq?.replyToMessageId ?? null,
         })

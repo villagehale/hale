@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: piano lesson today 7:00-8:00 PM at Ms. Chen studio, evening stated as 晚上7点到8点, and 'about an hour' is a fair true statement from now. However the text is not natural Chinese: '在大约一个小时以后' is clumsy, the place is inserted with '它是在' which a native speaker would not write, and '有钢琴课它是在' is ungrammatical. Native speaker check fails, capping the score at 3.",
+    "score": 3
+  }
+}

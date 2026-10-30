@@ -1,0 +1,19 @@
+{
+  "value": {
+    "request": "reminders",
+    "set": [
+      {
+        "for": "person",
+        "name": "Sam",
+        "what": "bring the folding chairs",
+        "date": "2026-10-29",
+        "time": "18:00",
+        "inMinutes": null,
+        "where": "unsaid"
+      }
+    ],
+    "cancel": [],
+    "language": "en"
+  },
+  "latencyMs": 1893
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all present and correct: both events are tomorrow, story time at 11 AM (\"上午11点\"), soccer 5:30-6:30 in the evening (\"傍晚\", which fits 5:30-6:30 PM), and the link is exactly planLink. Nothing is invented. But the phrasing is not what a native speaker would text: \"傍晚5:30到6:30是足球\" is awkward, since \"是足球\" (is soccer) is not how Chinese says there is a soccer session (natural is \"有足球训练\" or \"踢足球\"), and \"图书馆的故事时间\" is a slightly stiff rendering of Library story time. The text also opens with \"提醒一下\" and ends with a catch-all line \"明天的安排都在这里\", which is filler that reads somewhat like a notification wrapper. Capped at 3 for unnatural phrasing.",
+    "score": 3
+  }
+}

@@ -6,6 +6,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 const waitUntil = vi.hoisted(() => vi.fn());
 vi.mock('@vercel/functions', () => ({ waitUntil }));
+const stickerDecide = vi.hoisted(() => vi.fn());
+vi.mock('~/lib/channel/linq/sticker', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/linq/sticker')>()),
+  sharedLinqStickerDecider: () => ({ decide: stickerDecide }),
+}));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -37,13 +42,14 @@ import {
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
-import { FLOOD_REPLY, capabilityReply, failureReply } from './copy';
+import { capabilityReply, failureReply } from './copy';
 import type {
   DisambiguationOption,
   DisambiguationStore,
   PendingDisambiguation,
 } from './disambiguation';
 import { AGENT_TURNS_PER_HOUR } from './flood';
+import type { FloodLineCompose, FloodLineComposer } from './flood-line';
 import { villageIntroHandler } from './handlers';
 import {
   approvalHandler,
@@ -185,6 +191,20 @@ function fakeHoldingLine(line = "I'm on it."): HoldingLineComposer & { calls: nu
   return holding;
 }
 
+/** VIL-463: an over-limit composer that writes from facts, or fails like a dead model. */
+function fakeFloodLine(
+  result: FloodLineCompose = { status: 'composed', line: 'A lot came in at once.' },
+): FloodLineComposer & { calls: number } {
+  const flood = {
+    calls: 0,
+    async compose() {
+      flood.calls += 1;
+      return result;
+    },
+  };
+  return flood;
+}
+
 /** A coach that cannot run at all — the outage the canned choice sentence exists for. */
 function brokenCoach(): ChannelCoachRuntime {
   return {
@@ -311,7 +331,7 @@ function countingLimiter(): RateLimiter & { checks: number } {
     checks: 0,
     async check() {
       limiter.checks += 1;
-      return { allowed: true, retryAfterSec: 3600 };
+      return { allowed: true, retryAfterSec: 3600, firstDenied: false };
     },
   };
   return limiter;
@@ -458,6 +478,7 @@ function harness(
     callTimeoutMs?: number;
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
+    floodLine?: FloodLineComposer;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -484,6 +505,7 @@ function harness(
     turns,
     deps: {
       database: fake.db,
+      leftChatSince: async () => false,
       loadContext: async () => context,
       transport,
       handlers: options.handlers ?? [],
@@ -531,6 +553,7 @@ function harness(
       turns,
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
+      floodLine: options.floodLine ?? fakeFloodLine(),
       holdingLineAfterMs: options.holdingLineAfterMs,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
@@ -1265,7 +1288,7 @@ describe('the off-domain lane', () => {
       },
     };
     const h = harness({ offDomain: lane });
-    const { in_group: _unsaid, ...unsaid } = job();
+    const unsaid = job({ in_group: undefined });
 
     await routeChannelMessage(h.deps, unsaid);
 
@@ -1512,7 +1535,7 @@ describe('flood control', () => {
     const overflow = await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
     expect(overflow.status).toBe('flood_held');
     expect(coach.calls).toBe(AGENT_TURNS_PER_HOUR);
-    expect(h.transport.bodies().at(-1)).toBe(FLOOD_REPLY);
+    expect(h.transport.bodies().at(-1)).toBe('A lot came in at once.');
   });
 
   it('sends the flood line 1:1 on a family-group turn, never into the group', async () => {
@@ -1539,12 +1562,14 @@ describe('flood control', () => {
     const group = await spent(true);
     expect(group.result.status).toBe('flood_held');
     expect(group.coach.calls).toBe(0);
-    expect(group.h.transport.sent).toEqual([{ route: SMS_ROUTE, body: FLOOD_REPLY }]);
+    expect(group.h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'A lot came in at once.' }]);
 
     // Positive control: the same over-budget turn outside the group answers where it came from.
     const direct = await spent(false);
     expect(direct.result.status).toBe('flood_held');
-    expect(direct.h.transport.sent).toEqual([{ route: groupRoute, body: FLOOD_REPLY }]);
+    expect(direct.h.transport.sent).toEqual([
+      { route: groupRoute, body: 'A lot came in at once.' },
+    ]);
   });
 
   /**
@@ -4570,7 +4595,7 @@ describe('a slow answer gets one holding line first', () => {
     return {
       async check() {
         await new Promise((resolve) => setTimeout(resolve, ms));
-        return { allowed, retryAfterSec: 0 };
+        return { allowed, retryAfterSec: 0, firstDenied: !allowed };
       },
     };
   }
@@ -4660,7 +4685,7 @@ describe('a slow answer gets one holding line first', () => {
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('flood_held');
-    expect(h.transport.bodies()).toEqual([FLOOD_REPLY]);
+    expect(h.transport.bodies()).toEqual(['A lot came in at once.']);
     expect(holding.calls).toBe(0);
   });
 
@@ -4837,7 +4862,7 @@ describe('a slow answer gets one holding line first', () => {
       holdingLine: holding,
       holdingLineAfterMs: 10,
     });
-    const { in_group: _unsaid, ...unsaid } = job();
+    const unsaid = job({ in_group: undefined });
 
     const result = await routeChannelMessage(h.deps, unsaid);
 
@@ -4889,6 +4914,8 @@ describe('the reply row, written to a real database', () => {
       // 0167 stays unapplied. The reply path now reads inbound media, which
       // arrives in 0173, so that column is present without the pending-ask table.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
+      // Likewise the group bit (0185, VIL-463), which the ledger row now carries.
+      await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
     });
 
     afterAll(async () => {
@@ -5223,15 +5250,17 @@ describe('the reply row, written to a real database', () => {
      * line someone who is not a parent gets, and a tapback that stood in for the words.
      */
     describe('every answer closes the question', () => {
-      const SPENT: RateLimiter = { check: async () => ({ allowed: false, retryAfterSec: 60 }) };
+      const SPENT: RateLimiter = {
+        check: async () => ({ allowed: false, retryAfterSec: 60, firstDenied: true }),
+      };
 
       it.each([
         ['what the coach says', {}, ['coach says hi']],
-        ['the line a spent budget gets', { limiter: SPENT }, [FLOOD_REPLY]],
+        ['the line a spent budget gets', { limiter: SPENT }, ['A lot came in at once.']],
         [
           'the line a spent budget gets from a group, on their own phone',
           { limiter: SPENT, context: { inGroup: true } },
-          [FLOOD_REPLY],
+          ['A lot came in at once.'],
         ],
         [
           'the line someone who is not a parent gets',
@@ -5281,6 +5310,41 @@ describe('the reply row, written to a real database', () => {
         expect(next.said).toEqual([]);
         expect(await keptAsks(parent.familyId)).toEqual([]);
       });
+
+      it('a sticker the model chose to stand in for the words', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+        stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: false });
+        const peeled: unknown[] = [];
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+          if (new URL(url).pathname.endsWith('/reactions'))
+            peeled.push(JSON.parse(String(init?.body)));
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        const next = await text(
+          parent,
+          'perfect, see you saturday',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          { offDomain: fakeLane(IN_DOMAIN), coach: fakeCoach('See you then.') },
+        );
+        vi.unstubAllGlobals();
+
+        expect(stickerDecide).toHaveBeenCalledWith({
+          audience: 'direct',
+          parentText: 'perfect, see you saturday',
+          parentAttachments: [],
+          reply: 'See you then.',
+        });
+        expect(peeled).toEqual([{ operation: 'add', type: 'sticker', emoji: '🙌' }]);
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+        stickerDecide.mockReset();
+      });
     });
 
     /** One person, two households. A question is put to a parent in one family, and
@@ -5307,5 +5371,288 @@ describe('the reply row, written to a real database', () => {
         { ...ASKED, chat: 'chat-own', direction: 'out' },
       ]);
     });
+  });
+});
+
+/**
+ * VIL-463 — a group turn never reaches a parent's 1:1 thread, 1:1 asks, or the group
+ * with a private line. Fake families only; no keys, no SMS, no model.
+ */
+describe('VIL-463 group scope', () => {
+  const GROUP_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-family-group',
+    replyToMessageId: 'in-1',
+  };
+
+  it('refuses a job with no group bit that arrived in an iMessage chat, opening no 1:1 thread', async () => {
+    const coach = fakeCoach();
+    const h = harness({ coach, context: { reply: GROUP_ROUTE, inGroup: false } });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: undefined }));
+
+    expect(result.status).toBe('group_unscoped');
+    expect(result.conversationId).toBeNull();
+    expect(conversationRows(h.fake)).toEqual([]);
+    expect(messageRows(h.fake)).toEqual([]);
+    expect(coach.calls).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('positive control: the same chat with the bit said false runs as a 1:1 turn', async () => {
+    const h = harness({ context: { reply: GROUP_ROUTE, inGroup: false } });
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('a group "yes" does not resolve a question open in the 1:1 chat', async () => {
+    const question: OpenQuestion = {
+      id: 'aaaa1111-1111-4111-8111-111111111111',
+      kind: 'approval',
+      description: 'Reschedule on your calendar',
+      subject: 'reschedule on your calendar',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+    const seen: unknown[] = [];
+    const owner = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      async handle(_db: unknown, ctx: { resolved: unknown }) {
+        seen.push(ctx.resolved);
+        if (!ctx.resolved) return { claimed: false };
+        return { claimed: true, outcome: 'acted', reply: 'Done.' };
+      },
+    } as unknown as DeterministicHandler;
+    const resolved = fakeResolver({
+      status: 'resolved',
+      questionId: question.id,
+      kind: 'approval',
+      polarity: 'yes',
+      confidence: 'high',
+    });
+
+    const questions = fakeQuestions([question]);
+    const h = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions,
+      replyResolver: resolved,
+    });
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).not.toBe('resolved');
+    expect(questions.calls).toBe(0);
+    expect(resolved.calls).toBe(0);
+    expect(seen.every((r) => r === null)).toBe(true);
+
+    // Positive control: the same "yes" in the 1:1 chat resolves it.
+    const direct = harness({
+      context: { body: 'yes' },
+      handlers: [owner],
+      questions: fakeQuestions([question]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: question.id,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+    expect((await routeChannelMessage(direct.deps, job())).status).toBe('resolved');
+  });
+
+  it('a group text does not spend the menu Hale printed in the 1:1 chat', async () => {
+    function menuSpy() {
+      const spy = {
+        consumed: 0,
+        async pending() {
+          return {
+            id: 'menu-1',
+            polarity: 'yes' as const,
+            numbered: true,
+            options: [] as readonly DisambiguationOption[],
+          };
+        },
+        async mint() {
+          return { status: 'minted' as const };
+        },
+        async consume() {
+          spy.consumed += 1;
+          return 'spent' as const;
+        },
+      };
+      return spy;
+    }
+    const group = harness({ context: { body: '2', reply: GROUP_ROUTE, inGroup: true } });
+    const groupMenu = menuSpy();
+    group.deps.disambiguation = groupMenu as unknown as DisambiguationStore;
+    await routeChannelMessage(group.deps, job({ in_group: true }));
+    expect(groupMenu.consumed).toBe(0);
+
+    // Positive control: the same text in the 1:1 chat spends it.
+    const direct = harness({ context: { body: '2' } });
+    const directMenu = menuSpy();
+    direct.deps.disambiguation = directMenu as unknown as DisambiguationStore;
+    await routeChannelMessage(direct.deps, job());
+    expect(directMenu.consumed).toBe(1);
+  });
+
+  // VIL-477: an overlapping turn (a "be quiet" reply composed before another member's
+  // leave landed) must not speak into the chat Hale already left.
+  it('sends nothing into a group chat Hale left while the turn was in flight', async () => {
+    const seen: Array<{ chatId: string; since: Date }> = [];
+    const h = harness({
+      context: { body: 'Hale be quiet for a bit', reply: GROUP_ROUTE, inGroup: true },
+    });
+    h.deps.leftChatSince = async (_db, input) => {
+      seen.push(input);
+      return true;
+    };
+    const turn = job({ in_group: true });
+    const result = await routeChannelMessage(h.deps, turn);
+
+    expect(result.status).toBe('group_left');
+    expect(h.transport.sent).toEqual([]);
+    expect(seen[0]?.chatId).toBe(GROUP_ROUTE.chatId);
+    expect(seen[0]?.since.toISOString()).toBe(new Date(turn.received_at).toISOString());
+
+    // Positive control: the same group turn, chat not left, replies.
+    const stay = harness({
+      context: { body: 'Hale be quiet for a bit', reply: GROUP_ROUTE, inGroup: true },
+    });
+    const kept = await routeChannelMessage(stay.deps, job({ in_group: true }));
+    expect(kept.status).not.toBe('group_left');
+    expect(stay.transport.sent.length).toBeGreaterThan(0);
+  });
+
+  async function overLimitGroupTurn(floodLine: FloodLineComposer) {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const h = harness({ limiter, floodLine, context: { reply: GROUP_ROUTE, inGroup: true } });
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+    return { h, result };
+  }
+
+  it('sends the composed over-limit line 1:1 with no conversation, never into the group', async () => {
+    const flood = fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' });
+    const { h, result } = await overLimitGroupTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Swamped for a second.' }]);
+    expect(h.transport.sent.some((s) => s.route.channel === 'imessage')).toBe(false);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out).toHaveLength(1);
+    expect(out[0]?.relatedConversationId).toBeNull();
+    expect(messageRows(h.fake).filter((m) => m.role === 'assistant')).toEqual([]);
+  });
+
+  it('a 1:1 text re-driven by the reconciler with its stored bit (false) runs, in its own thread', async () => {
+    const coach = fakeCoach();
+    const h = harness({ coach, context: { reply: GROUP_ROUTE, inGroup: false } });
+    // `redriven` is the turn ledger's business; the job is the reconciler's shape.
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+    expect(result.status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+    expect(conversationRows(h.fake)).toHaveLength(1);
+  });
+
+  async function overLimitDirectTurn(floodLine: FloodLineComposer) {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const h = harness({ limiter, floodLine });
+    const result = await routeChannelMessage(h.deps, job());
+    return { h, result };
+  }
+
+  it('answers a 1:1 over-limit text with the composed line, told it is 1:1', async () => {
+    const seen: unknown[] = [];
+    const flood: FloodLineComposer = {
+      async compose(facts) {
+        seen.push(facts);
+        return { status: 'composed', line: 'Swamped for a second.' };
+      },
+    };
+    const { h, result } = await overLimitDirectTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(seen).toEqual([{ language: null, inGroup: false }]);
+    expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Swamped for a second.' }]);
+  });
+
+  it('records the 1:1 over-limit answer under the flood line template key', async () => {
+    const { h } = await overLimitDirectTurn(
+      fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' }),
+    );
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: 'flood_line' }),
+    ]);
+  });
+
+  it('composes the over-limit line once per budget window: later texts make no model call', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const flood = fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' });
+    const h = harness({ limiter, floodLine: flood });
+    const results = [];
+    for (let i = 0; i < 3; i += 1) {
+      results.push((await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR + i))).status);
+    }
+    expect(results).toEqual(['flood_held', 'flood_held', 'flood_held']);
+    expect(flood.calls).toBe(1);
+    expect(h.transport.bodies()).toEqual(['Swamped for a second.']);
+  });
+
+  it('a failed compose still spends the window: the next over-limit text does not retry it', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const flood = fakeFloodLine({ status: 'unavailable', reason: 'model_failed' });
+    const h = harness({ limiter, floodLine: flood });
+    await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
+    await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR + 1));
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('sends nothing on a 1:1 over-limit text when the line cannot be composed', async () => {
+    const { h, result } = await overLimitDirectTurn(
+      fakeFloodLine({ status: 'unavailable', reason: 'model_failed' }),
+    );
+    expect(result.status).toBe('flood_held');
+    expect(h.transport.sent).toEqual([]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([]);
+  });
+
+  it('sends nothing at all when the over-limit line cannot be composed', async () => {
+    const flood = fakeFloodLine({ status: 'unavailable', reason: 'model_failed' });
+    const { h, result } = await overLimitGroupTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([]);
   });
 });

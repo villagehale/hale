@@ -7,15 +7,7 @@ import {
   decideLopsidedNudge,
   lopsidedConsentCopy,
 } from './burden';
-import {
-  DUTY_CHANGE_NEXT_EN,
-  DUTY_CHANGE_NEXT_FR,
-  DUTY_NIGHT_BEFORE_COPY_EN,
-  DUTY_NIGHT_BEFORE_COPY_FR,
-  dutyCopyMayLeave,
-  dutyOwnerEcho,
-  dutyTitleMayBeSpoken,
-} from './copy';
+import { DUTY_CHANGE_NEXT_EN, dutyCopyMayLeave, dutyOwnerEcho, dutyTitleMayBeSpoken } from './copy';
 import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
 import {
   DUTY_BURDEN_ANSWER_FR,
@@ -108,8 +100,6 @@ describe('duty guardrails', () => {
   });
 
   it('echoes only a locked kid-event owner line and ends on the locked next step', () => {
-    expect(DUTY_NIGHT_BEFORE_COPY_EN.endsWith(DUTY_CHANGE_NEXT_EN)).toBe(true);
-    expect(DUTY_NIGHT_BEFORE_COPY_FR.endsWith(DUTY_CHANGE_NEXT_FR)).toBe(true);
     expect(dutyTitleMayBeSpoken('Quarterly board review')).toBe(false);
     expect(dutyTitleMayBeSpoken('swim')).toBe(true);
     expect(

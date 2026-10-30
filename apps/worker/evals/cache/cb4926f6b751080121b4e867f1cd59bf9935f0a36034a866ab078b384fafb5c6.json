@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text says only 'Reminder set!' and never states that dinner is at Ruth's or the Friday 6 PM time, so both mustSay items are missing."
+  }
+}

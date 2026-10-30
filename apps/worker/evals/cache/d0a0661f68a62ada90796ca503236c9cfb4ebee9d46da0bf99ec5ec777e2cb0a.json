@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are correct: tomorrow (Monday), 15 h to 16 h (both times, correct PM equivalent), and the Georgetown library, with the title kept as the event's name and nothing invented (no closure claim, no guess at the activity, no free-day framing). No filler, no link, no calendar talk. But it reads like a calendar readout: a quoted title, then a bare time range, then the place, with no verb or sentence structure. A native friend would text something like \"Demain, tu as Jour de congé de 15 h à 16 h à la bibliothèque de Georgetown\", or at least give the sentence a verb. The title also sits in the sentence with no connecting word, so it reads as a label rather than an event name inside a sentence. That makes it correct but notification-like, so it is capped at 3.",
+    "score": 3
+  }
+}

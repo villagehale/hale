@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "turnedOffThisTurn covers both send_email and reply_to_email, so 'Done' is true and the reply states the effect plainly: Hale will ask before each email. It has no greeting, no sign-off and no machinery talk. It is short and exact.",
+    "score": 5
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "request": "reminders",
+    "set": [
+      {
+        "for": "person",
+        "name": "Dan",
+        "what": "pick up the birthday cake",
+        "date": "2026-10-28",
+        "time": "17:30",
+        "inMinutes": null,
+        "where": "unsaid"
+      }
+    ],
+    "cancel": [],
+    "language": "en"
+  },
+  "latencyMs": 1932
+}

@@ -248,9 +248,7 @@ export function waitlistLegWindows(
   const halfFrom = new Date(startedAt.getTime() + (deadline.getTime() - startedAt.getTime()) / 2);
   return {
     waitlist_half:
-      halfFrom.getTime() < finalFrom.getTime()
-        ? { from: halfFrom, until: finalFrom }
-        : null,
+      halfFrom.getTime() < finalFrom.getTime() ? { from: halfFrom, until: finalFrom } : null,
     waitlist_final: { from: finalFrom, until: deadline },
   };
 }
