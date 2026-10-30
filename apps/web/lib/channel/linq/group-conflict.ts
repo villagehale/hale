@@ -310,9 +310,9 @@ export function clashCalendar(input: {
   const drafts: Draft[] = [];
   const bySignature = new Map<string, Draft>();
   const byPlaced = new Map<string, Draft>();
+  /** A private plan's id hides every row with it, on any calendar: a Google invite keeps
+   * the id on each attendee's copy, and a hidden row is only title-less busy time. */
   const privatePlaced = new Set<string>();
-  /** A private plan whose connection is gone: its id alone still hides any matching row. */
-  const privatePlacedAnywhere = new Set<string>();
   const copyKey = (integrationId: string, eventId: string) => `${integrationId}\u0000${eventId}`;
   const busy: ClashBusy[] = [];
   const named = new Map<string, ClashPerson>();
@@ -320,13 +320,7 @@ export function clashCalendar(input: {
     `${clashTitleNorm(title)}|${start.getTime()}|${end.getTime()}`;
 
   for (const event of input.events) {
-    if (event.private && event.placedGoogleEventId) {
-      if (event.placedGoogleIntegrationId) {
-        privatePlaced.add(copyKey(event.placedGoogleIntegrationId, event.placedGoogleEventId));
-      } else {
-        privatePlacedAnywhere.add(event.placedGoogleEventId);
-      }
-    }
+    if (event.private && event.placedGoogleEventId) privatePlaced.add(event.placedGoogleEventId);
     if (!event.end || event.end.getTime() <= event.start.getTime()) continue;
     let takerId: string | null = null;
     let label: string | null = null;
@@ -380,7 +374,7 @@ export function clashCalendar(input: {
     if (block.end.getTime() <= block.start.getTime()) continue;
     const row = { integrationId: block.integrationId, eventId: block.eventId };
     const copy = copyKey(block.integrationId, block.eventId);
-    const hidden = privatePlaced.has(copy) || privatePlacedAnywhere.has(block.eventId);
+    const hidden = privatePlaced.has(block.eventId);
     const placed = hidden ? undefined : byPlaced.get(copy);
     if (placed) {
       placed.holders.add(block.userId);

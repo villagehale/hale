@@ -326,43 +326,67 @@ describe('findGroupClashes', () => {
 });
 
 describe('clashCalendar', () => {
-  it("matches a placed copy on its own calendar only: another parent's event with the same id is theirs", () => {
-    const privatePlan = {
-      id: 'allergist',
-      title: 'Maya allergist',
-      start: AT_3,
-      end: AT_4,
-      private: true,
-      owner: { kind: 'parent' as const, userId: 'barton' },
-      ownerSince: null,
-      placedGoogleEventId: 'shared-id',
-      placedGoogleIntegrationId: 'gcal-barton',
-    };
-    const samsSwim = block({
-      eventId: 'shared-id',
-      integrationId: 'gcal-sam',
-      userId: 'sam',
-      title: 'Leo swim pickup',
-    });
-    // A private placement on Barton's calendar does not swallow Sam's own event.
-    const hidden = clashCalendar({
-      blocks: [block({ eventId: 'shared-id', title: 'Maya allergist', end: AT_4 }), samsSwim],
-      events: [privatePlan],
+  it("hides a private plan's copy on every calendar, even another parent's invite copy", () => {
+    const calendar = clashCalendar({
+      blocks: [
+        block({ eventId: 'shared-id', title: 'Maya allergist', end: AT_4 }),
+        block({
+          eventId: 'shared-id',
+          integrationId: 'gcal-sam',
+          userId: 'sam',
+          title: 'Maya allergist',
+          end: AT_4,
+        }),
+      ],
+      events: [
+        {
+          id: 'evt-1',
+          title: 'Maya allergist',
+          start: AT_3,
+          end: AT_4,
+          private: true,
+          owner: { kind: 'parent', userId: 'barton' },
+          ownerSince: null,
+          placedGoogleEventId: 'shared-id',
+          placedGoogleIntegrationId: 'gcal-barton',
+        },
+      ],
       decided: noDecision,
     });
-    expect(hidden.plans.map((row) => [row.title, row.holders])).toEqual([
-      ['Leo swim pickup', ['sam']],
+    expect(calendar.plans).toEqual([]);
+    expect(calendar.busy.filter((row) => !row.known).map((row) => row.personId)).toEqual([
+      'barton',
+      'sam',
     ]);
-    expect(JSON.stringify(hidden.plans)).not.toMatch(/allergist/i);
+    expect(JSON.stringify(calendar)).not.toMatch(/allergist/i);
+  });
 
-    // A public placement on Barton's calendar does not make Barton a holder of Sam's event.
+  it('a public placement is held by its own calendar only, never by a same-id row elsewhere', () => {
     const shown = clashCalendar({
-      blocks: [samsSwim],
-      events: [{ ...privatePlan, private: false, title: 'Maya swim pickup' }],
+      blocks: [
+        block({
+          eventId: 'shared-id',
+          integrationId: 'gcal-sam',
+          userId: 'sam',
+          title: 'Leo swim pickup',
+        }),
+      ],
+      events: [
+        {
+          id: 'swim',
+          title: 'Maya swim pickup',
+          start: AT_3,
+          end: AT_4,
+          private: false,
+          owner: null,
+          ownerSince: null,
+          placedGoogleEventId: 'shared-id',
+          placedGoogleIntegrationId: 'gcal-barton',
+        },
+      ],
       decided: noDecision,
     });
-    const placed = shown.plans.find((row) => row.key === 'plan:allergist');
-    expect(placed?.holders).toEqual([]);
+    expect(shown.plans.find((row) => row.key === 'plan:swim')?.holders).toEqual([]);
     expect(shown.plans.find((row) => row.title === 'Leo swim pickup')?.holders).toEqual(['sam']);
   });
 
