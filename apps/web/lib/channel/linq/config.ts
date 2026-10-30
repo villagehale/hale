@@ -134,3 +134,13 @@ export function linqGroupPlanRsvpEnabled(): boolean {
 export function linqGroupPollsEnabled(): boolean {
   return trimmed('LINQ_GROUP_POLLS_ENABLED') === 'true';
 }
+
+/**
+ * VIL-476 — native iMessage voice memos: an iMessage capability check (cached) and the
+ * voice-memo send, plus inbound audio named as a voice memo for the model. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off reads
+ * inbound audio as a `file` and never calls the capability or voice-memo endpoints.
+ */
+export function linqVoiceMemosEnabled(): boolean {
+  return trimmed('LINQ_VOICE_MEMOS_ENABLED') === 'true';
+}

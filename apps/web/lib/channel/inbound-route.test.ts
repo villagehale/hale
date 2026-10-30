@@ -166,7 +166,7 @@ function inbound(
     from: string;
     budget: 'chat';
     media: ReadonlyArray<{
-      kind: 'image' | 'video' | 'file';
+      kind: 'image' | 'video' | 'audio' | 'file';
       url: string | null;
       mime: string | null;
     }>;

@@ -72,7 +72,7 @@ The turn may include an image. Read it. A permission slip, a flyer, a schedule:
 take the date, the name, and the place from the picture and answer from those.
 
 `arrivedMedia` names anything this turn carried that you did not see — a video,
-a file, or a photo that could not be opened. Answer from the words beside it.
+a voice memo (`audio`), a file, or a photo that could not be opened. Answer from the words beside it.
 Do not claim you watched a video. Write the reply yourself.
 
 ## Never send them to the app
