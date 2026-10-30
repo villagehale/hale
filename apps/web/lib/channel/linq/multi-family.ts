@@ -712,7 +712,7 @@ export async function readFamilySliceForAudience(
       children: kids.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.name),
       memory: facts.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.factKey),
       // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
-      // one parent's own Google mirror is excluded by householdFamilyEvent().
+      // one parent's own Google mirror is excluded by the household-row predicate.
       calendar: events
         .filter((row) => row.familyId === input.dataFamilyId)
         .filter(
