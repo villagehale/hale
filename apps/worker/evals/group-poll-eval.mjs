@@ -6,17 +6,20 @@
 // A judge scores meaning, 1-5. No word-matching gate.
 //
 // This file is not named run-*.mjs, so the Monday eval sweep does not pick it up.
-// It is not in ci.yml. There is no committed cache. A miss must not spend.
+// It is not in ci.yml. A cached-only miss must not spend.
 //
 //   node evals/group-poll-eval.mjs --dry
 //   node evals/group-poll-eval.mjs --cached-only
+//   node evals/group-poll-eval.mjs --live --max-usd N   # PAID, spend-capped
 //
 // --dry (also --estimate) prices one live recording of every fixture (reader +
 // voice + judge) at max_tokens and exits 0. It does not call the API and it
 // does not write cache.
 // --cached-only replays committed cache. The first miss prints that same
 // estimate and exits 1.
-// --live is refused. This runner never calls the API.
+// --live --max-usd N records every fixture (reader + voice + judge) through the
+// shared spend guard (HALE_SPEND_LEDGER / HALE_MAX_USD). It refuses to start when
+// the dry estimate is above N.
 
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -26,12 +29,15 @@ import {
   JUDGE_MIN,
   PRICE,
   REPO_ROOT,
-  cacheGet,
-  cacheKey,
+  cachedToolCall,
   evalRunTag,
-  isVerdict,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  makeJudge,
   readJudgeModel,
   scoreFirstJudgeSchema,
+  totalUsd,
 } from './lib/harness.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
@@ -198,19 +204,18 @@ function estimateLine(usd) {
   return `group-poll: one estimate to record ${GROUP_POLL_READ_FIXTURES.length} reader fixtures and ${GROUP_POLL_VOICE_FIXTURES.length} voice fixtures (subject + judge), priced at max_tokens. live API calls: 0. nothing written. $${usd.toFixed(4)} USD`;
 }
 
+function maxUsdArg(argv) {
+  const i = argv.findIndex((arg) => arg === '--max-usd' || arg.startsWith('--max-usd='));
+  if (i < 0) return Number.NaN;
+  return Number(argv[i].includes('=') ? argv[i].split('=')[1] : argv[i + 1]);
+}
+
 async function main() {
   const dry = process.argv.includes('--dry') || process.argv.includes('--estimate');
   const cachedOnly = process.argv.includes('--cached-only');
-  if (process.argv.includes('--live')) {
-    console.error('group-poll: --live is refused. This runner does not call the API.');
-    process.exit(2);
-  }
-  if (dry && cachedOnly) {
-    console.error('group-poll: pass only one of --dry and --cached-only');
-    process.exit(1);
-  }
-  if (!dry && !cachedOnly) {
-    console.error('group-poll: pass --dry or --cached-only. This runner does not call the API.');
+  const live = process.argv.includes('--live');
+  if ([dry, cachedOnly, live].filter(Boolean).length !== 1) {
+    console.error('group-poll: pass exactly one of --dry, --cached-only, --live --max-usd N');
     process.exit(2);
   }
 
@@ -240,76 +245,106 @@ async function main() {
     console.info(estimateLine(usd));
     return;
   }
+  if (live) {
+    const maxUsd = maxUsdArg(process.argv);
+    if (!(maxUsd > 0)) {
+      console.error('group-poll: --live needs --max-usd N');
+      process.exit(2);
+    }
+    if (usd > maxUsd) {
+      console.error(estimateLine(usd));
+      console.error(
+        `group-poll: estimate is above --max-usd $${maxUsd}. stopped. nothing recorded.`,
+      );
+      process.exit(1);
+    }
+    console.info(estimateLine(usd));
+    installEvalSpendCap();
+  } else {
+    console.info(estimateLine(usd));
+  }
+
+  const getClient = lazyAnthropic('group-poll');
+  const cost = makeCost();
+  const judgeOptions = { toolSchema: JUDGE_TOOL_SCHEMA, maxOutputTokens: JUDGE_MAX_TOKENS };
+  const readJudge = makeJudge(
+    judgeModel,
+    READ_JUDGE_SYSTEM,
+    'group-poll-read',
+    cachedOnly,
+    getClient,
+    cost,
+    judgeOptions,
+  );
+  const voiceJudge = makeJudge(
+    judgeModel,
+    VOICE_JUDGE_SYSTEM,
+    'group-poll-voice',
+    cachedOnly,
+    getClient,
+    cost,
+    judgeOptions,
+  );
+  let allPass = true;
 
   for (const fixture of GROUP_POLL_READ_FIXTURES) {
-    const canonical = JSON.stringify({
+    const { value } = await cachedToolCall({
+      tag: evalRunTag(`group-poll-read:${fixture.id}`),
+      lane: readLane,
       system: readSkill.instructions,
       userMessage: reading.groupPlanRsvpUserMessage(fixture.input),
       toolName: 'group_plan_rsvp',
+      toolDescription: 'Return what this group message meant for a shared plan or poll.',
       toolSchema: reading.GROUP_PLAN_RSVP_READ_TOOL_SCHEMA,
       maxTokens: reading.GROUP_PLAN_RSVP_READ_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
     });
-    const key = cacheKey(evalRunTag(`group-poll-read:${fixture.id}`), canonical);
-    const cached = await cacheGet(key);
-    if (!cached) {
-      console.error(estimateLine(usd));
-      console.error(`group-poll: cache miss on ${fixture.id}. stopped. nothing recorded.`);
-      process.exit(1);
-    }
-    const judged = cacheKey(
-      `group-poll-read:judge:${fixture.id}`,
-      `${judgeModel}\n${READ_JUDGE_SYSTEM}\n${JSON.stringify({ situation: fixture.situation, reading: cached.value })}`,
-    );
-    const verdict = await cacheGet(judged);
-    if (!verdict || !isVerdict(verdict.parsed)) {
-      console.error(estimateLine(usd));
-      console.error(`group-poll: judge cache miss on ${fixture.id}. stopped. nothing recorded.`);
-      process.exit(1);
-    }
-    const score = verdict.parsed.score;
-    const ok = score >= JUDGE_MIN && fixture.accept.includes(cached.value.intent);
+    const verdict = await readJudge(fixture.id, { situation: fixture.situation, reading: value });
+    const ok = verdict.score >= JUDGE_MIN && fixture.accept.includes(value.intent);
+    if (!ok) allPass = false;
     console.info(
-      `${ok ? 'PASS' : 'FAIL'}  ${fixture.id}  intent=${cached.value.intent} judge:${score}`,
+      `${ok ? 'PASS' : 'FAIL'}  read:${fixture.id}  intent=${value.intent} judge:${verdict.score}`,
     );
-    if (!ok) process.exitCode = 1;
+    if (!ok) console.info(`      · ${verdict.reason}`);
   }
 
   for (const fixture of GROUP_POLL_VOICE_FIXTURES) {
     const input = voiceInput(facts, tally, fixture);
-    const canonical = JSON.stringify({
+    const { value } = await cachedToolCall({
+      tag: evalRunTag(`group-poll-voice:${fixture.id}`),
+      lane: voiceLane,
       system: voiceSkill.instructions,
       userMessage: JSON.stringify(input),
       toolName: 'send_group_line',
+      toolDescription: 'The one message Hale sends.',
       toolSchema: voice.GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA,
       maxTokens: voice.GROUP_PLAN_RSVP_VOICE_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
     });
-    const key = cacheKey(evalRunTag(`group-poll-voice:${fixture.id}`), canonical);
-    const cached = await cacheGet(key);
-    if (!cached) {
-      console.error(estimateLine(usd));
-      console.error(`group-poll: cache miss on ${fixture.id}. stopped. nothing recorded.`);
-      process.exit(1);
-    }
-    const judged = cacheKey(
-      `group-poll-voice:judge:${fixture.id}`,
-      `${judgeModel}\n${VOICE_JUDGE_SYSTEM}\n${JSON.stringify({
-        situation: fixture.situation,
-        watchFor: fixture.watchFor,
-        facts: input.facts,
-        message: cached.value.line,
-      })}`,
+    const line = String(value.line ?? '').trim();
+    const usable = value.send === true && line.length > 0;
+    const verdict = await voiceJudge(fixture.id, {
+      situation: fixture.situation,
+      watchFor: fixture.watchFor,
+      facts: input.facts,
+      message: line,
+    });
+    const ok = usable && verdict.score >= JUDGE_MIN;
+    if (!ok) allPass = false;
+    console.info(
+      `${ok ? 'PASS' : 'FAIL'}  voice:${fixture.id}  judge:${verdict.score}${usable ? '' : ' unusable'}  "${line}"`,
     );
-    const verdict = await cacheGet(judged);
-    if (!verdict || !isVerdict(verdict.parsed)) {
-      console.error(estimateLine(usd));
-      console.error(`group-poll: judge cache miss on ${fixture.id}. stopped. nothing recorded.`);
-      process.exit(1);
-    }
-    const score = verdict.parsed.score;
-    const ok = score >= JUDGE_MIN;
-    console.info(`${ok ? 'PASS' : 'FAIL'}  ${fixture.id}  judge:${score}`);
-    if (!ok) process.exitCode = 1;
+    if (!ok) console.info(`      · ${verdict.reason}`);
   }
+
+  console.info(
+    `live API calls this run: ${cost.liveCalls} | actual cost: $${totalUsd(cost).toFixed(4)} USD`,
+  );
+  if (!allPass) process.exitCode = 1;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
