@@ -42,6 +42,7 @@ const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const EVENING_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/evening-compose.ts');
 const MORNING_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/morning-compose.ts');
 const HEADS_UP_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/heads-up-compose.ts');
+const TEXT_CHECK_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/text-check.ts');
 const DUTY_SRC = join(REPO_ROOT, 'apps/web/lib/channel/coparent/duty/night-compose.ts');
 
 register({ tsconfig: WEB_TSCONFIG });
@@ -67,6 +68,10 @@ const HEADS_UP_TOOL = {
 const DUTY_TOOL = {
   name: 'duty_night_text',
   description: 'The one text Hale sends the group the evening before.',
+};
+const REG_CHECK_TOOL = {
+  name: 'registration_text_check',
+  description: 'Whether every claim in the draft is backed by the facts.',
 };
 const CHECK_TOOL = {
   name: 'duty_night_check',
@@ -315,6 +320,11 @@ const HEADS_UP_BROKEN = [
     text: "Richmond Hill fall programs open next Tuesday at 6:30 a.m. I've already held Max a spot.",
   },
   {
+    id: 'broken-heads-up-account-set',
+    facts: HEADS_UP_BY_ID['heads-up-resident-hedged-teen'],
+    text: "Richmond Hill fall programs open next Tuesday at 6:30 a.m. for your teen. I checked your account and you're already signed up, so you're all set.",
+  },
+  {
     id: 'broken-heads-up-wrong-day',
     facts: HEADS_UP_BY_ID['heads-up-offer-fr'],
     text: 'Les inscriptions de Richmond Hill ouvrent demain à 6 h 30 pour Max. Je vous aide ce matin-là?',
@@ -505,6 +515,7 @@ async function main() {
   const duty = await importTs(DUTY_SRC);
   const morning = await importTs(MORNING_SRC);
   const headsUp = await importTs(HEADS_UP_SRC);
+  const textCheck = await importTs(TEXT_CHECK_SRC);
 
   if (broken) {
     const ok = brokenOffline(evening, duty, morning, headsUp);
@@ -519,6 +530,8 @@ async function main() {
   const morningLane = agent.pickLane(morningSkill.meta.task);
   const headsUpSkill = await agent.loadSkill(join(SKILLS, 'registration-heads-up.md'));
   const headsUpLane = agent.pickLane(headsUpSkill.meta.task);
+  const regCheckSkill = await agent.loadSkill(join(SKILLS, 'registration-text-check.md'));
+  const regCheckLane = agent.pickLane(regCheckSkill.meta.task);
   const checkSkill = await agent.loadSkill(join(SKILLS, 'duty-night-check.md'));
   const eveningLane = agent.pickLane(eveningSkill.meta.task);
   const dutyLane = agent.pickLane(dutySkill.meta.task);
@@ -547,11 +560,16 @@ async function main() {
       const msg = JSON.stringify(f.facts);
       usd +=
         morning.MORNING_MAX_ATTEMPTS *
-        worst(
+        (worst(
           morningLane.model,
           tokensFor(morningSkill.instructions) + tokensFor(msg) + 200,
           morning.MORNING_MAX_TOKENS,
-        );
+        ) +
+          worst(
+            regCheckLane.model,
+            tokensFor(regCheckSkill.instructions) + 2 * tokensFor(msg) + 400,
+            textCheck.REGISTRATION_TEXT_CHECK_MAX_TOKENS,
+          ));
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       calls += morning.MORNING_MAX_ATTEMPTS + 1;
     }
@@ -577,22 +595,33 @@ async function main() {
       const msg = JSON.stringify(f.facts);
       const one =
         headsUp.HEADS_UP_MAX_ATTEMPTS *
-          worst(
+          (worst(
             headsUpLane.model,
             tokensFor(headsUpSkill.instructions) + tokensFor(msg) + 200,
             headsUp.HEADS_UP_MAX_TOKENS,
           ) +
+            worst(
+              regCheckLane.model,
+              tokensFor(regCheckSkill.instructions) + 2 * tokensFor(msg) + 400,
+              textCheck.REGISTRATION_TEXT_CHECK_MAX_TOKENS,
+            )) +
         worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       usd += one;
       headsUpUsd += one;
-      calls += headsUp.HEADS_UP_MAX_ATTEMPTS + 1;
+      calls += 2 * headsUp.HEADS_UP_MAX_ATTEMPTS + 1;
     }
     for (const b of HEADS_UP_BROKEN) {
       const msg = JSON.stringify({ facts: b.facts, text: b.text });
-      const one = worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
+      const one =
+        worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut) +
+        worst(
+          regCheckLane.model,
+          tokensFor(regCheckSkill.instructions) + tokensFor(msg) + 400,
+          textCheck.REGISTRATION_TEXT_CHECK_MAX_TOKENS,
+        );
       usd += one;
       headsUpUsd += one;
-      calls += 1;
+      calls += 2;
     }
     let morningUsd = 0;
     for (const f of MORNING_FIXTURES) {
@@ -675,6 +704,24 @@ async function main() {
     return { supported: value?.supported === true && unsupported.length === 0, unsupported };
   }
 
+  async function regCheck(tag, kind, facts, text) {
+    const { value } = await cachedToolCall({
+      tag: `vil484:regcheck:${tag}`,
+      lane: regCheckLane,
+      system: regCheckSkill.instructions,
+      userMessage: textCheck.registrationTextCheckMessage(kind, facts, text),
+      toolName: REG_CHECK_TOOL.name,
+      toolDescription: REG_CHECK_TOOL.description,
+      toolSchema: textCheck.REGISTRATION_TEXT_CHECK_JSON_SCHEMA,
+      maxTokens: textCheck.REGISTRATION_TEXT_CHECK_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    const unsupported = Array.isArray(value?.unsupported) ? value.unsupported : ['malformed'];
+    return { supported: value?.supported === true && unsupported.length === 0, unsupported };
+  }
+
   let failed = 0;
   for (const f of EVENING_FIXTURES) {
     const msg = evening.eveningUserMessage(f.facts);
@@ -718,7 +765,13 @@ async function main() {
         morning.MORNING_MAX_TOKENS,
         attempt,
       );
-      if (morning.morningRefusals(draft, f.facts).length === 0) text = draft;
+      if (morning.morningRefusals(draft, f.facts).length > 0) continue;
+      const checked = await regCheck(`${f.id}#${attempt}`, 'morning', f.facts, draft);
+      if (checked.supported) text = draft;
+      else
+        console.info(
+          `     check blocked ${f.id}#${attempt}: ${JSON.stringify(checked.unsupported)}`,
+        );
     }
     if (text === null) {
       failed += 1;
@@ -747,7 +800,13 @@ async function main() {
         headsUp.HEADS_UP_MAX_TOKENS,
         attempt,
       );
-      if (headsUp.headsUpRefusals(draft).length === 0) text = draft;
+      if (headsUp.headsUpRefusals(draft).length > 0) continue;
+      const checked = await regCheck(`${f.id}#${attempt}`, 'heads_up', f.facts, draft);
+      if (checked.supported) text = draft;
+      else
+        console.info(
+          `     check blocked ${f.id}#${attempt}: ${JSON.stringify(checked.unsupported)}`,
+        );
     }
     if (text === null) {
       failed += 1;
@@ -812,12 +871,22 @@ async function main() {
       `${caught ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | check ${checked.supported ? 'pass' : `blocked ${JSON.stringify(checked.unsupported)}`} | judge ${verdict.score}`,
     );
   }
-  for (const b of [...MORNING_BROKEN, ...HEADS_UP_BROKEN]) {
+  for (const b of MORNING_BROKEN) {
     const verdict = await judge(b.id, { facts: b.facts, text: b.text });
     const caught = verdict.score <= 2;
     if (caught) brokenCaught += 1;
     console.info(
       `${caught ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | judge ${verdict.score}`,
+    );
+  }
+  // Heads-up false claims: the send-time check must block AND the judge must score low.
+  for (const b of HEADS_UP_BROKEN) {
+    const checked = await regCheck(b.id, 'heads_up', b.facts, b.text);
+    const verdict = await judge(b.id, { facts: b.facts, text: b.text });
+    const caught = !checked.supported && verdict.score <= 2;
+    if (caught) brokenCaught += 1;
+    console.info(
+      `${caught ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | check ${checked.supported ? 'pass' : `blocked ${JSON.stringify(checked.unsupported)}`} | judge ${verdict.score}`,
     );
   }
   const offline = brokenOffline(evening, duty, morning, headsUp);

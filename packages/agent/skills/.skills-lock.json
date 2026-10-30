@@ -295,6 +295,10 @@
     "file": "registration-morning.md",
     "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
   },
+  "registration-text-check.md": {
+    "file": "registration-text-check.md",
+    "sha256": "b67b3163f17eaa4565af70be192ff65eb92cb7aa8b953615ff32502789a3ce9d"
+  },
   "reminder.md": {
     "file": "reminder.md",
     "sha256": "d3576ec420c6d2ad91922145ece5f518e2943b234089697990b3db672ae04e14"

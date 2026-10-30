@@ -5,6 +5,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { HeadsUpFacts } from './copy';
+import { type CheckRegistrationText, checkRegistrationText } from './text-check';
 
 /**
  * VIL-488 · the heads-up registration text (a week out). The model writes the WHOLE
@@ -49,6 +50,7 @@ export async function composeRegistrationHeadsUp(
   client: AgentClient,
   facts: HeadsUpComposeInput,
   familyId: string,
+  options: { check?: CheckRegistrationText } = {},
 ): Promise<string | null> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
@@ -76,8 +78,24 @@ export async function composeRegistrationHeadsUp(
       });
       const text = value.text.trim();
       const refusals = headsUpRefusals(text);
-      if (refusals.length === 0) return text;
-      console.warn({ familyId, attempt, refusals }, 'registration heads-up: draft refused');
+      if (refusals.length > 0) {
+        console.warn({ familyId, attempt, refusals }, 'registration heads-up: draft refused');
+        continue;
+      }
+      // Every structurally clean draft is fact-checked before it can send (VIL-488).
+      const check = await (options.check ?? checkRegistrationText)(
+        client,
+        'heads_up',
+        facts,
+        text,
+        familyId,
+      );
+      if (check.supported) return text;
+      // Claims are logged by count only: they can quote family words.
+      console.warn(
+        { familyId, attempt, unsupported: check.unsupported.length },
+        'registration heads-up: draft failed the fact check',
+      );
     } catch (err) {
       console.warn(
         { familyId, attempt, err: err instanceof Error ? err.name : 'unknown' },
