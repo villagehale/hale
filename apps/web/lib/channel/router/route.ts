@@ -700,6 +700,8 @@ export type RouterStatus =
   /** The off-domain lane answered it with a fixed line; no coach turn was spent. */
   | 'deflected'
   | 'agent_replied'
+  /** #973 · the coach wrote nothing; the turn is claimed answered and nothing was sent. */
+  | 'agent_silent'
   | 'agent_failed'
   /** This text already has Hale's answer, and the queue handed it back anyway. The turn
    * stops before anything is threaded, spent or sent (turn-ledger.ts). */
@@ -1568,6 +1570,7 @@ async function routeChannelMessageInner(
       turn,
       answer,
       hasAnswered: () => answered,
+      claimSilent: claimAnswer,
       conversationId,
       // Every coach turn is told what Hale is waiting on; an UNPLACED answer additionally
       // gets the canned choice sentence as its fallback, because that turn is the one where
@@ -1958,6 +1961,12 @@ async function runAgentTurn(
     answer: (body: string) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
+    /**
+     * #973 · the durable terminal claim for a turn the coach chose to answer with
+     * nothing. Without it the re-drive gate reads the turn as fresh and the coach runs
+     * again, repeating its tool writes. Nothing is sent.
+     */
+    claimSilent?: () => Promise<void>;
     conversationId: string;
     /** What Hale is holding an answer for — the coach gets their subjects (see
      * ChannelTurn), and a coach that cannot run gets the choice sentence built from them. */
@@ -2001,8 +2010,11 @@ async function runAgentTurn(
         { outcome: 'empty_reply' },
         'channel router: coach wrote nothing - nothing sent',
       );
+      // Claim the turn so a redelivery reads `answered` and never reruns the coach
+      // (its tool writes already landed). No text goes out.
+      await args.claimSilent?.();
       return done(deps, args.job, {
-        status: 'agent_replied',
+        status: 'agent_silent',
         handler: null,
         conversationId: args.conversationId,
         lane: null,

@@ -2138,6 +2138,19 @@ describe('a re-driven turn never answers twice', () => {
     expect(JSON.stringify(h.logs)).not.toContain('brokeAfterAnswering');
   });
 
+  it('#973: an empty coach turn is claimed answered, sends nothing, and a redelivery never reruns the coach', async () => {
+    const turns = fakeTurnLedger();
+    const coach = fakeCoach('');
+    const first = harness({ coach, turns });
+    expect((await routeChannelMessage(first.deps, job())).status).toBe('agent_silent');
+    expect(first.transport.sent).toEqual([]);
+
+    const rerun = fakeCoach('should never run');
+    const second = harness({ coach: rerun, turns });
+    expect((await routeChannelMessage(second.deps, job())).status).toBe('already_answered');
+    expect(second.transport.sent).toEqual([]);
+  });
+
   it('claims the caregiver line too — it is an answer like any other', async () => {
     const turns = fakeTurnLedger();
     const first = harness({ context: { role: 'nanny' }, turns });

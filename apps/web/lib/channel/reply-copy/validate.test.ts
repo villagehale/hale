@@ -124,13 +124,13 @@ describe('reply copy validator rules', () => {
   it('Design #973: needs no fixed closing phrase and has no sentence cap', () => {
     expect(
       validateReplyCopy(
-        'Theo has swim at 9 on Saturday.',
-        check({ facts: ['Theo', 'swim', '9', 'Saturday'], questionAllowed: false }),
+        'Got it, swim is covered.',
+        check({ facts: ['swim'], questionAllowed: false }),
       ),
     ).toBeNull();
     expect(
       validateReplyCopy(
-        'Theo has swim. Sam has it too. Shout if that changes.',
+        'Theo has swim. Sam has it too. All set.',
         check({ facts: ['Theo', 'Sam', 'swim'], questionAllowed: false }),
       ),
     ).toBeNull();
