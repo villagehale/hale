@@ -388,6 +388,15 @@ export interface ChannelRouterDeps {
    * invisibly, because the turn would simply go to the coach and look fine.
    */
   questions: OpenQuestionReader;
+  /**
+   * VIL-443: the actions a turn in this family group chat drafted (`group_plan.drafted`),
+   * so a yes in that group can approve them. Optional: absent, a group turn answers no
+   * open question at all (VIL-463).
+   */
+  groupPlanActionIds?: (
+    database: Database,
+    input: { familyId: string; chatId: string },
+  ) => Promise<ReadonlySet<string>>;
   replyResolver: ReplyResolver;
   /**
    * Reads a parent's reply to a calendar offer, and a coach sentence that might be one.
@@ -986,8 +995,32 @@ async function routeChannelMessageInner(
     // check...), and no source records the thread it was asked in. A group turn may
     // only answer questions asked in that group, so it answers none of them: a "yes"
     // in the group can never resolve, or show the coach, a 1:1 ask.
+    //
+    // VIL-443: the one exception is a plan drafted IN THIS GROUP. Its draft carries a
+    // `group_plan.drafted` row naming this chat, so it was asked here, and a seated
+    // parent's yes here may approve it. Only those approvals are kept; every other
+    // question stays 1:1-only.
     if (inGroup) {
-      openQuestions ??= Promise.resolve([]);
+      const groupChatId = route.channel === 'imessage' ? route.chatId : null;
+      const groupDrafted = deps.groupPlanActionIds;
+      if (!groupChatId || !groupDrafted) {
+        openQuestions ??= Promise.resolve([]);
+        return openQuestions;
+      }
+      openQuestions ??= (async () => {
+        const ids = await groupDrafted(deps.database, {
+          familyId: job.family_id,
+          chatId: groupChatId,
+        });
+        if (ids.size === 0) return [];
+        const all = await deps.questions.open(deps.database, {
+          familyId: job.family_id,
+          parentUserId: job.parent_user_id,
+          now,
+          channelMessageId: job.channel_message_id,
+        });
+        return all.filter((question) => question.kind === 'approval' && ids.has(question.id));
+      })();
       return openQuestions;
     }
     openQuestions ??= deps.questions.open(deps.database, {

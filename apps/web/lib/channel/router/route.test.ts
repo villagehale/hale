@@ -5464,6 +5464,76 @@ describe('VIL-463 group scope', () => {
     expect((await routeChannelMessage(direct.deps, job())).status).toBe('resolved');
   });
 
+  it('VIL-443: a group "yes" approves a plan drafted in that same group, and nothing else', async () => {
+    const planned: OpenQuestion = {
+      id: 'bbbb2222-2222-4222-8222-222222222222',
+      kind: 'approval',
+      description: 'Add to your calendar',
+      subject: 'add to your calendar',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+    const private1to1: OpenQuestion = { ...planned, id: 'cccc3333-3333-4333-8333-333333333333' };
+    const seen: Array<{ questionId: string } | null> = [];
+    const owner = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      async handle(_db: unknown, ctx: { resolved: { questionId: string } | null }) {
+        seen.push(ctx.resolved);
+        if (!ctx.resolved) return { claimed: false };
+        return { claimed: true, outcome: 'acted', reply: 'Done.' };
+      },
+    } as unknown as DeterministicHandler;
+    const shown: string[][] = [];
+    const resolver = {
+      calls: 0,
+      async read(input: { questions: readonly OpenQuestion[] }) {
+        resolver.calls += 1;
+        shown.push(input.questions.map((q) => q.id));
+        return {
+          status: 'resolved' as const,
+          questionId: planned.id,
+          kind: 'approval' as const,
+          polarity: 'yes' as const,
+          confidence: 'high' as const,
+        };
+      },
+    };
+    const asked: Array<{ familyId: string; chatId: string }> = [];
+    const h = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions: fakeQuestions([private1to1, planned]),
+      replyResolver: resolver as never,
+    });
+    h.deps.groupPlanActionIds = async (_db, input) => {
+      asked.push(input);
+      return new Set([planned.id]);
+    };
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).toBe('resolved');
+    expect(asked).toEqual([{ familyId: expect.any(String), chatId: GROUP_ROUTE.chatId }]);
+    // The 1:1 approval is never shown to the resolver from the group.
+    expect(shown).toEqual([[planned.id]]);
+    expect(seen.at(-1)?.questionId).toBe(planned.id);
+
+    // Negative control: no plan drafted in this group, so the group yes answers nothing.
+    const none = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions: fakeQuestions([private1to1, planned]),
+      replyResolver: resolver as never,
+    });
+    none.deps.groupPlanActionIds = async () => new Set();
+    const callsBefore = resolver.calls;
+    expect((await routeChannelMessage(none.deps, job({ in_group: true }))).status).not.toBe(
+      'resolved',
+    );
+    expect(resolver.calls).toBe(callsBefore);
+  });
+
   it('a group text does not spend the menu Hale printed in the 1:1 chat', async () => {
     function menuSpy() {
       const spy = {

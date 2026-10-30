@@ -77,6 +77,7 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/mcp/read-tools.ts': 'scoped',
   // by id, from a placement or a placement follow-up
   'apps/web/lib/loop/ics-invite.ts': 'scoped',
+  'apps/web/lib/channel/group-plan/send.ts': 'scoped',
   'apps/web/lib/reviews/capture.ts': 'scoped',
   'apps/web/lib/reviews/subject.ts': 'scoped',
   'apps/web/lib/testing/onboarding-live-harness.ts': 'harness',

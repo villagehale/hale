@@ -282,6 +282,12 @@ export const AUDIT_VERBS = [
   'kid_relevance_reminder_cancelled',
   'kid_relevance_event_restored',
   'group_decision_sync_sent',
+  // VIL-443 (T17) · a plan the household group made, reported back to that group.
+  'group_plan.drafted',
+  'group_plan.calendar_reported',
+  'group_plan.line_unsent',
+  'group_plan.report_held',
+  'group_plan.report_released',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
   'travel_booking_passed_over',
@@ -1099,6 +1105,32 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale told the household group about a decision you made',
     family: 'done',
   },
+  // VIL-443 (T17). Which drafts came from the household group, so the placement is
+  // reported there. The draft itself has its own row; history hides this one.
+  'group_plan.drafted': {
+    sentence: 'Hale noted the plan came from the household group',
+    family: 'note',
+  },
+  // The row's `after` is the event id and the change only: no title, no time, no names.
+  'group_plan.calendar_reported': {
+    sentence: 'Hale told the household group where its plan landed',
+    family: 'done',
+  },
+  // The model could not write the group's text, so nothing went out and ops was paged.
+  'group_plan.line_unsent': {
+    sentence: "Hale held back a group calendar text it couldn't write well",
+    family: 'problem',
+  },
+  // Quiet hours held the group's text; the 08:00 re-drive sends it to the group.
+  'group_plan.report_held': {
+    sentence: 'Hale waited until morning to text the household group about its plan',
+    family: 'note',
+  },
+  // The hold is closed: sent, or no longer the group's to hear. History hides this one.
+  'group_plan.report_released': {
+    sentence: 'Hale finished waiting to text the household group about its plan',
+    family: 'note',
+  },
   // A booking email said the family is going somewhere with the children. 'note', not
   // 'done': nothing was sent yet and nothing was decided - Hale read a confirmation and
   // wrote down that a trip is coming. The row's `after` carries an evidence enum and a
@@ -1901,8 +1933,9 @@ export const SHADOW_ONLY_VERBS = [
 ] as const satisfies readonly AuditVerb[];
 
 /**
- * Written so the next pass does not recount a notice, or so a failed send can
- * be tried again. The sentence stays in the registry so a drift check still
+ * Written so the next pass does not recount a notice, so a failed send can
+ * be tried again, or so a later step knows where a draft came from. The
+ * sentence stays in the registry so a drift check still
  * knows the verb. History hides the row. The right-to-access export keeps it:
  * the audit row is something the parent is owed a copy of.
  */
@@ -1910,6 +1943,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'autonomy_acted_notice_aged_out',
   'autonomy_notice_covered',
   'autonomy_notice_cover_released',
+  'group_plan.drafted',
+  'group_plan.report_released',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

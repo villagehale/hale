@@ -256,6 +256,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'the proactive review — reads an event id only, as a sign that something changed since a hold',
   ],
   [
+    'lib/channel/group-plan/send.ts',
+    "the VIL-443 group plan report — reads the placed row's placement columns by id; its title and place reach the group only through toInviteEvent at the generic floor (a 13+ child's or sensitive row keeps its time and nothing else), and the group's audience gate sends a teen or health row to the parents' own invites instead",
+  ],
+  [
     'lib/channel/linq/group-plan-invites.ts',
     "the VIL-455 group plan fan-out — writes each family's own copy of the plan the group agreed, keyed by group_plan_copy_key, and reads back only family ids; it never reads another household's titles or locations",
   ],

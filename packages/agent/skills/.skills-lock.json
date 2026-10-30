@@ -179,6 +179,10 @@
     "file": "group-plan-attendance-read.md",
     "sha256": "d19d41158b7257934300aedf22ac021de5096122d843845f004dc901aa788c11"
   },
+  "group-plan-calendar-report.md": {
+    "file": "group-plan-calendar-report.md",
+    "sha256": "f40ec7da75a1c3fc5077882b588fb89fafe1abee3d4ed965661cfe0c9608b70a"
+  },
   "group-plan-invite-note.md": {
     "file": "group-plan-invite-note.md",
     "sha256": "e2398f233a3c5f97c51282d12f85cf3adecb06befb17add4b2c33d94e493b6d0"
