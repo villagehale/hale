@@ -62,3 +62,19 @@ describe('VIL-477 leave_group reading', () => {
     expect(acceptOptOutReading(value, text)).toEqual({ intent: 'leave_group', confirmation: '' });
   });
 });
+
+describe('VIL-477 a temporary quiet ask is not a stop', () => {
+  it('a none reading stays none with no confirmation, lit or dark', () => {
+    const text = 'quiet-for-a-while ask';
+    for (const lit of ['true', 'false']) {
+      vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', lit);
+      expect(acceptOptOutReading({ intent: 'none' as const, verbatim: text, confirmation: 'x' }, text)).toEqual({ intent: 'none', confirmation: '' });
+    }
+    vi.unstubAllEnvs();
+  });
+  it('the skill tells the reader a pause is none, not stop or leave_group', async () => {
+    const { readFileSync } = await import('node:fs');
+    const skill = readFileSync(new URL('../../../../../packages/agent/skills/opt-out-read.md', import.meta.url), 'utf8');
+    expect(skill).toMatch(/quiet, hush or hold off for a while[\s\S]*is not `stop` and not\s+`leave_group`; it is `none`/);
+  });
+});

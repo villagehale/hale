@@ -18,6 +18,10 @@ Decide what the sender is asking for about Hale texting them at all:
   leaning that way is still `stop`: a person who wanted to leave and kept getting
   texts is the harm to avoid. Wanting Hale to stop ONE thing (a reminder, a topic,
   asking a question) while still talking to Hale is not `stop`.
+  Asking Hale to be quiet, hush or hold off for a while — a pause with an
+  end, in a group or 1:1, in any wording or language — is not `stop` and not
+  `leave_group`; it is `none`, and Hale answers it itself in the conversation.
+  Only a wish for no more texts from Hale at all is `stop`.
 - `start`: they had stopped and now want Hale back.
 - `crisis_emergency`: someone may be hurt or in danger right now (an injury, a
   child not breathing, a fire, violence happening). Read the meaning in any
