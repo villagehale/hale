@@ -96,7 +96,6 @@ export function sharedLineUsable(
 ): boolean {
   const text = line.trim();
   if (!text) return false;
-  if (text.length > input.maxChars) return false;
   if (/https?:\/\//i.test(text)) return false;
   if (/\+\d[\d\s-]{7,}/.test(text)) return false;
   const questions = (text.match(/\?/g) ?? []).length;

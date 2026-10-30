@@ -45,7 +45,6 @@ export interface SharedGroupLine {
   threadSaid: SharedGroupThreadLine[];
   questions: 0 | 1;
   mayDecline: boolean;
-  maxChars: number;
   wayOut?: boolean;
 }
 
@@ -76,7 +75,6 @@ export function sharedGroupLineInput(
         facts: { adderFirstName: request.adderFirstName },
         questions: 1,
         mayDecline: false,
-        maxChars: 240,
       };
     case 'who_confirmed':
       return {
@@ -89,7 +87,6 @@ export function sharedGroupLineInput(
         },
         questions: 0,
         mayDecline: false,
-        maxChars: 160,
       };
     case 'answer':
       return {
@@ -98,7 +95,6 @@ export function sharedGroupLineInput(
         facts: { lookup: request.lookup },
         questions: 0,
         mayDecline: true,
-        maxChars: 260,
       };
     case 'member_stop':
       return {
@@ -107,7 +103,6 @@ export function sharedGroupLineInput(
         facts: { name: request.name },
         questions: 0,
         mayDecline: false,
-        maxChars: 120,
         wayOut: true,
       };
     case 'family_left':
@@ -117,7 +112,6 @@ export function sharedGroupLineInput(
         facts: { leaverFirstName: request.leaverFirstName },
         questions: 0,
         mayDecline: false,
-        maxChars: 140,
       };
     case 'family_ask':
       return {
@@ -126,7 +120,6 @@ export function sharedGroupLineInput(
         facts: { askeeFirstName: request.askeeFirstName, about: request.about },
         questions: 1,
         mayDecline: true,
-        maxChars: 160,
       };
   }
 }

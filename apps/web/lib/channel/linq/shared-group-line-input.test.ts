@@ -6,11 +6,18 @@ describe('shared group line input', () => {
   it('gives the intro one question and the stop no question', () => {
     const intro = sharedGroupLineInput({ kind: 'intro', adderFirstName: 'Mei' }, 'en');
     expect(intro.questions).toBe(1);
-    expect(intro.maxChars).toBe(240);
+    expect(intro).not.toHaveProperty('maxChars');
     expect(intro.facts.adderFirstName).toBe('Mei');
     const stop = sharedGroupLineInput({ kind: 'member_stop', name: 'Jordan' }, 'en');
     expect(stop.questions).toBe(0);
     expect(stop.wayOut).toBe(true);
+  });
+
+  it('never refuses a line for its length', () => {
+    const answer = sharedGroupLineInput({ kind: 'answer', lookup: null }, 'en');
+    expect(
+      sharedLineUsable(`${'Saturday at the pool works for the group. '.repeat(20)}`, answer),
+    ).toBe(true);
   });
 
   it('refuses a private token, a URL, and a second question', () => {
