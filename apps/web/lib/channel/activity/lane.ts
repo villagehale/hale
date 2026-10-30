@@ -418,6 +418,7 @@ function squash(value: string): string {
 }
 
 function uniqueMatch(
+  venue: string,
   needles: readonly string[],
   sources: ReadonlyArray<{ url: string; text: string }>,
 ): string | null {
@@ -440,7 +441,15 @@ function uniqueMatch(
   // three of its pages named the class). Any of them is a real page read this turn, so
   // the first one is used. Several hosts would be a guess, so nothing is attached.
   const hosts = new Set(matched.map((url) => new URL(url).hostname.toLowerCase()));
-  return hosts.size === 1 ? matched[0]! : null;
+  if (hosts.size === 1) return matched[0]!;
+  // Several hosts (the venue's site plus listings that name it): prefer the one whose
+  // hostname carries the venue's own name. Exactly one such host, or nothing (Design OK).
+  const own = matched.filter((url) => {
+    const host = squash(new URL(url).hostname);
+    return venue.length >= 6 && host.includes(venue);
+  });
+  const ownHosts = new Set(own.map((url) => new URL(url).hostname.toLowerCase()));
+  return ownHosts.size === 1 ? own[0]! : null;
 }
 
 export function stampReadPageUrl(
@@ -451,8 +460,9 @@ export function stampReadPageUrl(
   const needles = [pick.sourceName, pick.name].map(squash).filter((value) => value.length >= 6);
   if (needles.length === 0) return null;
   return (
-    uniqueMatch(needles, pages) ??
+    uniqueMatch(squash(pick.sourceName), needles, pages) ??
     uniqueMatch(
+      squash(pick.sourceName),
       needles,
       searchHits.map((hit) => ({ url: hit.url, text: hit.title })),
     )

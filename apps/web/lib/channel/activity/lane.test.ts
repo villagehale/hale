@@ -663,4 +663,29 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
     );
     expect(pick?.url).toBe(page.url);
   });
+
+  it('several hosts: the one whose hostname carries the venue name wins', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://listings.example/toronto-art', title: 'The Danforth Art Studio — kids' },
+        { url: 'https://thedanforthartstudio.example/collections/kids', title: 'Kids classes' },
+        { url: 'https://thedanforthartstudio.example/drawing', title: 'Drawing' },
+      ],
+    );
+    expect(pick?.url).toBe('https://thedanforthartstudio.example/collections/kids');
+  });
+
+  it('several hosts and none carries the venue name: nothing', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://listings.example/a', title: 'The Danforth Art Studio' },
+        { url: 'https://other.example/b', title: 'Danforth Art Studio fall' },
+      ],
+    );
+    expect(pick?.url).toBeUndefined();
+  });
 });
