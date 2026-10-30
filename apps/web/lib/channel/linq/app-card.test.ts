@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appCardBodyIsSafe, buildLinqAppCard, sendLinqAppCard } from './app-card';
+import { buildLinqAppCard, sendLinqAppCard } from './app-card';
 import { describeInboundAppCard } from './app-card-inbound';
 import { linqExperiencesEnabled } from './config';
 import { parseLinqWebhook } from './payload';
@@ -8,7 +8,10 @@ import { clearLinqCapabilityCacheForTest } from './transport';
 /** VIL-480 · Linq experience cards (link/open), dark by default, link-preview fallback. Keys unset. */
 
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
-const CARD = { url: 'https://villagehale.com/e/abc123', fallbackText: 'Story time details' };
+const CARD = {
+  url: 'https://villagehale.com/e/abc123',
+  fallbackText: 'Story time details',
+};
 
 function jsonFetch(status: number, body: unknown) {
   return vi.fn(
@@ -60,22 +63,6 @@ describe('flag', () => {
   });
 });
 
-describe('fallbackText safety (transport field only)', () => {
-  it.each([
-    'Starts at 11:30 AM',
-    'See you tomorrow',
-    'Due Jan 15',
-    '123 Example Ave',
-    'Call 416 555 0100',
-    'Saturday fun',
-    'rendez-vous demain',
-    '明天见',
-  ])('rejects %s', (t) => expect(appCardBodyIsSafe(t)).toBe(false));
-  it.each(['Event details inside', 'Tap to RSVP', 'Location inside'])('allows %s', (t) =>
-    expect(appCardBodyIsSafe(t)).toBe(true),
-  );
-});
-
 describe('buildLinqAppCard', () => {
   it('builds link/open with only declared params (url, title)', () => {
     expect(buildLinqAppCard(CARD)).toEqual({
@@ -91,15 +78,29 @@ describe('buildLinqAppCard', () => {
       experience: { name: 'link', action: 'open', params: { url: CARD.url } },
     });
   });
-  it('refuses http, over-long title, unsafe title', () => {
-    expect(buildLinqAppCard({ ...CARD, url: 'http://x.test' })).toMatchObject({ ok: false });
+  it('refuses http and over-long title', () => {
+    expect(buildLinqAppCard({ ...CARD, url: 'http://x.test' })).toMatchObject({
+      ok: false,
+    });
     expect(buildLinqAppCard({ ...CARD, fallbackText: 'x'.repeat(65) })).toEqual({
       ok: false,
       why: 'invalid_card',
     });
-    expect(buildLinqAppCard({ ...CARD, fallbackText: 'Tonight at 7' })).toEqual({
-      ok: false,
-      why: 'unsafe_fallback_text',
+  });
+  it('title is free copy: times, places, phones, day words pass through', () => {
+    for (const title of ['Saturday 10:30 · 123 Example Ave', 'Tonight at 7', 'Call 416 555 0100']) {
+      expect(buildLinqAppCard({ ...CARD, fallbackText: title })).toEqual({
+        ok: true,
+        experience: {
+          name: 'link',
+          action: 'open',
+          params: { url: CARD.url, title },
+        },
+      });
+    }
+    expect(buildLinqAppCard({ ...CARD, fallbackText: '   ' })).toEqual({
+      ok: true,
+      experience: { name: 'link', action: 'open', params: { url: CARD.url } },
     });
   });
 });
@@ -114,8 +115,14 @@ describe('sendLinqAppCard', () => {
       card: CARD,
       fetch: fetchImpl,
     });
-    expect(out).toMatchObject({ status: 'fallback', why: 'dark', link: { status: 'sent' } });
-    expect(body(fetchImpl).message).toEqual({ parts: [{ type: 'link', value: CARD.url }] });
+    expect(out).toMatchObject({
+      status: 'fallback',
+      why: 'dark',
+      link: { status: 'sent' },
+    });
+    expect(body(fetchImpl).message).toEqual({
+      parts: [{ type: 'link', value: CARD.url }],
+    });
   });
 
   it('keys unset: nothing reaches Linq at all', async () => {
@@ -126,7 +133,10 @@ describe('sendLinqAppCard', () => {
       card: CARD,
       fetch: fetchImpl,
     });
-    expect(out).toMatchObject({ status: 'fallback', link: { status: 'not_sent' } });
+    expect(out).toMatchObject({
+      status: 'fallback',
+      link: { status: 'not_sent' },
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -184,26 +194,15 @@ describe('sendLinqAppCard', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('lit, unsafe fallbackText → link fallback, no experience', async () => {
-    lit();
-    const fetchImpl = jsonFetch(202, { message: { id: 'link-3' } });
-    const out = await sendLinqAppCard({
-      channel: 'imessage',
-      chatId: CHAT,
-      card: { ...CARD, fallbackText: 'Saturday 10:30' },
-      fetch: fetchImpl,
-    });
-    expect(out).toMatchObject({ status: 'fallback', why: 'unsafe_fallback_text' });
-    expect(body(fetchImpl).message.parts[0].type).toBe('link');
-  });
-
   it('lit, recipient not on iMessage (capability) → link fallback', async () => {
     lit();
     vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', 'true');
     const fetchImpl = vi.fn(async (url: string | URL | Request) =>
       String(url).includes('/capability/')
         ? new Response(JSON.stringify({ available: false }), { status: 200 })
-        : new Response(JSON.stringify({ message: { id: 'link-4' } }), { status: 202 }),
+        : new Response(JSON.stringify({ message: { id: 'link-4' } }), {
+            status: 202,
+          }),
     );
     const out = await sendLinqAppCard({
       channel: 'imessage',
@@ -221,8 +220,12 @@ describe('sendLinqAppCard', () => {
     const fetchImpl = vi.fn(async () => {
       n += 1;
       return n === 1
-        ? new Response(JSON.stringify({ error: { code: 2018 } }), { status: 400 })
-        : new Response(JSON.stringify({ message: { id: 'link-5' } }), { status: 202 });
+        ? new Response(JSON.stringify({ error: { code: 2018 } }), {
+            status: 400,
+          })
+        : new Response(JSON.stringify({ message: { id: 'link-5' } }), {
+            status: 202,
+          });
     });
     const out = await sendLinqAppCard({
       channel: 'imessage',
@@ -230,7 +233,11 @@ describe('sendLinqAppCard', () => {
       card: CARD,
       fetch: fetchImpl,
     });
-    expect(out).toMatchObject({ status: 'fallback', why: 'refused', link: { status: 'sent' } });
+    expect(out).toMatchObject({
+      status: 'fallback',
+      why: 'refused',
+      link: { status: 'sent' },
+    });
   });
 });
 
@@ -259,10 +266,18 @@ describe('inbound imessage_app part', () => {
       event_id: 'e1',
       created_at: '2026-02-05T19:31:13.736Z',
       data: {
-        chat: { id: CHAT, is_group: false, owner_handle: { handle: '+12025551234', is_me: true } },
+        chat: {
+          id: CHAT,
+          is_group: false,
+          owner_handle: { handle: '+12025551234', is_me: true },
+        },
         id: 'msg-1',
         direction: 'inbound',
-        sender_handle: { handle: '+12025559876', is_me: false, service: 'iMessage' },
+        sender_handle: {
+          handle: '+12025559876',
+          is_me: false,
+          service: 'iMessage',
+        },
         parts: [part],
       },
     };

@@ -20,9 +20,9 @@ import { type LinqExperienceWire, LinqSendError } from './transport';
  *   - Recipients without Linq's app see a static card built from the same copy.
  *
  * `fallbackText` is the transport copy field (wire `params.title`, the copy the static
- * card is built from). Transport-only check (Design lock): it must carry no time, date,
- * address, phone, or day word. This is a Linq platform rule, not a coach banned list —
- * it is never applied to other copy.
+ * card is built from). Design lock: the model writes it freely — activity cards may name
+ * times and places. Transport keeps only real constraints: trimmed non-empty (else
+ * omitted) and ≤64 chars.
  *
  * Fallback: anything that keeps the card from going out (flag dark, not iMessage, group,
  * capability says no, invalid card, refused) sends the card's `url` as the existing rich
@@ -37,7 +37,7 @@ const TITLE_MAX = 64;
 export interface LinqAppCardInput {
   /** https; the card opens it. Also the link-preview fallback. */
   url: string;
-  /** Model-written card copy (wire `title`). Free of times, dates, addresses, phones, day words. */
+  /** Model-written card copy (wire `title`). Written freely; may include times/places. ≤64 chars. */
   fallbackText?: string;
 }
 
@@ -48,37 +48,17 @@ export type LinqAppCardRefusal =
   | 'group_chat'
   | 'not_capable'
   | 'invalid_card'
-  | 'unsafe_fallback_text'
   | 'refused'
   | 'unreachable'
   | 'not_configured';
 
 export type LinqAppCardOutcome =
   | { status: 'card'; providerMessageId: string }
-  | { status: 'fallback'; why: LinqAppCardRefusal; link: LinqLinkPreviewOutcome };
-
-/**
- * What iMessage reads as "not a card": a clock time, a date, a street address, a phone
- * number, or a day word. Conservative on purpose: a false positive costs the card (link
- * fallback), a false negative costs a bubble that reads as a stray text.
- */
-const UNSAFE_BODY: readonly RegExp[] = [
-  /\b\d{1,2}(:\d{2})\s*(am|pm)?\b/i,
-  /\b\d{1,2}\s*(am|pm|a\.m\.|p\.m\.)/i,
-  /\b(today|tonight|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\b/i,
-  /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i,
-  /\b\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?\b/,
-  /\b\d{4}-\d{2}-\d{2}\b/,
-  /\+?\d[\d\s().-]{6,}\d/,
-  /\b\d+\s+\w+(\s\w+)?\s+(st|street|ave|avenue|rd|road|blvd|dr|drive|ln|lane|way|ct|court|pl|place|cres|crescent)\b/i,
-  // fr / zh day words — Hale writes in the family's language.
-  /(aujourd'hui|demain|hier|ce soir|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)/i,
-  /(今天|明天|昨天|今晚|周[一二三四五六日天]|星期[一二三四五六日天])/,
-];
-
-export function appCardBodyIsSafe(body: string): boolean {
-  return !UNSAFE_BODY.some((re) => re.test(body));
-}
+  | {
+      status: 'fallback';
+      why: LinqAppCardRefusal;
+      link: LinqLinkPreviewOutcome;
+    };
 
 function httpsUrl(raw: string | undefined): string | null {
   if (!raw || raw.length > URL_MAX) return null;
@@ -94,17 +74,18 @@ function httpsUrl(raw: string | undefined): string | null {
 /** The wire experience, or a refusal naming why. Pure. */
 export function buildLinqAppCard(
   input: LinqAppCardInput,
-):
-  | { ok: true; experience: LinqExperienceWire }
-  | { ok: false; why: 'invalid_card' | 'unsafe_fallback_text' } {
+): { ok: true; experience: LinqExperienceWire } | { ok: false; why: 'invalid_card' } {
   const url = httpsUrl(input.url);
   if (!url) return { ok: false, why: 'invalid_card' };
   const title = input.fallbackText?.trim();
   if (title !== undefined && title.length > TITLE_MAX) return { ok: false, why: 'invalid_card' };
-  if (title && !appCardBodyIsSafe(title)) return { ok: false, why: 'unsafe_fallback_text' };
   return {
     ok: true,
-    experience: { name: 'link', action: 'open', params: { url, ...(title ? { title } : {}) } },
+    experience: {
+      name: 'link',
+      action: 'open',
+      params: { url, ...(title ? { title } : {}) },
+    },
   };
 }
 
@@ -183,7 +164,10 @@ export async function sendLinqAppCard(input: {
     if (code === 'not_configured') return fallback('not_configured');
     if (code === 'timeout' || code === 'network') return fallback('unreachable');
     console.warn(
-      { code, httpStatus: err instanceof LinqSendError ? err.httpStatus : undefined },
+      {
+        code,
+        httpStatus: err instanceof LinqSendError ? err.httpStatus : undefined,
+      },
       'linq experience card: refused',
     );
     return fallback('refused');
