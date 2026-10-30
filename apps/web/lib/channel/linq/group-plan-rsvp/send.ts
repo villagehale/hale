@@ -2,7 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { primaryParentId } from '../roster-ask';
-import { LinqSendError, sendLinqChatMessage } from '../transport';
+import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import { LinqSendError } from '../transport';
 
 /**
  * VIL-442 — one ledgered send into a claimed group for a plan tally or follow-up.
