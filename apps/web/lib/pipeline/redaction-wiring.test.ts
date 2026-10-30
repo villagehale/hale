@@ -135,9 +135,7 @@ describe('ingestEvent — redaction at the ingest boundary (rule #1)', () => {
 
     const originalRaw = JSON.stringify({ subject: baseInput.subject, body: baseInput.body });
     expect(capture.events).toHaveLength(1);
-    expect(capture.events[0]?.dedupHash).toBe(
-      dedupHashFor(FAMILY_ID, baseInput.source, originalRaw),
-    );
+    expect(capture.events[0]?.dedupHash).toBe(dedupHashFor(FAMILY_ID, baseInput.source, originalRaw));
     // Sanity: the redacted content hashes differently — the stored key is NOT
     // derived from what the classifier saw.
     expect(capture.events[0]?.dedupHash).not.toBe(

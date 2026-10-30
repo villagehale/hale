@@ -137,7 +137,7 @@ describe('sessionKey — the one fold, and its four refusals', () => {
     ).not.toBe(sessionKey(base));
   });
 
-  it("refuses a FALLBACK title — Hale's own words are not a session", () => {
+  it('refuses a FALLBACK title — Hale\'s own words are not a session', () => {
     // Every nameless receipt from one host at one instant would otherwise key into one
     // "session" called "a spot", and the count would over-state about strangers.
     expect(
@@ -275,9 +275,8 @@ describe('readSessionGoing — the real query against real rows', () => {
     // Three families booked: the third is told "two other". Two families booked: each sees
     // one other and nothing is said. The positive control is the first assertion.
     await others(2);
-    await expect(
-      readSessionGoing(db.database, { familyId: recipient.familyId, sessionKey: KEY }),
-    ).resolves.toEqual({ others: 2, alreadyHeld: false });
+    await expect(readSessionGoing(db.database, { familyId: recipient.familyId, sessionKey: KEY }))
+      .resolves.toEqual({ others: 2, alreadyHeld: false });
 
     const [first] = await db.database
       .select({ familyId: schema.activityBookings.familyId })

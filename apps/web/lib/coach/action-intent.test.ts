@@ -13,7 +13,7 @@ import { actionTypeForIntent, detectActionIntents, detectInputIntents } from './
 describe('detectActionIntents', () => {
   it('surfaces a "find activities" chip when the answer points to local activities', () => {
     const intents = detectActionIntents(
-      'there are some great toddler music classes near you — want me to find activities you could try?',
+      "there are some great toddler music classes near you — want me to find activities you could try?",
     );
     expect(intents.map((i) => i.kind)).toContain('find_activities');
     const found = intents.find((i) => i.kind === 'find_activities');

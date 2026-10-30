@@ -109,9 +109,7 @@ function txDb(tx: ReturnType<typeof makeTx>['tx']) {
 beforeEach(() => {
   vi.clearAllMocks();
   configureAuth(true);
-  authMock.mockResolvedValue({
-    user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
-  });
+  authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
   vi.mocked(resolveFamilyForUser).mockResolvedValue(FAMILY_ID);
   vi.mocked(requireUserIdForUser).mockResolvedValue(USER_ID);
 });
@@ -257,11 +255,7 @@ describe('editChildAction', () => {
     };
     const setMale = makeTx([before]);
     fakeDbHandle = txDb(setMale.tx);
-    await editChildAction(CHILD_ID, {
-      name: 'Robin',
-      dateOfBirth: '2024-01-01',
-      biologicalSex: 'Male',
-    });
+    await editChildAction(CHILD_ID, { name: 'Robin', dateOfBirth: '2024-01-01', biologicalSex: 'Male' });
     // Free-text 'Male' normalises to the exact token the WHO read consumes.
     expect(valuesFor(setMale.updates, schema.children)).toMatchObject({ biologicalSex: 'male' });
 
@@ -269,11 +263,7 @@ describe('editChildAction', () => {
     // returning the Growth tab to its honest needs-details state.
     const clear = makeTx([{ ...before, biologicalSex: 'female' }]);
     fakeDbHandle = txDb(clear.tx);
-    await editChildAction(CHILD_ID, {
-      name: 'Robin',
-      dateOfBirth: '2024-01-01',
-      biologicalSex: '',
-    });
+    await editChildAction(CHILD_ID, { name: 'Robin', dateOfBirth: '2024-01-01', biologicalSex: '' });
     expect(valuesFor(clear.updates, schema.children)).toMatchObject({ biologicalSex: null });
   });
 
@@ -485,9 +475,7 @@ describe('setLocationAction', () => {
   });
 
   it('clears every field to null on empty input (opt-out of local discovery)', async () => {
-    const { tx, updates } = makeTx([
-      { country: 'Canada', province: null, city: null, postalCode: 'M4L', areaCoarse: 'M4L' },
-    ]);
+    const { tx, updates } = makeTx([{ country: 'Canada', province: null, city: null, postalCode: 'M4L', areaCoarse: 'M4L' }]);
     fakeDbHandle = txDb(tx);
 
     const result = await setLocationAction({});
@@ -517,12 +505,7 @@ describe('setLocationAction', () => {
     const { tx, updates } = makeTx([existing]);
     fakeDbHandle = txDb(tx);
 
-    await setLocationAction({
-      country: 'Canada',
-      province: 'ON',
-      city: 'Ottawa',
-      postalCode: 'k1p 1j1',
-    });
+    await setLocationAction({ country: 'Canada', province: 'ON', city: 'Ottawa', postalCode: 'k1p 1j1' });
 
     // The active area row is updated to the new coarse location (postal upper-cased),
     // scoped to the caller family — never a lat/lng column (rule #1).
@@ -537,13 +520,7 @@ describe('setLocationAction', () => {
     // A cleared location must opt out of discovery exactly as it did pre-0051.
     // Without deactivating the row, the stale active area would win forever.
     const { tx, updates } = makeTx([
-      {
-        country: 'Canada',
-        province: null,
-        city: 'Toronto',
-        postalCode: 'M4L 1A1',
-        areaCoarse: 'M4L',
-      },
+      { country: 'Canada', province: null, city: 'Toronto', postalCode: 'M4L 1A1', areaCoarse: 'M4L' },
     ]);
     fakeDbHandle = txDb(tx);
 
@@ -655,9 +632,7 @@ describe('IA split — each mutation revalidates the page that renders it', () =
   });
 
   it('revalidates /family for a household location change', async () => {
-    const { tx } = makeTx([
-      { country: null, province: null, city: null, postalCode: null, areaCoarse: null },
-    ]);
+    const { tx } = makeTx([{ country: null, province: null, city: null, postalCode: null, areaCoarse: null }]);
     fakeDbHandle = txDb(tx);
     await setLocationAction({ city: 'Toronto' });
     expect(revalidatePath).toHaveBeenCalledWith('/family');

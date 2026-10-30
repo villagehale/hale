@@ -86,7 +86,9 @@ describe('retiredAuthRedirectUrl', () => {
 describe('the middleware serves the forward', () => {
   it('answers with a real 308 built from the origin, not the request URL', () => {
     expect(middleware).toContain('isRetiredAuthPath(pathname)');
-    expect(middleware).toContain('NextResponse.redirect(retiredAuthRedirectUrl(req.nextUrl), 308)');
+    expect(middleware).toContain(
+      'NextResponse.redirect(retiredAuthRedirectUrl(req.nextUrl), 308)',
+    );
     expect(middleware).not.toContain(
       "NextResponse.redirect(new URL('/sign-in', req.nextUrl), 308)",
     );

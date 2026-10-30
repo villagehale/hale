@@ -43,11 +43,7 @@ function fakeDb(opts: {
   children: Array<{ id: string; dateOfBirth: string; name?: string }>;
   weekEpisodes: WeekEpisodeRow[];
   savedCandidateIds: string[];
-  doneEpisodes?: Array<{
-    childId: string | null;
-    episodeType: string;
-    payload: Record<string, unknown>;
-  }>;
+  doneEpisodes?: Array<{ childId: string | null; episodeType: string; payload: Record<string, unknown> }>;
 }) {
   const select = vi.fn().mockImplementation((proj: Record<string, unknown>) => {
     const keys = Object.keys(proj ?? {});
@@ -139,22 +135,14 @@ describe('readHomeStats — Home stat aggregates', () => {
       weekEpisodes: [],
       savedCandidateIds: [],
       doneEpisodes: [
-        {
-          childId: BABY_ID,
-          episodeType: 'health_done',
-          payload: { healthKey: '2-well_child_visit' },
-        },
+        { childId: BABY_ID, episodeType: 'health_done', payload: { healthKey: '2-well_child_visit' } },
       ],
     });
 
     const withDone = await readHomeStats(database, FAMILY_ID, null, NOW);
 
     const noDone = await readHomeStats(
-      fakeDb({
-        children: [{ id: BABY_ID, dateOfBirth: BABY_DOB }],
-        weekEpisodes: [],
-        savedCandidateIds: [],
-      }),
+      fakeDb({ children: [{ id: BABY_ID, dateOfBirth: BABY_DOB }], weekEpisodes: [], savedCandidateIds: [] }),
       FAMILY_ID,
       null,
       NOW,

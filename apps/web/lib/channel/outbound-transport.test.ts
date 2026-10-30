@@ -57,7 +57,9 @@ describe('Twilio is not a transport', () => {
       const text = readFileSync(file, 'utf8');
       // Historical enum / ledger names are comments or string literals of the
       // integration provider. Env vars and the transport itself are not.
-      const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+      const stripped = text
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '');
       for (const token of TWILIO_TRANSPORT_TOKENS) {
         if (stripped.includes(token)) hits.push(`${rel}: ${token}`);
       }

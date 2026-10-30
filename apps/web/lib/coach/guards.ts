@@ -87,7 +87,12 @@ export function buildGuardDeps(database: Database, viewerUserId: string | null =
       const rows = await database
         .select({ dateOfBirth: schema.children.dateOfBirth })
         .from(schema.children)
-        .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, checkFamilyId)))
+        .where(
+          and(
+            eq(schema.children.id, childId),
+            eq(schema.children.familyId, checkFamilyId),
+          ),
+        )
         .limit(1);
 
       const child = rows[0];

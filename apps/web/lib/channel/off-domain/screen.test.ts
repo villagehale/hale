@@ -109,9 +109,9 @@ describe('toReading', () => {
   });
 
   it('passes a language tag through unchanged, including one this code has never listed', () => {
-    expect(toReading({ lane: 'in_domain', category: 'none', language: ' zh-Hant ' }).language).toBe(
-      'zh-Hant',
-    );
+    expect(
+      toReading({ lane: 'in_domain', category: 'none', language: ' zh-Hant ' }).language,
+    ).toBe('zh-Hant');
     expect(
       toReading({ lane: 'off_domain_general', category: 'weather', language: 'ZH' }).language,
     ).toBe('ZH');
@@ -295,12 +295,7 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
     ['ar', 'هل يوجد نشاط للأطفال هذا الأسبوع'],
   ])('returns the %s tag the model read on that inbound', async (tag, text) => {
     const screen = createInboundLaneScreen(
-      clientReturning({
-        lane: 'in_domain',
-        category: 'none',
-        reason: 'family week',
-        language: tag,
-      }),
+      clientReturning({ lane: 'in_domain', category: 'none', reason: 'family week', language: tag }),
     );
 
     expect(await screen.read(text)).toEqual({

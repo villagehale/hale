@@ -92,7 +92,10 @@ describe('scheduleFamilyDeletion', () => {
   });
 });
 
-const DUE_IDS = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
+const DUE_IDS = [
+  '11111111-1111-4111-8111-111111111111',
+  '22222222-2222-4222-8222-222222222222',
+];
 
 /**
  * Fakes the sweep's whole DB surface: the due-families select, the per-family
@@ -233,11 +236,12 @@ describe('runDeletionSweep', () => {
       throw new Error('supabase remove 500');
     });
 
-    await expect(runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), boom)).rejects.toThrow(
-      'supabase remove 500',
-    );
+    await expect(
+      runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), boom),
+    ).rejects.toThrow('supabase remove 500');
     // A failed purge must NEVER strand bytes by erasing their pointer: the family row
     // stays, and the next sweep retries the whole erase (removeObject tolerates 404).
     expect(spies.deleteFn).not.toHaveBeenCalled();
   });
+
 });

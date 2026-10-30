@@ -8,7 +8,7 @@ import { haleMask } from './mask';
  */
 
 describe('haleMask — rule #1 redaction', () => {
-  it("redacts a 13+ child's raw content when the payload is teen-flagged", () => {
+  it('redacts a 13+ child\'s raw content when the payload is teen-flagged', () => {
     const data = JSON.stringify({
       teen_content: true,
       event_type: 'school_communication',

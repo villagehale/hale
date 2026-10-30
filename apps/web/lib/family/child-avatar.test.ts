@@ -139,13 +139,7 @@ describe('setChildAvatar', () => {
     );
 
     // Upsert to the deterministic key…
-    expect(uploadDocument).toHaveBeenCalledWith(
-      PATH,
-      expect.any(Buffer),
-      'image/jpeg',
-      expect.anything(),
-      true,
-    );
+    expect(uploadDocument).toHaveBeenCalledWith(PATH, expect.any(Buffer), 'image/jpeg', expect.anything(), true);
     // …and the bytes land BEFORE the row write (crash-safe: no row ever points at absent bytes).
     // invocationCallOrder is 1-based, so a real call is > 0; 0 means "never called".
     const uploadOrder = (uploadDocument as Mock).mock.invocationCallOrder.at(0) ?? 0;

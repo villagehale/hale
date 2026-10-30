@@ -86,7 +86,7 @@ describe('recent-logs teen redaction (_internal.dropTeenEpisodes)', () => {
     expect(kept.map((e) => e.summary)).toContain(FAMILY_NOTE_SUMMARY);
   });
 
-  it('drops a NON-requester, unattributed row for a teen family (most-restrictive fallback)', () => {
+  it("drops a NON-requester, unattributed row for a teen family (most-restrictive fallback)", () => {
     // authored by the co-parent, unattributed, no DOB to derive from → the family
     // fallback applies for THIS requester: it could quote the teen.
     const episodes = [

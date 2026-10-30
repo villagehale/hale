@@ -15,7 +15,10 @@ import { describe, expect, it } from 'vitest';
  * whatever the tokens currently produce.
  */
 
-const CSS = readFileSync(fileURLToPath(new URL('../../app/globals.css', import.meta.url)), 'utf8');
+const CSS = readFileSync(
+  fileURLToPath(new URL('../../app/globals.css', import.meta.url)),
+  'utf8',
+);
 
 /** WCAG relative luminance of an #rrggbb colour. */
 function luminance(hex: string): number {
@@ -70,20 +73,20 @@ const AA = 4.5;
 const SURFACES = ['color-linen', 'color-oat', 'color-raised'] as const;
 const TEXT_ON_SURFACE = ['color-faded-sage', 'color-slate-green'] as const;
 
-describe.each([['light', LIGHT] as const, ['dark', DARK] as const])(
-  '%s palette — meta/caption text clears WCAG AA on every neutral surface',
-  (_mode, palette) => {
-    for (const text of TEXT_ON_SURFACE) {
-      for (const surface of SURFACES) {
-        it(`${text} on ${surface} ≥ ${AA}:1`, () => {
-          const ink = palette[text];
-          const ground = palette[surface];
-          // A missing token is itself a failure — the palette must define both.
-          expect(ink, `${text} is defined`).toBeDefined();
-          expect(ground, `${surface} is defined`).toBeDefined();
-          expect(contrast(ink as string, ground as string)).toBeGreaterThanOrEqual(AA);
-        });
-      }
+describe.each([
+  ['light', LIGHT] as const,
+  ['dark', DARK] as const,
+])('%s palette — meta/caption text clears WCAG AA on every neutral surface', (_mode, palette) => {
+  for (const text of TEXT_ON_SURFACE) {
+    for (const surface of SURFACES) {
+      it(`${text} on ${surface} ≥ ${AA}:1`, () => {
+        const ink = palette[text];
+        const ground = palette[surface];
+        // A missing token is itself a failure — the palette must define both.
+        expect(ink, `${text} is defined`).toBeDefined();
+        expect(ground, `${surface} is defined`).toBeDefined();
+        expect(contrast(ink as string, ground as string)).toBeGreaterThanOrEqual(AA);
+      });
     }
-  },
-);
+  }
+});

@@ -31,9 +31,7 @@ describe('/api/billing/checkout is deleted', () => {
   it('nothing in the app, its components or its lib still points at it', () => {
     const files = [...filesUnder('app'), ...filesUnder('components'), ...filesUnder('lib')];
     expect(files).toContain('app/api/health/route.ts');
-    const callers = files.filter((file) =>
-      readFileSync(`${WEB}${file}`, 'utf8').includes(ROUTE_PATH),
-    );
+    const callers = files.filter((file) => readFileSync(`${WEB}${file}`, 'utf8').includes(ROUTE_PATH));
     expect(callers).toEqual([]);
   });
 });

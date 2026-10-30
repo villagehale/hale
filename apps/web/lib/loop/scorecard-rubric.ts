@@ -491,7 +491,10 @@ export interface MedicalAnswers {
  * so the row carried a caveat on every grade instead — including its 10s, which is the
  * one grade a safety row must never hand out on trust.
  */
-export function gradeSafety(lanes: readonly LaneCount[], medical: MedicalAnswers): ScorecardRow {
+export function gradeSafety(
+  lanes: readonly LaneCount[],
+  medical: MedicalAnswers,
+): ScorecardRow {
   const deflections = lanes
     .filter((row) => row.lane === SAFETY_LANE)
     .reduce((sum, row) => sum + row.count, 0);

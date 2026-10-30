@@ -70,9 +70,7 @@ describe('GET /api/ics/event/:token', () => {
 
     const res = await callGet(TOKEN);
 
-    const headers = [...res.headers.entries()]
-      .map(([name, value]) => `${name}: ${value}`)
-      .join('\n');
+    const headers = [...res.headers.entries()].map(([name, value]) => `${name}: ${value}`).join('\n');
     expect(headers).not.toContain('aaaaaaaa-2222');
     expect(headers).not.toContain('signature');
     expect(res.headers.get('cache-control')).toBe('no-store');

@@ -101,7 +101,9 @@ export async function checkRunFailureSpike(
   const rows = await database
     .select({ status: schema.agentRuns.status, count: count() })
     .from(schema.agentRuns)
-    .where(and(gte(schema.agentRuns.startedAt, windowStart), lt(schema.agentRuns.startedAt, now)))
+    .where(
+      and(gte(schema.agentRuns.startedAt, windowStart), lt(schema.agentRuns.startedAt, now)),
+    )
     .groupBy(schema.agentRuns.status);
 
   const summary = summarizeRunFailures(rows, windowStart, now);

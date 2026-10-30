@@ -116,7 +116,7 @@ describe('a departure’s rows never tell the parent who stayed that they did it
 });
 
 describe('the streak sentence names the number the worker enforces', () => {
-  it("says the worker's own number, in the words Barton approved", () => {
+  it('says the worker\'s own number, in the words Barton approved', () => {
     expect(trailVerb('autonomous_action_class.granted').sentence).toBe(
       `You've approved this ${AUTONOMY_STREAK_REQUIRED} times, so Hale will handle it on its own from now on`,
     );

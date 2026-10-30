@@ -175,7 +175,11 @@ export function loadViewerTeenUnlocks(): Promise<TeenAccessUnlocks> {
 
 export function loadTrail(): Promise<TrailView[]> {
   return readForFamily(async (database, familyId) => {
-    const unlocks = await loadTeenAccessUnlocks(database, familyId, await currentUserId(database));
+    const unlocks = await loadTeenAccessUnlocks(
+      database,
+      familyId,
+      await currentUserId(database),
+    );
     return loadTrailForFamily(database, familyId, unlocks);
   }, []);
 }
@@ -326,44 +330,42 @@ export function loadResolvedActions(): Promise<HistoryView[]> {
       )
       .orderBy(desc(schema.actions.draftedAt))
       .limit(50);
-    return (
-      rows
-        .map((row) => {
-          // The "when" stamp is the terminal instant: executed / reverted / reviewer
-          // verdict, falling back to draftedAt (always present) — a display default at
-          // an explicit boundary, not a masked null.
-          const resolvedAt =
-            row.revertedAt ?? row.executedAt ?? row.reviewerVerdictAt ?? row.draftedAt;
-          const historyRow: HistoryActionRow = {
-            id: row.id,
-            actionType: row.actionType,
-            payload: row.payload,
-            reviewerVerdict: row.reviewerVerdict,
-            draftedAt: row.draftedAt,
-            teenContent: redactsTeenContent(
-              effectiveTeenContent(
-                row.teenContent,
-                row.childDob ?? null,
-                familyHasTeen,
-                row.contentProvenance,
-              ),
-              row.childId ?? null,
-              'message_content',
-              unlocks,
+    return rows
+      .map((row) => {
+        // The "when" stamp is the terminal instant: executed / reverted / reviewer
+        // verdict, falling back to draftedAt (always present) — a display default at
+        // an explicit boundary, not a masked null.
+        const resolvedAt =
+          row.revertedAt ?? row.executedAt ?? row.reviewerVerdictAt ?? row.draftedAt;
+        const historyRow: HistoryActionRow = {
+          id: row.id,
+          actionType: row.actionType,
+          payload: row.payload,
+          reviewerVerdict: row.reviewerVerdict,
+          draftedAt: row.draftedAt,
+          teenContent: redactsTeenContent(
+            effectiveTeenContent(
+              row.teenContent,
+              row.childDob ?? null,
+              familyHasTeen,
+              row.contentProvenance,
             ),
-            childId: row.childId ?? null,
-            childLabel: row.childName ?? null,
-            userVisibleState: row.userVisibleState as HistoryActionRow['userVisibleState'],
-            executedAt: row.executedAt,
-            revertedReason: row.revertedReason,
-            resolvedAt,
-          };
-          return { view: toHistoryView(historyRow, timeZone), resolvedAt };
-        })
-        // Newest RESOLVED first — the query orders by draftedAt (indexed), but the
-        // resolved instant is what the list reads by, so re-sort on it here.
-        .sort((a, b) => b.resolvedAt.getTime() - a.resolvedAt.getTime())
-        .map((r) => r.view)
-    );
+            row.childId ?? null,
+            'message_content',
+            unlocks,
+          ),
+          childId: row.childId ?? null,
+          childLabel: row.childName ?? null,
+          userVisibleState: row.userVisibleState as HistoryActionRow['userVisibleState'],
+          executedAt: row.executedAt,
+          revertedReason: row.revertedReason,
+          resolvedAt,
+        };
+        return { view: toHistoryView(historyRow, timeZone), resolvedAt };
+      })
+      // Newest RESOLVED first — the query orders by draftedAt (indexed), but the
+      // resolved instant is what the list reads by, so re-sort on it here.
+      .sort((a, b) => b.resolvedAt.getTime() - a.resolvedAt.getTime())
+      .map((r) => r.view);
   }, []);
 }

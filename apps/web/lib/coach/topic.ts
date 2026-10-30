@@ -18,23 +18,11 @@ export type Topic = (typeof TOPICS)[number];
 
 const TOPIC_PATTERNS: ReadonlyArray<readonly [Topic, RegExp]> = [
   ['sleep', /\b(sleep|nap|naps|bedtime|night ?wak|waking|wakes? up|crib|drowsy)\b/i],
-  [
-    'feeding',
-    /\b(feed|feeding|solids|breastfeed|bottle|formula|eat|eating|meal|weaning|allergen)\b/i,
-  ],
-  [
-    'health',
-    /\b(check[- ]?up|appointment|pediatric|doctor|fever|sick|vaccine|immuni|symptom|rash|teething)\b/i,
-  ],
+  ['feeding', /\b(feed|feeding|solids|breastfeed|bottle|formula|eat|eating|meal|weaning|allergen)\b/i],
+  ['health', /\b(check[- ]?up|appointment|pediatric|doctor|fever|sick|vaccine|immuni|symptom|rash|teething)\b/i],
   ['development', /\b(milestone|crawl|walk|words|talk|speech|develop|grow(?:th|ing)?|potty)\b/i],
-  [
-    'behavior',
-    /\b(tantrum|behavior|behaviour|discipline|screen ?time|whining|hitting|biting|mood|anxious)\b/i,
-  ],
-  [
-    'activities',
-    /\b(activit|class|classes|weekend|near (?:us|me|you)|outing|playgroup|swimming|music)\b/i,
-  ],
+  ['behavior', /\b(tantrum|behavior|behaviour|discipline|screen ?time|whining|hitting|biting|mood|anxious)\b/i],
+  ['activities', /\b(activit|class|classes|weekend|near (?:us|me|you)|outing|playgroup|swimming|music)\b/i],
 ];
 
 /** Tag a question with its coarse topic, or null when nothing matches. */

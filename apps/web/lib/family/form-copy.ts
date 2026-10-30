@@ -11,4 +11,5 @@
  */
 export const PREVIEW_NOTE = "sign-in isn't configured in this preview, so nothing was saved.";
 
-export const SIGNED_OUT_NOTE = "you've been signed out — sign in again and your changes will save.";
+export const SIGNED_OUT_NOTE =
+  "you've been signed out — sign in again and your changes will save.";

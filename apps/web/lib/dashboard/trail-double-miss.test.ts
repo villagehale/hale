@@ -24,8 +24,7 @@ const REPLY_SENTENCE = 'carried out the action';
 const SETTINGS_SENTENCE = 'you added a plan';
 
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
-vi.mock('~/lib/family', () => ({
-  currentFamilyId: async () => FAMILY_ID,
+vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID,
   // VIL-147: no signed-in parent → no teen access grants can apply.
   currentUserId: async () => null,
 }));

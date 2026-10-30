@@ -469,9 +469,7 @@ async function reviewedEventTitle(
   const [event] = await database
     .select({ title: schema.familyEvents.title })
     .from(schema.familyEvents)
-    .where(
-      and(eq(schema.familyEvents.id, familyEventId), eq(schema.familyEvents.familyId, familyId)),
-    )
+    .where(and(eq(schema.familyEvents.id, familyEventId), eq(schema.familyEvents.familyId, familyId)))
     .limit(1);
   const title = event?.title?.trim() ?? '';
   return title.length >= 4 ? title : null;
@@ -519,3 +517,4 @@ async function readPlacement(
     .limit(1);
   return row ?? null;
 }
+

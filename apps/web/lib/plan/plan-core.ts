@@ -51,7 +51,9 @@ export function validatePlan(
   };
 }
 
-export type InsertPlanResult = { status: 'created'; planId: string } | { status: 'foreign_child' };
+export type InsertPlanResult =
+  | { status: 'created'; planId: string }
+  | { status: 'foreign_child' };
 
 /**
  * Family-scope and persist a validated plan. When a childId is given, it must

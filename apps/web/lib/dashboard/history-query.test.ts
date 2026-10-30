@@ -20,10 +20,7 @@ const NON_TEEN_DOB = '2024-05-01';
 const SECRET = 'Maya said she is anxious about the dance';
 
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
-vi.mock('~/lib/family', () => ({
-  currentFamilyId: async () => FAMILY_ID,
-  currentUserId: async () => null,
-}));
+vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID, currentUserId: async () => null }));
 
 interface ActionRow {
   id: string;
@@ -170,11 +167,7 @@ describe('loadResolvedActions — Approvals history', () => {
 
   it('separates a declined action from an executed one — no cross-contamination', async () => {
     ALL_ROWS = [
-      action({
-        id: 'executed-1',
-        userVisibleState: 'autonomous',
-        executedAt: new Date('2026-06-19T11:00:00Z'),
-      }),
+      action({ id: 'executed-1', userVisibleState: 'autonomous', executedAt: new Date('2026-06-19T11:00:00Z') }),
       action({
         id: 'declined-1',
         userVisibleState: 'reverted',

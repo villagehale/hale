@@ -150,10 +150,7 @@ describe('inboundCanaryHandler', () => {
     // overwhelming majority of turns pay no query at all.
     const query = vi.spyOn(db.client, 'query');
 
-    await inboundCanaryHandler().handle(
-      db.database,
-      turn('yes', canary, async () => []),
-    );
+    await inboundCanaryHandler().handle(db.database, turn('yes', canary, async () => []));
 
     expect(query).not.toHaveBeenCalled();
   });

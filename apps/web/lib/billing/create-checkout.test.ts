@@ -62,10 +62,7 @@ describe('createBillingCheckout', () => {
       origin: 'https://app.example.com',
     });
 
-    expect(result).toEqual({
-      status: 'created',
-      url: 'https://checkout.stripe.com/c/pay/cs_test_1',
-    });
+    expect(result).toEqual({ status: 'created', url: 'https://checkout.stripe.com/c/pay/cs_test_1' });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       priceId: 'price_plus_annual',

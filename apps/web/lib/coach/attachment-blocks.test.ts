@@ -25,10 +25,7 @@ describe('attachmentContentBlock', () => {
   });
 
   it('maps webp the same way (chat allows webp; docs did not)', () => {
-    const block = attachmentContentBlock(
-      Buffer.from('RIFF'),
-      'image/webp',
-    ) as Anthropic.ImageBlockParam;
+    const block = attachmentContentBlock(Buffer.from('RIFF'), 'image/webp') as Anthropic.ImageBlockParam;
     expect(block.type).toBe('image');
     expect((block.source as Anthropic.Base64ImageSource).media_type).toBe('image/webp');
   });

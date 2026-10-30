@@ -15,10 +15,7 @@ import {
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const USER = '22222222-2222-4222-8222-222222222222';
-const TOKENS: OAuthTokens = {
-  accessToken: 'ya29.secret-access',
-  refreshToken: '1//secret-refresh',
-};
+const TOKENS: OAuthTokens = { accessToken: 'ya29.secret-access', refreshToken: '1//secret-refresh' };
 
 /**
  * Minimal Drizzle stand-in: `where()` is awaitable AND chainable to `.limit()` /
@@ -44,9 +41,7 @@ function fakeDb(selectRows: unknown[]) {
       from: () => ({
         where: (predicate: SQL) => {
           cap.selectWhere = predicate;
-          return Object.assign(Promise.resolve(selectRows), {
-            limit: () => Promise.resolve(selectRows),
-          });
+          return Object.assign(Promise.resolve(selectRows), { limit: () => Promise.resolve(selectRows) });
         },
       }),
     }),
@@ -71,9 +66,7 @@ function fakeDb(selectRows: unknown[]) {
       set: (v: Record<string, unknown>) => {
         // The revoke's mirror retirement; its SQL is covered by revoke-mirrors.pglite.test.ts.
         if (table === schema.familyEvents) {
-          return {
-            where: () => Object.assign(Promise.resolve(), { returning: () => Promise.resolve([]) }),
-          };
+          return { where: () => Object.assign(Promise.resolve(), { returning: () => Promise.resolve([]) }) };
         }
         cap.updated = v;
         return { where: () => Object.assign(Promise.resolve(), { returning: updateReturning }) };
@@ -113,13 +106,7 @@ describe('integrations store', () => {
 
   it('stores tokens ENCRYPTED, never as plaintext (rule #1)', async () => {
     const { database, cap } = fakeDb([]);
-    await saveConnection(database, {
-      familyId: FAMILY,
-      userId: USER,
-      provider: 'gcal',
-      scopes: ['s'],
-      tokens: TOKENS,
-    });
+    await saveConnection(database, { familyId: FAMILY, userId: USER, provider: 'gcal', scopes: ['s'], tokens: TOKENS });
     const enc = cap.inserted?.oauthTokensEncrypted as string;
     expect(enc).toBeTruthy();
     expect(enc).not.toContain('secret-access'); // no plaintext token in the column
@@ -153,13 +140,7 @@ describe('integrations store', () => {
     process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = 'connector-secret';
     const { database, cap } = fakeDb([]);
 
-    await saveConnection(database, {
-      familyId: FAMILY,
-      userId: USER,
-      provider: 'gcal',
-      scopes: ['s'],
-      tokens: TOKENS,
-    });
+    await saveConnection(database, { familyId: FAMILY, userId: USER, provider: 'gcal', scopes: ['s'], tokens: TOKENS });
 
     expect(cap.audit?.after).toEqual({
       provider: 'gcal',
@@ -178,13 +159,7 @@ describe('integrations store', () => {
     process.env.GOOGLE_CONNECTOR_CLIENT_SECRET = 'connector-secret';
     const { database, cap } = fakeDb([]);
 
-    await saveConnection(database, {
-      familyId: FAMILY,
-      userId: USER,
-      provider: 'gcal',
-      scopes: ['s'],
-      tokens: TOKENS,
-    });
+    await saveConnection(database, { familyId: FAMILY, userId: USER, provider: 'gcal', scopes: ['s'], tokens: TOKENS });
 
     const row = JSON.stringify(cap.audit);
     for (const leak of [
@@ -219,13 +194,7 @@ describe('integrations store', () => {
 
   it('upserts atomically on (family,user,provider) — no select-then-insert race', async () => {
     const { database, cap } = fakeDb([]);
-    await saveConnection(database, {
-      familyId: FAMILY,
-      userId: USER,
-      provider: 'gcal',
-      scopes: ['s'],
-      tokens: TOKENS,
-    });
+    await saveConnection(database, { familyId: FAMILY, userId: USER, provider: 'gcal', scopes: ['s'], tokens: TOKENS });
     // A single ON CONFLICT DO UPDATE closes the two-callback dup-row window: two
     // concurrent connects for the same (family,user,provider) can no longer both
     // insert (double polling / double events).
@@ -303,25 +272,11 @@ describe('integrations store', () => {
     // work-list. The blob it returns must still round-trip via decryptTokens.
     const enc = encryptTokens(TOKENS);
     const { database } = fakeDb([
-      {
-        id: 'i1',
-        familyId: FAMILY,
-        userId: USER,
-        provider: 'gcal',
-        providerMetadata: { syncToken: 't' },
-        enc,
-      },
+      { id: 'i1', familyId: FAMILY, userId: USER, provider: 'gcal', providerMetadata: { syncToken: 't' }, enc },
     ]);
     const rows = await listActiveConnectorConnections(database);
     expect(rows).toEqual([
-      {
-        id: 'i1',
-        familyId: FAMILY,
-        userId: USER,
-        provider: 'gcal',
-        providerMetadata: { syncToken: 't' },
-        enc,
-      },
+      { id: 'i1', familyId: FAMILY, userId: USER, provider: 'gcal', providerMetadata: { syncToken: 't' }, enc },
     ]);
     expect(decryptTokens(rows[0]?.enc as string)).toEqual(TOKENS);
   });
@@ -362,10 +317,7 @@ describe('integrations store', () => {
 
   it('re-encrypts refreshed tokens by id (never plaintext)', async () => {
     const { database, cap } = fakeDb([]);
-    const refreshed: OAuthTokens = {
-      accessToken: 'ya29.new-access',
-      refreshToken: '1//secret-refresh',
-    };
+    const refreshed: OAuthTokens = { accessToken: 'ya29.new-access', refreshToken: '1//secret-refresh' };
     await saveConnectionTokensById(database, 'i1', refreshed);
     const stored = cap.updated?.oauthTokensEncrypted as string;
     expect(stored).not.toContain('new-access');

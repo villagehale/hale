@@ -130,12 +130,8 @@ async function userScopedRowCount(userId: string): Promise<number> {
   const counts = await Promise.all([
     db.database.select({ userId: schema.loopPrefs.userId }).from(schema.loopPrefs),
     db.database.select({ userId: schema.notificationPrefs.userId }).from(schema.notificationPrefs),
-    db.database
-      .select({ userId: schema.channelSigninTokens.userId })
-      .from(schema.channelSigninTokens),
-    db.database
-      .select({ userId: schema.phoneVerifications.userId })
-      .from(schema.phoneVerifications),
+    db.database.select({ userId: schema.channelSigninTokens.userId }).from(schema.channelSigninTokens),
+    db.database.select({ userId: schema.phoneVerifications.userId }).from(schema.phoneVerifications),
   ]);
   return counts.flat().filter((r) => r.userId === userId).length;
 }

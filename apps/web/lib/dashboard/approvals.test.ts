@@ -229,10 +229,8 @@ describe('toApprovalView — the preview names the drafted item', () => {
       'Reschedule on your calendar — Swim lesson, Jul 1, 10:00',
     );
     expect(
-      toApprovalView(
-        { ...BASE, actionType: 'calendar_cancel', payload: { title: 'Swim lesson' } },
-        TZ,
-      ).preview,
+      toApprovalView({ ...BASE, actionType: 'calendar_cancel', payload: { title: 'Swim lesson' } }, TZ)
+        .preview,
     ).toBe('Remove from your calendar — Swim lesson');
   });
 });

@@ -78,7 +78,10 @@ export async function uploadDocument(
  * NEVER reach this function (the route gates first); if it somehow does, we fail
  * rather than mask (rule #1, CLAUDE.md #8).
  */
-export async function signDocumentUrl(path: string, fetchImpl: FetchLike = fetch): Promise<string> {
+export async function signDocumentUrl(
+  path: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<string> {
   const { supabaseUrl, serviceRoleKey } = readConfig();
   const res = await fetchImpl(`${supabaseUrl}/storage/v1/object/sign/${DOCS_BUCKET}/${path}`, {
     method: 'POST',
@@ -104,10 +107,7 @@ export async function signDocumentUrl(path: string, fetchImpl: FetchLike = fetch
  * MODEL, never the client (the client reads via a signed URL). Throws on any non-200
  * rather than masking (CLAUDE.md #8).
  */
-export async function downloadDocument(
-  path: string,
-  fetchImpl: FetchLike = fetch,
-): Promise<Buffer> {
+export async function downloadDocument(path: string, fetchImpl: FetchLike = fetch): Promise<Buffer> {
   const { supabaseUrl, serviceRoleKey } = readConfig();
   const res = await fetchImpl(`${supabaseUrl}/storage/v1/object/${DOCS_BUCKET}/${path}`, {
     method: 'GET',

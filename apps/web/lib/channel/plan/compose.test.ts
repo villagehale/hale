@@ -67,9 +67,7 @@ describe('the shape gates', () => {
     // string is the model on the next attempt and "cut it" lost content it should have
     // relocated.
     expect(
-      violations.some(
-        (v) => v.includes('Message 2') && v.includes('over the') && v.includes('Move a sentence'),
-      ),
+      violations.some((v) => v.includes('Message 2') && v.includes('over the') && v.includes('Move a sentence')),
     ).toBe(true);
   });
 
@@ -197,9 +195,7 @@ describe('withoutChannelUrl', () => {
 
 describe('retryUserMessage', () => {
   it('carries the violations back in the same payload, so each attempt caches apart', () => {
-    const retried = retryUserMessage(JSON.stringify({ question: 'x' }), [
-      'Message 2 is 4 segments.',
-    ]);
+    const retried = retryUserMessage(JSON.stringify({ question: 'x' }), ['Message 2 is 4 segments.']);
 
     expect(JSON.parse(retried)).toEqual({
       question: 'x',

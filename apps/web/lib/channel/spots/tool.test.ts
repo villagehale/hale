@@ -146,10 +146,7 @@ describe('watch_for_opening — arms only on a full course page, for a consentin
       tool.handler({ url: 'https://example.com/swim', label: 'Preschool swim' }, CTX),
     ).rejects.toThrow(/Markham's portal/);
     await expect(
-      tool.handler(
-        { url: `https://${MARKHAM}/Clients/BookMe4?widgetId=${WIDGET}`, label: 'x' },
-        CTX,
-      ),
+      tool.handler({ url: `https://${MARKHAM}/Clients/BookMe4?widgetId=${WIDGET}`, label: 'x' }, CTX),
     ).rejects.toThrow(/course page/i);
     // A COURSE-SHAPED PATH ON A FOREIGN HOST. Both links above fail the path check
     // first, so neither one reaches the registry: without this third call the host
@@ -307,9 +304,9 @@ describe('watch_for_opening — the label is stored, so the label is gated', () 
   it('refuses a label that is nothing but whitespace', async () => {
     const { tool } = ports();
 
-    await expect(tool.handler({ url: courseUrl(FULL_COURSE), label: '   ' }, CTX)).rejects.toThrow(
-      /few words/i,
-    );
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: '   ' }, CTX),
+    ).rejects.toThrow(/few words/i);
   });
 });
 

@@ -155,9 +155,7 @@ describe('saveOnboardingChildren — provision vs reuse', () => {
 
   it('writes children to the existing family without creating a second one', async () => {
     configureAuth(true);
-    authMock.mockResolvedValue({
-      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
-    });
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
     const { resolveFamilyForUser } = await import('~/lib/family');
     vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
 

@@ -112,9 +112,7 @@ describe('classifyFamilyEvent — a placed event, for a role', () => {
   });
 
   it('fails closed on a child the caller did not load', () => {
-    expect(classifyFamilyEvent(event({ childId: 'c-unknown' }), CHILDREN, NOW)).toBe(
-      'teen_content',
-    );
+    expect(classifyFamilyEvent(event({ childId: 'c-unknown' }), CHILDREN, NOW)).toBe('teen_content');
   });
 
   it('ages the child at `now`, so a birthday closes the door on its own', () => {

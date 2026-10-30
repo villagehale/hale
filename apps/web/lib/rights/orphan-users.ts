@@ -204,10 +204,7 @@ export async function selectOrphanedUsers(
     if (seated.has(row.userId)) continue;
     const held = candidates.get(row.userId);
     if (!held || held.familyId === null) {
-      candidates.set(row.userId, {
-        familyId: row.familyId,
-        liveChannel: held?.liveChannel ?? false,
-      });
+      candidates.set(row.userId, { familyId: row.familyId, liveChannel: held?.liveChannel ?? false });
     }
     if (row.revokedAt === null) {
       const entry = candidates.get(row.userId);
@@ -299,7 +296,9 @@ async function sweepOne(
     const revoked = await tx
       .update(schema.parentChannels)
       .set({ revokedAt: now, updatedAt: now })
-      .where(and(eq(schema.parentChannels.userId, userId), isNull(schema.parentChannels.revokedAt)))
+      .where(
+        and(eq(schema.parentChannels.userId, userId), isNull(schema.parentChannels.revokedAt)),
+      )
       .returning({ id: schema.parentChannels.id });
     result.channelsRevoked = revoked.length;
 

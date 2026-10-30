@@ -198,7 +198,9 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       });
       if (!gated.ok) {
         throw new Error(
-          gated.refusal === 'names_a_person' ? LABEL_REFUSAL.names_a_person : LABEL_REFUSAL.empty,
+          gated.refusal === 'names_a_person'
+            ? LABEL_REFUSAL.names_a_person
+            : LABEL_REFUSAL.empty,
         );
       }
       // `scrubResidualPii` REWRITES ages ("3 years" → "[redacted]") and gateFreeText

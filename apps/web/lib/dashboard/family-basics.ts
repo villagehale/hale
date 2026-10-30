@@ -65,10 +65,7 @@ export interface FamilyRowBasics extends FamilyLocationView {
 export function toFamilyBasics(
   family: FamilyRowBasics | null,
   children: ReadonlyArray<
-    Pick<
-      ChildRow,
-      'id' | 'name' | 'lastName' | 'dateOfBirth' | 'gender' | 'biologicalSex' | 'interests'
-    > & {
+    Pick<ChildRow, 'id' | 'name' | 'lastName' | 'dateOfBirth' | 'gender' | 'biologicalSex' | 'interests'> & {
       /** The signed avatar URL, resolved by the loader before this pure mapping (the
        * private-bucket key is signed server-side; only the URL flows to the client).
        * Optional: a data-export snapshot omits it (no transient URL inlined), yielding

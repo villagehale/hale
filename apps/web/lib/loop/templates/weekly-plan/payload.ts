@@ -99,10 +99,5 @@ function narrowWeekVoice(value: unknown): WeekPlanVoice | null {
   ) {
     return null;
   }
-  return {
-    greeting: v.greeting,
-    weekFraming: v.weekFraming,
-    itemLines: v.itemLines,
-    signOff: v.signOff,
-  };
+  return { greeting: v.greeting, weekFraming: v.weekFraming, itemLines: v.itemLines, signOff: v.signOff };
 }

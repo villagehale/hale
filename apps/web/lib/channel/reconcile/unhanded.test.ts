@@ -218,7 +218,7 @@ describe('reconcileUnhandedInbound', () => {
     expect(summary).toEqual({ scanned: 1, redriven: 1, failed: 0 });
   });
 
-  it("passes the row's stored group bit along, and an unstored one as unknown (VIL-463)", async () => {
+  it('passes the row\'s stored group bit along, and an unstored one as unknown (VIL-463)', async () => {
     const jobs: ChannelMessageReceivedJob[] = [];
     const h = deps(
       [

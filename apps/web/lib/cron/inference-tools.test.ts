@@ -27,42 +27,15 @@ describe('redactMemorySnapshotForTeens (rule #1)', () => {
   it('passes non-teen and family-wide rows through unchanged', () => {
     const snapshot = {
       recentEvents: [
-        {
-          childId: TOT,
-          eventType: 'sleep.logged',
-          payload: { hours: 11 },
-          receivedAt: '2026-06-16T00:00:00.000Z',
-        },
-        {
-          childId: null,
-          eventType: 'calendar.synced',
-          payload: { count: 3 },
-          receivedAt: '2026-06-15T00:00:00.000Z',
-        },
+        { childId: TOT, eventType: 'sleep.logged', payload: { hours: 11 }, receivedAt: '2026-06-16T00:00:00.000Z' },
+        { childId: null, eventType: 'calendar.synced', payload: { count: 3 }, receivedAt: '2026-06-15T00:00:00.000Z' },
       ],
       recentEpisodes: [
-        {
-          childId: TOT,
-          episodeType: 'milestone',
-          summary: 'first words',
-          occurredAt: '2026-06-14T00:00:00.000Z',
-        },
+        { childId: TOT, episodeType: 'milestone', summary: 'first words', occurredAt: '2026-06-14T00:00:00.000Z' },
       ],
       currentFacts: [
-        {
-          childId: TOT,
-          factType: 'routine',
-          factKey: 'naps',
-          factValue: { n: 2 },
-          confidence: 0.9,
-        },
-        {
-          childId: null,
-          factType: 'logistic',
-          factKey: 'daycare',
-          factValue: { name: 'Sunny' },
-          confidence: 0.8,
-        },
+        { childId: TOT, factType: 'routine', factKey: 'naps', factValue: { n: 2 }, confidence: 0.9 },
+        { childId: null, factType: 'logistic', factKey: 'daycare', factValue: { name: 'Sunny' }, confidence: 0.8 },
       ],
     };
     const out = _internal.redactMemorySnapshotForTeens(snapshot, stages);
@@ -81,21 +54,10 @@ describe('redactMemorySnapshotForTeens (rule #1)', () => {
           },
         ],
         recentEpisodes: [
-          {
-            childId: TEEN,
-            episodeType: 'concern',
-            summary: 'self-harm worry raised in chat',
-            occurredAt: '2026-06-14T00:00:00.000Z',
-          },
+          { childId: TEEN, episodeType: 'concern', summary: 'self-harm worry raised in chat', occurredAt: '2026-06-14T00:00:00.000Z' },
         ],
         currentFacts: [
-          {
-            childId: TEEN,
-            factType: 'medical',
-            factKey: 'mood',
-            factValue: { note: 'depressed about breakup' },
-            confidence: 0.85,
-          },
+          { childId: TEEN, factType: 'medical', factKey: 'mood', factValue: { note: 'depressed about breakup' }, confidence: 0.85 },
         ],
       },
       stages,
@@ -164,26 +126,16 @@ function fakeDb(rows: {
   children: { id: string; dateOfBirth: string }[];
   events: { childId: string | null; eventType: string; payload: unknown; receivedAt: Date }[];
   episodes: { childId: string | null; episodeType: string; summary: string; occurredAt: Date }[];
-  facts: {
-    childId: string | null;
-    factType: string;
-    factKey: string;
-    factValue: unknown;
-    confidence: number;
-  }[];
+  facts: { childId: string | null; factType: string; factKey: string; factValue: unknown; confidence: number }[];
 }) {
   let call = 0;
   const select = vi.fn().mockImplementation(() => {
     const n = call++;
     if (n === 0) return { from: () => ({ where: async () => rows.children }) };
     if (n === 1)
-      return {
-        from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => rows.events }) }) }),
-      };
+      return { from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => rows.events }) }) }) };
     if (n === 2)
-      return {
-        from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => rows.episodes }) }) }),
-      };
+      return { from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => rows.episodes }) }) }) };
     return { from: () => ({ where: async () => rows.facts }) };
   });
   return { select } as never;
@@ -197,24 +149,9 @@ describe('read_recent_memory tool (rule #1)', () => {
         { id: TOT, dateOfBirth: TOT_DOB },
       ],
       events: [
-        {
-          childId: TEEN,
-          eventType: 'message.received',
-          payload: { body: 'teen secret about a boyfriend' },
-          receivedAt: new Date('2026-06-16T00:00:00Z'),
-        },
-        {
-          childId: TOT,
-          eventType: 'sleep.logged',
-          payload: { hours: 11 },
-          receivedAt: new Date('2026-06-15T00:00:00Z'),
-        },
-        {
-          childId: null,
-          eventType: 'calendar.synced',
-          payload: { count: 3 },
-          receivedAt: new Date('2026-06-14T00:00:00Z'),
-        },
+        { childId: TEEN, eventType: 'message.received', payload: { body: 'teen secret about a boyfriend' }, receivedAt: new Date('2026-06-16T00:00:00Z') },
+        { childId: TOT, eventType: 'sleep.logged', payload: { hours: 11 }, receivedAt: new Date('2026-06-15T00:00:00Z') },
+        { childId: null, eventType: 'calendar.synced', payload: { count: 3 }, receivedAt: new Date('2026-06-14T00:00:00Z') },
       ],
       episodes: [],
       facts: [],

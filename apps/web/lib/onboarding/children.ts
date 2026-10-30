@@ -56,12 +56,7 @@ export function normalizeBiologicalSex(raw: string | undefined | null): string |
   return token === 'male' || token === 'female' ? token : null;
 }
 
-export type ChildError =
-  | 'name_required'
-  | 'dob_required'
-  | 'dob_invalid'
-  | 'dob_future'
-  | 'dob_too_old';
+export type ChildError = 'name_required' | 'dob_required' | 'dob_invalid' | 'dob_future' | 'dob_too_old';
 
 export type ValidateChildResult =
   | { ok: true; child: ValidatedChild }

@@ -148,11 +148,11 @@ export function buildPlanSpine(
   weekStartDay = 1,
 ): PlanSpine {
   const ordered = orderedWeekdays(weekStartDay);
-  const {
-    startKey: weekStartKey,
-    endKey: weekEndKey,
-    dayKeys,
-  } = weekWindow(now, timeZone, weekStartDay);
+  const { startKey: weekStartKey, endKey: weekEndKey, dayKeys } = weekWindow(
+    now,
+    timeZone,
+    weekStartDay,
+  );
 
   const days: DayColumn[] = ordered.map((weekday, i) => ({
     weekday,
@@ -191,3 +191,4 @@ export function buildPlanSpine(
 
   return { days, undated, settled };
 }
+

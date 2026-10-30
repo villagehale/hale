@@ -112,11 +112,7 @@ describe('toReviewChecks — the reviewer’s invoked verifications (rule #3)', 
 
 describe('toActionSteps — the rail shows what happened, plus the one open rung', () => {
   it('stops at the reviewer when no verdict has been recorded', () => {
-    const steps = toActionSteps(
-      facts({ reviewerVerdict: 'pending', reviewerVerdictAt: null }),
-      TZ,
-      NOW,
-    );
+    const steps = toActionSteps(facts({ reviewerVerdict: 'pending', reviewerVerdictAt: null }), TZ, NOW);
     expect(steps.map((s) => [s.key, s.label, s.at])).toEqual([
       ['drafted', 'drafted', 'Aug 2, 08:04'],
       ['open', 'waiting on Hale’s review', null],
@@ -157,9 +153,7 @@ describe('toActionSteps — the rail shows what happened, plus the one open rung
     // The action row is 'drafted_for_approval' in BOTH cases — approving enqueues and
     // does not move the column — so the audit row is the only thing that tells them
     // apart, and without it the rail must not guess.
-    expect(toActionSteps(facts(), TZ, NOW).map((s) => s.label)).not.toContain(
-      'Hale is carrying it out',
-    );
+    expect(toActionSteps(facts(), TZ, NOW).map((s) => s.label)).not.toContain('Hale is carrying it out');
 
     const running = toActionSteps(facts({ approval: { at: APPROVED, actor: 'you' } }), TZ, NOW);
     expect(running.map((s) => [s.label, s.at])).toEqual([

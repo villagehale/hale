@@ -84,9 +84,7 @@ describe('POST /api/events/ingest — inbound secret gate', () => {
     const raw = body();
 
     // Sign a DIFFERENT body — a forged/tampered payload.
-    const res = await callPost(
-      request(raw, signInboundBody(SECRET, body('22222222-2222-4222-8222-222222222222'))),
-    );
+    const res = await callPost(request(raw, signInboundBody(SECRET, body('22222222-2222-4222-8222-222222222222'))));
 
     expect(res.status).toBe(401);
     expect(ingestEventMock).not.toHaveBeenCalled();

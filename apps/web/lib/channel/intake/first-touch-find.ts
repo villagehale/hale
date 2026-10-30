@@ -13,13 +13,7 @@ import { asciiCopy } from './radar-decide';
 export const WEEK_FIND_SUBJECT =
   'kids week drop-ins, examples not a limit: swim soccer gym earlyon library parks storytime music';
 
-export type WeekFindOutcome =
-  | 'found'
-  | 'empty'
-  | 'not_configured'
-  | 'failed'
-  | 'refused'
-  | 'budget';
+export type WeekFindOutcome = 'found' | 'empty' | 'not_configured' | 'failed' | 'refused' | 'budget';
 
 /** How long the first-touch turn waits on the week search. The search may keep running. */
 export const WEEK_FIND_BUDGET_MS = 8_000;
@@ -98,10 +92,7 @@ export async function findThisWeekWithin(
 
 /** The find bubble. Numbered pick lines only — no lead, no question. */
 export function renderWeekFind(lines: readonly string[]): string | null {
-  const shown = lines
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .slice(0, 3);
+  const shown = lines.map((line) => line.trim()).filter((line) => line.length > 0).slice(0, 3);
   if (shown.length === 0) return null;
   return shown.map((line, index) => `${index + 1}. ${line}`).join('\n');
 }

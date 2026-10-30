@@ -55,15 +55,14 @@ describe('looksLikeBooking', () => {
       expect(looksLikeBooking(envelope), envelope.subject).toBe(false);
     }
     // The positive control, in the same `it`: the filter is not simply saying no.
-    expect(looksLikeBooking({ subject: 'Your itinerary', snippet: 'departing Friday' })).toBe(true);
+    expect(
+      looksLikeBooking({ subject: 'Your itinerary', snippet: 'departing Friday' }),
+    ).toBe(true);
   });
 
   it('needs the booking noun in the SUBJECT, not merely somewhere in the email', () => {
     expect(
-      looksLikeBooking({
-        subject: 'A note from the office',
-        snippet: 'your itinerary is attached, flight at 9',
-      }),
+      looksLikeBooking({ subject: 'A note from the office', snippet: 'your itinerary is attached, flight at 9' }),
     ).toBe(false);
     // Same words, moved: the subject line is the one field a confirmation spends on
     // saying what it is.

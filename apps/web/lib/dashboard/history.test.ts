@@ -61,7 +61,9 @@ describe('historyStatus — resolved status derivation', () => {
     // recordExecution stamps needs_human + executedAt when input.ok is false — a
     // parent-approved action that failed mid-execution. It must disclose the failure,
     // not read as a calm "held for you".
-    const status = historyStatus(row({ userVisibleState: 'needs_human', executedAt: RESOLVED_AT }));
+    const status = historyStatus(
+      row({ userVisibleState: 'needs_human', executedAt: RESOLVED_AT }),
+    );
     expect(status).toBe('failed');
     expect(status).not.toBe('held');
   });
@@ -129,9 +131,8 @@ describe('toHistoryView — undoable', () => {
 
   it('never offers it on a type the reversal refuses', () => {
     // A move/cancel undo would need the pre-mutation state, which is not persisted.
-    expect(
-      toHistoryView(placement({ actionType: 'calendar_move' }), TZ, ONE_HOUR_LATER).undoable,
-    ).toBe(false);
+    expect(toHistoryView(placement({ actionType: 'calendar_move' }), TZ, ONE_HOUR_LATER).undoable)
+      .toBe(false);
     expect(toHistoryView(row({ actionType: 'send_email' }), TZ, ONE_HOUR_LATER).undoable).toBe(
       false,
     );

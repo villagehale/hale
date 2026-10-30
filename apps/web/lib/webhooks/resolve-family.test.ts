@@ -62,7 +62,11 @@ describe('resolveFamilyFromWebhook', () => {
   it('returns null for a provider with no extractor configured', async () => {
     const { db } = fakeDb([{ familyId: FAMILY_ID }]);
 
-    const familyId = await resolveFamilyFromWebhook('unknown_provider', { id: 'x' }, db);
+    const familyId = await resolveFamilyFromWebhook(
+      'unknown_provider',
+      { id: 'x' },
+      db,
+    );
 
     expect(familyId).toBeNull();
   });

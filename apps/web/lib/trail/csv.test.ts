@@ -37,7 +37,9 @@ describe('trailToCsv', () => {
 
   it('leaves the link cell empty (never a raw id) when a row has no deep link', () => {
     const row = trailToCsv([entry({ noun: 'signal', link: null })]).split('\n')[1];
-    expect(row).toBe('"Thursday, Jun 11","14:05","hale","signal","carried out the action",""');
+    expect(row).toBe(
+      '"Thursday, Jun 11","14:05","hale","signal","carried out the action",""',
+    );
   });
 
   it('escapes embedded quotes by doubling and keeps commas inside the quoted cell', () => {

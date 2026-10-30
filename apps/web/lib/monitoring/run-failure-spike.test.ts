@@ -29,13 +29,7 @@ describe('summarizeRunFailures', () => {
       { status: 'completed', count: 1 },
     ]);
 
-    expect(summary).toEqual({
-      total: 8,
-      failed: 7,
-      windowStart: START,
-      windowEnd: END,
-      spiked: true,
-    });
+    expect(summary).toEqual({ total: 8, failed: 7, windowStart: START, windowEnd: END, spiked: true });
   });
 
   it('does NOT spike at exactly half — the rule is MORE than half', () => {

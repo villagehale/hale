@@ -52,7 +52,8 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 /** North-American phone numbers: separated (optional +1, separators ., -, space,
  * or ()) OR a bare 10/11-digit run. Rule #1 defaults to most restrictive, so a
  * bare 10-digit number is redacted even though it could in theory be another id. */
-const PHONE_RE = /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b|\b1?\d{10}\b/g;
+const PHONE_RE =
+  /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b|\b1?\d{10}\b/g;
 /** Canadian postal code A1A 1A1 (optional space). */
 const POSTAL_RE = /\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b/g;
 /** A precise street address: number + street name + street-type suffix. */

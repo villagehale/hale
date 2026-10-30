@@ -65,35 +65,33 @@ describe('parseDailyOutlook', () => {
 
 describe('isOutdoorFriendly', () => {
   it('accepts a dry day at a liveable temperature', () => {
-    expect(
-      isOutdoorFriendly({ date: '2026-08-01', precipitationChancePct: 10, highTempC: 24 }),
-    ).toBe(true);
+    expect(isOutdoorFriendly({ date: '2026-08-01', precipitationChancePct: 10, highTempC: 24 })).toBe(
+      true,
+    );
   });
 
   it('rejects a likely-rain day', () => {
-    expect(
-      isOutdoorFriendly({ date: '2026-08-01', precipitationChancePct: 80, highTempC: 24 }),
-    ).toBe(false);
+    expect(isOutdoorFriendly({ date: '2026-08-01', precipitationChancePct: 80, highTempC: 24 })).toBe(
+      false,
+    );
   });
 
   it('rejects deep cold and dangerous heat, but keeps an ordinary cold winter day', () => {
-    expect(
-      isOutdoorFriendly({ date: '2026-01-05', precipitationChancePct: 5, highTempC: -18 }),
-    ).toBe(false);
-    expect(
-      isOutdoorFriendly({ date: '2026-07-05', precipitationChancePct: 5, highTempC: 36 }),
-    ).toBe(false);
-    expect(
-      isOutdoorFriendly({ date: '2026-01-05', precipitationChancePct: 5, highTempC: -4 }),
-    ).toBe(true);
+    expect(isOutdoorFriendly({ date: '2026-01-05', precipitationChancePct: 5, highTempC: -18 })).toBe(
+      false,
+    );
+    expect(isOutdoorFriendly({ date: '2026-07-05', precipitationChancePct: 5, highTempC: 36 })).toBe(
+      false,
+    );
+    expect(isOutdoorFriendly({ date: '2026-01-05', precipitationChancePct: 5, highTempC: -4 })).toBe(
+      true,
+    );
   });
 });
 
 describe('createOpenMeteoWeather', () => {
   it('sends only the COARSE centroid, rounded — never a precise coordinate (rule #1)', async () => {
-    const fetchForecast = vi.fn(async () =>
-      rawForecast([{ date: '2026-08-01', precip: 5, high: 22 }]),
-    );
+    const fetchForecast = vi.fn(async () => rawForecast([{ date: '2026-08-01', precip: 5, high: 22 }]));
     const weather = createOpenMeteoWeather({
       resolveCenter: async () => OTTAWA,
       fetchForecast,

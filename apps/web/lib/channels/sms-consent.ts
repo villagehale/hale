@@ -84,11 +84,7 @@ export async function requestSmsOtp(phoneRaw: string): Promise<RequestSmsOtpResu
     return { status: 'rate_limited' };
   }
 
-  return requestPhoneOtp(
-    ctx.database,
-    { userId: ctx.userId, phoneRaw },
-    { sender: createOtpSender() },
-  );
+  return requestPhoneOtp(ctx.database, { userId: ctx.userId, phoneRaw }, { sender: createOtpSender() });
 }
 
 export type VerifySmsOtpResult =

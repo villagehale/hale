@@ -43,12 +43,7 @@ function eqConstraints(sql: SQL, out: Record<string, unknown> = {}): Record<stri
   const chunks = (sql as unknown as { queryChunks?: unknown[] }).queryChunks ?? [];
   let lastCol: string | null = null;
   for (const chunk of chunks) {
-    const c = chunk as {
-      constructor?: { name?: string };
-      name?: string;
-      table?: unknown;
-      value?: unknown;
-    };
+    const c = chunk as { constructor?: { name?: string }; name?: string; table?: unknown; value?: unknown };
     if (c?.constructor?.name === 'SQL') {
       eqConstraints(chunk as SQL, out);
       lastCol = null;
@@ -133,10 +128,7 @@ describe('updateEpisode', () => {
 
     expect(ok).toBe(true);
     expect(capture.updateValues).toHaveLength(1);
-    expect(capture.updateValues[0]).toMatchObject({
-      summary: 'Fed 150 ml',
-      payload: { amountMl: 150 },
-    });
+    expect(capture.updateValues[0]).toMatchObject({ summary: 'Fed 150 ml', payload: { amountMl: 150 } });
 
     expect(capture.audit).toHaveLength(1);
     const audit = capture.audit[0] as Record<string, unknown>;
@@ -188,7 +180,7 @@ describe('softDeleteEpisode', () => {
     expect(audit.after).toEqual({ deleted: true });
   });
 
-  it('rejects a foreign episode — no delete, no audit row (rule #1)', async () => {
+  it("rejects a foreign episode — no delete, no audit row (rule #1)", async () => {
     const capture: Capture = { updateValues: [], audit: [] };
     const { database } = stubTxDb(capture);
 

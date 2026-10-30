@@ -46,10 +46,7 @@ const MAX_LINE_OCTETS = 75;
  * fraction the form does not carry.
  */
 function formatUtc(instant: Date): string {
-  return instant
-    .toISOString()
-    .replace(/[-:]/g, '')
-    .replace(/\.\d{3}/, '');
+  return instant.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
 /**
@@ -111,12 +108,7 @@ export function generateFamilyIcs(events: IcsEvent[], options: GenerateIcsOption
   const dtstamp = formatUtc(options.now ?? new Date());
   const prodId = options.prodId ?? DEFAULT_PRODID;
 
-  const lines: string[] = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    `PRODID:${prodId}`,
-    'CALSCALE:GREGORIAN',
-  ];
+  const lines: string[] = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:${prodId}`, 'CALSCALE:GREGORIAN'];
 
   for (const event of events) {
     lines.push('BEGIN:VEVENT');

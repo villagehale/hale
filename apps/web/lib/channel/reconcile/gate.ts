@@ -26,9 +26,7 @@ import { loadReconcileView } from './view';
 
 /** Why the wire body was refused. The reconcile's own reasons, plus the one this gate
  * adds for a promise a sweep would have had to write and cannot. */
-export type SendRefusalReason =
-  | ReconcileVerdict['refused'][number]['reason']
-  | 'unrecorded_promise';
+export type SendRefusalReason = ReconcileVerdict['refused'][number]['reason'] | 'unrecorded_promise';
 
 /** Every reason this body may not go out, in the order the claims appear. Empty means
  * send it. */
