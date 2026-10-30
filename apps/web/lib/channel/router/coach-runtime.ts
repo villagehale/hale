@@ -71,6 +71,8 @@ export interface ChannelTurn {
    * Absent on a text-only turn.
    */
   inboundMedia?: readonly InboundMediaPart[];
+  /** VIL-477 — the Linq group this turn is in; absent/null on a 1:1 or SMS turn. */
+  groupChatId?: string | null;
 }
 
 /**
@@ -104,6 +106,13 @@ export interface ChannelTurnResult {
    * `LINQ_EXPERIENCES_ENABLED` is lit on a 1:1 turn; the router delivers it after the text.
    */
   experienceCard?: ExperienceCardIntent | null;
+  /**
+   * VIL-477 — a member plainly asked Hale to leave this group, and the model's reply is
+   * its goodbye. Only ever true while `LINQ_GROUP_LEAVE_ENABLED` is lit on a group turn;
+   * the router leaves AFTER the reply is sent, through the guarded `leaveGroupOnFamilyAsk`.
+   * `ifLeaveFails` is the model's own line sent only if that leave is then refused.
+   */
+  groupLeave?: { ifLeaveFails: string } | null;
 }
 
 export interface ChannelCoachRuntime {

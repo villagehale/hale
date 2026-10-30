@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  LINQ_MALFORMED_CHAT_PAGE,
   LinqSendError,
   addLinqParticipant,
   createLinqChat,
   createLinqPhoneTransport,
   createLinqTextTransport,
-  LINQ_MALFORMED_CHAT_PAGE,
+  leaveLinqChat,
   listLinqChatsPage,
   listLinqParticipantHandles,
   localityFromLocationPayload,
@@ -627,6 +628,17 @@ describe('Linq group, card, poll, and effect helpers', () => {
     expect(JSON.parse(String(add?.[1]?.body))).toEqual({ handle: '+14165550102' });
     expect(remove?.[1]?.method).toBe('DELETE');
     expect(JSON.parse(String(remove?.[1]?.body))).toEqual({ handle: '+14165550102' });
+  });
+
+  it('leaves a group with POST /chats/{id}/leave and no body', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ status: 'accepted' }, { status: 200 }),
+    );
+    expect(await leaveLinqChat({ chatId: CHAT, fetch: fetchMock })).toEqual({ status: 'accepted' });
+    const call = fetchMock.mock.calls[0];
+    expect(call?.[0]).toBe(`https://api.linqapp.com/api/partner/v3/chats/${CHAT}/leave`);
+    expect(call?.[1]?.method).toBe('POST');
   });
 
   it('names the Hale card and patches when Linq says one is already active', async () => {

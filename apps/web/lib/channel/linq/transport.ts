@@ -843,6 +843,26 @@ export async function removeLinqParticipant(input: {
   return { accepted: true };
 }
 
+/**
+ * VIL-477 · Hale leaves a group: Linq removes Hale's own line from the chat.
+ * iMessage groups only, with 4+ active participants including Hale (the group
+ * must keep 3). Once accepted Hale cannot return unless a member re-adds it, and
+ * every later call on the chat answers 409. `participant.removed` fires when done.
+ * Never call this without the family's explicit ask (docs/linq-chat-capacity.md).
+ *
+ * https://docs.linqapp.com/channel/imessage/api/resources/chats/methods/leave_chat/
+ */
+export function leaveLinqChat(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  return linqEffect({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/leave`,
+    fetch: input.fetch,
+  });
+}
+
 const CONTACT_CARD_ALREADY_ACTIVE = '2014';
 
 /**

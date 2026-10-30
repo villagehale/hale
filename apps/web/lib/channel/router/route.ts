@@ -54,6 +54,12 @@ import {
   linqCoParentAsk,
   linqGroupLineMissing,
 } from '~/lib/channel/linq/group';
+import {
+  ChatLeftError,
+  leaveGroupOnFamilyAsk,
+  leftChatSince,
+  releaseGroupOnLeave,
+} from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
 import {
@@ -362,6 +368,12 @@ export interface ChannelRouterDeps {
   /** VIL-497 — the experience-card sender. Absent: the real `sendLinqAppCard`. A seam so
    * the router's card delivery is testable without Linq. */
   sendExperienceCard?: typeof sendLinqAppCard;
+  /** VIL-477 — the guarded group leave. Absent: the real `leaveGroupOnFamilyAsk`. */
+  leaveGroup?: typeof leaveGroupOnFamilyAsk;
+  /** VIL-477 — claim release + audit after an accepted leave. Absent: the real one. */
+  releaseGroupOnLeave?: typeof releaseGroupOnLeave;
+  /** VIL-477 — the send gate: did Hale leave this chat since the inbound arrived. */
+  leftChatSince?: typeof leftChatSince;
   loadContext(database: Database, job: ChannelMessageReceivedJob): Promise<InboundContext | null>;
   /** The one way out. Channel-agnostic by construction (reply-route.ts): the router
    * hands it a resolved route and a body, and never learns which provider took it. */
@@ -687,7 +699,9 @@ export type RouterStatus =
    * emergency: the fixed safety line went out with no model in the loop (smoke-alarm.ts).
    * A distinct status from `agent_failed` because it is the one outcome where a failed
    * turn still answered the question the parent actually asked. */
-  | 'smoke_alarm_fired';
+  | 'smoke_alarm_fired'
+  /** VIL-477: Hale left this group chat while the turn was in flight. Nothing sent. */
+  | 'group_left';
 
 export interface RouterResult {
   status: RouterStatus;
@@ -751,6 +765,15 @@ export async function routeChannelMessage(
     void trailed;
     return result;
   } catch (err) {
+    if (err instanceof ChatLeftError) {
+      await noteUnanswered(deps, job, 'group_chat_left');
+      return done(deps, job, {
+        status: 'group_left',
+        handler: null,
+        conversationId: null,
+        lane: null,
+      });
+    }
     if (!isTurnTimeout(err) && !signal.aborted) throw err;
     // Nothing goes out. The job fails so the per-parent key is free for the
     // next text; the ledger is what makes a re-drive answer at most once.
@@ -1515,6 +1538,7 @@ async function routeChannelMessageInner(
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
       audience: inGroup ? 'group' : 'direct',
       cardRoute: inGroup ? null : route,
+      groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
     });
   } finally {
     await stopTyping();
@@ -1916,6 +1940,8 @@ async function runAgentTurn(
     audience: ChannelTurn['audience'];
     /** VIL-497 — the 1:1 route a card may go to; null on a group turn. */
     cardRoute?: ReplyRoute | null;
+    /** VIL-477 — the Linq group this turn is in, or null on a 1:1 / SMS turn. */
+    groupChatId?: string | null;
   },
 ): Promise<RouterResult> {
   try {
@@ -1928,7 +1954,7 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard } =
+    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard, groupLeave } =
       await composeReconciledReply(deps, args, view);
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
     const channelMessageId = await args.answer(card ? card.text : reply);
@@ -1963,6 +1989,54 @@ async function runAgentTurn(
           { err: err instanceof Error ? err.name : 'unknown' },
           'channel router: experience card failed',
         );
+      }
+    }
+    // VIL-477: the model read a member asking Hale to leave (grounded in this turn's
+    // words) and wrote its goodbye. Hale cannot speak after leaving, so the goodbye goes
+    // first and the leave right after. Accepted → release the household claim + audit
+    // row. Refused after the goodbye → send the model's OWN pre-written "couldn't leave"
+    // line once, so the goodbye is never left standing as a false claim. Never throws.
+    if (groupLeave && args.groupChatId && reply.trim() !== '') {
+      let left: Awaited<ReturnType<typeof leaveGroupOnFamilyAsk>> | null = null;
+      try {
+        left = await (deps.leaveGroup ?? leaveGroupOnFamilyAsk)({
+          chatId: args.groupChatId,
+          explicitAsk: true,
+        });
+        deps.log.info(
+          { leave: left.status, ...('reason' in left ? { reason: left.reason } : {}) },
+          'channel router: group leave after the send',
+        );
+      } catch (err) {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: group leave failed',
+        );
+      }
+      if (left?.status === 'left') {
+        try {
+          await (deps.releaseGroupOnLeave ?? releaseGroupOnLeave)(deps.database, {
+            familyId: args.turn.familyId,
+            chatId: args.groupChatId,
+            askedBy: args.turn.parentUserId ?? null,
+            now: args.turn.now,
+          });
+        } catch (err) {
+          deps.log.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'channel router: group leave release failed',
+          );
+        }
+      } else if (groupLeave.ifLeaveFails.trim() !== '') {
+        try {
+          await args.answer(groupLeave.ifLeaveFails);
+          deps.log.info({ leave: 'stayed_said' }, 'channel router: leave refused, told the group');
+        } catch (err) {
+          deps.log.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'channel router: leave-refused line failed',
+          );
+        }
       }
     }
     await recordCoachOfferFromReply(deps, {
@@ -2086,6 +2160,8 @@ async function runAgentTurn(
     // The turn deadline already decided this attempt is over. An apology here
     // would be a text the parent did not ask for, sent after the drain moved on.
     if (isTurnTimeout(err) || turnSignalAborted()) throw err;
+    // VIL-477: Hale left this chat mid-turn. No apology: there is no one to tell.
+    if (err instanceof ChatLeftError) throw err;
     // A turn can break AFTER its drafts landed, and those are real rows the parent can
     // approve. Saying "nothing was changed" would be false AND would orphan them — see
     // coach-runtime.ts (VIL-260).
@@ -2221,6 +2297,7 @@ async function composeReconciledReply(
     turn: HandlerContext;
     questions: readonly OpenQuestion[];
     audience: ChannelTurn['audience'];
+    groupChatId?: string | null;
   },
   view: Promise<ReconcileView>,
 ): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
@@ -2231,7 +2308,12 @@ async function composeReconciledReply(
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
     result = await deps.coach.respond(
-      { ...args.turn, standingQuestions, audience: args.audience },
+      {
+        ...args.turn,
+        standingQuestions,
+        audience: args.audience,
+        ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),
+      },
       rejected,
     );
     verdict = reconcile(extractStateClaims(result.reply), {
@@ -2624,6 +2706,26 @@ async function sendReply(
     }
   };
   if (args.beforeSend) await args.beforeSend();
+  // VIL-477: never speak into a chat Hale already left. Checked at the last moment
+  // before the transport, so an overlapping turn whose reply was composed before
+  // another member's leave cannot land after chat_leave. Group (or unknown) chats only.
+  // A failed read sends as before: it is a race guard beside the released claim, and a
+  // DB hiccup must not silence every group reply.
+  if (args.route.channel === 'imessage' && args.route.chatId && args.job.in_group !== false) {
+    let left = false;
+    try {
+      left = await (deps.leftChatSince ?? leftChatSince)(deps.database, {
+        chatId: args.route.chatId,
+        since: new Date(args.job.received_at),
+      });
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'channel router: left-chat gate read failed; sending',
+      );
+    }
+    if (left) throw new ChatLeftError();
+  }
   if (args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     try {
       const moment = await considerLinqReply(deps.database, {

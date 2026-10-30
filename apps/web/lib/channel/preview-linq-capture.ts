@@ -57,6 +57,7 @@ export type CapturedLinqKind =
   | 'poll'
   | 'participant_add'
   | 'participant_remove'
+  | 'chat_leave'
   | 'location_request'
   | 'roster'
   | 'voice_memo'
@@ -213,6 +214,7 @@ export async function captureLinqCall(
     'POST:/share_contact_card': 'contact_card',
     'POST:/participants': 'participant_add',
     'DELETE:/participants': 'participant_remove',
+    'POST:/leave': 'chat_leave',
     'POST:/location/request': 'location_request',
     'GET:/location': 'location_request',
   };

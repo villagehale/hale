@@ -133,6 +133,7 @@ describe('former bypasses are captured', () => {
     await door.updateLinqGroupChat({ chatId: 'c', displayName: 'n' });
     await door.addLinqParticipant({ chatId: 'c', handle: '+15550000001' });
     await door.removeLinqParticipant({ chatId: 'c', handle: '+15550000001' });
+    await door.leaveLinqChat({ chatId: 'c' });
     await door.shareLinqContactCard({ chatId: 'c' });
     await door.setupLinqContactCard({ phoneNumber: 'p', firstName: 'f', imageUrl: 'https://i' });
     await door.patchLinqContactCard({ phoneNumber: 'p', firstName: 'f', imageUrl: 'https://i' });
@@ -141,7 +142,7 @@ describe('former bypasses are captured', () => {
     await door.markLinqChatRead({ chatId: 'c' });
     await door.startLinqTyping({ chatId: 'c' });
     await door.stopLinqTyping({ chatId: 'c' });
-    expect(capturedChatOps()).toHaveLength(15);
+    expect(capturedChatOps()).toHaveLength(16);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

@@ -424,6 +424,20 @@ export async function removeLinqParticipant(
   );
 }
 
+/** VIL-477 · Hale leaves a group. Callers gate on linqGroupLeaveEnabled(). */
+export async function leaveLinqChat(
+  input: In<typeof linq.leaveLinqChat>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'leave_chat',
+    () => linq.leaveLinqChat(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
 export async function shareLinqContactCard(
   input: In<typeof linq.shareLinqContactCard>,
 ): Promise<{ accepted: true }> {
