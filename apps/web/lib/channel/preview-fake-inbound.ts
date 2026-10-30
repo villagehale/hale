@@ -1,5 +1,9 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { type InboundMediaPart, httpsMediaUrl } from '~/lib/channel/inbound-media';
+import {
+  type InboundMediaPart,
+  classifyInboundMedia,
+  httpsMediaUrl,
+} from '~/lib/channel/inbound-media';
 import { type InboundRouteDeps, routeInboundText } from '~/lib/channel/inbound-route';
 import { countUncapturedLedgerRows, readCapturedSends } from '~/lib/channel/preview-capture-store';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
@@ -76,7 +80,10 @@ function readMedia(raw: unknown): InboundMediaPart[] | null | 'invalid' {
     const safe = typeof url === 'string' ? httpsMediaUrl(url) : null;
     if (!safe) return 'invalid';
     const m = typeof mime === 'string' ? mime : null;
-    const kind = m?.startsWith('video/') ? 'video' : 'image';
+    // Same classifier as the Linq door, so a fake voice memo (audio/*) reads as `audio`
+    // when LINQ_VOICE_MEMOS_ENABLED is on (VIL-476).
+    const classified = classifyInboundMedia(m, safe, null);
+    const kind = classified;
     parts.push({ kind, url: safe, mime: m });
   }
   return parts;
