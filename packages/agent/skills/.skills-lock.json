@@ -187,6 +187,14 @@
     "file": "group-plan-rsvp-voice.md",
     "sha256": "601ff43bd4f73a8dcc5d3f3f27ece61a7e3aaa2cf00e82beae4a2bc228bcbd7e"
   },
+  "group-poll-offer.md": {
+    "file": "group-poll-offer.md",
+    "sha256": "3a94209438032cc3a60be7775a35f1f23db60c14aa00d20b6a20142edcd83a81"
+  },
+  "group-poll-tally-read.md": {
+    "file": "group-poll-tally-read.md",
+    "sha256": "310b69a4c546773232b288343466460030fc3b12602fdcab1cccb32543fd4827"
+  },
   "group-private-aside-draft.md": {
     "file": "group-private-aside-draft.md",
     "sha256": "c40c6073e82a32935dd61c648a6afeb990b4306cb1d8958d4f577db8f18b51a2"
