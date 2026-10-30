@@ -242,6 +242,9 @@ function render(
         "I can't use this thread as your kids' year.",
         "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
       );
+    case 'rec_morning':
+      // Test stand-in: the scripted model restates the reviewed facts.
+      return facts.answer;
     case 'linq_group_open':
       return pick(
         language,

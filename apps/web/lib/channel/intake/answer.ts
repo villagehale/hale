@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
+import { writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -380,7 +380,8 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
-      const recMorning = recMorningIntakeReply({
+      // VIL-508: reviewed facts, model-written words; a miss falls through, nothing fixed.
+      const recMorning = await writeRecMorningIntakeReply({
         parentWords: input.parentWords,
         pendingAsk: input.pendingAsk,
         postal: input.postalCode,
