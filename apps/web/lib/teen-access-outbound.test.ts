@@ -258,6 +258,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'lib/channel/linq/group-plan-invites.ts',
     "the VIL-455 group plan fan-out — writes each family's own copy of the plan the group agreed, keyed by group_plan_copy_key, and reads back only family ids; it never reads another household's titles or locations",
   ],
+  [
+    'lib/channel/linq/household-calendar.ts',
+    "the VIL-444 group clash alert — a sensitive row, a 13+ child's row or a row whose title names a 13+ child reaches the writer only as one person being busy, with no title and no times",
+  ],
 ];
 
 /** Any reference to the table by any Drizzle API, including a bare destructured one. */

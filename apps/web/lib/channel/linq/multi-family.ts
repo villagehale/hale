@@ -9,6 +9,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { linqMultiFamilyGroupsEnabled } from './config';
+import { type PrivateAsideModel, type SendOneToOne, runPrivateAside } from './group-private-aside';
 import { LinqSendError } from './transport';
 
 /**
@@ -796,7 +797,39 @@ export async function spendSharedGroupAsk(
 
 export type MultiFamilyTurnResult =
   | { handled: false }
-  | { handled: true; outcome: string; count: 'intake' | 'ignored' | 'duplicate'; notice?: string };
+  | {
+      handled: true;
+      outcome: string;
+      count: 'intake' | 'ignored' | 'duplicate';
+      notice?: string;
+      /** VIL-457: what the private aside did for this message, when it ran. */
+      aside?: string;
+    };
+
+/**
+ * The private aside never touches the group send: it only reads each family's own
+ * consented slice and texts that family 1:1. A throw is logged and never fails the turn.
+ */
+async function privateAsideFor(
+  database: Database,
+  deps: { model: PrivateAsideModel; sendOneToOne: SendOneToOne },
+  input: { chatId: string; inboundId: string; text: string; senderFamilyId: string },
+): Promise<string> {
+  try {
+    const out = await runPrivateAside(database, deps, {
+      ...input,
+      recent: [{ from: 'member', text: input.text }],
+      language: null,
+    });
+    return out.outcome;
+  } catch (err) {
+    console.warn(
+      { chatId: input.chatId, err: err instanceof Error ? err.name : 'unknown' },
+      'linq multi-family: private aside failed',
+    );
+    return 'error';
+  }
+}
 
 /**
  * Own the turn when this chat is a shared group, or when a parent is explicitly
@@ -814,6 +847,11 @@ export async function takeMultiFamilyTurn(
     receivedAt: Date;
     now: Date;
     send?: SendGroup;
+    /**
+     * VIL-457: after the group line, families whose own private facts the message touches
+     * get one model-written 1:1 text each. Absent means no aside runs.
+     */
+    privateAside?: { model: PrivateAsideModel; sendOneToOne: SendOneToOne };
   },
 ): Promise<MultiFamilyTurnResult> {
   if (!linqMultiFamilyGroupsEnabled()) return { handled: false };
@@ -971,11 +1009,20 @@ export async function takeMultiFamilyTurn(
       after: { sources: 'thread' },
     });
   }
+  const aside = input.privateAside
+    ? await privateAsideFor(database, input.privateAside, {
+        chatId: input.chatId,
+        inboundId: inbound,
+        text: input.text,
+        senderFamilyId: channel.familyId,
+      })
+    : undefined;
   return {
     handled: true,
     outcome: 'shared_reply',
     count: 'intake',
     notice,
+    ...(aside ? { aside } : {}),
   };
 }
 

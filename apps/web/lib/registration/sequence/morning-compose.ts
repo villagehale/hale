@@ -5,6 +5,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { MorningFacts } from './copy';
+import { type CheckRegistrationText, checkRegistrationText } from './text-check';
 
 /**
  * VIL-484 · EVERY morning-of (go leg) registration text. The model writes the
@@ -46,6 +47,7 @@ export async function composeRegistrationMorning(
   client: AgentClient,
   facts: MorningComposeInput,
   familyId: string,
+  options: { check?: CheckRegistrationText } = {},
 ): Promise<string | null> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
@@ -72,8 +74,24 @@ export async function composeRegistrationMorning(
       });
       const text = value.text.trim();
       const refusals = morningRefusals(text, facts);
-      if (refusals.length === 0) return text;
-      console.warn({ familyId, attempt, refusals }, 'registration morning: draft refused');
+      if (refusals.length > 0) {
+        console.warn({ familyId, attempt, refusals }, 'registration morning: draft refused');
+        continue;
+      }
+      // Every structurally clean draft is fact-checked before it can send (VIL-488).
+      const check = await (options.check ?? checkRegistrationText)(
+        client,
+        'morning',
+        facts,
+        text,
+        familyId,
+      );
+      if (check.supported) return text;
+      // Claims are logged by count only: they can quote family words.
+      console.warn(
+        { familyId, attempt, unsupported: check.unsupported.length },
+        'registration morning: draft failed the fact check',
+      );
     } catch (err) {
       console.warn(
         { familyId, attempt, err: err instanceof Error ? err.name : 'unknown' },

@@ -159,9 +159,17 @@
     "file": "gmail-draft-notice.md",
     "sha256": "bbc089b1b8eda41ced0e4b6d8f0e209d101046fd6a05636d62efbb1fcab4d44b"
   },
+  "group-conflict-alert.md": {
+    "file": "group-conflict-alert.md",
+    "sha256": "7a2cfe7a208fbde4847195a07a8f30e7f00bbbad7444ecfc359bfc55543ce0ef"
+  },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
+  },
+  "group-pickup-claim-read.md": {
+    "file": "group-pickup-claim-read.md",
+    "sha256": "a932bc46688dac5c1f9b60973dc26668eb965e8e436ceab93b3663dcaf90fb7e"
   },
   "group-plan-attendance-read.md": {
     "file": "group-plan-attendance-read.md",
@@ -186,6 +194,14 @@
   "group-private-aside-read.md": {
     "file": "group-private-aside-read.md",
     "sha256": "56296c986c470ddd7ab85254d1faf356ee82e0efe0f15309ed929f7b03759979"
+  },
+  "group-reminder-read.md": {
+    "file": "group-reminder-read.md",
+    "sha256": "a9fce92c332192afcf8ba0d955a9e26d43e0fc7567d9eddfed44b9483231e7c3"
+  },
+  "group-reminder-voice.md": {
+    "file": "group-reminder-voice.md",
+    "sha256": "cc85d796ea0f0565fb115bd0a025adb7682e12c7aa1202938b69e5022f8f498a"
   },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
@@ -303,9 +319,17 @@
     "file": "registration-evening.md",
     "sha256": "218c8e446e9400784aac34806b17b11cfcc6587521e8ac7142b6153e06b20fcc"
   },
+  "registration-heads-up.md": {
+    "file": "registration-heads-up.md",
+    "sha256": "45031f49ff94164ccc51a97d5f977e59c2a1a3bfe8432beafed7190cea1fcb30"
+  },
   "registration-morning.md": {
     "file": "registration-morning.md",
     "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
+  },
+  "registration-text-check.md": {
+    "file": "registration-text-check.md",
+    "sha256": "b67b3163f17eaa4565af70be192ff65eb92cb7aa8b953615ff32502789a3ce9d"
   },
   "reminder.md": {
     "file": "reminder.md",

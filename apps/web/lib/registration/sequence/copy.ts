@@ -318,25 +318,42 @@ function printable(value: string | null | undefined, backed: readonly string[]):
   return backed.includes(value) ? value : null;
 }
 
-function headsUp(input: LegCopyInput): string {
+/** Facts for the heads-up leg (a week out). There is no code sentence: the model writes
+ * the whole text from these, and a draft that fails sends nothing (VIL-488). */
+export interface HeadsUpFacts {
+  now: { date: string; time: string };
+  window: string;
+  /** Who the window is for. A 13+ child is already "your teen", never a name. */
+  who: string;
+  /** When it opens for THIS family, handed in English. */
+  opensOn: string;
+  opensAt: string;
+  /** The family's postal code gets the residents-first date. */
+  residentsFirst: boolean;
+  /** The match may rest on an age derived from a spoken age: hedge the band. */
+  ageApproximate: boolean;
+  /** `plan_promised`: an opted-in household; Hale sends the plan the evening before.
+   * `offer`: not yet approved; ask whether Hale should run the morning with them
+   * (a YES in this thread approves it). */
+  next: 'plan_promised' | 'offer';
+}
+
+export function headsUpFacts(input: LegCopyInput): HeadsUpFacts {
   const { shortlist } = input;
-  const who = whoPhrase(shortlist.fitNotes);
-  const resident =
-    shortlist.isResidentWindow && shortlist.residentPriorityDays !== null
-      ? ' Your postal code gets the residents-first date.'
-      : '';
-  // The hedge is load-bearing: the match may rest on the +/-6-month tolerance the
-  // matcher grants a DOB derived from a spoken age, so asserting the band would be
-  // asserting something Hale does not know.
-  const hedge = shortlist.ageApproximate ? " Worth a look if that's still their band." : '';
-  // The unapproved household's shortlist is an ordinary drafted_for_approval row, so the
-  // YES that approves it is the same one the app button sends (router/wiring.ts binds
-  // both to approveDraftedAction). Pointing them at the app would ask them to learn a
-  // second surface to do what the thread they are already in can do.
-  const cta = headsUpPromisesPlan(input.optIn)
-    ? " I'll send your plan the evening before."
-    : ' Want me to run the morning with you?';
-  return `${windowPhrase(shortlist)} registration opens ${when(shortlist.opensForFamilyAt, input.timeZone, input.now)} for ${who}.${resident}${hedge}${cta}`;
+  const opens = shortlist.opensForFamilyAt;
+  return {
+    now: {
+      date: writtenDate(input.now, input.timeZone),
+      time: timeOfDay(input.now, input.timeZone),
+    },
+    window: windowPhrase(shortlist),
+    who: whoPhrase(shortlist.fitNotes),
+    opensOn: writtenDate(opens, input.timeZone),
+    opensAt: timeOfDay(opens, input.timeZone),
+    residentsFirst: shortlist.isResidentWindow && shortlist.residentPriorityDays !== null,
+    ageApproximate: shortlist.ageApproximate,
+    next: headsUpPromisesPlan(input.optIn) ? 'plan_promised' : 'offer',
+  };
 }
 
 /**
@@ -657,12 +674,14 @@ function waitlistGuard(input: LegCopyInput, leg: 'waitlist_half' | 'waitlist_fin
 export function renderSequenceLeg(leg: SequenceLeg, input: LegCopyInput): string {
   switch (leg) {
     case 'heads_up':
-      return headsUp(input);
+      throw new Error('registration sequence: the heads-up text is composed from facts');
     case 'readiness':
-      // `dueLeg` never routes a portal-less sequence here; the renderer stays total
-      // anyway, because a throw in a leg costs that family its whole tick, and the
-      // heads-up is exactly what the scheduler would have chosen instead.
-      return input.portal == null ? headsUp(input) : readiness(input, input.portal);
+      // `dueLeg` never routes a portal-less sequence here. The runner composes the
+      // heads-up from facts for that case before it would reach this renderer.
+      if (input.portal == null) {
+        throw new Error('registration sequence: the heads-up text is composed from facts');
+      }
+      return readiness(input, input.portal);
     case 'battle_plan': {
       throw new Error('registration sequence: the evening text is composed from facts');
     }

@@ -163,6 +163,7 @@ function harness(
     composeEvening?: SequenceRunDeps['composeEvening'];
     /** The morning-of composer. Undefined records the facts and returns a sendable stub. */
     composeMorning?: SequenceRunDeps['composeMorning'];
+    composeHeadsUp?: SequenceRunDeps['composeHeadsUp'];
     /** The already-open retry's wall clock. */
     clock?: () => Date;
   } = {},
@@ -303,6 +304,10 @@ function harness(
         composedMorning.push(facts);
         return `composed morning ${facts.situation} ${facts.link}`;
       }),
+    composeHeadsUp:
+      options.composeHeadsUp ??
+      (async (_client, facts) =>
+        `composed heads-up ${facts.window} for ${facts.who} ${facts.next}`),
     ...(options.clock ? { clock: options.clock } : {}),
   };
 
@@ -485,6 +490,15 @@ describe('the legs', () => {
     expect(body).not.toContain('STOP to opt out.');
   });
 
+  it('sends nothing when the heads-up draft is unwritten (VIL-488)', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()], composeHeadsUp: async () => null });
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(result).toMatchObject({ sent: 0, unwritten: 1 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.promised).toEqual([]);
+  });
+
   it("puts the leg in the parent's own text thread, so their reply has an antecedent", async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     // The whole ladder is a conversation: the heads-up asks for a YES, the battle plan
@@ -579,7 +593,7 @@ describe('the legs', () => {
       },
     ]);
     // The body the family read is the sentence the row is holding Hale to.
-    expect(h.transport.bodies()[0]).toContain("I'll send your plan the evening before.");
+    expect(h.transport.bodies()[0]).toContain('plan_promised');
   });
 
   it('promises nothing to a household it is still asking to approve', async () => {
@@ -590,7 +604,7 @@ describe('the legs', () => {
 
     // The same leg, a different sentence: this one invites an approval, in the thread.
     // Recording a debt against it would report a broken promise Hale never made.
-    expect(h.transport.bodies()[0]).toContain('Want me to run the morning with you?');
+    expect(h.transport.bodies()[0]).toContain('offer');
     expect(h.promised).toEqual([]);
   });
 
@@ -1028,14 +1042,14 @@ describe('VIL-338 · the bound course is read at send time', () => {
     expect(auditAfter(town.writes, 'registration_sequence_leg_sent')).not.toHaveProperty('prep');
   });
 
-  it('keeps the templated legs byte-identical and composes the evening text from municipal facts', async () => {
+  it('composes the heads-up and the evening text from municipal facts', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     // Richmond Hill has no registry portal, so nothing below can reach the network.
-    // The heads-up and the go leg are the strings VIL-242 shipped. The evening text
-    // is the composer's, from the municipal facts — never a sentence this file owns.
+    // VIL-488 · the heads-up is the composer's too, from facts — never a sentence
+    // this file owns.
     const captured: Record<string, string> = {
       heads_up:
-        "Richmond Hill Fall 2026 recreation programs registration opens Sep 15, 6:30 a.m. for Maya. I'll send your plan the evening before.",
+        'composed heads-up Richmond Hill Fall 2026 recreation programs for Maya plan_promised',
     };
     for (const [leg, tick] of [['heads_up', HEADS_UP_TICK]] as const) {
       const h = harness({
@@ -1551,7 +1565,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
     const town = harness({ sequences: [live()] });
     const townResult = await runRegistrationSequenceCron(db(), town.deps, READINESS_TICK);
     expect(townResult.sent).toBe(1);
-    expect(town.transport.bodies()[0]).toContain('registration opens');
+    expect(town.transport.bodies()[0]).toContain('composed heads-up');
     expect([...town.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:heads_up:user-1']);
   });
 

@@ -22,6 +22,19 @@ import {
 } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import {
+  type GroupReminderHandled,
+  takeGroupReminderTurn,
+} from '~/lib/loop/reminders/group/capture';
+import { groupRemindersLive } from '~/lib/loop/reminders/group/flag';
+import {
+  type GroupReminderReader,
+  sharedGroupReminderReader,
+} from '~/lib/loop/reminders/group/read';
+import {
+  type GroupReminderVoice,
+  sharedGroupReminderVoice,
+} from '~/lib/loop/reminders/group/voice';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -38,7 +51,7 @@ import {
   linqMultiFamilyGroupsEnabled,
   linqWebhookSecret,
 } from './config';
-import { type OneToOneSend, resumeConnectLink } from './connect-link-1to1';
+import { type OneToOneSend, privateAsideOneToOne, resumeConnectLink } from './connect-link-1to1';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
   LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
@@ -71,11 +84,13 @@ import {
   unseatParticipantRemoved,
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
+import type { GroupPickupClaimReader } from './group-pickup-claim';
 import { considerGroupPlanRsvp } from './group-plan-rsvp/inbound';
 import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
 import { parseLinqTapback } from './group-plan-rsvp/reading';
 import { groupPlanRsvpTakesTheTurn } from './group-plan-rsvp/turn';
 import type { GroupPlanRsvpComposer } from './group-plan-rsvp/voice';
+import { type PrivateAsideModel, sharedPrivateAsideModel } from './group-private-aside';
 import { decideGroupTurn } from './group-turn-policy';
 import {
   type GroupTurnReader,
@@ -84,7 +99,7 @@ import {
   linqGroupTurnAiEnabled,
   sharedGroupTurnReader,
 } from './group-turn-reader';
-import { captureLogisticsText } from './household-calendar';
+import { captureLogisticsText, takeGroupPickupClaim } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
 import { takeMultiFamilyTurn, unseatMultiFamilyMember } from './multi-family';
@@ -176,10 +191,17 @@ export async function handleLinqInboundRequest(
     groupLimiter?: RateLimiter;
     /** VIL-440 test seam. Production uses the shared model reader when the flag is on. */
     groupTurnReader?: GroupTurnReader;
+    /** VIL-448 test seams. Production reads and writes with the model when the flag is on. */
+    groupReminderReader?: GroupReminderReader;
+    groupReminderVoice?: GroupReminderVoice | null;
+    /** VIL-444 test seam. Production uses the shared model reader when the clash flag is on. */
+    groupPickupClaimReader?: GroupPickupClaimReader;
     /** VIL-442 test seam. Production uses the shared plan RSVP reader when the flag is on. */
     groupPlanRsvpReader?: GroupPlanRsvpReader;
     /** VIL-442 test seam. Production composes with the model when the flag is on. */
     groupPlanRsvpComposer?: GroupPlanRsvpComposer;
+    /** VIL-457 test seam. Production uses the shared private-aside model. */
+    privateAsideModel?: PrivateAsideModel;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -566,9 +588,19 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
       receivedAt: message.receivedAt,
       now: deps.now?.() ?? new Date(),
       send: deps.sendGroupText,
+      privateAside: {
+        model: deps.privateAsideModel ?? sharedPrivateAsideModel(),
+        sendOneToOne: privateAsideOneToOne(deps.database, {
+          now: deps.now?.() ?? new Date(),
+          send: deps.oneToOne,
+        }),
+      },
     });
     if (shared.handled) {
-      deps.log.info({ outcome: shared.outcome }, 'linq inbound: multi-family group');
+      deps.log.info(
+        { outcome: shared.outcome, aside: shared.aside },
+        'linq inbound: multi-family group',
+      );
       await deps.countOutcome(shared.count);
       return json({
         outcome: shared.outcome,
@@ -696,12 +728,39 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
         familyId: mapped.familyId,
         parentUserId: mapped.userId,
         body: message.text,
+        sentAt: message.receivedAt,
         now: deps.now?.() ?? new Date(),
       });
     } catch (err) {
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq inbound: logistics text was not stored',
+      );
+    }
+    // HOOK (PR #938): this read joins that shared group reader's turn; see group-pickup-claim.ts.
+    try {
+      const claim = await takeGroupPickupClaim(
+        deps.database,
+        {
+          familyId: mapped.familyId,
+          chatId: message.chatId,
+          senderUserId: mapped.userId,
+          text: message.text,
+          sentAt: message.receivedAt,
+          now: deps.now?.() ?? new Date(),
+        },
+        { reader: deps.groupPickupClaimReader },
+      );
+      if (claim !== 'flag_off') {
+        deps.log.info(
+          { outcome: `group_pickup_${claim}`, providerMessageId: message.messageId },
+          'linq inbound: group pickup claim',
+        );
+      }
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'linq inbound: group pickup claim was not read',
       );
     }
   }
@@ -776,6 +835,17 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
         return json({ outcome: 'group_rate_limited' });
       }
       budget = 'chat';
+      const reminder = await groupReminderTurn(deps, message);
+      if (reminder) {
+        deps.log.info(
+          { outcome: reminder, providerMessageId: message.messageId },
+          'linq inbound: group turn',
+        );
+        await deps.countOutcome(reminderCount(reminder));
+        // Released for redelivery: Linq retries a 503 and the turn runs again from the top.
+        if (reminder === 'group_reminder_retry') return json({ outcome: reminder }, 503);
+        return json({ outcome: reminder });
+      }
     }
   }
   const outcome = await routeInboundText(deps, {
@@ -793,6 +863,50 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
   deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group routed');
   await deps.countOutcome(outcome);
   return json({ outcome });
+}
+
+/**
+ * VIL-448 — a reminder ask in the group, on a turn the AI turn reader sent to the coach.
+ * Null leaves the turn to the coach: the flag is off, the model did not read it as a
+ * reminder ask, or the reminder turn failed before it answered anything.
+ */
+async function groupReminderTurn(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+): Promise<GroupReminderHandled | null> {
+  if (!groupRemindersLive()) return null;
+  try {
+    const turn = await takeGroupReminderTurn(deps.database, message, {
+      now: deps.now?.() ?? new Date(),
+      reader: deps.groupReminderReader ?? sharedGroupReminderReader(),
+      voice:
+        deps.groupReminderVoice !== undefined
+          ? deps.groupReminderVoice
+          : sharedGroupReminderVoice(),
+      send: deps.sendGroupText,
+      recordInbound: (inbound, owner) => recordHandledInbound(deps, inbound, owner),
+    });
+    return turn.handled ? turn.outcome : null;
+  } catch (err) {
+    deps.log.warn(
+      { code: err instanceof Error ? err.name : 'unknown' },
+      'linq inbound: group reminder turn failed, left to the coach',
+    );
+    return null;
+  }
+}
+
+function reminderCount(outcome: GroupReminderHandled): InboundRouteOutcome {
+  if (outcome === 'already_answered') return 'duplicate';
+  if (
+    outcome === 'group_reminder_unwritten' ||
+    outcome === 'group_reminder_retry' ||
+    outcome === 'group_reminder_not_sent' ||
+    outcome === 'group_reminder_held'
+  ) {
+    return 'group_reminder_unsent';
+  }
+  return 'intake';
 }
 
 const GROUP_INBOUND_ROUTE = 'linq-group-inbound';

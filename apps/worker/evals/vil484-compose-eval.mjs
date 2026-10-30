@@ -1,4 +1,5 @@
 // VIL-484 · evening and morning-of registration texts, and co-parent night-before text.
+// VIL-488 · the heads-up registration text (a week out), written the same way.
 //
 // The model writes the whole text from facts. The night-before group text is then
 // fact-checked by a second model call (duty-night-check.md) before it can send. This
@@ -21,6 +22,7 @@
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
+import { parseEvalArgsOrExit } from './lib/eval-flags.mjs';
 import {
   JUDGE_MIN,
   PRICE,
@@ -39,6 +41,8 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const EVENING_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/evening-compose.ts');
 const MORNING_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/morning-compose.ts');
+const HEADS_UP_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/heads-up-compose.ts');
+const TEXT_CHECK_SRC = join(REPO_ROOT, 'apps/web/lib/registration/sequence/text-check.ts');
 const DUTY_SRC = join(REPO_ROOT, 'apps/web/lib/channel/coparent/duty/night-compose.ts');
 
 register({ tsconfig: WEB_TSCONFIG });
@@ -57,9 +61,17 @@ const MORNING_TOOL = {
   name: 'registration_morning_text',
   description: 'The one text Hale sends the parent just before registration opens.',
 };
+const HEADS_UP_TOOL = {
+  name: 'registration_heads_up_text',
+  description: 'The one text Hale sends the parent about a week before registration opens.',
+};
 const DUTY_TOOL = {
   name: 'duty_night_text',
   description: 'The one text Hale sends the group the evening before.',
+};
+const REG_CHECK_TOOL = {
+  name: 'registration_text_check',
+  description: 'Whether every claim in the draft is backed by the facts.',
 };
 const CHECK_TOOL = {
   name: 'duty_night_check',
@@ -79,6 +91,10 @@ const JUDGE_SYSTEM = [
   'it supersedes opensAt and opensOn, which are what Hale had before.',
   'For a morning-of registration text, pageShows is what the page shows now and supersedes',
   'had; when situation is already_open, saying registration opens later is a wrong fact.',
+  'For a heads-up registration text, next=plan_promised means the parent already said yes',
+  'and the text asks nothing; next=offer means it asks once whether Hale should help that',
+  'morning. A heads-up carries no link. When ageApproximate is true, asserting the child',
+  'fits the band is a wrong fact.',
   'Score 2 or lower for any claim the facts do not make (that something is booked, paid,',
   'registered, held or confirmed; a place, an address, a time, a child, a link or a price',
   'not in the facts), a wrong day or time, the wrong language, or a named child the facts',
@@ -270,6 +286,51 @@ const MORNING_BROKEN = [
   },
 ];
 
+const HEADS_UP_BASE = {
+  now: { date: 'Tuesday, September 8, 2026', time: '10:00 a.m.' },
+  window: 'Richmond Hill Fall 2026 recreation programs',
+  who: 'Max',
+  opensOn: 'Tuesday, September 15, 2026',
+  opensAt: '6:30 a.m.',
+  residentsFirst: false,
+  ageApproximate: false,
+};
+
+const HEADS_UP_FIXTURES = [
+  { id: 'heads-up-promised', facts: { ...HEADS_UP_BASE, language: 'en', next: 'plan_promised' } },
+  { id: 'heads-up-offer-fr', facts: { ...HEADS_UP_BASE, language: 'fr', next: 'offer' } },
+  {
+    id: 'heads-up-resident-hedged-teen',
+    facts: {
+      ...HEADS_UP_BASE,
+      language: 'en',
+      who: 'your teen',
+      residentsFirst: true,
+      ageApproximate: true,
+      next: 'offer',
+    },
+  },
+];
+const HEADS_UP_BY_ID = Object.fromEntries(HEADS_UP_FIXTURES.map((f) => [f.id, f.facts]));
+
+const HEADS_UP_BROKEN = [
+  {
+    id: 'broken-heads-up-registered',
+    facts: HEADS_UP_BY_ID['heads-up-promised'],
+    text: "Richmond Hill fall programs open next Tuesday at 6:30 a.m. I've already held Max a spot.",
+  },
+  {
+    id: 'broken-heads-up-account-set',
+    facts: HEADS_UP_BY_ID['heads-up-resident-hedged-teen'],
+    text: "Richmond Hill fall programs open next Tuesday at 6:30 a.m. for your teen. I checked your account and you're already signed up, so you're all set.",
+  },
+  {
+    id: 'broken-heads-up-wrong-day',
+    facts: HEADS_UP_BY_ID['heads-up-offer-fr'],
+    text: 'Les inscriptions de Richmond Hill ouvrent demain à 6 h 30 pour Max. Je vous aide ce matin-là?',
+  },
+];
+
 const NOW_DUTY = { date: 'Sunday, September 27, 2026', time: '7:00pm' };
 
 const DUTY_FIXTURES = [
@@ -368,9 +429,13 @@ const BROKEN_DRAFTS = [
 
 // ── offline gate calibration ($0) ───────────────────────────────────────────
 
-function brokenOffline(evening, duty, morning) {
-  const morningFacts = MORNING_FIXTURES[0].facts;
-  const eveningFacts = EVENING_FIXTURES[0].facts;
+// Captured before any --only narrowing, so the offline calibration always runs whole.
+const MORNING_FIRST = MORNING_FIXTURES[0].facts;
+const EVENING_FIRST = EVENING_FIXTURES[0].facts;
+
+function brokenOffline(evening, duty, morning, headsUp) {
+  const morningFacts = MORNING_FIRST;
+  const eveningFacts = EVENING_FIRST;
   const failures = [
     evening.eveningRefusals('   ', eveningFacts),
     evening.eveningRefusals('See https://evil.example/phish tonight.', eveningFacts),
@@ -381,6 +446,8 @@ function brokenOffline(evening, duty, morning) {
     morning.morningRefusals(`${morningFacts.link} https://evil.example/phish`, morningFacts),
     // The course page, not the sign-in link, is the one link on a gone course.
     morning.morningRefusals(`Check ${MORNING_BASE.link}`, MORNING_BY_ID['morning-course-gone']),
+    headsUp.headsUpRefusals('  '),
+    headsUp.headsUpRefusals('Opens Tuesday: https://www.richmondhill.ca/programs'),
   ];
   const kept = [
     evening.eveningRefusals('Have https://www.richmondhill.ca/programs open.', eveningFacts),
@@ -390,6 +457,7 @@ function brokenOffline(evening, duty, morning) {
       `Check the page: ${OAKVILLE_COURSE}`,
       MORNING_BY_ID['morning-course-gone'],
     ),
+    headsUp.headsUpRefusals('Richmond Hill opens next Tuesday at 6:30 a.m. for Max.'),
   ];
   return failures.every((f) => f.length > 0) && kept.every((f) => f.length === 0);
 }
@@ -408,23 +476,49 @@ function worst(model, inTokens, maxOut) {
 // ── main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const argv = process.argv;
-  const dry = argv.includes('--dry');
-  const broken = argv.includes('--broken');
-  const live = argv.includes('--live');
-  const cachedOnly = argv.includes('--cached-only');
-  if ([dry, broken, live, cachedOnly].filter(Boolean).length !== 1) {
-    console.error('vil484: pass exactly one of --dry, --broken, --cached-only, --live');
-    process.exit(2);
+  // `--max-usd <n>` is the harness's spend cap, not a mode; strip it before the parse.
+  const raw = process.argv.slice(2);
+  const modeArgs = raw.filter((a, i) => a !== '--max-usd' && raw[i - 1] !== '--max-usd');
+  const knownIds = [
+    ...EVENING_FIXTURES,
+    ...MORNING_FIXTURES,
+    ...HEADS_UP_FIXTURES,
+    ...DUTY_FIXTURES,
+    ...BROKEN_DRAFTS,
+    ...MORNING_BROKEN,
+    ...HEADS_UP_BROKEN,
+  ].map((f) => f.id);
+  const { mode, only } = parseEvalArgsOrExit('vil484', knownIds, modeArgs);
+  const dry = mode === 'dry';
+  const broken = mode === 'broken';
+  const live = mode === 'live';
+  const cachedOnly = mode === 'cached-only';
+  // `--only=<id>[,<id>]` narrows every fixture list, so one leg can be re-recorded
+  // without paying for the whole file.
+  if (only) {
+    for (const list of [
+      EVENING_FIXTURES,
+      MORNING_FIXTURES,
+      HEADS_UP_FIXTURES,
+      DUTY_FIXTURES,
+      BROKEN_DRAFTS,
+      MORNING_BROKEN,
+      HEADS_UP_BROKEN,
+    ]) {
+      const kept = list.filter((f) => only.includes(f.id));
+      list.splice(0, list.length, ...kept);
+    }
   }
 
   const agent = await importTs(AGENT_SRC);
   const evening = await importTs(EVENING_SRC);
   const duty = await importTs(DUTY_SRC);
   const morning = await importTs(MORNING_SRC);
+  const headsUp = await importTs(HEADS_UP_SRC);
+  const textCheck = await importTs(TEXT_CHECK_SRC);
 
   if (broken) {
-    const ok = brokenOffline(evening, duty, morning);
+    const ok = brokenOffline(evening, duty, morning, headsUp);
     console.info(`broken-mode calibration (must fail): ${ok ? 'PASS' : 'FAIL'}`);
     console.info('live calls: 0');
     process.exit(ok ? 0 : 1);
@@ -434,6 +528,10 @@ async function main() {
   const dutySkill = await agent.loadSkill(join(SKILLS, 'duty-night.md'));
   const morningSkill = await agent.loadSkill(join(SKILLS, 'registration-morning.md'));
   const morningLane = agent.pickLane(morningSkill.meta.task);
+  const headsUpSkill = await agent.loadSkill(join(SKILLS, 'registration-heads-up.md'));
+  const headsUpLane = agent.pickLane(headsUpSkill.meta.task);
+  const regCheckSkill = await agent.loadSkill(join(SKILLS, 'registration-text-check.md'));
+  const regCheckLane = agent.pickLane(regCheckSkill.meta.task);
   const checkSkill = await agent.loadSkill(join(SKILLS, 'duty-night-check.md'));
   const eveningLane = agent.pickLane(eveningSkill.meta.task);
   const dutyLane = agent.pickLane(dutySkill.meta.task);
@@ -462,11 +560,16 @@ async function main() {
       const msg = JSON.stringify(f.facts);
       usd +=
         morning.MORNING_MAX_ATTEMPTS *
-        worst(
+        (worst(
           morningLane.model,
           tokensFor(morningSkill.instructions) + tokensFor(msg) + 200,
           morning.MORNING_MAX_TOKENS,
-        );
+        ) +
+          worst(
+            regCheckLane.model,
+            tokensFor(regCheckSkill.instructions) + 2 * tokensFor(msg) + 400,
+            textCheck.REGISTRATION_TEXT_CHECK_MAX_TOKENS,
+          ));
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       calls += morning.MORNING_MAX_ATTEMPTS + 1;
     }
@@ -486,6 +589,39 @@ async function main() {
           ));
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
       calls += 2 * duty.DUTY_NIGHT_MAX_ATTEMPTS + 1;
+    }
+    let headsUpUsd = 0;
+    for (const f of HEADS_UP_FIXTURES) {
+      const msg = JSON.stringify(f.facts);
+      const one =
+        headsUp.HEADS_UP_MAX_ATTEMPTS *
+          (worst(
+            headsUpLane.model,
+            tokensFor(headsUpSkill.instructions) + tokensFor(msg) + 200,
+            headsUp.HEADS_UP_MAX_TOKENS,
+          ) +
+            worst(
+              regCheckLane.model,
+              tokensFor(regCheckSkill.instructions) + 2 * tokensFor(msg) + 400,
+              textCheck.REGISTRATION_TEXT_CHECK_MAX_TOKENS,
+            )) +
+        worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut);
+      usd += one;
+      headsUpUsd += one;
+      calls += 2 * headsUp.HEADS_UP_MAX_ATTEMPTS + 1;
+    }
+    for (const b of HEADS_UP_BROKEN) {
+      const msg = JSON.stringify({ facts: b.facts, text: b.text });
+      const one =
+        worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg) + 400, judgeMaxOut) +
+        worst(
+          regCheckLane.model,
+          tokensFor(regCheckSkill.instructions) + tokensFor(msg) + 400,
+          textCheck.REGISTRATION_TEXT_CHECK_MAX_TOKENS,
+        );
+      usd += one;
+      headsUpUsd += one;
+      calls += 2;
     }
     let morningUsd = 0;
     for (const f of MORNING_FIXTURES) {
@@ -516,6 +652,9 @@ async function main() {
       usd += worst(judgeModel, tokensFor(JUDGE_SYSTEM) + tokensFor(msg), judgeMaxOut);
       calls += 2;
     }
+    console.info(
+      `DRY heads-up-only (new in VIL-488) | worst $${headsUpUsd.toFixed(6)} | ${HEADS_UP_FIXTURES.length} fixtures + ${HEADS_UP_BROKEN.length} broken`,
+    );
     console.info(
       `DRY morning-only (re-keyed by this change) | worst $${morningUsd.toFixed(6)} | ${MORNING_FIXTURES.length} fixtures + ${MORNING_BROKEN.length} broken`,
     );
@@ -557,6 +696,24 @@ async function main() {
       toolDescription: CHECK_TOOL.description,
       toolSchema: duty.DUTY_NIGHT_CHECK_JSON_SCHEMA,
       maxTokens: duty.DUTY_NIGHT_CHECK_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    const unsupported = Array.isArray(value?.unsupported) ? value.unsupported : ['malformed'];
+    return { supported: value?.supported === true && unsupported.length === 0, unsupported };
+  }
+
+  async function regCheck(tag, kind, facts, text) {
+    const { value } = await cachedToolCall({
+      tag: `vil484:regcheck:${tag}`,
+      lane: regCheckLane,
+      system: regCheckSkill.instructions,
+      userMessage: textCheck.registrationTextCheckMessage(kind, facts, text),
+      toolName: REG_CHECK_TOOL.name,
+      toolDescription: REG_CHECK_TOOL.description,
+      toolSchema: textCheck.REGISTRATION_TEXT_CHECK_JSON_SCHEMA,
+      maxTokens: textCheck.REGISTRATION_TEXT_CHECK_MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
@@ -608,7 +765,48 @@ async function main() {
         morning.MORNING_MAX_TOKENS,
         attempt,
       );
-      if (morning.morningRefusals(draft, f.facts).length === 0) text = draft;
+      if (morning.morningRefusals(draft, f.facts).length > 0) continue;
+      const checked = await regCheck(`${f.id}#${attempt}`, 'morning', f.facts, draft);
+      if (checked.supported) text = draft;
+      else
+        console.info(
+          `     check blocked ${f.id}#${attempt}: ${JSON.stringify(checked.unsupported)}`,
+        );
+    }
+    if (text === null) {
+      failed += 1;
+      console.info(`FAIL ${f.id} | nothing sent`);
+      continue;
+    }
+    const verdict = await judge(f.id, { facts: f.facts, text });
+    const ok = verdict.score >= JUDGE_MIN;
+    if (!ok) failed += 1;
+    console.info(
+      `${ok ? 'PASS' : 'FAIL'} ${f.id} | judge ${verdict.score} | ${JSON.stringify(text)}`,
+    );
+    if (!ok) console.info(`     reason: ${verdict.reason}`);
+  }
+
+  for (const f of HEADS_UP_FIXTURES) {
+    const msg = JSON.stringify(f.facts);
+    let text = null;
+    for (let attempt = 1; attempt <= headsUp.HEADS_UP_MAX_ATTEMPTS && text === null; attempt += 1) {
+      const draft = await compose(
+        f.id,
+        headsUpLane,
+        headsUpSkill,
+        HEADS_UP_TOOL,
+        msg,
+        headsUp.HEADS_UP_MAX_TOKENS,
+        attempt,
+      );
+      if (headsUp.headsUpRefusals(draft).length > 0) continue;
+      const checked = await regCheck(`${f.id}#${attempt}`, 'heads_up', f.facts, draft);
+      if (checked.supported) text = draft;
+      else
+        console.info(
+          `     check blocked ${f.id}#${attempt}: ${JSON.stringify(checked.unsupported)}`,
+        );
     }
     if (text === null) {
       failed += 1;
@@ -681,11 +879,27 @@ async function main() {
       `${caught ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | judge ${verdict.score}`,
     );
   }
-  const offline = brokenOffline(evening, duty, morning);
-  const brokenOk = brokenCaught === BROKEN_DRAFTS.length + MORNING_BROKEN.length && offline;
+  // Heads-up false claims: the send-time check must block AND the judge must score low.
+  for (const b of HEADS_UP_BROKEN) {
+    const checked = await regCheck(b.id, 'heads_up', b.facts, b.text);
+    const verdict = await judge(b.id, { facts: b.facts, text: b.text });
+    const caught = !checked.supported && verdict.score <= 2;
+    if (caught) brokenCaught += 1;
+    console.info(
+      `${caught ? 'BROKEN-FAILS (good)' : 'BROKEN-PASSED (bad)'} ${b.id} | check ${checked.supported ? 'pass' : `blocked ${JSON.stringify(checked.unsupported)}`} | judge ${verdict.score}`,
+    );
+  }
+  const offline = brokenOffline(evening, duty, morning, headsUp);
+  const brokenOk =
+    brokenCaught === BROKEN_DRAFTS.length + MORNING_BROKEN.length + HEADS_UP_BROKEN.length &&
+    offline;
   console.info(`broken-mode calibration (must fail): ${brokenOk ? 'PASS' : 'FAIL'}`);
 
-  const total = EVENING_FIXTURES.length + MORNING_FIXTURES.length + DUTY_FIXTURES.length;
+  const total =
+    EVENING_FIXTURES.length +
+    MORNING_FIXTURES.length +
+    HEADS_UP_FIXTURES.length +
+    DUTY_FIXTURES.length;
   console.info(
     `vil484 | ${total - failed} of ${total} passed | live calls: ${cost.liveCalls} | spent $${totalUsd(cost).toFixed(6)}`,
   );

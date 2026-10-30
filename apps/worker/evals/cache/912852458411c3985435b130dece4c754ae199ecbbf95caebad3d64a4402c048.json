@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text says Reminder set! but facts show nothing is set and Hale still needs a time. It fails to ask Ruth when she wants the reminder, so mustSay items are missing and the claim is false."
+  }
+}
