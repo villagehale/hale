@@ -254,6 +254,9 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
   [
     'lib/channel/proactive/review.ts',
     'the proactive review — reads an event id only, as a sign that something changed since a hold',
+  ],  [
+    'lib/channel/linq/group-plan-invites.ts',
+    "the VIL-455 group plan fan-out — writes each family's own copy of the plan the group agreed, keyed by group_plan_copy_key, and reads back only family ids; it never reads another household's titles or locations",
   ],
   [
     'lib/channel/linq/household-calendar.ts',

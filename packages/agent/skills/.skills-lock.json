@@ -171,6 +171,14 @@
     "file": "group-pickup-claim-read.md",
     "sha256": "a932bc46688dac5c1f9b60973dc26668eb965e8e436ceab93b3663dcaf90fb7e"
   },
+  "group-plan-attendance-read.md": {
+    "file": "group-plan-attendance-read.md",
+    "sha256": "d19d41158b7257934300aedf22ac021de5096122d843845f004dc901aa788c11"
+  },
+  "group-plan-invite-note.md": {
+    "file": "group-plan-invite-note.md",
+    "sha256": "e2398f233a3c5f97c51282d12f85cf3adecb06befb17add4b2c33d94e493b6d0"
+  },
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",
     "sha256": "359d220a3a9b8fcc4572055584b3df54a3fd860508bf7de0046c6aff10040e3b"
