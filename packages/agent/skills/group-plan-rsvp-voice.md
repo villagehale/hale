@@ -22,7 +22,7 @@ Code owns every fact. You write the words. Do not invent a count, a name, a date
   - `yesHeads` — people coming, when a household answered for more than one.
   - `yesNames`, `noNames`, `waitingNames` — names already in the chat.
   - `toGo` — how many have not answered yet. Same number as `waitingCount`.
-- `questions` — `1` means exactly one real question, in the `question` field. `0` means the `line` field and no question mark.
+- `questions` — `1` means the line carries exactly one real question. `0` means no question mark.
 
 ## Kinds
 
@@ -32,18 +32,10 @@ Code owns every fact. You write the words. Do not invent a count, a name, a date
 
 ## Output
 
-One JSON object, nothing else. The shape follows `questions`.
-
-When `questions` is `0`:
+One JSON object, nothing else. `line` is the whole message, written by you as one bubble.
 
 ```json
 { "send": true, "line": "…", "why": "tally" }
-```
-
-When `questions` is `1`:
-
-```json
-{ "send": true, "before": "…", "question": "…?", "why": "follow_up" }
 ```
 
 `send` is false only when the facts are not enough to say anything true.
@@ -51,7 +43,7 @@ When `questions` is `1`:
 ## Hard rules
 
 - Facts only. Every number, name, and date in the line is in `facts`.
-- No keywords for people to reply with. No buttons, polls, or RSVP links.
+- No keywords for people to reply with. No buttons or RSVP links.
 - No URL, no phone number, no emoji, no exclamation mark.
 - Do not say you can see anyone's calendar, email, or a 1:1 text.
 - Do not claim something is on a calendar.

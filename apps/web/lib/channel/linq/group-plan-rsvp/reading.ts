@@ -14,6 +14,12 @@ import type { PlanRsvpResponse } from './tally';
  * Tapbacks are a protocol mapping (Linq reaction types), not a wording rule.
  * Heart / thumbs-up are a yes; thumbs-down is a no. Plain language is read by
  * the skill in any wording. Low confidence means no state change.
+ *
+ * VIL-471 — the same read covers group polls when `polls` is on the request:
+ * a parent starting one (question and choices in their own words), anyone
+ * picking a choice in plain language, or asking where the poll stands. The
+ * model names the choice by its opaque key; code checks the key exists and
+ * never compares the message to an option.
  */
 
 export const GROUP_PLAN_RSVP_INTENTS = [
@@ -21,10 +27,26 @@ export const GROUP_PLAN_RSVP_INTENTS = [
   'rsvp',
   'edit',
   'ask_tally',
+  'start_poll',
+  'poll_vote',
+  'ask_poll',
   'chatter',
   'unclear',
 ] as const;
 export type GroupPlanRsvpIntent = (typeof GROUP_PLAN_RSVP_INTENTS)[number];
+
+export const GROUP_POLL_INTENTS = ['start_poll', 'poll_vote', 'ask_poll'] as const;
+export type GroupPollIntent = (typeof GROUP_POLL_INTENTS)[number];
+
+export function isGroupPollIntent(intent: GroupPlanRsvpIntent): intent is GroupPollIntent {
+  return (GROUP_POLL_INTENTS as readonly string[]).includes(intent);
+}
+
+/** The live poll as the reader sees it. Keys only, no ids. */
+export interface GroupPollReadView {
+  question: string | null;
+  options: readonly { key: string; text: string }[];
+}
 
 export interface GroupPlanRsvpReadInput {
   text: string;
@@ -37,6 +59,8 @@ export interface GroupPlanRsvpReadInput {
     waitingNames: string[];
   } | null;
   recent: readonly { from: 'hale' | 'member'; text: string }[];
+  /** Present only while group polls are on. `live` is null when no poll is open. */
+  polls?: { live: GroupPollReadView | null };
 }
 
 export interface GroupPlanRsvpReading {
@@ -50,6 +74,12 @@ export interface GroupPlanRsvpReading {
   householdLabel: string | null;
   coversNames: string[];
   confidence: 'high' | 'low';
+  /** `start_poll`: the question, in the parent's words, or null when they gave none. */
+  pollQuestion?: string | null;
+  /** `start_poll`: the choices, in the parent's words and order. */
+  pollOptions?: string[];
+  /** `poll_vote`: the key of the choice the sender now stands on. */
+  pollChoice?: string | null;
 }
 
 export interface GroupPlanRsvpReader {
@@ -67,6 +97,9 @@ const outputSchema = z.object({
   householdLabel: z.string().nullable(),
   coversNames: z.array(z.string()),
   confidence: z.enum(['high', 'low']),
+  pollQuestion: z.string().nullable(),
+  pollOptions: z.array(z.string()),
+  pollChoice: z.string().nullable(),
 });
 
 const outputJsonSchema = {
@@ -83,6 +116,9 @@ const outputJsonSchema = {
     householdLabel: { type: ['string', 'null'] },
     coversNames: { type: 'array', items: { type: 'string' } },
     confidence: { type: 'string', enum: ['high', 'low'] },
+    pollQuestion: { type: ['string', 'null'] },
+    pollOptions: { type: 'array', items: { type: 'string' } },
+    pollChoice: { type: ['string', 'null'] },
   },
   required: [
     'intent',
@@ -95,6 +131,9 @@ const outputJsonSchema = {
     'householdLabel',
     'coversNames',
     'confidence',
+    'pollQuestion',
+    'pollOptions',
+    'pollChoice',
   ],
 } as const;
 
@@ -105,6 +144,7 @@ export function groupPlanRsvpUserMessage(input: GroupPlanRsvpReadInput): string 
     senderName: input.senderName,
     plan: input.plan,
     recent: input.recent.slice(-6),
+    ...(input.polls ? { polls: input.polls } : {}),
   });
 }
 
@@ -155,7 +195,7 @@ export function createGroupPlanRsvpReader(
       toolDescription: 'Return what this group message meant for a shared plan.',
       inputJsonSchema: outputJsonSchema,
       schema: outputSchema,
-      maxTokens: 300,
+      maxTokens: GROUP_PLAN_RSVP_READ_MAX_TOKENS,
     });
     return value;
   };
@@ -192,4 +232,4 @@ export function sharedGroupPlanRsvpReader(): GroupPlanRsvpReader {
 }
 
 export const GROUP_PLAN_RSVP_READ_TOOL_SCHEMA = outputJsonSchema;
-export const GROUP_PLAN_RSVP_READ_MAX_TOKENS = 300;
+export const GROUP_PLAN_RSVP_READ_MAX_TOKENS = 400;

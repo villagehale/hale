@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text says only 'Reminder set!' and omits mustSay items: who is reminded, the Thursday 4 PM time, that it arrives in the group chat, and how to change it. Missing core facts earns a low score."
+  }
+}

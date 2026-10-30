@@ -136,10 +136,12 @@ describe('takeGroupPlanRsvpTurn', () => {
     expect(start.tally?.toGo).toBe(3);
     expect(start.tally?.waitingNames).toEqual(['Priya', 'Sam', 'Maya']);
     expect(texts).toHaveLength(1);
-    expect(composer.calls[0]?.input.kind).toBe('tracking_started');
-    expect(composer.calls[0]?.input.facts.title).toBe('Saturday picnic');
-    expect(composer.calls[0]?.input.facts.waitingNames).toEqual(['Priya', 'Sam', 'Maya']);
-    expect(composer.calls[0]?.input.questions).toBe(1);
+    const line = composer.calls[0]?.input;
+    if (line?.skill !== 'group-plan-rsvp-voice') throw new Error('expected a plan line');
+    expect(line.kind).toBe('tracking_started');
+    expect(line.facts.title).toBe('Saturday picnic');
+    expect(line.facts.waitingNames).toEqual(['Priya', 'Sam', 'Maya']);
+    expect(line.questions).toBe(1);
   });
 
   it('records an ordinary yes from a non-customer and stays quiet', async () => {

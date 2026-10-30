@@ -40,6 +40,7 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/channel/nudge/saturday-plans.ts': 'household',
   'apps/web/lib/channel/coparent/duty/calendar.ts': 'household',
   'apps/web/lib/channel/coparent/duty/metrics.ts': 'household',
+  'apps/web/lib/channel/linq/household-calendar.ts': 'household',
   'apps/web/lib/channel/proactive/snapshot.ts': 'household',
   'apps/web/lib/channel/proactive/review.ts': 'household',
   'apps/web/lib/channel/reconcile/view.ts': 'household',
@@ -57,6 +58,8 @@ const DOORS: Record<string, Door> = {
   // parent's own; each reads the rows only to pick and audit the ones it removes
   'apps/web/lib/integrations/kid-relevance/untrack.ts': 'writer',
   'apps/web/lib/integrations/kid-relevance/backfill.ts': 'writer',
+  // VIL-455: writes each family's copy of a group plan, keyed by group_plan_copy_key
+  'apps/web/lib/channel/linq/group-plan-invites.ts': 'writer',
   // source = 'party', or joined through party_invites
   'apps/web/lib/party/reply.ts': 'scoped',
   'apps/web/lib/party/store.ts': 'scoped',

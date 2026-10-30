@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text says 'Reminder set!' which states the opposite of the fact that no reminder was set for Jordan. It misses all three mustSay items: no reminder set, Jordan is not in the chat, and no implied alternate reminder."
+  }
+}

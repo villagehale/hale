@@ -4,25 +4,34 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { seatParticipantAdded } from './group-members';
 import {
-  MULTI_FAMILY_JOINED_TEXT,
-  MULTI_FAMILY_SHARED_REPLY,
   joinFamilyToSharedGroup,
+  noticeSharedGroupAdded,
   readFamilySliceForAudience,
+  takeMultiFamilyReaction,
   takeMultiFamilyTurn,
   unseatMultiFamilyMember,
 } from './multi-family';
+import type { ListChatHandles } from './roster';
+import type { SharedGroupReader, SharedGroupReading } from './shared-group-reading';
+import { fakeSharedGroupComposer } from './shared-group-voice-fake';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const PARENT_A = '+14165550111';
-const PARENT_B = '+14165550222';
 const FROM = '+16462352164';
-const NOW = new Date('2026-10-02T15:00:00.000Z');
+const NOW = new Date('2026-10-28T15:00:00.000Z');
 const CHAT = 'chat-shared-group';
 const CHILD = 'Zephyrina';
 const MEMORY = 'zephyr-memory-token';
 const CALENDAR = 'zephyr-calendar-token';
+
+const MEI = '+16415550101';
+const TOM = '+16415550102';
+const ADA = '+16415550201';
+const JORDAN = '+16415550202';
+const PRIYA = '+16415550301';
+const SAM = '+16415550302';
+const GUEST = '+16415550303';
+const SEVEN = [MEI, TOM, ADA, JORDAN, PRIYA, SAM, GUEST];
 
 let db: TestDb;
 
@@ -45,7 +54,9 @@ beforeEach(() => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
-  await db.exec('truncate table families, users cascade');
+  await db.exec(
+    'truncate table linq_shared_group_people, linq_multi_family_joins, linq_multi_family_members, linq_multi_family_ledger, families, users cascade',
+  );
 });
 
 function sender() {
@@ -57,31 +68,55 @@ function sender() {
   return { send, texts };
 }
 
-async function seedFamily(phone: string, name: string) {
-  const [family] = await db.database
-    .insert(schema.families)
-    .values({ displayName: name, provinceOrState: 'ON' })
-    .returning({ id: schema.families.id });
+function listOf(handles: readonly string[]): ListChatHandles {
+  return async () => ({ status: 'ok', handles: [...handles], isGroup: true });
+}
+
+function reading(
+  intent: SharedGroupReading['intent'],
+  extra: Partial<SharedGroupReading> = {},
+): SharedGroupReader {
+  return {
+    async read() {
+      return {
+        intent,
+        role: extra.role ?? 'unclear',
+        familyLabel: extra.familyLabel ?? null,
+        kidName: extra.kidName ?? null,
+        confidence: extra.confidence ?? 'high',
+      };
+    },
+  };
+}
+
+async function seedParent(phone: string, name: string, familyId?: string) {
+  let home = familyId;
+  if (!home) {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({ displayName: name, provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    home = family?.id as string;
+  }
   const [user] = await db.database
     .insert(schema.users)
-    .values({ externalAuthId: `imessage:${name}`, name })
+    .values({ externalAuthId: `imessage:${name}-${phone}`, name })
     .returning({ id: schema.users.id });
-  const familyId = family?.id as string;
   const userId = user?.id as string;
   await db.database.insert(schema.familyMembers).values({
-    familyId,
+    familyId: home,
     userId,
-    role: 'primary_parent',
+    role: familyId ? 'co_parent' : 'primary_parent',
   });
   await db.database.insert(schema.parentChannels).values({
     userId,
-    familyId,
+    familyId: home,
     kind: 'sms',
     phoneE164Encrypted: encryptString(phone),
     phoneE164Hash: phoneBlindIndex(phone),
     verifiedAt: NOW,
   });
-  return { familyId, userId };
+  return { familyId: home, userId, name, phone };
 }
 
 async function seedPrivate(familyId: string) {
@@ -104,128 +139,292 @@ async function seedPrivate(familyId: string) {
   });
 }
 
-describe('multi-family joins', () => {
+async function threeFamilies() {
+  const mei = await seedParent(MEI, 'Mei');
+  const tom = await seedParent(TOM, 'Tom', mei.familyId);
+  const ada = await seedParent(ADA, 'Ada');
+  const jordan = await seedParent(JORDAN, 'Jordan', ada.familyId);
+  const priya = await seedParent(PRIYA, 'Priya');
+  await seedPrivate(ada.familyId);
+  return { mei, tom, ada, jordan, priya };
+}
+
+describe('multi-family zero-setup', () => {
   it('does nothing while the flag is off', async () => {
     vi.stubEnv('LINQ_MULTI_FAMILY_GROUPS_ENABLED', 'false');
-    const home = await seedFamily(PARENT_A, 'Ada');
+    const home = await seedParent(MEI, 'Mei');
     const wire = sender();
     const joined = await joinFamilyToSharedGroup(db.database, {
       chatId: CHAT,
       familyId: home.familyId,
       userId: home.userId,
-      phone: PARENT_A,
-      verbatim: 'our family is in this group',
+      phone: MEI,
+      verbatim: 'count us in',
       now: NOW,
       send: wire.send,
     });
     expect(joined).toEqual({ outcome: 'flag_off' });
     expect(wire.texts).toEqual([]);
-    const joins = await db.database.select().from(schema.linqMultiFamilyJoins);
-    expect(joins).toEqual([]);
   });
 
-  it('seats a family only after that family explicitly joins, and writes their consent', async () => {
-    const ada = await seedFamily(PARENT_A, 'Ada');
-    const bao = await seedFamily(PARENT_B, 'Bao');
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: CHAT })
-      .where(eq(schema.families.id, ada.familyId));
+  it('answers the first ask with no join phrase and links each known number to its own family', async () => {
+    const homes = await threeFamilies();
     const wire = sender();
-
-    const guessed = await seatParticipantAdded(db.database, {
-      chatId: CHAT,
-      participantHandle: PARENT_B,
-      actorHandle: PARENT_A,
-      isFromMe: false,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(guessed).toEqual({ outcome: 'group_member_refused', reason: 'other_family' });
-
-    const first = await takeMultiFamilyTurn(db.database, {
-      chatId: CHAT,
-      senderHandle: PARENT_A,
-      text: 'our family is in this group',
-      providerMessageId: 'in-1',
-      receivedAt: NOW,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(first).toMatchObject({ handled: true, outcome: 'joined' });
-    expect(wire.texts).toEqual([MULTI_FAMILY_JOINED_TEXT]);
-
-    const quiet = await takeMultiFamilyTurn(db.database, {
-      chatId: CHAT,
-      senderHandle: PARENT_B,
-      text: 'hello from the other family',
-      providerMessageId: 'in-2',
-      receivedAt: NOW,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(quiet.handled).toBe(false);
-
-    const second = await takeMultiFamilyTurn(db.database, {
-      chatId: CHAT,
-      senderHandle: PARENT_B,
-      text: 'notre famille est dans ce groupe',
-      providerMessageId: 'in-3',
-      receivedAt: NOW,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(second).toMatchObject({ handled: true, outcome: 'joined' });
-
-    const joins = await db.database.select().from(schema.linqMultiFamilyJoins);
-    expect(joins.filter((row) => row.leftAt == null)).toHaveLength(2);
-    const consents = await db.database
-      .select({
-        familyId: schema.consentRecords.familyId,
-        granted: schema.consentRecords.granted,
-        consentType: schema.consentRecords.consentType,
-      })
-      .from(schema.consentRecords);
-    expect(consents).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          familyId: ada.familyId,
-          granted: true,
-          consentType: 'multi_family_group',
-        }),
-        expect.objectContaining({
-          familyId: bao.familyId,
-          granted: true,
-          consentType: 'multi_family_group',
-        }),
-      ]),
+    const voice = fakeSharedGroupComposer();
+    const first = await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        text: 'Hale, can you keep track of who is coming to Saturday swim?',
+        providerMessageId: 'in-1',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      {
+        listHandles: listOf(SEVEN),
+        reader: reading('question'),
+        composer: voice,
+      },
     );
+    expect(first).toMatchObject({ handled: true, outcome: 'shared_reply' });
+    expect(wire.texts).toHaveLength(1);
+    expect(wire.texts[0]).not.toContain('TODO-Design');
+    expect(wire.texts[0]).not.toContain(CHILD);
+    expect(wire.texts[0]).not.toContain(MEMORY);
+    expect(wire.texts[0]).not.toContain(CALENDAR);
+
+    const joins = await db.database.select().from(schema.linqMultiFamilyJoins);
+    const live = joins.filter((row) => row.leftAt == null);
+    expect(live.map((row) => row.familyId).sort()).toEqual(
+      [homes.mei.familyId, homes.ada.familyId, homes.priya.familyId].sort(),
+    );
+    expect(new Set(live.map((row) => row.familyId)).size).toBe(3);
+
+    const people = await db.database.select().from(schema.linqSharedGroupPeople);
+    const byHash = new Map(people.map((row) => [row.phoneE164Hash, row]));
+    expect(byHash.get(phoneBlindIndex(MEI))?.familyId).toBe(homes.mei.familyId);
+    expect(byHash.get(phoneBlindIndex(TOM))?.familyId).toBe(homes.mei.familyId);
+    expect(byHash.get(phoneBlindIndex(ADA))?.familyId).toBe(homes.ada.familyId);
+    expect(byHash.get(phoneBlindIndex(PRIYA))?.familyId).toBe(homes.priya.familyId);
+    expect(byHash.get(phoneBlindIndex(SAM))?.familyId).toBeNull();
+    expect(byHash.get(phoneBlindIndex(GUEST))?.familyId).toBeNull();
   });
 
-  it('keeps each family private and answers the shared thread from the placeholder only', async () => {
-    const ada = await seedFamily(PARENT_A, 'Ada');
-    const bao = await seedFamily(PARENT_B, 'Bao');
-    await seedPrivate(bao.familyId);
+  it('stays quiet on banter and never merges two families', async () => {
+    await threeFamilies();
     const wire = sender();
-    await joinFamilyToSharedGroup(db.database, {
-      chatId: CHAT,
-      familyId: ada.familyId,
-      userId: ada.userId,
-      phone: PARENT_A,
-      verbatim: 'our family is in this group',
-      now: NOW,
-      send: wire.send,
-    });
-    await joinFamilyToSharedGroup(db.database, {
-      chatId: CHAT,
-      familyId: bao.familyId,
-      userId: bao.userId,
-      phone: PARENT_B,
-      verbatim: 'our family is in this group',
-      now: NOW,
-      send: wire.send,
-    });
+    const voice = fakeSharedGroupComposer();
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        text: 'Hale, Saturday swim — can you keep track?',
+        providerMessageId: 'in-ask',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      { listHandles: listOf(SEVEN), reader: reading('question'), composer: voice },
+    );
+    const before = wire.texts.length;
+    const banter = await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: TOM,
+        text: 'I can bring orange slices',
+        providerMessageId: 'in-banter',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      { listHandles: listOf(SEVEN), reader: reading('chatter'), composer: voice },
+    );
+    // Chatter hands the turn back so the group door (text RSVP) still reads it.
+    expect(banter).toEqual({ handled: false });
+    expect(wire.texts).toHaveLength(before);
 
+    const mei = (await db.database.select().from(schema.linqSharedGroupPeople)).find(
+      (row) => row.phoneE164Hash === phoneBlindIndex(MEI),
+    );
+    const ada = (await db.database.select().from(schema.linqSharedGroupPeople)).find(
+      (row) => row.phoneE164Hash === phoneBlindIndex(ADA),
+    );
+    expect(mei?.familyId).toBeTruthy();
+    expect(ada?.familyId).toBeTruthy();
+    expect(mei?.familyId).not.toBe(ada?.familyId);
+  });
+
+  for (const [label, intent, composer] of [
+    ['an unclear read', 'unclear', () => fakeSharedGroupComposer()],
+    ['a refused answer', 'question', () => fakeSharedGroupComposer({ decline: true })],
+    ['a failed answer', 'question', () => fakeSharedGroupComposer({ fail: true })],
+    ['a refused yes', 'yes', () => fakeSharedGroupComposer({ decline: true })],
+  ] as const) {
+    it(`hands the turn back on ${label} so text RSVP still reads it`, async () => {
+      await threeFamilies();
+      const wire = sender();
+      await takeMultiFamilyTurn(
+        db.database,
+        {
+          chatId: CHAT,
+          senderHandle: MEI,
+          text: 'Hale, Saturday swim — can you keep track?',
+          providerMessageId: 'in-ask',
+          receivedAt: NOW,
+          now: NOW,
+          send: wire.send,
+        },
+        {
+          listHandles: listOf(SEVEN),
+          reader: reading('question'),
+          composer: fakeSharedGroupComposer(),
+        },
+      );
+      const before = wire.texts.length;
+      const out = await takeMultiFamilyTurn(
+        db.database,
+        {
+          chatId: CHAT,
+          senderHandle: TOM,
+          text: 'we are in for saturday',
+          providerMessageId: `in-${label}`,
+          receivedAt: NOW,
+          now: NOW,
+          send: wire.send,
+        },
+        { listHandles: listOf(SEVEN), reader: reading(intent), composer: composer() },
+      );
+      expect(out).toEqual({ handled: false });
+      expect(wire.texts).toHaveLength(before);
+    });
+  }
+
+  it('unseats on a stop_me reading and leaves the others on Hale', async () => {
+    await threeFamilies();
+    const wire = sender();
+    const voice = fakeSharedGroupComposer();
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        text: 'Hale, keep track of Saturday?',
+        providerMessageId: 'in-ask',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      { listHandles: listOf(SEVEN), reader: reading('question'), composer: voice },
+    );
+    const stopped = await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: JORDAN,
+        text: 'I will bring the orange slices',
+        providerMessageId: 'in-stop',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      {
+        listHandles: listOf(SEVEN),
+        reader: reading('stop_me'),
+        composer: voice,
+        optOut: async () => 'stop',
+      },
+    );
+    expect(stopped).toMatchObject({ handled: true, outcome: 'member_stopped' });
+    const jordan = (await db.database.select().from(schema.linqSharedGroupPeople)).find(
+      (row) => row.phoneE164Hash === phoneBlindIndex(JORDAN),
+    );
+    expect(jordan?.stoppedAt).toEqual(NOW);
+    const later = await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: JORDAN,
+        text: 'actually what time was swim',
+        providerMessageId: 'in-after-stop',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      { listHandles: listOf(SEVEN), reader: reading('question'), composer: voice },
+    );
+    expect(later).toMatchObject({ handled: true, outcome: 'member_stopped' });
+    const meiStill = await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        text: 'Hale, how many are in?',
+        providerMessageId: 'in-after-group',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      { listHandles: listOf(SEVEN), reader: reading('question'), composer: voice },
+    );
+    expect(meiStill).toMatchObject({ handled: true, outcome: 'shared_reply' });
+  });
+
+  it('reads a heart on Hale as a yes and never sends a poll card', async () => {
+    await threeFamilies();
+    const wire = sender();
+    const voice = fakeSharedGroupComposer();
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        text: 'Hale, who is in for Saturday swim?',
+        providerMessageId: 'in-ask',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      { listHandles: listOf(SEVEN), reader: reading('question'), composer: voice },
+    );
+    const yes = await takeMultiFamilyReaction(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        reactionType: 'love',
+        providerMessageId: 'in-heart',
+        now: NOW,
+      },
+      { send: wire.send, listHandles: listOf(SEVEN), reader: reading('yes'), composer: voice },
+    );
+    expect(yes).toMatchObject({ handled: true, outcome: 'yes' });
+    expect(wire.texts.join('\n')).not.toMatch(/poll|RSVP|button/i);
+  });
+
+  it('keeps each family private on the shared thread', async () => {
+    const homes = await threeFamilies();
+    const wire = sender();
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        text: 'Hale, Saturday swim?',
+        providerMessageId: 'in-ask',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      {
+        listHandles: listOf(SEVEN),
+        reader: reading('question'),
+        composer: fakeSharedGroupComposer(),
+      },
+    );
     const sqls: string[] = [];
     const real = db.client.query.bind(db.client);
     db.client.query = (async (text: string, ...rest: unknown[]) => {
@@ -234,104 +433,93 @@ describe('multi-family joins', () => {
     }) as typeof db.client.query;
     const shared = await readFamilySliceForAudience(db.database, {
       chatId: CHAT,
-      dataFamilyId: bao.familyId,
+      dataFamilyId: homes.ada.familyId,
       audience: 'shared_thread',
     });
     const other = await readFamilySliceForAudience(db.database, {
       chatId: CHAT,
-      dataFamilyId: bao.familyId,
-      audience: ada.familyId,
+      dataFamilyId: homes.ada.familyId,
+      audience: homes.mei.familyId,
     });
     const seen = sqls.join('\n');
     expect(seen).not.toMatch(
       /children|family_memory_facts|family_events|email_forwards_pending|activity_bookings/,
     );
     db.client.query = real;
-
     expect(shared.slice.children).toEqual([]);
-    expect(shared.slice.memory).toEqual([]);
-    expect(shared.slice.calendar).toEqual([]);
-    expect(shared.slice.email).toEqual([]);
-    expect(shared.slice.signups).toEqual([]);
     expect(other.reason).toBe('other_family');
-    expect(other.slice.children).toEqual([]);
-
     const own = await readFamilySliceForAudience(db.database, {
       chatId: CHAT,
-      dataFamilyId: bao.familyId,
-      audience: bao.familyId,
+      dataFamilyId: homes.ada.familyId,
+      audience: homes.ada.familyId,
     });
     expect(own.reason).toBe('consented');
     expect(own.slice.children).toEqual([CHILD]);
-    expect(own.slice.memory).toEqual([MEMORY]);
     expect(own.slice.calendar).toEqual([]);
-
-    const reply = await takeMultiFamilyTurn(db.database, {
-      chatId: CHAT,
-      senderHandle: PARENT_A,
-      text: 'saturday at the park',
-      providerMessageId: 'in-reply',
-      receivedAt: NOW,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(reply).toMatchObject({ handled: true, outcome: 'shared_reply' });
-    expect(wire.texts.at(-1)).toBe(MULTI_FAMILY_SHARED_REPLY);
-    const outbound = wire.texts.join('\n');
-    expect(outbound).not.toContain(CHILD);
-    expect(outbound).not.toContain(MEMORY);
-    expect(outbound).not.toContain(CALENDAR);
-    expect(outbound).not.toContain('hidden-memory');
   });
 
-  it('leaves the family and unseats a removed member without dropping the join', async () => {
-    const ada = await seedFamily(PARENT_A, 'Ada');
+  it('introduces once when Hale is added, then a family can leave without a phrase', async () => {
+    const homes = await threeFamilies();
     const wire = sender();
-    await joinFamilyToSharedGroup(db.database, {
-      chatId: CHAT,
-      familyId: ada.familyId,
-      userId: ada.userId,
-      phone: PARENT_A,
-      verbatim: 'our family is in this group',
-      now: NOW,
-      send: wire.send,
-    });
+    const voice = fakeSharedGroupComposer();
+    const intro = await noticeSharedGroupAdded(
+      db.database,
+      { chatId: CHAT, adderHandle: MEI, now: NOW, handles: SEVEN },
+      { send: wire.send, listHandles: listOf(SEVEN), composer: voice },
+    );
+    expect(intro).toMatchObject({ handled: true, outcome: 'intro' });
+    expect(wire.texts).toHaveLength(1);
+    expect(voice.calls[0]?.input.kind).toBe('intro');
+
+    const left = await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        text: 'we are out of the carpool this season',
+        providerMessageId: 'in-leave',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      { listHandles: listOf(SEVEN), reader: reading('leave'), composer: voice },
+    );
+    expect(left).toMatchObject({ handled: true, outcome: 'left' });
+    const joins = await db.database
+      .select({ leftAt: schema.linqMultiFamilyJoins.leftAt })
+      .from(schema.linqMultiFamilyJoins)
+      .where(eq(schema.linqMultiFamilyJoins.familyId, homes.priya.familyId));
+    expect(joins[0]?.leftAt).toEqual(NOW);
+  });
+
+  it('unseats a removed member without dropping the family join', async () => {
+    await threeFamilies();
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        text: 'Hale, Saturday?',
+        providerMessageId: 'in-ask',
+        receivedAt: NOW,
+        now: NOW,
+        send: sender().send,
+      },
+      {
+        listHandles: listOf(SEVEN),
+        reader: reading('question'),
+        composer: fakeSharedGroupComposer(),
+      },
+    );
     const removed = await unseatMultiFamilyMember(db.database, {
       chatId: CHAT,
-      participantHandle: PARENT_A,
+      participantHandle: MEI,
       now: NOW,
     });
     expect(removed.outcome).toBe('linq_multi_family_unseated');
     const still = await db.database
       .select({ leftAt: schema.linqMultiFamilyJoins.leftAt })
       .from(schema.linqMultiFamilyJoins);
-    expect(still[0]?.leftAt).toBeNull();
-
-    const left = await takeMultiFamilyTurn(db.database, {
-      chatId: CHAT,
-      senderHandle: PARENT_A,
-      text: 'our family is leaving this group',
-      providerMessageId: 'in-leave',
-      receivedAt: NOW,
-      now: NOW,
-      send: wire.send,
-    });
-    expect(left).toMatchObject({ handled: true, outcome: 'left' });
-    const joins = await db.database
-      .select({ leftAt: schema.linqMultiFamilyJoins.leftAt })
-      .from(schema.linqMultiFamilyJoins)
-      .where(eq(schema.linqMultiFamilyJoins.familyId, ada.familyId));
-    expect(joins[0]?.leftAt).toEqual(NOW);
-    const withdrawn = await db.database
-      .select({ granted: schema.consentRecords.granted })
-      .from(schema.consentRecords);
-    expect(withdrawn.some((row) => row.granted === false)).toBe(true);
-    const after = await readFamilySliceForAudience(db.database, {
-      chatId: CHAT,
-      dataFamilyId: ada.familyId,
-      audience: ada.familyId,
-    });
-    expect(after.reason).toBe('no_consent');
-    expect(after.slice.children).toEqual([]);
+    expect(still.every((row) => row.leftAt == null)).toBe(true);
   });
 });

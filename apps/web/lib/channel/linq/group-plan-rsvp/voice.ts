@@ -4,10 +4,12 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { GROUP_PLAN_RSVP_VOICE_SKILL, type GroupPlanRsvpLineInput } from './facts';
+import type { GroupPlanRsvpLineInput } from './facts';
+import type { GroupPollLineInput } from './poll-facts';
 
 /**
- * VIL-442 (T15) — the model writes one group-plan line from facts.
+ * VIL-442 (T15) — the model writes one group-plan line from facts. VIL-471
+ * polls use the same composer with their own skill (`input.skill`).
  *
  * No fallback sentence. A line the model could not write is named
  * `voice_unavailable` / `model_failed` / `unusable` and nothing is sent.
@@ -21,29 +23,36 @@ export type GroupPlanRsvpVoiceSkip =
   | 'model_failed'
   | 'unusable';
 
+export type GroupLineInput = GroupPlanRsvpLineInput | GroupPollLineInput;
+
 export interface GroupPlanRsvpComposer {
   compose(
-    input: GroupPlanRsvpLineInput,
+    input: GroupLineInput,
     options?: { prompt?: 'full' | 'short' },
   ): Promise<{ line: string }>;
 }
 
 export const GROUP_PLAN_RSVP_VOICE_MAX_TOKENS = 400;
 
+/** One model-written line. Code never stitches parts of a message together. */
 export const GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
     send: { type: 'boolean' },
     line: { type: 'string' },
-    before: { type: 'string' },
-    question: { type: 'string' },
     why: { type: 'string' },
   },
-  required: ['send'],
+  required: ['send', 'line'],
 } as const;
 
-function lineUsable(line: string, input: GroupPlanRsvpLineInput): boolean {
+const voiceAnswerSchema = z.object({
+  send: z.boolean(),
+  line: z.string(),
+  why: z.string().optional(),
+});
+
+function lineUsable(line: string, input: GroupLineInput): boolean {
   if (!line.trim()) return false;
   if (/https?:\/\//i.test(line)) return false;
   if (input.questions === 1 && !line.includes('?')) return false;
@@ -55,73 +64,27 @@ export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undef
   if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
   return {
     async compose(input, options) {
-      const skill = await loadCronSkill(GROUP_PLAN_RSVP_VOICE_SKILL);
+      const skill = await loadCronSkill(input.skill);
       const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
-      const lane = pickLane(skill.meta.task);
-      const userMessage = JSON.stringify({ ...input, retry: options?.prompt === 'short' });
-      const maxTokens = options?.prompt === 'short' ? 160 : GROUP_PLAN_RSVP_VOICE_MAX_TOKENS;
-      if (input.questions === 1) {
-        const result = await forceToolJson({
-          client,
-          lane,
-          system: skill.instructions,
-          userMessage,
-          toolName: 'send_group_line',
-          toolDescription: 'The one message Hale sends.',
-          inputJsonSchema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              send: { type: 'boolean' },
-              before: { type: 'string' },
-              question: { type: 'string' },
-              why: { type: 'string' },
-            },
-            required: ['send', 'before', 'question'],
-          },
-          schema: z.object({
-            send: z.boolean(),
-            before: z.string(),
-            question: z.string(),
-            why: z.string().optional(),
-          }),
-          maxTokens,
-        });
-        if (!result.value.send) throw new Error('group plan rsvp voice: send false');
-        return { line: [result.value.before, result.value.question].filter(Boolean).join(' ') };
-      }
       const result = await forceToolJson({
         client,
-        lane,
+        lane: pickLane(skill.meta.task),
         system: skill.instructions,
-        userMessage,
+        userMessage: JSON.stringify({ ...input, retry: options?.prompt === 'short' }),
         toolName: 'send_group_line',
         toolDescription: 'The one message Hale sends.',
-        inputJsonSchema: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            send: { type: 'boolean' },
-            line: { type: 'string' },
-            why: { type: 'string' },
-          },
-          required: ['send', 'line'],
-        },
-        schema: z.object({
-          send: z.boolean(),
-          line: z.string(),
-          why: z.string().optional(),
-        }),
-        maxTokens,
+        inputJsonSchema: GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA,
+        schema: voiceAnswerSchema,
+        maxTokens: options?.prompt === 'short' ? 160 : GROUP_PLAN_RSVP_VOICE_MAX_TOKENS,
       });
-      if (!result.value.send) throw new Error('group plan rsvp voice: send false');
+      if (!result.value.send) throw new Error('group line voice: send false');
       return { line: result.value.line };
     },
   };
 }
 
 export async function composeGroupPlanRsvpLine(
-  input: GroupPlanRsvpLineInput,
+  input: GroupLineInput,
   composer: GroupPlanRsvpComposer | undefined,
 ): Promise<
   | { status: 'composed'; source: GroupPlanRsvpVoiceSource; line: string }

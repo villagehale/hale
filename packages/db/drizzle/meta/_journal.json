@@ -1261,6 +1261,34 @@
       "when": 1793233975415,
       "tag": "0180_linq_group_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1793233975416,
+      "tag": "0189_group_reminders",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1793233975417,
+      "tag": "0188_family_events_group_plan_copy_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1793233975418,
+      "tag": "0195_linq_shared_group_people",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1793233975419,
+      "tag": "0190_linq_group_polls",
+      "breakpoints": true
     }
   ]
 }
