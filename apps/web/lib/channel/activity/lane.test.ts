@@ -7,6 +7,7 @@ import {
   composeUserMessage,
   createActivityFinder,
   groundUserMessage,
+  stampReadPageUrl,
   toPicks,
 } from './lane';
 
@@ -576,5 +577,45 @@ describe('an empty find says what it searched', () => {
       searched: { town: 'Halton Hills' },
     });
     expect(result.found === false && result.searched?.notes.length).toBeGreaterThan(0);
+  });
+});
+
+describe('VIL-499 · source_url stamped from pages read this turn', () => {
+  const studio = {
+    name: 'Fall Art Classes',
+    age_fit: 'ages 5-12',
+    source_name: 'The Danforth Art Studio',
+  };
+  const page = {
+    url: 'https://example-studio.test/fall-classes',
+    text: 'The Danforth Art Studio — Fall Art Classes, 6-week session, ages 5 to 12.',
+  };
+
+  it('stamps the one read https page that names the pick when compose omits source_url', () => {
+    const [pick] = toPicks([studio], [page]);
+    expect(pick?.url).toBe(page.url);
+  });
+
+  it('keeps the model url when compose supplied one', () => {
+    const [pick] = toPicks([{ ...studio, source_url: 'https://other.test/x' }], [page]);
+    expect(pick?.url).toBe('https://other.test/x');
+  });
+
+  it('no page read, no https, or no page naming the pick: still no url', () => {
+    expect(toPicks([studio], [])[0]?.url).toBeUndefined();
+    expect(
+      toPicks([studio], [{ ...page, url: 'http://example-studio.test/x' }])[0]?.url,
+    ).toBeUndefined();
+    expect(
+      toPicks([studio], [{ url: 'https://unrelated.test/', text: 'Library storytime hours.' }])[0]
+        ?.url,
+    ).toBeUndefined();
+  });
+
+  it('two different pages naming the pick: no guess', () => {
+    const second = { ...page, url: 'https://aggregator.test/danforth' };
+    expect(
+      stampReadPageUrl({ name: studio.name, sourceName: studio.source_name }, [page, second]),
+    ).toBeNull();
   });
 });

@@ -399,7 +399,37 @@ function groundTools(query: ActivityQuery, readPages = false): Anthropic.ToolUni
  * A MISSING `when` OR `price` IS NOT A DROP — see {@link ActivityPick}. Those are facts a
  * source may simply not have published, they arrive here as null, and the answer says so.
  */
-export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPick[] {
+/**
+ * VIL-499 · The page a pick was read off, when compose left `source_url` empty.
+ *
+ * Compose often names the venue and quotes its page but omits the URL (2026-10-30 Preview,
+ * Danforth Art Studio: real sessions and price, no link). The URL is not the model's to
+ * write, so it is taken from the pages THIS TURN opened: the one https page whose text
+ * names the pick (its name or its source). Zero or several matches stamp nothing; a guess
+ * between two pages would be the invented link this lane refuses to send.
+ */
+export function stampReadPageUrl(
+  pick: { name: string; sourceName: string },
+  pages: ReadonlyArray<{ url: string; text: string }>,
+): string | null {
+  const needles = [pick.name, pick.sourceName]
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length >= 4);
+  if (needles.length === 0) return null;
+  const matched = new Set<string>();
+  for (const page of pages) {
+    const url = safeHttpUrl(page.url);
+    if (url === null || !url.startsWith('https://')) continue;
+    const text = page.text.toLowerCase();
+    if (needles.some((needle) => text.includes(needle))) matched.add(url);
+  }
+  return matched.size === 1 ? [...matched][0]! : null;
+}
+
+export function toPicks(
+  raw: z.infer<typeof composeSchema>['picks'],
+  pages: ReadonlyArray<{ url: string; text: string }> = [],
+): ActivityPick[] {
   const picks: ActivityPick[] = [];
   for (const item of raw) {
     const name = field(item.name);
@@ -408,7 +438,8 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
     if (name === '' || ageFit === '' || sourceName === '') continue;
     const when = field(item.when);
     const price = field(item.price);
-    const url = safeHttpUrl(field(item.source_url));
+    const url =
+      safeHttpUrl(field(item.source_url)) ?? stampReadPageUrl({ name, sourceName }, pages);
     const pick: ActivityPick = {
       name,
       ageFit,
@@ -523,7 +554,7 @@ async function runActivityOnce(
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
     return {
-      picks: toPicks(composed.picks),
+      picks: toPicks(composed.picks, evidence.pages),
       searchResults: evidence.searchResults,
       notes: researchNotes,
     };
