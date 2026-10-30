@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { ChannelDraftPort } from '~/lib/channel/coach/draft';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
 
@@ -121,4 +121,23 @@ export async function groupPlanChatId(
     .limit(1);
   const chatId = (row?.after as { chatId?: unknown } | null | undefined)?.chatId;
   return typeof chatId === 'string' ? chatId : null;
+}
+
+/** Every action a turn in this family group chat drafted (`group_plan.drafted`). */
+export async function groupPlanActionIds(
+  database: Database,
+  input: { familyId: string; chatId: string },
+): Promise<ReadonlySet<string>> {
+  const rows = await database
+    .select({ targetId: schema.auditLog.targetId })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, input.familyId),
+        eq(schema.auditLog.targetTable, 'actions'),
+        eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
+        sql`${schema.auditLog.after}->>'chatId' = ${input.chatId}`,
+      ),
+    );
+  return new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])));
 }

@@ -27,6 +27,7 @@ import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
+import { groupPlanActionIds } from '~/lib/channel/group-plan/stamp';
 import {
   defaultCallNameComposer,
   parentCallNameVoice,
@@ -722,6 +723,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
         });
       },
     }),
+    groupPlanActionIds,
     replyResolver: createReplyResolver(screenClient),
     calendarOffers: createCalendarOfferReader(screenClient),
     saidLine: createSaidLineWriter(screenClient),
