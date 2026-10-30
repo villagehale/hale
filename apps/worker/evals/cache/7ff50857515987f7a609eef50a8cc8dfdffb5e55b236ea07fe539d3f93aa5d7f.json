@@ -1,0 +1,19 @@
+{
+  "value": {
+    "request": "reminders",
+    "set": [
+      {
+        "for": "person",
+        "name": "Jordan",
+        "what": "drop off the car seat",
+        "date": "2026-10-28",
+        "time": "17:00",
+        "inMinutes": null,
+        "where": "unsaid"
+      }
+    ],
+    "cancel": [],
+    "language": "en"
+  },
+  "latencyMs": 1525
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Text omits the reminder's time (Thursday 4 PM) and the swim pickup purpose; only says 'Reminder set!' so mustSay items are missing."
+  }
+}

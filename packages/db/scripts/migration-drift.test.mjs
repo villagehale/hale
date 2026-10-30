@@ -26,6 +26,7 @@ describe('catalog history cutover', () => {
       '0193_family_events_source_change',
       '0194_preview_captured_sends_decorations',
       '0180_linq_group_plans',
+      '0189_group_reminders',
     ]);
   });
 });

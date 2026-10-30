@@ -187,6 +187,14 @@
     "file": "group-private-aside-read.md",
     "sha256": "56296c986c470ddd7ab85254d1faf356ee82e0efe0f15309ed929f7b03759979"
   },
+  "group-reminder-read.md": {
+    "file": "group-reminder-read.md",
+    "sha256": "a9fce92c332192afcf8ba0d955a9e26d43e0fc7567d9eddfed44b9483231e7c3"
+  },
+  "group-reminder-voice.md": {
+    "file": "group-reminder-voice.md",
+    "sha256": "cc85d796ea0f0565fb115bd0a025adb7682e12c7aa1202938b69e5022f8f498a"
+  },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
     "sha256": "6a9301d78fcc8ea6ef799c4b11165941aeaed56cb95aed02ffc5dd7ceea7265f"

@@ -292,6 +292,14 @@ jobs:
       - name: Reminder eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder
 
+      - name: Group reminder eval (cached-only)
+        working-directory: apps/worker
+        run: node evals/group-reminder-eval.mjs --cached-only
+
+      - name: Group reminder eval, broken arm must fail (cached-only)
+        working-directory: apps/worker
+        run: node evals/group-reminder-eval.mjs --cached-only --broken
+
       - name: Email alert notice eval (cached-only)
         run: pnpm --filter @hale/worker eval:email-alert-notice
 
