@@ -647,4 +647,20 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
     );
     expect(pick?.url).toBeUndefined();
   });
+
+  it('several matching pages on one host (the venue site): the first opened page is used', () => {
+    const second = { ...page, url: 'https://example-studio.test/drawing' };
+    expect(
+      stampReadPageUrl({ name: studio.name, sourceName: studio.source_name }, [page, second]),
+    ).toBe(page.url);
+  });
+
+  it('opened pages win over search results when both match', () => {
+    const [pick] = toPicks(
+      [studio],
+      [page],
+      [{ url: 'https://other.test/danforth-art-studio', title: 'The Danforth Art Studio' }],
+    );
+    expect(pick?.url).toBe(page.url);
+  });
 });

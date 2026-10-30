@@ -421,7 +421,7 @@ function uniqueMatch(
   needles: readonly string[],
   sources: ReadonlyArray<{ url: string; text: string }>,
 ): string | null {
-  const matched = new Set<string>();
+  const matched: string[] = [];
   for (const source of sources) {
     const url = safeHttpUrl(source.url);
     if (url === null || !url.startsWith('https://')) continue;
@@ -430,9 +430,17 @@ function uniqueMatch(
       host = squash(new URL(url).hostname);
     } catch {}
     const text = squash(source.text);
-    if (needles.some((needle) => text.includes(needle) || host.includes(needle))) matched.add(url);
+    if (needles.some((needle) => text.includes(needle) || host.includes(needle))) {
+      if (!matched.includes(url)) matched.push(url);
+    }
   }
-  return matched.size === 1 ? [...matched][0]! : null;
+  if (matched.length === 0) return null;
+  if (matched.length === 1) return matched[0]!;
+  // Several matches on ONE https host are the venue's own site (Danforth Art Studio:
+  // three of its pages named the class). Any of them is a real page read this turn, so
+  // the first one is used. Several hosts would be a guess, so nothing is attached.
+  const hosts = new Set(matched.map((url) => new URL(url).hostname.toLowerCase()));
+  return hosts.size === 1 ? matched[0]! : null;
 }
 
 export function stampReadPageUrl(
