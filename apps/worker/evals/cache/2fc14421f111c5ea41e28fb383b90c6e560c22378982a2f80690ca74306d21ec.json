@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly says tomorrow is a PD Day and gives no clock time, but it states as fact that school is closed for students, which is an unstated inference from the title not present in the facts. That is a fact failure.",
+    "score": 2
+  }
+}

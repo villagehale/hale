@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: both events on Oct 26 (tomorrow), story time at 11:00 上午, soccer 下午5:30-6:30 with correct AM/PM. However the text is a calendar readout: title, colon, formal date, clock time, which a friend would not text. Also the Chinese is stiff ('Library story time：' with English titles, '上午11:00' label style) rather than natural, and it uses '10月26日' date format rather than '明天' a friend would say. Caps at 3; not 1-2 since no facts are wrong or missing.",
+    "score": 3
+  }
+}

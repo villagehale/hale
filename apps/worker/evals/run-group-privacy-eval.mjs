@@ -22,9 +22,14 @@ import {
   cacheGet,
   cacheKey,
   cachePut,
+  DRY_SUBJECT_PLAN,
+  dryReportLine,
+  dryRequestPlanEntry,
+  dryStandInText,
   evalRunTag,
   evalSubjectRequest,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -176,6 +181,25 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
         });
         const key = cacheKey(evalRunTag(`${tag}:agent`), canonical);
         const cached = await cacheGet(key);
+        if (isDryRun()) {
+          // --dry: price this leg as if uncached and never call. An uncached leg ends the
+          // turn with a max-length stand-in reply (same contract as coach-channel).
+          DRY_SUBJECT_PLAN.push({
+            ...dryRequestPlanEntry(`${tag}:agent`, request),
+            cached: Boolean(cached),
+          });
+          if (!cached) {
+            return {
+              id: 'dry',
+              type: 'message',
+              role: 'assistant',
+              model: request.model,
+              content: [{ type: 'text', text: dryStandInText(request.max_tokens ?? 1024) }],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 0, output_tokens: 0 },
+            };
+          }
+        }
         if (cached) return cached.response;
         if (cachedOnly) {
           console.error(`agent cache miss in --cached-only mode (${tag}, key ${key}).`);
@@ -265,6 +289,10 @@ async function main() {
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
+  if (isDryRun()) {
+    console.log(dryReportLine('group-privacy', [judge.plan]));
+    process.exit(0);
+  }
   const allPass = results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
   console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);

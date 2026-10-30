@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "registration confirmation from recreation sender naming the child, clear class, date, time and place",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Good news, Brookfield Recreation got Robin a spot in Swim Level 1! First session is Saturday, September 26 at 9:00 AM at the Leisure Centre, and 2 other Hale families are in it too. Want me to add it to your calendar?",
+    "asks_to_add": true
+  },
+  "stopReason": "tool_use"
+}

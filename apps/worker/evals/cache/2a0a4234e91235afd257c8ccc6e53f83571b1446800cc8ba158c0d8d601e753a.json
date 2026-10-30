@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: piano lesson in about an hour, 7-8 PM evening, location Ms. Chen studio. However the text is not natural Chinese: \"它是在Ms. Chen studio\" is a clumsy translated construction (a stray 它 and 是在 instead of a natural 在Ms. Chen studio), and the sentence structure reads unnaturally. A native speaker would not text it as written, so it is capped at 3. The title and timing are otherwise present and evening is clear.",
+    "score": 3
+  }
+}

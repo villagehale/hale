@@ -340,6 +340,8 @@ export async function reconcileCalendarMirrors(
       (existing.transparency ?? null) !== (candidate.transparency ?? null) ||
       existing.deletedAt !== null;
     if (!changed) continue;
+    // VIL-474 · NOT a provider change. A mirror is the parent's own private calendar, so
+    // an edit here records nothing (reminders/provider-change.ts is the only writer).
     await database
       .update(schema.familyEvents)
       .set({
@@ -390,7 +392,16 @@ async function softDeleteMirror(
   // NULL, so it is emptied rather than nulled.
   await database
     .update(schema.familyEvents)
-    .set({ deletedAt: input.now, title: '', location: null, dutyOwnerLabel: null })
+    .set({
+      deletedAt: input.now,
+      title: '',
+      location: null,
+      dutyOwnerLabel: null,
+      sourceChangedField: null,
+      sourceChangedFromStartsAt: null,
+      sourceChangedFromLocation: null,
+      sourceChangedAt: null,
+    })
     .where(and(eq(schema.familyEvents.id, id), isNull(schema.familyEvents.deletedAt)));
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives every fact: the day (tomorrow, Monday, true from Sunday evening), start 9:30 AM, end 12:00 PM, and the venue name. The facts give no street address, so none is missing. AM is correct. The title 'PD Day' is kept as the event's name and presented as a timed event to be at, not a free day. Nothing is invented (no leaving time, no extra details). No planLink was given and none was added. Bold is none, which is fine.",
+    "score": 5
+  }
+}

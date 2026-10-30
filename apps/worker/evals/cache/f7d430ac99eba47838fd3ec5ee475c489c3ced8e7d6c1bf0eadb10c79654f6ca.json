@@ -1,0 +1,19 @@
+{
+  "value": {
+    "request": "reminders",
+    "set": [
+      {
+        "for": "sender",
+        "name": null,
+        "what": "put the bins out",
+        "date": "2026-10-28",
+        "time": "22:30",
+        "inMinutes": null,
+        "where": "unsaid"
+      }
+    ],
+    "cancel": [],
+    "language": "en"
+  },
+  "latencyMs": 1619
+}

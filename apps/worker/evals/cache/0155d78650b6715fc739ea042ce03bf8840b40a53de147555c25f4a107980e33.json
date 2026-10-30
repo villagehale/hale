@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: tomorrow (Monday) story time at 11 AM is rendered as 上午11点, soccer 5:30-6:30 PM as 下午5:30到6:30, with correct AM/PM, the end time included, no invented details, and the link is exactly planLink. Chinese is natural and warm enough; 足球课 is a natural rendering of Soccer and 图书馆讲故事时间 of Library story time. No filler, no calendar talk. The only minor note is that the 5:30 time is written in Arabic numerals rather than 5点半, but that is a normal way to text it.",
+    "score": 5
+  }
+}

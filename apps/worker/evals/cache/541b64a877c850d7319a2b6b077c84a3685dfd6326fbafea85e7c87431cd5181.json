@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give a single event: \"Swim class\" today (Monday, Oct 26) from 10:00 AM to 11:00 AM. The text instead describes \"Parent & Tot Skate\" on Tuesday, Oct 27 at 10:30 a.m. The event name, day, date, start time, and end are all wrong, so the text invents an event and omits the real one. Bold is none, which is fine.",
+    "score": 1
+  }
+}

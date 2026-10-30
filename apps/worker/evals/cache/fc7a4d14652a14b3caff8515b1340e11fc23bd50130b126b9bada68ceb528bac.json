@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: tomorrow, story time at 11 AM (上午11点), soccer 5:30-6:30 PM (下午5:30到6:30), correct AM/PM, no invented details, correct language, and the link is exactly planLink. Native check: \"下午5:30到6:30\" is a natural enough time range, \"要踢足球\" is a natural way to say soccer, and \"图书馆故事时间\" is a plain rendering of the title. The last line \"要看完整安排的话在这儿:\" is a mild introduction to the optional link, which reads fine as friend-like. Tone is calm and warm without hype. Minor: it is slightly more like a tidy message than a chatty friend text, but it does not read like a notification readout.",
+    "score": 5
+  }
+}

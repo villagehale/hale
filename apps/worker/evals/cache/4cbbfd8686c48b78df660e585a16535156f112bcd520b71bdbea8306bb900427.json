@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Swim class is today, 10 to 11 in the morning. This keeps the event name, the correct day (today, Monday), the start of 10:00 AM and the end of 11:00 AM, with morning clearly stated. The facts give no location or address, so none is missing, and nothing is invented. Bold is none, which is fine.",
+    "score": 5
+  }
+}

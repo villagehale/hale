@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Event 1 (Montessori tour) keeps its day (tomorrow), start 10, duration 'about an hour' matching the 10-11 end, venue name and address, and who it is for (Theo). Event 2 (Storytime) has the day, start 1:30 and end 2:15, and who it is for (Léa), but the venue is given only as 'the library', leaving out the given venue name 'Georgetown Branch' and the address '9 Church St'. That is a dropped fact the parent needs, so it is a fact failure. Also, 10 is stated without AM and 1:30 without PM; the natural reading is fine, but the missing venue name and address is the deciding fault. Bold is none, which is fine.",
+    "score": 2
+  }
+}

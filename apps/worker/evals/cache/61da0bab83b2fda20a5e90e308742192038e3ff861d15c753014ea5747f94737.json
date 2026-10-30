@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts are correct: the PD Day is all-day tomorrow with no clock time, and the text correctly says tomorrow with no time given. However, the phrasing is unnatural English: 'it is having PD Day the whole of day, school is not' is a calque-like, ungrammatical construction that a native speaker would not text. Native check fails, capping the score at 3.",
+    "score": 3
+  }
+}

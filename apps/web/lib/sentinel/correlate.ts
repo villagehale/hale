@@ -71,8 +71,11 @@ function hoursBetween(a: string, b: string): number {
  * The extraction's relevant time to correlate against: cancellation/reschedule
  * match the EXISTING occasion's original time (that's the row being changed);
  * new_event and booking_confirmation try their stated time (catching an invite
- * or a receipt that duplicates a placement already tracked); reminder_only/
- * unclear have nothing concrete enough to correlate and are never attempted.
+ * or a receipt that duplicates a placement already tracked); reminder_only
+ * matches the occasion it reminds about, on its stated time (the Storytime
+ * duplicate: a reminder for something already on the calendar must be seen as
+ * already on it, with the same window and title safeguards); unclear has nothing
+ * concrete enough to correlate and is never attempted.
  *
  * A RECORD RATHER THAN AN IF-CHAIN, and that is the point of it. The chain ended
  * in a silent `return null`, so a kind added to the union simply never correlated
@@ -86,7 +89,7 @@ const TARGET_TIME: Record<ExtractionKind, (input: CorrelationInput) => string | 
   booking_confirmation: (input) => input.newTime,
   cancellation: (input) => input.originalTime,
   reschedule: (input) => input.originalTime,
-  reminder_only: () => null,
+  reminder_only: (input) => input.originalTime ?? input.newTime,
   unclear: () => null,
 };
 
@@ -114,4 +117,25 @@ export function correlateExtraction(
     }
   }
   return best?.ref ?? null;
+}
+
+/**
+ * How many candidates clear BOTH the time window and the title threshold. VIL-474 /
+ * #955 review: `correlateExtraction` picks one of several passing candidates silently;
+ * a source change is recorded only when this is exactly 1, so ambiguity records nothing.
+ */
+export function correlationMatchCount(
+  input: CorrelationInput,
+  candidates: readonly CorrelationCandidate[],
+): number {
+  const target = TARGET_TIME[input.kind](input);
+  if (!target) return 0;
+  let count = 0;
+  for (const candidate of candidates) {
+    if (!candidate.startsAt) continue;
+    if (hoursBetween(target, candidate.startsAt) > TIME_WINDOW_HOURS) continue;
+    if (titleSimilarity(input.title, candidate.title) < TITLE_MATCH_THRESHOLD) continue;
+    count += 1;
+  }
+  return count;
 }

@@ -237,7 +237,7 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
   ],
   [
     'lib/channel/coparent/duty/calendar.ts',
-    'duty projection — reads a title only to refuse a non-kid row, writes owner columns, and never sends the title',
+    'duty projection — reads a title only to refuse a non-kid row, writes owner columns, and never sends the title; the venue link reads calendar ids only, household rows only',
   ],
   [
     'lib/channel/coparent/duty/metrics.ts',
@@ -254,6 +254,13 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
   [
     'lib/channel/proactive/review.ts',
     'the proactive review — reads an event id only, as a sign that something changed since a hold',
+  ],  [
+    'lib/channel/linq/group-plan-invites.ts',
+    "the VIL-455 group plan fan-out — writes each family's own copy of the plan the group agreed, keyed by group_plan_copy_key, and reads back only family ids; it never reads another household's titles or locations",
+  ],
+  [
+    'lib/channel/linq/household-calendar.ts',
+    "the VIL-444 group clash alert — a sensitive row, a 13+ child's row or a row whose title names a 13+ child reaches the writer only as one person being busy, with no title and no times",
   ],
 ];
 

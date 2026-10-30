@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the wrong venue address: the facts say Pan Am Centre is at 875 Morningside Ave, Toronto, but the text says 100 Queen St W, an address not in the facts. The day, times, child and handoff are otherwise correct.",
+    "score": 1
+  }
+}

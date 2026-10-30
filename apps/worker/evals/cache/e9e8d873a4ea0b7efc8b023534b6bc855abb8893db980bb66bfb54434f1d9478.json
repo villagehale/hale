@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event as 'an appointment', the correct day (tomorrow, Monday), the start 4:45 and the end 5:45 PM with PM stated, and keeps it fully generic with no guess at what it is. No location was given, so none is expected, and nothing is invented (no travel, leave-time or detail claims). Language is English and no link was used. Bold is none, which is fine.",
+    "score": 5
+  }
+}

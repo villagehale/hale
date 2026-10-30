@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (tomorrow), the start time 15 h, and the place, and keeps the title, but it omits the end time 16 h, which is a given fact the parent needs. Dropping the end time is a fact failure, so the score is low.",
+    "score": 2
+  }
+}

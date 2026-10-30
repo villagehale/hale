@@ -109,6 +109,16 @@ export function linqGroupWelcomeVoiceEnabled(): boolean {
 }
 
 /**
+ * VIL-444 (T24) — a clash in the household group gets one model-written alert with a
+ * suggested fix, in place of the household conflict line, and a pickup someone takes in
+ * that group settles it (group-pickup-claim.ts). Exactly `true` enables it.
+ * Default off: off plans and sends exactly what it did before.
+ */
+export function linqGroupConflictAlertsEnabled(): boolean {
+  return trimmed('LINQ_GROUP_CONFLICT_ALERTS_ENABLED') === 'true';
+}
+
+/**
  * VIL-442 (T15) — RSVP tracking for any plan in a Linq group. Exactly `true`
  * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
  */
