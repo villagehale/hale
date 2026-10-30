@@ -54,6 +54,7 @@ import {
   linqCoParentAsk,
   linqGroupLineMissing,
 } from '~/lib/channel/linq/group';
+import { leaveGroupOnFamilyAsk } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
 import {
@@ -362,6 +363,8 @@ export interface ChannelRouterDeps {
   /** VIL-497 — the experience-card sender. Absent: the real `sendLinqAppCard`. A seam so
    * the router's card delivery is testable without Linq. */
   sendExperienceCard?: typeof sendLinqAppCard;
+  /** VIL-477 — the guarded group leave. Absent: the real `leaveGroupOnFamilyAsk`. */
+  leaveGroup?: typeof leaveGroupOnFamilyAsk;
   loadContext(database: Database, job: ChannelMessageReceivedJob): Promise<InboundContext | null>;
   /** The one way out. Channel-agnostic by construction (reply-route.ts): the router
    * hands it a resolved route and a body, and never learns which provider took it. */
@@ -1515,6 +1518,7 @@ async function routeChannelMessageInner(
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
       audience: inGroup ? 'group' : 'direct',
       cardRoute: inGroup ? null : route,
+      groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
     });
   } finally {
     await stopTyping();
@@ -1916,6 +1920,8 @@ async function runAgentTurn(
     audience: ChannelTurn['audience'];
     /** VIL-497 — the 1:1 route a card may go to; null on a group turn. */
     cardRoute?: ReplyRoute | null;
+    /** VIL-477 — the Linq group this turn is in, or null on a 1:1 / SMS turn. */
+    groupChatId?: string | null;
   },
 ): Promise<RouterResult> {
   try {
@@ -1928,7 +1934,7 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard } =
+    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard, groupLeave } =
       await composeReconciledReply(deps, args, view);
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
     const channelMessageId = await args.answer(card ? card.text : reply);
@@ -1962,6 +1968,26 @@ async function runAgentTurn(
         deps.log.error(
           { err: err instanceof Error ? err.name : 'unknown' },
           'channel router: experience card failed',
+        );
+      }
+    }
+    // VIL-477: the model read a member asking Hale to leave and wrote its goodbye; the
+    // goodbye is out, so leave now. Never throws (the group already has the text); the
+    // guard (flag, Linq's 4+ floor) may decline, which is logged, not retried.
+    if (groupLeave && args.groupChatId && reply.trim() !== '') {
+      try {
+        const left = await (deps.leaveGroup ?? leaveGroupOnFamilyAsk)({
+          chatId: args.groupChatId,
+          explicitAsk: true,
+        });
+        deps.log.info(
+          { leave: left.status, ...('reason' in left ? { reason: left.reason } : {}) },
+          'channel router: group leave after the send',
+        );
+      } catch (err) {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: group leave failed',
         );
       }
     }

@@ -104,6 +104,12 @@ export interface ChannelTurnResult {
    * `LINQ_EXPERIENCES_ENABLED` is lit on a 1:1 turn; the router delivers it after the text.
    */
   experienceCard?: ExperienceCardIntent | null;
+  /**
+   * VIL-477 — a member plainly asked Hale to leave this group, and the model's reply is
+   * its goodbye. Only ever true while `LINQ_GROUP_LEAVE_ENABLED` is lit on a group turn;
+   * the router leaves AFTER the reply is sent, through the guarded `leaveGroupOnFamilyAsk`.
+   */
+  groupLeave?: boolean;
 }
 
 export interface ChannelCoachRuntime {

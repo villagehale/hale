@@ -720,3 +720,60 @@ describe('channelCoachRuntime · experience cards (VIL-497)', () => {
     expect(result.experienceCard?.title).not.toContain('Nora');
   });
 });
+
+describe('channelCoachRuntime · group leave (VIL-477)', () => {
+  it('dark group turn: no leave verb, skill untouched', async () => {
+    const seen: string[][] = [];
+    const p = ports({
+      loadSkill: async () => SKILL,
+      runAgent: async (args) => {
+        seen.push([...args.tools.map((t) => t.name), ...args.skill.meta.tools]);
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    expect(seen[0]).not.toContain('leave_group_chat');
+    expect(result.groupLeave).toBe(false);
+  });
+
+  it('lit on a 1:1 turn: still no leave verb', async () => {
+    const seen: string[][] = [];
+    const p = ports({
+      groupLeaveEnabled: () => true,
+      runAgent: async (args) => {
+        seen.push(args.tools.map((t) => t.name));
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(seen[0]).not.toContain('leave_group_chat');
+    expect(result.groupLeave).toBe(false);
+  });
+
+  it('lit group: the model reads the ask, writes its own goodbye, registers the leave', async () => {
+    const p = ports({
+      groupLeaveEnabled: () => true,
+      loadSkill: async () => SKILL,
+      runAgent: async (args) => {
+        expect(args.skill.meta.tools).toContain('leave_group_chat');
+        const leave = args.tools.find((t) => t.name === 'leave_group_chat');
+        if (!leave) throw new Error('no leave verb');
+        await leave.handler({ ask: 'Hale can you leave this group' } as never, {} as never);
+        return answering('Model-written goodbye.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    expect(result.groupLeave).toBe(true);
+    expect(result.reply).toContain('Model-written goodbye.');
+  });
+
+  it('lit group, no ask: the model does not call it, nothing registered', async () => {
+    const p = ports({
+      groupLeaveEnabled: () => true,
+      loadSkill: async () => SKILL,
+      runAgent: answering('Sure, quieter from me.'),
+    });
+    const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    expect(result.groupLeave).toBe(false);
+  });
+});

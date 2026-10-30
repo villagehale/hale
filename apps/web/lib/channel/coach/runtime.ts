@@ -23,7 +23,7 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
-import { linqExperiencesEnabled } from '~/lib/channel/linq/config';
+import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -77,6 +77,11 @@ import {
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
+import {
+  type GroupLeaveIntent,
+  augmentCoachSkillForGroupLeave,
+  leaveGroupChatTool,
+} from './group-leave-tool';
 import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import {
   type RegistrationWindowContext,
@@ -232,6 +237,12 @@ export interface ChannelCoachPorts {
    */
   experienceCardsEnabled?(): boolean;
   /**
+   * VIL-477 — whether Hale may leave a group on a member's explicit ask
+   * (`LINQ_GROUP_LEAVE_ENABLED`). Absent or false: the verb is not registered and the
+   * skill is untouched. Only ever offered on a group turn.
+   */
+  groupLeaveEnabled?(): boolean;
+  /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
    *
    * The router builds its deps for EVERY inbound text, including the ones a
@@ -288,6 +299,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       let gmailNotice: GmailDraftNoticeBox | null = null;
       // VIL-497: the one find this turn chose to send as a card. LAST CALL WINS.
       let experienceCard: ExperienceCardIntent | null = null;
+      // VIL-477: a member asked Hale to leave this group. LAST CALL WINS.
+      let groupLeave: GroupLeaveIntent | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -304,9 +317,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
-      const skill = augmentCoachSkillForExperienceCards(
-        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill,
-        cardsLit,
+      const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
+      const skill = augmentCoachSkillForGroupLeave(
+        augmentCoachSkillForExperienceCards(
+          turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill,
+          cardsLit,
+        ),
+        leaveLit,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
@@ -419,6 +436,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                     links: turnLinks,
                     onCard: (card) => {
                       experienceCard = card;
+                    },
+                  }),
+                ]
+              : []),
+            ...(leaveLit
+              ? [
+                  leaveGroupChatTool({
+                    onLeave: (intent) => {
+                      groupLeave = intent;
                     },
                   }),
                 ]
@@ -536,6 +562,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               card && !noticeReady
                 ? { url: card.url, title: redactTeenNames(card.title, children, now) }
                 : null,
+            groupLeave: groupLeave !== null,
           };
         },
       );
@@ -574,6 +601,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
   return {
     client: anthropicClient,
     experienceCardsEnabled: linqExperiencesEnabled,
+    groupLeaveEnabled: linqGroupLeaveEnabled,
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForProviderWatch(
         augmentCoachSkillForAutonomySwitchOff(
