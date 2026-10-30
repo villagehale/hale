@@ -11,7 +11,7 @@ import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { type GroupAudienceVerdict, groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import { readGroupMembership } from '~/lib/channel/linq/group-membership';
 import { isUndefinedTable } from '~/lib/channel/linq/roster';
-import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
   PROACTIVE_CATEGORY,
@@ -20,7 +20,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { failedSendPatch } from '~/lib/channel/outbound-transport';
+import { failedSendPatch, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { type ContentClass, classifyFamilyEvent } from '~/lib/channel/role-scope';
 import {
   icsSequence,
