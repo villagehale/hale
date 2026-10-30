@@ -159,9 +159,17 @@
     "file": "gmail-draft-notice.md",
     "sha256": "bbc089b1b8eda41ced0e4b6d8f0e209d101046fd6a05636d62efbb1fcab4d44b"
   },
+  "group-conflict-alert.md": {
+    "file": "group-conflict-alert.md",
+    "sha256": "7a2cfe7a208fbde4847195a07a8f30e7f00bbbad7444ecfc359bfc55543ce0ef"
+  },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
+  },
+  "group-pickup-claim-read.md": {
+    "file": "group-pickup-claim-read.md",
+    "sha256": "a932bc46688dac5c1f9b60973dc26668eb965e8e436ceab93b3663dcaf90fb7e"
   },
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",

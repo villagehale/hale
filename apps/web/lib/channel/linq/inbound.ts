@@ -84,6 +84,7 @@ import {
   unseatParticipantRemoved,
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
+import type { GroupPickupClaimReader } from './group-pickup-claim';
 import { considerGroupPlanRsvp } from './group-plan-rsvp/inbound';
 import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
 import { parseLinqTapback } from './group-plan-rsvp/reading';
@@ -98,7 +99,7 @@ import {
   linqGroupTurnAiEnabled,
   sharedGroupTurnReader,
 } from './group-turn-reader';
-import { captureLogisticsText } from './household-calendar';
+import { captureLogisticsText, takeGroupPickupClaim } from './household-calendar';
 import { readSharedLocality } from './location-share';
 import { isLogisticsPollKind, recordLogisticsVote } from './logistics-poll';
 import { takeMultiFamilyTurn, unseatMultiFamilyMember } from './multi-family';
@@ -193,6 +194,8 @@ export async function handleLinqInboundRequest(
     /** VIL-448 test seams. Production reads and writes with the model when the flag is on. */
     groupReminderReader?: GroupReminderReader;
     groupReminderVoice?: GroupReminderVoice | null;
+    /** VIL-444 test seam. Production uses the shared model reader when the clash flag is on. */
+    groupPickupClaimReader?: GroupPickupClaimReader;
     /** VIL-442 test seam. Production uses the shared plan RSVP reader when the flag is on. */
     groupPlanRsvpReader?: GroupPlanRsvpReader;
     /** VIL-442 test seam. Production composes with the model when the flag is on. */
@@ -725,12 +728,39 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
         familyId: mapped.familyId,
         parentUserId: mapped.userId,
         body: message.text,
+        sentAt: message.receivedAt,
         now: deps.now?.() ?? new Date(),
       });
     } catch (err) {
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq inbound: logistics text was not stored',
+      );
+    }
+    // HOOK (PR #938): this read joins that shared group reader's turn; see group-pickup-claim.ts.
+    try {
+      const claim = await takeGroupPickupClaim(
+        deps.database,
+        {
+          familyId: mapped.familyId,
+          chatId: message.chatId,
+          senderUserId: mapped.userId,
+          text: message.text,
+          sentAt: message.receivedAt,
+          now: deps.now?.() ?? new Date(),
+        },
+        { reader: deps.groupPickupClaimReader },
+      );
+      if (claim !== 'flag_off') {
+        deps.log.info(
+          { outcome: `group_pickup_${claim}`, providerMessageId: message.messageId },
+          'linq inbound: group pickup claim',
+        );
+      }
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'linq inbound: group pickup claim was not read',
       );
     }
   }
