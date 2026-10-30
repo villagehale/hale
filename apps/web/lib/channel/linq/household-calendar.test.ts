@@ -540,6 +540,8 @@ describe('planHouseholdNotices', () => {
       event: 'gymnastics',
       day: null,
       slots: [],
+      source: 'poll' as const,
+      since: evening,
     };
     const decided = await planHouseholdNotices({
       blocks: both,

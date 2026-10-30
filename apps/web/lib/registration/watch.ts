@@ -1,11 +1,11 @@
 import type { Database } from '@hale/db';
+import type { RegistrationWatchMint } from '~/lib/channel/reconcile/reconcile';
 import {
   type CommitmentCloseOutcome,
   type CommitmentRecordOutcome,
   fulfillCommitment,
   recordCommitment,
 } from '~/lib/commitments/ledger';
-import type { RegistrationWatchMint } from '~/lib/channel/reconcile/reconcile';
 
 /**
  * VIL-293 · "I'M WATCHING THAT MORNING" IS A ROW — the registration watch on the MEM-10

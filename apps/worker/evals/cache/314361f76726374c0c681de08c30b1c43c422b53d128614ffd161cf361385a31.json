@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is not in English (it mixes French 'Jour de congé' into an English sentence), and it invents a 3:00 clock time for an all-day event, which the facts forbid. It also says the day is open with 'breathing room', which implies the family has nothing to be at, a low-score failure. The event title 'PD Day' is stated as a day off, which is fine, but the language, invented time and open-day framing are all failures.",
+    "score": 1
+  }
+}

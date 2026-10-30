@@ -57,7 +57,7 @@
   },
   "coach-channel-group.md": {
     "file": "coach-channel-group.md",
-    "sha256": "9d52740d4ae14f002dd9c1df9f8ed382975d0b80607b0aa4b07bd151461e606e"
+    "sha256": "7b632dd58ab45c06046b8f27c56ea195c8a521a9253fd0991166bd870122352e"
   },
   "coach-channel-shorten.md": {
     "file": "coach-channel-shorten.md",
@@ -65,7 +65,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "95b5e2a00f97115b3c2c6a9d5503a78f8549d02229f6c976a7432fa6a1c28652"
+    "sha256": "1998fbfa3ffe1e5af5c51567ed20b60a1f28139f7cd7db7d3ff848e79065e8e2"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -87,9 +87,25 @@
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
   },
+  "duty-night-check.md": {
+    "file": "duty-night-check.md",
+    "sha256": "d5f13c8c12be1f1e9e22f7c13d5c99cc3ac7a5d17e714f1a932d455101085e88"
+  },
+  "duty-night.md": {
+    "file": "duty-night.md",
+    "sha256": "85c230a970e5de8e50c154eb671fce7c058a1ec0e66bd0b55f4602d72db5607a"
+  },
+  "email-alert-notice.md": {
+    "file": "email-alert-notice.md",
+    "sha256": "6a65176ee5e5fa835806d01ebffaf9080e6705949ef4d319b259f7405d3f5ec2"
+  },
   "evening-request.md": {
     "file": "evening-request.md",
     "sha256": "ebe28455ab5c0ec920d418694812fdb6fc4e31e6257b8912ac27c6cda1a87fee"
+  },
+  "event-notes-read.md": {
+    "file": "event-notes-read.md",
+    "sha256": "c541bebcf4c16bf1afc8e1c3551350828311253965cb842aef4bda340c1358d9"
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
@@ -110,6 +126,10 @@
   "extract-workstream.md": {
     "file": "extract-workstream.md",
     "sha256": "22739e47888873130a72601a02c22a67a8a180426c8bdfef4c1152b6a9108361"
+  },
+  "flood-line.md": {
+    "file": "flood-line.md",
+    "sha256": "4bee428511257655a5af16235a898535d319e240b30af055c25a0941259a417f"
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
@@ -139,9 +159,33 @@
     "file": "gmail-draft-notice.md",
     "sha256": "bbc089b1b8eda41ced0e4b6d8f0e209d101046fd6a05636d62efbb1fcab4d44b"
   },
+  "group-conflict-alert.md": {
+    "file": "group-conflict-alert.md",
+    "sha256": "7a2cfe7a208fbde4847195a07a8f30e7f00bbbad7444ecfc359bfc55543ce0ef"
+  },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
+  },
+  "group-pickup-claim-read.md": {
+    "file": "group-pickup-claim-read.md",
+    "sha256": "a932bc46688dac5c1f9b60973dc26668eb965e8e436ceab93b3663dcaf90fb7e"
+  },
+  "group-plan-attendance-read.md": {
+    "file": "group-plan-attendance-read.md",
+    "sha256": "d19d41158b7257934300aedf22ac021de5096122d843845f004dc901aa788c11"
+  },
+  "group-plan-invite-note.md": {
+    "file": "group-plan-invite-note.md",
+    "sha256": "e2398f233a3c5f97c51282d12f85cf3adecb06befb17add4b2c33d94e493b6d0"
+  },
+  "group-plan-rsvp-read.md": {
+    "file": "group-plan-rsvp-read.md",
+    "sha256": "359d220a3a9b8fcc4572055584b3df54a3fd860508bf7de0046c6aff10040e3b"
+  },
+  "group-plan-rsvp-voice.md": {
+    "file": "group-plan-rsvp-voice.md",
+    "sha256": "601ff43bd4f73a8dcc5d3f3f27ece61a7e3aaa2cf00e82beae4a2bc228bcbd7e"
   },
   "group-poll-offer.md": {
     "file": "group-poll-offer.md",
@@ -150,6 +194,22 @@
   "group-poll-tally-read.md": {
     "file": "group-poll-tally-read.md",
     "sha256": "310b69a4c546773232b288343466460030fc3b12602fdcab1cccb32543fd4827"
+  },
+  "group-private-aside-draft.md": {
+    "file": "group-private-aside-draft.md",
+    "sha256": "c40c6073e82a32935dd61c648a6afeb990b4306cb1d8958d4f577db8f18b51a2"
+  },
+  "group-private-aside-read.md": {
+    "file": "group-private-aside-read.md",
+    "sha256": "56296c986c470ddd7ab85254d1faf356ee82e0efe0f15309ed929f7b03759979"
+  },
+  "group-reminder-read.md": {
+    "file": "group-reminder-read.md",
+    "sha256": "a9fce92c332192afcf8ba0d955a9e26d43e0fc7567d9eddfed44b9483231e7c3"
+  },
+  "group-reminder-voice.md": {
+    "file": "group-reminder-voice.md",
+    "sha256": "cc85d796ea0f0565fb115bd0a025adb7682e12c7aa1202938b69e5022f8f498a"
   },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
@@ -263,9 +323,25 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "registration-evening.md": {
+    "file": "registration-evening.md",
+    "sha256": "218c8e446e9400784aac34806b17b11cfcc6587521e8ac7142b6153e06b20fcc"
+  },
+  "registration-heads-up.md": {
+    "file": "registration-heads-up.md",
+    "sha256": "45031f49ff94164ccc51a97d5f977e59c2a1a3bfe8432beafed7190cea1fcb30"
+  },
+  "registration-morning.md": {
+    "file": "registration-morning.md",
+    "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
+  },
+  "registration-text-check.md": {
+    "file": "registration-text-check.md",
+    "sha256": "b67b3163f17eaa4565af70be192ff65eb92cb7aa8b953615ff32502789a3ce9d"
+  },
   "reminder.md": {
     "file": "reminder.md",
-    "sha256": "61340e5059f38e83f617ca8e89d352ab31870fc19dcf8c44eca8179c7e10a711"
+    "sha256": "d3576ec420c6d2ad91922145ece5f518e2943b234089697990b3db672ae04e14"
   },
   "reply-copy.md": {
     "file": "reply-copy.md",
@@ -313,7 +389,7 @@
   },
   "voice-register.md": {
     "file": "voice-register.md",
-    "sha256": "30fa3a658249ac041d8899d54836e36a9a88177bf5219e564c973d807b77f4f3"
+    "sha256": "f9011c0c12be48a2db00ef70cac374c9bc889fd1cb8b0fefc51098d99b2efbce"
   },
   "weekday-care-ask.md": {
     "file": "weekday-care-ask.md",

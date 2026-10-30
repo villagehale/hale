@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, not the requested Chinese, so it fails the language requirement. It also invents a 3:00 time, omits both events (story time and soccer with their times), changes the title Library story time into a day off claim, and says the day has breathing room while timed events exist. Multiple fact failures.",
+    "score": 1
+  }
+}

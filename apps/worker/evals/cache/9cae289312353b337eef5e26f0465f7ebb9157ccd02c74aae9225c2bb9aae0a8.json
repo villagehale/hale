@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event name (PD Day) and its day (tomorrow, Monday, which is correct from Sunday Oct 25), with no clock time for the all-day event. No end, venue, or address was given, and none was invented. It does not infer closures or who is affected, and there is no link. All given facts are present and correct.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French while the requested language is English, so it is the wrong language. It also gives a wrong time (3:00 instead of 10:00 AM to 11:00 AM), invents a day-off framing and a 'breathing room' claim that contradicts the timed swim class, drops the swim class title entirely, and calls the day tomorrow when it is today.",
+    "score": 1
+  }
+}

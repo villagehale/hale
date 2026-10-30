@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all present: tomorrow (lundi 26 octobre), 15 h to 16 h, and the Georgetown library location, with the title kept as 'un jour de congé'. However, the title 'Jour de congé' is turned into a noun phrase 'il y a un jour de congé à la bibliothèque', which reads as an event named 'a day off' happening at the library; this is a stiff, title-readout construction. A native speaker would more naturally say something like 'Demain, à 15 h, il y a un « Jour de congé » à la bibliothèque de Georgetown, jusqu'à 16 h', with the title quoted or handled as a name. The phrasing reads like an automated alert ('il y a X à Y, jusqu'à Z') rather than a friend's text, and it is not idiomatic, so it caps the score at 3.",
+    "score": 3
+  }
+}

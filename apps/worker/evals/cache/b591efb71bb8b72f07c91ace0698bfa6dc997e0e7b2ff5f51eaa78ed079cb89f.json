@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: piano lesson in about an hour, 7:00-8:00 PM evening, location Ms. Chen studio. However, the Chinese is not natural: '它是在Ms. Chen studio' is an awkward construction (a native speaker would say '在Ms. Chen studio' or '地点是Ms. Chen studio'), and the phrasing '有钢琴课它是在...' is a clumsy calque with a stray pronoun. Native speaker check fails, capping the score at 3.",
+    "score": 3
+  }
+}

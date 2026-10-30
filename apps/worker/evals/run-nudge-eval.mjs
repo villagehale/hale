@@ -31,9 +31,12 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedTextCall,
+  dryReportLine,
   evalRunTag,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -306,6 +309,15 @@ const BROKEN_MESSAGE = [
 ].join(' ');
 
 async function main() {
+  assertRunFlags([
+    '---',
+    '--anthropic-model',
+    '--broken',
+    '--only',
+    '--show',
+    '--env-file',
+    '--max-usd',
+  ]);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const candidateModel = process.argv
@@ -367,7 +379,9 @@ async function main() {
         getClient,
         cost,
       });
-      message = parseNudgeVoice(text);
+      // --dry: an uncached reply is a stand-in that will not parse; judge it anyway so
+      // the judge draw is priced (never made).
+      message = parseNudgeVoice(text) ?? (isDryRun() ? text : null);
     }
 
     const score =
@@ -433,6 +447,10 @@ async function main() {
     optingOut.length === 0;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('nudge', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

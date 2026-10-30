@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start (15 h), the venue name and the address, and quotes the title as-is without recasting it as a closure or a free day. However, the facts give an end time of 4:00 PM (16 h) and the text omits it entirely, giving only the start. A given end is missing, which is a fact failure.",
+    "score": 2
+  }
+}
