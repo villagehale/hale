@@ -33,10 +33,19 @@ const defaultPorts: GroupLeavePorts = {
 /** Linq: 4+ active participants including Hale → 3+ other handles. */
 export const MIN_OTHER_HANDLES_TO_LEAVE = 3;
 
-export async function leaveGroupOnFamilyAsk(
+export type GroupLeaveEligibility =
+  | { status: 'eligible' }
+  | Exclude<GroupLeaveOutcome, { status: 'left' }>;
+
+/**
+ * The same guard `leaveGroupOnFamilyAsk` runs, without leaving. The model's verb asks
+ * this BEFORE it writes its reply, so a leave the guard would decline is known while
+ * the model can still say so honestly (it stays in the chat).
+ */
+export async function groupLeaveEligibility(
   input: { chatId: string; explicitAsk: boolean },
-  ports: GroupLeavePorts = defaultPorts,
-): Promise<GroupLeaveOutcome> {
+  ports: Pick<GroupLeavePorts, 'listParticipants'> = defaultPorts,
+): Promise<GroupLeaveEligibility> {
   if (!linqGroupLeaveEnabled()) return { status: 'skipped', reason: 'flag_off' };
   if (input.explicitAsk !== true) return { status: 'skipped', reason: 'no_explicit_ask' };
   const chat = await ports.listParticipants({ chatId: input.chatId });
@@ -47,6 +56,15 @@ export async function leaveGroupOnFamilyAsk(
   if (new Set(chat.handles).size < MIN_OTHER_HANDLES_TO_LEAVE) {
     return { status: 'skipped', reason: 'too_small' };
   }
+  return { status: 'eligible' };
+}
+
+export async function leaveGroupOnFamilyAsk(
+  input: { chatId: string; explicitAsk: boolean },
+  ports: GroupLeavePorts = defaultPorts,
+): Promise<GroupLeaveOutcome> {
+  const guard = await groupLeaveEligibility(input, ports);
+  if (guard.status !== 'eligible') return guard;
   const result = await ports.leave({ chatId: input.chatId });
   if (result.status === 'accepted') return { status: 'left' };
   return { status: 'failed', reason: result.status === 'refused' ? result.code : result.status };

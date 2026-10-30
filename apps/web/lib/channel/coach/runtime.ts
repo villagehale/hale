@@ -24,6 +24,7 @@ import {
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
 import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
+import { type GroupLeaveEligibility, groupLeaveEligibility } from '~/lib/channel/linq/group-leave';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -242,6 +243,8 @@ export interface ChannelCoachPorts {
    * skill is untouched. Only ever offered on a group turn.
    */
   groupLeaveEnabled?(): boolean;
+  /** VIL-477 — the leave guard, run before the reply so a decline is told to the model. */
+  groupLeaveCheck?(chatId: string): Promise<GroupLeaveEligibility>;
   /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
    *
@@ -446,6 +449,26 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                     onLeave: (intent) => {
                       groupLeave = intent;
                     },
+                    ...(ports.groupLeaveCheck
+                      ? {
+                          check: async () => {
+                            const chatId = turn.groupChatId;
+                            if (!chatId)
+                              return { ok: false as const, reason: 'not_group' as const };
+                            const g = await ports.groupLeaveCheck!(chatId);
+                            if (g.status === 'eligible') return { ok: true as const };
+                            if (g.status === 'failed')
+                              return { ok: false as const, reason: 'unavailable' as const };
+                            return {
+                              ok: false as const,
+                              reason:
+                                g.reason === 'no_explicit_ask'
+                                  ? ('unavailable' as const)
+                                  : g.reason,
+                            };
+                          },
+                        }
+                      : {}),
                   }),
                 ]
               : []),
@@ -602,6 +625,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     client: anthropicClient,
     experienceCardsEnabled: linqExperiencesEnabled,
     groupLeaveEnabled: linqGroupLeaveEnabled,
+    groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForProviderWatch(
         augmentCoachSkillForAutonomySwitchOff(

@@ -71,6 +71,8 @@ export interface ChannelTurn {
    * Absent on a text-only turn.
    */
   inboundMedia?: readonly InboundMediaPart[];
+  /** VIL-477 — the Linq group this turn is in; absent/null on a 1:1 or SMS turn. */
+  groupChatId?: string | null;
 }
 
 /**

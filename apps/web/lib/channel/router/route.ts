@@ -2247,6 +2247,7 @@ async function composeReconciledReply(
     turn: HandlerContext;
     questions: readonly OpenQuestion[];
     audience: ChannelTurn['audience'];
+    groupChatId?: string | null;
   },
   view: Promise<ReconcileView>,
 ): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
@@ -2257,7 +2258,12 @@ async function composeReconciledReply(
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
     result = await deps.coach.respond(
-      { ...args.turn, standingQuestions, audience: args.audience },
+      {
+        ...args.turn,
+        standingQuestions,
+        audience: args.audience,
+        ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),
+      },
       rejected,
     );
     verdict = reconcile(extractStateClaims(result.reply), {

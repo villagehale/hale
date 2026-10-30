@@ -35,4 +35,31 @@ describe('leave_group_chat (VIL-477)', () => {
     expect(lit.meta.tools).toEqual(['lookup_week', GROUP_LEAVE_TOOL]);
     expect(augmentCoachSkillForGroupLeave(lit, true)).toBe(lit);
   });
+
+  it('too_small: nothing registered; result says Hale is staying in the chat and why', async () => {
+    const got: unknown[] = [];
+    const tool = leaveGroupChatTool({
+      onLeave: (i) => got.push(i),
+      check: async () => ({ ok: false, reason: 'too_small' }),
+    });
+    const out = (await tool.handler({ ask: 'Hale leave' } as never, {} as never)) as Record<
+      string,
+      unknown
+    >;
+    expect(got).toEqual([]);
+    expect(out).toMatchObject({ left: false, stillInChat: true, reason: 'too_small' });
+    expect(String(out.why)).toMatch(/too small/);
+    expect(String(out.note)).toMatch(/did NOT leave/);
+  });
+
+  it('eligible: registers and says the leave happens after the reply', async () => {
+    const got: unknown[] = [];
+    const tool = leaveGroupChatTool({
+      onLeave: (i) => got.push(i),
+      check: async () => ({ ok: true }),
+    });
+    const out = await tool.handler({ ask: 'Hale leave' } as never, {} as never);
+    expect(got).toEqual([{ ask: 'Hale leave' }]);
+    expect(out).toMatchObject({ registered: true, willLeaveAfterReply: true });
+  });
 });
