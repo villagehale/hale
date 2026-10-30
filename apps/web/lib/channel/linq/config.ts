@@ -109,6 +109,14 @@ export function linqGroupWelcomeVoiceEnabled(): boolean {
 }
 
 /**
+ * VIL-445 (T16) — read who is driving from the group and remind the night before.
+ * Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function linqGroupCarpoolEnabled(): boolean {
+  return trimmed('LINQ_GROUP_CARPOOL_ENABLED') === 'true';
+}
+
+/**
  * VIL-444 (T24) — a clash in the household group gets one model-written alert with a
  * suggested fix, in place of the household conflict line, and a pickup someone takes in
  * that group settles it (group-pickup-claim.ts). Exactly `true` enables it.

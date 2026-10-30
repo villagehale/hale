@@ -7,6 +7,7 @@
     { "path": "/api/cron/reminders", "schedule": "12 * * * *" },
     { "path": "/api/cron/registration-sequence", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/nudge", "schedule": "17 * * * *" },
+    { "path": "/api/cron/carpool-reminders", "schedule": "16 * * * *" },
     { "path": "/api/cron/proactive-review", "schedule": "23 * * * *" },
     { "path": "/api/cron/social-watch", "schedule": "18 * * * *" },
     { "path": "/api/cron/party-reminders", "schedule": "22 * * * *" },

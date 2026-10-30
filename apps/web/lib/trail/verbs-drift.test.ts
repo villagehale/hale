@@ -89,6 +89,15 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'workstream_followup_deferred',
     'workstream_followup_gave_up',
   ],
+  // VIL-445 — one helper writes every carpool verb from a parameter.
+  'apps/web/lib/channel/linq/carpool.ts': [
+    'group_line_unsent',
+    'linq_carpool_updated',
+    'linq_carpool_cancelled',
+    'linq_carpool_reminder_held',
+    'linq_carpool_reminder_skipped',
+    'linq_carpool_reminder_sent',
+  ],
   // VIL-442 — start is a literal; recorded vs edited is a ternary on the same write.
   'apps/web/lib/channel/linq/group-plan-rsvp/store.ts': [
     'linq_group_plan_started',

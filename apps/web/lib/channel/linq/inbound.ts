@@ -41,7 +41,11 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
 import { considerSocialForward } from '~/lib/social/forward';
+import { considerCarpoolTapback, considerCarpoolTurn } from './carpool';
+import type { CarpoolReader } from './carpool-reading';
+import type { CarpoolComposer } from './carpool-voice';
 import {
+  linqGroupCarpoolEnabled,
   linqGroupCoparentEnabled,
   linqGroupMembersEnabled,
   linqGroupOnboardingV2Enabled,
@@ -202,6 +206,10 @@ export async function handleLinqInboundRequest(
     groupLimiter?: RateLimiter;
     /** VIL-440 test seam. Production uses the shared model reader when the flag is on. */
     groupTurnReader?: GroupTurnReader;
+    /** VIL-445 test seam. Production uses the shared carpool reader when the flag is on. */
+    carpoolReader?: CarpoolReader;
+    /** VIL-445 test seam. Production composes with the model. */
+    carpoolVoice?: CarpoolComposer;
     /** VIL-448 test seams. Production reads and writes with the model when the flag is on. */
     groupReminderReader?: GroupReminderReader;
     groupReminderVoice?: GroupReminderVoice | null;
@@ -848,6 +856,41 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq inbound: group pickup claim was not read',
       );
+    }
+  }
+  if (linqGroupCarpoolEnabled()) {
+    const familyId =
+      mapped.status === 'same_family'
+        ? mapped.familyId
+        : await familyIdForClaimedChat(deps.database, message.chatId);
+    if (familyId) {
+      try {
+        const carpool = await considerCarpoolTurn(deps.database, {
+          chatId: message.chatId,
+          familyId,
+          senderHandle: message.senderHandle,
+          senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
+          senderName: null,
+          text: message.text,
+          now: deps.now?.() ?? new Date(),
+          send: deps.sendGroupText,
+          reader: deps.carpoolReader,
+          voice: deps.carpoolVoice,
+        });
+        if (carpool.handled && carpool.outcome === 'carpool_asked') {
+          deps.log.info({ outcome: carpool.outcome }, 'linq inbound: carpool ask');
+          await deps.countOutcome('intake');
+          return json({ outcome: carpool.outcome, notice: carpool.notice });
+        }
+        if (carpool.handled) {
+          deps.log.info({ outcome: carpool.outcome }, 'linq inbound: carpool');
+        }
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq inbound: carpool turn was not recorded',
+        );
+      }
     }
   }
   let budget: 'sender' | 'chat' = 'sender';
@@ -1683,6 +1726,39 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
             now,
           });
         }
+      }
+    }
+  }
+  if (
+    linqGroupCarpoolEnabled() &&
+    signal.event === 'reaction.added' &&
+    signal.chatId &&
+    signal.messageId &&
+    (signal.senderHandle || signal.actorHandle)
+  ) {
+    const covering = await familyIdForClaimedChat(deps.database, signal.chatId);
+    const handle = signal.senderHandle ?? signal.actorHandle;
+    if (covering && handle) {
+      try {
+        const carpool = await considerCarpoolTapback(deps.database, {
+          chatId: signal.chatId,
+          familyId: covering,
+          senderHandle: handle,
+          senderName: null,
+          messageId: signal.messageId,
+          reactionType: signal.reactionType,
+          now: deps.now?.() ?? new Date(),
+          send: deps.sendGroupText,
+          voice: deps.carpoolVoice,
+        });
+        if (carpool.handled) {
+          deps.log.info({ outcome: carpool.outcome }, 'linq inbound: carpool tapback');
+        }
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq inbound: carpool tapback was not recorded',
+        );
       }
     }
   }

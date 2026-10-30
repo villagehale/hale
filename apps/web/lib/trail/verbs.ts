@@ -194,6 +194,11 @@ export const AUDIT_VERBS = [
   'linq_group_poll_vote_removed',
   'group_line_unsent',
   'group_line_locked_fallback',
+  'linq_carpool_updated',
+  'linq_carpool_cancelled',
+  'linq_carpool_reminder_held',
+  'linq_carpool_reminder_skipped',
+  'linq_carpool_reminder_sent',
   // VIL-448. A reminder anyone in the family group asked for.
   'group_reminder_set',
   'group_reminder_cancelled',
@@ -829,6 +834,26 @@ const VERBS: Record<AuditVerb, Verb> = {
   group_line_locked_fallback: {
     sentence: 'Hale used its standard wording to ask who is who in your family group',
     family: 'note',
+  },
+  linq_carpool_updated: {
+    sentence: 'Hale noted who is driving from the group chat',
+    family: 'done',
+  },
+  linq_carpool_cancelled: {
+    sentence: 'Hale dropped the drive after the group cancelled it',
+    family: 'note',
+  },
+  linq_carpool_reminder_held: {
+    sentence: 'Hale held the night-before drive reminder for quiet hours',
+    family: 'awaiting',
+  },
+  linq_carpool_reminder_skipped: {
+    sentence: 'Hale did not send a night-before drive reminder',
+    family: 'note',
+  },
+  linq_carpool_reminder_sent: {
+    sentence: 'Hale reminded the group who is driving tomorrow',
+    family: 'done',
   },
   group_reminder_set: {
     sentence: 'Someone in your family group asked Hale for a reminder',

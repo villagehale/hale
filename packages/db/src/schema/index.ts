@@ -71,6 +71,7 @@ export * from './linq-group-onboarding.js';
 export * from './linq-group-members.js';
 export * from './linq-group-rosters.js';
 export * from './linq-multi-family.js';
+export * from './linq-group-carpools.js';
 export * from './linq-group-plans.js';
 export * from './linq-group-polls.js';
 export * from './parent-calendar-blocks.js';
