@@ -287,6 +287,10 @@
     "file": "registration-evening.md",
     "sha256": "218c8e446e9400784aac34806b17b11cfcc6587521e8ac7142b6153e06b20fcc"
   },
+  "registration-heads-up.md": {
+    "file": "registration-heads-up.md",
+    "sha256": "45031f49ff94164ccc51a97d5f977e59c2a1a3bfe8432beafed7190cea1fcb30"
+  },
   "registration-morning.md": {
     "file": "registration-morning.md",
     "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
