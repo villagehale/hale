@@ -2024,7 +2024,12 @@ async function main() {
   const cost = makeCost();
   const subjectLatencies = [];
 
-  const skill = await agent.loadSkill(SKILL_PATH);
+  // VIL-510: the web runtime appends coach-nearby-find to every channel turn; the eval
+  // assembles the same prompt so its recordings key on what production sends.
+  const skill = withAddendum(
+    await agent.loadSkill(SKILL_PATH),
+    await agent.loadSkill(join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-nearby-find.md')),
+  );
   const { shareExperienceCardTool, augmentCoachSkillForExperienceCards } = await tsImport(
     EXPERIENCE_CARD_TOOL_SRC,
     import.meta.url,
@@ -2624,3 +2629,7 @@ main().catch((err) => {
   console.error('coach-channel eval harness error:', err);
   process.exit(2);
 });
+
+function withAddendum(skill, addendum) {
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
+}

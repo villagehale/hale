@@ -3,6 +3,10 @@
     "file": "activity-deep.md",
     "sha256": "b74ca280ef2ad8e0a28fe840c8e9fa77559ff09a1c6a33d29fb660eacc264dca"
   },
+  "activity-finder-events.md": {
+    "file": "activity-finder-events.md",
+    "sha256": "ed21d26ed46009fa0c26ee1a6fc4e868f046781e02a76f55e4216d9e8edd7a3e"
+  },
   "activity-finder.md": {
     "file": "activity-finder.md",
     "sha256": "90f074ed912a23bb83debf43b35b235b1703ba050313cf0bd62927c98ae1d4a6"
@@ -75,6 +79,10 @@
     "file": "coach-channel-sms.md",
     "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
   },
+  "coach-nearby-find.md": {
+    "file": "coach-nearby-find.md",
+    "sha256": "593105a44b4d15db06d505db39df19959ba98bf5a6fd6b5a40057ea5cbd0db72"
+  },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
     "sha256": "6a2d08cba7a9806e816e433cf7e07efa70754375ef6b241c12d0f365b15a8b8c"
@@ -117,11 +125,11 @@
   },
   "experience-card-coach.md": {
     "file": "experience-card-coach.md",
-    "sha256": "3eb14fd4f4a84856637906123bb78130d564233f4ecb94640049f18c9066fb06"
+    "sha256": "5106511964cf8b0381a891cf99f16f68a3d5fe0ac5feaf37a94a600912f07bee"
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
-    "sha256": "4989569d42cf0eb4ce3950082b53e3920a0fe002bec774c2a23e00a731a17dd6"
+    "sha256": "4092659057ae076133c1e473c8310a920f0f0867db37512c5d79b25bfd08f96d"
   },
   "extract-coparent-duty.md": {
     "file": "extract-coparent-duty.md",

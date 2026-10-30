@@ -35,7 +35,6 @@ import {
 import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { roleAllows } from '~/lib/channel/role-scope';
 import type { ApprovalSpine, PendingAction } from '~/lib/channel/router/approval';
-import { approvedReceipt } from '~/lib/channel/router/copy';
 import { approvalHandler } from '~/lib/channel/router/handlers';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -1208,7 +1207,8 @@ describe('6 · the registration sequence claims the window and prepares the morn
 describe('7 · the parent approves in their own words and the receipt is theirs', () => {
   it('reads "sounds good" as consent and approves the one drafted action', () => {
     expect(journey.approval).toMatchObject({ claimed: true, outcome: 'approved' });
-    expect(journey.approval.reply).toBe(approvedReceipt('add_to_digest_only'));
+    // VIL-504 · no fixed receipt: the approval is the answer.
+    expect(journey.approval.reply).toBeNull();
   });
 
   it('stamps the INTERNAL users.id as the approver, which is the id the family owns (WS3 P0)', () => {

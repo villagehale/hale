@@ -767,7 +767,8 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   linq_group_left_on_ask: {
-    sentence: 'Someone in your family group asked Hale to leave, so Hale left and went back to texting you directly',
+    sentence:
+      'Someone in your family group asked Hale to leave, so Hale left and went back to texting you directly',
     family: 'note',
   },
   linq_group_roster_asked: {

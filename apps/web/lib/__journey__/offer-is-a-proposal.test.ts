@@ -5,7 +5,6 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { ChannelCoachRuntime } from '~/lib/channel/router/coach-runtime';
-import { conflictReply } from '~/lib/channel/router/copy';
 import { healthReplyHandler } from '~/lib/channel/router/handlers';
 import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
@@ -542,7 +541,6 @@ describe('the offer is a proposal', () => {
     const everythingSaid = transport.bodies().join('\n');
     // NO REVIEWER JARGON, anywhere in the thread.
     expect(everythingSaid).not.toMatch(/cleared my own checks|reviewer|verdict|flagged/i);
-    expect(everythingSaid).not.toContain(conflictReply('not_reviewer_approved'));
     // NO MACHINE MENU, and in particular no option list built from action-type labels.
     expect(everythingSaid).not.toMatch(/Which one -/);
     expect(everythingSaid).not.toMatch(/add to your calendar/i);

@@ -48,6 +48,9 @@ export interface ExtractedEvent {
   childRef: string | null;
   originalTime: string | null;
   newTime: string | null;
+  /** When the `newTime` occasion ends, only when the email states it; else null/absent.
+   * Never estimated. */
+  endTime?: string | null;
   location: string | null;
 }
 

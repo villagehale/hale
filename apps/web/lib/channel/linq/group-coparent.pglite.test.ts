@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNEL_SIGNIN_TTL_MS, consumeChannelSigninToken } from '~/lib/auth/channel-signin';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -390,13 +389,15 @@ describe('group co-parent seating', () => {
       expect(text.toLowerCase()).not.toContain('how old');
     }
 
+    const sentBefore = wire.texts().length;
     const named = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-name', senderHandle: COPARENT_PHONE, text: 'Sam' }),
       { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
     expect(named).toMatchObject({ type: 'done', outcome: 'group_coparent_named' });
-    expect(wire.texts().at(-1)).toBe(NAME_CAPTURED_REPLY);
+    // VIL-504 · no fixed name ack is sent.
+    expect(wire.texts().length).toBe(sentBefore);
     const [namedUser] = await db.database
       .select({ name: schema.users.name })
       .from(schema.users)

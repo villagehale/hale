@@ -1,22 +1,18 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { MAX_REDRIVE_PER_RUN, REDRIVE_HOUR_LOCAL, isRedriveSlot } from '~/lib/channel/redrive-slot';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { FakeTransport } from './transport';
-import {
-  MAX_REDRIVE_PER_RUN,
-  REDRIVE_HOUR_LOCAL,
-  isRedriveSlot,
-} from '~/lib/channel/redrive-slot';
-import { runWelcomeCardRedrive } from './welcome-card-redrive';
 import {
   CONTACT_CARD_URL,
   WELCOME_CARD_BODY,
   WELCOME_CARD_TEMPLATE_KEY,
   welcomeCardDedupeKey,
 } from './welcome-card';
+import { runWelcomeCardRedrive } from './welcome-card-redrive';
 
 /**
  * The card a family who onboarded at night never got (VIL-355 follow-up · item 4).
@@ -232,7 +228,11 @@ describe('the 08:00 re-drive of a contact card quiet hours held', () => {
       { to: household.phone, body: WELCOME_CARD_BODY, mediaUrls: [CONTACT_CARD_URL] },
     ]);
     expect(threaded).toEqual([
-      { familyId: household.familyId, parentUserId: household.parentUserId, body: WELCOME_CARD_BODY },
+      {
+        familyId: household.familyId,
+        parentUserId: household.parentUserId,
+        body: WELCOME_CARD_BODY,
+      },
     ]);
     const rows = await cardRows(household.familyId);
     expect(rows).toHaveLength(2);

@@ -1,7 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
   HANDOFF_CEILING_MS,
@@ -12,6 +11,7 @@ import {
   reconcileWindow,
   selectUnhandedInbound,
 } from '~/lib/channel/reconcile/unhanded';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 
 /**
  * The reconciler exists because `handed_off_at` is written only once C1's job really
@@ -218,7 +218,7 @@ describe('reconcileUnhandedInbound', () => {
     expect(summary).toEqual({ scanned: 1, redriven: 1, failed: 0 });
   });
 
-  it('passes the row\'s stored group bit along, and an unstored one as unknown (VIL-463)', async () => {
+  it("passes the row's stored group bit along, and an unstored one as unknown (VIL-463)", async () => {
     const jobs: ChannelMessageReceivedJob[] = [];
     const h = deps(
       [

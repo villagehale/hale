@@ -107,14 +107,14 @@ describe('resolveApproval — one pending action', () => {
   it('names what it did in the reply — a receipt, not an acknowledgement', async () => {
     const { outcome } = await run(YES, { pending: [action('a-1', 'calendar_add')] });
 
-    expect(outcome.reply).toMatch(/add to your calendar/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
   });
 
   it('reports honestly when the spine refuses on a state it cannot explain', async () => {
     const { outcome } = await run(YES, { pending: [action('a-1')], refuse: 'unavailable' });
 
     expect(outcome.status).toBe('conflict');
-    expect(outcome.reply).toMatch(/nothing was changed/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
   });
 
   /**
@@ -130,8 +130,7 @@ describe('resolveApproval — one pending action', () => {
     });
 
     expect(outcome.status).toBe('conflict');
-    expect(outcome.reply).toMatch(/already handled/i);
-    expect(outcome.reply).not.toMatch(/went wrong|try me again/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
   });
 
   /**
@@ -148,13 +147,10 @@ describe('resolveApproval — one pending action', () => {
       refuse: 'not_reviewer_approved',
     });
 
-    expect(outcome.reply).toMatch(/double-checking/i);
-    expect(outcome.reply).toMatch(/nothing for you to do/i);
-    expect(outcome.reply).not.toMatch(/review|verdict|checks|flagged|approved by/i);
-    expect(outcome.reply).not.toMatch(/went wrong|try me again/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
     // No timeframe: a flagged draft waits on a person, and "in a minute" would be a
     // promise made out of a clock Hale does not hold.
-    expect(outcome.reply).not.toMatch(/minute|shortly|soon/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
   });
 
   it('declining a resolved row gets the same state receipt, not an apology', async () => {
@@ -164,7 +160,7 @@ describe('resolveApproval — one pending action', () => {
     });
 
     expect(outcome.status).toBe('conflict');
-    expect(outcome.reply).toMatch(/already handled/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
   });
 });
 
@@ -192,7 +188,7 @@ describe('resolveApproval — nothing pending', () => {
     const { outcome, calls } = await run(yesAt(2), { pending: [] });
 
     expect(outcome.status).toBe('nothing_pending');
-    expect(outcome.reply).toMatch(/nothing'?s? waiting/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
     expect(calls).toEqual([]);
   });
 });
@@ -322,7 +318,7 @@ describe('resolveApproval — undo', () => {
     const { outcome, calls } = await run(UNDO, { undoable: null });
 
     expect(outcome.status).toBe('nothing_to_undo');
-    expect(outcome.reply).toMatch(/nothing/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
     expect(calls).toEqual([]);
   });
 
@@ -333,9 +329,9 @@ describe('resolveApproval — undo', () => {
     });
 
     expect(outcome.status).toBe('conflict');
-    expect(outcome.reply).toMatch(/undo window/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
     // The window does not reopen: "try me again in a minute" is false for 24 hours.
-    expect(outcome.reply).not.toMatch(/try me again/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
   });
 
   it('says an action is not one it can take back, rather than that it broke', async () => {
@@ -345,8 +341,7 @@ describe('resolveApproval — undo', () => {
     });
 
     expect(outcome.status).toBe('conflict');
-    expect(outcome.reply).toMatch(/take back/i);
-    expect(outcome.reply).not.toMatch(/went wrong|try me again/i);
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
   });
 
   it('ignores the pending queue entirely — undo names an EXECUTED action', async () => {
@@ -423,7 +418,7 @@ describe('two parents answering one shortlist card', () => {
     );
 
     expect(outcome.status).toBe('conflict');
-    expect(outcome.reply).toBeTruthy();
+    expect(outcome.reply).toBeNull(); // VIL-504 · no fixed receipt
     expect(built.calls).toEqual([]);
   });
 });

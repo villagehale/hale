@@ -1,12 +1,12 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SIGNUP_OFFER_SENTENCE_TODO } from './offer-copy';
 import {
   type SignupOfferFacts,
   createSignupOfferWriter,
   signupOfferUserMessage,
   signupOfferViolations,
 } from './offer-writer';
-import { SIGNUP_OFFER_SENTENCE_TODO } from './offer-copy';
 
 const URL = 'https://harbor-rec.example/register';
 const BASE: SignupOfferFacts = {
@@ -70,9 +70,9 @@ describe('signup offer writer', () => {
       'missing the registration link',
       'missing a session Hale saw',
     ]);
-    expect(signupOfferViolations(`Tue 4:30 at ${URL} and also https://evil.example`, BASE)).toEqual([
-      'contains another link',
-    ]);
+    expect(signupOfferViolations(`Tue 4:30 at ${URL} and also https://evil.example`, BASE)).toEqual(
+      ['contains another link'],
+    );
   });
 
   it('names a missing client instead of falling back to a template', async () => {

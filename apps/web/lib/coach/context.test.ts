@@ -174,7 +174,10 @@ describe('redactFactsForTeens (rule #1)', () => {
 describe('compactTranscript (MEM-4)', () => {
   const turn = (role: 'user' | 'assistant', content: string) => ({ role, content });
 
-  function thread(pairs: number, prefix = 'turn'): Array<{ role: 'user' | 'assistant'; content: string }> {
+  function thread(
+    pairs: number,
+    prefix = 'turn',
+  ): Array<{ role: 'user' | 'assistant'; content: string }> {
     const out: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     for (let i = 0; i < pairs; i += 1) {
       out.push(turn('user', `${prefix} question ${i}`));
@@ -201,11 +204,8 @@ describe('compactTranscript (MEM-4)', () => {
     expect(out.transcript[out.transcript.length - 1]).toEqual(turn('assistant', 'turn answer 39'));
   });
 
-  it('names how many turns were dropped and carries the parent\'s earlier asks', () => {
-    const long = [
-      turn('user', 'we switched Ella to the 2pm nap'),
-      ...thread(30),
-    ];
+  it("names how many turns were dropped and carries the parent's earlier asks", () => {
+    const long = [turn('user', 'we switched Ella to the 2pm nap'), ...thread(30)];
     const out = _internal.compactTranscript(long);
     const summary = out.transcriptSummary;
     if (!summary) throw new Error('expected a digest for an over-budget thread');
@@ -260,7 +260,9 @@ describe('compactTranscript (MEM-4)', () => {
   it('bounds the digest itself — it does not grow with the thread', () => {
     const chatty = (pairs: number) =>
       _internal.compactTranscript(
-        Array.from({ length: pairs * 2 }, (_, i) => turn(i % 2 === 0 ? 'user' : 'assistant', 'x'.repeat(400))),
+        Array.from({ length: pairs * 2 }, (_, i) =>
+          turn(i % 2 === 0 ? 'user' : 'assistant', 'x'.repeat(400)),
+        ),
       ).transcriptSummary ?? '';
 
     const hundred = chatty(100);

@@ -20,9 +20,7 @@ describe('FIRST_TOUCH_LADDER_ENABLED', () => {
 
 describe('FIRST_TOUCH_LOCATION_CARD_ENABLED', () => {
   it('is on only for the exact string true', () => {
-    expect(firstTouchLocationCardEnabled({ FIRST_TOUCH_LOCATION_CARD_ENABLED: 'true' })).toBe(
-      true,
-    );
+    expect(firstTouchLocationCardEnabled({ FIRST_TOUCH_LOCATION_CARD_ENABLED: 'true' })).toBe(true);
   });
 
   it('stays off when unset, or for on, 1, TRUE, and a trailing newline', () => {

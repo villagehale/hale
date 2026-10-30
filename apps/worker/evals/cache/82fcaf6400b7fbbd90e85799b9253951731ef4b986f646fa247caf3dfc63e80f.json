@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real Cartwheels Gym Centre programs (Georgetown, part of Halton Hills) drawn from the venue's own page, and both fit a toddler. That answers the named place, as watchFor requires. The message leads with the venue and Tiny Gym by name and attributes the details with \"their site says\". It names the gap in the first person (\"I could not pin down the day or the price\"), which is the correct form under page_has_schedule; it does not claim the details are not posted. No day, time or price is invented. watch is true, so \"I'll keep watching and text you\" is a promise that exists. The message is plain text, with no link and no question.",
+    "score": 5
+  }
+}

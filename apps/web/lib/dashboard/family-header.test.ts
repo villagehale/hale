@@ -9,7 +9,9 @@ import { type ChildRow, stagePhrase, toFamilyHeader } from './family-header.js';
  */
 const NOW = new Date(2026, 5, 15);
 
-function child(overrides: Pick<ChildRow, 'id' | 'name' | 'dateOfBirth'>): Pick<ChildRow, 'id' | 'name' | 'dateOfBirth'> {
+function child(
+  overrides: Pick<ChildRow, 'id' | 'name' | 'dateOfBirth'>,
+): Pick<ChildRow, 'id' | 'name' | 'dateOfBirth'> {
   return overrides;
 }
 

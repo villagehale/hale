@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { decryptTokens, encryptTokens, type OAuthTokens } from './token-vault';
+import { type OAuthTokens, decryptTokens, encryptTokens } from './token-vault';
 
 // Two distinct 32-byte keys, base64-encoded (AES-256).
 const KEY_A = Buffer.alloc(32, 1).toString('base64');

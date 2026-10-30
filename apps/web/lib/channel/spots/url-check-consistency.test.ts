@@ -13,6 +13,8 @@ describe('course_url length bound', () => {
     'packages/db/src/schema/registration-sequences.ts',
   ])('%s bounds course_url at MAX_URL_CHARS', (file) => {
     const source = readFileSync(path.join(ROOT, file), 'utf8');
-    expect(source).toMatch(new RegExp(`length\\((?:"course_url"|\\$\\{table\\.courseUrl\\})\\) <= ${MAX_URL_CHARS}\\b`));
+    expect(source).toMatch(
+      new RegExp(`length\\((?:"course_url"|\\$\\{table\\.courseUrl\\})\\) <= ${MAX_URL_CHARS}\\b`),
+    );
   });
 });

@@ -1,14 +1,5 @@
 import type { Database } from '@hale/db';
-import {
-  UNDONE_RECEIPT,
-  approvedReceipt,
-  conflictReply,
-  declinedReceipt,
-  nothingPendingReply,
-  nothingToUndoReply,
-  outOfRangeReply,
-} from './copy';
-import { MAX_LISTED_APPROVALS, type FastPathCommand } from './fast-path';
+import { type FastPathCommand, MAX_LISTED_APPROVALS } from './fast-path';
 
 /**
  * VIL-220 · C1 — resolving a fast-path command against the approvals spine.
@@ -126,7 +117,8 @@ export type ApprovalStatus =
 
 export interface ApprovalOutcome {
   status: ApprovalStatus;
-  /** What to text back, or null when the message was not claimed. */
+  /** VIL-504 · always null: the router sends no fixed receipt. The state change
+   * is the answer; anything the parent hears is written by the model or not sent. */
   reply: string | null;
   /** The action acted on, when exactly one was. */
   actionId: string | null;
@@ -172,7 +164,7 @@ export async function resolveApproval(
     // true sentence; inventing a retry would be the failure this receipt class replaced.
     return {
       status: 'conflict',
-      reply: conflictReply('already_resolved'),
+      reply: null,
       actionId: input.targetActionId ?? null,
     };
   }
@@ -180,8 +172,8 @@ export async function resolveApproval(
   if (target === 'out_of_range') {
     // Reached only when an ordinal was given and the list is shorter (or empty).
     return pending.length === 0
-      ? { status: 'nothing_pending', reply: nothingPendingReply(), actionId: null }
-      : { status: 'out_of_range', reply: outOfRangeReply(pending.length), actionId: null };
+      ? { status: 'nothing_pending', reply: null, actionId: null }
+      : { status: 'out_of_range', reply: null, actionId: null };
   }
   if (target === 'ambiguous') {
     // NOT CLAIMED — the 2026-08-22 subtraction, and the same move `resolveNaturalReply`
@@ -223,11 +215,11 @@ export async function resolveApproval(
       });
 
   if (!outcome.ok) {
-    return { status: 'conflict', reply: conflictReply(outcome.reason), actionId: target.actionId };
+    return { status: 'conflict', reply: null, actionId: target.actionId };
   }
   return {
     status: approving ? 'approved' : 'declined',
-    reply: approving ? approvedReceipt(target.actionType) : declinedReceipt(target.actionType),
+    reply: null,
     actionId: target.actionId,
   };
 }
@@ -268,7 +260,7 @@ async function resolveUndo(
 ): Promise<ApprovalOutcome> {
   const target = await spine.latestUndoable(database, input.familyId, input.now);
   if (!target) {
-    return { status: 'nothing_to_undo', reply: nothingToUndoReply(), actionId: null };
+    return { status: 'nothing_to_undo', reply: null, actionId: null };
   }
 
   const outcome = await spine.undo(database, {
@@ -278,8 +270,8 @@ async function resolveUndo(
     now: input.now,
   });
   return outcome.ok
-    ? { status: 'undone', reply: UNDONE_RECEIPT, actionId: target.actionId }
-    : { status: 'conflict', reply: conflictReply(outcome.reason), actionId: target.actionId };
+    ? { status: 'undone', reply: null, actionId: target.actionId }
+    : { status: 'conflict', reply: null, actionId: target.actionId };
 }
 
 /** Re-exported so a caller reasoning about the numbered list has one import. */

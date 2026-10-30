@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { checkLinqIMessageCapability, sendLinqExperience } from '~/lib/channel/outbound-transport';
+import { parentFacingActivityUrl } from '~/lib/format/http-url';
 import { linqExperiencesEnabled } from './config';
 import { type LinqLinkPreviewOutcome, sendLinqLinkPreview } from './link-preview';
 import { type LinqExperienceWire, LinqSendError } from './transport';
@@ -65,10 +66,11 @@ function httpsUrl(raw: string | undefined): string | null {
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
-    return parsed.toString();
   } catch {
     return null;
   }
+  // VIL-510 · Wiki / encyclopedia hosts are not activity pages for a card or preview.
+  return parentFacingActivityUrl(raw);
 }
 
 /** The wire experience, or a refusal naming why. Pure. */
