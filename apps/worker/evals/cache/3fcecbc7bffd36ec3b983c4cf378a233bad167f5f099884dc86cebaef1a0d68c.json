@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "A raising-a-child question answered with concrete advice Sam can act on tonight, grounded in Milo's age (5, 63 months). Naming Milo is correct inference, since he is the only 5-year-old listed. It notes this is common, gives no diagnosis or medicine, and ends with the appended plan offer, which is allowed. It runs slightly long, around 370 characters against the roughly 300 budget, so the tail risks being cut. 'Boring and consistent is what makes it work' is a little padding.",
+    "score": 4
+  }
+}

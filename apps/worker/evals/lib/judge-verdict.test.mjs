@@ -26,18 +26,32 @@ import {
  * for a good reason (a score emitted first is a score reasoned backwards from), and the
  * price of that order is that `score` is exactly what truncation eats.
  */
-describe('a judge verdict is a verdict only if it carries a number', () => {
+describe('a judge verdict is a verdict only if it carries a rubric score', () => {
   it.each([
     ['truncated to nothing', {}],
     ['reason written, score truncated off the end', { reason: 'a long argument' }],
     ['score present but not a number', { score: '4', reason: 'x' }],
     ['nothing at all', undefined],
+    [
+      'out-of-range score from a truncated quote',
+      {
+        score: -1,
+        reason: 'The message ties the ask directly to the introduction the parent agreed to (',
+      },
+    ],
+    ['score below the rubric', { score: 0, reason: 'a long argument about the reply' }],
+    ['score above the rubric', { score: 6, reason: 'a long argument about the reply' }],
+    ['non-integer score', { score: 4.5, reason: 'a long argument about the reply' }],
   ])('refuses %s', (_label, parsed) => {
     expect(isVerdict(parsed)).toBe(false);
   });
 
   it('POSITIVE CONTROL - a whole verdict is one', () => {
     expect(isVerdict({ score: 2, reason: 'the watch sentence blames the page' })).toBe(true);
+  });
+
+  it.each([1, 2, 3, 4, 5])('accepts rubric score %s', (score) => {
+    expect(isVerdict({ score, reason: 'a long argument about the reply' })).toBe(true);
   });
 });
 
@@ -195,5 +209,99 @@ describe('score-first judge schema', () => {
     expect(Object.keys(schema.properties)).toEqual(['score', 'reason']);
     expect(schema.required).toEqual(['score', 'reason']);
     expect(schema.properties.reason.maxLength).toBe(160);
+  });
+});
+
+/**
+ * A VERDICT CUT OFF AT THE JUDGE'S OUTPUT CAP IS A JUDGE ERROR (914). The cap exists so
+ * the spend guard reserves a small worst case; it must never turn into a pass, a cached
+ * draw, or a quiet second ask.
+ */
+describe('a capped judge stops the run on a verdict that hits the cap', () => {
+  it.each(['claude-sonnet-5-5', 'claude-haiku-5-5'])(
+    '%s: throws JudgeTruncatedError, one call, nothing cached',
+    async (model) => {
+      const { JudgeTruncatedError } = await import('./harness.mjs');
+      const prefix = `judge-cap-${Math.random().toString(36).slice(2)}`;
+      const requests = [];
+      const create = async (request) => {
+        requests.push(request);
+        return {
+          stop_reason: 'max_tokens',
+          content: [{ type: 'text', text: '{"reason":"the reply is' }],
+          usage: { input_tokens: 10, output_tokens: 512 },
+        };
+      };
+      const judge = makeJudge(
+        model,
+        'score it',
+        prefix,
+        false,
+        () => ({ messages: { create } }),
+        makeCost(),
+        {
+          samples: 3,
+          aggregate: 'min',
+          maxOutputTokens: 512,
+        },
+      );
+      const err = await judge('fixture', { text: 'x' }).catch((e) => e);
+      expect(err).toBeInstanceOf(JudgeTruncatedError);
+      expect(err.message).toMatch(/max_tokens cap \(512\)/);
+      expect(requests).toHaveLength(1);
+      expect(requests[0].max_tokens).toBe(512);
+      // the cap bounds the verdict only: the capped lane never thinks
+      expect(requests[0].thinking.type).not.toBe('adaptive');
+      const { readdirSync } = await import('node:fs');
+      expect(readdirSync(CACHE_DIR).some((f) => f.includes(prefix))).toBe(false);
+    },
+  );
+
+  it('rejects a cap that is not a positive integer', () => {
+    expect(() =>
+      makeJudge('claude-haiku-5-5', 's', 'p', false, () => ({}), makeCost(), {
+        maxOutputTokens: 0,
+      }),
+    ).toThrow(/positive integer/);
+  });
+});
+
+/** JUDGE DRAWS RUN STRICTLY ONE AT A TIME (914), even when callers judge in parallel. */
+describe('judge draws are serial', () => {
+  it('never has two draws in flight, across concurrent judge() calls', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let calls = 0;
+    const create = async () => {
+      calls += 1;
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      // no score: the draw throws and nothing is cached, which is all this test needs
+      return {
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', id: 't', name: 'score', input: { reason: 'x' } }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      };
+    };
+    const prefix = `judge-serial-${Math.random().toString(36).slice(2)}`;
+    const judge = makeJudge(
+      'claude-haiku-5-5',
+      's',
+      prefix,
+      false,
+      () => ({ messages: { create } }),
+      makeCost(),
+      { samples: 2 },
+    );
+    const results = await Promise.allSettled([
+      judge('a', { t: 1 }),
+      judge('b', { t: 2 }),
+      judge('c', { t: 3 }),
+    ]);
+    expect(results.every((r) => r.status === 'rejected')).toBe(true);
+    expect(calls).toBeGreaterThanOrEqual(3);
+    expect(maxInFlight).toBe(1);
   });
 });

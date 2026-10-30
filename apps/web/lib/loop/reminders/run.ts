@@ -4,6 +4,7 @@ import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm'
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { laneEnabled } from '~/lib/channel/lanes';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -25,8 +26,9 @@ import type {
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { getQueue } from '~/lib/queue';
-import type { ReplyLanguage } from '~/lib/channel/language';
-import { composeReminderText, reminderFacts } from './compose';
+import type { SourceChange } from './change';
+import { changeFromColumns } from './change';
+import { composeReminderTexts, reminderFacts } from './compose';
 import {
   type EventSnapshot,
   REMINDER_HORIZON_MS,
@@ -87,6 +89,8 @@ export interface LiveEvent extends EventSnapshot {
   /** Where to be. Unused by the parents' copy (they know), and half of what a caregiver's
    * `event_logistics` scope is FOR. */
   location: string | null;
+  /** VIL-474 · a change recorded from source data only (reminders/change.ts). */
+  change?: SourceChange | null;
   /**
    * Set when this row mirrors one event on a connected Google Calendar (VIL-416).
    * Null for every Hale-authored event. A mirror is reminded to its owner only —
@@ -201,7 +205,7 @@ export interface ReminderRunDeps {
   /** The family's language tag, for the model-written reminder. */
   loadLanguage: (db: Database, familyId: string) => Promise<ReplyLanguage>;
   /** Writes the whole reminder from facts, or null (nothing is sent). */
-  composeText: typeof composeReminderText;
+  composeText: typeof composeReminderTexts;
   /** VIL-229 · the parent's resolved child-name-level dial, for the SAME redacted view
    * (rule #1) the voice stage hands the model and the template later renders. */
   loadNameLevel: (db: Database, userId: string) => Promise<ChildNameLevel>;
@@ -364,11 +368,35 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           location: schema.familyEvents.location,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
+          sourceChangedField: schema.familyEvents.sourceChangedField,
+          sourceChangedFromStartsAt: schema.familyEvents.sourceChangedFromStartsAt,
+          sourceChangedFromLocation: schema.familyEvents.sourceChangedFromLocation,
+          sourceChangedAt: schema.familyEvents.sourceChangedAt,
         })
         .from(schema.familyEvents)
         .where(eq(schema.familyEvents.id, eventRef))
         .limit(1);
-      return rows[0] ?? null;
+      const row = rows[0];
+      if (!row) return null;
+      const {
+        sourceChangedField,
+        sourceChangedFromStartsAt,
+        sourceChangedFromLocation,
+        sourceChangedAt,
+        ...event
+      } = row;
+      return {
+        ...event,
+        change: changeFromColumns(
+          {
+            sourceChangedField,
+            sourceChangedFromStartsAt,
+            sourceChangedFromLocation,
+            sourceChangedAt,
+          },
+          new Date(),
+        ),
+      };
     },
     // C3 (reply↔event link) isn't wired yet: the classify path carries rule #3, the
     // data link lands with C3. Until then no reminder is suppressed as 'interacted'.
@@ -418,7 +446,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
         .where(eq(schema.families.id, familyId));
       return row?.primaryLanguage ?? 'en';
     },
-    composeText: composeReminderText,
+    composeText: composeReminderTexts,
     loadNameLevel: async (db, userId) => (await loadLoopPrefsView(userId, db)).childNameLevel,
   };
 }
@@ -458,6 +486,7 @@ interface FiringRow {
   childId: string | null;
   sensitive: boolean;
   location: string | null;
+  change: SourceChange | null;
   /** Proven non-null by the fire gate: a row whose recipient holds no seat never gets
    * here. Non-parent roles other than the three caregiver ones are suppressed too, so
    * this is either a parent role or a caregiver one. */
@@ -674,6 +703,7 @@ export async function runReminderCron(
             childId: event.childId,
             sensitive: event.sensitive,
             location: event.location,
+            change: event.change ?? null,
             // Non-null past the gate above: role null never survives it.
             role: row.role as FamilyRole,
           });
@@ -751,6 +781,7 @@ export async function runReminderCron(
             ...view,
             endsAt: r.endsAt ? r.endsAt.toISOString() : null,
             location: r.location,
+            change: r.change,
           });
         }
       }
@@ -767,9 +798,10 @@ export async function runReminderCron(
 
       // The parent's reminder is written whole by the model from facts. No client, or a
       // draft that could not be written, is NOTHING SENT and a logged, audited drop.
-      let text: string | null = null;
+      let texts: string[] | null = null;
+      let bold: string | null = null;
       if (!caregiver) {
-        text =
+        const draft =
           deps.client && nameLevel && language
             ? await deps.composeText(
                 deps.client,
@@ -786,7 +818,9 @@ export async function runReminderCron(
                 group.familyId,
               )
             : null;
-        if (text === null) {
+        texts = draft?.texts ?? null;
+        bold = draft?.bold ?? null;
+        if (texts === null) {
           console.error(
             { familyId: group.familyId, offset: batch.offset, events: batch.eventRefs.length },
             'reminder: no text written, nothing sent',
@@ -824,7 +858,8 @@ export async function runReminderCron(
         children,
         deepLink,
         unsubscribeUrl: unsubscribeUrl({ userId: parentUserId, emailType: REMINDER_EMAIL_TYPE }),
-        text: text ?? '',
+        texts: texts ?? [],
+        ...(bold ? { bold } : {}),
       };
       // Batch key: the single event for T-1h, the evening for a merged T-24h. The family
       // is part of it because `dedupeActive` matches on the key alone, family-blind — and

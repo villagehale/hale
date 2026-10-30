@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states a consequence not in the facts: that there is no school for the kids. The facts only give an all-day event titled PD Day, so recasting it as school closed for the children is an unstated inference and a fact failure. Otherwise the timing (tomorrow) and absence of clock time are correct and the English reads naturally.",
+    "score": 2
+  }
+}

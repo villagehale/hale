@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message gives a concrete reason (similar age to Ravi), offers the introduction as a question, and states details stay private until both say yes. It uses 'I' correctly, has no greeting, no hype, no overselling, and no invented facts. Minor issue: it says 'There's a kid' rather than naming the other family's band, but the watchFor allows saying the ages match, and grammar is clean.",
+    "score": 5
+  }
+}

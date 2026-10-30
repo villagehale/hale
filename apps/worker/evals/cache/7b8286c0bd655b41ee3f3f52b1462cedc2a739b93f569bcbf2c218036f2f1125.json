@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English, not French, which violates the requested language. It also says the day is 'a day off' with 'breathing room', calling the day free even though a timed event is at 3:00 PM, and it drops the end time (4:00 PM) and the location (Georgetown library). Multiple fact and language failures.",
+    "score": 1
+  }
+}

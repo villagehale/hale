@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: both events, tomorrow, start and end times with correct morning/afternoon, full venue names and addresses, the right kids, no invented details, no link. Language is English throughout. However, the register is that of a filled-in template: each sentence follows an identical pattern (who has what, at venue and address, from X to Y) with full address strings stuffed inline, which reads like a calendar readout rather than a friend texting. The 'Then Léa has...' connector helps a little, but the guardrail explicitly calls out a stiff list of events with times and places as a low-scoring feel. This caps the score at 3 at most.",
+    "score": 3
+  }
+}

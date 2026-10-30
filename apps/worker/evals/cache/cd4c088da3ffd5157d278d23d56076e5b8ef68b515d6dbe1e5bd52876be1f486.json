@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French while the requested language is English, so it is the wrong language and mixed-language content. It invents a day off and a 3:00 time that are not in the facts, and it omits the swim class entirely. It also claims tomorrow is a day off and that the day is open, while the swim class is actually today at 10:00 AM to 11:00 AM.",
+    "score": 1
+  }
+}

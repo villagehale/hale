@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Chinese text in the parent's language and script. Identifies Hale from Village Hale Technologies Inc., names accountable person Barton Dong, gives villagehale.com and aloha@villagehale.com, all from the given facts. Not defensive. Minor gap: it does not explain how the parent's number was obtained, which the parent asked directly, so it only partly answers the question. Opt-out line is a reasonable addition, though not required for identity."
+  }
+}

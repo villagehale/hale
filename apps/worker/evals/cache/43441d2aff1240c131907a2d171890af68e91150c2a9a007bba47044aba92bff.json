@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is wrong on several counts: it gives a clock time \"3:00\" for the all-day Jour de congé, which should carry no time; it omits Léa's natation entirely (10:00-11:00 AM at Piscine Main); and it calls the day open with \"un peu de répit\" (breathing room), which the facts do not support since a timed event exists. It also adds an unrequested comment about the day. The French is also not idiomatic (\"Tomorrow's\" fragment mixed in, and \"Mon, Oct 26\" reads like a system label), so it fails the native speaker and friend tone checks as well.",
+    "score": 1
+  }
+}

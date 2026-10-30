@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all present: tomorrow (lundi 26 octobre), 15 h to 16 h, Georgetown library, and the title 'Jour de congé' kept as the event name. However, the text says 'jour de congé' as a bare title dropped in with a colon, which reads like a calendar label rather than a native French text; a native speaker would write something like 'Demain, lundi 26 octobre, de 15 h à 16 h, tu as « Jour de congé » à la bibliothèque de Georgetown.' Also 'Ça se termine à 16 h 00' is a stiff, padded time construction. Per the native speaker check, this caps the score at 3.",
+    "score": 3
+  }
+}

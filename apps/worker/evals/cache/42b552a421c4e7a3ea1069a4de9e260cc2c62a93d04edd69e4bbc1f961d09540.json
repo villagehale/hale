@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event in the facts is \"Swim class\" today at 10:00 AM to 11:00 AM, but the text mentions a different event, \"Jour de congé\" at 3:00 with no AM/PM, and never mentions the swim class at all. It gets the day wrong (\"Tomorrow's a day off\" when the event is today), invents an event and time, omits the given start (10:00 AM) and end (11:00 AM), and implies the day is free with \"breathing room\" even though a timed event exists. Bold is none, which is fine.",
+    "score": 1
+  }
+}

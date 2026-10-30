@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (tomorrow, Monday), the start at 4:45 and the end at 5:45 PM with correct PM, and keeps the event generic as 'an appointment' without guessing what it is. No location was given, and none was invented. No travel or departure claims, no link, correct language.",
+    "score": 5
+  }
+}

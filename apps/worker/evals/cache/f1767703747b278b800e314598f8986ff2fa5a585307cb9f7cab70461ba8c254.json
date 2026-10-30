@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct day (明天), correct times and AM/PM (上午11点, 下午5:30到6:30), and the planLink appears exactly once with no other link. Soccer is rendered as 足球, a natural title rendering. However, the story time end is not given in facts so omitting it is fine. Native-speaker check: '明天上午11点有图书馆故事时间,下午5:30到6:30有足球' reads naturally and friendly. The closing line '你的安排在这里:' is a neutral pointer to the link, not filler. Minor: the second clause drops the day again, which is acceptable Chinese. No invented details found.",
+    "score": 5
+  }
+}
