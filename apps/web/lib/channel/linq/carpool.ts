@@ -739,6 +739,7 @@ export async function runCarpoolReminders(
     triedDriverThisRun.add(row.id);
     const driverSkipped = await deliverDriverLeg(database, {
       rowId: row.id,
+      groupSentAt: input.now,
       plan,
       now: input.now,
       sendDriver,
@@ -783,8 +784,10 @@ export async function runCarpoolReminders(
     if (triedDriverThisRun.has(row.id)) continue;
     const plan = rowToPlan(row);
     const voice = input.voice ?? createCarpoolComposer({ database, familyId: row.familyId });
+    if (!row.reminderGroupSentAt) continue;
     const driverSkipped = await deliverDriverLeg(database, {
       rowId: row.id,
+      groupSentAt: row.reminderGroupSentAt,
       plan,
       now: input.now,
       sendDriver,
@@ -805,13 +808,21 @@ export async function runCarpoolReminders(
 
 /**
  * One driver 1:1 leg. Claims `reminderDriverSentAt` first (so overlapping
- * sweeps cannot both send), and releases it when nothing went out so a later
- * sweep can retry. Returns null when sent, or why it was not.
+ * sweeps cannot both send), scoped to this group reminder's generation
+ * (`reminderGroupSentAt`). Any non-send, including a throw before the provider
+ * accepted it, releases the claim so a later sweep retries. A release only
+ * clears its own claim: if the ride was re-reminded meanwhile, the newer
+ * generation's claim is left alone. Returns null when sent, or why it was not.
+ *
+ * A process that dies mid-send keeps its claim: we prefer a missed private
+ * reminder over texting the driver twice (the ledger row is written before the
+ * provider call, so it may already have gone out).
  */
 async function deliverDriverLeg(
   database: Database,
   input: {
     rowId: string;
+    groupSentAt: Date;
     plan: CarpoolPlanState;
     now: Date;
     sendDriver: CarpoolDriverSend;
@@ -821,12 +832,17 @@ async function deliverDriverLeg(
   const { plan } = input;
   if (!plan.driverHaleCustomer) return 'driver_not_customer';
   if (!plan.driverUserId) return 'no_driver_user';
+  const claimAt = input.now;
+  const ours = and(
+    eq(schema.linqGroupCarpools.id, input.rowId),
+    eq(schema.linqGroupCarpools.reminderGroupSentAt, input.groupSentAt),
+  );
   const [claimed] = await database
     .update(schema.linqGroupCarpools)
-    .set({ reminderDriverSentAt: input.now, updatedAt: input.now })
+    .set({ reminderDriverSentAt: claimAt, updatedAt: input.now })
     .where(
       and(
-        eq(schema.linqGroupCarpools.id, input.rowId),
+        ours,
         eq(schema.linqGroupCarpools.reminderStatus, 'sent'),
         isNull(schema.linqGroupCarpools.reminderDriverSentAt),
         isNull(schema.linqGroupCarpools.cancelledAt),
@@ -838,21 +854,26 @@ async function deliverDriverLeg(
     database
       .update(schema.linqGroupCarpools)
       .set({ reminderDriverSentAt: null, updatedAt: input.now })
-      .where(eq(schema.linqGroupCarpools.id, input.rowId));
-  const driverLine = await input.voice.compose({
-    kind: 'night_before_driver',
-    facts: voiceFacts(plan, null),
-  });
-  if (!driverLine) {
+      .where(and(ours, eq(schema.linqGroupCarpools.reminderDriverSentAt, claimAt)));
+  try {
+    const driverLine = await input.voice.compose({
+      kind: 'night_before_driver',
+      facts: voiceFacts(plan, null),
+    });
+    if (!driverLine) {
+      await release();
+      return 'line_unsent';
+    }
+    const driver = await input.sendDriver({ userId: plan.driverUserId, text: driverLine });
+    if (!driver.sent) {
+      await release();
+      return driver.skipped;
+    }
+    return null;
+  } catch (err) {
     await release();
-    return 'line_unsent';
+    return `error:${err instanceof Error ? err.name : 'unknown'}`;
   }
-  const driver = await input.sendDriver({ userId: plan.driverUserId, text: driverLine });
-  if (!driver.sent) {
-    await release();
-    return driver.skipped;
-  }
-  return null;
 }
 
 async function coveringParentUserId(database: Database, familyId: string): Promise<string | null> {

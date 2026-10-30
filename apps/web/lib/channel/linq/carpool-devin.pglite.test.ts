@@ -648,3 +648,56 @@ describe('Devin #975', () => {
     expect(row?.driverUserId).toBe(mayaId);
   });
 });
+
+describe('Devin #975 round 2', () => {
+  it('a driver send that throws releases its claim and retries next sweep', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const group = door();
+    let calls = 0;
+    const sendDriver = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('gate db down');
+      return { sent: true as const, providerMessageId: 'driver-ok' };
+    };
+    const opts = { now: FRIDAY_EVE, send: group.send, voice: fakeCarpoolComposer(), sendDriver };
+    await runCarpoolReminders(db.database, opts);
+    expect((await rows())[0]?.reminderDriverSentAt).toBeNull();
+    const second = await runCarpoolReminders(db.database, opts);
+    expect(second.driverRetried).toBe(1);
+    expect(calls).toBe(2);
+    expect(group.texts).toHaveLength(1);
+  });
+
+  it('a stale failed leg does not clear a newer reminder generation', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const newer = new Date(FRIDAY_EVE.getTime() + 86_400_000);
+    let calls = 0;
+    await runCarpoolReminders(db.database, {
+      now: FRIDAY_EVE,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => {
+        calls += 1;
+        // While this send is in flight the ride is re-reminded and its new
+        // driver leg is delivered.
+        await db.database
+          .update(schema.linqGroupCarpools)
+          .set({ reminderGroupSentAt: newer, reminderDriverSentAt: newer });
+        return { sent: false, skipped: 'send_failed:unavailable' };
+      },
+    });
+    const [row] = await rows();
+    expect(calls).toBe(1);
+    expect(row?.reminderDriverSentAt?.getTime()).toBe(newer.getTime());
+  });
+});
