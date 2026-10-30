@@ -524,7 +524,7 @@ function pageLinksFor(fixture, calls) {
  */
 const spotPage = (name) => readFileSync(join(SPOTS_FIXTURES, `${name}.html`), 'utf8');
 
-function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
+function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks, classFacts) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
   const redacted = redactTeenNames(flattened, children, NOW);
@@ -533,7 +533,12 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
   // because a parent forwards it OUT.
   // By ref, mirroring reply.ts: typed URLs are dropped, cited refs attach their page.
   const cited = attachLinks(redacted, activityLinks);
-  const link = cited.urls.join(' ');
+  // Same repair as reply.ts. A narration-only body becomes the class, or empty.
+  // Redact again: the stand-in class can name someone the first pass never saw.
+  const repaired = repairParentReply(cited.body, cited.urls, classFacts);
+  const answerBody = redactTeenNames(repaired.body, children, NOW);
+  if (answerBody === '' && repaired.urls.length === 0) return null;
+  const link = repaired.urls.join(' ');
   // A plan offer or a referral still crowds the count out. An activity URL does not:
   // the count is about that find, and the URL is that find's page.
   const protectedTail = redactTeenNames(
@@ -545,7 +550,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     NOW,
   );
   if (!protectedTail) {
-    const answer = dropDuplicateOffer(cited.body, link);
+    const answer = dropDuplicateOffer(answerBody, link);
     const clause = nearbyClause(answer, nearby);
     const tail = [clause ?? '', link]
       .map((part) => part.trim())
@@ -560,7 +565,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     children,
     NOW,
   );
-  const answer = dropDuplicateOffer(cited.body, suffix);
+  const answer = dropDuplicateOffer(answerBody, suffix);
   if (answer === '') return suffix;
   return `${answer} ${suffix}`;
 }
@@ -585,6 +590,8 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
  */
 let attachLinks = (text) => ({ body: text, urls: [] });
 let linkRef = (url) => url;
+/** VIL-501. Same function production's toSmsReply runs. Identity until activity-links loads. */
+let repairParentReply = (body, urls) => ({ body, urls });
 
 function activityLinksFor(fixture, calls) {
   const links = [];
@@ -597,6 +604,34 @@ function activityLinksFor(fixture, calls) {
     }
   }
   return links;
+}
+
+/** Classes this turn's tools actually returned. Used only when the reply narrates refs. */
+function classFactsFor(fixture, calls) {
+  const facts = [];
+  if (calls.some((call) => call.tool === 'search_village')) {
+    for (const candidate of villageFor(fixture).candidates ?? []) {
+      facts.push({
+        name: candidate.title,
+        when: candidate.when,
+        sourceName: candidate.venue,
+        url: candidate.url,
+      });
+    }
+  }
+  if (calls.some((call) => call.tool === 'find_activities')) {
+    for (const pick of webPicksFor(fixture)) {
+      facts.push({
+        name: pick.name,
+        ageFit: pick.ageFit,
+        when: pick.when,
+        price: pick.price,
+        sourceName: pick.sourceName,
+        url: pick.url,
+      });
+    }
+  }
+  return facts;
 }
 
 function nearbyClause(fittedBody, nearby) {
@@ -1991,7 +2026,7 @@ async function main() {
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
     import.meta.url,
   ));
-  ({ attachLinks, linkRef } = await tsImport(
+  ({ attachLinks, linkRef, repairParentReply } = await tsImport(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
     import.meta.url,
   ));
@@ -2193,6 +2228,7 @@ async function main() {
         referralBlock,
         fixture.nearby,
         activityLinksFor(fixture, calls),
+        classFactsFor(fixture, calls),
       );
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
@@ -2461,8 +2497,7 @@ async function main() {
   const voiceOk =
     !broken &&
     !severed &&
-    (!voiceRequired ||
-      (scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0));
+    (!voiceRequired || (scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0));
   const segments = answered.map((r) => smsSegments(r.reply));
   const accuracy = passes.length / results.length;
 

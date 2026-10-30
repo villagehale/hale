@@ -73,6 +73,17 @@ describe('the register tells', () => {
     expect(voiceTells("That isn't something to decide over text. Call 811.")).toEqual([]);
   });
 
+  it('bans a reply that narrates refs instead of the class (VIL-501)', () => {
+    expect(voiceTells('A ref came back this time, so I can attach the page.')).toEqual(
+      expect.arrayContaining([
+        'narrates an internal ref to the parent',
+        'narrates attaching a page',
+      ]),
+    );
+    expect(voiceTells('No refs came back.')).toContain('narrates an internal ref to the parent');
+    expect(voiceTells('Text this if you want to refer a friend.')).toEqual([]);
+  });
+
   it('still catches the let-me-know family it was written with', () => {
     expect(voiceTells('Swim is at 4:30. Let me know if that works.')).toContain(
       'ends on a generic "let me know"',
@@ -87,7 +98,7 @@ describe('the register tells', () => {
   it('clears the replies the corpus already passes', () => {
     for (const reply of [
       'Swim moved to Tue 4:30? YES to confirm.',
-      "Thursday has swim at 4:30 and the dentist at 6. Want the dentist moved?",
+      'Thursday has swim at 4:30 and the dentist at 6. Want the dentist moved?',
       'Halton Hills fall registration opens Tue 7:00 a.m. Want me watching it?',
       'Ordering groceries is past what I can do.',
       "That's on your calendar for Saturday morning.",

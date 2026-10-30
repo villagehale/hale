@@ -1,7 +1,13 @@
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
-import { type RefLink, attachLinks } from './activity-links';
+import {
+  type ClassFact,
+  type RefLink,
+  attachLinks,
+  narratesRefMachinery,
+  repairParentReply,
+} from './activity-links';
 
 /**
  * VIL-221 · C2 — everything that happens to the model's answer between the loop
@@ -66,6 +72,12 @@ export interface SmsReplyArgs {
    * the reply cites its ref; the model never writes a URL (activity-links.ts).
    */
   activityLinks?: readonly RefLink[];
+  /**
+   * Classes the tools returned this turn. Used only when the reply narrates the marker
+   * instead of the class (VIL-501). A page is included only when the tool had an
+   * absolute http(s) URL.
+   */
+  classFacts?: readonly ClassFact[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about ONE of the activities this turn offered, and
    * the offered titles it must not be confused with.
@@ -184,9 +196,17 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     redactTeenNames(flattened, args.children, args.now),
     args.activityLinks,
   );
-  const redacted = cited.body;
-  if (redacted === '' && cited.urls.length === 0) {
-    throw new Error('channel coach: model answer was only an uncited link');
+  // VIL-501. The marker is invisible. A reply that explains it is not a reply: the
+  // class stands in when that explanation was the whole message, and a named class
+  // keeps the page the tool actually returned.
+  const repaired = repairParentReply(cited.body, cited.urls, args.classFacts);
+  const redacted = redactTeenNames(repaired.body, args.children, args.now);
+  if (redacted === '' && repaired.urls.length === 0) {
+    throw new Error(
+      narratesRefMachinery(cited.body)
+        ? 'channel coach: reply narrated internal refs and named no class'
+        : 'channel coach: model answer was only an uncited link',
+    );
   }
   if (reachesForTheHealthLine(redacted)) {
     // The model wrote a health-line number in its own words. That is the reply. The
@@ -199,7 +219,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Redacted with the answer, not after it: the referral line is composed by the model
   // and is the one piece of outbound text a parent forwards to somebody outside the
   // family, so the age-derived teen floor (rule #1) has to cover it too.
-  const link = cited.urls.join(' ');
+  const link = repaired.urls.join(' ');
   // A plan offer or a referral drops the nearby count. An activity URL does not:
   // the count is about that find, and the URL is that find's page, so both go out.
   const protectedTail = redactTeenNames(

@@ -74,7 +74,9 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     );
 
     expect(skill.instructions).toContain('Text like a friend: chill, casual, and brief.');
-    expect(skill.instructions).not.toMatch(/\b(one|two|three) (short )?sentences?\b(?! (in this file|is true))/i);
+    expect(skill.instructions).not.toMatch(
+      /\b(one|two|three) (short )?sentences?\b(?! (in this file|is true))/i,
+    );
     expect(skill.instructions).not.toContain('gets cut off');
     expect(toSmsReply(long, { children: [], now: new Date('2026-10-12T14:07:00.000Z') })).toBe(
       long,
@@ -139,6 +141,17 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(find.description).toContain('do not call this beside a checked find');
     expect(find.description).toContain('their own week comes first');
     expect(find.description).not.toContain('even when the radar already has a find');
+  });
+
+  it('forbids telling a parent about refs and requires the class beside the marker (VIL-501)', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(prose).toContain('Never write the word ref or refs');
+    expect(prose).toContain('Never say a ref came back');
+    expect(prose).toContain('that no refs came back');
+    expect(prose).toContain('The reply is the class');
+    expect(prose).not.toContain('No ref, no page');
+    expect(prose).toContain('[link-1a2b3c]');
   });
 
   it('loads the shorten skill as a tool-less rewrite, not a canned reply', async () => {

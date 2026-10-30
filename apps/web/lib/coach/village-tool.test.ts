@@ -1,9 +1,9 @@
 import { invokeTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
 
@@ -96,6 +96,9 @@ describe('search_village uses this operation’s live evidence', () => {
         venue: 'Current pool',
         candidateId: expect.any(String),
         url: pick.sourceUrl,
+        ageFit: 'ages 2-5',
+        when: 'Saturday 10 AM',
+        price: null,
       }),
     ]);
     expect(JSON.stringify(find.mock.calls)).not.toContain('Private child name');

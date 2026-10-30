@@ -564,6 +564,65 @@ describe('activity links', () => {
     expect(out).toBe('Swim is Tuesday, see.');
   });
 
+  it('replaces ref narration with the class and the page the tool returned (VIL-501)', () => {
+    const reply = toSmsReply('A ref came back this time, so I can attach the page.', {
+      children: [],
+      now: NOW,
+      activityLinks: [TUMBLERS],
+      classFacts: [
+        {
+          name: 'Tiny Tumblers parent & tot',
+          ageFit: 'walking to 3 years',
+          when: 'Saturday mornings this fall',
+          sourceName: 'Halton Hills',
+          url: TUMBLERS_URL,
+        },
+      ],
+    });
+    expect(reply).not.toMatch(/\brefs?\b/i);
+    expect(reply).not.toMatch(/attach/i);
+    expect(reply).toContain('Tiny Tumblers parent & tot');
+    expect(reply).toContain('walking to 3 years');
+    expect(reply).toContain('Saturday mornings this fall');
+    expect(reply).toContain('per Halton Hills');
+    expect(reply).toContain(TUMBLERS_URL);
+  });
+
+  it('says the class and no page when the tool had no link', () => {
+    const reply = toSmsReply('No refs came back.', {
+      children: [],
+      now: NOW,
+      classFacts: [
+        {
+          name: 'Tiny Tumblers parent & tot',
+          when: 'Saturday mornings this fall',
+          sourceName: 'Halton Hills',
+        },
+      ],
+    });
+    expect(reply).toBe(
+      'Tiny Tumblers parent & tot, Saturday mornings this fall, per Halton Hills.',
+    );
+    expect(reply).not.toMatch(/https?:\/\//);
+  });
+
+  it('refuses a narration that names no class', () => {
+    expect(() =>
+      toSmsReply('A ref came back this time, so I can attach the page.', {
+        children: [],
+        now: NOW,
+      }),
+    ).toThrow(/narrated internal refs/);
+  });
+
+  it('does not treat refer as the marker', () => {
+    const reply = toSmsReply('Text this if you want to refer a friend.', {
+      children: [],
+      now: NOW,
+    });
+    expect(reply).toBe('Text this if you want to refer a friend.');
+  });
+
   it('cites a page from a reply in any script', () => {
     const zh = `周六下午北约克中央图书馆有灯笼手工活动。[${LANTERN.ref}]`;
     expect(toSmsReply(zh, { children: [], now: NOW, activityLinks: [LANTERN] })).toBe(

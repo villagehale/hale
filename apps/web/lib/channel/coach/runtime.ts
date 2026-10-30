@@ -63,7 +63,7 @@ import {
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
-import { linkRef } from './activity-links';
+import { classFactsFromTurn, linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
 import {
@@ -526,6 +526,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
                   activityLinks: turnLinks(),
+                  classFacts: classFactsFromTurn(offeredThisTurn.read(), offeredThisTurn.facts()),
                   nearby: nearby ?? undefined,
                 }),
           });
@@ -620,6 +621,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // Never shown to the model, which is the whole point.
         villageTool: searchVillageTool(database, offered.record),
         recordActivityLinks: offered.recordLinks,
+        recordFacts: offered.recordFacts,
         offeredThisTurn: offered.read,
         // The second activity source. Same key, same fail-closed resolver shape as the
         // loop's — a turn that could reach Anthropic for the loop and not for the search

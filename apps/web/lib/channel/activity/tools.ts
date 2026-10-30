@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import { z } from 'zod';
+import { type ClassFact, classFactFromPick, linkRef } from '~/lib/channel/coach/activity-links';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
 import { deidentifyActivityQuery, refusalSentence } from './deidentify';
@@ -53,6 +53,8 @@ export interface ActivityToolArgs {
   onPromise(promise: ActivityPromise): void;
   /** Pages the turn may append after the reply names the pick. */
   onLinks?(links: readonly { title: string; url: string }[]): void;
+  /** Every pick this call returned, so a narration can be replaced with the class. */
+  onFacts?(facts: readonly ClassFact[]): void;
 }
 
 /** What a search came back with, in the shape the model reads. `found: false` carries the
@@ -152,8 +154,19 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       if (result.picks.some((pick) => pick.when === null || pick.price === null)) {
         args.onPromise({ subject: deidentified.query.subject, childId });
       }
-      const linked = result.picks.flatMap((pick) =>
-        pick.url ? [{ title: pick.name, url: pick.url }] : [],
+      const facts = result.picks.map((pick) =>
+        classFactFromPick({
+          name: pick.name,
+          ageFit: pick.ageFit,
+          when: pick.when,
+          price: pick.price,
+          sourceName: pick.sourceName,
+          url: pick.url,
+        }),
+      );
+      if (facts.length > 0) args.onFacts?.(facts);
+      const linked = facts.flatMap((fact) =>
+        fact.url ? [{ title: fact.name, url: fact.url }] : [],
       );
       if (linked.length > 0) args.onLinks?.(linked);
       // The model sees a page's REF, never its URL: a reply cites the ref and code

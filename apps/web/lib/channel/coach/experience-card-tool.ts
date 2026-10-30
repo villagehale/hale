@@ -55,7 +55,7 @@ export function shareExperienceCardTool(args: {
   return defineTool({
     name: EXPERIENCE_CARD_TOOL,
     description:
-      "Call this when the answer is one venue's page from this turn, even if that page lists several classes or sessions. Citing that page's [link-…] ref in the reply does not replace this call. Do both. Do not call this when the answer compares different venues or different pages; cite each ref and stop. `ref` is the exact ref a tool returned this turn. `title` is the card's line in your own words and the parent's language, at most 64 characters, no URL. One card per turn; the last call wins.",
+      "Call this when the answer is one venue's page from this turn, even if that page lists several classes or sessions. Including that page's [link-…] marker in the reply does not replace this call. Do both. Do not call this when the answer compares different venues or different pages; include each marker and stop. `ref` is the exact marker a tool returned this turn. `title` is the card's line in your own words and the parent's language, at most 64 characters, no URL. One card per turn; the last call wins. Never write the word ref, or say that a page was attached, in the message the parent reads.",
     inputSchema: z.object({ ref: z.string().min(1), title: z.string().min(1) }),
     inputExamples: [{ ref: 'link-1a2b3c', title: 'Sat kids art at the studio' }],
     monetary: false,
@@ -67,7 +67,7 @@ export function shareExperienceCardTool(args: {
       const violations = experienceCardViolations(input, links);
       if (violations.length > 0) {
         throw new Error(
-          `That card cannot be sent. ${violations.join(' ')} Call ${EXPERIENCE_CARD_TOOL} again with a fixed one, or just cite the ref for a link preview.`,
+          `That card cannot be sent. ${violations.join(' ')} Call ${EXPERIENCE_CARD_TOOL} again with a fixed one, or include the [link-…] marker for a link preview. Do not tell the parent about refs.`,
         );
       }
       const ref = input.ref.trim().toLowerCase();
