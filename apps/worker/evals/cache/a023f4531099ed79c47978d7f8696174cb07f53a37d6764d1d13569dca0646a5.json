@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text ignores the actual event entirely: Natation (swim) tomorrow 5:00-5:45 PM at Piscine Centennial, 5 Lake Rd is never mentioned. Instead it invents a different event, 'Jour de congé at 3:00', and claims the day is a day off with 'breathing room' while a timed event exists. The venue change (from Mold-Masters SportsPlex) is not conveyed, no venue name or address or end time is given, and the text is in English rather than French. No bold used, but the changed-fact requirement fails anyway.",
+    "score": 1
+  }
+}

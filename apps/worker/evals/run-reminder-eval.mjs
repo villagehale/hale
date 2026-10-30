@@ -53,9 +53,27 @@ const TOOL_SCHEMA = {
       minItems: 1,
       description: 'The texts Hale sends the parent, in order. One or more.',
     },
+    bold: {
+      type: 'string',
+      description:
+        'Optional. The exact words, copied from one of your texts, to show in bold. Leave it out for none.',
+    },
   },
   required: ['texts'],
 };
+
+/** VIL-474 · the words the writer chose to bold, trimmed, or null. */
+export function readBold(value) {
+  const b = typeof value?.bold === 'string' ? value.bold.trim() : '';
+  return b === '' ? null : b;
+}
+
+/** The [bold] line the judge reads after the texts. Words the code would not find in
+ * the texts are sent undecorated, so the judge sees "none" for them too. */
+export function boldLine(texts, bold) {
+  if (!bold || !texts.some((t) => t.includes(bold))) return '[bold] none';
+  return `[bold] "${bold}"`;
+}
 
 /** The model's texts, trimmed. The judge reads them in order, one per line. */
 export function readTexts(value) {
@@ -110,6 +128,12 @@ const JUDGE_SYSTEM = [
   'and place is right. Quoting the title as-is, leaving it bare, or weaving it into a sentence',
   'are all fine as long as what the title means is unchanged. Changing what the title says is',
   'a fact failure; say in the reason how it changed.',
+  'Judge the title by MEANING, not wording: first say what the title names in the facts, then',
+  'what the text presents it as. Translating, rewording, or changing case or quotes is fine',
+  'when the text still presents it as the name of that event. Words that match the title are',
+  'not enough: when the text no longer uses it as the name of the event but as a plain',
+  'description of what is happening or what the day is, the meaning changed even if every word',
+  'is the same, and that is a LOW score (1-2).',
   'NO UNSTATED INFERENCES: state only what the facts say. A consequence the text draws from a',
   'title or from the facts (what is closed or open, who is affected, why it is happening, what',
   'it means for the family) is not in the facts, even when it is likely: stating it as fact is a',
@@ -117,6 +141,25 @@ const JUDGE_SYSTEM = [
   'Do not lower the score for how the sentence is shaped, whether it reads like a list or a',
   'notification, whether a generic place word stayed in the source language, or whether the',
   'title is quoted or bare. Those are not fact failures.',
+  'The text arrives as one or more numbered texts ([text 1], [text 2]...) sent in that order;',
+  'read them together as one reminder.',
+  'BOLD CHECK (VIL-474), always: the last line is [bold] with the words the writer chose to',
+  'show in bold, or "none". Bold is meant for, at most, one fact the parent might have to',
+  'act on and would cost them if skimmed; most reminders should have none. A [bold] of none',
+  'is always fine. Bold on something that does not stand out as a fact to act on (a',
+  'greeting, a title, the day of a routine event, a whole sentence, or several facts at once)',
+  'scores at most 3 even with every fact right. Say in the reason what was bolded and why it',
+  'does or does not fit.',
+  'CHANGED FACT: when an event in the facts has `changed` (which of time, date or venue, and',
+  'its old value `from`), the text must tell the new value and make clear it changed; leaving',
+  'out that it changed, or presenting the old value as current, is a fact failure and a LOW',
+  'score (1-2). On such an event, bold on its new value is exactly what bold is for and fits;',
+  'with no bold at all, the score is at most 3.',
+  'VOICE CHECK, ONLY when watchFor asks for it: then also judge, by meaning, whether the',
+  'texts read like a person texting or like a form filled in, such as every event poured',
+  'into the same sentence frame with only the facts swapped, or several events packed into',
+  'one long block. A text that reads like a filled-in frame or one long block scores at most',
+  '3 even with every fact right. With no VOICE CHECK in watchFor, phrasing is never scored.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -213,6 +256,14 @@ export const BROKEN_CASES = [
     fixtureId: 'en-late-same-day',
     tag: 'en-late-same-day:prod-notification',
     body: 'Parent & Tot Skate on Tuesday, Oct 27 at 10:30 a.m.',
+  },
+  // VIL-474 · every fact right, but the bold lands on a routine greeting rather than a
+  // fact the parent might act on. Must fail on the bold alone.
+  {
+    fixtureId: 'en-bold-routine-single',
+    tag: 'en-bold-routine-single:bold-on-greeting',
+    body: 'hey, heads up for tomorrow\nParent & Tot Skate is at 10:30 to 11:20 AM at Mold-Masters SportsPlex, 221 Guelph St',
+    bold: 'hey, heads up for tomorrow',
   },
   // VIL-467 facts guardrail: every fact right except storytime's place, which is vague
   // ("the library", no branch or address). Must fail on that alone.
@@ -357,11 +408,10 @@ async function main() {
     if (!wanted(fixture.id)) continue;
     const facts = compose.reminderFacts({ ...fixture.args, now: new Date(fixture.args.now) });
     const userMessage = compose.reminderUserMessage(facts);
-    const texts =
+    const composed =
       broken && !rescore
-        ? [BROKEN]
-        : readTexts(
-            (
+        ? null
+        : (
               await cachedToolCall({
                 tag: `reminder:${fixture.id}`,
                 model,
@@ -377,9 +427,13 @@ async function main() {
                 getClient,
                 cost,
               })
-            ).value,
-          );
-    const body = texts.join('\n');
+            ).value;
+    const texts = composed === null ? [BROKEN] : readTexts(composed);
+    const bold = composed === null ? null : readBold(composed);
+    // Numbered, so the judge can see where the model split (P0 split / voice cases).
+    const body = [...texts.map((t, i) => `[text ${i + 1}] ${t}`), boldLine(texts, bold)].join(
+      '\n',
+    );
     const failures = compose.reminderRefusals(texts, facts).map((r) => `unsendable:${r}`);
     const verdict = await judge(fixture.id, {
       input: userMessage,
@@ -408,9 +462,14 @@ async function main() {
       const failures = compose
         .reminderRefusals(bc.body.split('\n'), facts)
         .map((r) => `unsendable:${r}`);
+      const bcTexts = bc.body.split('\n');
+      const bcBody = [
+        ...bcTexts.map((t, i) => `[text ${i + 1}] ${t}`),
+        boldLine(bcTexts, bc.bold ?? null),
+      ].join('\n');
       const verdict = await judge(bc.tag, {
         input: userMessage,
-        text: bc.body,
+        text: bcBody,
         watchFor: fixture.watchFor,
       });
       if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);

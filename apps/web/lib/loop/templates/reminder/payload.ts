@@ -45,6 +45,8 @@ export interface ReminderPayload {
    * or join. A reminder whose texts could not be written is never enqueued.
    */
   texts: string[];
+  /** VIL-474 · words from one of `texts` the writer chose to bold, or absent. */
+  bold?: string | null;
 }
 
 function isReminderEventView(value: unknown): value is ReminderEventView {

@@ -1,5 +1,6 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
+import { boldTextIndex } from '~/lib/channel/bold';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
@@ -345,6 +346,8 @@ async function dispatchTexts(
   adapter: Channel,
 ): Promise<LegResult> {
   const voice = rendered.voice;
+  // VIL-474 · at most one bold per message: only the first text holding the words.
+  const boldAt = boldTextIndex(texts, rendered.bold);
   type Sent = Extract<ChannelSendOutcome, { status: 'sent' }>;
   class Refused extends Error {
     constructor(readonly outcome: Exclude<ChannelSendOutcome, Sent>) {
@@ -355,10 +358,17 @@ async function dispatchTexts(
     texts,
     setKey: legKey,
     alreadySent: (key) => ports.activeDedupe(key),
-    send: async (text) => {
+    send: async (text, index) => {
+      // By position, not by text: two identical texts must not both carry the bold.
+      const bolded = index === boldAt ? rendered.bold : undefined;
       const result = await adapter.send({
         userId: msg.parentUserId,
-        rendered: { kind: 'sms', text, recordBody: rendered.recordBody },
+        rendered: {
+          kind: 'sms',
+          text,
+          recordBody: rendered.recordBody,
+          ...(bolded ? { bold: bolded } : {}),
+        },
       });
       if (result.status === 'error' && result.transient) {
         throw new ChannelRetryableError(channel, result.code, result.message);

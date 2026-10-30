@@ -87,6 +87,14 @@
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
   },
+  "duty-night-check.md": {
+    "file": "duty-night-check.md",
+    "sha256": "d5f13c8c12be1f1e9e22f7c13d5c99cc3ac7a5d17e714f1a932d455101085e88"
+  },
+  "duty-night.md": {
+    "file": "duty-night.md",
+    "sha256": "85c230a970e5de8e50c154eb671fce7c058a1ec0e66bd0b55f4602d72db5607a"
+  },
   "evening-request.md": {
     "file": "evening-request.md",
     "sha256": "ebe28455ab5c0ec920d418694812fdb6fc4e31e6257b8912ac27c6cda1a87fee"
@@ -150,6 +158,14 @@
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
+  },
+  "group-private-aside-draft.md": {
+    "file": "group-private-aside-draft.md",
+    "sha256": "c40c6073e82a32935dd61c648a6afeb990b4306cb1d8958d4f577db8f18b51a2"
+  },
+  "group-private-aside-read.md": {
+    "file": "group-private-aside-read.md",
+    "sha256": "56296c986c470ddd7ab85254d1faf356ee82e0efe0f15309ed929f7b03759979"
   },
   "group-roster-reading.md": {
     "file": "group-roster-reading.md",
@@ -263,9 +279,17 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "registration-evening.md": {
+    "file": "registration-evening.md",
+    "sha256": "218c8e446e9400784aac34806b17b11cfcc6587521e8ac7142b6153e06b20fcc"
+  },
+  "registration-morning.md": {
+    "file": "registration-morning.md",
+    "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
+  },
   "reminder.md": {
     "file": "reminder.md",
-    "sha256": "ab4d7e741aa4b1e211fd880ebd33dc041ea8a2d2f516f2059b606522ea6e0dbf"
+    "sha256": "d3576ec420c6d2ad91922145ece5f518e2943b234089697990b3db672ae04e14"
   },
   "reply-copy.md": {
     "file": "reply-copy.md",

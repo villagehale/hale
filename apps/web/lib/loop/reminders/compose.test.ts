@@ -61,6 +61,7 @@ describe('reminderFacts — the facts the model writes the whole text from', () 
           start: '3:00 PM',
           end: '4:00 PM',
           location: 'Georgetown library',
+          changed: null,
         },
       ],
       planLink: null,
@@ -89,6 +90,7 @@ describe('reminderFacts — the facts the model writes the whole text from', () 
       start: null,
       end: null,
       location: null,
+      changed: null,
     });
   });
 

@@ -112,6 +112,11 @@ export type RenderedContent = {
    * on the wire is each entry of `texts`, one send and one ledger row per entry.
    */
   texts?: string[];
+  /**
+   * VIL-474 · words the writer chose to bold, copied from one of `texts` (or `text`).
+   * The iMessage leg bolds the first match; SMS and RCS send the same words plain.
+   */
+  bold?: string;
 };
 
 /** Produces channel-specific content for a message, honoring the resolved child-name

@@ -1,3 +1,4 @@
+import type { SourceChange } from './change';
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
@@ -36,6 +37,12 @@ export interface ReminderEventFacts {
   end: string | null;
   /** Where, from the parent's own calendar. Null for a private event or none. */
   location: string | null;
+  /**
+   * VIL-474 · what changed, recorded only from source data (a provider's value that
+   * differs from what Hale had stored, reminders/change.ts), with its old value in the
+   * same form as the new one. Null when nothing changed or the source said nothing.
+   */
+  changed: { field: 'time' | 'date' | 'venue'; from: string } | null;
 }
 
 export interface ReminderFacts {
@@ -54,6 +61,26 @@ export interface ReminderFacts {
 export interface ReminderFactEvent extends ReminderEventView {
   endsAt: string | null;
   location: string | null;
+  /** VIL-474 · a source-data change (reminders/change.ts), or absent. */
+  change?: SourceChange | null;
+}
+
+/** The change as a fact, in the same form as the new value. A private event's old
+ * venue is withheld exactly as its venue is. */
+function changedFact(
+  change: SourceChange | null | undefined,
+  timeZone: string,
+  hidden: boolean,
+): ReminderEventFacts['changed'] {
+  if (!change) return null;
+  if (change.field === 'venue') {
+    return hidden ? null : { field: 'venue', from: change.previousLocation };
+  }
+  const from =
+    change.field === 'time'
+      ? localClockFact(change.previousStartsAt, timeZone)
+      : `${localDateFact(change.previousStartsAt, timeZone)}, ${localClockFact(change.previousStartsAt, timeZone)}`;
+  return { field: change.field, from };
 }
 
 function part(parts: Intl.DateTimeFormatPart[], type: string): string {
@@ -162,6 +189,7 @@ export function reminderFacts(args: {
         start: allDay ? null : localClockFact(start, timeZone),
         end: allDay || !end ? null : localClockFact(end, timeZone),
         location: hidden ? null : event.location?.trim() || null,
+        changed: changedFact(event.change, timeZone, hidden),
       };
     }),
     planLink: args.planLink,
@@ -192,7 +220,10 @@ export function reminderRefusals(texts: readonly string[], facts: ReminderFacts)
   return found;
 }
 
-const outputSchema = z.object({ texts: z.array(z.string()).min(1) });
+const outputSchema = z.object({
+  texts: z.array(z.string()).min(1),
+  bold: z.string().nullish(),
+});
 const outputJsonSchema = {
   type: 'object',
   properties: {
@@ -202,11 +233,23 @@ const outputJsonSchema = {
       minItems: 1,
       description: 'The texts Hale sends the parent, in order. One or more.',
     },
+    bold: {
+      type: 'string',
+      description:
+        'Optional. The exact words, copied from one of your texts, to show in bold. Leave it out for none.',
+    },
   },
   required: ['texts'],
 } as const;
 
 export const REMINDER_MAX_ATTEMPTS = 2;
+
+/** The written reminder: its texts, and the words (if any) the writer chose to bold. */
+export interface ReminderDraft {
+  texts: string[];
+  /** VIL-474 · exact words from one of `texts`, or null. Code finds them; never offsets. */
+  bold: string | null;
+}
 
 /** The whole reminder as its texts, or null after two refused or failed attempts.
  * Null sends nothing: there is no fallback or sorry text. */
@@ -214,7 +257,7 @@ export async function composeReminderTexts(
   client: AgentClient,
   facts: ReminderFacts,
   familyId: string,
-): Promise<string[] | null> {
+): Promise<ReminderDraft | null> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
     skill = await loadCronSkill(REMINDER_SKILL);
@@ -240,7 +283,8 @@ export async function composeReminderTexts(
       });
       const texts = value.texts.map((t) => t.trim());
       const refusals = reminderRefusals(texts, facts);
-      if (refusals.length === 0) return texts;
+      const bold = value.bold?.trim() || null;
+      if (refusals.length === 0) return { texts, bold };
       console.warn({ familyId, attempt, refusals }, 'reminder: draft refused');
     } catch (err) {
       console.warn(

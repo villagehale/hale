@@ -18,5 +18,22 @@ export async function POST(req: Request): Promise<Response> {
   return handlePreviewReminderTrigger(req, {
     database: db(),
     afterRun: () => after(() => kickDrain(origin, [CHANNEL_SEND_QUEUE])),
+    // Preview capture on: send in-process through the drain's own dispatch + capture
+    // transport, no pg-boss and no drain kick (VIL-474).
+    dispatchInProcess: async (job) => {
+      const { channelSendJobPayloadSchema } = await import('@hale/tools-contracts');
+      const { dispatchLoopMessage } = await import('~/lib/channel/dispatch');
+      const { buildDispatchPorts } = await import('~/lib/channel/wiring');
+      const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
+      const { productionChannels } = await import('~/lib/channel/adapters/production');
+      const message = channelSendJobPayloadSchema.parse(job);
+      await dispatchLoopMessage(
+        message,
+        buildDispatchPorts(db(), {
+          channels: productionChannels(db()),
+          renderer: loopTemplateRenderer,
+        }),
+      );
+    },
   });
 }

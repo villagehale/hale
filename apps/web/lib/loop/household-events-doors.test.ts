@@ -51,6 +51,8 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/integrations/calendar-mirror.ts': 'writer',
   'apps/web/lib/integrations/google-calendar-placement.ts': 'writer',
   'apps/worker/src/services/internal-writes.ts': 'writer',
+  // applies a provider's own move to a Hale event; refuses mirror rows (googleEventId set)
+  'apps/web/lib/loop/reminders/provider-change.ts': 'writer',
   // soft-delete the copies the parent (untrack) or the judge (backfill) said are the
   // parent's own; each reads the rows only to pick and audit the ones it removes
   'apps/web/lib/integrations/kid-relevance/untrack.ts': 'writer',

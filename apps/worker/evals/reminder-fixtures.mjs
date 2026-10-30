@@ -201,4 +201,173 @@ export const REMINDER_FIXTURES = [
     watchFor:
       "Fake family, two kids, two events tomorrow (VIL-467). The reminder may be one text or several; read them in order as one message. FACTS GUARDRAIL, by meaning: across the texts, EVERY event keeps its start time, its end time or duration, and its specific venue name and address as given (Montessori tour 10 to 11 AM at Little Oaks Montessori, 41 Mill St; storytime 1:30 to 2:15 PM at Georgetown Branch, 9 Church St), so the parent never has to look anything up. Any event's time, end or place missing or vague is a LOW score. Sentence shape, a list, or leaving a place name as given is not a fault.",
   },
+  {
+    id: 'en-voice-not-template',
+    args: args({
+      children: [KID, SIB],
+      events: [
+        ev({
+          eventRef: 'e1',
+          childId: 'c-sib',
+          title: 'Montessori tour',
+          startsAt: '2026-10-26T14:00:00Z',
+          endsAt: '2026-10-26T15:00:00Z',
+          location: 'Little Oaks Montessori, 41 Mill St',
+        }),
+        ev({
+          eventRef: 'e2',
+          childId: 'c-kid',
+          title: 'Toddler Storytime',
+          startsAt: '2026-10-26T17:30:00Z',
+          endsAt: '2026-10-26T18:00:00Z',
+          location: 'Georgetown Branch, 9 Church St',
+        }),
+        ev({
+          eventRef: 'e3',
+          childId: 'c-kid',
+          title: 'Swim',
+          startsAt: '2026-10-26T21:00:00Z',
+          endsAt: '2026-10-26T21:45:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+        }),
+      ],
+    }),
+    watchFor:
+      'Fake family (P0, Oct 28 prod text). VOICE CHECK: three events tomorrow. Every fact must be there (tour 10 to 11 AM at Little Oaks Montessori, 41 Mill St; storytime 1:30 to 2 PM at Georgetown Branch, 9 Church St; swim 5 to 5:45 PM at Mold-Masters SportsPlex, 221 Guelph St). Then judge by meaning whether it reads like a friend texting about tomorrow, or like the same frame ("X is at T1 to T2 at P") filled in three times. A filled-in frame scores at most 3 even with every fact right.',
+  },
+  {
+    id: 'en-split-two-events',
+    args: args({
+      children: [KID],
+      events: [
+        ev({
+          eventRef: 'e1',
+          childId: 'c-kid',
+          title: 'Parent & Tot Skate',
+          startsAt: '2026-10-26T14:30:00Z',
+          endsAt: '2026-10-26T15:20:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+        }),
+        ev({
+          eventRef: 'e2',
+          childId: 'c-kid',
+          title: 'Toddler Storytime',
+          startsAt: '2026-10-26T17:30:00Z',
+          endsAt: '2026-10-26T18:00:00Z',
+          location: 'Georgetown Branch, 9 Church St',
+        }),
+      ],
+    }),
+    watchFor:
+      'Fake family (P0, Oct 27 18:12 prod text that put two events in one long block). VOICE CHECK: two events tomorrow. Each must keep its start, end, venue name and address (skate 10:30 to 11:20 AM at Mold-Masters SportsPlex, 221 Guelph St; storytime 1:30 to 2 PM at Georgetown Branch, 9 Church St). Then judge by meaning whether they reach the parent as short texts a person takes in at a glance, rather than both packed into one long block. One long block holding both events scores at most 3 even with every fact right; how the texts are split is otherwise up to the writer.',
+  },
+  // VIL-474 · bold. Facts carry no "changed" signal, so in every case below the right
+  // answer is no bold, or at most one fact the parent might act on. The judge's BOLD
+  // CHECK reads the [bold] line on every fixture; these add routine shapes where bold
+  // is easy to misuse.
+  {
+    id: 'en-bold-routine-single',
+    args: args({
+      children: [KID],
+      events: [
+        ev({
+          childId: 'c-kid',
+          title: 'Parent & Tot Skate',
+          startsAt: '2026-10-26T14:30:00Z',
+          endsAt: '2026-10-26T15:20:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+        }),
+      ],
+    }),
+    watchFor:
+      'Fake family. One routine event tomorrow: skate 10:30 to 11:20 AM at Mold-Masters SportsPlex, 221 Guelph St, for Léa. Every fact must be there. BOLD CHECK: nothing here stands out as a fact to act on, so no bold is expected; bold on anything that is not a single actionable fact scores at most 3.',
+  },
+  {
+    id: 'fr-bold-hour-out',
+    args: args({
+      language: 'fr',
+      offset: '-PT1H',
+      now: '2026-10-26T20:00:00Z',
+      events: [
+        ev({
+          title: 'Natation',
+          startsAt: '2026-10-26T21:00:00Z',
+          endsAt: '2026-10-26T21:45:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+        }),
+      ],
+    }),
+    watchFor:
+      "Fake family, in French. Swim in about an hour, 17 h to 17 h 45, at Mold-Masters SportsPlex, 221 Guelph St. Every fact must be there. BOLD CHECK: a routine hour-out reminder; no bold is expected, and bold on the title, the greeting or the whole text scores at most 3.",
+  },
+  {
+    id: 'en-bold-three-events',
+    args: args({
+      children: [KID, SIB],
+      events: [
+        ev({
+          eventRef: 'e1',
+          childId: 'c-sib',
+          title: 'Swim',
+          startsAt: '2026-10-26T13:00:00Z',
+          endsAt: '2026-10-26T13:45:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+        }),
+        ev({
+          eventRef: 'e2',
+          childId: 'c-kid',
+          title: 'Dentist',
+          startsAt: '2026-10-26T15:00:00Z',
+          location: 'Bright Smiles Dental, 12 Main St',
+        }),
+        ev({
+          eventRef: 'e3',
+          childId: 'c-kid',
+          title: 'Piano',
+          startsAt: '2026-10-26T21:00:00Z',
+          endsAt: '2026-10-26T21:30:00Z',
+          location: 'Halton Music, 5 Queen St',
+        }),
+      ],
+    }),
+    watchFor:
+      'Fake family, two kids, three events tomorrow: Theo swim 9 to 9:45 AM at Mold-Masters SportsPlex, 221 Guelph St; Léa dentist 11 AM at Bright Smiles Dental, 12 Main St (no end given); Léa piano 5 to 5:30 PM at Halton Music, 5 Queen St. Every fact must be there; inventing an end for the dentist is a LOW score. BOLD CHECK: at most one thing; bolding several facts or a whole text scores at most 3. No bold is fine.',
+  },
+  // VIL-474 · bold clearly right: the provider moved the time / changed the venue, so the
+  // `changed` fact is set from source data and the new value is the fact to act on.
+  {
+    id: 'en-bold-moved-time',
+    args: args({
+      children: [KID],
+      events: [
+        ev({
+          childId: 'c-kid',
+          title: 'Swim',
+          startsAt: '2026-10-26T20:30:00Z',
+          endsAt: '2026-10-26T21:15:00Z',
+          location: 'Mold-Masters SportsPlex, 221 Guelph St',
+          change: { field: 'time', previousStartsAt: new Date('2026-10-26T21:00:00Z') },
+        }),
+      ],
+    }),
+    watchFor:
+      'Fake family. Léa swim tomorrow, MOVED from 5 PM to 4:30 PM (until 5:15 PM) at Mold-Masters SportsPlex, 221 Guelph St. CHANGED FACT: the text must give the new time 4:30 PM and make clear it changed. BOLD CHECK: bold on the new time is right; no bold at all scores at most 3; bold on anything else scores at most 3.',
+  },
+  {
+    id: 'fr-bold-changed-venue',
+    args: args({
+      language: 'fr',
+      events: [
+        ev({
+          title: 'Natation',
+          startsAt: '2026-10-26T21:00:00Z',
+          endsAt: '2026-10-26T21:45:00Z',
+          location: 'Piscine Centennial, 5 Lake Rd',
+          change: { field: 'venue', previousLocation: 'Mold-Masters SportsPlex, 221 Guelph St' },
+        }),
+      ],
+    }),
+    watchFor:
+      "Fake family, in French. Swim tomorrow 17 h to 17 h 45; the VENUE CHANGED from Mold-Masters SportsPlex, 221 Guelph St to Piscine Centennial, 5 Lake Rd. CHANGED FACT: the text must give the new venue name and address and make clear it changed. BOLD CHECK: bold on the new venue is right; no bold at all scores at most 3; bold on anything else scores at most 3.",
+  },
 ];

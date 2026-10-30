@@ -643,4 +643,34 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
     expect(sms.calls).toHaveLength(0);
     expect(ledger).toHaveLength(0);
   });
+
+  it('VIL-474 · bolds by position: of two identical texts only the first carries the bold', async () => {
+    const SAME = 'swim moved to 4:30';
+    const boldRenderer = {
+      render: (): RenderedContent => ({
+        kind: 'sms',
+        text: [SAME, 'see you there', SAME].join('\n\n'),
+        texts: [SAME, 'see you there', SAME],
+        recordBody: true,
+        bold: '4:30',
+      }),
+    };
+    const seen: Array<{ text: string; bold: string | undefined }> = [];
+    const channel = {
+      kind: 'sms' as const,
+      async send(input: { userId: string; rendered: RenderedContent }) {
+        const r = input.rendered as RenderedContent & { bold?: string };
+        seen.push({ text: r.text, bold: r.bold });
+        return { status: 'sent' as const, providerMessageId: `m-${seen.length}` };
+      },
+    };
+    const { ports } = makePorts({ renderer: boldRenderer, channels: { sms: channel } });
+    const result = await dispatchLoopMessage(message({ dedupeKey: 'reminder:b' }), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(seen).toEqual([
+      { text: SAME, bold: '4:30' },
+      { text: 'see you there', bold: undefined },
+      { text: SAME, bold: undefined },
+    ]);
+  });
 });

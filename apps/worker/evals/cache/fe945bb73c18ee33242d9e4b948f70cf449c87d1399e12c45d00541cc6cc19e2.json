@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the facts at all. The only event is Swim class today (Mon, Oct 26) from 10:00 AM to 11:00 AM, but the text mentions \"Jour de congé at 3:00\", an event that does not exist, with a wrong time and no AM/PM. It drops the real event's title, start, and end entirely. It also says \"Tomorrow's a day off\" (wrong day, invented) and implies breathing room when there is a timed event today.",
+    "score": 1
+  }
+}
