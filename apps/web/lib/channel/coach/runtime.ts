@@ -23,6 +23,7 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import { linqExperiencesEnabled } from '~/lib/channel/linq/config';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -65,6 +66,11 @@ import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
+import {
+  type ExperienceCardIntent,
+  augmentCoachSkillForExperienceCards,
+  shareExperienceCardTool,
+} from './experience-card-tool';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
   type GmailDraftNoticeBox,
@@ -77,6 +83,7 @@ import {
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
+import { redactTeenNames } from './reply';
 import { type ReplyChild, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
@@ -219,6 +226,12 @@ export interface ChannelCoachPorts {
   ): Promise<{ clause: string; title: string; otherTitles: string[] } | null>;
   guardDeps: GuardDeps;
   /**
+   * VIL-497 — whether Linq experience cards are lit (`LINQ_EXPERIENCES_ENABLED`). Absent
+   * or false: the card verb is not registered and the skill is untouched, so a dark turn's
+   * prompt bytes and cache prefix are exactly main's. Never offered on a group turn.
+   */
+  experienceCardsEnabled?(): boolean;
+  /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
    *
    * The router builds its deps for EVERY inbound text, including the ones a
@@ -273,6 +286,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // read about is the one in the sentence it ended up writing.
       let spotWatch: SpotWatchIntent | null = null;
       let gmailNotice: GmailDraftNoticeBox | null = null;
+      // VIL-497: the one find this turn chose to send as a card. LAST CALL WINS.
+      let experienceCard: ExperienceCardIntent | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -288,8 +303,18 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         : [];
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
-      const skill =
-        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+      const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
+      const skill = augmentCoachSkillForExperienceCards(
+        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill,
+        cardsLit,
+      );
+      // The ref→page table for this turn: the same list the reply's [link-…] markers
+      // resolve against, so a card and a cited link can never point at different pages.
+      const turnLinks = () =>
+        [
+          ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
+          ...offeredThisTurn.links().map((link) => link.url),
+        ].map((url) => ({ ref: linkRef(url), url }));
 
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
@@ -386,7 +411,19 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           );
           // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
           // are busy-only, on every group turn.
-          const tools = groupScoped ? groupScopedTools(builtTools) : builtTools;
+          const tools = [
+            ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
+            ...(cardsLit
+              ? [
+                  shareExperienceCardTool({
+                    links: turnLinks,
+                    onCard: (card) => {
+                      experienceCard = card;
+                    },
+                  }),
+                ]
+              : []),
+          ];
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
@@ -483,15 +520,23 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               : {
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
-                  activityLinks: [
-                    ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
-                    ...offeredThisTurn.links().map((link) => link.url),
-                  ].map((url) => ({ ref: linkRef(url), url })),
+                  activityLinks: turnLinks(),
                   nearby: nearby ?? undefined,
                 }),
           });
           await ports.recordRun(record('completed'));
-          return { reply, planOffer, activityPromise, spotWatch };
+          const card = experienceCard as ExperienceCardIntent | null;
+          return {
+            reply,
+            planOffer,
+            activityPromise,
+            spotWatch,
+            // The title passes the same age-derived teen floor as the answer (rule #1).
+            experienceCard:
+              card && !noticeReady
+                ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+                : null,
+          };
         },
       );
     },
@@ -528,6 +573,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
+    experienceCardsEnabled: linqExperiencesEnabled,
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForProviderWatch(
         augmentCoachSkillForAutonomySwitchOff(

@@ -40,6 +40,7 @@ import {
 import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
+import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
@@ -358,6 +359,9 @@ export interface DeterministicHandler {
 
 export interface ChannelRouterDeps {
   database: Database;
+  /** VIL-497 — the experience-card sender. Absent: the real `sendLinqAppCard`. A seam so
+   * the router's card delivery is testable without Linq. */
+  sendExperienceCard?: typeof sendLinqAppCard;
   loadContext(database: Database, job: ChannelMessageReceivedJob): Promise<InboundContext | null>;
   /** The one way out. Channel-agnostic by construction (reply-route.ts): the router
    * hands it a resolved route and a body, and never learns which provider took it. */
@@ -1510,6 +1514,7 @@ async function routeChannelMessageInner(
       questions: natural.questions,
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
       audience: inGroup ? 'group' : 'direct',
+      cardRoute: inGroup ? null : route,
     });
   } finally {
     await stopTyping();
@@ -1909,6 +1914,8 @@ async function runAgentTurn(
      */
     unplacedAnswer: UnplacedAnswer | null;
     audience: ChannelTurn['audience'];
+    /** VIL-497 — the 1:1 route a card may go to; null on a group turn. */
+    cardRoute?: ReplyRoute | null;
   },
 ): Promise<RouterResult> {
   try {
@@ -1921,12 +1928,43 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, spotWatch, mints } = await composeReconciledReply(
-      deps,
-      args,
-      view,
-    );
-    const channelMessageId = await args.answer(reply);
+    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard } =
+      await composeReconciledReply(deps, args, view);
+    const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
+    const channelMessageId = await args.answer(card ? card.text : reply);
+    if (card) {
+      // AFTER the text, like every other send-time writer here, and never throws: the
+      // parent already has the message. Any reason the card cannot go out (flag dark,
+      // capability no, refused) falls back to the link preview inside sendLinqAppCard,
+      // so the page the text no longer carries still reaches them.
+      try {
+        const outcome = await (deps.sendExperienceCard ?? sendLinqAppCard)({
+          channel: 'imessage',
+          chatId: card.chatId,
+          card: { url: card.url, fallbackText: card.title },
+          recipientAddress: card.to,
+          isGroup: false,
+          database: deps.database,
+          familyId: args.turn.familyId,
+          parentUserId: args.turn.parentUserId,
+          now: args.turn.now,
+        });
+        deps.log.info(
+          {
+            card: outcome.status,
+            ...(outcome.status === 'fallback'
+              ? { why: outcome.why, link: outcome.link.status }
+              : {}),
+          },
+          'channel router: experience card after the send',
+        );
+      } catch (err) {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: experience card failed',
+        );
+      }
+    }
     await recordCoachOfferFromReply(deps, {
       familyId: args.turn.familyId,
       parentUserId: args.turn.parentUserId,
@@ -2800,4 +2838,28 @@ function done(
     'channel router: routed',
   );
   return result;
+}
+
+/**
+ * VIL-497 — whether this reply's card goes out, and the text that goes with it.
+ *
+ * Only on an iMessage 1:1 route (a card has one recipient; SMS has no cards). The card
+ * carries the page, so its URL is taken out of the text — the card replaces the link
+ * preview, never doubles it. A reply that would be empty without the URL keeps it and
+ * sends no card: the text is the answer and must not vanish. Pure.
+ */
+export function experienceCardDelivery(
+  reply: string,
+  card: { url: string; title: string } | null,
+  route: ReplyRoute | null,
+): { text: string; url: string; title: string; chatId: string; to: string } | null {
+  if (!card || !route || route.channel !== 'imessage' || !route.chatId) return null;
+  const text = reply
+    .split(card.url)
+    .join(' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .trim();
+  if (text === '') return null;
+  return { text, url: card.url, title: card.title, chatId: route.chatId, to: route.to };
 }

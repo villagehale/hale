@@ -1,4 +1,5 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-tool';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
@@ -97,6 +98,12 @@ export interface ChannelTurnResult {
    * "I'm watching that" and never reached a transport arms nothing at all.
    */
   spotWatch: SpotWatchIntent | null;
+  /**
+   * VIL-497 — the one find the model chose to send as a Linq experience card (url from a
+   * tool ref, title model-written), or null/absent. Only ever set while
+   * `LINQ_EXPERIENCES_ENABLED` is lit on a 1:1 turn; the router delivers it after the text.
+   */
+  experienceCard?: ExperienceCardIntent | null;
 }
 
 export interface ChannelCoachRuntime {
