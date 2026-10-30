@@ -294,7 +294,7 @@ describe('defaultFollowupSweepDeps().loadDueActivities — the real union reader
 });
 
 describe('the ask reaches the item’s own parent', () => {
-  it("texts the CO-PARENT for their booking and the PRIMARY for a placement", async () => {
+  it('texts the CO-PARENT for their booking and the PRIMARY for a placement', async () => {
     // The blocker this PR exists for: co-parent B's Gmail produced a question on primary
     // parent A's phone, one to four days after a class A may not know B registered for.
     // MUTATION: send to `family.parentUserId` instead of `event.parentUserId` and the

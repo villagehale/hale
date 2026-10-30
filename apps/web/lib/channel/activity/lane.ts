@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { parentFacingActivityUrl, safeHttpUrl } from '~/lib/format/http-url';
+import { parentFacingActivityUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
@@ -469,6 +469,30 @@ export function stampReadPageUrl(
   );
 }
 
+/**
+ * VIL-510 · When compose cited a listing/aggregator page but this turn's tools also
+ * returned the venue's OWN page (its hostname carries the venue name), the venue's
+ * page wins. Otherwise compose's URL stands, then the stamped one.
+ */
+export function preferVenuePage(
+  composed: string | null,
+  stamped: string | null,
+  sourceName: string,
+): string | null {
+  if (composed === null) return stamped;
+  if (stamped === null || stamped === composed) return composed;
+  const venue = squash(sourceName);
+  if (venue.length < 6) return composed;
+  const ownHost = (url: string): boolean => {
+    try {
+      return squash(new URL(url).hostname).includes(venue);
+    } catch {
+      return false;
+    }
+  };
+  return !ownHost(composed) && ownHost(stamped) ? stamped : composed;
+}
+
 export function toPicks(
   raw: z.infer<typeof composeSchema>['picks'],
   pages: ReadonlyArray<{ url: string; text: string }> = [],
@@ -482,9 +506,11 @@ export function toPicks(
     if (name === '' || ageFit === '' || sourceName === '') continue;
     const when = field(item.when);
     const price = field(item.price);
-    const url =
-      parentFacingActivityUrl(field(item.source_url)) ??
-      stampReadPageUrl({ name, sourceName }, pages, searchHits);
+    const url = preferVenuePage(
+      parentFacingActivityUrl(field(item.source_url)),
+      stampReadPageUrl({ name, sourceName }, pages, searchHits),
+      sourceName,
+    );
     const pick: ActivityPick = {
       name,
       ageFit,

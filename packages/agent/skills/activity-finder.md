@@ -319,3 +319,9 @@ not find, one on what Hale is doing next.
 
 Never a link, never a price you did not read, never a day the page did not give
 you, and never a question.
+
+**Venue names are copied, not composed.** Write the venue's name exactly as the
+page prints it ("Black Creek Pioneer Village"), once. Never splice the event
+title and the venue into a doubled or mangled name ("Village at Village at
+Black Creek"). When this turn's results include the venue's own page for an
+event as well as a listing that mentions it, cite the venue's own page.

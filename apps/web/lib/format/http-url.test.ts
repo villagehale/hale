@@ -21,7 +21,9 @@ describe('VIL-510 · parentFacingActivityUrl', () => {
   });
 
   it('drops Wikipedia and sister hosts', () => {
-    expect(parentFacingActivityUrl('https://en.wikipedia.org/wiki/Halton_Hills_Public_Library')).toBeNull();
+    expect(
+      parentFacingActivityUrl('https://en.wikipedia.org/wiki/Halton_Hills_Public_Library'),
+    ).toBeNull();
     expect(parentFacingActivityUrl('https://www.wikipedia.org/wiki/X')).toBeNull();
     expect(parentFacingActivityUrl('https://commons.wikimedia.org/wiki/File:X')).toBeNull();
   });

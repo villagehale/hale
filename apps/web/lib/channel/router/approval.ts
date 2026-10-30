@@ -8,7 +8,7 @@ import {
   nothingToUndoReply,
   outOfRangeReply,
 } from './copy';
-import { MAX_LISTED_APPROVALS, type FastPathCommand } from './fast-path';
+import { type FastPathCommand, MAX_LISTED_APPROVALS } from './fast-path';
 
 /**
  * VIL-220 · C1 — resolving a fast-path command against the approvals spine.

@@ -1,3 +1,4 @@
+import { setLangfuseTracerProvider } from '@langfuse/tracing';
 import { context } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
@@ -5,7 +6,6 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
-import { setLangfuseTracerProvider } from '@langfuse/tracing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { traceAgentRun } from './langfuse';
 

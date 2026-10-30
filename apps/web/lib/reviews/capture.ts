@@ -9,9 +9,9 @@ import {
   familyEventIdFromAskDedupeKey,
 } from '~/lib/channel/followup/ask-open';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { familyMemoryKindsEnabled } from '~/lib/memory/kinds';
 import { promoteMatchingInferredFacts } from '~/lib/memory/store';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { familyAreaKey } from './aggregate';
 import { type ReviewSubject, type SubjectUnresolved, resolveReviewSubject } from './subject';
 import type { VerdictReader } from './verdict';
@@ -469,7 +469,9 @@ async function reviewedEventTitle(
   const [event] = await database
     .select({ title: schema.familyEvents.title })
     .from(schema.familyEvents)
-    .where(and(eq(schema.familyEvents.id, familyEventId), eq(schema.familyEvents.familyId, familyId)))
+    .where(
+      and(eq(schema.familyEvents.id, familyEventId), eq(schema.familyEvents.familyId, familyId)),
+    )
     .limit(1);
   const title = event?.title?.trim() ?? '';
   return title.length >= 4 ? title : null;
@@ -517,4 +519,3 @@ async function readPlacement(
     .limit(1);
   return row ?? null;
 }
-
