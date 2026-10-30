@@ -2,10 +2,11 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
+import { peelLinqSticker } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { LinqSendError, peelLinqSticker } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * VIL-472 — a sticker peeled onto the parent's message, when the model says one fits.
