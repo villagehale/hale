@@ -87,6 +87,14 @@
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
   },
+  "duty-night-check.md": {
+    "file": "duty-night-check.md",
+    "sha256": "d5f13c8c12be1f1e9e22f7c13d5c99cc3ac7a5d17e714f1a932d455101085e88"
+  },
+  "duty-night.md": {
+    "file": "duty-night.md",
+    "sha256": "85c230a970e5de8e50c154eb671fce7c058a1ec0e66bd0b55f4602d72db5607a"
+  },
   "evening-request.md": {
     "file": "evening-request.md",
     "sha256": "ebe28455ab5c0ec920d418694812fdb6fc4e31e6257b8912ac27c6cda1a87fee"
@@ -262,6 +270,14 @@
   "radar-voice.md": {
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
+  },
+  "registration-evening.md": {
+    "file": "registration-evening.md",
+    "sha256": "218c8e446e9400784aac34806b17b11cfcc6587521e8ac7142b6153e06b20fcc"
+  },
+  "registration-morning.md": {
+    "file": "registration-morning.md",
+    "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
   },
   "reminder.md": {
     "file": "reminder.md",

@@ -401,7 +401,7 @@ describe('openTimeIsPublished', () => {
     expect(openTimeIsPublished(OPEN_AT, TZ)).toBe(true);
   });
 
-  it('reads midnight in the FAMILY\'s zone, not the server\'s or UTC', () => {
+  it("reads midnight in the FAMILY's zone, not the server's or UTC", () => {
     // The same instant is midnight in Toronto and 9 p.m. the evening before in Vancouver.
     // A Vancouver household would be told about a 9 p.m. open, which the town did print
     // no more than it printed midnight — but the zone the row was written in is the one
