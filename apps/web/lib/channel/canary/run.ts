@@ -1,9 +1,9 @@
 import { createHmac } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNotNull, like, lte } from 'drizzle-orm';
-import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { linqInboundConfigured, linqWebhookSecret } from '~/lib/channel/linq/config';
 import { LINQ_WEBHOOK_VERSION } from '~/lib/channel/linq/signature';
+import { appBaseUrl } from '~/lib/cron/email-compliance';
 import {
   CANARY_ANSWERED_ACTION,
   CANARY_BODY,
@@ -68,10 +68,17 @@ function canarySid(now: Date): string {
 }
 
 /** Same bytes `verifyLinqWebhookSignature` checks. The secret is `whsec_` plus base64. */
-function signLinqBody(secret: string, webhookId: string, timestamp: string, rawBody: string): string {
+function signLinqBody(
+  secret: string,
+  webhookId: string,
+  timestamp: string,
+  rawBody: string,
+): string {
   const secretStr = secret.startsWith('whsec_') ? secret.slice('whsec_'.length) : secret;
   const key = Buffer.from(secretStr, 'base64');
-  const mac = createHmac('sha256', key).update(`${webhookId}.${timestamp}.${rawBody}`).digest('base64');
+  const mac = createHmac('sha256', key)
+    .update(`${webhookId}.${timestamp}.${rawBody}`)
+    .digest('base64');
   return `v1,${mac}`;
 }
 
@@ -114,11 +121,7 @@ async function inject(deps: InboundCanaryDeps, now: Date): Promise<void> {
   }
 }
 
-async function verifyPreviousTick(
-  database: Database,
-  familyId: string,
-  now: Date,
-): Promise<void> {
+async function verifyPreviousTick(database: Database, familyId: string, now: Date): Promise<void> {
   const [prior] = await database
     .select({ id: schema.channelMessages.id, sentAt: schema.channelMessages.sentAt })
     .from(schema.channelMessages)

@@ -506,9 +506,7 @@ describe('draftInlineAction → REAL executor (every intent kind)', () => {
       approvingReviewer(),
       NOW,
     );
-    expect((authored.events[0] as Record<string, unknown>).contentProvenance).toBe(
-      'hale_authored',
-    );
+    expect((authored.events[0] as Record<string, unknown>).contentProvenance).toBe('hale_authored');
 
     const undeclared = freshCapture();
     await draftInlineAction(

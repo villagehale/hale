@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestDb, seedFamily, type TestDb } from '~/lib/testing/pglite';
-import { auditTurnLedger, TURN_ANSWERED_ACTION } from './wiring';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { TURN_ANSWERED_ACTION, auditTurnLedger } from './wiring';
 
 /**
  * The ANSWERED row is a CLAIM, not a note (audit P1-4 seam 1). The drain is

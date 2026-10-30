@@ -5,9 +5,9 @@ import {
   type DiaperKind,
   FEED_EPISODE,
   HEALTH_DONE_EPISODE,
-  type MarkDoneInput,
   MEASUREMENT_EPISODE,
   MILESTONE_EPISODE,
+  type MarkDoneInput,
   NAP_EPISODE,
   type QuickLogInput,
 } from './log-types.js';
@@ -49,7 +49,7 @@ describe('buildEpisodeInsert', () => {
   });
 
   it('words each qualitative amount from the prototype language (derived from the spec)', () => {
-    const cases: [('little' | 'half' | 'most' | 'all'), string][] = [
+    const cases: ['little' | 'half' | 'most' | 'all', string][] = [
       ['little', 'Fed — a little'],
       ['half', 'Fed — half'],
       ['most', 'Fed — most of it'],

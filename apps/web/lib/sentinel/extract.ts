@@ -36,6 +36,7 @@ const extractOutputSchema = z.object({
     child_ref: z.string().nullable().optional().default(null),
     original_time: z.string().nullable().optional().default(null),
     new_time: z.string().nullable().optional().default(null),
+    end_time: z.string().nullable().optional().default(null),
     location: z.string().nullable().optional().default(null),
   }),
   source_confidence: z.number().min(0).max(1),
@@ -54,6 +55,7 @@ const extractOutputJsonSchema = {
         child_ref: { type: ['string', 'null'] },
         original_time: { type: ['string', 'null'] },
         new_time: { type: ['string', 'null'] },
+        end_time: { type: ['string', 'null'] },
         location: { type: ['string', 'null'] },
       },
       required: ['title'],
@@ -114,6 +116,7 @@ export async function extractChildEvent(
       childRef: value.event.child_ref,
       originalTime: value.event.original_time,
       newTime: value.event.new_time,
+      endTime: statedEnd(value.event.new_time, value.event.end_time),
       location: value.event.location,
     },
     sourceConfidence: value.source_confidence,
@@ -124,4 +127,16 @@ export async function extractChildEvent(
       completionTokens: usage.output_tokens,
     },
   };
+}
+
+/**
+ * The end the email stated, kept only when it is a real instant after `new_time`. A
+ * missing, unparseable or backwards end is null: nothing downstream guesses one.
+ */
+export function statedEnd(start: string | null, end: string | null): string | null {
+  if (start === null || end === null) return null;
+  const from = Date.parse(start);
+  const to = Date.parse(end);
+  if (Number.isNaN(from) || Number.isNaN(to) || to <= from) return null;
+  return end;
 }

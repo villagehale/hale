@@ -31,7 +31,9 @@ describe('captureProviderSession (production caller)', () => {
       parentUserId: seeded.parentUserId,
       providerHost: 'harbor-rec.example',
       storageState: {
-        cookies: [{ name: 'JSESSIONID', value: 'rec-secret-fixture', domain: 'harbor-rec.example' }],
+        cookies: [
+          { name: 'JSESSIONID', value: 'rec-secret-fixture', domain: 'harbor-rec.example' },
+        ],
       },
       capturedAt: NOW,
     });
@@ -68,7 +70,10 @@ describe('captureProviderSession (production caller)', () => {
   });
 
   it('is the production caller of storeProviderSession', () => {
-    const source = readFileSync(fileURLToPath(new URL('./session-capture.ts', import.meta.url)), 'utf8');
+    const source = readFileSync(
+      fileURLToPath(new URL('./session-capture.ts', import.meta.url)),
+      'utf8',
+    );
     expect(source).toContain('storeProviderSession');
     const route = readFileSync(
       fileURLToPath(new URL('../../app/api/signup/provider-session/route.ts', import.meta.url)),

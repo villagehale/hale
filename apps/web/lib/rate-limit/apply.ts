@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '~/lib/db';
 import { RATE_LIMITS, type RateLimitRoute } from './config';
-import type { RateLimiter, RateLimitResult } from './limiter';
+import type { RateLimitResult, RateLimiter } from './limiter';
 import { PostgresRateLimiter } from './postgres';
 
 let cached: RateLimiter | undefined;

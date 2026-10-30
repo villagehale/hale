@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { failedSendPatch } from '~/lib/channel/outbound-transport';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { failedSendPatch } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';

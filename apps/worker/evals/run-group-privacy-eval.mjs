@@ -234,7 +234,12 @@ async function main() {
   const { groupScopedContext, groupScopedTools, GROUP_WITHHELD_TOOLS } = await importTs(SCOPE_SRC);
   const coach = await agent.loadSkill(join(SKILLS, 'coach-channel-sms.md'));
   const group = await agent.loadSkill(join(SKILLS, 'coach-channel-group.md'));
-  const skill = { ...coach, instructions: `${coach.instructions}\n\n${group.instructions}` };
+  // VIL-510: runtime order is coach + group appendix + coach-nearby-find.
+  const nearby = await agent.loadSkill(join(SKILLS, 'coach-nearby-find.md'));
+  const skill = {
+    ...coach,
+    instructions: `${coach.instructions}\n\n${group.instructions}\n\n${nearby.instructions}`,
+  };
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'group-privacy', cachedOnly, getClient, cost);
 

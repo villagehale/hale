@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is the connect-ask shape the rubric calls correct. The reply says the link is a text away, quotes the short ask word for word, and notes the fifteen-minute window. It writes out no URL, does not send the parent to the app, and does not refuse. The opening 'Yes.' is fine, and the reply is short and stops.",
+    "score": 5
+  }
+}

@@ -120,7 +120,7 @@ describe('the evening check-in in a right-to-access copy', () => {
    * THE POSITIVE CONTROL IS THE TEST. `trips: []` passes just as happily on a block that
    * is always empty, so the same trip is read back as its own parent in the same `it`.
    */
-  it("serves a trip only to the parent whose mailbox it came from", async () => {
+  it('serves a trip only to the parent whose mailbox it came from', async () => {
     const [family] = await db.database
       .insert(schema.families)
       .values({ displayName: 'Ana + Sam', provinceOrState: 'ON' })

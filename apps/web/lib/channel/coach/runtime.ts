@@ -326,8 +326,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
       const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
-      const baseSkill =
+      const groupedSkill =
         turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+      // VIL-510: nearby-find voice + link rules ride as an addendum so the disk
+      // coach-channel-sms bytes (and every eval recording keyed on them) stay put.
+      const nearbyFind = await loadCronSkill('coach-nearby-find');
+      const baseSkill = {
+        ...groupedSkill,
+        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}`,
+      };
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
