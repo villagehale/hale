@@ -564,55 +564,38 @@ describe('activity links', () => {
     expect(out).toBe('Swim is Tuesday, see.');
   });
 
-  it('replaces ref narration with the class and the page the tool returned (VIL-501)', () => {
-    const reply = toSmsReply('A ref came back this time, so I can attach the page.', {
-      children: [],
-      now: NOW,
-      activityLinks: [TUMBLERS],
-      classFacts: [
-        {
-          name: 'Tiny Tumblers parent & tot',
-          ageFit: 'walking to 3 years',
-          when: 'Saturday mornings this fall',
-          sourceName: 'Halton Hills',
-          url: TUMBLERS_URL,
-        },
-      ],
-    });
-    expect(reply).not.toMatch(/\brefs?\b/i);
-    expect(reply).not.toMatch(/attach/i);
-    expect(reply).toContain('Tiny Tumblers parent & tot');
-    expect(reply).toContain('walking to 3 years');
-    expect(reply).toContain('Saturday mornings this fall');
-    expect(reply).toContain('per Halton Hills');
-    expect(reply).toContain(TUMBLERS_URL);
-  });
-
-  it('says the class and no page when the tool had no link', () => {
-    const reply = toSmsReply('No refs came back.', {
-      children: [],
-      now: NOW,
-      classFacts: [
-        {
-          name: 'Tiny Tumblers parent & tot',
-          when: 'Saturday mornings this fall',
-          sourceName: 'Halton Hills',
-        },
-      ],
-    });
-    expect(reply).toBe(
-      'Tiny Tumblers parent & tot, Saturday mornings this fall, per Halton Hills.',
-    );
-    expect(reply).not.toMatch(/https?:\/\//);
-  });
-
-  it('refuses a narration that names no class', () => {
+  it('fails the turn when the reply is only ref narration (VIL-501)', () => {
     expect(() =>
       toSmsReply('A ref came back this time, so I can attach the page.', {
         children: [],
         now: NOW,
+        activityLinks: [TUMBLERS],
       }),
-    ).toThrow(/narrated internal refs/);
+    ).toThrow(/empty after post-processing/);
+  });
+
+  it('keeps the class the model wrote and drops the narration, without composing one', () => {
+    const reply = toSmsReply(
+      `A ref came back. Riverdale story time is Saturday at 10. [${TUMBLERS.ref}]`,
+      {
+        children: [],
+        now: NOW,
+        activityLinks: [TUMBLERS],
+      },
+    );
+    expect(reply).toBe(`Riverdale story time is Saturday at 10. ${TUMBLERS_URL}`);
+    expect(reply).not.toMatch(/\brefs?\b/i);
+    expect(reply).not.toMatch(/per /);
+  });
+
+  it('does not attach a page the model did not cite, even beside a class sentence', () => {
+    const reply = toSmsReply('A ref came back. Riverdale story time is Saturday at 10.', {
+      children: [],
+      now: NOW,
+      activityLinks: [TUMBLERS],
+    });
+    expect(reply).toBe('Riverdale story time is Saturday at 10.');
+    expect(reply).not.toContain(TUMBLERS_URL);
   });
 
   it('does not treat refer as the marker', () => {

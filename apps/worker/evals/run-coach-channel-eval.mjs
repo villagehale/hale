@@ -524,7 +524,7 @@ function pageLinksFor(fixture, calls) {
  */
 const spotPage = (name) => readFileSync(join(SPOTS_FIXTURES, `${name}.html`), 'utf8');
 
-function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks, classFacts) {
+function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
   const redacted = redactTeenNames(flattened, children, NOW);
@@ -533,11 +533,13 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks, c
   // because a parent forwards it OUT.
   // By ref, mirroring reply.ts: typed URLs are dropped, cited refs attach their page.
   const cited = attachLinks(redacted, activityLinks);
-  // Same repair as reply.ts. A narration-only body becomes the class, or empty.
-  // Redact again: the stand-in class can name someone the first pass never saw.
-  const repaired = repairParentReply(cited.body, cited.urls, classFacts);
-  const answerBody = redactTeenNames(repaired.body, children, NOW);
-  if (answerBody === '' && repaired.urls.length === 0) return null;
+  // Same strip as reply.ts. Narration-only comes back empty and fails the turn.
+  // Code does not write a replacement sentence.
+  const repaired = repairParentReply(cited.body, cited.urls);
+  const answerBody = repaired.body;
+  if (answerBody === '' && (narratesRefMachinery(cited.body) || repaired.urls.length === 0)) {
+    return null;
+  }
   const link = repaired.urls.join(' ');
   // A plan offer or a referral still crowds the count out. An activity URL does not:
   // the count is about that find, and the URL is that find's page.
@@ -592,6 +594,7 @@ let attachLinks = (text) => ({ body: text, urls: [] });
 let linkRef = (url) => url;
 /** VIL-501. Same function production's toSmsReply runs. Identity until activity-links loads. */
 let repairParentReply = (body, urls) => ({ body, urls });
+let narratesRefMachinery = () => false;
 
 function activityLinksFor(fixture, calls) {
   const links = [];
@@ -604,34 +607,6 @@ function activityLinksFor(fixture, calls) {
     }
   }
   return links;
-}
-
-/** Classes this turn's tools actually returned. Used only when the reply narrates refs. */
-function classFactsFor(fixture, calls) {
-  const facts = [];
-  if (calls.some((call) => call.tool === 'search_village')) {
-    for (const candidate of villageFor(fixture).candidates ?? []) {
-      facts.push({
-        name: candidate.title,
-        when: candidate.when,
-        sourceName: candidate.venue,
-        url: candidate.url,
-      });
-    }
-  }
-  if (calls.some((call) => call.tool === 'find_activities')) {
-    for (const pick of webPicksFor(fixture)) {
-      facts.push({
-        name: pick.name,
-        ageFit: pick.ageFit,
-        when: pick.when,
-        price: pick.price,
-        sourceName: pick.sourceName,
-        url: pick.url,
-      });
-    }
-  }
-  return facts;
 }
 
 function nearbyClause(fittedBody, nearby) {
@@ -2026,7 +2001,7 @@ async function main() {
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
     import.meta.url,
   ));
-  ({ attachLinks, linkRef, repairParentReply } = await tsImport(
+  ({ attachLinks, linkRef, repairParentReply, narratesRefMachinery } = await tsImport(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
     import.meta.url,
   ));
@@ -2228,7 +2203,6 @@ async function main() {
         referralBlock,
         fixture.nearby,
         activityLinksFor(fixture, calls),
-        classFactsFor(fixture, calls),
       );
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.

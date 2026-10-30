@@ -2,7 +2,6 @@ import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/scree
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 import {
-  type ClassFact,
   type RefLink,
   attachLinks,
   narratesRefMachinery,
@@ -72,12 +71,6 @@ export interface SmsReplyArgs {
    * the reply cites its ref; the model never writes a URL (activity-links.ts).
    */
   activityLinks?: readonly RefLink[];
-  /**
-   * Classes the tools returned this turn. Used only when the reply narrates the marker
-   * instead of the class (VIL-501). A page is included only when the tool had an
-   * absolute http(s) URL.
-   */
-  classFacts?: readonly ClassFact[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about ONE of the activities this turn offered, and
    * the offered titles it must not be confused with.
@@ -196,15 +189,15 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     redactTeenNames(flattened, args.children, args.now),
     args.activityLinks,
   );
-  // VIL-501. The marker is invisible. A reply that explains it is not a reply: the
-  // class stands in when that explanation was the whole message, and a named class
-  // keeps the page the tool actually returned.
-  const repaired = repairParentReply(cited.body, cited.urls, args.classFacts);
+  // VIL-501. Sentences that explain the marker never go out. If that was the whole
+  // reply, this is the same failure as an empty answer: the router owns the honesty
+  // line. Code does not write a replacement.
+  const repaired = repairParentReply(cited.body, cited.urls);
   const redacted = redactTeenNames(repaired.body, args.children, args.now);
-  if (redacted === '' && repaired.urls.length === 0) {
+  if (redacted === '' && (narratesRefMachinery(cited.body) || repaired.urls.length === 0)) {
     throw new Error(
       narratesRefMachinery(cited.body)
-        ? 'channel coach: reply narrated internal refs and named no class'
+        ? 'channel coach: model answer was empty after post-processing'
         : 'channel coach: model answer was only an uncited link',
     );
   }

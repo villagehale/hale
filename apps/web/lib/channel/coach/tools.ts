@@ -23,7 +23,6 @@ import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
-import type { ClassFact } from './activity-links';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
@@ -212,8 +211,6 @@ export interface ChannelCoachToolArgs {
   offeredThisTurn?: () => readonly OfferedCandidate[];
   /** Live-web pages this turn found, appended when the reply names the pick. */
   recordActivityLinks?: (links: readonly { title: string; url: string }[]) => void;
-  /** Classes returned this turn, including ones with no page, for the narration guard. */
-  recordFacts?: (facts: readonly ClassFact[]) => void;
   /**
    * The live web-search lane and the family facts phase 0 needs, or null in a test that
    * is not exercising them. The two travel together on purpose: a finder with no reader
@@ -405,14 +402,11 @@ export interface TurnOfferLedger {
   read(): readonly OfferedCandidate[];
   recordLinks(links: readonly NamedLink[]): void;
   links(): readonly NamedLink[];
-  recordFacts(facts: readonly ClassFact[]): void;
-  facts(): readonly ClassFact[];
 }
 
 export function createTurnOfferLedger(): TurnOfferLedger {
   const offered: OfferedCandidate[] = [];
   const linked: NamedLink[] = [];
-  const recordedFacts: ClassFact[] = [];
   return {
     record(offers) {
       offered.push(...offers);
@@ -425,12 +419,6 @@ export function createTurnOfferLedger(): TurnOfferLedger {
     },
     links() {
       return linked;
-    },
-    recordFacts(facts) {
-      recordedFacts.push(...facts);
-    },
-    facts() {
-      return recordedFacts;
     },
   };
 }
@@ -765,7 +753,6 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         finder: args.activity.finder,
         onPromise,
         onLinks: args.recordActivityLinks,
-        onFacts: args.recordFacts,
       }),
     );
   }

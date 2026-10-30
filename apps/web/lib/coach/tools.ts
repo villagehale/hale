@@ -78,10 +78,6 @@ export interface OfferedCandidate {
   civicVenueId: string | null;
   /** Same page the model was shown, so the reply can carry it without the model writing it. */
   url?: string;
-  /** Class fields the narration guard may quote. Never returned to the model. */
-  ageFit?: string | null;
-  when?: string | null;
-  price?: string | null;
 }
 
 /** One row as both halves see it: what the model is shown, and what the process keeps
@@ -222,20 +218,14 @@ export function searchVillageTool(
         ordered.map((entry) => entry.pick),
         now,
       );
-      const offered = receipts.map((row) => {
-        const pick = ordered.find((entry) => entry.pick.name === row.title)?.pick;
-        return {
-          title: row.title,
-          venue: row.venueName ?? '',
-          candidateId: row.id,
-          placeId: row.placeId,
-          civicVenueId: row.civicVenueId,
-          url: row.sourceUrl ?? undefined,
-          ageFit: pick?.ageFit ?? null,
-          when: pick?.when ?? null,
-          price: pick?.price ?? null,
-        };
-      });
+      const offered = receipts.map((row) => ({
+        title: row.title,
+        venue: row.venueName ?? '',
+        candidateId: row.id,
+        placeId: row.placeId,
+        civicVenueId: row.civicVenueId,
+        url: row.sourceUrl ?? undefined,
+      }));
       // EXACTLY the rows that went out as `candidates` — never the in-verification
       // count and never a teen-attributed row, which has no venue and no date and must
       // not be nameable at all (rule #1).

@@ -1,6 +1,5 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import type { ActivityPromise } from './commitment';
 import type { ActivityFinder, ActivityPick } from './lane';
 import type { BoundActivityReader } from './reader';
@@ -195,64 +194,6 @@ describe('find_activities', () => {
       teenGuard,
     );
     expect(seen).toHaveLength(1);
-  });
-});
-
-describe('find_activities records the class, never a typed url (VIL-501)', () => {
-  const PAGE = 'https://www.haltonhills.ca/en/recreation/tiny-tumblers.aspx';
-
-  it('hands the model a ref and records the class with its real page', async () => {
-    const facts: unknown[] = [];
-    const links: unknown[] = [];
-    const tool = findActivitiesTool({
-      reader: reader(),
-      finder: {
-        async find() {
-          return { found: true, picks: [{ ...PICK, url: PAGE, price: '$20' }] };
-        },
-      },
-      onPromise: () => {},
-      onLinks: (rows) => links.push(...rows),
-      onFacts: (rows) => facts.push(...rows),
-    });
-
-    const result = (await call(tool, { subject: 'toddler gymnastics' })) as {
-      picks: Array<Record<string, unknown>>;
-    };
-
-    expect(result.picks[0]).not.toHaveProperty('url');
-    expect(result.picks[0]?.ref).toBe(linkRef(PAGE));
-    expect(facts).toEqual([
-      {
-        name: PICK.name,
-        ageFit: PICK.ageFit,
-        when: PICK.when,
-        price: '$20',
-        sourceName: PICK.sourceName,
-        url: PAGE,
-      },
-    ]);
-    expect(links).toEqual([{ title: PICK.name, url: PAGE }]);
-  });
-
-  it('records the class with no page when the tool had no absolute url', async () => {
-    const facts: Array<{ url?: string | null }> = [];
-    const tool = findActivitiesTool({
-      reader: reader(),
-      finder: {
-        async find() {
-          return { found: true, picks: [{ ...PICK, url: 'not-a-url' }] };
-        },
-      },
-      onPromise: () => {},
-      onFacts: (rows) => facts.push(...rows),
-    });
-
-    const result = await call(tool, { subject: 'toddler gymnastics' });
-
-    expect(JSON.stringify(result)).not.toMatch(/https?:/);
-    expect(facts[0]?.url).toBeUndefined();
-    expect(facts[0]).toMatchObject({ name: PICK.name, when: PICK.when });
   });
 });
 

@@ -96,9 +96,6 @@ describe('search_village uses this operation’s live evidence', () => {
         venue: 'Current pool',
         candidateId: expect.any(String),
         url: pick.sourceUrl,
-        ageFit: 'ages 2-5',
-        when: 'Saturday 10 AM',
-        price: null,
       }),
     ]);
     expect(JSON.stringify(find.mock.calls)).not.toContain('Private child name');

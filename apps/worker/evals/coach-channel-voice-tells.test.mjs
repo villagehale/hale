@@ -73,17 +73,6 @@ describe('the register tells', () => {
     expect(voiceTells("That isn't something to decide over text. Call 811.")).toEqual([]);
   });
 
-  it('bans a reply that narrates refs instead of the class (VIL-501)', () => {
-    expect(voiceTells('A ref came back this time, so I can attach the page.')).toEqual(
-      expect.arrayContaining([
-        'narrates an internal ref to the parent',
-        'narrates attaching a page',
-      ]),
-    );
-    expect(voiceTells('No refs came back.')).toContain('narrates an internal ref to the parent');
-    expect(voiceTells('Text this if you want to refer a friend.')).toEqual([]);
-  });
-
   it('still catches the let-me-know family it was written with', () => {
     expect(voiceTells('Swim is at 4:30. Let me know if that works.')).toContain(
       'ends on a generic "let me know"',

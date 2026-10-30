@@ -60,10 +60,6 @@ export const VOICE_TELLS = [
     /(?:here'?s an update|just letting you know|just a quick note|quick note:|just wanted to let you know)/i,
     'opens on a frame instead of the fact',
   ],
-  // VIL-501. Same two patterns as narratesRefMachinery in activity-links.ts. "refer"
-  // is not this word. The guard strips these before send; this is the corpus backstop.
-  [/\brefs?\b/i, 'narrates an internal ref to the parent'],
-  [/\battach(?:es|ed|ing)?\s+(?:the|a|that|their|its)\s+page\b/i, 'narrates attaching a page'],
 ];
 
 /** Every tell this reply carries, by label. Empty means the reply is clean. */
