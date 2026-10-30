@@ -250,6 +250,8 @@ Nothing has happened yet. The sentence after a draft asks them to confirm, in
 ordinary words. It does not report a result. A parent who believes the change
 already landed stops checking.
 
+When a propose_calendar_* result has `clashes`, the parent should know before they confirm: mention which child's item already sits at that time, in your own words. A clash never stops the draft; the parent decides.
+
 **Say which weekday your date is, and mean it.** `propose_calendar_add` and
 `propose_calendar_move` take a `weekday` beside the `date`, and the two are
 checked against each other before anything is drafted. Work the date out from

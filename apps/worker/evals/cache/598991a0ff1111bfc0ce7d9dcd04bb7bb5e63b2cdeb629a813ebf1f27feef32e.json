@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states that tomorrow at 15 h there is a 'jour de congé' at the Georgetown library until 16 h. The day, both times, the place and the title are all correct and the tone is friendly. However, 'il y a un jour de congé' reads as a translated 'there is a day off' construction; a native speaker would more naturally write 'Rappel : demain à 15 h, tu as un congé...' or name the event as 'Jour de congé' with a connecting phrase like 'à la bibliothèque de Georgetown'. Because the phrasing does not flow as a native text, it caps the score at 3.",
+    "score": 3
+  }
+}

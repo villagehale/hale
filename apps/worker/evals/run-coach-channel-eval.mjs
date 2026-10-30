@@ -128,16 +128,27 @@ import { inventedName } from './coach-channel-name-gate.mjs';
 import { nearbyCountWasAppended } from './coach-channel-runtime-tail.mjs';
 import { VOICE_TELLS } from './coach-channel-voice-tells.mjs';
 import {
+  CLASH_CHILDREN,
+  CLASH_JUDGE_SYSTEM,
+  COACH_CLASH_FIXTURES,
+} from './coach-clash-fixtures.mjs';
+import {
+  DRY_SUBJECT_PLAN,
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
+  assertRunFlags,
   cacheGet,
   cacheKey,
   cachePut,
+  dryReportLine,
+  dryRequestPlanEntry,
+  dryStandInText,
   evalAnthropicRequest,
   evalRunTag,
   evalSubjectClient,
   evalSubjectRequest,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -827,7 +838,11 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
       record('find_activities');
       // What the model sees: the page's ref, never its URL (activity/tools.ts).
       const { url, ...shown } = webPick;
-      const result = { found: true, source: 'web', picks: [url ? { ...shown, ref: linkRef(url) } : shown] };
+      const result = {
+        found: true,
+        source: 'web',
+        picks: [url ? { ...shown, ref: linkRef(url) } : shown],
+      };
       toolOutputs.push(result);
       return result;
     },
@@ -1158,6 +1173,26 @@ function makeCachedAgentClient(
           return response;
         };
         const cached = await cacheGet(key);
+        if (isDryRun()) {
+          // --dry (VIL-467): price this leg as the guard would, cached or not, and never
+          // call. An uncached leg ends the turn with a max-length stand-in reply, so a
+          // tool loop past it is not priced (the worst case is per leg made, see report).
+          DRY_SUBJECT_PLAN.push({
+            ...dryRequestPlanEntry(`${tag}:agent`, request),
+            cached: Boolean(cached),
+          });
+          if (!cached) {
+            return note({
+              id: 'dry',
+              type: 'message',
+              role: 'assistant',
+              model: request.model,
+              content: [{ type: 'text', text: dryStandInText(request.max_tokens ?? 1024) }],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 0, output_tokens: 0 },
+            });
+          }
+        }
         if (cached) {
           if (Number.isFinite(cached.latencyMs)) subjectLatencies.push(cached.latencyMs);
           return note(cached.response);
@@ -1537,7 +1572,6 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
     }
   }
 
-
   // Language is the judge's. A function-word or script list is not a grade.
 
   // A draft that happened must be described as PENDING. "Moved" / "cancelled" /
@@ -1862,6 +1896,18 @@ const BROKEN_CALLS = [
 ];
 
 async function main() {
+  assertRunFlags([
+    '--broken',
+    '--show',
+    '--severed',
+    '--preflight',
+    '--anthropic-model',
+    '--nonce',
+    '--only',
+    '--min-samples',
+    '--env-file',
+    '--max-usd',
+  ]);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const show = process.argv.includes('--show');
@@ -2391,6 +2437,55 @@ async function main() {
     );
   }
 
+  // VIL-79 COACH-CLASH CASES (coach-clash-fixtures.mjs), graded in this batch by their own
+  // clash judge, median of three. Each case's reference reply must land on `shouldPass`;
+  // `clash-dropped` is the broken case the judge MUST fail. Under --broken every case's
+  // broken reply is graded and must fail. Same tag prefix as run-coach-clash-eval.mjs, so
+  // the two runners share verdicts. Skipped for --severed (a thread calibration) and when
+  // --only names no clash case.
+  const clashCases = severed
+    ? []
+    : COACH_CLASH_FIXTURES.filter((f) => !only || only.split(',').includes(f.id)).map(
+        (fixture) => ({
+          fixture,
+          reply: broken ? fixture.sample.broken : fixture.sample.reply,
+          shouldPass: broken ? false : fixture.clashJudge.shouldPass,
+          tag: `${fixture.id}${broken ? ':broken' : ''}`,
+        }),
+      );
+  const clashJudge = makeJudge(
+    judgeModel,
+    CLASH_JUDGE_SYSTEM,
+    'coach-clash',
+    cachedOnly,
+    getJudgeClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
+  const clashWrong = [];
+  if (clashCases.length > 0) console.log('\n--- coach-clash cases (VIL-79) ---');
+  for (const c of clashCases) {
+    const verdict = await clashJudge(c.tag, {
+      parentText: c.fixture.text,
+      children: CLASH_CHILDREN.map((k) => ({ id: k.id, name: k.name })),
+      calendarBlocks: c.fixture.calendarBlocks,
+      toolResult: c.fixture.toolResult,
+      reply: c.reply,
+    });
+    if (verdict.dry) {
+      console.log(`  dry  ${c.tag} (not scored)`);
+      continue;
+    }
+    const ok = verdict.score >= JUDGE_MIN === c.shouldPass;
+    if (!ok) clashWrong.push(c.tag);
+    console.log(
+      `  ${ok ? 'ok  ' : 'FAIL'} ${c.tag} judge:${verdict.score}${verdict.samples ? ` (${verdict.samples.join('/')})` : ''} expect ${c.shouldPass ? 'pass' : 'fail'}`,
+    );
+  }
+  if (clashCases.length > 0 && !isDryRun()) {
+    console.log(`coach-clash cases wrong:      ${clashWrong.length}  (0 required)`);
+  }
+
   console.log('\n--- cost telemetry ---');
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
@@ -2402,8 +2497,16 @@ async function main() {
   }
 
   const allPass =
-    accuracy === 1 && fabricating.length === 0 && missedAction.length === 0 && voiceOk;
+    accuracy === 1 &&
+    fabricating.length === 0 &&
+    missedAction.length === 0 &&
+    voiceOk &&
+    (broken || clashWrong.length === 0);
 
+  if (isDryRun()) {
+    console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan]));
+    process.exit(0);
+  }
   console.log('\n--- gate ---');
   if (severed) {
     // EVERY continuity fixture must break, not merely the corpus on aggregate: three
@@ -2422,7 +2525,8 @@ async function main() {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);
   }
-  const calibrated = !allPass;
+  // Every clash broken reply must fail on its own, not hide behind another gate.
+  const calibrated = !allPass && clashWrong.length === 0;
   console.log(
     `broken-mode calibration (must fail at least one gate): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
   );

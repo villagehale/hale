@@ -98,8 +98,30 @@ function retryAfterMsOf(header: string | null): number | null {
 export const LINQ_TAPBACKS = ['love', 'like', 'dislike', 'laugh', 'emphasize', 'question'] as const;
 export type LinqTapback = (typeof LINQ_TAPBACKS)[number];
 
+/** VIL-474 · iMessage text decorations. Linq ignores them on RCS and SMS, so
+ * those recipients get the same words, plain. */
+export const LINQ_TEXT_STYLES = ['bold', 'italic', 'strikethrough', 'underline'] as const;
+export const LINQ_TEXT_ANIMATIONS = [
+  'big',
+  'small',
+  'shake',
+  'nod',
+  'explode',
+  'ripple',
+  'bloom',
+  'jitter',
+] as const;
+export type LinqTextStyle = (typeof LINQ_TEXT_STYLES)[number];
+export type LinqTextAnimation = (typeof LINQ_TEXT_ANIMATIONS)[number];
+
+/** `range` is [start, end) in UTF-16 code units of the part's `value`, and each
+ * decoration carries exactly one of `style` or `animation`. */
+export type LinqTextDecoration =
+  | { range: readonly [number, number]; style: LinqTextStyle; animation?: never }
+  | { range: readonly [number, number]; animation: LinqTextAnimation; style?: never };
+
 export type LinqOutboundPart =
-  | { type: 'text'; value: string }
+  | { type: 'text'; value: string; decorations?: readonly LinqTextDecoration[] }
   | { type: 'media'; url: string }
   | { type: 'media'; attachmentId: string }
   | { type: 'link'; value: string };
@@ -279,14 +301,61 @@ async function linqEffect(input: {
   }
 }
 
-function wirePart(part: LinqOutboundPart): Record<string, string> {
-  if (part.type === 'text') return { type: 'text', value: part.value };
+function wirePart(part: LinqOutboundPart): Record<string, unknown> {
+  if (part.type === 'text') {
+    if (!part.decorations || part.decorations.length === 0) {
+      return { type: 'text', value: part.value };
+    }
+    return {
+      type: 'text',
+      value: part.value,
+      text_decorations: part.decorations.map((d) =>
+        d.style !== undefined
+          ? { range: [d.range[0], d.range[1]], style: d.style }
+          : { range: [d.range[0], d.range[1]], animation: d.animation },
+      ),
+    };
+  }
   if (part.type === 'link') return { type: 'link', value: part.value };
   if ('attachmentId' in part && part.attachmentId) {
     return { type: 'media', attachment_id: part.attachmentId };
   }
   if ('url' in part && part.url) return { type: 'media', url: part.url };
   throw new LinqSendError('invalid_parts', 400, true);
+}
+
+function overlaps(a: readonly [number, number], b: readonly [number, number]): boolean {
+  return a[0] < b[1] && b[0] < a[1];
+}
+
+/** Linq's decoration rules, checked before the partner sees them: a range inside
+ * the text (UTF-16, which is JS string length), exactly one of style or animation
+ * from Linq's lists, and an animation that overlaps nothing else. Styles may stack. */
+function assertDecorations(value: string, decorations: readonly LinqTextDecoration[]): void {
+  for (const d of decorations) {
+    const [start, end] = d.range;
+    const inRange =
+      Number.isInteger(start) &&
+      Number.isInteger(end) &&
+      start >= 0 &&
+      end > start &&
+      end <= value.length;
+    const hasStyle = d.style !== undefined;
+    const hasAnimation = d.animation !== undefined;
+    const known = hasStyle
+      ? (LINQ_TEXT_STYLES as readonly string[]).includes(d.style as string)
+      : (LINQ_TEXT_ANIMATIONS as readonly string[]).includes(d.animation as string);
+    if (!inRange || hasStyle === hasAnimation || !known) {
+      throw new LinqSendError('invalid_decoration', 400, true);
+    }
+  }
+  for (const [i, a] of decorations.entries()) {
+    for (const b of decorations.slice(i + 1)) {
+      if ((a.animation !== undefined || b.animation !== undefined) && overlaps(a.range, b.range)) {
+        throw new LinqSendError('invalid_decoration', 400, true);
+      }
+    }
+  }
 }
 
 /** Linq rejects a link preview that shares a message with anything else, and
@@ -308,6 +377,9 @@ function assertParts(parts: readonly LinqOutboundPart[]): void {
   for (const part of parts) {
     if (part.type === 'text' && (part.value.length === 0 || part.value.length > TEXT_MAX)) {
       throw new LinqSendError('invalid_parts', 400, true);
+    }
+    if (part.type === 'text' && part.decorations) {
+      assertDecorations(part.value, part.decorations);
     }
     if (part.type === 'link' && (part.value.length === 0 || part.value.length > LINK_MAX)) {
       throw new LinqSendError('invalid_parts', 400, true);
@@ -377,13 +449,19 @@ export async function sendLinqParts(input: {
 export async function sendLinqChatMessage(input: {
   chatId: string;
   text: string;
+  /** VIL-474 · iMessage styling the writer chose for ranges of `text`. */
+  decorations?: readonly LinqTextDecoration[];
   replyTo?: LinqReplyTarget;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   const send = (replyTo?: LinqReplyTarget) =>
     sendLinqParts({
       chatId: input.chatId,
-      parts: [{ type: 'text', value: input.text }],
+      parts: [
+        input.decorations && input.decorations.length > 0
+          ? { type: 'text', value: input.text, decorations: input.decorations }
+          : { type: 'text', value: input.text },
+      ],
       replyTo,
       fetch: input.fetch,
     });
@@ -596,19 +674,25 @@ export async function createLinqChat(input: {
   from: string;
   to: readonly string[];
   text: string;
+  decorations?: readonly LinqTextDecoration[];
   fetch?: typeof fetch;
 }): Promise<{ chatId: string; providerMessageId: string }> {
   if (input.to.length < 1) throw new LinqSendError('invalid_recipients', 400, true);
   if (!input.text.trim() || /https?:\/\//i.test(input.text)) {
     throw new LinqSendError('invalid_parts', 400, true);
   }
+  const part: LinqOutboundPart =
+    input.decorations && input.decorations.length > 0
+      ? { type: 'text', value: input.text, decorations: input.decorations }
+      : { type: 'text', value: input.text };
+  assertParts([part]);
   const result = await linqRequest({
     method: 'POST',
     path: '/chats',
     body: {
       from: input.from,
       to: [...input.to],
-      message: { parts: [{ type: 'text', value: input.text }] },
+      message: { parts: [wirePart(part)] },
     },
     fetch: input.fetch,
   });
@@ -1123,7 +1207,7 @@ export async function listLinqChatsPage(input: {
  */
 export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   return {
-    async send({ to, body, mediaUrls }) {
+    async send({ to, body, mediaUrls, decorations }) {
       if (mediaUrls && mediaUrls.length === 0) {
         throw new LinqSendError('invalid_parts', 400, true);
       }
@@ -1140,6 +1224,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
           from,
           to: [to],
           text: body,
+          decorations,
           fetch: deps.fetch,
         });
         return {
@@ -1153,7 +1238,11 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
       if (!chatId) {
         throw new LinqSendError(hasUrl ? 'link_on_new_chat' : 'media_on_new_chat', 400, true);
       }
-      const parts: LinqOutboundPart[] = [{ type: 'text', value: body }];
+      const parts: LinqOutboundPart[] = [
+        decorations && decorations.length > 0
+          ? { type: 'text', value: body, decorations }
+          : { type: 'text', value: body },
+      ];
       for (const url of media) parts.push({ type: 'media', url });
       const sent = await sendLinqParts({ chatId, parts, fetch: deps.fetch });
       return {
@@ -1261,6 +1350,7 @@ export function createLinqTextTransport(deps: {
       const sent = await sendLinqChatMessage({
         chatId: deps.chatId,
         text: input.body,
+        decorations: input.decorations,
         replyTo: deps.replyToMessageId ? { messageId: deps.replyToMessageId } : undefined,
         fetch: deps.fetch,
       });

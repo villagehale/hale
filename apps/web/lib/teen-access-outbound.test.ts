@@ -237,7 +237,7 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
   ],
   [
     'lib/channel/coparent/duty/calendar.ts',
-    'duty projection — reads a title only to refuse a non-kid row, writes owner columns, and never sends the title',
+    'duty projection — reads a title only to refuse a non-kid row, writes owner columns, and never sends the title; the venue link reads calendar ids only, household rows only',
   ],
   [
     'lib/channel/coparent/duty/metrics.ts',

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: 今天晚上7点 (today evening 7 PM) start, 8点 end, and location 陈老师的琴房 (Ms. Chen's studio) matches 'Ms. Chen studio'. Time is correctly evening. However, the text reads like a calendar readout ('X开始，到Y结束，地点在Z') rather than how a friend would text. Also '陈老师的琴房' slightly reinterprets 'Ms. Chen studio' as a 'teacher's piano room' which is a mild rephrase but acceptable. The stiff construction caps the score at 3.",
+    "score": 3
+  }
+}

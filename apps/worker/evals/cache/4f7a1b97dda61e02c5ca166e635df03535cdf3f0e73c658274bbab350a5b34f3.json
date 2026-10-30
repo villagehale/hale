@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for both send_email and reply_to_email, so 'Done' is true. The reply confirms plainly that Sam will see each email first. It is complete, short and correctly shaped. 'You'll see them first and approve' is slightly redundant, a minor blemish.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are correct: event is today (Monday October 26), start 10:00 AM, end 11:00 AM, nothing invented, English, no link, no exclamation. However the phrasing 'running until 11:00 AM' reads like a calendar readout rather than how a friend would text it (e.g. 'Swim class is today at 10, ends at 11'), so per the friend-tone check it caps at 3.",
+    "score": 3
+  }
+}

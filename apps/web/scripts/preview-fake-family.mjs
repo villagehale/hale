@@ -9,10 +9,17 @@
 //                            between turns, if the worst case would pass it.
 //            --turns <n>     how many of the scripted turns to send (default: all 6)
 //            --base-url <u>  the Preview deploy (live only)
+// Live goes through `vercel curl <path> --deployment <base-url> -- <curl args>` (a
+// logged-in Vercel CLI adds the protection bypass; plain fetch gets 401 on a protected
+// Preview). The bearer header is written to a 0600 temp file and passed as `-H @file`,
+// so it never lands on a command line or in output.
 // The sender is always in the fictional +1 437-555 range. The bearer is read from
 // /workspace/secrets/preview-fake-inbound (or PREVIEW_FAKE_INBOUND_SECRET_FILE) and is
 // never printed.
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const MODES = ['--dry', '--live'];
@@ -45,7 +52,7 @@ export const TURN_CALLS = [
 ];
 
 export const SCRIPT = [
-  'Hi! A friend said you help find stuff for kids. I have two, Maya 7 and Leo 4, we live near Danforth and Pape.',
+  'Hi! A friend said you help find stuff for kids. I have two, Maya 7 and Leo 4, we live near Danforth and Pape, postal code M4K 1N1.',
   'Maya loves swimming and Leo is into anything with trucks lol',
   'Is there anything on this Saturday morning for both of them?',
   'What should we bring and is there parking?',
@@ -108,30 +115,71 @@ async function live({ maxUsd, turns, baseUrl }) {
     process.env.PREVIEW_FAKE_INBOUND_SECRET_FILE ?? '/workspace/secrets/preview-fake-inbound',
     'utf8',
   ).trim();
-  const headers = { authorization: `Bearer ${secret}`, 'content-type': 'application/json' };
-  let reserved = 0;
-  for (let i = 0; i < turns; i++) {
-    if (reserved + per > maxUsd) {
-      console.log(
-        `stop: turn ${i + 1} worst case would pass --max-usd ${maxUsd} (reserved $${reserved.toFixed(4)})`,
-      );
-      break;
+  const dir = mkdtempSync(join(tmpdir(), 'pff-'));
+  const hdr = join(dir, 'h');
+  writeFileSync(hdr, `authorization: Bearer ${secret}\ncontent-type: application/json\n`, {
+    mode: 0o600,
+  });
+  const vcurl = (path, extra = []) => {
+    try {
+      return execFileSync(
+        'vercel',
+        [
+          'curl',
+          path,
+          '--deployment',
+          baseUrl,
+          '--',
+          '-sS',
+          '-H',
+          `@${hdr}`,
+          '-w',
+          '\n%{http_code}',
+          ...extra,
+        ],
+        { encoding: 'utf8', maxBuffer: 1 << 26 },
+      )
+        .split(secret)
+        .join('<redacted>');
+    } catch (err) {
+      return `vercel curl failed: ${String(err.stderr ?? err.message)
+        .split(secret)
+        .join('<redacted>')}\n000`;
     }
-    reserved += per;
-    const res = await fetch(`${baseUrl}/api/channels/preview/inbound`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ from: FAKE_FROM, text: SCRIPT[i] }),
-    });
-    console.log(`turn ${i + 1}: ${res.status} ${await res.text()}`);
-    if (!res.ok) break;
-    await new Promise((r) => setTimeout(r, 20000));
+  };
+  const split = (out) => {
+    const i = out.lastIndexOf('\n');
+    return { body: out.slice(0, i), status: Number(out.slice(i + 1)) };
+  };
+  try {
+    let reserved = 0;
+    for (let i = 0; i < turns; i++) {
+      if (reserved + per > maxUsd) {
+        console.log(
+          `stop: turn ${i + 1} worst case would pass --max-usd ${maxUsd} (reserved $${reserved.toFixed(4)})`,
+        );
+        break;
+      }
+      reserved += per;
+      const { body, status } = split(
+        vcurl('/api/channels/preview/inbound', [
+          '-X',
+          'POST',
+          '-d',
+          JSON.stringify({ from: FAKE_FROM, text: SCRIPT[i] }),
+        ]),
+      );
+      console.log(`turn ${i + 1}: ${status} ${body}`);
+      if (status < 200 || status >= 300) break;
+      await new Promise((r) => setTimeout(r, 20000));
+    }
+    const { body } = split(
+      vcurl(`/api/channels/preview/captured?to=${encodeURIComponent(FAKE_FROM)}`),
+    );
+    console.log(body);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  const read = await fetch(
-    `${baseUrl}/api/channels/preview/captured?to=${encodeURIComponent(FAKE_FROM)}`,
-    { headers },
-  );
-  console.log(JSON.stringify(await read.json(), null, 2));
 }
 
 async function main() {

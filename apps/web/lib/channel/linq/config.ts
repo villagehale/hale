@@ -107,3 +107,11 @@ export function linqGroupOnboardingV2Enabled(): boolean {
 export function linqGroupWelcomeVoiceEnabled(): boolean {
   return trimmed('LINQ_GROUP_WELCOME_VOICE_ENABLED') === 'true';
 }
+
+/**
+ * VIL-442 (T15) — RSVP tracking for any plan in a Linq group. Exactly `true`
+ * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function linqGroupPlanRsvpEnabled(): boolean {
+  return trimmed('LINQ_GROUP_PLAN_RSVP_ENABLED') === 'true';
+}

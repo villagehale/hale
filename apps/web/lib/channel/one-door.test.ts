@@ -96,6 +96,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'VIL-448 group reminder lines (the confirmation and the reminder itself); postGroupReminderLine inserts the channel_messages row (reply, template linq:group_reminder_confirm or linq:group_reminder, dedupe key) on the primary parent before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks the row failed and releases the key',
   'apps/web/lib/channel/connect/fresh-link.ts':
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
+  'apps/web/lib/channel/linq/group-plan-rsvp/send.ts':
+    'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp or linq:group_plan_rsvp_followup) on the covering family primary parent before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no phone

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the cancelled Storytime on Saturday Sept 19 at 1 PM, asks nothing and offers no addition, matching offer null. However, 'Robin's got nothing else on then, so that slot's free now' is a claim not supported by the facts (no schedule information was given), so it is a fabricated claim and warrants a low score.",
+    "score": 2
+  }
+}

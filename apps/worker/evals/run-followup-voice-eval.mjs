@@ -50,8 +50,11 @@ import { tsImport } from 'tsx/esm/api';
 import { FOLLOWUP_VOICE_FIXTURES } from './followup-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -209,6 +212,7 @@ const BROKEN_ASK =
   'See www.example.com for options.';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -314,6 +318,10 @@ async function main() {
     results.every((r) => r.failures.length === 0) && activityOpeners.size >= MIN_DISTINCT_OPENERS;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('followup-voice', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

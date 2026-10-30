@@ -109,11 +109,11 @@ function post(path: string, body: unknown, secret: string | null = SECRET): Requ
 /** Stands in for the model: the text is whatever the composer hands back. */
 const MODEL_TEXT = 'test double: model-written reminder';
 
-function captureRunDeps() {
+function captureRunDeps(): () => ReminderRunDeps {
   return () => ({
     ...defaultReminderRunDeps(),
     client: {} as AgentClient,
-    composeText: async () => MODEL_TEXT,
+    composeText: async () => ({ texts: [MODEL_TEXT], bold: null }),
     capture: (async () => undefined) as unknown as ReminderRunDeps['capture'],
     // The queue hop, in-process: the same parse and dispatch the drain runs.
     enqueue: async (job: unknown) => {
@@ -268,5 +268,61 @@ describe('a reminder fired by cron for a fake family is captured, never sent', (
 
     const reminders = await t.database.select().from(schema.eventReminders);
     expect(reminders.every((r) => r.familyId === familyId)).toBe(true);
+  });
+
+  it('VIL-474: capture on sends in-process — no pg-boss enqueue, no drain kick, decorations kept', async () => {
+    const tripwire = armCaptureEnv();
+    await seedFakeFamily(FAKE_COPARENT);
+    const base = captureRunDeps();
+    const inProcess = base().enqueue;
+    const queued = vi.fn(async () => {
+      throw new Error('pg-boss reached on Preview capture');
+    });
+    const afterRun = vi.fn();
+    const dispatchInProcess = vi.fn(inProcess);
+    const res = await handlePreviewReminderTrigger(
+      post('/api/channels/preview/reminders', { phone: FAKE }),
+      {
+        database: t.database,
+        env: ON,
+        reminderDeps: () => ({ ...base(), enqueue: queued }),
+        dispatchInProcess,
+        afterRun,
+        now: () => NOW,
+      },
+    );
+    expect(res.status).toBe(200);
+    const summary = (await res.json()) as { fired: number; dispatch: string };
+    expect(summary.dispatch).toBe('in_process');
+    expect(summary.fired).toBeGreaterThanOrEqual(2);
+    expect(queued).not.toHaveBeenCalled();
+    expect(afterRun).not.toHaveBeenCalled();
+    expect(dispatchInProcess).toHaveBeenCalledTimes(summary.fired);
+    const rows = await t.database.select().from(schema.previewCapturedSends);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows.every((r) => 'decorations' in r)).toBe(true);
+    expect(tripwire).not.toHaveBeenCalled();
+  });
+
+  it('VIL-474: without an in-process dispatcher it still enqueues and kicks the drain', async () => {
+    armCaptureEnv();
+    await seedFakeFamily(FAKE_COPARENT);
+    const base = captureRunDeps();
+    const enqueue = vi.fn(base().enqueue);
+    const afterRun = vi.fn();
+    const res = await handlePreviewReminderTrigger(
+      post('/api/channels/preview/reminders', { phone: FAKE }),
+      {
+        database: t.database,
+        env: ON,
+        reminderDeps: () => ({ ...base(), enqueue }),
+        afterRun,
+        now: () => NOW,
+      },
+    );
+    const summary = (await res.json()) as { fired: number; dispatch: string };
+    expect(summary.dispatch).toBe('queued');
+    expect(enqueue).toHaveBeenCalledTimes(summary.fired);
+    expect(afterRun).toHaveBeenCalledOnce();
   });
 });

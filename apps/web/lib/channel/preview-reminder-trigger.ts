@@ -1,10 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import { fakeSender, previewRouteGate } from '~/lib/channel/preview-fake-inbound';
 import { isSyntheticProbeNumber } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import {
+  type ChannelSendJob,
   type ReminderRunDeps,
   type ReminderRunResult,
   defaultReminderRunDeps,
@@ -35,6 +37,13 @@ export interface PreviewReminderTriggerDeps {
   /** After the run, e.g. kick the drain so the queued sends leave now. */
   afterRun?: () => Promise<void> | void;
   now?: () => Date;
+  /**
+   * VIL-474 · Preview proof door. When PREVIEW_CAPTURE_TRANSPORT=on, each channel.send job
+   * goes straight through this (the same dispatchLoopMessage → capture transport the drain
+   * runs) instead of pg-boss, and `afterRun` (the drain kick) is skipped. On Preview the
+   * queue never persisted the job, so the reminder was marked sent and nothing left.
+   */
+  dispatchInProcess?: (job: ChannelSendJob) => Promise<void>;
 }
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -111,13 +120,16 @@ export async function handlePreviewReminderTrigger(
     return json({ error: 'family_not_fictional' }, 400);
   }
 
-  const base = (deps.reminderDeps ?? defaultReminderRunDeps)();
+  const loaded = (deps.reminderDeps ?? defaultReminderRunDeps)();
+  const inProcess = previewCaptureRequested(env) && deps.dispatchInProcess !== undefined;
+  const base: ReminderRunDeps =
+    inProcess && deps.dispatchInProcess ? { ...loaded, enqueue: deps.dispatchInProcess } : loaded;
   const run = deps.runCron ?? runReminderCron;
   const summary: ReminderRunResult = await run(
     deps.database,
     scopeReminderDepsToFamily(base, channel.familyId),
     deps.now?.() ?? new Date(),
   );
-  await deps.afterRun?.();
-  return json({ ok: true, ...summary });
+  if (!inProcess) await deps.afterRun?.();
+  return json({ ok: true, ...summary, dispatch: inProcess ? 'in_process' : 'queued' });
 }
