@@ -404,31 +404,57 @@ function groundTools(query: ActivityQuery, readPages = false): Anthropic.ToolUni
  *
  * Compose often names the venue and quotes its page but omits the URL (2026-10-30 Preview,
  * Danforth Art Studio: real sessions and price, no link). The URL is not the model's to
- * write, so it is taken from the pages THIS TURN opened: the one https page whose text
- * names the pick (its name or its source). Zero or several matches stamp nothing; a guess
- * between two pages would be the invented link this lane refuses to send.
+ * write, so it is taken from what THIS TURN's tools returned: first the opened https pages,
+ * then the web_search results. A source matches when its text, title or host names the
+ * pick (name or source, compared on letters and digits only). Exactly one matching URL is
+ * stamped; zero or several stamp nothing, because a guess between two pages would be the
+ * invented link this lane refuses to send.
  */
+function squash(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^the\s+/, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function uniqueMatch(
+  needles: readonly string[],
+  sources: ReadonlyArray<{ url: string; text: string }>,
+): string | null {
+  const matched = new Set<string>();
+  for (const source of sources) {
+    const url = safeHttpUrl(source.url);
+    if (url === null || !url.startsWith('https://')) continue;
+    let host = '';
+    try {
+      host = squash(new URL(url).hostname);
+    } catch {}
+    const text = squash(source.text);
+    if (needles.some((needle) => text.includes(needle) || host.includes(needle))) matched.add(url);
+  }
+  return matched.size === 1 ? [...matched][0]! : null;
+}
+
 export function stampReadPageUrl(
   pick: { name: string; sourceName: string },
   pages: ReadonlyArray<{ url: string; text: string }>,
+  searchHits: ReadonlyArray<{ url: string; title: string }> = [],
 ): string | null {
-  const needles = [pick.name, pick.sourceName]
-    .map((value) => value.trim().toLowerCase())
-    .filter((value) => value.length >= 4);
+  const needles = [pick.sourceName, pick.name].map(squash).filter((value) => value.length >= 6);
   if (needles.length === 0) return null;
-  const matched = new Set<string>();
-  for (const page of pages) {
-    const url = safeHttpUrl(page.url);
-    if (url === null || !url.startsWith('https://')) continue;
-    const text = page.text.toLowerCase();
-    if (needles.some((needle) => text.includes(needle))) matched.add(url);
-  }
-  return matched.size === 1 ? [...matched][0]! : null;
+  return (
+    uniqueMatch(needles, pages) ??
+    uniqueMatch(
+      needles,
+      searchHits.map((hit) => ({ url: hit.url, text: hit.title })),
+    )
+  );
 }
 
 export function toPicks(
   raw: z.infer<typeof composeSchema>['picks'],
   pages: ReadonlyArray<{ url: string; text: string }> = [],
+  searchHits: ReadonlyArray<{ url: string; title: string }> = [],
 ): ActivityPick[] {
   const picks: ActivityPick[] = [];
   for (const item of raw) {
@@ -439,7 +465,8 @@ export function toPicks(
     const when = field(item.when);
     const price = field(item.price);
     const url =
-      safeHttpUrl(field(item.source_url)) ?? stampReadPageUrl({ name, sourceName }, pages);
+      safeHttpUrl(field(item.source_url)) ??
+      stampReadPageUrl({ name, sourceName }, pages, searchHits);
     const pick: ActivityPick = {
       name,
       ageFit,
@@ -553,8 +580,19 @@ async function runActivityOnce(
     } catch (err) {
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
+    const picks = toPicks(composed.picks, evidence.pages, evidence.searchHits ?? []);
+    // VIL-499 · counts only (no URL, no text), so a pick with no link is diagnosable.
+    console.info(
+      {
+        picks: picks.length,
+        withUrl: picks.filter((pick) => pick.url).length,
+        pagesWithText: evidence.pages.length,
+        searchHits: evidence.searchHits?.length ?? 0,
+      },
+      'activity lane: pick urls',
+    );
     return {
-      picks: toPicks(composed.picks, evidence.pages),
+      picks,
       searchResults: evidence.searchResults,
       notes: researchNotes,
     };

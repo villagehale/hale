@@ -618,4 +618,33 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
       stampReadPageUrl({ name: studio.name, sourceName: studio.source_name }, [page, second]),
     ).toBeNull();
   });
+
+  it('punctuation and a leading "The" do not block the match', () => {
+    const [pick] = toPicks(
+      [{ ...studio, name: 'Fall Art Classes - 6-Week Session' }],
+      [{ url: page.url, text: 'Danforth Art Studio: Fall Art Classes 6 Week Session' }],
+    );
+    expect(pick?.url).toBe(page.url);
+  });
+
+  it('no page text names it: falls back to the one web_search result that does', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        { url: 'https://danforthartstudio.example/fall', title: 'Fall classes' },
+        { url: 'https://library.example/storytime', title: 'Storytime' },
+      ],
+    );
+    expect(pick?.url).toBe('https://danforthartstudio.example/fall');
+  });
+
+  it('search results that do not name the pick stamp nothing', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [{ url: 'https://library.example/x', title: 'Storytime' }],
+    );
+    expect(pick?.url).toBeUndefined();
+  });
 });
