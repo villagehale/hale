@@ -23,6 +23,7 @@ import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
+import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
@@ -187,6 +188,9 @@ export interface ChannelCoachToolArgs {
   /** The Browser Use watch verbs (signup/browser-use/watch/tools.ts). Wired only while
    * BROWSER_USE_WATCH_ENABLED is on; absent leaves the tool set unchanged. */
   providerWatch?: WatchToolPorts | null;
+  /** VIL-470 · record a signup offer Hale's AI wrote from facts. Wired only while
+   * AUTHORIZED_SIGNUP_ENABLED is on; absent leaves the tool set unchanged. */
+  signupOffer?: SignupOfferToolPorts | null;
   familyId: string;
   reader: ChannelScheduleReader;
   draftPort: ChannelDraftPort;
@@ -792,6 +796,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
   if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
   if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
+  if (args.signupOffer) tools.push(offerSignupTool(args.signupOffer));
   return tools;
 }
 

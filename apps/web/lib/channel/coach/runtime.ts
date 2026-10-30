@@ -63,6 +63,7 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
+import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/signup/offer-tool';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
@@ -635,15 +636,18 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
     loadSkill: async (parentUserId, familyId) =>
-      augmentCoachSkillForProviderWatch(
-        augmentCoachSkillForAutonomySwitchOff(
-          await augmentCoachSkillForGoogleDrafts(
-            await loadCronSkill('coach-channel-sms'),
-            parentUserId,
+      augmentCoachSkillForSignupOffer(
+        augmentCoachSkillForProviderWatch(
+          augmentCoachSkillForAutonomySwitchOff(
+            await augmentCoachSkillForGoogleDrafts(
+              await loadCronSkill('coach-channel-sms'),
+              parentUserId,
+            ),
+            await familyHasAutonomyGrant(familyId, database),
           ),
-          await familyHasAutonomyGrant(familyId, database),
+          browserUseWatchEnabled(),
         ),
-        browserUseWatchEnabled(),
+        signupOfferToolEnabled(),
       ),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
@@ -727,6 +731,21 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               familyId: turn.familyId,
               parentUserId: turn.parentUserId,
               conversationId: turn.conversationId,
+              parentWords: turn.body,
+              linksThisTurn: () => [
+                ...offered.links(),
+                ...offered
+                  .read()
+                  .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+              ],
+            }
+          : null,
+        signupOffer: signupOfferToolEnabled()
+          ? {
+              database,
+              familyId: turn.familyId,
+              parentUserId: turn.parentUserId,
+              now: turn.now,
               parentWords: turn.body,
               linksThisTurn: () => [
                 ...offered.links(),
