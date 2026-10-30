@@ -144,3 +144,38 @@ export function linqGroupPollsEnabled(): boolean {
 export function linqVoiceMemosEnabled(): boolean {
   return trimmed('LINQ_VOICE_MEMOS_ENABLED') === 'true';
 }
+
+/**
+ * VIL-480 — iMessage app cards (an `imessage_app` part instead of a bare link preview).
+ * Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off
+ * never sends an app part and reads an inbound app card exactly as before (a `file`).
+ */
+export function linqAppCardsEnabled(): boolean {
+  return trimmed('LINQ_APP_CARDS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-480 — the Messages extension that draws Hale's cards. Linq renders a card as the
+ * app named by team id + bundle id; an identity that matches no installed extension
+ * silently drops to caption text. All three of name, team id, and bundle id are needed;
+ * any one missing is null (no card, the caller falls back). Never hardcoded.
+ */
+export function linqIMessageAppIdentity(): {
+  name: string;
+  team_id: string;
+  bundle_id: string;
+  app_store_id?: number;
+} | null {
+  const name = trimmed('LINQ_IMESSAGE_APP_NAME');
+  const teamId = trimmed('LINQ_IMESSAGE_APP_TEAM_ID');
+  const bundleId = trimmed('LINQ_IMESSAGE_APP_BUNDLE_ID');
+  if (!name || !teamId || !bundleId) return null;
+  if (name.length > 64 || !/^[A-Z0-9]{10}$/.test(teamId)) return null;
+  const storeId = Number(trimmed('LINQ_IMESSAGE_APP_STORE_ID') ?? '');
+  return {
+    name,
+    team_id: teamId,
+    bundle_id: bundleId,
+    ...(Number.isInteger(storeId) && storeId > 0 ? { app_store_id: storeId } : {}),
+  };
+}

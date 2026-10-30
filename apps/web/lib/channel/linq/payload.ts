@@ -2,6 +2,8 @@ import { type InboundMediaPart, mediaPartFromLinq } from '~/lib/channel/inbound-
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { lineStatusToken } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { describeInboundAppCard } from './app-card-inbound';
+import { linqAppCardsEnabled } from './config';
 import { LINQ_WEBHOOK_VERSION } from './signature';
 
 /**
@@ -238,6 +240,10 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     if (!isRecord(part)) continue;
     if (part.type === 'text' && typeof part.value === 'string' && part.value.trim()) {
       texts.push(part.value);
+    } else if (part.type === 'imessage_app' && linqAppCardsEnabled()) {
+      // VIL-480 · a card a parent sent is read as what it says, not as an unnamed file.
+      const card = describeInboundAppCard(part);
+      if (card) texts.push(card);
     } else if (part.type && part.type !== 'text') {
       media.push(mediaPartFromLinq(part));
     }

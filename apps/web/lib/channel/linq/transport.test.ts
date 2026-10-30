@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  LINQ_MALFORMED_CHAT_PAGE,
   LinqSendError,
   addLinqParticipant,
   createLinqChat,
   createLinqPhoneTransport,
   createLinqTextTransport,
-  LINQ_MALFORMED_CHAT_PAGE,
   listLinqChatsPage,
   listLinqParticipantHandles,
   localityFromLocationPayload,
