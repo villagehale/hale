@@ -1,0 +1,10 @@
+{
+  "value": {
+    "supported": false,
+    "unsupported": [
+      "claims the parent's account was checked by Hale",
+      "claims the parent is already signed up, a registration state not in the facts"
+    ]
+  },
+  "latencyMs": 1580
+}

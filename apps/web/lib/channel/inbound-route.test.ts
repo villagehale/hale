@@ -166,7 +166,7 @@ function inbound(
     from: string;
     budget: 'chat';
     media: ReadonlyArray<{
-      kind: 'image' | 'video' | 'file';
+      kind: 'image' | 'video' | 'audio' | 'file';
       url: string | null;
       mime: string | null;
     }>;
@@ -225,6 +225,26 @@ describe('routing', () => {
       inboundMedia: [PHOTO],
     });
     expect(row?.replySource).toBeUndefined();
+  });
+
+  it("stores the door's group bit on the inbound row and the job (VIL-463)", async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-1to1' }),
+      transport: 'imessage',
+      chatId: 'chat-1',
+      isGroup: false,
+    });
+    await routeInboundText(h.deps, inbound({ providerId: 'msg-unsaid' }));
+
+    const rows = h.fake.rows(schema.channelMessages).filter((r) => r.direction === 'in');
+    expect(rows.find((r) => r.providerMessageId === 'msg-1to1')?.inGroup).toBe(false);
+    // The door did not say: stored as unknown, never as a 1:1 text.
+    expect(rows.find((r) => r.providerMessageId === 'msg-unsaid')?.inGroup).toBeNull();
+    expect(h.jobs.map((j) => j.in_group)).toEqual([false, undefined]);
   });
 
   it('hands a video to the coach the same way, so the model can write the reply', async () => {
@@ -286,7 +306,11 @@ describe('routing', () => {
   it('stays silent when a photo is over the inbound limit', async () => {
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
-    vi.spyOn(limiter, 'check').mockResolvedValue({ allowed: false, retryAfterSec: 60 });
+    vi.spyOn(limiter, 'check').mockResolvedValue({
+      allowed: false,
+      retryAfterSec: 60,
+      firstDenied: true,
+    });
 
     const outcome = await routeInboundText(h.deps, inbound({ body: '', media: [PHOTO] }));
 
@@ -297,7 +321,9 @@ describe('routing', () => {
   it('does not spend the sender budget on a group photo the door already charged', async () => {
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
-    const spy = vi.spyOn(limiter, 'check').mockResolvedValue({ allowed: false, retryAfterSec: 60 });
+    const spy = vi
+      .spyOn(limiter, 'check')
+      .mockResolvedValue({ allowed: false, retryAfterSec: 60, firstDenied: true });
 
     const outcome = await routeInboundText(
       h.deps,
@@ -701,7 +727,7 @@ describe('iMessage first-touch door', () => {
         limiter: {
           check: async () => {
             await gate;
-            return { allowed: true, retryAfterSec: 0 };
+            return { allowed: true, retryAfterSec: 0, firstDenied: false };
           },
         },
       };

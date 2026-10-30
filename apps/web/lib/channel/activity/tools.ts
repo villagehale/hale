@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import { z } from 'zod';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
 import { deidentifyActivityQuery, refusalSentence } from './deidentify';

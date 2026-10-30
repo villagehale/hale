@@ -3,8 +3,11 @@ import { join } from 'node:path';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { type SpotUrlRefusal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { MAX_PORTAL_SEGMENTS, preparedCopyViolations } from './copy';
+import { BIND_READ_WINDOW_MS } from './prepare';
 import {
   BIND_READ_ROUTE,
   COURSE_BIND_REFUSALS,
@@ -18,9 +21,6 @@ import {
   loadPreparingSequence,
   readinessQuestion,
 } from './prepare-reply';
-import { BIND_READ_WINDOW_MS } from './prepare';
-import { MAX_PORTAL_SEGMENTS, preparedCopyViolations } from './copy';
-import { smsSegments } from '~/lib/channel/sms-segments';
 
 /**
  * VIL-338 · the inbound half, against the REAL DDL and the bytes a PerfectMind page
@@ -379,7 +379,13 @@ describe('the bind refusals', () => {
       const now = new Date(NOW.getTime() + index * BIND_READ_WINDOW_MS);
       const outcome = await handleCourseBind(
         db.database,
-        { sequence, answeredByUserId: parentUserId, rawUrl: drive.rawUrl, inboundChannelMessageId: inboundId, now },
+        {
+          sequence,
+          answeredByUserId: parentUserId,
+          rawUrl: drive.rawUrl,
+          inboundChannelMessageId: inboundId,
+          now,
+        },
         deps({ fetchBody: async () => drive.page() }),
       );
 
@@ -405,7 +411,13 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: oakvilleUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('oakville-course')) }),
     );
 
@@ -421,7 +433,13 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(nextSeason()) }),
     );
 
@@ -439,7 +457,13 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({
         fetchBody: async () => {
           throw new Error('ETIMEDOUT');
@@ -463,7 +487,13 @@ describe('the bind refusals', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -479,7 +509,13 @@ describe('the bind write', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -519,7 +555,13 @@ describe('the bind write', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({
         fetchBody: serving(fixture('open-window-open-markham')),
         recordCourseBinding: async (_database, input) => {
@@ -538,7 +580,13 @@ describe('the bind write', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -552,7 +600,13 @@ describe('the bind write', () => {
 
     const outcome = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
 
@@ -570,7 +624,13 @@ describe('the bind write', () => {
     const bind = (now: Date) =>
       handleCourseBind(
         db.database,
-        { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now },
+        {
+          sequence,
+          answeredByUserId: parentUserId,
+          rawUrl: legoUrl,
+          inboundChannelMessageId: inboundId,
+          now,
+        },
         deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
       );
 
@@ -587,7 +647,13 @@ describe('the bind write', () => {
   it('marks a replacement as replaced — kills an ack that says nothing changed', async () => {
     await handleCourseBind(
       db.database,
-      { sequence: await preparing(), answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence: await preparing(),
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: serving(fixture('open-window-open-markham')) }),
     );
     // A second course on the same portal whose clock is inside the drift ceiling, a
@@ -603,10 +669,7 @@ describe('the bind write', () => {
       },
       deps({
         fetchBody: serving(
-          fixture('open-window-open-markham').replace(
-            new RegExp(LEGO, 'g'),
-            CHESS,
-          ),
+          fixture('open-window-open-markham').replace(new RegExp(LEGO, 'g'), CHESS),
         ),
       }),
     );
@@ -644,12 +707,24 @@ describe('the read throttle', () => {
 
     const first = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
     const second = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: chessUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
 
@@ -681,7 +756,13 @@ describe('the read throttle', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
     const later = await handleCourseBind(
@@ -758,12 +839,24 @@ describe('the read throttle', () => {
 
     const refused = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: oakvilleUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: oakvilleUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
     const good = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
 
@@ -787,7 +880,13 @@ describe('the read throttle', () => {
     const throttled = async (now: Date) => {
       const outcome = await handleCourseBind(
         db.database,
-        { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now },
+        {
+          sequence,
+          answeredByUserId: parentUserId,
+          rawUrl: chessUrl,
+          inboundChannelMessageId: inboundId,
+          now,
+        },
         deps({ fetchBody: net.fetchBody }),
       );
       if (outcome.status !== 'read_throttled')
@@ -797,7 +896,13 @@ describe('the read throttle', () => {
 
     await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: net.fetchBody }),
     );
     const plural = await throttled(NOW);
@@ -828,12 +933,24 @@ describe('the read throttle', () => {
 
     const first = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: legoUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: timesOut }),
     );
     const second = await handleCourseBind(
       db.database,
-      { sequence, answeredByUserId: parentUserId, rawUrl: chessUrl, inboundChannelMessageId: inboundId, now: NOW },
+      {
+        sequence,
+        answeredByUserId: parentUserId,
+        rawUrl: chessUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
       deps({ fetchBody: timesOut }),
     );
 

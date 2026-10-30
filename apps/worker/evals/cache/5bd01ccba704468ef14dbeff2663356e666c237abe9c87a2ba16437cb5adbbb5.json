@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Intent ask_poll matches a request for the live state of the open poll; no spurious fields set, confidence high, appropriate read of the situation."
+  }
+}

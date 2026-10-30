@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "dental cleaning addressed to a name not among the children; reads as the parent's own appointment",
+    "about_the_kids": "no",
+    "clear": false,
+    "text": "",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

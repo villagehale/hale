@@ -53,7 +53,7 @@ Barton chooses: a raised limit from Linq, or a second line.
 
 ## Never
 
-- Never leave or archive a chat without Barton.
+- Never leave or archive a chat without Barton. VIL-477 exception: with `LINQ_GROUP_LEAVE_ENABLED=true`, Hale may leave a group (`POST /v3/chats/{id}/leave`, via `leaveGroupOnFamilyAsk`) only when the family explicitly asks it to, and only when the group keeps 3+ members.
 - Never block or hold new parents in code because of this count.
 
 ## Audit

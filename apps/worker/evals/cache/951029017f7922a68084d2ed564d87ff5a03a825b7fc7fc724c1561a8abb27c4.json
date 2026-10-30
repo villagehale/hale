@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text keeps every fact given: the day (tomorrow, Monday), the title \"PD Day\", start 9:30 AM, end 12:00 PM, and the venue name \"Northside community centre\". AM/PM is correct, and the timed event is clearly something to be at, not a free day. No address was given in the facts, so none is missing. Nothing invented, no extra logistics, no stray link, and it is entirely in English.",
+    "score": 5
+  }
+}

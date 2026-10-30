@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are correct and complete: both events keep tomorrow, start and end times with correct AM/PM, and the exact venue names and addresses, with nothing invented. But it reads like a templated list: \"Heads up, two things tomorrow:\" followed by line-broken entries, each stating title, venue, address and a bare time range. That is a calendar-export feel rather than a friend texting, which is the exact prod miss the watchFor flags. The bare \"10:00-11:00 AM\" range reads more like a readout than how a friend would say it (e.g. \"from 10 to 11\"). Capped at 3 for the notification register.",
+    "score": 3
+  }
+}

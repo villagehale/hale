@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
-import { and, eq, lt, sql } from 'drizzle-orm';
 import type { Database } from '@hale/db';
-import type { RateLimiter, RateLimitOptions, RateLimitResult } from './limiter';
+import { and, eq, lt, sql } from 'drizzle-orm';
+import type { RateLimitOptions, RateLimitResult, RateLimiter } from './limiter';
 
 /**
  * Postgres fixed-window limiter. One UPSERT does the whole decision atomically:
@@ -47,6 +47,10 @@ export class PostgresRateLimiter implements RateLimiter {
     if (!row) throw new Error('rate-limit upsert returned no row');
 
     const retryAfterSec = Math.ceil((windowStart.getTime() + windowMs - Date.now()) / 1000);
-    return { allowed: row.count <= opts.limit, retryAfterSec };
+    return {
+      allowed: row.count <= opts.limit,
+      retryAfterSec,
+      firstDenied: row.count === opts.limit + 1,
+    };
   }
 }

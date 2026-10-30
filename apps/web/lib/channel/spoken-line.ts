@@ -42,7 +42,7 @@ export function acceptSpokenLine(
   return body;
 }
 
-function smallerLane(lane: LaneConfig): LaneConfig {
+export function smallerLane(lane: LaneConfig): LaneConfig {
   if (lane.model === HAIKU_MODEL) {
     return lane.thinking === 'disabled'
       ? lane

@@ -1,8 +1,8 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,

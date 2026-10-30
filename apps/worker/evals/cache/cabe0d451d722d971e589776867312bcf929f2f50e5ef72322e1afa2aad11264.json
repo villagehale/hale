@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a connecting ask the deterministic branch missed. The reply correctly says the link is a text away and quotes the exact plain words to send. It writes out no URL, mentions no app, and does not refuse. Short, accurate, with no greeting or sign-off.",
+    "score": 5
+  }
+}

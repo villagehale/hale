@@ -87,6 +87,17 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'workstream_followup_deferred',
     'workstream_followup_gave_up',
   ],
+  // VIL-442 — start is a literal; recorded vs edited is a ternary on the same write.
+  'apps/web/lib/channel/linq/group-plan-rsvp/store.ts': [
+    'linq_group_plan_started',
+    'linq_group_plan_rsvp_recorded',
+    'linq_group_plan_rsvp_edited',
+  ],
+  'apps/web/lib/channel/linq/group-plan-rsvp/memory-store.ts': [
+    'linq_group_plan_started',
+    'linq_group_plan_rsvp_recorded',
+    'linq_group_plan_rsvp_edited',
+  ],
   // VIL-399 — one helper writes the shared-group verbs. The literals in the
   // join and leave transactions are scanned directly as well.
   'apps/web/lib/channel/linq/multi-family.ts': [
@@ -103,6 +114,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'linq_multi_family_private_withheld',
     'linq_multi_family_data_refused',
   ],
+  // VIL-457. One helper writes the per-family private aside verb.
+  'apps/web/lib/channel/linq/group-private-aside.ts': ['linq_private_aside_sent'],
   // The loop dispatch names its send by WHO received it: a caregiver leg is a disclosure
   // to a third party, everything else is the generic channel send.
   'apps/web/lib/channel/dispatch.ts': ['caregiver_schedule_sent', 'channel_sent'],
@@ -222,6 +235,13 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // can never be filed under each other's sentence (VIL-354).
   'apps/web/lib/memory/synthesis.ts': ['memory_fact_retired', 'memory_facts_merged'],
   'apps/web/lib/channel/canary/handler.ts': ['sms_canary_answered'],
+  // CLOSE_ACTION[status] — one verb per way a claimed group reminder can close, written
+  // in the same transaction as the guarded update (VIL-448).
+  'apps/web/lib/loop/reminders/group/store.ts': [
+    'group_reminder_sent',
+    'group_reminder_dropped',
+    'group_reminder_failed',
+  ],
   // `REPLY_SENT_ACTION[carriedBy]` — one verb per door the router can answer
   // through (whatsapp audits under the phone verb), because the trail has to be able
   // to say WHICH one an answer went out of.

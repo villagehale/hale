@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English although the requested language is French, and it has an incomplete time (\"3:00\" with no AM/PM or 24h form and no end time). It also calls tomorrow a day off with breathing room, implying the day is free even though a timed event exists at 3:00-4:00 PM at Georgetown library. This is the prod bug pattern: framing the day as open when a timed event is present. Additional issues: the 'breathing room' comment is unrequested filler, and the location is omitted.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow (Monday) is the all-day Jour de congé, and Léa has Natation 10 h to 11 h at the Piscine Main. Morning is unambiguous in 10 h and 11 h, no clock time is given for the all-day item, the timed event is clearly there so the day is not implied to be free, nothing is invented, and there is no link. The French is natural (\"Demain, c'est un jour de congé, et Léa a natation de 10 h à 11 h à la Piscine Main\"), short and calm, like a friend texting. One small point: \"Jour de congé\" is rendered as \"un jour de congé\" in lowercase, which is the natural way to say it in a sentence and keeps the name rather than turning it into a claim. No filler or advice.",
+    "score": 5
+  }
+}

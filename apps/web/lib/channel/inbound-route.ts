@@ -48,8 +48,14 @@ export interface ChannelMessageReceivedJob {
   channel_message_id: string;
   provider_message_id: string;
   received_at: string;
-  /** The door's own group bit. Absent only on a job it did not queue (see the contract). */
-  in_group?: boolean;
+  /**
+   * The door's own group bit. REQUIRED (VIL-463): every producer must say it, and
+   * `undefined` is written only where the producer genuinely cannot know (the
+   * reconciler re-drives from the row, which does not store it). The router treats
+   * `undefined` on an iMessage chat as possibly a group and refuses the turn, so an
+   * unknown can never be run on the sender's 1:1 thread.
+   */
+  in_group: boolean | undefined;
 }
 
 export interface InboundRouteDeps {
@@ -138,7 +144,11 @@ export type InboundRouteOutcome =
   /** The share started but Linq had no city locality yet. No nudge. */
   | 'location_unread'
   /** VIL-226 · Linq said a sending line is flagged or throttled, or that it recovered. */
-  | 'line_health';
+  | 'line_health'
+  /** VIL-448 · Linq group: a reminder ask whose confirmation could not be written, did
+   * not land, or was held because the group may no longer hear it. Nothing was set and
+   * nothing was sent. Never folded into `intake`, which says Hale replied. */
+  | 'group_reminder_unsent';
 
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable
@@ -318,6 +328,8 @@ async function handOffToConversation(
       // it as the legal instrument of an approval (the locked A2 contract).
       body: inbound.body,
       inboundMedia: persistableMedia(inbound.media),
+      // VIL-463: the door's group bit, so a reconciler re-drive can say it too.
+      inGroup: inbound.isGroup ?? null,
       sentAt: inbound.receivedAt,
     })
     .onConflictDoNothing({

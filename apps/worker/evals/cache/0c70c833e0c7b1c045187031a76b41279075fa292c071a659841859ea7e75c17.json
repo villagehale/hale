@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: the title \"PD Day\" is kept as the event name, the day (tomorrow, Monday) is true from Sunday evening, start 9:30 AM and end 12:00 PM are correct with AM/PM right, and the venue name is given. No address was in the facts, so none is missing. Nothing invented, no logistics claims, no link, and bold is none, which is fine. The timed event is clearly presented as something to be at, not a free day.",
+    "score": 5
+  }
+}
