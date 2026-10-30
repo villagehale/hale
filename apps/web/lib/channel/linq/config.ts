@@ -134,3 +134,12 @@ export function linqGroupPlanRsvpEnabled(): boolean {
 export function linqGroupPollsEnabled(): boolean {
   return trimmed('LINQ_GROUP_POLLS_ENABLED') === 'true';
 }
+
+/**
+ * VIL-477 — Hale may leave a group chat when the family explicitly asks. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off,
+ * Hale never calls Linq's leave endpoint.
+ */
+export function linqGroupLeaveEnabled(): boolean {
+  return trimmed('LINQ_GROUP_LEAVE_ENABLED') === 'true';
+}

@@ -308,123 +308,212 @@ export function outboundLineFrom(): string | null {
 export async function sendLinqChatMessage(
   input: In<typeof linq.sendLinqChatMessage>,
 ): Promise<{ providerMessageId: string }> {
-  return captureOrLinq(input, 'chat_message', () => linq.sendLinqChatMessage(input), (id) => ({
-    providerMessageId: id,
-  }));
+  return captureOrLinq(
+    input,
+    'chat_message',
+    () => linq.sendLinqChatMessage(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
 }
 
 export async function sendLinqParts(
   input: In<typeof linq.sendLinqParts>,
 ): Promise<{ providerMessageId: string }> {
-  return captureOrLinq(input, 'parts', () => linq.sendLinqParts(input), (id) => ({
-    providerMessageId: id,
-  }));
+  return captureOrLinq(
+    input,
+    'parts',
+    () => linq.sendLinqParts(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
 }
 
 export async function sendLinqEffect(
   input: In<typeof linq.sendLinqEffect>,
 ): Promise<{ providerMessageId: string }> {
-  return captureOrLinq(input, 'effect', () => linq.sendLinqEffect(input), (id) => ({
-    providerMessageId: id,
-  }));
+  return captureOrLinq(
+    input,
+    'effect',
+    () => linq.sendLinqEffect(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
 }
 
 export async function reactToLinqMessage(
   input: In<typeof linq.reactToLinqMessage>,
 ): Promise<{ accepted: true }> {
-  return captureOrLinq(input, 'reaction', () => linq.reactToLinqMessage(input), () => ({
-    accepted: true as const,
-  }));
+  return captureOrLinq(
+    input,
+    'reaction',
+    () => linq.reactToLinqMessage(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
 }
 
 export async function createLinqChat(
   input: In<typeof linq.createLinqChat>,
 ): Promise<{ chatId: string; providerMessageId: string }> {
-  return captureOrLinq(input, 'create_chat', () => linq.createLinqChat(input), (id) => ({
-    chatId: `${id}-chat`,
-    providerMessageId: id,
-  }));
+  return captureOrLinq(
+    input,
+    'create_chat',
+    () => linq.createLinqChat(input),
+    (id) => ({
+      chatId: `${id}-chat`,
+      providerMessageId: id,
+    }),
+  );
 }
 
 export async function updateLinqGroupChat(
   input: In<typeof linq.updateLinqGroupChat>,
 ): Promise<linq.LinqEffectResult> {
-  return captureOrLinq(input, 'update_group', () => linq.updateLinqGroupChat(input), () => ({
-    status: 'accepted' as const,
-  }));
+  return captureOrLinq(
+    input,
+    'update_group',
+    () => linq.updateLinqGroupChat(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
 }
 
 export async function addLinqParticipant(
   input: In<typeof linq.addLinqParticipant>,
 ): Promise<{ accepted: true }> {
-  return captureOrLinq(input, 'add_participant', () => linq.addLinqParticipant(input), () => ({
-    accepted: true as const,
-  }));
+  return captureOrLinq(
+    input,
+    'add_participant',
+    () => linq.addLinqParticipant(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
 }
 
 export async function removeLinqParticipant(
   input: In<typeof linq.removeLinqParticipant>,
 ): Promise<{ accepted: true }> {
-  return captureOrLinq(input, 'remove_participant', () => linq.removeLinqParticipant(input), () => ({
-    accepted: true as const,
-  }));
+  return captureOrLinq(
+    input,
+    'remove_participant',
+    () => linq.removeLinqParticipant(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
+}
+
+/** VIL-477 · Hale leaves a group. Callers gate on linqGroupLeaveEnabled(). */
+export async function leaveLinqChat(
+  input: In<typeof linq.leaveLinqChat>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'leave_chat',
+    () => linq.leaveLinqChat(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
 }
 
 export async function shareLinqContactCard(
   input: In<typeof linq.shareLinqContactCard>,
 ): Promise<{ accepted: true }> {
-  return captureOrLinq(input, 'share_contact_card', () => linq.shareLinqContactCard(input), () => ({
-    accepted: true as const,
-  }));
+  return captureOrLinq(
+    input,
+    'share_contact_card',
+    () => linq.shareLinqContactCard(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
 }
 
 export async function setupLinqContactCard(
   input: In<typeof linq.setupLinqContactCard>,
 ): Promise<linq.LinqEffectResult> {
-  return captureOrLinq(input, 'setup_contact_card', () => linq.setupLinqContactCard(input), () => ({
-    status: 'accepted' as const,
-  }));
+  return captureOrLinq(
+    input,
+    'setup_contact_card',
+    () => linq.setupLinqContactCard(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
 }
 
 export async function patchLinqContactCard(
   input: In<typeof linq.patchLinqContactCard>,
 ): Promise<linq.LinqEffectResult> {
-  return captureOrLinq(input, 'patch_contact_card', () => linq.patchLinqContactCard(input), () => ({
-    status: 'accepted' as const,
-  }));
+  return captureOrLinq(
+    input,
+    'patch_contact_card',
+    () => linq.patchLinqContactCard(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
 }
 
 export async function sendLinqPoll(
   input: In<typeof linq.sendLinqPoll>,
 ): Promise<{ messageId: string; options: linq.LinqPollOptionRef[] }> {
-  return captureOrLinq(input, 'poll', () => linq.sendLinqPoll(input), (id) => ({
-    messageId: id,
-    options: input.options.map((text, i) => ({ optionId: `${id}-option-${i}`, text })),
-  }));
+  return captureOrLinq(
+    input,
+    'poll',
+    () => linq.sendLinqPoll(input),
+    (id) => ({
+      messageId: id,
+      options: input.options.map((text, i) => ({ optionId: `${id}-option-${i}`, text })),
+    }),
+  );
 }
 
 export function markLinqChatRead(
   input: In<typeof linq.markLinqChatRead>,
 ): Promise<linq.LinqEffectResult> {
-  return captureOrLinq(input, 'mark_read', () => linq.markLinqChatRead(input), () => ({
-    status: 'accepted' as const,
-  }));
+  return captureOrLinq(
+    input,
+    'mark_read',
+    () => linq.markLinqChatRead(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
 }
 
 export function startLinqTyping(
   input: In<typeof linq.startLinqTyping>,
 ): Promise<linq.LinqEffectResult> {
-  return captureOrLinq(input, 'typing_start', () => linq.startLinqTyping(input), () => ({
-    status: 'accepted' as const,
-  }));
+  return captureOrLinq(
+    input,
+    'typing_start',
+    () => linq.startLinqTyping(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
 }
 
 export function stopLinqTyping(
   input: In<typeof linq.stopLinqTyping>,
 ): Promise<linq.LinqEffectResult> {
-  return captureOrLinq(input, 'typing_stop', () => linq.stopLinqTyping(input), () => ({
-    status: 'accepted' as const,
-  }));
+  return captureOrLinq(
+    input,
+    'typing_stop',
+    () => linq.stopLinqTyping(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
 }
 
 /**
