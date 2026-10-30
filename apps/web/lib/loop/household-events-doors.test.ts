@@ -41,6 +41,8 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/channel/coparent/duty/calendar.ts': 'household',
   'apps/web/lib/channel/coparent/duty/metrics.ts': 'household',
   'apps/web/lib/channel/linq/household-calendar.ts': 'household',
+  // VIL-457: consented aside slice for one family's own 1:1 aside + group deny list
+  'apps/web/lib/channel/linq/multi-family.ts': 'household',
   'apps/web/lib/channel/proactive/snapshot.ts': 'household',
   'apps/web/lib/channel/proactive/review.ts': 'household',
   'apps/web/lib/channel/reconcile/view.ts': 'household',

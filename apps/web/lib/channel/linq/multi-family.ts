@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
@@ -8,6 +8,8 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { DEFAULT_TIMEZONE, formatDateTime } from '~/lib/format/datetime';
+import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import { linqMultiFamilyGroupsEnabled } from './config';
 import { type PrivateAsideModel, type SendOneToOne, runPrivateAside } from './group-private-aside';
 import type { ListChatHandles } from './roster';
@@ -644,12 +646,20 @@ export async function readFamilySliceForAudience(
     return { reason: 'no_consent', slice: empty };
   }
 
-  // Calendar titles stay out of this file. That table is a named outbound door,
-  // and a shared-thread send must not be another reader of it. The calendar
-  // list on a consented slice is empty for that reason.
-  const [kids, facts, mail, bookings] = await Promise.all([
+  // Consented path only: the owning family's live calendar rows, rendered as
+  // clock-bearing strings ("Swim lesson · Nov 7, 10:00") in the family's zone so
+  // the private aside can compare plan times (privateTimesOf). This list is read
+  // for the family's own 1:1 aside and for the shared-thread deny list; a
+  // shared-thread send never carries it (shared_thread / other_family above get
+  // an empty slice before any table is touched).
+  const [kids, facts, mail, bookings, events, zoneRows] = await Promise.all([
     database
-      .select({ familyId: schema.children.familyId, name: schema.children.name })
+      .select({
+        id: schema.children.id,
+        familyId: schema.children.familyId,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+      })
       .from(schema.children)
       .where(eq(schema.children.familyId, input.dataFamilyId)),
     database
@@ -673,7 +683,27 @@ export async function readFamilySliceForAudience(
       })
       .from(schema.activityBookings)
       .where(eq(schema.activityBookings.familyId, input.dataFamilyId)),
+    database
+      .select({
+        familyId: schema.familyEvents.familyId,
+        title: schema.familyEvents.title,
+        startsAt: schema.familyEvents.startsAt,
+        childId: schema.familyEvents.childId,
+        sensitive: schema.familyEvents.sensitive,
+      })
+      .from(schema.familyEvents)
+      .where(and(eq(schema.familyEvents.familyId, input.dataFamilyId), householdFamilyEvent())),
+    database
+      .select({ timezone: schema.users.timezone })
+      .from(schema.familyMembers)
+      .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+      .where(eq(schema.familyMembers.familyId, input.dataFamilyId))
+      .limit(1),
   ]);
+  const zone =
+    zoneRows[0]?.timezone && zoneRows[0].timezone !== 'UTC'
+      ? zoneRows[0].timezone
+      : DEFAULT_TIMEZONE;
 
   return {
     reason: 'consented',
@@ -681,7 +711,15 @@ export async function readFamilySliceForAudience(
       familyId: input.dataFamilyId,
       children: kids.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.name),
       memory: facts.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.factKey),
-      calendar: [],
+      // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
+      // one parent's own Google mirror is excluded by the household-row predicate.
+      calendar: events
+        .filter((row) => row.familyId === input.dataFamilyId)
+        .filter(
+          (row) =>
+            !isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, kids, new Date()),
+        )
+        .map((row) => `${row.title} · ${formatDateTime(row.startsAt, zone)}`),
       email: mail.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.subject),
       signups: bookings
         .filter((row) => row.familyId === input.dataFamilyId)
@@ -700,6 +738,8 @@ async function denyListForChat(database: Database, chatId: string): Promise<stri
       audience: join.familyId,
     });
     tokens.push(...slice.children, ...slice.memory, ...slice.email, ...slice.signups);
+    // Calendar titles block leaks too; the clock suffix is not a deny token.
+    tokens.push(...slice.calendar.map((entry) => entry.split(' · ')[0] ?? ''));
   }
   return tokens.filter((token) => token.trim().length >= 3);
 }
@@ -918,6 +958,11 @@ export async function takeMultiFamilyTurn(
   input: {
     chatId: string;
     senderHandle: string;
+    /**
+     * Other participants the webhook itself listed (`chat.handles`). Seated before the
+     * families gate so a first message can see a second family without a Linq API read.
+     */
+    otherHandles?: readonly string[];
     text: string;
     providerMessageId: string;
     receivedAt: Date;
@@ -944,6 +989,11 @@ export async function takeMultiFamilyTurn(
     now: input.now,
   });
   if (!sender) return { handled: false };
+
+  for (const handle of new Set(input.otherHandles ?? [])) {
+    if (handle === input.senderHandle || !seatablePhone(handle)) continue;
+    await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
+  }
 
   if (wired.listHandles) {
     const listed = await wired.listHandles({ chatId: input.chatId });
@@ -1143,6 +1193,25 @@ export async function takeMultiFamilyTurn(
     return { handled: true, outcome: 'linked', count: 'intake' };
   }
 
+  // VIL-496: past the two-family gate, a message that touches a family's own facts gets
+  // its 1:1 aside whatever the group read was (question, chatter, unclear).
+  const runAside = async (): Promise<string | undefined> =>
+    input.privateAside && channel && inbound !== 'guest'
+      ? await privateAsideFor(database, input.privateAside, {
+          chatId: input.chatId,
+          inboundId: inbound,
+          text: input.text,
+          senderFamilyId: channel.familyId,
+        })
+      : undefined;
+  const logFallthrough = (why: string, aside: string | undefined) => {
+    console.info('linq multi-family: turn handed back', {
+      chatId: input.chatId,
+      intent: why,
+      aside: aside ?? (input.privateAside ? (channel ? 'guest' : 'no_channel') : 'not_wired'),
+    });
+  };
+
   if (intent === 'question' || intent === 'yes' || intent === 'no') {
     const notice = await speak(database, {
       familyId: host.familyId,
@@ -1157,28 +1226,30 @@ export async function takeMultiFamilyTurn(
       now: input.now,
       ports: wired,
     });
-    if (notice !== 'sent' && notice !== 'already_sent') {
-      // A declined or failed answer is not a handled turn: the rest of the group
-      // door (text RSVP for a plan) still gets to read this message.
+    const groupSpoke = notice === 'sent' || notice === 'already_sent';
+    if (groupSpoke) {
+      await audit(database, {
+        familyId,
+        actor: userId,
+        actionTaken: 'linq_multi_family_reply_sent',
+        targetTable: 'channel_messages',
+        targetId: inbound === 'guest' ? me.id : inbound,
+        after: { sources: 'thread', intent },
+      });
+    }
+    // VIL-496 (Design lock): the private aside never waits on the group line. A family
+    // whose own facts the message touches hears 1:1 even when Hale stays quiet here.
+    const aside = await runAside();
+    if (!groupSpoke) {
+      // Quiet group + an aside that ran: Hale owned this turn, so it must not fall
+      // through to the mixed-family hold. With no aside, hand it back so the rest of
+      // the group door (text RSVP for a plan) still reads it.
+      if (aside === 'ran') {
+        return { handled: true, outcome: 'aside_only', count: 'intake', notice, aside };
+      }
+      logFallthrough(intent, aside);
       return { handled: false };
     }
-    await audit(database, {
-      familyId,
-      actor: userId,
-      actionTaken: 'linq_multi_family_reply_sent',
-      targetTable: 'channel_messages',
-      targetId: inbound === 'guest' ? me.id : inbound,
-      after: { sources: 'thread', intent },
-    });
-    const aside =
-      input.privateAside && channel && inbound !== 'guest'
-        ? await privateAsideFor(database, input.privateAside, {
-            chatId: input.chatId,
-            inboundId: inbound,
-            text: input.text,
-            senderFamilyId: channel.familyId,
-          })
-        : undefined;
     return {
       handled: true,
       outcome: intent === 'question' ? 'shared_reply' : intent,
@@ -1188,8 +1259,14 @@ export async function takeMultiFamilyTurn(
     };
   }
 
-  // Chatter and an unclear read are not Hale's turn here: hand the message back
-  // so the rest of the group door (text RSVP for a plan) still reads it.
+  // Chatter and an unclear read are not Hale's group turn, but a private fact in them
+  // still earns its 1:1 aside. Without one, hand the message back so the rest of the
+  // group door (text RSVP for a plan) still reads it.
+  const aside = await runAside();
+  if (aside === 'ran') {
+    return { handled: true, outcome: 'aside_only', count: 'intake', aside };
+  }
+  logFallthrough(intent, aside);
   return { handled: false };
 }
 
