@@ -57,6 +57,9 @@ export interface WelcomeCardRedriveResult {
   noSendTarget: number;
   heldAgain: number;
   sendFailed: number;
+  /** VIL-505: the model wrote no usable line, so nothing went out and nothing was
+   * spent — the family stays owed and the next due tick tries again. */
+  noLine: number;
 }
 
 function emptyResult(): WelcomeCardRedriveResult {
@@ -69,6 +72,7 @@ function emptyResult(): WelcomeCardRedriveResult {
     noSendTarget: 0,
     heldAgain: 0,
     sendFailed: 0,
+    noLine: 0,
   };
 }
 
@@ -172,6 +176,7 @@ export async function runWelcomeCardRedrive(
     if (outcome.status === 'sent') result.sent += 1;
     else if (outcome.reason === 'already_sent') result.alreadySent += 1;
     else if (outcome.reason === 'suppressed_quiet_hours') result.heldAgain += 1;
+    else if (outcome.reason === 'no_line') result.noLine += 1;
     else result.sendFailed += 1;
   }
 
