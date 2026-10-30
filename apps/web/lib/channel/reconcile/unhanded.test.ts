@@ -32,6 +32,7 @@ function row(over: Partial<UnhandedInboundRow> = {}): UnhandedInboundRow {
     providerMessageId: 'SM1',
     sentAt: new Date('2026-08-12T11:40:00.000Z'),
     createdAt: new Date('2026-08-12T11:40:01.000Z'),
+    inGroup: null,
     ...over,
   };
 }
@@ -215,6 +216,25 @@ describe('reconcileUnhandedInbound', () => {
     ]);
     expect(h.spies.set).toHaveBeenCalledWith({ handedOffAt: NOW });
     expect(summary).toEqual({ scanned: 1, redriven: 1, failed: 0 });
+  });
+
+  it('passes the row\'s stored group bit along, and an unstored one as unknown (VIL-463)', async () => {
+    const jobs: ChannelMessageReceivedJob[] = [];
+    const h = deps(
+      [
+        row({ id: '33333333-3333-4333-8333-333333333331', inGroup: false }),
+        row({ id: '33333333-3333-4333-8333-333333333332', inGroup: true }),
+        row({ id: '33333333-3333-4333-8333-333333333333', inGroup: null }),
+      ],
+      async (job) => {
+        jobs.push(job);
+      },
+    );
+
+    await reconcileUnhandedInbound(h.deps);
+
+    expect(jobs.map((j) => j.in_group)).toEqual([false, true, undefined]);
+    expect(jobs.every((j) => 'in_group' in j)).toBe(true);
   });
 
   it('falls back to created_at when the row carries no send time', async () => {

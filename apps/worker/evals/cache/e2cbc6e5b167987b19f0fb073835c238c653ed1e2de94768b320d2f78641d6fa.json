@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the correct day (tomorrow, lundi 26 octobre), start and end times (15 h to 16 h, 3 PM to 4 PM), location (bibliothèque de Georgetown), and names the event by its title. The title is kept as the event's name, not recast as a closure. Language is French and the tone is calm and short. Minor naturalness point: a native speaker would more often write 'Demain, lundi 26 octobre, de 15 h à 16 h' or 'Demain de 15 h à 16 h, il y a « Jour de congé »...'; 'jusqu'à' is acceptable but slightly less idiomatic for a time range, and the title lacks quotation marks, which reads a bit unnaturally. Facts are complete and correct, so the score stays high.",
+    "score": 4
+  }
+}

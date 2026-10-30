@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states tomorrow, Monday October 26, 3 PM to 4 PM at the Georgetown library, in French, with no invented details. However, it describes the event as 'un jour de congé' without making clear it is a timed 3-4 PM event, which the watchFor flags as a prod bug; the phrasing 'il y a un jour de congé' frames the day as a day off, slightly implying nothing else is scheduled. Times and place are otherwise accurate and no extra advice or hype is present.",
+    "score": 3
+  }
+}

@@ -25,6 +25,7 @@ export async function persistCapturedSend(send: CapturedSend, database?: Databas
     toE164: send.to,
     body: send.body,
     mediaUrls: urls,
+    decorations: send.decorations && send.decorations.length > 0 ? [...send.decorations] : null,
     providerMessageId: send.providerMessageId,
     capturedAt: new Date(send.capturedAt),
   });
@@ -36,6 +37,7 @@ export async function readCapturedSends(database: Database, toE164: string) {
     .select({
       body: schema.previewCapturedSends.body,
       mediaUrls: schema.previewCapturedSends.mediaUrls,
+      decorations: schema.previewCapturedSends.decorations,
       providerMessageId: schema.previewCapturedSends.providerMessageId,
       capturedAt: schema.previewCapturedSends.capturedAt,
     })

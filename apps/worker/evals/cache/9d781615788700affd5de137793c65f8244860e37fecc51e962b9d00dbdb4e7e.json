@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Chinese, that Hale stop sending emails on its own. The switch was turned off this turn for both sending and replying to email, so the reply is backed by state. It answers in the parent's language, in one plain line, saying Hale will ask before each email and send only with consent. No greeting, no machinery, nothing invented. The reply mentions only sending, not replying, but asking before 'any email' reasonably covers both.",
+    "score": 5
+  }
+}

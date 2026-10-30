@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every given fact is present and correct: the day (tomorrow, Monday), the title 'PD Day' kept as the event's name, start 9:30 AM, end 12:00 PM, and the venue name 'Northside community centre'. No address was given in the facts, so none is missing. Nothing is invented (no travel, departure, or arrival claims), no inferences are drawn, AM/PM is correct, the event is clearly something to be at, and the text is entirely in English.",
+    "score": 5
+  }
+}

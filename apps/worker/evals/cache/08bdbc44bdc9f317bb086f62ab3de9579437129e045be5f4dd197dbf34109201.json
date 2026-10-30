@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The turn-off of autonomy actually ran this turn for send_email and reply_to_email, so saying 'Done' is true rather than an overclaim. The reply confirms the change plainly and stops, with no questions or padding. One small blemish: 'you'll see them first and approve before anything goes out' says the same thing twice.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English and correctly says the event is tomorrow and all day with no clock time, and it names the PD Day. However, the phrasing 'it is having PD Day' and 'school is not' is unidiomatic; a native speaker would say 'Tomorrow is a PD Day all day, so there is no school.' The 'school is not' clause is also a consequence stated as fact that the facts do not contain (the facts never say school is closed or who is affected), which is an unstated inference.",
+    "score": 2
+  }
+}

@@ -110,16 +110,9 @@ export function conflictReply(reason: SpineRefusal): string {
  * question is worse on a phone than a pause, and the coach had begun promising parents it
  * would stop sending it — a promise the deterministic timer then broke on its behalf.
  *
- * {@link FLOOD_REPLY} stays. It is a different job: it answers a parent whose hour is
- * spent, and nothing else is coming.
+ * The over-limit line is composed too (flood-line.ts, VIL-463); there is no fixed copy
+ * for it here.
  */
-
-/**
- * Flood control's answer. It is deliberately warm and gives no number: a parent who is
- * texting fast is usually stressed, not abusing anything, and quoting a rate limit at
- * them would be the wrong register entirely.
- */
-export const FLOOD_REPLY = "Give me a moment - I'm still catching up on your last few texts.";
 
 /**
  * The two acknowledgements M8's reply handler owes a parent. They live here rather than

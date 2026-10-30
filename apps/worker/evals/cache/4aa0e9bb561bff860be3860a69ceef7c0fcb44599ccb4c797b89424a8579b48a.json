@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text makes a claim not in the facts: it says the swimming course has 4 spots left at $85, but the facts give no seat count or price. It also states the registration opens at 10:30 without noting the time is from earlier notes and the page is unreadable now, and it names no child (children is 1 but ageBand null, so that is fine). The invented seat count and price are wrong facts.",
+    "score": 1
+  }
+}

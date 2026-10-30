@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single event keeps every given fact: 'an appointment' stays generic with no guessing, the day (tomorrow, true from Sunday 6 PM) is right, start 4:45 and end 5:45 are both given with the afternoon (PM) made clear, and no location, who-for, or other detail was invented. No logistics claims, no wrong link, and the language is English. Bold is none, which is fine.",
+    "score": 5
+  }
+}

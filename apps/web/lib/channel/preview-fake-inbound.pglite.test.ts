@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboundRouteDeps } from '~/lib/channel/inbound-route';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { persistCapturedSend } from './preview-capture-store';
+import { persistCapturedSend, readCapturedSends } from './preview-capture-store';
 import { createPreviewCaptureTransport } from './preview-capture-transport';
 
 const routeInboundText = vi.fn(async () => 'intake' as const);
@@ -313,5 +313,71 @@ describe('captured sends read back word for word', () => {
     });
     expect(res.status).toBe(404);
     expect(await res.text()).toBe('');
+  });
+});
+
+describe('VIL-474 · captured sends keep Linq decorations', () => {
+  it('a bold decoration round-trips through persist and read, and shows on /captured', async () => {
+    await persistCapturedSend(
+      {
+        to: FAKE,
+        body: 'Swim moved to 4:30 PM tomorrow.',
+        decorations: [{ range: [14, 21], style: 'bold' }],
+        providerMessageId: 'preview-capture-9-1',
+        capturedAt: new Date('2026-10-29T18:00:00Z').toISOString(),
+      },
+      t.database,
+    );
+    await persistCapturedSend(
+      {
+        to: FAKE,
+        body: 'See you there.',
+        providerMessageId: 'preview-capture-9-2',
+        capturedAt: new Date('2026-10-29T18:00:01Z').toISOString(),
+      },
+      t.database,
+    );
+    const rows = await readCapturedSends(t.database, FAKE);
+    expect(rows.map((r) => r.decorations)).toEqual([[{ range: [14, 21], style: 'bold' }], null]);
+
+    const req = new Request(
+      `https://preview.example/api/channels/preview/captured?to=${encodeURIComponent(FAKE)}`,
+      { headers: { authorization: `Bearer ${SECRET}` } },
+    );
+    const res = await handlePreviewCapturedRead(req, { database: t.database, env: ON });
+    const body = (await res.json()) as { sends: { decorations: unknown }[] };
+    expect(body.sends[0]?.decorations).toEqual([{ range: [14, 21], style: 'bold' }]);
+    expect(body.sends[1]?.decorations).toBeNull();
+  });
+
+  it('an empty decorations list is stored as null', async () => {
+    await persistCapturedSend(
+      {
+        to: FAKE,
+        body: 'plain',
+        decorations: [],
+        providerMessageId: 'preview-capture-9-3',
+        capturedAt: new Date().toISOString(),
+      },
+      t.database,
+    );
+    const rows = await readCapturedSends(t.database, FAKE);
+    expect(rows[0]?.decorations).toBeNull();
+  });
+
+  it('a real number is still refused even with decorations', async () => {
+    await expect(
+      persistCapturedSend(
+        {
+          to: '+14165550100',
+          body: 'x',
+          decorations: [{ range: [0, 1], style: 'bold' }],
+          providerMessageId: 'preview-capture-9-4',
+          capturedAt: new Date().toISOString(),
+        },
+        t.database,
+      ),
+    ).rejects.toThrow(/recipient_not_synthetic/);
+    expect(await readCapturedSends(t.database, '+14165550100')).toEqual([]);
   });
 });

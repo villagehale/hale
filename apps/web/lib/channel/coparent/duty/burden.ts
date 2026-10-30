@@ -4,17 +4,17 @@ import { and, eq, gte } from 'drizzle-orm';
 import { writeFact } from '~/lib/memory/facts';
 import { dutyCopyMayLeave, dutyTitleMayBeSpoken } from './copy';
 import {
-  DUTY_BURDEN_ANSWER_TODO,
-  DUTY_DEFAULT_OWNER_TODO,
-  DUTY_LOPSIDED_CONSENT_TODO,
-  DUTY_LOPSIDED_NUDGE_TODO,
-} from './placeholders';
-import {
   coparentDutyBurdenSurfaceEnabled,
   coparentDutyLopsidedEnabled,
   coparentDutyMemoryEnabled,
 } from './flag';
 import type { DutyOwner, DutyRole } from './model';
+import {
+  DUTY_BURDEN_ANSWER_TODO,
+  DUTY_DEFAULT_OWNER_TODO,
+  DUTY_LOPSIDED_CONSENT_TODO,
+  DUTY_LOPSIDED_NUDGE_TODO,
+} from './placeholders';
 
 /**
  * VIL-383 — internal rolling duty counts.
@@ -78,9 +78,7 @@ function recurrenceKey(factKey: string): { key: string; speakable: boolean } | n
   const speakable = dutyTitleMayBeSpoken(decoded);
   const raw = `${decoded.toLowerCase()}|${match[2]}`;
   return {
-    key: speakable
-      ? raw
-      : `h:${createHash('sha256').update(raw).digest('hex').slice(0, 12)}`,
+    key: speakable ? raw : `h:${createHash('sha256').update(raw).digest('hex').slice(0, 12)}`,
     speakable,
   };
 }
@@ -277,4 +275,3 @@ export async function noteDutyBurden(
   }
   return summary;
 }
-
