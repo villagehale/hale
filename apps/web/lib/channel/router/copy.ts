@@ -157,44 +157,8 @@ export function declinedReceipt(actionType: string): string {
  * (rule 1) — "Undone -" was the system's word for it, not the parent's. */
 export const UNDONE_RECEIPT = "That's back off your calendar.";
 
-/**
- * The ack for a captured address (VIL-249).
- *
- * The QUESTION it answers is not here and is not fixed: a placement asks for the
- * address through the dispatch, in words a model composes per send (founder,
- * 2026-08-12 — no preset message bodies; see lib/loop/voice/calendar-invite-voice.ts).
- * This half is the router's own receipt for a write that either happened or did not,
- * which is the class of line the router still authors.
- *
- * The address is asked for ONCE per family, ever (the ledger claim in
- * lib/loop/calendar-invite.ts).
- */
-
-/** The capture ack. It promises only what happened: the address is stored, and the
- * invite that was waiting is on its way when there was one. */
-export function emailCapturedReply(inviteSent: boolean): string {
-  return inviteSent
-    ? "Got it - invites will go there from now on. The last one's on its way."
-    : 'Got it - invites will go there from now on.';
-}
-
-/**
- * The capture ack when the address was asked for by the INTROS sweep rather than a
- * placement. Same write, different thing waiting on it, so a different receipt: a parent
- * who gave Hale an address to be introduced to another family and hears "invites will go
- * there from now on" has been answered about something they did not ask about.
- *
- * It promises the introduction, not its delivery. The sweep is what sends it, on its next
- * tick — so "I'll make that introduction" is true when this is sent and "it's on its way"
- * would not be.
- */
-export const EMAIL_CAPTURED_FOR_INTRO_REPLY =
-  "Got it - I'll make that introduction and use this address from now on.";
-
-/** The address belongs to another Hale account. Named rather than swallowed: silently
- * ignoring it would leave the parent waiting for invites that can never arrive. */
-export const EMAIL_ALREADY_TAKEN_REPLY =
-  "That address is already on another Hale account - text me a different one and I'll use that.";
+/** Email-capture fixed acks removed (VIL-504 absolute-zero): no production callers;
+ * capture asks stay model-written per send. */
 
 /**
  * The name capture ack.
@@ -331,6 +295,10 @@ export function clarifyWhichQuestion<T extends { kind: string; subject: string }
  * "Unknown/out-of-scope"). It is what the coach STUB says for every turn until C2
  * (VIL-221) lands — an honest boundary rather than an invented answer.
  */
+/** VIL-504 · Stub coach used to send this fixed out-of-scope line. Absolute-zero:
+ * the stub now returns null (send nothing). Kept only so tests can assert the
+ * stub no longer ships fixed copy. */
 export function capabilityReply(): string {
-  return `That one's past me for now - I'm best at your family's schedule, registrations, and what's on nearby. (For everything I've set up: ${appLink()})`;
+  // VIL-504 · Must not be sent. Stub returns '' via capabilityStubRuntime.
+  return '';
 }

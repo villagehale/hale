@@ -42,7 +42,7 @@ import {
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
-import { capabilityReply, failureReply } from './copy';
+import { failureReply } from './copy';
 import type {
   DisambiguationOption,
   DisambiguationStore,
@@ -2490,8 +2490,8 @@ describe('the C2 seam', () => {
 
     await routeChannelMessage(h.deps, job());
 
-    expect(h.transport.bodies()).toEqual([capabilityReply()]);
-    expect(capabilityReply()).toMatch(/past me for now/);
+    // VIL-504 · stub sends nothing (absolute-zero fixed copy).
+    expect(h.transport.bodies()).toEqual([]);
   });
 });
 
@@ -2590,7 +2590,7 @@ describe('the shipped chain, end to end', () => {
     expect(chain.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
     // The parent is told the clock started — M7's copy, not the stub's boundary line.
     expect(h.transport.bodies()).toHaveLength(1);
-    expect(h.transport.bodies()[0]).not.toBe(capabilityReply());
+    expect(h.transport.bodies()[0]!.length).toBeGreaterThan(0);
   });
 
   it('answers "done" from the health handler, not the registration re-ask', async () => {
