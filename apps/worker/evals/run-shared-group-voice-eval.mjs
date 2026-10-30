@@ -158,7 +158,7 @@ async function main() {
     const usable = broken ? false : sharedLineUsable(text, input);
     const verdict = broken
       ? { score: 1, reason: 'broken stand-in' }
-      : await judge({ input, line: text, watchFor: fixture.watchFor });
+      : await judge(fixture.id, { input, line: text, watchFor: fixture.watchFor });
     const pass = usable && verdict && verdict.score >= JUDGE_MIN;
     console.log(
       `${pass ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} usable=${usable} judge=${verdict?.score ?? 'missing'}`,
