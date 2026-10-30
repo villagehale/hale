@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "before": "Okay, I'm tracking the Saturday picnic now.",
+    "question": "Priya, Sam, and Maya, are you in?",
+    "why": "tracking_started"
+  },
+  "latencyMs": 2018
+}

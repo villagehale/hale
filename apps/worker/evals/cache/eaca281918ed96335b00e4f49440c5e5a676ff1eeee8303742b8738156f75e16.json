@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text describes an event \"Jour de congé at 3:00\" that is not in the facts at all, and omits all three real events: Theo's swim (9:00-9:45 AM at Mold-Masters SportsPlex, 221 Guelph St), Léa's dentist (11:00 AM at Bright Smiles Dental, 12 Main St), and Léa's piano (5:00-5:30 PM at Halton Music, 5 Queen St). It also invents that tomorrow is a day off and implies breathing room when three timed events exist. No bold is used, which is fine.",
+    "score": 1
+  }
+}

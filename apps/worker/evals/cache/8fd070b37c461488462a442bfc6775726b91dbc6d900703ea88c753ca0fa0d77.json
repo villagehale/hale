@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is an optin with no specific facts, gives a reason-based offer, states nothing is shared unless both say yes, and says it can be turned off. First-person singular ('I can introduce you') satisfies the speaker check; grammar is correct; no exclamation marks, greeting, or announcement opener; ends with a yes/no question without naming a token to send. Small, honest, and not overselling.",
+    "score": 5
+  }
+}

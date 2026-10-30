@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The text says 'Reminder set!' which claims a reminder exists, but facts show nothing is set and the bot needs a time. It fails to ask Ruth when she wants the reminder, a mustSay item, and states a false completed action."
+  }
+}

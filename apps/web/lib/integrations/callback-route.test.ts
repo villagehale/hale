@@ -231,8 +231,17 @@ describe('GET /api/integrations/callback — the text surface', () => {
     accountHeldMock.mockResolvedValue(false);
     authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
     resolveUserIdMock.mockResolvedValue(MINTER);
+    // The texted-connect aha read hits Google through fetch. Without a stub the
+    // request hangs until vitest's 5s timeout (CI on this branch and on main).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status: 503 })),
+    );
   });
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
 
   async function textState(provider: 'gcal' | 'gmail' = 'gcal') {
     const { signConnectState } = await import('./connect-state');

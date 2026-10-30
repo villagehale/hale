@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event is an all-day \"PD Day\" with no clock time, yet the text invents a start time (\"at 3:00\"). It also renames the title to \"Jour de congé\" (mixed language) and recasts it as \"a day off\" with \"breathing room\", an unstated inference about what the day means for the family. Bold is none, which is fine, but the invented time and altered title are fact failures.",
+    "score": 1
+  }
+}

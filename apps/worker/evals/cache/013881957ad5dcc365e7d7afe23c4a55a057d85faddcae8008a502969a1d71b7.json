@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events and their days/dates (Oct 26, i.e. tomorrow) are right, and AM/PM is correct (上午11:00, 下午5:30-6:30). But the facts give venue names and street addresses for both events (Georgetown library, 9 Church St; Riverside Field, 22 Park Rd) and neither appears in the text. Story time's end (11:45 AM) is also missing; only its start is given. Missing venue, address and end are fact failures.",
+    "score": 1
+  }
+}
