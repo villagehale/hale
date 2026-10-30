@@ -146,7 +146,7 @@ export async function handlePreviewFakeInbound(
   const outcome = await routeInboundText(deps, {
     from,
     ...(imessageChatId
-      ? { transport: 'imessage' as const, chatId: imessageChatId }
+      ? { transport: 'imessage' as const, chatId: imessageChatId, isGroup: false }
       : { transport: 'sms' as const }),
     body: text,
     providerId,
