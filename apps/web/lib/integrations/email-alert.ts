@@ -18,6 +18,8 @@ import {
 } from '~/lib/channel/outbound-transport';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import type { SourceChange } from '~/lib/loop/reminders/change';
+import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
 import type {
   CorrelatedEventRef,
@@ -30,12 +32,14 @@ import type {
 import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
 import { bookedDetectionEnabledFor } from './booked';
 import {
+  BOOKING_CONFIDENCE_FLOOR,
   type BookingDraftResult,
   bookingCancellationKey,
   bookingDraft,
   closeCancelledBookings,
   familyHoldsLiveBooking,
   recordActivityBooking,
+  senderHost,
 } from './booking';
 import {
   type EmailAlertNotice,
@@ -342,6 +346,20 @@ export async function alertParentForEmail(
     sanitizedTitle(extraction.event.title),
   );
 
+  // VIL-474 · THE PROVIDER SAYS IT MOVED: record the change (field + old value) for the
+  // reminder to bold and the parent to be told. NOTHING MOVES from email (#955 review):
+  // moving is a follow-up gated on a model confirming the exact event, ambiguity meaning
+  // no move, confidence, provider-owned events only, and an audit_log undo row. Above the
+  // gate for the cancellation closer's reason: writing down a provider fact is not
+  // speaking to anybody.
+  await recordEmailProviderChange(database, {
+    familyId,
+    from: input.envelope.from,
+    extraction,
+    timeZone: input.timeZone,
+    now,
+  });
+
   // A RECEIPT FOR A CLASS THIS SWEEP HAS ALREADY BEEN TOLD IS OFF. Nothing true is left to
   // say: the batch is newest-first, so this email is older than the cancellation, and
   // "you're in for Swim Level 2" would contradict a text this same run put on the same
@@ -597,6 +615,7 @@ export async function alertParentForEmail(
     channelMessageId: claimed.id,
     draft,
     offered: offer !== null,
+    timeZone: input.timeZone,
   });
   await passport.afterSend();
 
@@ -848,6 +867,9 @@ async function recordBooking(
     draft: BookingDraftResult | null;
     /** Whether the text that went out asked to put it on the calendar. */
     offered: boolean;
+    /** Live mail only: a registration refresh may apply the provider's move (VIL-474).
+     * The backfill leaves it unset, because historical mail is not today's schedule. */
+    timeZone?: string;
   },
 ): Promise<BookingOutcome> {
   const { draft } = input;
@@ -863,6 +885,7 @@ async function recordBooking(
       messageId: input.messageId,
       channelMessageId: input.channelMessageId,
       draft: draft.draft,
+      timeZone: input.timeZone,
     });
   } catch (err) {
     // The CLASS only — a rejection here can carry a title or an address in its message
@@ -1361,6 +1384,60 @@ function fromParentsCalendar(from: string): boolean {
   if (/^google calendar$/i.test(display)) return true;
   const address = (/<([^>]*)>/.exec(from)?.[1] ?? from).trim();
   return /^calendar-notification@google\.com$/i.test(address);
+}
+
+/**
+ * VIL-474 · the email path's provider change: RECORD ONLY, never move. Records nothing
+ * unless every gate holds: a reschedule; exactly one correlation candidate (ambiguity
+ * records nothing); confidence at the booking floor (as bookingDraft does for receipts);
+ * not a Google Calendar notification (the parent's private calendar); a new time that
+ * carries an explicit UTC offset (an offset-less time is ignored, never read as UTC);
+ * and an event this provider owns (applyProviderChange checks the booking link and
+ * refuses parent-created and mirror rows).
+ */
+export async function recordEmailProviderChange(
+  database: Database,
+  input: {
+    familyId: string;
+    from: string;
+    extraction: {
+      kind: ExtractionKind;
+      event: { newTime: string | null; location: string | null };
+      sourceConfidence: number;
+      matchedEventRef: CorrelatedEventRef | null;
+      matchedEventCount?: number;
+    };
+    timeZone: string;
+    now: Date;
+  },
+): Promise<SourceChange | null> {
+  const { extraction } = input;
+  if (extraction.kind !== 'reschedule') return null;
+  if (extraction.matchedEventRef?.table !== 'family_events') return null;
+  if (extraction.matchedEventCount !== 1) return null;
+  if (extraction.sourceConfidence < BOOKING_CONFIDENCE_FLOOR) return null;
+  if (fromParentsCalendar(input.from)) return null;
+  const startsAt = offsetInstant(extraction.event.newTime);
+  const location = extraction.event.location?.trim() || null;
+  if (startsAt === null && location === null) return null;
+  return applyProviderChange(database, {
+    familyId: input.familyId,
+    eventId: extraction.matchedEventRef.id,
+    providerHost: senderHost(input.from),
+    source: { startsAt, location },
+    timeZone: input.timeZone,
+    now: input.now,
+    move: false,
+  });
+}
+
+/** An ISO datetime WITH an explicit offset (Z or ±hh:mm), else null. The extractor's
+ * schema does not enforce the offset its skill asks for, and `new Date` reads an
+ * offset-less datetime in the server's zone (UTC on Vercel). */
+function offsetInstant(iso: string | null): Date | null {
+  if (iso === null) return null;
+  if (!/T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/i.test(iso.trim())) return null;
+  return instant(iso.trim());
 }
 
 function instant(iso: string | null): Date | null {

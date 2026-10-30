@@ -744,6 +744,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
       ),
       provider_message_id: 'SM-in-1',
       received_at: TURN_AT.toISOString(),
+      in_group: false,
     });
   }
 

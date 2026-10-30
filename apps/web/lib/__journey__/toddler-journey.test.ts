@@ -742,6 +742,16 @@ async function runToddlerJourney(): Promise<Journey> {
       throw new Error(`journey: unexpected course read ${url}`);
     },
     refreshCourseAnchor: async () => false,
+    client: {
+      messages: {
+        create: async () => {
+          throw new Error('journey: compose is injected');
+        },
+      },
+    } as never,
+    loadLanguage: async () => 'en',
+    composeMorning: async () => null,
+    composeEvening: async () => 'Richmond Hill opens in the morning. Have the page open.',
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);

@@ -32,7 +32,7 @@ export function offsetUrgency(offset: ReminderOffset): 'normal' | 'time_sensitiv
 
 // The family-local evening slot the "evening before" (T-24h) reminder fires at. A
 // fixed slot (not starts_at − 24h) is what lets every one of tomorrow's events share
-// one fire_at and batch into a single message (rule #4). Product-tunable; a pref can
+// one fire_at and reach the model as one batch (it still splits the texts). Product-tunable; a pref can
 // override later.
 export const REMINDER_EVENING_MINUTE = 18 * 60; // 18:00 local
 const HOUR_MS = 60 * 60 * 1000;
@@ -192,8 +192,10 @@ export interface ReminderBatch {
 }
 
 /**
- * Merge same-evening T-24h reminders for one parent into ONE message (rule #4:
- * "Tomorrow: checkup 10:00 + swim 4:30"). T-1h reminders are glanceable and never
+ * Group same-evening T-24h reminders for one parent into one batch, so the model sees
+ * the whole of tomorrow at once. The batch is one compose, not one text: the model
+ * splits it into as many short texts as it judges right (reminder.md), and the
+ * dispatch sends them in order. T-1h reminders are glanceable and never
  * batched — each fires on its own. Grouping key is (parent, offset, family-local
  * evening of fire_at); event order within a batch is the input order.
  */

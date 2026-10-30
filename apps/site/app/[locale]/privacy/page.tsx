@@ -528,10 +528,10 @@ export default async function PrivacyPage({
           <li>
             <strong>PostHog</strong> — product analytics, session replay, and error tracking. Event
             data is coarse and non-identifying (no child data, no message content) — we capture only
-            a few key product steps. Session replay is on so we can understand and fix problems, but
-            every typed value (names, dates of birth, email, address) and all personal data shown on
-            screen — child names and ages, care logs, and Hale conversations — is{' '}
-            <strong>masked</strong> before the recording leaves your browser. Product analytics and
+            a few key product steps. Session replay runs only on the marketing site
+            (villagehale.com), only after the visitor taps Accept in the cookie banner, and every
+            typed value is <strong>masked</strong> before the recording leaves the browser. The Hale
+            app at app.villagehale.com does not record session replays. Product analytics and
             session replay are kept for 30 days. Error tracking captures unhandled errors (a stack
             trace, not your data) so we can fix them. Autocapture stays off, and we identify you by
             an opaque account id, never your name or email. Processed in the United States. On the

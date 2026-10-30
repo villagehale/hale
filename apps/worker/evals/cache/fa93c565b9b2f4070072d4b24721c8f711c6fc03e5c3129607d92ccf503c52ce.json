@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give an all-day event titled \"PD Day\" tomorrow, with no time, venue, or other details. The text correctly names the day and avoids any clock time, but then adds \"so school is closed for students\", a consequence not in the facts. The title names the event; the text uses it to claim school is closed and that students are affected. That is an unstated inference and a fact failure. Bold is none, which is fine.",
+    "score": 2
+  }
+}

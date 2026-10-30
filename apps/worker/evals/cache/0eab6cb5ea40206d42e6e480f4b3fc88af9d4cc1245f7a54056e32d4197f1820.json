@@ -1,0 +1,9 @@
+{
+  "value": {
+    "supported": false,
+    "unsupported": [
+      "Says the swim lesson is booked, but the facts never state a booking status"
+    ]
+  },
+  "latencyMs": 1893
+}

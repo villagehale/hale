@@ -118,3 +118,24 @@ export function correlateExtraction(
   }
   return best?.ref ?? null;
 }
+
+/**
+ * How many candidates clear BOTH the time window and the title threshold. VIL-474 /
+ * #955 review: `correlateExtraction` picks one of several passing candidates silently;
+ * a source change is recorded only when this is exactly 1, so ambiguity records nothing.
+ */
+export function correlationMatchCount(
+  input: CorrelationInput,
+  candidates: readonly CorrelationCandidate[],
+): number {
+  const target = TARGET_TIME[input.kind](input);
+  if (!target) return 0;
+  let count = 0;
+  for (const candidate of candidates) {
+    if (!candidate.startsAt) continue;
+    if (hoursBetween(target, candidate.startsAt) > TIME_WINDOW_HOURS) continue;
+    if (titleSimilarity(input.title, candidate.title) < TITLE_MATCH_THRESHOLD) continue;
+    count += 1;
+  }
+  return count;
+}

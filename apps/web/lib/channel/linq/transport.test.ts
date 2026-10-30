@@ -423,6 +423,106 @@ describe('Linq human-feel helpers', () => {
     ).rejects.toMatchObject({ code: 'link_not_alone', permanent: true });
   });
 
+  it('VIL-474: sends text decorations on the wire and plain text without them', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const value = 'Swim moved to 4:30 at the Y';
+    const start = value.indexOf('4:30');
+    const fetchMock = jsonFetch(201, { message: { id: 'msg-bold' } });
+    await sendLinqChatMessage({
+      chatId: CHAT,
+      text: value,
+      decorations: [
+        { range: [start, start + 4], style: 'bold' },
+        { range: [0, 4], animation: 'big' },
+      ],
+      fetch: fetchMock,
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      message: {
+        parts: [
+          {
+            type: 'text',
+            value,
+            text_decorations: [
+              { range: [start, start + 4], style: 'bold' },
+              { range: [0, 4], animation: 'big' },
+            ],
+          },
+        ],
+      },
+    });
+
+    const plain = jsonFetch(201, { message: { id: 'msg-plain' } });
+    await sendLinqChatMessage({
+      chatId: CHAT,
+      text: value,
+      decorations: [],
+      fetch: plain,
+    });
+    expect(JSON.parse(String(plain.mock.calls[0]?.[1]?.body))).toEqual({
+      message: { parts: [{ type: 'text', value }] },
+    });
+  });
+
+  it('VIL-474: the text transport carries the writer’s decorations through', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = jsonFetch(201, { message: { id: 'msg-t' } });
+    const transport = createLinqTextTransport({
+      chatId: CHAT,
+      fetch: fetchMock,
+    });
+    await transport.send({
+      to: '+15550000000',
+      body: 'Pickup at 3',
+      decorations: [{ range: [10, 11], style: 'bold' }],
+    });
+    const sent = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(sent.message.parts[0].text_decorations).toEqual([{ range: [10, 11], style: 'bold' }]);
+  });
+
+  it('VIL-474: refuses a bad decoration before Linq sees it', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const bad: unknown[] = [
+      [{ range: [0, 99], style: 'bold' }],
+      [{ range: [2, 2], style: 'bold' }],
+      [{ range: [0, 2], style: 'bold', animation: 'big' }],
+      [{ range: [0, 2] }],
+      [{ range: [0, 2], style: 'sparkle' }],
+      [
+        { range: [0, 3], animation: 'shake' },
+        { range: [2, 4], style: 'bold' },
+      ],
+    ];
+    for (const decorations of bad) {
+      const fetchMock = vi.fn();
+      await expect(
+        sendLinqParts({
+          chatId: CHAT,
+          parts: [{ type: 'text', value: 'hello', decorations } as never],
+          fetch: fetchMock,
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_decoration', permanent: true });
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+    // Styles may stack on the same characters.
+    const ok = jsonFetch(201, { message: { id: 'msg-stack' } });
+    await sendLinqParts({
+      chatId: CHAT,
+      parts: [
+        {
+          type: 'text',
+          value: 'hello',
+          decorations: [
+            { range: [0, 5], style: 'bold' },
+            { range: [0, 5], style: 'italic' },
+          ],
+        },
+      ],
+      fetch: ok,
+    });
+    expect(ok).toHaveBeenCalledTimes(1);
+  });
+
   it('adds a tapback and refuses a custom reaction with no emoji', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
     const fetchMock = jsonFetch(202, { status: 'accepted' });

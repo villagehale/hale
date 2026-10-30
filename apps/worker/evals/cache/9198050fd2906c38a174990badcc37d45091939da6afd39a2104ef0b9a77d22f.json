@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states tomorrow, the title, and the location, but omits the end time (16 h / 4 PM), which is given in the facts; a required fact is missing. Also 'Demain à 15 h, tu as « Jour de congé »' reads like a calendar readout rather than how a French friend would text it, and it omits the end time.",
+    "score": 2
+  }
+}
