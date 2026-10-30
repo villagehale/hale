@@ -94,6 +94,14 @@ async function seatPriya(familyId: string) {
   return priya?.id as string;
 }
 
+/** Design (#975) — the driver 1:1 only runs for a family with no claimed group. */
+async function unclaimGroup(familyId: string) {
+  await db.database
+    .update(schema.families)
+    .set({ linqGroupChatId: null })
+    .where(eq(schema.families.id, familyId));
+}
+
 function door() {
   const texts: string[] = [];
   return {
@@ -254,6 +262,7 @@ describe('reminder bugs', () => {
       userId: mayaId,
       name: 'Maya',
     });
+    await unclaimGroup(familyId);
     const voice = fakeCarpoolComposer();
     await runCarpoolReminders(db.database, { now: FRIDAY_EVE, send: door().send, voice });
     expect(voice.calls.map((call) => call.kind)).toContain('night_before_driver');
@@ -523,6 +532,7 @@ describe('Devin #975', () => {
       userId: mayaId,
       name: 'Maya',
     });
+    await unclaimGroup(familyId);
     const group = door();
     const driverCalls: string[] = [];
     let driverUp = false;
@@ -565,6 +575,7 @@ describe('Devin #975', () => {
       userId: mayaId,
       name: 'Maya',
     });
+    await unclaimGroup(familyId);
     const calls: string[] = [];
     const sendDriver = async ({ userId }: { userId: string; text: string }) => {
       calls.push(userId);
@@ -650,26 +661,35 @@ describe('Devin #975', () => {
 });
 
 describe('Devin #975 round 2', () => {
-  it('a driver send that throws releases its claim and retries next sweep', async () => {
+  it('a compose that throws releases its claim and retries next sweep', async () => {
     const { familyId, mayaId } = await seed();
     await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
       handle: MAYA_PHONE,
       userId: mayaId,
       name: 'Maya',
     });
+    await unclaimGroup(familyId);
     const group = door();
     let calls = 0;
     const sendDriver = async () => {
       calls += 1;
-      if (calls === 1) throw new Error('gate db down');
       return { sent: true as const, providerMessageId: 'driver-ok' };
     };
-    const opts = { now: FRIDAY_EVE, send: group.send, voice: fakeCarpoolComposer(), sendDriver };
+    const base = fakeCarpoolComposer();
+    let composes = 0;
+    const voice = {
+      ...base,
+      compose: async (req: Parameters<typeof base.compose>[0]) => {
+        if (req.kind === 'night_before_driver' && composes++ === 0) throw new Error('model down');
+        return base.compose(req);
+      },
+    };
+    const opts = { now: FRIDAY_EVE, send: group.send, voice, sendDriver };
     await runCarpoolReminders(db.database, opts);
     expect((await rows())[0]?.reminderDriverSentAt).toBeNull();
     const second = await runCarpoolReminders(db.database, opts);
     expect(second.driverRetried).toBe(1);
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
     expect(group.texts).toHaveLength(1);
   });
 
@@ -680,6 +700,7 @@ describe('Devin #975 round 2', () => {
       userId: mayaId,
       name: 'Maya',
     });
+    await unclaimGroup(familyId);
     const newer = new Date(FRIDAY_EVE.getTime() + 86_400_000);
     let calls = 0;
     await runCarpoolReminders(db.database, {
@@ -699,5 +720,108 @@ describe('Devin #975 round 2', () => {
     const [row] = await rows();
     expect(calls).toBe(1);
     expect(row?.reminderDriverSentAt?.getTime()).toBe(newer.getTime());
+  });
+});
+
+describe('Devin #975 round 3 + Design gate', () => {
+  it('a driver send with an unknown outcome keeps its claim (no resend)', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    await unclaimGroup(familyId);
+    let calls = 0;
+    const opts = {
+      now: FRIDAY_EVE,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => {
+        calls += 1;
+        throw new Error('ledger update after send failed');
+      },
+    };
+    await runCarpoolReminders(db.database, opts);
+    expect((await rows())[0]?.reminderDriverSentAt).not.toBeNull();
+    await runCarpoolReminders(db.database, opts);
+    expect(calls).toBe(1);
+  });
+
+  it('a send_unknown result keeps its claim too', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    await unclaimGroup(familyId);
+    let calls = 0;
+    const opts = {
+      now: FRIDAY_EVE,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => {
+        calls += 1;
+        return { sent: false as const, skipped: 'send_unknown' };
+      },
+    };
+    await runCarpoolReminders(db.database, opts);
+    await runCarpoolReminders(db.database, opts);
+    expect(calls).toBe(1);
+  });
+
+  it('(a) driver whose family group is claimed: no driver 1:1, group only', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const group = door();
+    const calls: string[] = [];
+    const opts = {
+      now: FRIDAY_EVE,
+      send: group.send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async ({ userId }: { userId: string; text: string }) => {
+        calls.push(userId);
+        return { sent: true as const, providerMessageId: 'x' };
+      },
+    };
+    const ran = await runCarpoolReminders(db.database, opts);
+    await runCarpoolReminders(db.database, opts);
+    expect(ran.fired).toBe(1);
+    expect(group.texts).toHaveLength(1);
+    expect(calls).toEqual([]);
+    const audits = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_carpool_reminder_sent'));
+    expect((audits[0]?.after as { driverSkipped: string }).driverSkipped).toBe(
+      'driver_group_claimed',
+    );
+  });
+
+  it('(b) driver with no claimed group: driver 1:1 is sent', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    await unclaimGroup(familyId);
+    const calls: string[] = [];
+    await runCarpoolReminders(db.database, {
+      now: FRIDAY_EVE,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async ({ userId }: { userId: string; text: string }) => {
+        calls.push(userId);
+        return { sent: true as const, providerMessageId: 'x' };
+      },
+    });
+    expect(calls).toEqual([mayaId]);
+    expect((await rows())[0]?.reminderDriverSentAt).not.toBeNull();
   });
 });

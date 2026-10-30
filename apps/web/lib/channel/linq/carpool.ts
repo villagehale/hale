@@ -793,7 +793,7 @@ export async function runCarpoolReminders(
       sendDriver,
       voice,
     });
-    if (driverSkipped === 'claimed_elsewhere') continue;
+    if (driverSkipped === 'claimed_elsewhere' || driverSkipped === 'driver_group_claimed') continue;
     await audit(
       database,
       row.familyId,
@@ -832,6 +832,11 @@ async function deliverDriverLeg(
   const { plan } = input;
   if (!plan.driverHaleCustomer) return 'driver_not_customer';
   if (!plan.driverUserId) return 'no_driver_user';
+  // Design (Sloane, #975) — once a family's Linq group is claimed Hale never
+  // starts a 1:1 with its members. Their driver hears it in the group only.
+  if (await driverFamilyHasClaimedGroup(database, plan.driverUserId)) {
+    return 'driver_group_claimed';
+  }
   const claimAt = input.now;
   const ours = and(
     eq(schema.linqGroupCarpools.id, input.rowId),
@@ -855,25 +860,45 @@ async function deliverDriverLeg(
       .update(schema.linqGroupCarpools)
       .set({ reminderDriverSentAt: null, updatedAt: input.now })
       .where(and(ours, eq(schema.linqGroupCarpools.reminderDriverSentAt, claimAt)));
+  let driverLine: string | null;
   try {
-    const driverLine = await input.voice.compose({
+    driverLine = await input.voice.compose({
       kind: 'night_before_driver',
       facts: voiceFacts(plan, null),
     });
-    if (!driverLine) {
-      await release();
-      return 'line_unsent';
-    }
-    const driver = await input.sendDriver({ userId: plan.driverUserId, text: driverLine });
-    if (!driver.sent) {
-      await release();
-      return driver.skipped;
-    }
-    return null;
   } catch (err) {
+    // Nothing reached the provider: retry next sweep.
     await release();
-    return `error:${err instanceof Error ? err.name : 'unknown'}`;
+    return `compose_error:${err instanceof Error ? err.name : 'unknown'}`;
   }
+  if (!driverLine) {
+    await release();
+    return 'line_unsent';
+  }
+  let driver: Awaited<ReturnType<CarpoolDriverSend>>;
+  try {
+    driver = await input.sendDriver({ userId: plan.driverUserId, text: driverLine });
+  } catch (err) {
+    // Devin #975 r3 — the outcome is unknown (it may have gone out). Keep the
+    // claim: a missed private reminder beats texting the driver twice.
+    return `send_unknown:${err instanceof Error ? err.name : 'unknown'}`;
+  }
+  if (!driver.sent && driver.skipped.startsWith('send_unknown')) return driver.skipped;
+  if (!driver.sent) {
+    // A definite non-send (gate refusal, pre-provider failure, provider refusal).
+    await release();
+    return driver.skipped;
+  }
+  return null;
+}
+
+async function driverFamilyHasClaimedGroup(database: Database, userId: string): Promise<boolean> {
+  const rows = await database
+    .select({ chatId: schema.families.linqGroupChatId })
+    .from(schema.familyMembers)
+    .innerJoin(schema.families, eq(schema.families.id, schema.familyMembers.familyId))
+    .where(eq(schema.familyMembers.userId, userId));
+  return rows.some((row) => Boolean(row.chatId));
 }
 
 async function coveringParentUserId(database: Database, familyId: string): Promise<string | null> {
@@ -907,16 +932,21 @@ export function createCarpoolDriverSend(
   now: Date,
   makeTransport: typeof createOutboundTransport = createOutboundTransport,
 ): CarpoolDriverSend {
-  return async ({ userId, text }) => {
+  async function prepareDriverSend(
+    userId: string,
+  ): Promise<
+    | { skipped: string }
+    | { familyId: string; phone: string; chatId: string | null; claimedId: string }
+  > {
     const familyId = await familyOfUser(database, userId);
-    if (!familyId) return { sent: false, skipped: 'no_family' };
+    if (!familyId) return { skipped: 'no_family' };
     const verdict = await assertProactiveSendAllowed(
       { familyId, parentUserId: userId, kind: 'plan_check_in', now },
       buildOutboundGatePorts(database),
     );
-    if (!verdict.allowed) return { sent: false, skipped: verdict.reason };
+    if (!verdict.allowed) return { skipped: verdict.reason };
     const phone = await resolveSendablePhone(database, userId);
-    if (!phone) return { sent: false, skipped: 'no_send_target' };
+    if (!phone) return { skipped: 'no_send_target' };
     const [family] = await database
       .select({ chatId: schema.families.linqGroupChatId })
       .from(schema.families)
@@ -926,7 +956,7 @@ export function createCarpoolDriverSend(
       excludeChatId: family?.chatId ?? null,
     });
     const chatId = door.channel === 'imessage' ? door.chatId : null;
-    if (door.channel === 'imessage' && !chatId) return { sent: false, skipped: 'no_chat' };
+    if (door.channel === 'imessage' && !chatId) return { skipped: 'no_chat' };
     const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
     const [claimed] = await database
       .insert(schema.channelMessages)
@@ -942,7 +972,26 @@ export function createCarpoolDriverSend(
         sentAt: now,
       })
       .returning({ id: schema.channelMessages.id });
-    if (!claimed) return { sent: false, skipped: 'ledger_failed' };
+    if (!claimed) return { skipped: 'ledger_failed' };
+    return { familyId, phone, chatId, claimedId: claimed.id };
+  }
+
+  return async ({ userId, text }) => {
+    // Devin #975 r3 — everything before the provider call is a definite
+    // non-send when it fails, so the caller may release and retry.
+    let prepared: { familyId: string; phone: string; chatId: string | null; claimedId: string };
+    try {
+      const ready = await prepareDriverSend(userId);
+      if ('skipped' in ready) return { sent: false, skipped: ready.skipped };
+      prepared = ready;
+    } catch (err) {
+      return {
+        sent: false,
+        skipped: `pre_send_error:${err instanceof Error ? err.name : 'unknown'}`,
+      };
+    }
+    const { phone, chatId } = prepared;
+    const claimed = { id: prepared.claimedId };
     let providerMessageId: string;
     try {
       if (chatId) {
@@ -954,17 +1003,31 @@ export function createCarpoolDriverSend(
         }));
       }
     } catch (err) {
-      const code = readSendRefusal(err)?.code ?? 'unknown';
+      const refusal = readSendRefusal(err);
+      if (!refusal) {
+        // Devin #975 r3 — no definite refusal: it may have gone out. The
+        // caller keeps its claim rather than retrying into a duplicate.
+        return { sent: false, skipped: 'send_unknown' };
+      }
+      const code = refusal.code;
       await database
         .update(schema.channelMessages)
         .set(failedSendPatch(code))
         .where(eq(schema.channelMessages.id, claimed.id));
       return { sent: false, skipped: `send_failed:${code}` };
     }
-    await database
-      .update(schema.channelMessages)
-      .set({ providerMessageId })
-      .where(eq(schema.channelMessages.id, claimed.id));
+    try {
+      await database
+        .update(schema.channelMessages)
+        .set({ providerMessageId })
+        .where(eq(schema.channelMessages.id, claimed.id));
+    } catch (err) {
+      // It went out; a missing provider id must not turn into a resend.
+      console.warn(
+        { err: err instanceof Error ? err.name : 'unknown' },
+        'carpool: driver reminder sent but ledger id not recorded',
+      );
+    }
     return { sent: true, providerMessageId };
   };
 }

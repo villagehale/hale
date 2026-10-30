@@ -287,6 +287,11 @@ describe('runCarpoolReminders', () => {
     const voice = fakeCarpoolComposer();
     const door = send();
     await insertAssigned(familyId, userId);
+    // Design (#975) — the driver 1:1 runs only for a family with no claimed group.
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: null })
+      .where(eq(schema.families.id, familyId));
     const driverSends: string[] = [];
     const fired = await runCarpoolReminders(db.database, {
       now: FRIDAY_EVE,
