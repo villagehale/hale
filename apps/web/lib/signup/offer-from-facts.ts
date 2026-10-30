@@ -129,7 +129,7 @@ export async function offerSignupFromFacts(
 }
 
 function defaultWriter(): SignupOfferWriter {
-  return createSignupOfferWriter(() => resolveReplyClient());
+  return createSignupOfferWriter(() => resolveReplyClient(undefined));
 }
 
 async function writeAudit(
