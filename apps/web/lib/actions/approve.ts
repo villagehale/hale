@@ -1,9 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
-import {
-  type ApprovedActionPayload,
-  approvedActionPayloadSchema,
-} from '@hale/tools-contracts';
+import { type ApprovedActionPayload, approvedActionPayloadSchema } from '@hale/tools-contracts';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 
 /**

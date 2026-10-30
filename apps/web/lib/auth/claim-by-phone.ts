@@ -2,12 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { OtpSender } from '~/lib/channels/otp-sender';
-import {
-  OTP_MAX_ATTEMPTS,
-  isOtpExpired,
-  isOtpLockedOut,
-  verifyOtpCode,
-} from '~/lib/channels/otp';
+import { OTP_MAX_ATTEMPTS, isOtpExpired, isOtpLockedOut, verifyOtpCode } from '~/lib/channels/otp';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { requestPhoneOtp, resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
@@ -254,7 +249,12 @@ export async function verifyClaimCode(
 
   if (!claimed) return refuse('no_pending_code');
 
-  return { status: 'claimed', externalAuthId, userId: claimant.userId, familyId: claimant.familyId };
+  return {
+    status: 'claimed',
+    externalAuthId,
+    userId: claimant.userId,
+    familyId: claimant.familyId,
+  };
 }
 
 /** The attempts a parent has left on a fresh code — surfaced only as UI copy. */

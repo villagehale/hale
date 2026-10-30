@@ -37,10 +37,7 @@ export interface RehydratedThread {
 }
 
 /** Creates a fresh conversation for a family and returns its id. */
-export async function createConversation(
-  familyId: string,
-  database: Database,
-): Promise<string> {
+export async function createConversation(familyId: string, database: Database): Promise<string> {
   const rows = await database
     .insert(schema.conversations)
     .values({ familyId })
@@ -69,10 +66,7 @@ export async function resolveNoteConversation(
     .select({ id: schema.conversations.id })
     .from(schema.conversations)
     .where(
-      and(
-        eq(schema.conversations.familyId, familyId),
-        eq(schema.conversations.noteKey, noteKey),
-      ),
+      and(eq(schema.conversations.familyId, familyId), eq(schema.conversations.noteKey, noteKey)),
     )
     .limit(1);
 
@@ -137,10 +131,7 @@ export async function resolveConversationForParent(
     .select({ id: schema.conversations.id, noteKey: schema.conversations.noteKey })
     .from(schema.conversations)
     .where(
-      and(
-        eq(schema.conversations.id, conversationId),
-        eq(schema.conversations.familyId, familyId),
-      ),
+      and(eq(schema.conversations.id, conversationId), eq(schema.conversations.familyId, familyId)),
     )
     .limit(1);
 
@@ -164,12 +155,7 @@ export async function resolveLatestConversationForFamily(
   const rows = await database
     .select({ id: schema.conversations.id })
     .from(schema.conversations)
-    .where(
-      and(
-        eq(schema.conversations.familyId, familyId),
-        isNull(schema.conversations.noteKey),
-      ),
-    )
+    .where(and(eq(schema.conversations.familyId, familyId), isNull(schema.conversations.noteKey)))
     .orderBy(desc(schema.conversations.createdAt))
     .limit(1);
 
@@ -205,10 +191,7 @@ export async function loadTranscript(
     .select({ role: schema.messages.role, content: schema.messages.content })
     .from(schema.messages)
     .where(
-      and(
-        eq(schema.messages.conversationId, conversationId),
-        isNull(schema.messages.deletedAt),
-      ),
+      and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
     )
     .orderBy(asc(schema.messages.createdAt));
 
@@ -262,10 +245,7 @@ export async function loadTranscriptWithAttachments(
     })
     .from(schema.messages)
     .where(
-      and(
-        eq(schema.messages.conversationId, conversationId),
-        isNull(schema.messages.deletedAt),
-      ),
+      and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
     )
     .orderBy(asc(schema.messages.createdAt));
 
@@ -313,10 +293,7 @@ export async function loadTimeline(
     })
     .from(schema.messages)
     .where(
-      and(
-        eq(schema.messages.conversationId, conversationId),
-        isNull(schema.messages.deletedAt),
-      ),
+      and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
     )
     .orderBy(asc(schema.messages.createdAt));
 

@@ -69,7 +69,10 @@ describe('coach context — ranking past the cap', () => {
 
     expect(context.memoryFacts).toHaveLength(FACT_LIMIT);
     // The top 30 of 45 by confidence are indexes 44 down to 15.
-    const expected = Array.from({ length: FACT_LIMIT }, (_, n) => `family_fact_${FACT_COUNT - 1 - n}`);
+    const expected = Array.from(
+      { length: FACT_LIMIT },
+      (_, n) => `family_fact_${FACT_COUNT - 1 - n}`,
+    );
     expect(context.memoryFacts.map((f) => f.factKey)).toEqual(expected);
   });
 
@@ -98,7 +101,9 @@ describe('coach context — ranking past the cap', () => {
     );
     const second = await load(tiedFamily, null);
 
-    expect(second.memoryFacts.map((f) => f.factKey)).toEqual(first.memoryFacts.map((f) => f.factKey));
+    expect(second.memoryFacts.map((f) => f.factKey)).toEqual(
+      first.memoryFacts.map((f) => f.factKey),
+    );
   });
 });
 

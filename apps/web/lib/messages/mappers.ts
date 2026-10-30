@@ -24,11 +24,7 @@ export type MessageKind = 'digest' | 'action';
 /** The action lifecycle states a parent sees in the feed — a subset of the
  * action_user_visible_state enum, each with its own parent-facing framing. A
  * drafted row is the only one that navigates (to Approvals); the rest are notes. */
-export type MessageActionState =
-  | 'drafted_for_approval'
-  | 'autonomous'
-  | 'needs_human'
-  | 'reverted';
+export type MessageActionState = 'drafted_for_approval' | 'autonomous' | 'needs_human' | 'reverted';
 
 export interface MessageView {
   id: string;

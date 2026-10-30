@@ -79,13 +79,17 @@ describe('signDocumentUrl', () => {
 
     expect(calls[0]?.url).toBe(`${SUPABASE_URL}/storage/v1/object/sign/${DOCS_BUCKET}/${PATH}`);
     expect(calls[0]?.init.method).toBe('POST');
-    expect(JSON.parse(calls[0]?.init.body as string)).toEqual({ expiresIn: SIGNED_URL_TTL_SECONDS });
+    expect(JSON.parse(calls[0]?.init.body as string)).toEqual({
+      expiresIn: SIGNED_URL_TTL_SECONDS,
+    });
     expect(SIGNED_URL_TTL_SECONDS).toBe(600);
     expect(url).toBe(`${SUPABASE_URL}/storage/v1${signedURL}`);
   });
 
   it('THROWS on a non-ok response — a redacted doc must never get a URL (rule #8)', async () => {
-    await expect(signDocumentUrl(PATH, statusFetch(403))).rejects.toThrow(/Docs sign failed \(403\)/);
+    await expect(signDocumentUrl(PATH, statusFetch(403))).rejects.toThrow(
+      /Docs sign failed \(403\)/,
+    );
   });
 });
 
@@ -108,6 +112,8 @@ describe('removeDocument', () => {
   });
 
   it('THROWS on a 500', async () => {
-    await expect(removeDocument(PATH, statusFetch(500))).rejects.toThrow(/Docs remove failed \(500\)/);
+    await expect(removeDocument(PATH, statusFetch(500))).rejects.toThrow(
+      /Docs remove failed \(500\)/,
+    );
   });
 });

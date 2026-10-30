@@ -136,7 +136,9 @@ describe('requestPhoneOtp', () => {
     // Phone is encrypted at rest — never the plaintext, and it round-trips.
     expect(insert?.phoneE164Encrypted).not.toBe(PHONE);
     // A prior-code invalidation update runs before the insert.
-    expect(writes.some((w) => w.op === 'update' && w.table === schema.phoneVerifications)).toBe(true);
+    expect(writes.some((w) => w.op === 'update' && w.table === schema.phoneVerifications)).toBe(
+      true,
+    );
   });
 
   it('refuses a resend within the 60s cooldown', async () => {
@@ -310,9 +312,7 @@ describe('verifyPhoneOtp', () => {
     expect(JSON.stringify(audit)).not.toContain(PHONE);
 
     // A prior active channel row was soft-revoked inside the same tx.
-    const revoke = writes.find(
-      (w) => w.op === 'update' && w.table === schema.parentChannels,
-    );
+    const revoke = writes.find((w) => w.op === 'update' && w.table === schema.parentChannels);
     expect((revoke?.payload as Record<string, unknown>)?.revokedAt).toEqual(NOW);
   });
 });
@@ -401,9 +401,7 @@ describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
   it('resolves an inbound number to its active, verified channel owner', async () => {
     const { db } = makeFakeDb({
       selectRows: (t) =>
-        t === schema.parentChannels
-          ? [channelRow({ verifiedAt: NOW, revokedAt: null })]
-          : [],
+        t === schema.parentChannels ? [channelRow({ verifiedAt: NOW, revokedAt: null })] : [],
     });
 
     // A differently-FORMATTED but equal number still resolves (shared canonical
@@ -415,9 +413,7 @@ describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
   it('does NOT resolve a REVOKED channel (revoked number no longer routes)', async () => {
     const { db } = makeFakeDb({
       selectRows: (t) =>
-        t === schema.parentChannels
-          ? [channelRow({ verifiedAt: NOW, revokedAt: NOW })]
-          : [],
+        t === schema.parentChannels ? [channelRow({ verifiedAt: NOW, revokedAt: NOW })] : [],
     });
     expect(await resolveVerifiedChannelByPhone(db, PHONE)).toBeNull();
   });
@@ -425,9 +421,7 @@ describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
   it('does NOT resolve an unverified (pending) channel', async () => {
     const { db } = makeFakeDb({
       selectRows: (t) =>
-        t === schema.parentChannels
-          ? [channelRow({ verifiedAt: null, revokedAt: null })]
-          : [],
+        t === schema.parentChannels ? [channelRow({ verifiedAt: null, revokedAt: null })] : [],
     });
     expect(await resolveVerifiedChannelByPhone(db, PHONE)).toBeNull();
   });
@@ -436,7 +430,13 @@ describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
     const { db } = makeFakeDb({
       selectRows: (t) =>
         t === schema.parentChannels
-          ? [channelRow({ verifiedAt: NOW, revokedAt: null, hash: phoneBlindIndex('+15195559999') })]
+          ? [
+              channelRow({
+                verifiedAt: NOW,
+                revokedAt: null,
+                hash: phoneBlindIndex('+15195559999'),
+              }),
+            ]
           : [],
     });
     expect(await resolveVerifiedChannelByPhone(db, PHONE)).toBeNull();

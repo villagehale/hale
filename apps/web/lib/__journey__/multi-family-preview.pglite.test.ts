@@ -194,7 +194,7 @@ describe('Preview conversation: three fake families, seven numbers', () => {
       },
       { ...ports, reader: reader('chatter') },
     );
-    expect(banter).toMatchObject({ handled: true, outcome: 'chatter_ignored' });
+    expect(banter).toEqual({ handled: false });
     transcript.push({ from: 'Hale', text: '(stays quiet)', kind: 'quiet' });
 
     transcript.push({ from: 'Ada', text: 'hey I am Ada, Leo is my kid', kind: 'human' });

@@ -127,7 +127,13 @@ describe('save_child_fact tool', () => {
     const save = tools.find((t) => t.name === 'save_child_fact');
 
     const result = await save?.handler(
-      { childId: TOT, category: 'routines', factKey: 'naps', summary: 'maybe naps?', confidence: 0.4 },
+      {
+        childId: TOT,
+        category: 'routines',
+        factKey: 'naps',
+        summary: 'maybe naps?',
+        confidence: 0.4,
+      },
       { familyId: FAMILY_ID, actor: 'system' },
     );
 
@@ -152,8 +158,7 @@ describe('save_child_fact — teen gate at the tool boundary (rule #1/#5)', () =
     return {
       select: () => ({
         from: () => ({
-          where: () =>
-            Object.assign(Promise.resolve(childRows), { limit: async () => childRows }),
+          where: () => Object.assign(Promise.resolve(childRows), { limit: async () => childRows }),
         }),
       }),
       insert: (table: unknown) => ({
@@ -170,8 +175,7 @@ describe('save_child_fact — teen gate at the tool boundary (rule #1/#5)', () =
       // back-pointer with a bare awaited `.where(...)` — both shapes, one fake.
       update: () => ({
         set: () => ({
-          where: () =>
-            Object.assign(Promise.resolve(undefined), { returning: async () => [] }),
+          where: () => Object.assign(Promise.resolve(undefined), { returning: async () => [] }),
         }),
       }),
     } as unknown as Database;

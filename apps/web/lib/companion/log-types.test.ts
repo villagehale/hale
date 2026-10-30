@@ -38,7 +38,11 @@ describe('feedSchema — additive qualitative amount (a plain ZodObject for the 
   });
 
   it('accepts a qualitative feedAmount with no amountMl', () => {
-    const parsed = feedSchema.safeParse({ kind: FEED_EPISODE, childId: CHILD_ID, feedAmount: 'most' });
+    const parsed = feedSchema.safeParse({
+      kind: FEED_EPISODE,
+      childId: CHILD_ID,
+      feedAmount: 'most',
+    });
     expect(parsed.success).toBe(true);
   });
 
@@ -66,7 +70,11 @@ describe('feedSchema — additive qualitative amount (a plain ZodObject for the 
   });
 
   it('routes a qualitative feed through the discriminated union by kind', () => {
-    const ok = quickLogSchema.safeParse({ kind: FEED_EPISODE, childId: CHILD_ID, feedAmount: 'all' });
+    const ok = quickLogSchema.safeParse({
+      kind: FEED_EPISODE,
+      childId: CHILD_ID,
+      feedAmount: 'all',
+    });
     expect(ok.success).toBe(true);
   });
 });
@@ -273,7 +281,11 @@ describe('diaperSchema — a diaper quick-log (plain ZodObject for the union)', 
   it('is reachable through the quickLogSchema discriminated union', () => {
     // Proves diaperSchema was actually added to the union — a valid diaper routes to
     // it, and an invalid diaperKind is still rejected once routed by `kind`.
-    const ok = quickLogSchema.safeParse({ kind: DIAPER_EPISODE, childId: CHILD, diaperKind: 'wet' });
+    const ok = quickLogSchema.safeParse({
+      kind: DIAPER_EPISODE,
+      childId: CHILD,
+      diaperKind: 'wet',
+    });
     expect(ok.success).toBe(true);
     const bad = quickLogSchema.safeParse({
       kind: DIAPER_EPISODE,

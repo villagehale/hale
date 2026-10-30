@@ -36,7 +36,10 @@ export interface StatCell {
 export function homeStatCells(stats: HomeStats): StatCell[] {
   return [
     stats.logsThisWeek > 0
-      ? { count: stats.logsThisWeek, label: `${pluralize(stats.logsThisWeek, 'log', 'logs')} this week` }
+      ? {
+          count: stats.logsThisWeek,
+          label: `${pluralize(stats.logsThisWeek, 'log', 'logs')} this week`,
+        }
       : { count: null, label: 'no logs yet this week' },
     stats.upcomingHealth > 0
       ? {

@@ -243,7 +243,8 @@ describe('multi-family zero-setup', () => {
       },
       { listHandles: listOf(SEVEN), reader: reading('chatter'), composer: voice },
     );
-    expect(banter).toMatchObject({ handled: true, outcome: 'chatter_ignored' });
+    // Chatter hands the turn back so the group door (text RSVP) still reads it.
+    expect(banter).toEqual({ handled: false });
     expect(wire.texts).toHaveLength(before);
 
     const mei = (await db.database.select().from(schema.linqSharedGroupPeople)).find(
@@ -256,6 +257,51 @@ describe('multi-family zero-setup', () => {
     expect(ada?.familyId).toBeTruthy();
     expect(mei?.familyId).not.toBe(ada?.familyId);
   });
+
+  for (const [label, intent, composer] of [
+    ['an unclear read', 'unclear', () => fakeSharedGroupComposer()],
+    ['a refused answer', 'question', () => fakeSharedGroupComposer({ decline: true })],
+    ['a failed answer', 'question', () => fakeSharedGroupComposer({ fail: true })],
+    ['a refused yes', 'yes', () => fakeSharedGroupComposer({ decline: true })],
+  ] as const) {
+    it(`hands the turn back on ${label} so text RSVP still reads it`, async () => {
+      await threeFamilies();
+      const wire = sender();
+      await takeMultiFamilyTurn(
+        db.database,
+        {
+          chatId: CHAT,
+          senderHandle: MEI,
+          text: 'Hale, Saturday swim — can you keep track?',
+          providerMessageId: 'in-ask',
+          receivedAt: NOW,
+          now: NOW,
+          send: wire.send,
+        },
+        {
+          listHandles: listOf(SEVEN),
+          reader: reading('question'),
+          composer: fakeSharedGroupComposer(),
+        },
+      );
+      const before = wire.texts.length;
+      const out = await takeMultiFamilyTurn(
+        db.database,
+        {
+          chatId: CHAT,
+          senderHandle: TOM,
+          text: 'we are in for saturday',
+          providerMessageId: `in-${label}`,
+          receivedAt: NOW,
+          now: NOW,
+          send: wire.send,
+        },
+        { listHandles: listOf(SEVEN), reader: reading(intent), composer: composer() },
+      );
+      expect(out).toEqual({ handled: false });
+      expect(wire.texts).toHaveLength(before);
+    });
+  }
 
   it('unseats on a stop_me reading and leaves the others on Hale', async () => {
     await threeFamilies();

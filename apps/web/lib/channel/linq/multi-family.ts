@@ -77,7 +77,13 @@ export type SendGroup = (notice: { chatId: string; text: string }) => Promise<{
   providerMessageId: string;
 }>;
 
-export type NoticeResult = 'sent' | 'already_sent' | 'not_sent' | 'refused_text' | 'no_parent';
+export type NoticeResult =
+  | 'sent'
+  | 'already_sent'
+  | 'declined'
+  | 'not_sent'
+  | 'refused_text'
+  | 'no_parent';
 
 export interface MultiFamilyTurnPorts {
   send?: SendGroup;
@@ -839,7 +845,7 @@ async function speak(
     deny,
     voice: input.ports.composer,
   });
-  if (!spoken.send) return spoken.fallback === 'declined' ? 'already_sent' : 'refused_text';
+  if (!spoken.send) return spoken.fallback === 'declined' ? 'declined' : 'refused_text';
   return deliverShared(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -1151,16 +1157,19 @@ export async function takeMultiFamilyTurn(
       now: input.now,
       ports: wired,
     });
-    if (notice === 'sent' || notice === 'already_sent') {
-      await audit(database, {
-        familyId,
-        actor: userId,
-        actionTaken: 'linq_multi_family_reply_sent',
-        targetTable: 'channel_messages',
-        targetId: inbound === 'guest' ? me.id : inbound,
-        after: { sources: 'thread', intent },
-      });
+    if (notice !== 'sent' && notice !== 'already_sent') {
+      // A declined or failed answer is not a handled turn: the rest of the group
+      // door (text RSVP for a plan) still gets to read this message.
+      return { handled: false };
     }
+    await audit(database, {
+      familyId,
+      actor: userId,
+      actionTaken: 'linq_multi_family_reply_sent',
+      targetTable: 'channel_messages',
+      targetId: inbound === 'guest' ? me.id : inbound,
+      after: { sources: 'thread', intent },
+    });
     const aside =
       input.privateAside && channel && inbound !== 'guest'
         ? await privateAsideFor(database, input.privateAside, {
@@ -1179,7 +1188,9 @@ export async function takeMultiFamilyTurn(
     };
   }
 
-  return { handled: true, outcome: 'chatter_ignored', count: 'ignored' };
+  // Chatter and an unclear read are not Hale's turn here: hand the message back
+  // so the rest of the group door (text RSVP for a plan) still reads it.
+  return { handled: false };
 }
 
 /** Hale was just added. One who's-who, then quiet until someone answers or asks. */

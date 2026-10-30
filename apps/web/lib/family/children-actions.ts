@@ -11,12 +11,7 @@ import { type AuthIdentity, requireUserIdForUser, resolveFamilyForUser } from '~
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { writeUserPreferences } from '~/lib/settings/user-preferences';
 import { type UnitSystem, parseIntents } from '@hale/types';
-import {
-  type ChildError,
-  type ChildInput,
-  parseInterests,
-  validateChild,
-} from './children-input';
+import { type ChildError, type ChildInput, parseInterests, validateChild } from './children-input';
 import { type LocationInput, normalizeLocation } from './location-input';
 
 /**
@@ -342,12 +337,16 @@ export async function setLocationAction(input: LocationInput): Promise<SetLocati
           province: location.province,
           postalCode: location.postalCode,
         })
-        .where(and(eq(schema.familyAreas.familyId, familyId), eq(schema.familyAreas.isActive, true)));
+        .where(
+          and(eq(schema.familyAreas.familyId, familyId), eq(schema.familyAreas.isActive, true)),
+        );
     } else {
       await tx
         .update(schema.familyAreas)
         .set({ isActive: false })
-        .where(and(eq(schema.familyAreas.familyId, familyId), eq(schema.familyAreas.isActive, true)));
+        .where(
+          and(eq(schema.familyAreas.familyId, familyId), eq(schema.familyAreas.isActive, true)),
+        );
     }
 
     await tx.insert(schema.auditLog).values({
@@ -405,10 +404,7 @@ export async function setIntentsAction(rawIntents: string[]): Promise<SetIntents
       .where(eq(schema.families.id, familyId))
       .limit(1);
 
-    await tx
-      .update(schema.families)
-      .set({ intents })
-      .where(eq(schema.families.id, familyId));
+    await tx.update(schema.families).set({ intents }).where(eq(schema.families.id, familyId));
 
     await tx.insert(schema.auditLog).values({
       familyId,

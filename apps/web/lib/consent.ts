@@ -50,10 +50,7 @@ export interface RecordConsentInput {
  * commit together. Account-level consents (terms, privacy, cross-border, LLM)
  * carry the family id once it exists; an absent family id stores null.
  */
-export async function recordConsent(
-  inserter: Inserter,
-  input: RecordConsentInput,
-): Promise<void> {
+export async function recordConsent(inserter: Inserter, input: RecordConsentInput): Promise<void> {
   await inserter.insert(schema.consentRecords).values({
     userId: input.userId,
     familyId: input.familyId ?? null,

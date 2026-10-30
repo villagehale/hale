@@ -8,7 +8,7 @@ import { assertNoInventedFacts, findInventedFacts } from './facts-lint';
  */
 describe('findInventedFacts', () => {
   it('catches a time not present in any slot', () => {
-    const text = "your checkup is at 3:30 — see you then";
+    const text = 'your checkup is at 3:30 — see you then';
     const slots = ["Mira's 18-month checkup", '2026-07-24'];
     expect(findInventedFacts(text, slots)).toEqual(['3:30']);
   });
@@ -42,7 +42,9 @@ describe('findInventedFacts', () => {
 
 describe('assertNoInventedFacts', () => {
   it('throws when a fact is invented', () => {
-    expect(() => assertNoInventedFacts('meet at 9:15', ['no times here'])).toThrow(/invented facts/);
+    expect(() => assertNoInventedFacts('meet at 9:15', ['no times here'])).toThrow(
+      /invented facts/,
+    );
   });
 
   it('does not throw when all facts are grounded', () => {
