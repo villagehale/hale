@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own. knows shows send_email and reply_to_email were both turned off this turn, so the reply truthfully confirms the change and states the new behavior: Hale asks before each email. It is short, in the parent's language, with no greeting, no machinery and no question. It does exactly what was asked and stops.",
+    "score": 5
+  }
+}

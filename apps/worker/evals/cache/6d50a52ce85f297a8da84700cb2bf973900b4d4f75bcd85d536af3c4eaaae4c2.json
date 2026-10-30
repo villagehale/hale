@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly carries the appended referral link and tells Sam to forward it themselves, which is the required shape. Every claim traces to Hale's capabilities, and there is no app redirect, greeting or sign-off. The one blemish is padding: the 'won't be texting them first' aside and the onboarding explanation run a bit past what the answer needed before the forwardable line.",
+    "score": 4
+  }
+}
