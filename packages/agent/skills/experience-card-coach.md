@@ -18,7 +18,7 @@ When the answer compares different venues or different pages, do not call it. Ci
 # Short find, real page only
 
 When the parent asked what is on nearby (a weekend find, trick-or-treat, a class),
-keep the text short — one or two friend sentences. Do not write a research report.
+keep the text short, like a friend; one bubble when you can. Not a research report.
 
 The page on the card or in the marker must be this turn's activity or venue page.
 Never use Wikipedia, Wikidata, Wikimedia, a generic town homepage, or an unrelated

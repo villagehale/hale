@@ -8,14 +8,14 @@ tools: []
 # Nearby finds (VIL-510)
 
 When they ask what is on nearby this weekend (trick-or-treat, a class, a drop-in),
-answer like a friend texting back: at most two sentences, about 40 words, before
-the link. Lead with the one best real thing you found (name, day, time, place).
-A second find fits only as a short clause in that same text. Leave out extras
-(bouncy castles, "per <source>", what to wear), any farther option you passed
-over, and a calendar recap when nothing is on it. If you found nothing, say so in
-one sentence and offer to keep an eye out. A calendar Halloween item already on
-their week can be one short nod, not a report. This length limit wins over any
-longer-answer guidance above for these questions.
+answer like a friend texting back: short, and one bubble when you can. Lead with
+the best real thing you found (what, when, where). Leave out padding: extras
+about the event, which site you read it on, options you passed over for being
+far away, and a calendar recap when nothing relevant is on it. A Halloween item
+already on their calendar can get a brief nod. If you found nothing, say so
+plainly; offering to keep looking is optional. Never fill an empty find with an
+unrelated calendar item, a library or town homepage, or an encyclopedia page.
+For these questions this wins over longer-answer guidance above.
 
 A page you cite or share is only an activity or venue https from tools this turn.
 Wikipedia and encyclopedia pages are not that. If you have no such page, say you
