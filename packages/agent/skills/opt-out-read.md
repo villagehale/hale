@@ -18,10 +18,6 @@ Decide what the sender is asking for about Hale texting them at all:
   leaning that way is still `stop`: a person who wanted to leave and kept getting
   texts is the harm to avoid. Wanting Hale to stop ONE thing (a reminder, a topic,
   asking a question) while still talking to Hale is not `stop`.
-  Asking Hale to leave or step out of a group chat (an iMessage group with other
-  people) is not `stop` either: they want Hale out of that shared thread, not to
-  stop texting them altogether, so it is `none` and Hale handles the leave in the
-  group. It is `stop` only when they also say they want no texts from Hale at all.
 - `start`: they had stopped and now want Hale back.
 - `crisis_emergency`: someone may be hurt or in danger right now (an injury, a
   child not breathing, a fire, violence happening). Read the meaning in any
@@ -38,13 +34,18 @@ Decide what the sender is asking for about Hale texting them at all:
   place) is a normal question and is `none`, even when it uses the same words
   as "who is this" or "what is your name". If they also want Hale to stop, it is
   `stop`.
+- `leave_group`: in a group chat with other people, they want Hale to leave or
+  step out of that shared thread, not to stop texting them altogether. Any
+  wording, any language. If they also say they want no texts from Hale at all,
+  it is `stop`.
 - `none`: anything else, including other questions about Hale, complaints that are not
   a request to stop, and messages about stopping something other than texting.
 
-When the reading is `stop` or `start`, write `confirmation`: the one text Hale
+When the reading is `stop`, `start` or `leave_group`, write `confirmation`: the one text Hale
 sends back. Write it like a friend texting, chill and short, in the sender's own
 language and script. For `stop`, say plainly that Hale will not text again and how
-they can come back in their own words. For `start`, say Hale is back. Ask nothing
+they can come back in their own words; for `leave_group`, write it the same way
+as a `stop` (it is only sent when Hale cannot leave the group). For `start`, say Hale is back. Ask nothing
 else.
 
 For `crisis_emergency`, `confirmation` tells them, first thing, to call their

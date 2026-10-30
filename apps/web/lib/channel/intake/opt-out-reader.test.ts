@@ -48,3 +48,21 @@ describe('opt-out reader guards (structural, no model)', () => {
     expect(calls).toEqual([text]);
   });
 });
+
+describe('VIL-477 leave_group reading', () => {
+  const text = 'Hale can you please leave this group chat';
+  const value = { intent: 'leave_group' as const, verbatim: text, confirmation: 'ok, bye' };
+  it('dark: stays the stop it always was', () => {
+    const prev = process.env.LINQ_GROUP_LEAVE_ENABLED;
+    delete process.env.LINQ_GROUP_LEAVE_ENABLED;
+    expect(acceptOptOutReading(value, text)).toEqual({ intent: 'stop', confirmation: 'ok, bye' });
+    if (prev !== undefined) process.env.LINQ_GROUP_LEAVE_ENABLED = prev;
+  });
+  it('lit: not a stop, no confirmation', () => {
+    const prev = process.env.LINQ_GROUP_LEAVE_ENABLED;
+    process.env.LINQ_GROUP_LEAVE_ENABLED = 'true';
+    expect(acceptOptOutReading(value, text)).toEqual({ intent: 'leave_group', confirmation: '' });
+    if (prev === undefined) delete process.env.LINQ_GROUP_LEAVE_ENABLED;
+    else process.env.LINQ_GROUP_LEAVE_ENABLED = prev;
+  });
+});
