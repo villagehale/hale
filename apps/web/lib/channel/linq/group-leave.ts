@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import * as door from '~/lib/channel/outbound-transport';
 import { cancelGroupReminders } from '~/lib/loop/reminders/group/store';
 import { linqGroupLeaveEnabled } from './config';
@@ -105,7 +105,41 @@ export async function releaseGroupOnLeave(
     actionTaken: 'linq_group_left_on_ask',
     targetTable: 'families',
     targetId: input.familyId,
-    after: { claimReleased: released.length > 0 },
+    after: { claimReleased: released.length > 0, chatId: input.chatId },
   });
   return { released: released.length > 0 };
+}
+
+/** A send was stopped because Hale already left the chat it targets (VIL-477). */
+export class ChatLeftError extends Error {
+  constructor() {
+    super('chat_left');
+    this.name = 'ChatLeftError';
+  }
+}
+
+/**
+ * VIL-477 send gate. True when Hale left this Linq chat on a family's ask at or after
+ * `since` (the inbound's arrival). An in-flight turn that started before the leave must
+ * not speak into the chat afterwards: releasing the claim alone does not stop a reply
+ * already being composed. A message that arrives AFTER a leave (Hale re-added) is newer
+ * than the leave row and passes. One indexed read on the audit log; chat-scoped, not
+ * family-scoped, because the leave removes Hale from the chat for everyone.
+ */
+export async function leftChatSince(
+  database: Database,
+  input: { chatId: string; since: Date },
+): Promise<boolean> {
+  const rows = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, 'linq_group_left_on_ask'),
+        sql`${schema.auditLog.after} ->> 'chatId' = ${input.chatId}`,
+        gte(schema.auditLog.occurredAt, input.since),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }

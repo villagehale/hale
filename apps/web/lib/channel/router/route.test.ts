@@ -500,6 +500,7 @@ function harness(
     turns,
     deps: {
       database: fake.db,
+      leftChatSince: async () => false,
       loadContext: async () => context,
       transport,
       handlers: options.handlers ?? [],
@@ -5457,6 +5458,34 @@ describe('VIL-463 group scope', () => {
     direct.deps.disambiguation = directMenu as unknown as DisambiguationStore;
     await routeChannelMessage(direct.deps, job());
     expect(directMenu.consumed).toBe(1);
+  });
+
+  // VIL-477: an overlapping turn (a "be quiet" reply composed before another member's
+  // leave landed) must not speak into the chat Hale already left.
+  it('sends nothing into a group chat Hale left while the turn was in flight', async () => {
+    const seen: Array<{ chatId: string; since: Date }> = [];
+    const h = harness({
+      context: { body: 'Hale be quiet for a bit', reply: GROUP_ROUTE, inGroup: true },
+    });
+    h.deps.leftChatSince = async (_db, input) => {
+      seen.push(input);
+      return true;
+    };
+    const turn = job({ in_group: true });
+    const result = await routeChannelMessage(h.deps, turn);
+
+    expect(result.status).toBe('group_left');
+    expect(h.transport.sent).toEqual([]);
+    expect(seen[0]?.chatId).toBe(GROUP_ROUTE.chatId);
+    expect(seen[0]?.since.toISOString()).toBe(new Date(turn.received_at).toISOString());
+
+    // Positive control: the same group turn, chat not left, replies.
+    const stay = harness({
+      context: { body: 'Hale be quiet for a bit', reply: GROUP_ROUTE, inGroup: true },
+    });
+    const kept = await routeChannelMessage(stay.deps, job({ in_group: true }));
+    expect(kept.status).not.toBe('group_left');
+    expect(stay.transport.sent.length).toBeGreaterThan(0);
   });
 
   async function overLimitGroupTurn(floodLine: FloodLineComposer) {

@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { releaseGroupOnLeave } from './group-leave';
+import { leftChatSince, releaseGroupOnLeave } from './group-leave';
 
 /** VIL-477 Design blocker: an accepted leave releases the claim with onboarding v2 dark. */
 const NOW = new Date('2026-10-30T12:00:00.000Z');
@@ -60,5 +60,37 @@ describe('releaseGroupOnLeave', () => {
       .from(schema.families)
       .where(eq(schema.families.id, other.familyId));
     expect(otherRow[0]?.chat).toBe('chat-other');
+  });
+
+  it('gates sends: a turn that arrived before the leave is stopped; one after a re-add is not', async () => {
+    const fam = await seedFamily(db.database, 'Gate');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: 'chat-gate' })
+      .where(eq(schema.families.id, fam.familyId));
+    const beforeLeave = new Date(Date.now() - 60_000);
+    expect(await leftChatSince(db.database, { chatId: 'chat-gate', since: beforeLeave })).toBe(
+      false,
+    );
+
+    await releaseGroupOnLeave(db.database, {
+      familyId: fam.familyId,
+      chatId: 'chat-gate',
+      askedBy: fam.parentUserId,
+      now: NOW,
+    });
+
+    expect(await leftChatSince(db.database, { chatId: 'chat-gate', since: beforeLeave })).toBe(
+      true,
+    );
+    // another chat is untouched
+    expect(await leftChatSince(db.database, { chatId: 'chat-elsewhere', since: beforeLeave })).toBe(
+      false,
+    );
+    // a message that arrived after the leave (Hale re-added) is newer than the leave row
+    const afterLeave = new Date(Date.now() + 60_000);
+    expect(await leftChatSince(db.database, { chatId: 'chat-gate', since: afterLeave })).toBe(
+      false,
+    );
   });
 });
