@@ -533,14 +533,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
   // because a parent forwards it OUT.
   // By ref, mirroring reply.ts: typed URLs are dropped, cited refs attach their page.
   const cited = attachLinks(redacted, activityLinks);
-  // Same strip as reply.ts. Narration-only comes back empty and fails the turn.
-  // Code does not write a replacement sentence.
-  const repaired = repairParentReply(cited.body, cited.urls);
-  const answerBody = repaired.body;
-  if (answerBody === '' && (narratesRefMachinery(cited.body) || repaired.urls.length === 0)) {
-    return null;
-  }
-  const link = repaired.urls.join(' ');
+  const link = cited.urls.join(' ');
   // A plan offer or a referral still crowds the count out. An activity URL does not:
   // the count is about that find, and the URL is that find's page.
   const protectedTail = redactTeenNames(
@@ -552,7 +545,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     NOW,
   );
   if (!protectedTail) {
-    const answer = dropDuplicateOffer(answerBody, link);
+    const answer = dropDuplicateOffer(cited.body, link);
     const clause = nearbyClause(answer, nearby);
     const tail = [clause ?? '', link]
       .map((part) => part.trim())
@@ -567,7 +560,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
     children,
     NOW,
   );
-  const answer = dropDuplicateOffer(answerBody, suffix);
+  const answer = dropDuplicateOffer(cited.body, suffix);
   if (answer === '') return suffix;
   return `${answer} ${suffix}`;
 }
@@ -593,9 +586,6 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
 let attachLinks = (text) => ({ body: text, urls: [] });
 let linkRef = (url) => url;
 /** VIL-501. Same function production's toSmsReply runs. Identity until activity-links loads. */
-let repairParentReply = (body, urls) => ({ body, urls });
-let narratesRefMachinery = () => false;
-
 function activityLinksFor(fixture, calls) {
   const links = [];
   for (const candidate of villageFor(fixture).candidates ?? []) {
@@ -1843,6 +1833,13 @@ const JUDGE_SYSTEM = [
   '`knows.promises` is every `promise_activity_followup` registered this turn. A',
   'sentence that Hale will come back is TRUE when that list is non-empty, and an',
   'unbacked promise when it is empty. Do not score a registered promise as invented.',
+  'THE PAGE MARKER IS INTERNAL. A find\'s page reaches the parent because the reply',
+  'cited a marker a tool returned this turn; the parent should read the class — its',
+  'name, when it runs, whose page — and the real https address the runtime appended.',
+  'Score a 1 when the reply narrates that machinery instead: that a ref came back,',
+  'that no refs came back, that a page can be attached, or any explanation of the',
+  'marker in place of the class. A soccer referee, "refer a friend", and the family\'s',
+  'referral link are not that machinery; do not score those down for the word.',
   'QUOTE THE TITLE. The name of a find is the title in `knows.offerable` or',
   '`knows.webFind`, whole. "Riverdale story time" and "Fanous lantern craft" are',
   'not "storytime", "a lantern thing", or a rewrite built from the venue. A',
@@ -2001,7 +1998,7 @@ async function main() {
     join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'spoken-find.ts'),
     import.meta.url,
   ));
-  ({ attachLinks, linkRef, repairParentReply, narratesRefMachinery } = await tsImport(
+  ({ attachLinks, linkRef } = await tsImport(
     join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'activity-links.ts'),
     import.meta.url,
   ));

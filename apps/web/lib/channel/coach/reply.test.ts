@@ -564,38 +564,13 @@ describe('activity links', () => {
     expect(out).toBe('Swim is Tuesday, see.');
   });
 
-  it('fails the turn when the reply is only ref narration (VIL-501)', () => {
-    expect(() =>
-      toSmsReply('A ref came back this time, so I can attach the page.', {
-        children: [],
-        now: NOW,
-        activityLinks: [TUMBLERS],
-      }),
-    ).toThrow(/empty after post-processing/);
-  });
-
-  it('keeps the class the model wrote and drops the narration, without composing one', () => {
-    const reply = toSmsReply(
-      `A ref came back. Riverdale story time is Saturday at 10. [${TUMBLERS.ref}]`,
-      {
-        children: [],
-        now: NOW,
-        activityLinks: [TUMBLERS],
-      },
+  it('does not delete a sentence that says ref (VIL-501)', () => {
+    const soccer = 'The ref is at the field at 4.';
+    expect(toSmsReply(soccer, { children: [], now: NOW })).toBe(soccer);
+    const narration = 'A ref came back this time, so I can attach the page.';
+    expect(toSmsReply(narration, { children: [], now: NOW, activityLinks: [TUMBLERS] })).toBe(
+      narration,
     );
-    expect(reply).toBe(`Riverdale story time is Saturday at 10. ${TUMBLERS_URL}`);
-    expect(reply).not.toMatch(/\brefs?\b/i);
-    expect(reply).not.toMatch(/per /);
-  });
-
-  it('does not attach a page the model did not cite, even beside a class sentence', () => {
-    const reply = toSmsReply('A ref came back. Riverdale story time is Saturday at 10.', {
-      children: [],
-      now: NOW,
-      activityLinks: [TUMBLERS],
-    });
-    expect(reply).toBe('Riverdale story time is Saturday at 10.');
-    expect(reply).not.toContain(TUMBLERS_URL);
   });
 
   it('does not treat refer as the marker', () => {

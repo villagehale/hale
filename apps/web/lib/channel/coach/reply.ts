@@ -1,12 +1,7 @@
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
-import {
-  type RefLink,
-  attachLinks,
-  narratesRefMachinery,
-  repairParentReply,
-} from './activity-links';
+import { type RefLink, attachLinks } from './activity-links';
 
 /**
  * VIL-221 · C2 — everything that happens to the model's answer between the loop
@@ -176,9 +171,11 @@ export function plainText(text: string): string {
  * tool-supplied facts and links. No character or segment cap. Code never truncates what
  * the model wrote, including at an abbreviation such as "St." or "p.m.".
  *
- * An empty body THROWS rather than sending whitespace: the router reads a throw as a
- * failed turn and answers with the honesty template, which is the correct outcome for a
- * model that returned nothing (rule #8 — no silent no-op).
+ * An empty body THROWS rather than sending whitespace (rule #8 — no silent no-op).
+ * The router treats that throw as a failed turn. The words the parent may then get
+ * are composed by the turn-apology model (`apology.ts`); if that composer cannot
+ * speak, the turn is deferred and the parent is sent nothing. There is no fixed
+ * honesty sentence on this path.
  */
 export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   const flattened = plainText(raw);
@@ -189,17 +186,9 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     redactTeenNames(flattened, args.children, args.now),
     args.activityLinks,
   );
-  // VIL-501. Sentences that explain the marker never go out. If that was the whole
-  // reply, this is the same failure as an empty answer: the router owns the honesty
-  // line. Code does not write a replacement.
-  const repaired = repairParentReply(cited.body, cited.urls);
-  const redacted = redactTeenNames(repaired.body, args.children, args.now);
-  if (redacted === '' && (narratesRefMachinery(cited.body) || repaired.urls.length === 0)) {
-    throw new Error(
-      narratesRefMachinery(cited.body)
-        ? 'channel coach: model answer was empty after post-processing'
-        : 'channel coach: model answer was only an uncited link',
-    );
+  const redacted = cited.body;
+  if (redacted === '' && cited.urls.length === 0) {
+    throw new Error('channel coach: model answer was only an uncited link');
   }
   if (reachesForTheHealthLine(redacted)) {
     // The model wrote a health-line number in its own words. That is the reply. The
@@ -212,7 +201,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Redacted with the answer, not after it: the referral line is composed by the model
   // and is the one piece of outbound text a parent forwards to somebody outside the
   // family, so the age-derived teen floor (rule #1) has to cover it too.
-  const link = repaired.urls.join(' ');
+  const link = cited.urls.join(' ');
   // A plan offer or a referral drops the nearby count. An activity URL does not:
   // the count is about that find, and the URL is that find's page, so both go out.
   const protectedTail = redactTeenNames(

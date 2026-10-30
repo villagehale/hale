@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  attachLinks,
-  linkRef,
-  narratesRefMachinery,
-  repairParentReply,
-  stripRefNarration,
-} from './activity-links';
+import { attachLinks, linkRef } from './activity-links';
 
 const PAGE = 'https://www.torontopubliclibrary.ca/programs-and-classes/';
 const OTHER = 'https://www.torontopubliclibrary.ca/robotics';
@@ -43,55 +37,25 @@ describe('attachLinks', () => {
   it('drops an unknown ref', () => {
     expect(attachLinks('Swim. [link-000000]', links)).toEqual({ body: 'Swim.', urls: [] });
   });
-});
 
-const STORY = 'https://www.torontopubliclibrary.ca/programs-and-classes/';
-
-describe('ref narration is stripped and never replaced (VIL-501)', () => {
-  it('treats the machinery word as narration and leaves refer alone', () => {
-    expect(narratesRefMachinery('A ref came back this time, so I can attach the page.')).toBe(true);
-    expect(narratesRefMachinery('I can attach the page.')).toBe(true);
-    expect(narratesRefMachinery('No refs came back.')).toBe(true);
-    expect(narratesRefMachinery('Text this if you want to refer a friend.')).toBe(false);
-    expect(narratesRefMachinery('Riverdale story time is Saturday at 10.')).toBe(false);
-  });
-
-  it('drops the narration sentence and keeps St. Lawrence whole', () => {
-    expect(stripRefNarration('Meet at St. Lawrence. A ref came back.')).toBe(
-      'Meet at St. Lawrence.',
-    );
-    expect(stripRefNarration('A ref came back this time, so I can attach the page.')).toBe('');
-  });
-
-  it('leaves an empty body when the reply was only narration, and does not write a class', () => {
-    const out = repairParentReply('A ref came back this time, so I can attach the page.', [STORY]);
-    expect(out.body).toBe('');
-    expect(out.body).not.toMatch(/per /);
-    expect(out.urls).toEqual([STORY]);
-  });
-
-  it('keeps the class the model wrote and drops the narration, without adding an uncited page', () => {
-    const out = repairParentReply('A ref came back. Riverdale story time is Saturday at 10.', []);
-    expect(out).toEqual({ body: 'Riverdale story time is Saturday at 10.', urls: [] });
-  });
-
-  it('keeps a cited https page beside the class the model wrote', () => {
-    const out = repairParentReply('A ref came back. Riverdale story time is Saturday at 10.', [
-      STORY,
-    ]);
-    expect(out.body).toBe('Riverdale story time is Saturday at 10.');
-    expect(out.urls).toEqual([STORY]);
-  });
-
-  it('drops a cited page that is not absolute https', () => {
+  it('does not attach a cited page that is not absolute https (VIL-501)', () => {
     const http = 'http://example.com/swim';
-    expect(repairParentReply('Swim is Tuesday.', [http, 'not-a-url'])).toEqual({
-      body: 'Swim is Tuesday.',
-      urls: [],
-    });
     expect(attachLinks(`Swim. [${linkRef(http)}]`, [{ ref: linkRef(http), url: http }])).toEqual({
       body: 'Swim.',
       urls: [],
     });
+    expect(attachLinks('Swim. [link-abcdef]', [{ ref: 'link-abcdef', url: 'not-a-url' }])).toEqual({
+      body: 'Swim.',
+      urls: [],
+    });
+  });
+
+  it('leaves the word ref in the prose', () => {
+    expect(attachLinks('The ref is at the field at 4.', links).body).toBe(
+      'The ref is at the field at 4.',
+    );
+    expect(attachLinks('A ref came back this time, so I can attach the page.', links).body).toBe(
+      'A ref came back this time, so I can attach the page.',
+    );
   });
 });

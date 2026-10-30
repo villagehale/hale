@@ -4,10 +4,10 @@
  * STRUCTURAL, NOT WORD MATCHING. Every find a tool hands the model this turn that has a
  * page carries a `ref` (see `linkRef`) instead of its URL. When the reply is about that
  * exact program, the model writes the ref in square brackets (`[link-1a2b3c]`); code
- * removes the marker and appends that find's URL. A URL the model typed itself is
- * dropped, whatever it says, because the only way a page reaches a parent is a ref that
- * a tool returned this turn. An unknown ref is dropped too. Nothing here reads titles,
- * venues or words.
+ * removes the marker and appends that find's URL, and only when it is absolute https.
+ * A URL the model typed itself is dropped, whatever it says, because the only way a
+ * page reaches a parent is a ref that a tool returned this turn. An unknown ref is
+ * dropped too. Nothing here reads titles, venues, or the word "ref".
  *
  * No imports. The coach-channel eval loads this file under tsx, where the `~/` alias
  * does not resolve.
@@ -62,58 +62,9 @@ export function attachLinks(
   return { body, urls };
 }
 
+/** Absolute https only. http, a bare host, or a non-URL is not a page we text. */
 const ABSOLUTE_HTTPS = /^https:\/\/\S+$/i;
-/** The machinery word, as its own word. "refer" and "referral" do not match. */
-const REF_WORD = /\brefs?\b/i;
-/** The other half of the same narration: explaining that a page can be attached. */
-const ATTACH_PAGE = /\battach(?:es|ed|ing)?\s+(?:the|a|that|their|its)\s+page\b/i;
-/** Periods that are not sentence ends, so "St. Lawrence" survives a sentence split. */
-const ABBREVIATION = /\b(?:St|Mr|Mrs|Ms|Dr|Jr|Sr|a\.m|p\.m|e\.g|i\.e)\./gi;
 
 function isAbsoluteHttps(url: string): boolean {
   return ABSOLUTE_HTTPS.test(url.trim());
-}
-
-/**
- * VIL-501. Parent-visible talk about the marker. The bracket token itself is not this:
- * code removes it before the parent reads the reply. "refer" is a different word.
- */
-export function narratesRefMachinery(text: string): boolean {
-  return REF_WORD.test(text) || ATTACH_PAGE.test(text);
-}
-
-function sentences(text: string): string[] {
-  const shielded = text.replace(ABBREVIATION, (match) => `${match.slice(0, -1)}\u0001`);
-  return shielded
-    .split(/(?<=[.!?])\s+/)
-    .map((part) => part.replaceAll('\u0001', '.').trim())
-    .filter((part) => part !== '');
-}
-
-/**
- * Drop every sentence that explains the marker. A reply that was only that comes back
- * empty — the caller fails the turn. Nothing here writes a replacement sentence.
- */
-export function stripRefNarration(text: string): string {
-  const trimmed = text.trim();
-  if (!narratesRefMachinery(trimmed)) return trimmed;
-  return sentences(trimmed)
-    .filter((sentence) => !narratesRefMachinery(sentence))
-    .join(' ')
-    .trim();
-}
-
-/**
- * After refs are resolved. Narration never stays. Cited pages stay only when they are
- * absolute https. An empty body is the caller's to fail — this function does not
- * compose a class, a source line, or any other stand-in.
- */
-export function repairParentReply(
-  body: string,
-  citedUrls: readonly string[],
-): { body: string; urls: string[] } {
-  const urls = citedUrls.filter((url) => isAbsoluteHttps(url));
-  const trimmed = body.trim();
-  if (!narratesRefMachinery(trimmed)) return { body: trimmed, urls };
-  return { body: stripRefNarration(trimmed), urls };
 }
