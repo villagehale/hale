@@ -292,6 +292,9 @@ jobs:
       - name: Reminder eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder
 
+      - name: Linq sticker eval (cached-only)
+        run: pnpm --filter @hale/worker eval:linq-sticker
+
       - name: Group reminder eval (cached-only)
         working-directory: apps/worker
         run: node evals/group-reminder-eval.mjs --cached-only

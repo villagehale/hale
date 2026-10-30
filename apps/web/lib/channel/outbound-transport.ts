@@ -438,6 +438,19 @@ export async function leaveLinqChat(
   );
 }
 
+export async function peelLinqSticker(
+  input: In<typeof linq.peelLinqSticker>,
+): Promise<{ accepted: true }> {
+  return captureOrLinq(
+    input,
+    'sticker',
+    () => linq.peelLinqSticker(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
+}
+
 export async function shareLinqContactCard(
   input: In<typeof linq.shareLinqContactCard>,
 ): Promise<{ accepted: true }> {

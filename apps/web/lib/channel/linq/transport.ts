@@ -607,6 +607,31 @@ export async function reactToLinqMessage(input: {
 }
 
 /**
+ * Peel one emoji onto a message as a sticker (VIL-472). A peel cannot be removed,
+ * and on an SMS or RCS chat Linq refuses it (2029). The caller chooses nothing
+ * here: the emoji is the model's.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/stickers/
+ */
+export async function peelLinqSticker(input: {
+  messageId: string;
+  emoji: string;
+  partIndex?: number;
+  fetch?: typeof fetch;
+}): Promise<{ accepted: true }> {
+  const body: Record<string, unknown> = { operation: 'add', type: 'sticker', emoji: input.emoji };
+  if (input.partIndex !== undefined) body.part_index = input.partIndex;
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/messages/${encodeURIComponent(input.messageId)}/reactions`,
+    body,
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  return { accepted: true };
+}
+
+/**
  * Push the Name and Photo card already configured on the sending line.
  * No request body — the card is the one on the chat's `from` number.
  * iMessage only, and only after at least one outbound. A missing card is

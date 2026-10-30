@@ -6,6 +6,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 const waitUntil = vi.hoisted(() => vi.fn());
 vi.mock('@vercel/functions', () => ({ waitUntil }));
+const stickerDecide = vi.hoisted(() => vi.fn());
+vi.mock('~/lib/channel/linq/sticker', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/linq/sticker')>()),
+  sharedLinqStickerDecider: () => ({ decide: stickerDecide }),
+}));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -5304,6 +5309,41 @@ describe('the reply row, written to a real database', () => {
         ]);
         expect(next.said).toEqual([]);
         expect(await keptAsks(parent.familyId)).toEqual([]);
+      });
+
+      it('a sticker the model chose to stand in for the words', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+        stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: false });
+        const peeled: unknown[] = [];
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+          if (new URL(url).pathname.endsWith('/reactions'))
+            peeled.push(JSON.parse(String(init?.body)));
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        const next = await text(
+          parent,
+          'perfect, see you saturday',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          { offDomain: fakeLane(IN_DOMAIN), coach: fakeCoach('See you then.') },
+        );
+        vi.unstubAllGlobals();
+
+        expect(stickerDecide).toHaveBeenCalledWith({
+          audience: 'direct',
+          parentText: 'perfect, see you saturday',
+          parentAttachments: [],
+          reply: 'See you then.',
+        });
+        expect(peeled).toEqual([{ operation: 'add', type: 'sticker', emoji: '🙌' }]);
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+        stickerDecide.mockReset();
       });
     });
 

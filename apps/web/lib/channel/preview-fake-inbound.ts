@@ -7,7 +7,12 @@ import {
 import { type InboundRouteDeps, routeInboundText } from '~/lib/channel/inbound-route';
 import { countUncapturedLedgerRows, readCapturedSends } from '~/lib/channel/preview-capture-store';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
-import { PREVIEW_CHAT_PREFIX, previewGroupCaptureOpen } from '~/lib/channel/preview-linq-capture';
+import {
+  type GroupCaptureSink,
+  PREVIEW_CHAT_PREFIX,
+  databaseGroupCaptureSink,
+  previewGroupCaptureOpen,
+} from '~/lib/channel/preview-linq-capture';
 import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone';
 
 /**
@@ -114,7 +119,7 @@ export function previewRouteGate(req: Request, env: Env): Response | null {
  */
 export async function handlePreviewFakeInbound(
   req: Request,
-  deps: InboundRouteDeps & Gate,
+  deps: InboundRouteDeps & Gate & { groupSink?: GroupCaptureSink },
 ): Promise<Response> {
   const env = deps.env ?? process.env;
   const shut = previewRouteGate(req, env);
@@ -143,6 +148,20 @@ export async function handlePreviewFakeInbound(
   }
 
   const providerId = `preview-inbound-${randomUUID()}`;
+  if (imessageChatId) {
+    // VIL-472 — the fake 1:1 chat's inbound is recorded like a group's, so a tapback or
+    // sticker Hale peels onto this message resolves to the fake chat and is captured.
+    const sink = deps.groupSink ?? databaseGroupCaptureSink(deps.database);
+    await sink.record({
+      chatId: imessageChatId,
+      kind: 'roster',
+      method: 'POST',
+      path: '/preview/inbound',
+      body: { messageId: providerId, from, text },
+      handles: [from],
+      providerMessageId: null,
+    });
+  }
   const outcome = await routeInboundText(deps, {
     from,
     ...(imessageChatId
