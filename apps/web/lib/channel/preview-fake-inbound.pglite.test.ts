@@ -4,6 +4,7 @@ import type { InboundRouteDeps } from '~/lib/channel/inbound-route';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { persistCapturedSend, readCapturedSends } from './preview-capture-store';
 import { createPreviewCaptureTransport } from './preview-capture-transport';
+import { databaseGroupCaptureSink } from './preview-linq-capture';
 
 const routeInboundText = vi.fn(async () => 'intake' as const);
 vi.mock('~/lib/channel/inbound-route', () => ({
@@ -127,6 +128,19 @@ describe('preview fake inbound routing', () => {
     expect(inbound).toMatchObject({ from: FAKE, body: 'HALE OSSINGTON', transport: 'sms' });
     expect(String(inbound.providerId)).toMatch(/^preview-inbound-/);
     expect(inbound.media).toBeUndefined();
+  });
+
+  it('an iMessage 1:1 records its inbound, so a sticker peeled onto it resolves to the fake chat', async () => {
+    for (const name of ['LINQ_API_KEY', 'LINQ_FROM_E164', 'LINQ_WEBHOOK_SECRET'])
+      vi.stubEnv(name, '');
+    const res = await handlePreviewFakeInbound(
+      post({ from: FAKE, text: 'Thank you!', imessage: true }),
+      deps({ ...ON, PREVIEW_CAPTURE_GROUPS: 'on' }),
+    );
+    expect(res.status).toBe(200);
+    const { providerId, chatId } = (await res.json()) as { providerId: string; chatId: string };
+    expect(chatId).toMatch(/^preview-chat-direct-/);
+    expect(await databaseGroupCaptureSink(t.database).chatOfMessage(providerId)).toBe(chatId);
   });
 
   it('carries a photo attachment, with no text', async () => {
