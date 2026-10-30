@@ -1153,6 +1153,25 @@ export async function takeMultiFamilyTurn(
     return { handled: true, outcome: 'linked', count: 'intake' };
   }
 
+  // VIL-496: past the two-family gate, a message that touches a family's own facts gets
+  // its 1:1 aside whatever the group read was (question, chatter, unclear).
+  const runAside = async (): Promise<string | undefined> =>
+    input.privateAside && channel && inbound !== 'guest'
+      ? await privateAsideFor(database, input.privateAside, {
+          chatId: input.chatId,
+          inboundId: inbound,
+          text: input.text,
+          senderFamilyId: channel.familyId,
+        })
+      : undefined;
+  const logFallthrough = (why: string, aside: string | undefined) => {
+    console.info('linq multi-family: turn handed back', {
+      chatId: input.chatId,
+      intent: why,
+      aside: aside ?? (input.privateAside ? (channel ? 'guest' : 'no_channel') : 'not_wired'),
+    });
+  };
+
   if (intent === 'question' || intent === 'yes' || intent === 'no') {
     const notice = await speak(database, {
       familyId: host.familyId,
@@ -1180,15 +1199,7 @@ export async function takeMultiFamilyTurn(
     }
     // VIL-496 (Design lock): the private aside never waits on the group line. A family
     // whose own facts the message touches hears 1:1 even when Hale stays quiet here.
-    const aside =
-      input.privateAside && channel && inbound !== 'guest'
-        ? await privateAsideFor(database, input.privateAside, {
-            chatId: input.chatId,
-            inboundId: inbound,
-            text: input.text,
-            senderFamilyId: channel.familyId,
-          })
-        : undefined;
+    const aside = await runAside();
     if (!groupSpoke) {
       // Quiet group + an aside that ran: Hale owned this turn, so it must not fall
       // through to the mixed-family hold. With no aside, hand it back so the rest of
@@ -1196,6 +1207,7 @@ export async function takeMultiFamilyTurn(
       if (aside === 'ran') {
         return { handled: true, outcome: 'aside_only', count: 'intake', notice, aside };
       }
+      logFallthrough(intent, aside);
       return { handled: false };
     }
     return {
@@ -1207,8 +1219,14 @@ export async function takeMultiFamilyTurn(
     };
   }
 
-  // Chatter and an unclear read are not Hale's turn here: hand the message back
-  // so the rest of the group door (text RSVP for a plan) still reads it.
+  // Chatter and an unclear read are not Hale's group turn, but a private fact in them
+  // still earns its 1:1 aside. Without one, hand the message back so the rest of the
+  // group door (text RSVP for a plan) still reads it.
+  const aside = await runAside();
+  if (aside === 'ran') {
+    return { handled: true, outcome: 'aside_only', count: 'intake', aside };
+  }
+  logFallthrough(intent, aside);
   return { handled: false };
 }
 

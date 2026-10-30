@@ -28,6 +28,11 @@ const questionReader: SharedGroupReader = {
   },
 };
 /** VIL-456: the shared turn reads and speaks through ports; fakes here, never a word list. */
+const readerOf = (intent: 'chatter' | 'unclear'): SharedGroupReader => ({
+  async read() {
+    return { intent, role: 'unclear', familyLabel: null, kidName: null, confidence: 'high' };
+  },
+});
 const ports = () => ({
   reader: questionReader,
   composer: fakeSharedGroupComposer({ body: SHARED_REPLY }),
@@ -358,6 +363,48 @@ describe('VIL-496 aside sends even when the group line does not', () => {
     expect(out).toEqual({ handled: false });
     expect(dm.sent).toEqual([]);
   });
+
+  for (const intent of ['chatter', 'unclear'] as const) {
+    it(`reader says ${intent}: the clashing family still hears 1:1; group stays silent`, async () => {
+      const { wire } = await twoJoined();
+      const groupBefore = wire.texts.length;
+      const m = fakeModel('clash');
+      const dm = fakeOneToOne();
+      const out = await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire),
+          privateAside: {
+            model: m.model,
+            sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+          },
+        },
+        { reader: readerOf(intent), composer: fakeSharedGroupComposer({ decline: true }) },
+      );
+      expect(out).toMatchObject({ handled: true, outcome: 'aside_only', aside: 'ran' });
+      expect(wire.texts.slice(groupBefore)).toEqual([]);
+      expect(dm.sent).toEqual([{ to: PARENT_B, body: `aside:${CHILD}` }]);
+    });
+
+    it(`reader says ${intent} and no family touched: hands the message back`, async () => {
+      const { wire } = await twoJoined();
+      const m = fakeModel([]);
+      const dm = fakeOneToOne();
+      const out = await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire),
+          privateAside: {
+            model: m.model,
+            sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+          },
+        },
+        { reader: readerOf(intent), composer: fakeSharedGroupComposer({ decline: true }) },
+      );
+      expect(out).toEqual({ handled: false });
+      expect(dm.sent).toEqual([]);
+    });
+  }
 
   it('a redelivered message after a quiet group does not aside twice', async () => {
     const { wire } = await twoJoined();
