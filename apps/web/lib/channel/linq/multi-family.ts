@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
@@ -9,6 +9,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { DEFAULT_TIMEZONE, formatDateTime } from '~/lib/format/datetime';
+import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import { linqMultiFamilyGroupsEnabled } from './config';
 import { type PrivateAsideModel, type SendOneToOne, runPrivateAside } from './group-private-aside';
 import type { ListChatHandles } from './roster';
@@ -653,7 +654,12 @@ export async function readFamilySliceForAudience(
   // an empty slice before any table is touched).
   const [kids, facts, mail, bookings, events, zoneRows] = await Promise.all([
     database
-      .select({ familyId: schema.children.familyId, name: schema.children.name })
+      .select({
+        id: schema.children.id,
+        familyId: schema.children.familyId,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+      })
       .from(schema.children)
       .where(eq(schema.children.familyId, input.dataFamilyId)),
     database
@@ -682,14 +688,11 @@ export async function readFamilySliceForAudience(
         familyId: schema.familyEvents.familyId,
         title: schema.familyEvents.title,
         startsAt: schema.familyEvents.startsAt,
+        childId: schema.familyEvents.childId,
+        sensitive: schema.familyEvents.sensitive,
       })
       .from(schema.familyEvents)
-      .where(
-        and(
-          eq(schema.familyEvents.familyId, input.dataFamilyId),
-          isNull(schema.familyEvents.deletedAt),
-        ),
-      ),
+      .where(and(eq(schema.familyEvents.familyId, input.dataFamilyId), householdFamilyEvent())),
     database
       .select({ timezone: schema.users.timezone })
       .from(schema.familyMembers)
@@ -708,8 +711,14 @@ export async function readFamilySliceForAudience(
       familyId: input.dataFamilyId,
       children: kids.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.name),
       memory: facts.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.factKey),
+      // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
+      // one parent's own Google mirror is excluded by householdFamilyEvent().
       calendar: events
         .filter((row) => row.familyId === input.dataFamilyId)
+        .filter(
+          (row) =>
+            !isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, kids, new Date()),
+        )
         .map((row) => `${row.title} · ${formatDateTime(row.startsAt, zone)}`),
       email: mail.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.subject),
       signups: bookings
