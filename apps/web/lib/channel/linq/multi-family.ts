@@ -1167,19 +1167,19 @@ export async function takeMultiFamilyTurn(
       now: input.now,
       ports: wired,
     });
-    if (notice !== 'sent' && notice !== 'already_sent') {
-      // A declined or failed answer is not a handled turn: the rest of the group
-      // door (text RSVP for a plan) still gets to read this message.
-      return { handled: false };
+    const groupSpoke = notice === 'sent' || notice === 'already_sent';
+    if (groupSpoke) {
+      await audit(database, {
+        familyId,
+        actor: userId,
+        actionTaken: 'linq_multi_family_reply_sent',
+        targetTable: 'channel_messages',
+        targetId: inbound === 'guest' ? me.id : inbound,
+        after: { sources: 'thread', intent },
+      });
     }
-    await audit(database, {
-      familyId,
-      actor: userId,
-      actionTaken: 'linq_multi_family_reply_sent',
-      targetTable: 'channel_messages',
-      targetId: inbound === 'guest' ? me.id : inbound,
-      after: { sources: 'thread', intent },
-    });
+    // VIL-496 (Design lock): the private aside never waits on the group line. A family
+    // whose own facts the message touches hears 1:1 even when Hale stays quiet here.
     const aside =
       input.privateAside && channel && inbound !== 'guest'
         ? await privateAsideFor(database, input.privateAside, {
@@ -1189,6 +1189,15 @@ export async function takeMultiFamilyTurn(
             senderFamilyId: channel.familyId,
           })
         : undefined;
+    if (!groupSpoke) {
+      // Quiet group + an aside that ran: Hale owned this turn, so it must not fall
+      // through to the mixed-family hold. With no aside, hand it back so the rest of
+      // the group door (text RSVP for a plan) still reads it.
+      if (aside === 'ran') {
+        return { handled: true, outcome: 'aside_only', count: 'intake', notice, aside };
+      }
+      return { handled: false };
+    }
     return {
       handled: true,
       outcome: intent === 'question' ? 'shared_reply' : intent,

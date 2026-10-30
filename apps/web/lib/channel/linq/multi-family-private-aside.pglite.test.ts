@@ -305,3 +305,80 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
     expect(out).not.toHaveProperty('aside');
   });
 });
+
+describe('VIL-496 aside sends even when the group line does not', () => {
+  for (const [label, composer] of [
+    ['declined', () => fakeSharedGroupComposer({ decline: true })],
+    ['refused (model failed)', () => fakeSharedGroupComposer({ fail: true })],
+  ] as const) {
+    it(`group ${label}: the clashing family still hears 1:1; the turn is owned, not held`, async () => {
+      const { bao, wire } = await twoJoined();
+      const groupBefore = wire.texts.length;
+      const m = fakeModel('clash');
+      const dm = fakeOneToOne();
+      const out = await takeMultiFamilyTurn(
+        db.database,
+        {
+          ...turnInput(wire),
+          privateAside: {
+            model: m.model,
+            sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+          },
+        },
+        { reader: questionReader, composer: composer() },
+      );
+      expect(out).toMatchObject({ handled: true, outcome: 'aside_only', aside: 'ran' });
+      expect(out).toHaveProperty('notice');
+      expect((out as { notice?: string }).notice).not.toMatch(/^(already_)?sent$/);
+      expect(wire.texts.slice(groupBefore)).toEqual([]);
+      expect(dm.sent).toEqual([{ to: PARENT_B, body: `aside:${CHILD}` }]);
+      const rows = await db.database
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT));
+      expect(rows.map((r) => r.familyId)).toEqual([bao.familyId]);
+    });
+  }
+
+  it('group quiet and no family touched: hands the message back (no hold-stealing)', async () => {
+    const { wire } = await twoJoined();
+    const m = fakeModel([]);
+    const dm = fakeOneToOne();
+    const out = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire),
+        privateAside: {
+          model: m.model,
+          sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+        },
+      },
+      { reader: questionReader, composer: fakeSharedGroupComposer({ decline: true }) },
+    );
+    expect(out).toEqual({ handled: false });
+    expect(dm.sent).toEqual([]);
+  });
+
+  it('a redelivered message after a quiet group does not aside twice', async () => {
+    const { wire } = await twoJoined();
+    const m = fakeModel('clash');
+    const dm = fakeOneToOne();
+    const privateAside = {
+      model: m.model,
+      sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+    };
+    const quiet = () => ({
+      reader: questionReader,
+      composer: fakeSharedGroupComposer({ decline: true }),
+    });
+    await takeMultiFamilyTurn(db.database, { ...turnInput(wire), privateAside }, quiet());
+    const again = await takeMultiFamilyTurn(
+      db.database,
+      { ...turnInput(wire), privateAside },
+      quiet(),
+    );
+    expect(again).toMatchObject({ handled: true, outcome: 'duplicate' });
+    expect(m.reads).toHaveLength(1);
+    expect(dm.sent).toHaveLength(1);
+  });
+});
