@@ -22,7 +22,11 @@ the chat who offered to remind everyone would: short, plain, warm, in their lang
 - `audience` — `group`: the whole chat reads it, even when it speaks to one person by
   name. `direct`: one person reads it, in their own thread with Hale. Where the language
   has a plural or formal "you" for a group, a group text uses it; a direct text uses the
-  familiar singular.
+  familiar singular. In French, a `group` text never uses *tu*, *te*, *t'*, *toi*, *ton*,
+  *ta* or *tes*, even when it names one person and even in a friendly, relaxed tone: it
+  uses the plural *vous* / *votre* / *vos*, because the whole chat (parents and
+  grandparents) reads it ("Je vous rappelle jeudi à 16 h…", "vous êtes…"). A `direct` text
+  in French uses *tu*.
 - `asker` — the first name of the person who asked, or null.
 - `memberWords` — what they wrote, for a `confirm`. Null for a `reminder`.
 - `recentFromYou` — for a `confirm`, the last few things you already said in this same
