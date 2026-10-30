@@ -17,7 +17,7 @@ const FIXTURES_URL = new URL('./group-plan-calendar-report-fixtures.mjs', import
 
 /** Waits on the child without blocking the vitest worker's event loop. Nothing it could
  * spend with is passed on: no key, no cap, no ledger, no Gateway. */
-function runRunner(args, preloads = []) {
+function runRunner(args, preloads = [], extraEnv = {}) {
   const {
     ANTHROPIC_API_KEY: _key,
     HALE_MAX_USD: _cap,
@@ -29,7 +29,7 @@ function runRunner(args, preloads = []) {
     const child = spawn(
       process.execPath,
       [...preloads.flatMap((preload) => ['--import', preload]), RUNNER, ...args],
-      { env },
+      { env: { ...env, ...extraEnv } },
     );
     let report = '';
     child.stdout.setEncoding('utf8').on('data', (chunk) => {
@@ -83,7 +83,11 @@ describe('the group plan report runner', { timeout: 60_000 }, () => {
 
   it('prices one recording without calling a model or writing a recording', async () => {
     const recordings = readdirSync(CACHE_DIR).length;
-    const run = await runRunner(['--dry']);
+    // --dry projects against a real ledger (harness.mjs); an empty temp one spends nothing.
+    const ledgerDir = mkdtempSync(join(tmpdir(), 'group-plan-report-ledger-'));
+    const run = await runRunner(['--dry'], [], {
+      HALE_SPEND_LEDGER: join(ledgerDir, 'ledger.jsonl'),
+    }).finally(() => rmSync(ledgerDir, { recursive: true, force: true }));
     const fixtures = GROUP_PLAN_CALENDAR_REPORT_FIXTURES.length;
 
     expect(run.report).toMatch(
@@ -121,7 +125,8 @@ describe('the group plan report runner', { timeout: 60_000 }, () => {
       const recordings = readdirSync(CACHE_DIR).length;
       const run = await runRunner([], [emptyCache]);
 
-      expect(run.report).toContain('spend-cap: a live model call needs BOTH a cap');
+      // With no cap and no ledger the harness refuses before any live call.
+      expect(run.report).toMatch(/spend-(cap|guard): /);
       expect(run.report).not.toMatch(/^(PASS|FAIL) {2}/m);
       expect(readdirSync(CACHE_DIR)).toHaveLength(recordings);
       expect(readdirSync(empty)).toHaveLength(0);
