@@ -7,7 +7,7 @@
 // situation; nothing here names the right emoji.
 //
 // This file is not named run-*.mjs, so the Monday eval sweep does not pick it up, and it
-// is not in ci.yml until a recording is committed. A miss never spends.
+// runs cached-only in ci.yml (eval:linq-sticker). A miss never spends.
 //
 //   node evals/linq-sticker-eval.mjs --dry           # worst-case price to record; no API, nothing written
 //   node evals/linq-sticker-eval.mjs --cached-only   # replay; a miss prints the price and exits 1

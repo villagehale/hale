@@ -292,6 +292,9 @@ jobs:
       - name: Reminder eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder
 
+      - name: Linq sticker eval (cached-only)
+        run: pnpm --filter @hale/worker eval:linq-sticker
+
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
   # skipped job. Fails when workspace checks fail or when evals were required and
