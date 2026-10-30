@@ -107,6 +107,10 @@
     "file": "event-notes-read.md",
     "sha256": "c541bebcf4c16bf1afc8e1c3551350828311253965cb842aef4bda340c1358d9"
   },
+  "experience-card-coach.md": {
+    "file": "experience-card-coach.md",
+    "sha256": "9e80360b30c858ddc83e6e39e7a415e805076c6dbcd765de01b7b3ac03beb628"
+  },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
     "sha256": "4989569d42cf0eb4ce3950082b53e3920a0fe002bec774c2a23e00a731a17dd6"
