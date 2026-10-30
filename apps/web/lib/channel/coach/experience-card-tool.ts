@@ -53,7 +53,7 @@ export function shareExperienceCardTool(args: {
   return defineTool({
     name: EXPERIENCE_CARD_TOOL,
     description:
-      "Send ONE find from this turn as a tappable iMessage card instead of a plain link preview. Use it when a single activity or event is the answer and a card helps the parent act on it; skip it (just cite the [link-…] ref as usual) for lists, comparisons, or anything that is not one specific page. `ref` is the find's ref from a tool result this turn. `title` is the card's line in your own words and the parent's language: what it is, and when/where if known, at most 64 characters, no URL. Still cite the same ref in your message. One card per turn; the last call wins.",
+      "Send ONE find from this turn as a tappable iMessage card instead of a plain link preview. Use it when one venue's page is the answer — even if that page lists several classes or sessions; skip it (just cite the [link-…] ref as usual) when the answer compares different venues or pages. `ref` is the find's ref from a tool result this turn. `title` is the card's line in your own words and the parent's language: what it is, and when/where if known, at most 64 characters, no URL. Still cite the same ref in your message. One card per turn; the last call wins.",
     inputSchema: z.object({ ref: z.string().min(1), title: z.string().min(1) }),
     monetary: false,
     registersOnly: true,
