@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestDb, seedFamily, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { resettleSpotWatchPromise } from './promise';
 import { armWatchedSpot, markNotifiedAndRelease, releaseWatchedSpot } from './store';
 

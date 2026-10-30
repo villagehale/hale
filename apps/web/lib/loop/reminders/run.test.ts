@@ -1,6 +1,6 @@
-import type { ReminderDraft } from './compose';
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ReminderDraft } from './compose';
 import type { ReminderStatus, SuppressReason } from './schedule';
 
 // The model-written text is an injected port (deps.composeText): these tests drive the

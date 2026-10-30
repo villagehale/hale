@@ -62,12 +62,12 @@ import {
 } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
-import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
+import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import {

@@ -994,7 +994,12 @@ async function main() {
       process.exit(1);
     }
   }
-  const skill = await agent.loadSkill(ACTIVITY_SKILL);
+  // VIL-510: the web lane appends activity-finder-events for the inline research + extract.
+  const base = await agent.loadSkill(ACTIVITY_SKILL);
+  const events = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder-events.md'),
+  );
+  const skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
   const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two

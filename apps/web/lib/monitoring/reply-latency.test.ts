@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeReplyLatency, type InboundTurnRow } from './reply-latency';
+import { type InboundTurnRow, computeReplyLatency } from './reply-latency';
 
 const T = new Date('2026-03-02T10:00:00Z');
 const at = (seconds: number) => new Date(T.getTime() + seconds * 1000);

@@ -7,6 +7,7 @@ import {
   composeUserMessage,
   createActivityFinder,
   groundUserMessage,
+  preferVenuePage,
   stampReadPageUrl,
   toPicks,
 } from './lane';
@@ -687,5 +688,57 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
       ],
     );
     expect(pick?.url).toBeUndefined();
+  });
+});
+
+describe('VIL-510 · Wikipedia is never stamped as a pick url', () => {
+  it('drops a Wikipedia compose source_url', () => {
+    const wiki = {
+      name: 'Halton Hills Public Library storytime',
+      age_fit: 'all ages',
+      source_name: 'Halton Hills Public Library',
+      source_url: 'https://en.wikipedia.org/wiki/Halton_Hills_Public_Library',
+    };
+    const [pick] = toPicks([wiki], []);
+    expect(pick?.url).toBeUndefined();
+  });
+
+  it('does not stamp Wikipedia from search hits that name the venue', () => {
+    const hit = {
+      url: 'https://en.wikipedia.org/wiki/Halton_Hills_Public_Library',
+      title: 'Halton Hills Public Library - Wikipedia',
+    };
+    expect(
+      stampReadPageUrl(
+        { name: 'Halton Hills Public Library', sourceName: 'Halton Hills Public Library' },
+        [],
+        [hit],
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('VIL-510 preferVenuePage', () => {
+  it('prefers the venue own page over a listing aggregator', () => {
+    expect(
+      preferVenuePage(
+        'https://torontonicity.com/halloween-events',
+        'https://blackcreek.ca/halloween',
+        'Black Creek',
+      ),
+    ).toBe('https://blackcreek.ca/halloween');
+  });
+  it('keeps the composed url when no own-host page was read', () => {
+    expect(preferVenuePage('https://haltonhillstoday.ca/x', null, 'Living Hope Church')).toBe(
+      'https://haltonhillstoday.ca/x',
+    );
+    expect(preferVenuePage(null, 'https://livinghope.ca/trunk', 'Living Hope')).toBe(
+      'https://livinghope.ca/trunk',
+    );
+  });
+  it('keeps a composed own-host page', () => {
+    expect(
+      preferVenuePage('https://blackcreek.ca/a', 'https://torontonicity.com/b', 'Black Creek'),
+    ).toBe('https://blackcreek.ca/a');
   });
 });

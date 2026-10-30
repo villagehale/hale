@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { sniffMime } from '../files/mime.js';
 import {
   type FetchLike,
   SIGNED_URL_TTL_SECONDS,
@@ -8,6 +7,7 @@ import {
   signDocumentUrl,
   uploadDocument,
 } from '../docs/storage.js';
+import { sniffMime } from '../files/mime.js';
 
 /**
  * The child-avatar store — DB + storage side of a parent uploading a child's profile
@@ -103,7 +103,9 @@ export async function setChildAvatar(
     const updated = await tx
       .update(schema.children)
       .set({ avatarPath: path, avatarUpdatedAt: updatedAt })
-      .where(and(eq(schema.children.id, target.childId), eq(schema.children.familyId, target.familyId)))
+      .where(
+        and(eq(schema.children.id, target.childId), eq(schema.children.familyId, target.familyId)),
+      )
       .returning({ id: schema.children.id });
     if (updated.length === 0) {
       return false;
@@ -141,7 +143,9 @@ export async function removeChildAvatar(
   const owned = await database
     .select({ id: schema.children.id })
     .from(schema.children)
-    .where(and(eq(schema.children.id, target.childId), eq(schema.children.familyId, target.familyId)))
+    .where(
+      and(eq(schema.children.id, target.childId), eq(schema.children.familyId, target.familyId)),
+    )
     .limit(1);
   if (owned.length === 0) {
     return 'not_found';
@@ -154,7 +158,9 @@ export async function removeChildAvatar(
     await tx
       .update(schema.children)
       .set({ avatarPath: null, avatarUpdatedAt: null })
-      .where(and(eq(schema.children.id, target.childId), eq(schema.children.familyId, target.familyId)));
+      .where(
+        and(eq(schema.children.id, target.childId), eq(schema.children.familyId, target.familyId)),
+      );
     await tx.insert(schema.auditLog).values({
       familyId: target.familyId,
       actor: target.actorUserId,

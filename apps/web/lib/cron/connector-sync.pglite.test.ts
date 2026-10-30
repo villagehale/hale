@@ -183,7 +183,7 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
     expect(sweep).toEqual({ changes: ['seeding_run'], reoffers: [] });
   });
 
-  it('keys the dedupe read on THIS connection, THIS event and Google\'s own stamp', async () => {
+  it("keys the dedupe read on THIS connection, THIS event and Google's own stamp", async () => {
     // Pre-placed, so the only way to reach `already_sent` is for the wiring to have built
     // the very same key from connection.id + eventId + updated.
     const conn = connection({ provider: 'gcal' });

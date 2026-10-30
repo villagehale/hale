@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Database } from '@hale/db';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { LinqSendError } from '~/lib/channel/linq/transport';
@@ -57,9 +57,7 @@ describe('Twilio is not a transport', () => {
       const text = readFileSync(file, 'utf8');
       // Historical enum / ledger names are comments or string literals of the
       // integration provider. Env vars and the transport itself are not.
-      const stripped = text
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/\/\/.*$/gm, '');
+      const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
       for (const token of TWILIO_TRANSPORT_TOKENS) {
         if (stripped.includes(token)) hits.push(`${rel}: ${token}`);
       }

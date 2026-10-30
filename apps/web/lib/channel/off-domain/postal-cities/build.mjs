@@ -704,7 +704,12 @@ async function main() {
       .map((row) => [row.provinceCode, row.province]),
   );
   const built = {
-    ca: table(ca, new Map(PROVINCES.map(([code, name]) => [code, name])), caRegionOf, everyMunicipality),
+    ca: table(
+      ca,
+      new Map(PROVINCES.map(([code, name]) => [code, name])),
+      caRegionOf,
+      everyMunicipality,
+    ),
     us: table(resolveAll(usRows, /^\d{5}$/, americanCity), states, regionOfEach(usRows)),
   };
   writeFileSync(join(HERE, 'ca.json'), `${JSON.stringify(built.ca)}\n`);

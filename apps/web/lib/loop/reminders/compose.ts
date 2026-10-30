@@ -1,4 +1,3 @@
-import type { SourceChange } from './change';
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
@@ -8,6 +7,7 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { eventDescriptor, isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild, ReminderEventView } from '~/lib/loop/templates/reminder/payload';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { SourceChange } from './change';
 
 /**
  * The reminder text. The model writes the WHOLE message from facts, in the parent's

@@ -1,12 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm';
-import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   MAX_REDRIVE_PER_RUN,
   REDRIVE_MAX_AGE_MS,
   isRedriveSlot,
   redriveParentTimeZone,
 } from '~/lib/channel/redrive-slot';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   WELCOME_CARD_TEMPLATE_KEY,
   type WelcomeCardPorts,
@@ -92,10 +92,7 @@ interface HeldCard {
  * be the same wrong hundred every morning until the seven-day bound ages the rest out
  * unserved.
  */
-export async function selectHeldWelcomeCards(
-  database: Database,
-  now: Date,
-): Promise<HeldCard[]> {
+export async function selectHeldWelcomeCards(database: Database, now: Date): Promise<HeldCard[]> {
   const held = await database
     .select({
       familyId: schema.channelMessages.familyId,
@@ -107,10 +104,7 @@ export async function selectHeldWelcomeCards(
         eq(schema.channelMessages.templateKey, WELCOME_CARD_TEMPLATE_KEY),
         eq(schema.channelMessages.status, 'suppressed_quiet_hours'),
         isNull(schema.channelMessages.dedupeKey),
-        gte(
-          schema.channelMessages.createdAt,
-          new Date(now.getTime() - REDRIVE_MAX_AGE_MS),
-        ),
+        gte(schema.channelMessages.createdAt, new Date(now.getTime() - REDRIVE_MAX_AGE_MS)),
       ),
     )
     .orderBy(asc(schema.channelMessages.createdAt));
