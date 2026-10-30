@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { CopyLanguage, ReplyLanguage } from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
@@ -37,6 +37,19 @@ export function linqGroupOpenLine(language: ReplyLanguage | null): Promise<strin
 
 /** DESIGN LOCK PENDING (Sloane). Group icon / name. Household dad+mom only, not a logistics brand. */
 export const LINQ_GROUP_DISPLAY_NAME = "Kids' year";
+
+/** The family's own language for a group line (Design #973: never an English default).
+ * Local, not family-outbound's reader, because that module imports this one. */
+async function groupLineLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage | null> {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(rows.find((row) => row.id === familyId)?.primaryLanguage);
+}
 
 /**
  * Sent in the 1:1 when Linq will not open the group (the co-parent has to have texted
@@ -407,7 +420,7 @@ export async function openHouseholdLinqGroup(
       return { status: 'added', chatId: groupId };
     }
 
-    const openText = await linqGroupOpenLine(null);
+    const openText = await linqGroupOpenLine(await groupLineLanguage(database, args.familyId));
     if (!openText) {
       console.warn(
         { familyId: args.familyId },
@@ -474,7 +487,7 @@ async function tellParentTheGroupDidNotOpen(
   chatId: string,
 ): Promise<void> {
   try {
-    const text = await linqGroupUnreachableLine(null);
+    const text = await linqGroupUnreachableLine(await groupLineLanguage(database, args.familyId));
     if (!text) {
       console.warn(
         { familyId: args.familyId },

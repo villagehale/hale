@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { failedSendPatch } from '~/lib/channel/outbound-transport';
@@ -133,7 +134,8 @@ export async function sendWelcomeContactCard(
   // not spend this family's only card.
   const body = await ports.saidLine?.write({
     purpose: 'contact_card',
-    language: null,
+    // Design #973: the family's language, never an English default.
+    language: await familyLanguage(database, familyId),
     facts: { attachment: "Hale's contact card (vCard)" },
   });
   if (!body) {
@@ -233,4 +235,13 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
     .from(schema.users)
     .where(eq(schema.users.id, parentUserId));
   return rows.find((row) => row.id === parentUserId)?.timezone ?? DEFAULT_TIMEZONE;
+}
+
+/** The family's language for the card's line (Design #973). Post-filtered by id. */
+async function familyLanguage(database: Database, familyId: string) {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(rows.find((row) => row.id === familyId)?.primaryLanguage);
 }

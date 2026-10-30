@@ -31,8 +31,6 @@ import { matchRecMorning, postalMentioned } from './match';
  * paraphrase.
  */
 
-const INTAKE_MAX_REPLY_CHARS = 300;
-
 export const TORONTO_FOLLOW = `Wishlist can look frozen, so wait, don't mash refresh. Waitlist email takes about ${TORONTO_WAITLIST_HOURS} hours and there's no queue number. Two parents means two phones.`;
 
 export const EFUN_GONE = `eFun is gone. Rec is ${TORONTO_REC_PORTAL} now.`;
@@ -137,11 +135,6 @@ export function recMorningIntakeReply(input: {
   const joined = [sms, recMorningReturnLine(input.pendingAsk)]
     .filter((part) => part.length > 0)
     .join(' ');
-  if (joined.length > INTAKE_MAX_REPLY_CHARS) {
-    throw new Error(
-      `rec-morning intake reply is ${joined.length} chars, cap is ${INTAKE_MAX_REPLY_CHARS}`,
-    );
-  }
   return joined;
 }
 
@@ -197,6 +190,5 @@ export async function writeRecMorningIntakeReply(
     { postal: input.postal, city: input.city },
     write,
   );
-  if (text === null || text.length > INTAKE_MAX_REPLY_CHARS) return null;
   return text;
 }

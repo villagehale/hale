@@ -257,8 +257,6 @@ function render(
         "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.",
         "Je n'ai pas pu ouvrir le groupe. Demandez-leur d'ecrire une fois a ce numero, puis redites-le moi.",
       );
-    case 'name_captured':
-      return pick(language, "Thanks - I'll use that from now on.", 'Merci, je retiens.');
     case 'linq_group_line_missing':
       return pick(
         language,

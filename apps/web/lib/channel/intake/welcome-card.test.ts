@@ -165,6 +165,16 @@ describe('VIL-505 · absolute zero fixed copy on the card', () => {
     expect(transport.sent.map((s) => s.body)).toEqual([WRITTEN]);
   });
 
+  it('asks in the family language, never an English default (Design #973)', async () => {
+    const fake = makeFakeDb();
+    await fake.db
+      .insert(schema.families)
+      .values({ id: FAMILY, displayName: 'F', primaryLanguage: 'fr' } as never);
+    const w = writer(WRITTEN);
+    await send(fake, ports(new FakeTransport(), w).ports);
+    expect(w.write).toHaveBeenCalledWith(expect.objectContaining({ language: 'fr' }));
+  });
+
   it.each([
     ['the model wrote nothing usable', writer(null)],
     ['no writer is wired', undefined],
