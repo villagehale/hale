@@ -621,3 +621,102 @@ describe('the nearby count', () => {
     expect(reply).toContain('Want me to send the full plan?');
   });
 });
+
+/**
+ * VIL-497 — the experience-card product path. Dark: no verb, untouched skill, no card.
+ * Lit (1:1 only): the model may pick one cited find as a card and writes its title; the
+ * URL is the find's own page, resolved from the ref a tool returned this turn.
+ */
+describe('channelCoachRuntime · experience cards (VIL-497)', () => {
+  const PAGE = 'https://example.org/swim/saturday';
+  const withLink: ChannelCoachPorts['buildTools'] = (_t, _d, _o, _s, _p, _w, offered) => {
+    offered.recordLinks([{ url: PAGE, title: 'Saturday swim' } as never]);
+    return [];
+  };
+
+  it('dark: registers no card verb and leaves the skill tools untouched', async () => {
+    const seen: { tools: string[]; skillTools: string[] }[] = [];
+    const p = ports({
+      buildTools: withLink,
+      runAgent: async (args) => {
+        seen.push({
+          tools: args.tools.map((t) => t.name),
+          skillTools: [...args.skill.meta.tools],
+        });
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(seen[0]?.tools).not.toContain('share_experience_card');
+    expect(seen[0]?.skillTools).toEqual([]);
+    expect(result.experienceCard ?? null).toBeNull();
+  });
+
+  it('lit on a group turn: still no card verb', async () => {
+    const seen: string[][] = [];
+    const p = ports({
+      experienceCardsEnabled: () => true,
+      loadSkill: async () => SKILL,
+      runAgent: async (args) => {
+        seen.push(args.tools.map((t) => t.name));
+        return answering('ok.')(args);
+      },
+    });
+    await channelCoachRuntime(p)
+      .respond({ ...turn(), audience: 'group' }, [])
+      .catch(() => undefined);
+    expect(seen[0] ?? []).not.toContain('share_experience_card');
+  });
+
+  it('lit 1:1: the model picks the card, writes the title; the url comes from the ref', async () => {
+    const ref = (await import('./activity-links')).linkRef(PAGE);
+    const p = ports({
+      experienceCardsEnabled: () => true,
+      buildTools: withLink,
+      runAgent: async (args) => {
+        expect(args.skill.meta.tools).toContain('share_experience_card');
+        const card = args.tools.find((t) => t.name === 'share_experience_card');
+        if (!card) throw new Error('no card verb');
+        await card.handler({ ref, title: 'Sat swim 10am · Riverdale pool' } as never, {} as never);
+        return answering(`Saturday swim at Riverdale has room [${ref}].`)(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(result.experienceCard).toEqual({ url: PAGE, title: 'Sat swim 10am · Riverdale pool' });
+    // The text still cites the page; the router swaps it for the card on iMessage 1:1.
+    expect(result.reply).toContain(PAGE);
+  });
+
+  it('lit: a ref no tool returned is refused back to the model, nothing registered', async () => {
+    let refusal = '';
+    const p = ports({
+      experienceCardsEnabled: () => true,
+      buildTools: withLink,
+      runAgent: async (args) => {
+        const card = args.tools.find((t) => t.name === 'share_experience_card');
+        await card?.handler({ ref: 'link-000000', title: 'x' } as never, {} as never).catch((e) => {
+          refusal = (e as Error).message;
+        });
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(refusal).toContain('not one a tool returned');
+    expect(result.experienceCard).toBeNull();
+  });
+
+  it("lit: a teen's name in the title is redacted like the answer", async () => {
+    const ref = (await import('./activity-links')).linkRef(PAGE);
+    const p = ports({
+      experienceCardsEnabled: () => true,
+      buildTools: withLink,
+      runAgent: async (args) => {
+        const card = args.tools.find((t) => t.name === 'share_experience_card');
+        await card?.handler({ ref, title: 'Nora · Sat swim' } as never, {} as never);
+        return answering(`Swim [${ref}].`)(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(result.experienceCard?.title).not.toContain('Nora');
+  });
+});
