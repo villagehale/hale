@@ -9,7 +9,6 @@ import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language'
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
@@ -302,16 +301,8 @@ async function advanceSeatedCoparent(
       });
     }
     await setStep(database, sender.userId, 'awaiting_calendar', ports.now);
-    const notice = await sendLine(database, {
-      familyId: sender.familyId,
-      parentUserId: sender.userId,
-      chatId: message.chatId,
-      text: NAME_CAPTURED_REPLY,
-      templateKey: 'parent_name_captured',
-      dedupeKey: `linq:coparent_name_ack:${sender.userId}`,
-      now: ports.now,
-      fetch: ports.fetch,
-    });
+    // VIL-504 · no fixed name ack: the write is the receipt; nothing is sent.
+    const notice = null;
     return {
       type: 'done',
       outcome: 'group_coparent_named',

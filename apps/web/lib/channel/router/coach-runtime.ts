@@ -3,7 +3,6 @@ import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-t
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
-import { capabilityReply } from './copy';
 
 /**
  * VIL-220 · C1 → VIL-221 · C2 — the seam between the router and the agent.
@@ -170,10 +169,11 @@ export function draftsFromFailure(err: unknown): readonly string[] {
  * plus where the rest lives. C2 keeps that same line for genuinely out-of-scope asks,
  * so the stub is the narrow case of the real thing rather than a dead alternative.
  */
+/** VIL-504 · Degraded coach: send nothing rather than a fixed out-of-scope line. */
 export function capabilityStubRuntime(): ChannelCoachRuntime {
   return {
     async respond() {
-      return { reply: capabilityReply(), planOffer: null, activityPromise: null, spotWatch: null };
+      return { reply: '', planOffer: null, activityPromise: null, spotWatch: null };
     },
   };
 }

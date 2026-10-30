@@ -111,7 +111,6 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
-import { clarifyWhichQuestion } from './copy';
 import {
   assertTurnLive,
   isCallTimeout,
@@ -1995,6 +1994,20 @@ async function runAgentTurn(
     });
     const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard, groupLeave } =
       await composeReconciledReply(deps, args, view);
+    // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
+    // stands in for an empty reply (absolute-zero fixed parent copy).
+    if (!experienceCard && reply.trim() === '') {
+      deps.log.info(
+        { outcome: 'empty_reply' },
+        'channel router: coach wrote nothing - nothing sent',
+      );
+      return done(deps, args.job, {
+        status: 'agent_replied',
+        handler: null,
+        conversationId: args.conversationId,
+        lane: null,
+      });
+    }
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
     const channelMessageId = await args.answer(card ? card.text : reply);
     if (card) {
@@ -2589,40 +2602,8 @@ async function disposeOfFailedTurn(
     };
   }
 
-  // THE CANNED CHOICE, and this is the only place left that can send it. The parent made
-  // a decision Hale could not place, and the coach — whose job that turn now is — could
-  // not run. Deferring would leave a decision unacknowledged for as long as the outage
-  // lasts, and an apology would answer a question they did not ask, so Hale asks which
-  // one, in the subjects it was already holding — NUMBERED, and written down against the
-  // message that carries them, so that "2" and "the welcome note one" both land on the
-  // option the parent actually read (VIL-304).
-  const unplaced = args.unplacedAnswer;
-  if (unplaced && args.questions.length > 1) {
-    // NUMBERED ONLY IF A MENU IS ABOUT TO EXIST. Without a polarity nothing is minted, so
-    // the numbers would point at a row that was never written — and the digit they invite
-    // would be read by the approvals queue's own ordering instead (copy.ts).
-    const polarity = unplaced.polarity;
-    const { reply, shown } = clarifyWhichQuestion(args.questions, polarity !== null);
-    return {
-      outcome: 'agent_failed',
-      reply,
-      reason: 'unplaced_choice',
-      // `shown` and nothing else: the ordinal a parent types counts positions in the
-      // sentence they were sent, so the row has to hold exactly that list in exactly that
-      // order — which is why the sentence hands it back rather than being rebuilt here.
-      afterSend: polarity
-        ? (channelMessageId) =>
-            mintDisambiguation(deps, args.turn, {
-              channelMessageId,
-              polarity,
-              numbered: true,
-              options: shown,
-            })
-        : undefined,
-      log: { unplacedAnswer: true },
-    };
-  }
-
+  // VIL-504 · no canned which-one skeleton: an unplaced choice gets the model's
+  // apology below, or the outage's deferral — never fixed copy.
   const apology = await deps.apology.compose();
   if (apology.status === 'composed') {
     return {

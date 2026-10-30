@@ -57,7 +57,6 @@ import {
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
-import { failureReply, healthDoneReply } from './copy';
 import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
 
@@ -356,7 +355,7 @@ export function connectorLinkHandler(
               { familyId: ctx.familyId, provider: target, outcome: 'mint_failed' },
               'connector link: mint failed',
             );
-            return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+            return { claimed: true, outcome: 'mint_failed', reply: null };
         }
       }
 
@@ -396,7 +395,7 @@ export function connectorLinkHandler(
             { familyId: ctx.familyId, provider: target, outcome: 'mint_failed' },
             'connector link: mint failed',
           );
-          return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+          return { claimed: true, outcome: 'mint_failed', reply: null };
       }
     },
   };
@@ -632,7 +631,7 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
       );
       switch (outcome.status) {
         case 'recorded_done':
-          return { claimed: true, outcome: outcome.status, reply: healthDoneReply() };
+          return { claimed: true, outcome: outcome.status, reply: null };
         case 'drafted_for_approval':
           return {
             claimed: true,

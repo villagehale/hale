@@ -384,7 +384,8 @@ describe('connectorLinkHandler', () => {
     );
     if (!verdict.claimed) throw new Error('expected the handler to claim');
     expect(verdict.outcome).toBe('mint_failed');
-    expect(verdict.reply).toContain('nothing was changed');
+    // VIL-504 · claimed, and nothing fixed is sent.
+    expect(verdict.reply).toBeNull();
   });
 
   it('sends the link 1:1 and says nothing in the group when the ask came from the family group', async () => {
