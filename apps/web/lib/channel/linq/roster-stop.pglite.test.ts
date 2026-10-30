@@ -452,3 +452,81 @@ describe('the Linq door', () => {
     expect(seats).toEqual([{ removedAt: NOW }]);
   });
 });
+
+describe('reminders asked for in the group (VIL-448)', () => {
+  async function remind(familyId: string, asker: string, forPhone: string | null, id: string) {
+    await db.database.insert(schema.groupReminders).values({
+      familyId,
+      chatId: GROUP,
+      sourceMessageId: id,
+      askedByPhoneHash: phoneBlindIndex(asker),
+      forKind: forPhone === asker ? 'sender' : forPhone ? 'person' : 'everyone',
+      forPhoneHash: forPhone ? phoneBlindIndex(forPhone) : null,
+      what: 'bring the cake',
+      askedForAt: new Date(NOW.getTime() + 60 * 60_000),
+      deliverAt: new Date(NOW.getTime() + 60 * 60_000),
+      delivery: 'group',
+      status: 'scheduled',
+    });
+  }
+
+  async function statuses() {
+    const rows = await db.database
+      .select({
+        id: schema.groupReminders.sourceMessageId,
+        status: schema.groupReminders.status,
+        reason: schema.groupReminders.statusReason,
+      })
+      .from(schema.groupReminders);
+    return Object.fromEntries(rows.map((row) => [row.id, `${row.status}:${row.reason ?? ''}`]));
+  }
+
+  it("cancels what a member asked for, and what is for them, on that member's STOP only", async () => {
+    const seeded = await seedConfirmedGroup([
+      { phone: DAD, role: 'co_parent' },
+      { phone: GRAN, role: 'grandparent' },
+    ]);
+    await remind(seeded.familyId, GRAN, GRAN, 'gran-own');
+    await remind(seeded.familyId, DAD, GRAN, 'for-gran');
+    await remind(seeded.familyId, DAD, DAD, 'dad-own');
+
+    await stopInGroup(db.database, stop(GRAN, 'in-gran-stop'), ports().ports);
+
+    expect(await statuses()).toEqual({
+      'gran-own': 'cancelled:member_stop',
+      'for-gran': 'cancelled:member_stop',
+      'dad-own': 'scheduled:',
+    });
+  });
+
+  it('cancels a removed member’s reminders', async () => {
+    const seeded = await seedConfirmedGroup([{ phone: DAD, role: 'co_parent' }]);
+    await remind(seeded.familyId, DAD, DAD, 'dad-own');
+    await remind(seeded.familyId, PARENT, null, 'everyone');
+
+    await removeRosterParticipant(db.database, { chatId: GROUP, participantHandle: DAD, now: NOW });
+
+    expect(await statuses()).toEqual({
+      'dad-own': 'cancelled:member_removed',
+      everyone: 'scheduled:',
+    });
+  });
+
+  it('cancels every reminder in the chat when Hale leaves the group', async () => {
+    const seeded = await seedConfirmedGroup([{ phone: GRAN, role: 'grandparent' }]);
+    await remind(seeded.familyId, GRAN, GRAN, 'gran-own');
+    await remind(seeded.familyId, PARENT, null, 'everyone');
+
+    await stopInGroup(db.database, stop(PARENT, 'in-parent-stop'), ports().ports);
+
+    expect(await statuses()).toEqual({
+      'gran-own': 'cancelled:group_ejected',
+      everyone: 'cancelled:group_ejected',
+    });
+    const cancelled = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_reminder_cancelled'));
+    expect(cancelled).toHaveLength(2);
+  });
+});

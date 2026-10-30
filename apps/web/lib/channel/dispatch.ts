@@ -1,13 +1,16 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
+import { boldTextIndex } from '~/lib/channel/bold';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
+import { sendTexts } from './outbound-transport';
 import type {
   Channel,
   ChannelKind,
+  ChannelSendOutcome,
   LoopCategory,
   LoopMessage,
   RenderedContent,
@@ -264,6 +267,10 @@ async function dispatchLeg(
     return { channel, outcome: 'failed', reason: 'channel_unavailable', voice };
   }
 
+  if (rendered.texts && rendered.texts.length > 0) {
+    return dispatchTexts(msg, channel, rendered, rendered.texts, legKey, now, ports, adapter);
+  }
+
   const result = await adapter.send({ userId: msg.parentUserId, rendered });
   if (result.status === 'error' && result.transient) {
     throw new ChannelRetryableError(channel, result.code, result.message);
@@ -317,6 +324,99 @@ async function dispatchLeg(
 
   // Permanent error OR a skip (not configured / disabled / no address).
   const errorCode = result.status === 'error' ? result.code : result.reason;
+  await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
+  return { channel, outcome: 'failed', reason: errorCode, voice };
+}
+
+/**
+ * VIL-467 · A multi-text leg. Quiet hours, the category pref and consent were checked
+ * once above for the whole set. Each text is its own send and its own ledger row keyed
+ * `<legKey>:<i>`, so a retry after a transient failure sends only the unsent texts,
+ * starting at the first one that did not go. A failure stops the set; nothing is sent
+ * in its place.
+ */
+async function dispatchTexts(
+  msg: LoopMessage,
+  channel: ChannelKind,
+  rendered: RenderedContent,
+  texts: readonly string[],
+  legKey: string | null,
+  now: Date,
+  ports: DispatchPorts,
+  adapter: Channel,
+): Promise<LegResult> {
+  const voice = rendered.voice;
+  // VIL-474 · at most one bold per message: only the first text holding the words.
+  const boldAt = boldTextIndex(texts, rendered.bold);
+  type Sent = Extract<ChannelSendOutcome, { status: 'sent' }>;
+  class Refused extends Error {
+    constructor(readonly outcome: Exclude<ChannelSendOutcome, Sent>) {
+      super('channel refused');
+    }
+  }
+  const outcome = await sendTexts<Sent>({
+    texts,
+    setKey: legKey,
+    alreadySent: (key) => ports.activeDedupe(key),
+    send: async (text, index) => {
+      // By position, not by text: two identical texts must not both carry the bold.
+      const bolded = index === boldAt ? rendered.bold : undefined;
+      const result = await adapter.send({
+        userId: msg.parentUserId,
+        rendered: {
+          kind: 'sms',
+          text,
+          recordBody: rendered.recordBody,
+          ...(bolded ? { bold: bolded } : {}),
+        },
+      });
+      if (result.status === 'error' && result.transient) {
+        throw new ChannelRetryableError(channel, result.code, result.message);
+      }
+      if (result.status !== 'sent') throw new Refused(result);
+      return result;
+    },
+    isTransient: (err) => err instanceof ChannelRetryableError,
+    record: async ({ key, text, result }) => {
+      const id = await writeLedgerRow(ports, msg, channel, acceptedStatus(channel), {
+        dedupeKey: key,
+        providerMessageId: result.providerMessageId,
+        providerChatId: result.providerChatId ?? null,
+        sentAt: now,
+        ...(rendered.recordBody ? { body: text } : {}),
+      });
+      await ports.audit({
+        familyId: msg.familyId,
+        actor: 'system',
+        actionTaken: isCaregiverTemplateKey(msg.templateKey)
+          ? 'caregiver_schedule_sent'
+          : 'channel_sent',
+        targetTable: 'channel_messages',
+        targetId: id,
+        after: { channel, category: msg.category, templateKey: msg.templateKey, voice },
+      });
+      if (channel === 'sms') {
+        await ports.threadMessage({
+          familyId: msg.familyId,
+          parentUserId: msg.parentUserId,
+          body: text,
+        });
+      }
+    },
+  });
+  if (outcome.status === 'sent') {
+    if (outcome.sent.length === 0) return { channel, outcome: 'deduped' };
+    return { channel, outcome: 'sent', voice };
+  }
+  if (outcome.status === 'held') {
+    // Unreachable today (quiet hours were checked above); kept total for the type.
+    await writeLedgerRow(ports, msg, channel, 'suppressed_quiet_hours', { dedupeKey: null });
+    return { channel, outcome: 'suppressed_quiet_hours' };
+  }
+  const err = outcome.error;
+  if (!(err instanceof Refused)) throw err;
+  const refused = err.outcome;
+  const errorCode = refused.status === 'error' ? refused.code : refused.reason;
   await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
   return { channel, outcome: 'failed', reason: errorCode, voice };
 }

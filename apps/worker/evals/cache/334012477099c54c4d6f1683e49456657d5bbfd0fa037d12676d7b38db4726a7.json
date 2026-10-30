@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: tomorrow, start 15 h, end 16 h, venue name 'Georgetown library' and address '9 Church St'. Nothing invented (no travel/leave times, no closure claim, no activity guess). However, the text says 'il y a un jour de congé', presenting the title as a plain description of what the day is rather than as the name of the event; this is the exact prod-bug pattern where the title 'Jour de congé' is recast as a statement about the day, changing what the title means (an event named that, at a library, from 3 to 4 PM). Bold is none, which is fine.",
+    "score": 2
+  }
+}

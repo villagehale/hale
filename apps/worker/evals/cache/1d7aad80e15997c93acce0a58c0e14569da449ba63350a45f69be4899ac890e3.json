@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly says tomorrow is a PD Day and gives no clock time, which is right for an all-day event. However, it states as fact that school is closed for students. The facts only give the event title PD Day as all-day; closure and who it affects is an unstated inference from the title, which the rules treat as a fact failure. The day phrasing (tomorrow from Sunday evening) is correct and the tone is natural.",
+    "score": 2
+  }
+}

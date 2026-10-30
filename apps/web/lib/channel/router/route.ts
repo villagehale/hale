@@ -103,7 +103,7 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
-import { FLOOD_REPLY, clarifyWhichQuestion } from './copy';
+import { clarifyWhichQuestion } from './copy';
 import {
   assertTurnLive,
   isCallTimeout,
@@ -114,6 +114,7 @@ import {
 } from './deadline';
 import type { DisambiguationOption, DisambiguationStore } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
+import { FLOOD_LINE_TEMPLATE_KEY, type FloodLineComposer } from './flood-line';
 import {
   HOLDING_LINE_AFTER_MS,
   HOLDING_LINE_TEMPLATE_KEY,
@@ -411,6 +412,10 @@ export interface ChannelRouterDeps {
    * (holding-line.ts). Non-nullable (rule #11): a composer that cannot write one says so
    * by name, and there is no preset line underneath it. */
   holdingLine: HoldingLineComposer;
+  /** The private line a group sender gets when their own turn budget is spent
+   * (flood-line.ts, VIL-463). Non-nullable (rule #11): no preset line underneath it;
+   * a line that cannot be written means nothing is sent. */
+  floodLine: FloodLineComposer;
   /**
    * Write down a full-plan offer the coach just made, against the message that carried
    * it. Non-nullable (rule #11): an offer sentence a parent can read with no ledger row
@@ -901,6 +906,20 @@ async function routeChannelMessageInner(
   // it gets the group thread, the group audience, and the group-scoped tools and context.
   const inGroup = context.inGroup || job.in_group === true;
 
+  // VIL-463: a job that does not say whether it came from a group (the reconciler's
+  // re-drive, or a job queued before the bit existed) is NOT a 1:1 turn when it arrived
+  // in an iMessage chat, which may be a group. It is refused before any thread is
+  // opened, so it can never get the sender's 1:1 thread.
+  if (!inGroup && job.in_group === undefined && route.channel === 'imessage' && route.chatId) {
+    await noteUnanswered(deps, job, 'group_thread_unscoped');
+    return done(deps, job, {
+      status: 'group_unscoped',
+      handler: null,
+      conversationId: null,
+      lane: null,
+    });
+  }
+
   // THREAD. One long-lived conversation per parent, resolved through the note anchor's
   // partial unique index so two texts arriving together cannot fork it.
   const noteKey = channelThreadNoteKey({
@@ -935,6 +954,14 @@ async function routeChannelMessageInner(
   // bare affirmative, the resolver, or nobody at all.
   let openQuestions: Promise<readonly OpenQuestion[]> | null = null;
   const readOpenQuestions = () => {
+    // VIL-463: every open question is a 1:1 ask (an approval, an intro, a readiness
+    // check...), and no source records the thread it was asked in. A group turn may
+    // only answer questions asked in that group, so it answers none of them: a "yes"
+    // in the group can never resolve, or show the coach, a 1:1 ask.
+    if (inGroup) {
+      openQuestions ??= Promise.resolve([]);
+      return openQuestions;
+    }
     openQuestions ??= deps.questions.open(deps.database, {
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
@@ -1067,7 +1094,12 @@ async function routeChannelMessageInner(
   //
   // A reply that picks nothing falls straight through to the chain below with the menu
   // SPENT — one shot, whatever the outcome.
-  const picked = await consumePendingDisambiguation(deps, turn, answer);
+  // VIL-463: the menu was printed in the parent's own 1:1 chat, so a group text is never
+  // its answer and must not spend it — the same group-to-1:1 leak the open-question skip
+  // above closes.
+  const picked: Awaited<ReturnType<typeof consumePendingDisambiguation>> = inGroup
+    ? { status: 'carry_on', ordinalSpent: false }
+    : await consumePendingDisambiguation(deps, turn, answer);
   if (picked.status === 'handled') {
     return done(deps, job, {
       status: 'resolved',
@@ -1257,20 +1289,42 @@ async function routeChannelMessageInner(
       AGENT_TURN_ROUTE,
       AGENT_TURN_LIMIT,
     );
+    if (!decision.allowed && !decision.firstDenied) {
+      // VIL-463: the parent already had (or was refused) this window's one flood line.
+      // A later over-limit text in the same window makes no model call and no read.
+      deps.log.info(
+        { inGroup },
+        'channel router: over limit, flood line already spent this window',
+      );
+      return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
+    }
     if (!decision.allowed) {
-      if (inGroup) {
+      // The line is written from facts (flood-line.ts), in a group or 1:1 alike, ONCE per
+      // budget window (the first refused text). When it cannot be written, nothing is
+      // sent: there is no fixed line underneath it.
+      const composed = await deps.floodLine.compose({
+        language: await familySpeechLanguage(deps.database, job.family_id),
+        inGroup,
+      });
+      if (composed.status !== 'composed') {
+        deps.log.warn(
+          { reason: composed.reason, inGroup },
+          'channel router: over-limit line not composed, nothing sent',
+        );
+      } else if (inGroup) {
         // The parent's own budget is spent, which is no one else's news: the line goes
         // to their phone, outside the group and outside the group's thread.
         await sendReply(deps, {
           route: { channel: 'sms', to: route.to },
-          body: FLOOD_REPLY,
+          body: composed.line,
           job,
           conversationId: null,
+          templateKey: FLOOD_LINE_TEMPLATE_KEY,
           claim: claimAnswer,
           openAsks: { leaves: null },
         });
       } else {
-        await answer(FLOOD_REPLY);
+        await answer(composed.line, null, null, FLOOD_LINE_TEMPLATE_KEY);
       }
       return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
     }

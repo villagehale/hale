@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: tomorrow Monday Oct 26, 15 h to 16 h, Georgetown library, title kept as 'Jour de congé'. However, the text says 'il y a Jour de congé à la bibliothèque', which is unidiomatic: a native speaker would not place an unarticled event title directly after 'il y a' without an article or quotation marks (e.g. 'il y a un événement « Jour de congé »' or 'vous avez « Jour de congé »'). This is a native speaker failure, capping the score at 3.",
+    "score": 3
+  }
+}

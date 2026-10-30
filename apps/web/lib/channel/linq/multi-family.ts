@@ -1,20 +1,22 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
-import { linqFromE164, linqMultiFamilyGroupsEnabled } from './config';
+import { linqMultiFamilyGroupsEnabled } from './config';
+import { type PrivateAsideModel, type SendOneToOne, runPrivateAside } from './group-private-aside';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
 import type { SharedGroupReader, SharedGroupReading } from './shared-group-reading';
 import { reactionAsVote, sharedGroupReader } from './shared-group-reading';
 import type { SharedGroupComposer } from './shared-group-voice';
 import { composeSharedGroupLine } from './shared-group-voice';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * VIL-456 — Hale in an existing multi-family group.
@@ -94,7 +96,7 @@ const INTRO_TEMPLATE = 'linq:multi_family_intro';
 const WHO_TEMPLATE = 'linq:multi_family_who_confirmed';
 
 function haleLine(phone: string): boolean {
-  const from = linqFromE164();
+  const from = outboundLineFrom();
   if (!from) return false;
   return normalizePhoneE164(from) === phone;
 }
@@ -865,7 +867,39 @@ async function hostLedger(
 
 export type MultiFamilyTurnResult =
   | { handled: false }
-  | { handled: true; outcome: string; count: 'intake' | 'ignored' | 'duplicate'; notice?: string };
+  | {
+      handled: true;
+      outcome: string;
+      count: 'intake' | 'ignored' | 'duplicate';
+      notice?: string;
+      /** VIL-457: what the private aside did for this message, when it ran. */
+      aside?: string;
+    };
+
+/**
+ * The private aside never touches the group send: it only reads each family's own
+ * consented slice and texts that family 1:1. A throw is logged and never fails the turn.
+ */
+async function privateAsideFor(
+  database: Database,
+  deps: { model: PrivateAsideModel; sendOneToOne: SendOneToOne },
+  input: { chatId: string; inboundId: string; text: string; senderFamilyId: string },
+): Promise<string> {
+  try {
+    const out = await runPrivateAside(database, deps, {
+      ...input,
+      recent: [{ from: 'member', text: input.text }],
+      language: null,
+    });
+    return out.outcome;
+  } catch (err) {
+    console.warn(
+      { chatId: input.chatId, err: err instanceof Error ? err.name : 'unknown' },
+      'linq multi-family: private aside failed',
+    );
+    return 'error';
+  }
+}
 
 /**
  * Own the turn when this chat holds more than one known family, or when Hale
@@ -885,6 +919,11 @@ export async function takeMultiFamilyTurn(
     send?: SendGroup;
     reactionType?: string | null;
     targetIsHale?: boolean;
+    /**
+     * VIL-457: after the group line, families whose own private facts the message touches
+     * get one model-written 1:1 text each. Absent means no aside runs.
+     */
+    privateAside?: { model: PrivateAsideModel; sendOneToOne: SendOneToOne };
   },
   ports: MultiFamilyTurnPorts = {},
 ): Promise<MultiFamilyTurnResult> {
@@ -1122,11 +1161,21 @@ export async function takeMultiFamilyTurn(
         after: { sources: 'thread', intent },
       });
     }
+    const aside =
+      input.privateAside && channel && inbound !== 'guest'
+        ? await privateAsideFor(database, input.privateAside, {
+            chatId: input.chatId,
+            inboundId: inbound,
+            text: input.text,
+            senderFamilyId: channel.familyId,
+          })
+        : undefined;
     return {
       handled: true,
       outcome: intent === 'question' ? 'shared_reply' : intent,
       count: 'intake',
       notice,
+      ...(aside ? { aside } : {}),
     };
   }
 

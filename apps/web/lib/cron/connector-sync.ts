@@ -35,8 +35,10 @@ import {
   emptyEmailAlertCounts,
   gmailAlertSweepInput,
 } from '~/lib/integrations/email-alert';
+import { composeEmailAlertNotice } from '~/lib/integrations/email-alert-notice';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
+import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import {
   type ActiveConnectorConnection,
   type SweepableConnectorConnection,
@@ -492,6 +494,10 @@ function emailAlertPorts(
         correlationCandidates: candidates,
       });
     },
+    familyChildren: async () => (await loadContext()).children,
+    parentLanguage: (parentUserId, now) =>
+      readNoticeLanguage(database, { familyId, parentUserId, now }),
+    writeNotice: (facts, family) => composeEmailAlertNotice(pipelineClient(), facts, family),
   };
 }
 

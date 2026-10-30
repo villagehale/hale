@@ -1,3 +1,4 @@
+import type { ReminderDraft } from './compose';
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReminderStatus, SuppressReason } from './schedule';
@@ -5,7 +6,9 @@ import type { ReminderStatus, SuppressReason } from './schedule';
 // The model-written text is an injected port (deps.composeText): these tests drive the
 // WIRING (what facts it gets, nothing sent when it returns null), not the writing (that
 // is compose.test.ts + the cached eval).
-const composeText = vi.fn(async () => 'Reminder text.' as string | null);
+const composeText = vi.fn(
+  async () => ({ texts: ['Reminder text.'], bold: null }) as ReminderDraft | null,
+);
 import {
   type ChannelSendJob,
   type DueReminder,
@@ -125,7 +128,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
 
 afterEach(() => {
   composeText.mockReset();
-  composeText.mockImplementation(async () => 'Reminder text.');
+  composeText.mockImplementation(async () => ({ texts: ['Reminder text.'], bold: null }));
 });
 
 describe('runReminderCron — Phase A converge', () => {
@@ -568,7 +571,10 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
 
   it('puts the written text on the payload, byte for byte', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
-    composeText.mockResolvedValue('Swim is at 10:00 AM, until 11:00 AM.');
+    composeText.mockResolvedValue({
+      texts: ['heads up for tomorrow', 'Swim is at 10, until 11.'],
+      bold: null,
+    });
     const { deps, enqueued } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent({ endsAt: new Date('2026-07-25T15:00:00Z') }),
@@ -576,8 +582,46 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
     await runReminderCron({} as never, deps, NOW_T1H);
 
     const payload = enqueued[0]?.payload as Record<string, unknown>;
-    expect(payload.text).toBe('Swim is at 10:00 AM, until 11:00 AM.');
+    expect(payload.texts).toEqual(['heads up for tomorrow', 'Swim is at 10, until 11.']);
     expect(payload).not.toHaveProperty('voice');
+    // VIL-474 · no bold returned, no bold on the payload.
+    expect(payload).not.toHaveProperty('bold');
+  });
+
+  it('VIL-474: a source-data change on the live event reaches the writer as a fact', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () =>
+        liveEvent({
+          location: 'Main St pool',
+          change: { field: 'venue', previousLocation: 'Georgetown library' },
+        }),
+    });
+    await runReminderCron({} as never, deps, NOW_T1H);
+    expect(composeText).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        events: [
+          expect.objectContaining({ changed: { field: 'venue', from: 'Georgetown library' } }),
+        ],
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('VIL-474: carries the writer’s bold words onto the payload untouched', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    composeText.mockResolvedValue({ texts: ['Swim moved to 4:30 today.'], bold: '4:30' });
+    const { deps, enqueued } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent({ endsAt: new Date('2026-07-25T15:00:00Z') }),
+    });
+    await runReminderCron({} as never, deps, NOW_T1H);
+
+    const payload = enqueued[0]?.payload as Record<string, unknown>;
+    expect(payload.texts).toEqual(['Swim moved to 4:30 today.']);
+    expect(payload.bold).toBe('4:30');
   });
 
   it('hands the writer the redacted facts: date, start and end with AM/PM, place, language', async () => {

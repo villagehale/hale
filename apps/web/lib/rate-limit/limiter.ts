@@ -3,6 +3,12 @@ export interface RateLimitResult {
   allowed: boolean;
   /** Seconds until the current window expires; for the `Retry-After` header. */
   retryAfterSec: number;
+  /**
+   * True only for the FIRST refused request in this window (count === limit + 1), so a
+   * caller can do its one-off over-limit work once per window, not on every refused
+   * request. Required, so no limiter can leave it unknown.
+   */
+  firstDenied: boolean;
 }
 
 export interface RateLimitOptions {

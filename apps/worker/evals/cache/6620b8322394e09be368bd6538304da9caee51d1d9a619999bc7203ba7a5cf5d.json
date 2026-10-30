@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are correct: event named 'Swim class', today, 10:00 AM to 11:00 AM, no invented details, English, no link, calm tone. However the sentence 'running until 11:00 AM' is a stiff calendar-readout construction; a friend would say something like 'Swim class is today from 10 to 11', so it reads like an automated alert rather than a friendly text. Capped at 3 by the native-speaker/friend check.",
+    "score": 3
+  }
+}

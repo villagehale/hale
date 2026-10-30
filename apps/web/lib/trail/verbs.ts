@@ -184,8 +184,19 @@ export const AUDIT_VERBS = [
   'linq_group_sends_held',
   'linq_group_stop',
   'linq_group_coach_held',
+  'linq_group_plan_started',
+  'linq_group_plan_rsvp_recorded',
+  'linq_group_plan_rsvp_edited',
   'group_line_unsent',
   'group_line_locked_fallback',
+  // VIL-448. A reminder anyone in the family group asked for.
+  'group_reminder_set',
+  'group_reminder_cancelled',
+  'group_reminder_sent',
+  'group_reminder_dropped',
+  'group_reminder_failed',
+  'group_reminder_unwritten',
+  'group_reminder_held',
   'linq_multi_family_joined',
   'linq_multi_family_left',
   'linq_multi_family_unseated',
@@ -197,6 +208,7 @@ export const AUDIT_VERBS = [
   'linq_multi_family_send_capped',
   'linq_multi_family_private_withheld',
   'linq_multi_family_data_refused',
+  'linq_private_aside_sent',
   'linq_poll_sent',
   // A live logistics fact: an open ask, a named taker, a chosen time, or
   // "none of these" ending the both-free ask. One verb, because every one of
@@ -427,6 +439,9 @@ export const AUDIT_VERBS = [
   'activity.offered',
   'registration_shortlist_drafted',
   'registration_sequence_leg_sent',
+  'registration_evening_unwritten',
+  'registration_morning_unwritten',
+  'registration_heads_up_unwritten',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -766,12 +781,55 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale kept an answer out of your family group until everyone there may hear it',
     family: 'awaiting',
   },
+  linq_group_plan_started: {
+    sentence: 'Hale started counting who is coming to a plan in your family group',
+    family: 'done',
+  },
+  linq_group_plan_rsvp_recorded: {
+    sentence: 'Hale recorded who is coming to a plan in your family group',
+    family: 'done',
+  },
+  linq_group_plan_rsvp_edited: {
+    sentence: 'Hale updated who is coming to a plan in your family group',
+    family: 'done',
+  },
   group_line_unsent: {
     sentence: 'Hale held a message for your family group because it could not write it well',
     family: 'problem',
   },
   group_line_locked_fallback: {
     sentence: 'Hale used its standard wording to ask who is who in your family group',
+    family: 'note',
+  },
+  group_reminder_set: {
+    sentence: 'Someone in your family group asked Hale for a reminder',
+    family: 'done',
+  },
+  group_reminder_cancelled: {
+    sentence: 'A reminder asked for in your family group was cancelled',
+    family: 'note',
+  },
+  group_reminder_sent: {
+    sentence: 'Hale sent a reminder someone in your family group asked for',
+    family: 'done',
+  },
+  group_reminder_dropped: {
+    sentence:
+      'Hale did not send a reminder from your family group because it could no longer go out as asked',
+    family: 'note',
+  },
+  group_reminder_failed: {
+    sentence: 'A reminder asked for in your family group could not be sent',
+    family: 'problem',
+  },
+  group_reminder_unwritten: {
+    sentence:
+      'Hale did not answer a reminder request in your family group because it could not write the reply well',
+    family: 'problem',
+  },
+  group_reminder_held: {
+    sentence:
+      'Hale did not answer a reminder request in your family group because not everyone there may hear it',
     family: 'note',
   },
   linq_multi_family_joined: {
@@ -817,6 +875,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_multi_family_data_refused: {
     sentence: "Hale did not use a family's details without that family's consent",
     family: 'problem',
+  },
+  linq_private_aside_sent: {
+    sentence: 'Hale sent one family a private note from a shared thread',
+    family: 'done',
   },
   linq_poll_sent: { sentence: 'Hale sent you a short choice', family: 'note' },
   // True for an open ask, a named taker, a chosen time, and a both-free
@@ -1510,6 +1572,18 @@ const VERBS: Record<AuditVerb, Verb> = {
   registration_sequence_leg_sent: {
     sentence: 'Hale nudged you about a registration window',
     family: 'done',
+  },
+  registration_evening_unwritten: {
+    sentence: 'Hale did not send the evening-before registration text',
+    family: 'note',
+  },
+  registration_morning_unwritten: {
+    sentence: 'Hale did not send the morning-of registration text',
+    family: 'note',
+  },
+  registration_heads_up_unwritten: {
+    sentence: 'Hale did not send the registration heads-up text',
+    family: 'note',
   },
   registration_outcome_recorded: {
     sentence: 'you told Hale how a registration went',

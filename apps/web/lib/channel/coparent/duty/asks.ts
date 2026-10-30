@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
 import { gateOptionalAsk, recordOptionalAsk } from '~/lib/channel/intake/cold-start/ledger';
+import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
@@ -10,7 +11,7 @@ import {
 } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { splitKidEvent, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
-import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -20,6 +21,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { teenChildIds } from '~/lib/channel/role-scope';
@@ -36,6 +38,7 @@ import {
   matchParentDutyAsk,
   planDutyCadence,
 } from './cadence';
+import { householdEventCalendarIds } from './calendar';
 import {
   type DutyCopyParams,
   type DutyWeekEntry,
@@ -50,6 +53,7 @@ import {
 import { coparentDutySendsActive, coparentDutySendsArmed } from './flag';
 import type { DutyExtractor } from './interpret';
 import { type DutyRole, type DutyState, dutyStateFromFact, needsWhichKid } from './model';
+import { type DutyNightFacts, composeDutyNight } from './night-compose';
 
 /**
  * VIL-382 · duty asks in the Linq co-parent group.
@@ -361,6 +365,7 @@ function occasionFor(input: {
   eventKey: string;
   role: DutyRole;
   startsAt: Date;
+  endsAt: Date | null;
   title: string | null;
   cancelled: boolean;
   state: DutyState | null;
@@ -370,6 +375,7 @@ function occasionFor(input: {
   soloCalendarName: string | null;
   language: 'en' | 'fr';
   reasked: boolean;
+  venue: DutyOccasion['venue'];
 }): DutyOccasion {
   const state = input.state;
   const split = input.title ? splitKidEvent(input.title, input.childNames) : null;
@@ -378,6 +384,10 @@ function occasionFor(input: {
     eventKey: input.eventKey,
     role: input.role,
     startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    // From the activity's own booking row, never from parent_calendar_blocks,
+    // which holds no location by design (rule #1). Null leaves venue out.
+    venue: input.venue,
     hasOwner: state?.status === 'confirmed' && state.owner !== null,
     conflict: state?.status === 'conflict',
     needsWhichKid: needsWhichKid(input.title, input.childNames),
@@ -395,12 +405,137 @@ function occasionFor(input: {
   };
 }
 
+/** One booking's venue, keyed to the calendar event it is ON. */
+export interface BookingVenue {
+  /** The calendar event id (`parent_calendar_blocks.event_id`) the booking is linked to. */
+  eventKey: string;
+  startsAt: number;
+  /** The provider's own location string, verbatim. */
+  place: string | null;
+  /** The provider's street address, when Hale holds one apart from the place. No
+   * booking or provider row carries one today, so this is null and the text gives
+   * the place name only. */
+  address: string | null;
+  /** The session identity, for the multi-family shared-activity check. */
+  sessionKey: string | null;
+}
+
+/**
+ * VENUES FROM BOOKINGS. `activity_bookings.location` came from the provider's
+ * confirmation or the registration, so it is the activity's own record. A booking
+ * attaches only through its OWN event link (`event_id` → `family_events` → the
+ * calendar event id) AND the same first session instant, so an unrelated booking at
+ * the same start time cannot lend its venue.
+ */
+async function bookingVenues(database: Database, familyId: string): Promise<BookingVenue[]> {
+  const rows = await database
+    .select({
+      familyId: schema.activityBookings.familyId,
+      firstSessionAt: schema.activityBookings.firstSessionAt,
+      location: schema.activityBookings.location,
+      sessionKey: schema.activityBookings.sessionKey,
+      cancelledAt: schema.activityBookings.cancelledAt,
+      eventId: schema.activityBookings.eventId,
+    })
+    .from(schema.activityBookings)
+    .where(eq(schema.activityBookings.familyId, familyId));
+  const linked = rows.filter((row) => row.eventId);
+  if (linked.length === 0) return [];
+  const calendarIds = await householdEventCalendarIds(database, familyId);
+  const venues: BookingVenue[] = [];
+  for (const row of linked) {
+    if (row.familyId !== familyId || row.cancelledAt || !row.firstSessionAt) continue;
+    for (const eventKey of calendarIds.get(row.eventId as string) ?? []) {
+      venues.push({
+        eventKey,
+        startsAt: row.firstSessionAt.getTime(),
+        place: row.location?.trim() || null,
+        address: null,
+        sessionKey: row.sessionKey,
+      });
+    }
+  }
+  return venues;
+}
+
+/**
+ * The other families in this group's chat, and the sessions each holds. Empty for a
+ * family's own group. Read at send time, every sweep.
+ */
+async function sharedGroupSessions(
+  database: Database,
+  familyId: string,
+  chatId: string | null,
+): Promise<Array<Set<string>>> {
+  if (!chatId) return [];
+  const joins = await database
+    .select({
+      familyId: schema.linqMultiFamilyJoins.familyId,
+      chatId: schema.linqMultiFamilyJoins.chatId,
+      joinedAt: schema.linqMultiFamilyJoins.joinedAt,
+      leftAt: schema.linqMultiFamilyJoins.leftAt,
+    })
+    .from(schema.linqMultiFamilyJoins)
+    .where(eq(schema.linqMultiFamilyJoins.chatId, chatId));
+  const others = [
+    ...new Set(
+      joins
+        .filter((row) => row.chatId === chatId && row.joinedAt != null && row.leftAt == null)
+        .map((row) => row.familyId)
+        .filter((id) => id !== familyId),
+    ),
+  ];
+  const sessions: Array<Set<string>> = [];
+  for (const other of others) {
+    const rows = await database
+      .select({
+        familyId: schema.activityBookings.familyId,
+        sessionKey: schema.activityBookings.sessionKey,
+        cancelledAt: schema.activityBookings.cancelledAt,
+      })
+      .from(schema.activityBookings)
+      .where(eq(schema.activityBookings.familyId, other));
+    sessions.push(
+      new Set(
+        rows
+          .filter((row) => row.familyId === other && !row.cancelledAt && row.sessionKey)
+          .map((row) => row.sessionKey as string),
+      ),
+    );
+  }
+  return sessions;
+}
+
+/**
+ * The venue for one calendar event, or null. The booking must be linked to THIS
+ * event and start at its instant; two such bookings that disagree are no venue. In a
+ * multi-family group (`otherFamilies` non-empty) the venue goes only when every other
+ * family there holds the same session: the activity the group shares.
+ */
+export function venueFor(
+  venues: readonly BookingVenue[],
+  eventKey: string,
+  startsAt: Date,
+  otherFamilies: ReadonlyArray<ReadonlySet<string>> = [],
+): DutyOccasion['venue'] {
+  const hits = venues.filter((v) => v.eventKey === eventKey && v.startsAt === startsAt.getTime());
+  const first = hits[0];
+  if (!first?.place) return null;
+  if (hits.some((v) => v.place !== first.place || v.address !== first.address)) return null;
+  if (otherFamilies.length > 0) {
+    const key = first.sessionKey;
+    if (!key || hits.some((v) => v.sessionKey !== key)) return null;
+    if (!otherFamilies.every((held) => held.has(key))) return null;
+  }
+  return { name: first.place, address: first.address };
+}
+
 async function buildOccasions(
   database: Database,
   familyId: string,
   home: Pick<
     Household,
-    'childNames' | 'childFirstNames' | 'teenNames' | 'parentNames' | 'language'
+    'childNames' | 'childFirstNames' | 'teenNames' | 'parentNames' | 'language' | 'chatId'
   >,
   now: Date,
 ): Promise<{
@@ -425,6 +560,7 @@ async function buildOccasions(
       eventId: schema.parentCalendarBlocks.eventId,
       userId: schema.parentCalendarBlocks.userId,
       startAt: schema.parentCalendarBlocks.startAt,
+      endAt: schema.parentCalendarBlocks.endAt,
       title: schema.parentCalendarBlocks.title,
       status: schema.parentCalendarBlocks.status,
       kidRelated: schema.parentCalendarBlocks.kidRelated,
@@ -444,6 +580,8 @@ async function buildOccasions(
     byEvent.set(block.eventId, list);
   }
 
+  const venueRows = await bookingVenues(database, familyId);
+  const otherFamilies = await sharedGroupSessions(database, familyId, home.chatId);
   const occasions: DutyOccasion[] = [];
   for (const [eventKey, rows] of byEvent) {
     const active = rows.filter((row) => row.status !== 'cancelled');
@@ -460,6 +598,7 @@ async function buildOccasions(
     const shared = {
       eventKey,
       startsAt: sample.startAt,
+      endsAt: sample.endAt ?? null,
       title,
       cancelled,
       childNames: home.childNames,
@@ -467,6 +606,7 @@ async function buildOccasions(
       parentNames: home.parentNames,
       soloCalendarName,
       language: home.language,
+      venue: venueFor(venueRows, eventKey, sample.startAt, otherFamilies),
     };
     if (matching.length === 0) {
       const role = roleFromTitle(title);
@@ -712,6 +852,66 @@ async function voiceDuty(
   return voiced;
 }
 
+function englishStamp(instant: Date, timeZone: string): { date: string; time: string } {
+  return {
+    date: asciiSpaces(
+      new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone,
+      }).format(instant),
+    ),
+    time: dutyClockLabel(instant, timeZone, 'en'),
+  };
+}
+
+/**
+ * Facts for the night-before text. English date and clock labels are facts
+ * the model restates. A missing handoff name or event is null: nothing is sent.
+ */
+export function dutyNightFacts(
+  lines: readonly CadenceLine[],
+  ctx: DutyRenderInput,
+): DutyNightFacts | null {
+  const night = lines.find((row) => row.mode === 'night_before');
+  if (!night) return null;
+  const occasion = occasionForLine(night, ctx);
+  const name = occasion?.spokenName?.trim();
+  const event = occasion?.eventLabel?.trim();
+  if (!occasion || !name || !event) return null;
+  const reask = lines.find((row) => row.mode === 'reask_48h');
+  const reaskOccasion = reask ? occasionForLine(reask, ctx) : undefined;
+  const reaskEvent = reaskOccasion?.eventLabel?.trim();
+  const silent = lines.find((row) => row.mode === 'silent_parent');
+  const silentOccasion = silent ? occasionForLine(silent, ctx) : undefined;
+  const quietName = silent ? silentParentName(ctx, silentOccasion) : null;
+  return {
+    language: ctx.language,
+    now: englishStamp(ctx.now, ctx.timeZone),
+    handoff: {
+      name,
+      kid: occasion.kid ?? null,
+      event,
+      time: dutyClockLabel(occasion.startsAt, ctx.timeZone, 'en'),
+      endTime: occasion.endsAt ? dutyClockLabel(occasion.endsAt, ctx.timeZone, 'en') : null,
+      date: englishStamp(occasion.startsAt, ctx.timeZone).date,
+      venue: occasion.venue ?? null,
+    },
+    unowned:
+      reaskOccasion && reaskEvent
+        ? {
+            kid: reaskOccasion.kid ?? null,
+            event: reaskEvent,
+            day: dutyWeekdayName(reaskOccasion.startsAt, ctx.timeZone, 'en'),
+            time: dutyClockLabel(reaskOccasion.startsAt, ctx.timeZone, 'en'),
+          }
+        : null,
+    quiet: quietName ? { name: quietName } : null,
+  };
+}
+
 /** Joined copy for a bubble. Null when nothing finished may leave. */
 export function renderDutyLines(
   lines: readonly CadenceLine[],
@@ -858,12 +1058,18 @@ export async function deliverDutyGroupLine(
     dedupeKey: string;
     templateKey: string;
     sendsActive: boolean;
+    /** A model-written text. The template gate does not read it. */
+    composed?: boolean;
     fetch?: typeof fetch;
   },
   ports: DutySendPorts = defaultDutySendPorts(),
 ): Promise<DutyDelivery> {
   if (!input.sendsActive) return { status: 'skipped', reason: 'flag_off' };
-  if (!dutyCopyMayLeave(input.text)) return { status: 'skipped', reason: 'placeholder' };
+  if (input.composed) {
+    if (input.text.trim() === '') return { status: 'skipped', reason: 'placeholder' };
+  } else if (!dutyCopyMayLeave(input.text)) {
+    return { status: 'skipped', reason: 'placeholder' };
+  }
   const target = await ports.target(database, input.familyId);
   if (target.channel !== 'group') return { status: 'skipped', reason: 'no_group' };
   const verdict = await ports.gate(
@@ -879,7 +1085,9 @@ export async function deliverDutyGroupLine(
   if (await dedupeActive(input.dedupeKey, database))
     return { status: 'skipped', reason: 'deduped' };
   const body = withOptOut(input.text, verdict.optOut);
-  if (body.includes('TODO-Design')) return { status: 'skipped', reason: 'placeholder' };
+  if (!input.composed && body.includes('TODO-Design')) {
+    return { status: 'skipped', reason: 'placeholder' };
+  }
   if (coldStartLadderEnabled()) {
     const budget = await gateOptionalAsk(database, {
       familyId: input.familyId,
@@ -931,6 +1139,70 @@ export async function deliverDutyGroupLine(
   }
 }
 
+async function applyNightBefore(
+  database: Database,
+  input: {
+    familyId: string;
+    now: Date;
+    view: Exclude<FamilyDutyView, { skipped: 'flag_off' | 'single_parent' }>;
+    lines: readonly CadenceLine[];
+    templateKey: string;
+    ports?: DutySendPorts;
+    replyClient?: AgentClient | null;
+    composeNight?: typeof composeDutyNight;
+  },
+): Promise<DutyDelivery> {
+  const facts = dutyNightFacts(input.lines, input.view.render);
+  if (!facts) {
+    console.error(
+      { familyId: input.familyId, outcome: 'duty_night_unwritten', reason: 'facts_missing' },
+      'duty night: nothing sent',
+    );
+    return { status: 'held', reason: 'model_unsent' };
+  }
+  const client = await resolveReplyClient(input.replyClient);
+  if (!client) {
+    console.error(
+      { familyId: input.familyId, outcome: 'duty_night_unwritten', reason: 'client_unavailable' },
+      'duty night: nothing sent',
+    );
+    return { status: 'held', reason: 'model_unsent' };
+  }
+  const compose = input.composeNight ?? composeDutyNight;
+  const text = await compose(client, facts, input.familyId);
+  if (!text) return { status: 'held', reason: 'model_unsent' };
+  const first = input.lines[0];
+  const ymd = localYmd(input.now, input.view.timeZone);
+  const delivered = await deliverDutyGroupLine(
+    database,
+    {
+      familyId: input.familyId,
+      parentUserId: input.view.parentUserId,
+      text,
+      now: input.now,
+      dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
+      templateKey: input.templateKey,
+      sendsActive: true,
+      composed: true,
+    },
+    input.ports,
+  );
+  if (delivered.status === 'sent') {
+    const noted = input.lines.filter((row) => {
+      if (row.mode === 'reask_48h') return facts.unowned !== null;
+      if (row.mode === 'silent_parent') return facts.quiet !== null;
+      return true;
+    });
+    await noteLinesSent(database, {
+      familyId: input.familyId,
+      lines: noted,
+      open: input.view.open,
+      now: input.now,
+    });
+  }
+  return delivered;
+}
+
 async function applyPlan(
   database: Database,
   input: {
@@ -941,8 +1213,12 @@ async function applyPlan(
     templateKey: string;
     ports?: DutySendPorts;
     replyClient?: AgentClient | null;
+    composeNight?: typeof composeDutyNight;
   },
 ): Promise<DutyDelivery> {
+  if (input.lines.some((row) => row.mode === 'night_before')) {
+    return applyNightBefore(database, input);
+  }
   const locked = renderDutyLines(input.lines, input.view.render);
   if (!locked) return { status: 'skipped', reason: 'placeholder' };
   const text = await voiceDuty(database, {
@@ -981,7 +1257,12 @@ async function applyPlan(
 
 export async function sweepDutyAsks(
   database: Database,
-  input: { now?: Date; ports?: DutySendPorts; replyClient?: AgentClient | null } = {},
+  input: {
+    now?: Date;
+    ports?: DutySendPorts;
+    replyClient?: AgentClient | null;
+    composeNight?: typeof composeDutyNight;
+  } = {},
 ): Promise<DutySweepResult> {
   if (!coparentDutySendsArmed()) return emptyDutySweep(false);
   const now = input.now ?? new Date();
@@ -1025,6 +1306,7 @@ export async function sweepDutyAsks(
         : 'linq:group_duty_night_before',
       ports: input.ports,
       replyClient: input.replyClient,
+      composeNight: input.composeNight,
     });
     if (delivered.status === 'sent') result.sent += 1;
     else if (delivered.status === 'held') result.held += 1;

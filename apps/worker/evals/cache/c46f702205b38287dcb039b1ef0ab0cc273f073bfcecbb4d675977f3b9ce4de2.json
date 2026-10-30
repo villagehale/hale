@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Reading treats the message as a change to an existing response with a no; headcount 1 and no household fits an individual reversing a prior yes. Intent label edit is slightly off from a plain RSVP change."
+  }
+}
