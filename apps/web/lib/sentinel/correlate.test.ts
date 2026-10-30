@@ -136,18 +136,60 @@ describe('correlateExtraction', () => {
     expect(match).toBeNull();
   });
 
-  it('never attempts correlation for reminder_only or unclear extractions', () => {
+  it('matches a reminder to the occasion it reminds about, with the same safeguards', () => {
+    const swim = correlateExtraction(
+      {
+        kind: 'reminder_only',
+        title: 'Swim lessons',
+        originalTime: '2026-08-01T14:00:00Z',
+        newTime: null,
+      },
+      CANDIDATES,
+    );
+    expect(swim).not.toBeNull();
     expect(
       correlateExtraction(
         {
           kind: 'reminder_only',
           title: 'Swim lessons',
+          originalTime: null,
+          newTime: '2026-08-01T14:00:00Z',
+        },
+        CANDIDATES,
+      ),
+    ).toEqual(swim);
+    // A different day, an unrelated title, or no time at all is not a match.
+    expect(
+      correlateExtraction(
+        {
+          kind: 'reminder_only',
+          title: 'Swim lessons',
+          originalTime: '2026-08-09T14:00:00Z',
+          newTime: null,
+        },
+        CANDIDATES,
+      ),
+    ).toBeNull();
+    expect(
+      correlateExtraction(
+        {
+          kind: 'reminder_only',
+          title: 'Bake sale',
           originalTime: '2026-08-01T14:00:00Z',
           newTime: null,
         },
         CANDIDATES,
       ),
     ).toBeNull();
+    expect(
+      correlateExtraction(
+        { kind: 'reminder_only', title: 'Swim lessons', originalTime: null, newTime: null },
+        CANDIDATES,
+      ),
+    ).toBeNull();
+  });
+
+  it('never attempts correlation for unclear extractions', () => {
     expect(
       correlateExtraction(
         {
