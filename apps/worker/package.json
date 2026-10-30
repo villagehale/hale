@@ -83,8 +83,7 @@
     "prompts:push": "node scripts/sync-prompts.mjs push",
     "prompts:pull": "node scripts/sync-prompts.mjs pull",
     "prompts:check": "node scripts/sync-prompts.mjs check",
-    "eval:opt-out-read": "node evals/run-opt-out-read-eval.mjs --cached-only",
-    "eval:linq-sticker": "node evals/linq-sticker-eval.mjs --cached-only"
+    "eval:opt-out-read": "node evals/run-opt-out-read-eval.mjs --cached-only"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.41.0",
