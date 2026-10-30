@@ -38,7 +38,7 @@ import {
   linqMultiFamilyGroupsEnabled,
   linqWebhookSecret,
 } from './config';
-import { type OneToOneSend, resumeConnectLink } from './connect-link-1to1';
+import { type OneToOneSend, privateAsideOneToOne, resumeConnectLink } from './connect-link-1to1';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
   LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
@@ -76,6 +76,7 @@ import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
 import { parseLinqTapback } from './group-plan-rsvp/reading';
 import { groupPlanRsvpTakesTheTurn } from './group-plan-rsvp/turn';
 import type { GroupPlanRsvpComposer } from './group-plan-rsvp/voice';
+import { type PrivateAsideModel, sharedPrivateAsideModel } from './group-private-aside';
 import { decideGroupTurn } from './group-turn-policy';
 import {
   type GroupTurnReader,
@@ -180,6 +181,8 @@ export async function handleLinqInboundRequest(
     groupPlanRsvpReader?: GroupPlanRsvpReader;
     /** VIL-442 test seam. Production composes with the model when the flag is on. */
     groupPlanRsvpComposer?: GroupPlanRsvpComposer;
+    /** VIL-457 test seam. Production uses the shared private-aside model. */
+    privateAsideModel?: PrivateAsideModel;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -566,9 +569,19 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
       receivedAt: message.receivedAt,
       now: deps.now?.() ?? new Date(),
       send: deps.sendGroupText,
+      privateAside: {
+        model: deps.privateAsideModel ?? sharedPrivateAsideModel(),
+        sendOneToOne: privateAsideOneToOne(deps.database, {
+          now: deps.now?.() ?? new Date(),
+          send: deps.oneToOne,
+        }),
+      },
     });
     if (shared.handled) {
-      deps.log.info({ outcome: shared.outcome }, 'linq inbound: multi-family group');
+      deps.log.info(
+        { outcome: shared.outcome, aside: shared.aside },
+        'linq inbound: multi-family group',
+      );
       await deps.countOutcome(shared.count);
       return json({
         outcome: shared.outcome,
