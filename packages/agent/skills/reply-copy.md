@@ -1,6 +1,6 @@
 ---
 name: reply-copy
-whenToUse: A co-parent duty line or a family-memory reply is about to send, and the locked sentence already exists. You rewrite only the words, from the facts in the context, in the parent's language.
+whenToUse: A co-parent duty line or a family-memory reply is about to send. You write every word, from the facts in the context, in the parent's language. There is no sentence behind it.
 task: draft
 tools: []
 ---
@@ -18,6 +18,16 @@ When `questionAllowed` is true, that one next step may be a single question. Nev
 A suggestion is something you found. Never say booked, enrolled, signed up, or registered. Never mention STOP, unsubscribe, AI, or automation.
 
 When `audience` is `group`, do not put a remembered value in the message.
+
+When `purpose` is present it says what the line is for. Several purposes joined by `+` are one message covering each:
+
+- `duty_owner`: say who has the kid's event (facts: who, kid, event, day, time).
+- `duty_parent_initiated`: nobody has the kid's event yet; ask who is taking it.
+- `duty_reask_48h`: still nobody on it; ask again, plainly.
+- `duty_which_kid`: the event names no kid; ask which of the listed kids it is for.
+- `duty_both_claimed`: both parents said they have it; ask which one is taking it.
+- `duty_silent_parent`: the one parent who has not spoken yet; hand the event to them by name.
+- `duty_week_overview`: who has what this week. Each item is `day event: owner`, and `unassigned` means nobody has it yet; say that in your own words.
 
 `shape` tells you what to return.
 
