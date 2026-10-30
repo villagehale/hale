@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: both events are there, tomorrow is right, 11 AM is given as 上午11点, soccer as 傍晚5:30到6:30 (evening, matches 5:30-6:30 PM), and the planLink is exact with no invented details. But it falls short of natural Chinese: 图书馆的故事时间 is a stiff, calque-like rendering of 'Library story time' (a native would say 图书馆故事会 or 图书馆的讲故事活动), and 傍晚5:30到6:30是足球 is unidiomatic ('是足球' for an activity, instead of 足球训练 or 有足球). The line 明天的安排都在这里 is mild filler. The 提醒一下 opener and line-list structure also read somewhat like a notification rather than a friend's text. Capped at 3 for these naturalness issues.",
+    "score": 3
+  }
+}

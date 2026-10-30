@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple fact failures. The event is \"PD Day\" at 9:30 AM-12:00 PM at Northside community centre, but the text says \"Jour de congé at 3:00\", which is a wrong title (and wrong language for an English reminder), a wrong start time with no AM/PM, no end time, and no venue. It also says tomorrow is \"a day off\" with \"breathing room\", implying the family has nothing to be at when there is a timed event. The date \"Mon, Oct 26\" is correct, but that does not offset the rest. Bold is none, which is fine.",
+    "score": 1
+  }
+}

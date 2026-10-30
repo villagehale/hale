@@ -105,6 +105,18 @@ export type RenderedContent = {
   /** Keep the sent text on the outbound channel_messages row. Set only by a template
    * whose whole text is model-written from the parent's own facts (the reminder). */
   recordBody?: boolean;
+  /**
+   * VIL-467 · Several texts, sent in order as one message. Present only on a template
+   * whose model decides how many texts to send (the reminder). `text` then holds the
+   * same texts joined by a blank line, for the dispatch's claim gate only; what goes
+   * on the wire is each entry of `texts`, one send and one ledger row per entry.
+   */
+  texts?: string[];
+  /**
+   * VIL-474 · words the writer chose to bold, copied from one of `texts` (or `text`).
+   * The iMessage leg bolds the first match; SMS and RCS send the same words plain.
+   */
+  bold?: string;
 };
 
 /** Produces channel-specific content for a message, honoring the resolved child-name

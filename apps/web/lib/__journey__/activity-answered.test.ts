@@ -592,6 +592,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
       channel_message_id: await inboundText(body, at, n),
       provider_message_id: `SM-in-${n}`,
       received_at: at.toISOString(),
+      in_group: false,
     });
   }
 

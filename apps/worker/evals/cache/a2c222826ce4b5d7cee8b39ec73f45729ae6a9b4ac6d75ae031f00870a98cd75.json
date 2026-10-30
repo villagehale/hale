@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text 3 drops the Storytime venue: the facts give \"Georgetown Branch, 9 Church St\" but the text only says \"the library\", with no venue name and no street address, which is a missing given fact. The Montessori tour is complete (10 AM, about an hour, Little Oaks Montessori, 41 Mill St), and the storytime has its start and end times and who it is for. Bold is none, which is fine.",
+    "score": 2
+  }
+}

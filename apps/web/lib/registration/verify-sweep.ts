@@ -4,6 +4,7 @@ import { type Database, type Municipality, type ProgramDomain, schema } from '@h
 import { and, asc, eq, gte, lt, lte } from 'drizzle-orm';
 import { type ProviderAbort, providerPreflight } from '~/lib/monitoring/provider-health';
 import { DISCOVERY_TARGETS, type DiscoveryTarget } from './discovery-targets';
+import { inferredFieldsFor } from './registration-windows';
 import {
   type CycleIdentity,
   type ExtractedWindow,
@@ -15,7 +16,6 @@ import {
   isTrustworthyFind,
   withoutInferredEvidence,
 } from './verify-window';
-import { inferredFieldsFor } from './registration-windows';
 
 /**
  * VIL-259 — the weekly registration re-verify sweep. M1 (VIL-236) specified this

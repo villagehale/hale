@@ -103,6 +103,8 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'linq_multi_family_private_withheld',
     'linq_multi_family_data_refused',
   ],
+  // VIL-457. One helper writes the per-family private aside verb.
+  'apps/web/lib/channel/linq/group-private-aside.ts': ['linq_private_aside_sent'],
   // The loop dispatch names its send by WHO received it: a caregiver leg is a disclosure
   // to a third party, everything else is the generic channel send.
   'apps/web/lib/channel/dispatch.ts': ['caregiver_schedule_sent', 'channel_sent'],

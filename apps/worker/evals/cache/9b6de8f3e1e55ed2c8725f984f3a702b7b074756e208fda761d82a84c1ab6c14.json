@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names the event as given (PD Day), says it is tomorrow, Monday Oct 26 (true from Sunday Oct 25), and states it is all-day with no clock time. It invents no consequence, such as school being closed or who is affected, and adds no plans or time. No location or end was given, so none is missing. No link is included, which is fine. Bold is none, which is acceptable.",
+    "score": 5
+  }
+}

@@ -22,6 +22,47 @@ export function parseEvalFlags(args) {
   return args[0].slice(2);
 }
 
+/**
+ * Exactly one mode plus an optional `--only=<id>[,<id>]` (same name as the activity and
+ * coach-channel runners). `only` is null when absent. Ids are checked against `knownIds`
+ * when given, so a typo can never silently select nothing.
+ * @returns {{ mode: 'dry' | 'broken' | 'cached-only' | 'live', only: string[] | null }}
+ */
+export function parseEvalArgs(args, knownIds) {
+  const onlyArgs = args.filter((a) => a.startsWith('--only'));
+  const rest = args.filter((a) => !a.startsWith('--only'));
+  const mode = parseEvalFlags(rest);
+  if (onlyArgs.length === 0) return { mode, only: null };
+  if (onlyArgs.length > 1) throw new Error('pass --only at most once');
+  if (!onlyArgs[0].startsWith('--only=')) throw new Error('use --only=<id>[,<id>]');
+  const only = [
+    ...new Set(
+      onlyArgs[0]
+        .slice('--only='.length)
+        .split(',')
+        .map((s) => s.trim()),
+    ),
+  ];
+  if (only.length === 0 || only.some((id) => id === '')) {
+    throw new Error('--only needs at least one non-empty id');
+  }
+  if (knownIds) {
+    const unknown = only.filter((id) => !knownIds.includes(id));
+    if (unknown.length > 0) throw new Error(`--only: unknown id(s): ${unknown.join(',')}`);
+  }
+  return { mode, only };
+}
+
+/** parseEvalArgs, or print the reason and exit 2. */
+export function parseEvalArgsOrExit(name, knownIds, args = process.argv.slice(2)) {
+  try {
+    return parseEvalArgs(args, knownIds);
+  } catch (err) {
+    console.error(`${name} eval: ${err.message}`);
+    process.exit(2);
+  }
+}
+
 /** Parse, or print the reason and exit 2. Call first thing in main(). */
 export function parseEvalFlagsOrExit(name, args = process.argv.slice(2)) {
   try {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start (15 h), the quoted title, the venue name and the street address, and invents nothing. But the facts give an end time of 4:00 PM (16 h) and the text omits it, saying only 'à 15 h'. A given end is missing, so this is a fact failure.",
+    "score": 2
+  }
+}

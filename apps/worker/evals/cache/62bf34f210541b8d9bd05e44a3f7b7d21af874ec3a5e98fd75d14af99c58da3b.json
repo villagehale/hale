@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events keep every given fact: day (tomorrow, Monday), start and end times with correct AM/PM (10:00-11:00 a.m., 1:30-2:15 p.m.), venue names and street addresses, and who each is for (Theo, Lea). Nothing is invented, no extra logistics are claimed, no link is included, and the language is English. The unaccented 'Lea' is a spelling variation, not a fact failure.",
+    "score": 5
+  }
+}

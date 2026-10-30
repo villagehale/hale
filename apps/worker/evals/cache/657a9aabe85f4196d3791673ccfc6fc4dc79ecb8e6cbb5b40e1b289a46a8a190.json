@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message tells the parent privately that many texts arrived at once and Hale can't answer this one, and invites them to resend later without promising an answer. However, 'I can't promise when I'll get to it' hints at a possible later reply, and 'send it again whenever' is close to implying a response, but the core meaning matches the watchFor requirements closely. Minor ambiguity keeps it from a perfect score.",
+    "score": 4
+  }
+}

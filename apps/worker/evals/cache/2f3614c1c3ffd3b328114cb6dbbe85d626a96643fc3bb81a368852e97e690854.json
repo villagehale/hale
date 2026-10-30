@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the handoff details: Sam, Maya, swim lesson, 3 to 4pm, Pan Am Centre at 875 Morningside Ave, and 'tomorrow' is correct since now is Sunday September 27 and the event is Monday September 28. However, 'It is booked' is a claim the facts do not make; nothing in the facts says the lesson is booked or confirmed. It also does not name a child outside the facts, so the only violation is the unsupported booking claim.",
+    "score": 2
+  }
+}

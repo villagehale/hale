@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event (PD Day), the correct day (tomorrow, Monday, from Sunday evening), and that it is all day, with no clock time. The title is kept as the event's name, with no inferred consequences (school closed, who is affected) and nothing invented. There is no venue, address, or planLink to include. All facts given are present and accurate, in English.",
+    "score": 5
+  }
+}
