@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { linqVoiceMemosEnabled } from '~/lib/channel/linq/config';
-import { checkLinqIMessageCapability, sendLinqVoiceMemo } from '~/lib/channel/linq/transport';
+import { checkLinqIMessageCapability, sendLinqVoiceMemo } from '~/lib/channel/outbound-transport';
 import { fakeSender, previewRouteGate } from '~/lib/channel/preview-fake-inbound';
 import { PREVIEW_CHAT_PREFIX, previewGroupCaptureOpen } from '~/lib/channel/preview-linq-capture';
 

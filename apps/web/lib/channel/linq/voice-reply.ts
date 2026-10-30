@@ -1,9 +1,6 @@
+import { checkLinqIMessageCapability, sendLinqVoiceMemo } from '~/lib/channel/outbound-transport';
 import { linqVoiceMemosEnabled } from './config';
-import {
-  type LinqIMessageCapability,
-  checkLinqIMessageCapability,
-  sendLinqVoiceMemo,
-} from './transport';
+import type { LinqIMessageCapability } from './transport';
 
 /**
  * VIL-476 · The Design-locked gate for sending a written reply as a native voice memo.
