@@ -19,12 +19,12 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
-  LINQ_GROUP_OPEN_TEXT,
   LINQ_GROUP_TRIGGER_PHRASE,
   linqCoParentAsk,
   linqGroupClaimRefused,
   linqGroupLineMissing,
   linqGroupMakeInstruction,
+  linqGroupOpenLine,
   linqGroupTriggerInOneToOne,
 } from './group';
 import { handleLinqInboundRequest } from './inbound';
@@ -228,7 +228,8 @@ describe('design-locked claim copy', () => {
     expect(await linqGroupTriggerInOneToOne('+1 646-235-2164', 'fr')).toBe(
       'Cette phrase va dans le groupe. Ouvrez un groupe iMessage avec eux et +1 646-235-2164, puis envoyez: cest notre annee.',
     );
-    expect(LINQ_GROUP_OPEN_TEXT).toBe("This thread is your kids' year — both of you, and me.");
+    // VIL-506: the opening line is the model's (scripted here), never a constant.
+    expect(await linqGroupOpenLine('en')).toBeTruthy();
   });
 });
 
@@ -368,7 +369,7 @@ describe('handleLinqInboundRequest', () => {
       notice: 'sent',
     });
     expect(h.jobs).toHaveLength(0);
-    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: LINQ_GROUP_OPEN_TEXT }]);
+    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: await linqGroupOpenLine('en') }]);
     const family = h.fake.rows(schema.families).find((row) => row.id === familyId);
     expect(family?.linqGroupChatId).toBe(CHAT_ID);
     const inbound = h.fake

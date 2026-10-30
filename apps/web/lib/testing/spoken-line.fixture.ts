@@ -242,6 +242,20 @@ function render(
         "I can't use this thread as your kids' year.",
         "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
       );
+    case 'linq_group_open':
+      return pick(
+        language,
+        "This thread is your kids' year - both of you, and me.",
+        "Ce fil, c'est l'annee de vos enfants - vous deux, et moi.",
+      );
+    case 'linq_group_unreachable':
+      return pick(
+        language,
+        "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.",
+        "Je n'ai pas pu ouvrir le groupe. Demandez-leur d'ecrire une fois a ce numero, puis redites-le moi.",
+      );
+    case 'name_captured':
+      return pick(language, "Thanks - I'll use that from now on.", 'Merci, je retiens.');
     case 'linq_group_line_missing':
       return pick(
         language,

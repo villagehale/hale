@@ -28,20 +28,23 @@ import { LinqSendError, listLinqParticipantHandles } from './transport';
  */
 
 /**
- * DESIGN LOCK PENDING (Sloane). First bubble when Hale opens the co-parent
- * group. No URL: Linq rejects a link on the create-chat message.
+ * First bubble when Hale opens (or claims) the co-parent group. The model writes it
+ * (VIL-506); a miss sends nothing. No URL: Linq rejects a link on the create-chat message.
  */
-export const LINQ_GROUP_OPEN_TEXT = "This thread is your kids' year — both of you, and me.";
+export function linqGroupOpenLine(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_open', language });
+}
 
 /** DESIGN LOCK PENDING (Sloane). Group icon / name. Household dad+mom only, not a logistics brand. */
 export const LINQ_GROUP_DISPLAY_NAME = "Kids' year";
 
 /**
- * DESIGN LOCK PENDING (Sloane). Sent in the 1:1 when Linq will not open the
- * group. The sandbox requires the co-parent to have texted the line first.
+ * Sent in the 1:1 when Linq will not open the group (the co-parent has to have texted
+ * the line first). The model writes it (VIL-506); a miss sends nothing.
  */
-export const LINQ_GROUP_UNREACHABLE_TEXT =
-  "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.";
+export function linqGroupUnreachableLine(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_unreachable', language });
+}
 
 /**
  * An unclaimed group has no parent to name. Hale sends nothing about the
@@ -124,7 +127,7 @@ export function linqGroupClaimRefused(language: ReplyLanguage | null): Promise<s
   return speak({ purpose: 'linq_group_claim_refused', language });
 }
 
-/** Ack after a claim. The body is {@link LINQ_GROUP_OPEN_TEXT}. */
+/** Ack after a claim. The body is {@link linqGroupOpenLine}. */
 export const LINQ_GROUP_CLAIMED_TEMPLATE_KEY = 'linq:group_claimed';
 /** Refusal when this chat is already another household, or this household already has one. */
 export const LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY = 'linq:group_claim_refused';
@@ -338,7 +341,9 @@ export type OpenHouseholdGroupOutcome =
         | 'no_chat'
         | 'not_configured'
         | 'same_number'
-        | 'unavailable';
+        | 'unavailable'
+        /** VIL-506: the model wrote no opening line, so no group was opened. */
+        | 'no_line';
     }
   | { status: 'degraded'; reason: 'coparent_not_reachable'; code: string; httpStatus: number };
 
@@ -402,10 +407,18 @@ export async function openHouseholdLinqGroup(
       return { status: 'added', chatId: groupId };
     }
 
+    const openText = await linqGroupOpenLine(null);
+    if (!openText) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: no model-written opening line - group not opened, nothing sent',
+      );
+      return { status: 'skipped', reason: 'no_line' };
+    }
     const created = await createLinqChat({
       from,
       to: [parent, coParent],
-      text: LINQ_GROUP_OPEN_TEXT,
+      text: openText,
       fetch: args.fetch,
     });
     await updateLinqGroupChat({
@@ -461,9 +474,17 @@ async function tellParentTheGroupDidNotOpen(
   chatId: string,
 ): Promise<void> {
   try {
+    const text = await linqGroupUnreachableLine(null);
+    if (!text) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: no model-written degrade line - nothing sent',
+      );
+      return;
+    }
     const sent = await sendLinqChatMessage({
       chatId,
-      text: LINQ_GROUP_UNREACHABLE_TEXT,
+      text,
       fetch: args.fetch,
     });
     await database.insert(schema.channelMessages).values({

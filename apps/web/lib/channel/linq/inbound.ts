@@ -60,7 +60,6 @@ import { type OneToOneSend, privateAsideOneToOne, resumeConnectLink } from './co
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
   LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
-  LINQ_GROUP_OPEN_TEXT,
   LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY,
   claimHouseholdLinqGroup,
   deliverLinqGroupNotice,
@@ -69,6 +68,7 @@ import {
   holdUnknownGroupSender,
   linqGroupClaimRefused,
   linqGroupLineMissing,
+  linqGroupOpenLine,
   linqGroupTriggerInOneToOne,
   mapGroupHandlesToFamily,
   matchLinqGroupTrigger,
@@ -1151,7 +1151,9 @@ async function claimGroupFromTrigger(
     }
   }
 
-  const claimReply = accepted ? LINQ_GROUP_OPEN_TEXT : await linqGroupClaimRefused(language);
+  const claimReply = accepted
+    ? await linqGroupOpenLine(language)
+    : await linqGroupClaimRefused(language);
   if (!claimReply) {
     deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: claim reply unreachable');
     await deps.countOutcome('intake');
