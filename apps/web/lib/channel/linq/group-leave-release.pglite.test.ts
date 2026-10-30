@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { releaseGroupOnLeave } from './group-leave';
 
@@ -16,7 +16,7 @@ afterAll(async () => {
 
 describe('releaseGroupOnLeave', () => {
   it("clears this family's claim on the chat, writes one audit row, idempotent", async () => {
-    delete process.env.LINQ_GROUP_ONBOARDING_V2_ENABLED;
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     const fam = await seedFamily(db.database);
     const other = await seedFamily(db.database, 'Other');
     await db.database

@@ -97,7 +97,7 @@ export function leaveGroupChatTool(args: {
       const ifLeaveFails = (input.ifLeaveFails ?? '').trim();
       if (ifLeaveFails === '') {
         throw new Error(
-          `Write \`ifLeaveFails\`: your own line for the group if the leave is refused after your goodbye.`,
+          'Write `ifLeaveFails`: your own line for the group if the leave is refused after your goodbye.',
         );
       }
       const guard = args.check ? await args.check() : ({ ok: true } as const);
