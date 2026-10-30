@@ -173,6 +173,7 @@ describe('pickupCandidates', () => {
           owner: { kind: 'parent', userId: 'barton' },
           ownerSince: null,
           placedGoogleEventId: 'placed-allergist',
+          placedGoogleIntegrationId: 'gcal-barton',
         },
       ],
       decided: () => ({ takerId: 'sam', at: NOW, claim: true }),
@@ -273,6 +274,7 @@ describe('pickupDecisionKey', () => {
           owner: null,
           ownerSince: null,
           placedGoogleEventId: null,
+          placedGoogleIntegrationId: null,
         },
       ],
       decided: (startIso, titleNorm) => {

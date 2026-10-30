@@ -266,6 +266,9 @@ export interface ClashSourceEvent {
   /** When the owner was set. A claim made in the group after it wins. */
   ownerSince: Date | null;
   placedGoogleEventId: string | null;
+  /** The calendar connection that holds `placedGoogleEventId`. Google event ids are only
+   * unique within one calendar, so a copy is matched on both. */
+  placedGoogleIntegrationId: string | null;
 }
 
 /** A stored who-takes decision: who, since when, and whether the group settled it. */
@@ -308,13 +311,22 @@ export function clashCalendar(input: {
   const bySignature = new Map<string, Draft>();
   const byPlaced = new Map<string, Draft>();
   const privatePlaced = new Set<string>();
+  /** A private plan whose connection is gone: its id alone still hides any matching row. */
+  const privatePlacedAnywhere = new Set<string>();
+  const copyKey = (integrationId: string, eventId: string) => `${integrationId}\u0000${eventId}`;
   const busy: ClashBusy[] = [];
   const named = new Map<string, ClashPerson>();
   const signature = (title: string, start: Date, end: Date) =>
     `${clashTitleNorm(title)}|${start.getTime()}|${end.getTime()}`;
 
   for (const event of input.events) {
-    if (event.private && event.placedGoogleEventId) privatePlaced.add(event.placedGoogleEventId);
+    if (event.private && event.placedGoogleEventId) {
+      if (event.placedGoogleIntegrationId) {
+        privatePlaced.add(copyKey(event.placedGoogleIntegrationId, event.placedGoogleEventId));
+      } else {
+        privatePlacedAnywhere.add(event.placedGoogleEventId);
+      }
+    }
     if (!event.end || event.end.getTime() <= event.start.getTime()) continue;
     let takerId: string | null = null;
     let label: string | null = null;
@@ -358,20 +370,24 @@ export function clashCalendar(input: {
     };
     drafts.push(draft);
     bySignature.set(signature(event.title, event.start, event.end), draft);
-    if (event.placedGoogleEventId) byPlaced.set(event.placedGoogleEventId, draft);
+    if (event.placedGoogleEventId && event.placedGoogleIntegrationId) {
+      byPlaced.set(copyKey(event.placedGoogleIntegrationId, event.placedGoogleEventId), draft);
+    }
   }
 
   for (const block of input.blocks) {
     if (block.status === 'cancelled' || block.allDay || !block.start || !block.end) continue;
     if (block.end.getTime() <= block.start.getTime()) continue;
     const row = { integrationId: block.integrationId, eventId: block.eventId };
-    const placed = byPlaced.get(block.eventId);
+    const copy = copyKey(block.integrationId, block.eventId);
+    const hidden = privatePlaced.has(copy) || privatePlacedAnywhere.has(block.eventId);
+    const placed = hidden ? undefined : byPlaced.get(copy);
     if (placed) {
       placed.holders.add(block.userId);
       placed.rows.push(row);
       continue;
     }
-    if (!block.kidRelated || !block.title || privatePlaced.has(block.eventId)) {
+    if (!block.kidRelated || !block.title || hidden) {
       busy.push({
         key: `busy:${block.integrationId}:${block.eventId}`,
         personId: block.userId,

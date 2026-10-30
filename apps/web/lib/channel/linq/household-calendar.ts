@@ -1240,6 +1240,7 @@ async function planClashes(
       dutyOwnerKind: schema.familyEvents.dutyOwnerKind,
       dutySetAt: schema.familyEvents.dutySetAt,
       placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+      placedGoogleIntegrationId: schema.familyEvents.placedGoogleIntegrationId,
     })
     .from(schema.familyEvents)
     .where(
@@ -1290,6 +1291,7 @@ async function planClashes(
             : null,
       ownerSince: row.dutySetAt,
       placedGoogleEventId: row.placedGoogleEventId,
+      placedGoogleIntegrationId: row.placedGoogleIntegrationId,
     })),
     decided: (startIso, titleNorm) => {
       const memory = rememberedWhoTakes(input.remembered, startIso, titleNorm);
