@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French although the requested language is English; it gives the wrong time (3:00 instead of 9:30 AM to 12:00 PM), omits the location, and states the day is a day off with breathing room, implying the day is free despite a timed event.",
+    "score": 1
+  }
+}

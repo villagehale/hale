@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with every given fact: story time tomorrow morning 11:00 at Georgetown library, 9 Church St (no end given, none invented), and soccer tomorrow afternoon 5:30 to 6:30 at Riverside Field, 22 Park Rd. AM/PM is correct (上午 and 下午), titles are kept as-is, nothing is invented, the text is in Chinese, and the only link is planLink.",
+    "score": 5
+  }
+}

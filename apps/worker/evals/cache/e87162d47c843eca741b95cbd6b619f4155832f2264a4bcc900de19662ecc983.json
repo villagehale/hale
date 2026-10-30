@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale, in Chinese, to stop sending email on its own and to ask first. The autonomy switch was turned off this turn for send_email and reply_to_email, so the reply's promise to ask before every email is backed. It answers in the parent's language, confirms in one short line with no greeting or sign-off, invents nothing and asks nothing. Because reply_to_email was also switched off, 'any email' is accurate.",
+    "score": 5
+  }
+}

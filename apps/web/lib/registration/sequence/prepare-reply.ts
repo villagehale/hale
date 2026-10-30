@@ -1,17 +1,14 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
-import { SENT_STATUSES } from '~/lib/channel/ledger';
-import {
-  SPOT_PORTAL_HOSTS,
-  type SpotPortal,
-  sanitizeSpotUrl,
-} from '~/lib/channel/spots/url';
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
+import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { SPOT_PORTAL_HOSTS, type SpotPortal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
 import { renderCourseBindAck, renderReadinessAck } from './copy.js';
+import { printsReadinessAsk } from './copy.js';
 import {
   type AgeVerdict,
   BIND_FETCH_TIMEOUT_MS,
@@ -23,7 +20,6 @@ import {
 import { legDedupeKey } from './run.js';
 import { SEQUENCE_LEGS } from './schedule.js';
 import { type FitNote, buildShortlist } from './shortlist.js';
-import { printsReadinessAsk } from './copy.js';
 
 /**
  * VIL-338 · what a parent may SAY to a registration morning that has not happened yet.

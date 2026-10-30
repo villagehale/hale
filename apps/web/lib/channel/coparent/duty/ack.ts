@@ -2,11 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import {
-  LinqSendError,
-  reactToLinqMessage,
-  sendLinqChatMessage,
-} from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
+import { reactToLinqMessage, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { isWithinQuietHours } from '~/lib/loop/prefs';

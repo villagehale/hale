@@ -41,6 +41,7 @@ import {
 } from './kid-event';
 
 export { classifyKidCalendarItem, splitKidEvent, titleForStorage };
+import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import {
   groupBothFreeText,
   groupConflictText,
@@ -68,7 +69,7 @@ import {
   writeLogisticsDecision,
 } from './logistics-poll';
 import { type PollOptionWrite, sendChoicePoll } from './poll';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Both parents' calendars, read together, spoken into the claimed Linq group.
