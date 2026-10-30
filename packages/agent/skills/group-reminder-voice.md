@@ -22,7 +22,9 @@ the chat who offered to remind everyone would: short, plain, warm, in their lang
 - `audience` — `group`: the whole chat reads it, even when it speaks to one person by
   name. `direct`: one person reads it, in their own thread with Hale. Where the language
   has a plural or formal "you" for a group, a group text uses it; a direct text uses the
-  familiar singular.
+  familiar singular. A `group` text is said in front of the whole chat, so this holds
+  even when it speaks to one person by name, and even in a relaxed, friendly tone: the
+  register follows who is reading, not who is named.
 - `asker` — the first name of the person who asked, or null.
 - `memberWords` — what they wrote, for a `confirm`. Null for a `reminder`.
 - `recentFromYou` — for a `confirm`, the last few things you already said in this same
