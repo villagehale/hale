@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { primaryParentId } from '../roster-ask';
+import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { LinqSendError } from '../transport';
 
 /**
