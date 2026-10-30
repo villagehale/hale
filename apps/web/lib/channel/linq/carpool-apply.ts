@@ -65,10 +65,18 @@ function claimedDriverName(reading: CarpoolReading, sender: CarpoolSender): stri
   return null;
 }
 
+function sameFirstName(a: string | null, b: string | null): boolean {
+  const first = (value: string | null) =>
+    (value ?? '').trim().split(/\s+/)[0]?.toLocaleLowerCase() ?? '';
+  const left = first(a);
+  return left.length > 0 && left === first(b);
+}
+
 function withReminder(
   plan: CarpoolPlanState,
   pickupAt: Date | null,
   timeZone: string,
+  previousPickupAt: Date | null = plan.pickupAt,
 ): CarpoolPlanState {
   if (plan.status === 'cancelled') {
     return { ...plan, reminderStatus: 'skipped_cancelled', reminderFireAt: null };
@@ -80,7 +88,14 @@ function withReminder(
       reminderStatus: plan.driverName ? 'unscheduled' : 'skipped_no_driver',
     };
   }
-  if (plan.reminderStatus === 'sent') return plan;
+  if (plan.reminderStatus === 'sent') {
+    // Devin #936 — a ride moved to another day after its reminder went out
+    // gets a fresh night-before reminder for the new day.
+    const movedDay =
+      previousPickupAt !== null &&
+      dayKeyIn(previousPickupAt, timeZone) !== dayKeyIn(pickupAt, timeZone);
+    if (!movedDay) return plan;
+  }
   return {
     ...plan,
     reminderFireAt: carpoolReminderFireAt(pickupAt, timeZone),
@@ -101,12 +116,18 @@ export function applyCarpoolReading(
   if (reading.confidence === 'low' && reading.intent !== 'cancel') return plan;
   if (reading.intent === 'chatter' || reading.intent === 'unclear') return plan;
 
-  const pickupAt = parsePickupAt(reading.pickupAtIso) ?? plan?.pickupAt ?? null;
+  const previousPickupAt = plan?.pickupAt ?? null;
+  const pickupAt = parsePickupAt(reading.pickupAtIso) ?? previousPickupAt;
   const eventLabel = reading.eventLabel?.trim() || plan?.eventLabel || null;
   const pickupPlace = reading.pickupPlace?.trim() || plan?.pickupPlace || null;
   const kids = reading.kids?.trim() || plan?.kids || null;
   const timeZone = sender.timezone || plan?.driverTimezone || 'America/Toronto';
-  const planKey = plan?.planKey ?? carpoolPlanKey(eventLabel, pickupAt, timeZone);
+  const movedDay = Boolean(
+    plan?.pickupAt &&
+      pickupAt &&
+      dayKeyIn(plan.pickupAt, timeZone) !== dayKeyIn(pickupAt, timeZone),
+  );
+  const planKey = plan && !movedDay ? plan.planKey : carpoolPlanKey(eventLabel, pickupAt, timeZone);
 
   if (reading.intent === 'cancel') {
     const base: CarpoolPlanState = plan ?? {
@@ -152,6 +173,7 @@ export function applyCarpoolReading(
 
   const merged: CarpoolPlanState = {
     ...next,
+    planKey,
     eventLabel,
     pickupAt,
     pickupPlace,
@@ -160,23 +182,27 @@ export function applyCarpoolReading(
   };
 
   if (reading.intent === 'plan_needs_driver') {
-    return withReminder(merged, pickupAt, timeZone);
+    return withReminder(merged, pickupAt, timeZone, previousPickupAt);
   }
 
   const driverName = claimedDriverName(reading, sender);
-  if (!driverName) return withReminder(merged, pickupAt, timeZone);
+  if (!driverName) return withReminder(merged, pickupAt, timeZone, previousPickupAt);
 
   const swapped = Boolean(merged.driverName && merged.driverName !== driverName);
+  // Devin #936 — "Priya is driving" from Maya is Priya, not Maya. Only the
+  // speaker naming themself carries their account; anyone else stays null
+  // until they are a verified member.
+  const speakerIsDriver = sameFirstName(driverName, sender.name);
   const assigned: CarpoolPlanState = {
     ...merged,
     driverName,
-    driverUserId: sender.userId,
-    driverHaleCustomer: sender.haleCustomer,
+    driverUserId: speakerIsDriver ? sender.userId : null,
+    driverHaleCustomer: speakerIsDriver ? sender.haleCustomer : false,
     driverTimezone: timeZone,
     status: 'assigned',
     reminderStatus: swapped && merged.reminderStatus === 'sent' ? 'pending' : merged.reminderStatus,
   };
-  return withReminder(assigned, pickupAt, timeZone);
+  return withReminder(assigned, pickupAt, timeZone, previousPickupAt);
 }
 
 export function markAsked(plan: CarpoolPlanState, at: Date): CarpoolPlanState {

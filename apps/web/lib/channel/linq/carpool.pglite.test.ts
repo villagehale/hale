@@ -176,11 +176,15 @@ describe('considerCarpoolTurn', () => {
         }),
       },
     });
+    const [priya] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:priya', name: 'Priya Shah', timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
     const swapped = await considerCarpoolTurn(db.database, {
       chatId: CHAT,
       familyId,
       senderHandle: '+14165550113',
-      senderUserId: null,
+      senderUserId: priya?.id as string,
       senderName: 'Priya',
       text: 'I will take them instead',
       now: NOW,

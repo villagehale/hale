@@ -15,7 +15,7 @@ import { speak } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { haleContactImageUrl } from './contact-card';
-import { groupAudienceAllows } from './group-audience';
+import { type GroupLineClass, groupAudienceAllows } from './group-audience';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
@@ -267,15 +267,33 @@ export async function deliverLinqGroupNotice(
     now: Date;
     fetch?: typeof fetch;
     send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+    /**
+     * Audience class. A direct reply in the turn is `reply`; a proactive line
+     * (e.g. a ride reminder) names its content class so an incomplete roster
+     * holds it instead of treating it as a reply.
+     */
+    lineClass?: GroupLineClass;
   },
 ): Promise<'sent' | 'not_sent' | 'group_audience_refused'> {
-  if (!(await groupAudienceAllows(database, input.chatId, 'reply')).allowed) {
+  if (!(await groupAudienceAllows(database, input.chatId, input.lineClass ?? 'reply')).allowed) {
     return 'group_audience_refused';
   }
+  let sent: { providerMessageId: string };
   try {
-    const sent = input.send
+    sent = input.send
       ? await input.send({ chatId: input.chatId, text: input.text })
       : await sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch });
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    console.warn(
+      { familyId: input.familyId, code },
+      'linq group: the household-thread notice did not land',
+    );
+    return 'not_sent';
+  }
+  // The text left. A ledger failure past this point is logged, never reported
+  // as not_sent, so no caller replays a line the group already has.
+  try {
     const [row] = await database
       .insert(schema.channelMessages)
       .values({
@@ -300,15 +318,13 @@ export async function deliverLinqGroupNotice(
       targetTable: 'channel_messages',
       targetId: id,
     });
-    return 'sent';
   } catch (err) {
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
-    console.warn(
-      { familyId: input.familyId, code },
-      'linq group: the household-thread notice did not land',
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'linq group: notice sent but not ledgered',
     );
-    return 'not_sent';
   }
+  return 'sent';
 }
 
 export type OpenHouseholdGroupOutcome =

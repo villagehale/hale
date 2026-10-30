@@ -1,0 +1,454 @@
+import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import {
+  considerCarpoolTapback,
+  considerCarpoolTurn,
+  createCarpoolDriverSend,
+  runCarpoolReminders,
+} from './carpool';
+import type { CarpoolReading } from './carpool-apply';
+import type { CarpoolReadInput } from './carpool-reading';
+import { createCarpoolComposer, fakeCarpoolComposer } from './carpool-voice';
+
+vi.mock('~/lib/monitoring/ops-slack', () => ({ postOpsSlack: async () => 'skipped' }));
+vi.mock('~/lib/cron/skill', () => ({
+  loadCronSkill: async () => ({ instructions: '', meta: { task: 'reply' } }),
+}));
+vi.mock('@hale/agent', async (orig) => ({ ...((await orig()) as object), pickLane: () => 'hot' }));
+vi.mock('~/lib/pipeline/client', () => ({
+  budgetedAnthropic: () => ({}),
+  HOT_SMS_CLIENT_OPTIONS: {},
+}));
+// The model "invents" a driver and place that are not in the facts.
+vi.mock('~/lib/pipeline/structured', () => ({
+  forceToolJson: async () => ({ value: { line: 'Bob drives everyone from the mall at 9' } }),
+}));
+
+/** VIL-517 — one test per Devin finding on merged #936. Fake family; nothing leaves. */
+
+const KEY = Buffer.alloc(32, 7).toString('base64');
+const NOW = new Date('2026-10-08T16:00:00.000Z');
+const FRIDAY_EVE = new Date('2026-10-09T22:00:00.000Z');
+const CHAT = 'chat-carpool-517';
+const SAT = '2026-10-10T12:00:00.000Z';
+const SUN = '2026-10-11T13:00:00.000Z';
+const MAYA_PHONE = '+14165550111';
+const PRIYA_PHONE = '+14165550113';
+const STRANGER = '+14165550199';
+
+let db: TestDb;
+
+beforeAll(async () => {
+  process.env.APP_ENCRYPTION_KEY = KEY;
+  db = await createTestDb();
+});
+afterAll(async () => {
+  await db.close();
+});
+beforeEach(() => {
+  vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+  vi.stubEnv('LINQ_GROUP_CARPOOL_ENABLED', 'true');
+});
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  process.env.APP_ENCRYPTION_KEY = KEY;
+  await db.exec(
+    'truncate table linq_group_carpools, linq_group_members, audit_log, channel_messages, family_members, families, users cascade',
+  );
+});
+
+async function seed() {
+  const [family] = await db.database
+    .insert(schema.families)
+    .values({ displayName: 'Chen', provinceOrState: 'ON', linqGroupChatId: CHAT })
+    .returning({ id: schema.families.id });
+  const [maya] = await db.database
+    .insert(schema.users)
+    .values({ externalAuthId: 'imessage:maya', name: 'Maya Chen', timezone: 'America/Toronto' })
+    .returning({ id: schema.users.id });
+  const familyId = family?.id as string;
+  const mayaId = maya?.id as string;
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId, userId: mayaId, role: 'primary_parent' });
+  return { familyId, mayaId };
+}
+
+async function seatPriya(familyId: string) {
+  const [priya] = await db.database
+    .insert(schema.users)
+    .values({ externalAuthId: 'imessage:priya', name: 'Priya Shah', timezone: 'America/Toronto' })
+    .returning({ id: schema.users.id });
+  await db.database.insert(schema.linqGroupMembers).values({
+    familyId,
+    chatId: CHAT,
+    userId: priya?.id as string,
+    phoneE164Encrypted: encryptString(PRIYA_PHONE),
+    phoneE164Hash: phoneBlindIndex(PRIYA_PHONE),
+    role: 'caregiver',
+  });
+  return priya?.id as string;
+}
+
+function door() {
+  const texts: string[] = [];
+  return {
+    texts,
+    send: async (notice: { chatId: string; text: string }) => {
+      texts.push(notice.text);
+      return { providerMessageId: `preview-${texts.length}` };
+    },
+  };
+}
+
+function reading(over: Partial<CarpoolReading>): CarpoolReading {
+  return {
+    intent: 'driver_claim',
+    driverName: null,
+    eventLabel: 'soccer',
+    pickupAtIso: SAT,
+    pickupPlace: 'the rec',
+    kids: 'Noah',
+    confidence: 'high',
+    ...over,
+  };
+}
+
+function turn(
+  familyId: string,
+  r: CarpoolReading,
+  who: { handle: string; userId: string | null; name: string | null },
+  extra: Partial<Parameters<typeof considerCarpoolTurn>[1]> = {},
+) {
+  return considerCarpoolTurn(db.database, {
+    chatId: CHAT,
+    familyId,
+    senderHandle: who.handle,
+    senderUserId: who.userId,
+    senderName: who.name,
+    text: 'x',
+    now: NOW,
+    send: door().send,
+    voice: fakeCarpoolComposer(),
+    reader: { read: async () => r },
+    ...extra,
+  });
+}
+
+async function rows() {
+  return db.database.select().from(schema.linqGroupCarpools);
+}
+
+describe('security', () => {
+  it('1: an unknown sender cannot claim or cancel a ride', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya' }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const claim = await turn(familyId, reading({ intent: 'driver_swap', driverName: 'Eve' }), {
+      handle: STRANGER,
+      userId: null,
+      name: 'Eve',
+    });
+    const cancel = await turn(familyId, reading({ intent: 'cancel' }), {
+      handle: STRANGER,
+      userId: null,
+      name: null,
+    });
+    expect(claim).toEqual({ handled: false, outcome: 'unknown_sender' });
+    expect(cancel).toEqual({ handled: false, outcome: 'unknown_sender' });
+    const [row] = await rows();
+    expect(row?.driverName).toBe('Maya');
+    expect(row?.cancelledAt).toBeNull();
+    expect(row?.reminderStatus).toBe('pending');
+  });
+
+  it('2: a ride reminder is held, not sent as a reply, when the roster is incomplete', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya' }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const group = door();
+    const ran = await runCarpoolReminders(db.database, {
+      now: FRIDAY_EVE,
+      send: group.send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => ({ sent: false, skipped: 'test' }),
+    });
+    expect(ran.fired).toBe(0);
+    expect(group.texts).toEqual([]);
+    const [row] = await rows();
+    expect(row?.reminderStatus).toBe('pending');
+  });
+});
+
+describe('reminder bugs', () => {
+  it('3: a noncustomer driver reminder ledgers under the family parent and is not repeated', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Grandma Lin' }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const group = door();
+    const run = () =>
+      runCarpoolReminders(db.database, {
+        now: FRIDAY_EVE,
+        send: group.send,
+        voice: fakeCarpoolComposer(),
+        sendDriver: async () => ({ sent: false, skipped: 'test' }),
+      });
+    expect((await run()).fired).toBe(1);
+    expect((await run()).fired).toBe(0);
+    expect(group.texts).toHaveLength(1);
+    const ledger = await db.database.select().from(schema.channelMessages);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]?.parentUserId).toBe(mayaId);
+  });
+
+  it('3: a ledger failure after the group send does not replay the reminder', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya' }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const group = door();
+    const original = db.database.insert.bind(db.database);
+    const spy = vi.spyOn(db.database, 'insert').mockImplementation(((table: unknown) => {
+      if (table === schema.channelMessages) throw new Error('ledger down');
+      return original(table as never);
+    }) as never);
+    try {
+      await runCarpoolReminders(db.database, {
+        now: FRIDAY_EVE,
+        send: group.send,
+        voice: fakeCarpoolComposer(),
+        sendDriver: async () => ({ sent: false, skipped: 'test' }),
+      });
+      await runCarpoolReminders(db.database, {
+        now: FRIDAY_EVE,
+        send: group.send,
+        voice: fakeCarpoolComposer(),
+        sendDriver: async () => ({ sent: false, skipped: 'test' }),
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(group.texts).toHaveLength(1);
+  });
+
+  it('4: without an injected sendDriver the production driver send runs (gated, nothing sent)', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya' }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const voice = fakeCarpoolComposer();
+    await runCarpoolReminders(db.database, { now: FRIDAY_EVE, send: door().send, voice });
+    expect(voice.calls.map((call) => call.kind)).toContain('night_before_driver');
+    const audits = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_carpool_reminder_sent'));
+    const after = audits[0]?.after as { driverSkipped: string | null };
+    expect(after.driverSkipped).not.toBe('no_driver_send');
+    expect(after.driverSkipped).toBe('not_enrolled');
+  });
+
+  it('4: the production driver send refuses a user with no family', async () => {
+    const [lone] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:lone', name: 'Lone' })
+      .returning({ id: schema.users.id });
+    const send = createCarpoolDriverSend(db.database, FRIDAY_EVE);
+    expect(await send({ userId: lone?.id as string, text: 'hi' })).toEqual({
+      sent: false,
+      skipped: 'no_family',
+    });
+  });
+
+  it('5: a tapback on the ask resolves the reactor from their handle and claims the drive', async () => {
+    const { familyId, mayaId } = await seed();
+    const priyaId = await seatPriya(familyId);
+    const asked = await turn(
+      familyId,
+      reading({ intent: 'plan_needs_driver' }),
+      { handle: MAYA_PHONE, userId: mayaId, name: 'Maya' },
+      { addressed: true },
+    );
+    expect(asked).toMatchObject({ outcome: 'carpool_asked' });
+    const [before] = await rows();
+    const result = await considerCarpoolTapback(db.database, {
+      chatId: CHAT,
+      familyId,
+      senderHandle: PRIYA_PHONE,
+      senderName: null,
+      messageId: before?.askMessageId as string,
+      reactionType: 'love',
+      now: NOW,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+    });
+    expect(result.handled).toBe(true);
+    const [row] = await rows();
+    expect(row?.driverName).toBe('Priya');
+    expect(row?.driverUserId).toBe(priyaId);
+  });
+
+  it('6: the reader sees the recent group transcript', async () => {
+    const { familyId, mayaId } = await seed();
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId: mayaId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: 'in-1',
+      providerChatId: CHAT,
+      status: 'delivered',
+      body: 'Soccer Sat 8am at the rec, who can drive?',
+      sentAt: new Date(NOW.getTime() - 60_000),
+    });
+    const seen: CarpoolReadInput[] = [];
+    await considerCarpoolTurn(db.database, {
+      chatId: CHAT,
+      familyId,
+      senderHandle: MAYA_PHONE,
+      senderUserId: mayaId,
+      senderName: 'Maya',
+      text: 'I can drive',
+      messageId: 'in-2',
+      now: NOW,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      reader: {
+        read: async (input) => {
+          seen.push(input);
+          return reading({ driverName: 'Maya' });
+        },
+      },
+    });
+    expect(seen[0]?.recent).toEqual([
+      { from: 'member', text: 'Soccer Sat 8am at the rec, who can drive?' },
+    ]);
+  });
+
+  it('7: two rides in one chat keep their own rows', async () => {
+    const { familyId, mayaId } = await seed();
+    const maya = { handle: MAYA_PHONE, userId: mayaId, name: 'Maya' };
+    await turn(familyId, reading({ driverName: 'Maya' }), maya);
+    await turn(
+      familyId,
+      reading({
+        eventLabel: 'swim',
+        pickupAtIso: SUN,
+        pickupPlace: 'the pool',
+        driverName: 'Maya',
+      }),
+      maya,
+    );
+    const all = await rows();
+    expect(all).toHaveLength(2);
+    const soccer = all.find((row) => row.eventLabel === 'soccer');
+    const swim = all.find((row) => row.eventLabel === 'swim');
+    expect(soccer?.pickupPlace).toBe('the rec');
+    expect(swim?.pickupPlace).toBe('the pool');
+    // A message naming neither ride changes nothing.
+    const vague = await turn(
+      familyId,
+      reading({ eventLabel: null, pickupAtIso: null, intent: 'cancel' }),
+      maya,
+    );
+    expect(vague).toEqual({ handled: false, outcome: 'unchanged' });
+    expect((await rows()).every((row) => row.cancelledAt === null)).toBe(true);
+  });
+
+  it('8: overlapping cron runs send one reminder', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Grandma Lin' }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const group = door();
+    const opts = {
+      now: FRIDAY_EVE,
+      send: group.send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => ({ sent: false as const, skipped: 'test' }),
+    };
+    const [a, b] = await Promise.all([
+      runCarpoolReminders(db.database, opts),
+      runCarpoolReminders(db.database, opts),
+    ]);
+    expect(a.fired + b.fired).toBe(1);
+    expect(group.texts).toHaveLength(1);
+  });
+
+  it('9: "Priya is driving" from Maya does not carry Maya\'s account', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Priya' }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const [row] = await rows();
+    expect(row?.driverName).toBe('Priya');
+    expect(row?.driverUserId).toBeNull();
+    expect(row?.driverHaleCustomer).toBe('false');
+  });
+
+  it('10: a ride moved to a new day after its reminder gets a new pending reminder', async () => {
+    const { familyId, mayaId } = await seed();
+    const maya = { handle: MAYA_PHONE, userId: mayaId, name: 'Maya' };
+    await turn(familyId, reading({ driverName: 'Maya' }), maya);
+    await runCarpoolReminders(db.database, {
+      now: FRIDAY_EVE,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => ({ sent: false, skipped: 'test' }),
+    });
+    expect((await rows())[0]?.reminderStatus).toBe('sent');
+    const moved = await turn(
+      familyId,
+      reading({ intent: 'driver_claim', driverName: 'Maya', pickupAtIso: SUN }),
+      maya,
+    );
+    expect(moved.handled).toBe(true);
+    const all = await rows();
+    expect(all).toHaveLength(1);
+    expect(all[0]?.reminderStatus).toBe('pending');
+    expect(all[0]?.pickupAt?.toISOString()).toBe(SUN);
+    expect(all[0]?.reminderFireAt?.getTime()).toBeGreaterThan(FRIDAY_EVE.getTime());
+  });
+});
+
+describe('composer', () => {
+  it('11: without the database the line is refused, never sent ungrounded', async () => {
+    const composer = createCarpoolComposer();
+    expect(
+      await composer.compose({
+        kind: 'night_before_group',
+        facts: {
+          driver: 'Maya',
+          kids: 'Noah',
+          pickupTime: 'Sat 8:00 a.m.',
+          pickupPlace: 'the rec',
+          event: 'soccer',
+          language: null,
+        },
+      }),
+    ).toBeNull();
+  });
+});
