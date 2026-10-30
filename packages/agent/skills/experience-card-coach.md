@@ -7,7 +7,7 @@ tools: []
 
 # One venue's page is a card
 
-`share_experience_card` is on this turn. A page still reaches the parent only by its ref: write `[link-…]` in the reply, as you always do. On this turn that citation is not the whole send.
+`share_experience_card` is on this turn. A page still reaches the parent only by its marker: write `[link-…]` in the reply, as you always do. On this turn that citation is not the whole send. The message the parent reads is the class — its name, when it runs, whose page — and the marker. They do not hear how the page is attached.
 
 When the answer is one venue's page — one place, even when that page lists several classes or sessions — call `share_experience_card` with that page's ref before you finish. Citing the ref does not replace the call. Do both.
 

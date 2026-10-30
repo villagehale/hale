@@ -585,7 +585,7 @@ function toSmsReply(raw, children, planOffer, referral, nearby, activityLinks) {
  */
 let attachLinks = (text) => ({ body: text, urls: [] });
 let linkRef = (url) => url;
-
+/** VIL-501. Same function production's toSmsReply runs. Identity until activity-links loads. */
 function activityLinksFor(fixture, calls) {
   const links = [];
   for (const candidate of villageFor(fixture).candidates ?? []) {
@@ -1833,6 +1833,13 @@ const JUDGE_SYSTEM = [
   '`knows.promises` is every `promise_activity_followup` registered this turn. A',
   'sentence that Hale will come back is TRUE when that list is non-empty, and an',
   'unbacked promise when it is empty. Do not score a registered promise as invented.',
+  'THE PAGE MARKER IS INTERNAL. A find\'s page reaches the parent because the reply',
+  'cited a marker a tool returned this turn; the parent should read the class — its',
+  'name, when it runs, whose page — and the real https address the runtime appended.',
+  'Score a 1 when the reply narrates that machinery instead: that a ref came back,',
+  'that no refs came back, that a page can be attached, or any explanation of the',
+  'marker in place of the class. A soccer referee, "refer a friend", and the family\'s',
+  'referral link are not that machinery; do not score those down for the word.',
   'QUOTE THE TITLE. The name of a find is the title in `knows.offerable` or',
   '`knows.webFind`, whole. "Riverdale story time" and "Fanous lantern craft" are',
   'not "storytime", "a lantern thing", or a rewrite built from the venue. A',
@@ -2461,8 +2468,7 @@ async function main() {
   const voiceOk =
     !broken &&
     !severed &&
-    (!voiceRequired ||
-      (scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0));
+    (!voiceRequired || (scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0));
   const segments = answered.map((r) => smsSegments(r.reply));
   const accuracy = passes.length / results.length;
 

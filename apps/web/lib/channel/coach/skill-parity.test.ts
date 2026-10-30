@@ -143,6 +143,17 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(find.description).not.toContain('even when the radar already has a find');
   });
 
+  it('tells the coach the reply is the class plus the marker, without a phrase ban list (VIL-501)', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(prose).toContain('The parent never hears how the page is attached');
+    expect(prose).toContain('write the class');
+    expect(prose).toContain('[link-1a2b3c]');
+    expect(prose).toContain('do not invent an address');
+    expect(prose).not.toContain('Never say a ref came back');
+    expect(prose).not.toContain('No ref, no page');
+  });
+
   it('loads the shorten skill as a tool-less rewrite, not a canned reply', async () => {
     const skill = await loadCronSkill('coach-channel-shorten');
 

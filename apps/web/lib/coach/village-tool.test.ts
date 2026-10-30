@@ -1,9 +1,9 @@
 import { invokeTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
 
