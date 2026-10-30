@@ -14,8 +14,10 @@ import type { RefLink } from './activity-links';
  * sentence the model reads and answers by calling again.
  *
  * Registered only while `LINQ_EXPERIENCES_ENABLED` is lit, on a 1:1 turn, so the dark
- * skill, its tool list and the eval cache stay byte-identical. Choosing "link" is simply
- * not calling this verb: the cited ref goes out as the link preview it always did.
+ * skill, its tool list and the eval cache stay byte-identical. The lit turn also appends
+ * `experience-card-coach` (VIL-500): citing a ref still attaches the page, and for one
+ * venue's page that citation does not replace the card. Comparing different venues or
+ * pages is the path that stays a plain link — not calling this verb.
  */
 
 export const EXPERIENCE_CARD_TOOL = 'share_experience_card';
@@ -53,8 +55,9 @@ export function shareExperienceCardTool(args: {
   return defineTool({
     name: EXPERIENCE_CARD_TOOL,
     description:
-      "Send ONE find from this turn as a tappable iMessage card instead of a plain link preview. Use it when a single activity or event is the answer and a card helps the parent act on it; skip it (just cite the [link-…] ref as usual) for lists, comparisons, or anything that is not one specific page. `ref` is the find's ref from a tool result this turn. `title` is the card's line in your own words and the parent's language: what it is, and when/where if known, at most 64 characters, no URL. Still cite the same ref in your message. One card per turn; the last call wins.",
+      "Call this when the answer is one venue's page from this turn, even if that page lists several classes or sessions. Citing that page's [link-…] ref in the reply does not replace this call. Do both. Do not call this when the answer compares different venues or different pages; cite each ref and stop. `ref` is the exact ref a tool returned this turn. `title` is the card's line in your own words and the parent's language, at most 64 characters, no URL. One card per turn; the last call wins.",
     inputSchema: z.object({ ref: z.string().min(1), title: z.string().min(1) }),
+    inputExamples: [{ ref: 'link-1a2b3c', title: 'Sat kids art at the studio' }],
     monetary: false,
     registersOnly: true,
     // Reads no child row; the title passes the same teen redaction as the reply.
@@ -75,8 +78,15 @@ export function shareExperienceCardTool(args: {
   });
 }
 
-/** Lit only: list the verb in the skill's tool allowlist. Dark leaves the skill untouched. */
-export function augmentCoachSkillForExperienceCards(skill: Skill, enabled: boolean): Skill {
-  if (!enabled || skill.meta.tools.includes(EXPERIENCE_CARD_TOOL)) return skill;
-  return { ...skill, meta: { ...skill.meta, tools: [...skill.meta.tools, EXPERIENCE_CARD_TOOL] } };
+/**
+ * Lit only: list the verb and append the card addendum. `null` (dark, or a group turn)
+ * returns the same skill object, so the 1:1 disk bytes and the eval cache stay put.
+ */
+export function augmentCoachSkillForExperienceCards(skill: Skill, addendum: Skill | null): Skill {
+  if (addendum === null || skill.meta.tools.includes(EXPERIENCE_CARD_TOOL)) return skill;
+  return {
+    ...skill,
+    meta: { ...skill.meta, tools: [...skill.meta.tools, EXPERIENCE_CARD_TOOL] },
+    instructions: `${skill.instructions}\n\n${addendum.instructions}`,
+  };
 }

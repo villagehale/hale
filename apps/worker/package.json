@@ -64,6 +64,7 @@
     "eval:nudge": "node evals/run-nudge-eval.mjs --cached-only",
     "eval:rsvp": "node evals/run-rsvp-eval.mjs --cached-only",
     "eval:coach-channel": "node evals/run-coach-channel-eval.mjs --cached-only",
+    "eval:experience-card": "VIL_500_CARD_EVAL=1 node evals/run-coach-channel-eval.mjs --cached-only --only=experience-card-one-venue,experience-card-compare",
     "eval:proactive-decider": "node evals/run-proactive-decider-eval.mjs --cached-only",
     "eval:proactive-writer": "node evals/run-proactive-writer-eval.mjs --cached-only",
     "eval:weekday-care-ask": "node evals/run-weekday-care-ask-eval.mjs --cached-only",

@@ -173,6 +173,23 @@ const FRAMEWORK_TOOL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'frame
  * no `~/` alias — a tilde import here is unresolvable and fails the eval at load. */
 const CONTEXT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-sms.md');
+/** Lit-only card addendum (VIL-500). Appended on experience-card fixtures, never on the rest. */
+const EXPERIENCE_CARD_SKILL_PATH = join(
+  REPO_ROOT,
+  'packages',
+  'agent',
+  'skills',
+  'experience-card-coach.md',
+);
+const EXPERIENCE_CARD_TOOL_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'coach',
+  'experience-card-tool.ts',
+);
 /**
  * The REAL sanitizer and the REAL page reader behind `watch_for_opening` (VIL-337).
  * Imported rather than replicated for the reason the framework tool is: neither file
@@ -466,7 +483,29 @@ const FIXTURE_WEB_PICK = {
 };
 
 function webPickFor(fixture) {
-  return fixture.webPick ?? FIXTURE_WEB_PICK;
+  return fixture.webPick ?? fixture.webPicks?.[0] ?? FIXTURE_WEB_PICK;
+}
+
+/** One pick for the standing corpus; a fixture may hand back up to three (the tool's cap). */
+function webPicksFor(fixture) {
+  if (Array.isArray(fixture.webPicks) && fixture.webPicks.length > 0) return fixture.webPicks;
+  return [webPickFor(fixture)];
+}
+
+/** Pages a tool actually returned this turn — the card resolves a ref only against these. */
+function pageLinksFor(fixture, calls) {
+  const urls = [];
+  if (calls.some((call) => call.tool === 'search_village')) {
+    for (const candidate of villageFor(fixture).candidates ?? []) {
+      if (candidate.url) urls.push(candidate.url);
+    }
+  }
+  if (calls.some((call) => call.tool === 'find_activities')) {
+    for (const pick of webPicksFor(fixture)) {
+      if (pick.url) urls.push(pick.url);
+    }
+  }
+  return urls.map((url) => ({ ref: linkRef(url), url }));
 }
 
 /**
@@ -553,8 +592,9 @@ function activityLinksFor(fixture, calls) {
     if (candidate.url) links.push({ ref: linkRef(candidate.url), url: candidate.url });
   }
   if (calls.some((call) => call.tool === 'find_activities')) {
-    const pick = webPickFor(fixture);
-    if (pick.url) links.push({ ref: linkRef(pick.url), url: pick.url });
+    for (const pick of webPicksFor(fixture)) {
+      if (pick.url) links.push({ ref: linkRef(pick.url), url: pick.url });
+    }
   }
   return links;
 }
@@ -684,7 +724,7 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
+function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
@@ -836,12 +876,15 @@ function buildFixtureTools(agent, calls, village, spots, webPick, toolOutputs) {
     ],
     handler: async () => {
       record('find_activities');
-      // What the model sees: the page's ref, never its URL (activity/tools.ts).
-      const { url, ...shown } = webPick;
+      // What the model sees: each page's ref, never its URL (activity/tools.ts).
+      // One pick for the standing corpus — the same object the single-pick path built.
       const result = {
         found: true,
         source: 'web',
-        picks: [url ? { ...shown, ref: linkRef(url) } : shown],
+        picks: webPicks.map((webPick) => {
+          const { url, ...shown } = webPick;
+          return url ? { ...shown, ref: linkRef(url) } : shown;
+        }),
       };
       toolOutputs.push(result);
       return result;
@@ -1436,8 +1479,9 @@ function dateSourcesFor(fixture, calls) {
     sources.push(dateSource(candidate.title, candidate.when ?? ''));
   }
   if (calls.some((call) => call.tool === 'find_activities')) {
-    const pick = webPickFor(fixture);
-    sources.push(dateSource(pick.name, pick.when ?? ''));
+    for (const pick of webPicksFor(fixture)) {
+      sources.push(dateSource(pick.name, pick.when ?? ''));
+    }
   }
   for (const event of FIXTURE_EVENTS) {
     if (isPrivate(event)) continue;
@@ -1487,6 +1531,12 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
 
   for (const tool of expect.mustCall ?? []) {
     if (!toolNames.has(tool)) failures.push(`never called ${tool}`);
+  }
+  if (expect.cardForUrl) {
+    const card = calls.find((call) => call.tool === 'share_experience_card');
+    if (card && card.url !== expect.cardForUrl) {
+      failures.push(`card pointed at ${card.url}, not the one venue page`);
+    }
   }
   // The other direction, and the one a verb that reads a third-party page needs: a tool
   // called on a turn that had nothing to call it WITH is not a near miss, it is a link
@@ -1968,6 +2018,11 @@ async function main() {
   const subjectLatencies = [];
 
   const skill = await agent.loadSkill(SKILL_PATH);
+  const { shareExperienceCardTool, augmentCoachSkillForExperienceCards } = await tsImport(
+    EXPERIENCE_CARD_TOOL_SRC,
+    import.meta.url,
+  );
+  const experienceCardAddendum = await agent.loadSkill(EXPERIENCE_CARD_SKILL_PATH);
   assertLongRepliesAreNotCut();
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
@@ -2069,7 +2124,7 @@ async function main() {
           calls,
           villageFor(fixture),
           spots,
-          webPickFor(fixture),
+          webPicksFor(fixture),
           toolOutputs,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
@@ -2077,6 +2132,20 @@ async function main() {
           ? [recordingSwitchOffTool(turnOffAutonomyTool, calls, fixture.text)]
           : []),
       ];
+      let turnSkill = augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true);
+      // VIL-500: only these fixtures see the card verb and the lit addendum. Every other
+      // turn keeps the disk skill and the tool list the cache was recorded against.
+      if (fixture.experienceCard) {
+        turnSkill = augmentCoachSkillForExperienceCards(turnSkill, experienceCardAddendum);
+        tools.push(
+          shareExperienceCardTool({
+            links: () => pageLinksFor(fixture, calls),
+            onCard: (card) => {
+              calls.push({ tool: 'share_experience_card', url: card.url, title: card.title });
+            },
+          }),
+        );
+      }
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}${nonce}`,
         cachedOnly,
@@ -2087,7 +2156,7 @@ async function main() {
         subjectLatencies,
       );
       const run = await agent.runAgent({
-        skill: augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true),
+        skill: turnSkill,
         context: turnContext,
         tools,
         client,
@@ -2155,6 +2224,11 @@ async function main() {
       // The web pick, on the same terms: only a turn that actually called
       // find_activities was handed it, and on every other turn naming it is invention.
       calls.some((call) => call.tool === 'find_activities') ? pick : null,
+      // Further pages on a multi-pick fixture. Absent on the standing corpus, so the
+      // hay those fixtures hash for the fabrication gate stays the single pick.
+      ...(calls.some((call) => call.tool === 'find_activities')
+        ? (fixture.webPicks ?? []).slice(1)
+        : []),
     ]);
     const invented =
       reply === null
@@ -2164,7 +2238,7 @@ async function main() {
             ...borrowedFindDates(reply, dateSourcesFor(fixture, calls)),
           ];
     const verdict =
-      broken || reply === null
+      broken || reply === null || fixture.expect.toolsOnly
         ? null
         : await await judge(fixture.id, {
             text: fixture.text,
@@ -2380,8 +2454,15 @@ async function main() {
   // reason on every run, never dropped. Only for a gap outside what the fixture controls.
   const floorWaived = underFloor.filter((r) => r.fixture.expect.voiceFloorWaived);
   const belowFloor = underFloor.filter((r) => !r.fixture.expect.voiceFloorWaived);
+  // A tools-only fixture (VIL-500) has no voice score, so a --only run of just those
+  // must not fail the corpus mean for having nothing to average. The full corpus still
+  // requires the mean: those fixtures are simply left out of it.
+  const voiceRequired = results.some((r) => !r.fixture.expect.toolsOnly);
   const voiceOk =
-    !broken && !severed && scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0;
+    !broken &&
+    !severed &&
+    (!voiceRequired ||
+      (scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0));
   const segments = answered.map((r) => smsSegments(r.reply));
   const accuracy = passes.length / results.length;
 

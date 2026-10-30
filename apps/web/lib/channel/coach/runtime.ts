@@ -321,10 +321,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
       const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
+      const baseSkill =
+        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+      // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
+      // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
+      // the card when the answer is one venue's page (VIL-500).
       const skill = augmentCoachSkillForGroupLeave(
         augmentCoachSkillForExperienceCards(
-          turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill,
-          cardsLit,
+          baseSkill,
+          cardsLit ? await loadCronSkill('experience-card-coach') : null,
         ),
         leaveLit,
       );
