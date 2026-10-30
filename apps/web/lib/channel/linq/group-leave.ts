@@ -1,4 +1,7 @@
+import { type Database, schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
 import * as door from '~/lib/channel/outbound-transport';
+import { cancelGroupReminders } from '~/lib/loop/reminders/group/store';
 import { linqGroupLeaveEnabled } from './config';
 import { listLinqParticipantHandles } from './transport';
 
@@ -68,4 +71,41 @@ export async function leaveGroupOnFamilyAsk(
   const result = await ports.leave({ chatId: input.chatId });
   if (result.status === 'accepted') return { status: 'left' };
   return { status: 'failed', reason: result.status === 'refused' ? result.code : result.status };
+}
+
+/**
+ * After Linq ACCEPTS a family-asked leave: release the household's claim on this chat
+ * (so later group sends never target a chat Hale already left), cancel group-bound work,
+ * and write the immutable audit row. Independent of `LINQ_GROUP_ONBOARDING_V2_ENABLED`
+ * (Design blocker). Scoped to this family + this chat; idempotent — the removal webhook
+ * that may follow finds nothing claimed and writes no second leave row.
+ */
+export async function releaseGroupOnLeave(
+  database: Database,
+  input: { familyId: string; chatId: string; askedBy: string | null; now: Date },
+): Promise<{ released: boolean }> {
+  const released = await database
+    .update(schema.families)
+    .set({ linqGroupChatId: null, updatedAt: input.now })
+    .where(
+      and(
+        eq(schema.families.id, input.familyId),
+        eq(schema.families.linqGroupChatId, input.chatId),
+      ),
+    )
+    .returning({ id: schema.families.id });
+  await cancelGroupReminders(database, {
+    chatId: input.chatId,
+    reason: 'group_ejected',
+    now: input.now,
+  });
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.askedBy ?? 'system',
+    actionTaken: 'linq_group_left_on_ask',
+    targetTable: 'families',
+    targetId: input.familyId,
+    after: { claimReleased: released.length > 0 },
+  });
+  return { released: released.length > 0 };
 }

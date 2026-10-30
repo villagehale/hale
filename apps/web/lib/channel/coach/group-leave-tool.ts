@@ -20,6 +20,33 @@ export const GROUP_LEAVE_TOOL = 'leave_group_chat';
 export interface GroupLeaveIntent {
   /** The member's own words asking Hale to leave, as the model quoted them. */
   ask: string;
+  /**
+   * The model's own words, written now, for the group if the leave is refused AFTER the
+   * goodbye went out (a member left, Linq refused). Hale cannot speak after it leaves,
+   * so the goodbye has to go first; this line is what keeps the goodbye from becoming a
+   * lie. No fixed copy: the model writes it in the group's language.
+   */
+  ifLeaveFails: string;
+}
+
+/**
+ * Design lock (Devin SEC flag): a leave is grounded in what a member actually sent THIS
+ * turn, never in an ask the model only claims to have heard. Normalized containment:
+ * case, punctuation, quotes and whitespace are ignored; the words must be there.
+ */
+export function normalizeForAsk(text: string): string {
+  return text
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[\p{P}\p{S}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function askIsGrounded(ask: string, memberWords: string): boolean {
+  const a = normalizeForAsk(ask);
+  const m = normalizeForAsk(memberWords);
+  return a.length > 0 && m.length > 0 && ` ${m} `.includes(` ${a} `);
 }
 
 /** Why the guard would decline a leave, as the model reads it. Facts only, no copy. */
@@ -34,6 +61,8 @@ const STAYING_WHY: Record<GroupLeaveRefusal, string> = {
 };
 
 export function leaveGroupChatTool(args: {
+  /** The member's message this turn — the only words a leave may be grounded in. */
+  memberWords: string;
   onLeave: (intent: GroupLeaveIntent) => void;
   /**
    * The router's guard, run BEFORE the reply is written. Absent: the intent registers
@@ -44,8 +73,8 @@ export function leaveGroupChatTool(args: {
   return defineTool({
     name: GROUP_LEAVE_TOOL,
     description:
-      "Leave THIS group chat, permanently, after your reply. Call it ONLY when a member of this group has plainly asked you (Hale) to leave or get out of this chat — not when someone is annoyed, asks you to be quiet, stops a topic, or asks to stop texts (that is STOP, handled elsewhere). If the ask is ambiguous, ask them first instead of calling this. `ask` is the member's own words asking you to leave, quoted exactly. Your reply this turn is the last thing the group sees from you: write a short goodbye in your own words and the group's language, and say a member can add you back any time. Call it BEFORE writing your reply and read its result: if it returns `stillInChat: true`, you did NOT leave — tell the group you are staying and why, never say you are leaving. Never promise a leave already happened.",
-    inputSchema: z.object({ ask: z.string().min(1) }),
+      "Leave THIS group chat, permanently, after your reply. Call it ONLY when a member of this group has plainly asked you (Hale) to leave or get out of this chat — not when someone is annoyed, asks you to be quiet, stops a topic, or asks to stop texts (that is STOP, handled elsewhere). If the ask is ambiguous, ask them first instead of calling this. `ask` is the member's own words asking you to leave, copied exactly from THEIR message this turn (not paraphrased, not from earlier). `ifLeaveFails` is one short line in your own words for the group if the leave is refused after your goodbye goes out: say you could not leave and are still here. Your reply this turn is the last thing the group sees from you: write a short goodbye in your own words and the group's language, and say a member can add you back any time. Call it BEFORE writing your reply and read its result: if it returns `stillInChat: true`, you did NOT leave — tell the group you are staying and why, never say you are leaving. Never promise a leave already happened.",
+    inputSchema: z.object({ ask: z.string().min(1), ifLeaveFails: z.string().min(1) }),
     monetary: false,
     registersOnly: true,
     touchesChildContent: false,
@@ -54,6 +83,21 @@ export function leaveGroupChatTool(args: {
       if (ask === '') {
         throw new Error(
           `Quote the member's words asking you to leave in \`ask\`. If nobody plainly asked, do not call ${GROUP_LEAVE_TOOL}.`,
+        );
+      }
+      if (!askIsGrounded(ask, args.memberWords)) {
+        // Nothing registered: no member said this in this turn's message.
+        return {
+          left: false as const,
+          stillInChat: true as const,
+          reason: 'not_asked_this_turn' as const,
+          note: `The words in \`ask\` are not in the member's message this turn, so you did NOT leave and will NOT leave. Only leave when this turn's message itself asks you to; if they meant it, they can say so. Do not say you are leaving.`,
+        };
+      }
+      const ifLeaveFails = (input.ifLeaveFails ?? '').trim();
+      if (ifLeaveFails === '') {
+        throw new Error(
+          `Write \`ifLeaveFails\`: your own line for the group if the leave is refused after your goodbye.`,
         );
       }
       const guard = args.check ? await args.check() : ({ ok: true } as const);
@@ -68,7 +112,7 @@ export function leaveGroupChatTool(args: {
           note: 'You did NOT leave and will NOT leave this chat. You are still in it. Do not say you are leaving or have left; tell the group honestly you are staying and why, in your own words.',
         };
       }
-      args.onLeave({ ask });
+      args.onLeave({ ask, ifLeaveFails });
       return {
         registered: true as const,
         left: false as const,

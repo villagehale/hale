@@ -54,7 +54,7 @@ import {
   linqCoParentAsk,
   linqGroupLineMissing,
 } from '~/lib/channel/linq/group';
-import { leaveGroupOnFamilyAsk } from '~/lib/channel/linq/group-leave';
+import { leaveGroupOnFamilyAsk, releaseGroupOnLeave } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
 import {
@@ -365,6 +365,8 @@ export interface ChannelRouterDeps {
   sendExperienceCard?: typeof sendLinqAppCard;
   /** VIL-477 — the guarded group leave. Absent: the real `leaveGroupOnFamilyAsk`. */
   leaveGroup?: typeof leaveGroupOnFamilyAsk;
+  /** VIL-477 — claim release + audit after an accepted leave. Absent: the real one. */
+  releaseGroupOnLeave?: typeof releaseGroupOnLeave;
   loadContext(database: Database, job: ChannelMessageReceivedJob): Promise<InboundContext | null>;
   /** The one way out. Channel-agnostic by construction (reply-route.ts): the router
    * hands it a resolved route and a body, and never learns which provider took it. */
@@ -1971,12 +1973,15 @@ async function runAgentTurn(
         );
       }
     }
-    // VIL-477: the model read a member asking Hale to leave and wrote its goodbye; the
-    // goodbye is out, so leave now. Never throws (the group already has the text); the
-    // guard (flag, Linq's 4+ floor) may decline, which is logged, not retried.
+    // VIL-477: the model read a member asking Hale to leave (grounded in this turn's
+    // words) and wrote its goodbye. Hale cannot speak after leaving, so the goodbye goes
+    // first and the leave right after. Accepted → release the household claim + audit
+    // row. Refused after the goodbye → send the model's OWN pre-written "couldn't leave"
+    // line once, so the goodbye is never left standing as a false claim. Never throws.
     if (groupLeave && args.groupChatId && reply.trim() !== '') {
+      let left: Awaited<ReturnType<typeof leaveGroupOnFamilyAsk>> | null = null;
       try {
-        const left = await (deps.leaveGroup ?? leaveGroupOnFamilyAsk)({
+        left = await (deps.leaveGroup ?? leaveGroupOnFamilyAsk)({
           chatId: args.groupChatId,
           explicitAsk: true,
         });
@@ -1989,6 +1994,31 @@ async function runAgentTurn(
           { err: err instanceof Error ? err.name : 'unknown' },
           'channel router: group leave failed',
         );
+      }
+      if (left?.status === 'left') {
+        try {
+          await (deps.releaseGroupOnLeave ?? releaseGroupOnLeave)(deps.database, {
+            familyId: args.turn.familyId,
+            chatId: args.groupChatId,
+            askedBy: args.turn.parentUserId ?? null,
+            now: args.turn.now,
+          });
+        } catch (err) {
+          deps.log.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'channel router: group leave release failed',
+          );
+        }
+      } else if (groupLeave.ifLeaveFails.trim() !== '') {
+        try {
+          await args.answer(groupLeave.ifLeaveFails);
+          deps.log.info({ leave: 'stayed_said' }, 'channel router: leave refused, told the group');
+        } catch (err) {
+          deps.log.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'channel router: leave-refused line failed',
+          );
+        }
       }
     }
     await recordCoachOfferFromReply(deps, {

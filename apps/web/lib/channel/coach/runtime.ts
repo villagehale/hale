@@ -446,6 +446,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             ...(leaveLit
               ? [
                   leaveGroupChatTool({
+                    memberWords: turn.body,
                     onLeave: (intent) => {
                       groupLeave = intent;
                     },
@@ -585,7 +586,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               card && !noticeReady
                 ? { url: card.url, title: redactTeenNames(card.title, children, now) }
                 : null,
-            groupLeave: groupLeave !== null,
+            groupLeave: groupLeave
+              ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
+              : null,
           };
         },
       );

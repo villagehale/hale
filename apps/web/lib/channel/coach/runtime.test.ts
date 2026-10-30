@@ -733,7 +733,7 @@ describe('channelCoachRuntime · group leave (VIL-477)', () => {
     });
     const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
     expect(seen[0]).not.toContain('leave_group_chat');
-    expect(result.groupLeave).toBe(false);
+    expect(result.groupLeave ?? null).toBeNull();
   });
 
   it('lit on a 1:1 turn: still no leave verb', async () => {
@@ -747,7 +747,7 @@ describe('channelCoachRuntime · group leave (VIL-477)', () => {
     });
     const result = await channelCoachRuntime(p).respond(turn(), []);
     expect(seen[0]).not.toContain('leave_group_chat');
-    expect(result.groupLeave).toBe(false);
+    expect(result.groupLeave ?? null).toBeNull();
   });
 
   it('lit group: the model reads the ask, writes its own goodbye, registers the leave', async () => {
@@ -758,13 +758,40 @@ describe('channelCoachRuntime · group leave (VIL-477)', () => {
         expect(args.skill.meta.tools).toContain('leave_group_chat');
         const leave = args.tools.find((t) => t.name === 'leave_group_chat');
         if (!leave) throw new Error('no leave verb');
-        await leave.handler({ ask: 'Hale can you leave this group' } as never, {} as never);
+        await leave.handler(
+          { ask: 'Hale can you leave this group', ifLeaveFails: 'Model stay line.' } as never,
+          {} as never,
+        );
         return answering('Model-written goodbye.')(args);
       },
     });
-    const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
-    expect(result.groupLeave).toBe(true);
+    const result = await channelCoachRuntime(p).respond(
+      { ...turn('Hale can you leave this group?'), audience: 'group' },
+      [],
+    );
+    expect(result.groupLeave).toEqual({ ifLeaveFails: 'Model stay line.' });
     expect(result.reply).toContain('Model-written goodbye.');
+  });
+
+  it("lit group: a model-invented ask (not in this turn's words) registers no leave", async () => {
+    const p = ports({
+      groupLeaveEnabled: () => true,
+      loadSkill: async () => SKILL,
+      runAgent: async (args) => {
+        const leave = args.tools.find((t) => t.name === 'leave_group_chat');
+        if (!leave) throw new Error('no leave verb');
+        await leave.handler(
+          { ask: 'Hale please leave this group', ifLeaveFails: 'x' } as never,
+          {} as never,
+        );
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(
+      { ...turn('who is doing pickup friday'), audience: 'group' },
+      [],
+    );
+    expect(result.groupLeave ?? null).toBeNull();
   });
 
   it('lit group, no ask: the model does not call it, nothing registered', async () => {
@@ -774,6 +801,6 @@ describe('channelCoachRuntime · group leave (VIL-477)', () => {
       runAgent: answering('Sure, quieter from me.'),
     });
     const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
-    expect(result.groupLeave).toBe(false);
+    expect(result.groupLeave ?? null).toBeNull();
   });
 });

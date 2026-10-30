@@ -110,8 +110,9 @@ export interface ChannelTurnResult {
    * VIL-477 — a member plainly asked Hale to leave this group, and the model's reply is
    * its goodbye. Only ever true while `LINQ_GROUP_LEAVE_ENABLED` is lit on a group turn;
    * the router leaves AFTER the reply is sent, through the guarded `leaveGroupOnFamilyAsk`.
+   * `ifLeaveFails` is the model's own line sent only if that leave is then refused.
    */
-  groupLeave?: boolean;
+  groupLeave?: { ifLeaveFails: string } | null;
 }
 
 export interface ChannelCoachRuntime {
