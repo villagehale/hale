@@ -136,6 +136,26 @@ export function linqGroupPollsEnabled(): boolean {
 }
 
 /**
+ * VIL-476 — native iMessage voice memos: an iMessage capability check (cached) and the
+ * voice-memo send, plus inbound audio named as a voice memo for the model. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off reads
+ * inbound audio as a `file` and never calls the capability or voice-memo endpoints.
+ */
+export function linqVoiceMemosEnabled(): boolean {
+  return trimmed('LINQ_VOICE_MEMOS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-480 — Linq experience cards (`link`/`open`, rendered by Linq's own iMessage app)
+ * instead of a bare link preview. Exactly `true` enables it. Unset, empty, `on`, and
+ * `false` stay dark: dark never sends an experience and reads an inbound app card
+ * exactly as before (a `file`).
+ */
+export function linqExperiencesEnabled(): boolean {
+  return trimmed('LINQ_EXPERIENCES_ENABLED') === 'true';
+}
+
+/**
  * VIL-477 — Hale may leave a group chat when the family explicitly asks. Exactly
  * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off,
  * Hale never calls Linq's leave endpoint.

@@ -182,7 +182,7 @@ export const channelMessages = pgTable(
      */
     inboundMedia:
       jsonb('inbound_media').$type<
-        Array<{ kind: 'image' | 'video' | 'file'; url: string | null; mime: string | null }>
+        Array<{ kind: 'image' | 'video' | 'audio' | 'file'; url: string | null; mime: string | null }>
       >(),
     /**
      * INBOUND only (VIL-463): whether the door saw this text in a group chat. Null on

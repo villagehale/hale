@@ -1,8 +1,13 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { type InboundMediaPart, httpsMediaUrl } from '~/lib/channel/inbound-media';
+import {
+  type InboundMediaPart,
+  classifyInboundMedia,
+  httpsMediaUrl,
+} from '~/lib/channel/inbound-media';
 import { type InboundRouteDeps, routeInboundText } from '~/lib/channel/inbound-route';
 import { countUncapturedLedgerRows, readCapturedSends } from '~/lib/channel/preview-capture-store';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
+import { PREVIEW_CHAT_PREFIX, previewGroupCaptureOpen } from '~/lib/channel/preview-linq-capture';
 import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone';
 
 /**
@@ -76,7 +81,10 @@ function readMedia(raw: unknown): InboundMediaPart[] | null | 'invalid' {
     const safe = typeof url === 'string' ? httpsMediaUrl(url) : null;
     if (!safe) return 'invalid';
     const m = typeof mime === 'string' ? mime : null;
-    const kind = m?.startsWith('video/') ? 'video' : 'image';
+    // Same classifier as the Linq door, so a fake voice memo (audio/*) reads as `audio`
+    // when LINQ_VOICE_MEMOS_ENABLED is on (VIL-476).
+    const classified = classifyInboundMedia(m, safe, null);
+    const kind = classified;
     parts.push({ kind, url: safe, mime: m });
   }
   return parts;
@@ -112,7 +120,7 @@ export async function handlePreviewFakeInbound(
   const shut = previewRouteGate(req, env);
   if (shut) return shut;
 
-  let payload: { from?: unknown; text?: unknown; media?: unknown };
+  let payload: { from?: unknown; text?: unknown; media?: unknown; imessage?: unknown };
   try {
     payload = (await req.json()) as typeof payload;
   } catch {
@@ -125,10 +133,21 @@ export async function handlePreviewFakeInbound(
   if (media === 'invalid') return json({ error: 'media_invalid' }, 400);
   if (!text.trim() && !media) return json({ error: 'empty' }, 400);
 
+  // VIL-497 — `imessage: true` arrives as a Linq 1:1 in a fake chat (captured, never
+  // sent), so iMessage-only replies (experience cards) can be proven. Needs group
+  // capture open (same gates as the other fake-chat doors); otherwise refused.
+  let imessageChatId: string | null = null;
+  if (payload.imessage === true) {
+    if (!previewGroupCaptureOpen(env)) return json({ error: 'imessage_capture_closed' }, 409);
+    imessageChatId = `${PREVIEW_CHAT_PREFIX}direct-${createHash('sha256').update(from).digest('hex').slice(0, 16)}`;
+  }
+
   const providerId = `preview-inbound-${randomUUID()}`;
   const outcome = await routeInboundText(deps, {
     from,
-    transport: 'sms',
+    ...(imessageChatId
+      ? { transport: 'imessage' as const, chatId: imessageChatId, isGroup: false }
+      : { transport: 'sms' as const }),
     body: text,
     providerId,
     receivedAt: deps.now?.() ?? new Date(),
@@ -136,7 +155,7 @@ export async function handlePreviewFakeInbound(
   });
   deps.log.info({ outcome, providerId }, 'preview fake inbound: routed');
   await deps.countOutcome(outcome);
-  return json({ outcome, providerId });
+  return json({ outcome, providerId, ...(imessageChatId ? { chatId: imessageChatId } : {}) });
 }
 
 /** GET ?to=+1437555XXXX — every captured reply to that fictional number, oldest first. */

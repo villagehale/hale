@@ -622,6 +622,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
       {
         chatId: message.chatId,
         senderHandle: message.senderHandle,
+        otherHandles: message.otherHandles,
         text: message.text,
         providerMessageId: message.messageId,
         receivedAt: message.receivedAt,

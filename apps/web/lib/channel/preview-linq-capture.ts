@@ -59,7 +59,9 @@ export type CapturedLinqKind =
   | 'participant_remove'
   | 'chat_leave'
   | 'location_request'
-  | 'roster';
+  | 'roster'
+  | 'voice_memo'
+  | 'capability_check';
 
 export type CapturedLinqCall = {
   chatId: string;
@@ -136,6 +138,27 @@ export async function captureLinqCall(
       providerMessageId,
     });
     return { status: 201, payload: { chat: { id: chatId, message: { id: providerMessageId } } } };
+  }
+
+  // VIL-476 · a capability check names one handle, not a chat. Only a fake handle is
+  // answered (always `available`, so the iMessage path is the one proven); the call is
+  // recorded under a fixed fake chat id so the capture table stays chat-keyed.
+  if (method === 'POST' && path === '/capability/check_imessage') {
+    const handles = isRecord(body) ? fakeHandles([body.address]) : null;
+    if (!handles) throw new PreviewGroupCaptureRefused('not_fake_handle');
+    await sink.record({
+      chatId: `${PREVIEW_CHAT_PREFIX}capability-check`,
+      kind: 'capability_check',
+      method,
+      path,
+      body,
+      handles,
+      providerMessageId: null,
+    });
+    return {
+      status: 200,
+      payload: { address: handles[0], available: true, selected_service: 'iMessage' },
+    };
   }
 
   const reaction = REACTION_PATH.exec(path);
@@ -220,6 +243,19 @@ export async function captureLinqCall(
       },
     };
   }
+  if (sub === '/voicememo' && method === 'POST') {
+    const providerMessageId = newMessageId();
+    await sink.record({
+      chatId,
+      kind: 'voice_memo',
+      method,
+      path,
+      body,
+      handles: null,
+      providerMessageId,
+    });
+    return { status: 202, payload: { message: { id: providerMessageId } } };
+  }
   if (sub === '/messages' && method === 'POST') {
     const providerMessageId = newMessageId();
     await sink.record({
@@ -250,6 +286,7 @@ export async function captureLinqCall(
 /** Body keys that name a person on the line. Every string under one must be fake. */
 const RECIPIENT_KEYS = new Set([
   'to',
+  'address',
   'from',
   'handle',
   'handles',

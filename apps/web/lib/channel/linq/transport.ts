@@ -9,7 +9,7 @@ import {
   previewGroupCaptureOpen,
 } from '~/lib/channel/preview-linq-capture';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
-import { linqApiKey, linqFromE164 } from './config';
+import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
 
 /**
  * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK. Every partner call
@@ -430,6 +430,43 @@ export async function sendLinqParts(input: {
     await new Promise((resolve) => setTimeout(resolve, result.retryAfterMs ?? 0));
     result = await send();
   }
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const providerMessageId = readLinqMessageId(result.payload);
+  if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
+  return { providerMessageId };
+}
+
+/**
+ * VIL-480 · A Linq experience: a native card Linq's own iMessage app renders (no Hale
+ * Messages extension, no team/bundle id). The card is the whole message, so the body
+ * is `{ message: { experience } }` and never carries `parts`. One recipient per send.
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/experiences/
+ */
+export interface LinqExperienceWire {
+  name: string;
+  action: string;
+  params: Record<string, string>;
+}
+
+export async function sendLinqExperience(input: {
+  chatId: string;
+  experience: LinqExperienceWire;
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string }> {
+  if (!input.experience.name || !input.experience.action) {
+    throw new LinqSendError('invalid_experience', 400, true);
+  }
+  const message = { experience: input.experience };
+  const armed = cadenceArmed();
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
+    body: { message },
+    fetch: input.fetch,
+    ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
+  });
   if (!result.ok) {
     throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
   }
@@ -1389,4 +1426,143 @@ export function createLinqTextTransport(deps: {
       return { status: 'refused', code: result.code };
     },
   };
+}
+
+/**
+ * VIL-476 · Can this handle receive iMessage right now?
+ * POST /capability/check_imessage `{ address, from? }` → `{ available, selected_service }`.
+ *
+ * Linq rate-limits this endpoint (429 / 1007) to stop number enumeration, and capability
+ * belongs to the device, not the number, so answers are cached for minutes, not days.
+ * A rate limit, an outage, or a missing key is `unknown` — never `false` — and is not
+ * cached, so a later turn can still ask. Dark (LINQ_VOICE_MEMOS_ENABLED unset) it never
+ * fetches. The address is a cache key in memory only; it is never logged.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/chats/capability-checks/
+ */
+export const IMESSAGE_CAPABILITY_TTL_MS = 10 * 60_000;
+const CAPABILITY_CACHE_MAX = 5_000;
+
+export type LinqIMessageCapability =
+  | { status: 'available'; selectedService: string | null; cached: boolean }
+  | { status: 'not_available'; selectedService: string | null; cached: boolean }
+  | {
+      status: 'unknown';
+      reason: 'dark' | 'not_configured' | 'rate_limited' | 'refused' | 'unreachable';
+    };
+
+const capabilityCache = new Map<
+  string,
+  { at: number; available: boolean; selectedService: string | null }
+>();
+
+/** Test seam: forget every cached answer. */
+export function clearLinqCapabilityCacheForTest(): void {
+  capabilityCache.clear();
+}
+
+/** Drop a cached answer — call on a `message.failed` that reads as a service mismatch. */
+export function forgetLinqIMessageCapability(address: string): void {
+  capabilityCache.delete(address.trim());
+}
+
+export async function checkLinqIMessageCapability(input: {
+  address: string;
+  fetch?: typeof fetch;
+  now?: () => number;
+}): Promise<LinqIMessageCapability> {
+  if (!linqVoiceMemosEnabled()) return { status: 'unknown', reason: 'dark' };
+  const address = input.address.trim();
+  if (!address) throw new LinqSendError('invalid_address', 400, true);
+  const now = (input.now ?? Date.now)();
+  const hit = capabilityCache.get(address);
+  if (hit && now - hit.at < IMESSAGE_CAPABILITY_TTL_MS) {
+    return {
+      status: hit.available ? 'available' : 'not_available',
+      selectedService: hit.selectedService,
+      cached: true,
+    };
+  }
+  const from = linqFromE164();
+  let result: LinqHttpResult;
+  try {
+    result = await linqRequest({
+      method: 'POST',
+      path: '/capability/check_imessage',
+      body: { address, ...(from ? { from } : {}) },
+      fetch: input.fetch,
+    });
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'unknown', reason: 'not_configured' };
+    }
+    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
+      return { status: 'unknown', reason: 'unreachable' };
+    }
+    throw err;
+  }
+  if (result.status === 429 || result.code === LINQ_RATE_LIMIT_CODE) {
+    return { status: 'unknown', reason: 'rate_limited' };
+  }
+  const payload = result.payload;
+  if (!result.ok || !isRecord(payload) || typeof payload.available !== 'boolean') {
+    return { status: 'unknown', reason: 'refused' };
+  }
+  const selectedService =
+    typeof payload.selected_service === 'string' ? payload.selected_service : null;
+  if (capabilityCache.size >= CAPABILITY_CACHE_MAX) {
+    const oldest = capabilityCache.keys().next().value;
+    if (oldest !== undefined) capabilityCache.delete(oldest);
+  }
+  capabilityCache.set(address, { at: now, available: payload.available, selectedService });
+  return {
+    status: payload.available ? 'available' : 'not_available',
+    selectedService,
+    cached: false,
+  };
+}
+
+/**
+ * VIL-476 · One native voice memo into an existing chat:
+ * POST /chats/{chatId}/voicememo with exactly one of `voice_memo_url` (public https) or
+ * `attachment_id`. It goes alone — Linq will not combine it with other parts. On RCS/SMS
+ * Linq delivers the same audio as a plain attachment. Hale's AI decides whether a memo
+ * is the right reply; this is only the wire. Dark, it refuses before any fetch.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/voice-memos/
+ */
+export async function sendLinqVoiceMemo(input: {
+  chatId: string;
+  audio: { url: string } | { attachmentId: string };
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string | null }> {
+  if (!linqVoiceMemosEnabled()) throw new LinqSendError('voice_memos_dark', 0, true);
+  if (!input.chatId) throw new LinqSendError('missing_chat_id', 0, true);
+  let body: Record<string, string>;
+  if ('url' in input.audio) {
+    let parsed: URL | null = null;
+    try {
+      parsed = new URL(input.audio.url);
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      throw new LinqSendError('invalid_voice_memo', 400, true);
+    }
+    body = { voice_memo_url: parsed.toString() };
+  } else {
+    if (!input.audio.attachmentId) throw new LinqSendError('invalid_voice_memo', 400, true);
+    body = { attachment_id: input.audio.attachmentId };
+  }
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/voicememo`,
+    body,
+    fetch: input.fetch,
+    ...(cadenceArmed() ? { idempotencyKey: linqMessageKey(input.chatId, body) } : {}),
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  return { providerMessageId: readLinqMessageId(result.payload) };
 }

@@ -331,6 +331,20 @@ export async function sendLinqParts(
   );
 }
 
+/** VIL-480 · a Linq experience card; captured on Preview like any other send. */
+export async function sendLinqExperience(
+  input: In<typeof linq.sendLinqExperience>,
+): Promise<{ providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'experience',
+    () => linq.sendLinqExperience(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
+}
+
 export async function sendLinqEffect(
   input: In<typeof linq.sendLinqEffect>,
 ): Promise<{ providerMessageId: string }> {
@@ -544,4 +558,30 @@ export function createChatReplyTransport(
       return { status: 'sent' };
     },
   };
+}
+
+/**
+ * VIL-476 · voice memo and iMessage capability check, through the door. Capture off:
+ * exactly the linq/transport call. Capture on: only the group-capture door can record
+ * these (fake handle / fake chat), so without PREVIEW_CAPTURE_GROUPS they refuse before
+ * any fetch rather than reach Linq.
+ */
+function refuseCaptureWithoutGroups(): void {
+  if (previewCaptureRequested() && !previewGroupCaptureOpen()) {
+    throw new LinqSendError('preview_capture', 0, true);
+  }
+}
+
+export async function sendLinqVoiceMemo(
+  input: In<typeof linq.sendLinqVoiceMemo>,
+): ReturnType<typeof linq.sendLinqVoiceMemo> {
+  refuseCaptureWithoutGroups();
+  return linq.sendLinqVoiceMemo(input);
+}
+
+export async function checkLinqIMessageCapability(
+  input: In<typeof linq.checkLinqIMessageCapability>,
+): ReturnType<typeof linq.checkLinqIMessageCapability> {
+  refuseCaptureWithoutGroups();
+  return linq.checkLinqIMessageCapability(input);
 }
