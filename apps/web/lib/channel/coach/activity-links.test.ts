@@ -59,3 +59,36 @@ describe('attachLinks', () => {
     );
   });
 });
+
+describe('VIL-510 · only activity/venue pages reach a parent', () => {
+  it('drops Wikipedia and other reference hosts', async () => {
+    const { isActivityPageUrl } = await import('./activity-links');
+    expect(isActivityPageUrl('https://en.wikipedia.org/wiki/Halton_Hills_Public_Library')).toBe(
+      false,
+    );
+    expect(isActivityPageUrl('https://www.wikiwand.com/en/Georgetown,_Ontario')).toBe(false);
+  });
+  it('drops bare homepages and http', async () => {
+    const { isActivityPageUrl } = await import('./activity-links');
+    expect(isActivityPageUrl('https://www.hhpl.on.ca/')).toBe(false);
+    expect(isActivityPageUrl('https://www.haltonhills.ca')).toBe(false);
+    expect(isActivityPageUrl('http://example.org/events/halloween')).toBe(false);
+  });
+  it('keeps event listings and venue pages', async () => {
+    const { isActivityPageUrl } = await import('./activity-links');
+    expect(
+      isActivityPageUrl(
+        'https://www.haltonhillstoday.ca/local-news/halton-hills-happenings-oct-30-nov-1-spooky-weekend-events-listing-12956839',
+      ),
+    ).toBe(true);
+    expect(isActivityPageUrl('https://www.hhpl.on.ca/events?type=kids')).toBe(true);
+  });
+  it('a cited Wikipedia ref attaches nothing', async () => {
+    const { attachLinks, linkRef } = await import('./activity-links');
+    const wiki = 'https://en.wikipedia.org/wiki/Halton_Hills_Public_Library';
+    const out = attachLinks(`Library has stuff [${linkRef(wiki)}]`, [
+      { ref: linkRef(wiki), url: wiki },
+    ]);
+    expect(out.urls).toEqual([]);
+  });
+});

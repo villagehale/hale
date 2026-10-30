@@ -50,7 +50,8 @@ export function attachLinks(
     const url = byRef.get(ref.toLowerCase());
     // Only an absolute https page from this turn's table. http, a bare host, or a
     // non-URL never reaches a parent (VIL-501).
-    if (url && isAbsoluteHttps(url) && !urls.includes(url)) urls.push(url);
+    // VIL-510: and only an activity or venue page, never an encyclopedia or a bare homepage.
+    if (url && isActivityPageUrl(url) && !urls.includes(url)) urls.push(url);
     return ' ';
   });
   const body = withoutRefs
@@ -67,4 +68,42 @@ const ABSOLUTE_HTTPS = /^https:\/\/\S+$/i;
 
 function isAbsoluteHttps(url: string): boolean {
   return ABSOLUTE_HTTPS.test(url.trim());
+}
+
+/**
+ * VIL-510 · Hosts that describe a place rather than publish what is on there. A parent asked
+ * about trick-or-treat and was handed a Wikipedia preview of the town library: real page,
+ * real tool result, and no use to anyone deciding where to go on Saturday.
+ */
+const REFERENCE_HOSTS = [
+  'wikipedia.org',
+  'wikimedia.org',
+  'wikidata.org',
+  'wikiwand.com',
+  'wikivoyage.org',
+  'wiktionary.org',
+  'fandom.com',
+  'britannica.com',
+];
+
+/**
+ * VIL-510 · Whether a page may reach a parent as a link or a card: absolute https, not a
+ * reference/encyclopedia host, and not a bare homepage (an org's front door says nothing
+ * about the event or the session the reply is about). Structural only: host and path.
+ */
+export function isActivityPageUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!isAbsoluteHttps(trimmed)) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  if (REFERENCE_HOSTS.some((ref) => host === ref || host.endsWith(`.${ref}`))) return false;
+  const path = parsed.pathname.replace(/\/+$/, '').toLowerCase();
+  const homepage = ['', '/index', '/index.html', '/index.htm', '/index.php', '/home', '/en', '/fr'];
+  if (homepage.includes(path) && parsed.search === '') return false;
+  return true;
 }

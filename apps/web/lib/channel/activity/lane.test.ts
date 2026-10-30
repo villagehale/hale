@@ -689,3 +689,37 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
     expect(pick?.url).toBeUndefined();
   });
 });
+
+describe('VIL-510 · a pick never carries an encyclopedia or a bare homepage', () => {
+  const listing =
+    'https://www.haltonhillstoday.ca/local-news/halton-hills-happenings-oct-30-nov-1-spooky-weekend-events-listing-12956839';
+  it('drops a typed Wikipedia source_url and stamps the listing instead', () => {
+    const [pick] = toPicks(
+      [
+        {
+          name: 'Indoor trick-or-treat, Mountainview Residence',
+          age_fit: 'kids of all ages',
+          when: 'Oct 31, 2-4pm',
+          source_name: 'Mountainview Residence',
+          source_url: 'https://en.wikipedia.org/wiki/Georgetown,_Ontario',
+        },
+      ],
+      [{ url: listing, text: 'Mountainview Residence indoor trick-or-treat Oct 31 2-4pm' }],
+    );
+    expect(pick?.url).toBe(listing);
+  });
+  it('does not stamp a Wikipedia hit that names the venue', () => {
+    expect(
+      stampReadPageUrl(
+        { name: 'Storytime', sourceName: 'Halton Hills Public Library' },
+        [],
+        [
+          {
+            url: 'https://en.wikipedia.org/wiki/Halton_Hills_Public_Library',
+            title: 'Halton Hills Public Library - Wikipedia',
+          },
+        ],
+      ),
+    ).toBeNull();
+  });
+});

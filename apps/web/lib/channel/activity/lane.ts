@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
+import { isActivityPageUrl } from '~/lib/channel/coach/activity-links';
 import { plainText } from '~/lib/channel/coach/reply';
 import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -425,7 +426,9 @@ function uniqueMatch(
   const matched: string[] = [];
   for (const source of sources) {
     const url = safeHttpUrl(source.url);
-    if (url === null || !url.startsWith('https://')) continue;
+    // VIL-510: an encyclopedia entry or a bare homepage names the venue too, and is never
+    // the page a parent needs (Wikipedia "Halton Hills Public Library", 2026-10-30).
+    if (url === null || !isActivityPageUrl(url)) continue;
     let host = '';
     try {
       host = squash(new URL(url).hostname);
@@ -482,8 +485,9 @@ export function toPicks(
     if (name === '' || ageFit === '' || sourceName === '') continue;
     const when = field(item.when);
     const price = field(item.price);
+    const typed = safeHttpUrl(field(item.source_url));
     const url =
-      safeHttpUrl(field(item.source_url)) ??
+      (typed !== null && isActivityPageUrl(typed) ? typed : null) ??
       stampReadPageUrl({ name, sourceName }, pages, searchHits);
     const pick: ActivityPick = {
       name,

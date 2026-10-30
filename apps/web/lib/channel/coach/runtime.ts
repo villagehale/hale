@@ -69,7 +69,7 @@ import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
 import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/signup/offer-tool';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
-import { linkRef } from './activity-links';
+import { isActivityPageUrl, linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { productionChannelDraftPort } from './draft';
 import {
@@ -344,7 +344,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         [
           ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
           ...offeredThisTurn.links().map((link) => link.url),
-        ].map((url) => ({ ref: linkRef(url), url }));
+        ]
+          // VIL-510: a card or cited link is only ever an activity/venue page.
+          .filter(isActivityPageUrl)
+          .map((url) => ({ ref: linkRef(url), url }));
 
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
