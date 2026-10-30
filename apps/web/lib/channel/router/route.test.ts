@@ -42,7 +42,6 @@ import {
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
-import { failureReply } from './copy';
 import type {
   DisambiguationOption,
   DisambiguationStore,
@@ -1765,7 +1764,9 @@ describe('failure honesty', () => {
     const h = harness({ coach: throwingCoach });
     await routeChannelMessage(h.deps, job());
 
-    expect(h.transport.bodies()).not.toContain(failureReply());
+    expect(h.transport.bodies()).not.toContain(
+      'Something went wrong on my end - nothing was changed. Try me again in a minute.',
+    );
   });
 
   it('never leaves the parent with silence OR a fabricated success', async () => {
@@ -2910,7 +2911,7 @@ describe('natural reply resolution', () => {
     expect(coach.standingQuestions).toEqual([['reschedule on your calendar']]);
   });
 
-  it('falls back to the choice sentence only when the coach cannot run', async () => {
+  it('sends no canned choice sentence when the coach cannot run', async () => {
     const h = harness({
       context: { body: 'sounds good' },
       coach: brokenCoach(),
@@ -2921,11 +2922,9 @@ describe('natural reply resolution', () => {
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('agent_failed');
-    expect(h.transport.bodies()).toEqual([
-      'Which one - reschedule on your calendar or meeting the family nearby?',
-    ]);
-    expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b/);
-    expect(h.transport.bodies()[0]).not.toContain('2)');
+    // VIL-504 · no canned which-one skeleton: the model's apology, never fixed copy.
+    expect(h.transport.bodies()).toHaveLength(1);
+    expect(h.transport.bodies()[0]).not.toMatch(/Which one -/);
   });
 
   it('does not offer numbers when no menu was written down', async () => {
@@ -2945,8 +2944,8 @@ describe('natural reply resolution', () => {
     expect(result.status).toBe('agent_failed');
     expect((h.deps.disambiguation as unknown as { minted: number }).minted).toBe(0);
     const sent = h.transport.bodies()[0] as string;
-    // Still asked, still by name — the sentence that went out before VIL-304.
-    expect(sent).toBe('Which one - reschedule on your calendar or meeting the family nearby?');
+    // VIL-504 · no canned which-one skeleton on a coach-down turn.
+    expect(sent).not.toMatch(/Which one -/);
     expect(sent).not.toContain('1)');
     expect(sent).not.toMatch(/Reply 1/);
   });
@@ -3896,7 +3895,7 @@ describe('the disambiguation a clarifier owns', () => {
 
   it('resolves the option the parent quoted back, instead of handing it to the coach', async () => {
     const founder = owner('founder_welcome', 'founder_welcome_offer');
-    const coach = brokenCoach();
+    const coach = fakeCoach('Which one did you mean - the calendar change or the welcome note?');
     const resolver = replayedResolver({
       // Turn one: an answer, and which one cannot be told from the word.
       YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
@@ -3914,7 +3913,7 @@ describe('the disambiguation a clarifier owns', () => {
     });
 
     const asked = await c.run();
-    expect(asked.status).toBe('agent_failed');
+    expect(asked.status).toBe('agent_replied');
     expect(c.h.transport.bodies()[0]).toMatch(/Which one/i);
 
     const answered = await c.run();
@@ -3963,7 +3962,7 @@ describe('the disambiguation a clarifier owns', () => {
     const c = conversation({
       bodies: ['YES', '2'],
       handlers: [founder.handler],
-      coach: brokenCoach(),
+      coach: fakeCoach('Which one did you mean - the calendar change or the welcome note?'),
       questions: fakeQuestions([calendarDraft(), founderOffer()]),
       replyResolver: replayedResolver({
         YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
@@ -3974,9 +3973,9 @@ describe('the disambiguation a clarifier owns', () => {
     const asked = await c.run();
     expect(c.h.transport.bodies()[0]).toMatch(/Which one/i);
     expect(c.h.transport.bodies()[0]).not.toContain('2)');
-    expect(asked.status).toBe('agent_failed');
+    expect(asked.status).toBe('agent_replied');
 
-    expect((await c.run()).status).toBe('agent_failed');
+    expect((await c.run()).status).toBe('agent_replied');
     expect(founder.seen).toEqual([]);
   });
 
@@ -4067,7 +4066,7 @@ describe('the disambiguation a clarifier owns', () => {
     const c = conversation({
       bodies: ['YES', 'yes 2'],
       handlers: [approvalHandler(queue.spine as never)],
-      coach: brokenCoach(),
+      coach: fakeCoach('Which one did you mean - the calendar change or the welcome note?'),
       questions: fakeQuestions(open),
       replyResolver: replayedResolver({
         YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
