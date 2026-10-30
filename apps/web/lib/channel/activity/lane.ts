@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { safeHttpUrl } from '~/lib/format/http-url';
+import { parentFacingActivityUrl, safeHttpUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
@@ -424,7 +424,7 @@ function uniqueMatch(
 ): string | null {
   const matched: string[] = [];
   for (const source of sources) {
-    const url = safeHttpUrl(source.url);
+    const url = parentFacingActivityUrl(source.url);
     if (url === null || !url.startsWith('https://')) continue;
     let host = '';
     try {
@@ -483,7 +483,7 @@ export function toPicks(
     const when = field(item.when);
     const price = field(item.price);
     const url =
-      safeHttpUrl(field(item.source_url)) ??
+      parentFacingActivityUrl(field(item.source_url)) ??
       stampReadPageUrl({ name, sourceName }, pages, searchHits);
     const pick: ActivityPick = {
       name,

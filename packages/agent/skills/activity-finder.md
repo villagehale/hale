@@ -43,6 +43,15 @@ is a page of stale links, and a program you found there is one you cannot say
 anything trustworthy about. Each venue you hand back cites its own page. A site
 that only lists other venues is not that page, even when the venue on it is real.
 
+**Weekend events and seasonal happenings are different.** When the subject is
+what is on this weekend (trick-or-treat, trunk-or-treat, Halloween, a town
+happenings list), a current local news or municipal events listing that names
+dates, times and places IS a real source — read it and keep those events. Do not
+skip it for being a "list page", and do not fall back to Wikipedia or a library
+homepage when that listing is available. Still prefer each venue's own page when
+you can open one for the same event; the listing is enough when that is all the
+search returned.
+
 **When the subject names a PLACE, go to that place's site.** "What about
 Cartwheel Gym" is a question about Cartwheel Gym, and the answer lives on their
 schedule page. Do not substitute three other gyms for the one they asked about —

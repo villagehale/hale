@@ -5,7 +5,7 @@
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "90f074ed912a23bb83debf43b35b235b1703ba050313cf0bd62927c98ae1d4a6"
+    "sha256": "755034e9f98e97678b0da9282bc758c8775b3b76e15c031a291b9740519fa22e"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
@@ -65,7 +65,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
+    "sha256": "05fe828e8faf9144e8040d757b2b7be2a5654562891093c80c49ff7bb4955101"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -109,7 +109,7 @@
   },
   "experience-card-coach.md": {
     "file": "experience-card-coach.md",
-    "sha256": "3eb14fd4f4a84856637906123bb78130d564233f4ecb94640049f18c9066fb06"
+    "sha256": "0bc3add4a0cacd214b8c5721f291b14d173d5dd14a73c9165ac025c2b40ed56b"
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
