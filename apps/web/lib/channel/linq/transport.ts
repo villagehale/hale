@@ -439,6 +439,43 @@ export async function sendLinqParts(input: {
 }
 
 /**
+ * VIL-480 · A Linq experience: a native card Linq's own iMessage app renders (no Hale
+ * Messages extension, no team/bundle id). The card is the whole message, so the body
+ * is `{ message: { experience } }` and never carries `parts`. One recipient per send.
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/experiences/
+ */
+export interface LinqExperienceWire {
+  name: string;
+  action: string;
+  params: Record<string, string>;
+}
+
+export async function sendLinqExperience(input: {
+  chatId: string;
+  experience: LinqExperienceWire;
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string }> {
+  if (!input.experience.name || !input.experience.action) {
+    throw new LinqSendError('invalid_experience', 400, true);
+  }
+  const message = { experience: input.experience };
+  const armed = cadenceArmed();
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
+    body: { message },
+    fetch: input.fetch,
+    ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const providerMessageId = readLinqMessageId(result.payload);
+  if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
+  return { providerMessageId };
+}
+
+/**
  * One text bubble into an existing chat. `replyTo` threads it under the
  * parent's bubble. A permanent refusal of that target (Linq 4xx) is logged and
  * the same text is sent plain — the answer is what the parent is owed, and a

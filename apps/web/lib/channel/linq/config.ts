@@ -144,3 +144,13 @@ export function linqGroupPollsEnabled(): boolean {
 export function linqVoiceMemosEnabled(): boolean {
   return trimmed('LINQ_VOICE_MEMOS_ENABLED') === 'true';
 }
+
+/**
+ * VIL-480 — Linq experience cards (`link`/`open`, rendered by Linq's own iMessage app)
+ * instead of a bare link preview. Exactly `true` enables it. Unset, empty, `on`, and
+ * `false` stay dark: dark never sends an experience and reads an inbound app card
+ * exactly as before (a `file`).
+ */
+export function linqExperiencesEnabled(): boolean {
+  return trimmed('LINQ_EXPERIENCES_ENABLED') === 'true';
+}
