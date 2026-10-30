@@ -481,6 +481,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('Add to my week', REPLY_AT, 1),
         provider_message_id: 'SM-in-1',
         received_at: REPLY_AT.toISOString(),
+        in_group: false,
       },
     );
 
@@ -516,6 +517,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('You said 18 month baby visit', REPLY_AT, 2),
         provider_message_id: 'SM-in-2',
         received_at: REPLY_AT.toISOString(),
+        in_group: false,
       },
     );
 
@@ -533,6 +535,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('Yes, please add it', REPLY_AT, 3),
         provider_message_id: 'SM-in-3',
         received_at: REPLY_AT.toISOString(),
+        in_group: false,
       },
     );
 
@@ -577,6 +580,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('Add to my week', REPLY_AT, 1),
         provider_message_id: 'SM-in-1',
         received_at: REPLY_AT.toISOString(),
+        in_group: false,
       },
     );
 
@@ -609,6 +613,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('yes', lapsed, 1),
         provider_message_id: 'SM-in-1',
         received_at: lapsed.toISOString(),
+        in_group: false,
       },
     );
 

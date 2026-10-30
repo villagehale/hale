@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: tomorrow, 15 h to 16 h, Georgetown library, title kept as \"Jour de congé\" without changing it. The text is in French and reads naturally. However, \"Jour de congé\" is quoted as a title, which is acceptable, and the sentence is terse and reads like a calendar readout (title, day, time range, place) rather than how a friend would text, so it caps at 3. A native speaker would more likely say \"Demain, tu as Jour de congé de 15 h à 16 h à la bibliothèque de Georgetown.\" or similar, so the phrasing is unnatural as a message.",
+    "score": 3
+  }
+}

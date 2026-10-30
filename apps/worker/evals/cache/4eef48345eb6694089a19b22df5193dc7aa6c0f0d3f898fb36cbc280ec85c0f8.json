@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is largely in English (\"Mon, Oct 26: Jour de congé at 3:00 Tomorrow's a day off...\") although French was requested, so the language is wrong. It gives only the 3:00 start with no AM/PM, omits the 4:00 PM end, and drops the venue name (Georgetown library) and the address (9 Church St). It also recasts the event title as what the day is (\"a day off\") and calls the day \"breathing room\" even though there is a timed event, which is explicitly a low-score failure.",
+    "score": 1
+  }
+}

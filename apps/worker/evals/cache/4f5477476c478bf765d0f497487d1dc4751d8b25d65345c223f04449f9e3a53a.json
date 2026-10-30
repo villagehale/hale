@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: the all-day Jour de congé is named as what the day is (true, allowed) and Léa's natation is clearly there with day (demain lundi), start and end (10 h à 11 h), and location (Piscine Main); 10 h is correctly the morning, no clock time for the all-day item, no invented logistics or filler, no link. It is entirely in French and reads like a quick friend text, not a calendar readout. A native speaker would say it essentially this way ('Léa a natation' is idiomatic enough, 'de 10 h à 11 h' natural, and 'à la Piscine Main' fits as a place name).",
+    "score": 5
+  }
+}

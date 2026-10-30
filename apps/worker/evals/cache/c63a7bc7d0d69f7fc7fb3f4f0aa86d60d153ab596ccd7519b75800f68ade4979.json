@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French and matches the situation (page unreadable this morning, cannot say what it shows). It keeps the handed link and the 10:30 a.m. time, and does not claim registration is booked or confirmed. It says registration should open at 10:30, which is the handed 'had' value; the day is today (Tuesday), and the text correctly does not claim it is already open. No child is named, and the text does not invent address, price or booking details. Minor gap: it does not explicitly say the time is today, but the morning framing covers it.",
+    "score": 4
+  }
+}

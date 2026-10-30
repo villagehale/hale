@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states PD Day is tomorrow, Monday, all day, with no clock time, matching the facts (Sunday Oct 25 now, event Monday Oct 26, allDay, no location, no end). It keeps the title as the event's name, invents no consequences, plans, or times, and is in English.",
+    "score": 5
+  }
+}

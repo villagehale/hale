@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm';
+import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { promoteMatchingInferredFacts } from '~/lib/memory/store';
 import type { CorrelatedEventRef, ExtractedEvent, ExtractionKind } from '~/lib/sentinel';
 import { sessionKey } from './going';
@@ -267,6 +268,9 @@ export async function recordActivityBooking(
      * outbound row. */
     channelMessageId: string | null;
     draft: BookingDraft;
+    /** Set on live mail only. With it, a refresh whose booking is linked to a Hale event
+     * applies the provider's new time or venue there and records the change (VIL-474). */
+    timeZone?: string;
   },
 ): Promise<{ outcome: 'recorded' | 'already_recorded' | 'refreshed'; bookingId: string | null }> {
   const [sameEmail] = await database
@@ -299,6 +303,23 @@ export async function recordActivityBooking(
         eventId: existing.eventId ?? input.draft.eventId,
       })
       .where(eq(schema.activityBookings.id, existing.id));
+    const linkedEventId = existing.eventId ?? input.draft.eventId;
+    if (input.timeZone && linkedEventId) {
+      // A re-sent receipt arrives by live email, so it RECORDS the change only and never
+      // moves the event (#955 re-review, blocker 1). Moving from email is the follow-up.
+      // `expectStartsAt` still limits this to the booking's first-session event, so a later
+      // session in the series is never marked changed (#955 review, point 7).
+      await applyProviderChange(database, {
+        familyId: input.familyId,
+        eventId: linkedEventId,
+        providerHost: input.draft.providerHost,
+        source: { startsAt: input.draft.firstSessionAt, location: input.draft.location },
+        timeZone: input.timeZone,
+        now: new Date(),
+        move: false,
+        expectStartsAt: existing.firstSessionAt,
+      });
+    }
     await noteBookingMemory(database, input.familyId, input.draft.title);
     return { outcome: 'refreshed', bookingId: existing.id };
   }
@@ -668,7 +689,7 @@ export async function readDueBookings(
  * display name (which can carry a child's program name) or the local part (which can be
  * `parent.name@`).
  */
-function senderHost(from: string): string {
+export function senderHost(from: string): string {
   const address = /<([^>]*)>/.exec(from)?.[1] ?? from;
   return (address.split('@')[1] ?? '').trim().toLowerCase();
 }

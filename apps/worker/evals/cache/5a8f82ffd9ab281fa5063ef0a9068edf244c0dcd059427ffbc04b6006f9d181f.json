@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states tomorrow, 15 h to 16 h, and the Georgetown library location, all matching the facts. However, it renders the title 'Jour de congé' as 'un jour de congé' (a day off), recasting the event name as a statement about the day, which changes the fact; a native speaker would name the event as 'le Jour de congé' or 'l'événement Jour de congé' or similar. The phrasing 'il y a un jour de congé à la bibliothèque' also reads as a closure or day-off notice rather than an event at the library, so the title is turned into a claim it does not make. This is a fact failure, so the score is low.",
+    "score": 2
+  }
+}

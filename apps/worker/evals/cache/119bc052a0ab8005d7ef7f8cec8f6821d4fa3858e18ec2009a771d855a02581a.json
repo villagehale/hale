@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text calls the day 'un peu de répit' (breathing room) and says it is a day off, implying the day is open, despite a timed event at 3:00 PM-4:00 PM at Georgetown library. The end time is given but the text is in English-mixed French: 'Mon, Oct 26' and '3:00' and 'Tomorrow's' are not French, so it is not in the requested language. The event title is dropped in unidiomatically, and the 3:00 PM time is written without the French 15 h form. Multiple fact and language failures.",
+    "score": 1
+  }
+}

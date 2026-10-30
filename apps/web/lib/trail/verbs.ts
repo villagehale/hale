@@ -199,6 +199,7 @@ export const AUDIT_VERBS = [
   'linq_multi_family_send_capped',
   'linq_multi_family_private_withheld',
   'linq_multi_family_data_refused',
+  'linq_private_aside_sent',
   'linq_poll_sent',
   // A live logistics fact: an open ask, a named taker, a chosen time, or
   // "none of these" ending the both-free ask. One verb, because every one of
@@ -429,6 +430,8 @@ export const AUDIT_VERBS = [
   'activity.offered',
   'registration_shortlist_drafted',
   'registration_sequence_leg_sent',
+  'registration_evening_unwritten',
+  'registration_morning_unwritten',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -827,6 +830,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_multi_family_data_refused: {
     sentence: "Hale did not use a family's details without that family's consent",
     family: 'problem',
+  },
+  linq_private_aside_sent: {
+    sentence: 'Hale sent one family a private note from a shared thread',
+    family: 'done',
   },
   linq_poll_sent: { sentence: 'Hale sent you a short choice', family: 'note' },
   // True for an open ask, a named taker, a chosen time, and a both-free
@@ -1520,6 +1527,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   registration_sequence_leg_sent: {
     sentence: 'Hale nudged you about a registration window',
     family: 'done',
+  },
+  registration_evening_unwritten: {
+    sentence: 'Hale did not send the evening-before registration text',
+    family: 'note',
+  },
+  registration_morning_unwritten: {
+    sentence: 'Hale did not send the morning-of registration text',
+    family: 'note',
   },
   registration_outcome_recorded: {
     sentence: 'you told Hale how a registration went',

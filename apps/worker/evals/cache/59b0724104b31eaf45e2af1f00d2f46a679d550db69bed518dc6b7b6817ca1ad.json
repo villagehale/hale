@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text mentions only 'Jour de congé at 3:00', an event not in the facts, and omits all three given events: the Montessori tour (10-11 AM, Little Oaks Montessori, 41 Mill St), Toddler Storytime (1:30-2 PM, Georgetown Branch, 9 Church St) and Swim (5-5:45 PM, Mold-Masters SportsPlex, 221 Guelph St). It invents a day off and a 3:00 time with no AM/PM. It also claims 'breathing room' for a day with three timed events, which is exactly the low-score failure of implying the day is open.",
+    "score": 1
+  }
+}

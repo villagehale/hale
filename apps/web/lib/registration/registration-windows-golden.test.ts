@@ -411,7 +411,10 @@ describe('golden — King Winter 2027', () => {
     expect(fallSwim.residentOpenAt).toBeNull();
     expect(
       REGISTRATION_WINDOWS.some(
-        (s) => s.municipality === 'king' && s.programDomain === 'rec_program' && s.cycleLabel === 'Fall 2026',
+        (s) =>
+          s.municipality === 'king' &&
+          s.programDomain === 'rec_program' &&
+          s.cycleLabel === 'Fall 2026',
       ),
     ).toBe(false);
   });

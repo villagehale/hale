@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event (Swim class), the correct day (today, matching now of Monday Oct 26), the correct start (10:00 a.m.) and end (11:00 a.m.) with AM/PM right. No location or 'for' was given, so none is missing, and nothing was invented.",
+    "score": 5
+  }
+}

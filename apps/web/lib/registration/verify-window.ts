@@ -285,7 +285,10 @@ export function withoutInferredEvidence(
 
 const publishedDateSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  time: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+  time: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/)
+    .nullable(),
 });
 
 /** The model has two ways of saying "no date for this field": a plain `null`, and
@@ -296,9 +299,7 @@ const publishedDateSchema = z.object({
  * `=== null` skip and publishedInstant both depend on it). */
 const nullableWindowDate = z.preprocess(
   (value) =>
-    value && typeof value === 'object' && (value as { date?: unknown }).date == null
-      ? null
-      : value,
+    value && typeof value === 'object' && (value as { date?: unknown }).date == null ? null : value,
   publishedDateSchema.nullable(),
 );
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French ('Jour de congé') although the requested language is English, so it is the wrong language. It also invents a clock time (3:00) for an all-day event, and states the day is open with breathing room, which is an invented claim that the day is free and an unstated inference. Multiple fails.",
+    "score": 1
+  }
+}
