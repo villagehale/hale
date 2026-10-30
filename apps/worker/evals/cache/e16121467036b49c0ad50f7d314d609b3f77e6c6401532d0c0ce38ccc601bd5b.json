@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple fact failures. The event is \"PD Day\" at 9:30 AM–12:00 PM at Northside community centre, but the text gives the title as \"Jour de congé\" (wrong title and wrong language for an English request), the start as \"3:00\" with no AM/PM (wrong time; facts say 9:30 AM), omits the end time (12:00 PM) and the venue (Northside community centre), and says \"a day off ... a bit of breathing room,\" which implies the family has nothing to be at when a timed event exists, and draws an unstated inference. Bold is none, which is fine.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give an all-day PD Day with no clock time, but the text says 'Jour de congé at 3:00', inventing a start time for an all-day event. It also renames the title 'PD Day' to 'Jour de congé', changing the event's name, and adds unstated inferences ('a day off', 'a bit of breathing room'). All of these are fact failures.",
+    "score": 1
+  }
+}

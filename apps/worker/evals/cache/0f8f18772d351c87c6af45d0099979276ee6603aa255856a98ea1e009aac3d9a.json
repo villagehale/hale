@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly says PD Day is tomorrow for the whole day with no clock time, and it is in English. However, it is not natural English: 'it is having PD Day the whole of day, school is not' is a stilted, ungrammatical construction a native speaker would not send. It also states as fact that school is not in session, which is a consequence of the title not given in the facts (an unstated inference). Both the unnatural phrasing and the unstated inference cap or lower the score.",
+    "score": 2
+  }
+}

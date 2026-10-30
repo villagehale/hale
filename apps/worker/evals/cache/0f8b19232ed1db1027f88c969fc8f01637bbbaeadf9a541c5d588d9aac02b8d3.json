@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asks about a sick child with fever and vomiting. The reply answers the question, informs the coach, and gives safety guidance, so sendReply is true. No sticker is correct for illness and distress, so the decision is fully appropriate.",
+    "score": 5
+  }
+}

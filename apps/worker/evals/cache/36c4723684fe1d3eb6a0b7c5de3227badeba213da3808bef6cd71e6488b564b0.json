@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgUtgAVENcVixDWNRg3fc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStgYKEAgTGAI4AUIIdGhpbmtpbmcSDPOn1LsUPugPftiAbRoM/DQGgPmwurX6GkJxIjA58RF44hbJlPesVVdBoDkV1Bx8/MeefMAxzysv8C4zXHCWViM1K3ZQz0KMHz+ZJ3cq0wV0k06wZa8Ua3tIjfakkfn7wb+A6FcEqLcQo1dBh70QkMsM+DunKhsr6GBCTz2ywNvS7ovkyyXvwTdlD03SKZUqw4ehBx+q+o7Rxo7ojE63eaZsVJ3Uj3yRva9W8fev5H0WlEN1jRwdg59gXPUcaJiFVslIo+w1EH4mrdnIjUOmaSVe3vCVozqUeNHAVJlXmkzloGBRSm0qkCfeWt54ee/Zx+20rfubzmzs/yOm3IZQGap0cF5E9e6oFd9X8TvOlvjpsatl2kAdGga5bdO7OQ4SvrwaJCyecUnOxKsywpNUTkvs7yIxj7qGL5oAkYLuNDvrNhKvYYUPy0OitiVIkVQCO0jlritffKpDcs6QAcz2f9LXTjyfcVKsuVsM31iAzSYRfP0CcSSZeh/0oShhd/UNJqSLjWXZit7c7Lqe06adLs8GLmVZQ4o1TW3NDHDk1E1RJM5kXs+6WCroMG7uACndNFuD0cB4eOf22ePo6L0SJ5LqLYPO9xTLsCZ5cDMdikHX0TflUT5bClobvmgD2elkaHMebjrfGmCBswAY5LHyl958opHBSVl6xuv/+lXNvmPMzk/chomGfaArlgopV8JaJvr5o0tV8N+phZFBlOGV5jqRBsEJgsmLWTM8T8WeW3tsLLc11SVLGrGxAppcEtAf3pnimWzlSLZHcAXLmrHQc3EpzHC2GG0CA+KO/CJS2+EQxT9ulg1+Ng6A1nuub5a1dOrnnmgU2CqmZ1uaVYm6VK0h5z1seyl2Iy9KwHSHjwFucv5RxlHz4/Z5tqLXM6qL091g/2sRAsTn4K+VYQWRftYdq17HNv+OAEDNSX2iCT4bTcEdw0XEQ+V65leRZ4ar8EZ/9FtpxDwU/Mw2gYmT50tSE9E2jfBfEkr0kJ6bcMsquFqqFJb7Yn2f2mICXcreyd3EvJmmFYYPNebA6HQGmnFze5TUmqRA7NEk6CdySSzkqnkYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Soccer practice is Sat 10:00am at Cedarvale Park. After that, there's Fanous lantern craft at North York Central Library, Sat, Aug 8, 2:00 p.m. It's a free drop-in for ages 6-12, so it suits Ada but not Milo. [link-c9bfa2]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1123,
+      "cache_read_input_tokens": 21045,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1123,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 184,
+      "output_tokens_details": {
+        "thinking_tokens": 77
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1620
+}

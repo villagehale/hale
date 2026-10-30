@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says \"it is having PD Day the whole of day, school is not,\" which states as fact that school is closed. The facts only give the all-day event titled \"PD Day\" and do not say school is closed or who it affects, so this is an unstated inference. The phrasing is also unnatural English: \"it is having PD Day\" and \"school is not\" are not how a native speaker would text this, and \"the whole of day\" is clumsy. No clock time appears, which is correct, and the day is correctly stated as tomorrow.",
+    "score": 2
+  }
+}

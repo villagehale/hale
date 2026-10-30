@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct (dates, AM/PM, end time for soccer, no invented details), but the text is a calendar readout in 'Title\\uff1adate time' label format, which is the notification-style pattern a friend would not text. It also gives a formal date instead of saying '\\u660e\\u5929' (tomorrow, true from now), and leaves the titles in English ('Library story time', 'Soccer') inside a Chinese message, which a native speaker would render naturally (\\u56fe\\u4e66\\u9986\\u6545\\u4e8b\\u65f6\\u95f4, \\u8db3\\u7403) instead of mixing languages. Capped at a low score for the stiff alert feel and the unnatural mixed-language construction.",
+    "score": 2
+  }
+}

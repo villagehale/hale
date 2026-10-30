@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event (Swim class), the correct day (today), the start (10:00 a.m.) and the end (11:00 a.m.). The facts have no location, planLink, or 'for' person, so nothing is missing. Nothing is invented, AM is correct, and bold is none, which is always fine.",
+    "score": 5
+  }
+}

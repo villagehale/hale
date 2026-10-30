@@ -27,12 +27,14 @@ import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
+import { groupPlanActionIds } from '~/lib/channel/group-plan/stamp';
 import {
   defaultCallNameComposer,
   parentCallNameVoice,
 } from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
@@ -79,6 +81,7 @@ import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
+import { createFloodLine } from './flood-line';
 import {
   approvalHandler,
   coParentAssentHandler,
@@ -720,6 +723,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
         });
       },
     }),
+    groupPlanActionIds,
     replyResolver: createReplyResolver(screenClient),
     calendarOffers: createCalendarOfferReader(screenClient),
     saidLine: createSaidLineWriter(screenClient),
@@ -739,6 +743,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     apology: createTurnApology(screenClient),
     // The one line a slow answer gets first, on the same lazy client.
     holdingLine: createHoldingLine(screenClient),
+    floodLine: createFloodLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),
@@ -808,7 +813,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
 /** The drain's handler: route one inbound text. */
 export async function routeInboundChannelMessage(
   database: Database,
-  job: ChannelMessageReceivedPayload,
+  job: ChannelMessageReceivedJob,
 ): Promise<void> {
   await routeChannelMessage(channelRouterDeps(database), job);
 }

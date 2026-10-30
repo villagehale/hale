@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
+import { linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -30,9 +31,18 @@ export type OptOutIntent =
   | 'crisis_emergency'
   | 'crisis_mental'
   | 'identity'
+  | 'leave_group'
   | 'none';
 
-const INTENTS = ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'identity', 'none'] as const;
+const INTENTS = [
+  'stop',
+  'start',
+  'crisis_emergency',
+  'crisis_mental',
+  'identity',
+  'leave_group',
+  'none',
+] as const;
 
 export interface OptOutReading {
   intent: OptOutIntent;
@@ -80,6 +90,14 @@ export function acceptOptOutReading(
 ): OptOutReading | null {
   if (value.verbatim !== text) return null;
   const confirmation = value.confirmation.trim();
+  // VIL-477: "Hale, leave this group" is its own reading only while Hale can leave
+  // (LINQ_GROUP_LEAVE_ENABLED). Dark, it stays the stop it always was, so the dark
+  // path is unchanged; lit, it is not a stop and the group turn handles the leave.
+  if (value.intent === 'leave_group') {
+    return linqGroupLeaveEnabled()
+      ? { intent: 'leave_group', confirmation: '' }
+      : { intent: 'stop', confirmation };
+  }
   if (value.intent === 'none' || value.intent === 'identity') {
     return { intent: value.intent, confirmation: '' };
   }

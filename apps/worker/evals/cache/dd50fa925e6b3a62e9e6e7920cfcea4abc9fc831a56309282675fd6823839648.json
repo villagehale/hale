@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French while the requested language is English, and it names an invented title 'Jour de congé' with a wrong time of 3:00 instead of 4:45 PM and no end time. It also says the day is open with breathing room, which wrongly implies nothing is scheduled despite a timed event.",
+    "score": 1
+  }
+}

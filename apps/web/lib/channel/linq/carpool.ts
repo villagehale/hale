@@ -15,7 +15,7 @@ import { type CarpoolComposer, createCarpoolComposer } from './carpool-voice';
 import { linqGroupCarpoolEnabled } from './config';
 import { deliverLinqGroupNotice } from './group';
 import { groupMemberByPhone, readGroupMembership } from './group-membership';
-import { sendLinqChatMessage } from './transport';
+import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 
 /**
  * VIL-445 (T16) — persist who is driving and send the night-before reminder.

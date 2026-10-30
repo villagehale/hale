@@ -94,8 +94,14 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
   'apps/web/lib/channel/calendar-write/send.ts':
     'VIL-454 calendar write notice: claims a channel_messages row (templateKey calendar_write_notice) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
+  'apps/web/lib/channel/group-plan/send.ts':
+    "VIL-443 group plan report: claims every message's channel_messages row in one transaction before any sendLinqChatMessage (category calendar_alert, template group_plan_calendar, the revision's dedupe key on the last message and that key plus #n on each other, provider chat id is the family's claimed group), stamps the provider id after, stops at the first message that does not land and stamps it and every row after it with failedSendPatch, and audits group_plan.calendar_reported only once the last message, the one with the link, has landed",
+  'apps/web/lib/loop/reminders/group/line.ts':
+    'VIL-448 group reminder lines (the confirmation and the reminder itself); postGroupReminderLine inserts the channel_messages row (reply, template linq:group_reminder_confirm or linq:group_reminder, dedupe key) on the primary parent before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks the row failed and releases the key',
   'apps/web/lib/channel/connect/fresh-link.ts':
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
+  'apps/web/lib/channel/linq/group-plan-rsvp/send.ts':
+    'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp, linq:group_plan_rsvp_followup, or VIL-471 linq:group_poll) on the covering family primary parent before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no phone

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgUtFJZhfupSfz3mggcxS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSkQkKEAgTGAI4AUIIdGhpbmtpbmcSDD22xIO/BbzVFy8iWBoMz+5CGxXtj2uiz1hyIjDVktrr82mjtwHSd1/BR+Wsiha3LeBBnI+eUKwMYJJWBnff3eMpnjqWqz8iPslCdGEqrghEXe3I3uFU2pekLU2iQ5dDW1tZnT5/dkF9t5ISasF8z9YR8wbTaHmXYkxwBrd6Tj9Cmh/4dLBdFd97IqbH6xxXnK2AHymvVo94JxlC49TDtn2s7N6dBYjc3ogthHJA/J9SVs5GrwWA71YNTRVtygPfSVBqdN0Tfe8yzIEWBff/3g095QS5SvHuD0koRJozYzcCrGGwtiSvgrG7xlrPiCKgFvmMcmeRvEdBYCw2ZZnXnwC7OVgxRR2F/FRJqO/LokkUw7X38AGzUBuesHyBnGvQFMNozPoDeHD4i866PKhyTc0Byx3z86Q0ThZgomrdRuO11y9m+YemEhAkF2DAkEdzJ+rfWjZZEw0cnHuAxu+nt9rFRaX5S1gGs1d+GMEHpB0ABbCdY0d+gFDjyhNXC7VdQ/Sn0rZktWiqKa2AZt+HvlIG//sUAY1paibmrEZj6CDf7jirtgCuM3jounZ1PGAkdR7aPwu3PA030qFnyP1Df3ROP7CjrDkr0mSPlo0NiL2l4yswAJhagHntGbGWqX40RvTlCUneazYwuKg8OvcwHSeLwdCJGv/nhHDPyTxfB9e3QbYqzc5ymDoxtmshLel3654QAIs9eoMjJXd3s+/Ch+rZZLcrTWnzgaJIF0Q//74p94sqVfW6BJE+bAeNat+14bXfh8XMtwujTt8j5ivpKcCoysDA6ZGSB6Pvo7UVDSALdKJPOhMbcDYOgFr2Yau0KmojYm7ozO8V856LwhG3XUunTyDggQ5gpbfoPcAxioT9O9DJ0uwk//DsOPEEt9sbWWnzubLbLV7V5xFdyhcz+rfIpQyBSY22Sjp5I1Zy6G9FzKJOXTiHTqd6aRm+sNLGm3mMX9lGYsOuq53VjrTOD4hYLw6u/jKfH4NrRJCCNuhLUt8PnTQUSoJBxfDj7iIwoGcY+L0GHtkLM6PFYNuFudivdEzeGXNO1kdm0d8+ILe3bwlRwGIRygg7FrZpawRrBNVCR1Xn/ffSJGTgUDmXjjZL2nf3n3RApWWQLPCFGYbwxm5krqwv2/epk823Jw1ZHjDXGGkymLcuuIkEi6IFoK2L7WUhLSw3A+lFhXE6GHxPEwD23aJbZhJPhybmDCKdrryI1kkBRi3/bZ9x84STa7YelIk/doGlbWWCoUU/A8b6/WhsOeSpGJF6Ws1nV17dZUJGGrxoCA7y7BEJBAZ5j5fHTG/7Q4GL4O5Osx16Z6ho3n4apgXzSZ2J/ShjF/0nMzCj9UiCsu9xxFHWReFXpqViqJLuQOEsl7LUvek8x94L41Mu+je6DQP2SB82Kzd034AqGd2lgqvQhPpwXDLXADsbmA0vyxQLfOLBwvj8wHOp6XXo34kiORTUInEnh1eGJKrPglcpKHA0Zrf9ror39Z4Ut+lFPt9t9brpL+dUJdcBT8POTgb4wEa861oWqRgB"
+      },
+      {
+        "type": "text",
+        "text": "Central Library story time at the Bloor/Gladstone branch, Sat, Aug 8. It's a free indoor drop-in and all ages are welcome, so both Milo and Ada can go. [link-c9bfa2]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 583,
+      "cache_read_input_tokens": 21045,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 583,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 284,
+      "output_tokens_details": {
+        "thinking_tokens": 209
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3199
+}

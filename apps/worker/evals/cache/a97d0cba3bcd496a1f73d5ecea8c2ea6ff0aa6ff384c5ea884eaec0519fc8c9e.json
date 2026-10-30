@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French although the requested language is English, so it fails the language requirement. It also invents a Jour de congé event at 3:00 that is not in the facts, omits the actual Swim class event and its 10:00 AM to 11:00 AM times, wrongly says tomorrow when the event is today, and implies breathing room in a day that has a timed event.",
+    "score": 1
+  }
+}

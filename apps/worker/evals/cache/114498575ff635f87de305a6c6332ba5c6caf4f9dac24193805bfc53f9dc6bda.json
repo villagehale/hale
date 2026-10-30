@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: today (今晚), start 7:00 PM and end 8:00 PM (今晚7点到8点, clearly evening), the event 钢琴课 keeps the meaning of 'Piano lesson', and the venue 'Ms. Chen studio' is given as-is. No address was provided in the facts, so none is missing. Nothing invented, no travel/departure claims, entirely in Chinese, no bold used.",
+    "score": 5
+  }
+}

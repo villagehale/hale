@@ -555,6 +555,7 @@ describe('a diary answer through the real router', () => {
       turns: auditTurnLedger(db.database),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
+      floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),
       recordActivityPromise: async () => ({
         status: 'recorded',
@@ -611,6 +612,7 @@ describe('a diary answer through the real router', () => {
         channel_message_id: row?.id as string,
         provider_message_id: providerMessageId,
         received_at: at.toISOString(),
+        in_group: false,
       },
     );
     expect(answered.handler).toBe('evening_check_in');
@@ -642,6 +644,7 @@ describe('a diary answer through the real router', () => {
         channel_message_id: laterRow?.id as string,
         provider_message_id: laterId,
         received_at: later.toISOString(),
+        in_group: false,
       },
     );
     expect(dropped.handler).not.toBe('evening_check_in');

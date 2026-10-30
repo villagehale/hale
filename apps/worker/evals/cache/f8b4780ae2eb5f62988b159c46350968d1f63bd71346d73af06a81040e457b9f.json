@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the registration opening correctly (Tuesday, September 15, 2026 at 6:30 a.m.), names Max as given, refers to the window correctly, and uses a day phrase ('next Tuesday') that fits from Tuesday, September 8. next=plan_promised, so it asks nothing and says Hale will send the plan the evening before, which matches the facts. It carries no link, claims nothing booked or registered, and keeps the language English. Nothing invented.",
+    "score": 5
+  }
+}

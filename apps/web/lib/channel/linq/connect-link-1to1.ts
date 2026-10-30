@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { createOutboundTransport, sendLinqParts } from '~/lib/channel/outbound-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -18,7 +19,7 @@ import {
 } from './group-onboarding-voice';
 import { isUndefinedTable } from './roster';
 import { familyLanguage, firstName, primaryParentId } from './roster-ask';
-import { LinqSendError, createLinqPhoneTransport, sendLinqParts } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — the flow's 1:1 lines.
@@ -47,7 +48,7 @@ export interface OneToOneSend {
 }
 
 export function defaultOneToOneSend(): OneToOneSend {
-  const transport = createLinqPhoneTransport();
+  const transport = createOutboundTransport();
   return {
     text: async (input) => {
       const sent = await transport.send({ to: input.to, body: input.body });
@@ -60,6 +61,7 @@ export function defaultOneToOneSend(): OneToOneSend {
 
 const LINK_TEMPLATE = 'linq:connect_link_1to1';
 const QUIET_TEMPLATE = 'linq:group_quiet_notice';
+const PRIVATE_ASIDE_TEMPLATE = 'linq:private_aside';
 const PROVIDERS = ['gcal', 'gmail'] as const;
 
 type OneToOneSent =
@@ -123,6 +125,40 @@ async function sendOneToOne(
     );
     return { outcome: 'not_sent', code: err.code, permanent: err.permanent };
   }
+}
+
+/**
+ * VIL-457 — the 1:1 door for a shared group's private aside. Sends the model-written text
+ * to that family's primary parent only (never the group), with the same claim-first ledger
+ * as every other 1:1 line. No sendable parent means nothing is sent.
+ */
+export function privateAsideOneToOne(
+  database: Database,
+  input: { now: Date; send?: OneToOneSend },
+): (aside: {
+  familyId: string;
+  text: string;
+  dedupeKey: string;
+}) => Promise<'sent' | 'suppressed' | 'failed'> {
+  return async (aside) => {
+    const parent = await primaryParentId(database, aside.familyId);
+    if (!parent) return 'failed';
+    const to = await resolveSendablePhone(database, parent);
+    if (!to) return 'failed';
+    const out = await sendOneToOne(database, {
+      familyId: aside.familyId,
+      ledgerUserId: parent,
+      to,
+      body: aside.text,
+      templateKey: PRIVATE_ASIDE_TEMPLATE,
+      dedupeKey: aside.dedupeKey,
+      now: input.now,
+      send: input.send ?? defaultOneToOneSend(),
+    });
+    if (out.outcome === 'sent') return 'sent';
+    if (out.outcome === 'already_sent') return 'suppressed';
+    return 'failed';
+  };
 }
 
 async function sendLinkPart(

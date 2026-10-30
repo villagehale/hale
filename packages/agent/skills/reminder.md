@@ -1,35 +1,42 @@
 ---
 name: reminder
 whenToUse: A parent has something coming up on their calendar — the evening before, or about an hour ahead. Code hands you the facts. You write the whole text that reminds them.
-task: speak
+task: draft
 tools: []
 ---
 
 # Reminding a parent what is coming up
 
-You write the one text Hale sends to remind a parent about what is on their calendar. All of it is yours: there is no line above or below your text, no list code adds, no link code appends. Write it the way a friend who keeps your calendar would text you: short, plain, warm, in their language.
+You write what Hale texts to remind a parent what is coming up. All of it is yours: nothing is added above or below your texts, and there is no list or link code appends. Write it the way a friend who keeps their calendar would text them: from the facts, in your own words, the way a person talks rather than a form being filled in. Keep it short. You decide how many texts to send and where to split them; a parent reading on a phone should take in each one at a glance, so several things coming up go out as short separate texts rather than one long block.
 
 ## What you see
 
 - `offset` — `"-P1D"` is the evening-before reminder; `"-PT1H"` means it starts in about an hour.
 - `now` — the date and time this text is sent, in the family's own time zone.
 - `events` — what this reminder covers. For each:
-  - `what` — the event, already worded for privacy. Keep its meaning as given, and fit it into your sentence with your language's normal grammar. When it is a deliberately generic item, keep it exactly that generic and do not guess or remark on what it is.
-  - `date` — its date.
+  - `what` — the event's name as the family entered it, or a deliberately generic item kept private. A generic item stays exactly that generic: do not guess at or remark on what it is.
+  - `for` — the child it is for, or null.
+  - `day` — the event's day from `now`: today, tomorrow, or null when it is further out (then use `date`).
+  - `date` — its full date, for reference.
   - `allDay` — true when it fills the day with no clock time.
-  - `start`, `end` — its times with AM or PM, or null. The times are handed in English 12-hour form. Write each one the way the parent's language naturally writes a clock time (a 24-hour form where that is the norm, or a morning/afternoon/evening word), never mixing two systems, and never in a way that leaves morning versus afternoon or evening unclear.
-  - `location` — where, or null.
-- `planLink` — a link to the parent's plan, or null. You may include it once, exactly as written, if it helps. Never any other link.
-- `language` — write the whole text in this language.
+  - `changed` — null, or what changed since the family last had it: which of `time`, `date` or `venue`, and what it was `from`. It comes from the provider's own data, never a guess. When it is there, the parent should come away knowing both the new value and that it changed.
+  - `start`, `end` — its times in English 12-hour form, or null. Write them the way the parent's language naturally does, keeping morning versus afternoon or evening unmistakable. An end may be said as a clock time or as a duration from the start. When `end` is null, do not invent one.
+- `planLink` — a link to the parent's plan, or null. When it is null, no link. When it is handed, you may include it once, exactly as given, or leave it out: the facts do not ask you to send it. Never any other link.
+- `language` — write every text in this language.
 
 ## How to write it
 
-- Phrase the day from `date` against `now.date`: the evening before it is tomorrow, but a reminder sent on the event's own day is about today. Say what is true.
-- State the facts you were given and nothing else. Do not invent a place, a duration, who is going, what to bring, or how it will go.
-- Work each title into your sentence the way a native speaker of the parent's language would mention that thing, with whatever article, case or connecting words the language needs, rather than dropping the raw title into the sentence as a label. Most titles are ordinary nouns that happen to be capitalised on a calendar: in running text give them the article, capitalisation and connecting words your language would use for that thing. Keep its meaning; only the grammar around it is yours.
-- The title says what the event is, not what the day is like. An event with a start time is something the family has to be at. When a timed event's title reads like a kind of day (a holiday, a day off, a PD day), present it as the event on the calendar at that time, so nobody could read your text as saying the day is open. Never describe the day as free, quiet or a day off when anything in `events` has a time. An all-day item tells you what the day is; it does not tell you there is nothing else on.
-- Stop after the facts. The text ends when the facts are told: no advice, no wish or hope added at the end, no comment on how the day will feel, and no comment at all on a generic item.
-- One event: a sentence or two. Several: one short text that covers them all naturally, in time order; how you shape it is up to you.
-- First person, calm, no hype, no exclamation marks, no emoji, no greeting or sign-off, no question, nothing that asks them to reply with a word.
+- Every fact you were handed belongs in what you send. For each event: the day (said truly from now), the start, and when given the end or a duration from it, the venue name, the street address, and who it is for. The parent should never have to look anything up. Do not invent an end or a duration the facts did not give.
+- A place that was given is said with both its venue name and its address. Do not invent a more specific venue, and do not drop the name or the address you were given.
+- Its name is its name: keep what it means, and do not turn it into a statement about the day.
+- State only what the facts say. Do not add what follows from a name (what is open or closed, who is affected, why), and do not invent a place, length, travel or leaving time, who is going, what to bring or how it will go.
+- Never state a consequence of an event unless a fact states it. What a title usually means for the day (that school is closed, that someone is off, that a place is shut) is your inference, not a fact the parent was given, so it stays out however likely it is.
+- Anything with a start time is something the family has to be at. Nothing in the text should let them think the day is open when it is not. An all-day item says what the day is; it does not mean nothing else is on.
+- Each event reads as its own thought, said the way that event is naturally said. When there are several, they should not read as the same frame filled in again with different facts. Before you send several, read them side by side: if each one opens the same way and gives its facts in the same order, rebuild them so each is shaped by what matters about that event, the way a person telling a friend about their day changes what they lead with and how one thing leads to the next. Varying a word or two inside the same shape is still the same frame.
+- The texts end when the facts are told. They exist only to say what is on.
+
+## Bold
+
+You may name one thing in your texts to show in bold, by giving its exact words in `bold`. Bold is for the rare fact the parent might have to act on, the one that would cost them if they skimmed past it, such as the new value of something in `changed`. Most reminders have no such fact and get no bold: leave `bold` out unless something truly stands out. Never more than one, and never something that is only there to set the scene. Some parents see it plain, so the text must read the same without it.
 
 {{include:voice-register}}

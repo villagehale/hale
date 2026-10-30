@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: both events are present with the correct day (tomorrow), 11 AM rendered as 上午11点, soccer 5:30-6:30 PM as 下午5:30到6:30 with the end time included, no invented details, and the link is exactly planLink. Chinese is natural: 图书馆讲故事时间 and 足球课 are normal renderings, the structure is how a friend would text it, and there is no filler, hype or question. Minor: 5:30 is written in digits rather than 5点半, but that is common and natural in texts.",
+    "score": 5
+  }
+}

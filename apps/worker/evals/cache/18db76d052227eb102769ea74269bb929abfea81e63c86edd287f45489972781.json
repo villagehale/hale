@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text drops Léa's swimming entirely (Natation, 10:00-11:00 AM at Piscine Main) and gives a clock time of 3:00 for the all-day Jour de congé, which is wrong since all-day events have no time. It also calls the day one with breathing room, implying it is open despite a timed event, and the wording is in English rather than French. Multiple fact failures.",
+    "score": 1
+  }
+}

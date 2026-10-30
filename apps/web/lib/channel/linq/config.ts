@@ -115,3 +115,59 @@ export function linqGroupWelcomeVoiceEnabled(): boolean {
 export function linqGroupCarpoolEnabled(): boolean {
   return trimmed('LINQ_GROUP_CARPOOL_ENABLED') === 'true';
 }
+
+/**
+ * VIL-444 (T24) — a clash in the household group gets one model-written alert with a
+ * suggested fix, in place of the household conflict line, and a pickup someone takes in
+ * that group settles it (group-pickup-claim.ts). Exactly `true` enables it.
+ * Default off: off plans and sends exactly what it did before.
+ */
+export function linqGroupConflictAlertsEnabled(): boolean {
+  return trimmed('LINQ_GROUP_CONFLICT_ALERTS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-442 (T15) — RSVP tracking for any plan in a Linq group. Exactly `true`
+ * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ */
+export function linqGroupPlanRsvpEnabled(): boolean {
+  return trimmed('LINQ_GROUP_PLAN_RSVP_ENABLED') === 'true';
+}
+
+/**
+ * VIL-471 — parent-made polls in a Linq group, read in the same group turn as
+ * plan RSVPs. Exactly `true` enables it. Unset, empty, `on`, and `false` stay
+ * dark. Default off. The native poll card additionally needs LINQ_POLLS.
+ */
+export function linqGroupPollsEnabled(): boolean {
+  return trimmed('LINQ_GROUP_POLLS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-476 — native iMessage voice memos: an iMessage capability check (cached) and the
+ * voice-memo send, plus inbound audio named as a voice memo for the model. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off reads
+ * inbound audio as a `file` and never calls the capability or voice-memo endpoints.
+ */
+export function linqVoiceMemosEnabled(): boolean {
+  return trimmed('LINQ_VOICE_MEMOS_ENABLED') === 'true';
+}
+
+/**
+ * VIL-480 — Linq experience cards (`link`/`open`, rendered by Linq's own iMessage app)
+ * instead of a bare link preview. Exactly `true` enables it. Unset, empty, `on`, and
+ * `false` stay dark: dark never sends an experience and reads an inbound app card
+ * exactly as before (a `file`).
+ */
+export function linqExperiencesEnabled(): boolean {
+  return trimmed('LINQ_EXPERIENCES_ENABLED') === 'true';
+}
+
+/**
+ * VIL-477 — Hale may leave a group chat when the family explicitly asks. Exactly
+ * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off,
+ * Hale never calls Linq's leave endpoint.
+ */
+export function linqGroupLeaveEnabled(): boolean {
+  return trimmed('LINQ_GROUP_LEAVE_ENABLED') === 'true';
+}

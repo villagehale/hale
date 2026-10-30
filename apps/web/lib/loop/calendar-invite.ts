@@ -9,6 +9,7 @@ import type {
 } from '@hale/worker/executor';
 import { and, asc, eq, gt, gte, inArray, isNotNull, like, sql } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
+import { hadGroupPlanLink } from '~/lib/channel/group-plan/send';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { composeEventCancel, composeEventLink } from '~/lib/loop/ics-invite';
@@ -207,7 +208,8 @@ function parentOutcome(
   return { parentUserId, channel: 'sms', ...outcomeFromLeg(leg) };
 }
 
-/** Whether this parent was texted the tap-to-add link for this event — any revision. */
+/** Whether this parent was texted the tap-to-add link for this event — any revision,
+ * 1:1 or in the family's group while they were in it (VIL-443). */
 async function wasTextedTheLink(
   database: Database,
   job: InviteJob,
@@ -227,7 +229,8 @@ async function wasTextedTheLink(
       ),
     )
     .limit(1);
-  return rows.length > 0;
+  if (rows.length > 0) return true;
+  return hadGroupPlanLink(database, job.familyId, job.familyEventId, parentUserId);
 }
 
 /** Whether this parent already has the cancellation text for this event. Checked
@@ -442,6 +445,13 @@ export async function retryDeferredCalendarCancels(
         familyEventId: row.id,
         method: 'CANCEL',
       });
+      if (report.status === 'group_reported') {
+        if (report.outcome === 'sent') summary.sent += 1;
+        else if (report.outcome === 'unwritten' || report.outcome === 'held:quiet_hours') {
+          summary.deferred += 1;
+        }
+        continue;
+      }
       if (report.status !== 'reported') continue;
       for (const parent of report.parents) {
         if (parent.outcome === 'sent') summary.sent += 1;

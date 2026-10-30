@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking, and turn_off_autonomy ran this turn for send_email and reply_to_email. The reply confirms that accurately and in Spanish, matching the parent. The third sentence slightly restates the second, and \"Listo, Sam.\" is a light opener, but the reply is correct, short and complete.",
+    "score": 4
+  }
+}

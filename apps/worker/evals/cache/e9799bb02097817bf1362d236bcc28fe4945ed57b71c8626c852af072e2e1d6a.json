@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All events, days, start and end times are present and correct, with correct AM/PM and tomorrow phrasing, in Chinese. However, the text says 足球训练 (soccer training) when the event title is just 'Soccer', changing what the event is called, which is a fact failure. Also the second sentence '还有' is fine but the training label is an invented detail. The story time event lacks no end, so that is fine. Capping at low due to the title change.",
+    "score": 2
+  }
+}

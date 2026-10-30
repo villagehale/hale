@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Saturday's on the table: park or pool? Tap the poll below, or just tell me which one you're in for. Priya and Sam, I'm waiting on you two.",
+    "why": "poll_started"
+  },
+  "latencyMs": 3270
+}

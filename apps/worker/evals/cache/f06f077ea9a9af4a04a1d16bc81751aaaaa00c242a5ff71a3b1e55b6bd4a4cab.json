@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text describes an entirely different event than the facts. The facts give a single event, \"Piano lesson\", today (Monday Oct 26) 7:00-8:00 PM at Ms. Chen studio. The text instead mentions \"Jour de congé at 3:00\", a title, time, and day-off claim that appear nowhere in the facts, and it says tomorrow is a day off with 'breathing room'. The piano lesson, its 7-8 PM time, its end, and its venue are all missing. The text is also in English/French rather than Chinese. Invented details, missing facts, and wrong language.",
+    "score": 1
+  }
+}

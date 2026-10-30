@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text mentions none of the three given events (Montessori tour, Toddler Storytime, Swim), so every start, end, venue name and address is missing. It invents an event, 'Jour de congé at 3:00', that is not in the facts, with no AM/PM, in the wrong language for a requested English text. It also tells the parent tomorrow is a day off with 'breathing room' when three timed events are on the calendar. Bold is none, which is fine, but the facts fail completely.",
+    "score": 1
+  }
+}

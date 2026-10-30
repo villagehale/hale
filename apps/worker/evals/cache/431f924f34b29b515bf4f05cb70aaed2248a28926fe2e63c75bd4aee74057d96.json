@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three events are present with correct day (tomorrow), correct AM/PM (9:00-9:45 morning, 11:00 a.m., 5:00 evening), venue names and addresses, and the right child for each. Swim's end (9:45) is given and piano's end is conveyed as a half hour from 5:00, which matches 5:00-5:30. The dentist has no invented end. No travel or departure claims, no link, no invented details, all in English. Bold is none, which is fine.",
+    "score": 5
+  }
+}
