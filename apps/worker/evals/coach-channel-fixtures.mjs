@@ -1216,3 +1216,71 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
 ];
+
+/**
+ * VIL-500 · one venue page calls the card; a comparison of venues does not.
+ * Opt-in (`VIL_500_CARD_EVAL=1`) so the standing coach corpus and its cache stay put
+ * until these two turns are recorded live. `eval:experience-card` sets the flag.
+ */
+export const EXPERIENCE_CARD_FIXTURES = [
+  {
+    id: 'experience-card-one-venue',
+    experienceCard: true,
+    text: 'Find an art class for Ada at Harbour Art Studio and send me their page.',
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    webPicks: [
+      {
+        name: 'Kids classes',
+        ageFit: 'ages 6 to 12',
+        sourceName: 'Harbour Art Studio',
+        when: 'several classes and sessions on this one page',
+        price: null,
+        url: 'https://example.org/harbour-art-studio/kids-classes',
+      },
+    ],
+    note: 'VIL-500. One venue page, and that page lists several classes. The card must be called for that page; citing the ref does not replace it. toolsOnly so a voice score cannot move the corpus mean.',
+    expect: {
+      toolsOnly: true,
+      mustCall: ['find_activities', 'share_experience_card'],
+      mustNotDraft: true,
+      cardForUrl: 'https://example.org/harbour-art-studio/kids-classes',
+      mustMention: ['harbour'],
+    },
+  },
+  {
+    id: 'experience-card-compare-venues',
+    experienceCard: true,
+    text: 'Which is the better fit for Ada, Harbour Art Studio or Lakeshore Art Studio? Send me both pages so I can compare them.',
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    webPicks: [
+      {
+        name: 'Kids classes',
+        ageFit: 'ages 6 to 12',
+        sourceName: 'Harbour Art Studio',
+        when: 'several classes and sessions on this one page',
+        price: null,
+        url: 'https://example.org/harbour-art-studio/kids-classes',
+      },
+      {
+        name: 'Kids classes',
+        ageFit: 'ages 6 to 12',
+        sourceName: 'Lakeshore Art Studio',
+        when: 'several classes and sessions on this one page',
+        price: null,
+        url: 'https://example.org/lakeshore-art-studio/kids-classes',
+      },
+    ],
+    note: 'VIL-500 negative. Comparing different venues stays a plain link: cite each ref, do not call the card.',
+    expect: {
+      toolsOnly: true,
+      mustCall: ['find_activities'],
+      mustNotCall: ['share_experience_card'],
+      mustNotDraft: true,
+      mustMention: ['harbour', 'lakeshore'],
+    },
+  },
+];
+
+if (process.env.VIL_500_CARD_EVAL === '1') {
+  COACH_CHANNEL_FIXTURES.push(...EXPERIENCE_CARD_FIXTURES);
+}

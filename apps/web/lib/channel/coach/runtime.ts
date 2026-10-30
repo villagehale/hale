@@ -304,9 +304,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
+      const baseSkill =
+        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+      // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
+      // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
+      // the card when the answer is one venue's page (VIL-500).
       const skill = augmentCoachSkillForExperienceCards(
-        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill,
-        cardsLit,
+        baseSkill,
+        cardsLit ? await loadCronSkill('experience-card-coach') : null,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.

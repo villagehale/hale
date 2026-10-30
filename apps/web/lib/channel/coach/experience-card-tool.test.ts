@@ -1,5 +1,6 @@
 import type { Skill } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { linkRef } from './activity-links';
 import {
   EXPERIENCE_CARD_TOOL,
@@ -41,10 +42,39 @@ describe('share_experience_card (VIL-497)', () => {
     expect(got).toEqual([{ url: PAGE, title: 'Camp' }]);
   });
 
-  it('skill: dark is the same object; lit adds the verb once', () => {
-    expect(augmentCoachSkillForExperienceCards(SKILL, false)).toBe(SKILL);
-    const lit = augmentCoachSkillForExperienceCards(SKILL, true);
+  it('skill: dark is the same object; lit adds the verb and the addendum once', () => {
+    const addendum: Skill = {
+      meta: { name: 'experience-card-coach', whenToUse: 'x', task: 'converse', tools: [] },
+      instructions: 'CALL THE CARD',
+    };
+    expect(augmentCoachSkillForExperienceCards(SKILL, null)).toBe(SKILL);
+    const lit = augmentCoachSkillForExperienceCards(SKILL, addendum);
     expect(lit.meta.tools).toEqual(['lookup_week', EXPERIENCE_CARD_TOOL]);
-    expect(augmentCoachSkillForExperienceCards(lit, true)).toBe(lit);
+    expect(lit.instructions).toBe(`${SKILL.instructions}\n\nCALL THE CARD`);
+    expect(augmentCoachSkillForExperienceCards(lit, addendum)).toBe(lit);
+  });
+
+  it('lit addendum requires the card for one venue and skips a comparison; disk coach is unchanged', async () => {
+    const disk = await loadCronSkill('coach-channel-sms');
+    const addendum = await loadCronSkill('experience-card-coach');
+    expect(disk.instructions).not.toContain(EXPERIENCE_CARD_TOOL);
+    expect(disk.meta.tools).not.toContain(EXPERIENCE_CARD_TOOL);
+    expect(augmentCoachSkillForExperienceCards(disk, null)).toBe(disk);
+    const lit = augmentCoachSkillForExperienceCards(disk, addendum);
+    expect(lit.instructions.startsWith(disk.instructions)).toBe(true);
+    expect(lit.instructions).toMatch(/one venue's page/i);
+    expect(lit.instructions).toMatch(/several classes or sessions/i);
+    expect(lit.instructions).toMatch(/does not replace/i);
+    expect(lit.instructions).toMatch(/different venues or different pages/i);
+    expect(lit.meta.tools).toContain(EXPERIENCE_CARD_TOOL);
+  });
+
+  it('requires the card for one venue page, and says citing the ref does not replace the call', () => {
+    const tool = shareExperienceCardTool({ links: () => [], onCard: () => {} });
+    expect(tool.description).toMatch(/one venue's page/i);
+    expect(tool.description).toMatch(/several classes or sessions/i);
+    expect(tool.description).toMatch(/does not replace/i);
+    expect(tool.description).toMatch(/different venues or different pages/i);
+    expect(tool.description).not.toMatch(/just cite the \[link-…\] ref as usual/);
   });
 });
