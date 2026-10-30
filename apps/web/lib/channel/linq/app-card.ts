@@ -1,57 +1,51 @@
 import { type Database, schema } from '@hale/db';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { checkLinqIMessageCapability, sendLinqParts } from '~/lib/channel/outbound-transport';
-import { linqAppCardsEnabled, linqIMessageAppIdentity } from './config';
+import { checkLinqIMessageCapability, sendLinqExperience } from '~/lib/channel/outbound-transport';
+import { linqExperiencesEnabled } from './config';
 import { type LinqLinkPreviewOutcome, sendLinqLinkPreview } from './link-preview';
-import { type LinqIMessageAppCardWire, LinqSendError } from './transport';
+import { type LinqExperienceWire, LinqSendError } from './transport';
 
 /**
- * VIL-480 — an iMessage app card (activity / event: name, time, venue, image) instead of
- * a bare link, with a fallback when it cannot render.
+ * VIL-480 — an activity/event card instead of a bare link, sent as a Linq **experience**
+ * (`link` / `open`): Linq's own iMessage app renders it. No Hale Messages extension, no
+ * team/bundle id, no borrowed identity (Design lock: `imessage_app` without an extension
+ * silently becomes caption text, so it is not used).
  *
  * Hale's AI decides when a card fits and writes every field; this module holds no copy.
  * It is only the wire plus the rules Linq documents:
- *   - iMessage only, and the `imessage_app` part must be alone in its message.
- *   - The card is drawn by the Messages extension named in LINQ_IMESSAGE_APP_* — an
- *     identity the recipient lacks drops to caption text, silently.
- *   - The body (`fallback_text`, else `caption`) must carry no time, date, address,
- *     phone, or day word, or iMessage shows it as a plain text instead of a card. So
- *     the model's `fallbackText` is required and checked here; rich detail goes in
- *     caption/subcaption/image fields.
- *   - `image_title`/`image_subtitle` need `image_url`; https only, 2048 max.
+ *   - iMessage only; the card is the whole message (`experience`, never `parts`).
+ *   - One recipient per action, so a group chat never gets a card.
+ *   - `link`/`open` declares `url` (https, ≤2048, required) and `title` (≤64). Unknown
+ *     params are a 400, so nothing else is sent.
+ *   - Recipients without Linq's app see a static card built from the same copy.
  *
- * Fallback: anything that keeps the card from going out (flag dark, no app identity, not
- * iMessage, capability says no, a refused or invalid card) sends the card's `url` as
- * the existing rich link preview instead — never a second text Hale did not write.
+ * `fallbackText` is the transport copy field (wire `params.title`, the copy the static
+ * card is built from). Transport-only check (Design lock): it must carry no time, date,
+ * address, phone, or day word. This is a Linq platform rule, not a coach banned list —
+ * it is never applied to other copy.
  *
- * https://docs.linqapp.com/channel/imessage/guides/messaging/imessage-apps/
+ * Fallback: anything that keeps the card from going out (flag dark, not iMessage, group,
+ * capability says no, invalid card, refused) sends the card's `url` as the existing rich
+ * link preview instead — never a second text Hale did not write.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/experiences/
  */
 
 const URL_MAX = 2048;
-const OVERLAY_MAX = 512;
-const CAPTION_MAX = 512;
+const TITLE_MAX = 64;
 
 export interface LinqAppCardInput {
-  /** https; the extension reads it to render the live card. Also the fallback link. */
+  /** https; the card opens it. Also the link-preview fallback. */
   url: string;
-  /** Model-written; free of times, dates, addresses, phones, and day words. */
-  fallbackText: string;
-  caption?: string;
-  subcaption?: string;
-  trailingCaption?: string;
-  trailingSubcaption?: string;
-  imageUrl?: string;
-  imageTitle?: string;
-  imageSubtitle?: string;
-  /** false → always the static layout card, even for recipients with the app. */
-  interactive?: boolean;
+  /** Model-written card copy (wire `title`). Free of times, dates, addresses, phones, day words. */
+  fallbackText?: string;
 }
 
 export type LinqAppCardRefusal =
   | 'dark'
-  | 'no_app_identity'
   | 'not_imessage'
   | 'no_chat'
+  | 'group_chat'
   | 'not_capable'
   | 'invalid_card'
   | 'unsafe_fallback_text'
@@ -97,57 +91,20 @@ function httpsUrl(raw: string | undefined): string | null {
   }
 }
 
-function field(value: string | undefined, max: number): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed) return undefined;
-  if (trimmed.length > max) throw new LinqSendError('invalid_card', 400, true);
-  return trimmed;
-}
-
-/** The wire card, or a refusal naming why. Pure; no env read beyond the identity passed. */
+/** The wire experience, or a refusal naming why. Pure. */
 export function buildLinqAppCard(
   input: LinqAppCardInput,
-  app: LinqIMessageAppCardWire['app'],
 ):
-  | { ok: true; card: LinqIMessageAppCardWire }
+  | { ok: true; experience: LinqExperienceWire }
   | { ok: false; why: 'invalid_card' | 'unsafe_fallback_text' } {
   const url = httpsUrl(input.url);
   if (!url) return { ok: false, why: 'invalid_card' };
-  const fallbackText = input.fallbackText?.trim();
-  if (!fallbackText || fallbackText.length > CAPTION_MAX) return { ok: false, why: 'invalid_card' };
-  if (!appCardBodyIsSafe(fallbackText)) return { ok: false, why: 'unsafe_fallback_text' };
-  let layout: LinqIMessageAppCardWire['layout'];
-  try {
-    const imageUrl = input.imageUrl === undefined ? undefined : httpsUrl(input.imageUrl);
-    if (imageUrl === null) return { ok: false, why: 'invalid_card' };
-    layout = {
-      caption: field(input.caption, CAPTION_MAX),
-      subcaption: field(input.subcaption, CAPTION_MAX),
-      trailing_caption: field(input.trailingCaption, CAPTION_MAX),
-      trailing_subcaption: field(input.trailingSubcaption, CAPTION_MAX),
-      image_url: imageUrl,
-      image_title: field(input.imageTitle, OVERLAY_MAX),
-      image_subtitle: field(input.imageSubtitle, OVERLAY_MAX),
-    };
-  } catch {
-    return { ok: false, why: 'invalid_card' };
-  }
-  for (const key of Object.keys(layout) as Array<keyof typeof layout>) {
-    if (layout[key] === undefined) delete layout[key];
-  }
-  if (Object.keys(layout).length === 0) return { ok: false, why: 'invalid_card' };
-  if ((layout.image_title || layout.image_subtitle) && !layout.image_url) {
-    return { ok: false, why: 'invalid_card' };
-  }
+  const title = input.fallbackText?.trim();
+  if (title !== undefined && title.length > TITLE_MAX) return { ok: false, why: 'invalid_card' };
+  if (title && !appCardBodyIsSafe(title)) return { ok: false, why: 'unsafe_fallback_text' };
   return {
     ok: true,
-    card: {
-      app,
-      url,
-      fallback_text: fallbackText,
-      ...(input.interactive === false ? { interactive: false } : {}),
-      layout,
-    },
+    experience: { name: 'link', action: 'open', params: { url, ...(title ? { title } : {}) } },
   };
 }
 
@@ -155,8 +112,10 @@ export async function sendLinqAppCard(input: {
   channel: string;
   chatId: string | null;
   card: LinqAppCardInput;
-  /** The 1:1 recipient's handle, for the cached iMessage capability check. Omit in a group. */
+  /** The 1:1 recipient's handle (capability check). Required: an experience has one recipient. */
   recipientAddress?: string;
+  /** True for a group chat — experiences go to exactly one recipient, so it falls back. */
+  isGroup?: boolean;
   fetch?: typeof fetch;
   database?: Database;
   familyId?: string;
@@ -174,16 +133,15 @@ export async function sendLinqAppCard(input: {
       parentUserId: input.parentUserId,
       now: input.now,
     });
-    console.info({ why, link: link.status }, 'linq app card: fell back to link preview');
+    console.info({ why, link: link.status }, 'linq experience card: fell back to link preview');
     return { status: 'fallback', why, link };
   };
 
-  if (!linqAppCardsEnabled()) return fallback('dark');
+  if (!linqExperiencesEnabled()) return fallback('dark');
   if (input.channel !== 'imessage') return fallback('not_imessage');
   if (!input.chatId) return fallback('no_chat');
-  const app = linqIMessageAppIdentity();
-  if (!app) return fallback('no_app_identity');
-  const built = buildLinqAppCard(input.card, app);
+  if (input.isGroup) return fallback('group_chat');
+  const built = buildLinqAppCard(input.card);
   if (!built.ok) return fallback(built.why);
 
   if (input.recipientAddress) {
@@ -192,18 +150,17 @@ export async function sendLinqAppCard(input: {
         address: input.recipientAddress,
         fetch: input.fetch,
       });
-      // `unknown` (dark check, outage, rate limit) is not a no: the chat is already
-      // iMessage, and a later 4005 `message.failed` is the async backstop.
+      // `unknown` is not a no; a later 4005 `message.failed` is the async backstop.
       if (capability.status === 'not_available') return fallback('not_capable');
     } catch {
-      // A refused check never blocks the card; same reasoning as `unknown`.
+      // A refused check never blocks the card.
     }
   }
 
   try {
-    const sent = await sendLinqParts({
+    const sent = await sendLinqExperience({
       chatId: input.chatId,
-      parts: [{ type: 'imessage_app', card: built.card }],
+      experience: built.experience,
       fetch: input.fetch,
     });
     if (input.database && input.familyId && input.parentUserId) {
@@ -213,7 +170,7 @@ export async function sendLinqAppCard(input: {
         channel: 'imessage',
         direction: 'out',
         category: 'reply',
-        templateKey: 'linq:app_card',
+        templateKey: 'linq:experience_card',
         providerMessageId: sent.providerMessageId,
         providerChatId: input.chatId,
         status: acceptedStatus('imessage'),
@@ -227,7 +184,7 @@ export async function sendLinqAppCard(input: {
     if (code === 'timeout' || code === 'network') return fallback('unreachable');
     console.warn(
       { code, httpStatus: err instanceof LinqSendError ? err.httpStatus : undefined },
-      'linq app card: refused',
+      'linq experience card: refused',
     );
     return fallback('refused');
   }

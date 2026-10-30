@@ -124,28 +124,7 @@ export type LinqOutboundPart =
   | { type: 'text'; value: string; decorations?: readonly LinqTextDecoration[] }
   | { type: 'media'; url: string }
   | { type: 'media'; attachmentId: string }
-  | { type: 'link'; value: string }
-  | { type: 'imessage_app'; card: LinqIMessageAppCardWire };
-
-/** VIL-480 · the wire shape of one iMessage app card part (see linq/app-card.ts). */
-export interface LinqIMessageAppCardWire {
-  app: { name: string; team_id: string; bundle_id: string; app_store_id?: number };
-  url: string;
-  fallback_text?: string;
-  interactive?: boolean;
-  layout: Partial<
-    Record<
-      | 'caption'
-      | 'subcaption'
-      | 'trailing_caption'
-      | 'trailing_subcaption'
-      | 'image_url'
-      | 'image_title'
-      | 'image_subtitle',
-      string
-    >
-  >;
-}
+  | { type: 'link'; value: string };
 
 /** Thread a follow-up under a message the parent already has. `partIndex` is
  * 0-based and optional — Linq defaults it to the first part. */
@@ -338,7 +317,6 @@ function wirePart(part: LinqOutboundPart): Record<string, unknown> {
     };
   }
   if (part.type === 'link') return { type: 'link', value: part.value };
-  if (part.type === 'imessage_app') return { type: 'imessage_app', ...part.card };
   if ('attachmentId' in part && part.attachmentId) {
     return { type: 'media', attachment_id: part.attachmentId };
   }
@@ -390,10 +368,6 @@ function assertParts(parts: readonly LinqOutboundPart[]): void {
   const linkCount = parts.filter((part) => part.type === 'link').length;
   if (linkCount > 0 && parts.length !== 1) {
     throw new LinqSendError('link_not_alone', 400, true);
-  }
-  // VIL-480 · an iMessage app part cannot share a message with any other part.
-  if (parts.some((part) => part.type === 'imessage_app') && parts.length !== 1) {
-    throw new LinqSendError('app_card_not_alone', 400, true);
   }
   for (let i = 1; i < parts.length; i += 1) {
     if (parts[i]?.type === 'text' && parts[i - 1]?.type === 'text') {
@@ -456,6 +430,43 @@ export async function sendLinqParts(input: {
     await new Promise((resolve) => setTimeout(resolve, result.retryAfterMs ?? 0));
     result = await send();
   }
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const providerMessageId = readLinqMessageId(result.payload);
+  if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
+  return { providerMessageId };
+}
+
+/**
+ * VIL-480 · A Linq experience: a native card Linq's own iMessage app renders (no Hale
+ * Messages extension, no team/bundle id). The card is the whole message, so the body
+ * is `{ message: { experience } }` and never carries `parts`. One recipient per send.
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/experiences/
+ */
+export interface LinqExperienceWire {
+  name: string;
+  action: string;
+  params: Record<string, string>;
+}
+
+export async function sendLinqExperience(input: {
+  chatId: string;
+  experience: LinqExperienceWire;
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string }> {
+  if (!input.experience.name || !input.experience.action) {
+    throw new LinqSendError('invalid_experience', 400, true);
+  }
+  const message = { experience: input.experience };
+  const armed = cadenceArmed();
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
+    body: { message },
+    fetch: input.fetch,
+    ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
+  });
   if (!result.ok) {
     throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
   }

@@ -1,22 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appCardBodyIsSafe, buildLinqAppCard, sendLinqAppCard } from './app-card';
 import { describeInboundAppCard } from './app-card-inbound';
-import { linqAppCardsEnabled, linqIMessageAppIdentity } from './config';
+import { linqExperiencesEnabled } from './config';
 import { parseLinqWebhook } from './payload';
-import { clearLinqCapabilityCacheForTest, sendLinqParts } from './transport';
+import { clearLinqCapabilityCacheForTest } from './transport';
 
-/** VIL-480 · iMessage app cards, dark by default, with a link-preview fallback. Keys unset. */
+/** VIL-480 · Linq experience cards (link/open), dark by default, link-preview fallback. Keys unset. */
 
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
-const APP = { name: 'Hale', team_id: 'ABCDE12345', bundle_id: 'com.villagehale.messages' };
-const CARD = {
-  url: 'https://villagehale.com/e/abc123',
-  fallbackText: 'Event details inside',
-  caption: 'Saturday story time',
-  subcaption: '10:30 AM · Lillian H. Smith library',
-  imageUrl: 'https://villagehale.com/e/abc123.jpg',
-  imageTitle: 'Story time',
-};
+const CARD = { url: 'https://villagehale.com/e/abc123', fallbackText: 'Story time details' };
 
 function jsonFetch(status: number, body: unknown) {
   return vi.fn(
@@ -29,11 +21,12 @@ function jsonFetch(status: number, body: unknown) {
 }
 
 function lit() {
-  vi.stubEnv('LINQ_APP_CARDS_ENABLED', 'true');
+  vi.stubEnv('LINQ_EXPERIENCES_ENABLED', 'true');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-  vi.stubEnv('LINQ_IMESSAGE_APP_NAME', APP.name);
-  vi.stubEnv('LINQ_IMESSAGE_APP_TEAM_ID', APP.team_id);
-  vi.stubEnv('LINQ_IMESSAGE_APP_BUNDLE_ID', APP.bundle_id);
+}
+
+function body(fetchImpl: { mock: { calls: unknown[][] } }, i = 0) {
+  return JSON.parse(String((fetchImpl.mock.calls[i]?.[1] as RequestInit | undefined)?.body));
 }
 
 beforeEach(() => {
@@ -45,11 +38,7 @@ beforeEach(() => {
     'LINQ_FROM_E164',
     'LINQ_WEBHOOK_SECRET',
     'LINQ_VOICE_MEMOS_ENABLED',
-    'LINQ_APP_CARDS_ENABLED',
-    'LINQ_IMESSAGE_APP_NAME',
-    'LINQ_IMESSAGE_APP_TEAM_ID',
-    'LINQ_IMESSAGE_APP_BUNDLE_ID',
-    'LINQ_IMESSAGE_APP_STORE_ID',
+    'LINQ_EXPERIENCES_ENABLED',
   ]) {
     vi.stubEnv(name, '');
   }
@@ -59,27 +48,19 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('flag + identity', () => {
+describe('flag', () => {
   it('is dark unless exactly true', () => {
-    expect(linqAppCardsEnabled()).toBe(false);
+    expect(linqExperiencesEnabled()).toBe(false);
     for (const v of ['on', 'false', '1', 'TRUE']) {
-      vi.stubEnv('LINQ_APP_CARDS_ENABLED', v);
-      expect(linqAppCardsEnabled()).toBe(false);
+      vi.stubEnv('LINQ_EXPERIENCES_ENABLED', v);
+      expect(linqExperiencesEnabled()).toBe(false);
     }
-    vi.stubEnv('LINQ_APP_CARDS_ENABLED', 'true\n');
-    expect(linqAppCardsEnabled()).toBe(true);
-  });
-
-  it('needs name, a 10-char team id, and bundle id', () => {
-    expect(linqIMessageAppIdentity()).toBeNull();
-    lit();
-    expect(linqIMessageAppIdentity()).toEqual(APP);
-    vi.stubEnv('LINQ_IMESSAGE_APP_TEAM_ID', 'short');
-    expect(linqIMessageAppIdentity()).toBeNull();
+    vi.stubEnv('LINQ_EXPERIENCES_ENABLED', 'true\n');
+    expect(linqExperiencesEnabled()).toBe(true);
   });
 });
 
-describe('fallback_text safety (iMessage drops a card whose body has a time/date/address/phone/day)', () => {
+describe('fallbackText safety (transport field only)', () => {
   it.each([
     'Starts at 11:30 AM',
     'See you tomorrow',
@@ -89,72 +70,42 @@ describe('fallback_text safety (iMessage drops a card whose body has a time/date
     'Saturday fun',
     'rendez-vous demain',
     '明天见',
-  ])('rejects %s', (body) => expect(appCardBodyIsSafe(body)).toBe(false));
-  it.each(['Event details inside', 'Tap to RSVP', 'Location inside'])('allows %s', (body) =>
-    expect(appCardBodyIsSafe(body)).toBe(true),
+  ])('rejects %s', (t) => expect(appCardBodyIsSafe(t)).toBe(false));
+  it.each(['Event details inside', 'Tap to RSVP', 'Location inside'])('allows %s', (t) =>
+    expect(appCardBodyIsSafe(t)).toBe(true),
   );
 });
 
 describe('buildLinqAppCard', () => {
-  it('builds the wire part with only set layout fields', () => {
-    const built = buildLinqAppCard(CARD, APP);
-    expect(built).toEqual({
+  it('builds link/open with only declared params (url, title)', () => {
+    expect(buildLinqAppCard(CARD)).toEqual({
       ok: true,
-      card: {
-        app: APP,
-        url: CARD.url,
-        fallback_text: CARD.fallbackText,
-        layout: {
-          caption: CARD.caption,
-          subcaption: CARD.subcaption,
-          image_url: CARD.imageUrl,
-          image_title: CARD.imageTitle,
-        },
+      experience: {
+        name: 'link',
+        action: 'open',
+        params: { url: CARD.url, title: CARD.fallbackText },
       },
     });
+    expect(buildLinqAppCard({ url: CARD.url })).toEqual({
+      ok: true,
+      experience: { name: 'link', action: 'open', params: { url: CARD.url } },
+    });
   });
-  it('refuses http, empty layout, overlay without image, unsafe body', () => {
-    expect(buildLinqAppCard({ ...CARD, url: 'http://x.test' }, APP)).toMatchObject({ ok: false });
-    expect(buildLinqAppCard({ url: CARD.url, fallbackText: 'Inside' }, APP)).toEqual({
+  it('refuses http, over-long title, unsafe title', () => {
+    expect(buildLinqAppCard({ ...CARD, url: 'http://x.test' })).toMatchObject({ ok: false });
+    expect(buildLinqAppCard({ ...CARD, fallbackText: 'x'.repeat(65) })).toEqual({
       ok: false,
       why: 'invalid_card',
     });
-    expect(
-      buildLinqAppCard({ url: CARD.url, fallbackText: 'Inside', imageTitle: 'x' }, APP),
-    ).toEqual({ ok: false, why: 'invalid_card' });
-    expect(buildLinqAppCard({ ...CARD, fallbackText: 'Tonight at 7' }, APP)).toEqual({
+    expect(buildLinqAppCard({ ...CARD, fallbackText: 'Tonight at 7' })).toEqual({
       ok: false,
       why: 'unsafe_fallback_text',
     });
   });
-  it('passes interactive:false through', () => {
-    const built = buildLinqAppCard({ ...CARD, interactive: false }, APP);
-    expect(built.ok && built.card.interactive).toBe(false);
-  });
-});
-
-describe('transport part rules', () => {
-  it('an imessage_app part must be alone', async () => {
-    lit();
-    const built = buildLinqAppCard(CARD, APP);
-    if (!built.ok) throw new Error('build');
-    const fetchImpl = jsonFetch(202, { message: { id: 'm1' } });
-    await expect(
-      sendLinqParts({
-        chatId: CHAT,
-        parts: [
-          { type: 'text', value: 'hi' },
-          { type: 'imessage_app', card: built.card },
-        ],
-        fetch: fetchImpl,
-      }),
-    ).rejects.toMatchObject({ code: 'app_card_not_alone' });
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
 });
 
 describe('sendLinqAppCard', () => {
-  it('dark: no app part, falls back to the link preview of the card url', async () => {
+  it('dark: no experience, falls back to the link preview of the card url', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const fetchImpl = jsonFetch(202, { message: { id: 'link-1' } });
     const out = await sendLinqAppCard({
@@ -164,8 +115,7 @@ describe('sendLinqAppCard', () => {
       fetch: fetchImpl,
     });
     expect(out).toMatchObject({ status: 'fallback', why: 'dark', link: { status: 'sent' } });
-    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
-    expect(body.message.parts).toEqual([{ type: 'link', value: CARD.url }]);
+    expect(body(fetchImpl).message).toEqual({ parts: [{ type: 'link', value: CARD.url }] });
   });
 
   it('keys unset: nothing reaches Linq at all', async () => {
@@ -180,7 +130,7 @@ describe('sendLinqAppCard', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('lit: one imessage_app part to /chats/{id}/messages', async () => {
+  it('lit: one { message: { experience } } to /chats/{id}/messages, no parts', async () => {
     lit();
     const fetchImpl = jsonFetch(202, { message: { id: 'card-1' } });
     const out = await sendLinqAppCard({
@@ -191,29 +141,30 @@ describe('sendLinqAppCard', () => {
     });
     expect(out).toEqual({ status: 'card', providerMessageId: 'card-1' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchImpl.mock.calls[0] ?? [];
-    expect(String(url)).toContain(`/chats/${CHAT}/messages`);
-    const part = JSON.parse(String(init?.body)).message.parts[0];
-    expect(part).toMatchObject({
-      type: 'imessage_app',
-      app: APP,
-      url: CARD.url,
-      fallback_text: CARD.fallbackText,
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(`/chats/${CHAT}/messages`);
+    expect(body(fetchImpl)).toEqual({
+      message: {
+        experience: {
+          name: 'link',
+          action: 'open',
+          params: { url: CARD.url, title: CARD.fallbackText },
+        },
+      },
     });
-    expect(part.layout.image_title).toBe('Story time');
   });
 
-  it('lit but no app identity → link fallback', async () => {
+  it('lit, group chat → link fallback (an experience has one recipient)', async () => {
     lit();
-    vi.stubEnv('LINQ_IMESSAGE_APP_BUNDLE_ID', '');
-    const fetchImpl = jsonFetch(202, { message: { id: 'link-2' } });
+    const fetchImpl = jsonFetch(202, { message: { id: 'link-g' } });
     const out = await sendLinqAppCard({
       channel: 'imessage',
       chatId: CHAT,
       card: CARD,
+      isGroup: true,
       fetch: fetchImpl,
     });
-    expect(out).toMatchObject({ status: 'fallback', why: 'no_app_identity' });
+    expect(out).toMatchObject({ status: 'fallback', why: 'group_chat' });
+    expect(body(fetchImpl).message.experience).toBeUndefined();
   });
 
   it('lit, SMS channel → no card, no link (link preview is iMessage-only)', async () => {
@@ -233,7 +184,7 @@ describe('sendLinqAppCard', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('lit, unsafe fallback text → link fallback, no app part', async () => {
+  it('lit, unsafe fallbackText → link fallback, no experience', async () => {
     lit();
     const fetchImpl = jsonFetch(202, { message: { id: 'link-3' } });
     const out = await sendLinqAppCard({
@@ -243,8 +194,7 @@ describe('sendLinqAppCard', () => {
       fetch: fetchImpl,
     });
     expect(out).toMatchObject({ status: 'fallback', why: 'unsafe_fallback_text' });
-    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
-    expect(body.message.parts[0].type).toBe('link');
+    expect(body(fetchImpl).message.parts[0].type).toBe('link');
   });
 
   it('lit, recipient not on iMessage (capability) → link fallback', async () => {
@@ -265,7 +215,7 @@ describe('sendLinqAppCard', () => {
     expect(out).toMatchObject({ status: 'fallback', why: 'not_capable' });
   });
 
-  it('lit, Linq refuses the card (e.g. 2018) → link fallback', async () => {
+  it('lit, Linq refuses the card (e.g. 2018 / unknown param 400) → link fallback', async () => {
     lit();
     let n = 0;
     const fetchImpl = vi.fn(async () => {
@@ -325,7 +275,7 @@ describe('inbound imessage_app part', () => {
     expect(parsed.message.mediaCount).toBe(1);
   });
   it('lit: read as text for the model, not media', () => {
-    vi.stubEnv('LINQ_APP_CARDS_ENABLED', 'true');
+    vi.stubEnv('LINQ_EXPERIENCES_ENABLED', 'true');
     const parsed = parseLinqWebhook(webhook(), AT);
     if (parsed.kind !== 'message') throw new Error(parsed.kind);
     expect(parsed.message.text).toContain('Table for 4');

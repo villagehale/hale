@@ -331,6 +331,20 @@ export async function sendLinqParts(
   );
 }
 
+/** VIL-480 · a Linq experience card; captured on Preview like any other send. */
+export async function sendLinqExperience(
+  input: In<typeof linq.sendLinqExperience>,
+): Promise<{ providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'experience',
+    () => linq.sendLinqExperience(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
+}
+
 export async function sendLinqEffect(
   input: In<typeof linq.sendLinqEffect>,
 ): Promise<{ providerMessageId: string }> {
