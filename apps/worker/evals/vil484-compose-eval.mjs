@@ -22,6 +22,7 @@
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
+import { parseEvalArgsOrExit } from './lib/eval-flags.mjs';
 import {
   JUDGE_MIN,
   PRICE,
@@ -418,9 +419,13 @@ const BROKEN_DRAFTS = [
 
 // ── offline gate calibration ($0) ───────────────────────────────────────────
 
+// Captured before any --only narrowing, so the offline calibration always runs whole.
+const MORNING_FIRST = MORNING_FIXTURES[0].facts;
+const EVENING_FIRST = EVENING_FIXTURES[0].facts;
+
 function brokenOffline(evening, duty, morning, headsUp) {
-  const morningFacts = MORNING_FIXTURES[0].facts;
-  const eveningFacts = EVENING_FIXTURES[0].facts;
+  const morningFacts = MORNING_FIRST;
+  const eveningFacts = EVENING_FIRST;
   const failures = [
     evening.eveningRefusals('   ', eveningFacts),
     evening.eveningRefusals('See https://evil.example/phish tonight.', eveningFacts),
@@ -461,14 +466,38 @@ function worst(model, inTokens, maxOut) {
 // ── main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const argv = process.argv;
-  const dry = argv.includes('--dry');
-  const broken = argv.includes('--broken');
-  const live = argv.includes('--live');
-  const cachedOnly = argv.includes('--cached-only');
-  if ([dry, broken, live, cachedOnly].filter(Boolean).length !== 1) {
-    console.error('vil484: pass exactly one of --dry, --broken, --cached-only, --live');
-    process.exit(2);
+  // `--max-usd <n>` is the harness's spend cap, not a mode; strip it before the parse.
+  const raw = process.argv.slice(2);
+  const modeArgs = raw.filter((a, i) => a !== '--max-usd' && raw[i - 1] !== '--max-usd');
+  const knownIds = [
+    ...EVENING_FIXTURES,
+    ...MORNING_FIXTURES,
+    ...HEADS_UP_FIXTURES,
+    ...DUTY_FIXTURES,
+    ...BROKEN_DRAFTS,
+    ...MORNING_BROKEN,
+    ...HEADS_UP_BROKEN,
+  ].map((f) => f.id);
+  const { mode, only } = parseEvalArgsOrExit('vil484', knownIds, modeArgs);
+  const dry = mode === 'dry';
+  const broken = mode === 'broken';
+  const live = mode === 'live';
+  const cachedOnly = mode === 'cached-only';
+  // `--only=<id>[,<id>]` narrows every fixture list, so one leg can be re-recorded
+  // without paying for the whole file.
+  if (only) {
+    for (const list of [
+      EVENING_FIXTURES,
+      MORNING_FIXTURES,
+      HEADS_UP_FIXTURES,
+      DUTY_FIXTURES,
+      BROKEN_DRAFTS,
+      MORNING_BROKEN,
+      HEADS_UP_BROKEN,
+    ]) {
+      const kept = list.filter((f) => only.includes(f.id));
+      list.splice(0, list.length, ...kept);
+    }
   }
 
   const agent = await importTs(AGENT_SRC);
