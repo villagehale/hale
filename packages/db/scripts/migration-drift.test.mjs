@@ -20,7 +20,6 @@ describe('catalog history cutover', () => {
       '0177_provider_watch',
       '0178_user_timezone_from_postal',
       '0179_channel_inbound_media',
-      '0196_linq_group_carpools',
       '0184_preview_captured_sends',
       '0192_preview_captured_linq_calls',
       '0185_channel_inbound_in_group',
@@ -31,6 +30,7 @@ describe('catalog history cutover', () => {
       '0188_family_events_group_plan_copy_key',
       '0195_linq_shared_group_people',
       '0190_linq_group_polls',
+      '0196_linq_group_carpools',
     ]);
   });
 });
