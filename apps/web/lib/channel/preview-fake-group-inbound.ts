@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { handleLinqGroupMessage } from '~/lib/channel/linq/inbound';
 import { parseLinqWebhook } from '~/lib/channel/linq/payload';
 import { LINQ_WEBHOOK_VERSION } from '~/lib/channel/linq/signature';
@@ -13,6 +14,8 @@ import {
   previewGroupCaptureOpen,
   readCapturedLinqCalls,
 } from '~/lib/channel/preview-linq-capture';
+import { familyIsAllSyntheticProbe } from '~/lib/channel/preview-reminder-trigger';
+import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 
 /**
  * VIL-466 groups · Preview-only fake group inbound door.
@@ -36,6 +39,43 @@ type GroupDoorDeps = Parameters<typeof handleLinqGroupMessage>[0] & {
 
 const MIN_PARTICIPANTS = 2;
 const MAX_PARTICIPANTS = 12;
+/** A fake parent's text, not a payload: anything longer is refused before it is stored. */
+export const MAX_FAKE_GROUP_TEXT = 2000;
+
+/**
+ * Every household this request could reach is a fake one: the family that owns the chat
+ * id (as its household group or a roster), and the family each participant's number is
+ * verified on. A family with any real number, or a chat a real family holds, is refused
+ * before anything is stored or routed. Fails closed on a read error.
+ */
+export async function fakeGroupReachesOnlyFakeFamilies(
+  database: Database,
+  input: { chatId: string; participants: readonly string[] },
+): Promise<boolean> {
+  try {
+    const families = new Set<string>();
+    const owners = await database
+      .select({ id: schema.families.id })
+      .from(schema.families)
+      .where(eq(schema.families.linqGroupChatId, input.chatId));
+    for (const row of owners) families.add(row.id);
+    const rosters = await database
+      .select({ familyId: schema.linqGroupRosters.familyId })
+      .from(schema.linqGroupRosters)
+      .where(eq(schema.linqGroupRosters.chatId, input.chatId));
+    for (const row of rosters) if (row.familyId) families.add(row.familyId);
+    for (const phone of input.participants) {
+      const channel = await resolveVerifiedChannelByPhone(database, phone);
+      if (channel) families.add(channel.familyId);
+    }
+    for (const familyId of families) {
+      if (!(await familyIsAllSyntheticProbe(database, familyId))) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function json(body: Record<string, unknown>, status = 200): Response {
   return Response.json(body, { status });
@@ -83,12 +123,18 @@ export async function handlePreviewFakeGroupInbound(
   if (!from || !participants.includes(from)) return json({ error: 'sender_not_participant' }, 400);
   const text = typeof payload.text === 'string' ? payload.text : '';
   if (!text.trim()) return json({ error: 'empty' }, 400);
+  if (text.length > MAX_FAKE_GROUP_TEXT) return json({ error: 'too_long' }, 413);
   if (payload.chatId !== undefined && !isFakeChatId(payload.chatId)) {
     return json({ error: 'chat_not_fake' }, 400);
   }
   const chatId = isFakeChatId(payload.chatId)
     ? payload.chatId
     : `${PREVIEW_CHAT_PREFIX}${randomUUID()}`;
+
+  if (!(await fakeGroupReachesOnlyFakeFamilies(deps.database, { chatId, participants }))) {
+    deps.log.warn({ chatId }, 'preview fake group inbound: refused, reaches a real household');
+    return json({ error: 'household_not_fake' }, 403);
+  }
 
   const now = deps.now?.() ?? new Date();
   const messageId = `preview-inbound-${randomUUID()}`;

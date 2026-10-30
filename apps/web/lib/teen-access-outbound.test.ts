@@ -255,6 +255,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'lib/channel/proactive/review.ts',
     'the proactive review — reads an event id only, as a sign that something changed since a hold',
   ],
+  [
+    'lib/channel/linq/household-calendar.ts',
+    "the VIL-444 group clash alert — a sensitive row, a 13+ child's row or a row whose title names a 13+ child reaches the writer only as one person being busy, with no title and no times",
+  ],
 ];
 
 /** Any reference to the table by any Drizzle API, including a bare destructured one. */
