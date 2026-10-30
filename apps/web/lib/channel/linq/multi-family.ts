@@ -918,6 +918,11 @@ export async function takeMultiFamilyTurn(
   input: {
     chatId: string;
     senderHandle: string;
+    /**
+     * Other participants the webhook itself listed (`chat.handles`). Seated before the
+     * families gate so a first message can see a second family without a Linq API read.
+     */
+    otherHandles?: readonly string[];
     text: string;
     providerMessageId: string;
     receivedAt: Date;
@@ -944,6 +949,11 @@ export async function takeMultiFamilyTurn(
     now: input.now,
   });
   if (!sender) return { handled: false };
+
+  for (const handle of new Set(input.otherHandles ?? [])) {
+    if (handle === input.senderHandle || !seatablePhone(handle)) continue;
+    await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
+  }
 
   if (wired.listHandles) {
     const listed = await wired.listHandles({ chatId: input.chatId });

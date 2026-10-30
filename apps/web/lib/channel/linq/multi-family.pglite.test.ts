@@ -212,6 +212,31 @@ describe('multi-family zero-setup', () => {
     expect(byHash.get(phoneBlindIndex(GUEST))?.familyId).toBeNull();
   });
 
+  it('seats the webhook handles before the gate when Linq cannot list the chat', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    const ada = await seedParent(ADA, 'Ada');
+    const wire = sender();
+    const first = await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        otherHandles: [MEI, ADA],
+        text: 'Hale, can you keep track of who is coming to Saturday swim?',
+        providerMessageId: 'in-handles-1',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      { reader: reading('question'), composer: fakeSharedGroupComposer() },
+    );
+    expect(first).toMatchObject({ handled: true, outcome: 'shared_reply' });
+    const people = await db.database.select().from(schema.linqSharedGroupPeople);
+    const byHash = new Map(people.map((row) => [row.phoneE164Hash, row]));
+    expect(byHash.get(phoneBlindIndex(MEI))?.familyId).toBe(mei.familyId);
+    expect(byHash.get(phoneBlindIndex(ADA))?.familyId).toBe(ada.familyId);
+  });
+
   it('stays quiet on banter and never merges two families', async () => {
     await threeFamilies();
     const wire = sender();
