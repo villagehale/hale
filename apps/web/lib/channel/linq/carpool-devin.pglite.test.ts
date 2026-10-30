@@ -146,7 +146,7 @@ async function rows() {
 describe('security', () => {
   it('1: an unknown sender cannot claim or cancel a ride', async () => {
     const { familyId, mayaId } = await seed();
-    await turn(familyId, reading({ driverName: 'Maya' }), {
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
       handle: MAYA_PHONE,
       userId: mayaId,
       name: 'Maya',
@@ -172,7 +172,7 @@ describe('security', () => {
   it('2: a ride reminder is held, not sent as a reply, when the roster is incomplete', async () => {
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
     const { familyId, mayaId } = await seed();
-    await turn(familyId, reading({ driverName: 'Maya' }), {
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
       handle: MAYA_PHONE,
       userId: mayaId,
       name: 'Maya',
@@ -217,7 +217,7 @@ describe('reminder bugs', () => {
 
   it('3: a ledger failure after the group send does not replay the reminder', async () => {
     const { familyId, mayaId } = await seed();
-    await turn(familyId, reading({ driverName: 'Maya' }), {
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
       handle: MAYA_PHONE,
       userId: mayaId,
       name: 'Maya',
@@ -249,7 +249,7 @@ describe('reminder bugs', () => {
 
   it('4: without an injected sendDriver the production driver send runs (gated, nothing sent)', async () => {
     const { familyId, mayaId } = await seed();
-    await turn(familyId, reading({ driverName: 'Maya' }), {
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
       handle: MAYA_PHONE,
       userId: mayaId,
       name: 'Maya',
@@ -335,7 +335,7 @@ describe('reminder bugs', () => {
       reader: {
         read: async (input) => {
           seen.push(input);
-          return reading({ driverName: 'Maya' });
+          return reading({ driverName: 'Maya', driverIsSender: true });
         },
       },
     });
@@ -347,7 +347,7 @@ describe('reminder bugs', () => {
   it('7: two rides in one chat keep their own rows', async () => {
     const { familyId, mayaId } = await seed();
     const maya = { handle: MAYA_PHONE, userId: mayaId, name: 'Maya' };
-    await turn(familyId, reading({ driverName: 'Maya' }), maya);
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), maya);
     await turn(
       familyId,
       reading({
@@ -412,7 +412,7 @@ describe('reminder bugs', () => {
   it('10: a ride moved to a new day after its reminder gets a new pending reminder', async () => {
     const { familyId, mayaId } = await seed();
     const maya = { handle: MAYA_PHONE, userId: mayaId, name: 'Maya' };
-    await turn(familyId, reading({ driverName: 'Maya' }), maya);
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), maya);
     await runCarpoolReminders(db.database, {
       now: FRIDAY_EVE,
       send: door().send,
@@ -422,7 +422,12 @@ describe('reminder bugs', () => {
     expect((await rows())[0]?.reminderStatus).toBe('sent');
     const moved = await turn(
       familyId,
-      reading({ intent: 'driver_claim', driverName: 'Maya', pickupAtIso: SUN }),
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        driverIsSender: true,
+        pickupAtIso: SUN,
+      }),
       maya,
     );
     expect(moved.handled).toBe(true);
@@ -450,5 +455,196 @@ describe('composer', () => {
         },
       }),
     ).toBeNull();
+  });
+});
+
+/** VIL-517 — Devin's second pass on #975. Fake families; nothing leaves. */
+describe('Devin #975', () => {
+  async function otherFamilyMember() {
+    const [other] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Park', provinceOrState: 'ON', linqGroupChatId: 'chat-park' })
+      .returning({ id: schema.families.id });
+    const [eve] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:eve', name: 'Eve Park', timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: other?.id as string, userId: eve?.id as string, role: 'primary_parent' });
+    return eve?.id as string;
+  }
+
+  it('security: a verified member of another family cannot claim, swap, or cancel', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const eveId = await otherFamilyMember();
+    const eve = { handle: STRANGER, userId: eveId, name: 'Eve' };
+    const swap = await turn(
+      familyId,
+      reading({ intent: 'driver_swap', driverName: 'Eve', driverIsSender: true }),
+      eve,
+    );
+    const cancel = await turn(familyId, reading({ intent: 'cancel' }), eve);
+    expect(swap).toEqual({ handled: false, outcome: 'unknown_sender' });
+    expect(cancel).toEqual({ handled: false, outcome: 'unknown_sender' });
+    const [row] = await rows();
+    expect(row?.driverName).toBe('Maya');
+    expect(row?.driverUserId).toBe(mayaId);
+    expect(row?.cancelledAt).toBeNull();
+  });
+
+  it('security: a seated roster member of this chat can still claim', async () => {
+    const { familyId, mayaId } = await seed();
+    const priyaId = await seatPriya(familyId);
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const swap = await turn(
+      familyId,
+      reading({ intent: 'driver_swap', driverName: 'Priya', driverIsSender: true }),
+      { handle: PRIYA_PHONE, userId: null, name: 'Priya' },
+    );
+    expect(swap).toMatchObject({ handled: true, outcome: 'carpool_swapped' });
+    const [row] = await rows();
+    expect(row?.driverUserId).toBe(priyaId);
+  });
+
+  it('a failed driver 1:1 retries on the next sweep without resending the group', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const group = door();
+    const driverCalls: string[] = [];
+    let driverUp = false;
+    const opts = () => ({
+      now: FRIDAY_EVE,
+      send: group.send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async ({ userId }: { userId: string; text: string }) => {
+        driverCalls.push(userId);
+        return driverUp
+          ? { sent: true as const, providerMessageId: 'driver-1' }
+          : { sent: false as const, skipped: 'send_failed:unavailable' };
+      },
+    });
+    const first = await runCarpoolReminders(db.database, opts());
+    expect(first.fired).toBe(1);
+    expect(driverCalls).toHaveLength(1);
+    expect((await rows())[0]?.reminderDriverSentAt).toBeNull();
+
+    driverUp = true;
+    const second = await runCarpoolReminders(db.database, opts());
+    expect(second.fired).toBe(0);
+    expect(second.driverRetried).toBe(1);
+    expect(driverCalls).toEqual([mayaId, mayaId]);
+    expect(group.texts).toHaveLength(1);
+    const [row] = await rows();
+    expect(row?.reminderStatus).toBe('sent');
+    expect(row?.reminderDriverSentAt).not.toBeNull();
+
+    const third = await runCarpoolReminders(db.database, opts());
+    expect(third.driverRetried).toBe(0);
+    expect(driverCalls).toHaveLength(2);
+    expect(group.texts).toHaveLength(1);
+  });
+
+  it('a driver retry stops once the pickup has passed', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const calls: string[] = [];
+    const sendDriver = async ({ userId }: { userId: string; text: string }) => {
+      calls.push(userId);
+      return { sent: false as const, skipped: 'send_failed:unavailable' };
+    };
+    await runCarpoolReminders(db.database, {
+      now: FRIDAY_EVE,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver,
+    });
+    await runCarpoolReminders(db.database, {
+      now: new Date('2026-10-10T13:00:00.000Z'),
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver,
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a date-only reschedule moves the only live ride instead of adding a second', async () => {
+    const { familyId, mayaId } = await seed();
+    const maya = { handle: MAYA_PHONE, userId: mayaId, name: 'Maya' };
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), maya);
+    const moved = await turn(
+      familyId,
+      reading({ intent: 'driver_claim', driverName: null, eventLabel: null, pickupAtIso: SUN }),
+      maya,
+    );
+    expect(moved.handled).toBe(true);
+    const all = await rows();
+    expect(all).toHaveLength(1);
+    expect(all[0]?.eventLabel).toBe('soccer');
+    expect(all[0]?.pickupAt?.toISOString()).toBe(SUN);
+    expect(all[0]?.reminderStatus).toBe('pending');
+    expect(all[0]?.reminderFireAt?.getTime()).toBeGreaterThan(FRIDAY_EVE.getTime());
+  });
+
+  it('a date-only reschedule with two live rides changes nothing', async () => {
+    const { familyId, mayaId } = await seed();
+    const maya = { handle: MAYA_PHONE, userId: mayaId, name: 'Maya' };
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), maya);
+    await turn(
+      familyId,
+      reading({ eventLabel: 'swim', pickupAtIso: SUN, driverName: 'Maya', driverIsSender: true }),
+      maya,
+    );
+    const vague = await turn(
+      familyId,
+      reading({ eventLabel: null, pickupAtIso: '2026-10-12T13:00:00.000Z' }),
+      maya,
+    );
+    expect(vague).toEqual({ handled: false, outcome: 'unchanged' });
+    expect(await rows()).toHaveLength(2);
+  });
+
+  it('a shared first name does not route the sender account to another driver', async () => {
+    const { familyId } = await seed();
+    const priyaId = await seatPriya(familyId);
+    // Priya Shah names a different Priya (say, a neighbour) as the driver.
+    await turn(familyId, reading({ driverName: 'Priya', driverIsSender: false }), {
+      handle: PRIYA_PHONE,
+      userId: priyaId,
+      name: 'Priya',
+    });
+    const [row] = await rows();
+    expect(row?.driverName).toBe('Priya');
+    expect(row?.driverUserId).toBeNull();
+    expect(row?.driverHaleCustomer).toBe('false');
+  });
+
+  it('a clear self-claim carries the sender account', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: null }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    const [row] = await rows();
+    expect(row?.driverName).toBe('Maya');
+    expect(row?.driverUserId).toBe(mayaId);
   });
 });

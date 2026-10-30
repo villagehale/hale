@@ -32,6 +32,10 @@ else.
 
 - `driverName`: first name of the person who is driving after this message. Null
   when no one claimed it.
+- `driverIsSender`: true only when the driver after this message is the sender
+  themself ("I'll take them", "I've got pickup", their own yes on Hale's ask).
+  False when the message names someone else, even someone with the same first
+  name as the sender, and false when no one is driving.
 - `eventLabel`: the activity or plan in the words they used, shortened to a short
   label. Null when they did not name one.
 - `pickupAtIso`: the pickup instant in ISO-8601 when they gave a day and time you

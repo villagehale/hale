@@ -44,6 +44,7 @@ export interface CarpoolReader {
 const readingSchema = z.object({
   intent: z.enum(CARPOOL_INTENTS),
   driverName: z.string().nullable(),
+  driverIsSender: z.boolean().default(false),
   eventLabel: z.string().nullable(),
   pickupAtIso: z.string().nullable(),
   pickupPlace: z.string().nullable(),
@@ -57,6 +58,7 @@ const readingJsonSchema = {
   properties: {
     intent: { type: 'string', enum: [...CARPOOL_INTENTS] },
     driverName: { type: ['string', 'null'] },
+    driverIsSender: { type: 'boolean' },
     eventLabel: { type: ['string', 'null'] },
     pickupAtIso: { type: ['string', 'null'] },
     pickupPlace: { type: ['string', 'null'] },
@@ -66,6 +68,7 @@ const readingJsonSchema = {
   required: [
     'intent',
     'driverName',
+    'driverIsSender',
     'eventLabel',
     'pickupAtIso',
     'pickupPlace',
@@ -106,6 +109,7 @@ export function parseCarpoolReading(value: unknown): CarpoolReading {
   return {
     intent: parsed.data.intent,
     driverName: empty(parsed.data.driverName),
+    driverIsSender: parsed.data.driverIsSender === true,
     eventLabel: empty(parsed.data.eventLabel),
     pickupAtIso: empty(parsed.data.pickupAtIso),
     pickupPlace: empty(parsed.data.pickupPlace),
@@ -128,6 +132,8 @@ export function readingFromTapback(input: {
   return {
     intent: 'driver_claim',
     driverName: name,
+    // The reactor answered Hale's ask themself.
+    driverIsSender: true,
     eventLabel: null,
     pickupAtIso: null,
     pickupPlace: null,

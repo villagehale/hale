@@ -44,6 +44,7 @@ describe('applyCarpoolReading', () => {
       reading({
         intent: 'driver_claim',
         driverName: 'Maya',
+        driverIsSender: true,
         eventLabel: 'soccer',
         pickupAtIso: PICKUP_ISO,
         pickupPlace: 'the rec',
@@ -170,5 +171,24 @@ describe('applyCarpoolReading', () => {
       NOW,
     );
     expect(plan?.driverName).toBeNull();
+  });
+
+  it('Devin #975: a name matching the sender is not a self-claim on its own', () => {
+    const plan = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupAtIso: PICKUP_ISO,
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(plan).toMatchObject({
+      driverName: 'Maya',
+      driverUserId: null,
+      driverHaleCustomer: false,
+    });
   });
 });

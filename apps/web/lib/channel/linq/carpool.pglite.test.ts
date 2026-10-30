@@ -180,6 +180,10 @@ describe('considerCarpoolTurn', () => {
       .insert(schema.users)
       .values({ externalAuthId: 'imessage:priya', name: 'Priya Shah', timezone: 'America/Toronto' })
       .returning({ id: schema.users.id });
+    // Devin #975 — only a member of the covering family (or seated) may swap.
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: priya?.id as string, role: 'co_parent' });
     const swapped = await considerCarpoolTurn(db.database, {
       chatId: CHAT,
       familyId,
@@ -194,6 +198,7 @@ describe('considerCarpoolTurn', () => {
         read: async () => ({
           intent: 'driver_swap',
           driverName: 'Priya',
+          driverIsSender: true,
           eventLabel: 'soccer',
           pickupAtIso: PICKUP,
           pickupPlace: 'the rec',

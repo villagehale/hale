@@ -21,6 +21,12 @@ export interface CarpoolReading {
   pickupPlace: string | null;
   kids: string | null;
   confidence: 'high' | 'low';
+  /**
+   * Devin #975 — the reader's call that the driver after this message is the
+   * sender themself ("I'll take them", a tapback on Hale's ask). A name alone
+   * is never enough: two people in a chat can share a first name.
+   */
+  driverIsSender?: boolean;
 }
 
 export interface CarpoolSender {
@@ -63,13 +69,6 @@ function claimedDriverName(reading: CarpoolReading, sender: CarpoolSender): stri
     return sender.name?.trim() || null;
   }
   return null;
-}
-
-function sameFirstName(a: string | null, b: string | null): boolean {
-  const first = (value: string | null) =>
-    (value ?? '').trim().split(/\s+/)[0]?.toLocaleLowerCase() ?? '';
-  const left = first(a);
-  return left.length > 0 && left === first(b);
 }
 
 function withReminder(
@@ -189,10 +188,14 @@ export function applyCarpoolReading(
   if (!driverName) return withReminder(merged, pickupAt, timeZone, previousPickupAt);
 
   const swapped = Boolean(merged.driverName && merged.driverName !== driverName);
-  // Devin #936 — "Priya is driving" from Maya is Priya, not Maya. Only the
-  // speaker naming themself carries their account; anyone else stays null
-  // until they are a verified member.
-  const speakerIsDriver = sameFirstName(driverName, sender.name);
+  // Devin #936/#975 — "Priya is driving" from Maya is Priya, not Maya, and
+  // "Priya is driving" from a different Priya is not the sender either. Only a
+  // clear self-claim carries the sender's account (and their private reminder):
+  // the reader said the sender is the driver, or named no one so the claim
+  // fell back to the sender. A matching first name alone never routes it.
+  const speakerIsDriver =
+    sender.userId !== null &&
+    (reading.driverIsSender === true || !(reading.driverName?.trim() || null));
   const assigned: CarpoolPlanState = {
     ...merged,
     driverName,

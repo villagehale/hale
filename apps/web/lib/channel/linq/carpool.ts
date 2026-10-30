@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, isNotNull, isNull, lt, lte } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, isNull, lt, lte } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
@@ -69,6 +69,8 @@ export type CarpoolReminderRun = {
   fired: number;
   held: number;
   skipped: number;
+  /** Driver 1:1 legs retried after the group reminder already went out. */
+  driverRetried: number;
 };
 
 export interface CarpoolTurnInput {
@@ -172,6 +174,14 @@ export function pickCarpoolPlan<P extends CarpoolPlanState>(
     const sameEvent = plans.filter((plan) => norm(plan.eventLabel) === norm(event));
     if (sameEvent.length === 1) return sameEvent[0] ?? null;
     if (sameEvent.length > 1) return 'ambiguous';
+  }
+  // Devin #975 — a date-only move ("pickup moved to Sunday") names no event.
+  // It belongs to the only live ride; with several it is ambiguous, never a
+  // second plan beside the old one.
+  if (pickupAt && !event) {
+    const live = plans.filter((plan) => plan.status !== 'cancelled');
+    if (live.length === 1) return live[0] ?? null;
+    if (live.length > 1) return 'ambiguous';
   }
   return null;
 }
@@ -304,7 +314,7 @@ function voiceFacts(
 async function senderOf(
   database: Database,
   input: Pick<CarpoolTurnInput, 'chatId' | 'senderHandle' | 'senderUserId' | 'senderName'>,
-): Promise<CarpoolSender> {
+): Promise<CarpoolSender & { seated: boolean }> {
   let seated: Awaited<ReturnType<typeof groupMemberByPhone>> = null;
   try {
     seated = await groupMemberByPhone(database, input.chatId, input.senderHandle);
@@ -327,6 +337,7 @@ async function senderOf(
       name: input.senderName ?? user?.name?.trim().split(/\s+/)[0] ?? null,
       haleCustomer: seated?.haleCustomer ?? Boolean(input.senderUserId),
       timezone,
+      seated: Boolean(seated?.userId),
     };
   }
   return {
@@ -334,7 +345,33 @@ async function senderOf(
     name: input.senderName,
     haleCustomer: false,
     timezone,
+    seated: false,
   };
+}
+
+/**
+ * Devin #975 (security) — a verified account is not enough on its own: it has
+ * to belong here. Seated on this chat's roster, or a seat in the family
+ * that covers this chat. Another family's member changes nothing.
+ */
+async function senderBelongsHere(
+  database: Database,
+  sender: { userId: string | null; seated: boolean },
+  familyId: string,
+): Promise<boolean> {
+  if (!sender.userId) return false;
+  if (sender.seated) return true;
+  const [row] = await database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.userId, sender.userId),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 export async function considerCarpoolTurn(
@@ -349,9 +386,12 @@ export async function considerCarpoolTurn(
 
   const plans = await livePlans(database, input.chatId);
   const sender = await senderOf(database, input);
-  // Devin #936 (security) — only a verified family member or a seated roster
-  // member can claim, swap, or cancel a ride. Unknown handles change nothing.
-  if (!sender.userId) return { handled: false, outcome: 'unknown_sender' };
+  // Devin #936/#975 (security) — only a member of the covering family or a
+  // seated roster member of this chat can claim, swap, or cancel a ride.
+  // Unknown handles and other families' members change nothing.
+  if (!(await senderBelongsHere(database, sender, familyId))) {
+    return { handled: false, outcome: 'unknown_sender' };
+  }
   const reader = input.reader ?? sharedCarpoolReader();
   const recent = input.recent ?? (await recentGroupLines(database, input));
   const reading = await reader.read({
@@ -519,7 +559,13 @@ export async function runCarpoolReminders(
     voice?: CarpoolComposer;
   },
 ): Promise<CarpoolReminderRun> {
-  const summary: CarpoolReminderRun = { considered: 0, fired: 0, held: 0, skipped: 0 };
+  const summary: CarpoolReminderRun = {
+    considered: 0,
+    fired: 0,
+    held: 0,
+    skipped: 0,
+    driverRetried: 0,
+  };
   if (!linqGroupCarpoolEnabled()) return summary;
   const send = input.send ?? defaultGroupSend;
   const sendDriver = input.sendDriver ?? createCarpoolDriverSend(database, input.now);
@@ -534,6 +580,7 @@ export async function runCarpoolReminders(
       ),
     );
 
+  const triedDriverThisRun = new Set<string>();
   for (const row of due) {
     summary.considered += 1;
     const plan = rowToPlan(row);
@@ -606,7 +653,13 @@ export async function runCarpoolReminders(
     // cron run cannot read the same pending reminder and send it twice.
     const [claimed] = await database
       .update(schema.linqGroupCarpools)
-      .set({ reminderStatus: 'sent', reminderGroupSentAt: input.now, updatedAt: input.now })
+      .set({
+        reminderStatus: 'sent',
+        reminderGroupSentAt: input.now,
+        // A fresh group reminder starts a fresh driver leg.
+        reminderDriverSentAt: null,
+        updatedAt: input.now,
+      })
       .where(
         and(
           eq(schema.linqGroupCarpools.id, row.id),
@@ -680,24 +733,17 @@ export async function runCarpoolReminders(
       continue;
     }
 
-    let driverSkipped: string | null = null;
-    if (plan.driverHaleCustomer && plan.driverUserId) {
-      const driverLine = await voice.compose({ kind: 'night_before_driver', facts });
-      if (!driverLine) {
-        driverSkipped = 'line_unsent';
-      } else {
-        const driver = await sendDriver({ userId: plan.driverUserId, text: driverLine });
-        if (!driver.sent) driverSkipped = driver.skipped;
-        else {
-          await database
-            .update(schema.linqGroupCarpools)
-            .set({ reminderDriverSentAt: input.now, updatedAt: input.now })
-            .where(eq(schema.linqGroupCarpools.id, row.id));
-        }
-      }
-    } else {
-      driverSkipped = plan.driverHaleCustomer ? 'no_driver_user' : 'driver_not_customer';
-    }
+    // Devin #975 — the driver 1:1 is its own retryable leg. The group claim
+    // above stays `sent` (never repeated); a failed driver leg leaves
+    // `reminderDriverSentAt` null so the next sweep retries only that leg.
+    triedDriverThisRun.add(row.id);
+    const driverSkipped = await deliverDriverLeg(database, {
+      rowId: row.id,
+      plan,
+      now: input.now,
+      sendDriver,
+      voice,
+    });
 
     await persistPlan(database, {
       chatId: row.chatId,
@@ -716,7 +762,97 @@ export async function runCarpoolReminders(
     );
     summary.fired += 1;
   }
+
+  // Devin #975 — retry driver legs whose group reminder went out but whose
+  // private 1:1 did not, until the pickup passes. The group is never resent.
+  const driverDue = await database
+    .select()
+    .from(schema.linqGroupCarpools)
+    .where(
+      and(
+        eq(schema.linqGroupCarpools.reminderStatus, 'sent'),
+        isNotNull(schema.linqGroupCarpools.reminderGroupSentAt),
+        isNull(schema.linqGroupCarpools.reminderDriverSentAt),
+        isNull(schema.linqGroupCarpools.cancelledAt),
+        eq(schema.linqGroupCarpools.driverHaleCustomer, 'true'),
+        isNotNull(schema.linqGroupCarpools.driverUserId),
+        gt(schema.linqGroupCarpools.pickupAt, input.now),
+      ),
+    );
+  for (const row of driverDue) {
+    if (triedDriverThisRun.has(row.id)) continue;
+    const plan = rowToPlan(row);
+    const voice = input.voice ?? createCarpoolComposer({ database, familyId: row.familyId });
+    const driverSkipped = await deliverDriverLeg(database, {
+      rowId: row.id,
+      plan,
+      now: input.now,
+      sendDriver,
+      voice,
+    });
+    if (driverSkipped === 'claimed_elsewhere') continue;
+    await audit(
+      database,
+      row.familyId,
+      'linq_carpool_driver_retry',
+      { driverSkipped, driverName: plan.driverName },
+      row.id,
+    );
+    if (!driverSkipped) summary.driverRetried += 1;
+  }
   return summary;
+}
+
+/**
+ * One driver 1:1 leg. Claims `reminderDriverSentAt` first (so overlapping
+ * sweeps cannot both send), and releases it when nothing went out so a later
+ * sweep can retry. Returns null when sent, or why it was not.
+ */
+async function deliverDriverLeg(
+  database: Database,
+  input: {
+    rowId: string;
+    plan: CarpoolPlanState;
+    now: Date;
+    sendDriver: CarpoolDriverSend;
+    voice: CarpoolComposer;
+  },
+): Promise<string | null> {
+  const { plan } = input;
+  if (!plan.driverHaleCustomer) return 'driver_not_customer';
+  if (!plan.driverUserId) return 'no_driver_user';
+  const [claimed] = await database
+    .update(schema.linqGroupCarpools)
+    .set({ reminderDriverSentAt: input.now, updatedAt: input.now })
+    .where(
+      and(
+        eq(schema.linqGroupCarpools.id, input.rowId),
+        eq(schema.linqGroupCarpools.reminderStatus, 'sent'),
+        isNull(schema.linqGroupCarpools.reminderDriverSentAt),
+        isNull(schema.linqGroupCarpools.cancelledAt),
+      ),
+    )
+    .returning({ id: schema.linqGroupCarpools.id });
+  if (!claimed) return 'claimed_elsewhere';
+  const release = () =>
+    database
+      .update(schema.linqGroupCarpools)
+      .set({ reminderDriverSentAt: null, updatedAt: input.now })
+      .where(eq(schema.linqGroupCarpools.id, input.rowId));
+  const driverLine = await input.voice.compose({
+    kind: 'night_before_driver',
+    facts: voiceFacts(plan, null),
+  });
+  if (!driverLine) {
+    await release();
+    return 'line_unsent';
+  }
+  const driver = await input.sendDriver({ userId: plan.driverUserId, text: driverLine });
+  if (!driver.sent) {
+    await release();
+    return driver.skipped;
+  }
+  return null;
 }
 
 async function coveringParentUserId(database: Database, familyId: string): Promise<string | null> {
