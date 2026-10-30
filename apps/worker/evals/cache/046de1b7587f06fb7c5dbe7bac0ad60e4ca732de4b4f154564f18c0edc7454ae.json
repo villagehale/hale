@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "before": "Bonjour à tous, je suis Hale, je vous aide à organiser le planning des enfants et à garder une vue claire sur les semaines à venir. Merci, Mei, de m'avoir ajouté.",
+    "question": "Pourriez-vous chacun me dire qui vous êtes et avec quel enfant vous êtes dans ce groupe, dans vos propres mots ?"
+  },
+  "latencyMs": 2267
+}

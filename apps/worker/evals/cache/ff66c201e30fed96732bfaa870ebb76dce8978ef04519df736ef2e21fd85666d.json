@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "before": "Hi all, I'm Hale, a planning helper that keeps track of the kids' activities and schedules in this chat. Mei just added me, so I'll be here for logistics.",
+    "question": "Could each of you tell me who you are and which kid or kids you're with?"
+  },
+  "latencyMs": 2477
+}

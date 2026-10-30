@@ -11,11 +11,27 @@ import {
   type PrivateAsideModel,
   type PrivateAsideReadInput,
 } from './group-private-aside';
-import {
-  MULTI_FAMILY_SHARED_REPLY,
-  joinFamilyToSharedGroup,
-  takeMultiFamilyTurn,
-} from './multi-family';
+import { joinFamilyToSharedGroup, takeMultiFamilyTurn } from './multi-family';
+import type { SharedGroupReader } from './shared-group-reading';
+import { fakeSharedGroupComposer } from './shared-group-voice-fake';
+
+const SHARED_REPLY = 'shared-reply-line';
+const questionReader: SharedGroupReader = {
+  async read() {
+    return {
+      intent: 'question',
+      role: 'unclear',
+      familyLabel: null,
+      kidName: null,
+      confidence: 'high',
+    };
+  },
+};
+/** VIL-456: the shared turn reads and speaks through ports; fakes here, never a word list. */
+const ports = () => ({
+  reader: questionReader,
+  composer: fakeSharedGroupComposer({ body: SHARED_REPLY }),
+});
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT_A = '+14165550111';
@@ -180,17 +196,21 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
     const m = fakeModel('clash');
     const dm = fakeOneToOne();
 
-    const out = await takeMultiFamilyTurn(db.database, {
-      ...turnInput(wire),
-      privateAside: {
-        model: m.model,
-        sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+    const out = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire),
+        privateAside: {
+          model: m.model,
+          sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+        },
       },
-    });
+      ports(),
+    );
 
     expect(out).toMatchObject({ handled: true, outcome: 'shared_reply', aside: 'ran' });
     const group = wire.texts.slice(groupBefore);
-    expect(group).toEqual([MULTI_FAMILY_SHARED_REPLY]);
+    expect(group).toEqual([SHARED_REPLY]);
     for (const line of group) {
       expect(line).not.toContain(CHILD);
       expect(line).not.toContain(MEMORY);
@@ -222,13 +242,17 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
     const { wire } = await twoJoined();
     const m = fakeModel([]);
     const dm = fakeOneToOne();
-    const out = await takeMultiFamilyTurn(db.database, {
-      ...turnInput(wire),
-      privateAside: {
-        model: m.model,
-        sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+    const out = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire),
+        privateAside: {
+          model: m.model,
+          sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+        },
       },
-    });
+      ports(),
+    );
     expect(out).toMatchObject({ outcome: 'shared_reply', aside: 'none' });
     expect(m.drafts).toEqual([]);
     expect(dm.sent).toEqual([]);
@@ -239,15 +263,19 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
     const groupBefore = wire.texts.length;
     const m = fakeModel(new Error('boom'));
     const dm = fakeOneToOne();
-    const out = await takeMultiFamilyTurn(db.database, {
-      ...turnInput(wire),
-      privateAside: {
-        model: m.model,
-        sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+    const out = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire),
+        privateAside: {
+          model: m.model,
+          sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+        },
       },
-    });
+      ports(),
+    );
     expect(out).toMatchObject({ handled: true, outcome: 'shared_reply', aside: 'error' });
-    expect(wire.texts.slice(groupBefore)).toEqual([MULTI_FAMILY_SHARED_REPLY]);
+    expect(wire.texts.slice(groupBefore)).toEqual([SHARED_REPLY]);
     expect(dm.sent).toEqual([]);
   });
 
@@ -259,8 +287,12 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
       model: m.model,
       sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
     };
-    await takeMultiFamilyTurn(db.database, { ...turnInput(wire), privateAside });
-    const again = await takeMultiFamilyTurn(db.database, { ...turnInput(wire), privateAside });
+    await takeMultiFamilyTurn(db.database, { ...turnInput(wire), privateAside }, ports());
+    const again = await takeMultiFamilyTurn(
+      db.database,
+      { ...turnInput(wire), privateAside },
+      ports(),
+    );
     expect(again).toMatchObject({ handled: true, outcome: 'duplicate' });
     expect(m.reads).toHaveLength(1);
     expect(dm.sent).toHaveLength(1);
@@ -268,7 +300,7 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
 
   it('without the aside port the turn reads no private model at all', async () => {
     const { wire } = await twoJoined();
-    const out = await takeMultiFamilyTurn(db.database, turnInput(wire));
+    const out = await takeMultiFamilyTurn(db.database, turnInput(wire), ports());
     expect(out).toMatchObject({ handled: true, outcome: 'shared_reply' });
     expect(out).not.toHaveProperty('aside');
   });
