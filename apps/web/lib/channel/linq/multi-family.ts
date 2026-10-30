@@ -8,6 +8,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { DEFAULT_TIMEZONE, formatDateTime } from '~/lib/format/datetime';
 import { linqMultiFamilyGroupsEnabled } from './config';
 import { type PrivateAsideModel, type SendOneToOne, runPrivateAside } from './group-private-aside';
 import type { ListChatHandles } from './roster';
@@ -644,10 +645,13 @@ export async function readFamilySliceForAudience(
     return { reason: 'no_consent', slice: empty };
   }
 
-  // Calendar titles stay out of this file. That table is a named outbound door,
-  // and a shared-thread send must not be another reader of it. The calendar
-  // list on a consented slice is empty for that reason.
-  const [kids, facts, mail, bookings] = await Promise.all([
+  // Consented path only: the owning family's live calendar rows, rendered as
+  // clock-bearing strings ("Swim lesson · Nov 7, 10:00") in the family's zone so
+  // the private aside can compare plan times (privateTimesOf). This list is read
+  // for the family's own 1:1 aside and for the shared-thread deny list; a
+  // shared-thread send never carries it (shared_thread / other_family above get
+  // an empty slice before any table is touched).
+  const [kids, facts, mail, bookings, events, zoneRows] = await Promise.all([
     database
       .select({ familyId: schema.children.familyId, name: schema.children.name })
       .from(schema.children)
@@ -673,7 +677,30 @@ export async function readFamilySliceForAudience(
       })
       .from(schema.activityBookings)
       .where(eq(schema.activityBookings.familyId, input.dataFamilyId)),
+    database
+      .select({
+        familyId: schema.familyEvents.familyId,
+        title: schema.familyEvents.title,
+        startsAt: schema.familyEvents.startsAt,
+      })
+      .from(schema.familyEvents)
+      .where(
+        and(
+          eq(schema.familyEvents.familyId, input.dataFamilyId),
+          isNull(schema.familyEvents.deletedAt),
+        ),
+      ),
+    database
+      .select({ timezone: schema.users.timezone })
+      .from(schema.familyMembers)
+      .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+      .where(eq(schema.familyMembers.familyId, input.dataFamilyId))
+      .limit(1),
   ]);
+  const zone =
+    zoneRows[0]?.timezone && zoneRows[0].timezone !== 'UTC'
+      ? zoneRows[0].timezone
+      : DEFAULT_TIMEZONE;
 
   return {
     reason: 'consented',
@@ -681,7 +708,9 @@ export async function readFamilySliceForAudience(
       familyId: input.dataFamilyId,
       children: kids.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.name),
       memory: facts.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.factKey),
-      calendar: [],
+      calendar: events
+        .filter((row) => row.familyId === input.dataFamilyId)
+        .map((row) => `${row.title} · ${formatDateTime(row.startsAt, zone)}`),
       email: mail.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.subject),
       signups: bookings
         .filter((row) => row.familyId === input.dataFamilyId)
@@ -700,6 +729,8 @@ async function denyListForChat(database: Database, chatId: string): Promise<stri
       audience: join.familyId,
     });
     tokens.push(...slice.children, ...slice.memory, ...slice.email, ...slice.signups);
+    // Calendar titles block leaks too; the clock suffix is not a deny token.
+    tokens.push(...slice.calendar.map((entry) => entry.split(' · ')[0] ?? ''));
   }
   return tokens.filter((token) => token.trim().length >= 3);
 }

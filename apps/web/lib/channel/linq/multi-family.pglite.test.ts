@@ -480,7 +480,11 @@ describe('multi-family zero-setup', () => {
     });
     expect(own.reason).toBe('consented');
     expect(own.slice.children).toEqual([CHILD]);
-    expect(own.slice.calendar).toEqual([]);
+    expect(shared.slice.calendar).toEqual([]);
+    expect(other.slice.calendar).toEqual([]);
+    expect(own.slice.calendar).toHaveLength(1);
+    expect(own.slice.calendar[0]).toContain(CALENDAR);
+    expect(own.slice.calendar[0]).toMatch(/\d{1,2}:\d{2}/);
   });
 
   it('introduces once when Hale is added, then a family can leave without a phrase', async () => {

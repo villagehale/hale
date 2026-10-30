@@ -2,11 +2,14 @@
 // VIL-457 · Preview-only proof for the shared-group private aside (PR #960).
 //
 // Seeds two fictional families on the PREVIEW database (parents +14375550201 /
-// +14375550202, verified), puts a private clash fact (kid name, memory fact, calendar
-// title) on ONLY family B, then drives the Preview fake group door:
+// +14375550202, verified), puts private facts (kid name, a clock-bearing memory fact,
+// and a family_events swim lesson at next Saturday 10:00 America/Toronto) on ONLY
+// family B, then drives the Preview fake group door:
 //   1. each parent posts a join message to one preview-chat-… thread, so the server runs
 //      the real joinFamilyToSharedGroup path (takeMultiFamilyTurn join intent);
-//   2. parent A posts a message that should clash with B's private kid/calendar;
+//   2. parent A proposes a GROUP plan at that same clock (Saturday 10am) without asking
+//      about B's kid — a plan-time overlap, so the #934 skill sends B a 1:1 aside
+//      (asking about another family's kid is the skill's "no aside" case);
 //   3. reads /api/channels/preview/captured?to=<each phone> (1:1 aside) and
 //      /api/channels/preview/group-captured?chatId=… and prints JSON for the PR.
 // No real Linq: every send is captured by the Preview door. Phones are only 437-555.
@@ -29,11 +32,41 @@ const PARENT_B = '+14375550202';
 const RUN = Date.now().toString(36);
 const CHAT = `preview-chat-vil457-${RUN}`;
 const CHILD = 'Zephyrina';
-const MEMORY = `zephyr-memory-${RUN}`;
+const MEMORY = `Zephyrina swim lessons Saturdays 10am (${RUN})`;
 const CALENDAR = `Zephyrina swim lesson ${RUN}`;
 const JOIN_TEXT = 'our family is in this group';
 const CLASH_TEXT =
-  'Can we set the group playdate for Saturday 10am? Zephyrina could come too if she is free.';
+  'Proposing a playdate for the whole group this Saturday at 10am at the park — sound good?';
+const TZ = 'America/Toronto';
+
+// Next Saturday 10:00 in TZ, as a UTC ISO instant (matches the plan clock).
+function nextSaturdayTenLocal(now = new Date()) {
+  const parts = (d) =>
+    Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: TZ,
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        weekday: 'short',
+      })
+        .formatToParts(d)
+        .map((p) => [p.type, p.value]),
+    );
+  const today = parts(now);
+  const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(today.weekday);
+  const add = (6 - dow + 7) % 7 || 7;
+  const guess = new Date(Date.UTC(+today.year, +today.month - 1, +today.day + add, 10, 0));
+  const local = parts(guess);
+  const offsetMs =
+    Date.UTC(+local.year, +local.month - 1, +local.day, +local.hour, +local.minute) -
+    guess.getTime();
+  return new Date(guess.getTime() - offsetMs).toISOString();
+}
+const SWIM_AT = nextSaturdayTenLocal();
 const PREVIEW_DB_PROJECT = 'ncujspiepbuwnbmayhpb';
 
 const mode = process.argv.slice(2);
@@ -41,13 +74,18 @@ if (mode.length !== 1 || !['--dry', '--live'].includes(mode[0])) {
   console.error('usage: preview-private-aside-proof.mjs --dry | --live');
   process.exit(2);
 }
-for (const p of [PARENT_A, PARENT_B]) if (!/^\+1437555\d{4}$/.test(p)) throw new Error('not fictional');
+for (const p of [PARENT_A, PARENT_B])
+  if (!/^\+1437555\d{4}$/.test(p)) throw new Error('not fictional');
 
 const plan = {
   chatId: CHAT,
   families: [
     { name: `Preview Ada ${RUN}`, phone: PARENT_A, private: null },
-    { name: `Preview Bao ${RUN}`, phone: PARENT_B, private: { child: CHILD, memory: MEMORY, calendar: CALENDAR } },
+    {
+      name: `Preview Bao ${RUN}`,
+      phone: PARENT_B,
+      private: { child: CHILD, memory: MEMORY, calendar: CALENDAR, startsAt: SWIM_AT, tz: TZ },
+    },
   ],
   posts: [
     { from: PARENT_A, text: JOIN_TEXT },
@@ -59,7 +97,8 @@ const plan = {
     `/api/channels/preview/captured?to=${encodeURIComponent(PARENT_B)}`,
     `/api/channels/preview/group-captured?chatId=${CHAT}`,
   ],
-  expect: 'aside lands 1:1 to +14375550202 only; group thread never names Zephyrina/calendar',
+  expect:
+    'outcome aside_only; aside lands 1:1 to +14375550202 only; group thread never names Zephyrina/calendar',
 };
 
 if (mode[0] === '--dry') {
@@ -71,7 +110,8 @@ if (mode[0] === '--dry') {
 const { DATABASE_URL, APP_ENCRYPTION_KEY, PREVIEW_BASE_URL } = process.env;
 if (!DATABASE_URL?.includes(PREVIEW_DB_PROJECT))
   throw new Error(`DATABASE_URL must be the Preview DB (${PREVIEW_DB_PROJECT})`);
-if (!PREVIEW_BASE_URL?.startsWith('https://')) throw new Error('PREVIEW_BASE_URL=https://… required');
+if (!PREVIEW_BASE_URL?.startsWith('https://'))
+  throw new Error('PREVIEW_BASE_URL=https://… required');
 const key = Buffer.from(APP_ENCRYPTION_KEY ?? '', 'base64');
 if (key.length !== 32) throw new Error('APP_ENCRYPTION_KEY (Preview, 32 bytes base64) required');
 // Same as lib/crypto/string-cipher.ts and blind-index.ts.
@@ -81,7 +121,9 @@ const encrypt = (s) => {
   const ct = Buffer.concat([c.update(s, 'utf8'), c.final()]);
   return Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64');
 };
-const hmacKey = Buffer.from(hkdfSync('sha256', key, Buffer.alloc(0), 'hale-phone-blind-index-v1', 32));
+const hmacKey = Buffer.from(
+  hkdfSync('sha256', key, Buffer.alloc(0), 'hale-phone-blind-index-v1', 32),
+);
 const phoneHash = (p) => createHmac('sha256', hmacKey).update(p).digest('hex');
 
 const { default: postgres } = await import('postgres');
@@ -92,8 +134,10 @@ try {
       const hash = phoneHash(f.phone);
       // Retire earlier runs' channel on this fake number so the inbound resolves to this run.
       await tx`delete from parent_channels where phone_e164_hash = ${hash}`;
-      const [fam] = await tx`insert into families (display_name, province_or_state) values (${f.name}, 'ON') returning id`;
-      const [u] = await tx`insert into users (external_auth_id, name) values (${`preview-vil457:${RUN}:${f.phone}`}, ${f.name}) returning id`;
+      const [fam] =
+        await tx`insert into families (display_name, province_or_state) values (${f.name}, 'ON') returning id`;
+      const [u] =
+        await tx`insert into users (external_auth_id, name, timezone) values (${`preview-vil457:${RUN}:${f.phone}`}, ${f.name}, ${TZ}) returning id`;
       await tx`insert into family_members (family_id, user_id, role) values (${fam.id}, ${u.id}, 'primary_parent')`;
       await tx`insert into parent_channels (user_id, family_id, kind, phone_e164_encrypted, phone_e164_hash, verified_at)
                values (${u.id}, ${fam.id}, 'sms', ${encrypt(f.phone)}, ${hash}, now())`;
@@ -102,7 +146,7 @@ try {
         await tx`insert into family_memory_facts (family_id, fact_type, fact_key, fact_value)
                  values (${fam.id}, 'preference', ${MEMORY}, ${sql.json({ note: 'hidden-memory' })})`;
         await tx`insert into family_events (family_id, title, starts_at, source)
-                 values (${fam.id}, ${CALENDAR}, now() + interval '2 days', 'parent')`;
+                 values (${fam.id}, ${CALENDAR}, ${SWIM_AT}, 'parent')`;
       }
       f.familyId = fam.id;
       console.log(`seeded ${f.name} ${f.phone} family=${fam.id}`);
@@ -118,22 +162,35 @@ const secret = readFileSync(
 ).trim();
 const dir = mkdtempSync(join(tmpdir(), 'ppa-'));
 const hdr = join(dir, 'h');
-writeFileSync(hdr, `authorization: Bearer ${secret}\ncontent-type: application/json\n`, { mode: 0o600 });
+writeFileSync(hdr, `authorization: Bearer ${secret}\ncontent-type: application/json\n`, {
+  mode: 0o600,
+});
 const vcurl = (path, extra = []) => {
   try {
     return execFileSync(
       'vercel',
       ['curl', path, '--deployment', PREVIEW_BASE_URL, '--', '-sS', '-H', `@${hdr}`, ...extra],
       { encoding: 'utf8', maxBuffer: 1 << 26 },
-    ).split(secret).join('<redacted>');
+    )
+      .split(secret)
+      .join('<redacted>');
   } catch (err) {
-    return `vercel curl failed: ${String(err.stderr ?? err.message).split(secret).join('<redacted>')}`;
+    return `vercel curl failed: ${String(err.stderr ?? err.message)
+      .split(secret)
+      .join('<redacted>')}`;
   }
 };
 try {
   for (const p of plan.posts) {
-    const body = JSON.stringify({ chatId: CHAT, from: p.from, participants: [PARENT_A, PARENT_B], text: p.text });
-    console.log(`POST ${p.from}: ${vcurl('/api/channels/preview/group-inbound', ['-X', 'POST', '-d', body])}`);
+    const body = JSON.stringify({
+      chatId: CHAT,
+      from: p.from,
+      participants: [PARENT_A, PARENT_B],
+      text: p.text,
+    });
+    console.log(
+      `POST ${p.from}: ${vcurl('/api/channels/preview/group-inbound', ['-X', 'POST', '-d', body])}`,
+    );
     await new Promise((r) => setTimeout(r, 20000)); // queued turn drains
   }
   for (const path of plan.reads) console.log(`GET ${path}\n${vcurl(path)}`);
