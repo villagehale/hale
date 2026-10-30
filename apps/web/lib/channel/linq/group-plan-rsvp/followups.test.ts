@@ -69,10 +69,12 @@ describe('runGroupPlanFollowups', () => {
     expect(first.sent).toBe(1);
     expect(first.deduped).toBe(0);
     expect(texts).toHaveLength(1);
-    expect(composer.calls[0]?.input.kind).toBe('follow_up');
-    expect(composer.calls[0]?.input.facts.title).toBe('soccer Saturday');
-    expect(composer.calls[0]?.input.facts.waitingNames).toEqual(['Ben']);
-    expect(composer.calls[0]?.input.questions).toBe(1);
+    const line = composer.calls[0]?.input;
+    if (line?.skill !== 'group-plan-rsvp-voice') throw new Error('expected a plan line');
+    expect(line.kind).toBe('follow_up');
+    expect(line.facts.title).toBe('soccer Saturday');
+    expect(line.facts.waitingNames).toEqual(['Ben']);
+    expect(line.questions).toBe(1);
 
     const second = await runGroupPlanFollowups(
       {

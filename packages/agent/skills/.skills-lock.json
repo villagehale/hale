@@ -181,11 +181,11 @@
   },
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",
-    "sha256": "359d220a3a9b8fcc4572055584b3df54a3fd860508bf7de0046c6aff10040e3b"
+    "sha256": "86bdc136dc1d4f8adbf6b24f1018d8bd8a4b1b230d21bf7c82e120e36a2bfe92"
   },
   "group-plan-rsvp-voice.md": {
     "file": "group-plan-rsvp-voice.md",
-    "sha256": "601ff43bd4f73a8dcc5d3f3f27ece61a7e3aaa2cf00e82beae4a2bc228bcbd7e"
+    "sha256": "77b780558002c9b69b55b49b4741568c792b82b038866643e5f5d0162a7a181b"
   },
   "group-poll-offer.md": {
     "file": "group-poll-offer.md",
@@ -194,6 +194,10 @@
   "group-poll-tally-read.md": {
     "file": "group-poll-tally-read.md",
     "sha256": "310b69a4c546773232b288343466460030fc3b12602fdcab1cccb32543fd4827"
+  },
+  "group-poll-voice.md": {
+    "file": "group-poll-voice.md",
+    "sha256": "550287356dac32b81cfb0fb6c33b6a4c3c4c457f917d28bf78f7e97d07469b84"
   },
   "group-private-aside-draft.md": {
     "file": "group-private-aside-draft.md",

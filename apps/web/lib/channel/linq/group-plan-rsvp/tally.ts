@@ -14,6 +14,8 @@
  * rolling it into `yes` overstates it.
  */
 
+import type { GroupPlanRsvpIntent } from './reading';
+
 export type PlanRsvpResponse = 'yes' | 'no' | 'maybe';
 
 export interface PlanTallyRow {
@@ -121,7 +123,7 @@ export function tallyPlanRsvps(
  * answered for several people, or nobody is left waiting.
  */
 export function isMeaningfulTallyChange(input: {
-  intent: 'start_tracking' | 'rsvp' | 'edit' | 'ask_tally' | 'chatter' | 'unclear';
+  intent: GroupPlanRsvpIntent;
   before: PlanTally | null;
   after: PlanTally;
   householdAnswer: boolean;

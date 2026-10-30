@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { readGroupMembership } from '../group-membership';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
+import { type GroupPollStore, createPostgresGroupPollStore } from './poll-store';
 import {
   type PlanExpectedRow,
   type PlanRsvpResponse,
@@ -55,7 +56,7 @@ export interface CreatePlanInput {
   now: Date;
 }
 
-export interface GroupPlanRsvpStore {
+export interface GroupPlanRsvpStore extends GroupPollStore {
   coveringFamily(chatId: string): Promise<{ familyId: string; timeZone: string } | null>;
   loadLivePlan(chatId: string): Promise<GroupPlanRecord | null>;
   createPlan(input: CreatePlanInput): Promise<GroupPlanRecord>;
@@ -141,6 +142,8 @@ export async function postgresSeatedExpected(
 
 export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanRsvpStore {
   return {
+    ...createPostgresGroupPollStore(database),
+
     async coveringFamily(chatId) {
       const [family] = await database
         .select({ id: schema.families.id })

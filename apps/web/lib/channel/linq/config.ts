@@ -125,3 +125,12 @@ export function linqGroupConflictAlertsEnabled(): boolean {
 export function linqGroupPlanRsvpEnabled(): boolean {
   return trimmed('LINQ_GROUP_PLAN_RSVP_ENABLED') === 'true';
 }
+
+/**
+ * VIL-471 — parent-made polls in a Linq group, read in the same group turn as
+ * plan RSVPs. Exactly `true` enables it. Unset, empty, `on`, and `false` stay
+ * dark. Default off. The native poll card additionally needs LINQ_POLLS.
+ */
+export function linqGroupPollsEnabled(): boolean {
+  return trimmed('LINQ_GROUP_POLLS_ENABLED') === 'true';
+}

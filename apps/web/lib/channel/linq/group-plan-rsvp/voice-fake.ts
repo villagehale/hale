@@ -1,21 +1,32 @@
-import type { GroupPlanRsvpLineInput } from './facts';
-import type { GroupPlanRsvpComposer } from './voice';
+import type { GroupLineInput, GroupPlanRsvpComposer } from './voice';
 
 /**
- * A deterministic stand-in for the group-plan RSVP composer. Tests of tally,
- * settle, follow-up claims, and the ledger inject this. It does not call a
- * model and it does not judge prose. The line repeats the facts code required
+ * A deterministic stand-in for the group-plan RSVP and poll composer. Tests of
+ * tally, settle, follow-up claims, and the ledger inject this. It does not call
+ * a model and it does not judge prose. The line repeats the facts code required
  * so a test can see them — it is not a parent-facing fallback.
  */
 export interface FakeGroupPlanRsvpComposer extends GroupPlanRsvpComposer {
-  readonly calls: { input: GroupPlanRsvpLineInput; prompt: 'full' | 'short' }[];
+  readonly calls: { input: GroupLineInput; prompt: 'full' | 'short' }[];
+}
+
+function factsLine(input: GroupLineInput): string {
+  if (input.skill === 'group-poll-voice') {
+    const facts = input.facts;
+    const counts = facts.options.map((option) => `${option.text}=${option.votes}`).join(' ');
+    return `${input.kind} ${facts.question ?? ''} ${counts} ${facts.waitingNames.join(' ')}`;
+  }
+  const facts = input.facts;
+  const count = `${facts.yesCount} ${facts.toGo}`;
+  const names = [...facts.yesNames, ...facts.waitingNames].join(' ');
+  return `${input.kind} ${facts.title} ${count} ${names}`;
 }
 
 export function fakeGroupPlanRsvpComposer(
   options: {
     fail?: boolean;
     failFullPrompt?: boolean;
-    body?: string | ((input: GroupPlanRsvpLineInput) => string);
+    body?: string | ((input: GroupLineInput) => string);
   } = {},
 ): FakeGroupPlanRsvpComposer {
   const calls: FakeGroupPlanRsvpComposer['calls'] = [];
@@ -29,14 +40,8 @@ export function fakeGroupPlanRsvpComposer(
       }
       if (typeof options.body === 'function') return { line: options.body(input) };
       if (options.body !== undefined) return { line: options.body };
-      const facts = input.facts;
-      const count = `${facts.yesCount} ${facts.toGo}`;
-      const names = [...facts.yesNames, ...facts.waitingNames].join(' ');
-      const line =
-        input.questions === 1
-          ? `${input.kind} ${facts.title} ${count} ${names}?`
-          : `${input.kind} ${facts.title} ${count} ${names}.`;
-      return { line };
+      const line = factsLine(input);
+      return { line: input.questions === 1 ? `${line}?` : `${line}.` };
     },
   };
 }
