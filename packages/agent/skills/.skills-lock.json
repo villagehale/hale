@@ -3,9 +3,13 @@
     "file": "activity-deep.md",
     "sha256": "b74ca280ef2ad8e0a28fe840c8e9fa77559ff09a1c6a33d29fb660eacc264dca"
   },
+  "activity-finder-events.md": {
+    "file": "activity-finder-events.md",
+    "sha256": "ed21d26ed46009fa0c26ee1a6fc4e868f046781e02a76f55e4216d9e8edd7a3e"
+  },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "aeae6924e4401aeaa8d842a67d73faac94e0b573cd26e5ec1636c4928b278165"
+    "sha256": "90f074ed912a23bb83debf43b35b235b1703ba050313cf0bd62927c98ae1d4a6"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
@@ -65,7 +69,11 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "e7fa285d913d9761cc636aa5e6b1cbd162f784df130cd2bcf653c1b6f4dc176e"
+    "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
+  },
+  "coach-nearby-find.md": {
+    "file": "coach-nearby-find.md",
+    "sha256": "9d6449db6cdd9eb96edcca1140da42ef5bae209be6b522c255c763f0df8557ea"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
