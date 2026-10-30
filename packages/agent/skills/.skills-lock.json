@@ -159,6 +159,14 @@
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
   },
+  "group-plan-attendance-read.md": {
+    "file": "group-plan-attendance-read.md",
+    "sha256": "d19d41158b7257934300aedf22ac021de5096122d843845f004dc901aa788c11"
+  },
+  "group-plan-invite-note.md": {
+    "file": "group-plan-invite-note.md",
+    "sha256": "e2398f233a3c5f97c51282d12f85cf3adecb06befb17add4b2c33d94e493b6d0"
+  },
   "group-private-aside-draft.md": {
     "file": "group-private-aside-draft.md",
     "sha256": "c40c6073e82a32935dd61c648a6afeb990b4306cb1d8958d4f577db8f18b51a2"
