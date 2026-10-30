@@ -109,7 +109,7 @@ function post(path: string, body: unknown, secret: string | null = SECRET): Requ
 /** Stands in for the model: the text is whatever the composer hands back. */
 const MODEL_TEXT = 'test double: model-written reminder';
 
-function captureRunDeps() {
+function captureRunDeps(): () => ReminderRunDeps {
   return () => ({
     ...defaultReminderRunDeps(),
     client: {} as AgentClient,

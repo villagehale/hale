@@ -95,6 +95,10 @@
     "file": "duty-night.md",
     "sha256": "85c230a970e5de8e50c154eb671fce7c058a1ec0e66bd0b55f4602d72db5607a"
   },
+  "email-alert-notice.md": {
+    "file": "email-alert-notice.md",
+    "sha256": "6a65176ee5e5fa835806d01ebffaf9080e6705949ef4d319b259f7405d3f5ec2"
+  },
   "evening-request.md": {
     "file": "evening-request.md",
     "sha256": "ebe28455ab5c0ec920d418694812fdb6fc4e31e6257b8912ac27c6cda1a87fee"
@@ -166,6 +170,14 @@
   "group-plan-invite-note.md": {
     "file": "group-plan-invite-note.md",
     "sha256": "e2398f233a3c5f97c51282d12f85cf3adecb06befb17add4b2c33d94e493b6d0"
+  },
+  "group-plan-rsvp-read.md": {
+    "file": "group-plan-rsvp-read.md",
+    "sha256": "359d220a3a9b8fcc4572055584b3df54a3fd860508bf7de0046c6aff10040e3b"
+  },
+  "group-plan-rsvp-voice.md": {
+    "file": "group-plan-rsvp-voice.md",
+    "sha256": "601ff43bd4f73a8dcc5d3f3f27ece61a7e3aaa2cf00e82beae4a2bc228bcbd7e"
   },
   "group-private-aside-draft.md": {
     "file": "group-private-aside-draft.md",

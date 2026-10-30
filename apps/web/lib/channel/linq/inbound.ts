@@ -32,6 +32,7 @@ import {
   linqGroupCoparentEnabled,
   linqGroupMembersEnabled,
   linqGroupOnboardingV2Enabled,
+  linqGroupPlanRsvpEnabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
   linqMultiFamilyGroupsEnabled,
@@ -70,6 +71,11 @@ import {
   unseatParticipantRemoved,
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
+import { considerGroupPlanRsvp } from './group-plan-rsvp/inbound';
+import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
+import { parseLinqTapback } from './group-plan-rsvp/reading';
+import { groupPlanRsvpTakesTheTurn } from './group-plan-rsvp/turn';
+import type { GroupPlanRsvpComposer } from './group-plan-rsvp/voice';
 import { decideGroupTurn } from './group-turn-policy';
 import {
   type GroupTurnReader,
@@ -95,7 +101,7 @@ import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
-import type { LinqEffectResult } from './transport';
+import type { LinqEffectResult, LinqTapback } from './transport';
 
 /**
  * VIL-335 — POST /api/channels/linq/inbound.
@@ -170,6 +176,10 @@ export async function handleLinqInboundRequest(
     groupLimiter?: RateLimiter;
     /** VIL-440 test seam. Production uses the shared model reader when the flag is on. */
     groupTurnReader?: GroupTurnReader;
+    /** VIL-442 test seam. Production uses the shared plan RSVP reader when the flag is on. */
+    groupPlanRsvpReader?: GroupPlanRsvpReader;
+    /** VIL-442 test seam. Production composes with the model when the flag is on. */
+    groupPlanRsvpComposer?: GroupPlanRsvpComposer;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -448,6 +458,53 @@ function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
 }
 
 /**
+ * VIL-442 — RSVP for any plan, including people who never signed up.
+ * Banter and a missed read stay quiet and leave the rest of the group door
+ * (find, multi-family, inbox) the turn.
+ */
+async function tryGroupPlanRsvpTurn(
+  deps: LinqDoorDeps,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    text: string;
+    tapback: LinqTapback | null;
+  },
+): Promise<Response | null> {
+  if (!linqGroupPlanRsvpEnabled()) return null;
+  const mappedSender = await mapGroupHandlesToFamily(deps.database, {
+    sender: input.senderHandle,
+    others: [],
+  });
+  const rsvp = await considerGroupPlanRsvp(
+    {
+      database: deps.database,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+      reader: deps.groupPlanRsvpReader,
+      composer: deps.groupPlanRsvpComposer,
+    },
+    {
+      chatId: input.chatId,
+      senderHandle: input.senderHandle,
+      senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
+      text: input.text,
+      tapback: input.tapback,
+    },
+  );
+  if (!groupPlanRsvpTakesTheTurn(rsvp)) return null;
+  deps.log.info(
+    { outcome: rsvp.outcome },
+    input.tapback ? 'linq inbound: group plan rsvp tapback' : 'linq inbound: group plan rsvp',
+  );
+  await deps.countOutcome(rsvp.count);
+  return json({
+    outcome: rsvp.outcome,
+    ...(rsvp.notice ? { notice: rsvp.notice } : {}),
+  });
+}
+
+/**
  * A group is the household year only once Hale has claimed it. The trigger
  * from an enrolled parent of one family is that claim. Anyone else is held,
  * and a STOP from them sends nothing. A STOP from a parent still routes, so
@@ -491,6 +548,15 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 
   // #868: stop/start read by the model in any wording; one cached read for this turn.
   const optOut = await optOutIntentOf(message.text);
+  if (optOut !== 'stop') {
+    const rsvp = await tryGroupPlanRsvpTurn(deps, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+      tapback: null,
+    });
+    if (rsvp) return rsvp;
+  }
   if (optOut !== 'stop') {
     const shared = await takeMultiFamilyTurn(deps.database, {
       chatId: message.chatId,
@@ -569,6 +635,15 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 }
 
 async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  if ((await optOutIntentOf(message.text)) !== 'stop') {
+    const rsvp = await tryGroupPlanRsvpTurn(deps, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      text: message.text,
+      tapback: null,
+    });
+    if (rsvp) return rsvp;
+  }
   const mapped = await mapGroupHandlesToFamily(deps.database, {
     sender: message.senderHandle,
     others: [],
@@ -1278,6 +1353,15 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         return json({ outcome: 'group_coparent_seated', notice });
       }
     }
+  }
+  if (signal.event === 'reaction.added' && signal.senderHandle && signal.chatId) {
+    const rsvp = await tryGroupPlanRsvpTurn(deps, {
+      chatId: signal.chatId,
+      senderHandle: signal.senderHandle,
+      text: '',
+      tapback: parseLinqTapback(signal.reactionType),
+    });
+    if (rsvp) return rsvp;
   }
   if (
     coparentDutyAsksArmed() &&

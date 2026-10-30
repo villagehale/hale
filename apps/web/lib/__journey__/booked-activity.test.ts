@@ -24,6 +24,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import type { FamilyChildRef } from '~/lib/sentinel';
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
+import { scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordedModel } from '~/lib/testing/recorded-model';
 
@@ -196,11 +197,18 @@ async function seed(): Promise<void> {
 
 /**
  * The real alert ports: the REAL sentinel over a recorded model, the REAL gate, the REAL
- * phone read, the REAL thread. Only the wire and Gmail's body endpoint are stand-ins.
+ * phone read, the REAL thread. The wire, Gmail's body endpoint and the notice writer are
+ * stand-ins; the writer's words are the email-alert-notice eval's job.
  */
-function alertPorts(transport: FakeTransport): EmailAlertPorts {
+function alertPorts(
+  transport: FakeTransport,
+  writer = scriptedNoticeWriter({ children: CHILDREN }),
+): EmailAlertPorts {
   const recorded = recordedModel(RECORDINGS, pipelineClient);
   return {
+    familyChildren: async () => CHILDREN,
+    writeNotice: writer.writeNotice,
+    parentLanguage: writer.parentLanguage,
     classify: async (envelope, familyTimezone) =>
       classifyChildEventEmail(envelope, {
         client: recorded.client(),
@@ -286,6 +294,7 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
     // The REAL sweep, the REAL sentinel, a recorded model. If triage answers false this
     // stops here with no text at all, which is the failure this file exists to catch.
     const transport = new FakeTransport();
+    const writer = scriptedNoticeWriter({ children: CHILDREN });
     const outcomes = await alertParentForGmailSweep(
       db.database,
       {
@@ -298,19 +307,23 @@ describe('a registration receipt becomes a class Hale checks back on', () => {
         envelopes: [ENVELOPE],
         now: RECEIPT_AT,
       },
-      alertPorts(transport),
+      alertPorts(transport, writer),
     );
 
     expect(outcomes).toEqual([{ alert: 'sent', booking: 'recorded', going: 'going_dark' }]);
     expect(transport.sent).toHaveLength(1);
     const text = transport.sent[0]?.body ?? '';
-    // The provider is the subject, the first session is named, and the one question is
-    // the CTA. The model chose the title; the frame is Hale's.
-    expect(text).toContain(
-      "City of Brookfield Recreation says you're in for Preschool Swim Level 2",
-    );
-    expect(text).toContain('first one Saturday, Aug 1 at 9:00 a.m.');
-    expect(text).toContain('Want it on your calendar?');
+    // The writer is handed the provider, the class, the first session and the one offer;
+    // the words are the email-alert-notice eval's job.
+    expect(writer.seen[0]).toMatchObject({
+      email: {
+        sender: 'City of Brookfield Recreation',
+        kind: 'booking_confirmation',
+        title: 'Preschool Swim Level 2',
+        when: { date: 'Saturday, August 1, 2026', time: '9:00 AM' },
+      },
+      offer: 'add_to_calendar',
+    });
     // The receipt's own details have no column and never reach the wire.
     expect(text).not.toContain('RC-88214');
     expect(text).not.toContain('96.00');
