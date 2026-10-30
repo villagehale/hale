@@ -528,7 +528,13 @@ async function runActivityOnce(
 
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
-    skill = await loadCronSkill('activity-finder');
+    const [base, events] = await Promise.all([
+      loadCronSkill('activity-finder'),
+      loadCronSkill('activity-finder-events'),
+    ]);
+    // VIL-510: the dated-event addendum rides the inline research + extract only; the
+    // follow-up text loads `activity-finder` alone, so its bytes stay put.
+    skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
   } catch (err) {
     throw new ActivityUnresolvable('skill_unavailable', message(err));
   }
