@@ -99,6 +99,10 @@
     "file": "consent-reply.md",
     "sha256": "b72df8e839e92b36cff701496e26439fca7339ac98e3292f4c3e7a39f71a5951"
   },
+  "contact-card-read.md": {
+    "file": "contact-card-read.md",
+    "sha256": "30ff8c4aa317eb5b735ee3a1c1b17e9bbe7eedad43258795395e53f3836c3a62"
+  },
   "draft-action.md": {
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"

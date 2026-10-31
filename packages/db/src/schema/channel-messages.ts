@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { actions } from './actions.js';
 import { conversations } from './conversations.js';
 import {
@@ -177,12 +186,17 @@ export const channelMessages = pgTable(
     handedOffAt: timestamp('handed_off_at', { withTimezone: true }),
     /**
      * INBOUND only: Linq parts that were not text (kind, https url, mime). Null when
-     * the turn carried none. Bytes are never stored — the coach fetches an image
-     * when it answers, and a re-drive reads this column rather than the job.
+     * the turn carried none. Bytes are never stored — the coach fetches an image,
+     * or a `.vcf` contact card (VIL-482), when it answers, and a re-drive reads this
+     * column rather than the job.
      */
     inboundMedia:
       jsonb('inbound_media').$type<
-        Array<{ kind: 'image' | 'video' | 'audio' | 'file'; url: string | null; mime: string | null }>
+        Array<{
+          kind: 'image' | 'video' | 'audio' | 'file' | 'contact';
+          url: string | null;
+          mime: string | null;
+        }>
       >(),
     /**
      * INBOUND only (VIL-463): whether the door saw this text in a group chat. Null on

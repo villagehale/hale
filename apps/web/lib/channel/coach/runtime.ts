@@ -261,8 +261,9 @@ export interface ChannelCoachPorts {
    */
   client(): AgentClient;
   /**
-   * Fetch this turn's images into content blocks. Absent is a named gap: the
-   * parts are still told to the model as unwatched, and nothing is fetched.
+   * Fetch this turn's images into content blocks, and a `.vcf` into contact fields.
+   * Absent is a named gap: the parts are still told to the model as unwatched, and
+   * nothing is fetched.
    */
   readInboundMedia?(parts: readonly InboundMediaPart[]): Promise<ReadInboundMedia>;
   runAgent(args: RunAgentArgs): Promise<RunAgentResult>;
@@ -338,12 +339,21 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
-      const skill = augmentCoachSkillForGroupLeave(
-        augmentCoachSkillForExperienceCards(
-          baseSkill,
-          cardsLit ? await loadCronSkill('experience-card-coach') : null,
+      // VIL-482. Only a turn that carried a .vcf gets this addendum. Anything else
+      // keeps the same skill object, so coach-channel and group-privacy recordings
+      // stay keyed on the bytes they already have.
+      const contactCard = turn.inboundMedia?.some((part) => part.kind === 'contact')
+        ? await loadCronSkill('contact-card-read')
+        : null;
+      const skill = augmentCoachSkillForContactCard(
+        augmentCoachSkillForGroupLeave(
+          augmentCoachSkillForExperienceCards(
+            baseSkill,
+            cardsLit ? await loadCronSkill('experience-card-coach') : null,
+          ),
+          leaveLit,
         ),
-        leaveLit,
+        contactCard,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
@@ -407,6 +417,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const media = await mediaForTurn(turn, ports);
       if (media.unwatched.length > 0) {
         Object.assign(context, { arrivedMedia: media.unwatched });
+      }
+      // VIL-482. Facts from a .vcf the parent attached. Absent when this turn had
+      // none, so an ordinary turn's prompt bytes stay the same.
+      if (media.contacts.length > 0) {
+        Object.assign(context, {
+          arrivedContacts: media.contacts,
+          ...(media.contactsTruncated ? { arrivedContactsTruncated: true } : {}),
+        });
       }
       // VIL-439 (T18): every group turn sees only group-safe context and tools. No flag:
       // the router sets the group audience for any message the door marked in_group.
@@ -613,6 +631,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
   };
 }
 
+/** Null returns the same skill object. A turn without a .vcf does not grow the prompt. */
+function augmentCoachSkillForContactCard(skill: Skill, addendum: Skill | null): Skill {
+  if (addendum === null) return skill;
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
+}
+
 async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
   const group = await loadCronSkill('coach-channel-group');
   return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
@@ -803,13 +827,20 @@ async function mediaForTurn(
   ports: ChannelCoachPorts,
 ): Promise<ReadInboundMedia> {
   const parts = turn.inboundMedia ?? [];
-  if (parts.length === 0) return { blocks: [], unwatched: [] };
+  if (parts.length === 0) {
+    return { blocks: [], unwatched: [], contacts: [], contactsTruncated: false };
+  }
   if (!ports.readInboundMedia) {
     console.info(
       { reason: 'not_configured', count: parts.length },
       'channel coach: inbound media unread',
     );
-    return { blocks: [], unwatched: parts.map((part) => ({ kind: part.kind })) };
+    return {
+      blocks: [],
+      unwatched: parts.map((part) => ({ kind: part.kind })),
+      contacts: [],
+      contactsTruncated: false,
+    };
   }
   return ports.readInboundMedia(parts);
 }
