@@ -1,6 +1,7 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
+import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
 /**
@@ -47,6 +48,22 @@ export interface FamilyFitPreference {
   childId: string | null;
   key: string;
   value: unknown;
+  /** VIL-519. Where Hale learned it: the parent said it, a calendar or receipt showed
+   * it, or Hale inferred it. `legacy` is a row from before sources were kept. */
+  source: FactSource;
+  /** VIL-519. The day (UTC, YYYY-MM-DD) the source was seen — how fresh it is. */
+  seenOn: string;
+}
+
+export type FactSource = 'parent_message' | 'calendar' | 'receipt' | 'inferred' | 'legacy';
+
+/** VIL-519. A fact too old to trust for a pick. It does NOT steer the ranking; it is
+ * named (key only, never the old value) so the model may check it in its own words when
+ * it matters to this find, or let it be. */
+export interface FamilyFitRecheck {
+  childId: string | null;
+  key: string;
+  seenOn: string;
 }
 
 export interface FamilyFit {
@@ -54,6 +71,8 @@ export interface FamilyFit {
   /** The home municipality the search looked around, or null when unknown. */
   homeArea: Municipality | null;
   preferences: FamilyFitPreference[];
+  /** VIL-519. Stale facts held back from ranking. Empty when nothing is stale. */
+  recheck: FamilyFitRecheck[];
 }
 
 /** Durable facts that steer a pick: tastes (indoor, not scary, swim) and logistics
@@ -61,6 +80,32 @@ export interface FamilyFit {
 const FIT_FACT_TYPES = ['preference', 'logistic'] as const;
 /** Small on purpose: a slice, not the memory. */
 export const FAMILY_FIT_PREFERENCE_LIMIT = 8;
+/** At most this many stale keys are named back — a hint, not a questionnaire. */
+export const FAMILY_FIT_RECHECK_LIMIT = 3;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * VIL-519. How long a fact from each source is trusted to steer a pick. A guess goes
+ * stale fastest; what a parent told us or a receipt showed lasts a school year. Past
+ * this a fact is held back from ranking and offered as a recheck instead — never
+ * silently used.
+ */
+export const FACT_FRESH_DAYS: Readonly<Record<FactSource, number>> = {
+  inferred: 90,
+  calendar: 180,
+  receipt: 365,
+  parent_message: 365,
+  legacy: 365,
+};
+
+/**
+ * VIL-519. Keys that shadow the record's own age or home area. The children's dates of
+ * birth and `families.area_coarse` are the corrected truth (a parent's edit lands
+ * there), so a remembered "age: 3" or "home_city: Milton" would only ever be the OLD
+ * value arguing with it. They never ride the slice.
+ */
+const SHADOW_KEY =
+  /(^|_)(age|ages|age_range|birthday|birthdate|dob|born|grade|home_city|home_town|home_area|city|town|area|neighbou?rhood|postal|postal_code|postcode|address|municipality)(_|$)/;
 
 /** The same three reads with the database already closed over — the shape a coach tool
  * wants, since a tool handler is handed a family and not a connection. */
@@ -176,6 +221,9 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
           childId: schema.familyMemoryFacts.childId,
           key: schema.familyMemoryFacts.factKey,
           value: schema.familyMemoryFacts.factValue,
+          confidence: schema.familyMemoryFacts.confidence,
+          source: schema.familyMemoryFacts.memorySource,
+          sourcedAt: schema.familyMemoryFacts.sourcedAt,
         })
         .from(schema.familyMemoryFacts)
         .where(
@@ -203,11 +251,11 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
           desc(schema.familyMemoryFacts.validFrom),
           schema.familyMemoryFacts.id,
         )
-        .limit(FAMILY_FIT_PREFERENCE_LIMIT * 2);
+        .limit(FAMILY_FIT_PREFERENCE_LIMIT * 4);
       return {
         children,
         homeArea,
-        preferences: selectFitPreferences(factRows, teenIds),
+        ...selectFitPreferences(factRows, teenIds, now),
       };
     },
   };
@@ -227,13 +275,59 @@ export function toFitChild(
   };
 }
 
-/** A teen's preferences never ride (rule #1/#5); the rest are capped to the slice. */
+export interface FitFactRow {
+  childId: string | null;
+  key: string;
+  value: unknown;
+  confidence: number;
+  source: string;
+  sourcedAt: Date;
+}
+
+function asSource(source: string): FactSource {
+  return source in FACT_FRESH_DAYS ? (source as FactSource) : 'legacy';
+}
+
+/**
+ * Which remembered facts may steer a pick (VIL-518/519).
+ *
+ * - A teen's facts never ride (rule #1/#5).
+ * - A hunch below the write floor never ranks, even if an old writer let one in.
+ * - A key that shadows the record's age or home area is dropped: the record wins.
+ * - A fact older than its source's freshness window is held back and named in
+ *   `recheck` (key only) instead of being used.
+ * - One per (child, key): `writeFact` keeps one live row per identity, and a row seen
+ *   later than another for the same key wins should two ever reach here.
+ */
 export function selectFitPreferences(
-  rows: readonly { childId: string | null; key: string; value: unknown }[],
+  rows: readonly FitFactRow[],
   teenIds: ReadonlySet<string>,
-): FamilyFitPreference[] {
-  return rows
-    .filter((row) => row.childId === null || !teenIds.has(row.childId))
-    .slice(0, FAMILY_FIT_PREFERENCE_LIMIT)
-    .map((row) => ({ childId: row.childId, key: row.key, value: row.value }));
+  now: Date = new Date(),
+): { preferences: FamilyFitPreference[]; recheck: FamilyFitRecheck[] } {
+  const newest = new Map<string, FitFactRow>();
+  for (const row of rows) {
+    if (row.childId !== null && teenIds.has(row.childId)) continue;
+    if (!(row.confidence >= CONFIDENCE_FLOOR)) continue;
+    if (SHADOW_KEY.test(row.key.toLowerCase())) continue;
+    const id = `${row.childId ?? ''}\u0000${row.key}`;
+    const seen = newest.get(id);
+    if (!seen || row.sourcedAt.getTime() > seen.sourcedAt.getTime()) newest.set(id, row);
+  }
+  const preferences: FamilyFitPreference[] = [];
+  const recheck: FamilyFitRecheck[] = [];
+  for (const row of newest.values()) {
+    const source = asSource(row.source);
+    const seenOn = row.sourcedAt.toISOString().slice(0, 10);
+    const ageDays = (now.getTime() - row.sourcedAt.getTime()) / DAY_MS;
+    if (ageDays > FACT_FRESH_DAYS[source]) {
+      if (recheck.length < FAMILY_FIT_RECHECK_LIMIT) {
+        recheck.push({ childId: row.childId, key: row.key, seenOn });
+      }
+      continue;
+    }
+    if (preferences.length < FAMILY_FIT_PREFERENCE_LIMIT) {
+      preferences.push({ childId: row.childId, key: row.key, value: row.value, source, seenOn });
+    }
+  }
+  return { preferences, recheck };
 }

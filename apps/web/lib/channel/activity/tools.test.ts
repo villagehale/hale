@@ -323,7 +323,16 @@ describe('find_activities family slice (VIL-518)', () => {
   const FIT = {
     children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
     homeArea: 'halton_hills' as const,
-    preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
+    preferences: [
+      {
+        childId: CHILD,
+        key: 'indoor',
+        value: { prefers: 'indoor' },
+        source: 'parent_message' as const,
+        seenOn: '2026-10-01',
+      },
+    ],
+    recheck: [],
   };
 
   it('hands the family slice back beside the picks, and never sends it to the search', async () => {
