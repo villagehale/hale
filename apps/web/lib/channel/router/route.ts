@@ -1879,11 +1879,11 @@ async function resolveNaturalReply(
     }
   }
   // A NO to that same ask declines the draft too. The offer handler owns the NO
-  // (so the offer closes). The approval handler declines the draft and sends
-  // nothing. The offer is released here as well, so a missing receipt cannot
-  // leave it standing for a later YES.
+  // and closes the offer from afterSend, once the receipt has actually gone out.
+  // Expiring the offer here would drop it before that send, and a retry would
+  // have nothing left to answer. The approval handler's reply is null.
   const pairedDraft = pairedDraftForCalendarNo(questions, reading);
-  if (offerId && pairedDraft && verdict.outcome === 'declined') {
+  if (pairedDraft && verdict.outcome === 'declined') {
     const approval = deps.handlers.find((handler) => handler.resolves?.has('approval'));
     if (!approval) {
       deps.log.error({}, 'channel router: calendar ask declined, approval handler absent');
@@ -1911,15 +1911,6 @@ async function resolveNaturalReply(
           'channel router: calendar ask declined, draft not declined',
         );
       }
-    }
-    try {
-      const released = await expireEmailAlertOffer(deps.database, { offerId, now: turn.now });
-      deps.log.info({ released }, 'channel router: calendar ask declined, offer released');
-    } catch (err) {
-      deps.log.error(
-        { detail: err instanceof Error ? err.constructor.name : 'unknown' },
-        'channel router: calendar ask declined, offer not released',
-      );
     }
   }
   await deliver(verdict, answer);

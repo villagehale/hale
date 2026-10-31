@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
-import { unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
+import {
+  calendarSameLocalDay,
+  calendarTitlesEqual,
+  unapprovedCalendarAddIds,
+} from '~/lib/channel/calendar-ask';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -284,6 +288,19 @@ export async function handleEmailAlertOfferReply(
     return { status: 'declined', offerId: offer.id, facts };
   }
 
+  // The parent already refused this add. A later YES must not place it, even
+  // while the offer is still open because its decline receipt has not gone out.
+  if (
+    await parentDeclinedCalendarAdd(database, {
+      familyId: input.familyId,
+      title: offer.title,
+      startsAt: offer.startsAt,
+      timeZone,
+    })
+  ) {
+    return { status: 'declined', offerId: offer.id, facts: { ...facts, happened: 'declined' } };
+  }
+
   await placeOfferedEvent(database, offer, input);
   // The coach also drafted this add. The parent's YES just placed it, so the draft
   // must leave the queue or the next YES is not answerable and the coach drafts it again.
@@ -391,6 +408,33 @@ function occasionFromPayload(payload: unknown): { title: string; startsAt: strin
     'startsAt' in payload && typeof payload.startsAt === 'string' ? payload.startsAt : '';
   if (title.trim() === '' || startsAt.trim() === '') return null;
   return { title, startsAt };
+}
+
+/** The parent already refused this occasion, so a later YES must not place it. */
+async function parentDeclinedCalendarAdd(
+  database: Database,
+  input: { familyId: string; title: string; startsAt: Date; timeZone: string },
+): Promise<boolean> {
+  const rows = await database
+    .select({ payload: schema.actions.payload })
+    .from(schema.actions)
+    .where(
+      and(
+        eq(schema.actions.familyId, input.familyId),
+        eq(schema.actions.actionType, 'calendar_add'),
+        eq(schema.actions.userVisibleState, 'reverted'),
+        eq(schema.actions.revertedReason, 'declined_by_human'),
+      ),
+    )
+    .limit(20);
+  return rows.some((row) => {
+    const occasion = occasionFromPayload(row.payload);
+    return (
+      occasion !== null &&
+      calendarTitlesEqual(occasion.title, input.title) &&
+      calendarSameLocalDay(occasion.startsAt, input.startsAt.toISOString(), input.timeZone)
+    );
+  });
 }
 
 /**

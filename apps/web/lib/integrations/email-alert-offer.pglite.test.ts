@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { declineDraftedAction } from '~/lib/actions/decline';
 import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
@@ -518,6 +519,25 @@ describe('a bare YES is never stolen from another open question', () => {
 
     expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
     expect(questions.find((question) => question.id === offerId)?.approvesActionId).toBe(actionId);
+  });
+
+  it('a later YES does not place an add the parent already declined', async () => {
+    const offerId = await seedOffer();
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+    await declineDraftedAction(db.database, {
+      actionId,
+      familyId: family.familyId,
+      declinedBy: family.parentUserId,
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'declined' });
+    await expect(events()).resolves.toHaveLength(0);
   });
 
   it('a YES that places the offer retires the unapproved draft of the same add', async () => {
