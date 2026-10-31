@@ -289,9 +289,13 @@ export function timeFactMissing(
   timeZone: string,
   summary = '',
 ): boolean {
-  // The title is required in the text. A weekday inside it ("Sunday School") is not a date claim.
+  // Drop one copy of the title. A weekday inside it ("Sunday School") is not a date
+  // claim, and a second copy ("Friday" titled, then "on Friday") still is.
   let scan = body.split(INVITE_LINK_SLOT).join(' ');
-  if (summary) scan = scan.split(summary).join(' ');
+  if (summary) {
+    const at = scan.indexOf(summary);
+    if (at >= 0) scan = scan.slice(0, at) + scan.slice(at + summary.length);
+  }
   const event = eventClock(startsAt, timeZone);
   const clocks = statedClocks(scan);
   if (clocks.length === 0 || clocks.some((c) => !clockMatches(c, event))) return true;

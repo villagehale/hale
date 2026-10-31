@@ -188,16 +188,20 @@ async function alreadyTextedThisLink(
   return rows.length > 0;
 }
 
-/** Parts already written for this revision, including earlier retries (`:rN`). */
-async function priorInviteParts(
+/**
+ * The key for this attempt. The first try uses `base`. A later try, after any
+ * part was written (sent or failed), uses `:rN` one past the highest suffix
+ * already taken, so a failed receipt cannot hand that suffix out again.
+ */
+async function nextInviteKey(
   database: Database,
   familyId: string,
   parentUserId: string,
-  dedupeKey: string,
-): Promise<number> {
+  baseKey: string,
+): Promise<string> {
   const m = schema.channelMessages;
   const rows = await database
-    .select({ id: m.id })
+    .select({ dedupeKey: m.dedupeKey })
     .from(m)
     .where(
       and(
@@ -205,14 +209,19 @@ async function priorInviteParts(
         eq(m.parentUserId, parentUserId),
         eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
         or(
-          eq(m.dedupeKey, `${dedupeKey}:sms`),
-          sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:sms:%`} ESCAPE '\\'`,
-          sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:r%:sms%`} ESCAPE '\\'`,
+          eq(m.dedupeKey, `${baseKey}:sms`),
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(baseKey)}:sms:%`} ESCAPE '\\'`,
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(baseKey)}:r%:sms%`} ESCAPE '\\'`,
         ),
-        inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     );
-  return rows.length;
+  if (rows.length === 0) return baseKey;
+  let max = 0;
+  for (const row of rows) {
+    const match = row.dedupeKey?.match(/:r(\d+):sms/);
+    if (match?.[1]) max = Math.max(max, Number(match[1]));
+  }
+  return `${baseKey}:r${max + 1}`;
 }
 
 async function familyLanguage(database: Database, familyId: string): Promise<string> {
@@ -256,8 +265,7 @@ async function textOneParent(
   }
   // A previous attempt left a part that is not the link. A fresh key so dispatch
   // does not skip the new part 0 when that is where the link now sits.
-  const prior = await priorInviteParts(database, job.familyId, parent.userId, baseKey);
-  const dedupeKey = prior > 0 ? `${baseKey}:r${prior}` : baseKey;
+  const dedupeKey = await nextInviteKey(database, job.familyId, parent.userId, baseKey);
 
   const when = inviteWhenLabel(composed.startsAt, parent.timezone);
   const voiced = await voice.compose({

@@ -759,6 +759,45 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(sms.calls).toHaveLength(0);
   });
 
+  it('a failed receipt does not hand the same retry key out again', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    const base = `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}`;
+    await db.database.insert(schema.channelMessages).values([
+      {
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'approval',
+        templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+        dedupeKey: `${base}:sms:0`,
+        status: 'failed',
+        body: 'Swim class tomorrow',
+        sentAt: NOON,
+      },
+      {
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'approval',
+        templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+        dedupeKey: `${base}:r1:sms:0`,
+        status: 'sent',
+        body: 'Swim class tomorrow',
+        sentAt: NOON,
+      },
+    ]);
+    linkFirst = true;
+
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    const rows = await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY);
+    expect(rows.some((row) => row.dedupeKey?.includes(':r2:'))).toBe(true);
+    expect(sentTranscript()).toContain('https://app.villagehale.com/api/ics/event/');
+  });
+
   it('a linkless first part does not block a retry that puts the link first', async () => {
     const { familyId, parentUserId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);

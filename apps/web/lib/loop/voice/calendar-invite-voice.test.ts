@@ -81,6 +81,26 @@ describe('calendarInviteRefusals', () => {
     ).toEqual([]);
   });
 
+  it('still sees a wrong weekday when the title is that same word', () => {
+    const tuesday = new Date('2026-07-21T14:30:00.000Z');
+    expect(
+      calendarInviteRefusals(`Friday on Friday at 10:30 AM. ${INVITE_LINK_SLOT}`, {
+        ...REQUEST,
+        summary: 'Friday',
+        when: 'Tue, Jul 21 at 10:30 AM',
+        startsAt: tuesday,
+      }),
+    ).toContain('when_missing');
+    expect(
+      calendarInviteRefusals(`Friday on Tuesday at 10:30 AM. ${INVITE_LINK_SLOT}`, {
+        ...REQUEST,
+        summary: 'Friday',
+        when: 'Tue, Jul 21 at 10:30 AM',
+        startsAt: tuesday,
+      }),
+    ).toEqual([]);
+  });
+
   it('does not treat a weekday inside the event title as the date', () => {
     const tuesday = new Date('2026-07-21T14:30:00.000Z');
     expect(
