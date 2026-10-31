@@ -21,6 +21,21 @@ export function calendarInstantsEqual(left: string, right: string): boolean {
   return !Number.isNaN(a) && a === b;
 }
 
+/** How far a clock read a minute off the sentence still counts as the same instant. */
+export const CALENDAR_CLOCK_TOLERANCE_MS = 2 * 60 * 1000;
+
+/** True for a minute-off clock. Hours apart, including morning and afternoon, is not. */
+export function calendarInstantsClose(
+  left: string,
+  right: string,
+  toleranceMs = CALENDAR_CLOCK_TOLERANCE_MS,
+): boolean {
+  const a = new Date(left).getTime();
+  const b = new Date(right).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return false;
+  return Math.abs(a - b) <= toleranceMs;
+}
+
 /**
  * The reviewer-approved `calendar_add` this offer is asking about, or null.
  *

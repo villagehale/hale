@@ -540,6 +540,26 @@ describe('a bare YES is never stolen from another open question', () => {
     await expect(events()).resolves.toHaveLength(0);
   });
 
+  it('a YES still places an afternoon add after a morning refusal of the same title', async () => {
+    const afternoon = new Date('2026-09-19T20:00:00.000Z');
+    const offerId = await seedOffer({ startsAt: afternoon });
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+    await declineDraftedAction(db.database, {
+      actionId,
+      familyId: family.familyId,
+      declinedBy: family.parentUserId,
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    await expect(events()).resolves.toHaveLength(1);
+  });
+
   it('a YES that places the offer retires the unapproved draft of the same add', async () => {
     const offerId = await seedOffer();
     const actionId = await seedDraftedAction({

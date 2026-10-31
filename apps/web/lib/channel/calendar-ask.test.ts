@@ -3,6 +3,7 @@ import type { PendingAction } from '~/lib/channel/router/approval';
 import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import {
   approvalForCalendarYes,
+  calendarInstantsClose,
   matchApprovedCalendarAdd,
   pairedDraftForCalendarNo,
   questionsForCalendarReader,
@@ -149,6 +150,17 @@ describe('approvalForCalendarYes', () => {
     expect(
       approvalForCalendarYes([offer('offer-1', { approvesActionId: 'a-1' })], reading),
     ).toEqual(reading);
+  });
+});
+
+describe('calendarInstantsClose', () => {
+  it('treats a minute-off clock as the same instant and morning as distinct from afternoon', () => {
+    expect(calendarInstantsClose('2026-09-19T13:00:00.000Z', '2026-09-19T13:01:00.000Z')).toBe(
+      true,
+    );
+    expect(calendarInstantsClose('2026-09-19T13:00:00.000Z', '2026-09-19T20:00:00.000Z')).toBe(
+      false,
+    );
   });
 });
 

@@ -1,11 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
-import {
-  calendarSameLocalDay,
-  calendarTitlesEqual,
-  unapprovedCalendarAddIds,
-} from '~/lib/channel/calendar-ask';
+import { calendarInstantsClose, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -295,7 +291,6 @@ export async function handleEmailAlertOfferReply(
       familyId: input.familyId,
       title: offer.title,
       startsAt: offer.startsAt,
-      timeZone,
     })
   ) {
     return { status: 'declined', offerId: offer.id, facts: { ...facts, happened: 'declined' } };
@@ -410,11 +405,18 @@ function occasionFromPayload(payload: unknown): { title: string; startsAt: strin
   return { title, startsAt };
 }
 
-/** The parent already refused this occasion, so a later YES must not place it. */
+/**
+ * The parent already refused this occasion, so a later YES must not place it.
+ *
+ * The title is filtered in SQL, with no row cap in front of that filter, so an
+ * older refusal of a different add cannot hide this one. The clock may be a
+ * minute off. A morning refusal does not refuse the afternoon.
+ */
 async function parentDeclinedCalendarAdd(
   database: Database,
-  input: { familyId: string; title: string; startsAt: Date; timeZone: string },
+  input: { familyId: string; title: string; startsAt: Date },
 ): Promise<boolean> {
+  const title = input.title.trim().toLowerCase();
   const rows = await database
     .select({ payload: schema.actions.payload })
     .from(schema.actions)
@@ -424,16 +426,13 @@ async function parentDeclinedCalendarAdd(
         eq(schema.actions.actionType, 'calendar_add'),
         eq(schema.actions.userVisibleState, 'reverted'),
         eq(schema.actions.revertedReason, 'declined_by_human'),
+        sql`lower(trim(${schema.actions.payload}->>'title')) = ${title}`,
       ),
-    )
-    .limit(20);
+    );
+  const startsAt = input.startsAt.toISOString();
   return rows.some((row) => {
     const occasion = occasionFromPayload(row.payload);
-    return (
-      occasion !== null &&
-      calendarTitlesEqual(occasion.title, input.title) &&
-      calendarSameLocalDay(occasion.startsAt, input.startsAt.toISOString(), input.timeZone)
-    );
+    return occasion !== null && calendarInstantsClose(occasion.startsAt, startsAt);
   });
 }
 
