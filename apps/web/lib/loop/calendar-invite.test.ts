@@ -3,7 +3,6 @@ import type { CalendarInviteSender } from '@hale/worker/executor';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeChannel } from '~/lib/channel/fakes';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { Channel, ChannelKind } from '~/lib/channel/types';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { CALENDAR_INVITE_SMS_TEMPLATE_KEY } from '~/lib/loop/templates/calendar-invite/sms';
@@ -147,8 +146,15 @@ async function ledger(familyId: string, templateKey: string) {
     );
 }
 
-function sentText(index = 0): string {
-  const call = sms.calls[index];
+/** Every part of what was sent, in order. A long invite is split at send. */
+function sentTranscript(): string {
+  return sms.calls
+    .map((call) => (call.rendered.kind === 'sms' ? call.rendered.text : ''))
+    .join(' ');
+}
+
+function lastText(): string {
+  const call = sms.calls.at(-1);
   if (!call || call.rendered.kind !== 'sms') throw new Error('no text was sent');
   return call.rendered.text;
 }
@@ -233,8 +239,9 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    const body = sentText();
+    const body = sentTranscript();
     expect(inviteCalls).toHaveLength(1);
+    expect(inviteCalls[0]?.language).toBe('en');
     expect(body).toBe(scriptedInviteBody(inviteCalls[0] as CalendarInviteVoiceRequest));
     expect(body).toContain('Swim class');
     expect(body).toContain('https://app.villagehale.com/api/ics/event/');
@@ -246,7 +253,7 @@ describe('the tap-to-add link a text-only family gets', () => {
     const familyEventId = await seedPlacement(familyId);
 
     await sender().send({ familyId, familyEventId, method: 'REQUEST' });
-    const res = await fetchIcs(linkIn(sentText()));
+    const res = await fetchIcs(linkIn(sentTranscript()));
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/calendar; charset=utf-8');
@@ -267,10 +274,12 @@ describe('the tap-to-add link a text-only family gets', () => {
     });
 
     const rows = await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY);
-    expect(rows).toHaveLength(1);
-    // Born 'queued': the provider took it, the delivery receipt has not landed yet.
-    expect(rows[0]).toMatchObject({ status: 'queued', channel: 'sms' });
-    expect(rows[0]?.body).toBeNull();
+    // One row per part when the line is split at send. Born 'queued'.
+    expect(rows.length).toBe(sms.calls.length);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(
+      rows.every((row) => row.status === 'queued' && row.channel === 'sms' && row.body === null),
+    ).toBe(true);
   });
 
   /**
@@ -311,7 +320,7 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    const body = sentText();
+    const body = sentTranscript();
     expect(inviteCalls).toHaveLength(1);
     expect(body).toBe(scriptedInviteBody(inviteCalls[0] as CalendarInviteVoiceRequest));
     expect(body.startsWith('Added -')).toBe(false);
@@ -363,7 +372,7 @@ describe('the tap-to-add link a text-only family gets', () => {
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
     expect(cancelCalls).toEqual([{ summary: 'Swim class', when: 'Thu, Jul 23 at 10:30 AM' }]);
-    expect(sentText(1)).toBe(
+    expect(lastText()).toBe(
       'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
     );
   });
@@ -392,8 +401,8 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(sms.calls).toHaveLength(1);
-    expect(sentText().startsWith('Added -')).toBe(false);
+    expect(sms.calls.length).toBeGreaterThan(0);
+    expect(sentTranscript().startsWith('Added -')).toBe(false);
   });
 
   it('sends nothing and names compose_deferred when the composer defers (no fixed fallback)', async () => {
@@ -774,7 +783,7 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(sms.calls).toHaveLength(1);
+    expect(sms.calls.length).toBeGreaterThan(0);
     expect(inviteCalls).toHaveLength(1);
   });
 
@@ -784,12 +793,29 @@ describe('the tap-to-add link a text-only family gets', () => {
     const invites = sender();
 
     await invites.send({ familyId, familyEventId, method: 'REQUEST' });
+    const before = sms.calls.length;
     const second = await invites.send({ familyId, familyEventId, method: 'REQUEST' });
 
     expect(second).toMatchObject({
       parents: [expect.objectContaining({ channel: 'sms', outcome: 'already_sent' })],
     });
-    expect(sms.calls).toHaveLength(1);
+    expect(sms.calls).toHaveLength(before);
+  });
+
+  it('hands the family language to the invite voice', async () => {
+    const { familyId } = await textOnlyFamily();
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, familyId));
+
+    await sender().send({
+      familyId,
+      familyEventId: await seedPlacement(familyId),
+      method: 'REQUEST',
+    });
+
+    expect(inviteCalls[0]?.language).toBe('fr');
   });
 
   it('will not serve family A an event of family B, signed with A\u2019s own feed secret', async () => {
@@ -812,7 +838,7 @@ describe('the tap-to-add link a text-only family gets', () => {
 
     // Positive control: family B's own link resolves, so the 404 below is the signature
     // and not a broken fixture.
-    expect((await fetchIcs(linkIn(sentText(1)))).status).toBe(200);
+    expect((await fetchIcs(linkIn(sentTranscript()))).status).toBe(200);
     expect((await fetchIcs(forged)).status).toBe(404);
   });
 
@@ -826,18 +852,13 @@ describe('the tap-to-add link a text-only family gets', () => {
 
     await sender().send({ familyId, familyEventId, method: 'REQUEST' });
 
-    expect(sentText()).not.toContain('Maya');
-    expect(sentText()).not.toContain('therapy');
-    expect(sentText()).toContain('an appointment');
+    const body = sentTranscript();
+    expect(body).not.toContain('Maya');
+    expect(body).not.toContain('therapy');
+    expect(body).toContain('an appointment');
   });
 
-  /**
-   * The budget, measured on a REAL token: a uuid, a dot, and a 43-character base64url
-   * HMAC is 80 characters of link before a word is written. Two segments is the
-   * ceiling every deterministic Hale text is held to, and a third would be a 50% bill
-   * increase on every placement a texting family approves.
-   */
-  it('fits two GSM-7 segments with the real link inside it', async () => {
+  it('sends the real link whole, splitting a long line instead of dropping it', async () => {
     const { familyId } = await textOnlyFamily();
 
     await sender().send({
@@ -846,25 +867,15 @@ describe('the tap-to-add link a text-only family gets', () => {
       method: 'REQUEST',
     });
 
-    const body = sentText();
-    expect(linkIn(body)).toHaveLength(
-      'https://app.villagehale.com/api/ics/event/'.length + 36 + 1 + 43,
-    );
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 2,
-    });
+    const body = sentTranscript();
+    const link = linkIn(body);
+    expect(link).toHaveLength('https://app.villagehale.com/api/ics/event/'.length + 36 + 1 + 43);
+    expect(
+      sms.calls.some((call) => call.rendered.kind === 'sms' && call.rendered.text.includes(link)),
+    ).toBe(true);
   });
 
-  /**
-   * The same budget at the dial that NAMES the child — the branch the childless fixture
-   * above can never reach. `eventDescriptor` attributes a title to its child with an EM
-   * DASH ("Maya — Swim class"), one character outside GSM-7, and a single one of those
-   * re-encodes the entire body as UCS-2: 67 units per part instead of 153, so the same
-   * text bills four segments instead of two. The file scan in sms-copy-encoding.test.ts
-   * cannot see it, because the character arrives at runtime from a family_events row.
-   */
-  it('still fits two GSM-7 segments at the dial that names the child', async () => {
+  it('keeps the em dash in a named child\u2019s summary', async () => {
     const { familyId, parentUserId } = await textOnlyFamily();
     await db.database
       .insert(schema.loopPrefs)
@@ -880,12 +891,6 @@ describe('the tap-to-add link a text-only family gets', () => {
       method: 'REQUEST',
     });
 
-    const body = sentText();
-    // Folded, not dropped: the parent turned names ON, so the name still arrives.
-    expect(body).toContain('Maya - Preschool swim lessons - Level 2 (Saturdays)');
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 2,
-    });
+    expect(sentTranscript()).toContain('Maya \u2014 Preschool swim lessons - Level 2 (Saturdays)');
   });
 });

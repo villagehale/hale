@@ -1,10 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { plainText } from '~/lib/channel/coach/reply';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { gsmSafe } from '~/lib/loop/templates/weekly-plan/core';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -16,66 +13,230 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * puts the exact link there (the same slot rule as said-line). A rejected write is
  * retried here (MAX_ATTEMPTS). A deferral after that is NAMED and the caller sends
  * nothing (`compose_deferred`): there is no fixed fallback line.
+ *
+ * The gate checks facts only: the summary, the link slot, digits that were not handed,
+ * and that a stated clock (and any stated day or month) is the event's own start.
+ * Tone, length, and the English `when` label are not gates. The model's words are
+ * not folded; accents and other scripts stay.
  */
 
 /** The placeholder the model writes. Code replaces it with the exact ICS url. */
 export const INVITE_LINK_SLOT = '[[link]]';
-/** Two GSM-7 segments is the ceiling the old fixed line was held to. */
-export const MAX_INVITE_SEGMENTS = 2;
 
 const LINK_SHAPE = /https?:\/\/|www\./i;
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|added|put|texted|sent|might|may)\b/i;
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
 
 const MAX_ATTEMPTS = 3;
-const MAX_TOKENS = 200;
+const MAX_TOKENS = 500;
 
 export interface CalendarInviteVoiceRequest {
   /** The event, already rendered at this parent's own privacy level. */
   summary: string;
-  /** When it starts, in the family's timezone (inviteWhenLabel). */
+  /** When it starts, English fact label (inviteWhenLabel). The model restates it. */
   when: string;
   /** The absolute per-event ICS link. The model never sees this. */
   url: string;
+  /** The event start. The time fact is this instant, not the English label. */
+  startsAt: Date;
+  /** The parent's zone, so the clock is the one they were told. */
+  timeZone: string;
+  /** The family's language tag. Null: the skill writes English. */
+  language: string | null;
 }
 
 export type CalendarInviteRefusal =
   | 'empty'
-  | 'over_segment_cap'
   | 'carries_link'
   | 'link_missing'
   | 'link_repeated'
   | 'link_damaged'
   | 'stray_slot'
-  | 'not_a_sentence'
-  | 'third_person_self'
-  | 'first_person_plural'
   | 'summary_missing'
   | 'when_missing'
   | 'invented_number';
 
-/**
- * Narrow fold for a label the model must echo: case, whitespace, dash/quote fold,
- * and `a.m.` / `p.m.` written as `am` / `pm`. Not a reordering of the day or the time.
- */
-function foldedLabel(text: string): string {
-  return plainText(text)
-    .toLowerCase()
-    .replace(/\ba\.m\./g, 'am')
-    .replace(/\bp\.m\./g, 'pm')
-    .replace(/\s+/g, ' ')
-    .trim();
+interface ZonedClock {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
 }
 
-/** Digits still in the line after the summary and the when label are removed. */
-function digitsOutsideLabels(body: string, request: CalendarInviteVoiceRequest): string[] {
-  let rest = foldedLabel(body);
-  const when = foldedLabel(request.when);
-  const summary = foldedLabel(request.summary);
-  if (when) rest = rest.split(when).join(' ');
-  if (summary) rest = rest.split(summary).join(' ');
-  return rest.match(/\d+/g) ?? [];
+interface StatedClock {
+  hour: number;
+  minute: number;
+}
+
+/** Longest name first so "juillet" wins over "jul". */
+const MONTH_NAMES: readonly [string, number][] = [
+  ['janvier', 1],
+  ['january', 1],
+  ['février', 2],
+  ['fevrier', 2],
+  ['february', 2],
+  ['juillet', 7],
+  ['september', 9],
+  ['septembre', 9],
+  ['november', 11],
+  ['novembre', 11],
+  ['december', 12],
+  ['décembre', 12],
+  ['decembre', 12],
+  ['october', 10],
+  ['octobre', 10],
+  ['august', 8],
+  ['août', 8],
+  ['aout', 8],
+  ['april', 4],
+  ['avril', 4],
+  ['march', 3],
+  ['mars', 3],
+  ['june', 6],
+  ['juin', 6],
+  ['july', 7],
+  ['jan', 1],
+  ['feb', 2],
+  ['mar', 3],
+  ['apr', 4],
+  ['may', 5],
+  ['mai', 5],
+  ['jun', 6],
+  ['jul', 7],
+  ['aug', 8],
+  ['sep', 9],
+  ['sept', 9],
+  ['oct', 10],
+  ['nov', 11],
+  ['dec', 12],
+];
+
+const MONTH_ALT = [...MONTH_NAMES]
+  .sort((a, b) => b[0].length - a[0].length)
+  .map(([name]) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .join('|');
+
+const MONTH_THEN_DAY = new RegExp(`\\b(${MONTH_ALT})\\.?\\s+(\\d{1,2})\\b`, 'giu');
+const DAY_THEN_MONTH = new RegExp(`\\b(\\d{1,2})\\s+(${MONTH_ALT})\\b`, 'giu');
+
+function monthNumber(name: string): number | undefined {
+  const key = name.toLowerCase().replace(/\./g, '');
+  return MONTH_NAMES.find(([n]) => n === key)?.[1];
+}
+
+export function eventClock(startsAt: Date, timeZone: string): ZonedClock {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(startsAt);
+  const num = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === type)?.value);
+  return {
+    year: num('year'),
+    month: num('month'),
+    day: num('day'),
+    hour: num('hour'),
+    minute: num('minute'),
+  };
+}
+
+function resolveHour(hour: number, ampm: string | undefined, cjk: 'am' | 'pm' | null): number {
+  let h = hour;
+  const mark = (ampm ?? '').toLowerCase().replace(/[\s.]/g, '');
+  const pm = mark.startsWith('p') || cjk === 'pm';
+  const am = mark.startsWith('a') || cjk === 'am';
+  if (pm && h < 12) h += 12;
+  else if (am && h === 12) h = 0;
+  return h;
+}
+
+function cjkMeridiem(text: string, index: number): 'am' | 'pm' | null {
+  const before = text.slice(Math.max(0, index - 4), index);
+  if (before.includes('下午') || before.includes('晚上')) return 'pm';
+  if (before.includes('上午')) return 'am';
+  return null;
+}
+
+/** Clocks the reply states: 10:30 AM, 10 h 30, 10時30分. */
+export function statedClocks(text: string): StatedClock[] {
+  const found: StatedClock[] = [];
+  for (const match of text.matchAll(
+    /\b(\d{1,2})\s*[:.]\s*(\d{2})\s*(a\s*\.?\s*m\.?|p\s*\.?\s*m\.?)?/gi,
+  )) {
+    const hour = resolveHour(Number(match[1]), match[3], cjkMeridiem(text, match.index ?? 0));
+    found.push({ hour, minute: Number(match[2]) });
+  }
+  for (const match of text.matchAll(/\b(\d{1,2})\s*h\s*(\d{2})\b/gi)) {
+    found.push({ hour: Number(match[1]), minute: Number(match[2]) });
+  }
+  for (const match of text.matchAll(/(\d{1,2})時(\d{2})分/g)) {
+    const hour = resolveHour(Number(match[1]), undefined, cjkMeridiem(text, match.index ?? 0));
+    found.push({ hour, minute: Number(match[2]) });
+  }
+  return found.filter((c) => c.hour >= 0 && c.hour <= 23 && c.minute >= 0 && c.minute <= 59);
+}
+
+function statedMonthDays(text: string): { month: number; day: number }[] {
+  const pairs: { month: number; day: number }[] = [];
+  const lower = text.toLowerCase();
+  MONTH_THEN_DAY.lastIndex = 0;
+  DAY_THEN_MONTH.lastIndex = 0;
+  for (const match of lower.matchAll(MONTH_THEN_DAY)) {
+    const month = monthNumber(match[1] ?? '');
+    if (month) pairs.push({ month, day: Number(match[2]) });
+  }
+  for (const match of lower.matchAll(DAY_THEN_MONTH)) {
+    const month = monthNumber(match[2] ?? '');
+    if (month) pairs.push({ month, day: Number(match[1]) });
+  }
+  for (const match of text.matchAll(/(\d{1,2})月(\d{1,2})日/g)) {
+    pairs.push({ month: Number(match[1]), day: Number(match[2]) });
+  }
+  return pairs;
+}
+
+function clockMatches(stated: StatedClock, event: ZonedClock): boolean {
+  return stated.hour === event.hour && stated.minute === event.minute;
+}
+
+/**
+ * The time fact. A stated clock must be the event's own start. A stated day or
+ * month, when the reply gives one, must be that start too. The English `when`
+ * label is not required.
+ */
+export function timeFactMissing(body: string, startsAt: Date, timeZone: string): boolean {
+  const scan = body.split(INVITE_LINK_SLOT).join(' ');
+  const event = eventClock(startsAt, timeZone);
+  const clocks = statedClocks(scan);
+  if (clocks.length === 0 || clocks.some((c) => !clockMatches(c, event))) return true;
+  const slash = [...scan.matchAll(/\b(\d{1,2})\/(\d{1,2})\b/g)];
+  if (
+    slash.some((match) => {
+      const a = Number(match[1]);
+      const b = Number(match[2]);
+      const asMonthDay = a === event.month && b === event.day;
+      const asDayMonth = a === event.day && b === event.month;
+      return !asMonthDay && !asDayMonth;
+    })
+  ) {
+    return true;
+  }
+  return statedMonthDays(scan).some((pair) => pair.month !== event.month || pair.day !== event.day);
+}
+
+function allowedDigits(summary: string, event: ZonedClock): Set<string> {
+  const allowed = new Set<string>();
+  for (const n of summary.match(/\d+/g) ?? []) allowed.add(n);
+  const hour12 = event.hour % 12 || 12;
+  for (const n of [event.year, event.month, event.day, event.hour, hour12, event.minute]) {
+    allowed.add(String(n));
+    allowed.add(String(n).padStart(2, '0'));
+  }
+  return allowed;
 }
 
 export function calendarInviteRefusals(
@@ -88,34 +249,23 @@ export function calendarInviteRefusals(
   if (!request.url || slotCount === 0) found.push('link_missing');
   if (slotCount > 1) found.push('link_repeated');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
-  if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
-  // Fold both sides: a child name arrives with an em dash, and plainText has already
-  // folded the model's echo to a hyphen. Comparing the raw summary would refuse the
-  // only wording that can go out.
-  const summary = foldedLabel(request.summary);
-  if (summary === '' || !foldedLabel(body).includes(summary)) found.push('summary_missing');
-  // The when label has to appear as given. A bag of its digits would accept
-  // "Jul 10 at 23:30" for "Jul 23 at 10:30".
-  const when = foldedLabel(request.when);
-  if (when === '' || !foldedLabel(body).includes(when)) found.push('when_missing');
-  if (digitsOutsideLabels(body, request).length > 0) found.push('invented_number');
+  if (!body.includes(request.summary)) found.push('summary_missing');
+  if (timeFactMissing(body, request.startsAt, request.timeZone)) found.push('when_missing');
+  const rest = body.split(request.summary).join(' ').split(INVITE_LINK_SLOT).join(' ');
+  const allowed = allowedDigits(request.summary, eventClock(request.startsAt, request.timeZone));
+  if ((rest.match(/\d+/g) ?? []).some((n) => !allowed.has(n))) found.push('invented_number');
   if (slotCount === 1 && request.url && !LINK_SHAPE.test(body)) {
-    const rest = body.replace(INVITE_LINK_SLOT, '');
-    if (/\[\[[^\]]*\]\]/.test(rest)) found.push('stray_slot');
+    const withoutSlot = body.replace(INVITE_LINK_SLOT, '');
+    if (/\[\[[^\]]*\]\]/.test(withoutSlot)) found.push('stray_slot');
     const filled = fillCalendarInvite(body, request.url);
     if (!filled.includes(request.url)) found.push('link_damaged');
-    if (smsEncoding(filled) !== 'gsm7' || smsSegments(filled) > MAX_INVITE_SEGMENTS) {
-      found.push('over_segment_cap');
-    }
   }
   return found;
 }
 
-/** The wire body: the placeholder replaced by the exact url, then GSM-folded. */
+/** The wire body: the placeholder replaced by the exact url. The model's words stay. */
 export function fillCalendarInvite(body: string, url: string): string {
-  return gsmSafe(body.replace(INVITE_LINK_SLOT, url));
+  return body.replace(INVITE_LINK_SLOT, url);
 }
 
 export interface RejectedCalendarInvite {
@@ -131,9 +281,8 @@ export function calendarInviteUserMessage(
   const base = {
     summary: request.summary,
     when: request.when,
+    language: request.language,
     linkSlot: INVITE_LINK_SLOT,
-    urlChars: request.url.length,
-    maxSegments: MAX_INVITE_SEGMENTS,
   };
   return JSON.stringify(rejected.length === 0 ? base : { ...base, rejected });
 }
@@ -169,8 +318,8 @@ function deferred(reason: CalendarInviteDeferral, detail?: string): CalendarInvi
 }
 
 /**
- * Structural gate over one model write. `accepted` is the wire body (link filled).
- * A refusal keeps the pre-fill text, so a retry never shows the model the url.
+ * Fact gate over one model write. `accepted` is the wire body (link filled, words
+ * unchanged). A refusal keeps the pre-fill text, so a retry never shows the model the url.
  */
 export function prepareCalendarInvite(
   raw: string,
@@ -178,7 +327,7 @@ export function prepareCalendarInvite(
 ):
   | { status: 'accepted'; body: string }
   | { status: 'refused'; text: string; problems: CalendarInviteRefusal[] } {
-  const text = plainText(raw);
+  const text = raw.trim();
   const problems = calendarInviteRefusals(text, request);
   if (problems.length > 0) return { status: 'refused', text, problems };
   return { status: 'accepted', body: fillCalendarInvite(text, request.url) };
@@ -210,7 +359,7 @@ export function createCalendarInviteVoice(client: () => AgentClient): CalendarIn
             userMessage: calendarInviteUserMessage(request, rejected),
             toolName: 'calendar_invite',
             toolDescription:
-              'Return the one short text telling the parent the event is on the calendar, with the link placeholder where the tap-to-add link goes.',
+              'Return the text Hale sends, with the link placeholder where the tap-to-add link goes.',
             inputJsonSchema: textJsonSchema,
             schema: textSchema,
             maxTokens: MAX_TOKENS,

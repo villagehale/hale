@@ -1,10 +1,10 @@
+import { smsSegments } from '~/lib/channel/sms-segments';
 import type {
   ChannelKind,
   LoopMessage,
   RenderedContent,
   TemplateRenderer,
 } from '~/lib/channel/types';
-import { gsmSafe } from '../weekly-plan/core';
 
 /**
  * The calendar invite as a TEXT: one line, one link, tap to add.
@@ -12,15 +12,11 @@ import { gsmSafe } from '../weekly-plan/core';
  * The words are the model's (lib/loop/voice/calendar-invite-voice.ts), always. There is
  * no fixed confirmation: when that stage defers, the caller sends nothing and names the
  * deferral (calendar-invite.ts `compose_deferred`), so this renderer only ever sees a
- * composed line that already carries the per-event ICS url. Folded through `gsmSafe`
- * on the way out, the same way the cancellation it pairs with is folded.
+ * composed line that already carries the per-event ICS url.
  *
- * The fold is load-bearing. The descriptor arrives at runtime from a family_events row,
- * and `eventDescriptor` attributes a title to its child with an em dash ("Maya — Swim
- * class") at any name level above 'generic'. One character outside GSM-7 re-encodes the
- * whole body as UCS-2. Folded, not stripped: the dash becomes a hyphen, so a parent who
- * turned names on still reads the name. The link is untouched by the fold (a base64url
- * token is hyphen-minus and underscore, both GSM-7).
+ * The model's words are not folded. An accent or another script has to reach the phone
+ * as written. A line that needs more than one SMS segment is split here, at send, into
+ * ordered texts. The link is one token, so a split never cuts it in half.
  *
  * `sms-copy-encoding.test.ts` scans this file. A fixed parent-facing sentence does not
  * belong here; the model writes the line, or nothing is sent.
@@ -28,7 +24,7 @@ import { gsmSafe } from '../weekly-plan/core';
 
 export const CALENDAR_INVITE_SMS_TEMPLATE_KEY = 'calendar_invite_sms';
 
-/** "Wed, Jul 22 at 10:30 AM", in the family's own zone. */
+/** "Wed, Jul 22 at 10:30 AM", in the family's own zone. A fact for the model, not a sentence Hale sends. */
 export function inviteWhenLabel(startsAt: Date, timeZone: string): string {
   const day = new Intl.DateTimeFormat('en-US', {
     weekday: 'short',
@@ -57,11 +53,32 @@ export interface CalendarInviteSmsPayload {
 }
 
 /**
- * The whole body, link included. The composer filled the link; folding here is the
- * alphabet the carrier is billed on, and it does not touch a base64url token.
+ * Split a long text into sendable parts. Each part fits one segment when the words
+ * allow it. A token longer than one segment (the link, under UCS-2) stays whole.
  */
-export function calendarInviteSmsText(payload: CalendarInviteSmsPayload): string {
-  return gsmSafe(payload.line);
+export function splitInviteSms(text: string): string[] {
+  const trimmed = text.trim();
+  if (trimmed === '') return [];
+  if (smsSegments(trimmed) <= 1) return [trimmed];
+  const words = trimmed.split(/\s+/);
+  const parts: string[] = [];
+  let current = '';
+  const push = (part: string) => {
+    if (part !== '') parts.push(part);
+  };
+  for (const word of words) {
+    const next = current === '' ? word : `${current} ${word}`;
+    if (smsSegments(next) <= 1) {
+      current = next;
+      continue;
+    }
+    push(current);
+    current = '';
+    if (smsSegments(word) <= 1) current = word;
+    else push(word);
+  }
+  push(current);
+  return parts;
 }
 
 export function asCalendarInviteSmsPayload(
@@ -93,9 +110,12 @@ export const calendarInviteSmsRenderer: TemplateRenderer = {
     if (channel !== 'sms') {
       throw new Error(`calendar invite sms: no ${channel} form of the tap-to-add link`);
     }
+    const line = asCalendarInviteSmsPayload(message.payload).line.trim();
+    const texts = splitInviteSms(line);
     return {
       kind: 'sms',
-      text: calendarInviteSmsText(asCalendarInviteSmsPayload(message.payload)),
+      text: texts.join('\n\n'),
+      ...(texts.length > 1 ? { texts } : {}),
     };
   },
 };

@@ -7,7 +7,7 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, asc, eq, gt, gte, inArray, isNotNull, like, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, like, or, sql } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
 import { hadGroupPlanLink } from '~/lib/channel/group-plan/send';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
@@ -148,7 +148,8 @@ interface InviteJob {
  * Whether this parent was already texted this revision of the tap-to-add link.
  * Checked BEFORE the model is asked, so a re-drive costs nothing once it has landed.
  *
- * Dispatch stores `${dedupeKey}:sms`. The match is that exact key: a prefix would
+ * A single send stores `${dedupeKey}:sms`. A line split at send stores
+ * `${dedupeKey}:sms:0` for the first part. Both are exact keys: a prefix would
  * treat revision 1 (`…:1:P`) as revision 10 (`…:10:P`).
  */
 async function alreadyTextedThisLink(
@@ -166,12 +167,20 @@ async function alreadyTextedThisLink(
         eq(m.familyId, familyId),
         eq(m.parentUserId, parentUserId),
         eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
-        eq(m.dedupeKey, `${dedupeKey}:sms`),
+        or(eq(m.dedupeKey, `${dedupeKey}:sms`), eq(m.dedupeKey, `${dedupeKey}:sms:0`)),
         inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     )
     .limit(1);
   return rows.length > 0;
+}
+
+async function familyLanguage(database: Database, familyId: string): Promise<string> {
+  const [row] = await database
+    .select({ primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return row?.primaryLanguage ?? 'en';
 }
 
 /**
@@ -187,6 +196,7 @@ async function textOneParent(
   job: InviteJob,
   parent: InvitedParent,
   now: Date,
+  language: string,
 ): Promise<CalendarInviteParentOutcome> {
   const composed = await composeEventLink(
     {
@@ -206,7 +216,14 @@ async function textOneParent(
   }
 
   const when = inviteWhenLabel(composed.startsAt, parent.timezone);
-  const voiced = await voice.compose({ summary: composed.summary, when, url: composed.url });
+  const voiced = await voice.compose({
+    summary: composed.summary,
+    when,
+    url: composed.url,
+    startsAt: composed.startsAt,
+    timeZone: parent.timezone,
+    language,
+  });
   // No fixed fallback: a deferred compose sends nothing and is named back, so the
   // confirmation is never a canned line (Barton: the model writes it, or nothing goes).
   if (voiced.status !== 'composed') {
@@ -397,10 +414,13 @@ export function createCalendarInviteSender(
         familyEventId: request.familyEventId,
         method: request.method,
       };
+      const language = await familyLanguage(database, request.familyId);
       const outcomes: CalendarInviteParentOutcome[] = [];
       for (const parent of parents) {
         if (request.method === 'REQUEST') {
-          outcomes.push(await textOneParent(database, ports, deps.inviteVoice, job, parent, now));
+          outcomes.push(
+            await textOneParent(database, ports, deps.inviteVoice, job, parent, now, language),
+          );
         } else {
           outcomes.push(await cancelOneParent(database, ports, deps.cancelVoice, job, parent, now));
         }
