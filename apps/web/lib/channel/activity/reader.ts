@@ -1,6 +1,6 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
-import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
 /**
@@ -183,10 +183,19 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
             eq(schema.familyMemoryFacts.familyId, familyId),
             inArray(schema.familyMemoryFacts.factType, [...FIT_FACT_TYPES]),
             isNull(schema.familyMemoryFacts.validUntil),
+            // A passing question (`one_off`) is not a family preference (Devin, #980).
+            ne(schema.familyMemoryFacts.memoryKind, 'one_off'),
             or(
               isNull(schema.familyMemoryFacts.expiresAt),
               gt(schema.familyMemoryFacts.expiresAt, now),
             ),
+            // Teen facts are dropped in SQL so they never eat the LIMIT (Devin, #980).
+            teenIds.size > 0
+              ? or(
+                  isNull(schema.familyMemoryFacts.childId),
+                  notInArray(schema.familyMemoryFacts.childId, [...teenIds]),
+                )
+              : undefined,
           ),
         )
         .orderBy(
