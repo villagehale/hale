@@ -13,7 +13,11 @@ import {
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
 import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
-import { approvalForCalendarYes, questionsForCalendarReader } from '~/lib/channel/calendar-ask';
+import {
+  approvalForCalendarYes,
+  pairedDraftForCalendarNo,
+  questionsForCalendarReader,
+} from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
@@ -1021,6 +1025,7 @@ async function routeChannelMessageInner(
           parentUserId: job.parent_user_id,
           now,
           channelMessageId: job.channel_message_id,
+          surface: 'group',
         });
         return all.filter((question) => question.kind === 'approval' && ids.has(question.id));
       })();
@@ -1870,6 +1875,50 @@ async function resolveNaturalReply(
       deps.log.error(
         { detail: err instanceof Error ? err.constructor.name : 'unknown' },
         'channel router: calendar ask approved, offer not released',
+      );
+    }
+  }
+  // A NO to that same ask declines the draft too. The offer handler owns the NO
+  // (so the offer closes). The approval handler declines the draft and sends
+  // nothing. The offer is released here as well, so a missing receipt cannot
+  // leave it standing for a later YES.
+  const pairedDraft = pairedDraftForCalendarNo(questions, reading);
+  if (offerId && pairedDraft && verdict.outcome === 'declined') {
+    const approval = deps.handlers.find((handler) => handler.resolves?.has('approval'));
+    if (!approval) {
+      deps.log.error({}, 'channel router: calendar ask declined, approval handler absent');
+    } else {
+      try {
+        const declined = await approval.handle(deps.database, {
+          ...turn,
+          resolved: {
+            kind: 'approval',
+            questionId: pairedDraft,
+            polarity: 'no',
+            confidence: reading.confidence,
+          },
+        });
+        deps.log.info(
+          {
+            claimed: declined.claimed,
+            outcome: declined.claimed ? declined.outcome : 'unclaimed',
+          },
+          'channel router: calendar ask declined, draft declined',
+        );
+      } catch (err) {
+        deps.log.error(
+          { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+          'channel router: calendar ask declined, draft not declined',
+        );
+      }
+    }
+    try {
+      const released = await expireEmailAlertOffer(deps.database, { offerId, now: turn.now });
+      deps.log.info({ released }, 'channel router: calendar ask declined, offer released');
+    } catch (err) {
+      deps.log.error(
+        { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+        'channel router: calendar ask declined, offer not released',
       );
     }
   }

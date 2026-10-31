@@ -4423,6 +4423,62 @@ describe('the weekday-care answer', () => {
     expect(h.transport.sent).toEqual([]);
   });
 
+  it('declines the paired calendar draft when NO answers the coach offer', async () => {
+    const declined: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true },
+      ],
+      latestUndoable: async () => null,
+      approve: async () => ({ ok: true as const }),
+      decline: async (_db: unknown, args: { actionId: string }) => {
+        declined.push(args.actionId);
+        return { ok: true as const };
+      },
+      undo: async () => ({ ok: true as const }),
+    };
+    const coach = fakeCoach();
+    const offerHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
+    };
+    const h = harness({
+      context: { body: 'NO' },
+      coach,
+      handlers: [offerHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([
+        {
+          id: 'offer-1',
+          kind: 'email_alert_add',
+          description: 'An offer to put Trunk or Treat on your week',
+          subject: 'putting Trunk or Treat on your week',
+          answerable: { yes: true, no: true },
+          askedAt: NOW,
+          solicited: true,
+          approvesActionId: 'a-1',
+        },
+      ]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'no' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(declined).toEqual(['a-1']);
+    expect(coach.calls).toBe(0);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'email_alert_add' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
   it('a yes to the finder ask searches and does not write a care fact', async () => {
     const searches: Array<{ familyId: string; prompt: string }> = [];
     const { h, written, coach } = careHarness({

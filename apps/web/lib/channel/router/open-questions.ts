@@ -556,7 +556,19 @@ export function soleOpenKind(
 export interface OpenQuestionReader {
   open(
     database: Database,
-    input: { familyId: string; parentUserId: string; now: Date; channelMessageId?: string },
+    input: {
+      familyId: string;
+      parentUserId: string;
+      now: Date;
+      channelMessageId?: string;
+      /**
+       * Where the reply is being read. A draft is hidden behind a calendar offer
+       * only on the direct thread, which is where that offer was made. A group
+       * turn keeps the draft: the offer is private, and the group still has to
+       * be able to approve the plan it was asked.
+       */
+      surface?: 'direct' | 'group';
+    },
   ): Promise<OpenQuestion[]>;
 }
 
@@ -906,17 +918,22 @@ export function createOpenQuestionReader(
       // asks about is that offer, not a second question. Leaving both up makes a bare
       // YES ambiguous, the approval handler declines to claim, and the coach drafts
       // the same add again.
+      //
+      // Only on the thread where the offer was made. A group-plan draft with the same
+      // title stays on the group list, or the group's YES has nothing to approve.
       const approvesByOffer = new Map<string, string>();
       const hiddenDrafts = new Set<string>();
-      for (const offer of emailOffers) {
-        if (!offer.title || !offer.startsAt) continue;
-        const match = matchApprovedCalendarAdd(approvals, {
-          title: offer.title,
-          startsAt: offer.startsAt,
-        });
-        if (!match || hiddenDrafts.has(match.actionId)) continue;
-        hiddenDrafts.add(match.actionId);
-        approvesByOffer.set(offer.id, match.actionId);
+      if (input.surface !== 'group') {
+        for (const offer of emailOffers) {
+          if (!offer.title || !offer.startsAt) continue;
+          const match = matchApprovedCalendarAdd(approvals, {
+            title: offer.title,
+            startsAt: offer.startsAt,
+          });
+          if (!match || hiddenDrafts.has(match.actionId)) continue;
+          hiddenDrafts.add(match.actionId);
+          approvesByOffer.set(offer.id, match.actionId);
+        }
       }
       const questions: OpenQuestion[] = namedApprovals(
         approvals.filter((action) => !hiddenDrafts.has(action.actionId)),

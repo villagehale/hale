@@ -4,6 +4,7 @@ import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import {
   approvalForCalendarYes,
   matchApprovedCalendarAdd,
+  pairedDraftForCalendarNo,
   questionsForCalendarReader,
   unapprovedCalendarAddIds,
 } from './calendar-ask';
@@ -151,8 +152,32 @@ describe('approvalForCalendarYes', () => {
   });
 });
 
+describe('pairedDraftForCalendarNo', () => {
+  it('names the draft a NO to the matched offer also declines', () => {
+    const reading = {
+      status: 'resolved' as const,
+      questionId: 'offer-1',
+      kind: 'email_alert_add' as const,
+      polarity: 'no' as const,
+      confidence: 'high' as const,
+    };
+    expect(pairedDraftForCalendarNo([offer('offer-1', { approvesActionId: 'a-1' })], reading)).toBe(
+      'a-1',
+    );
+    expect(
+      pairedDraftForCalendarNo([offer('offer-1', { approvesActionId: 'a-1' })], {
+        ...reading,
+        polarity: 'yes',
+      }),
+    ).toBeNull();
+    expect(pairedDraftForCalendarNo([offer('offer-1')], reading)).toBeNull();
+  });
+});
+
 describe('unapprovedCalendarAddIds', () => {
-  it('names the one unapproved draft with that title', () => {
+  const zone = 'America/Toronto';
+
+  it('retires the lone same-title draft when the start is the same local day', () => {
     expect(
       unapprovedCalendarAddIds(
         [
@@ -160,17 +185,27 @@ describe('unapprovedCalendarAddIds', () => {
             id: 'a-1',
             actionType: 'calendar_add',
             reviewerApproved: false,
-            occasion: { title: 'Trunk or Treat', startsAt: START },
-          },
-          {
-            id: 'a-2',
-            actionType: 'calendar_add',
-            reviewerApproved: true,
-            occasion: { title: 'Trunk or Treat', startsAt: START },
+            occasion: { title: 'Trunk or Treat', startsAt: '2026-10-08T16:00:00.000Z' },
           },
         ],
-        { title: 'Trunk or Treat', startsAt: 'not-a-date' },
+        { title: 'Trunk or Treat', startsAt: '2026-10-08T16:01:00.000Z', timeZone: zone },
       ),
     ).toEqual(['a-1']);
+  });
+
+  it('keeps a Sunday draft when the offer is Thursday', () => {
+    expect(
+      unapprovedCalendarAddIds(
+        [
+          {
+            id: 'sunday',
+            actionType: 'calendar_add',
+            reviewerApproved: false,
+            occasion: { title: 'Gymnastics', startsAt: '2026-10-11T16:00:00.000Z' },
+          },
+        ],
+        { title: 'Gymnastics', startsAt: '2026-10-08T16:00:00.000Z', timeZone: zone },
+      ),
+    ).toEqual([]);
   });
 });
