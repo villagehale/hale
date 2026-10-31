@@ -772,11 +772,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   linq_group_background_set: {
-    sentence: 'Hale gave your new family group a calm background colour',
+    sentence: 'Hale set a background on your new family group',
     family: 'done',
   },
   linq_group_background_parent_set: {
-    sentence: 'Someone in your family group changed its background, so Hale will leave it as it is',
+    sentence: 'Someone in your family group changed its background',
     family: 'note',
   },
   linq_group_left_on_ask: {
