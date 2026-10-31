@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The text says only 'Reminder set!' and omits that Dan is the one being reminded and the time of 5:30 PM today, so both mustSay items are missing."
+  }
+}

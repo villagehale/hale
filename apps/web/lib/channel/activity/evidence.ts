@@ -81,6 +81,9 @@ export interface GroundingEvidence {
    * it is unrepresentable once the text is indexed by the URL it came off.
    */
   pages: ReadonlyArray<{ url: string; text: string }>;
+  /** VIL-499 · Every web_search result this turn, url and title, so a pick whose page was
+   * found but not opened can still cite the result it came off. Never shown to a model. */
+  searchHits?: ReadonlyArray<{ url: string; title: string }>;
   /**
    * What the turn SAID and ASKED FOR — its prose and its tool arguments, with no page
    * text in it.
@@ -152,6 +155,7 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
   let pagesRefused = 0;
   const urlsRead: string[] = [];
   const pages: Array<{ url: string; text: string }> = [];
+  const searchHits: Array<{ url: string; title: string }> = [];
   const prose: string[] = [];
   const notes: string[] = [];
 
@@ -167,7 +171,17 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
       continue;
     }
     if (block.type === 'web_search_tool_result') {
-      if (Array.isArray(block.content)) searchResults += block.content.length;
+      if (Array.isArray(block.content)) {
+        searchResults += block.content.length;
+        for (const hit of block.content as Array<{ url?: unknown; title?: unknown }>) {
+          if (typeof hit?.url === 'string' && hit.url !== '') {
+            searchHits.push({
+              url: hit.url,
+              title: typeof hit.title === 'string' ? hit.title : '',
+            });
+          }
+        }
+      }
       continue;
     }
     const fetched = fetchBlock(block);
@@ -197,6 +211,7 @@ export function readEvidence(now: Date, content: Anthropic.ContentBlock[]): Grou
     pagesRefused,
     urlsRead,
     pages,
+    searchHits,
     prose: prose.join('\n').trim(),
     notes: notes.join('\n').trim(),
   };

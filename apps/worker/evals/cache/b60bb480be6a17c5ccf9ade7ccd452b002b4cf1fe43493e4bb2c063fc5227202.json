@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgZPG6hW9TUeaXKgnaAK8",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSswgKEAgTGAI4AUIIdGhpbmtpbmcSDA2QYBjPadUI2rQULRoMfzMF6fsgYSHVYQgFIjAa0hulHmxeDVyinQf314v51bpxb0g59BFLNK61KFE8XopHyU6tgbbf45D1iwC/fuoq0AdXBFYBphRubbnykkXngQ00neYDg2zUIld8d/GQWhgtVrq4aAkhOchq8Ts285BCcOSWy7jdWcT5GbslU7y6UKkxuh6W6cFFknpg47kF6/X8IE++/bWSAUYlNTZQ+Fm7f0qQ2I2lZ+2sjj75knXyiePYgELe/dlll6HHrey3UjiOj8RuKdeCr2RqyZhdZPC2MqOKMIlIP1dsPLB58e+pn15DfOLYWbSBQ8QptAfJeqWe3IBFKh384z2ZdLhyZ8R6eLQKNhjiYn4pUGjSQl+9Ue9uiV5NImIzfzNXYHAEzmMsvb6F7fsusBnZckdO5UFYjojVvioQZ2n3NlWNHYpZessG+MzjARmVyFAcJWI8i7wPm13DrC+EdyyduBvJrACjsnnHFP5I3ZKFRwIYRjuf7x+cKjWQlqwcktaYZz43zgKISN9fh4UyE0bLHxpwpJUJ0pb4+4mm4+gsT4D7yB/cCvlXmP4PGdmVk+FkQFq4ieAc9I4iJHU0Kw6ESsg6xvLAlSGi6IZNw8RRFyId3/RE6srAfCq1KVKsc/ez1VOp3gqgULgbxbapySS74/dDl7K0tFfd5wVgsvesC9fbDa/iwSUh+CS6XawUwn4fRHYwb43yfYDVkClVcIEeEHOKO2+0z6+v/zUhDTh4XXN1r8VY0x3gDS6EE3uKBLvTvsC2u2cplaV4f7ST1a3xDlPSw7Wi5WOvqM6UwiT+QfeRjLJe2eHBl5dT4YQD7zT0Pj1Fny5D9d7KtEco2NbMhHD0qhuOI3yTE5l5deS2qNE71lJBjCK32Zh/YXEmDnC2ozJ2NyETWUlMF5taGal6+0OLzPM71zvADzfwy8K4umxhvGpP3RXXNORhQI63ZynmzIRuvAJ//EOVIu3/1PM2r5EhLmLQTHTxGoFON8o79SvpnUAI1vPMMBNuWnP76ya5rqCTSs1xUgDV1FJqVg+kVlsoTppSMKYHwlprvGwCX+SiEKFNqUTwLiKm+1tlCgG1squs9bkemo1vZXXd80HAnJT5WPIny8ZxojaGnSf+uLjybb0paf0XZgKe1a4kz/HJ9rJj0OKSjFtdmK5xaiLxVBjkv5YSeed+2+BHdkhyr5XatEQ/rhirF6dakaRUi08o7UUg1Zt8U2QdIrslSYL0Doct3JKDo2QeVJd18quWwiajvIBBPbm1R/X6nFCqIsirRt1qMJlB0sBBfqjcn0lQLDNw1CFQBiFs6aUsa6ZIKw+MxTGDb+g+owEUUiGH4lzj5JWXjLwEsvYrP6yE71Zt+k0JeDpOdb1j9yvY5D2sKQl5+lMv08FtGAE="
+      },
+      {
+        "type": "text",
+        "text": "Your week already has a park: soccer practice at Cedarvale Park, Sat 10:00am. If you want somewhere else outdoors, Riverdale Farm is a free outdoor farm, open daily (Sun, Aug 9 is the date I have). It's a farm rather than a park, but it's good for running around. [link-b8b9f6]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1222,
+      "cache_read_input_tokens": 21795,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1222,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 263,
+      "output_tokens_details": {
+        "thinking_tokens": 149
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2675
+}

@@ -1,0 +1,15 @@
+{
+  "value": {
+    "intent": "rsvp",
+    "planTitle": null,
+    "startsAt": null,
+    "location": null,
+    "deadline": null,
+    "response": "yes",
+    "headcount": 3,
+    "householdLabel": "the Chens",
+    "coversNames": [],
+    "confidence": "high"
+  },
+  "latencyMs": 1671
+}

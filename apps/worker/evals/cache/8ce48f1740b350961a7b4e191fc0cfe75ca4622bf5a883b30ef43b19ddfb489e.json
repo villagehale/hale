@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message uses only the handed summary placeholder 'Your activity' and the given time, states it is cancelled, and suggests removing it from the calendar. No invented reason, no extra detail about a child, no 'we', no emoji or link. Two calm sentences in appropriate voice.",
+    "score": 5
+  }
+}

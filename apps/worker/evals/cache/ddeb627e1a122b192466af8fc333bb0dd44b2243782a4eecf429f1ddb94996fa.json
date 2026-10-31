@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the facts at all. The only event is a Piano lesson today at 7:00-8:00 PM at Ms. Chen studio, but the text talks about \"Jour de congé at 3:00\" and a day off tomorrow, which are not in the facts (invented event and time). It omits the piano lesson, its start, end, and venue. It implies breathing room/a day off when a timed event exists, and it is in English/French rather than the requested Chinese.",
+    "score": 1
+  }
+}

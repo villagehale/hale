@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are dropped. Library story time has a start (上午11:00) but its end (11:45 AM), venue name (Georgetown library) and address (9 Church St) are missing. Soccer has a start and end (下午5:30-6:30) but its venue name (Riverside Field) and address (22 Park Rd) are missing. The date is given as 10月26日 rather than 'tomorrow', which is true, and the AM/PM markers are correct, but the missing end, venue and address facts make this a fact failure. Bold is none, which is fine.",
+    "score": 1
+  }
+}

@@ -132,7 +132,18 @@ export type CalendarInviteReport =
    * its invite (audit P1-4) — sending again here would double the parent's text. A
    * named skip (rule #11), recorded in the execution detail like every other leg. */
   | { status: 'skipped_already_written' }
-  | { status: 'reported'; parents: CalendarInviteParentOutcome[] };
+  | {
+      status: 'reported';
+      parents: CalendarInviteParentOutcome[];
+      /** VIL-443: a plan the family group made whose group could not be told (its
+       * audience refused, the send was held for anything but the night, or it did not
+       * land), so each parent got their own. Names why. */
+      groupNotTold?: string;
+    }
+  /** VIL-443: a plan the family group made. Its one add-to-calendar link goes to that
+   * group instead of each parent's 1:1 thread; `outcome` names how that ended, and
+   * `held:quiet_hours` is a text waiting for the group's 08:00 re-drive. */
+  | { status: 'group_reported'; outcome: string };
 
 export interface CalendarInviteSender {
   send(request: CalendarInviteRequest): Promise<CalendarInviteReport>;

@@ -3,10 +3,9 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type {
   ExtractedEvent,
   ExtractionKind,
@@ -16,7 +15,9 @@ import type {
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { correlateExtraction } from '~/lib/sentinel/correlate';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
+import { type ScriptedNoticeWriter, scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { isStage } from '~/lib/testing/structured-reply';
 import {
   BOOKING_CONFIDENCE_FLOOR,
   bookingDraft,
@@ -129,6 +130,7 @@ interface Harness {
   ports: EmailAlertPorts;
   transport: FakeTransport;
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  writer: ScriptedNoticeWriter;
 }
 
 function harness(
@@ -148,10 +150,15 @@ function harness(
 ): Harness {
   const transport = new FakeTransport();
   const threaded: Harness['threaded'] = [];
+  const writer = scriptedNoticeWriter();
   return {
     transport,
     threaded,
+    writer,
     ports: {
+      familyChildren: writer.familyChildren,
+      writeNotice: writer.writeNotice,
+      parentLanguage: writer.parentLanguage,
       classify: async (envelope) => {
         const base = over.byMessage?.[envelope.messageId] ?? over.classification ?? classified();
         if (!over.correlate || base.extraction === null) return base;
@@ -659,6 +666,20 @@ describe('a provider cancellation closes what it cancelled', () => {
     expect(open.map((offer) => offer.title)).toEqual(['Skating Level 1']);
   });
 
+  it('closes nothing when the writer says the cancellation is not about the kids', async () => {
+    await booked();
+    for (const why of ['not_about_the_kids', 'unclear', 'unwritten'] as const) {
+      const h = cancellation('Swim Level 2');
+      h.ports.writeNotice = async () => ({ send: false, why });
+      await alert(h, `m-${why}`);
+      expect(h.transport.sent).toEqual([]);
+      await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toBeNull();
+    }
+    // The writer's yes is what closes it.
+    await alert(cancellation('Swim Level 2'), 'm-yes');
+    await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toEqual(NOW);
+  });
+
   it('leaves a different class from the same provider alone', async () => {
     await booked();
     await alert(cancellation('Skating Level 1'), 'm2');
@@ -785,7 +806,7 @@ describe('a cancellation the same sweep has already read', () => {
     ]);
 
     expect(h.transport.sent).toHaveLength(1);
-    expect(h.transport.sent[0]?.body).not.toContain("you're in");
+    expect(h.writer.seen.map((facts) => facts.email.kind)).toEqual(['cancellation']);
     await expect(bookingRows()).resolves.toEqual([]);
     await expect(offerRows()).resolves.toEqual([]);
   });
@@ -873,8 +894,8 @@ describe('the booking write', () => {
     await expect(bookingRows()).resolves.toHaveLength(0);
     await expect(offerRows()).resolves.toHaveLength(0);
     expect(h.transport.sent).toHaveLength(1);
-    // No row behind it, so no question in front of it.
-    expect(h.transport.sent[0]?.body).not.toContain('?');
+    // No row behind it, so the writer is told there is nothing to ask.
+    expect(h.writer.seen[0]?.offer).toBeNull();
   });
 
   it("folds the row's place through the same one function the offer row uses", async () => {
@@ -1064,8 +1085,8 @@ describe('the booking write', () => {
     const h = harness();
     await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
     await expect(bookingRows()).resolves.toHaveLength(0);
-    expect(h.transport.sent[0]?.body).toContain('Want me to add it to your week?');
-    expect(h.transport.sent[0]?.body).not.toContain('Want it on your calendar?');
+    expect(h.writer.seen[0]?.offer).toBe('add_to_week');
+    expect(h.writer.seen[0]?.email.kind).toBe('new_event');
   });
 
   it('counts a booking that never reached the decision as null, not as a refusal', async () => {
@@ -1173,7 +1194,7 @@ describe('record_failed', () => {
 });
 
 describe('the offer that must not be made twice', () => {
-  it('makes NO offer for a class already on the calendar, and stamps the booking with it', async () => {
+  it('sends NOTHING for a class already on the calendar, and still stamps the booking with it', async () => {
     // Through the REAL `loadCorrelationCandidates` and the REAL `correlateExtraction`:
     // the family said YES to the September announcement two weeks ago, the receipt
     // arrives now, and a second offer would place a second copy of one Saturday.
@@ -1190,13 +1211,15 @@ describe('the offer that must not be made twice', () => {
 
     const h = harness({ correlate: true });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'already_on_calendar',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
 
-    // No question, because no row would have been behind it.
-    expect(h.transport.sent[0]?.body).not.toContain('?');
+    // The family already holds it: a second text about it is the duplicate, and the
+    // receipt is still evidence the booking row is written from.
+    expect(h.writer.seen).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
     await expect(offerRows()).resolves.toHaveLength(0);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBe(event.id);
@@ -1231,7 +1254,8 @@ describe('the offer that must not be made twice', () => {
       going: 'going_dark',
     });
 
-    expect(h.transport.sent[0]?.body).toContain('Want it on your calendar?');
+    expect(h.writer.seen[0]?.offer).toBe('add_to_calendar');
+    expect(h.transport.sent[0]?.body).toContain('?');
     await expect(offerRows()).resolves.toHaveLength(1);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBeNull();

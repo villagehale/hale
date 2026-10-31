@@ -7,19 +7,21 @@ import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/cha
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
   configuredOutboundChannel,
+  outboundChatConfigured,
   readSendRefusal,
+  sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
-import { linqApiKey, linqGroupCoparentEnabled } from './config';
+import { linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
 import { namesTeen } from './kid-event';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Where a Hale-initiated message for this family goes.
@@ -567,7 +569,7 @@ export async function flushGroupDecisionSyncs(
         if (line) lines.push(line);
       } else if (row.decision === 'duty' && row.day && row.time) {
         const copy = copyLanguage(speech.language);
-        const fallback = copy
+        const plan = copy
           ? dutySyncLine(copy, {
               name: speech.name,
               activity: row.activity,
@@ -577,7 +579,7 @@ export async function flushGroupDecisionSyncs(
             })
           : null;
         const voiced =
-          fallback && copy
+          plan && copy
             ? await replyProse(
                 {
                   client: replyClient,
@@ -588,7 +590,8 @@ export async function flushGroupDecisionSyncs(
                   surface: 'duty',
                 },
                 {
-                  fallback,
+                  purpose: plan.purpose,
+                  questionAllowed: plan.questionAllowed,
                   facts: [name, row.activity, row.kid, row.day, row.time],
                 },
               )
@@ -685,7 +688,7 @@ export async function sendClaimedGroupLine(
   | 'not_sent'
   | 'group_audience_refused'
 > {
-  if (!linqApiKey()) return 'not_configured';
+  if (!outboundChatConfigured()) return 'not_configured';
   const [family] = await database
     .select({ linqGroupChatId: schema.families.linqGroupChatId })
     .from(schema.families)

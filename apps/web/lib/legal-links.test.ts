@@ -1,5 +1,5 @@
-import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement as h } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import nextConfig from '../next.config';

@@ -39,11 +39,14 @@ export interface ReminderPayload {
   /** CASL unsubscribe for the email leg; null only when email is not a target. */
   unsubscribeUrl: string | null;
   /**
-   * The whole text, written by the model from facts in the parent's language
-   * (loop/reminders/compose.ts). The renderer sends it as is: no lead, no event line,
-   * no appended link. A reminder whose text could not be written is never enqueued.
+   * The whole reminder, written by the model from facts in the parent's language
+   * (loop/reminders/compose.ts), as the texts it chose to send, in order (VIL-467).
+   * The renderer sends them as is: no lead, no event line, no appended link, no split
+   * or join. A reminder whose texts could not be written is never enqueued.
    */
-  text: string;
+  texts: string[];
+  /** VIL-474 · words from one of `texts` the writer chose to bold, or absent. */
+  bold?: string | null;
 }
 
 function isReminderEventView(value: unknown): value is ReminderEventView {
@@ -69,8 +72,19 @@ export function asReminderPayload(payload: Record<string, unknown>): ReminderPay
     throw new Error('reminder payload: malformed events');
   }
   if (!Array.isArray(payload.children)) throw new Error('reminder payload: missing children');
-  if (typeof payload.text !== 'string' || payload.text.trim() === '') {
-    throw new Error('reminder payload: missing text');
+  // A job enqueued before VIL-467 carries one `text`; it is the same reminder as one text.
+  const texts = Array.isArray(payload.texts)
+    ? payload.texts
+    : typeof payload.text === 'string'
+      ? [payload.text]
+      : null;
+  if (
+    texts === null ||
+    texts.length === 0 ||
+    !texts.every((t): t is string => typeof t === 'string' && t.trim() !== '')
+  ) {
+    throw new Error('reminder payload: missing texts');
   }
-  return payload as unknown as ReminderPayload;
+  const { text: _legacy, ...rest } = payload;
+  return { ...rest, texts } as unknown as ReminderPayload;
 }

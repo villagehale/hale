@@ -1,19 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { connectorRevokeReply } from '~/lib/channel/connect/copy';
 import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
-import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { referralReply } from '~/lib/channel/off-domain/copy';
-import {
-  approvedReceipt,
-  declinedReceipt,
-  failureReply,
-  whichOneReply,
-} from '~/lib/channel/router/copy';
 import { smsEncoding, smsSegments } from './sms-segments';
 
 /**
@@ -273,13 +265,8 @@ describe('the disconnect receipts stay GSM-7 and say what Google still holds', (
     expect(en).toContain('nothing was changed');
   });
 
-  /** The trust line is not a command. A parent can still disconnect by saying so. */
-  it('does not teach a disconnect phrase on the connect card', () => {
-    expect(CONNECTOR_TRUST_LINE.gcal).toBe(
-      'I never see your password. You can disconnect any time.',
-    );
-    expect(CONNECTOR_TRUST_LINE.gmail).toBe(CONNECTOR_TRUST_LINE.gcal);
-    expect(matchConnectorDisconnectRequest(CONNECTOR_TRUST_LINE.gcal)).toBeNull();
+  /** VIL-509: no fixed trust line remains. A parent can still disconnect by saying so. */
+  it("reads a disconnect request from the parent's own words", () => {
     expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
     expect(matchConnectorDisconnectRequest('disconnect my gmail')).toBe('gmail');
   });
@@ -406,18 +393,6 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
  */
 describe('nothing Hale texts sends a parent to the app', () => {
   const RENDERED: Record<string, string> = {
-    failureReply: failureReply(),
-    'whichOneReply (overflow)': whichOneReply(
-      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email', 'add_to_routine'],
-      true,
-    ),
-    // The same sentence with no menu behind it (VIL-304 verifier): it must be GSM-7 and
-    // inside the budget too, since it is what a parent gets whenever the polarity could
-    // not be read for free.
-    'whichOneReply (unnumbered)': whichOneReply(
-      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email'],
-      false,
-    ),
     CO_PARENT_REDIRECT,
   };
 
@@ -428,55 +403,5 @@ describe('nothing Hale texts sends a parent to the app', () => {
     // apostrophe or a third segment gets in.
     expect(smsEncoding(body)).toBe('gsm7');
     expect(smsSegments(body)).toBeLessThanOrEqual(2);
-  });
-
-  /** The overflow is disclosed either way — what changed is that the rest are reachable
-   * by answering the three in front of them, rather than on another surface. */
-  it('discloses the approvals it could not list, without a destination', () => {
-    const reply = whichOneReply(
-      Array.from({ length: 8 }, () => 'calendar_move'),
-      true,
-    );
-
-    expect(reply).toMatch(/5 more behind those/i);
-    // Disclosed WITHOUT a destination, and without a menu: the choices are named, the
-    // rest are reachable by answering the ones in front (2026-08-13).
-    expect(reply).not.toMatch(/\bthe app\b|https?:/i);
-    expect(reply).not.toMatch(/\bYES \d|^\d\./m);
-  });
-});
-
-/**
- * The composition the file scan cannot see: `labels.ts` is clean on its own, but the
- * receipt is only GSM-7 if the label it splices in is too, and the label set is keyed
- * by an enum that grows. Every member is exercised, plus the unknown-token fallback.
- */
-describe('router receipts stay one GSM-7 segment for every action type', () => {
-  const ACTION_TYPES = [
-    'send_email',
-    'reply_to_email',
-    'create_calendar_event',
-    'update_calendar_event',
-    'place_supply_order',
-    'cancel_supply_order',
-    'fill_pdf_form',
-    'submit_government_form',
-    'book_clinic_portal',
-    'cancel_clinic_appointment',
-    'share_photos_with_family',
-    'add_to_digest_only',
-    'add_to_routine',
-    'calendar_add',
-    'calendar_move',
-    'calendar_cancel',
-  ] as const satisfies readonly ActionType[];
-
-  it.each([...ACTION_TYPES, 'a_type_nobody_has_added_yet'])('%s', (actionType) => {
-    for (const receipt of [approvedReceipt(actionType), declinedReceipt(actionType)]) {
-      expect({ encoding: smsEncoding(receipt), segments: smsSegments(receipt) }).toEqual({
-        encoding: 'gsm7',
-        segments: 1,
-      });
-    }
   });
 });

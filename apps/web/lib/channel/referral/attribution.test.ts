@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Database } from '@hale/db';
-import { referralCode } from './code';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveReferrerFamilyId } from './attribution';
+import { referralCode } from './code';
 
 const KEY = Buffer.alloc(32, 3).toString('base64');
 const REFERRER = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';

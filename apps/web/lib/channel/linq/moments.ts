@@ -1,5 +1,7 @@
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
+import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
 import { parentTimeZoneForOffer } from '~/lib/integrations/email-alert-offer';
@@ -10,12 +12,15 @@ import {
   linqEffectHold,
   linqEffectsEnabled,
 } from './effect';
+import { type LinqStickerDecider, applyLinqSticker, linqStickersEnabled } from './sticker';
 import { applyLinqTapback } from './tapback';
 
 /**
  * The product moment on an iMessage reply: a tapback instead of a throwaway
- * ack, or (VIL-473, flag `LINQ_EFFECTS_ENABLED`) the reply sent with an
- * iMessage effect the model chose. A miss falls through and the text still
+ * ack, or (VIL-472, flag `LINQ_STICKERS_ENABLED`) a sticker the model chose,
+ * peeled onto the parent's message, or (VIL-473, flag `LINQ_EFFECTS_ENABLED`) the
+ * reply sent with an iMessage effect the model chose. At most one moment per reply:
+ * a peeled sticker means the reply goes plain. A miss falls through and the text still
  * goes out. SMS and email never call Linq from here. A year-find poll is not a
  * reply moment.
  */
@@ -35,6 +40,13 @@ export async function considerLinqReply(
     parentUserId: string;
     now: Date;
     fetch?: typeof fetch;
+    /** What the sticker read needs. Absent: no sticker is considered, and that is logged
+     * when the flag is on. */
+    sticker?: {
+      decider: LinqStickerDecider;
+      audience: 'direct' | 'group';
+      parentAttachments: readonly InboundMediaKind[];
+    };
     /** What the effect read needs. Absent: no effect is considered, and that is logged
      * when the flag is on. */
     effect?: {
@@ -66,6 +78,90 @@ export async function considerLinqReply(
     return { handled: true, channelMessageId, threadBody: null };
   }
 
+  const imessage = { ...args, route: args.route };
+  const sticker = await considerLinqSticker(database, imessage);
+  if (sticker.status === 'handled') return sticker.moment;
+  if (sticker.status === 'peeled') return { handled: false };
+
+  return considerLinqEffect(database, imessage);
+}
+
+type StickerOutcome =
+  | { status: 'none' }
+  | { status: 'peeled' }
+  | { status: 'handled'; moment: LinqMoment };
+
+async function considerLinqSticker(
+  database: Database,
+  args: Parameters<typeof considerLinqReply>[1] & {
+    route: Extract<ReplyRoute, { channel: 'imessage' }>;
+  },
+): Promise<StickerOutcome> {
+  if (!linqStickersEnabled()) return { status: 'none' };
+  const inboundMessageId = args.route.replyToMessageId;
+  if (!args.sticker || !inboundMessageId) {
+    console.info(
+      { reason: args.sticker ? 'no_inbound_message_id' : 'no_decider' },
+      'linq sticker: not considered',
+    );
+    return { status: 'none' };
+  }
+  // Stickers stack and a peel cannot be removed, so a re-driven turn whose reply failed
+  // after the peel must not peel a second one onto the same message.
+  const earlier = await database
+    .select({
+      templateKey: schema.channelMessages.templateKey,
+      providerMessageId: schema.channelMessages.providerMessageId,
+      familyId: schema.channelMessages.familyId,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, args.familyId),
+        eq(schema.channelMessages.providerMessageId, inboundMessageId),
+        eq(schema.channelMessages.templateKey, 'linq:sticker'),
+      ),
+    )
+    .limit(1);
+  if (
+    earlier.some(
+      (row) =>
+        row.templateKey === 'linq:sticker' &&
+        row.providerMessageId === inboundMessageId &&
+        row.familyId === args.familyId,
+    )
+  ) {
+    console.info({ reason: 'already_peeled' }, 'linq sticker: not considered');
+    return { status: 'none' };
+  }
+  const sticker = await applyLinqSticker({
+    decider: args.sticker.decider,
+    inboundMessageId,
+    read: {
+      audience: args.sticker.audience,
+      parentText: args.inboundBody,
+      parentAttachments: args.sticker.parentAttachments,
+      reply: args.outboundBody,
+    },
+    fetch: args.fetch,
+  });
+  if (sticker.status !== 'peeled') return { status: 'none' };
+  const channelMessageId = await recordMoment(database, args, {
+    templateKey: 'linq:sticker',
+    actionTaken: 'linq_sticker',
+    providerMessageId: inboundMessageId,
+  });
+  // The reply still goes out, plain: one moment per reply.
+  if (sticker.sendReply) return { status: 'peeled' };
+  return { status: 'handled', moment: { handled: true, channelMessageId, threadBody: null } };
+}
+
+async function considerLinqEffect(
+  database: Database,
+  args: Parameters<typeof considerLinqReply>[1] & {
+    route: Extract<ReplyRoute, { channel: 'imessage' }>;
+  },
+): Promise<LinqMoment> {
   if (!linqEffectsEnabled()) return { handled: false };
   if (!args.effect) {
     console.info({ reason: 'no_decider' }, 'linq effect: not considered');

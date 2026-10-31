@@ -29,9 +29,7 @@ describe('migrations after the ledger watermark survive a second pass', () => {
   });
 
   it('re-applies every migration after 0097 on the already-migrated schema without throwing', async () => {
-    const rerun = migrationFiles().filter(
-      (file) => file > LAST_LEDGERED_FILE && file < '0172_',
-    );
+    const rerun = migrationFiles().filter((file) => file > LAST_LEDGERED_FILE && file < '0172_');
     expect(rerun.length).toBeGreaterThan(0);
 
     const failures: string[] = [];

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states tomorrow, 15 h to 16 h, and the Georgetown library, which matches the facts. However, it renders the title 'Jour de congé' as 'un jour de congé' ('there is a day off at the library'), which recasts the event as a closure/day off rather than a timed activity the family attends. That changes what the event is, a fact failure per the rules, so the score is low.",
+    "score": 2
+  }
+}

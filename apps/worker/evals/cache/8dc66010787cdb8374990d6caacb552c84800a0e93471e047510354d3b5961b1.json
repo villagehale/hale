@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off for both send_email and reply_to_email this turn, so 'Done' is true. The reply says plainly what changes: Hale will show each email first and wait for Sam's okay. It is short and complete, with no greeting, sign-off or machinery talk.",
+    "score": 5
+  }
+}

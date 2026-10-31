@@ -1,0 +1,59 @@
+{
+  "response": {
+    "id": "msg_011CgYZcagDGdwnDompDVMYk",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShAcKEAgTGAI4AUIIdGhpbmtpbmcSDHeNuYnnmrU4zdIpSxoMzLO5WKBsvry8UB9cIjB0f3anrVh5MCn9Zo9qajShw4NNxacjsteaWnPhgY83q5gvWL9QgcLY8eEJERvcvi8qoQYXAhPuCdS11Qgikj69dWAzl+eMKe3yfP7b7AOtu+e7HUNY7Dy4vSRpQHf8AzOufHixkdheUXtV+zrtirAG74fVDyIuHgDhfoBvLV9hL1WeyFAPAotJDkmeOw3lL4gWkyTGFBltO4NRZWivnVZnk0ujEI5KuWAt4wOi9kfslj4r0L7kZ9xd37pp9EgpcQqlp4wED+xZdrWmT1o7bE2lcbTUnFfyw2GIPJMwT3lWtx1JL6UjnrrzlWlNMc8MdJpLTiSKs0GU3OxROHfnGEJ8OcJeeCCz/k/yw22lsUbjdZGyytvLUTSpomF7SshUe1x7S+kweGZfVPaq8c6LoL4HpIXSUF2GchysGyjpH6ln68rsqvjWGmEYa1Uwee3WctBjQ28WSO6RFM/ediMHWaRyx/sQC7nfNgHStzzVUmMF8RcrqM7p69cTMQ9ShfcNPzI+2HY1PE2DWK0CVLdBR0aHo+Bgn9gxb0I+3ZJGUI4RsEMJjKawKXIFSDUrvKzXlaRscKNuIzTApiUVExE0e8OOhetbW+iK4CpYmXV4bVHnmwl1tArW4bj6n5z0CFt9po1p9SYjt7paNDKrDmMSxQfDFzgHZoerOPQ9erXcc2CNqVQR7wKgX9FYxh2xhlXVYhiSoMYLMdAQ21UV2bbyRFQ6ws65ehou1Cygj+SRtxXaSK1QRaRNATg+wd/SQDCnSxsVyTlQYU0z01D27dz+cSQq7bE+Vl1hK+UnFZUFKoMjnIepAmFU/l+Zu6hRgUfHUI4CsGPUMJMzbM1ZDLfeCcxsYVPQVXS49NkN0jNagbtuz7sfdtlx80NTn+OFImWrSOQUCJRPWpDZFyXp8cEUqXFBWCBmXv38eJIjxKWDUL/CK36aWrav45+iLVucWbv4u0DX+JYPL+95M8CRbCGNcbO1ysGjOT5TQ8grZ/RZbMgg+sHR8ahC2hyto78GumKbdX0k734ccMXkPJM3qMqqQG0sQjGDWu+D6bAzbKDGMGEiRuSnZ8RVLiW5eiWIjKHDeG0Qr1rLxrlYNzRvFy2NeoBwRoE7ZLtvq9/0bKAsA2jPsxpizRMYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01UtYCiVhbmqauL5a5Q9iiYg",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_011GcrL5sSLaGkCMRosJMUgr",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "solids",
+          "childId": "kid-theo",
+          "offer": "Want me to send the full first-foods plan for Theo?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 424,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21173,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 318,
+      "output_tokens_details": {
+        "thinking_tokens": 122
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2841
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text is in English, not French as facts.language requires. It also omits the time, the reminder recipient, the group-chat delivery and how to cancel or change it, so most mustSay items are missing."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow (Monday), the all-day Jour de congé named without a clock time, Léa's Natation 10 h to 11 h (morning, correct, no AM/PM ambiguity in 24h-style French), and Piscine Main. The day is not called free or empty, and the timed event is clearly there. Nothing invented, no link, no filler, no exclamation. Written in natural French; 'c'est un jour de congé' keeps the title as the event's name and is a true fact, and 'a natation de 10 h à 11 h à la Piscine Main' is idiomatic. It reads like a quick friend text rather than a calendar readout.",
+    "score": 5
+  }
+}

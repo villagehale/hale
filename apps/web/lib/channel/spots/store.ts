@@ -290,12 +290,7 @@ export async function loadDueSpots(
   return database
     .select(LIVE_SPOT_COLUMNS)
     .from(schema.watchedSpots)
-    .where(
-      and(
-        isNull(schema.watchedSpots.releasedAt),
-        lte(schema.watchedSpots.nextPollAt, now),
-      ),
-    )
+    .where(and(isNull(schema.watchedSpots.releasedAt), lte(schema.watchedSpots.nextPollAt, now)))
     .orderBy(asc(schema.watchedSpots.nextPollAt), asc(schema.watchedSpots.createdAt))
     .limit(limit);
 }
@@ -317,12 +312,7 @@ export async function loadExpiredSpots(
   return database
     .select(LIVE_SPOT_COLUMNS)
     .from(schema.watchedSpots)
-    .where(
-      and(
-        isNull(schema.watchedSpots.releasedAt),
-        lte(schema.watchedSpots.expiresAt, now),
-      ),
-    )
+    .where(and(isNull(schema.watchedSpots.releasedAt), lte(schema.watchedSpots.expiresAt, now)))
     .orderBy(asc(schema.watchedSpots.expiresAt))
     .limit(limit);
 }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not mention any of the three actual events (Theo's swim 9:00-9:45 AM at Mold-Masters SportsPlex, Léa's dentist at 11:00 AM at Bright Smiles Dental, Léa's piano 5:00-5:30 PM at Halton Music), so every start, end, venue and address is missing. It invents an event, \"Jour de congé at 3:00\", that is not in the facts, and it claims tomorrow is a day off with \"breathing room\" even though there are timed events. It is also mixed-language, with French in an English text.",
+    "score": 1
+  }
+}

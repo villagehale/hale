@@ -2,11 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import {
-  LinqSendError,
-  reactToLinqMessage,
-  sendLinqChatMessage,
-} from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
+import { reactToLinqMessage, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
@@ -82,7 +79,7 @@ export async function acknowledgeDutyWrite(input: {
   if (input.event && !dutyTitleMayBeSpoken(input.event)) return skip('non_kid_title');
 
   const templateKey = input.source === 'llm' ? 'linq:duty_restate' : 'linq:duty_tapback';
-  const fallback =
+  const plan =
     input.source === 'llm'
       ? dutyOwnerEcho(input.language, {
           name: input.name,
@@ -92,12 +89,12 @@ export async function acknowledgeDutyWrite(input: {
           time: input.time,
         })
       : null;
-  if (input.source === 'llm' && !fallback) return skip('copy_locked');
+  if (input.source === 'llm' && !plan) return skip('copy_locked');
   const facts = [input.name, input.kid, input.event, input.day, input.time].flatMap((value) =>
     value?.trim() ? [value.trim()] : [],
   );
   const line =
-    input.source === 'llm' && fallback
+    input.source === 'llm' && plan
       ? await replyProse(
           {
             client: await resolveReplyClient(input.replyClient),
@@ -107,7 +104,7 @@ export async function acknowledgeDutyWrite(input: {
             audience: 'direct',
             surface: 'duty',
           },
-          { fallback, facts },
+          { purpose: plan.purpose, questionAllowed: plan.questionAllowed, facts },
         )
       : null;
   if (input.source === 'llm' && (!line || !dutyCopyMayLeave(line))) return skip('model_unsent');

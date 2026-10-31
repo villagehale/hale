@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgZUfEJcsn7DQxBg9dwrt",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSoggKEAgTGAI4AUIIdGhpbmtpbmcSDPgop2+1Vuk68XxrsBoMykucQgDgabFixqysIjCkiWZWZtGfqmsi4T1LUDxsyK0Jj79Z4ytnalcrgkfXihea3i6CwizqC9GJPnJlMFoqvwctoeJB0SLjeGS4QiFZ0/JuELs/1IoiUWMfsLGdWYi8hvQBuyNbskhqGbtRECo7UurHpSBytYnksLnhtzG8s8iIe6Fu/tGDuZdci0dkezZZBPgbglHTI7uCbGau53QGv64GqjbPPhaQsVrJOQF2EGAdRWWGThTN2D9n4ci+6Q/DxZrIo6wt1Hob3I7bh9HE/s49wDmU3r2A5LZW8hBizd+bFHGJT9cBi3y9DYL8L9RI680ucjL6vB87gwPopXN40EeuGhvyyqwLSIAHeF6M6GFeBfiiAkTxezgPoAv3Ea03tslUZcVEXhWiaEGUr0YgK7X7z5CXB2ZKCLkt+nwv9go5kiCcnr/LoABFfRhwujYUIxYn3UK0bfadZkOr/t+Z7IEDNGt56ZBCIiPObKvBE7sugXhOpNxHyDgrHQUewSBp4joySCdR4kr5qdUzNc/P3f9gyk5kYqHa1BVeFZIcfMHX+XT0/N2vjni+hdINQLwdngmydrfgY/ailjXXER6b4EEseRpI5fmfX8wISV+ApyxrrdfnlpdYL3eLV1DEyvu6veWRXyrT9UpGvI+r1yxy91k626xOHKmwOEm1KHe3KoEPrtXJZhbLYlF7uM6QSkx3nBT8ud02/DAKqLDGfytE2naUjMFGym8Z3zidwUeMcNAAvyc91RfJDVZmOAgwc3pTjRk1q4sw0UWxJwN5ckGOl5sXOuzFQiD3ALgJUPAWF/8m+VEaF6QQk+jZfggdSRZBwIY3qyEwzOOecosfz4POPtxRt6y7UQpfUozCAq9kZnpsC3aXEBI9tyEq1OdZ1CzCsrXhhCRs3TWzEWvPA1jsWA3UrH3I9SaLHKMoRZ0gaWP9S12+BwIvs6wwqWw2qYSZiY7hYLN5QfvVKshiu9+3els2+U+AGT4ejDJmsVQVXE5ubXwSM7WJAv5RUZL5fcPjplzxqz2kkZacOBo/uM2IQmfpHYgmvpepJW2l2x1X5X1Cl0/hWttuStXZFDKjaZIyGiXg0WH2eDUnGIJvZY6CdLtkQr/fjNe4EGt+5npsMhherEgFamJHjzLwFHUrbCJuU8Ax6brWE3oYaQiDA06J89uiy0EQRxarkZRv1QAqCRRl2ZE52mDp6vMdk/LnuGr7Ie1kC9Qtc4JjfFj+uptF4qASetvaFJEb595q0Ox1cH/tBkxmA7UdhuVfN+Eo+M4Y18mCtLjXGgNdBtIYkMgSL00TOIIPxLyTj62y3tmxjecmVl9RzXdIhbk4WwZC5FPbv2zTy+6GgcY0Fy25u6slyBgB"
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice Saturday at 10:00am at Cedarvale Park. After that, High Park is an easy one for Milo and Ada. It has the Jamie Bell Adventure Playground, a free animal display with bison, llamas and peacocks, plus the wading pool and splash pads. Water play is seasonal, so check that it's running before you go."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1172,
+      "cache_read_input_tokens": 21833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1172,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 245,
+      "output_tokens_details": {
+        "thinking_tokens": 127
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2828
+}

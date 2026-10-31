@@ -28,7 +28,9 @@ describe('why an extraction failed', () => {
       extractionFailure(new Error('activity_verdict: tool call truncated at max_tokens (512)')),
     ).toBe('truncated');
     expect(
-      extractionFailure(new Error('activity_verdict: model returned no activity_verdict tool call')),
+      extractionFailure(
+        new Error('activity_verdict: model returned no activity_verdict tool call'),
+      ),
     ).toBe('no_tool_call');
     expect(extractionFailure(new Error('529 overloaded_error'))).toBe('call_failed');
     expect(extractionFailure('a thrown string')).toBe('call_failed');

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not mention Léa's swim at all. It names a different event ('Jour de congé at 3:00') that is not in the facts, and drops the swim's start (4:30 PM), end (5:15 PM), venue (Mold-Masters SportsPlex), address (221 Guelph St), and who it is for. It never says the time moved from 5:00 PM. It also tells the parent they have 'a bit of breathing room' and that tomorrow is a day off, which is false and invented when a timed event exists. It has no bold on the changed time either. Multiple fact failures.",
+    "score": 1
+  }
+}

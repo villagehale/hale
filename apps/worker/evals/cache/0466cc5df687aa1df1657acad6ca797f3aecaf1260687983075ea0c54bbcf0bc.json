@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked in Spanish to stop sending emails without asking, and send_email and reply_to_email were turned off this turn. The reply confirms that accurately, in Spanish, in one short sentence. Naming Sam is recall from `knows.parent`, not a greeting. Nothing is invented and there is no sign-off or extra question.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says the day is a day off with breathing room, which implies the day is free, a break, when a timed event (3:00-4:00 PM at Georgetown library) is on the calendar; this is a fact failure. It also drops the end time 4:00 PM and the location Georgetown library, is written in English not French, and presents the event title as a bare phrase in a mixed-language template ('Mon, Oct 26: Jour de congé at 3:00') that a native speaker would not send.",
+    "score": 1
+  }
+}

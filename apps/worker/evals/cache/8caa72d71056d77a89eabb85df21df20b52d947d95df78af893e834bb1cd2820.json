@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgZUxACndtuYAgRnH9r4D",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Really common at 5, and it's very fixable. Tonight, tell Milo the new plan before bed, in a calm moment: \"You stay in your bed all night, and if you wake up, you can come get me and I'll walk you right back.\" Then when he shows up, walk him back quietly and boringly every time, with no chat and no negotiating. A small sticker chart for staying put in the morning helps too."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 148,
+      "cache_read_input_tokens": 22811,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 148,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 127,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2470
+}

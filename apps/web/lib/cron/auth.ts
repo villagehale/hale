@@ -65,10 +65,13 @@ export function cronRoute(
     try {
       await stampCronHeartbeat(db(), name);
     } catch (err) {
-      console.error('cron heartbeat stamp failed — this cron will read stale on /api/health/crons', {
-        cron: name,
-        err,
-      });
+      console.error(
+        'cron heartbeat stamp failed — this cron will read stale on /api/health/crons',
+        {
+          cron: name,
+          err,
+        },
+      );
     }
     return response;
   };

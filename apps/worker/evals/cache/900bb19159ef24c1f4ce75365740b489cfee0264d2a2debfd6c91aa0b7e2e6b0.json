@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Changing an existing vote from park to pool is a poll_vote, and the reading picks option o2 with high confidence, matching the situation."
+  }
+}

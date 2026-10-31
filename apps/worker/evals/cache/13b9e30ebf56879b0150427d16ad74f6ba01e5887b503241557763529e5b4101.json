@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Facts say the reminder arrives as a private text, but the text omits the time entirely (missing 'tomorrow (Thursday) at 10 AM') and never states who it is for or what it is about (the pharmacy refill). Two mustSay items are missing."
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgZUJxfE1P25cTfqfnZxZ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSnAsKEAgTGAI4AUIIdGhpbmtpbmcSDJvEB+lEo5qnUTl0oxoM0Q/awd3K9K9hCpvMIjCWwxxvqGy3GN42fa7sZEnnKeJke1cz1rWo9/RC5GZYk4YcSKTOebFbUKwVgw40cCYquQqedxEFjWd8uo3riQG4G8xqh/zIzHlyN37Jmw5bpWYy8XDlgsrxX1VxRNzgoYGgGj8fHLpvFxdJU3tgzTgofnBO1h4Q0/pSbjS4N9KJBObo+R4z3KZLbYE9xq+W44fenSOjZtG6GU60h5ipiH8OlsAHSD7hNS0o+p/qzYVg/Ai1Hsof22vyrb5dft0vY3P02me42ZTJWTHvmhKRpAZh0JtN22kYYwt9YZmc5OBb/KvVZSDexpX4aQM5AZzLlFuaONbXKa4wtWYUBxAag5O/Swy3esMl1LCoWsgZrWvGRvdYqrpk90rg0y/JeObylCR+wWEuX0B5cIsH31/eiA5ti6Y+FN3xUBo2vnqHv40iVTaQ+ZpHZVP0i22Pcz5KfNuBH31zq50BXoJnGteXaJ1tT5nWdxZCzlFYKqGzGFbW3qSsuvQaSFkKDl6h6+n+JPT98LiNHFgbmD7t2OYQuin8xfQ5zfKDipItANUqjebahCK3biSmUVShEHGsUxtjPwUFhxUw1x6cLH9e4BH+BaKd7BaRDYOlQA9Ef1JcidV3BuFDZfzpkfgC2obVLkbzHIKXrFUzcrvNbKERk9prmt107m5yV58O+GZyuBkCWGEZVp8Jb+aRM9+NUcGdLPuIKiYERITwAzGX5Tyr8iuZdC4sGVTyHjbPiuPIQlhTRQ7Mv8GX6VjL71LGKYweH8FAXwc8/w/M+khU8LlUQSXBvhNnXn6GUWnbALT3NWhqNNiSsZJe8eGcbEVwn8wysJuF+0/JGnsUIQx4RLALJdMtgjscVolPXfMuasRScYBW0DHKZE65PfHb9mSXGudlZLIAI3fNpgU8UfgnjLFr0Ct0LLUkmC1PjFyG42PNxenJoP+ustYf2ZfIzHYiGtnq3EvSGF98o5/2mXf/EsVMTF5x5mktKl69Dug7PgaNSG5untK9JCL3QLwuh6NrgF0YIP+fB95qQRRxp6ycr2A6nm3bg+HrMdXasD2ugyoa0DQLowqeFjOyx0m7nKOszG7xRRO/CRXijqSq8fFU56WP8r+1Qt36wTDnAee5Zw3Y/Te3JgeZGoWh4Y529hSzh6lXh8r15xd9BmiDueUwrIHKfzQFm814M8N5RIoxN3fHG43lpCoh9EwlIf3iAqFvt4AJXI7e/mrKhcEQx61mqJVq4PIiDowPBdmgC+GvbEGHBVHzy1Ui69CEBNXdolAr4tBBLia3zOb2hiW80PWcqRIKbiHdUqnAsY/MAa09wbCOFgP6cnvgjqLA/ryYGgb8lPyrJPa3X3OFUiVfI9b/Zz1H+6NDPnknaIH75fM0IaRoeIGZcio2RZ581uveUykpYaM8QaXkEBujT9cKVTtCuIW7dUQgKY82S0vQ2E7h0tAoyoQbMLGlTm/l96vayQVGiHp7QyXWv4gCFjjPXhvcqyozjDY/i1nn/axPHwjR6tvtnnbsKw9ThJz8gV0nMjqD+qXuwDBBXD0eEvZ1yUt1osaspwyL/2Exr+GTKk+RSXnZtRGFBX8ip14S1sGL4qdg1bICs9/twrz7yueNbt29KR9ujJvr3T+hiDXzASshFXU64Xx9MWP0WfN9D4vxprWCLWqGG3sWOwnwKmEPWCXrlPU7a1FY+pWVvmnOUOrANmhnY+hj3MHkx2dbH8IZYkBsCWqsTTqVkvqVn/w0ZV8mIjQoumvLvOUrFVJCQqK7Ra3vcCV0vnwRs5muQ9i2RrskEypLWZy7m7nUoo+woiVkeU8dQrsEL5HbVaAlTXw5ceWhzaCyTtMsBXO1fjhOmQq8sDGkgRgB"
+      },
+      {
+        "type": "text",
+        "text": "I don't have what Priya said about it, so I won't guess. If she texts it here again, I'll pick it up from there."
+      }
+    ],
+    "usage": {
+      "input_tokens": 383,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18526,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 319,
+      "output_tokens_details": {
+        "thinking_tokens": 280
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

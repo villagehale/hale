@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: tomorrow (Monday) is right from Sunday 6 PM; story time at 11:00 AM is rendered as 早上11点 (morning, correct) with no invented end time; soccer 5:30-6:30 PM is 下午5点半到6点半 (afternoon, correct) with both start and end given. Both events are present, no location invented, no filler, no inferences, no link needed or added. Language is entirely Chinese and reads naturally; 图书馆故事时间 and 足球训练 are natural renderings of the titles. It reads like a quick friendly text rather than a calendar readout.",
+    "score": 5
+  }
+}

@@ -23,6 +23,7 @@ import { readWeekPlan } from '~/lib/loop/queries';
 import { isPrivateEvent, isTeenChild } from '~/lib/loop/templates/reminder/core';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
+import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
@@ -187,6 +188,9 @@ export interface ChannelCoachToolArgs {
   /** The Browser Use watch verbs (signup/browser-use/watch/tools.ts). Wired only while
    * BROWSER_USE_WATCH_ENABLED is on; absent leaves the tool set unchanged. */
   providerWatch?: WatchToolPorts | null;
+  /** VIL-470 · record a signup offer Hale's AI wrote from facts. Wired only while
+   * AUTHORIZED_SIGNUP_ENABLED is on; absent leaves the tool set unchanged. */
+  signupOffer?: SignupOfferToolPorts | null;
   familyId: string;
   reader: ChannelScheduleReader;
   draftPort: ChannelDraftPort;
@@ -624,7 +628,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeAdd = defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. When the thread already names exactly one class, with its day and time, call this in the same turn; do not ask whether to add it first. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. When the thread already names exactly one class, with its day and time, call this in the same turn; do not ask whether to add it first. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id. If the result is alreadyPending, this change is already waiting on them: do not draft it again and do not ask them again.",
     inputSchema: z.object({
       title: z.string().min(1).max(120),
       date: dayKey,
@@ -661,6 +665,19 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       // refusal and can say so; nothing is drafted.
       if (startsAt.getTime() <= now.getTime()) {
         throw new Error('That occasion has already started, so it cannot be drafted.');
+      }
+      const already = await draftPort.pendingIdentical?.({
+        familyId,
+        title: input.title,
+        startsAt: startsAt.toISOString(),
+      });
+      if (already) {
+        return {
+          drafted: true as const,
+          actionId: already,
+          when: longWhen(startsAt, timeZone),
+          alreadyPending: true as const,
+        };
       }
       claimDraftBudget();
 
@@ -792,6 +809,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
   if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
   if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
+  if (args.signupOffer) tools.push(offerSignupTool(args.signupOffer));
   return tools;
 }
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: piano lesson today 7:00-8:00 PM at Ms. Chen studio, in Chinese, with evening time (晚上7点到8点) and today (今晚) correctly phrased from Monday 6 PM. The sentence 今晚晚上7点到8点有钢琴课 is somewhat redundant (今晚 and 晚上 both) and reads a bit like a calendar readout rather than a friend's text, and the English place name is left mixed in with Chinese. Per the calibration, a text that reads like a notification caps the score at 3.",
+    "score": 3
+  }
+}
