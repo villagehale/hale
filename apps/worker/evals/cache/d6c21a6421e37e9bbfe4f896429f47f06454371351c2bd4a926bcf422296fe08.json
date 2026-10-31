@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct and complete: demain (Sunday evening to Monday), start 15 h and end 16 h (PM correct in 24h format), the Georgetown library, no invented details, no closure claim, and no link. However, the phrasing \"il y a un jour de congé \\u00e0 la biblioth\\u00e8que ... jusqu'\\u00e0 16 h\" recasts the title \"Jour de cong\\u00e9\" as a generic thing that exists ('there is a day off at the library'), which reads oddly for an event someone goes to and quietly implies what the event is rather than naming it; a native would more naturally say something like \"Demain \\u00e0 15 h, 'Jour de cong\\u00e9' \\u00e0 la biblioth\\u00e8que de Georgetown, jusqu'\\u00e0 16 h\". The \"il y a un ... jusqu'\\u00e0 16 h\" construction is a stiff calendar-readout style and not how a friend would text it. The title is not given as the event's name (no quotes or connecting words), so it fails the native check and the friend-not-notification check, capping the score at 3.",
+    "score": 3
+  }
+}

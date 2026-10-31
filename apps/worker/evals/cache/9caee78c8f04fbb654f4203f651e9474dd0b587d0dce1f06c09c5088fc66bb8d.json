@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All events, days, start and end times are present and correct; 明天 is right from Sunday, morning/afternoon are correct, and the text is in Chinese. However, the story time's name is rendered as 图书馆故事时间, which is fine, but the phrase 还有 ('still has') adds a slight nuance not in the facts, and the text omits the plan link entirely (planLink was not required to appear, so acceptable). The phrasing 'X有...' reads acceptably, though 还有足球训练 is a mild calendar-readout feel. Minor naturalness concern keeps this below a 5.",
+    "score": 4
+  }
+}

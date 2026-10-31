@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import {
   PREVIEW_CRON_POLICY,
   familyInPreviewScope,
-  isFictionalPhone,
   previewCronSkipReason,
   previewTestFamilyIds,
   scopeFamilies,
@@ -61,12 +60,5 @@ describe('preview family scope', () => {
       const slug = path.replace('/api/cron/', '');
       expect(PREVIEW_CRON_POLICY[slug], slug).toBeDefined();
     }
-  });
-
-  it('recognises only reserved fictional numbers', () => {
-    expect(isFictionalPhone('+14165550101')).toBe(true);
-    expect(isFictionalPhone('+14165550199')).toBe(true);
-    expect(isFictionalPhone('+14165550200')).toBe(false);
-    expect(isFictionalPhone('+14165551234')).toBe(false);
   });
 });

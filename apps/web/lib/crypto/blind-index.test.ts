@@ -1,7 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { encryptString } from './string-cipher';
 import { emailBlindIndex, kidRelevanceInputIndex, phoneBlindIndex } from './blind-index';
+import { encryptString } from './string-cipher';
 
 const KEY_A = Buffer.alloc(32, 1).toString('base64');
 const KEY_B = Buffer.alloc(32, 2).toString('base64');

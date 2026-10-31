@@ -10,13 +10,7 @@ import { and, eq } from 'drizzle-orm';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ClassifyResult, classifyEvent } from './classify';
 import { draftAction } from './draft';
-import {
-  dedupHashFor,
-  recordDraft,
-  recordEvent,
-  recordVerdict,
-  writeAutonomyGate,
-} from './record';
+import { dedupHashFor, recordDraft, recordEvent, recordVerdict, writeAutonomyGate } from './record';
 import { reviewAction } from './review';
 
 /**
@@ -117,9 +111,7 @@ export async function ingestEvent(
   // the family can still take, and a first sync is mostly those items. Future items,
   // items still in progress, and every other source still call the model.
   const skipEndedCalendar =
-    gcalPastClassifySkipEnabled() &&
-    input.source === 'gcal' &&
-    gcalItemAlreadyEnded(payload, now);
+    gcalPastClassifySkipEnabled() && input.source === 'gcal' && gcalItemAlreadyEnded(payload, now);
 
   // 1. Classify. Traced as 'classify-event'; the mask is the rule-#1 backstop over the
   // inbound raw content the classifier sees. WHICH MODEL RAN IS THE STAGE'S TO SAY, not
@@ -143,12 +135,14 @@ export async function ingestEvent(
     classifyTraceId = null;
   } else {
     const traced = await traceAgentRun(
-      { name: 'classify-event', userId: 'system', tags: ['classify-event'], metadata: { familyId } },
+      {
+        name: 'classify-event',
+        userId: 'system',
+        tags: ['classify-event'],
+        metadata: { familyId },
+      },
       async (trace) => {
-        const result = await classifyEvent(
-          { source: input.source, payload, childNames },
-          client,
-        );
+        const result = await classifyEvent({ source: input.source, payload, childNames }, client);
         trace.recordGeneration('classify-event-call', { model: result.model, usage: result.usage });
         return { classified: result, classifyTraceId: trace.traceId };
       },

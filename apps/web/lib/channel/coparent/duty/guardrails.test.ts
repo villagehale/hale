@@ -7,15 +7,7 @@ import {
   decideLopsidedNudge,
   lopsidedConsentCopy,
 } from './burden';
-import {
-  DUTY_CHANGE_NEXT_EN,
-  DUTY_CHANGE_NEXT_FR,
-  DUTY_NIGHT_BEFORE_COPY_EN,
-  DUTY_NIGHT_BEFORE_COPY_FR,
-  dutyCopyMayLeave,
-  dutyOwnerEcho,
-  dutyTitleMayBeSpoken,
-} from './copy';
+import { dutyCopyMayLeave, dutyOwnerEcho, dutyTitleMayBeSpoken } from './copy';
 import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
 import {
   DUTY_BURDEN_ANSWER_FR,
@@ -108,8 +100,6 @@ describe('duty guardrails', () => {
   });
 
   it('echoes only a locked kid-event owner line and ends on the locked next step', () => {
-    expect(DUTY_NIGHT_BEFORE_COPY_EN.endsWith(DUTY_CHANGE_NEXT_EN)).toBe(true);
-    expect(DUTY_NIGHT_BEFORE_COPY_FR.endsWith(DUTY_CHANGE_NEXT_FR)).toBe(true);
     expect(dutyTitleMayBeSpoken('Quarterly board review')).toBe(false);
     expect(dutyTitleMayBeSpoken('swim')).toBe(true);
     expect(
@@ -128,10 +118,12 @@ describe('duty guardrails', () => {
       day: 'Saturday',
       time: '3:00pm',
     });
-    expect(line).toBe("Barton has Maya's swim, Saturday at 3:00pm. Say so here if that changes.");
-    expect(line?.endsWith(DUTY_CHANGE_NEXT_EN)).toBe(true);
-    expect(line).not.toMatch(BANNED_SEND);
-    expect(line).not.toContain('\n');
+    // VIL-507: facts for the model, not a sentence.
+    expect(line).toEqual({
+      purpose: 'duty_owner',
+      questionAllowed: false,
+      facts: ['Barton', 'Maya', 'swim', 'Saturday', '3:00pm'],
+    });
   });
 
   it('does not read a non-kid 1:1 line as a duty decision', () => {

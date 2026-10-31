@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give one event, \"Swim class\" today at 10:00-11:00 AM, with no location. The text names a different event (\"Jour de congé\"), gives the wrong time (3:00 with no AM/PM), and says \"Tomorrow's a day off\" when the event is today. It never mentions the swim class or its end time. It also invents a day off and \"breathing room\" even though a timed event exists. The wrong event, wrong time, wrong day and implied free day are all fact failures; bold is none, which is fine.",
+    "score": 1
+  }
+}

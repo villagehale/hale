@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: appointment, tomorrow, 4:45 to 5:45 PM, afternoon is right, nothing invented, stays generic, no link, no filler beyond a brief \"Heads up\" opener. However, \"you've got an appointment tomorrow from 4:45 to 5:45 PM\" is the stiff \"you have X from A to B\" construction that reads a bit like a calendar readout rather than a friend's quick text (a friend would more likely say \"an appointment tomorrow, 4:45 to 5:45\" or \"tomorrow afternoon at 4:45\"). Per the friend-not-notification check, this caps the score at 3.",
+    "score": 3
+  }
+}

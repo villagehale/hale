@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Parent and Tot 18 months - 3.11 yrs, Halton Hills Gymnastics Centre",
+        "age_fit": "18 months - 3.11 yrs",
+        "when": "Fall 2026 session Sept 12 - Dec 18 (14 weeks, 13 classes). 30-minute classes, e.g. Saturdays 9:00-9:30, 9:35-10:05 and 10:15-10:45, plus other weekday slots",
+        "source_name": "Halton Hills Gymnastics Centre"
+      },
+      {
+        "name": "Parent and Tot swim lessons, Town of Halton Hills (Gellert Community Centre and Acton Lion's Indoor Pool)",
+        "age_fit": "Parent and Tot 2: 12 to 24 months; Parent and Tot 3: 2 to 3 years old",
+        "when": "Gellert evening and weekend lessons run Oct 3 to Dec 7, 2026",
+        "price": "Acton: $86.22 for 9 lessons (30 minute lesson)",
+        "source_name": "Town of Halton Hills"
+      }
+    ]
+  },
+  "latencyMs": 8628
+}

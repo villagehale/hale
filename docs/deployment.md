@@ -28,7 +28,7 @@ Both hosts are in Canadian regions for PIPEDA / Quebec Law 25 data residency. `h
 | Env | Web | Scheduled work | DB | Branch |
 |---|---|---|---|---|
 | local | `localhost:3000` | same `/api/cron/*` routes on the web app | Supabase local | feature |
-| preview | `hale-<sha>.vercel.app` | crons do not run on preview | dev Supabase | feature PRs |
+| preview | `hale-<id>-village-hale-project.vercel.app` (branch alias `hale-web-git-<branch>-village-hale-project.vercel.app`) | crons do not run on preview | dev Supabase | feature PRs |
 | production | `hale.family` | Vercel Cron → `/api/cron/*` on `hale-web` | prod Supabase | `production` |
 
 ## First-time deploy (in order)

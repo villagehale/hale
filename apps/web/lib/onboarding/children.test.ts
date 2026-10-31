@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildChildInserts, normalizeBiologicalSex, unionStages, validateChild } from './children.js';
+import {
+  buildChildInserts,
+  normalizeBiologicalSex,
+  unionStages,
+  validateChild,
+} from './children.js';
 
 /**
  * Expectations are hand-derived from STAGE_BOUNDARIES_MONTHS = [12, 48, 60, 156]:
@@ -92,10 +97,22 @@ describe('validateChild', () => {
   it('derives each stage at its lower boundary', () => {
     // 2025-06-15 = 12mo → toddler; 2022-06-15 = 48mo → preschool;
     // 2021-06-15 = 60mo → child; 2013-06-15 = 156mo → teenager.
-    expect((validateChild({ name: 'a', dateOfBirth: '2025-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('toddler');
-    expect((validateChild({ name: 'b', dateOfBirth: '2022-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('preschool');
-    expect((validateChild({ name: 'c', dateOfBirth: '2021-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('child');
-    expect((validateChild({ name: 'd', dateOfBirth: '2013-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('teenager');
+    expect(
+      (validateChild({ name: 'a', dateOfBirth: '2025-06-15' }, NOW) as { child: { stage: string } })
+        .child.stage,
+    ).toBe('toddler');
+    expect(
+      (validateChild({ name: 'b', dateOfBirth: '2022-06-15' }, NOW) as { child: { stage: string } })
+        .child.stage,
+    ).toBe('preschool');
+    expect(
+      (validateChild({ name: 'c', dateOfBirth: '2021-06-15' }, NOW) as { child: { stage: string } })
+        .child.stage,
+    ).toBe('child');
+    expect(
+      (validateChild({ name: 'd', dateOfBirth: '2013-06-15' }, NOW) as { child: { stage: string } })
+        .child.stage,
+    ).toBe('teenager');
   });
 
   it('trims the name', () => {
@@ -104,9 +121,15 @@ describe('validateChild', () => {
   });
 
   it('normalises biologicalSex to male/female (case/space-insensitive) and null otherwise', () => {
-    const male = validateChild({ name: 'A', dateOfBirth: '2026-01-15', biologicalSex: ' Male ' }, NOW);
+    const male = validateChild(
+      { name: 'A', dateOfBirth: '2026-01-15', biologicalSex: ' Male ' },
+      NOW,
+    );
     expect(male.ok && male.child.biologicalSex).toBe('male');
-    const female = validateChild({ name: 'B', dateOfBirth: '2026-01-15', biologicalSex: 'FEMALE' }, NOW);
+    const female = validateChild(
+      { name: 'B', dateOfBirth: '2026-01-15', biologicalSex: 'FEMALE' },
+      NOW,
+    );
     expect(female.ok && female.child.biologicalSex).toBe('female');
     // Absent / gender words / "prefer not to say" → null (no sex-specific standard applies).
     const none = validateChild({ name: 'C', dateOfBirth: '2026-01-15', biologicalSex: 'boy' }, NOW);
@@ -154,14 +177,32 @@ describe('buildChildInserts', () => {
       { name: 'Theo', lastName: null, dateOfBirth: '2013-06-15', gender: 'unspecified' },
     ]);
     expect(inserts).toEqual([
-      { familyId: FAMILY_ID, name: 'Maya', lastName: 'Stone', dateOfBirth: '2026-01-15', gender: 'girl' },
-      { familyId: FAMILY_ID, name: 'Theo', lastName: null, dateOfBirth: '2013-06-15', gender: 'unspecified' },
+      {
+        familyId: FAMILY_ID,
+        name: 'Maya',
+        lastName: 'Stone',
+        dateOfBirth: '2026-01-15',
+        gender: 'girl',
+      },
+      {
+        familyId: FAMILY_ID,
+        name: 'Theo',
+        lastName: null,
+        dateOfBirth: '2013-06-15',
+        gender: 'unspecified',
+      },
     ]);
   });
 
   it('threads interests when the caller supplies them (the Family-page add-child path); omits the key otherwise (column default)', () => {
     const inserts = buildChildInserts(FAMILY_ID, [
-      { name: 'Maya', lastName: null, dateOfBirth: '2026-01-15', gender: 'girl', interests: ['swimming'] },
+      {
+        name: 'Maya',
+        lastName: null,
+        dateOfBirth: '2026-01-15',
+        gender: 'girl',
+        interests: ['swimming'],
+      },
     ]);
     expect(inserts).toEqual([
       {

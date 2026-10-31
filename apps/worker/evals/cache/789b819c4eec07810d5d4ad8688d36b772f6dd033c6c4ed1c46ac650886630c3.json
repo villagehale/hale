@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so \"Done\" is true. The reply says plainly that Hale will now ask before each email, invents nothing, has no greeting or sign-off, and stops.",
+    "score": 5
+  }
+}

@@ -1,3 +1,5 @@
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { speak } from '~/lib/channel/spoken-line';
 import { cityRecLine } from './city-line';
 import {
   JACK_OF_SPORTS_PAGE,
@@ -9,8 +11,10 @@ import type { RecMorningTopic, RecMorningWhere } from './match';
 import { matchRecMorning, postalMentioned } from './match';
 
 /**
- * VIL-308 first-hello voice — design-locked, GSM-7, verbatim. A model does not write
- * the strings here.
+ * VIL-308 rec-morning FACTS. VIL-508 (absolute zero fixed copy): nothing in this file is
+ * sent. Each topic resolves to the reviewed facts (portal, clock, waitlist mechanics), and
+ * the model writes the parent's text from them ({@link writeRecMorningReply}); a miss
+ * sends nothing from this lane.
  *
  * What is NOT here any more: a city's clock. Every dated city hello rotted in place
  * (VIL-334, and then the whole GTA set a cycle later), so a town's line is DERIVED
@@ -27,8 +31,6 @@ import { matchRecMorning, postalMentioned } from './match';
  * dataset that city-line.ts reads. This file is the SMS voice, not a city-page
  * paraphrase.
  */
-
-const INTAKE_MAX_REPLY_CHARS = 300;
 
 export const TORONTO_FOLLOW = `Wishlist can look frozen, so wait, don't mash refresh. Waitlist email takes about ${TORONTO_WAITLIST_HOURS} hours and there's no queue number. Two parents means two phones.`;
 
@@ -47,7 +49,7 @@ const JACK_OF_SPORTS = `Jack of Sports is a swim backup if the city or YMCA lane
  */
 type RecMorningLine = (now: Date, where?: RecMorningWhere | null) => string | null;
 
-export const REC_MORNING_COPY: Record<RecMorningTopic, RecMorningLine> = {
+export const REC_MORNING_FACTS: Record<RecMorningTopic, RecMorningLine> = {
   toronto_swim: (now, where) =>
     cityRecLine('toronto', now, 'swim', undefined, where?.postal ?? null),
   toronto_rec: (now, where) =>
@@ -87,7 +89,7 @@ export function recMorningBody(
   now: Date = new Date(),
   where?: RecMorningWhere | null,
 ): string | null {
-  return REC_MORNING_COPY[topic](now, where);
+  return REC_MORNING_FACTS[topic](now, where);
 }
 
 /**
@@ -134,10 +136,66 @@ export function recMorningIntakeReply(input: {
   const joined = [sms, recMorningReturnLine(input.pendingAsk)]
     .filter((part) => part.length > 0)
     .join(' ');
-  if (joined.length > INTAKE_MAX_REPLY_CHARS) {
-    throw new Error(
-      `rec-morning intake reply is ${joined.length} chars, cap is ${INTAKE_MAX_REPLY_CHARS}`,
-    );
-  }
   return joined;
+}
+
+const URL_IN_FACTS =
+  /\b(?:https?:\/\/|www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:ca|com|org|net)(?:\/[^\s]*)?/gi;
+
+/** Portals and pages in the facts must reach the parent byte for byte. */
+function verbatimFrom(facts: string): string[] {
+  return [...facts.matchAll(URL_IN_FACTS)].map((m) => m[0].replace(/[.,]+$/, ''));
+}
+
+/**
+ * VIL-508: the parent's rec-morning text, written by the model from the topic's facts.
+ * Null when this is not a rec-morning question, when the dataset holds no window, or
+ * when the model wrote nothing usable — the caller sends nothing from this lane.
+ */
+export async function writeRecMorningReply(
+  body: string,
+  now: Date = new Date(),
+  where?: RecMorningWhere | null,
+  language: ReplyLanguage | null = null,
+  write: typeof speak = speak,
+): Promise<string | null> {
+  const facts = recMorningReply(body, now, where);
+  if (facts === null) return null;
+  const text = await write({
+    purpose: 'rec_morning',
+    // Null only when intake has no stored language yet. The skill then writes
+    // in the language of facts.parentWords, not English.
+    language,
+    facts: { answer: facts, parentWords: body },
+    verbatim: verbatimFrom(facts),
+  });
+  if (!text) {
+    console.error('rec-morning: no model-written reply - nothing sent from this lane');
+    return null;
+  }
+  return text;
+}
+
+/** VIL-508: the mid-signup rec-morning text, model-written; null sends nothing. */
+export async function writeRecMorningIntakeReply(
+  input: {
+    parentWords: string;
+    pendingAsk: string;
+    now?: Date;
+    postal?: string | null;
+    city?: string | null;
+    /** Stored ladder language, when intake has one. Null: the model follows parentWords. */
+    language?: ReplyLanguage | null;
+  },
+  write: typeof speak = speak,
+): Promise<string | null> {
+  if (recMorningIntakeReply(input) === null) return null;
+  const text = await writeRecMorningReply(
+    input.parentWords,
+    input.now ?? new Date(),
+    { postal: input.postal, city: input.city },
+    input.language ?? null,
+    write,
+  );
+  return text;
 }

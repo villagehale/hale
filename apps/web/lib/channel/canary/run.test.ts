@@ -1,14 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from '~/lib/channel/linq/signature';
+import { schedulePeriodSeconds } from '~/lib/cron/deadman';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { schedulePeriodSeconds } from '~/lib/cron/deadman';
-import { createTestDb, seedFamily, type SeededFamily, type TestDb } from '~/lib/testing/pglite';
+import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import vercelConfig from '~/vercel.json';
-import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from '~/lib/channel/linq/signature';
 import { CANARY_ANSWERED_ACTION, CANARY_PHONE_E164, canaryChannel } from './config';
-import { CANARY_SID_PREFIX, runInboundCanary, VERIFY_NOT_BEFORE_MS } from './run';
+import { CANARY_SID_PREFIX, VERIFY_NOT_BEFORE_MS, runInboundCanary } from './run';
 
 /**
  * The write side, over the real tables.
@@ -169,9 +169,7 @@ describe('runInboundCanary · the injection', () => {
 
     const [call] = door.calls;
     if (!call) throw new Error('the canary never posted');
-    expect(call.url).toBe(
-      `${APP_URL}/api/channels/linq/inbound?version=${LINQ_WEBHOOK_VERSION}`,
-    );
+    expect(call.url).toBe(`${APP_URL}/api/channels/linq/inbound?version=${LINQ_WEBHOOK_VERSION}`);
 
     expect(
       verifyLinqWebhookSignature({

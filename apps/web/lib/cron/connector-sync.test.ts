@@ -78,7 +78,10 @@ describe('runConnectorSync', () => {
   it('a corrupted token blob marks THAT row errored and never halts the sweep', async () => {
     // Decryption must happen INSIDE the per-connection isolation: one tampered /
     // key-rotation-leftover blob may cost its own row, never the whole work-list.
-    const connections = [sweepConn('bad', FAMILY_A, 'BLOB-BAD'), sweepConn('good', FAMILY_B, 'BLOB-GOOD')];
+    const connections = [
+      sweepConn('bad', FAMILY_A, 'BLOB-BAD'),
+      sweepConn('good', FAMILY_B, 'BLOB-GOOD'),
+    ];
     const synced: string[] = [];
     const errored: Array<{ id: string; code: string }> = [];
 
@@ -278,9 +281,9 @@ describe('runConnectorSync', () => {
     expect(Object.values(summary.travelDetections).reduce((a, b) => a + b, 0)).toBe(5);
     // Every named outcome present as a zero rather than absent — a missing key reads as
     // "never happens", which is a different claim from "did not today".
-    expect(Object.keys(summary.travelDetections).sort()).toEqual([
-      ...TRAVEL_DETECT_OUTCOMES,
-    ].sort());
+    expect(Object.keys(summary.travelDetections).sort()).toEqual(
+      [...TRAVEL_DETECT_OUTCOMES].sort(),
+    );
     // And it did NOT land on the inbox counter: one email alert, five detections.
     expect(Object.values(summary.emailAlerts).reduce((a, b) => a + b, 0)).toBe(1);
   });
@@ -310,7 +313,10 @@ describe('runConnectorSync', () => {
       buildDeps: () => ({}) as never,
       syncOne: async (connection) => {
         if (connection.id === 'i2') throw new Error('boom');
-        return { ...NO_ALERTS, emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const };
+        return {
+          ...NO_ALERTS,
+          emailAlerts: [{ alert: 'sent', booking: null, going: null }] as const,
+        };
       },
     });
     expect(summary.emailAlerts.sent).toBe(1);

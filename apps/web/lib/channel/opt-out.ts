@@ -18,13 +18,13 @@
  * `short`); nothing writes that form onto the text.
  */
 
-/** The full form. Verbatim, and never appended. */
+/** VIL-504 / Barton: never teach STOP/HELP. These strings are NOT appended and must
+ * never be sent; composers refuse a draft that writes them. OTP remains the only
+ * allowed fixed parent-facing copy.
+ */
 export const OPT_OUT_LINE = 'Reply STOP to opt out.';
 
-/**
- * The compact form. Verbatim, and never appended. Calendar reminders used to end
- * with this line.
- */
+/** Compact form. Same rule as {@link OPT_OUT_LINE}: ban-list only, never appended. */
 export const OPT_OUT_SHORT = 'STOP to opt out.';
 
 /** Which form the gate would have chosen. Neither is written onto the text. */

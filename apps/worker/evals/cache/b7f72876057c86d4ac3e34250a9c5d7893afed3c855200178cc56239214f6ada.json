@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgZUwvKccH8d8QyFPLRuz",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS0wUKEAgTGAI4AUIIdGhpbmtpbmcSDJpr4X8wzIi5ov52URoMeELPT+Q/v5xWfEZvIjA1wXtoe6iP//u5BfzQzC/gWGFr7jskl0gdajEUBh3sSZRtC2WslAQiq1ZC0yqnRWIq8ASQUoXvEBfargJh8o2it7WaH7eFSchsvIQPOtjhD8sKn6+t3VoTrhjz88KIOmewKIbIzNMo3sytzIquhfCHWFVeHSTbdajbjJ/lDmDL8Dgss1w+G4tfoNjM5zZF9VghQdY9hyeCGU8mAWPMUHAKsJuDBrJjz8bWdnHjwdG2c8+uYJas7XqTjzE6X+m8F0Me32ESuvBeLVdxW4tudZw/aD1Phi1caOyWv+mL+fDPG4DZjJKyB2mvUsFJMLeR3Y/vY9MKduIZlF+hEkSXbHmWQx48rLYMaVtv+rGyDQqxaf/moBgWcrmkQ2k5tYxfoXWQL6qgDQQSazUkzw/ge1NKaV9BiDf6498nviQjALnrYmddSwsN1udEwY2HsPIO3qhwzDTfb2tkRxxs3Yl//xwKkxISQrGeosdt07l5kEz9NeNMJxtOEmKr5n6+orl1vl/t4hadPFWHl+qfnj0bFsl/h+pbU600cfx1W9Lq7tCpgW04l9g3yvjFkf/eBqChIaZgRYcfoevnZl4cFkqDlbMm70LKqYpVEUBO4nhY6MLwwQo0gd0yXzpd6Ff50JDxBbagT5Uc69j3yP3r6q3Y1rJJNHUDqRG5lRkfGSakznZghgUza6fwranZkqmptZZ0BOFUfnPsq21ShtqHZfoPqaQm5APyVd0ja5n1tHDr0sWWbhmWsyjIJAw4upq6RE2y4iPgOCJyLYQhGcPlKGbtUulBuaIg8nVyUJgUK5g0ylqWvW14m1z81Ia6Rq2UMyLmav3UCR8dj0y0yQgGD9uOB2hcVapBU4TFQizYQ9F6FYjrkNr+g5j183aPnD4BahNFTfc82zYYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_016ZZ1gHyybEkS2rHdPC3vHN",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 390,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 138,
+      "output_tokens_details": {
+        "thinking_tokens": 59
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1665
+}

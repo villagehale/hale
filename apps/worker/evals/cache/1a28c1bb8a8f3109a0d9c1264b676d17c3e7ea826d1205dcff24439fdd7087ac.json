@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text matches two swim lessons (Mon and Thu), so asking which one is the correct handling, and nothing was drafted. The times come straight from the week. It is short, exact and asks one question. It could have offered both, but the ambiguity rule requires asking.",
+    "score": 5
+  }
+}

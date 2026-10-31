@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgYyEX7b9SvAkf96KoXBX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjgcKEAgTGAI4AUIIdGhpbmtpbmcSDGxESSuSddl4jXGzdxoMMQ4tmSBeMUxaVDijIjDxiWuiyoUHEvVQRScGS/auScpXozmlfn9IskriMx8wYy0EX+5ED/liRvRGkz7trkUqqwYLPpWU0ROAv7AMEK7yRM0NZzWo7hsp/lvlknGBT2ztjc9SkT0XFo/vzRPNzd508AzVjx/Sf6WUP3l+XWTBb9hFuRCd9u8EaO60iw2bj9PvsEvc3YCw+nITRJREVUKtkd955kT+xWk1mrgLIHFvnglMeGa7hKazV1fdXZxhD/XKLSBwcRfd+VxGNDfxIIrabDyavts3234ILqGOSgFI+qJc4K5vfz2mjIvxliVOzwnluWvXXJH/Ib3/2ePSScILBjiMwEW/ouYC+h9bwXjtQnHvr7mKZ/VWJs9d1x1Q0niVQyGpP0rAP9CCYHEt6iZZdZkH/o4y/AbD3GE+jAwJ+DyZ2bGQGHu0E4wOHz3W0XUIBamuZYkNV58DB9ssE0SKjsEXiVbXaEM4qqY5IW4F46+h+fh44iwxvVoD+rdR60TDTraDDgAm9Ygc1QIvrvEUxLoP597UFc/QnQFIS7V1SDHazrUfM2CC0s5sXREiQicwySJbmn3omZG/5wtpoDyEk7+rhENRxQExuUJoGWIdK437qbpNnodu9xa6k84DvlSaZgYnadBg9s6RjtYkpzGjKb0AIhE6rmhAIb/BNMR6IawW7H3FhEZo3B75hwjC+zdmSpvxBHeumESonQqSAfHt4KDs3LfrYboi/fwYCGjbag5L5fOgmiTwuQ6B8VxypuzJQn2tAVKZnZEhLnqFcI3tf8eAd9Oa9CiA8k+qISuYdAxwgWlYichyUjv+3ttLhKdXPUSN0+kcW7ApZCufw8Ja+B7udB8a3NYxhGoV0PJI1safumZojzhRD2ZepgMH50mSthEMRiwtT0CoXQ/wekoG08BySTfXpxgBnPm12tt1RktYrJ0j0FHgdp9ETCc04ar3q7SaLu5FaTXUojr+t/ve12XAyuuvvJdBBT7yQ/p2eIcx1DDlK3D/wxBd4SeVfOFo7vqRNwL8/1q38VzyziRkv2XIU3xDC2aM4MWbXgmN+uj+gZCgUmKykof9bnJC6V5n2HuyCpeX9LweifQJFLaFaXbIji8dWIlTO1yQqo4OJ6lbTZsnpfWcnL1kpKynDAOBHj6iYVeVAKT3elM+GAE="
+      },
+      {
+        "type": "text",
+        "text": "Remy would be in Tiny Gym. He's 19 months, so he's well under 3.5, and a parent stays with him. Mini Gym is the solo class for kids 3.5 and up."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1342,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21493,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 202,
+      "output_tokens_details": {
+        "thinking_tokens": 138
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2979
+}

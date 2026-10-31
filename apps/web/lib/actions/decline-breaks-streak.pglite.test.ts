@@ -1,8 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
 import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { loadAutonomyStanding, recordHumanApproval } from '@hale/worker/memory-writer';
-import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';

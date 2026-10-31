@@ -19,7 +19,9 @@
 //
 // Env:
 //   HALE_MAX_USD=2.42              the cap for the whole round, across suites
-//   HALE_SPEND_LEDGER=/tmp/x.json  shared ledger, so suites run one after another share it
+//   HALE_SPEND_LEDGER=/path/x.json the ledger this run books to. REQUIRED for any capped or
+//                                  estimate run: there is no default, so worktrees never share
+//                                  one by accident. Pass one per worktree.
 //   HALE_ESTIMATE=1                never call the model: count tokens, book the projection,
 //                                  return a schema-shaped stand-in. Nothing is cached.
 // Run processes one after another; the ledger has no cross-process lock.
@@ -36,8 +38,6 @@ export const USD_PER_WEB_SEARCH = 0.01;
  * each search result comes back as input, and max_uses of them is what can be billed.
  */
 export const SEARCH_WORST_INPUT_TOKENS = 250_000;
-
-const DEFAULT_LEDGER = '/tmp/hale-eval-spend.json';
 
 export function isEstimate() {
   return process.env.HALE_ESTIMATE === '1';
@@ -77,9 +77,26 @@ export function capEnabled() {
   return readCapUsd() !== null || isEstimate();
 }
 
+export const MISSING_LEDGER_ERROR =
+  "spend-cap: HALE_SPEND_LEDGER is not set; refusing to start. Set HALE_SPEND_LEDGER to this worktree's own ledger file (there is no default).";
+
+export const LIVE_GUARD_ERROR =
+  'spend-cap: a live model call needs BOTH a cap (--max-usd or HALE_MAX_USD) and HALE_SPEND_LEDGER; refusing the call. Cached replays need neither.';
+
+/**
+ * The gate every live (paid) call passes. Missing either the cap or the ledger refuses
+ * before anything is counted or sent. Replays never reach a live call, so never reach this.
+ */
+export function assertLiveSpendGuard(argv = process.argv, env = process.env) {
+  if (readCapUsd(argv, env) === null || !env.HALE_SPEND_LEDGER) {
+    throw new Error(LIVE_GUARD_ERROR);
+  }
+}
+
 function ledgerPath() {
-  if (!process.env.HALE_SPEND_LEDGER) process.env.HALE_SPEND_LEDGER = DEFAULT_LEDGER;
-  return process.env.HALE_SPEND_LEDGER;
+  const p = process.env.HALE_SPEND_LEDGER;
+  if (!p) throw new Error(MISSING_LEDGER_ERROR);
+  return p;
 }
 
 /**
@@ -88,9 +105,13 @@ function ledgerPath() {
  */
 export function installSpendCap(argv = process.argv) {
   const cap = readCapUsd(argv, process.env);
-  if (cap === null) return null;
-  process.env.HALE_MAX_USD = String(cap);
+  if (cap === null) {
+    // An estimate round books projections to the ledger too, so it needs one as well.
+    if (isEstimate()) ledgerPath();
+    return null;
+  }
   ledgerPath();
+  process.env.HALE_MAX_USD = String(cap);
   return cap;
 }
 
@@ -154,6 +175,75 @@ export function worstCaseUsd(rates, request, inputTokens) {
   const search = webSearchWorst(request);
   const tokens = search ? SEARCH_WORST_INPUT_TOKENS : inputTokens;
   return projectUsd(rates, request, tokens) + (search?.feeUsd ?? 0);
+}
+
+// --- cache-aware worst case ---------------------------------------------------
+// A request whose system prompt carries cache_control pays the cache-WRITE rate on its
+// prefix the first time, and the cache-READ rate (0.1x) while that prefix is warm. The
+// guard only takes the read rate when THIS process saw proof the prefix was cached: the
+// previous call with the same prefix (model + tools + system) reported
+// cache_creation_input_tokens or cache_read_input_tokens, it STARTED within the cache TTL
+// (5 min by default, 1h when the marker says so, minus a safety margin), and no other call
+// is in flight (calls run one at a time, so a cache write cannot land twice unseen).
+// Anything else, the whole input is priced as now. The ledger always books the real usage.
+
+export const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
+export const CACHE_TTL_MARGIN_MS = 15_000;
+const warmPrefixes = new Map();
+let callsInFlight = 0;
+
+/** The cache prefix of a request ({key, ttlMs}), or null when the system is not cached. */
+export function cachePrefix(request) {
+  const system = Array.isArray(request?.system) ? request.system : [];
+  const marked = system.filter((b) => b?.cache_control);
+  if (marked.length === 0) return null;
+  const ttlMs = marked.some((b) => b.cache_control.ttl === '1h')
+    ? 60 * 60_000
+    : DEFAULT_CACHE_TTL_MS;
+  const key = JSON.stringify({ model: request.model, tools: request.tools ?? null, system });
+  return { key, ttlMs };
+}
+
+/** Prefix tokens the guard may price at the read rate now; 0 means no discount. */
+export function warmPrefixTokens(request, now = Date.now()) {
+  if (callsInFlight > 0) return 0;
+  const prefix = cachePrefix(request);
+  if (!prefix) return 0;
+  const seen = warmPrefixes.get(prefix.key);
+  if (!seen) return 0;
+  if (now - seen.startedAt > seen.ttlMs - CACHE_TTL_MARGIN_MS) return 0;
+  return seen.tokens;
+}
+
+/** Remember (or forget) a prefix from a call's REAL usage. */
+export function notePrefixUsage(request, usage, startedAt) {
+  const prefix = cachePrefix(request);
+  if (!prefix) return;
+  const tokens = (usage?.cache_creation_input_tokens ?? 0) + (usage?.cache_read_input_tokens ?? 0);
+  if (tokens > 0) warmPrefixes.set(prefix.key, { tokens, startedAt, ttlMs: prefix.ttlMs });
+  else warmPrefixes.delete(prefix.key);
+}
+
+/** Test hook: forget every warm prefix. */
+export function resetPromptCacheState() {
+  warmPrefixes.clear();
+  callsInFlight = 0;
+}
+
+/**
+ * Worst case with `prefixTokens` of the input at the cache-read rate. The rest of the
+ * input stays at the rate worstCaseUsd uses (cache-write when marked), output at max_tokens.
+ */
+export function cacheAwareWorstUsd(rates, request, inputTokens, prefixTokens = 0) {
+  if (!prefixTokens || webSearchTool(request)) return worstCaseUsd(rates, request, inputTokens);
+  const r = rates(request.model);
+  const read = Math.min(prefixTokens, inputTokens);
+  return (
+    (read * r.input * CACHE_READ +
+      (inputTokens - read) * r.input * CACHE_WRITE +
+      (request.max_tokens ?? 0) * r.output) /
+    1e6
+  );
 }
 
 export function searchFeeUsd(usage) {
@@ -267,7 +357,7 @@ async function countInputTokens(client, request) {
  * With the cap off this is exactly `call()`.
  */
 export async function cappedCall({ client, request, call, rates, tag = '' }) {
-  if (!capEnabled()) return call();
+  if (!isEstimate()) assertLiveSpendGuard();
   const cap = readCapUsd() ?? Number.POSITIVE_INFINITY;
   const before = readLedger();
   if (before.halted) throw new Error(`spend-cap: round halted (${before.halted}); refusing ${tag}`);
@@ -299,7 +389,8 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
       );
     }
   }
-  const projected = worstCaseUsd(rates, request, inputTokens);
+  const warmTokens = search ? 0 : warmPrefixTokens(request);
+  const projected = cacheAwareWorstUsd(rates, request, inputTokens, warmTokens);
 
   if (isEstimate()) {
     const l = readLedger();
@@ -330,9 +421,13 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
   save(l);
 
   let message;
+  const startedAt = Date.now();
+  callsInFlight += 1;
   try {
     message = await call();
   } catch (err) {
+    callsInFlight -= 1;
+    notePrefixUsage(request, null, startedAt);
     const m = readLedger();
     m.reservedUsd = Math.max(0, m.reservedUsd - projected);
     // The request may have been billed before the failure; book the projection so the
@@ -349,12 +444,21 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
     save(m);
     throw err;
   }
+  callsInFlight -= 1;
+  notePrefixUsage(request, message?.usage, startedAt);
   const m = readLedger();
   m.reservedUsd = Math.max(0, m.reservedUsd - projected);
   const actual = message?.usage ? usageUsd(rates, request.model, message.usage) : projected;
   m.spentUsd += actual;
   m.calls += 1;
-  m.log.push({ tag, model: request.model, projected, actual, usage: message?.usage ?? null });
+  m.log.push({
+    tag,
+    model: request.model,
+    projected,
+    ...(warmTokens ? { cacheReadPricedTokens: warmTokens } : {}),
+    actual,
+    usage: message?.usage ?? null,
+  });
   save(m);
   return message;
 }
@@ -373,10 +477,12 @@ const CAPPED = Symbol.for('hale.spendCap');
 
 export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
   const raw = client?.[CAPPED]?.raw ?? client;
-  if (!capEnabled()) return raw;
+  // No passthrough with the cap off: every live call goes through cappedCall's guard.
   // A suite that wraps the harness client again keeps one check and the outer tag.
   if (client?.[CAPPED]) return capSdkClient(raw, { rates, tag });
-  if (!rates) throw new Error('spend-cap: rates are required when the cap is on');
+  if (!rates && capEnabled()) {
+    throw new Error('spend-cap: rates are required when the cap is on');
+  }
   const messages = client.messages;
   const wrapped = {
     messages: {

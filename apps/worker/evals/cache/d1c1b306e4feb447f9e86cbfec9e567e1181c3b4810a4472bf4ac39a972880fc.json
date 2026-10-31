@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text calls tomorrow a day off with breathing room, implying the day is free, while a timed event at 3:00-4:00 PM at Georgetown library exists; this is the exact LOW-score case. It also uses the English date format 'Mon, Oct 26' and English 'at 3:00' in a French request, so it is not fully in French, and the time lacks AM/PM clarity (3:00 is ambiguous without 'PM' or 15 h). Plus the 'breathing room' comment is unrequested filler.",
+    "score": 1
+  }
+}

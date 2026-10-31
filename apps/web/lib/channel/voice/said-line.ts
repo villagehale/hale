@@ -37,7 +37,9 @@ export type SaidLinePurpose =
   /** Someone is hurt or ill (not a crisis): Health811 and 911, never advice. */
   | 'health'
   /** A parent said yes to one village introduction. */
-  | 'intro_yes';
+  | 'intro_yes'
+  /** VIL-505: the line riding Hale's contact card (vCard MMS) at intake. */
+  | 'contact_card';
 
 export type SaidLineFact =
   | string

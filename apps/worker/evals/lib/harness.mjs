@@ -12,22 +12,25 @@
 // never silently spend.
 
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import {
-  capEnabled,
+  cacheAwareWorstUsd,
   capSdkClient,
   cappedCall,
   installSpendCap,
   isEstimate,
+  readCapUsd,
   readLedger,
 } from '../../../web/lib/testing/spend-cap.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+import { GENERAL_REFERENCE_TEXTS, renderReferenceTexts } from './judge-references.mjs';
+export { GENERAL_REFERENCE_TEXTS, renderReferenceTexts };
 export const WORKER_ROOT = join(HERE, '..', '..');
 export const REPO_ROOT = join(WORKER_ROOT, '..', '..');
 export const CACHE_DIR = join(HERE, '..', 'cache');
@@ -241,6 +244,18 @@ if (process.env.EVAL_PRINT_TELEMETRY) {
 
 /** Prints the ceiling once, before any live call. With neither source set, the cap stays off. */
 export function installEvalSpendCap() {
+  // --dry projects against a REAL ledger or not at all: with no HALE_SPEND_LEDGER it
+  // refuses, rather than quietly reading installSpendCap's /tmp default (an empty ledger
+  // that would understate what has been spent).
+  if (
+    isDryRun() &&
+    (!process.env.HALE_SPEND_LEDGER || process.env.HALE_EVAL_LEDGER_DEFAULTED === '1')
+  ) {
+    throw new Error('eval --dry: no ledger path (HALE_SPEND_LEDGER); refusing to run');
+  }
+  // installSpendCap quietly defaults the ledger to /tmp; remember that it was not chosen,
+  // so the live-call guard below still refuses.
+  if (!process.env.HALE_SPEND_LEDGER) process.env.HALE_EVAL_LEDGER_DEFAULTED = '1';
   const cap = installSpendCap(process.argv);
   if (cap !== null) {
     const ledger = readLedger();
@@ -251,9 +266,68 @@ export function installEvalSpendCap() {
   return cap;
 }
 
+// --- mandatory spend guard + --dry ------------------------------------------
+// EVERY live call passes requireSpendGuard first. No ledger path or no --max-usd/HALE_MAX_USD
+// means the call is refused BEFORE a client is built or a socket opened — a "does the file
+// load" check can never bill. --dry (or HALE_EVAL_DRY=1) makes no network call at all: the
+// client is a stub that throws on any use, so a dry run that needs the network fails loudly.
+
+export function isDryRun(argv = process.argv, env = process.env) {
+  return argv.includes('--dry') || env.HALE_EVAL_DRY === '1';
+}
+
+export function requireSpendGuard(tag = 'eval') {
+  if (isDryRun()) {
+    throw new Error(`eval --dry: refusing live call ${tag}; dry mode makes no network calls`);
+  }
+  const ledger = process.env.HALE_SPEND_LEDGER;
+  if (!ledger || process.env.HALE_EVAL_LEDGER_DEFAULTED === '1') {
+    throw new Error(`spend-guard: no ledger path (HALE_SPEND_LEDGER); refusing live call ${tag}`);
+  }
+  if (readCapUsd() === null) {
+    throw new Error(`spend-guard: no --max-usd / HALE_MAX_USD; refusing live call ${tag}`);
+  }
+}
+
+/**
+ * Input tokens of a request, estimated OFFLINE for --dry (the live guard counts them with
+ * countTokens, which is a network call). A rough heuristic, NOT a bound: one token per 3
+ * UTF-8 bytes of the JSON-serialised request. It is NOT guaranteed to be at or above the
+ * live count (JSON escaping inflates CJK text, while the API also adds tokens of its own
+ * for tool definitions and formatting), so the live guard's countTokens figure is the one
+ * that decides; a dry projection is an estimate of it.
+ */
+export function estimateInputTokensOffline(request) {
+  const { system, messages, tools, output_config } = request;
+  const bytes = Buffer.byteLength(JSON.stringify({ system, messages, tools, output_config }));
+  return Math.ceil(bytes / 3);
+}
+
+/** A client that fails loudly on any use: what --dry hands out instead of a real one. */
+export function dryClient(tag = 'eval') {
+  const refuse = () => {
+    throw new Error(`eval --dry: attempted network call (${tag}); dry mode makes none`);
+  };
+  return {
+    messages: { create: refuse, countTokens: refuse, stream: refuse },
+  };
+}
+
+/** True when `importMetaUrl` is the script node was started with (not an import). */
+export function isMain(importMetaUrl, argv1 = process.argv[1]) {
+  if (!argv1) return false;
+  try {
+    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(argv1);
+  } catch {
+    return false;
+  }
+}
+
 export function lazyAnthropic(tag = 'eval') {
   let client;
   return () => {
+    if (isDryRun()) return dryClient(tag);
+    requireSpendGuard(tag);
     client ??= new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
       // Native fetch: the SDK's bundled fetch shim breaks on this box's egress proxy.
@@ -269,6 +343,8 @@ let gatewayAnthropic;
  * normal Anthropic client so a candidate never grades itself. */
 export function evalSubjectClient(getCurrentClient) {
   if (!process.env.EVAL_GATEWAY_MODEL) return getCurrentClient();
+  if (isDryRun()) return dryClient('gateway');
+  requireSpendGuard('gateway');
   const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
   if (!apiKey) throw new Error('Set AI_GATEWAY_API_KEY, VERCEL_KEY, or JEV_KEY');
   gatewayAnthropic ??= new Anthropic({
@@ -406,13 +482,33 @@ export async function cachedToolCall(opts) {
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);
+  const dryPlan = Array.isArray(opts.dryPlan) ? opts.dryPlan : DRY_SUBJECT_PLAN;
   if (cached) {
+    if (isDryRun()) {
+      // Figure A (full re-record) prices this call too, as if it were uncached.
+      const entry = await dryToolCallPlanEntry({ ...opts, model, maxTokens }, dryPlan);
+      dryPlan.push({ ...entry, cached: true });
+    }
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
     return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
   }
 
   if (cachedOnly) failCachedMiss(tag, key);
+  if (isDryRun()) {
+    // --dry (914): an uncached compose call is PROJECTED, never made and never a throw.
+    // Priced as the live guard would: the first uncached call on this plan writes the
+    // system-prompt cache; later ones (serial, within the TTL) read it.
+    const entry = await dryToolCallPlanEntry({ ...opts, model, maxTokens }, dryPlan);
+    dryPlan.push(entry);
+    // A worst-case-length stand-in, so a judge fed this reply is priced at its worst too.
+    return {
+      value: dryStandInValue(opts.toolSchema, maxTokens),
+      latencyMs: 0,
+      cached: false,
+      dry: true,
+    };
+  }
   requireLane(tag, model, opts);
 
   const startedAt = Date.now();
@@ -471,6 +567,154 @@ export async function cachedToolCall(opts) {
   return { value, latencyMs, cached: false };
 }
 
+/** A stand-in reply of the most bytes `maxTokens` of output could be (offline estimate). */
+export function dryStandInText(maxTokens) {
+  return 'x'.repeat(maxTokens * 3);
+}
+
+/**
+ * A schema-shaped worst-length stand-in for an uncached tool call under --dry, so the
+ * runner's own reading code (and any judge fed the reply) runs on a value of the right
+ * shape. Strings carry the max-length text; it is never cached and never scored.
+ */
+export function dryStandInValue(schema, maxTokens) {
+  const text = dryStandInText(maxTokens);
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return text;
+    if (Array.isArray(node.enum) && node.enum.length) return node.enum[0];
+    const type = Array.isArray(node.type) ? node.type.find((t) => t !== 'null') : node.type;
+    if (type === 'object' || node.properties) {
+      const out = { text };
+      for (const [k, v] of Object.entries(node.properties ?? {})) out[k] = walk(v);
+      return out;
+    }
+    if (type === 'array') return [walk(node.items)];
+    if (type === 'boolean') return true;
+    if (type === 'number' || type === 'integer') return node.minimum ?? 1;
+    return text;
+  };
+  return walk(schema ?? { type: 'object' });
+}
+
+// --- --dry for every runner (VIL-467) ----------------------------------------
+// Subject calls that are not handed an explicit dryPlan land here, cached or not, so a
+// runner only has to print the report. Each entry carries the worst case of the call as
+// if uncached: summing only the uncached ones is figure B (the cases whose request bytes
+// changed), summing all of them is figure A (a full re-record).
+export const DRY_SUBJECT_PLAN = [];
+
+/** Worst case of one free-text request (no tools), cache-aware like dryToolCallPlanEntry. */
+export function dryTextCallPlanEntry({ tag, model, system, userMessage, maxTokens }) {
+  const request = {
+    model,
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: 'user', content: userMessage }],
+  };
+  return dryRequestPlanEntry(tag, request, DRY_SUBJECT_PLAN);
+}
+
+/** Worst case of a raw Messages request (the coach agent loop builds its own). */
+export function dryRequestPlanEntry(tag, request, plan = DRY_SUBJECT_PLAN) {
+  const inputTokens = estimateInputTokensOffline(request);
+  const firstCall = plan.length === 0;
+  const prefixTokens = firstCall
+    ? 0
+    : estimateInputTokensOffline({ system: request.system, tools: request.tools });
+  return {
+    tag,
+    cached: false,
+    inputTokens,
+    cacheReadTokens: prefixTokens,
+    maxTokens: request.max_tokens ?? 1024,
+    worstUsd: cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens),
+  };
+}
+
+/**
+ * Flags gate (VIL-467): an unknown flag exits before anything loads, and a run that could
+ * reach a model needs an explicit `--live`. `--cached-only` and `--dry` never call one.
+ */
+export function assertRunFlags(known, argv = process.argv.slice(2)) {
+  const allowed = new Set([...known, '--live', '--dry', '--cached-only']);
+  const unknown = argv.filter((a) => a.startsWith('--') && !allowed.has(a.split('=')[0]));
+  if (unknown.length > 0) {
+    console.error(`unknown flag(s): ${unknown.join(' ')} - nothing run`);
+    process.exit(2);
+  }
+  const live = argv.includes('--live');
+  if (!live && !argv.includes('--cached-only') && !isDryRun(['', '', ...argv])) {
+    console.error('no mode: pass --cached-only, --dry, or --live (live calls bill) - nothing run');
+    process.exit(2);
+  }
+  if (live && (argv.includes('--dry') || argv.includes('--cached-only'))) {
+    console.error('--live cannot be combined with --dry or --cached-only - nothing run');
+    process.exit(2);
+  }
+}
+
+/**
+ * The one --dry line per suite. B = uncached subject calls + uncached judge draws against
+ * the current bytes (cache key = sha256 of the whole request, see cacheKey). A = every
+ * call priced as uncached (a full re-record). Judge draws on an uncached subject reply are
+ * themselves uncached (the reply is in the judge key), so B's judge count follows from it.
+ */
+export function dryReportLine(suite, judgePlans = []) {
+  const subj = DRY_SUBJECT_PLAN;
+  const judge = judgePlans.flat();
+  const sum = (xs) => xs.reduce((t, p) => t + (p.worstUsd ?? 0), 0);
+  const subjU = subj.filter((p) => !p.cached);
+  const judgeU = judge.filter((p) => !p.cached);
+  const b = sum(subjU) + sum(judgeU);
+  const a = sum(subj) + sum(judge);
+  return `DRY ${suite} | subject calls ${subj.length} (cached ${subj.length - subjU.length}, uncached ${subjU.length}) | judge draws ${judge.length} (cached ${judge.length - judgeU.length}, uncached ${judgeU.length}) | B changed-only worst $${b.toFixed(5)} | A full re-record worst $${a.toFixed(5)} | live calls: 0`;
+}
+
+/** --dry plan entry for one uncached tool call: estimate, max output, cache-aware worst case. */
+export async function dryToolCallPlanEntry(opts, plan) {
+  const { tag, model, maxTokens, system, userMessage, toolName, toolSchema } = opts;
+  let request;
+  if (opts.lane) {
+    const agent = await loadAgent();
+    request = agent.structuredRequest({
+      lane: opts.lane,
+      maxTokens,
+      system,
+      userMessage,
+      toolName,
+      toolDescription: opts.toolDescription ?? 'Return the result.',
+      inputJsonSchema: toolSchema,
+    });
+  } else {
+    request = {
+      model,
+      max_tokens: maxTokens,
+      system,
+      tools: [
+        {
+          name: toolName,
+          description: opts.toolDescription ?? 'Return the result.',
+          input_schema: toolSchema,
+        },
+      ],
+      messages: [{ role: 'user', content: userMessage }],
+    };
+  }
+  const inputTokens = estimateInputTokensOffline(request);
+  const firstUncached = !plan.some((p) => !p.cached);
+  const prefixTokens = firstUncached
+    ? 0
+    : estimateInputTokensOffline({ system: request.system, tools: request.tools });
+  return {
+    tag,
+    cached: false,
+    inputTokens,
+    cacheReadTokens: prefixTokens,
+    maxTokens,
+    worstUsd: cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens),
+  };
+}
+
 // --- cached free-text call (for the coach answer arm) -----------------------
 
 export async function cachedTextCall(opts) {
@@ -494,6 +738,24 @@ export async function cachedTextCall(opts) {
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);
+  if (isDryRun()) {
+    const entry = dryTextCallPlanEntry({
+      tag,
+      model,
+      system,
+      userMessage,
+      maxTokens: opts.maxTokens ?? 1024,
+    });
+    DRY_SUBJECT_PLAN.push({ ...entry, cached: Boolean(cached) });
+    if (!cached) {
+      return {
+        text: dryStandInText(opts.maxTokens ?? 1024),
+        latencyMs: 0,
+        cached: false,
+        dry: true,
+      };
+    }
+  }
   if (cached) {
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
@@ -591,7 +853,11 @@ function gatewayUsageMessage(model, peeked) {
  * does not offer.
  */
 export async function spendCappedFetch({ tag = 'gateway', request, send }) {
-  if (!capEnabled()) return send();
+  // --dry never sends; otherwise cappedCall refuses unless both the cap and
+  // HALE_SPEND_LEDGER are set.
+  if (isDryRun()) {
+    throw new Error(`eval --dry: refusing live call ${tag}; dry mode makes no network calls`);
+  }
   const priced = { ...request, max_tokens: request.max_tokens ?? 1024 };
   let sent;
   await cappedCall({
@@ -815,9 +1081,16 @@ export const JUDGE_SAMPLES_MEDIAN = 3;
  * Read on the way OUT of the cache as well as into it, because the bad draws are already
  * committed. A cached non-verdict is treated as absent: re-drawn live, or reported as the
  * honest cache miss it always was under `--cached-only`.
+ *
+ * A number is not enough. The schema is an integer 1-5; Anthropic does not hard-enforce
+ * min/max, and a truncated or confused draw has already arrived as `{ score: -1 }` with a
+ * reason cut mid-quote (identity-ask `intro-both`, VIL-467 live run). That is wreckage,
+ * not a vote: `-1` sorted first and failed the case as `judge:-1`. Only a score the
+ * rubric can actually emit counts.
  */
 export function isVerdict(parsed) {
-  return typeof parsed?.score === 'number';
+  const score = parsed?.score;
+  return Number.isInteger(score) && score >= 1 && score <= 5;
 }
 
 /**
@@ -835,19 +1108,113 @@ export async function judgeLaneFor(model) {
   return judgeLane(await loadAgent(), model);
 }
 
-export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost, options) {
+/**
+ * Cost of one call in USD from its usage, at list rates (cache reads 0.1x, cache writes
+ * 1.25x input). Used for the per-call judge cost log.
+ */
+export function callUsd(model, usage) {
+  const p = priceRates(model);
+  const u = usage ?? {};
+  return (
+    ((u.input_tokens ?? 0) * p.input +
+      (u.cache_read_input_tokens ?? 0) * p.input * 0.1 +
+      (u.cache_creation_input_tokens ?? 0) * p.input * 1.25 +
+      (u.output_tokens ?? 0) * p.output) /
+    1e6
+  );
+}
+
+/**
+ * options:
+ *   samples      draws per reply (default 1)
+ *   aggregate    'min' keeps the lowest draw; default is the median
+ *   references   scored reference texts ({facts,text,score,why}[]), appended to the
+ *                system prompt (so they are part of the cache key). Pass
+ *                [...GENERAL_REFERENCE_TEXTS, ...yourOwn].
+ *   logCost      true: print model, tokens and USD for every LIVE judge call
+ */
+/** A verdict cut off at the judge's output cap. A judge error that stops the run. */
+export class JudgeTruncatedError extends Error {}
+
+export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClient, cost, options) {
   const samples = options?.samples ?? 1;
+  // maxOutputTokens: a hard cap on the verdict, so the spend guard's per-call worst case
+  // (input + max_tokens of output) is small. The cap bounds thinking AND verdict together,
+  // so a capped judge runs on its tier's thinking-off lane and the cap only has to clear
+  // the verdict itself. A verdict that still hits it is a JudgeTruncatedError: never a
+  // pass, never cached, never quietly re-asked.
+  const verdictCap = options?.maxOutputTokens;
+  if (verdictCap !== undefined && !(Number.isInteger(verdictCap) && verdictCap > 0)) {
+    throw new Error(`makeJudge: maxOutputTokens must be a positive integer, got ${verdictCap}`);
+  }
+  // --dry: every draw is listed here (cached or not, and the guard's worst case for an
+  // uncached one) instead of being made. Read it after the run with judge.plan.
+  const plan = [];
+  const judgeSystem = judgeSystemBase + renderReferenceTexts(options?.references);
+  const logCall = (sampleTag, usage) => {
+    if (!options?.logCost) return;
+    console.log(
+      `judge-cost | ${sampleTag} | model=${model} in=${usage?.input_tokens ?? 0} cacheR=${usage?.cache_read_input_tokens ?? 0} cacheW=${usage?.cache_creation_input_tokens ?? 0} out=${usage?.output_tokens ?? 0} | $${callUsd(model, usage).toFixed(5)}`,
+    );
+  };
 
   async function draw(tag, userMessage, index) {
     const sampleTag =
       index === 0 ? `${tagPrefix}:judge:${tag}` : `${tagPrefix}:judge:${tag}#${index}`;
     const schema = options?.toolSchema ?? options?.schema ?? JUDGE_SCHEMA;
+    const agentForLane = verdictCap ? await loadAgent() : null;
+    const baseLane = agentForLane ? judgeLane(agentForLane, model) : null;
+    const cappedLane = agentForLane ? (agentForLane.withoutThinking(baseLane) ?? baseLane) : null;
+    // A capped judge on a different lane (Sonnet: thinking off) is a different judge, so
+    // its verdicts key apart from the thinking ones. Same lane (Haiku): key unchanged.
+    const laneKey =
+      cappedLane && JSON.stringify(cappedLane) !== JSON.stringify(baseLane)
+        ? `\nlane:${JSON.stringify(cappedLane)}`
+        : '';
     const key = cacheKey(
       sampleTag,
-      `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}`,
+      `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}${laneKey}`,
     );
     const cached = await cacheGet(key);
-    if (cached && isVerdict(cached.parsed)) return cached.parsed;
+    const hit = cached && isVerdict(cached.parsed);
+    if (hit && !isDryRun()) return cached.parsed;
+    if (isDryRun()) {
+      // No network: price the request the live guard would see, with an offline count.
+      const agent = await loadAgent();
+      const lane = cappedLane ?? judgeLane(agent, model);
+      const maxTokens = verdictCap ?? (model === agent.HAIKU_MODEL ? 4096 : 8192);
+      const request = agent.structuredRequest({
+        lane,
+        maxTokens,
+        system: judgeSystem,
+        userMessage,
+        toolName: 'score',
+        toolDescription: 'Return the score.',
+        inputJsonSchema: schema,
+      });
+      const inputTokens = estimateInputTokensOffline(request);
+      // Cache-aware, like the live guard: the first uncached draw writes the system-prompt
+      // cache (full write rate); later ones, run back to back within the TTL, read it.
+      // Cache-aware within this plan: the first priced draw writes the system-prompt
+      // cache, later ones (run back to back) read it. A cached draw is priced too, so a
+      // full re-record (figure A) can be summed; figure B sums only the uncached ones.
+      const firstUncached = hit ? plan.length === 0 : !plan.some((p) => !p.cached);
+      const prefixTokens = firstUncached
+        ? 0
+        : estimateInputTokensOffline({ system: request.system, tools: request.tools });
+      const worstUsd = cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens);
+      plan.push({
+        tag: sampleTag,
+        cached: Boolean(hit),
+        ...(hit ? { score: cached.parsed.score } : {}),
+        inputTokens,
+        cacheReadTokens: prefixTokens,
+        maxTokens,
+        worstUsd,
+      });
+      if (hit) return cached.parsed;
+      return { dry: true, score: Number.NaN, reason: '(dry: not scored)' };
+    }
     if (cachedOnly) failCachedMiss(sampleTag, key);
 
     // A score-first suite keeps a draw whose reason was cut off. That path reads the
@@ -870,6 +1237,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
         );
       }
       if (!response.capBooked) noteUsage(cost, model, response.usage);
+      logCall(sampleTag, response.usage);
       await cachePut(key, { parsed: toolUse.input });
       return toolUse.input;
     }
@@ -879,7 +1247,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
     try {
       result = await agent.forceToolJson({
         client: getClient(),
-        lane: judgeLane(agent, model),
+        lane: cappedLane ?? judgeLane(agent, model),
         // 1024, not 256. At 256 a judge writing a thorough reason ran out of tokens
         // MID-STRING, and because Anthropic does not hard-enforce a tool's input schema
         // the partial call still arrived as a well-formed object — `{ score: 2 }` with the
@@ -901,7 +1269,7 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
         // made — and `isVerdict` above means a draw that still runs out is loud, not a zero.
         // On the 5.5 generation a non-Haiku judge thinks first (Opus 5.5 cannot turn it
         // off), and `max_tokens` caps the thinking too, so it gets twice the room.
-        maxTokens: model === agent.HAIKU_MODEL ? 4096 : 8192,
+        maxTokens: verdictCap ?? (model === agent.HAIKU_MODEL ? 4096 : 8192),
         system: judgeSystem,
         userMessage,
         toolName: 'score',
@@ -910,6 +1278,11 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
         schema: ANY_INPUT,
       });
     } catch (err) {
+      if (err?.outcome === 'truncated' && verdictCap) {
+        throw new JudgeTruncatedError(
+          `judge error (${sampleTag}): verdict hit the max_tokens cap (${verdictCap}); not a pass, nothing cached, run stopped`,
+        );
+      }
       if (err?.outcome === 'truncated') {
         throw new Error(
           `judge (${sampleTag}) came back truncated - no score on the verdict; nothing cached`,
@@ -921,25 +1294,95 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
       throw new Error(`judge (${sampleTag}) returned no score; nothing cached`);
     }
     noteUsage(cost, model, result.usage);
+    logCall(sampleTag, result.usage);
     await cachePut(key, { parsed: result.value });
     return result.value;
   }
 
-  return async function judge(tag, payload) {
+  // STRICTLY ONE DRAW AT A TIME, enforced here rather than trusted to callers: every draw
+  // of this judge (across concurrent judge() calls too) waits for the previous one to
+  // settle. The cache-aware spend guard relies on it - a parallel draw could write the
+  // prompt cache a second time before the guard saw the first write.
+  let queue = Promise.resolve();
+  const serialDraw = (tag, userMessage, index) => {
+    const run = queue.then(() => draw(tag, userMessage, index));
+    queue = run.catch(() => {});
+    return run;
+  };
+
+  async function judge(tag, payload) {
     const userMessage = JSON.stringify(payload);
     const drawn = [];
     for (let index = 0; index < samples; index += 1) {
-      drawn.push(await draw(tag, userMessage, index));
+      drawn.push(await serialDraw(tag, userMessage, index));
+    }
+    if (drawn.some((verdict) => verdict.dry)) {
+      return { dry: true, score: Number.NaN, reason: '(dry)', samples: drawn.map((v) => v.score) };
     }
     // One sample returns exactly what it always did - same object, no extra field - so a
     // caller that never opted in cannot tell this function changed.
     if (samples === 1) return drawn[0];
     const ordered = [...drawn].sort((a, b) => a.score - b.score);
+    // `aggregate: 'min'` keeps the LOWEST draw (and its reason): a suite that would rather
+    // see an inconsistent judge than let one lucky pass through opts into it.
+    if (options?.aggregate === 'min') {
+      // Every draw's score AND reason (914), in draw order, not only the lowest one's.
+      return {
+        ...ordered[0],
+        samples: drawn.map((verdict) => verdict.score),
+        draws: drawn.map((verdict) => ({ score: verdict.score, reason: verdict.reason })),
+      };
+    }
     // The median VERDICT, not just the median number: the reason a run prints has to be
     // the argument for the score it printed, or the failure line cites a different draw.
     const median = ordered[Math.floor(samples / 2)];
     return { ...median, samples: ordered.map((verdict) => verdict.score) };
+  }
+  judge.plan = plan;
+  return judge;
+}
+
+/** --dry summary of a judge's plan: what would be scored and the guard's worst case. */
+export function summarizeJudgePlan(plan, { spentUsd, capUsd }) {
+  const uncached = plan.filter((p) => !p.cached);
+  const worstTotalUsd = uncached.reduce((sum, p) => sum + p.worstUsd, 0);
+  return {
+    draws: plan.length,
+    cached: plan.length - uncached.length,
+    uncached: uncached.length,
+    worstPerCallUsd: uncached.length ? Math.max(...uncached.map((p) => p.worstUsd)) : 0,
+    worstTotalUsd,
+    projectedLedgerUsd: spentUsd + worstTotalUsd,
+    fitsCap: spentUsd + worstTotalUsd <= capUsd,
   };
+}
+
+/** --dry summary across compose (subject-model) and judge plans: subtotals + grand total. */
+export function summarizeDryPlan({ compose = [], judge = [] }, { spentUsd, capUsd }) {
+  const part = (plan) => {
+    const uncached = plan.filter((p) => !p.cached);
+    return {
+      calls: plan.length,
+      cached: plan.length - uncached.length,
+      uncached: uncached.length,
+      worstUsd: uncached.reduce((sum, p) => sum + p.worstUsd, 0),
+    };
+  };
+  const c = part(compose);
+  const j = part(judge);
+  const worstTotalUsd = c.worstUsd + j.worstUsd;
+  return {
+    compose: c,
+    judge: j,
+    worstTotalUsd,
+    projectedLedgerUsd: spentUsd + worstTotalUsd,
+    fitsCap: spentUsd + worstTotalUsd <= capUsd,
+  };
+}
+
+/** One line per judge draw: `draw N: score S - reason`. */
+export function formatDraws(draws) {
+  return (draws ?? []).map((d, i) => `draw ${i + 1}: ${d.score} - ${d.reason}`);
 }
 
 export const JUDGE_MIN = 4;

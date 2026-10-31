@@ -1,7 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
+import {
+  type GroupCaptureSink,
+  PreviewGroupCaptureRefused,
+  captureLinqCall,
+  databaseGroupCaptureSink,
+  previewGroupCaptureOpen,
+} from '~/lib/channel/preview-linq-capture';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
-import { linqApiKey, linqFromE164 } from './config';
+import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
 
 /**
  * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK. Every partner call
@@ -90,8 +98,30 @@ function retryAfterMsOf(header: string | null): number | null {
 export const LINQ_TAPBACKS = ['love', 'like', 'dislike', 'laugh', 'emphasize', 'question'] as const;
 export type LinqTapback = (typeof LINQ_TAPBACKS)[number];
 
+/** VIL-474 · iMessage text decorations. Linq ignores them on RCS and SMS, so
+ * those recipients get the same words, plain. */
+export const LINQ_TEXT_STYLES = ['bold', 'italic', 'strikethrough', 'underline'] as const;
+export const LINQ_TEXT_ANIMATIONS = [
+  'big',
+  'small',
+  'shake',
+  'nod',
+  'explode',
+  'ripple',
+  'bloom',
+  'jitter',
+] as const;
+export type LinqTextStyle = (typeof LINQ_TEXT_STYLES)[number];
+export type LinqTextAnimation = (typeof LINQ_TEXT_ANIMATIONS)[number];
+
+/** `range` is [start, end) in UTF-16 code units of the part's `value`, and each
+ * decoration carries exactly one of `style` or `animation`. */
+export type LinqTextDecoration =
+  | { range: readonly [number, number]; style: LinqTextStyle; animation?: never }
+  | { range: readonly [number, number]; animation: LinqTextAnimation; style?: never };
+
 export type LinqOutboundPart =
-  | { type: 'text'; value: string }
+  | { type: 'text'; value: string; decorations?: readonly LinqTextDecoration[] }
   | { type: 'media'; url: string }
   | { type: 'media'; attachmentId: string }
   | { type: 'link'; value: string };
@@ -141,6 +171,17 @@ type LinqHttpResult = {
   retryAfterMs: number | null;
 };
 
+let groupSinkOverride: GroupCaptureSink | null = null;
+
+/** Test seam: route captured group calls to an in-memory sink. */
+export function setPreviewGroupCaptureSinkForTest(sink: GroupCaptureSink | null): void {
+  groupSinkOverride = sink;
+}
+
+function groupCaptureSink(): GroupCaptureSink {
+  return groupSinkOverride ?? databaseGroupCaptureSink();
+}
+
 async function linqRequest(input: {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
@@ -148,6 +189,25 @@ async function linqRequest(input: {
   fetch?: typeof fetch;
   idempotencyKey?: string;
 }): Promise<LinqHttpResult> {
+  // VIL-466 · a Preview capture run never reaches Linq, whatever else is set. Every
+  // partner call (1:1, group, tapback, typing, poll, contact card) passes here, so a
+  // send the capture transport does not own is refused, permanently, before any fetch.
+  // VIL-466 groups · with PREVIEW_CAPTURE_GROUPS also on, a fake group's call is
+  // captured (preview-linq-capture.ts) and answered in Linq's shape; anything else,
+  // or any call outside a `preview-chat-` chat, stays refused before any fetch.
+  if (previewCaptureRequested()) {
+    if (!previewGroupCaptureOpen()) throw new LinqSendError('preview_capture', 0, true);
+    let captured: { status: number; payload: unknown };
+    try {
+      captured = await captureLinqCall(input, groupCaptureSink());
+    } catch (err) {
+      if (err instanceof PreviewGroupCaptureRefused) {
+        throw new LinqSendError(`preview_${err.reason}`, 0, true);
+      }
+      throw err;
+    }
+    return { ok: true, code: 'ok', permanent: false, retryAfterMs: null, ...captured };
+  }
   const apiKey = linqApiKey();
   if (!apiKey) throw new LinqSendError('not_configured', 0, true);
 
@@ -241,14 +301,61 @@ async function linqEffect(input: {
   }
 }
 
-function wirePart(part: LinqOutboundPart): Record<string, string> {
-  if (part.type === 'text') return { type: 'text', value: part.value };
+function wirePart(part: LinqOutboundPart): Record<string, unknown> {
+  if (part.type === 'text') {
+    if (!part.decorations || part.decorations.length === 0) {
+      return { type: 'text', value: part.value };
+    }
+    return {
+      type: 'text',
+      value: part.value,
+      text_decorations: part.decorations.map((d) =>
+        d.style !== undefined
+          ? { range: [d.range[0], d.range[1]], style: d.style }
+          : { range: [d.range[0], d.range[1]], animation: d.animation },
+      ),
+    };
+  }
   if (part.type === 'link') return { type: 'link', value: part.value };
   if ('attachmentId' in part && part.attachmentId) {
     return { type: 'media', attachment_id: part.attachmentId };
   }
   if ('url' in part && part.url) return { type: 'media', url: part.url };
   throw new LinqSendError('invalid_parts', 400, true);
+}
+
+function overlaps(a: readonly [number, number], b: readonly [number, number]): boolean {
+  return a[0] < b[1] && b[0] < a[1];
+}
+
+/** Linq's decoration rules, checked before the partner sees them: a range inside
+ * the text (UTF-16, which is JS string length), exactly one of style or animation
+ * from Linq's lists, and an animation that overlaps nothing else. Styles may stack. */
+function assertDecorations(value: string, decorations: readonly LinqTextDecoration[]): void {
+  for (const d of decorations) {
+    const [start, end] = d.range;
+    const inRange =
+      Number.isInteger(start) &&
+      Number.isInteger(end) &&
+      start >= 0 &&
+      end > start &&
+      end <= value.length;
+    const hasStyle = d.style !== undefined;
+    const hasAnimation = d.animation !== undefined;
+    const known = hasStyle
+      ? (LINQ_TEXT_STYLES as readonly string[]).includes(d.style as string)
+      : (LINQ_TEXT_ANIMATIONS as readonly string[]).includes(d.animation as string);
+    if (!inRange || hasStyle === hasAnimation || !known) {
+      throw new LinqSendError('invalid_decoration', 400, true);
+    }
+  }
+  for (const [i, a] of decorations.entries()) {
+    for (const b of decorations.slice(i + 1)) {
+      if ((a.animation !== undefined || b.animation !== undefined) && overlaps(a.range, b.range)) {
+        throw new LinqSendError('invalid_decoration', 400, true);
+      }
+    }
+  }
 }
 
 /** Linq rejects a link preview that shares a message with anything else, and
@@ -270,6 +377,9 @@ function assertParts(parts: readonly LinqOutboundPart[]): void {
   for (const part of parts) {
     if (part.type === 'text' && (part.value.length === 0 || part.value.length > TEXT_MAX)) {
       throw new LinqSendError('invalid_parts', 400, true);
+    }
+    if (part.type === 'text' && part.decorations) {
+      assertDecorations(part.value, part.decorations);
     }
     if (part.type === 'link' && (part.value.length === 0 || part.value.length > LINK_MAX)) {
       throw new LinqSendError('invalid_parts', 400, true);
@@ -329,6 +439,43 @@ export async function sendLinqParts(input: {
 }
 
 /**
+ * VIL-480 · A Linq experience: a native card Linq's own iMessage app renders (no Hale
+ * Messages extension, no team/bundle id). The card is the whole message, so the body
+ * is `{ message: { experience } }` and never carries `parts`. One recipient per send.
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/experiences/
+ */
+export interface LinqExperienceWire {
+  name: string;
+  action: string;
+  params: Record<string, string>;
+}
+
+export async function sendLinqExperience(input: {
+  chatId: string;
+  experience: LinqExperienceWire;
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string }> {
+  if (!input.experience.name || !input.experience.action) {
+    throw new LinqSendError('invalid_experience', 400, true);
+  }
+  const message = { experience: input.experience };
+  const armed = cadenceArmed();
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
+    body: { message },
+    fetch: input.fetch,
+    ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const providerMessageId = readLinqMessageId(result.payload);
+  if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
+  return { providerMessageId };
+}
+
+/**
  * One text bubble into an existing chat. `replyTo` threads it under the
  * parent's bubble. A permanent refusal of that target (Linq 4xx) is logged and
  * the same text is sent plain — the answer is what the parent is owed, and a
@@ -339,13 +486,19 @@ export async function sendLinqParts(input: {
 export async function sendLinqChatMessage(input: {
   chatId: string;
   text: string;
+  /** VIL-474 · iMessage styling the writer chose for ranges of `text`. */
+  decorations?: readonly LinqTextDecoration[];
   replyTo?: LinqReplyTarget;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   const send = (replyTo?: LinqReplyTarget) =>
     sendLinqParts({
       chatId: input.chatId,
-      parts: [{ type: 'text', value: input.text }],
+      parts: [
+        input.decorations && input.decorations.length > 0
+          ? { type: 'text', value: input.text, decorations: input.decorations }
+          : { type: 'text', value: input.text },
+      ],
       replyTo,
       fetch: input.fetch,
     });
@@ -442,6 +595,31 @@ export async function reactToLinqMessage(input: {
     type: input.type,
   };
   if (input.type === 'custom' && input.customEmoji) body.custom_emoji = input.customEmoji;
+  if (input.partIndex !== undefined) body.part_index = input.partIndex;
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/messages/${encodeURIComponent(input.messageId)}/reactions`,
+    body,
+    fetch: input.fetch,
+  });
+  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
+  return { accepted: true };
+}
+
+/**
+ * Peel one emoji onto a message as a sticker (VIL-472). A peel cannot be removed,
+ * and on an SMS or RCS chat Linq refuses it (2029). The caller chooses nothing
+ * here: the emoji is the model's.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/stickers/
+ */
+export async function peelLinqSticker(input: {
+  messageId: string;
+  emoji: string;
+  partIndex?: number;
+  fetch?: typeof fetch;
+}): Promise<{ accepted: true }> {
+  const body: Record<string, unknown> = { operation: 'add', type: 'sticker', emoji: input.emoji };
   if (input.partIndex !== undefined) body.part_index = input.partIndex;
   const result = await linqRequest({
     method: 'POST',
@@ -558,19 +736,25 @@ export async function createLinqChat(input: {
   from: string;
   to: readonly string[];
   text: string;
+  decorations?: readonly LinqTextDecoration[];
   fetch?: typeof fetch;
 }): Promise<{ chatId: string; providerMessageId: string }> {
   if (input.to.length < 1) throw new LinqSendError('invalid_recipients', 400, true);
   if (!input.text.trim() || /https?:\/\//i.test(input.text)) {
     throw new LinqSendError('invalid_parts', 400, true);
   }
+  const part: LinqOutboundPart =
+    input.decorations && input.decorations.length > 0
+      ? { type: 'text', value: input.text, decorations: input.decorations }
+      : { type: 'text', value: input.text };
+  assertParts([part]);
   const result = await linqRequest({
     method: 'POST',
     path: '/chats',
     body: {
       from: input.from,
       to: [...input.to],
-      message: { parts: [{ type: 'text', value: input.text }] },
+      message: { parts: [wirePart(part)] },
     },
     fetch: input.fetch,
   });
@@ -682,6 +866,26 @@ export async function removeLinqParticipant(input: {
   });
   if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
   return { accepted: true };
+}
+
+/**
+ * VIL-477 · Hale leaves a group: Linq removes Hale's own line from the chat.
+ * iMessage groups only, with 4+ active participants including Hale (the group
+ * must keep 3). Once accepted Hale cannot return unless a member re-adds it, and
+ * every later call on the chat answers 409. `participant.removed` fires when done.
+ * Never call this without the family's explicit ask (docs/linq-chat-capacity.md).
+ *
+ * https://docs.linqapp.com/channel/imessage/api/resources/chats/methods/leave_chat/
+ */
+export function leaveLinqChat(input: {
+  chatId: string;
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  return linqEffect({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/leave`,
+    fetch: input.fetch,
+  });
 }
 
 const CONTACT_CARD_ALREADY_ACTIVE = '2014';
@@ -1085,7 +1289,7 @@ export async function listLinqChatsPage(input: {
  */
 export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   return {
-    async send({ to, body, mediaUrls }) {
+    async send({ to, body, mediaUrls, decorations }) {
       if (mediaUrls && mediaUrls.length === 0) {
         throw new LinqSendError('invalid_parts', 400, true);
       }
@@ -1102,6 +1306,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
           from,
           to: [to],
           text: body,
+          decorations,
           fetch: deps.fetch,
         });
         return {
@@ -1115,7 +1320,11 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
       if (!chatId) {
         throw new LinqSendError(hasUrl ? 'link_on_new_chat' : 'media_on_new_chat', 400, true);
       }
-      const parts: LinqOutboundPart[] = [{ type: 'text', value: body }];
+      const parts: LinqOutboundPart[] = [
+        decorations && decorations.length > 0
+          ? { type: 'text', value: body, decorations }
+          : { type: 'text', value: body },
+      ];
       for (const url of media) parts.push({ type: 'media', url });
       const sent = await sendLinqParts({ chatId, parts, fetch: deps.fetch });
       return {
@@ -1223,6 +1432,7 @@ export function createLinqTextTransport(deps: {
       const sent = await sendLinqChatMessage({
         chatId: deps.chatId,
         text: input.body,
+        decorations: input.decorations,
         replyTo: deps.replyToMessageId ? { messageId: deps.replyToMessageId } : undefined,
         fetch: deps.fetch,
       });
@@ -1241,4 +1451,143 @@ export function createLinqTextTransport(deps: {
       return { status: 'refused', code: result.code };
     },
   };
+}
+
+/**
+ * VIL-476 · Can this handle receive iMessage right now?
+ * POST /capability/check_imessage `{ address, from? }` → `{ available, selected_service }`.
+ *
+ * Linq rate-limits this endpoint (429 / 1007) to stop number enumeration, and capability
+ * belongs to the device, not the number, so answers are cached for minutes, not days.
+ * A rate limit, an outage, or a missing key is `unknown` — never `false` — and is not
+ * cached, so a later turn can still ask. Dark (LINQ_VOICE_MEMOS_ENABLED unset) it never
+ * fetches. The address is a cache key in memory only; it is never logged.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/chats/capability-checks/
+ */
+export const IMESSAGE_CAPABILITY_TTL_MS = 10 * 60_000;
+const CAPABILITY_CACHE_MAX = 5_000;
+
+export type LinqIMessageCapability =
+  | { status: 'available'; selectedService: string | null; cached: boolean }
+  | { status: 'not_available'; selectedService: string | null; cached: boolean }
+  | {
+      status: 'unknown';
+      reason: 'dark' | 'not_configured' | 'rate_limited' | 'refused' | 'unreachable';
+    };
+
+const capabilityCache = new Map<
+  string,
+  { at: number; available: boolean; selectedService: string | null }
+>();
+
+/** Test seam: forget every cached answer. */
+export function clearLinqCapabilityCacheForTest(): void {
+  capabilityCache.clear();
+}
+
+/** Drop a cached answer — call on a `message.failed` that reads as a service mismatch. */
+export function forgetLinqIMessageCapability(address: string): void {
+  capabilityCache.delete(address.trim());
+}
+
+export async function checkLinqIMessageCapability(input: {
+  address: string;
+  fetch?: typeof fetch;
+  now?: () => number;
+}): Promise<LinqIMessageCapability> {
+  if (!linqVoiceMemosEnabled()) return { status: 'unknown', reason: 'dark' };
+  const address = input.address.trim();
+  if (!address) throw new LinqSendError('invalid_address', 400, true);
+  const now = (input.now ?? Date.now)();
+  const hit = capabilityCache.get(address);
+  if (hit && now - hit.at < IMESSAGE_CAPABILITY_TTL_MS) {
+    return {
+      status: hit.available ? 'available' : 'not_available',
+      selectedService: hit.selectedService,
+      cached: true,
+    };
+  }
+  const from = linqFromE164();
+  let result: LinqHttpResult;
+  try {
+    result = await linqRequest({
+      method: 'POST',
+      path: '/capability/check_imessage',
+      body: { address, ...(from ? { from } : {}) },
+      fetch: input.fetch,
+    });
+  } catch (err) {
+    if (err instanceof LinqSendError && err.code === 'not_configured') {
+      return { status: 'unknown', reason: 'not_configured' };
+    }
+    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
+      return { status: 'unknown', reason: 'unreachable' };
+    }
+    throw err;
+  }
+  if (result.status === 429 || result.code === LINQ_RATE_LIMIT_CODE) {
+    return { status: 'unknown', reason: 'rate_limited' };
+  }
+  const payload = result.payload;
+  if (!result.ok || !isRecord(payload) || typeof payload.available !== 'boolean') {
+    return { status: 'unknown', reason: 'refused' };
+  }
+  const selectedService =
+    typeof payload.selected_service === 'string' ? payload.selected_service : null;
+  if (capabilityCache.size >= CAPABILITY_CACHE_MAX) {
+    const oldest = capabilityCache.keys().next().value;
+    if (oldest !== undefined) capabilityCache.delete(oldest);
+  }
+  capabilityCache.set(address, { at: now, available: payload.available, selectedService });
+  return {
+    status: payload.available ? 'available' : 'not_available',
+    selectedService,
+    cached: false,
+  };
+}
+
+/**
+ * VIL-476 · One native voice memo into an existing chat:
+ * POST /chats/{chatId}/voicememo with exactly one of `voice_memo_url` (public https) or
+ * `attachment_id`. It goes alone — Linq will not combine it with other parts. On RCS/SMS
+ * Linq delivers the same audio as a plain attachment. Hale's AI decides whether a memo
+ * is the right reply; this is only the wire. Dark, it refuses before any fetch.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/voice-memos/
+ */
+export async function sendLinqVoiceMemo(input: {
+  chatId: string;
+  audio: { url: string } | { attachmentId: string };
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string | null }> {
+  if (!linqVoiceMemosEnabled()) throw new LinqSendError('voice_memos_dark', 0, true);
+  if (!input.chatId) throw new LinqSendError('missing_chat_id', 0, true);
+  let body: Record<string, string>;
+  if ('url' in input.audio) {
+    let parsed: URL | null = null;
+    try {
+      parsed = new URL(input.audio.url);
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+      throw new LinqSendError('invalid_voice_memo', 400, true);
+    }
+    body = { voice_memo_url: parsed.toString() };
+  } else {
+    if (!input.audio.attachmentId) throw new LinqSendError('invalid_voice_memo', 400, true);
+    body = { attachment_id: input.audio.attachmentId };
+  }
+  const result = await linqRequest({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/voicememo`,
+    body,
+    fetch: input.fetch,
+    ...(cadenceArmed() ? { idempotencyKey: linqMessageKey(input.chatId, body) } : {}),
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  return { providerMessageId: readLinqMessageId(result.payload) };
 }

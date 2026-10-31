@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
+import { and, eq } from 'drizzle-orm';
+import { calendarInstantsEqual, calendarTitlesEqual } from '~/lib/channel/calendar-ask';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
 
@@ -64,6 +66,16 @@ export interface ChannelDraftResult {
  */
 export interface ChannelDraftPort {
   draft(input: ChannelDraftInput): Promise<ChannelDraftResult>;
+  /**
+   * A `calendar_add` already waiting on this occasion, or null. Absent on a port
+   * that does not look — the tool then drafts, which is what every test double did
+   * before VIL-513.
+   */
+  pendingIdentical?(input: {
+    familyId: string;
+    title: string;
+    startsAt: string;
+  }): Promise<string | null>;
 }
 
 export function productionChannelDraftPort(
@@ -73,7 +85,36 @@ export function productionChannelDraftPort(
 ): ChannelDraftPort {
   return {
     draft: (input) => mintChannelCalendarDraft(input, database, client, now),
+    pendingIdentical: (input) => findPendingIdenticalCalendarAdd(database, input),
   };
+}
+
+/** The drafted add for this title and start, if one is already waiting. */
+export async function findPendingIdenticalCalendarAdd(
+  database: Database,
+  input: { familyId: string; title: string; startsAt: string },
+): Promise<string | null> {
+  const rows = await database
+    .select({ id: schema.actions.id, payload: schema.actions.payload })
+    .from(schema.actions)
+    .where(
+      and(
+        eq(schema.actions.familyId, input.familyId),
+        eq(schema.actions.userVisibleState, 'drafted_for_approval'),
+        eq(schema.actions.actionType, 'calendar_add'),
+      ),
+    )
+    .limit(20);
+  const hit = rows.find((row) => {
+    const payload = row.payload as { title?: unknown; startsAt?: unknown };
+    return (
+      typeof payload.title === 'string' &&
+      typeof payload.startsAt === 'string' &&
+      calendarTitlesEqual(payload.title, input.title) &&
+      calendarInstantsEqual(payload.startsAt, input.startsAt)
+    );
+  });
+  return hit?.id ?? null;
 }
 
 export async function mintChannelCalendarDraft(

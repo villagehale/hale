@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  THEME_STORAGE_KEY,
   isThemePreference,
   readStoredPreference,
   resolveTheme,
-  THEME_STORAGE_KEY,
 } from './theme.js';
 
 describe('resolveTheme', () => {

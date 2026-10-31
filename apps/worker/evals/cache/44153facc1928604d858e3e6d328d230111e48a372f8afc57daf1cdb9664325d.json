@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "EarlyON Child and Family Centres, Links2Care (Acton and Georgetown)",
+        "age_fit": "children from birth to their 6th birthday, with a parent or caregiver",
+        "price": "FREE",
+        "source_name": "Links2Care"
+      },
+      {
+        "name": "Kids & Me drop-in, Halton Hills Public Library – Acton Branch",
+        "age_fit": "families with babies or children up to 6 years of age",
+        "when": "Thursdays 10:30 a.m. to 12 p.m., follows the school calendar starting the second week of September; closed for the December/January holidays, spring and summer breaks, and statutory holidays",
+        "price": "Free",
+        "source_name": "Halton Hills Public Library"
+      }
+    ]
+  },
+  "latencyMs": 6422
+}

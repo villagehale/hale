@@ -1,23 +1,22 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { CopyLanguage, ReplyLanguage } from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
-import { speak } from '~/lib/channel/spoken-line';
-import { normalizePhoneE164 } from '~/lib/channels/phone';
-import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
-import { linqFromE164 } from './config';
-import { haleContactImageUrl } from './contact-card';
-import { groupAudienceAllows } from './group-audience';
 import {
-  LinqSendError,
   addLinqParticipant,
   createLinqChat,
-  listLinqParticipantHandles,
+  outboundLineFrom,
   removeLinqParticipant,
   sendLinqChatMessage,
   updateLinqGroupChat,
-} from './transport';
+} from '~/lib/channel/outbound-transport';
+import { speak } from '~/lib/channel/spoken-line';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { haleContactImageUrl } from './contact-card';
+import { type GroupLineClass, groupAudienceAllows } from './group-audience';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-335 phase (b) — one household group, not a classmate-logistics brand.
@@ -29,20 +28,36 @@ import {
  */
 
 /**
- * DESIGN LOCK PENDING (Sloane). First bubble when Hale opens the co-parent
- * group. No URL: Linq rejects a link on the create-chat message.
+ * First bubble when Hale opens (or claims) the co-parent group. The model writes it
+ * (VIL-506); a miss sends nothing. No URL: Linq rejects a link on the create-chat message.
  */
-export const LINQ_GROUP_OPEN_TEXT = "This thread is your kids' year — both of you, and me.";
+export function linqGroupOpenLine(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_open', language });
+}
 
 /** DESIGN LOCK PENDING (Sloane). Group icon / name. Household dad+mom only, not a logistics brand. */
 export const LINQ_GROUP_DISPLAY_NAME = "Kids' year";
 
+/** The family's own language for a group line (Design #973: never an English default).
+ * Local, not family-outbound's reader, because that module imports this one. */
+async function groupLineLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage | null> {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(rows.find((row) => row.id === familyId)?.primaryLanguage);
+}
+
 /**
- * DESIGN LOCK PENDING (Sloane). Sent in the 1:1 when Linq will not open the
- * group. The sandbox requires the co-parent to have texted the line first.
+ * Sent in the 1:1 when Linq will not open the group (the co-parent has to have texted
+ * the line first). The model writes it (VIL-506); a miss sends nothing.
  */
-export const LINQ_GROUP_UNREACHABLE_TEXT =
-  "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.";
+export function linqGroupUnreachableLine(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_unreachable', language });
+}
 
 /**
  * An unclaimed group has no parent to name. Hale sends nothing about the
@@ -125,7 +140,7 @@ export function linqGroupClaimRefused(language: ReplyLanguage | null): Promise<s
   return speak({ purpose: 'linq_group_claim_refused', language });
 }
 
-/** Ack after a claim. The body is {@link LINQ_GROUP_OPEN_TEXT}. */
+/** Ack after a claim. The body is {@link linqGroupOpenLine}. */
 export const LINQ_GROUP_CLAIMED_TEMPLATE_KEY = 'linq:group_claimed';
 /** Refusal when this chat is already another household, or this household already has one. */
 export const LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY = 'linq:group_claim_refused';
@@ -268,15 +283,33 @@ export async function deliverLinqGroupNotice(
     now: Date;
     fetch?: typeof fetch;
     send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+    /**
+     * Audience class. A direct reply in the turn is `reply`; a proactive line
+     * (e.g. a ride reminder) names its content class so an incomplete roster
+     * holds it instead of treating it as a reply.
+     */
+    lineClass?: GroupLineClass;
   },
 ): Promise<'sent' | 'not_sent' | 'group_audience_refused'> {
-  if (!(await groupAudienceAllows(database, input.chatId, 'reply')).allowed) {
+  if (!(await groupAudienceAllows(database, input.chatId, input.lineClass ?? 'reply')).allowed) {
     return 'group_audience_refused';
   }
+  let sent: { providerMessageId: string };
   try {
-    const sent = input.send
+    sent = input.send
       ? await input.send({ chatId: input.chatId, text: input.text })
       : await sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch });
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    console.warn(
+      { familyId: input.familyId, code },
+      'linq group: the household-thread notice did not land',
+    );
+    return 'not_sent';
+  }
+  // The text left. A ledger failure past this point is logged, never reported
+  // as not_sent, so no caller replays a line the group already has.
+  try {
     const [row] = await database
       .insert(schema.channelMessages)
       .values({
@@ -301,15 +334,13 @@ export async function deliverLinqGroupNotice(
       targetTable: 'channel_messages',
       targetId: id,
     });
-    return 'sent';
   } catch (err) {
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
-    console.warn(
-      { familyId: input.familyId, code },
-      'linq group: the household-thread notice did not land',
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'linq group: notice sent but not ledgered',
     );
-    return 'not_sent';
   }
+  return 'sent';
 }
 
 export type OpenHouseholdGroupOutcome =
@@ -323,7 +354,9 @@ export type OpenHouseholdGroupOutcome =
         | 'no_chat'
         | 'not_configured'
         | 'same_number'
-        | 'unavailable';
+        | 'unavailable'
+        /** VIL-506: the model wrote no opening line, so no group was opened. */
+        | 'no_line';
     }
   | { status: 'degraded'; reason: 'coparent_not_reachable'; code: string; httpStatus: number };
 
@@ -359,7 +392,7 @@ export async function openHouseholdLinqGroup(
       };
     }
     chatIdForDegrade = door.chatId;
-    const from = linqFromE164();
+    const from = outboundLineFrom();
     if (!from) {
       console.warn(
         { familyId: args.familyId },
@@ -387,10 +420,18 @@ export async function openHouseholdLinqGroup(
       return { status: 'added', chatId: groupId };
     }
 
+    const openText = await linqGroupOpenLine(await groupLineLanguage(database, args.familyId));
+    if (!openText) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: no model-written opening line - group not opened, nothing sent',
+      );
+      return { status: 'skipped', reason: 'no_line' };
+    }
     const created = await createLinqChat({
       from,
       to: [parent, coParent],
-      text: LINQ_GROUP_OPEN_TEXT,
+      text: openText,
       fetch: args.fetch,
     });
     await updateLinqGroupChat({
@@ -446,9 +487,17 @@ async function tellParentTheGroupDidNotOpen(
   chatId: string,
 ): Promise<void> {
   try {
+    const text = await linqGroupUnreachableLine(await groupLineLanguage(database, args.familyId));
+    if (!text) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: no model-written degrade line - nothing sent',
+      );
+      return;
+    }
     const sent = await sendLinqChatMessage({
       chatId,
-      text: LINQ_GROUP_UNREACHABLE_TEXT,
+      text,
       fetch: args.fetch,
     });
     await database.insert(schema.channelMessages).values({

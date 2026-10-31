@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy was turned off this turn for send_email and reply_to_email, so saying it's done is true. The reply answers in French, the parent's language, and is short and exact, with no greeting or sign-off.",
+    "score": 5
+  }
+}

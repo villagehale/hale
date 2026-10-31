@@ -1,11 +1,15 @@
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
-import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
+import { linqApiKey, linqFromE164, linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
+import * as linq from '~/lib/channel/linq/transport';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import { persistCapturedSend } from '~/lib/channel/preview-capture-store';
 import {
   PreviewCaptureRefused,
+  capturePreviewChatOp,
   createPreviewCaptureTransport,
   previewCaptureRequested,
 } from '~/lib/channel/preview-capture-transport';
+import { previewGroupCaptureOpen } from '~/lib/channel/preview-linq-capture';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 import { isPreviewDeploy } from '~/lib/preview/family-scope';
 
@@ -21,7 +25,25 @@ import { isPreviewDeploy } from '~/lib/preview/family-scope';
 export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   // Preview proof runs only. Throws (never falls through to Linq) when the
   // flag is on outside preview or beside a configured Linq door.
-  if (previewCaptureRequested()) return createPreviewCaptureTransport();
+  if (previewCaptureRequested()) {
+    return createPreviewCaptureTransport(process.env, async (send) => {
+      // The capture already happened in memory, so the caller's ledger row says
+      // sent. A failed write is logged by name (never the body) and surfaces in the
+      // proof read-back as `uncapturedLedgered` > 0 (countUncapturedLedgerRows).
+      try {
+        await persistCapturedSend(send);
+      } catch (err) {
+        console.error(
+          {
+            code: 'preview_capture_persist_failed',
+            providerMessageId: send.providerMessageId,
+            err: err instanceof Error && err.message ? err.message : String(err),
+          },
+          'outbound: preview capture not persisted; read-back will show a mismatch',
+        );
+      }
+    });
+  }
   // On Preview nothing goes out except through the capture door, even when a
   // Linq key happens to be set there.
   if (isPreviewDeploy()) {
@@ -50,6 +72,10 @@ export function configuredOutboundChannel(): 'imessage' {
 export function readSendRefusal(err: unknown): { code: string; permanent: boolean } | null {
   if (err instanceof LinqSendError) {
     return { code: err.code, permanent: err.permanent };
+  }
+  // A capture run refusing a real recipient is permanent: retrying cannot help.
+  if (err instanceof PreviewCaptureRefused) {
+    return { code: `preview_${err.reason}`, permanent: true };
   }
   return null;
 }
@@ -123,4 +149,462 @@ export async function sendResolvingNewChat(
     const sent = await transport.send({ to: input.to, body: plain });
     return { ...sent, linkOmitted: 'link_on_new_chat' };
   }
+}
+
+/**
+ * Where a set of texts goes: one person (a phone), or a group thread (the
+ * iMessage chat id, `in_group`), since a group reply belongs in the thread.
+ */
+export type TextsTarget =
+  | { kind: 'person'; to: string }
+  | { kind: 'group'; chatId: string; inGroup: true };
+
+/** The dedupe key of text `index` in a set: the set's key with a `:i` suffix. */
+export function textDedupeKey(setKey: string, index: number): string {
+  return `${setKey}:${index}`;
+}
+
+export type SendTextsOutcome<R> =
+  | { status: 'sent'; sent: Array<{ index: number; result: R }>; alreadySent: number[] }
+  | { status: 'held'; reason: 'quiet_hours' }
+  | {
+      status: 'failed';
+      /** The first text that did not go. Nothing after it was attempted. */
+      failedAt: number;
+      error: unknown;
+      sent: Array<{ index: number; result: R }>;
+      alreadySent: number[];
+    };
+
+/**
+ * Several texts as one message, the way a friend types them (VIL-467).
+ *
+ * - In order, each send awaited before the next starts.
+ * - Quiet hours are checked ONCE for the whole set, before the first text, so a set
+ *   is never split across the quiet-hours line.
+ * - One ledger row per text, keyed `<setKey>:<i>`. A retry asks `alreadySent` for
+ *   each key and sends only the texts that did not go, starting at the first unsent.
+ * - A failure stops the set where it is. Nothing is sent in its place: no sorry, no
+ *   fallback, no summary text. A transient failure is rethrown (after the rows for
+ *   the texts that did go are written) so the caller's queue retries the rest.
+ *
+ * The per-text `send` is injectable: the default uses `transport` and `target`
+ * (`sendResolvingNewChat` for a person, the Linq chat for a group); the loop dispatch
+ * passes its channel adapter instead so its policy seams stay the one choke point.
+ */
+export async function sendTexts<R = ResolvedOutbound>(input: {
+  texts: readonly string[];
+  setKey: string | null;
+  target?: TextsTarget;
+  transport?: ChannelTransport;
+  send?: (text: string, index: number) => Promise<R>;
+  /** True when this text's key already carries a send. Absent: nothing was sent yet. */
+  alreadySent?: (key: string) => Promise<boolean>;
+  /** Write the ledger row for one text that went. */
+  record: (row: { index: number; key: string | null; text: string; result: R }) => Promise<void>;
+  /** Checked once for the whole set. Absent: deliverable. */
+  deliverableNow?: () => boolean | Promise<boolean>;
+  /** A thrown error that should be rethrown for a queue retry. Default: none. */
+  isTransient?: (err: unknown) => boolean;
+}): Promise<SendTextsOutcome<R>> {
+  const texts = input.texts.map((t) => t.trim());
+  if (texts.length === 0 || texts.some((t) => t === '')) {
+    throw new Error('sendTexts: every text must be non-empty');
+  }
+  if (input.deliverableNow && !(await input.deliverableNow())) {
+    return { status: 'held', reason: 'quiet_hours' };
+  }
+  const send = input.send ?? defaultTextSender<R>(input.target, input.transport);
+  const sent: Array<{ index: number; result: R }> = [];
+  const alreadySent: number[] = [];
+  for (let index = 0; index < texts.length; index += 1) {
+    const text = texts[index] as string;
+    const key = input.setKey ? textDedupeKey(input.setKey, index) : null;
+    if (key && input.alreadySent && (await input.alreadySent(key))) {
+      alreadySent.push(index);
+      continue;
+    }
+    let result: R;
+    try {
+      result = await send(text, index);
+    } catch (error) {
+      if (input.isTransient?.(error)) throw error;
+      return { status: 'failed', failedAt: index, error, sent, alreadySent };
+    }
+    await input.record({ index, key, text, result });
+    sent.push({ index, result });
+  }
+  return { status: 'sent', sent, alreadySent };
+}
+
+function defaultTextSender<R>(
+  target: TextsTarget | undefined,
+  transport: ChannelTransport | undefined,
+): (text: string) => Promise<R> {
+  if (!target) throw new Error('sendTexts: a target or a send function is required');
+  if (target.kind === 'group') {
+    // A preview proof run never reaches a real group thread: the capture transport
+    // is phone-only, so a group set must pass its own `send` there.
+    if (previewCaptureRequested()) {
+      throw new Error('sendTexts: group target under preview capture needs an injected send');
+    }
+    return async (text) =>
+      (await sendLinqChatMessage({ chatId: target.chatId, text })) as unknown as R;
+  }
+  if (!transport) throw new Error('sendTexts: a person target needs a transport');
+  return async (text) =>
+    (await sendResolvingNewChat(transport, { to: target.to, body: text })) as unknown as R;
+}
+
+/*
+ * Chat-addressed sends. Every Linq call that puts something in front of a parent
+ * (a chat message, parts, a reaction, a new chat, a roster or name change, typing,
+ * read receipts, a contact card, a poll, an effect, a location request) is made
+ * through one of these, never by importing linq/transport directly
+ * (one-door.test.ts enforces it).
+ *
+ * Capture flag off: each one is exactly the linq/transport call, same arguments,
+ * same result, same throw. Capture flag on without group capture: the call is
+ * recorded in-process (`capturePreviewChatOp`) and nothing goes to the network,
+ * after the same refusals as `createOutboundTransport` (preview only, no Linq
+ * key, no Linq line). Capture flag on with PREVIEW_CAPTURE_GROUPS: the call is
+ * handed to linq/transport so `linqRequest` persists it through the #924 group
+ * capture door (fake chat / 437-555 refusals included).
+ */
+
+type In<F extends (...args: never[]) => unknown> = Parameters<F>[0];
+
+function captured(op: string, input: object): string {
+  return capturePreviewChatOp(op, input as Record<string, unknown>).providerMessageId;
+}
+
+function captureOrLinq<T>(
+  input: object,
+  op: string,
+  send: () => Promise<T>,
+  asCaptured: (id: string) => T,
+): Promise<T> {
+  if (!previewCaptureRequested()) return send();
+  if (previewGroupCaptureOpen()) return send();
+  return Promise.resolve(asCaptured(captured(op, input)));
+}
+
+/** True when a chat-addressed send can be attempted: a Linq key, or capture on. */
+export function outboundChatConfigured(): boolean {
+  return previewCaptureRequested() || linqApiKey() !== null;
+}
+
+/**
+ * A fake 437-555 number (never assignable) that stands in for Hale's line when
+ * capture is on. It is a valid E.164 number because callers normalise the line
+ * and compare it against roster handles.
+ */
+export const PREVIEW_CAPTURE_LINE = '+14375550100';
+
+/**
+ * The line a new chat is opened from, or null when there is none. Capture on
+ * returns PREVIEW_CAPTURE_LINE so a proof run reaches the (captured) create call.
+ * Anywhere else it is exactly the production line (null when Linq is unconfigured).
+ */
+export function outboundLineFrom(): string | null {
+  // Preview only: the placeholder never leaves a preview deploy, even if the flag
+  // were set in production (the send itself then throws PreviewCaptureRefused).
+  if (previewCaptureRequested() && process.env.VERCEL_ENV === 'preview') {
+    return PREVIEW_CAPTURE_LINE;
+  }
+  return linqApiKey() !== null ? linqFromE164() : null;
+}
+
+export async function sendLinqChatMessage(
+  input: In<typeof linq.sendLinqChatMessage>,
+): Promise<{ providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'chat_message',
+    () => linq.sendLinqChatMessage(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
+}
+
+export async function sendLinqParts(
+  input: In<typeof linq.sendLinqParts>,
+): Promise<{ providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'parts',
+    () => linq.sendLinqParts(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
+}
+
+/** VIL-480 · a Linq experience card; captured on Preview like any other send. */
+export async function sendLinqExperience(
+  input: In<typeof linq.sendLinqExperience>,
+): Promise<{ providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'experience',
+    () => linq.sendLinqExperience(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
+}
+
+export async function sendLinqEffect(
+  input: In<typeof linq.sendLinqEffect>,
+): Promise<{ providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'effect',
+    () => linq.sendLinqEffect(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
+}
+
+export async function reactToLinqMessage(
+  input: In<typeof linq.reactToLinqMessage>,
+): Promise<{ accepted: true }> {
+  return captureOrLinq(
+    input,
+    'reaction',
+    () => linq.reactToLinqMessage(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
+}
+
+export async function createLinqChat(
+  input: In<typeof linq.createLinqChat>,
+): Promise<{ chatId: string; providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'create_chat',
+    () => linq.createLinqChat(input),
+    (id) => ({
+      chatId: `${id}-chat`,
+      providerMessageId: id,
+    }),
+  );
+}
+
+export async function updateLinqGroupChat(
+  input: In<typeof linq.updateLinqGroupChat>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'update_group',
+    () => linq.updateLinqGroupChat(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
+export async function addLinqParticipant(
+  input: In<typeof linq.addLinqParticipant>,
+): Promise<{ accepted: true }> {
+  return captureOrLinq(
+    input,
+    'add_participant',
+    () => linq.addLinqParticipant(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
+}
+
+export async function removeLinqParticipant(
+  input: In<typeof linq.removeLinqParticipant>,
+): Promise<{ accepted: true }> {
+  return captureOrLinq(
+    input,
+    'remove_participant',
+    () => linq.removeLinqParticipant(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
+}
+
+/** VIL-477 · Hale leaves a group. Callers gate on linqGroupLeaveEnabled(). */
+export async function leaveLinqChat(
+  input: In<typeof linq.leaveLinqChat>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'leave_chat',
+    () => linq.leaveLinqChat(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
+export async function peelLinqSticker(
+  input: In<typeof linq.peelLinqSticker>,
+): Promise<{ accepted: true }> {
+  return captureOrLinq(
+    input,
+    'sticker',
+    () => linq.peelLinqSticker(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
+}
+
+export async function shareLinqContactCard(
+  input: In<typeof linq.shareLinqContactCard>,
+): Promise<{ accepted: true }> {
+  return captureOrLinq(
+    input,
+    'share_contact_card',
+    () => linq.shareLinqContactCard(input),
+    () => ({
+      accepted: true as const,
+    }),
+  );
+}
+
+export async function setupLinqContactCard(
+  input: In<typeof linq.setupLinqContactCard>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'setup_contact_card',
+    () => linq.setupLinqContactCard(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
+export async function patchLinqContactCard(
+  input: In<typeof linq.patchLinqContactCard>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'patch_contact_card',
+    () => linq.patchLinqContactCard(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
+export async function sendLinqPoll(
+  input: In<typeof linq.sendLinqPoll>,
+): Promise<{ messageId: string; options: linq.LinqPollOptionRef[] }> {
+  return captureOrLinq(
+    input,
+    'poll',
+    () => linq.sendLinqPoll(input),
+    (id) => ({
+      messageId: id,
+      options: input.options.map((text, i) => ({ optionId: `${id}-option-${i}`, text })),
+    }),
+  );
+}
+
+export function markLinqChatRead(
+  input: In<typeof linq.markLinqChatRead>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'mark_read',
+    () => linq.markLinqChatRead(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
+export function startLinqTyping(
+  input: In<typeof linq.startLinqTyping>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'typing_start',
+    () => linq.startLinqTyping(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
+export function stopLinqTyping(
+  input: In<typeof linq.stopLinqTyping>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'typing_stop',
+    () => linq.stopLinqTyping(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
+/**
+ * The transport for one iMessage turn, bound to the chat the parent texted.
+ * Capture flag off: exactly `createLinqTextTransport`. On: the same contract,
+ * with the send and the location request recorded instead of sent.
+ */
+export function createChatReplyTransport(
+  deps: In<typeof linq.createLinqTextTransport>,
+): ChannelTransport {
+  if (!previewCaptureRequested() || previewGroupCaptureOpen()) {
+    return linq.createLinqTextTransport(deps);
+  }
+  return {
+    async send(input) {
+      if (input.mediaUrls) throw new LinqSendError('media_unsupported', 400, true);
+      if (!deps.chatId) throw new LinqSendError('missing_chat_id', 400, true);
+      const providerMessageId = captured('chat_message', {
+        chatId: deps.chatId,
+        text: input.body,
+        replyTo: deps.replyToMessageId ? { messageId: deps.replyToMessageId } : undefined,
+      });
+      return { providerMessageId, transport: 'imessage', chatId: deps.chatId };
+    },
+    async requestLocation() {
+      if (!deps.chatId) return { status: 'refused', code: 'missing_chat_id' };
+      captured('location_request', { chatId: deps.chatId });
+      return { status: 'sent' };
+    },
+  };
+}
+
+/**
+ * VIL-476 · voice memo and iMessage capability check, through the door. Capture off:
+ * exactly the linq/transport call. Capture on: only the group-capture door can record
+ * these (fake handle / fake chat), so without PREVIEW_CAPTURE_GROUPS they refuse before
+ * any fetch rather than reach Linq.
+ */
+function refuseCaptureWithoutGroups(): void {
+  if (previewCaptureRequested() && !previewGroupCaptureOpen()) {
+    throw new LinqSendError('preview_capture', 0, true);
+  }
+}
+
+export async function sendLinqVoiceMemo(
+  input: In<typeof linq.sendLinqVoiceMemo>,
+): ReturnType<typeof linq.sendLinqVoiceMemo> {
+  refuseCaptureWithoutGroups();
+  return linq.sendLinqVoiceMemo(input);
+}
+
+export async function checkLinqIMessageCapability(
+  input: In<typeof linq.checkLinqIMessageCapability>,
+): ReturnType<typeof linq.checkLinqIMessageCapability> {
+  refuseCaptureWithoutGroups();
+  return linq.checkLinqIMessageCapability(input);
 }

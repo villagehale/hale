@@ -10,8 +10,8 @@
  *   transport is on. Any other cron answers 200 with a skip and does nothing.
  *   An unlisted cron is skipped (fail closed).
  * - A family-scoped cron keeps only allowlisted families in its loop.
- * - Outbound sends go only through the capture transport, and only to reserved
- *   fictional numbers (+1 NPA 555-0100..0199).
+ * - Outbound sends go only through the capture transport, which itself refuses
+ *   any recipient outside the synthetic fake-family range (isSyntheticProbeNumber).
  *
  * Off preview (production, local, CI) every function here is a no-op, so prod
  * behaviour is unchanged.
@@ -19,8 +19,6 @@
 type Env = Readonly<Record<string, string | undefined>>;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** NANP numbers reserved for fiction: 555-0100 through 555-0199 in any area code. */
-const FICTIONAL_E164 = /^\+1[2-9]\d{2}55501\d{2}$/;
 
 export function isPreviewDeploy(env: Env = process.env): boolean {
   return env.VERCEL_ENV === 'preview';
@@ -50,10 +48,6 @@ export function scopeFamilies<T extends { familyId: string }>(
 ): T[] {
   if (!isPreviewDeploy(env)) return [...rows];
   return rows.filter((row) => familyInPreviewScope(row.familyId, env));
-}
-
-export function isFictionalPhone(e164: string): boolean {
-  return FICTIONAL_E164.test(e164.trim());
 }
 
 /**

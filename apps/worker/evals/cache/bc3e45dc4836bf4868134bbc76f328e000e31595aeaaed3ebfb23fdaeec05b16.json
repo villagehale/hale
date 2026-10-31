@@ -1,0 +1,19 @@
+{
+  "value": {
+    "families": [
+      {
+        "key": "f1",
+        "attendance": "in"
+      },
+      {
+        "key": "f2",
+        "attendance": "in"
+      },
+      {
+        "key": "f3",
+        "attendance": "unclear"
+      }
+    ]
+  },
+  "latencyMs": 2572
+}

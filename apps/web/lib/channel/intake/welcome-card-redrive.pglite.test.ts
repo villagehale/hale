@@ -1,22 +1,13 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { MAX_REDRIVE_PER_RUN, REDRIVE_HOUR_LOCAL, isRedriveSlot } from '~/lib/channel/redrive-slot';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { FakeTransport } from './transport';
-import {
-  MAX_REDRIVE_PER_RUN,
-  REDRIVE_HOUR_LOCAL,
-  isRedriveSlot,
-} from '~/lib/channel/redrive-slot';
+import { CONTACT_CARD_URL, WELCOME_CARD_TEMPLATE_KEY, welcomeCardDedupeKey } from './welcome-card';
 import { runWelcomeCardRedrive } from './welcome-card-redrive';
-import {
-  CONTACT_CARD_URL,
-  WELCOME_CARD_BODY,
-  WELCOME_CARD_TEMPLATE_KEY,
-  welcomeCardDedupeKey,
-} from './welcome-card';
 
 /**
  * The card a family who onboarded at night never got (VIL-355 follow-up · item 4).
@@ -108,6 +99,9 @@ async function seedHeldCard(
   });
 }
 
+/** Test stand-in for the model's line (VIL-505); never shipped copy. */
+const WRITTEN = 'model-written line for the card';
+
 function deps(transport: FakeTransport) {
   const threaded: Array<{ familyId: string; parentUserId: string; body: string }> = [];
   return {
@@ -122,6 +116,7 @@ function deps(transport: FakeTransport) {
           threaded.push(input);
           return 'conv-1';
         },
+        saidLine: { write: async () => WRITTEN },
       },
     },
   };
@@ -229,10 +224,10 @@ describe('the 08:00 re-drive of a contact card quiet hours held', () => {
 
     expect(first).toMatchObject({ due: 1, sent: 1, alreadySent: 0, noSendTarget: 0 });
     expect(transport.sent).toEqual([
-      { to: household.phone, body: WELCOME_CARD_BODY, mediaUrls: [CONTACT_CARD_URL] },
+      { to: household.phone, body: WRITTEN, mediaUrls: [CONTACT_CARD_URL] },
     ]);
     expect(threaded).toEqual([
-      { familyId: household.familyId, parentUserId: household.parentUserId, body: WELCOME_CARD_BODY },
+      { familyId: household.familyId, parentUserId: household.parentUserId, body: WRITTEN },
     ]);
     const rows = await cardRows(household.familyId);
     expect(rows).toHaveLength(2);

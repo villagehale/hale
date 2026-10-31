@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parent's question about timing with the start time and location, sendReply is true so the facts go out, and no sticker is added on a logistics question, which is an acceptable tone choice.",
+    "score": 5
+  }
+}

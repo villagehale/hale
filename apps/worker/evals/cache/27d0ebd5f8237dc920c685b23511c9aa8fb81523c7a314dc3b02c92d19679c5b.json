@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every fact is present and correct: Léa, tomorrow (Monday), new start 4:30 PM, end 5:15, venue Mold-Masters SportsPlex, address 221 Guelph St. The change is made clear ('moved to 4:30 PM - it was 5:00'), and the old time is not presented as current. The AM/PM is correct (PM; old time 5:00 is implicitly PM, which is correct). Nothing invented, no link, English throughout. Bold is on the new time \"4:30 PM\", which is exactly the single actionable changed fact.",
+    "score": 5
+  }
+}

@@ -33,11 +33,7 @@ const PICK: ActivityPick = {
  * it, and no case gets the permissive reading by omission.
  */
 /** The composer's own `commits_to_return`, defaulting to the honest reading (it matches the row). */
-function gates(
-  body: string,
-  g: FollowUpGrounding,
-  commitsToReturn: boolean = g.watch,
-): string[] {
+function gates(body: string, g: FollowUpGrounding, commitsToReturn: boolean = g.watch): string[] {
   return followUpViolations(body, g, commitsToReturn);
 }
 
@@ -141,10 +137,7 @@ describe('the top pick is named', () => {
 
     expect(topPickLeads(real, [oakville])).toBe(true);
     expect(
-      gates(
-        real,
-        grounding({ subject: 'preschool swim lessons', picks: [oakville], watch: true }),
-      ),
+      gates(real, grounding({ subject: 'preschool swim lessons', picks: [oakville], watch: true })),
     ).toEqual([]);
   });
 
@@ -166,10 +159,7 @@ describe('the top pick is named', () => {
       true,
     );
     expect(
-      gates(
-        'I went through the fall listings and nothing is open yet.',
-        grounding({ picks: [] }),
-      ),
+      gates('I went through the fall listings and nothing is open yet.', grounding({ picks: [] })),
     ).toEqual([]);
   });
 });
@@ -236,9 +226,9 @@ describe('a message may not say Hale could not get at a fact AND that it awaits 
     const body = `${PICK.name} runs Saturdays - their site says, though I could not pin down the price. I'll keep watching and text you once the price is up.`;
 
     for (const pageEvidence of ['page_has_schedule', 'no_page_read'] as const) {
-      expect(
-        gates(body, grounding({ pageEvidence, watch: true })).join(' '),
-      ).toContain('when YOU can get at them');
+      expect(gates(body, grounding({ pageEvidence, watch: true })).join(' ')).toContain(
+        'when YOU can get at them',
+      );
     }
   });
 });
@@ -252,19 +242,22 @@ describe('any language, as long as the find leads and the text fits', () => {
   it.each([
     ['zh', zh],
     ['ar', ar],
-  ])('lets a %s follow-up through when the day and the price are already in hand', (label, body) => {
-    expect(label.length).toBeGreaterThan(0);
-    expect(
-      gates(
-        body,
-        grounding({
-          watch: false,
-          pageEvidence: 'page_has_schedule',
-          picks: [{ ...PICK, when: 'Saturdays 9:15', price: '$142' }],
-        }),
-      ),
-    ).toEqual([]);
-  });
+  ])(
+    'lets a %s follow-up through when the day and the price are already in hand',
+    (label, body) => {
+      expect(label.length).toBeGreaterThan(0);
+      expect(
+        gates(
+          body,
+          grounding({
+            watch: false,
+            pageEvidence: 'page_has_schedule',
+            picks: [{ ...PICK, when: 'Saturdays 9:15', price: '$142' }],
+          }),
+        ),
+      ).toEqual([]);
+    },
+  );
 });
 
 describe('the mechanical gates', () => {
@@ -274,9 +267,7 @@ describe('the mechanical gates', () => {
   });
 
   it('refuses an empty body outright', () => {
-    expect(gates('   ', grounding({ subject: 's' }))).toEqual([
-      'The message was empty.',
-    ]);
+    expect(gates('   ', grounding({ subject: 's' }))).toEqual(['The message was empty.']);
   });
 });
 
@@ -416,7 +407,7 @@ describe('the payload the composer is handed', () => {
     expect(none).not.toHaveProperty('more_remaining_instruction');
   });
 
-  it('passes the language tag through unchanged, and never the parent\'s words', () => {
+  it("passes the language tag through unchanged, and never the parent's words", () => {
     for (const language of ['zh', 'ar', 'en-CA']) {
       const payload = JSON.parse(followUpUserMessage(grounding({ language })));
       expect(payload.language).toBe(language);
@@ -440,9 +431,7 @@ describe('an offer is a proposal, so this lane makes none', () => {
   it('refuses any question - there is no row on this path for a yes to land on', () => {
     const asked = `${PICK.name} runs Saturdays 9:15 from Sept 13, $142 - their site says. Want me to check back once they're up?`;
 
-    expect(gates(asked, grounding()).join(' ')).toContain(
-      'asks the parent a question',
-    );
+    expect(gates(asked, grounding()).join(' ')).toContain('asks the parent a question');
   });
 
   it('POSITIVE CONTROL - the same find, ending on a statement, passes', () => {
@@ -542,12 +531,10 @@ describe('the uncertain sentence', () => {
     const unread = `${PICK.name} runs a toddler class for under-3s - their site says. I could not get into their fall schedule page today, so I'll keep looking and text you what it says.`;
     const unpinned = `${PICK.name} runs a toddler class for under-3s - their site lists it. I could not pin down the fall day or fee, so I'll keep looking and text you what it says.`;
 
-    expect(
-      gates(unread, grounding({ pageEvidence: 'no_page_read', watch: true })),
-    ).toEqual([]);
-    expect(
-      gates(unpinned, grounding({ pageEvidence: 'page_has_schedule', watch: true })),
-    ).toEqual([]);
+    expect(gates(unread, grounding({ pageEvidence: 'no_page_read', watch: true }))).toEqual([]);
+    expect(gates(unpinned, grounding({ pageEvidence: 'page_has_schedule', watch: true }))).toEqual(
+      [],
+    );
   });
 });
 
@@ -587,7 +574,7 @@ describe('a continuation row must be spoken for', () => {
   });
 });
 
-describe('the coming-back fact is the model\'s, in any language', () => {
+describe("the coming-back fact is the model's, in any language", () => {
   const zhWatch = `${PICK.name} 有幼儿课，周六上午，他们网站上这么写。秋季时间还没公布，我会继续关注，一有消息就发短信告诉你。`;
   const arWatch = `${PICK.name} لديه صف للأطفال الصغار أيام السبت، حسب موقعهم. لم يُنشر جدول الخريف بعد، وسأواصل المتابعة وأراسلك عندما يُنشر.`;
 
@@ -601,11 +588,14 @@ describe('the coming-back fact is the model\'s, in any language', () => {
   it.each([
     ['zh', zhWatch],
     ['ar', arWatch],
-  ])('a %s message the model says commits to nothing is refused when the row exists', (_label, body) => {
-    expect(gates(body, grounding({ watch: true }), false).join(' ')).toContain(
-      'Hale has already committed to going back',
-    );
-  });
+  ])(
+    'a %s message the model says commits to nothing is refused when the row exists',
+    (_label, body) => {
+      expect(gates(body, grounding({ watch: true }), false).join(' ')).toContain(
+        'Hale has already committed to going back',
+      );
+    },
+  );
 
   it.each([
     ['zh', zhWatch],
