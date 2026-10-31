@@ -77,6 +77,11 @@ import {
   augmentCoachSkillForExperienceCards,
   shareExperienceCardTool,
 } from './experience-card-tool';
+import {
+  augmentCoachSkillForFindPrivate,
+  nearbyFindTurn,
+  withoutFindReasoning,
+} from './find-private';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
   type GmailDraftNoticeBox,
@@ -335,15 +340,24 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...groupedSkill,
         instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}`,
       };
+      // VIL-524. Only a nearby-find turn gets this addendum. coach-nearby-find
+      // itself stays byte-identical, so coach-channel and group-privacy
+      // recordings stay keyed on the prompt they already have.
+      const findPrivate = nearbyFindTurn(turn.body, transcript)
+        ? await loadCronSkill('coach-find-private')
+        : null;
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
-      const skill = augmentCoachSkillForGroupLeave(
-        augmentCoachSkillForExperienceCards(
-          baseSkill,
-          cardsLit ? await loadCronSkill('experience-card-coach') : null,
+      const skill = augmentCoachSkillForFindPrivate(
+        augmentCoachSkillForGroupLeave(
+          augmentCoachSkillForExperienceCards(
+            baseSkill,
+            cardsLit ? await loadCronSkill('experience-card-coach') : null,
+          ),
+          leaveLit,
         ),
-        leaveLit,
+        findPrivate,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
@@ -576,10 +590,30 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               new GmailDraftNoticeUnsent(),
             );
           }
+          // VIL-524. A subtraction, not a rewrite: a sentence that narrates the
+          // search, the ranking, or the result set does not go out. What remains
+          // is what the model wrote. A reply that was only that aside is a failed
+          // turn, so the parent is not handed the reasoning and is not handed a
+          // fixed line either.
+          let outbound = spoken;
+          if (!noticeReady) {
+            const kept = withoutFindReasoning(spoken);
+            if (kept.cut > 0) {
+              console.error(
+                { cut: kept.cut, reason: 'find_reasoning' },
+                'channel coach: find reply narrated its own reasoning - those sentences were not sent',
+              );
+            }
+            if (kept.text === '') {
+              await ports.recordRun(record('failed'));
+              throw failed('channel coach: find reply was only internal reasoning');
+            }
+            outbound = kept.cut === 0 ? spoken : kept.text;
+          }
           // VIL-434: the model's answer goes out whole. Length is the model's judgment
           // (the skill, or a rewrite the model chooses). Code does not cut it, and it
           // does not call a shorten pass because a sentence ran past two segments.
-          const reply = toSmsReply(spoken, {
+          const reply = toSmsReply(outbound, {
             children,
             now,
             ...(noticeReady

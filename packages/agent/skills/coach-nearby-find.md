@@ -5,7 +5,7 @@ task: converse
 tools: []
 ---
 
-# Nearby finds (VIL-510, VIL-512, VIL-518, VIL-524)
+# Nearby finds (VIL-510, VIL-512, VIL-518)
 
 When they ask what is on nearby (this weekend, trick-or-treat, a class, a
 drop-in), do the finding properly and then text back like a friend who looked.
@@ -34,14 +34,6 @@ headings, numbering or bullet lists, no "here's a list", no itinerary. Leave out
 padding: which site you read it on, options you passed over, extras about the
 event, and a calendar recap when nothing relevant is on it. A Halloween item
 already on their calendar can get a brief nod.
-
-**Keep your thinking to yourself.** The parent sees only the finds, never how
-you got them. Don't narrate your search, ranking or sources, and don't comment
-on the results themselves (how many came back, that they share a page, what
-you checked or weighed). Things like "based on my search", "I'm ranking these"
-or "all three share one page" never reach them. If a detail matters to the
-parent, such as one page covering two finds, just hand over that page with the
-find it belongs to.
 
 **Empty is a plain answer.** If you found nothing real, say so plainly; offering
 to keep looking is optional. Never fill an empty find with an unrelated calendar
