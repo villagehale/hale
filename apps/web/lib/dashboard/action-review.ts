@@ -94,12 +94,25 @@ function capUsdOf(entry: ReviewerToolResult): number | null {
   return typeof limit === 'number' && Number.isFinite(limit) ? limit : null;
 }
 
+/**
+ * Whether a stored check reads as PASSED to the parent. `check_calendar_conflict` is
+ * non-blocking (VIL-79): it always stores ok:true and reports the overlap in
+ * `hasConflict`, so a clash must still read as a clash here — never "calendar clear"
+ * on a double-booked kid (Devin #927).
+ */
+function checkPassed(entry: ReviewerToolResult): boolean {
+  if (!entry.ok) return false;
+  if (entry.tool !== 'check_calendar_conflict') return true;
+  const { result } = entry;
+  if (typeof result !== 'object' || result === null) return true;
+  return (result as { hasConflict?: unknown }).hasConflict !== true;
+}
+
 export function toReviewChecks(stored: ReviewerToolResult[]): ReviewCheck[] {
-  return stored.map((entry) => ({
-    label: reviewerCheckLabel(entry.tool, entry.ok),
-    ok: entry.ok,
-    capUsd: capUsdOf(entry),
-  }));
+  return stored.map((entry) => {
+    const ok = checkPassed(entry);
+    return { label: reviewerCheckLabel(entry.tool, ok), ok, capUsd: capUsdOf(entry) };
+  });
 }
 
 /** The verdict rung's terse label + tone. A verdict the registry doesn't know

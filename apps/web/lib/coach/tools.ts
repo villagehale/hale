@@ -1,4 +1,9 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import {
+  type KidClashFact,
+  type KidClashReader,
+  sessionKidClashFacts,
+} from '~/lib/channel/coach/kid-clash';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
@@ -57,6 +62,8 @@ interface OfferableActivity {
    * purpose: the reply cites it and code attaches that exact page, so an invented ref
    * attaches nothing and a typed URL is dropped (channel/coach/activity-links.ts). */
   ref?: string;
+  /** VIL-79 · a structured session instant, only when the source published one. */
+  session?: { startsAt: string; endsAt: string | null };
 }
 
 /**
@@ -189,6 +196,8 @@ export function searchVillageTool(
           summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
           venue: pick.sourceName,
           when: pick.when ?? 'Current time could not be verified',
+          // VIL-79 · only a pick with a STRUCTURED session gets these; see attachClashes.
+          ...(pick.session ? { session: pick.session } : {}),
           // A ref, not the page: the reply cites it and code attaches the URL.
           ...(pick.sourceUrl ? { ref: linkRef(pick.sourceUrl) } : {}),
         },
@@ -211,7 +220,13 @@ export function searchVillageTool(
         (entry) => (entry.offer ? offeredSubject(entry.offer) : null),
         householdBias,
       );
-      const candidates = ordered.map((entry) => entry.candidate);
+      const candidates = await attachKidClashes(
+        // Lazy: channel/coach/tools imports this module, so a static import would cycle.
+        async () =>
+          (await import('~/lib/channel/coach/tools')).channelScheduleReader(database, now),
+        ctx.familyId,
+        ordered.map((entry) => entry.candidate),
+      );
       const receipts = await recordActivityOffers(
         database,
         ctx.familyId,
@@ -239,4 +254,31 @@ export function searchVillageTool(
       };
     },
   });
+}
+
+/**
+ * VIL-79 · live kid-clash facts on a find, ONLY where it carries a structured session
+ * time. A find with only a free-text `when` gets no `clashes` field — never a guess.
+ * Facts only; the coach words any mention itself. A failed read omits the field.
+ */
+export async function attachKidClashes<
+  T extends { session?: { startsAt: string; endsAt: string | null } },
+>(
+  reader: () => Promise<KidClashReader>,
+  familyId: string,
+  candidates: T[],
+): Promise<(T & { clashes?: KidClashFact[] })[]> {
+  if (!candidates.some((c) => c.session)) return candidates;
+  try {
+    const read = await reader();
+    return await Promise.all(
+      candidates.map(async (candidate) => {
+        const clashes = await sessionKidClashFacts(read, familyId, candidate.session);
+        return clashes === null ? candidate : { ...candidate, clashes };
+      }),
+    );
+  } catch (error) {
+    console.warn({ familyId, err: (error as Error).name }, 'search_village kid clash read failed');
+    return candidates;
+  }
 }

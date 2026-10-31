@@ -20,6 +20,7 @@
 //   node --env-file=../../launch.env evals/run-reviewer-eval.mjs \
 //     --anthropic-model=claude-sonnet-5-5 --suite=sms-calendar --max-tokens=4096
 //   node evals/run-reviewer-eval.mjs --suite=sms-calendar --preflight
+//   node evals/run-reviewer-eval.mjs --suite=sms-calendar --dry   # price the re-record, 0 calls
 //   node evals/run-reviewer-eval.mjs --suite=sms-calendar --broken
 
 import { createHash } from 'node:crypto';
@@ -46,6 +47,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = join(HERE, 'cache');
 const FIXTURES_DIR = join(HERE, 'fixtures', 'reviewer');
 const cachedOnly = process.argv.includes('--cached-only');
+// --dry: replay what is cached, PRICE the first miss per fixture (and the turns after it,
+// worst case up to the reviewer's turn cap), and make no live call at all.
+const dry = process.argv.includes('--dry');
+const REVIEWER_MAX_TURNS = 8;
+const dryLines = [];
+const dryTotals = { fixtures: 0, cachedFixtures: 0, uncachedCalls: 0, worstUsd: 0 };
+class DryStop extends Error {}
 
 // reviewer.ts pulls in config.ts, which validates DATABASE_URL at import. This
 // eval injects every DB-touching dep (invokeTool, loadChildNames), so it never
@@ -114,9 +122,23 @@ function makeCachedClient(tag, { anthropicModel, directModel, maxTokens }) {
         });
         const key = cacheKey(`${tag}:reviewer`, canonical);
         const cached = await cacheGet(key);
+        dryHits.set(tag, (dryHits.get(tag) ?? 0) + (cached ? 1 : 0));
         if (cached) {
           if (Number.isFinite(cached.latencyMs)) cost.latencies.push(cached.latencyMs);
           return cached.response;
+        }
+        if (dry) {
+          // Offline estimate: 1 token per 3 bytes in, max_tokens out, every remaining turn.
+          const rates = priceRates(request.model);
+          const inTokens = Math.ceil(JSON.stringify(request).length / 3);
+          const calls = REVIEWER_MAX_TURNS - (dryHits.get(tag) ?? 0);
+          const worst = calls * ((inTokens / 1e6) * rates.input + (maxTokens / 1e6) * rates.output);
+          dryTotals.uncachedCalls += calls;
+          dryTotals.worstUsd += worst;
+          dryLines.push(
+            `DRY  uncached  reviewer:${tag}  ~${inTokens} in + ${maxTokens} max out × ≤${calls} turns  worst $${worst.toFixed(5)}`,
+          );
+          throw new DryStop('dry');
         }
         if (cachedOnly) {
           console.error(
@@ -153,6 +175,8 @@ function makeCachedClient(tag, { anthropicModel, directModel, maxTokens }) {
   };
 }
 
+const dryHits = new Map();
+
 const brokenClient = {
   messages: {
     async create() {
@@ -183,7 +207,7 @@ const brokenClient = {
 // action_hash surface as ok:false — the exact ISSUE-5 failure mode. The results are
 // scripted rather than contract-shaped, so this eval says nothing about the real door's
 // output projection (VIL-270); that is pinned by output-contract.test.ts instead.
-function makeInvokeTool(checkPolicy) {
+function makeInvokeTool(checkPolicy, checkResults = {}) {
   return async (name, rawInput) => {
     const spec = REVIEWER_TOOLS[name];
     if (!spec) return { tool: name, ok: false, result: { error: `unknown tool ${name}` } };
@@ -196,7 +220,8 @@ function makeInvokeTool(checkPolicy) {
       return { tool: name, ok: false, result: { error: `invalid input: ${err.message}` } };
     }
     const ok = checkPolicy[name] ?? true;
-    return { tool: name, ok, result: { simulated: true, ok } };
+    // A fixture may script the result body too (VIL-79: a passing clash report).
+    return { tool: name, ok, result: checkResults[name] ?? { simulated: true, ok } };
   };
 }
 
@@ -263,7 +288,7 @@ async function main() {
   const model = modelArg === 'haiku' ? models.HAIKU_MODEL : models.SONNET_MODEL;
   const subjectModel = process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? model;
   console.log(
-    `reviewer-eval | mode=${broken ? 'broken' : cachedOnly ? 'cached-only' : 'real'} | suite=${suite} | review model=${subjectModel}`,
+    `reviewer-eval | mode=${broken ? 'broken' : dry ? 'dry' : cachedOnly ? 'cached-only' : 'real'} | suite=${suite} | review model=${subjectModel}`,
   );
   const allFixtures =
     suite === 'sms-calendar' ? SMS_CALENDAR_REVIEWER_FIXTURES : await loadFixtures();
@@ -318,7 +343,7 @@ async function main() {
                   maxTokens,
                 },
               ),
-          invokeTool: makeInvokeTool(fx.checkPolicy ?? {}),
+          invokeTool: makeInvokeTool(fx.checkPolicy ?? {}, fx.checkResults ?? {}),
           loadChildNames: async () => [],
         },
       );
@@ -330,11 +355,28 @@ async function main() {
     } catch (err) {
       verdictKind = `ERROR:${err.message}`;
     }
+    if (dry) {
+      dryTotals.fixtures += 1;
+      if (verdictKind !== 'ERROR:dry') {
+        dryTotals.cachedFixtures += 1;
+        dryLines.push(`DRY  cached    reviewer:${fx.id}  replays, 0 live calls`);
+      }
+      continue;
+    }
     const pass = verdictMatches(fx.expect, verdictKind) && missingChecks.length === 0;
     results.push({ id: fx.id, expect: fx.expect, got: verdictKind, missingChecks, pass });
     console.log(
       `  ${pass ? 'pass' : 'FAIL'} ${fx.id} — expect ${fx.expect}, got ${verdictKind}${missingChecks.length ? `, missing ${missingChecks.join(',')}` : ''}${pass ? '' : '  <<<<<'}`,
     );
+  }
+
+  if (dry) {
+    for (const line of dryLines) console.log(line);
+    console.log(
+      `DRY summary | suite=${suite} | fixtures ${dryTotals.fixtures} (cached ${dryTotals.cachedFixtures}, uncached ${dryTotals.fixtures - dryTotals.cachedFixtures}) | uncached reviewer calls ≤${dryTotals.uncachedCalls} | worst total $${dryTotals.worstUsd.toFixed(5)}`,
+    );
+    console.log('DRY: input tokens are an offline estimate (1 per 3 bytes); live calls: 0');
+    return;
   }
 
   const failures = results.filter((r) => !r.pass);

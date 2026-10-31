@@ -1,8 +1,8 @@
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 
 const DISTRIBUTION = {
-  calendar_add: { clean: 6, duplicate: 4, quiet_window: 4, conflict: 4 },
-  calendar_move: { clean: 4, duplicate: 4, quiet_window: 4, conflict: 4 },
+  calendar_add: { clean: 6, duplicate: 4, quiet_window: 4, kid_clash: 4 },
+  calendar_move: { clean: 4, duplicate: 4, quiet_window: 4, kid_clash: 4 },
   calendar_cancel: { clean: 8, duplicate: 8 },
 };
 
@@ -23,7 +23,7 @@ function checkPolicy(actionType, outcome) {
   const policy = Object.fromEntries(REQUIRED_CHECKS[actionType].map((check) => [check, true]));
   if (outcome === 'duplicate') policy.check_action_idempotency = false;
   if (outcome === 'quiet_window') policy.check_action_time_window = false;
-  if (outcome === 'conflict') policy.check_calendar_conflict = false;
+  // VIL-79: a kid clash is non-blocking — the check passes and reports the clash.
   return policy;
 }
 
@@ -51,7 +51,17 @@ function fixture(actionType, outcome, sequence) {
       payload,
     },
     checkPolicy: checkPolicy(actionType, outcome),
-    expect: outcome === 'clean' ? 'approve' : 'not-approve',
+    ...(outcome === 'kid_clash'
+      ? {
+          checkResults: {
+            check_calendar_conflict: {
+              hasConflict: true,
+              conflictingEvents: [{ id: uuid(7000 + sequence), startsAt, endsAt }],
+            },
+          },
+        }
+      : {}),
+    expect: outcome === 'clean' || outcome === 'kid_clash' ? 'approve' : 'not-approve',
   };
 }
 

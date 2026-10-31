@@ -168,52 +168,92 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   },
 
   // ───────────────────────────────────────────────────────────────────
-  // Calendar conflict (VIL-219) — does the proposed placement's window
-  // [startsAt, startsAt+durationMinutes) overlap any LIVE family_events row?
-  // Queries Hale's own placements/occasions (soft-deleted rows excluded);
-  // ok:true means the slot is clear. Half-open interval semantics: a timed
-  // event conflicts iff it truly overlaps (back-to-back does not); a point
-  // event (no end) conflicts iff its instant falls inside the window.
+  // Calendar conflict (VIL-219, VIL-79) — does the proposed placement's window
+  // [startsAt, startsAt+durationMinutes) overlap a KID item, read live at decision
+  // time: Hale's household family_events rows (soft-deleted and Google mirrors
+  // excluded) plus the connected Google Calendar blocks whose stored kid-relevance
+  // verdict is kid. An adult block never surfaces. Nothing is stored.
+  //
+  // NON-BLOCKING (VIL-79): a clash is a fact for the parent, not a failed check, so
+  // this always returns ok:true and reports the overlap in `hasConflict` /
+  // `conflictingEvents`. The parent sees the clash and decides; a double-booked kid
+  // is their call, not the reviewer's.
+  //
+  // Half-open interval semantics: a timed item conflicts iff it truly overlaps
+  // (back-to-back does not); an item with no end conflicts iff its instant falls
+  // inside the window. No end time is ever invented for the other item.
   // ───────────────────────────────────────────────────────────────────
   check_calendar_conflict: async (raw, database) => {
     const input = REVIEWER_TOOLS.check_calendar_conflict.input.parse(raw);
     const newStart = new Date(input.startsAt);
     const newEnd = new Date(newStart.getTime() + input.durationMinutes * 60 * 1000);
 
-    const overlapping = await database
-      .select({
-        id: schema.familyEvents.id,
-        startsAt: schema.familyEvents.startsAt,
-        endsAt: schema.familyEvents.endsAt,
-      })
-      .from(schema.familyEvents)
-      .where(
-        and(
-          eq(schema.familyEvents.familyId, input.familyId),
-          householdFamilyEvent(),
-          lt(schema.familyEvents.startsAt, newEnd),
-          or(
-            and(
-              sql`${schema.familyEvents.endsAt} IS NOT NULL`,
-              gt(schema.familyEvents.endsAt, newStart),
-            ),
-            and(
-              isNull(schema.familyEvents.endsAt),
-              gte(schema.familyEvents.startsAt, newStart),
+    const [overlapping, kidBlocks] = await Promise.all([
+      database
+        .select({
+          id: schema.familyEvents.id,
+          startsAt: schema.familyEvents.startsAt,
+          endsAt: schema.familyEvents.endsAt,
+        })
+        .from(schema.familyEvents)
+        .where(
+          and(
+            eq(schema.familyEvents.familyId, input.familyId),
+            householdFamilyEvent(),
+            lt(schema.familyEvents.startsAt, newEnd),
+            or(
+              and(
+                sql`${schema.familyEvents.endsAt} IS NOT NULL`,
+                gt(schema.familyEvents.endsAt, newStart),
+              ),
+              and(isNull(schema.familyEvents.endsAt), gte(schema.familyEvents.startsAt, newStart)),
             ),
           ),
-        ),
-      )
-      .limit(20);
+        )
+        .limit(20),
+      database
+        .select({
+          id: schema.parentCalendarBlocks.eventId,
+          startsAt: schema.parentCalendarBlocks.startAt,
+          endsAt: schema.parentCalendarBlocks.endAt,
+        })
+        .from(schema.parentCalendarBlocks)
+        .where(
+          and(
+            eq(schema.parentCalendarBlocks.familyId, input.familyId),
+            eq(schema.parentCalendarBlocks.kidRelated, true),
+            eq(schema.parentCalendarBlocks.status, 'confirmed'),
+            lt(schema.parentCalendarBlocks.startAt, newEnd),
+            or(
+              and(
+                sql`${schema.parentCalendarBlocks.endAt} IS NOT NULL`,
+                gt(schema.parentCalendarBlocks.endAt, newStart),
+              ),
+              and(
+                isNull(schema.parentCalendarBlocks.endAt),
+                gte(schema.parentCalendarBlocks.startAt, newStart),
+              ),
+            ),
+          ),
+        )
+        .limit(20),
+    ]);
+
+    const conflictingEvents = [
+      ...overlapping.map((e) => ({ id: e.id, startsAt: e.startsAt, endsAt: e.endsAt })),
+      ...kidBlocks.flatMap((b) =>
+        b.startsAt ? [{ id: b.id, startsAt: b.startsAt, endsAt: b.endsAt }] : [],
+      ),
+    ];
 
     return {
       tool: 'check_calendar_conflict',
-      ok: overlapping.length === 0,
+      ok: true,
       result: {
-        hasConflict: overlapping.length > 0,
+        hasConflict: conflictingEvents.length > 0,
         // Ids and windows only — never the rows' titles (VIL-270). The moved row's own
         // id equals the draft's reversalHandle, so self-overlap is still recognisable.
-        conflictingEvents: overlapping.map((e) => ({
+        conflictingEvents: conflictingEvents.map((e) => ({
           id: e.id,
           startsAt: e.startsAt.toISOString(),
           endsAt: (e.endsAt ?? e.startsAt).toISOString(),
@@ -352,7 +392,9 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
     // OHIP/health-card "#### ### ###" — matched before the generic phone
     // pattern so a health-card group is not mislabelled as a phone number.
     const ohipMatch = content.match(/\b\d{4}\s\d{3}\s\d{3}\b/);
-    const mrnMatch = content.match(/\b(?:MRN|HCN|health\s*card|chart)\s*#?:?\s*([A-Z]?\d{6,10})\b/i);
+    const mrnMatch = content.match(
+      /\b(?:MRN|HCN|health\s*card|chart)\s*#?:?\s*([A-Z]?\d{6,10})\b/i,
+    );
     if (ohipMatch) {
       detections.push({
         kind: 'medical_record',
@@ -369,9 +411,7 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
 
     // Phone: NANP formats — "416-555-0182", "(604) 555 0199", "604.555.0199".
     // Skip any span already claimed as a health-card group above.
-    const phoneMatch = content.match(
-      /\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/,
-    );
+    const phoneMatch = content.match(/\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/);
     if (phoneMatch && phoneMatch[0] !== ohipMatch?.[0]) {
       detections.push({
         kind: 'phone',
