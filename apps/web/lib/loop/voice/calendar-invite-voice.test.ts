@@ -1,16 +1,37 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LoopMessage } from '~/lib/channel/types';
 import {
   calendarInviteSmsRenderer,
   splitInviteSms,
 } from '~/lib/loop/templates/calendar-invite/sms';
+import { forceToolJson } from '~/lib/pipeline/structured';
+
+vi.mock('~/lib/cron/skill', () => ({
+  loadCronSkill: vi.fn(async (name: string) => ({
+    instructions: name,
+    meta: {
+      name,
+      whenToUse: name,
+      task: name === 'calendar-invite-time' ? 'simple-lookup' : 'draft',
+      tools: [],
+    },
+  })),
+}));
+
+vi.mock('~/lib/pipeline/structured', () => ({
+  forceToolJson: vi.fn(),
+}));
+
 import {
   type CalendarInviteVoiceRequest,
   INVITE_LINK_SLOT,
   calendarInviteRefusals,
+  calendarInviteTimeInput,
+  calendarInviteTimeUserMessage,
   calendarInviteUserMessage,
+  createCalendarInviteVoice,
   fillCalendarInvite,
   prepareCalendarInvite,
 } from './calendar-invite-voice';
@@ -61,7 +82,7 @@ describe('calendarInviteRefusals', () => {
         `We put Swim class at 4:15 on Thu, Jul 23 ${INVITE_LINK_SLOT} and ${INVITE_LINK_SLOT}`,
         REQUEST,
       ),
-    ).toEqual(expect.arrayContaining(['link_repeated', 'invented_number', 'when_missing']));
+    ).toEqual(expect.arrayContaining(['link_repeated', 'invented_number']));
     expect(
       calendarInviteRefusals(
         `Swim class on Thu, Jul 23 at 10:30 AM ${INVITE_LINK_SLOT} [[map]]`,
@@ -81,101 +102,15 @@ describe('calendarInviteRefusals', () => {
     ).toEqual([]);
   });
 
-  it('still sees a wrong weekday when the title is that same word', () => {
-    const tuesday = new Date('2026-07-21T14:30:00.000Z');
-    expect(
-      calendarInviteRefusals(`Friday on Friday at 10:30 AM. ${INVITE_LINK_SLOT}`, {
-        ...REQUEST,
-        summary: 'Friday',
-        when: 'Tue, Jul 21 at 10:30 AM',
-        startsAt: tuesday,
-      }),
-    ).toContain('when_missing');
-    expect(
-      calendarInviteRefusals(`Friday on Tuesday at 10:30 AM. ${INVITE_LINK_SLOT}`, {
-        ...REQUEST,
-        summary: 'Friday',
-        when: 'Tue, Jul 21 at 10:30 AM',
-        startsAt: tuesday,
-      }),
-    ).toEqual([]);
-  });
-
-  it('does not treat a repeated weekday title as a second date', () => {
-    const tuesday = new Date('2026-07-21T14:30:00.000Z');
-    expect(
-      calendarInviteRefusals(
-        `Sunday School on Tuesday at 10:30 AM. Sunday School again. ${INVITE_LINK_SLOT}`,
-        {
-          ...REQUEST,
-          summary: 'Sunday School',
-          when: 'Tue, Jul 21 at 10:30 AM',
-          startsAt: tuesday,
-        },
-      ),
-    ).toEqual([]);
-  });
-
-  it('does not treat a weekday inside the event title as the date', () => {
-    const tuesday = new Date('2026-07-21T14:30:00.000Z');
-    expect(
-      calendarInviteRefusals(`Sunday School on Tuesday at 10:30 AM. ${INVITE_LINK_SLOT}`, {
-        ...REQUEST,
-        summary: 'Sunday School',
-        when: 'Tue, Jul 21 at 10:30 AM',
-        startsAt: tuesday,
-      }),
-    ).toEqual([]);
-  });
-
-  it('refuses a weekday that is not the event, even when the date and clock match', () => {
-    expect(
-      calendarInviteRefusals(
-        `Swim class on Friday, July 23 at 10:30 AM. ${INVITE_LINK_SLOT}`,
-        REQUEST,
-      ),
-    ).toContain('when_missing');
-    expect(
-      calendarInviteRefusals(`Swim class le jeudi 23 juillet à 10 h 30. ${INVITE_LINK_SLOT}`, {
-        ...REQUEST,
-        language: 'fr',
-      }),
-    ).toEqual([]);
-  });
-
-  it('refuses a clock or a day that is not the event, even when the digits were handed', () => {
-    expect(
-      calendarInviteRefusals(
-        `Swim class on Jul 10 at 23:30. Open this: ${INVITE_LINK_SLOT}`,
-        REQUEST,
-      ),
-    ).toContain('when_missing');
-    expect(
-      calendarInviteRefusals(
-        `Swim class on Jul 10 at 10:30 AM. Open this: ${INVITE_LINK_SLOT}`,
-        REQUEST,
-      ),
-    ).toContain('when_missing');
-    const extra = calendarInviteRefusals(
-      `Swim class on Thu, Jul 23 at 10:30 AM, or Jul 10 at 23:30. Open this: ${INVITE_LINK_SLOT}`,
-      REQUEST,
-    );
-    expect(extra).toContain('when_missing');
-  });
-
-  it('accepts the same start said in French or Chinese, without the English label', () => {
-    expect(
-      calendarInviteRefusals(`Swim class le 23 juillet à 10 h 30. ${INVITE_LINK_SLOT}`, {
-        ...REQUEST,
-        language: 'fr',
-      }),
-    ).toEqual([]);
-    expect(
-      calendarInviteRefusals(`Swim class 7月23日上午10:30 ${INVITE_LINK_SLOT}`, {
-        ...REQUEST,
-        language: 'zh',
-      }),
-    ).toEqual([]);
+  it('does not force a HH:MM clock, in English or any other way of saying the hour', () => {
+    for (const line of [
+      `Swim class at 10am. ${INVITE_LINK_SLOT}`,
+      `Swim class à 10 h. ${INVITE_LINK_SLOT}`,
+      `Swim class 上午10点 ${INVITE_LINK_SLOT}`,
+      `Swim class on Jul 10 at 23:30. ${INVITE_LINK_SLOT}`,
+    ]) {
+      expect(calendarInviteRefusals(line, REQUEST)).not.toContain('when_missing');
+    }
   });
 
   it('keeps an em dash in the summary as the fact, and does not fold it away', () => {
@@ -270,6 +205,52 @@ describe('splitInviteSms', () => {
   });
 });
 
+describe('the time judge', () => {
+  const line = `Swim class at 10am. ${INVITE_LINK_SLOT}`;
+
+  beforeEach(() => {
+    vi.mocked(forceToolJson).mockReset();
+  });
+
+  it('shows the judge the stated time and the real start, never the url', () => {
+    const message = calendarInviteTimeUserMessage(calendarInviteTimeInput(line, REQUEST));
+    const payload = JSON.parse(message) as {
+      text: string;
+      starts: { hour: number; minute: number };
+    };
+    expect(payload.text).toContain('10am');
+    expect(payload.starts).toMatchObject({ hour: 10, minute: 30, day: 23, month: 7 });
+    expect(message).not.toContain(LINK);
+  });
+
+  it('sends the line when the judge says the start matches', async () => {
+    vi.mocked(forceToolJson).mockImplementation(async (args: { toolName?: string }) => {
+      if (args.toolName === 'time_match') return { value: { match: true }, usage: {} as never };
+      return { value: { text: line }, usage: {} as never };
+    });
+    const outcome = await createCalendarInviteVoice(() => ({}) as never).compose(REQUEST);
+    expect(outcome).toEqual({ status: 'composed', body: fillCalendarInvite(line, LINK) });
+  });
+
+  it('sends nothing when the judge cannot say', async () => {
+    vi.mocked(forceToolJson).mockImplementation(async (args: { toolName?: string }) => {
+      if (args.toolName === 'time_match') throw new Error('down');
+      return { value: { text: line }, usage: {} as never };
+    });
+    const outcome = await createCalendarInviteVoice(() => ({}) as never).compose(REQUEST);
+    expect(outcome).toEqual({ status: 'deferred', reason: 'time_unjudged' });
+  });
+
+  it('stops after the judge keeps saying the time is wrong', async () => {
+    vi.mocked(forceToolJson).mockImplementation(async (args: { toolName?: string }) => {
+      if (args.toolName === 'time_match') return { value: { match: false }, usage: {} as never };
+      return { value: { text: line }, usage: {} as never };
+    });
+    const outcome = await createCalendarInviteVoice(() => ({}) as never).compose(REQUEST);
+    expect(outcome).toEqual({ status: 'deferred', reason: 'gate_exhausted' });
+  });
+});
+
 describe('VIL-515 · the invite template authors no fixed confirmation', () => {
   it('has no parent-facing Added line left in the sms module', () => {
     const source = readFileSync(
@@ -279,5 +260,19 @@ describe('VIL-515 · the invite template authors no fixed confirmation', () => {
     expect(source).not.toContain('Added -');
     expect(source).not.toContain("Tap to put it on your phone's calendar");
     expect(source).not.toContain('gsmSafe');
+  });
+
+  it('does not tell the parent the event is already on their calendar', () => {
+    const skill = readFileSync(
+      fileURLToPath(
+        new URL('../../../../../packages/agent/skills/calendar-invite-voice.md', import.meta.url),
+      ),
+      'utf8',
+    );
+    expect(skill).not.toContain('on the calendar now');
+    expect(skill).toContain(
+      "Hale has it in their plans, and opening the link adds it to their phone's calendar",
+    );
+    expect(skill).toContain('friend texting');
   });
 });

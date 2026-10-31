@@ -9,7 +9,7 @@ tools: []
 
 A parent just said yes to an event. Hale is texting them one link their phone opens in Calendar. You write that text. Code puts the real link in. You never see the URL.
 
-Write in `language`. When `language` is null, write in English.
+Write like a friend texting, chill, in `language`. When `language` is null, write in English.
 
 ## What you are given
 
@@ -23,8 +23,7 @@ That is everything. Do not guess a place, a price, who else is going, or why the
 
 - the event, by its `summary`
 - when it is
-- that it is on the calendar now
-- that opening the link puts it on their phone's calendar
+- Hale has it in their plans, and opening the link adds it to their phone's calendar
 
 ## The link
 
