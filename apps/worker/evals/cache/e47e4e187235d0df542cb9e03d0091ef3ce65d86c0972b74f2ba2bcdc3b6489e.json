@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present: tomorrow (lundi), the all-day jour de congé, Léa's natation 10 h to 11 h at Piscine Main, with the correct AM times rendered as 10 h. The text names the congé as the day's nature, which is a true fact from the all-day item, and the timed swim is clearly there. Phrasing is natural French and friendly. However, 'c'est un jour de congé' reads a little like a calendar label, and the sentence 'et Léa a natation' is slightly clipped where a native would write 'Léa a natation' with a fuller construction, so it does not fully pass the native speaker check and caps at 3.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names the wrong event (\"Parent & Tot Skate\" instead of \"Swim class\"), gives the wrong day (Tuesday, Oct 27 instead of today, Monday Oct 26), and the wrong time (10:30 a.m. instead of 10:00 AM to 11:00 AM, and the end time is missing). These are multiple fact failures.",
+    "score": 1
+  }
+}

@@ -30,7 +30,16 @@ export interface ReplyLayerDeps {
 
 export async function replyProse(
   deps: ReplyLayerDeps,
-  input: { fallback: string; facts: readonly string[]; sealedValues?: readonly string[] },
+  input: {
+    /** Legacy shape hint (memory surface). Never sent, never shown to the model. */
+    fallback?: string;
+    /** VIL-507: say outright whether the one next step may be a question. */
+    questionAllowed?: boolean;
+    /** VIL-507: what the line is for, read by the model; there is no sentence behind it. */
+    purpose?: string;
+    facts: readonly string[];
+    sealedValues?: readonly string[];
+  },
 ): Promise<string | null> {
   if (!deps.client) {
     console.info({ reason: 'not_configured', surface: deps.surface }, 'reply-copy: model unread');
@@ -46,8 +55,8 @@ export async function replyProse(
     shape: 'prose',
     facts: input.facts,
     sealedValues: input.sealedValues,
-    questionAllowed: input.fallback.includes('?'),
-    fallback: input.fallback,
+    questionAllowed: input.questionAllowed ?? (input.fallback ?? '').includes('?'),
+    purpose: input.purpose,
     skill: deps.skill,
   });
   if (result.source !== 'model' || result.text.length === 0) return null;

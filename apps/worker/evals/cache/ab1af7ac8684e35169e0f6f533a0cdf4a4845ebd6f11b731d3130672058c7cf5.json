@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This matches the connect-link rule: it confirms the capability, quotes the exact short ask verbatim, and says what the link is and how long it lasts. It writes out no URL, sends the parent to no app, and asks nothing extra. The opening \"Yes, I can.\" is short and natural.",
+    "score": 5
+  }
+}

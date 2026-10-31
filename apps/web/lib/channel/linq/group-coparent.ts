@@ -1,14 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { householdTimezone } from '~/lib/channel/household-timezone';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
+import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
@@ -43,7 +43,7 @@ import { planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';
 import { sendChoicePoll } from './poll';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Seat a co-parent inside a claimed Linq group. SMS is not this module.
@@ -76,7 +76,6 @@ export type GroupCoparentEffect =
       type: 'claim';
       familyId: string;
       userId: string;
-      language: 'en' | 'fr';
     }
   | {
       type: 'done';
@@ -137,7 +136,6 @@ export async function considerGroupCoparent(
         type: 'claim',
         familyId: sender.familyId,
         userId: sender.userId,
-        language: trigger,
       };
     }
   }
@@ -216,7 +214,7 @@ export async function steerNotedCoparentOneToOne(
   const noted = await notedInviteForPhone(database, senderPhone, ports.now);
   if (!noted) return { type: 'none' };
   const language = await familySpeechLanguage(database, noted.familyId);
-  const from = linqFromE164();
+  const from = outboundLineFrom();
   const text = from
     ? await linqGroupMakeInstruction(formatLinqLineForParent(from), language)
     : await linqGroupLineMissing(language);
@@ -301,16 +299,8 @@ async function advanceSeatedCoparent(
       });
     }
     await setStep(database, sender.userId, 'awaiting_calendar', ports.now);
-    const notice = await sendLine(database, {
-      familyId: sender.familyId,
-      parentUserId: sender.userId,
-      chatId: message.chatId,
-      text: NAME_CAPTURED_REPLY,
-      templateKey: 'parent_name_captured',
-      dedupeKey: `linq:coparent_name_ack:${sender.userId}`,
-      now: ports.now,
-      fetch: ports.fetch,
-    });
+    // VIL-504 · no fixed name ack: the write is the receipt; nothing is sent.
+    const notice = null;
     return {
       type: 'done',
       outcome: 'group_coparent_named',

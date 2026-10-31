@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow (Monday), the all-day Jour de congé named as what the day is (true fact, fine), and Léa's natation 10 h to 11 h at Piscine Main, with start and end both given and no AM/PM ambiguity (10 h is the morning). The day is not called free or empty, no clock time is attached to the all-day item, nothing is invented, no extra filler, no link. French is natural and idiomatic (\"Pour demain, lundi\", \"de 10 h à 11 h\", \"à la Piscine Main\"). It reads like a quick, warm text from a friend rather than a calendar readout, and \"Natation\" is rendered as \"a natation\", a normal rendering of the event name.",
+    "score": 5
+  }
+}

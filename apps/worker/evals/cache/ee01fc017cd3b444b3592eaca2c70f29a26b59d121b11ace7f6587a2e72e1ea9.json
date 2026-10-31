@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow is the day off (Jour de congé, all-day), Léa has natation 10 h to 11 h at Piscine Main, and the 10 h is correctly morning. It is in French. However, 'Demain c'est un jour de congé' is a calendar-style label rather than how a friend would text, and the phrasing 'a natation de 10 h à 11 h' is a stiff construction a native speaker would phrase as 'Léa a natation demain de 10 h à 11 h à la piscine Main' or similar. The location is also not clearly tied to the session in a natural way. Capped at 3 for the readout feel.",
+    "score": 3
+  }
+}

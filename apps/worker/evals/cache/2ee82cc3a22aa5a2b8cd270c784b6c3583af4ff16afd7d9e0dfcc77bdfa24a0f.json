@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgZZpZg2Cj1nknyyDMZYK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6wYKEAgTGAI4AUIIdGhpbmtpbmcSDGOwPnaKhcgtie4LJRoMEdUCu5I2eu4UZ02wIjD37nvCv/Q8qQEEhYbkbyI2bFcQMYc59vz22rpug9w/lfpdcKOM/Ims6w+LP6hxmpMqiAZC2OpgneAHDSFnT1fvRMpoJYPHjbw2p75gOesgtxzUOVXFLDw/oZyj1iJg6QyIWhzKaKlrnHi8qLICwtIIZL9eFzDMzVeznr/Irc3Slbmm2Ls1PY8+s1nk+RCYUhe8cW9J3ciK3Dgz4TN7Yq+00/1k7dLRRn94BGYsXYuEQG6kPfsTxPx2iWMpvOzr7uMRR6BNBFuFLMRth5SqbUPYwib5l4u+7O84ogjs/0ZfyQfQ7sK2KB8yEr+LI5DctdulDpFFdfF5KhYzxyhOGsvGl3Gh3jyYhBBKiboNmCLu3RA0mtc/TMz5zVRzCbUep4wmEx7cBQxp9yjySgoaZzSdFEL4tgWREK7YA6eipI/bA7o+Ed/Wh/LYLjw4P0YQ0J8u0BzJXFTKx/4nP1TPlf0IRRGmTdCA6tf0WotVlP1BroTd6BZxBBvOIoKuIlmQnMi9e6l+5sM7O9PZr4iZA+/lg9Hsi3k+cSVHFSf8g34R9t6XnJnhGE669tmbRD+7h8ZrBerBw0dEv5ZQIxbUzb8nOEHJki0YunLQB3WLF+ZRdczdM5f5HcqeLDXdD+LN8rIxGKSL9FNHwgoBqbVOSuN6aMirH7ZGZx5xUGpAMxMAd7CwlfW9pKbD+rJkLcg7mElFzN0aeqRBcMxhSi1ur7rChvI1MDWlwuoTpY90WnjFsWVS587QfmulpAHNDmpurcH3XP3y7OK3Rck5fsiRWdgCqJHEMk7HM+AZvN0CtFujKg/4h0CjFk5cTuAcDeg7T9U0IGZWBVQJe5bBfNo1D9UE0IUaxtLKz31whJWuydhTOk2DauRt7gHGgB6bE/BZwsb6r0tiS/MvbBbl/spT4t8FODOVYEHFkp2HrphmHf5XJl09yeqmtnNuOCxs6W/NThGwf734n6mpElGDB+nIXbILCo2qc7trO0QT/YW12GxXZntS3ffzIZmstHcdr5oZftDGuHppwVOh41AZND50yZKl6+qGr3t1ZYOP+DoTS1KsHVJdoGO0Mrq+ZHX/QhDb7MKDH/ePhSzNp2lk9hgB"
+      },
+      {
+        "type": "text",
+        "text": "Cedarvale Park is already on your week for Saturday soccer practice at 10:00am, so you know that one. I couldn't find another park that checked out. Riverdale Farm is a different kind of outing, but it's free and outdoors on Sun, Aug 9. [link-b8b9f6] Want me to put it on the calendar?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 310,
+      "cache_read_input_tokens": 23137,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 310,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 197,
+      "output_tokens_details": {
+        "thinking_tokens": 87
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2153
+}

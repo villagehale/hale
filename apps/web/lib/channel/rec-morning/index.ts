@@ -9,13 +9,15 @@ export {
 } from './facts';
 export {
   EFUN_GONE,
-  REC_MORNING_COPY,
+  REC_MORNING_FACTS,
   TORONTO_FOLLOW,
   YMCA_FIRST,
   YMCA_FOLLOW,
   recMorningBody,
   recMorningIntakeReply,
   recMorningReply,
+  writeRecMorningIntakeReply,
+  writeRecMorningReply,
 } from './copy';
 export { cityRecLine } from './city-line';
 export {

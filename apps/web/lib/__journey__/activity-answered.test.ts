@@ -18,7 +18,6 @@ import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
-import { conflictReply } from '~/lib/channel/router/copy';
 import { approvalHandler } from '~/lib/channel/router/handlers';
 import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
@@ -592,6 +591,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
       channel_message_id: await inboundText(body, at, n),
       provider_message_id: `SM-in-${n}`,
       received_at: at.toISOString(),
+      in_group: false,
     });
   }
 
@@ -812,7 +812,6 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     // THE INCIDENT'S REPLY, and it is gone. No line about a draft the parent never
     // mentioned, no reviewer jargon at all.
     const reply = transport.bodies()[0] ?? '';
-    expect(reply).not.toBe(conflictReply('not_reviewer_approved'));
     expect(reply).not.toMatch(/double-checking|cleared my own checks|reviewer|flagged/i);
     expect(reply).toMatch(/fall listings/);
 

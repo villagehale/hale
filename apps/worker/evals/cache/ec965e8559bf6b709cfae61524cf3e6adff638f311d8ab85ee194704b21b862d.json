@@ -1,0 +1,19 @@
+{
+  "value": {
+    "request": "reminders",
+    "set": [
+      {
+        "for": "sender",
+        "name": null,
+        "what": "book Maya's dentist",
+        "date": "2026-10-29",
+        "time": "15:00",
+        "inMinutes": null,
+        "where": "unsaid"
+      }
+    ],
+    "cancel": [],
+    "language": "en"
+  },
+  "latencyMs": 1573
+}

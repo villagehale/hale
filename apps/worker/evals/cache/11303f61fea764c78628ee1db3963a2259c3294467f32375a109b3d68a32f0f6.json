@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text says only 'Reminder set!' and omits what the reminder is for, when it fires, and that it arrives as a private text. Required mustSay items are missing."
+  }
+}

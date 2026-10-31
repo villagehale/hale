@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives tomorrow, 15 h and the Georgetown library location, and names the event as « Jour de congé ». However, it omits the end time of 16 h (4 PM), which is in the facts, so it fails the requirement to include every start and end time. The title is kept as the event name, and the French is otherwise natural, but the missing end time is a fact failure.",
+    "score": 2
+  }
+}

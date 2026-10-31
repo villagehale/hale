@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '~/lib/db';
 import { RATE_LIMITS, type RateLimitRoute } from './config';
-import type { RateLimiter, RateLimitResult } from './limiter';
+import type { RateLimitResult, RateLimiter } from './limiter';
 import { PostgresRateLimiter } from './postgres';
 
 let cached: RateLimiter | undefined;
@@ -77,6 +77,6 @@ export async function rateLimitStatus(
     return await limiter().check(identifier, route, RATE_LIMITS[route]);
   } catch (err) {
     console.error({ err, route }, 'rate-limit check failed — failing open');
-    return { allowed: true, retryAfterSec: 0 };
+    return { allowed: true, retryAfterSec: 0, firstDenied: false };
   }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type OptOutReader,
   acceptOptOutReading,
@@ -46,5 +46,42 @@ describe('opt-out reader guards (structural, no model)', () => {
     await readTextOnce(reader(), { text, language: 'en' });
     await readTextOnce(reader(), { text, language: null });
     expect(calls).toEqual([text]);
+  });
+});
+
+describe('VIL-477 leave_group reading', () => {
+  const text = 'Hale can you please leave this group chat';
+  const value = { intent: 'leave_group' as const, verbatim: text, confirmation: 'ok, bye' };
+  afterEach(() => vi.unstubAllEnvs());
+  it('dark: stays the stop it always was', () => {
+    vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', '');
+    expect(acceptOptOutReading(value, text)).toEqual({ intent: 'stop', confirmation: 'ok, bye' });
+  });
+  it('lit: not a stop, no confirmation', () => {
+    vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', 'true');
+    expect(acceptOptOutReading(value, text)).toEqual({ intent: 'leave_group', confirmation: '' });
+  });
+});
+
+describe('VIL-477 a temporary quiet ask is not a stop', () => {
+  it('a none reading stays none with no confirmation, lit or dark', () => {
+    const text = 'quiet-for-a-while ask';
+    for (const lit of ['true', 'false']) {
+      vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', lit);
+      expect(
+        acceptOptOutReading({ intent: 'none' as const, verbatim: text, confirmation: 'x' }, text),
+      ).toEqual({ intent: 'none', confirmation: '' });
+    }
+    vi.unstubAllEnvs();
+  });
+  it('the skill tells the reader a pause is none, not stop or leave_group', async () => {
+    const { readFileSync } = await import('node:fs');
+    const skill = readFileSync(
+      new URL('../../../../../packages/agent/skills/opt-out-read.md', import.meta.url),
+      'utf8',
+    );
+    expect(skill).toMatch(
+      /quiet, hush or hold off for a while[\s\S]*is not `stop` and not\s+`leave_group`; it is `none`/,
+    );
   });
 });

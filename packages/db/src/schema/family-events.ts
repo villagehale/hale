@@ -53,6 +53,16 @@ export const familyEvents = pgTable(
      * occasion and on every row written before the column existed. */
     transparency: text('transparency'),
     location: text('location'),
+    /** VIL-474 · the last provider change to this event: 'time', 'date' or 'venue'. Set
+     * only from provider sources (a provider email or registration, via
+     * reminders/provider-change.ts), never a parent's calendar mirror, never inferred. Null when none. */
+    sourceChangedField: text('source_changed_field'),
+    /** The start before that change (time/date), or null. */
+    sourceChangedFromStartsAt: timestamp('source_changed_from_starts_at', { withTimezone: true }),
+    /** The venue before that change, or null. */
+    sourceChangedFromLocation: text('source_changed_from_location'),
+    /** When Hale saw that change. */
+    sourceChangedAt: timestamp('source_changed_at', { withTimezone: true }),
     /** VIL-468. Parking and what-to-bring facts the source event stated, or null.
      * Only the extracted facts, never the raw description (rule #1). */
     notes: jsonb('notes').$type<FamilyEventNotes>(),
@@ -80,6 +90,10 @@ export const familyEvents = pgTable(
      * (migration 0106; the outbound_sends idiom on this table). Deliberately no FK:
      * the stamp is a claim key, and both tables already cascade on family deletion. */
     placedByActionId: uuid('placed_by_action_id'),
+    /** VIL-455. A group plan's per-family copy claim key, derived from (group plan,
+     * family). Null on every other row. Separate from `placedByActionId`, which readers
+     * join to `actions` (migration 0188). */
+    groupPlanCopyKey: uuid('group_plan_copy_key'),
     /**
      * VIL-383. Who currently owns this kid occasion. Overwritten in place;
      * the previous owner stays in `audit_log` and in the superseded duty
@@ -142,6 +156,10 @@ export const familyEvents = pgTable(
     placedByActionUniq: uniqueIndex('family_events_placed_by_action_uniq')
       .on(table.placedByActionId)
       .where(sql`${table.placedByActionId} IS NOT NULL`),
+    // One copy per (group plan, family) — the group fan-out's claim (migration 0188).
+    groupPlanCopyKeyUniq: uniqueIndex('family_events_group_plan_copy_key_uniq')
+      .on(table.groupPlanCopyKey)
+      .where(sql`${table.groupPlanCopyKey} IS NOT NULL`),
     dutyFactIdx: index('family_events_duty_fact_idx')
       .on(table.familyId, table.dutyFactKey)
       .where(sql`${table.dutyFactKey} IS NOT NULL`),

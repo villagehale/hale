@@ -8,14 +8,18 @@
 // The gate is the label: a reading outside the fixture's `accept` set routes the message
 // wrong (a reply nobody asked for, or a missed turn). No word in the message is checked.
 //
-//   node evals/run-group-turn-read-eval.mjs --max-usd 0.20   # live, then caches
-//   node evals/run-group-turn-read-eval.mjs --broken         # calibration: must FAIL
-//   node evals/run-group-turn-read-eval.mjs --cached-only    # CI: replay only
+//   node evals/run-group-turn-read-eval.mjs --dry           # $0, no API: worst-case $ projection
+//   node evals/run-group-turn-read-eval.mjs --broken        # calibration, $0: must FAIL
+//   node evals/run-group-turn-read-eval.mjs --cached-only   # CI: replay only, $0
+//   node --env-file=../../.env evals/run-group-turn-read-eval.mjs --live   # live, PAID
+// Exactly one mode. Any other flag, none, or two exits 2 before the spend cap or a client
+// exists (lib/eval-flags.mjs).
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { GROUP_TURN_READ_FIXTURES } from './group-turn-read-fixtures.mjs';
+import { estimateTokens, noClient, parseEvalFlagsOrExit, worstCaseUsd } from './lib/eval-flags.mjs';
 import {
   cachedToolCall,
   installEvalSpendCap,
@@ -34,11 +38,17 @@ const READER_SRC = join(WEB_ROOT, 'lib', 'channel', 'linq', 'group-turn-reader.t
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
+const MAX_TOKENS = 200;
+
 async function main() {
-  const broken = process.argv.includes('--broken');
-  const cachedOnly = process.argv.includes('--cached-only');
+  const mode = parseEvalFlagsOrExit('group-turn-read');
+  if (mode === 'dry') return dryRun();
+  const broken = mode === 'broken';
+  const cachedOnly = mode === 'cached-only';
   installEvalSpendCap();
-  const getClient = lazyAnthropic('group-turn-read');
+  // Only --live ever gets a real client.
+  const getClient =
+    mode === 'live' ? lazyAnthropic('group-turn-read') : noClient('group-turn-read');
   const cost = makeCost();
   const agent = await importTs(AGENT_SRC);
   const { GROUP_TURNS, groupTurnUserMessage } = await importTs(READER_SRC);
@@ -68,7 +78,7 @@ async function main() {
             toolName: 'group_turn',
             toolSchema,
             toolDescription: 'Return whether this group message is for Hale.',
-            maxTokens: 200,
+            maxTokens: MAX_TOKENS,
             cachedOnly,
             getClient,
             cost,
@@ -88,6 +98,28 @@ async function main() {
   if (!broken) process.exit(allPass ? 0 : 1);
   console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);
   process.exit(allPass ? 1 : 0);
+}
+
+/** $0: no spend cap, no client. Prices every fixture as uncached (an upper bound). */
+async function dryRun() {
+  const agent = await importTs(AGENT_SRC);
+  const { groupTurnUserMessage } = await importTs(READER_SRC);
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const model = agent.pickModel(skill.meta.task);
+  console.log(`group-turn-read eval | mode=dry (no API calls) | model=${model}`);
+  let worst = 0;
+  for (const fixture of GROUP_TURN_READ_FIXTURES) {
+    const inTokens = estimateTokens(skill.instructions + groupTurnUserMessage(fixture.input));
+    const usd = worstCaseUsd(model, inTokens, MAX_TOKENS);
+    worst += usd;
+    console.log(
+      `DRY  group-turn-read:${fixture.id}  ~${inTokens} in + ${MAX_TOKENS} max out  worst $${usd.toFixed(5)}`,
+    );
+  }
+  console.log(
+    `DRY summary | ${GROUP_TURN_READ_FIXTURES.length} calls, all priced as uncached | worst $${worst.toFixed(5)}`,
+  );
+  console.log('DRY: input tokens are an offline estimate (1 per 3 bytes); live calls: 0');
 }
 
 main().catch((err) => {

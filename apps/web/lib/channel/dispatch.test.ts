@@ -521,3 +521,156 @@ describe('the composed voice slot is reported off the render, never inferred fro
     ]);
   });
 });
+
+describe('VIL-467 · multi-text legs — in order, one row per text, retry sends only the unsent', () => {
+  const TEXTS = [
+    'hey, heads up for tomorrow',
+    'tour at 10, about an hour',
+    'storytime 1:30 to 2:15',
+  ];
+  const multiRenderer = {
+    render: (): RenderedContent => ({
+      kind: 'sms',
+      text: TEXTS.join('\n\n'),
+      texts: [...TEXTS],
+      recordBody: true,
+    }),
+  };
+
+  function scriptedChannel(script: Array<'sent' | 'transient' | 'permanent'>) {
+    const calls: string[] = [];
+    let n = 0;
+    return {
+      calls,
+      channel: {
+        kind: 'sms' as const,
+        async send(input: { userId: string; rendered: RenderedContent }) {
+          const step = script[n] ?? 'sent';
+          n += 1;
+          if (step === 'transient') {
+            return { status: 'error' as const, transient: true, code: 'timeout', message: 'x' };
+          }
+          if (step === 'permanent') {
+            return { status: 'error' as const, transient: false, code: 'blocked', message: 'x' };
+          }
+          calls.push(input.rendered.text);
+          return { status: 'sent' as const, providerMessageId: `m-${calls.length}` };
+        },
+      },
+    };
+  }
+
+  it('sends each text in order, one ledger row and one thread entry per text, keys :i', async () => {
+    const sms = scriptedChannel([]);
+    const { ports, ledger, threaded, audits } = makePorts({
+      renderer: multiRenderer,
+      channels: { sms: sms.channel },
+    });
+    const result = await dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(sms.calls).toEqual(TEXTS);
+    expect(ledger.map((r) => [r.dedupeKey, r.body, r.status])).toEqual([
+      ['reminder:k:sms:0', TEXTS[0], 'queued'],
+      ['reminder:k:sms:1', TEXTS[1], 'queued'],
+      ['reminder:k:sms:2', TEXTS[2], 'queued'],
+    ]);
+    expect(threaded.map((t) => t.body)).toEqual(TEXTS);
+    expect(audits).toHaveLength(3);
+  });
+
+  it('checks quiet hours once for the whole set and sends none of it', async () => {
+    const sms = scriptedChannel([]);
+    const { ports, ledger } = makePorts({
+      now: () => NIGHT,
+      renderer: multiRenderer,
+      channels: { sms: sms.channel },
+    });
+    const result = await dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'suppressed_quiet_hours' }]);
+    expect(sms.calls).toHaveLength(0);
+    expect(ledger).toHaveLength(1);
+  });
+
+  it('a transient failure mid-set rethrows; the retry sends only the unsent texts', async () => {
+    const sent = new Set<string>();
+    const sms = scriptedChannel(['sent', 'transient']);
+    const { ports, ledger } = makePorts({
+      renderer: multiRenderer,
+      channels: { sms: sms.channel },
+      activeDedupe: async (key) => sent.has(key),
+      record: async (w) => {
+        ledger.push(w);
+        if (w.dedupeKey) sent.add(w.dedupeKey);
+        return `row-${ledger.length}`;
+      },
+    });
+    await expect(
+      dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports),
+    ).rejects.toBeInstanceOf(ChannelRetryableError);
+    expect(sms.calls).toEqual([TEXTS[0]]);
+    const retry = await dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+    expect(retry.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(sms.calls).toEqual(TEXTS); // text 0 once, then 1 and 2
+    expect(ledger.map((r) => r.dedupeKey)).toEqual([
+      'reminder:k:sms:0',
+      'reminder:k:sms:1',
+      'reminder:k:sms:2',
+    ]);
+  });
+
+  it('a permanent refusal stops the set with one failed row and no fallback text', async () => {
+    const sms = scriptedChannel(['sent', 'permanent']);
+    const { ports, ledger, threaded } = makePorts({
+      renderer: multiRenderer,
+      channels: { sms: sms.channel },
+    });
+    const result = await dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'blocked' }]);
+    expect(sms.calls).toEqual([TEXTS[0]]);
+    expect(threaded.map((t) => t.body)).toEqual([TEXTS[0]]);
+    expect(ledger.map((r) => r.status)).toEqual(['queued', 'failed']);
+  });
+
+  it('a fully re-drained set is deduped and sends nothing', async () => {
+    const sms = scriptedChannel([]);
+    const { ports, ledger } = makePorts({
+      renderer: multiRenderer,
+      channels: { sms: sms.channel },
+      activeDedupe: async () => true,
+    });
+    const result = await dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'deduped' }]);
+    expect(sms.calls).toHaveLength(0);
+    expect(ledger).toHaveLength(0);
+  });
+
+  it('VIL-474 · bolds by position: of two identical texts only the first carries the bold', async () => {
+    const SAME = 'swim moved to 4:30';
+    const boldRenderer = {
+      render: (): RenderedContent => ({
+        kind: 'sms',
+        text: [SAME, 'see you there', SAME].join('\n\n'),
+        texts: [SAME, 'see you there', SAME],
+        recordBody: true,
+        bold: '4:30',
+      }),
+    };
+    const seen: Array<{ text: string; bold: string | undefined }> = [];
+    const channel = {
+      kind: 'sms' as const,
+      async send(input: { userId: string; rendered: RenderedContent }) {
+        const r = input.rendered as RenderedContent & { bold?: string };
+        seen.push({ text: r.text, bold: r.bold });
+        return { status: 'sent' as const, providerMessageId: `m-${seen.length}` };
+      },
+    };
+    const { ports } = makePorts({ renderer: boldRenderer, channels: { sms: channel } });
+    const result = await dispatchLoopMessage(message({ dedupeKey: 'reminder:b' }), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(seen).toEqual([
+      { text: SAME, bold: '4:30' },
+      { text: 'see you there', bold: undefined },
+      { text: SAME, bold: undefined },
+    ]);
+  });
+});

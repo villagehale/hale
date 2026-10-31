@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the day (demain lundi 26 octobre, true from now Sunday Oct 25), both times (15 h à 16 h, correct PM), the venue name (bibliothèque de Georgetown / Georgetown library) and the address (9 Church St). The title \"Jour de congé\" is quoted as-is and presented as the event's name, not as a claim about the day or a closure. Nothing invented (no travel, closure, or activity guess), no link, entirely in French. Bold is none, which is fine.",
+    "score": 5
+  }
+}

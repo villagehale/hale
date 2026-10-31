@@ -873,6 +873,50 @@ describe('friend voice onboarding', () => {
     expect(transport.bodies().join('\n')).not.toMatch(/which (one|of these)/i);
     expect(transport.bodies().at(-1)).toBe('What should I call you?');
   });
+
+  it('sends nothing when the map opener fails, and retries the map before the next ask', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ voice: true });
+    const voice = deps.friendVoice;
+    deps.radar = {
+      async compose() {
+        return {
+          message: '1. Swim (ages 3-5) - Saturday',
+          itemCount: 1,
+          followUpNeeded: false,
+          checkpointTold: null,
+          weekendPickOffered: false,
+          findWon: true,
+          firstFindPromised: false,
+          actionMove: null,
+          actionHeld: 'no_move',
+          voiceFallback: null,
+        };
+      },
+    };
+    deps.friendVoice = {
+      async compose(input, options) {
+        if (input.step === 'find_show') throw new Error('model down');
+        if (!voice) throw new Error('voice missing');
+        return voice.compose(input, options);
+      },
+    };
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
+    expect(transport.bodies()).toEqual([]);
+    const owed = await loadOpenSession(fake.db, PHONE);
+    expect(owed?.firstTouch?.coldStart?.findDelivered).toBe(false);
+    expect(owed?.firstTouch?.coldStart?.nameLineSent).toBe(false);
+    expect(owed?.firstTouch?.coldStart?.findBody).toContain('Swim (ages 3-5)');
+
+    deps.friendVoice = voice;
+    await handleInboundSms(fake.db, inbound(transport, 'still here'), deps);
+    const sent = transport.bodies().join('\n');
+    expect(sent).toContain('Here is what is on near you for their ages.');
+    expect(sent).toContain('Swim (ages 3-5)');
+    expect(sent).toContain('What should I call you?');
+    const delivered = await loadOpenSession(fake.db, PHONE);
+    expect(delivered?.firstTouch?.coldStart?.findDelivered).not.toBe(false);
+  });
   it('updates the child age without re-running the find, and leaves the other family alone', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });

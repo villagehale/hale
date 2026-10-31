@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own. turn_off_autonomy ran this turn for send_email and reply_to_email, so \"C'est fait\" states a change that has really happened, not a draft. The reply answers in the parent's language, is short, plain and complete, and stops there.",
+    "score": 5
+  }
+}

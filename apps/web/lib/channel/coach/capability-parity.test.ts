@@ -73,7 +73,10 @@ const COACH_PATHS: ReadonlyArray<{ row: string; paths: readonly CoachPath[] }> =
       { tool: 'promise_activity_followup' },
     ],
   },
-  { row: 'raising kids:', paths: [{ tool: 'get_framework_guidance' }, { tool: 'offer_full_plan' }] },
+  {
+    row: 'raising kids:',
+    paths: [{ tool: 'get_framework_guidance' }, { tool: 'offer_full_plan' }],
+  },
   { row: 'routine health admin', paths: [{ tool: 'lookup_week' }] },
   { row: 'telling a friend', paths: [{ tool: 'share_referral_link' }] },
   // The one capability with neither a verb nor a clause. `save_memory` is deliberately

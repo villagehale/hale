@@ -19,9 +19,9 @@ vi.mock('drizzle-orm', async () => {
 
 import { auth } from '~/auth';
 import {
+  EmailInUseError,
   currentFamilyId,
   currentUserId,
-  EmailInUseError,
   ensureUserRow,
   resolveFamilyForUser,
 } from './family.js';

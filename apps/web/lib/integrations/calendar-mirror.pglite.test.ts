@@ -280,6 +280,47 @@ describe('reconcileCalendarMirrors', () => {
     expect((await audits()).map((row) => row.actionTaken)).toContain('calendar_mirror_removed');
   });
 
+  it('VIL-474: a parent moving their own calendar event records no change at all', async () => {
+    await reconcile([swim()]);
+    const later = new Date('2026-10-04T16:30:00.000Z');
+    await reconcile([
+      swim({
+        start: { dateTime: later.toISOString() },
+        end: { dateTime: '2026-10-04T17:30:00.000Z' },
+        location: 'Main St pool',
+      }),
+    ]);
+    const row = (await rows())[0];
+    expect(row?.startsAt.toISOString()).toBe(later.toISOString());
+    expect(row?.sourceChangedField).toBeNull();
+    expect(row?.sourceChangedFromStartsAt).toBeNull();
+    expect(row?.sourceChangedFromLocation).toBeNull();
+    expect(row?.sourceChangedAt).toBeNull();
+  });
+
+  it('VIL-474: a removed mirror clears all four source_changed_* columns', async () => {
+    await reconcile([swim()]);
+    const [seeded] = await rows();
+    if (!seeded) throw new Error('no mirror');
+    // A row written before mirrors stopped recording changes still carries them.
+    await db.database
+      .update(schema.familyEvents)
+      .set({
+        sourceChangedField: 'venue',
+        sourceChangedFromStartsAt: SWIM_START,
+        sourceChangedFromLocation: 'The pool',
+        sourceChangedAt: NOW,
+      })
+      .where(eq(schema.familyEvents.id, seeded.id));
+    await reconcile([]);
+    const row = (await rows())[0];
+    expect(row?.deletedAt).not.toBeNull();
+    expect(row?.sourceChangedField).toBeNull();
+    expect(row?.sourceChangedFromStartsAt).toBeNull();
+    expect(row?.sourceChangedFromLocation).toBeNull();
+    expect(row?.sourceChangedAt).toBeNull();
+  });
+
   it("a removed mirror keeps none of the parent's words, and a live one is untouched", async () => {
     const piano = swim({
       id: 'ev-piano',

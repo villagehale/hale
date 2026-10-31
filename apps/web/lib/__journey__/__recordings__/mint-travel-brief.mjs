@@ -124,9 +124,18 @@ function record(model, system, userMessage, response, thinking) {
 }
 
 const agent = await tsImport(join(REPO, 'packages', 'agent', 'src', 'index.ts'), import.meta.url);
-const finderSkill = await agent.loadSkill(
+// The web lane appends activity-finder-events (VIL-510), and so does the eval; mirror it
+// so the transcoded keys are the runtime's keys.
+const finderBase = await agent.loadSkill(
   join(REPO, 'packages', 'agent', 'skills', 'activity-finder.md'),
 );
+const finderEvents = await agent.loadSkill(
+  join(REPO, 'packages', 'agent', 'skills', 'activity-finder-events.md'),
+);
+const finderSkill = {
+  ...finderBase,
+  instructions: `${finderBase.instructions}\n\n${finderEvents.instructions}`,
+};
 const extractSkill = await agent.loadSkill(
   join(REPO, 'packages', 'agent', 'skills', 'extract-travel-booking.md'),
 );

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct and complete: tomorrow (Monday, from Sunday 6 PM), 4:45 start, 5:45 end, PM is right, and it stays generic without guessing what the appointment is or inventing a place. However, 'Tomorrow you have an appointment from 4:45 to 5:45 PM' is the stiff 'you have X from A to B' construction, which reads like a calendar readout rather than a quick friend text (a friend would say something like 'Tomorrow afternoon there's an appointment, 4:45 to 5:45'). Per the friend-not-notification check, that caps it at 3.",
+    "score": 3
+  }
+}

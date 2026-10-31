@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French while the requested language is English, and it gives a wrong time (3:00 instead of 4:45 PM), a wrong format (\"Mon, Oct 26:\" label style), and a made-up event title (\"Jour de congé\" replaces the generic appointment). It also claims the day is open with breathing room despite a timed event, which is a fact failure and filler.",
+    "score": 1
+  }
+}

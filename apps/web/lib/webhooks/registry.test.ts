@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getAdapter, SUPPORTED_PROVIDERS } from './registry.js';
+import { SUPPORTED_PROVIDERS, getAdapter } from './registry.js';
 
 /**
  * Fixtures hand-built from each provider's documented webhook contract (the
@@ -23,12 +23,7 @@ const SCAFFOLD_PROVIDERS = ['brightwheel', 'himama', 'google_classroom'] as cons
 
 /** VIL-253: the legs whose real verification is not implemented. They must refuse
  * everything — stripe is excluded because it verifies an HMAC for real. */
-const UNIMPLEMENTED_PROVIDERS = [
-  'gmail',
-  'gcal',
-  'outlook',
-  ...SCAFFOLD_PROVIDERS,
-] as const;
+const UNIMPLEMENTED_PROVIDERS = ['gmail', 'gcal', 'outlook', ...SCAFFOLD_PROVIDERS] as const;
 
 /** The env vars whose mere presence used to flip a leg to accept-by-default. */
 const CREDENTIAL_ENV_VARS = [
@@ -106,7 +101,11 @@ describe('VIL-253 · unimplemented legs refuse every request (red team)', () => 
     { name: 'an arbitrary non-empty signature', signature: 'anything', body: '{}' },
     { name: 'a plausible base64 signature', signature: 'L/OH5YylLD5NRKLltdqwSvS0BnU=', body: '{}' },
     { name: 'a stripe-shaped signature', signature: 'v1=deadbeef', body: '{}' },
-    { name: 'a bearer-token-shaped signature', signature: 'Bearer eyJhbGciOiJSUzI1NiJ9.e30.x', body: '{}' },
+    {
+      name: 'a bearer-token-shaped signature',
+      signature: 'Bearer eyJhbGciOiJSUzI1NiJ9.e30.x',
+      body: '{}',
+    },
     { name: 'a signature over an empty body', signature: 'sig', body: '' },
     {
       name: 'a fully plausible payload naming a real external id',

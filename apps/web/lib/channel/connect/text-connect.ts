@@ -43,16 +43,6 @@ const PROVIDER_NOUN: Record<TextConnectProvider, string> = {
 };
 
 /**
- * The one trust line on a texted connect link. Same sentence for both connectors:
- * Hale never sees the password, and disconnecting is something the parent can
- * do. It is not a phrase to text back.
- */
-export const CONNECTOR_TRUST_LINE: Record<TextConnectProvider, string> = {
-  gcal: 'I never see your password. You can disconnect any time.',
-  gmail: 'I never see your password. You can disconnect any time.',
-};
-
-/**
  * A FACT, NOT COPY: structured, so there is no sentence to paste. Google's unverified-app screen is outside Hale's page, so a parent
  * about to open a Google connect link is told about it - by the line writer, in its own
  * words and the parent's language. Nothing appends or prepends this text to a message.

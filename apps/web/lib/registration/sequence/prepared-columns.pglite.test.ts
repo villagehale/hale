@@ -244,7 +244,6 @@ describe('defaultSequenceRunDeps().refreshCourseAnchor · the guard', () => {
   });
 });
 
-
 /**
  * VIL-338 · the check-in listens for as long after the BOUND course's morning as it
  * does after an unbound one, and answers about the morning that just ran.
@@ -287,9 +286,7 @@ describe('loadAwaitingSequence · the horizon and the ordering', () => {
       familyId: horizonFamilyId,
       windowId: window.id,
       parentUserId: horizonParentUserId,
-      ...(courseOpensAt === null
-        ? {}
-        : { courseUrl: COURSE_URL, courseOpensAt }),
+      ...(courseOpensAt === null ? {} : { courseUrl: COURSE_URL, courseOpensAt }),
     });
   }
 

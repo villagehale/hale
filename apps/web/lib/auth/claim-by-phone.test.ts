@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeOtpSender } from '~/lib/channels/otp-sender';
 import { OTP_MAX_ATTEMPTS, hashOtpCode } from '~/lib/channels/otp';
+import { FakeOtpSender } from '~/lib/channels/otp-sender';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { requestClaimCode, verifyClaimCode } from './claim-by-phone';
@@ -143,9 +143,8 @@ describe('requestClaimCode', () => {
 
     expect(result).toEqual({ status: 'sent' });
     expect(sender.sent).toEqual([{ phoneE164: PHONE, code: CODE }]);
-    const inserted = writes.find(
-      (w) => w.op === 'insert' && w.table === schema.phoneVerifications,
-    )?.payload as Record<string, unknown> | undefined;
+    const inserted = writes.find((w) => w.op === 'insert' && w.table === schema.phoneVerifications)
+      ?.payload as Record<string, unknown> | undefined;
     expect(inserted?.userId).toBe(USER_ID);
     expect(inserted?.codeHash).toBe(hashOtpCode(CODE));
     expect(inserted?.codeHash).not.toBe(CODE);
@@ -278,9 +277,8 @@ describe('verifyClaimCode', () => {
 
     await verifyClaimCode(db, { phoneRaw: PHONE, code: CODE, now: NOW });
 
-    const burn = writes.find(
-      (w) => w.op === 'update' && w.table === schema.phoneVerifications,
-    )?.payload as Record<string, unknown> | undefined;
+    const burn = writes.find((w) => w.op === 'update' && w.table === schema.phoneVerifications)
+      ?.payload as Record<string, unknown> | undefined;
     expect(burn?.consumedAt).toEqual(NOW);
 
     const audit = writes.find((w) => w.op === 'insert' && w.table === schema.auditLog)?.payload as
@@ -334,9 +332,8 @@ describe('verifyClaimCode', () => {
     const result = await verifyClaimCode(db, { phoneRaw: PHONE, code: '000000', now: NOW });
 
     expect(result).toEqual({ status: 'refused', reason: 'wrong_code' });
-    const attempt = writes.find(
-      (w) => w.op === 'update' && w.table === schema.phoneVerifications,
-    )?.payload as Record<string, unknown> | undefined;
+    const attempt = writes.find((w) => w.op === 'update' && w.table === schema.phoneVerifications)
+      ?.payload as Record<string, unknown> | undefined;
     expect(attempt?.attemptCount).toBe(1);
     expect(attempt?.consumedAt).toBeUndefined();
   });

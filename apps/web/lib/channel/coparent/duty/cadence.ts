@@ -31,6 +31,10 @@ export interface DutyOccasion {
   eventKey: string;
   role: DutyRole;
   startsAt: Date;
+  /** When it ends, or null when the calendar did not say. */
+  endsAt?: Date | null;
+  /** Where it is. Null when Hale holds no vetted venue for this event. */
+  venue?: { name: string; address: string | null } | null;
   hasOwner: boolean;
   conflict: boolean;
   needsWhichKid: boolean;

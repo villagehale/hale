@@ -1,6 +1,6 @@
-import { z } from 'zod';
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { CONFIRM_WITH_PROVIDER, companionForChild, type FamilyStage } from '@hale/types';
+import { CONFIRM_WITH_PROVIDER, type FamilyStage, companionForChild } from '@hale/types';
+import { z } from 'zod';
 
 /**
  * The Child Development & Wellbeing Companion as a tool, shared by BOTH coach

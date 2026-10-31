@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly hands Sam the family's referral link, framed as something to forward, which is the right shape. It ends with a ready-to-send blurb plus the link, so it is usable. The middle runs a bit long: it explains that Hale won't text the friend first and describes the friend's onboarding, which is mild padding beyond what the question needed.",
+    "score": 4
+  }
+}

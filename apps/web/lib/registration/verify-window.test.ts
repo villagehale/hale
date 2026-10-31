@@ -218,9 +218,9 @@ describe('withoutInferredEvidence', () => {
   });
 
   it('drops an inferred field from the evidence, keeping what the page really said', () => {
-    expect(withoutInferredEvidence(confirmed('previewAt', 'residentOpenAt'), ['residentOpenAt'])).toEqual(
-      confirmed('previewAt'),
-    );
+    expect(
+      withoutInferredEvidence(confirmed('previewAt', 'residentOpenAt'), ['residentOpenAt']),
+    ).toEqual(confirmed('previewAt'));
   });
 
   it('is not a confirmation at all when the inference was the only evidence', () => {
@@ -423,9 +423,9 @@ describe('corroborationFailure — the anti-fabrication gate', () => {
   });
 
   it('rejects year evidence that is not on the page', () => {
-    expect(
-      corroborationFailure(PAGE, extracted({ yearEvidence: '2026 Winter Programs' })),
-    ).toBe('uncorroborated');
+    expect(corroborationFailure(PAGE, extracted({ yearEvidence: '2026 Winter Programs' }))).toBe(
+      'uncorroborated',
+    );
   });
 
   it('tolerates whitespace and dash differences the HTML strip introduces', () => {
