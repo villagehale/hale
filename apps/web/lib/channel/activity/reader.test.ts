@@ -103,6 +103,15 @@ describe('family fit provenance + freshness (VIL-519)', () => {
     'postal_code',
     'neighbourhood',
     'grade',
+    // Devin #981: every birth-date spelling a memory writer keeps (`isLastingFactKey`).
+    'dateofbirth',
+    'dateOfBirth',
+    'date_of_birth',
+    'date-of-birth',
+    'child_date_of_birth',
+    'birth_date',
+    'birthdate',
+    'dob',
   ])('the record wins over a remembered %s', (key) => {
     const { preferences, recheck } = selectFitPreferences([row({ key })], new Set(), NOW);
     expect(preferences).toEqual([]);

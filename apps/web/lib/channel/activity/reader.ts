@@ -105,7 +105,15 @@ export const FACT_FRESH_DAYS: Readonly<Record<FactSource, number>> = {
  * value arguing with it. They never ride the slice.
  */
 const SHADOW_KEY =
-  /(^|_)(age|ages|age_range|birthday|birthdate|dob|born|grade|home_city|home_town|home_area|city|town|area|neighbou?rhood|postal|postal_code|postcode|address|municipality)(_|$)/;
+  /(^|_)(age|ages|age_range|birthday|birthdate|birth_date|dateofbirth|date_of_birth|dob|born|grade|home_city|home_town|home_area|city|town|area|neighbou?rhood|postal|postal_code|postcode|address|municipality)(_|$)/;
+
+/** `dateOfBirth`, `date-of-birth`, `Date of Birth` all read as `date_of_birth`. */
+function shadowForm(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_');
+}
 
 /** The same three reads with the database already closed over — the shape a coach tool
  * wants, since a tool handler is handed a family and not a connection. */
@@ -246,7 +254,10 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
               : undefined,
           ),
         )
+        // Newest first, so a pile of old high-confidence facts (held back as stale
+        // anyway) cannot fill the LIMIT and starve a fresh preference (Devin, #981).
         .orderBy(
+          desc(schema.familyMemoryFacts.sourcedAt),
           desc(schema.familyMemoryFacts.confidence),
           desc(schema.familyMemoryFacts.validFrom),
           schema.familyMemoryFacts.id,
@@ -308,7 +319,7 @@ export function selectFitPreferences(
   for (const row of rows) {
     if (row.childId !== null && teenIds.has(row.childId)) continue;
     if (!(row.confidence >= CONFIDENCE_FLOOR)) continue;
-    if (SHADOW_KEY.test(row.key.toLowerCase())) continue;
+    if (SHADOW_KEY.test(shadowForm(row.key))) continue;
     const id = `${row.childId ?? ''}\u0000${row.key}`;
     const seen = newest.get(id);
     if (!seen || row.sourcedAt.getTime() > seen.sourcedAt.getTime()) newest.set(id, row);

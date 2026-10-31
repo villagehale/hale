@@ -97,6 +97,39 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     ]);
   });
 
+  it.each(['dateofbirth', 'date_of_birth', 'dateOfBirth'])(
+    'a remembered %s never argues with the corrected record (Devin #981)',
+    async (key) => {
+      const { familyId } = await seedFamily(db.database);
+      const child = await seedChild(db.database, familyId, 'Zephyrina', 36, undefined, NOW);
+      await fact(familyId, child, key, '2023-06-01');
+      await db.database
+        .update(schema.children)
+        .set({ dateOfBirth: '2021-06-01' })
+        .where(eq(schema.children.id, child));
+
+      const fit = await reader.familyFit!(db.database, familyId, NOW);
+      expect(fit.children[0]?.ageYears).toBe(5);
+      expect(fit.preferences).toEqual([]);
+      expect(fit.recheck).toEqual([]);
+    },
+  );
+
+  it('old high-confidence facts cannot fill the read cap and starve a fresh one (Devin #981)', async () => {
+    const { familyId } = await seedFamily(db.database);
+    for (let i = 0; i < 40; i++) {
+      await fact(familyId, null, `old_${i}`, i, {
+        source: 'inferred',
+        seenDaysAgo: 200,
+        confidence: 1,
+      });
+    }
+    await fact(familyId, null, 'stroller', true, { source: 'parent_message', confidence: 0.7 });
+
+    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    expect(fit.preferences.map((p) => p.key)).toEqual(['stroller']);
+  });
+
   it('a stale fact is held back for recheck (key only), never ranked or its value shown', async () => {
     const { familyId } = await seedFamily(db.database);
     await fact(familyId, null, 'scary', 'avoid', { source: 'inferred', seenDaysAgo: 120 });
