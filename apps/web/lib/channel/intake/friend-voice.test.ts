@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import {
   type FriendVoiceInput,
+  assembleFindShowBubbles,
   assembleFriendBody,
   friendVoiceContext,
   friendWeekAction,
   judgeFriendReply,
   lastInboundFact,
+  readGroupLeads,
   repairedProse,
   speakFriend,
 } from './friend-voice';
@@ -440,16 +442,15 @@ describe('speakFriend', () => {
     }
   });
 
-  it('keeps a long find_show opener and a long map, and does not page', async () => {
+  it('keeps a long find_show opener and a long model-written map, and does not page', async () => {
     const pages: string[] = [];
     const opener =
       'I looked near you for what fits this week, and these are the ones that came up from the city pages for their ages, the ones worth a look before the week fills up.';
     expect(opener.length).toBeGreaterThan(120);
     const line = 'Swim at the rec centre (ages 3-5) - Saturday morning at the community pool';
-    const lines = Array.from({ length: 24 }, () => line);
-    const lead =
-      'A calm one for the younger kid, easy to get to and easy to leave when they have had enough of it for one morning and still want the rest of the day open with nothing else planned';
-    expect(lead.length).toBeGreaterThan(160);
+    const lines = Array.from({ length: 24 }, (_, index) => `${line} session ${index + 1}`);
+    const lead = lines.join('\n');
+    expect(lead.length).toBeGreaterThan(1200);
     const spoken = await speakFriend(
       {
         async compose() {
@@ -471,11 +472,272 @@ describe('speakFriend', () => {
     );
     expect(spoken.source).toBe('composed');
     expect(spoken.fallback).toBeNull();
-    expect(spoken.bubbles[0]).toBe(opener);
-    expect(spoken.bubbles[1]).toContain(lead);
+    expect(spoken.bubbles).toEqual([opener, lead]);
     expect(spoken.body.length).toBeGreaterThan(1200);
+    expect(spoken.body).not.toMatch(/^\d+\.\s/m);
     expect(pages).toEqual([]);
     expect(spoken.body).not.toContain('?');
+  });
+
+  it('sends the model find_show bubble and does not number the found line under it', async () => {
+    const swim = 'Swim at the rec centre (ages 3-5) - Saturday 10:00';
+    const lead = 'Swim at the rec centre for ages 3-5, Saturday at 10:00.';
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return { reply: 'Here is what is on near you.', groupLeads: [lead] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        findLines: [swim],
+        findGroups: [{ category: 'swimming', lines: [swim] }],
+      }),
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.bubbles).toEqual(['Here is what is on near you.', lead]);
+    expect(spoken.body).toContain('10:00');
+    expect(spoken.body).not.toMatch(/^\d+\.\s/m);
+  });
+
+  it('skips a find_show group with no lead and sends nothing when no bubble was written', async () => {
+    const swim = 'Swim at the rec centre (ages 3-5) - Saturday';
+    const story = 'Story time (all ages) - Tuesday';
+    const groups = [
+      { category: 'swimming', lines: [swim] },
+      { category: 'parent_baby', lines: [story] },
+    ];
+    const partial = assembleFindShowBubbles('Here is what is on near you.', groups, [
+      'Saturday swim at the rec centre, ages 3-5.',
+      '',
+    ]);
+    expect(partial).toEqual([
+      'Here is what is on near you.',
+      'Saturday swim at the rec centre, ages 3-5.',
+    ]);
+    expect(partial.join('\n')).not.toContain(story);
+    expect(partial.join('\n')).not.toMatch(/^\d+\.\s/m);
+
+    const pages: string[] = [];
+    const unsent = await speakFriend(
+      {
+        async compose() {
+          return { reply: '?', groupLeads: ['', ''] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        findLines: [swim, story],
+        findGroups: groups,
+      }),
+      {
+        page: async (text) => {
+          pages.push(text);
+        },
+      },
+    );
+    expect(unsent).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
+    expect(unsent.body).not.toMatch(/^\d+\.\s/m);
+    expect(unsent.body).not.toContain(swim);
+    expect(pages).toHaveLength(1);
+  });
+
+  it('counts a multiline groupLeads entry as one bubble', async () => {
+    const swimLead = 'Swim at the rec centre for ages 3-5.\nSaturday at 10:00.';
+    const storyLead = 'Story time for all ages.\nTuesday at 11:00.';
+    const swim = 'Swim at the rec centre (ages 3-5) - Saturday 10:00';
+    const story = 'Story time (all ages) - Tuesday 11:00';
+    expect(readGroupLeads([swimLead, storyLead])).toEqual([swimLead, storyLead]);
+    expect(readGroupLeads('Swim\nStory time')).toEqual(['Swim', 'Story time']);
+
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Here is what is on near you.',
+            groupLeads: readGroupLeads([swimLead, storyLead]),
+          };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        findLines: [swim, story],
+        findGroups: [
+          { category: 'swimming', lines: [swim] },
+          { category: 'story', lines: [story] },
+        ],
+      }),
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.bubbles).toEqual(['Here is what is on near you.', swimLead, storyLead]);
+    expect(spoken.bubbles).toHaveLength(3);
+  });
+
+  it('does not send a find_show opener when no group bubble was written', async () => {
+    const prompts: string[] = [];
+    const opener = 'Here is what is on near you.';
+    const swim = 'Swim at the rec centre (ages 3-5) - Saturday 10:00';
+    const spoken = await speakFriend(
+      {
+        async compose(input, options) {
+          prompts.push(options?.prompt ?? 'full');
+          if (options?.prompt === 'short') {
+            expect(input.retry?.problem).toBe('no_group_bubble');
+          }
+          return { reply: opener, groupLeads: null };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        findLines: [swim],
+        findGroups: [{ category: 'swimming', lines: [swim] }],
+      }),
+      { page: async () => undefined },
+    );
+    expect(prompts).toEqual(['full', 'short']);
+    expect(spoken).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
+    expect(spoken.body).not.toContain(opener);
+    expect(spoken.body).not.toContain(swim);
+  });
+
+  it("does not send a group bubble that uses another group's time", async () => {
+    const swim = 'Swim at the rec centre (ages 3-5) - Saturday 10:00';
+    const story = 'Story time (all ages) - Tuesday 11:00';
+    const storyLead = 'Story time for all ages, Tuesday at 11:00.';
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Here is what is on near you.',
+            groupLeads: ['Swim on Tuesday at 11:00.', storyLead],
+          };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        findLines: [swim, story],
+        findGroups: [
+          { category: 'swimming', lines: [swim] },
+          { category: 'story', lines: [story] },
+        ],
+      }),
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.bubbles).toEqual(['Here is what is on near you.', storyLead]);
+    expect(spoken.body).not.toMatch(/swim on tuesday/i);
+  });
+
+  it('keeps a group bubble that names the weekday of a date in that group’s line', async () => {
+    const story = 'Story time (all ages) - October 14';
+    const lead = 'Story time on Wednesday, October 14.';
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return { reply: 'Here is what is on near you.', groupLeads: [lead] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        now: new Date('2026-10-05T14:00:00Z'),
+        findLines: [story],
+        findGroups: [{ category: 'story', lines: [story] }],
+      }),
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.bubbles).toEqual(['Here is what is on near you.', lead]);
+  });
+
+  it('does not treat this year’s weekday as the weekday of a later year on the line', async () => {
+    const line = 'Story time (all ages) - October 14, 2027';
+    const wrong = 'Story time on Wednesday, October 14.';
+    const right = 'Story time on Thursday, October 14, 2027.';
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return { reply: 'Here is what is on near you.', groupLeads: [wrong, right] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        now: new Date('2026-10-05T14:00:00Z'),
+        findLines: [line, line],
+        findGroups: [
+          { category: 'story', lines: [line] },
+          { category: 'story_later', lines: [line] },
+        ],
+      }),
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.bubbles).toEqual(['Here is what is on near you.', right]);
+    expect(spoken.body).not.toMatch(/wednesday/i);
+  });
+
+  it('does not invent a weekday for a month and year that name no day', async () => {
+    const line = 'Story time (all ages) - May 2027';
+    const lead = 'Story time on Wednesday in May 2027.';
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return { reply: 'Here is what is on near you.', groupLeads: [lead] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        now: new Date('2026-04-05T14:00:00Z'),
+        findLines: [line],
+        findGroups: [{ category: 'story', lines: [line] }],
+      }),
+      { page: async () => undefined },
+    );
+    expect(spoken.source).toBe('unsent');
+    expect(spoken.body).not.toMatch(/wednesday/i);
+  });
+
+  it('keeps a nine-line onboarding map whole, and still numbers only three lines on a year list', () => {
+    const lines = Array.from(
+      { length: 9 },
+      (_, index) => `Activity ${index + 1} at the pool (ages 3-5) - Saturday`,
+    );
+    const groups = [0, 1, 2].map((group) => ({
+      category: `group-${group}`,
+      lines: lines.slice(group * 3, group * 3 + 3),
+    }));
+    const leads = groups.map((group) => group.lines.join('\n'));
+    const bubbles = assembleFindShowBubbles('Near you for their ages.', groups, leads);
+    expect(bubbles).toEqual(['Near you for their ages.', ...leads]);
+    const map = bubbles.join('\n');
+    for (const line of lines) expect(map).toContain(line);
+    expect(map).not.toMatch(/^\d+\.\s/m);
+
+    const year = assembleFriendBody(
+      'A few that fit.',
+      blank({
+        step: 'nudge_find',
+        parentWords: 'Maya is 4',
+        placeLabel: 'M5V',
+        findLines: lines,
+        listKind: 'year',
+      }),
+    );
+    expect(year).toContain('1. Activity 1 at the pool (ages 3-5) - Saturday');
+    expect(year).toContain('3. Activity 3 at the pool (ages 3-5) - Saturday');
+    expect(year).not.toContain('4. Activity 4 at the pool (ages 3-5) - Saturday');
   });
 
   it('never sends a reply that confirmed an add code refused; the retry with real adds goes out', async () => {

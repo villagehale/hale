@@ -54,8 +54,9 @@ function isLinkBubble(bubble: string): boolean {
   return LINK.test(bubble);
 }
 
-function isMapBubble(bubble: string): boolean {
-  return NUMBERED.test(bubble);
+function isMapBubble(bubble: string, mapLines: readonly string[] = []): boolean {
+  if (NUMBERED.test(bubble)) return true;
+  return mapLines.some((line) => line.length > 0 && bubble.includes(line));
 }
 
 /** The prose of a bubble: no URL line, no numbered lines, no join trailer. */
@@ -146,12 +147,15 @@ export function liveViolations(replay: LiveReplay, expect: LiveExpectations): st
   }
 
   // The map: its own bubbles, every real line, no question, no which-one.
-  const mapTurn = replay.turns.find((turn) => turn.bubbles.some(isMapBubble));
+  // A bubble is the map when it carries a found line. A stored numbered list
+  // still counts, so an older replay is checked the same way.
+  const mapBubble = (bubble: string) => isMapBubble(bubble, expect.mapLines);
+  const mapTurn = replay.turns.find((turn) => turn.bubbles.some(mapBubble));
   if (!mapTurn) {
     out.push('map never sent');
   } else {
-    const mapBubbles = mapTurn.bubbles.filter(isMapBubble);
-    const firstMap = mapTurn.bubbles.findIndex(isMapBubble);
+    const mapBubbles = mapTurn.bubbles.filter(mapBubble);
+    const firstMap = mapTurn.bubbles.findIndex(mapBubble);
     const mapText = [...mapTurn.bubbles.slice(0, firstMap), ...mapBubbles].join('\n');
     for (const line of expect.mapLines) {
       if (!mapText.includes(line)) out.push(`map line missing: "${line}"`);
@@ -161,7 +165,7 @@ export function liveViolations(replay: LiveReplay, expect: LiveExpectations): st
     const after = mapTurn.bubbles.slice(firstMap + mapBubbles.length);
     const nameAsk = after.find((bubble) => /\?/.test(bubble));
     if (!nameAsk) out.push('name not asked as its own message after the map');
-    else if (isMapBubble(nameAsk)) out.push('name ask shares a bubble with the map');
+    else if (mapBubble(nameAsk)) out.push('name ask shares a bubble with the map');
   }
 
   // The parent's name: stored as given, never a kid's, never asked twice after it was given.

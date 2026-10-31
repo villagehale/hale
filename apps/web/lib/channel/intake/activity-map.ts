@@ -152,7 +152,7 @@ export type ActivityMapFinder = 'used' | 'not_configured' | 'refused' | 'failed'
 
 export interface ActivityMap {
   groups: ActivityMapGroup[];
-  /** Every line across groups, in map order. Index + 1 is the number the parent sees. */
+  /** Every line across groups, in map order. The stored body numbers them so a later read can group them. The parent sees the model's bubbles. */
   lines: string[];
   titles: string[];
   finder: ActivityMapFinder;
@@ -314,8 +314,9 @@ export async function collectActivityMap(input: {
 
 /**
  * The stored shape of a map: a `[category]` marker line, then that group's
- * numbered lines, numbered across the whole map. Markers never go to the
- * parent. `linesOfFind` reads the numbered lines back; this reads the groups.
+ * numbered lines, numbered across the whole map so a later read can regroup
+ * them. Markers and these numbers stay in storage. The parent sees the model's
+ * bubbles. `linesOfFind` reads the numbered lines back; this reads the groups.
  */
 export function renderActivityMapBody(map: Pick<ActivityMap, 'groups'>): string {
   const parts: string[] = [];

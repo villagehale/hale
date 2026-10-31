@@ -145,7 +145,11 @@ export function scriptedTurn(input: FriendVoiceInput): {
   const name = capture.parentName ?? input.parentName;
 
   if (input.step === 'find_show') {
-    return { reply: 'Here is what is on near you for their ages.', capture, groupLeads: [] };
+    return {
+      reply: 'Here is what is on near you for their ages.',
+      capture,
+      groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
+    };
   }
   // Reminders just recorded: confirm them, ask nothing.
   if (capture.scheduleAdds.length > 0) {
