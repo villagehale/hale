@@ -154,6 +154,25 @@ describe('handleParentCallNameReply', () => {
     expect(row?.googleGivenName).toBeNull();
   });
 
+  it.each([
+    'Got it, I\'ll call you "undo".',
+    'Got it, I’ll call you “undo”.',
+    "Je t'appelle undo.",
+    'Je t’appelle « undo ».',
+    'Je vous appelle undo.',
+  ])('does not send a composed reply that addresses them as %s', async (reply) => {
+    const fake = await seedConfirm('Bea');
+    const outcome = await handleParentCallNameReply(
+      fake.db,
+      { familyId: FAMILY_A, parentUserId: USER_A, body: 'undo' },
+      voiceReading({ parentName: 'undo', reply }),
+    );
+    expect(outcome).toEqual({ status: 'answered', reply: null });
+    const row = fake.rows(schema.users).find((user) => user.id === USER_A);
+    expect(row?.name).toBeNull();
+    expect(row?.googleGivenName).toBeNull();
+  });
+
   it('sends the model reply when undo cancels the confirm and the reply does not use that word as a name', async () => {
     const fake = await seedConfirm('Bea');
     const outcome = await handleParentCallNameReply(

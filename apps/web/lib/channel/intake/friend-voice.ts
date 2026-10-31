@@ -750,16 +750,11 @@ export function parentReading(
   return null;
 }
 
-function readingForModel(input: FriendVoiceInput): string | null {
+/** Facts for the skill. Undo is a shape, not a sentence of directions. */
+function readingForModel(input: FriendVoiceInput): string | { kind: 'undo'; held: boolean } | null {
   const reading = parentReading(input);
   if (!reading) return null;
-  if (reading.kind === 'undo') {
-    const held =
-      input.step === 'name_confirm' || (input.step === 'name_reply' && Boolean(input.parentName));
-    return held
-      ? 'parentWords cancels the held name. It is not their name. Leave parentName empty and set nameConfirmed false.'
-      : 'parentWords cancels the name ask. It is not their name. Leave parentName empty and set nameDeclined.';
-  }
+  if (reading.kind === 'undo') return { kind: 'undo', held: decliningHeldName(input) };
   return reading.kind === 'name'
     ? `parentWords is their name (${reading.name}): it answers the name ask`
     : `parentWords is a yes to ${reading.item}`;
@@ -2094,7 +2089,7 @@ function retryProblem(
       return detail === 'price'
         ? 'They asked about price: say in a clause that villagehale.com has the details, including price. Never say it is free or quote a price.'
         : detail === 'control_name'
-          ? 'That word cancels the ask. It is not their name. Do not address them by it. Leave parentName empty.'
+          ? 'control_name'
           : 'You are Hale; talk to the parent, never about them by name, and never call yourself by their name. When they asked who this is, name the company from facts.identity.';
     default:
       return `It broke a rule (${reason}). Write it again, plainly, keeping every rule.`;
