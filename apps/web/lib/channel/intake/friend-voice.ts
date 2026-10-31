@@ -1243,11 +1243,11 @@ function weekdaysOfDates(slots: readonly string[], now: Date | undefined): strin
   const out = new Set<string>();
   for (const slot of slots) {
     for (const match of slot.matchAll(
-      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,)?(?:\s+(\d{4}))?/giu,
+      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?!\d)(?:st|nd|rd|th)?(?:,\s*(\d{4})|\s+(\d{4}))?/giu,
     )) {
       const month = MONTHS.indexOf((match[1] ?? '').toLowerCase());
       const day = Number(match[2]);
-      const namedYear = match[3] ? Number(match[3]) : null;
+      const namedYear = match[3] || match[4] ? Number(match[3] ?? match[4]) : null;
       if (month < 0 || day < 1 || day > 31) continue;
       if (namedYear != null && (namedYear < 2000 || namedYear > 2100)) continue;
       let year = namedYear ?? today.getUTCFullYear();

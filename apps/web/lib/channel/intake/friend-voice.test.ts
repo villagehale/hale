@@ -686,6 +686,29 @@ describe('speakFriend', () => {
     expect(spoken.body).not.toMatch(/wednesday/i);
   });
 
+  it('does not invent a weekday for a month and year that name no day', async () => {
+    const line = 'Story time (all ages) - May 2027';
+    const lead = 'Story time on Wednesday in May 2027.';
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return { reply: 'Here is what is on near you.', groupLeads: [lead] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        now: new Date('2026-04-05T14:00:00Z'),
+        findLines: [line],
+        findGroups: [{ category: 'story', lines: [line] }],
+      }),
+      { page: async () => undefined },
+    );
+    expect(spoken.source).toBe('unsent');
+    expect(spoken.body).not.toMatch(/wednesday/i);
+  });
+
   it('keeps a nine-line onboarding map whole, and still numbers only three lines on a year list', () => {
     const lines = Array.from(
       { length: 9 },
