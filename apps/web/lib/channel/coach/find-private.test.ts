@@ -1,12 +1,7 @@
 import type { Skill } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
-import {
-  augmentCoachSkillForFindPrivate,
-  narratesFindReasoning,
-  nearbyFindTurn,
-  withoutFindReasoning,
-} from './find-private';
+import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
 
 const BASE: Skill = {
   meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse', tools: [] },
@@ -42,56 +37,6 @@ describe('nearbyFindTurn', () => {
   it('ignores the current ask when the transcript already ends with it', () => {
     const body = 'move swim to tuesday';
     expect(nearbyFindTurn(body, [{ role: 'user', content: body }])).toBe(false);
-  });
-});
-
-describe('narratesFindReasoning', () => {
-  it('catches the preview leak and the same kind of aside', () => {
-    expect(narratesFindReasoning('All three finds share one page…')).toBe(true);
-    expect(narratesFindReasoning('All three share one page.')).toBe(true);
-    expect(narratesFindReasoning('Based on my search, these are the ones.')).toBe(true);
-    expect(narratesFindReasoning("I'm ranking these for Saturday.")).toBe(true);
-  });
-
-  it('leaves a find the parent can use', () => {
-    expect(narratesFindReasoning('EarlyON Saturday at 10 at the library suits Mia.')).toBe(false);
-    expect(narratesFindReasoning('Storytime at 11, then the drop-in at 2.')).toBe(false);
-  });
-});
-
-describe('withoutFindReasoning', () => {
-  it('drops only the reasoning sentence', () => {
-    expect(
-      withoutFindReasoning(
-        'All three finds share one page. EarlyON Saturday at 10. Storytime at 11.',
-      ),
-    ).toEqual({
-      text: 'EarlyON Saturday at 10. Storytime at 11.',
-      cut: 1,
-    });
-  });
-
-  it('returns the same string when nothing narrates', () => {
-    const body = 'EarlyON Saturday at 10. Storytime at 11.';
-    expect(withoutFindReasoning(body)).toEqual({ text: body, cut: 0 });
-  });
-
-  it('leaves nothing when the reply is only the aside', () => {
-    expect(withoutFindReasoning('All three finds share one page…')).toEqual({
-      text: '',
-      cut: 1,
-    });
-  });
-
-  it('does not split 10 a.m. into its own sentence', () => {
-    const body = 'EarlyON Saturday at 10 a.m. Storytime at 11.';
-    expect(withoutFindReasoning(body)).toEqual({ text: body, cut: 0 });
-  });
-
-  it('keeps 10 a.m. on the find that stays', () => {
-    expect(
-      withoutFindReasoning('All three finds share one page. EarlyON Saturday at 10 a.m.'),
-    ).toEqual({ text: 'EarlyON Saturday at 10 a.m.', cut: 1 });
   });
 });
 

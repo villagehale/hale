@@ -553,6 +553,7 @@ describe('the watch a turn started', () => {
     const p = ports({
       buildTools: (_turn, _onDraft, _onOffer, _onShare, _onPromise, onWatch) =>
         watchTools(onWatch as never),
+      judgeFindReply: async () => ({ verdict: 'send' }),
     });
 
     const result = await channelCoachRuntime(p).respond(turn('what is on thursday'), []);
@@ -806,55 +807,73 @@ describe('channelCoachRuntime · group leave (VIL-477)', () => {
 });
 
 describe('find reasoning stays off the reply (VIL-524)', () => {
-  it('does not append the private skill on a calendar edit', async () => {
+  const send = async () => ({ verdict: 'send' as const });
+
+  it('does not append the private skill or call the judge on a calendar edit', async () => {
     let instructions = '';
+    let judged = 0;
     const p = ports({
+      judgeFindReply: async () => {
+        judged += 1;
+        return { verdict: 'withhold' };
+      },
       runAgent: async (args) => {
         instructions = args.skill.instructions;
-        return answering('Moved.')(args);
+        return answering('You and Sam share one page for the swim signup.')(args);
       },
     });
-    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    const { reply } = await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
     expect(instructions).not.toContain('Keep the finding to yourself');
+    expect(judged).toBe(0);
+    expect(reply).toBe('You and Sam share one page for the swim signup.');
   });
 
-  it('appends the private skill on a nearby-find ask', async () => {
+  it('appends the private skill on a nearby-find ask and sends the draft unchanged', async () => {
+    const draft = 'All three finds are at the library: Storytime Saturday at 10.';
     let instructions = '';
     const p = ports({
+      judgeFindReply: send,
       runAgent: async (args) => {
         instructions = args.skill.instructions;
-        return answering('EarlyON Saturday at 10.')(args);
+        return answering(draft)(args);
       },
-    });
-    await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
-    expect(instructions).toContain('Keep the finding to yourself');
-    expect(instructions).toContain('Nearby finds');
-  });
-
-  it('sends the finds and drops the reasoning sentence', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const p = ports({
-      runAgent: answering('All three finds share one page. EarlyON Saturday at 10.'),
     });
     const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
-    expect(reply).toBe('EarlyON Saturday at 10.');
-    expect(reply).not.toContain('share one page');
+    expect(instructions).toContain('Keep the finding to yourself');
+    expect(instructions).toContain('Nearby finds');
+    expect(reply).toBe(draft);
+  });
+
+  it('sends nothing when the judge says the whole reply is reasoning', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const draft = 'All three finds share one page…';
+    const p = ports({
+      judgeFindReply: async () => ({ verdict: 'withhold' }),
+      runAgent: answering(draft),
+    });
+    const result = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
+    expect(result.reply).toBe('');
+    expect(result.reply).not.toContain(draft);
+    expect(p.recorded).toEqual([expect.objectContaining({ status: 'failed' })]);
     expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ reason: 'find_reasoning', cut: 1 }),
+      expect.objectContaining({ reason: 'find_reasoning' }),
       expect.any(String),
     );
     error.mockRestore();
   });
 
-  it('fails the turn when the reply is only reasoning', async () => {
+  it('sends nothing when the judge does not run', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const p = ports({
-      runAgent: answering('All three finds share one page…'),
+      judgeFindReply: async () => ({ verdict: 'unjudged', reason: 'judge_failed' }),
+      runAgent: answering('EarlyON Saturday at 10.'),
     });
-    await expect(
-      channelCoachRuntime(p).respond(turn("what's on this weekend"), []),
-    ).rejects.toThrow(/internal reasoning/i);
-    expect(p.recorded).toEqual([expect.objectContaining({ status: 'failed' })]);
+    const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
+    expect(reply).toBe('');
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'judge_failed' }),
+      expect.any(String),
+    );
     error.mockRestore();
   });
 });
