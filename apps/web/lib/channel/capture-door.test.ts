@@ -41,6 +41,7 @@ const READ_ONLY_EXPORTS = new Set([
   'contactCardIsLive',
   'LINQ_SCREEN_EFFECTS',
   'LINQ_BUBBLE_EFFECTS',
+  'isLinqMessageEffect',
   'readListedDirectChatId',
   'LINQ_MALFORMED_CHAT_PAGE',
   'readLinqChatPage',

@@ -5,6 +5,7 @@ import { schema } from '@hale/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { sendLinqEffect } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -15,7 +16,6 @@ import {
   type LinqMessageEffect,
   LinqSendError,
   isLinqMessageEffect,
-  sendLinqEffect,
 } from './transport';
 
 /**
