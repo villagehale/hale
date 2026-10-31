@@ -118,6 +118,20 @@ function rowToPlan(row: typeof schema.linqGroupCarpools.$inferSelect): CarpoolPl
   };
 }
 
+async function driverReminderZone(
+  database: Database,
+  plan: Pick<CarpoolPlanState, 'driverUserId' | 'driverTimezone'>,
+): Promise<string> {
+  const fallback = plan.driverTimezone || 'America/Toronto';
+  if (!plan.driverUserId) return fallback;
+  const [user] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, plan.driverUserId))
+    .limit(1);
+  return user?.timezone || fallback;
+}
+
 type LivePlan = CarpoolPlanState & { id: string; familyId: string; askMessageId: string | null };
 
 async function livePlans(database: Database, chatId: string): Promise<LivePlan[]> {
@@ -584,7 +598,9 @@ export async function runCarpoolReminders(
   for (const row of due) {
     summary.considered += 1;
     const plan = rowToPlan(row);
-    const timeZone = plan.driverTimezone;
+    // Devin #984 — the ride's zone is the pickup's wall clock; the reminder fires
+    // and is quiet-gated in the assigned driver's own zone (ride zone as fallback).
+    const timeZone = await driverReminderZone(database, plan);
     const quietStart = DEFAULT_LOOP_PREFS.quietHoursStart;
     const quiet = isWithinQuietHours(
       input.now,

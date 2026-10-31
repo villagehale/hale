@@ -4,7 +4,9 @@ import {
   type CarpoolSender,
   applyCarpoolReading,
   carpoolPlanKey,
+  carpoolReminderZone,
 } from './carpool-apply';
+import { carpoolReminderFireAt } from './carpool-cadence';
 
 const TZ = 'America/Toronto';
 const NOW = new Date('2026-10-08T16:00:00.000Z');
@@ -329,6 +331,81 @@ describe('date-only ride move (Devin #984)', () => {
     expect(moved?.pickupAt?.toISOString()).toBe('2026-10-11T12:00:00.000Z');
     expect(moved?.driverTimezone).toBe(TZ);
     expect(moved?.planKey).toBe(carpoolPlanKey('soccer', moved?.pickupAt ?? null, TZ));
+  });
+
+  it('a Vancouver member taking a Toronto ride on Sunday keeps Toronto pickup, reminder on Vancouver evening (Devin #984 swapped zone)', () => {
+    const saturday = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-10',
+        pickupTime: '08:00',
+      }),
+      MAYA,
+      NOW,
+    );
+    const vancouver = { ...MAYA, userId: 'user-van', name: 'Priya', timezone: 'America/Vancouver' };
+    const moved = applyCarpoolReading(
+      saturday,
+      reading({
+        intent: 'driver_swap',
+        driverName: null,
+        driverIsSender: true,
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-11',
+        pickupTime: null,
+      }),
+      vancouver,
+      NOW,
+    );
+    expect(moved?.pickupAt?.toISOString()).toBe('2026-10-11T12:00:00.000Z');
+    expect(moved?.driverTimezone).toBe(TZ);
+    expect(moved?.driverUserId).toBe('user-van');
+    expect(moved?.reminderFireAt?.toISOString()).toBe(
+      carpoolReminderFireAt(
+        new Date('2026-10-11T12:00:00.000Z'),
+        'America/Vancouver',
+      ).toISOString(),
+    );
+    expect(moved?.reminderFireAt?.toISOString()).not.toBe(
+      carpoolReminderFireAt(new Date('2026-10-11T12:00:00.000Z'), TZ).toISOString(),
+    );
+    expect(moved && carpoolReminderZone(moved, vancouver)).toBe('America/Vancouver');
+  });
+
+  it('a Toronto driver on a Vancouver-zoned ride gets a Toronto reminder zone (Devin #984 reverse)', () => {
+    const van = { ...MAYA, userId: 'user-van', timezone: 'America/Vancouver' };
+    const ride = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'plan_needs_driver',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-10',
+        pickupTime: '08:00',
+      }),
+      van,
+      NOW,
+    );
+    expect(ride?.driverTimezone).toBe('America/Vancouver');
+    const claimed = applyCarpoolReading(
+      ride,
+      reading({
+        intent: 'driver_claim',
+        driverIsSender: true,
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-11',
+        pickupTime: null,
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(claimed?.pickupAt?.toISOString()).toBe('2026-10-11T15:00:00.000Z');
+    expect(claimed?.driverTimezone).toBe('America/Vancouver');
+    expect(claimed?.reminderFireAt?.toISOString()).toBe(
+      carpoolReminderFireAt(new Date('2026-10-11T15:00:00.000Z'), TZ).toISOString(),
+    );
   });
 
   it('a date with no hour and no known ride sets no instant', () => {

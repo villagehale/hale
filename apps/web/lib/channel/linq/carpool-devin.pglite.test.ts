@@ -869,3 +869,54 @@ describe('Devin #975 round 4', () => {
     expect(calls).toBe(1);
   });
 });
+
+/** Devin #984 (swapped driver zone) — the cron reminds in the driver's own zone. */
+describe('driver reminder zone', () => {
+  async function rideWithDriver(rideZone: string, driverZone: string, pickupIso: string) {
+    const { familyId } = await seed();
+    const [driver] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:driver', name: 'Dana Lee', timezone: driverZone })
+      .returning({ id: schema.users.id });
+    const pickupAt = new Date(pickupIso);
+    await db.database.insert(schema.linqGroupCarpools).values({
+      chatId: CHAT,
+      familyId,
+      planKey: `soccer:${pickupIso}`,
+      eventLabel: 'soccer',
+      pickupAt,
+      driverName: 'Dana',
+      driverUserId: driver?.id as string,
+      driverTimezone: rideZone,
+      status: 'assigned',
+      reminderStatus: 'pending',
+      // Already due, so only the quiet gate and window decide.
+      reminderFireAt: new Date(pickupAt.getTime() - 24 * 3600_000),
+    } as typeof schema.linqGroupCarpools.$inferInsert);
+  }
+  const run = (now: Date) =>
+    runCarpoolReminders(db.database, {
+      now,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => ({ sent: false, skipped: 'test' }),
+    });
+
+  it('a Vancouver driver on a Toronto Sun 08:00 ride is quiet-gated on Vancouver hours', async () => {
+    await rideWithDriver('America/Toronto', 'America/Vancouver', '2026-10-11T12:00:00.000Z');
+    // Sat 22:30 Toronto (quiet there) = 19:30 Vancouver (evening window).
+    const ran = await run(new Date('2026-10-11T02:30:00.000Z'));
+    expect(ran.held).toBe(0);
+    expect(ran.fired + ran.skipped).toBeGreaterThan(0);
+  });
+
+  it('a Toronto driver on a Vancouver-zoned ride is not reminded inside Toronto quiet hours', async () => {
+    await rideWithDriver('America/Vancouver', 'America/Toronto', '2026-10-11T15:00:00.000Z');
+    // Sat 19:30 Vancouver (evening there) = 22:30 Toronto (quiet).
+    const ran = await run(new Date('2026-10-11T02:30:00.000Z'));
+    expect(ran.held).toBe(1);
+    expect(ran.fired).toBe(0);
+    const [row] = await rows();
+    expect(row?.reminderStatus).toBe('pending');
+  });
+});

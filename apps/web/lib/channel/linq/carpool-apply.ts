@@ -158,6 +158,7 @@ function withReminder(
   pickupAt: Date | null,
   timeZone: string,
   previousPickupAt: Date | null = plan.pickupAt,
+  reminderZone: string = timeZone,
 ): CarpoolPlanState {
   if (plan.status === 'cancelled') {
     return { ...plan, reminderStatus: 'skipped_cancelled', reminderFireAt: null };
@@ -179,9 +180,25 @@ function withReminder(
   }
   return {
     ...plan,
-    reminderFireAt: carpoolReminderFireAt(pickupAt, timeZone),
+    reminderFireAt: carpoolReminderFireAt(pickupAt, reminderZone),
     reminderStatus: 'pending',
   };
+}
+
+/**
+ * Devin #984 (swapped driver zone) — `driverTimezone` is the ride's wall-clock zone
+ * (date-only moves, day key, plan key). The driver's reminder fires and is
+ * quiet-gated in the driver's own zone: the sender's when the sender is the
+ * assigned driver, otherwise the ride zone until the cron resolves the driver.
+ */
+export function carpoolReminderZone(
+  plan: Pick<CarpoolPlanState, 'driverUserId' | 'driverTimezone'>,
+  sender: Pick<CarpoolSender, 'userId' | 'timezone'> | null,
+): string {
+  if (sender?.userId && plan.driverUserId === sender.userId && sender.timezone) {
+    return sender.timezone;
+  }
+  return plan.driverTimezone || 'America/Toronto';
 }
 
 /**
@@ -271,12 +288,13 @@ export function applyCarpoolReading(
     driverTimezone: timeZone,
   };
 
+  const mergedZone = carpoolReminderZone(merged, sender);
   if (reading.intent === 'plan_needs_driver') {
-    return withReminder(merged, pickupAt, timeZone, previousPickupAt);
+    return withReminder(merged, pickupAt, timeZone, previousPickupAt, mergedZone);
   }
 
   const driverName = claimedDriverName(reading, sender);
-  if (!driverName) return withReminder(merged, pickupAt, timeZone, previousPickupAt);
+  if (!driverName) return withReminder(merged, pickupAt, timeZone, previousPickupAt, mergedZone);
 
   const swapped = Boolean(merged.driverName && merged.driverName !== driverName);
   // Devin #936/#975 — "Priya is driving" from Maya is Priya, not Maya, and
@@ -296,7 +314,13 @@ export function applyCarpoolReading(
     status: 'assigned',
     reminderStatus: swapped && merged.reminderStatus === 'sent' ? 'pending' : merged.reminderStatus,
   };
-  return withReminder(assigned, pickupAt, timeZone, previousPickupAt);
+  return withReminder(
+    assigned,
+    pickupAt,
+    timeZone,
+    previousPickupAt,
+    carpoolReminderZone(assigned, sender),
+  );
 }
 
 export function markAsked(plan: CarpoolPlanState, at: Date): CarpoolPlanState {
