@@ -65,6 +65,48 @@ describe('live recommendations without a catalog', () => {
     expect(JSON.stringify(find.mock.calls)).not.toContain('L7M');
   });
 
+  it('searches the place the parent named instead of the home municipality', async () => {
+    const familyId = await family(36, 'Burlington');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: 'L7M', province: 'ON', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    await findFamilyActivities(db.database, familyId, { finder: { find }, area: 'Oakville' });
+    expect(find.mock.calls[0]?.[0].town).toBe('Oakville');
+    expect(JSON.stringify(find.mock.calls)).not.toContain('L7M');
+  });
+
+  it('searches a named place even when the home area is unknown', async () => {
+    const familyId = await family(36, 'Victoria');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: null, province: 'BC', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    const found = await findFamilyActivities(db.database, familyId, {
+      finder: { find },
+      area: 'Kingston',
+    });
+    expect(found.reason).toBeNull();
+    expect(find.mock.calls[0]?.[0].town).toBe('Kingston');
+  });
+
+  it('does not search home when the named place is a street or postal code', async () => {
+    const familyId = await family(36, 'Burlington');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: 'L7M', province: 'ON', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    const found = await findFamilyActivities(db.database, familyId, {
+      finder: { find },
+      area: 'L7G 4A1',
+    });
+    expect(find).not.toHaveBeenCalled();
+    expect(found.reason).toBe('area_unusable');
+  });
+
   it('keeps main’s no-area boundary for an unmapped city', async () => {
     const familyId = await family(36, 'Victoria');
     await db.database

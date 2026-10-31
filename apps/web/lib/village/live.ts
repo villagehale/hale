@@ -148,6 +148,8 @@ export async function findFamilyActivities(
   options: {
     subject?: string;
     window?: string;
+    /** A town, city, or area the parent named. Distinct from the home FSA geocode. */
+    area?: string;
     now?: Date;
     finder?: ActivityFinder;
     excludePreviouslyOffered?: boolean;
@@ -171,10 +173,13 @@ export async function findFamilyActivities(
   ]);
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
+  const namedPlace = options.area?.replace(/\s+/g, ' ').trim() ?? '';
   const towns = area
     ? municipalitiesForFsa(area.replace(/\s+/g, '').toUpperCase().slice(0, 3))
     : [];
-  if (towns.length !== 1) return { picks: [], reason: 'no_area' };
+  // Home is the default. A place the parent named is searched even when the home FSA
+  // names no single town — and a bad place is a refusal, not a search of home.
+  if (namedPlace === '' && towns.length !== 1) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
   )[0]!;
@@ -186,6 +191,7 @@ export async function findFamilyActivities(
     householdNames: [...children, ...parents].flatMap(({ name }) =>
       name ? [name, name.trim().split(/\s+/)[0]!] : [],
     ),
+    area: namedPlace === '' ? null : namedPlace,
   });
   if (!query.ok) return { picks: [], reason: query.refusal };
   // A stored city is coarse context, not a postal code or precise home address.

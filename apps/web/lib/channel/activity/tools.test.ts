@@ -80,6 +80,38 @@ describe('find_activities', () => {
     });
   });
 
+  it('searches the town the parent named instead of the home area', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader(),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+
+    await call(tool, { subject: 'trick or treat', window: 'this weekend', area: 'Oakville' });
+
+    expect(seen[0]).toEqual({
+      subject: 'trick or treat',
+      window: 'this weekend',
+      town: 'Oakville',
+      stage: 'toddler',
+    });
+  });
+
+  it('refuses a street or postal code as the place and does not search home', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader(),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+
+    await expect(call(tool, { subject: 'story time', area: '42 Wallace St' })).rejects.toThrow(
+      /place/,
+    );
+    expect(seen).toHaveLength(0);
+  });
+
   it('refuses a subject naming a child with a sentence the model can act on, and searches nothing', async () => {
     const seen: unknown[] = [];
     const tool = findActivitiesTool({
