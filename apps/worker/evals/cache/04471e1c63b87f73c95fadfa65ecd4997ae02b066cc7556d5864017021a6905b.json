@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly says piano is not on the schedule, drafts nothing, and does not guess at the private rows. But 'or next' claims a check of a week Hale was not shown, and the closing offer to check another week is padding that hands the parent another question when the plain denial was the complete answer.",
+    "score": 3
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch for send_email and reply_to_email was turned off this turn, so 'Done' is true and the reply answers completely with no machinery or app referral. The second clause restates the first ('without showing you first' and 'you'll see each one before it goes out'), which is a small redundancy. It also says 'send' but not 'reply'; 'any emails' covers both.",
+    "score": 4
+  }
+}
