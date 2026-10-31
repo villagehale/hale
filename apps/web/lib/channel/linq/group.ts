@@ -504,7 +504,9 @@ export async function setHouseholdGroupBackgroundOnce(
 ): Promise<'set' | 'off' | 'parent_owned' | 'refused'> {
   if (!linqGroupBackgroundEnabled()) return 'off';
   try {
-    if (await parentOwnsGroupBackground(database, args.familyId)) return 'parent_owned';
+    if (await parentOwnsGroupBackground(database, args.familyId, args.chatId)) {
+      return 'parent_owned';
+    }
     const result = await setLinqChatBackground({
       chatId: args.chatId,
       variant: HOUSEHOLD_GROUP_BACKGROUND,
@@ -535,9 +537,17 @@ export async function setHouseholdGroupBackgroundOnce(
   }
 }
 
-async function parentOwnsGroupBackground(database: Database, familyId: string): Promise<boolean> {
+/**
+ * Ownership is per CHAT, not per family (Devin #991): a parent who changed an old
+ * group's wallpaper has said nothing about the next group Hale opens for them.
+ */
+async function parentOwnsGroupBackground(
+  database: Database,
+  familyId: string,
+  chatId: string,
+): Promise<boolean> {
   const rows = await database
-    .select({ familyId: schema.auditLog.familyId, actionTaken: schema.auditLog.actionTaken })
+    .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
@@ -546,7 +556,11 @@ async function parentOwnsGroupBackground(database: Database, familyId: string): 
       ),
     );
   return rows.some(
-    (row) => row.familyId === familyId && row.actionTaken === 'linq_group_background_parent_set',
+    (row) =>
+      row.actionTaken === 'linq_group_background_parent_set' &&
+      typeof row.after === 'object' &&
+      row.after !== null &&
+      (row.after as { chatId?: unknown }).chatId === chatId,
   );
 }
 
@@ -572,6 +586,8 @@ export async function noteGroupBackgroundChange(
     actionTaken: 'linq_group_background_parent_set',
     targetTable: 'families',
     targetId: familyId,
+    // Internal only: scopes the parent's choice to THIS chat (Devin #991).
+    after: { chatId: args.chatId },
   });
   return 'linq_background_parent_noted';
 }

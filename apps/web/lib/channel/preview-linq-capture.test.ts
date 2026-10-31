@@ -5,6 +5,7 @@ import {
   listLinqParticipantHandles,
   reactToLinqMessage,
   sendLinqChatMessage,
+  setLinqChatBackground,
   setPreviewGroupCaptureSinkForTest,
   startLinqTyping,
 } from './linq/transport';
@@ -185,6 +186,16 @@ describe('preview group capture', () => {
     const r = await startLinqTyping({ chatId: CHAT, fetch: fetchSpy });
     expect(r.status).toBe('accepted');
     expect(sink.calls[0]?.kind).toBe('typing_start');
+  });
+
+  it('captures the household background swatch on a fake chat, no fetch (VIL-478)', async () => {
+    const r = await setLinqChatBackground({ chatId: CHAT, variant: 'ice', fetch: fetchSpy });
+    expect(r.status).toBe('accepted');
+    expect(sink.calls).toEqual([
+      expect.objectContaining({ chatId: CHAT, kind: 'chat_background', method: 'POST' }),
+    ]);
+    expect(sink.calls[0]?.body).toEqual({ type: 'color', variant: 'ice' });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('refuses a real chat id and a tapback on a real message, before any capture', async () => {
