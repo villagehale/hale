@@ -139,46 +139,16 @@ describe('handleParentCallNameReply', () => {
     expect(fake.rows(schema.users).find((row) => row.id === USER_B)?.googleGivenName).toBe('Other');
   });
 
-  it('a delayed undo cancels the held name and is not stored as the display name', async () => {
+  it('a turned-down held name is released, and the whole message is not stored as the name', async () => {
     const fake = await seedConfirm('Bea');
     const outcome = await handleParentCallNameReply(
       fake.db,
-      { familyId: FAMILY_A, parentUserId: USER_A, body: 'undo' },
-      voiceReading({ parentName: 'undo', reply: "Got it, I'll call you undo." }),
-    );
-    expect(outcome).toMatchObject({ status: 'answered' });
-    if (outcome.status !== 'answered') return;
-    expect(outcome.reply ?? '').not.toMatch(/call you undo/i);
-    const row = fake.rows(schema.users).find((user) => user.id === USER_A);
-    expect(row?.name).toBeNull();
-    expect(row?.googleGivenName).toBeNull();
-  });
-
-  it.each([
-    'Got it, I\'ll call you "undo".',
-    'Got it, I’ll call you “undo”.',
-    "Je t'appelle undo.",
-    'Je t’appelle « undo ».',
-    'Je vous appelle undo.',
-  ])('does not send a composed reply that addresses them as %s', async (reply) => {
-    const fake = await seedConfirm('Bea');
-    const outcome = await handleParentCallNameReply(
-      fake.db,
-      { familyId: FAMILY_A, parentUserId: USER_A, body: 'undo' },
-      voiceReading({ parentName: 'undo', reply }),
-    );
-    expect(outcome).toEqual({ status: 'answered', reply: null });
-    const row = fake.rows(schema.users).find((user) => user.id === USER_A);
-    expect(row?.name).toBeNull();
-    expect(row?.googleGivenName).toBeNull();
-  });
-
-  it('sends the model reply when undo cancels the confirm and the reply does not use that word as a name', async () => {
-    const fake = await seedConfirm('Bea');
-    const outcome = await handleParentCallNameReply(
-      fake.db,
-      { familyId: FAMILY_A, parentUserId: USER_A, body: 'cancel' },
-      voiceReading({ parentName: 'cancel', reply: 'What should I call you?' }),
+      { familyId: FAMILY_A, parentUserId: USER_A, body: 'non' },
+      voiceReading({
+        parentName: 'non',
+        nameConfirmed: false,
+        reply: 'What should I call you?',
+      }),
     );
     expect(outcome).toEqual({ status: 'answered', reply: 'What should I call you?' });
     const row = fake.rows(schema.users).find((user) => user.id === USER_A);

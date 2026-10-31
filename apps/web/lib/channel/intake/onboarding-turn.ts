@@ -1,4 +1,3 @@
-import { isUndoCancelPhrase } from '~/lib/channel/control-phrase';
 import {
   type ParentRoleGuess,
   acceptParentRole,
@@ -200,31 +199,28 @@ function acceptName(value: unknown): string | null {
   return trimmed;
 }
 
-/** A parent's display name. Undo, cancel, and the same clear phrases are not one. */
-function acceptParentDisplayName(value: unknown): string | null {
-  const name = acceptName(value);
-  if (!name || isUndoCancelPhrase(name)) return null;
-  return name;
+function foldMessage(value: string): string {
+  return value
+    .trim()
+    .replace(/^["“«']+|["”»']+$/gu, '')
+    .replace(/[.!]+$/u, '')
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/\s+/gu, ' ');
 }
 
 /**
- * A delayed undo or cancel during the name reply. The word is not the name.
- * A held name is declined; an open ask is declined so it is not asked as if
- * the word answered it.
+ * The model says this message takes the name back (`nameDeclined`, or a held
+ * name turned down). If it also copied that whole message into `parentName`,
+ * the copy is not a display name. Intent stays the model's; this only compares
+ * the two strings.
  */
-export function applyNameControl(
-  body: string,
-  capture: OnboardingCapture,
-  heldName: string | null,
-): OnboardingCapture {
-  if (!isUndoCancelPhrase(body)) return capture;
-  const held = Boolean(heldName?.trim());
-  return {
-    ...capture,
-    parentName: null,
-    nameConfirmed: held ? false : null,
-    nameDeclined: held ? capture.nameDeclined : true,
-  };
+export function dropTakeBackName(body: string, capture: OnboardingCapture): OnboardingCapture {
+  const tookBack = capture.nameDeclined || capture.nameConfirmed === false;
+  if (!tookBack || !capture.parentName) return capture;
+  if (foldMessage(capture.parentName) !== foldMessage(body)) return capture;
+  return { ...capture, parentName: null };
 }
 
 function acceptBool(value: unknown): boolean | null {
@@ -455,7 +451,7 @@ export function acceptOnboardingCapture(
     postalCode: postalCode && postalCode.length > 0 ? postalCode : null,
     city: city && city.length > 0 ? city : null,
     children,
-    parentName: acceptParentDisplayName(row.parentName),
+    parentName: acceptName(row.parentName),
     parentRole: acceptParentRole(row.parentRole, row.parentRoleBasis),
     nameConfirmed: acceptBool(row.nameConfirmed),
     connectCalendar: acceptBool(row.connectCalendar),
