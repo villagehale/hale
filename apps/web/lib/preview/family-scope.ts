@@ -68,6 +68,9 @@ export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'ski
   'proactive-review': 'skip',
   'social-watch': 'skip',
   'party-reminders': 'skip',
+  // Carpool and group-plan family sweeps, not yet scoped.
+  'carpool-reminders': 'skip',
+  'group-plan-rsvp-followups': 'skip',
   'spend-alert': 'skip',
   'delete-sweep': 'skip',
   'attachment-sweep': 'skip',

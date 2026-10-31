@@ -155,6 +155,12 @@ export interface ChannelSendJob {
 }
 
 export interface ReminderRunDeps {
+  /**
+   * Preview family scope applied to the audience and due rows. Defaults to the
+   * PREVIEW_FAMILY_ALLOWLIST filter (a no-op off preview). The VIL-466 Preview trigger
+   * replaces it, since it already narrows the run to one verified fake family.
+   */
+  scopeFamilies?: <T extends { familyId: string }>(rows: readonly T[]) => T[];
   selectReminderParents: (db: Database) => Promise<ReminderParent[]>;
   /**
    * The family's ACTIVE caregiver seats (caregiver-audience.ts) — the second audience,
@@ -540,10 +546,12 @@ export async function runReminderCron(
     return loaded;
   };
 
+  const scope = deps.scopeFamilies ?? ((rows) => scopeFamilies(rows));
+
   // ── Phase A: converge the ledger from live placed events ─────────────────────
   // On Preview, only allowlisted test families (no-op elsewhere).
-  const parents = scopeFamilies(await deps.selectReminderParents(db));
-  const caregiverSeats = scopeFamilies(await deps.selectReminderCaregivers(db));
+  const parents = scope(await deps.selectReminderParents(db));
+  const caregiverSeats = scope(await deps.selectReminderCaregivers(db));
 
   const familyParents = new Map<string, ReminderParent[]>();
   for (const p of parents) {
@@ -634,7 +642,7 @@ export async function runReminderCron(
   };
 
   // ── Phase B: fire — classify each due row against the LIVE event ──────────────
-  const due = scopeFamilies(await deps.loadDueReminders(db, now));
+  const due = scope(await deps.loadDueReminders(db, now));
   const firing: FiringRow[] = [];
   let suppressed = 0;
   let cancelled = 0;
