@@ -178,6 +178,34 @@ describe('VIL-478 household group background', () => {
     ).resolves.toBe('linq_background_no_family');
   });
 
+  it("a parent's change on an OLD group never blocks the family's next group (Devin #991)", async () => {
+    const fake = await seed();
+    await fake.db.update(schema.families).set({ linqGroupChatId: 'group-old' } as never);
+    vi.stubEnv('LINQ_GROUP_BACKGROUND_ENABLED', 'true');
+    await expect(
+      noteGroupBackgroundChange(fake.db, { chatId: 'group-old', isFromMe: false }),
+    ).resolves.toBe('linq_background_parent_noted');
+
+    const fetchMock = linqFetch();
+    await expect(
+      setHouseholdGroupBackgroundOnce(fake.db, {
+        familyId: FAMILY,
+        parentUserId: USER,
+        chatId: 'group-new',
+        fetch: fetchMock,
+      }),
+    ).resolves.toBe('set');
+    expect(String(backgroundCalls(fetchMock)[0]?.[0])).toContain('/chats/group-new/background');
+    await expect(
+      setHouseholdGroupBackgroundOnce(fake.db, {
+        familyId: FAMILY,
+        parentUserId: USER,
+        chatId: 'group-old',
+        fetch: linqFetch(),
+      }),
+    ).resolves.toBe('parent_owned');
+  });
+
   it('reads chat.background_updated actor_handle.is_me off the webhook', () => {
     const parse = (isMe: boolean) =>
       parseLinqWebhook(
