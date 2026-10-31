@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and the autonomy switch was turned off this turn for both send_email and reply_to_email, so the reply's claim is true. It confirms plainly that Hale will ask before each email and only send once Sam agrees. It is in the parent's language, short, with no greeting or sign-off and nothing invented.",
+    "score": 5
+  }
+}

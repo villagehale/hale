@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent's text matches exactly one event, the Thursday swim at 5:15pm, so drafting the move was correct. The reply names the change and the old time, then asks in a plain sentence whether to go ahead. It answers in the parent's language and carries no YES keyword or padding. It is terse, but complete and correct.",
+    "score": 5
+  }
+}
