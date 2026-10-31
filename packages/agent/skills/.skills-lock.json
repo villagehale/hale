@@ -151,6 +151,10 @@
     "file": "extract-workstream.md",
     "sha256": "22739e47888873130a72601a02c22a67a8a180426c8bdfef4c1152b6a9108361"
   },
+  "find-reasoning-judge.md": {
+    "file": "find-reasoning-judge.md",
+    "sha256": "1e1a39f7a78d3a22e3e501d4b0e0daddb1448f839620ba11a345f54aa4229696"
+  },
   "flood-line.md": {
     "file": "flood-line.md",
     "sha256": "4bee428511257655a5af16235a898535d319e240b30af055c25a0941259a417f"

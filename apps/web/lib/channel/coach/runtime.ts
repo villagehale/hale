@@ -77,11 +77,8 @@ import {
   augmentCoachSkillForExperienceCards,
   shareExperienceCardTool,
 } from './experience-card-tool';
-import {
-  augmentCoachSkillForFindPrivate,
-  nearbyFindTurn,
-  withoutFindReasoning,
-} from './find-private';
+import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
+import { type FindReplyGate, judgeWholeFindReply } from './find-reasoning-judge';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
   type GmailDraftNoticeBox,
@@ -266,6 +263,12 @@ export interface ChannelCoachPorts {
    */
   client(): AgentClient;
   /**
+   * VIL-524. On a nearby-find turn, after the model writes, this decides whether
+   * the whole reply is internal reasoning. Absent is `not_configured`: the draft
+   * is not sent. The judge does not rewrite parent text.
+   */
+  judgeFindReply?(draft: string): Promise<FindReplyGate>;
+  /**
    * Fetch this turn's images into content blocks. Absent is a named gap: the
    * parts are still told to the model as unwatched, and nothing is fetched.
    */
@@ -343,9 +346,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // VIL-524. Only a nearby-find turn gets this addendum. coach-nearby-find
       // itself stays byte-identical, so coach-channel and group-privacy
       // recordings stay keyed on the prompt they already have.
-      const findPrivate = nearbyFindTurn(turn.body, transcript)
-        ? await loadCronSkill('coach-find-private')
-        : null;
+      const findTurn = nearbyFindTurn(turn.body, transcript);
+      const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
@@ -590,30 +592,34 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               new GmailDraftNoticeUnsent(),
             );
           }
-          // VIL-524. A subtraction, not a rewrite: a sentence that narrates the
-          // search, the ranking, or the result set does not go out. What remains
-          // is what the model wrote. A reply that was only that aside is a failed
-          // turn, so the parent is not handed the reasoning and is not handed a
-          // fixed line either.
-          let outbound = spoken;
-          if (!noticeReady) {
-            const kept = withoutFindReasoning(spoken);
-            if (kept.cut > 0) {
+          // VIL-524. The judge is the gate, and only on a nearby-find turn. It does
+          // not edit the draft. withhold, or a judge that did not run, sends nothing.
+          if (!noticeReady && findTurn) {
+            const gate = ports.judgeFindReply
+              ? await ports.judgeFindReply(spoken)
+              : { verdict: 'unjudged' as const, reason: 'not_configured' };
+            if (gate.verdict !== 'send') {
               console.error(
-                { cut: kept.cut, reason: 'find_reasoning' },
-                'channel coach: find reply narrated its own reasoning - those sentences were not sent',
+                {
+                  reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
+                },
+                'channel coach: find reply withheld - nothing sent',
               );
-            }
-            if (kept.text === '') {
               await ports.recordRun(record('failed'));
-              throw failed('channel coach: find reply was only internal reasoning');
+              return {
+                reply: '',
+                planOffer: null,
+                activityPromise: null,
+                spotWatch: null,
+                experienceCard: null,
+                groupLeave: null,
+              };
             }
-            outbound = kept.cut === 0 ? spoken : kept.text;
           }
           // VIL-434: the model's answer goes out whole. Length is the model's judgment
           // (the skill, or a rewrite the model chooses). Code does not cut it, and it
           // does not call a shorten pass because a sentence ran past two segments.
-          const reply = toSmsReply(outbound, {
+          const reply = toSmsReply(spoken, {
             children,
             now,
             ...(noticeReady
@@ -677,6 +683,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
+    judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
     experienceCardsEnabled: linqExperiencesEnabled,
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
