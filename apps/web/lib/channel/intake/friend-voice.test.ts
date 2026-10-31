@@ -98,38 +98,27 @@ describe('a delayed undo during name capture', () => {
     },
   });
 
-  it('reads undo as cancelling the name ask, not as the name', () => {
-    expect(parentReading(asked)).toEqual({ kind: 'undo', item: 'name' });
-    expect(parentReading({ ...asked, parentWords: 'Undo' })).toEqual({
-      kind: 'undo',
-      item: 'name',
-    });
+  it('does not decide a take-back from the words; a lone name is still a name', () => {
+    expect(parentReading(asked)).toBeNull();
     expect(parentReading({ ...asked, parentWords: 'Dana' })).toEqual({
       kind: 'name',
       name: 'Dana',
     });
-    const openBrief = friendVoiceContext(asked) as { reading: { kind: string; held: boolean } };
-    expect(openBrief.reading).toEqual({ kind: 'undo', held: false });
-    const confirm = blank({
-      ...asked,
-      step: 'name_confirm',
-      parentWords: 'cancel',
-      parentName: 'Bea',
+    expect(friendVoiceContext(asked)).not.toMatchObject({
+      reading: { kind: 'undo' },
     });
-    const heldBrief = friendVoiceContext(confirm) as { reading: { kind: string; held: boolean } };
-    expect(heldBrief.reading).toEqual({ kind: 'undo', held: true });
   });
 
-  // Code-side capture filter only. The composer is a stub, not a model: how the
-  // skill reads `reading.kind` of undo lives in onboarding-friend.md and
-  // onboarding-friend-short.md, and the detector tests cover composed replies.
-  it('drops a stubbed parentName of undo and declines the name ask', async () => {
+  // Code-side filter only. The stub is not the model: the skill tells the model
+  // a take-back is not a name. This checks that a copied message is dropped
+  // when the model already marked the take-back.
+  it('drops a parentName that is the whole message once the model marks the take-back', async () => {
     const spoken = await speakFriend(
       {
         async compose() {
           return {
             reply: 'Want me to watch school and camp email for the dates?',
-            capture: { parentName: 'undo', nameDeclined: false },
+            capture: { parentName: 'undo', nameDeclined: true },
           };
         },
       },
@@ -146,12 +135,31 @@ describe('a delayed undo during name capture', () => {
     'Got it, I’ll call you “undo”. What should I call you?',
     "D'accord. Je t'appelle undo. Qu'est-ce que je surveille ensuite ?",
     'Je t’appelle « undo ». Comment je continue ?',
-  ])('refuses a composed reply that addresses them as the control word: %s', (reply) => {
-    expect(judgeFriendReply(reply, asked)).toEqual({
+  ])('refuses a reply that addresses them by the take-back: %s', (reply) => {
+    expect(judgeFriendReply(reply, { ...asked, nameTakenBack: true })).toEqual({
       ok: false,
       reason: 'identity',
-      detail: 'control_name',
+      detail: 'unknown_name',
     });
+  });
+
+  it('does not treat the message as a foreign name until it is a take-back or another name is known', () => {
+    expect(judgeFriendReply("I'll undo that. What should I call you?", asked)).toEqual({
+      ok: true,
+    });
+  });
+
+  it('asks what to call them after a held name is turned down', () => {
+    const confirm = blank({
+      ...asked,
+      step: 'name_confirm',
+      parentWords: 'non',
+      parentName: 'Bea',
+    });
+    expect(judgeFriendReply('What should I call you?', confirm)).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Got it, I\'ll call you "non". What should I call you?', confirm),
+    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
   });
 });
 
@@ -178,8 +186,10 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('No STOP');
     expect(skill.instructions).toContain('`lastInbound`');
     expect(skill.instructions).toContain('minutesAgo');
-    expect(skill.instructions).toContain('"kind": "undo"');
-    expect(skill.instructions).toContain('control_name');
+    expect(skill.instructions).toContain('A take-back is not a name');
+    expect(skill.instructions).toContain('asks what to call them');
+    expect(skill.instructions).not.toContain("I'll call you");
+    expect(skill.instructions).not.toContain("Je t'appelle");
   });
 
   it('stays lean: state and a playbook, with the gates left to code', async () => {
@@ -205,8 +215,9 @@ describe('onboarding friend fixtures', () => {
     expect(short.instructions).toContain('**find_show**');
     expect(short.instructions).toContain('**connected**');
     expect(short.instructions).toContain('lastInbound');
-    expect(short.instructions).toContain('"kind": "undo"');
-    expect(short.instructions).toContain('control_name');
+    expect(short.instructions).toContain('A take-back is not a name');
+    expect(short.instructions).toContain('asks what to call them');
+    expect(short.instructions).not.toContain("I'll call you");
     expect(short.meta.task).toBe('speak');
   });
 

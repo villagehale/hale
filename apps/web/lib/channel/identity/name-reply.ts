@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { isUndoCancelPhrase } from '~/lib/channel/control-phrase';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { IDENTITY_ASK_TEMPLATE_KEYS } from './asked';
@@ -129,8 +128,6 @@ export function soleGivenName(body: string): string | null {
   if (LINK_SHAPE.test(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
 
   const stripped = stripLeadIn(trimmed);
-  // "undo" / "cancel" / "never mind" answer the ask by taking it back.
-  if (isUndoCancelPhrase(trimmed) || isUndoCancelPhrase(stripped)) return null;
   const words = stripped.split(/\s+/).filter(Boolean);
   if (words.length === 0 || words.length > MAX_NAME_WORDS) return null;
 
@@ -245,8 +242,6 @@ async function captureParentName(
   database: Database,
   input: { familyId: string; parentUserId: string; name: string },
 ): Promise<NameCaptureWrite> {
-  // Not written. The caller treats this like a name that did not land.
-  if (isUndoCancelPhrase(input.name)) return 'already_named';
   const updated = await database
     .update(schema.users)
     .set({ name: input.name, updatedAt: new Date() })
@@ -285,8 +280,6 @@ export async function storeModelParentName(
   database: Database,
   input: { familyId: string; parentUserId: string; name: string },
 ): Promise<NameCaptureWrite> {
-  // Not written. Callers that ignore the status still must not persist the word.
-  if (isUndoCancelPhrase(input.name)) return 'already_named';
   const updated = await database
     .update(schema.users)
     .set({ name: input.name, updatedAt: new Date() })

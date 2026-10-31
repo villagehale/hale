@@ -7,7 +7,6 @@ import {
   ahaClockLabel,
   ahaWhenLabel,
 } from '~/lib/channel/connect/aha-read';
-import { isUndoCancelPhrase, replyUsesControlAsName } from '~/lib/channel/control-phrase';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import {
   type ReplyLanguage,
@@ -38,7 +37,9 @@ import {
   acceptOnboardingCapture,
   checklistAfter,
   countRejectedScheduleAdds,
+  dropTakeBackName,
   mergeCaptures,
+  namesAChild,
   onboardingMissing,
 } from './onboarding-turn';
 
@@ -190,6 +191,11 @@ export interface FriendVoiceInput {
   activity: string | null;
   day: string | null;
   parentName: string | null;
+  /**
+   * The model already read this message as taking the name back. The reply
+   * must not address them by it. Absent means the message may be their name.
+   */
+  nameTakenBack?: boolean;
   /** The soft read of this parent's role, when one is stored. */
   parentRole?: ParentRoleGuess | null;
   /** Which connector just landed. Set only on the connected step. */
@@ -719,21 +725,8 @@ function answeringItem(input: FriendVoiceInput): OnboardingItem | null {
  */
 export function parentReading(
   input: FriendVoiceInput,
-):
-  | { kind: 'name'; name: string }
-  | { kind: 'yes'; item: OnboardingItem }
-  | { kind: 'undo'; item: 'name' }
-  | null {
+): { kind: 'name'; name: string } | { kind: 'yes'; item: OnboardingItem } | null {
   const words = input.parentWords.trim();
-  if (words.length === 0) return null;
-  // Undo / cancel during the name ask is that control, including "Undo"
-  // which is otherwise shaped like a lone given name.
-  if (
-    isUndoCancelPhrase(words) &&
-    (NAME_STEPS.has(input.step) || answeringItem(input) === 'name')
-  ) {
-    return { kind: 'undo', item: 'name' };
-  }
   const item = answeringItem(input);
   if (!item) return null;
   // A plain "ok" answers a question only when Hale's last text asked one.
@@ -750,11 +743,9 @@ export function parentReading(
   return null;
 }
 
-/** Facts for the skill. Undo is a shape, not a sentence of directions. */
-function readingForModel(input: FriendVoiceInput): string | { kind: 'undo'; held: boolean } | null {
+function readingForModel(input: FriendVoiceInput): string | null {
   const reading = parentReading(input);
   if (!reading) return null;
-  if (reading.kind === 'undo') return { kind: 'undo', held: decliningHeldName(input) };
   return reading.kind === 'name'
     ? `parentWords is their name (${reading.name}): it answers the name ask`
     : `parentWords is a yes to ${reading.item}`;
@@ -806,25 +797,10 @@ function settleSchedule(capture: OnboardingCapture): OnboardingCapture {
     : capture;
 }
 
-function decliningHeldName(input: FriendVoiceInput): boolean {
-  return (
-    input.step === 'name_confirm' || (input.step === 'name_reply' && Boolean(input.parentName))
-  );
-}
-
 /** The capture, held to what code read for certain. */
 function withReading(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
   const reading = parentReading(input);
   if (!reading) return capture;
-  if (reading.kind === 'undo') {
-    const held = decliningHeldName(input);
-    return {
-      ...capture,
-      parentName: null,
-      nameDeclined: held ? capture.nameDeclined : true,
-      nameConfirmed: held ? false : capture.nameConfirmed,
-    };
-  }
   if (reading.kind === 'name') {
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
     if (capture.parentName || kids.includes(reading.name.toLowerCase())) return capture;
@@ -1294,6 +1270,58 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function foldName(value: string): string {
+  return value
+    .trim()
+    .replace(/^["“«']+|["”»']+$/gu, '')
+    .replace(/[.!]+$/u, '')
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/\s+/gu, ' ');
+}
+
+/**
+ * The reply uses the parent's whole message as a name, and that message is not
+ * the name already known. Quotes, a capital, or the end of a sentence mark it
+ * as a name. No address-verb list.
+ */
+function replyAddressesByOtherName(reply: string, input: FriendVoiceInput): boolean {
+  const message = input.parentWords.trim().replace(/[.!]+$/u, '');
+  const folded = foldName(message);
+  const known = foldName(input.parentName ?? '');
+  if (folded.length < 2 || folded === known) return false;
+  // No name on file, and the model has not called this message a take-back:
+  // the message may be the introduction. A known name, or a take-back, makes
+  // using the message as a name a mismatch.
+  if (!known && !input.nameTakenBack) return false;
+  if (message.length > 40 || /[?\d]/u.test(message)) return false;
+  const words = message.split(/\s+/u);
+  if (words.length === 0 || words.length > 3) return false;
+  if (!words.every((word) => /^[\p{L}\p{M}][\p{L}\p{M}'’-]*$/u.test(word))) return false;
+  if (namesAChild(message, input.children ?? [])) return false;
+  for (const match of reply.matchAll(/["“«']\s*([^"”»']+?)\s*["”»']/gu)) {
+    if (foldName(match[1] ?? '') === folded) return true;
+  }
+  const title = message.replace(/(^|\s)(\p{L})/gu, (_gap, space: string, letter: string) => {
+    return `${space}${letter.toUpperCase()}`;
+  });
+  if (new RegExp(`(?<![\\p{L}\\p{M}])${escapeRegExp(title)}(?![\\p{L}\\p{M}])`, 'u').test(reply)) {
+    return true;
+  }
+  const sentences = reply.split(/(?<=[.!?])\s+|\n+/u);
+  for (const sentence of sentences) {
+    const token =
+      sentence
+        .replace(/[.!?]+$/u, '')
+        .trim()
+        .split(/\s+/u)
+        .at(-1) ?? '';
+    if (foldName(token) === folded) return true;
+  }
+  return false;
+}
+
 /** "I'm Barton" from Hale, when Barton is the parent. */
 function speaksAsParent(text: string, parentName: string | null | undefined): boolean {
   const name = parentName?.trim() ?? '';
@@ -1355,9 +1383,8 @@ export function judgeFriendReply(
   }
   // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
   if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
-  // "undo" during the name ask is not what to call them.
-  if (replyUsesControlAsName(trimmed, input.parentWords)) {
-    return { ok: false, reason: 'identity', detail: 'control_name' };
+  if (replyAddressesByOtherName(trimmed, input)) {
+    return { ok: false, reason: 'identity', detail: 'unknown_name' };
   }
   if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
@@ -1817,16 +1844,19 @@ export async function speakFriend(
       // there are no parent words to read a yes or a fact from.
       const capture =
         input.parentWords.trim().length > 0
-          ? settleSchedule(
-              withGroupMode(
-                withReading(
-                  noYesInAQuestion(
-                    ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+          ? dropTakeBackName(
+              input.parentWords,
+              settleSchedule(
+                withGroupMode(
+                  withReading(
+                    noYesInAQuestion(
+                      ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                      input,
+                    ),
                     input,
                   ),
                   input,
                 ),
-                input,
               ),
             )
           : empty;
@@ -1852,7 +1882,10 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('schedule') },
         };
       }
-      const judgeInput = judgeInputFor(input, capture);
+      const judgeInput = {
+        ...judgeInputFor(input, capture),
+        nameTakenBack: capture.nameDeclined || capture.nameConfirmed === false,
+      };
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the
       // parent's next message closes the schedule (see settleSchedule).
@@ -2088,8 +2121,8 @@ function retryProblem(
     case 'identity':
       return detail === 'price'
         ? 'They asked about price: say in a clause that villagehale.com has the details, including price. Never say it is free or quote a price.'
-        : detail === 'control_name'
-          ? 'control_name'
+        : detail === 'unknown_name'
+          ? 'unknown_name'
           : 'You are Hale; talk to the parent, never about them by name, and never call yourself by their name. When they asked who this is, name the company from facts.identity.';
     default:
       return `It broke a rule (${reason}). Write it again, plainly, keeping every rule.`;

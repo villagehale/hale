@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
-import { isUndoCancelPhrase, replyUsesControlAsName } from '~/lib/channel/control-phrase';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
@@ -36,7 +35,6 @@ export function safeGivenName(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0 || trimmed.length > 40) return null;
-  if (isUndoCancelPhrase(trimmed)) return null;
   if (LINK_SHAPE.test(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length === 0) return null;
@@ -299,8 +297,13 @@ export async function handleParentCallNameReply(
   }
 
   const read = await voice.read({ ...input, heldName: held });
-  const control = isUndoCancelPhrase(input.body);
-  const preferred = control ? null : safeGivenName(read.parentName);
+  const readName = safeGivenName(read.parentName);
+  // The model turned the held name down and copied the whole message into the
+  // name field. That copy is the message, not a display name.
+  const preferred =
+    read.nameConfirmed === false && readName && sameNameMessage(readName, input.body)
+      ? null
+      : readName;
   if (read.parentRole) {
     await storeParentRole(database, {
       familyId: input.familyId,
@@ -318,7 +321,7 @@ export async function handleParentCallNameReply(
     if (written !== 'stored') return { status: 'declined' };
     return { status: 'answered', reply: read.reply };
   }
-  if (!control && read.nameConfirmed === true) {
+  if (read.nameConfirmed === true) {
     const written = await writeConfirmedName(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
@@ -328,17 +331,29 @@ export async function handleParentCallNameReply(
     if (written !== 'stored') return { status: 'declined' };
     return { status: 'answered', reply: read.reply };
   }
-  if (control || read.nameConfirmed === false) {
+  if (read.nameConfirmed === false) {
     await releaseGoogleGivenName(database, {
       familyId: input.familyId,
       userId: input.parentUserId,
       reason: 'confirm_declined',
     });
-    const reply =
-      control && read.reply && replyUsesControlAsName(read.reply, input.body) ? null : read.reply;
-    return { status: 'answered', reply };
+    return { status: 'answered', reply: read.reply };
   }
   return { status: 'declined' };
+}
+
+function sameNameMessage(name: string, body: string): boolean {
+  const fold = (value: string) =>
+    value
+      .trim()
+      .replace(/^["“«']+|["”»']+$/gu, '')
+      .replace(/[.!]+$/u, '')
+      .normalize('NFD')
+      .replace(/\p{M}+/gu, '')
+      .toLowerCase()
+      .replace(/\s+/gu, ' ');
+  const left = fold(name);
+  return left.length > 0 && left === fold(body);
 }
 
 async function readHeldGivenName(database: Database, userId: string): Promise<string | null> {

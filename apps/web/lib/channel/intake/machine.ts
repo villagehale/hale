@@ -108,7 +108,6 @@ import {
   type OnboardingChecklist,
   type OnboardingItem,
   agesAreComplete,
-  applyNameControl,
   coldStartQuestionIsStale,
   kidsAreNamed,
   lastTranscriptAt,
@@ -3344,12 +3343,11 @@ async function sendLadderFriendCard(
     { linkFollows: true },
   );
   if (args.nameReply) {
-    const heldName = held ? safeGivenName(held.googleGivenName) : null;
     await keepLadderName(database, {
       familyId: args.familyId,
       parentUserId: args.parentUserId,
-      capture: applyNameControl(args.inbound.body, spoken.capture, heldName),
-      heldGivenName: heldName,
+      capture: spoken.capture,
+      heldGivenName: held ? safeGivenName(held.googleGivenName) : null,
     });
   }
   if (!friendOutbound(spoken)) {

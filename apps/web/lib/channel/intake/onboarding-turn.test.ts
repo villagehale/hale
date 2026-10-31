@@ -6,11 +6,11 @@ import {
   acceptScheduleAdd,
   activityFromFindLine,
   agesAreComplete,
-  applyNameControl,
   checklistAfter,
   coldStartIsStale,
   coldStartQuestionIsStale,
   countRejectedScheduleAdds,
+  dropTakeBackName,
   kidsAreNamed,
   mergeCaptures,
   mergeChildFacts,
@@ -52,37 +52,22 @@ describe('onboarding capture', () => {
     expect(storedFromCapture(prior, sentence).place).toBeNull();
   });
 
-  it('does not store a delayed undo, cancel, or the same control words as the parent name', () => {
-    for (const word of [
-      'undo',
-      'Undo',
-      'cancel',
-      'canceled',
-      'never mind',
-      'nvm',
-      'nm',
-      'nevermind',
-      'scratch that',
-    ]) {
-      const capture = acceptOnboardingCapture({ parentName: word });
-      expect(capture.parentName).toBeNull();
-      expect(storedFromCapture(prior, capture).parentName).toBeNull();
-    }
-    expect(acceptOnboardingCapture({ parentName: 'Dana' }).parentName).toBe('Dana');
-  });
-
-  it('routes a delayed undo on the name reply as cancelling that ask', () => {
-    const open = applyNameControl('undo', acceptOnboardingCapture({ parentName: 'undo' }), null);
+  it('drops a parentName that is the whole take-back message', () => {
+    const open = dropTakeBackName(
+      'pas maintenant',
+      acceptOnboardingCapture({ parentName: 'pas maintenant', nameDeclined: true }),
+    );
     expect(open.parentName).toBeNull();
     expect(open.nameDeclined).toBe(true);
-    const held = applyNameControl(
-      'cancel',
-      acceptOnboardingCapture({ parentName: 'cancel', nameConfirmed: true }),
-      'Bea',
+    const held = dropTakeBackName(
+      'non',
+      acceptOnboardingCapture({ parentName: 'non', nameConfirmed: false }),
     );
     expect(held.parentName).toBeNull();
     expect(held.nameConfirmed).toBe(false);
     expect(held.nameDeclined).toBe(false);
+    const named = dropTakeBackName('Dana', acceptOnboardingCapture({ parentName: 'Dana' }));
+    expect(named.parentName).toBe('Dana');
   });
 
   it('takes the parent name and the kids names from one message', () => {
