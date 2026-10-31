@@ -1124,15 +1124,18 @@ export function recMorningHandler(): DeterministicHandler {
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       // VIL-508: the facts are reviewed; the words are the model's. A miss leaves the
       // text unclaimed for the coach rather than sending a fixed line.
+      // The family's stored language. Null is not an English default: intake is the
+      // path that has no family language yet, and that path follows parentWords.
+      const language = await familySpeechLanguage(database, ctx.familyId);
       if (recMorningReply(ctx.body, ctx.now) !== null) {
-        const named = await writeRecMorningReply(ctx.body, ctx.now);
+        const named = await writeRecMorningReply(ctx.body, ctx.now, null, language);
         return named === null
           ? { claimed: false }
           : { claimed: true, outcome: 'rec_morning', reply: named };
       }
       if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
       const where = await loadFamilyRecWhere(database, ctx.familyId);
-      const reply = await writeRecMorningReply(ctx.body, ctx.now, where);
+      const reply = await writeRecMorningReply(ctx.body, ctx.now, where, language);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };
     },

@@ -57,6 +57,7 @@ import {
   linqWebhookSecret,
 } from './config';
 import { type OneToOneSend, privateAsideOneToOne, resumeConnectLink } from './connect-link-1to1';
+import { familySpeechLanguage } from './family-outbound';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
   LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
@@ -324,7 +325,7 @@ export async function handleLinqInboundRequest(
           others: [],
         });
         if (mapped.status === 'same_family') {
-          const nudge = await answerGroupTriggerInOneToOne(deps, message, mapped, trigger);
+          const nudge = await answerGroupTriggerInOneToOne(deps, message, mapped);
           outcome = nudge.count;
           answered = nudge.body;
         } else {
@@ -680,7 +681,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
   }
   const coparent = await considerGroupCoparent(deps.database, message, coparentPorts(deps));
   if (coparent.type === 'claim') {
-    return claimGroupFromTrigger(deps, message, coparent, coparent.language);
+    return claimGroupFromTrigger(deps, message, coparent);
   }
   if (coparent.type === 'route_member') {
     return routeClaimedGroup(deps, message);
@@ -745,7 +746,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
   if (optOut) return routeClaimedGroup(deps, message);
 
   const trigger = matchLinqGroupTrigger(message.text);
-  if (trigger) return claimGroupFromTrigger(deps, message, mapped, trigger);
+  if (trigger) return claimGroupFromTrigger(deps, message, mapped);
 
   const owned = await familyOwnsLinqGroupChat(deps.database, mapped.familyId, message.chatId);
   if (!owned) {
@@ -1061,8 +1062,9 @@ async function claimGroupFromTrigger(
   deps: LinqDoorDeps,
   message: LinqInboundText,
   mapped: { familyId: string; userId: string },
-  language: 'en' | 'fr',
 ): Promise<Response> {
+  // The trigger phrase is English or French. The greeting is the family's language.
+  const language = await familySpeechLanguage(deps.database, mapped.familyId);
   const recorded = await recordHandledInbound(deps, message, mapped);
   if (!recorded) {
     await deps.countOutcome('duplicate');
@@ -1182,8 +1184,8 @@ async function answerGroupTriggerInOneToOne(
   deps: LinqDoorDeps,
   message: LinqInboundText,
   mapped: { familyId: string; userId: string },
-  language: 'en' | 'fr',
 ): Promise<{ count: InboundRouteOutcome; body: Record<string, unknown> }> {
+  const language = await familySpeechLanguage(deps.database, mapped.familyId);
   const recorded = await recordHandledInbound(deps, message, mapped);
   if (!recorded) return { count: 'duplicate', body: { outcome: 'duplicate' } };
 
@@ -1634,7 +1636,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         now,
       });
       if (seated.status === 'seated') {
-        const welcome = await groupWelcome('en');
+        const welcome = await groupWelcome(await familySpeechLanguage(deps.database, familyId));
         if (!welcome) {
           deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: welcome unreachable');
           await deps.countOutcome('intake');

@@ -1,3 +1,4 @@
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
 import { cityRecLine } from './city-line';
 import {
@@ -155,13 +156,16 @@ export async function writeRecMorningReply(
   body: string,
   now: Date = new Date(),
   where?: RecMorningWhere | null,
+  language: ReplyLanguage | null = null,
   write: typeof speak = speak,
 ): Promise<string | null> {
   const facts = recMorningReply(body, now, where);
   if (facts === null) return null;
   const text = await write({
     purpose: 'rec_morning',
-    language: null,
+    // Null only when intake has no stored language yet. The skill then writes
+    // in the language of facts.parentWords, not English.
+    language,
     facts: { answer: facts, parentWords: body },
     verbatim: verbatimFrom(facts),
   });
@@ -180,6 +184,8 @@ export async function writeRecMorningIntakeReply(
     now?: Date;
     postal?: string | null;
     city?: string | null;
+    /** Stored ladder language, when intake has one. Null: the model follows parentWords. */
+    language?: ReplyLanguage | null;
   },
   write: typeof speak = speak,
 ): Promise<string | null> {
@@ -188,6 +194,7 @@ export async function writeRecMorningIntakeReply(
     input.parentWords,
     input.now ?? new Date(),
     { postal: input.postal, city: input.city },
+    input.language ?? null,
     write,
   );
   return text;

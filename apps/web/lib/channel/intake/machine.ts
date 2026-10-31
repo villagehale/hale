@@ -983,6 +983,7 @@ async function offScriptReply(
     pendingAsk: string;
     children: readonly ExtractedChild[];
     postalCode?: string | null;
+    language?: ReplyLanguage | null;
   },
   deps: IntakeDeps,
 ): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
@@ -3118,6 +3119,7 @@ async function handleLadder(
         pendingAsk: '',
         children: session.collected.children,
         postalCode: session.collected.postalCode,
+        language,
       },
       deps,
     );

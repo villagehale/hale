@@ -2,6 +2,7 @@ import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent
 import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -189,6 +190,11 @@ export interface IntakeAnswerInput {
    * only — never shown to the model (see {@link intakeAnswerContext}).
    */
   postalCode?: string | null;
+  /**
+   * The session's stored language, when intake has one. Null means the rec-morning
+   * line is written in the language of `parentWords`, not English.
+   */
+  language?: ReplyLanguage | null;
 }
 
 export interface IntakeAnswerComposer {
@@ -385,6 +391,7 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
         parentWords: input.parentWords,
         pendingAsk: input.pendingAsk,
         postal: input.postalCode,
+        language: input.language ?? null,
       });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
 

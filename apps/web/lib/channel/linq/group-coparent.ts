@@ -76,7 +76,6 @@ export type GroupCoparentEffect =
       type: 'claim';
       familyId: string;
       userId: string;
-      language: 'en' | 'fr';
     }
   | {
       type: 'done';
@@ -137,7 +136,6 @@ export async function considerGroupCoparent(
         type: 'claim',
         familyId: sender.familyId,
         userId: sender.userId,
-        language: trigger,
       };
     }
   }

@@ -1,4 +1,3 @@
-import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { acknowledgeDutyWrite } from '~/lib/channel/coparent/duty/ack';
@@ -85,26 +84,10 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
     ).toBeNull();
 
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
-    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (url: string) => {
-      urls.push(String(url));
-      return new Response(JSON.stringify({ message: { id: 'x' } }), { status: 201 });
-    });
-    const emptyModel = {
-      messages: {
-        create: vi.fn(async () => ({
-          content: [{ type: 'text', text: JSON.stringify({ text: '' }) }],
-          usage: { input_tokens: 1, output_tokens: 1 },
-          stop_reason: 'end_turn',
-        })),
-      },
-    } as unknown as AgentClient;
-    const insert = vi.fn().mockReturnValue({
-      values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'l' }]) }),
-    });
+    // An explicit null client is "no model" (resolveReplyClient). Nothing is
+    // scripted onto messages.create: a miss sends no restate.
     const ack = await acknowledgeDutyWrite({
-      database: { insert, update: vi.fn() } as unknown as Database,
+      database: db,
       familyId: FAMILY,
       actorUserId: PARENT,
       source: 'llm',
@@ -118,11 +101,9 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
       event: 'swim',
       day: 'samedi',
       time: '15:00',
-      fetch: fetchMock as unknown as typeof fetch,
-      replyClient: emptyModel,
+      replyClient: null,
     });
-    expect(ack.sent).toBe(false);
-    expect(urls.filter((u) => u.includes('/messages'))).toEqual([]);
+    expect(ack).toMatchObject({ sent: false, status: 'skipped', reason: 'model_unsent' });
   });
 
   it('VIL-508 rec-morning: facts exist, model silent → router leaves it to the coach, intake falls through', async () => {
