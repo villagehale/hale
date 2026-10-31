@@ -173,6 +173,19 @@ describe('VIL-522 radar top-up', () => {
     expect(picks.map((pick) => pick.name)).toEqual(['Story time', 'Harvest fair']);
   });
 
+  it('keeps the same title and date at two named venues as two finds', () => {
+    const a = find({ sourceName: 'Library A', eventDate: '2026-11-07', when: 'Sat 10am' });
+    const b = find({
+      sourceName: 'Library B',
+      eventDate: '2026-11-07',
+      when: 'Saturday 10:00',
+      url: 'https://libraryb.example/story-time',
+      sourceUrl: 'https://libraryb.example/story-time',
+    });
+    const picks = mergeTopUp([a], [b]);
+    expect(picks.map((p) => p.sourceName)).toEqual(['Library A', 'Library B']);
+  });
+
   it('names a failed live search and still returns the radar find', async () => {
     const liveSearch = vi.fn(async () => {
       throw new Error('socket hang up');

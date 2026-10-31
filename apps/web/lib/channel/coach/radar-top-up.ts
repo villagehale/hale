@@ -71,7 +71,9 @@ function sameFind(a: ActivityPick, b: ActivityPick): boolean {
   const sameVenue =
     (!!a.placeId && a.placeId === b.placeId) ||
     (!!a.civicVenueId && a.civicVenueId === b.civicVenueId) ||
-    (!!a.sourceName?.trim() && !!b.sourceName?.trim());
+    (!!a.sourceName?.trim() &&
+      !!b.sourceName?.trim() &&
+      squashName(a.sourceName) === squashName(b.sourceName));
   if (sameDate && sameVenue) return true;
   return agrees(a.when, b.when);
 }
