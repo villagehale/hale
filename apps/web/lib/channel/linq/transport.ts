@@ -788,6 +788,24 @@ export async function updateLinqGroupChat(input: {
   });
 }
 
+/**
+ * VIL-478 — set a named colour swatch behind a chat. Colour only: no dynamic, no
+ * photo. Linq answers 202 (accepted, not applied); the result lands on
+ * `chat.background_updated`. Sends no message bubble.
+ */
+export async function setLinqChatBackground(input: {
+  chatId: string;
+  variant: 'ice';
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  return linqEffect({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/background`,
+    body: { type: 'color', variant: input.variant },
+    fetch: input.fetch,
+  });
+}
+
 /** GET the chat and return the other participants' handles and whether Linq says it
  * is a group (null when the payload does not say). A miss is named. */
 export async function listLinqParticipantHandles(input: {
