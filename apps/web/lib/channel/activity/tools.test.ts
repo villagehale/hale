@@ -323,7 +323,16 @@ describe('find_activities family slice (VIL-518)', () => {
   const FIT = {
     children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
     homeArea: 'halton_hills' as const,
-    preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
+    preferences: [
+      {
+        childId: CHILD,
+        key: 'indoor',
+        value: { prefers: 'indoor' },
+        source: 'parent_message' as const,
+        seenOn: '2026-10-01',
+      },
+    ],
+    recheck: [],
   };
 
   it('hands the family slice back beside the picks, and never sends it to the search', async () => {
@@ -353,5 +362,29 @@ describe('find_activities family slice (VIL-518)', () => {
       expect(result).toContain('Halton Hills Gymnastics');
       expect(result).not.toContain('"family"');
     }
+  });
+});
+
+describe('find_activities description: record over thread history (VIL-519, Design lock)', () => {
+  const description = findActivitiesTool({
+    reader: reader({}),
+    finder: fakeFinder([]),
+    onPromise: () => {},
+  }).description;
+
+  it('makes the family record win over older thread mentions of place and age', () => {
+    expect(description).toContain('the record wins');
+    expect(description).toContain('not from the old mention');
+  });
+
+  it('forbids profile / memory meta to the parent', () => {
+    expect(description).toContain(
+      'Never tell the parent about a record, profile, memory or mismatch',
+    );
+  });
+
+  it('keeps recheck to one soft question beside the picks', () => {
+    expect(description).toContain('at most one such question this turn');
+    expect(description).toContain('never instead of them');
   });
 });
