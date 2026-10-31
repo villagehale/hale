@@ -12,6 +12,10 @@ import type {
   CalendarCancelOutcome,
   CalendarCancelRequest,
 } from '~/lib/loop/voice/calendar-cancel-voice';
+import type {
+  CalendarInviteVoiceOutcome,
+  CalendarInviteVoiceRequest,
+} from '~/lib/loop/voice/calendar-invite-voice';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
   CANCEL_RETRY_MAX_ATTEMPTS,
@@ -51,6 +55,14 @@ let sms: ReturnType<typeof fakeChannel>;
 /** What the cancellation composer was handed, and what it answers. */
 let cancelCalls: CalendarCancelRequest[];
 let cancelOutcome: CalendarCancelOutcome;
+/** What the tap-to-add composer was handed. `scripted` fills a line from those facts. */
+let inviteCalls: CalendarInviteVoiceRequest[];
+let inviteOutcome: CalendarInviteVoiceOutcome | { status: 'scripted' };
+
+/** A stand-in for the model: the facts, in words this test owns. Not a fixed product line. */
+function scriptedInviteBody(request: CalendarInviteVoiceRequest): string {
+  return `${request.summary}, ${request.when}. I put it on the week - open this to add it to your phone: ${request.url}`;
+}
 
 function channels(): Partial<Record<ChannelKind, Channel>> {
   return { sms };
@@ -60,6 +72,15 @@ function sender() {
   return createCalendarInviteSender(db.database, {
     channels: channels(),
     renderer: loopTemplateRenderer,
+    inviteVoice: {
+      compose: async (request) => {
+        inviteCalls.push(request);
+        if (inviteOutcome.status === 'scripted') {
+          return { status: 'composed', body: scriptedInviteBody(request) };
+        }
+        return inviteOutcome;
+      },
+    },
     cancelVoice: {
       compose: async (request) => {
         cancelCalls.push(request);
@@ -165,6 +186,8 @@ beforeEach(async () => {
     status: 'composed',
     body: 'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
   };
+  inviteCalls = [];
+  inviteOutcome = { status: 'scripted' };
   vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('DATABASE_URL', 'postgres://pglite');
@@ -210,9 +233,12 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(sentText()).toContain('Swim class');
-    expect(sentText()).toContain('Tap to put it on your phone');
-    expect(sentText()).toContain('https://app.villagehale.com/api/ics/event/');
+    const body = sentText();
+    expect(inviteCalls).toHaveLength(1);
+    expect(body).toBe(scriptedInviteBody(inviteCalls[0] as CalendarInviteVoiceRequest));
+    expect(body).toContain('Swim class');
+    expect(body).toContain('https://app.villagehale.com/api/ics/event/');
+    expect(body.startsWith('Added -')).toBe(false);
   });
 
   it('serves THAT event as a calendar file through the real route', async () => {
@@ -285,7 +311,10 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(sentText()).toContain('Tap to put it on your phone');
+    const body = sentText();
+    expect(inviteCalls).toHaveLength(1);
+    expect(body).toBe(scriptedInviteBody(inviteCalls[0] as CalendarInviteVoiceRequest));
+    expect(body.startsWith('Added -')).toBe(false);
   });
 
   /** What an approved calendar_cancel leaves behind: the row soft-deleted. */
@@ -337,6 +366,34 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(sentText(1)).toBe(
       'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
     );
+  });
+
+  it('VIL-515 · sends nothing and names compose_deferred when the invite composer defers', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    inviteOutcome = { status: 'deferred', reason: 'model_failed' };
+
+    const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toEqual({
+      status: 'reported',
+      parents: [
+        { parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: 'model_failed' },
+      ],
+    });
+    expect(sms.calls).toHaveLength(0);
+    expect(inviteCalls).toHaveLength(1);
+
+    // A later re-drive whose compose succeeds sends the model's words: the deferral
+    // minted no dedupe row, so nothing blocks it.
+    inviteOutcome = { status: 'scripted' };
+    const retried = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    expect(retried).toEqual({
+      status: 'reported',
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sms.calls).toHaveLength(1);
+    expect(sentText().startsWith('Added -')).toBe(false);
   });
 
   it('sends nothing and names compose_deferred when the composer defers (no fixed fallback)', async () => {

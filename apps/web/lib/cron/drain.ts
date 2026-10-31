@@ -791,6 +791,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
   const { productionCalendarCancelVoice } = await import('~/lib/loop/voice/calendar-cancel-voice');
+  const { productionCalendarInviteVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
   const { productionChannels } = await import('~/lib/channel/adapters/production');
   const { createCalendarInviteSender } = await import('~/lib/loop/calendar-invite');
   const { createGoogleCalendarPlacement } = await import(
@@ -824,6 +825,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
     createCalendarInviteSender(db(), {
       channels,
       renderer: loopTemplateRenderer,
+      inviteVoice: productionCalendarInviteVoice(),
       cancelVoice: productionCalendarCancelVoice(),
     }),
     productionGroupPlanReportPorts(db()),
