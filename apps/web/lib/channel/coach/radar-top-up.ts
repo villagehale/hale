@@ -77,6 +77,27 @@ export function sessionStart(when: string | null | undefined): number | null {
   return hour * 60 + minute;
 }
 
+const WEEKDAYS: Array<[number, RegExp]> = [
+  [0, /\bsun(?:day)?s?\b/i],
+  [1, /\bmon(?:day)?s?\b/i],
+  [2, /\btue(?:s(?:day)?)?s?\b/i],
+  [3, /\bwed(?:nesday)?s?\b/i],
+  [4, /\bthu(?:r(?:s(?:day)?)?)?s?\b/i],
+  [5, /\bfri(?:day)?s?\b/i],
+  [6, /\bsat(?:urday)?s?\b/i],
+];
+
+/**
+ * The weekdays a `when` publishes ("Sat 10am" and "Saturdays 10:00 AM" both
+ * read Saturday), as a sorted key; '' when it names none.
+ */
+export function publishedWeekdays(when: string | null | undefined): string {
+  if (!when?.trim()) return '';
+  return WEEKDAYS.filter(([, re]) => re.test(when))
+    .map(([day]) => day)
+    .join(',');
+}
+
 /**
  * The same find, not just the same title: names match, and the venue and the
  * date do not disagree. Two venues (or two dates) sharing a title stay two finds.
@@ -98,6 +119,11 @@ function sameFind(a: ActivityPick, b: ActivityPick): boolean {
       squashName(a.sourceName) === squashName(b.sourceName));
   // Both publish a session time: that decides it. Spelling ("Sat 10am" vs
   // "Saturday 10:00 AM") is ignored, but a 10am and a 2pm session stay two.
+  // Schedule context first: Saturdays 10am and Sundays 10am are two sessions,
+  // even with no event date to tell them apart.
+  const daysA = publishedWeekdays(a.when);
+  const daysB = publishedWeekdays(b.when);
+  if (daysA && daysB && daysA !== daysB) return false;
   const startA = sessionStart(a.when);
   const startB = sessionStart(b.when);
   if (startA !== null && startB !== null) return startA === startB;
