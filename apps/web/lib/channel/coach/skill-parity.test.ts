@@ -154,6 +154,16 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(prose).not.toContain('No ref, no page');
   });
 
+  it('tells a nearby find to search again when the parent names another town (VIL-523)', async () => {
+    const skill = await loadCronSkill('coach-nearby-find');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(prose).toContain('changes the area');
+    expect(prose).toContain('searches again');
+    expect(prose).toContain('`area`');
+    expect(prose).not.toContain("don't promise a fresh search");
+    expect(prose).not.toContain('finding still looks');
+  });
+
   it('loads the shorten skill as a tool-less rewrite, not a canned reply', async () => {
     const skill = await loadCronSkill('coach-channel-shorten');
 

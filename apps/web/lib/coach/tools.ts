@@ -166,11 +166,15 @@ export function searchVillageTool(
   return defineTool({
     name: 'search_village',
     description:
-      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
-    inputSchema: z.object({ query: z.string().optional(), window: z.string().optional() }),
+      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that is not a town, city, or area comes back as `liveRead` `area_unusable` or `area_names_a_person` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
+    inputSchema: z.object({
+      query: z.string().optional(),
+      window: z.string().optional(),
+      area: z.string().min(1).optional(),
+    }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
-    inputExamples: [{ query: 'swim' }, {}],
+    inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Oakville' }],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
@@ -178,6 +182,7 @@ export function searchVillageTool(
       const found = await findFamilyActivities(database, ctx.familyId, {
         subject: input.query,
         window: input.window,
+        area: input.area,
         finder,
         now,
       });
