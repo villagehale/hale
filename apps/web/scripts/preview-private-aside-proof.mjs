@@ -69,6 +69,59 @@ function nextSaturdayTenLocal(now = new Date()) {
 const SWIM_AT = nextSaturdayTenLocal();
 const PREVIEW_DB_PROJECT = 'ncujspiepbuwnbmayhpb';
 
+/** Host or pooler user must be the Preview project. A password or query that merely contains the id does not qualify. */
+function assertPreviewDatabase(raw) {
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`DATABASE_URL must be the Preview DB (${PREVIEW_DB_PROJECT})`);
+  }
+  const host = url.hostname;
+  const user = decodeURIComponent(url.username);
+  const direct = host === `db.${PREVIEW_DB_PROJECT}.supabase.co`;
+  const pooler =
+    host.endsWith('.pooler.supabase.com') &&
+    (user === `postgres.${PREVIEW_DB_PROJECT}` ||
+      user.startsWith(`postgres.${PREVIEW_DB_PROJECT}.`));
+  if (!direct && !pooler) {
+    throw new Error(`DATABASE_URL must be the Preview DB (${PREVIEW_DB_PROJECT})`);
+  }
+}
+
+/** Drop 1:1 captures from before this run. Group reads have no `sends` array and pass through. */
+function onlyThisRun(raw, sinceIso) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.sends)) return raw;
+    parsed.sends = parsed.sends.filter((row) => row.capturedAt >= sinceIso);
+    parsed.count = parsed.sends.length;
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return raw;
+  }
+}
+
+/** https Vercel preview only. Bare production aliases and any other host are refused. */
+function assertPreviewDeploy(raw) {
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('PREVIEW_BASE_URL must be an https://*.vercel.app preview deploy');
+  }
+  const host = url.hostname;
+  const preview =
+    url.protocol === 'https:' &&
+    host.endsWith('.vercel.app') &&
+    (host.startsWith('hale-web-') || host.includes('village-hale')) &&
+    host !== 'hale-web.vercel.app' &&
+    host !== 'hale-web-village-hale-project.vercel.app';
+  if (!preview) {
+    throw new Error('PREVIEW_BASE_URL must be a hale-web preview deploy, not production');
+  }
+}
+
 const mode = process.argv.slice(2);
 if (mode.length !== 1 || !['--dry', '--live'].includes(mode[0])) {
   console.error('usage: preview-private-aside-proof.mjs --dry | --live');
@@ -108,10 +161,9 @@ if (mode[0] === '--dry') {
 
 // ---- live ----
 const { DATABASE_URL, APP_ENCRYPTION_KEY, PREVIEW_BASE_URL } = process.env;
-if (!DATABASE_URL?.includes(PREVIEW_DB_PROJECT))
-  throw new Error(`DATABASE_URL must be the Preview DB (${PREVIEW_DB_PROJECT})`);
-if (!PREVIEW_BASE_URL?.startsWith('https://'))
-  throw new Error('PREVIEW_BASE_URL=https://… required');
+assertPreviewDatabase(DATABASE_URL);
+assertPreviewDeploy(PREVIEW_BASE_URL);
+const startedAt = new Date().toISOString();
 const key = Buffer.from(APP_ENCRYPTION_KEY ?? '', 'base64');
 if (key.length !== 32) throw new Error('APP_ENCRYPTION_KEY (Preview, 32 bytes base64) required');
 // Same as lib/crypto/string-cipher.ts and blind-index.ts.
@@ -132,8 +184,10 @@ try {
   await sql.begin(async (tx) => {
     for (const f of plan.families) {
       const hash = phoneHash(f.phone);
-      // Retire earlier runs' channel on this fake number so the inbound resolves to this run.
+      // Retire earlier runs on this fake number: the channel, and every captured 1:1,
+      // so a previous aside cannot pass for this run.
       await tx`delete from parent_channels where phone_e164_hash = ${hash}`;
+      await tx`delete from preview_captured_sends where to_e164 = ${f.phone}`;
       const [fam] =
         await tx`insert into families (display_name, province_or_state) values (${f.name}, 'ON') returning id`;
       const [u] =
@@ -193,7 +247,7 @@ try {
     );
     await new Promise((r) => setTimeout(r, 20000)); // queued turn drains
   }
-  for (const path of plan.reads) console.log(`GET ${path}\n${vcurl(path)}`);
+  for (const path of plan.reads) console.log(`GET ${path}\n${onlyThisRun(vcurl(path), startedAt)}`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

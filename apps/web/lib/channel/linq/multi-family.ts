@@ -11,7 +11,12 @@ import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { DEFAULT_TIMEZONE, formatDateTime } from '~/lib/format/datetime';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import { linqMultiFamilyGroupsEnabled } from './config';
-import { type PrivateAsideModel, type SendOneToOne, runPrivateAside } from './group-private-aside';
+import {
+  type PrivateAsideModel,
+  type PrivateAsideOutcome,
+  type SendOneToOne,
+  runPrivateAside,
+} from './group-private-aside';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
 import type { SharedGroupReader, SharedGroupReading } from './shared-group-reading';
@@ -700,6 +705,9 @@ export async function readFamilySliceForAudience(
       .where(eq(schema.familyMembers.familyId, input.dataFamilyId))
       .limit(1),
   ]);
+  // `users.timezone` defaults to UTC (migration 0178) and that value means "never
+  // set" — no family Hale serves lives on UTC (same rule as askerTimeZone). An
+  // unset zone is Toronto so a Saturday 10:00 plan compares against the household clock.
   const zone =
     zoneRows[0]?.timezone && zoneRows[0].timezone !== 'UTC'
       ? zoneRows[0].timezone
@@ -925,25 +933,39 @@ export type MultiFamilyTurnResult =
 /**
  * The private aside never touches the group send: it only reads each family's own
  * consented slice and texts that family 1:1. A throw is logged and never fails the turn.
+ *
+ * `delivered` is true only when a 1:1 actually reached that family (`sent`, or
+ * `suppressed` because the same text was already sent). A read that picks a family
+ * and then declines, fails, or never drafts did not land — the turn must not be
+ * owned on that alone, or a quiet group swallows a text RSVP.
  */
+type AsideTurn = { outcome: string; delivered: boolean };
+
+function asideReachedFamily(out: PrivateAsideOutcome): boolean {
+  return (
+    out.outcome === 'ran' &&
+    out.families.some((row) => row.outcome === 'sent' || row.outcome === 'suppressed')
+  );
+}
+
 async function privateAsideFor(
   database: Database,
   deps: { model: PrivateAsideModel; sendOneToOne: SendOneToOne },
   input: { chatId: string; inboundId: string; text: string; senderFamilyId: string },
-): Promise<string> {
+): Promise<AsideTurn> {
   try {
     const out = await runPrivateAside(database, deps, {
       ...input,
       recent: [{ from: 'member', text: input.text }],
       language: null,
     });
-    return out.outcome;
+    return { outcome: out.outcome, delivered: asideReachedFamily(out) };
   } catch (err) {
     console.warn(
       { chatId: input.chatId, err: err instanceof Error ? err.name : 'unknown' },
       'linq multi-family: private aside failed',
     );
-    return 'error';
+    return { outcome: 'error', delivered: false };
   }
 }
 
@@ -1195,7 +1217,7 @@ export async function takeMultiFamilyTurn(
 
   // VIL-496: past the two-family gate, a message that touches a family's own facts gets
   // its 1:1 aside whatever the group read was (question, chatter, unclear).
-  const runAside = async (): Promise<string | undefined> =>
+  const runAside = async (): Promise<AsideTurn | undefined> =>
     input.privateAside && channel && inbound !== 'guest'
       ? await privateAsideFor(database, input.privateAside, {
           chatId: input.chatId,
@@ -1204,11 +1226,12 @@ export async function takeMultiFamilyTurn(
           senderFamilyId: channel.familyId,
         })
       : undefined;
-  const logFallthrough = (why: string, aside: string | undefined) => {
+  const logFallthrough = (why: string, aside: AsideTurn | undefined) => {
     console.info('linq multi-family: turn handed back', {
       chatId: input.chatId,
       intent: why,
-      aside: aside ?? (input.privateAside ? (channel ? 'guest' : 'no_channel') : 'not_wired'),
+      aside:
+        aside?.outcome ?? (input.privateAside ? (channel ? 'guest' : 'no_channel') : 'not_wired'),
     });
   };
 
@@ -1241,11 +1264,18 @@ export async function takeMultiFamilyTurn(
     // whose own facts the message touches hears 1:1 even when Hale stays quiet here.
     const aside = await runAside();
     if (!groupSpoke) {
-      // Quiet group + an aside that ran: Hale owned this turn, so it must not fall
-      // through to the mixed-family hold. With no aside, hand it back so the rest of
-      // the group door (text RSVP for a plan) still reads it.
-      if (aside === 'ran') {
-        return { handled: true, outcome: 'aside_only', count: 'intake', notice, aside };
+      // Quiet group + a 1:1 that landed: Hale owned this turn, so it must not fall
+      // through to the mixed-family hold. A pick that declined or failed to send
+      // landed nothing — hand the message back so the rest of the group door (text
+      // RSVP for a plan) still reads it.
+      if (aside?.delivered) {
+        return {
+          handled: true,
+          outcome: 'aside_only',
+          count: 'intake',
+          notice,
+          aside: aside.outcome,
+        };
       }
       logFallthrough(intent, aside);
       return { handled: false };
@@ -1255,16 +1285,16 @@ export async function takeMultiFamilyTurn(
       outcome: intent === 'question' ? 'shared_reply' : intent,
       count: 'intake',
       notice,
-      ...(aside ? { aside } : {}),
+      ...(aside ? { aside: aside.outcome } : {}),
     };
   }
 
   // Chatter and an unclear read are not Hale's group turn, but a private fact in them
-  // still earns its 1:1 aside. Without one, hand the message back so the rest of the
-  // group door (text RSVP for a plan) still reads it.
+  // still earns its 1:1 aside. Without a text that landed, hand the message back so
+  // the rest of the group door (text RSVP for a plan) still reads it.
   const aside = await runAside();
-  if (aside === 'ran') {
-    return { handled: true, outcome: 'aside_only', count: 'intake', aside };
+  if (aside?.delivered) {
+    return { handled: true, outcome: 'aside_only', count: 'intake', aside: aside.outcome };
   }
   logFallthrough(intent, aside);
   return { handled: false };

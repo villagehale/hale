@@ -14,6 +14,7 @@ import {
 import { joinFamilyToSharedGroup, takeMultiFamilyTurn } from './multi-family';
 import type { SharedGroupReader } from './shared-group-reading';
 import { fakeSharedGroupComposer } from './shared-group-voice-fake';
+import { LinqSendError } from './transport';
 
 const SHARED_REPLY = 'shared-reply-line';
 const questionReader: SharedGroupReader = {
@@ -151,7 +152,7 @@ async function twoJoined() {
 }
 
 /** 'clash' picks the family whose own facts name the kid (refs follow join order, which can tie). */
-function fakeModel(read: 'clash' | string[] | Error) {
+function fakeModel(read: 'clash' | string[] | Error, draft: { send: boolean } = { send: true }) {
   const reads: PrivateAsideReadInput[] = [];
   const drafts: PrivateAsideDraftInput[] = [];
   const model: PrivateAsideModel = {
@@ -165,6 +166,7 @@ function fakeModel(read: 'clash' | string[] | Error) {
     },
     async draft(input) {
       drafts.push(input);
+      if (!draft.send) return { send: false, about: '', text: '' };
       // Stand-in for the model's own words; production text is always model-written.
       return { send: true, about: 'own clash', text: `aside:${input.private.children.join(',')}` };
     },
@@ -344,6 +346,50 @@ describe('VIL-496 aside sends even when the group line does not', () => {
       expect(rows.map((r) => r.familyId)).toEqual([bao.familyId]);
     });
   }
+
+  it('group quiet and the aside declines: hands the message back so a text RSVP can still be read', async () => {
+    const { wire } = await twoJoined();
+    const m = fakeModel('clash', { send: false });
+    const dm = fakeOneToOne();
+    const out = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire),
+        privateAside: {
+          model: m.model,
+          sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send: dm.send }),
+        },
+      },
+      { reader: questionReader, composer: fakeSharedGroupComposer({ decline: true }) },
+    );
+    expect(out).toEqual({ handled: false });
+    expect(m.drafts).toHaveLength(1);
+    expect(dm.sent).toEqual([]);
+  });
+
+  it('group quiet and the 1:1 fails to send: hands the message back', async () => {
+    const { wire } = await twoJoined();
+    const m = fakeModel('clash');
+    const send: OneToOneSend = {
+      text: async () => {
+        throw new LinqSendError('unavailable', 503, false);
+      },
+      link: async () => ({ providerMessageId: 'unused' }),
+    };
+    const out = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire),
+        privateAside: {
+          model: m.model,
+          sendOneToOne: privateAsideOneToOne(db.database, { now: NOW, send }),
+        },
+      },
+      { reader: questionReader, composer: fakeSharedGroupComposer({ decline: true }) },
+    );
+    expect(out).toEqual({ handled: false });
+    expect(m.drafts).toHaveLength(1);
+  });
 
   it('group quiet and no family touched: hands the message back (no hold-stealing)', async () => {
     const { wire } = await twoJoined();
