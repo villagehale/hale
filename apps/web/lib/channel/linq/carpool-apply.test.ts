@@ -245,3 +245,67 @@ describe('applyCarpoolReading', () => {
     });
   });
 });
+
+describe('date-only ride move (Devin #984)', () => {
+  it('"soccer pickup moved to Sunday" keeps the Saturday 08:00 hour on Sunday', () => {
+    const saturday = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-10',
+        pickupTime: '08:00',
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(localClock(saturday?.pickupAt, TZ)).toBe('Saturday 08:00');
+
+    const moved = applyCarpoolReading(
+      saturday,
+      reading({
+        intent: 'plan_needs_driver',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-11',
+        pickupTime: null,
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(localClock(moved?.pickupAt, TZ)).toBe('Sunday 08:00');
+    expect(moved?.planKey).toBe(carpoolPlanKey('soccer', moved?.pickupAt ?? null, TZ));
+  });
+
+  it('keeps the known hour across a DST change (Sat EDT → Sun after fall-back)', () => {
+    const saturday = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-31',
+        pickupTime: '08:00',
+      }),
+      MAYA,
+      NOW,
+    );
+    const moved = applyCarpoolReading(
+      saturday,
+      reading({ intent: 'plan_needs_driver', pickupDate: '2026-11-01', pickupTime: null }),
+      MAYA,
+      NOW,
+    );
+    expect(localClock(moved?.pickupAt, TZ)).toBe('Sunday 08:00');
+  });
+
+  it('a date with no hour and no known ride sets no instant', () => {
+    const plan = applyCarpoolReading(
+      null,
+      reading({ intent: 'plan_needs_driver', eventLabel: 'soccer', pickupDate: '2026-10-11' }),
+      MAYA,
+      NOW,
+    );
+    expect(plan?.pickupAt ?? null).toBeNull();
+  });
+});

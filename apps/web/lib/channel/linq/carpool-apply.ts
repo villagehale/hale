@@ -98,6 +98,42 @@ export function resolveCarpoolPickup(
   return parsePickupAt(reading.pickupAtIso);
 }
 
+/** `HH:MM` of an instant on the wall clock of `timeZone`. */
+function localClockIn(at: Date, timeZone: string): string | null {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(at);
+    const hour = parts.find((part) => part.type === 'hour')?.value;
+    const minute = parts.find((part) => part.type === 'minute')?.value;
+    const clock = hour && minute ? `${hour}:${minute}` : '';
+    return CLOCK.test(clock) ? clock : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Devin #984 — a date-only move ("soccer pickup moved to Sunday") names a day and
+ * no hour. It keeps the matched ride's own local hour on the new day; without this
+ * the new date was dropped and the old instant kept. Which ride is matched (and the
+ * refusal when several could be) stays with `pickCarpoolPlan`.
+ */
+export function withKnownClock<R extends Pick<CarpoolReading, 'pickupDate' | 'pickupTime'>>(
+  reading: R,
+  plan: Pick<CarpoolPlanState, 'pickupAt' | 'driverTimezone'> | null,
+  timeZone: string,
+): R {
+  const date = reading.pickupDate?.trim() ?? '';
+  const time = reading.pickupTime?.trim() ?? '';
+  if (!DAY_KEY.test(date) || CLOCK.test(time) || !plan?.pickupAt) return reading;
+  const clock = localClockIn(plan.pickupAt, plan.driverTimezone || timeZone);
+  return clock ? { ...reading, pickupTime: clock } : reading;
+}
+
 function claimedDriverName(reading: CarpoolReading, sender: CarpoolSender): string | null {
   const named = reading.driverName?.trim() || null;
   if (named) return named;
@@ -153,7 +189,8 @@ export function applyCarpoolReading(
 
   const previousPickupAt = plan?.pickupAt ?? null;
   const timeZone = sender.timezone || plan?.driverTimezone || 'America/Toronto';
-  const pickupAt = resolveCarpoolPickup(reading, timeZone) ?? previousPickupAt;
+  const pickupAt =
+    resolveCarpoolPickup(withKnownClock(reading, plan, timeZone), timeZone) ?? previousPickupAt;
   const eventLabel = reading.eventLabel?.trim() || plan?.eventLabel || null;
   const pickupPlace = reading.pickupPlace?.trim() || plan?.pickupPlace || null;
   const kids = reading.kids?.trim() || plan?.kids || null;

@@ -102,9 +102,39 @@ export function zonedLocalInstant(dayKey: string, time: string, timeZone: string
   if (Number.isNaN(naive.getTime())) {
     throw new Error(`zonedLocalInstant: '${dayKey}' is not a YYYY-MM-DD day key`);
   }
-  const inZone = new Date(naive.toLocaleString('en-US', { timeZone }));
-  const inUtc = new Date(naive.toLocaleString('en-US', { timeZone: 'UTC' }));
-  return new Date(naive.getTime() + (inUtc.getTime() - inZone.getTime()));
+  // The zone's offset must be read AT the answer, not at the naive UTC moment: on a
+  // spring-forward Sunday 03:30 Toronto reads the offset of 22:30 the night before
+  // (EST) and lands on 04:30 EDT (Devin #984). Re-read once at the first guess.
+  // Read as numbers, never re-parsed through the host's own zone (whose DST would skew it).
+  const format = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hourCycle: 'h23',
+  });
+  const offsetAt = (at: Date) => {
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(format.formatToParts(at).find((p) => p.type === type)?.value ?? 0);
+    const wall = Date.UTC(
+      part('year'),
+      part('month') - 1,
+      part('day'),
+      part('hour'),
+      part('minute'),
+      part('second'),
+    );
+    return Math.round((at.getTime() - wall) / 60_000) * 60_000;
+  };
+  const first = new Date(naive.getTime() + offsetAt(naive));
+  const second = new Date(naive.getTime() + offsetAt(first));
+  if (offsetAt(second) === offsetAt(first)) return second;
+  // A wall clock the zone skips (02:30 on spring-forward) — the later reading, so the
+  // hour moves forward with the clocks rather than back into the night before.
+  return first.getTime() > second.getTime() ? first : second;
 }
 
 export interface WeekWindow {
