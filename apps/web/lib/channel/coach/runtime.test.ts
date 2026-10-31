@@ -147,7 +147,11 @@ describe('channelCoachRuntime', () => {
   });
 
   it('reads a photo into the loop and names a video it did not watch', async () => {
-    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const seen: Array<{
+      context: Record<string, unknown>;
+      attachments?: unknown[];
+      instructions: string;
+    }> = [];
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xd9]);
     const p = ports({
       readInboundMedia: (parts) =>
@@ -159,6 +163,7 @@ describe('channelCoachRuntime', () => {
         seen.push({
           context: args.context as Record<string, unknown>,
           attachments: args.attachments as unknown[],
+          instructions: args.skill.instructions,
         });
         return answering('Got the flyer.')(args);
       },
@@ -177,10 +182,15 @@ describe('channelCoachRuntime', () => {
 
     expect(seen[0]?.attachments?.[0]).toMatchObject({ type: 'image' });
     expect(seen[0]?.context.arrivedMedia).toEqual([{ kind: 'video' }]);
+    expect(seen[0]?.instructions).not.toContain('arrivedContacts');
   });
 
   it('reads a .vcf into the loop as contact fields, not as an attachment', async () => {
-    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const seen: Array<{
+      context: Record<string, unknown>;
+      attachments?: unknown[];
+      instructions: string;
+    }> = [];
     const vcf = ['BEGIN:VCARD', 'FN:Jane Smith', 'TEL;TYPE=CELL:+14165550100', 'END:VCARD'].join(
       '\n',
     );
@@ -194,6 +204,7 @@ describe('channelCoachRuntime', () => {
         seen.push({
           context: args.context as Record<string, unknown>,
           attachments: args.attachments as unknown[],
+          instructions: args.skill.instructions,
         });
         return answering('ok.')(args);
       },
@@ -218,6 +229,7 @@ describe('channelCoachRuntime', () => {
       },
     ]);
     expect(seen[0]?.context.arrivedContactsTruncated).toBeUndefined();
+    expect(seen[0]?.instructions).toContain('arrivedContacts');
   });
 
   it('tells the loop when a contact file had more cards than it kept', async () => {

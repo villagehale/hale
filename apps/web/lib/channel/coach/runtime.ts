@@ -339,12 +339,21 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
-      const skill = augmentCoachSkillForGroupLeave(
-        augmentCoachSkillForExperienceCards(
-          baseSkill,
-          cardsLit ? await loadCronSkill('experience-card-coach') : null,
+      // VIL-482. Only a turn that carried a .vcf gets this addendum. Anything else
+      // keeps the same skill object, so coach-channel and group-privacy recordings
+      // stay keyed on the bytes they already have.
+      const contactCard = turn.inboundMedia?.some((part) => part.kind === 'contact')
+        ? await loadCronSkill('contact-card-read')
+        : null;
+      const skill = augmentCoachSkillForContactCard(
+        augmentCoachSkillForGroupLeave(
+          augmentCoachSkillForExperienceCards(
+            baseSkill,
+            cardsLit ? await loadCronSkill('experience-card-coach') : null,
+          ),
+          leaveLit,
         ),
-        leaveLit,
+        contactCard,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
@@ -620,6 +629,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       );
     },
   };
+}
+
+/** Null returns the same skill object. A turn without a .vcf does not grow the prompt. */
+function augmentCoachSkillForContactCard(skill: Skill, addendum: Skill | null): Skill {
+  if (addendum === null) return skill;
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
 }
 
 async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
