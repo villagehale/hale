@@ -13,6 +13,11 @@ import {
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
 import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
+import {
+  approvalForCalendarYes,
+  pairedDraftForCalendarNo,
+  questionsForCalendarReader,
+} from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
@@ -96,6 +101,7 @@ import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conv
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
 import {
+  expireEmailAlertOffer,
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
@@ -1019,6 +1025,7 @@ async function routeChannelMessageInner(
           parentUserId: job.parent_user_id,
           now,
           channelMessageId: job.channel_message_id,
+          surface: 'group',
         });
         return all.filter((question) => question.kind === 'approval' && ids.has(question.id));
       })();
@@ -1803,12 +1810,20 @@ async function resolveNaturalReply(
   if (questions.length === 0) return { status: 'carry_on', questions };
 
   // Calendar offers are read by the calendar model, including when the reply is not
-  // English. Mixed questions stay on the general resolver: it already sees every kind.
-  const emailOnly =
-    questions.length > 0 && questions.every((question) => question.kind === 'email_alert_add');
-  const reading = emailOnly
-    ? await deps.calendarOffers.readParent({ text: turn.body, questions, now: turn.now })
+  // English. A draft the reviewer has not cleared does not count as a competing YES
+  // (VIL-513): it used to force the general resolver, which returned not_answerable
+  // and the coach drafted the same add again.
+  const calendarQuestions = questionsForCalendarReader(questions);
+  const read = calendarQuestions
+    ? await deps.calendarOffers.readParent({
+        text: turn.body,
+        questions: calendarQuestions,
+        now: turn.now,
+      })
     : await deps.replyResolver.read({ text: turn.body, questions });
+  const offerId =
+    read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
+  const reading = approvalForCalendarYes(questions, read);
   if (reading.status === 'unresolved') {
     if (questions.length > 1 && warrantsClarifying(reading.reason)) {
       // The model did not place the reply. Do not classify the words here.
@@ -1849,6 +1864,54 @@ async function resolveNaturalReply(
       'channel router: the owning handler declined a resolved answer',
     );
     return { status: 'carry_on', questions };
+  }
+  // The offer and the draft were one ask. The draft is approved; the offer must stop
+  // standing or the next YES places the occasion a second time.
+  if (offerId && reading.kind === 'approval' && verdict.outcome === 'approved') {
+    try {
+      const released = await expireEmailAlertOffer(deps.database, { offerId, now: turn.now });
+      deps.log.info({ released }, 'channel router: calendar ask approved, offer released');
+    } catch (err) {
+      deps.log.error(
+        { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+        'channel router: calendar ask approved, offer not released',
+      );
+    }
+  }
+  // A NO to that same ask declines the draft too. The offer handler owns the NO
+  // and closes the offer from afterSend, once the receipt has actually gone out.
+  // Expiring the offer here would drop it before that send, and a retry would
+  // have nothing left to answer. The approval handler's reply is null.
+  const pairedDraft = pairedDraftForCalendarNo(questions, reading);
+  if (pairedDraft && verdict.outcome === 'declined') {
+    const approval = deps.handlers.find((handler) => handler.resolves?.has('approval'));
+    if (!approval) {
+      deps.log.error({}, 'channel router: calendar ask declined, approval handler absent');
+    } else {
+      try {
+        const declined = await approval.handle(deps.database, {
+          ...turn,
+          resolved: {
+            kind: 'approval',
+            questionId: pairedDraft,
+            polarity: 'no',
+            confidence: reading.confidence,
+          },
+        });
+        deps.log.info(
+          {
+            claimed: declined.claimed,
+            outcome: declined.claimed ? declined.outcome : 'unclaimed',
+          },
+          'channel router: calendar ask declined, draft declined',
+        );
+      } catch (err) {
+        deps.log.error(
+          { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+          'channel router: calendar ask declined, draft not declined',
+        );
+      }
+    }
   }
   await deliver(verdict, answer);
   return { status: 'handled', result: { status: 'resolved', handler: owner.name } };

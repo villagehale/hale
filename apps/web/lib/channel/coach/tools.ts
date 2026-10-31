@@ -628,7 +628,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const proposeAdd = defineTool({
     name: 'propose_calendar_add',
     description:
-      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. When the thread already names exactly one class, with its day and time, call this in the same turn; do not ask whether to add it first. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id.",
+      "DRAFT a new item on the family's calendar for the parent to approve — nothing is placed until they do. When the thread already names exactly one class, with its day and time, call this in the same turn; do not ask whether to add it first. `date`/`time` are the family's own wall clock. `weekday` is which day of the week you believe `date` falls on: it is CHECKED against the date, and a mismatch refuses the draft. Pass `childId` only when the parent named a specific child and lookup_week gave you their id. If the result is alreadyPending, this change is already waiting on them: do not draft it again and do not ask them again.",
     inputSchema: z.object({
       title: z.string().min(1).max(120),
       date: dayKey,
@@ -665,6 +665,19 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       // refusal and can say so; nothing is drafted.
       if (startsAt.getTime() <= now.getTime()) {
         throw new Error('That occasion has already started, so it cannot be drafted.');
+      }
+      const already = await draftPort.pendingIdentical?.({
+        familyId,
+        title: input.title,
+        startsAt: startsAt.toISOString(),
+      });
+      if (already) {
+        return {
+          drafted: true as const,
+          actionId: already,
+          when: longWhen(startsAt, timeZone),
+          alreadyPending: true as const,
+        };
       }
       claimDraftBudget();
 
