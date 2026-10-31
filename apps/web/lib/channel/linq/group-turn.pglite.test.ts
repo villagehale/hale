@@ -19,8 +19,8 @@ import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
-import { handleLinqInboundRequest } from './inbound';
 import type { GroupTurnReadInput, GroupTurnReader, GroupTurnReading } from './group-turn-reader';
+import { handleLinqInboundRequest } from './inbound';
 import type { ListChatHandles } from './roster';
 
 /**

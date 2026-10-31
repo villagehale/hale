@@ -1037,6 +1037,7 @@ describe('group pickup claims (VIL-444)', () => {
     vi.stubEnv('LINQ_FROM_E164', HALE);
     vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_TURN_AI_ENABLED', 'true');
     const seeded = await seedFamily();
     await twoPickupsOnBarton(seeded, true);
     const line = wire();
@@ -1058,6 +1059,8 @@ describe('group pickup claims (VIL-444)', () => {
         return { providerMessageId: `out-${sends.length}` };
       },
       groupPickupClaimReader: reader,
+      // The turn reader is the only group turn path: scripted as a duty statement.
+      groupTurnReader: { read: async () => 'duty' },
     } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
 
     const response = await handleLinqInboundRequest(
