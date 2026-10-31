@@ -232,9 +232,25 @@ describe('VIL-527 — the fixed-copy SMS sentence never sends', () => {
     const before = await snapshotOf(TIMED.eventId);
     __setCalendarAlertFixedCopyRetiredForTests(true);
     const h = harness();
-    await sweepBoth(h, { changes: [] });
+    const result = await sweepBoth(h, { changes: [] });
+    // Reported: the empty sweep names the text it dropped (connector summary counts it).
+    expect(result.reoffers).toEqual(['fixed_copy_retired']);
     expect(h.transport.sent).toEqual([]);
     expect(before?.pendingSince).not.toBeNull();
+    // Audited: one immutable row per dropped text — enums only, never the title.
+    const audit = (await auditRows()).filter(
+      (row) => row.actionTaken === 'calendar_alert_debt_retired',
+    );
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      actor: 'system',
+      targetTable: 'calendar_event_snapshots',
+      targetId: `${INTEGRATION}:${TIMED.eventId}`,
+      after: { reason: 'fixed_copy_retired' },
+    });
+    expect(JSON.stringify(audit[0]?.after)).not.toContain(TIMED.title);
+    // Nothing left to retire: the next empty sweep reports and audits nothing.
+    await expect(sweepBoth(harness(), { changes: [] })).resolves.toMatchObject({ reoffers: [] });
     await expect(snapshotOf(TIMED.eventId)).resolves.toMatchObject({
       pendingSince: null,
       heldTitle: null,

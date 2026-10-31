@@ -320,10 +320,17 @@ export function __setCalendarAlertFixedCopyRetiredForTests(value: boolean): void
   fixedCopyRetired = value;
 }
 
-/** VIL-527: clear every held text on this connection so nothing fixed-copy is re-offered. */
-async function retireDebts(database: Database, integrationId: string): Promise<void> {
+/** VIL-527: clear every held text on this connection so nothing fixed-copy is re-offered.
+ * Returns one `fixed_copy_retired` re-offer outcome per held text dropped (so the connector
+ * summary counts them, rule #11) and writes one immutable audit row per drop. Enums and
+ * flags only in the audit — never the held title or location. */
+async function retireDebts(
+  database: Database,
+  familyId: string,
+  integrationId: string,
+): Promise<CalendarAlertOutcome[]> {
   const owed = (await readSnapshots(database, integrationId, [])).filter(isPending);
-  if (owed.length === 0) return;
+  if (owed.length === 0) return [];
   await database
     .update(schema.calendarEventSnapshots)
     .set({
@@ -342,6 +349,21 @@ async function retireDebts(database: Database, integrationId: string): Promise<v
         ),
       ),
     );
+  await database.insert(schema.auditLog).values(
+    owed.map((row) => ({
+      familyId,
+      actor: 'system' as const,
+      actionTaken: 'calendar_alert_debt_retired',
+      targetTable: 'calendar_event_snapshots',
+      targetId: `${integrationId}:${row.eventId}`,
+      after: {
+        reason: 'fixed_copy_retired',
+        moved: row.heldMovedFromAt !== null,
+        pendingSince: row.pendingSince.toISOString(),
+      },
+    })),
+  );
+  return owed.map((): CalendarAlertOutcome => 'fixed_copy_retired');
 }
 
 export async function alertParentForCalendarChanges(
@@ -383,9 +405,9 @@ export async function alertParentForCalendarChanges(
   // the memory current (so nothing later reads as a first sighting) and retires every
   // debt it still owes, so none of them is ever re-offered.
   if (fixedCopyRetired) {
-    await retireDebts(database, integrationId);
+    const reoffers = await retireDebts(database, familyId, integrationId);
     await rememberOnly(database, input, parentUserId, ports);
-    return { changes: changes.map(() => 'fixed_copy_retired'), reoffers: [] };
+    return { changes: changes.map(() => 'fixed_copy_retired'), reoffers };
   }
   // The group is the home channel. Kid dates are spoken by the household
   // notice. The SMS sentence names whatever title Google stored, including
