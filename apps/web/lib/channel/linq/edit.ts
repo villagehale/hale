@@ -227,9 +227,21 @@ async function editsUsed(database: Database, channelMessageId: string): Promise<
  */
 export async function listEditableLinqSends(
   database: Database,
-  input: { familyId: string; conversationId: string; chatId: string; now: Date },
+  input: {
+    familyId: string;
+    conversationId: string;
+    chatId: string;
+    now: Date;
+    /**
+     * When the parent's current inbound arrived. Design (VIL-479): Hale may only edit a
+     * bubble it sent after this — a same-turn self-correction. A bubble the parent has
+     * already answered is history; a fix to it goes out as a new message.
+     */
+    inboundAt: Date;
+  },
 ): Promise<EditableLinqSend[]> {
-  const cutoff = new Date(input.now.getTime() - LINQ_EDIT_WINDOW_MS);
+  const windowStart = input.now.getTime() - LINQ_EDIT_WINDOW_MS;
+  const cutoff = new Date(Math.max(windowStart, input.inboundAt.getTime()));
   const channelRows = await database
     .select({
       id: schema.channelMessages.id,
@@ -273,9 +285,19 @@ export async function listEditableLinqSends(
       content: schema.messages.content,
       providerMessageId: schema.messages.providerMessageId,
       deletedAt: schema.messages.deletedAt,
+      createdAt: schema.messages.createdAt,
     })
     .from(schema.messages)
     .where(eq(schema.messages.conversationId, input.conversationId));
+  // The newest parent line in the thread. A bubble sent before it has been replied to
+  // (even by a text that landed mid-turn) and is no longer Hale's to rewrite.
+  let lastParentAt = input.inboundAt.getTime();
+  for (const bubble of bubbles) {
+    if (bubble.conversationId !== input.conversationId || bubble.role !== 'user') continue;
+    if (bubble.deletedAt) continue;
+    const at = asDate(bubble.createdAt);
+    if (at && at.getTime() > lastParentAt) lastParentAt = at.getTime();
+  }
   const textByProvider = new Map<string, string>();
   const ambiguous = new Set<string>();
   for (const bubble of bubbles) {
@@ -310,6 +332,8 @@ export async function listEditableLinqSends(
     if (used >= LINQ_EDIT_MAX) continue;
     const sentAt = asDate(send.sentAt);
     if (!sentAt) continue;
+    // Design gate: only a bubble sent after the parent's latest line is editable.
+    if (sentAt.getTime() < lastParentAt) continue;
     candidates.push({
       messageId,
       partIndex: 0,

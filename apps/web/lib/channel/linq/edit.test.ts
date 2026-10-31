@@ -26,6 +26,7 @@ vi.mock('~/lib/cron/skill', () => ({
 const { forceToolJson } = await import('~/lib/pipeline/structured');
 const CLIENT = {} as AgentClient;
 const NOW = new Date('2026-10-31T16:00:00.000Z');
+const INBOUND = new Date(NOW.getTime() - 60 * 1000);
 const FAMILY = '00000000-0000-4000-8000-0000000000f1';
 const USER = '00000000-0000-4000-8000-0000000000u1';
 const CONV = '00000000-0000-4000-8000-0000000000c1';
@@ -103,6 +104,7 @@ describe('VIL-479 Linq message edit', () => {
       conversationId: CONV,
       chatId: CHAT,
       now: NOW,
+      inboundAt: INBOUND,
     });
     expect(offered.map((row) => row.messageId)).toEqual([MESSAGE]);
     expect(offered[0]).toMatchObject({ partIndex: 0, text: 'Swim is at 4.', editsUsed: 0 });
@@ -124,6 +126,35 @@ describe('VIL-479 Linq message edit', () => {
         conversationId: CONV,
         chatId: CHAT,
         now: NOW,
+        inboundAt: INBOUND,
+      }),
+    ).toEqual([]);
+  });
+
+  it("offers only a bubble sent after the parent's current inbound, never one they already answered", async () => {
+    const fake = makeFakeDb();
+    await seedBubble(fake, {
+      sentAt: new Date(INBOUND.getTime() - 30 * 1000),
+      text: 'Before they wrote.',
+      messageId: 'answered-msg',
+    });
+    await seedBubble(fake);
+    const base = { familyId: FAMILY, conversationId: CONV, chatId: CHAT, now: NOW };
+    const offered = await listEditableLinqSends(fake.db, { ...base, inboundAt: INBOUND });
+    expect(offered.map((row) => row.messageId)).toEqual([MESSAGE]);
+
+    // A parent line that landed after the bubble (mid-turn) closes it too.
+    await fake.db.insert(schema.messages).values({
+      conversationId: CONV,
+      role: 'user',
+      content: 'ok thanks',
+      createdAt: new Date(NOW.getTime() + 1000),
+    });
+    expect(
+      await listEditableLinqSends(fake.db, {
+        ...base,
+        now: new Date(NOW.getTime() + 2000),
+        inboundAt: INBOUND,
       }),
     ).toEqual([]);
   });
@@ -137,6 +168,7 @@ describe('VIL-479 Linq message edit', () => {
       conversationId: CONV,
       chatId: CHAT,
       now: NOW,
+      inboundAt: INBOUND,
     });
     const fetchMock = linqFetch();
     const edited = await applyLinqEdit({
@@ -175,6 +207,7 @@ describe('VIL-479 Linq message edit', () => {
       conversationId: CONV,
       chatId: CHAT,
       now: NOW,
+      inboundAt: INBOUND,
     });
     const fetchMock = linqFetch();
     const base = {
@@ -184,6 +217,7 @@ describe('VIL-479 Linq message edit', () => {
       conversationId: CONV,
       chatId: CHAT,
       now: NOW,
+      inboundAt: INBOUND,
       read: { audience: 'direct' as const, parentText: 'ok', followUp: 'See you then.' },
       candidates,
       fetch: fetchMock,
@@ -250,6 +284,7 @@ describe('VIL-479 Linq message edit', () => {
       conversationId: CONV,
       chatId: CHAT,
       now: NOW,
+      inboundAt: INBOUND,
     });
     const fetchMock = linqFetch();
     const moment = await considerLinqReply(fake.db, {
@@ -453,6 +488,7 @@ describe('VIL-479 edit after the turn deadline', () => {
       conversationId: CONV,
       chatId: CHAT,
       now: NOW,
+      inboundAt: INBOUND,
     });
     let pending: Promise<unknown> = Promise.resolve();
     const turn = runTurn(controller.signal, () => {
