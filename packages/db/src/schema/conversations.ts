@@ -71,8 +71,9 @@ export const messages = pgTable(
      * (loadTimeline/loadTranscript) filters a stamped row out. */
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     /**
-     * VIL-479 · Linq message id of an assistant bubble Hale can edit in place.
-     * Null on parent turns and on bubbles sent before this column existed.
+     * VIL-479 · Linq message id of this turn: an assistant bubble Hale can edit in
+     * place, or (flag on) the parent's own iMessage, so their edit reaches the thread.
+     * Null on SMS turns and on rows written before this column existed.
      */
     providerMessageId: text('provider_message_id'),
   },
