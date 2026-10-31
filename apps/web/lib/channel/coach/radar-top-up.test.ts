@@ -162,6 +162,17 @@ describe('VIL-522 radar top-up', () => {
     });
   });
 
+  it('treats one event with differently written times as one find (Devin)', () => {
+    const radar = find({ when: 'Saturday 10:00 AM', eventDate: '2026-11-07' });
+    const live = find({
+      when: 'Sat 10am',
+      eventDate: '2026-11-07',
+      sourceUrl: 'https://listing.example/story',
+    });
+    const picks = mergeTopUp([radar], [live, fair]);
+    expect(picks.map((pick) => pick.name)).toEqual(['Story time', 'Harvest fair']);
+  });
+
   it('names a failed live search and still returns the radar find', async () => {
     const liveSearch = vi.fn(async () => {
       throw new Error('socket hang up');

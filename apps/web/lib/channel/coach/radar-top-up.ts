@@ -65,6 +65,14 @@ function sameFind(a: ActivityPick, b: ActivityPick): boolean {
   if (a.civicVenueId && b.civicVenueId && a.civicVenueId !== b.civicVenueId) return false;
   if (!agrees(a.sourceName, b.sourceName)) return false;
   if (!agrees(a.eventDate, b.eventDate)) return false;
+  // Structured identity first: a matching event date plus a matching venue id
+  // (or named venue) is the same event, however each source wrote `when`.
+  const sameDate = !!a.eventDate?.trim() && !!b.eventDate?.trim();
+  const sameVenue =
+    (!!a.placeId && a.placeId === b.placeId) ||
+    (!!a.civicVenueId && a.civicVenueId === b.civicVenueId) ||
+    (!!a.sourceName?.trim() && !!b.sourceName?.trim());
+  if (sameDate && sameVenue) return true;
   return agrees(a.when, b.when);
 }
 
