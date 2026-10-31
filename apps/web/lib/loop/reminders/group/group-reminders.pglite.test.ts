@@ -222,6 +222,7 @@ function inbound(sender: string, text: string, messageId: string): LinqInboundTe
     receivedAt: NOW,
     otherHandles: [],
     isGroup: true,
+    mentions: [],
   };
 }
 
