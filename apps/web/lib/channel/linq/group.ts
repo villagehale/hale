@@ -9,11 +9,13 @@ import {
   outboundLineFrom,
   removeLinqParticipant,
   sendLinqChatMessage,
+  setLinqChatBackground,
   updateLinqGroupChat,
 } from '~/lib/channel/outbound-transport';
 import { speak } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { linqGroupBackgroundEnabled } from './config';
 import { haleContactImageUrl } from './contact-card';
 import { type GroupLineClass, groupAudienceAllows } from './group-audience';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
@@ -444,6 +446,12 @@ export async function openHouseholdLinqGroup(
       .update(schema.families)
       .set({ linqGroupChatId: created.chatId, updatedAt: args.now })
       .where(eq(schema.families.id, args.familyId));
+    await setHouseholdGroupBackgroundOnce(database, {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      chatId: created.chatId,
+      fetch: args.fetch,
+    });
     await database.insert(schema.channelMessages).values({
       familyId: args.familyId,
       parentUserId: args.parentUserId,
@@ -479,6 +487,109 @@ export async function openHouseholdLinqGroup(
     await tellParentTheGroupDidNotOpen(database, args, chatIdForDegrade);
     return { status: 'degraded', reason: 'coparent_not_reachable', code, httpStatus };
   }
+}
+
+/** The one colour Hale ever sets (VIL-478 Design lock: calm, readable). */
+export const HOUSEHOLD_GROUP_BACKGROUND = 'ice' as const;
+
+/**
+ * VIL-478 — set the household group's background once, right after Hale creates
+ * it. Never on a 1:1, a multi-family chat, or a group Hale did not just create
+ * (those may already carry a wallpaper). Skips when a parent has already changed
+ * it. Sends no bubble. A refusal or throw never blocks the group open.
+ */
+export async function setHouseholdGroupBackgroundOnce(
+  database: Database,
+  args: { familyId: string; parentUserId: string; chatId: string; fetch?: typeof fetch },
+): Promise<'set' | 'off' | 'parent_owned' | 'refused'> {
+  if (!linqGroupBackgroundEnabled()) return 'off';
+  try {
+    if (await parentOwnsGroupBackground(database, args.familyId, args.chatId)) {
+      return 'parent_owned';
+    }
+    const result = await setLinqChatBackground({
+      chatId: args.chatId,
+      variant: HOUSEHOLD_GROUP_BACKGROUND,
+      fetch: args.fetch,
+    });
+    if (result.status !== 'accepted') {
+      console.warn(
+        { familyId: args.familyId, status: result.status },
+        'linq group: background not set',
+      );
+      return 'refused';
+    }
+    await database.insert(schema.auditLog).values({
+      familyId: args.familyId,
+      actor: args.parentUserId,
+      actionTaken: 'linq_group_background_set',
+      targetTable: 'families',
+      targetId: args.familyId,
+      after: { variant: HOUSEHOLD_GROUP_BACKGROUND },
+    });
+    return 'set';
+  } catch (err) {
+    console.warn(
+      { familyId: args.familyId, code: err instanceof LinqSendError ? err.code : 'unknown' },
+      'linq group: background not set',
+    );
+    return 'refused';
+  }
+}
+
+/**
+ * Ownership is per CHAT, not per family (Devin #991): a parent who changed an old
+ * group's wallpaper has said nothing about the next group Hale opens for them.
+ */
+async function parentOwnsGroupBackground(
+  database: Database,
+  familyId: string,
+  chatId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'linq_group_background_parent_set'),
+      ),
+    );
+  return rows.some(
+    (row) =>
+      row.actionTaken === 'linq_group_background_parent_set' &&
+      typeof row.after === 'object' &&
+      row.after !== null &&
+      (row.after as { chatId?: unknown }).chatId === chatId,
+  );
+}
+
+/**
+ * VIL-478 — a `chat.background_updated` webhook. When a participant (not Hale's
+ * own line, `actor_handle.is_me`) changed the household group's background, record
+ * it so Hale never sets it over theirs. Hale's own echo is ignored. Sends nothing.
+ */
+export async function noteGroupBackgroundChange(
+  database: Database,
+  args: { chatId: string; isFromMe: boolean },
+): Promise<'linq_background_mine' | 'linq_background_parent_noted' | 'linq_background_no_family'> {
+  if (args.isFromMe) return 'linq_background_mine';
+  const rows = await database
+    .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, args.chatId));
+  const familyId = rows.find((row) => row.linqGroupChatId === args.chatId)?.id;
+  if (!familyId) return 'linq_background_no_family';
+  await database.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: 'linq_group_background_parent_set',
+    targetTable: 'families',
+    targetId: familyId,
+    // Internal only: scopes the parent's choice to THIS chat (Devin #991).
+    after: { chatId: args.chatId },
+  });
+  return 'linq_background_parent_noted';
 }
 
 async function tellParentTheGroupDidNotOpen(

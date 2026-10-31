@@ -398,6 +398,19 @@ export async function updateLinqGroupChat(
   );
 }
 
+export async function setLinqChatBackground(
+  input: In<typeof linq.setLinqChatBackground>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'set_background',
+    () => linq.setLinqChatBackground(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
 export async function addLinqParticipant(
   input: In<typeof linq.addLinqParticipant>,
 ): Promise<{ accepted: true }> {

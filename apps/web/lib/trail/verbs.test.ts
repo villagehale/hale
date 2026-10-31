@@ -2,7 +2,7 @@ import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { describe, expect, it } from 'vitest';
 import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
 import { toTrailView } from '~/lib/dashboard/mappers';
-import { AUDIT_VERBS, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
+import { AUDIT_VERBS, isInternalTrailVerb, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
 
 /** No trail row may ever render a raw table name, a raw snake_case/dotted action
  * token, or a bare UUID (defect: /trail leaked `families · family_created · <uuid>`).
@@ -33,6 +33,11 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
   it.each(AUDIT_VERBS)('maps %s to a curated sentence, never the raw token', (verb) => {
     const { sentence, family } = trailVerb(verb);
     assertCleanHuman(sentence, verb);
+    // VIL-478 · background audits are internal-only with no parent copy (Design lock).
+    if (verb === 'linq_group_background_set' || verb === 'linq_group_background_parent_set') {
+      expect(isInternalTrailVerb(verb)).toBe(true);
+      return;
+    }
     expect(family).not.toBe('neutral');
   });
 

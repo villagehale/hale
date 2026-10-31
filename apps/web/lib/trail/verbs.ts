@@ -177,6 +177,8 @@ export const AUDIT_VERBS = [
   'linq_group_roster_fetched',
   'linq_group_roster_numbers_released',
   'linq_group_ejected',
+  'linq_group_background_set',
+  'linq_group_background_parent_set',
   'linq_group_left_on_ask',
   'linq_group_roster_asked',
   'linq_group_role_confirmed',
@@ -769,6 +771,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale left your family group and went back to texting you directly',
     family: 'note',
   },
+  // VIL-478 · internal-only (Sloane Design lock): no parent-facing copy. Hidden from
+  // the trail via INTERNAL_TRAIL_VERBS; the neutral token below is never rendered.
+  linq_group_background_set: { sentence: 'recorded an update', family: 'neutral' },
+  linq_group_background_parent_set: { sentence: 'recorded an update', family: 'neutral' },
   linq_group_left_on_ask: {
     sentence:
       'Someone in your family group asked Hale to leave, so Hale left and went back to texting you directly',
@@ -1978,6 +1984,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'autonomy_notice_cover_released',
   'group_plan.drafted',
   'group_plan.report_released',
+  'linq_group_background_set',
+  'linq_group_background_parent_set',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {
