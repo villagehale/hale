@@ -134,6 +134,16 @@ export function withKnownClock<R extends Pick<CarpoolReading, 'pickupDate' | 'pi
   return clock ? { ...reading, pickupTime: clock } : reading;
 }
 
+/** A reading that names a new day and no hour for a ride that already has one. */
+function isDateOnlyMove(
+  reading: Pick<CarpoolReading, 'pickupDate' | 'pickupTime'>,
+  plan: Pick<CarpoolPlanState, 'pickupAt'> | null,
+): boolean {
+  const date = reading.pickupDate?.trim() ?? '';
+  const time = reading.pickupTime?.trim() ?? '';
+  return Boolean(plan?.pickupAt) && DAY_KEY.test(date) && !CLOCK.test(time);
+}
+
 function claimedDriverName(reading: CarpoolReading, sender: CarpoolSender): string | null {
   const named = reading.driverName?.trim() || null;
   if (named) return named;
@@ -188,7 +198,15 @@ export function applyCarpoolReading(
   if (reading.intent === 'chatter' || reading.intent === 'unclear') return plan;
 
   const previousPickupAt = plan?.pickupAt ?? null;
-  const timeZone = sender.timezone || plan?.driverTimezone || 'America/Toronto';
+  // Devin #984 (cross-zone) — a date-only move of a known ride is read in the plan's
+  // own zone: the kept hour and the new date are both the ride's wall clock, and the
+  // plan keeps that zone. A Vancouver sender moving a Toronto Sat 08:00 ride to
+  // Sunday lands on Sun 08:00 Toronto, not 08:00 Vancouver.
+  const timeZone =
+    (isDateOnlyMove(reading, plan) && plan?.driverTimezone) ||
+    sender.timezone ||
+    plan?.driverTimezone ||
+    'America/Toronto';
   const pickupAt =
     resolveCarpoolPickup(withKnownClock(reading, plan, timeZone), timeZone) ?? previousPickupAt;
   const eventLabel = reading.eventLabel?.trim() || plan?.eventLabel || null;

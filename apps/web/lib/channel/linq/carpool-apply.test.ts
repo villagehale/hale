@@ -299,6 +299,38 @@ describe('date-only ride move (Devin #984)', () => {
     expect(localClock(moved?.pickupAt, TZ)).toBe('Sunday 08:00');
   });
 
+  it('a Vancouver sender moving a Toronto Sat 08:00 ride lands on Sun 08:00 Toronto (Devin #984 cross-zone)', () => {
+    const saturday = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-10',
+        pickupTime: '08:00',
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(saturday?.driverTimezone).toBe(TZ);
+    const vancouver = { ...MAYA, timezone: 'America/Vancouver' };
+    const moved = applyCarpoolReading(
+      saturday,
+      reading({
+        intent: 'plan_needs_driver',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-11',
+        pickupTime: null,
+      }),
+      vancouver,
+      NOW,
+    );
+    expect(localClock(moved?.pickupAt, TZ)).toBe('Sunday 08:00');
+    expect(moved?.pickupAt?.toISOString()).toBe('2026-10-11T12:00:00.000Z');
+    expect(moved?.driverTimezone).toBe(TZ);
+    expect(moved?.planKey).toBe(carpoolPlanKey('soccer', moved?.pickupAt ?? null, TZ));
+  });
+
   it('a date with no hour and no known ride sets no instant', () => {
     const plan = applyCarpoolReading(
       null,
