@@ -126,6 +126,42 @@ describe('VIL-522 radar top-up', () => {
     expect(merged[0]?.sourceUrl).toBe('https://fairgrounds.example/harvest');
   });
 
+  it('keeps two venues or two dates that share a title as two finds (Devin)', () => {
+    const north = find({ name: 'Story time', sourceName: 'North Library' });
+    const south = find({ name: 'Story time', sourceName: 'South Library' });
+    expect(mergeTopUp([north], [south])).toHaveLength(2);
+
+    const sat = find({ eventDate: '2026-11-07', when: 'Saturday 10:00' });
+    const sun = find({ eventDate: '2026-11-08', when: 'Sunday 10:00' });
+    expect(mergeTopUp([sat], [sun])).toHaveLength(2);
+  });
+
+  it('keeps known time, price, and venue identity when the venue link wins (Devin)', () => {
+    const radar = find({
+      name: 'Harvest fair',
+      sourceName: 'Fairgrounds',
+      when: 'Sat 9am-4pm',
+      price: '$5',
+      placeId: 'place-1',
+      sourceUrl: 'https://news.example/weekend-listing',
+    });
+    const live = find({
+      name: 'Harvest fair',
+      sourceName: 'Fairgrounds',
+      when: null,
+      price: null,
+      sourceUrl: 'https://fairgrounds.example/harvest',
+    });
+    const merged = mergeTopUp([radar], [live]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      sourceUrl: 'https://fairgrounds.example/harvest',
+      when: 'Sat 9am-4pm',
+      price: '$5',
+      placeId: 'place-1',
+    });
+  });
+
   it('names a failed live search and still returns the radar find', async () => {
     const liveSearch = vi.fn(async () => {
       throw new Error('socket hang up');

@@ -48,37 +48,68 @@ function squashName(value: string): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
-/** Same find twice: keep the venue's own page when one of the two URLs is it. */
+/** Two values agree when either is missing or they squash to the same thing. */
+function agrees(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = a?.trim() ? squashName(a) : '';
+  const right = b?.trim() ? squashName(b) : '';
+  return left === '' || right === '' || left === right;
+}
+
+/**
+ * The same find, not just the same title: names match, and the venue and the
+ * date do not disagree. Two venues (or two dates) sharing a title stay two finds.
+ */
+function sameFind(a: ActivityPick, b: ActivityPick): boolean {
+  if (squashName(a.name) !== squashName(b.name)) return false;
+  if (a.placeId && b.placeId && a.placeId !== b.placeId) return false;
+  if (a.civicVenueId && b.civicVenueId && a.civicVenueId !== b.civicVenueId) return false;
+  if (!agrees(a.sourceName, b.sourceName)) return false;
+  if (!agrees(a.eventDate, b.eventDate)) return false;
+  return agrees(a.when, b.when);
+}
+
+/**
+ * Same find twice: keep the venue's own page when one of the two URLs is it, and
+ * keep every known detail (time, price, venue identity) from either copy.
+ */
 function better(current: ActivityPick, incoming: ActivityPick): ActivityPick {
   const currentUrl = pageUrl(current);
   const incomingUrl = pageUrl(incoming);
-  if (!incomingUrl) return withPage(current);
-  if (!currentUrl) return withPage(incoming);
-  const chosen = preferVenuePage(
-    currentUrl,
-    incomingUrl,
-    current.sourceName || incoming.sourceName,
-  );
-  return chosen === incomingUrl ? withPage(incoming) : withPage(current);
+  const incomingWins =
+    !!incomingUrl &&
+    (!currentUrl ||
+      preferVenuePage(currentUrl, incomingUrl, current.sourceName || incoming.sourceName) ===
+        incomingUrl);
+  const base = incomingWins ? incoming : current;
+  const other = incomingWins ? current : incoming;
+  const merged: ActivityPick = { ...base };
+  if (!merged.when && other.when) merged.when = other.when;
+  if (!merged.price && other.price) merged.price = other.price;
+  if (!merged.ageFit?.trim() && other.ageFit) merged.ageFit = other.ageFit;
+  if (!merged.eventDate && other.eventDate) merged.eventDate = other.eventDate;
+  if (!merged.placeId && other.placeId) merged.placeId = other.placeId;
+  if (!merged.civicVenueId && other.civicVenueId) merged.civicVenueId = other.civicVenueId;
+  if (merged.indoorOutdoor == null && other.indoorOutdoor != null) {
+    merged.indoorOutdoor = other.indoorOutdoor;
+  }
+  if (merged.access == null && other.access != null) merged.access = other.access;
+  return withPage(merged);
 }
 
 /**
  * Suitable finds only, radar order first, then live finds that are new.
- * Duplicates collapse onto the venue page. The list stops at three.
+ * The same find twice (same title, venue, and date) collapses onto the venue page. The list stops at three.
  */
 export function mergeTopUp(
   radar: readonly ActivityPick[],
   live: readonly ActivityPick[],
 ): ActivityPick[] {
   const kept: ActivityPick[] = [];
-  const indexByName = new Map<string, number>();
   const consider = (pick: ActivityPick) => {
     if (!isSuitableFind(pick)) return;
-    const key = squashName(pick.name);
-    const at = indexByName.get(key);
-    if (at === undefined) {
+    const at = kept.findIndex((prior) => sameFind(prior, pick));
+    if (at === -1) {
       if (kept.length >= RADAR_FIND_CAP) return;
-      indexByName.set(key, kept.length);
       kept.push(withPage(pick));
       return;
     }
