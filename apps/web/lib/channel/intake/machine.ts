@@ -2212,7 +2212,8 @@ async function friendColdTurn(
     },
   );
   if (spoken.capture.stopAsking) {
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+    const recorded =
+      alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
     const voiced = friendOutbound(spoken);
     if (voiced) await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
     await saveSession(
