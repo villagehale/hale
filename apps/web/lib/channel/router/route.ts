@@ -2857,6 +2857,7 @@ async function sendReply(
             conversationId: args.conversationId,
             chatId: args.route.chatId,
             now: deps.now(),
+            inboundAt: new Date(args.job.received_at),
           }),
           audience: args.job.in_group === false ? 'direct' : 'group',
           conversationId: args.conversationId,
