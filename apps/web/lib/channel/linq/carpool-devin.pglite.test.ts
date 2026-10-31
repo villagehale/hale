@@ -902,12 +902,50 @@ describe('driver reminder zone', () => {
       sendDriver: async () => ({ sent: false, skipped: 'test' }),
     });
 
-  it('a Vancouver driver on a Toronto Sun 08:00 ride is quiet-gated on Vancouver hours', async () => {
+  it('a Vancouver driver on a Toronto ride: group leg is held in Toronto quiet hours (Devin #984 group quiet)', async () => {
     await rideWithDriver('America/Toronto', 'America/Vancouver', '2026-10-11T12:00:00.000Z');
-    // Sat 22:30 Toronto (quiet there) = 19:30 Vancouver (evening window).
-    const ran = await run(new Date('2026-10-11T02:30:00.000Z'));
-    expect(ran.held).toBe(0);
-    expect(ran.fired + ran.skipped).toBeGreaterThan(0);
+    // Sat 21:30 Toronto (household quiet) = 18:30 Vancouver (driver not quiet).
+    const ran = await run(new Date('2026-10-11T01:30:00.000Z'));
+    expect(ran.held).toBe(1);
+    expect(ran.fired).toBe(0);
+    const [row] = await rows();
+    expect(row?.reminderStatus).toBe('pending');
+    expect(row?.reminderGroupSentAt).toBeNull();
+  });
+
+  it('a held Vancouver-driver reminder fires once both windows permit (Toronto morning)', async () => {
+    await rideWithDriver('America/Toronto', 'America/Vancouver', '2026-10-11T16:00:00.000Z');
+    // Sun 08:30 Toronto (out of quiet) = 05:30 Vancouver (driver quiet): still held.
+    expect((await run(new Date('2026-10-11T12:30:00.000Z'))).held).toBe(1);
+    // Sun 11:00 Toronto = 08:00 Vancouver: both clear, pickup still ahead.
+    const ran = await run(new Date('2026-10-11T15:00:00.000Z'));
+    expect(ran.fired).toBe(1);
+  });
+
+  it("the driver's private retry leg is gated on the driver's zone, not the household's", async () => {
+    await rideWithDriver('America/Toronto', 'America/Vancouver', '2026-10-11T16:00:00.000Z');
+    await db.database.update(schema.linqGroupCarpools).set({
+      reminderStatus: 'sent',
+      reminderGroupSentAt: new Date('2026-10-10T23:00:00.000Z'),
+      driverHaleCustomer: 'true',
+    } as Partial<typeof schema.linqGroupCarpools.$inferInsert>);
+    let calls = 0;
+    const runDriver = (now: Date) =>
+      runCarpoolReminders(db.database, {
+        now,
+        send: door().send,
+        voice: fakeCarpoolComposer(),
+        sendDriver: async () => {
+          calls += 1;
+          return { sent: false as const, skipped: 'test' };
+        },
+      });
+    // Sun 02:30 Toronto / Sat 23:30 Vancouver: driver quiet, no retry.
+    await runDriver(new Date('2026-10-11T06:30:00.000Z'));
+    expect(calls).toBe(0);
+    // Sat 22:30 Toronto (household quiet) / 19:30 Vancouver: driver leg may go.
+    await runDriver(new Date('2026-10-11T02:30:00.000Z'));
+    expect(calls).toBe(1);
   });
 
   it('a Toronto driver on a Vancouver-zoned ride is not reminded inside Toronto quiet hours', async () => {
