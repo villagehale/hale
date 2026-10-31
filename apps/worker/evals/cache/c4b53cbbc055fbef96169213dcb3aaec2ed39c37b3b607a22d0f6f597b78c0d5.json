@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow (Monday) is the day off, Léa's swimming is 10 h to 11 h at the Piscine Main, with the AM time right (10 h, not 22 h), no clock time for the all-day item, no invented details, no link, no filler. The day off is stated as a true fact and the timed swimming is clearly there, so the day is not implied to be free. It reads like a short friendly French text, and 'de 10 h à 11 h' is the natural way to say the range. 'Piscine Main' is kept as the given place name. Slight roughness: it reads a touch plain, but not like a notification readout.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gets the facts wrong. The event is titled \"PD Day\" but is rendered as \"Jour de congé\" (French, mixed language in an English reminder). The start time is given as \"3:00\" instead of 9:30 AM, and the end time (12:00 PM) and venue (Northside community centre) are missing. It also says \"Tomorrow's a day off, so you've got a bit of breathing room,\" which implies nothing to be at even though the event has a timed program 9:30 AM to 12:00 PM. Wrong time, missing end and venue, wrong language, and an unstated inference about a free day.",
+    "score": 1
+  }
+}

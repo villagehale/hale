@@ -40,7 +40,9 @@ export type SaidLinePurpose =
   | 'intro_yes'
   /** Any other answer about introductions, or the soft close (VIL-450). `facts.situation`
    * says what is true; the model words it. */
-  | 'intro_reply';
+  | 'intro_reply'
+  /** VIL-505: the line riding Hale's contact card (vCard MMS) at intake. */
+  | 'contact_card';
 
 export type SaidLineFact =
   | string

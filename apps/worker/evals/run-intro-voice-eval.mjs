@@ -67,8 +67,11 @@ import {
 } from './intro-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -377,6 +380,7 @@ const BROKEN_ASK =
   'you rather not? Reply YES INTROS or NO INTROS.';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -437,13 +441,15 @@ async function main() {
     if (fixture.noProperNames) failures.push(...inventedProperNames(body, fixture.request));
 
     const usable = failures.length === 0;
-    const verdict = usable
-      ? await judge(fixture.id, {
-          request: userMessage,
-          message: body,
-          watchFor: fixture.watchFor,
-        })
-      : null;
+    // --dry prices the judge as if the reply were usable: a worst case, never a call.
+    const verdict =
+      usable || isDryRun()
+        ? await judge(fixture.id, {
+            request: userMessage,
+            message: body,
+            watchFor: fixture.watchFor,
+          })
+        : null;
     if (verdict && verdict.score < JUDGE_MIN) {
       failures.push(`judge:${verdict.score} (${verdict.reason})`);
     }
@@ -512,6 +518,10 @@ async function main() {
   const allPass = results.every((r) => r.failures.length === 0) && variation.passed;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('intro-voice', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

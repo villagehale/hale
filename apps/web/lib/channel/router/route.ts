@@ -13,6 +13,11 @@ import {
   dispatchDepthForPromise,
 } from '~/lib/channel/activity/deep-queue';
 import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
+import {
+  approvalForCalendarYes,
+  pairedDraftForCalendarNo,
+  questionsForCalendarReader,
+} from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
@@ -41,6 +46,7 @@ import { readNumberOrigin } from '~/lib/channel/intake/number-origin';
 import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
+import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
@@ -54,6 +60,12 @@ import {
   linqCoParentAsk,
   linqGroupLineMissing,
 } from '~/lib/channel/linq/group';
+import {
+  ChatLeftError,
+  leaveGroupOnFamilyAsk,
+  leftChatSince,
+  releaseGroupOnLeave,
+} from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
 import { considerLinqReply } from '~/lib/channel/linq/moments';
 import {
@@ -61,6 +73,7 @@ import {
   LINQ_TYPING_SHOW_DELAY_MS,
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
+import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import {
@@ -89,6 +102,7 @@ import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conv
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
 import {
+  expireEmailAlertOffer,
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
@@ -104,7 +118,6 @@ import {
   type ChannelTurnResult,
   draftsFromFailure,
 } from './coach-runtime';
-import { FLOOD_REPLY, clarifyWhichQuestion } from './copy';
 import {
   assertTurnLive,
   isCallTimeout,
@@ -115,6 +128,7 @@ import {
 } from './deadline';
 import type { DisambiguationOption, DisambiguationStore } from './disambiguation';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
+import { FLOOD_LINE_TEMPLATE_KEY, type FloodLineComposer } from './flood-line';
 import {
   HOLDING_LINE_AFTER_MS,
   HOLDING_LINE_TEMPLATE_KEY,
@@ -358,6 +372,15 @@ export interface DeterministicHandler {
 
 export interface ChannelRouterDeps {
   database: Database;
+  /** VIL-497 — the experience-card sender. Absent: the real `sendLinqAppCard`. A seam so
+   * the router's card delivery is testable without Linq. */
+  sendExperienceCard?: typeof sendLinqAppCard;
+  /** VIL-477 — the guarded group leave. Absent: the real `leaveGroupOnFamilyAsk`. */
+  leaveGroup?: typeof leaveGroupOnFamilyAsk;
+  /** VIL-477 — claim release + audit after an accepted leave. Absent: the real one. */
+  releaseGroupOnLeave?: typeof releaseGroupOnLeave;
+  /** VIL-477 — the send gate: did Hale leave this chat since the inbound arrived. */
+  leftChatSince?: typeof leftChatSince;
   loadContext(database: Database, job: ChannelMessageReceivedJob): Promise<InboundContext | null>;
   /** The one way out. Channel-agnostic by construction (reply-route.ts): the router
    * hands it a resolved route and a body, and never learns which provider took it. */
@@ -371,6 +394,15 @@ export interface ChannelRouterDeps {
    * invisibly, because the turn would simply go to the coach and look fine.
    */
   questions: OpenQuestionReader;
+  /**
+   * VIL-443: the actions a turn in this family group chat drafted (`group_plan.drafted`),
+   * so a yes in that group can approve them. Optional: absent, a group turn answers no
+   * open question at all (VIL-463).
+   */
+  groupPlanActionIds?: (
+    database: Database,
+    input: { familyId: string; chatId: string },
+  ) => Promise<ReadonlySet<string>>;
   replyResolver: ReplyResolver;
   /**
    * Reads a parent's reply to a calendar offer, and a coach sentence that might be one.
@@ -412,6 +444,10 @@ export interface ChannelRouterDeps {
    * (holding-line.ts). Non-nullable (rule #11): a composer that cannot write one says so
    * by name, and there is no preset line underneath it. */
   holdingLine: HoldingLineComposer;
+  /** The private line a group sender gets when their own turn budget is spent
+   * (flood-line.ts, VIL-463). Non-nullable (rule #11): no preset line underneath it;
+   * a line that cannot be written means nothing is sent. */
+  floodLine: FloodLineComposer;
   /**
    * Write down a full-plan offer the coach just made, against the message that carried
    * it. Non-nullable (rule #11): an offer sentence a parent can read with no ledger row
@@ -671,6 +707,8 @@ export type RouterStatus =
   /** The off-domain lane answered it with a fixed line; no coach turn was spent. */
   | 'deflected'
   | 'agent_replied'
+  /** #973 · the coach wrote nothing; the turn is claimed answered and nothing was sent. */
+  | 'agent_silent'
   | 'agent_failed'
   /** This text already has Hale's answer, and the queue handed it back anyway. The turn
    * stops before anything is threaded, spent or sent (turn-ledger.ts). */
@@ -679,7 +717,9 @@ export type RouterStatus =
    * emergency: the fixed safety line went out with no model in the loop (smoke-alarm.ts).
    * A distinct status from `agent_failed` because it is the one outcome where a failed
    * turn still answered the question the parent actually asked. */
-  | 'smoke_alarm_fired';
+  | 'smoke_alarm_fired'
+  /** VIL-477: Hale left this group chat while the turn was in flight. Nothing sent. */
+  | 'group_left';
 
 export interface RouterResult {
   status: RouterStatus;
@@ -743,6 +783,15 @@ export async function routeChannelMessage(
     void trailed;
     return result;
   } catch (err) {
+    if (err instanceof ChatLeftError) {
+      await noteUnanswered(deps, job, 'group_chat_left');
+      return done(deps, job, {
+        status: 'group_left',
+        handler: null,
+        conversationId: null,
+        lane: null,
+      });
+    }
     if (!isTurnTimeout(err) && !signal.aborted) throw err;
     // Nothing goes out. The job fails so the per-parent key is free for the
     // next text; the ledger is what makes a re-drive answer at most once.
@@ -902,6 +951,20 @@ async function routeChannelMessageInner(
   // it gets the group thread, the group audience, and the group-scoped tools and context.
   const inGroup = context.inGroup || job.in_group === true;
 
+  // VIL-463: a job that does not say whether it came from a group (the reconciler's
+  // re-drive, or a job queued before the bit existed) is NOT a 1:1 turn when it arrived
+  // in an iMessage chat, which may be a group. It is refused before any thread is
+  // opened, so it can never get the sender's 1:1 thread.
+  if (!inGroup && job.in_group === undefined && route.channel === 'imessage' && route.chatId) {
+    await noteUnanswered(deps, job, 'group_thread_unscoped');
+    return done(deps, job, {
+      status: 'group_unscoped',
+      handler: null,
+      conversationId: null,
+      lane: null,
+    });
+  }
+
   // THREAD. One long-lived conversation per parent, resolved through the note anchor's
   // partial unique index so two texts arriving together cannot fork it.
   const noteKey = channelThreadNoteKey({
@@ -936,6 +999,39 @@ async function routeChannelMessageInner(
   // bare affirmative, the resolver, or nobody at all.
   let openQuestions: Promise<readonly OpenQuestion[]> | null = null;
   const readOpenQuestions = () => {
+    // VIL-463: every open question is a 1:1 ask (an approval, an intro, a readiness
+    // check...), and no source records the thread it was asked in. A group turn may
+    // only answer questions asked in that group, so it answers none of them: a "yes"
+    // in the group can never resolve, or show the coach, a 1:1 ask.
+    //
+    // VIL-443: the one exception is a plan drafted IN THIS GROUP. Its draft carries a
+    // `group_plan.drafted` row naming this chat, so it was asked here, and a seated
+    // parent's yes here may approve it. Only those approvals are kept; every other
+    // question stays 1:1-only.
+    if (inGroup) {
+      const groupChatId = route.channel === 'imessage' ? route.chatId : null;
+      const groupDrafted = deps.groupPlanActionIds;
+      if (!groupChatId || !groupDrafted) {
+        openQuestions ??= Promise.resolve([]);
+        return openQuestions;
+      }
+      openQuestions ??= (async () => {
+        const ids = await groupDrafted(deps.database, {
+          familyId: job.family_id,
+          chatId: groupChatId,
+        });
+        if (ids.size === 0) return [];
+        const all = await deps.questions.open(deps.database, {
+          familyId: job.family_id,
+          parentUserId: job.parent_user_id,
+          now,
+          channelMessageId: job.channel_message_id,
+          surface: 'group',
+        });
+        return all.filter((question) => question.kind === 'approval' && ids.has(question.id));
+      })();
+      return openQuestions;
+    }
     openQuestions ??= deps.questions.open(deps.database, {
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
@@ -1054,6 +1150,11 @@ async function routeChannelMessageInner(
       templateKey,
       beforeSend: stopTyping,
       inboundBody: context.body,
+      stickerRead: {
+        // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+        audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
+        parentAttachments: (context.media ?? []).map((part) => part.kind),
+      },
     });
 
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
@@ -1068,7 +1169,12 @@ async function routeChannelMessageInner(
   //
   // A reply that picks nothing falls straight through to the chain below with the menu
   // SPENT — one shot, whatever the outcome.
-  const picked = await consumePendingDisambiguation(deps, turn, answer);
+  // VIL-463: the menu was printed in the parent's own 1:1 chat, so a group text is never
+  // its answer and must not spend it — the same group-to-1:1 leak the open-question skip
+  // above closes.
+  const picked: Awaited<ReturnType<typeof consumePendingDisambiguation>> = inGroup
+    ? { status: 'carry_on', ordinalSpent: false }
+    : await consumePendingDisambiguation(deps, turn, answer);
   if (picked.status === 'handled') {
     return done(deps, job, {
       status: 'resolved',
@@ -1259,20 +1365,42 @@ async function routeChannelMessageInner(
       AGENT_TURN_ROUTE,
       AGENT_TURN_LIMIT,
     );
+    if (!decision.allowed && !decision.firstDenied) {
+      // VIL-463: the parent already had (or was refused) this window's one flood line.
+      // A later over-limit text in the same window makes no model call and no read.
+      deps.log.info(
+        { inGroup },
+        'channel router: over limit, flood line already spent this window',
+      );
+      return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
+    }
     if (!decision.allowed) {
-      if (inGroup) {
+      // The line is written from facts (flood-line.ts), in a group or 1:1 alike, ONCE per
+      // budget window (the first refused text). When it cannot be written, nothing is
+      // sent: there is no fixed line underneath it.
+      const composed = await deps.floodLine.compose({
+        language: await familySpeechLanguage(deps.database, job.family_id),
+        inGroup,
+      });
+      if (composed.status !== 'composed') {
+        deps.log.warn(
+          { reason: composed.reason, inGroup },
+          'channel router: over-limit line not composed, nothing sent',
+        );
+      } else if (inGroup) {
         // The parent's own budget is spent, which is no one else's news: the line goes
         // to their phone, outside the group and outside the group's thread.
         await sendReply(deps, {
           route: { channel: 'sms', to: route.to },
-          body: FLOOD_REPLY,
+          body: composed.line,
           job,
           conversationId: null,
+          templateKey: FLOOD_LINE_TEMPLATE_KEY,
           claim: claimAnswer,
           openAsks: { leaves: null },
         });
       } else {
-        await answer(FLOOD_REPLY);
+        await answer(composed.line, null, null, FLOOD_LINE_TEMPLATE_KEY);
       }
       return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
     }
@@ -1451,6 +1579,7 @@ async function routeChannelMessageInner(
       turn,
       answer,
       hasAnswered: () => answered,
+      claimSilent: claimAnswer,
       conversationId,
       // Every coach turn is told what Hale is waiting on; an UNPLACED answer additionally
       // gets the canned choice sentence as its fallback, because that turn is the one where
@@ -1458,6 +1587,8 @@ async function routeChannelMessageInner(
       questions: natural.questions,
       unplacedAnswer: natural.status === 'unplaced' ? natural.answer : null,
       audience: inGroup ? 'group' : 'direct',
+      cardRoute: inGroup ? null : route,
+      groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
     });
   } finally {
     await stopTyping();
@@ -1681,12 +1812,20 @@ async function resolveNaturalReply(
   if (questions.length === 0) return { status: 'carry_on', questions };
 
   // Calendar offers are read by the calendar model, including when the reply is not
-  // English. Mixed questions stay on the general resolver: it already sees every kind.
-  const emailOnly =
-    questions.length > 0 && questions.every((question) => question.kind === 'email_alert_add');
-  const reading = emailOnly
-    ? await deps.calendarOffers.readParent({ text: turn.body, questions, now: turn.now })
+  // English. A draft the reviewer has not cleared does not count as a competing YES
+  // (VIL-513): it used to force the general resolver, which returned not_answerable
+  // and the coach drafted the same add again.
+  const calendarQuestions = questionsForCalendarReader(questions);
+  const read = calendarQuestions
+    ? await deps.calendarOffers.readParent({
+        text: turn.body,
+        questions: calendarQuestions,
+        now: turn.now,
+      })
     : await deps.replyResolver.read({ text: turn.body, questions });
+  const offerId =
+    read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
+  const reading = approvalForCalendarYes(questions, read);
   if (reading.status === 'unresolved') {
     if (questions.length > 1 && warrantsClarifying(reading.reason)) {
       // The model did not place the reply. Do not classify the words here.
@@ -1727,6 +1866,54 @@ async function resolveNaturalReply(
       'channel router: the owning handler declined a resolved answer',
     );
     return { status: 'carry_on', questions };
+  }
+  // The offer and the draft were one ask. The draft is approved; the offer must stop
+  // standing or the next YES places the occasion a second time.
+  if (offerId && reading.kind === 'approval' && verdict.outcome === 'approved') {
+    try {
+      const released = await expireEmailAlertOffer(deps.database, { offerId, now: turn.now });
+      deps.log.info({ released }, 'channel router: calendar ask approved, offer released');
+    } catch (err) {
+      deps.log.error(
+        { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+        'channel router: calendar ask approved, offer not released',
+      );
+    }
+  }
+  // A NO to that same ask declines the draft too. The offer handler owns the NO
+  // and closes the offer from afterSend, once the receipt has actually gone out.
+  // Expiring the offer here would drop it before that send, and a retry would
+  // have nothing left to answer. The approval handler's reply is null.
+  const pairedDraft = pairedDraftForCalendarNo(questions, reading);
+  if (pairedDraft && verdict.outcome === 'declined') {
+    const approval = deps.handlers.find((handler) => handler.resolves?.has('approval'));
+    if (!approval) {
+      deps.log.error({}, 'channel router: calendar ask declined, approval handler absent');
+    } else {
+      try {
+        const declined = await approval.handle(deps.database, {
+          ...turn,
+          resolved: {
+            kind: 'approval',
+            questionId: pairedDraft,
+            polarity: 'no',
+            confidence: reading.confidence,
+          },
+        });
+        deps.log.info(
+          {
+            claimed: declined.claimed,
+            outcome: declined.claimed ? declined.outcome : 'unclaimed',
+          },
+          'channel router: calendar ask declined, draft declined',
+        );
+      } catch (err) {
+        deps.log.error(
+          { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+          'channel router: calendar ask declined, draft not declined',
+        );
+      }
+    }
   }
   await deliver(verdict, answer);
   return { status: 'handled', result: { status: 'resolved', handler: owner.name } };
@@ -1839,6 +2026,12 @@ async function runAgentTurn(
     answer: (body: string) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
+    /**
+     * #973 · the durable terminal claim for a turn the coach chose to answer with
+     * nothing. Without it the re-drive gate reads the turn as fresh and the coach runs
+     * again, repeating its tool writes. Nothing is sent.
+     */
+    claimSilent?: () => Promise<void>;
     conversationId: string;
     /** What Hale is holding an answer for — the coach gets their subjects (see
      * ChannelTurn), and a coach that cannot run gets the choice sentence built from them. */
@@ -1857,6 +2050,10 @@ async function runAgentTurn(
      */
     unplacedAnswer: UnplacedAnswer | null;
     audience: ChannelTurn['audience'];
+    /** VIL-497 — the 1:1 route a card may go to; null on a group turn. */
+    cardRoute?: ReplyRoute | null;
+    /** VIL-477 — the Linq group this turn is in, or null on a 1:1 / SMS turn. */
+    groupChatId?: string | null;
   },
 ): Promise<RouterResult> {
   try {
@@ -1869,12 +2066,108 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, spotWatch, mints } = await composeReconciledReply(
-      deps,
-      args,
-      view,
-    );
-    const channelMessageId = await args.answer(reply);
+    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard, groupLeave } =
+      await composeReconciledReply(deps, args, view);
+    // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
+    // stands in for an empty reply (absolute-zero fixed parent copy).
+    if (!experienceCard && reply.trim() === '') {
+      deps.log.info(
+        { outcome: 'empty_reply' },
+        'channel router: coach wrote nothing - nothing sent',
+      );
+      // Claim the turn so a redelivery reads `answered` and never reruns the coach
+      // (its tool writes already landed). No text goes out.
+      await args.claimSilent?.();
+      return done(deps, args.job, {
+        status: 'agent_silent',
+        handler: null,
+        conversationId: args.conversationId,
+        lane: null,
+      });
+    }
+    const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
+    const channelMessageId = await args.answer(card ? card.text : reply);
+    if (card) {
+      // AFTER the text, like every other send-time writer here, and never throws: the
+      // parent already has the message. Any reason the card cannot go out (flag dark,
+      // capability no, refused) falls back to the link preview inside sendLinqAppCard,
+      // so the page the text no longer carries still reaches them.
+      try {
+        const outcome = await (deps.sendExperienceCard ?? sendLinqAppCard)({
+          channel: 'imessage',
+          chatId: card.chatId,
+          card: { url: card.url, fallbackText: card.title },
+          recipientAddress: card.to,
+          isGroup: false,
+          database: deps.database,
+          familyId: args.turn.familyId,
+          parentUserId: args.turn.parentUserId,
+          now: args.turn.now,
+        });
+        deps.log.info(
+          {
+            card: outcome.status,
+            ...(outcome.status === 'fallback'
+              ? { why: outcome.why, link: outcome.link.status }
+              : {}),
+          },
+          'channel router: experience card after the send',
+        );
+      } catch (err) {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: experience card failed',
+        );
+      }
+    }
+    // VIL-477: the model read a member asking Hale to leave (grounded in this turn's
+    // words) and wrote its goodbye. Hale cannot speak after leaving, so the goodbye goes
+    // first and the leave right after. Accepted → release the household claim + audit
+    // row. Refused after the goodbye → send the model's OWN pre-written "couldn't leave"
+    // line once, so the goodbye is never left standing as a false claim. Never throws.
+    if (groupLeave && args.groupChatId && reply.trim() !== '') {
+      let left: Awaited<ReturnType<typeof leaveGroupOnFamilyAsk>> | null = null;
+      try {
+        left = await (deps.leaveGroup ?? leaveGroupOnFamilyAsk)({
+          chatId: args.groupChatId,
+          explicitAsk: true,
+        });
+        deps.log.info(
+          { leave: left.status, ...('reason' in left ? { reason: left.reason } : {}) },
+          'channel router: group leave after the send',
+        );
+      } catch (err) {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'channel router: group leave failed',
+        );
+      }
+      if (left?.status === 'left') {
+        try {
+          await (deps.releaseGroupOnLeave ?? releaseGroupOnLeave)(deps.database, {
+            familyId: args.turn.familyId,
+            chatId: args.groupChatId,
+            askedBy: args.turn.parentUserId ?? null,
+            now: args.turn.now,
+          });
+        } catch (err) {
+          deps.log.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'channel router: group leave release failed',
+          );
+        }
+      } else if (groupLeave.ifLeaveFails.trim() !== '') {
+        try {
+          await args.answer(groupLeave.ifLeaveFails);
+          deps.log.info({ leave: 'stayed_said' }, 'channel router: leave refused, told the group');
+        } catch (err) {
+          deps.log.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'channel router: leave-refused line failed',
+          );
+        }
+      }
+    }
     await recordCoachOfferFromReply(deps, {
       familyId: args.turn.familyId,
       parentUserId: args.turn.parentUserId,
@@ -1996,6 +2289,8 @@ async function runAgentTurn(
     // The turn deadline already decided this attempt is over. An apology here
     // would be a text the parent did not ask for, sent after the drain moved on.
     if (isTurnTimeout(err) || turnSignalAborted()) throw err;
+    // VIL-477: Hale left this chat mid-turn. No apology: there is no one to tell.
+    if (err instanceof ChatLeftError) throw err;
     // A turn can break AFTER its drafts landed, and those are real rows the parent can
     // approve. Saying "nothing was changed" would be false AND would orphan them — see
     // coach-runtime.ts (VIL-260).
@@ -2131,6 +2426,7 @@ async function composeReconciledReply(
     turn: HandlerContext;
     questions: readonly OpenQuestion[];
     audience: ChannelTurn['audience'];
+    groupChatId?: string | null;
   },
   view: Promise<ReconcileView>,
 ): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
@@ -2141,7 +2437,12 @@ async function composeReconciledReply(
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
     result = await deps.coach.respond(
-      { ...args.turn, standingQuestions, audience: args.audience },
+      {
+        ...args.turn,
+        standingQuestions,
+        audience: args.audience,
+        ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),
+      },
       rejected,
     );
     verdict = reconcile(extractStateClaims(result.reply), {
@@ -2378,40 +2679,8 @@ async function disposeOfFailedTurn(
     };
   }
 
-  // THE CANNED CHOICE, and this is the only place left that can send it. The parent made
-  // a decision Hale could not place, and the coach — whose job that turn now is — could
-  // not run. Deferring would leave a decision unacknowledged for as long as the outage
-  // lasts, and an apology would answer a question they did not ask, so Hale asks which
-  // one, in the subjects it was already holding — NUMBERED, and written down against the
-  // message that carries them, so that "2" and "the welcome note one" both land on the
-  // option the parent actually read (VIL-304).
-  const unplaced = args.unplacedAnswer;
-  if (unplaced && args.questions.length > 1) {
-    // NUMBERED ONLY IF A MENU IS ABOUT TO EXIST. Without a polarity nothing is minted, so
-    // the numbers would point at a row that was never written — and the digit they invite
-    // would be read by the approvals queue's own ordering instead (copy.ts).
-    const polarity = unplaced.polarity;
-    const { reply, shown } = clarifyWhichQuestion(args.questions, polarity !== null);
-    return {
-      outcome: 'agent_failed',
-      reply,
-      reason: 'unplaced_choice',
-      // `shown` and nothing else: the ordinal a parent types counts positions in the
-      // sentence they were sent, so the row has to hold exactly that list in exactly that
-      // order — which is why the sentence hands it back rather than being rebuilt here.
-      afterSend: polarity
-        ? (channelMessageId) =>
-            mintDisambiguation(deps, args.turn, {
-              channelMessageId,
-              polarity,
-              numbered: true,
-              options: shown,
-            })
-        : undefined,
-      log: { unplacedAnswer: true },
-    };
-  }
-
+  // VIL-504 · no canned which-one skeleton: an unplaced choice gets the model's
+  // apology below, or the outage's deferral — never fixed copy.
   const apology = await deps.apology.compose();
   if (apology.status === 'composed') {
     return {
@@ -2512,6 +2781,11 @@ async function sendReply(
      * a poll can stand in for the text. Absent on the caregiver line, which
      * keeps its sentence. */
     inboundBody?: string;
+    /** What the VIL-472 sticker read sees beside the two bodies. Absent: no sticker. */
+    stickerRead?: {
+      audience: 'direct' | 'group';
+      parentAttachments: readonly InboundMediaPart['kind'][];
+    };
   },
 ): Promise<string> {
   assertTurnLive();
@@ -2534,6 +2808,26 @@ async function sendReply(
     }
   };
   if (args.beforeSend) await args.beforeSend();
+  // VIL-477: never speak into a chat Hale already left. Checked at the last moment
+  // before the transport, so an overlapping turn whose reply was composed before
+  // another member's leave cannot land after chat_leave. Group (or unknown) chats only.
+  // A failed read sends as before: it is a race guard beside the released claim, and a
+  // DB hiccup must not silence every group reply.
+  if (args.route.channel === 'imessage' && args.route.chatId && args.job.in_group !== false) {
+    let left = false;
+    try {
+      left = await (deps.leftChatSince ?? leftChatSince)(deps.database, {
+        chatId: args.route.chatId,
+        since: new Date(args.job.received_at),
+      });
+    } catch (err) {
+      deps.log.warn(
+        { code: err instanceof Error ? err.name : 'unknown' },
+        'channel router: left-chat gate read failed; sending',
+      );
+    }
+    if (left) throw new ChatLeftError();
+  }
   if (args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     try {
       const moment = await considerLinqReply(deps.database, {
@@ -2544,6 +2838,9 @@ async function sendReply(
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
+        ...(args.stickerRead
+          ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
+          : {}),
       });
       if (moment.handled) {
         if (args.claim) await args.claim();
@@ -2748,4 +3045,28 @@ function done(
     'channel router: routed',
   );
   return result;
+}
+
+/**
+ * VIL-497 — whether this reply's card goes out, and the text that goes with it.
+ *
+ * Only on an iMessage 1:1 route (a card has one recipient; SMS has no cards). The card
+ * carries the page, so its URL is taken out of the text — the card replaces the link
+ * preview, never doubles it. A reply that would be empty without the URL keeps it and
+ * sends no card: the text is the answer and must not vanish. Pure.
+ */
+export function experienceCardDelivery(
+  reply: string,
+  card: { url: string; title: string } | null,
+  route: ReplyRoute | null,
+): { text: string; url: string; title: string; chatId: string; to: string } | null {
+  if (!card || !route || route.channel !== 'imessage' || !route.chatId) return null;
+  const text = reply
+    .split(card.url)
+    .join(' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .trim();
+  if (text === '') return null;
+  return { text, url: card.url, title: card.title, chatId: route.chatId, to: route.to };
 }

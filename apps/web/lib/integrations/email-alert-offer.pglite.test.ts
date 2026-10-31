@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { declineDraftedAction } from '~/lib/actions/decline';
 import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
@@ -184,7 +185,9 @@ function reply(body: string, over?: Parameters<typeof turn>[1]): Promise<Handler
 }
 
 /** A drafted change waiting for this family's approval — the other open question. */
-async function seedDraftedAction(): Promise<void> {
+async function seedDraftedAction(
+  over: { title?: string; startsAt?: string; reviewerVerdict?: 'approved' | 'pending' } = {},
+): Promise<string> {
   const [event] = await db.database
     .insert(schema.events)
     .values({
@@ -195,14 +198,22 @@ async function seedDraftedAction(): Promise<void> {
     })
     .returning({ id: schema.events.id });
   if (!event) throw new Error('no event row');
-  await db.database.insert(schema.actions).values({
-    familyId: family.familyId,
-    eventId: event.id,
-    actionType: 'calendar_add',
-    payload: { title: 'Swim lessons' },
-    userVisibleState: 'drafted_for_approval',
-    reviewerVerdict: 'approved',
-  });
+  const [action] = await db.database
+    .insert(schema.actions)
+    .values({
+      familyId: family.familyId,
+      eventId: event.id,
+      actionType: 'calendar_add',
+      payload: {
+        title: over.title ?? 'Swim lessons',
+        ...(over.startsAt ? { startsAt: over.startsAt } : {}),
+      },
+      userVisibleState: 'drafted_for_approval',
+      reviewerVerdict: over.reviewerVerdict ?? 'approved',
+    })
+    .returning({ id: schema.actions.id });
+  if (!action) throw new Error('no action row');
+  return action.id;
 }
 
 function events() {
@@ -494,6 +505,86 @@ describe('a bare YES is never stolen from another open question', () => {
     });
     await expect(events()).resolves.toHaveLength(0);
     await expect(offers()).resolves.toMatchObject([{ resolvedAt: null }]);
+  });
+
+  it('treats a reviewer-approved draft of the same occasion as the offer, not a second question', async () => {
+    const offerId = await seedOffer();
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+
+    const questions = await (await turn('YES')).openQuestions();
+
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(questions.find((question) => question.id === offerId)?.approvesActionId).toBe(actionId);
+  });
+
+  it('a later YES does not place an add the parent already declined', async () => {
+    const offerId = await seedOffer();
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+    await declineDraftedAction(db.database, {
+      actionId,
+      familyId: family.familyId,
+      declinedBy: family.parentUserId,
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'declined' });
+    await expect(events()).resolves.toHaveLength(0);
+  });
+
+  it('a YES still places an afternoon add after a morning refusal of the same title', async () => {
+    const afternoon = new Date('2026-09-19T20:00:00.000Z');
+    const offerId = await seedOffer({ startsAt: afternoon });
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+    await declineDraftedAction(db.database, {
+      actionId,
+      familyId: family.familyId,
+      declinedBy: family.parentUserId,
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    await expect(events()).resolves.toHaveLength(1);
+  });
+
+  it('a YES that places the offer retires the unapproved draft of the same add', async () => {
+    const offerId = await seedOffer();
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    await expect(events()).resolves.toHaveLength(1);
+    const [action] = await db.database
+      .select({ state: schema.actions.userVisibleState, reason: schema.actions.revertedReason })
+      .from(schema.actions)
+      .where(eq(schema.actions.id, actionId));
+    expect(action).toEqual({
+      state: 'reverted',
+      reason: 'superseded_by_calendar_offer',
+    });
+    const audits = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.targetId, actionId));
+    expect(audits.map((row) => row.actionTaken)).toContain('action.superseded_by_calendar_offer');
   });
 
   it('acts on a RESOLVED answer even with another question open', async () => {

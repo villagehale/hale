@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific Halton Hills programs: the Kids & Me drop-in at the Acton library branch and the Links2Care EarlyON centres in Acton and Georgetown. Each comes from an operator or Region page, not an aggregator, and both fit a toddler. The message leads with the best pick by name and attributes the facts with \"their site says\" rather than claiming to have confirmed them. Every time and price it gives is in the picks; \"Free\" for Kids & Me is backed by the library's own description. The null `when` for EarlyON is named in the form `no_page_read` earns (\"I couldn't get into their page today\") rather than as \"not posted yet\". With watch=true, the first-person \"I'll keep watching\" correctly reflects the continuation that exists. It does not say Hale will text when the times are up, but that is a minor gap. The message is plain text with no link and no question.",
+    "score": 5
+  }
+}

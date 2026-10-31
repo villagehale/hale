@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), start (15 h), title as-is, venue name and street address, and invents nothing. But it omits the end time (4:00 PM / 16 h) that the facts gave, and the text states only the start. A missing given end is a fact failure. Bold is none, which is fine.",
+    "score": 2
+  }
+}

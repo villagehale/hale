@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: tomorrow (Monday), start 15 h and end 16 h, venue name Georgetown library, and address 9 Church St. The title \"Jour de congé\" is kept as the event's name without being recast as a closure or free day, nothing is invented, and the text is entirely in French. No planLink was given, and none was added.",
+    "score": 5
+  }
+}

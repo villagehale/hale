@@ -19,12 +19,12 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
-  LINQ_GROUP_OPEN_TEXT,
   LINQ_GROUP_TRIGGER_PHRASE,
   linqCoParentAsk,
   linqGroupClaimRefused,
   linqGroupLineMissing,
   linqGroupMakeInstruction,
+  linqGroupOpenLine,
   linqGroupTriggerInOneToOne,
 } from './group';
 import { handleLinqInboundRequest } from './inbound';
@@ -228,7 +228,8 @@ describe('design-locked claim copy', () => {
     expect(await linqGroupTriggerInOneToOne('+1 646-235-2164', 'fr')).toBe(
       'Cette phrase va dans le groupe. Ouvrez un groupe iMessage avec eux et +1 646-235-2164, puis envoyez: cest notre annee.',
     );
-    expect(LINQ_GROUP_OPEN_TEXT).toBe("This thread is your kids' year — both of you, and me.");
+    // VIL-506: the opening line is the model's (scripted here), never a constant.
+    expect(await linqGroupOpenLine('en')).toBeTruthy();
   });
 });
 
@@ -368,7 +369,7 @@ describe('handleLinqInboundRequest', () => {
       notice: 'sent',
     });
     expect(h.jobs).toHaveLength(0);
-    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: LINQ_GROUP_OPEN_TEXT }]);
+    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: await linqGroupOpenLine('en') }]);
     const family = h.fake.rows(schema.families).find((row) => row.id === familyId);
     expect(family?.linqGroupChatId).toBe(CHAT_ID);
     const inbound = h.fake
@@ -454,7 +455,31 @@ describe('handleLinqInboundRequest', () => {
     expect(other?.linqGroupChatId).toBe(CHAT_ID);
   });
 
-  it('refuses a French trigger in the locked French line', async () => {
+  it('greets in the family language when the trigger phrase is English', async () => {
+    const h = harness();
+    const { familyId } = enrol(h.fake);
+    await h.fake.db.insert(schema.families).values({
+      id: familyId,
+      displayName: 'Fixture',
+      primaryLanguage: 'fr',
+    } as never);
+
+    const res = await handleLinqInboundRequest(
+      request(groupBody(LINQ_GROUP_TRIGGER_PHRASE.en, '89e3566e-1d13-49e5-a8ee-48490d5bfeb8')),
+      h.deps,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      outcome: 'group_claimed',
+      claim: 'claimed',
+      notice: 'sent',
+    });
+    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: await linqGroupOpenLine('fr') }]);
+    expect(h.sends[0]?.text).not.toBe(await linqGroupOpenLine('en'));
+  });
+
+  it('refuses a French trigger in the family language, not the phrase language', async () => {
     const h = harness();
     const { familyId } = enrol(h.fake);
     const otherId = '00000000-0000-4000-8000-0000000000f2';
@@ -477,7 +502,7 @@ describe('handleLinqInboundRequest', () => {
       outcome: 'group_claim_refused',
       claim: 'claimed_by_other_family',
     });
-    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: await linqGroupClaimRefused('fr') }]);
+    expect(h.sends).toEqual([{ chatId: CHAT_ID, text: await linqGroupClaimRefused('en') }]);
     const mine = h.fake.rows(schema.families).find((row) => row.id === familyId);
     expect(mine?.linqGroupChatId ?? null).toBeNull();
   });
@@ -509,6 +534,31 @@ describe('handleLinqInboundRequest', () => {
     const family = h.fake.rows(schema.families).find((row) => row.id === familyId);
     expect(family?.linqGroupChatId ?? null).toBeNull();
     expect(h.reads).toEqual([{ chatId: CHAT_ID }]);
+  });
+
+  it('answers the 1:1 trigger in the family language, not the phrase language', async () => {
+    vi.stubEnv('LINQ_FROM_E164', '+16462352164');
+    const h = harness();
+    const { familyId } = enrol(h.fake);
+    await h.fake.db.insert(schema.families).values({
+      id: familyId,
+      displayName: 'Fixture',
+      primaryLanguage: 'fr',
+    } as never);
+    const body = JSON.parse(messageBody()) as { data: { parts: unknown[]; id: string } };
+    body.data.id = '89e3566e-1d13-49e5-a8ee-48490d5bfeb9';
+    body.data.parts = [{ type: 'text', value: LINQ_GROUP_TRIGGER_PHRASE.en }];
+
+    const res = await handleLinqInboundRequest(request(JSON.stringify(body)), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ outcome: 'group_trigger_in_1to1' });
+    expect(h.sends).toEqual([
+      {
+        chatId: CHAT_ID,
+        text: await linqGroupTriggerInOneToOne('+1 646-235-2164', 'fr'),
+      },
+    ]);
   });
 
   it('holds an unknown group sender and does not open a family', async () => {

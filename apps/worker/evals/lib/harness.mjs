@@ -482,13 +482,33 @@ export async function cachedToolCall(opts) {
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);
+  const dryPlan = Array.isArray(opts.dryPlan) ? opts.dryPlan : DRY_SUBJECT_PLAN;
   if (cached) {
+    if (isDryRun()) {
+      // Figure A (full re-record) prices this call too, as if it were uncached.
+      const entry = await dryToolCallPlanEntry({ ...opts, model, maxTokens }, dryPlan);
+      dryPlan.push({ ...entry, cached: true });
+    }
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
     return { value: cached.value, latencyMs: cached.latencyMs, cached: true };
   }
 
   if (cachedOnly) failCachedMiss(tag, key);
+  if (isDryRun()) {
+    // --dry (914): an uncached compose call is PROJECTED, never made and never a throw.
+    // Priced as the live guard would: the first uncached call on this plan writes the
+    // system-prompt cache; later ones (serial, within the TTL) read it.
+    const entry = await dryToolCallPlanEntry({ ...opts, model, maxTokens }, dryPlan);
+    dryPlan.push(entry);
+    // A worst-case-length stand-in, so a judge fed this reply is priced at its worst too.
+    return {
+      value: dryStandInValue(opts.toolSchema, maxTokens),
+      latencyMs: 0,
+      cached: false,
+      dry: true,
+    };
+  }
   requireLane(tag, model, opts);
 
   const startedAt = Date.now();
@@ -547,6 +567,154 @@ export async function cachedToolCall(opts) {
   return { value, latencyMs, cached: false };
 }
 
+/** A stand-in reply of the most bytes `maxTokens` of output could be (offline estimate). */
+export function dryStandInText(maxTokens) {
+  return 'x'.repeat(maxTokens * 3);
+}
+
+/**
+ * A schema-shaped worst-length stand-in for an uncached tool call under --dry, so the
+ * runner's own reading code (and any judge fed the reply) runs on a value of the right
+ * shape. Strings carry the max-length text; it is never cached and never scored.
+ */
+export function dryStandInValue(schema, maxTokens) {
+  const text = dryStandInText(maxTokens);
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return text;
+    if (Array.isArray(node.enum) && node.enum.length) return node.enum[0];
+    const type = Array.isArray(node.type) ? node.type.find((t) => t !== 'null') : node.type;
+    if (type === 'object' || node.properties) {
+      const out = { text };
+      for (const [k, v] of Object.entries(node.properties ?? {})) out[k] = walk(v);
+      return out;
+    }
+    if (type === 'array') return [walk(node.items)];
+    if (type === 'boolean') return true;
+    if (type === 'number' || type === 'integer') return node.minimum ?? 1;
+    return text;
+  };
+  return walk(schema ?? { type: 'object' });
+}
+
+// --- --dry for every runner (VIL-467) ----------------------------------------
+// Subject calls that are not handed an explicit dryPlan land here, cached or not, so a
+// runner only has to print the report. Each entry carries the worst case of the call as
+// if uncached: summing only the uncached ones is figure B (the cases whose request bytes
+// changed), summing all of them is figure A (a full re-record).
+export const DRY_SUBJECT_PLAN = [];
+
+/** Worst case of one free-text request (no tools), cache-aware like dryToolCallPlanEntry. */
+export function dryTextCallPlanEntry({ tag, model, system, userMessage, maxTokens }) {
+  const request = {
+    model,
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: 'user', content: userMessage }],
+  };
+  return dryRequestPlanEntry(tag, request, DRY_SUBJECT_PLAN);
+}
+
+/** Worst case of a raw Messages request (the coach agent loop builds its own). */
+export function dryRequestPlanEntry(tag, request, plan = DRY_SUBJECT_PLAN) {
+  const inputTokens = estimateInputTokensOffline(request);
+  const firstCall = plan.length === 0;
+  const prefixTokens = firstCall
+    ? 0
+    : estimateInputTokensOffline({ system: request.system, tools: request.tools });
+  return {
+    tag,
+    cached: false,
+    inputTokens,
+    cacheReadTokens: prefixTokens,
+    maxTokens: request.max_tokens ?? 1024,
+    worstUsd: cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens),
+  };
+}
+
+/**
+ * Flags gate (VIL-467): an unknown flag exits before anything loads, and a run that could
+ * reach a model needs an explicit `--live`. `--cached-only` and `--dry` never call one.
+ */
+export function assertRunFlags(known, argv = process.argv.slice(2)) {
+  const allowed = new Set([...known, '--live', '--dry', '--cached-only']);
+  const unknown = argv.filter((a) => a.startsWith('--') && !allowed.has(a.split('=')[0]));
+  if (unknown.length > 0) {
+    console.error(`unknown flag(s): ${unknown.join(' ')} - nothing run`);
+    process.exit(2);
+  }
+  const live = argv.includes('--live');
+  if (!live && !argv.includes('--cached-only') && !isDryRun(['', '', ...argv])) {
+    console.error('no mode: pass --cached-only, --dry, or --live (live calls bill) - nothing run');
+    process.exit(2);
+  }
+  if (live && (argv.includes('--dry') || argv.includes('--cached-only'))) {
+    console.error('--live cannot be combined with --dry or --cached-only - nothing run');
+    process.exit(2);
+  }
+}
+
+/**
+ * The one --dry line per suite. B = uncached subject calls + uncached judge draws against
+ * the current bytes (cache key = sha256 of the whole request, see cacheKey). A = every
+ * call priced as uncached (a full re-record). Judge draws on an uncached subject reply are
+ * themselves uncached (the reply is in the judge key), so B's judge count follows from it.
+ */
+export function dryReportLine(suite, judgePlans = []) {
+  const subj = DRY_SUBJECT_PLAN;
+  const judge = judgePlans.flat();
+  const sum = (xs) => xs.reduce((t, p) => t + (p.worstUsd ?? 0), 0);
+  const subjU = subj.filter((p) => !p.cached);
+  const judgeU = judge.filter((p) => !p.cached);
+  const b = sum(subjU) + sum(judgeU);
+  const a = sum(subj) + sum(judge);
+  return `DRY ${suite} | subject calls ${subj.length} (cached ${subj.length - subjU.length}, uncached ${subjU.length}) | judge draws ${judge.length} (cached ${judge.length - judgeU.length}, uncached ${judgeU.length}) | B changed-only worst $${b.toFixed(5)} | A full re-record worst $${a.toFixed(5)} | live calls: 0`;
+}
+
+/** --dry plan entry for one uncached tool call: estimate, max output, cache-aware worst case. */
+export async function dryToolCallPlanEntry(opts, plan) {
+  const { tag, model, maxTokens, system, userMessage, toolName, toolSchema } = opts;
+  let request;
+  if (opts.lane) {
+    const agent = await loadAgent();
+    request = agent.structuredRequest({
+      lane: opts.lane,
+      maxTokens,
+      system,
+      userMessage,
+      toolName,
+      toolDescription: opts.toolDescription ?? 'Return the result.',
+      inputJsonSchema: toolSchema,
+    });
+  } else {
+    request = {
+      model,
+      max_tokens: maxTokens,
+      system,
+      tools: [
+        {
+          name: toolName,
+          description: opts.toolDescription ?? 'Return the result.',
+          input_schema: toolSchema,
+        },
+      ],
+      messages: [{ role: 'user', content: userMessage }],
+    };
+  }
+  const inputTokens = estimateInputTokensOffline(request);
+  const firstUncached = !plan.some((p) => !p.cached);
+  const prefixTokens = firstUncached
+    ? 0
+    : estimateInputTokensOffline({ system: request.system, tools: request.tools });
+  return {
+    tag,
+    cached: false,
+    inputTokens,
+    cacheReadTokens: prefixTokens,
+    maxTokens,
+    worstUsd: cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens),
+  };
+}
+
 // --- cached free-text call (for the coach answer arm) -----------------------
 
 export async function cachedTextCall(opts) {
@@ -570,6 +738,24 @@ export async function cachedTextCall(opts) {
   const key = cacheKey(tag, canonical);
 
   const cached = await cacheGet(key);
+  if (isDryRun()) {
+    const entry = dryTextCallPlanEntry({
+      tag,
+      model,
+      system,
+      userMessage,
+      maxTokens: opts.maxTokens ?? 1024,
+    });
+    DRY_SUBJECT_PLAN.push({ ...entry, cached: Boolean(cached) });
+    if (!cached) {
+      return {
+        text: dryStandInText(opts.maxTokens ?? 1024),
+        latencyMs: 0,
+        cached: false,
+        dry: true,
+      };
+    }
+  }
   if (cached) {
     noteLatency(model, cached.latencyMs);
     if (Array.isArray(cost.latencies)) cost.latencies.push(cached.latencyMs);
@@ -667,7 +853,11 @@ function gatewayUsageMessage(model, peeked) {
  * does not offer.
  */
 export async function spendCappedFetch({ tag = 'gateway', request, send }) {
-  // cappedCall refuses unless both the cap and HALE_SPEND_LEDGER are set.
+  // --dry never sends; otherwise cappedCall refuses unless both the cap and
+  // HALE_SPEND_LEDGER are set.
+  if (isDryRun()) {
+    throw new Error(`eval --dry: refusing live call ${tag}; dry mode makes no network calls`);
+  }
   const priced = { ...request, max_tokens: request.max_tokens ?? 1024 };
   let sent;
   await cappedCall({
@@ -891,9 +1081,16 @@ export const JUDGE_SAMPLES_MEDIAN = 3;
  * Read on the way OUT of the cache as well as into it, because the bad draws are already
  * committed. A cached non-verdict is treated as absent: re-drawn live, or reported as the
  * honest cache miss it always was under `--cached-only`.
+ *
+ * A number is not enough. The schema is an integer 1-5; Anthropic does not hard-enforce
+ * min/max, and a truncated or confused draw has already arrived as `{ score: -1 }` with a
+ * reason cut mid-quote (identity-ask `intro-both`, VIL-467 live run). That is wreckage,
+ * not a vote: `-1` sorted first and failed the case as `judge:-1`. Only a score the
+ * rubric can actually emit counts.
  */
 export function isVerdict(parsed) {
-  return typeof parsed?.score === 'number';
+  const score = parsed?.score;
+  return Number.isInteger(score) && score >= 1 && score <= 5;
 }
 
 /**
@@ -979,10 +1176,8 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
       `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}${laneKey}`,
     );
     const cached = await cacheGet(key);
-    if (cached && isVerdict(cached.parsed)) {
-      if (isDryRun()) plan.push({ tag: sampleTag, cached: true, score: cached.parsed.score });
-      return cached.parsed;
-    }
+    const hit = cached && isVerdict(cached.parsed);
+    if (hit && !isDryRun()) return cached.parsed;
     if (isDryRun()) {
       // No network: price the request the live guard would see, with an offline count.
       const agent = await loadAgent();
@@ -1000,19 +1195,24 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
       const inputTokens = estimateInputTokensOffline(request);
       // Cache-aware, like the live guard: the first uncached draw writes the system-prompt
       // cache (full write rate); later ones, run back to back within the TTL, read it.
-      const firstUncached = !plan.some((p) => !p.cached);
+      // Cache-aware within this plan: the first priced draw writes the system-prompt
+      // cache, later ones (run back to back) read it. A cached draw is priced too, so a
+      // full re-record (figure A) can be summed; figure B sums only the uncached ones.
+      const firstUncached = hit ? plan.length === 0 : !plan.some((p) => !p.cached);
       const prefixTokens = firstUncached
         ? 0
         : estimateInputTokensOffline({ system: request.system, tools: request.tools });
       const worstUsd = cacheAwareWorstUsd(priceRates, request, inputTokens, prefixTokens);
       plan.push({
         tag: sampleTag,
-        cached: false,
+        cached: Boolean(hit),
+        ...(hit ? { score: cached.parsed.score } : {}),
         inputTokens,
         cacheReadTokens: prefixTokens,
         maxTokens,
         worstUsd,
       });
+      if (hit) return cached.parsed;
       return { dry: true, score: Number.NaN, reason: '(dry: not scored)' };
     }
     if (cachedOnly) failCachedMiss(sampleTag, key);
@@ -1126,7 +1326,12 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
     // `aggregate: 'min'` keeps the LOWEST draw (and its reason): a suite that would rather
     // see an inconsistent judge than let one lucky pass through opts into it.
     if (options?.aggregate === 'min') {
-      return { ...ordered[0], samples: drawn.map((verdict) => verdict.score) };
+      // Every draw's score AND reason (914), in draw order, not only the lowest one's.
+      return {
+        ...ordered[0],
+        samples: drawn.map((verdict) => verdict.score),
+        draws: drawn.map((verdict) => ({ score: verdict.score, reason: verdict.reason })),
+      };
     }
     // The median VERDICT, not just the median number: the reason a run prints has to be
     // the argument for the score it printed, or the failure line cites a different draw.
@@ -1150,6 +1355,34 @@ export function summarizeJudgePlan(plan, { spentUsd, capUsd }) {
     projectedLedgerUsd: spentUsd + worstTotalUsd,
     fitsCap: spentUsd + worstTotalUsd <= capUsd,
   };
+}
+
+/** --dry summary across compose (subject-model) and judge plans: subtotals + grand total. */
+export function summarizeDryPlan({ compose = [], judge = [] }, { spentUsd, capUsd }) {
+  const part = (plan) => {
+    const uncached = plan.filter((p) => !p.cached);
+    return {
+      calls: plan.length,
+      cached: plan.length - uncached.length,
+      uncached: uncached.length,
+      worstUsd: uncached.reduce((sum, p) => sum + p.worstUsd, 0),
+    };
+  };
+  const c = part(compose);
+  const j = part(judge);
+  const worstTotalUsd = c.worstUsd + j.worstUsd;
+  return {
+    compose: c,
+    judge: j,
+    worstTotalUsd,
+    projectedLedgerUsd: spentUsd + worstTotalUsd,
+    fitsCap: spentUsd + worstTotalUsd <= capUsd,
+  };
+}
+
+/** One line per judge draw: `draw N: score S - reason`. */
+export function formatDraws(draws) {
+  return (draws ?? []).map((d, i) => `draw ${i + 1}: ${d.score} - ${d.reason}`);
 }
 
 export const JUDGE_MIN = 4;

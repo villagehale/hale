@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French with vous, states the move with start, end, venue and full address, correctly says Sam already has it and gives Ana the link, and does not claim everyone has it. Minor issues: it says 'Sam l'a déjà' which is accurate, and the watchFor note says anyone who added it can tap the link again, which the message does not mention but that is not required. It asks nothing of the group and invents no facts. Slight wordiness is minimal.",
+    "score": 5
+  }
+}

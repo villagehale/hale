@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { POLICY_VERSION } from '~/lib/consent';
-import { SMS_CONSENT_SCOPE } from '~/lib/channels/sms-consent-copy';
 import { maskPhoneE164 } from '~/lib/channels/phone';
+import { SMS_CONSENT_SCOPE } from '~/lib/channels/sms-consent-copy';
+import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { CANARY_PHONE_E164 } from './config';

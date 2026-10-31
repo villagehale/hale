@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text gives Jour de congé with an invented clock time '3:00' (all-day event, must have no clock time), omits Léa's swimming 10:00-11:00 AM at Piscine Main entirely, and calls the day breathing room and free, which is false since a timed event exists. Also contains unrequested filler (a comment about the day) and is not in idiomatic French ('Tomorrow's' left in English, 'Mon, Oct 26' format). Multiple fact failures.",
+    "score": 1
+  }
+}

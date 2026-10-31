@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French ('Jour de congé') while the requested language is English, and it invents a 3:00 clock time for an all-day PD Day, which the facts do not give. It also claims the day is open and a break with breathing room, which is false for the calendar entry and not in the facts. Multiple fact and language failures.",
+    "score": 1
+  }
+}

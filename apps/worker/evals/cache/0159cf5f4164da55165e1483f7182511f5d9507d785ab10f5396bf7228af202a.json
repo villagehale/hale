@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Hale returned one pick: the Canadian Children's Museum inside the Canadian Museum of History. It is real and specific, and the family can turn up to it over the Labour Day long weekend. The source is the museum's own page, not an aggregator. It is a visit, not a term or registration. Null `when` and `price` are correct and nothing was invented. The notes properly flag Labour Day holiday hours and that the museum is in Gatineau, just across the river. Leaving out the Science and Technology Museum and the Museum of Nature because they were only found on third-party listings follows the rubric. The one weakness is a single pick for a city with several obvious, verifiable family museums, which makes the list thin rather than wrong. Since pagesRead is 0, everything rests on search snippets. No faults, so this is a 4.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not describe the piano lesson at all. It mentions an event ('Jour de congé at 3:00') that is not in the facts, and says tomorrow is a day off with breathing room, which is invented. The piano lesson's day (today), start (7:00 PM), end (8:00 PM), and venue (Ms. Chen studio) are all missing. It is also in English/French instead of the requested Chinese.",
+    "score": 1
+  }
+}

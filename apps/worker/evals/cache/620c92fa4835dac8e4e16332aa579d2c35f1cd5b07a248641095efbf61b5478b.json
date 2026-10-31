@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is the connect-link case. The reply says the link is a text away, quotes the short ask verbatim and gives the fifteen-minute window. It writes out no URL, does not refuse, does not send the parent to the app, and has no greeting or sign-off. It is short and exact.",
+    "score": 5
+  }
+}

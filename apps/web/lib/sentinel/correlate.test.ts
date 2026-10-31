@@ -54,7 +54,12 @@ describe('correlateExtraction', () => {
 
   it('matches a new_event to its stated time when it duplicates a known placement', () => {
     const match = correlateExtraction(
-      { kind: 'new_event', title: 'Swim lessons this week', originalTime: null, newTime: '2026-08-01T15:00:00Z' },
+      {
+        kind: 'new_event',
+        title: 'Swim lessons this week',
+        originalTime: null,
+        newTime: '2026-08-01T15:00:00Z',
+      },
       CANDIDATES,
     );
     expect(match).toEqual({ table: 'family_events', id: 'fe-1' });
@@ -81,7 +86,12 @@ describe('correlateExtraction', () => {
 
   it('returns null for a genuinely new occasion with no title/time overlap', () => {
     const match = correlateExtraction(
-      { kind: 'new_event', title: "Leo's birthday party", originalTime: null, newTime: '2026-08-10T15:00:00Z' },
+      {
+        kind: 'new_event',
+        title: "Leo's birthday party",
+        originalTime: null,
+        newTime: '2026-08-10T15:00:00Z',
+      },
       CANDIDATES,
     );
     expect(match).toBeNull();
@@ -89,7 +99,12 @@ describe('correlateExtraction', () => {
 
   it('returns null when the time is outside the window even if the title matches exactly', () => {
     const match = correlateExtraction(
-      { kind: 'cancellation', title: 'Swim lessons', originalTime: '2026-08-05T14:00:00Z', newTime: null },
+      {
+        kind: 'cancellation',
+        title: 'Swim lessons',
+        originalTime: '2026-08-05T14:00:00Z',
+        newTime: null,
+      },
       CANDIDATES,
     );
     expect(match).toBeNull();
@@ -97,7 +112,12 @@ describe('correlateExtraction', () => {
 
   it('returns null when the time matches but the title is unrelated', () => {
     const match = correlateExtraction(
-      { kind: 'cancellation', title: 'Dentist appointment', originalTime: '2026-08-01T14:00:00Z', newTime: null },
+      {
+        kind: 'cancellation',
+        title: 'Dentist appointment',
+        originalTime: '2026-08-01T14:00:00Z',
+        newTime: null,
+      },
       CANDIDATES,
     );
     expect(match).toBeNull();
@@ -105,22 +125,79 @@ describe('correlateExtraction', () => {
 
   it('never matches a day-coarse candidate with no startsAt', () => {
     const match = correlateExtraction(
-      { kind: 'cancellation', title: 'Pediatric checkup', originalTime: '2026-08-01T09:00:00Z', newTime: null },
+      {
+        kind: 'cancellation',
+        title: 'Pediatric checkup',
+        originalTime: '2026-08-01T09:00:00Z',
+        newTime: null,
+      },
       CANDIDATES,
     );
     expect(match).toBeNull();
   });
 
-  it('never attempts correlation for reminder_only or unclear extractions', () => {
+  it('matches a reminder to the occasion it reminds about, with the same safeguards', () => {
+    const swim = correlateExtraction(
+      {
+        kind: 'reminder_only',
+        title: 'Swim lessons',
+        originalTime: '2026-08-01T14:00:00Z',
+        newTime: null,
+      },
+      CANDIDATES,
+    );
+    expect(swim).not.toBeNull();
     expect(
       correlateExtraction(
-        { kind: 'reminder_only', title: 'Swim lessons', originalTime: '2026-08-01T14:00:00Z', newTime: null },
+        {
+          kind: 'reminder_only',
+          title: 'Swim lessons',
+          originalTime: null,
+          newTime: '2026-08-01T14:00:00Z',
+        },
+        CANDIDATES,
+      ),
+    ).toEqual(swim);
+    // A different day, an unrelated title, or no time at all is not a match.
+    expect(
+      correlateExtraction(
+        {
+          kind: 'reminder_only',
+          title: 'Swim lessons',
+          originalTime: '2026-08-09T14:00:00Z',
+          newTime: null,
+        },
         CANDIDATES,
       ),
     ).toBeNull();
     expect(
       correlateExtraction(
-        { kind: 'unclear', title: 'Swim lessons', originalTime: '2026-08-01T14:00:00Z', newTime: null },
+        {
+          kind: 'reminder_only',
+          title: 'Bake sale',
+          originalTime: '2026-08-01T14:00:00Z',
+          newTime: null,
+        },
+        CANDIDATES,
+      ),
+    ).toBeNull();
+    expect(
+      correlateExtraction(
+        { kind: 'reminder_only', title: 'Swim lessons', originalTime: null, newTime: null },
+        CANDIDATES,
+      ),
+    ).toBeNull();
+  });
+
+  it('never attempts correlation for unclear extractions', () => {
+    expect(
+      correlateExtraction(
+        {
+          kind: 'unclear',
+          title: 'Swim lessons',
+          originalTime: '2026-08-01T14:00:00Z',
+          newTime: null,
+        },
         CANDIDATES,
       ),
     ).toBeNull();
@@ -128,7 +205,12 @@ describe('correlateExtraction', () => {
 
   it('returns null with no candidates', () => {
     const match = correlateExtraction(
-      { kind: 'cancellation', title: 'Swim lessons', originalTime: '2026-08-01T14:00:00Z', newTime: null },
+      {
+        kind: 'cancellation',
+        title: 'Swim lessons',
+        originalTime: '2026-08-01T14:00:00Z',
+        newTime: null,
+      },
       [],
     );
     expect(match).toBeNull();

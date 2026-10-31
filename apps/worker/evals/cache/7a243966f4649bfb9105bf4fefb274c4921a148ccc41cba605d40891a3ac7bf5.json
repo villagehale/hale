@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French, not the requested Chinese; it also omits both events (Library story time at 11:00 AM and Soccer 5:30-6:30 PM), invents a 3:00 time, states the day is a day off and breathing room (open day), and omits planLink. Multiple fact and language failures.",
+    "score": 1
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgZPBx4ignTzCkq3rw9Qa",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Super common at 5, and it's very fixable. Tonight, walk him back to his own bed, tuck him in, and tell him calmly that you'll check on him in a few minutes. Then actually pop in, quick and boring, and keep it the same every time he comes to you. Praise him in the morning for any stretch he stays put. Being consistent matters more than anything fancy."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 148,
+      "cache_read_input_tokens": 22763,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 148,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 120,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1721
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct day (tomorrow, Monday Oct 26), correct AM/PM (上午11:00 for story time; 下午5:30到6:30 for soccer), the story time's start with no end invented since none was given, and both venue names with street addresses (Georgetown library, 9 Church St; Riverside Field, 22 Park Rd). Titles are kept as given, nothing is invented (no travel/departure claims), the language is Chinese, and the only link is the exact planLink.",
+    "score": 5
+  }
+}

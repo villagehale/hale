@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives only the start time (15 h) and omits the end time (16 h) that the facts provide, which is a fact failure. It is also unnatural: a native speaker would write 'Demain, de 15 h à 16 h, tu as « Jour de congé » à la bibliothèque de Georgetown' or similar; 'tu as « Jour de congé »' reads as a stiff template rather than a natural sentence. The title is kept as the event name and the place and tomorrow are correct, but the missing end time caps this as a low score.",
+    "score": 2
+  }
+}

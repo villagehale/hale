@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch for send_email and reply_to_email was actually turned off this turn, so 'Done' is true rather than an overclaim. The reply confirms the change plainly, says what happens from now on (Hale shows each email and waits for an okay), and stops. It has no greeting, no sign-off, no machinery and no invented detail.",
+    "score": 5
+  }
+}

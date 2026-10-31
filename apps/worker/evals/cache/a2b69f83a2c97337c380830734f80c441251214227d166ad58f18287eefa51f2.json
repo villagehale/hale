@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Text omits the time (4 PM) and the day, and does not say who the reminder is for (Ruth) or what it is for, so the mustSay items are missing."
+  }
+}

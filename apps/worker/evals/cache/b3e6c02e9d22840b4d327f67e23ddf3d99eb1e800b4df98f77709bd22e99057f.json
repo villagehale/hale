@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give a timed event: \"PD Day\" tomorrow, 9:30 AM to 12:00 PM, at Northside community centre. The text instead says \"Jour de congé at 3:00\", so the title is changed to a French phrase and the start is wrong, 3:00 instead of 9:30 AM, with no AM/PM. The end time (12:00 PM) and the venue (Northside community centre) are missing. It also says \"Tomorrow's a day off, so you've got a bit of breathing room\", which implies the day is free when there is a timed event to be at, and is an unstated inference. It mixes French into an English text. No bold, which is fine.",
+    "score": 1
+  }
+}

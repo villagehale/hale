@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: tomorrow (Monday Oct 26), 15 h to 16 h at Georgetown library, timed event, and it is in French. The title 'Jour de congé' is rendered as a name for the event, which is accurate to the given title and the event does have a start time, so the day is not described as free. Native check: 'Demain, lundi 26 octobre, à 15 h jusqu'à 16 h, il y a Jour de congé à la bibliothèque de Georgetown' is a bit stiff; a native would more naturally say 'demain, de 15 h à 16 h, à la bibliothèque de Georgetown' or similar, and the 'Jour de congé' title dropped in mid-sentence does not flow, which is the unnatural construction the rubric flags. No invented travel or advice, no emoji or hype. Score capped at 3 for the unnatural phrasing.",
+    "score": 3
+  }
+}

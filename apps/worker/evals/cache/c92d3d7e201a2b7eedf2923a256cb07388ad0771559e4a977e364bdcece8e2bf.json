@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct and complete: tomorrow (Monday) is right from Sunday evening, start 4:45 and end 5:45 are both given, PM is clear, nothing invented, and it stays generic as 'an appointment' without guessing. But the phrasing is stiff: 'you've got an appointment tomorrow, Monday, from 4:45 to 5:45 PM' leans on the 'you have X from A to B' construction with a redundant 'tomorrow, Monday', reading more like a calendar alert than a quick friend text. 'Heads-up:' is a label-style opener too. Per the friend-vs-notification check, this caps at 3.",
+    "score": 3
+  }
+}

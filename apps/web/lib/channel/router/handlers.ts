@@ -29,7 +29,11 @@ import {
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
-import { recMorningCouldUseWhere, recMorningReply } from '~/lib/channel/rec-morning';
+import {
+  recMorningCouldUseWhere,
+  recMorningReply,
+  writeRecMorningReply,
+} from '~/lib/channel/rec-morning';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
@@ -57,7 +61,6 @@ import {
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
-import { failureReply, healthDoneReply } from './copy';
 import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
 
@@ -356,7 +359,7 @@ export function connectorLinkHandler(
               { familyId: ctx.familyId, provider: target, outcome: 'mint_failed' },
               'connector link: mint failed',
             );
-            return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+            return { claimed: true, outcome: 'mint_failed', reply: null };
         }
       }
 
@@ -396,7 +399,7 @@ export function connectorLinkHandler(
             { familyId: ctx.familyId, provider: target, outcome: 'mint_failed' },
             'connector link: mint failed',
           );
-          return { claimed: true, outcome: 'mint_failed', reply: failureReply() };
+          return { claimed: true, outcome: 'mint_failed', reply: null };
       }
     },
   };
@@ -632,7 +635,7 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
       );
       switch (outcome.status) {
         case 'recorded_done':
-          return { claimed: true, outcome: outcome.status, reply: healthDoneReply() };
+          return { claimed: true, outcome: outcome.status, reply: null };
         case 'drafted_for_approval':
           return {
             claimed: true,
@@ -1119,11 +1122,20 @@ export function recMorningHandler(): DeterministicHandler {
   return {
     name: 'rec_morning',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = recMorningReply(ctx.body, ctx.now);
-      if (named !== null) return { claimed: true, outcome: 'rec_morning', reply: named };
+      // VIL-508: the facts are reviewed; the words are the model's. A miss leaves the
+      // text unclaimed for the coach rather than sending a fixed line.
+      // The family's stored language. Null is not an English default: intake is the
+      // path that has no family language yet, and that path follows parentWords.
+      const language = await familySpeechLanguage(database, ctx.familyId);
+      if (recMorningReply(ctx.body, ctx.now) !== null) {
+        const named = await writeRecMorningReply(ctx.body, ctx.now, null, language);
+        return named === null
+          ? { claimed: false }
+          : { claimed: true, outcome: 'rec_morning', reply: named };
+      }
       if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
       const where = await loadFamilyRecWhere(database, ctx.familyId);
-      const reply = recMorningReply(ctx.body, ctx.now, where);
+      const reply = await writeRecMorningReply(ctx.body, ctx.now, where, language);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };
     },

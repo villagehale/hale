@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import { linqContactCardShareBlocked } from '~/lib/channel/intake/session';
 import { speak } from '~/lib/channel/spoken-line';
+import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import {
   CONTACT_CARD_SHARE_LOOKBACK,
   HALE_CONTACT_FIRST_NAME,
@@ -14,8 +16,8 @@ import {
   shareHaleContactCardOnce,
 } from './contact-card';
 import {
-  LINQ_GROUP_OPEN_TEXT,
-  LINQ_GROUP_UNREACHABLE_TEXT,
+  linqGroupOpenLine,
+  linqGroupUnreachableLine,
   mapGroupHandlesToFamily,
   openHouseholdLinqGroup,
 } from './group';
@@ -917,6 +919,49 @@ describe('Linq household group', () => {
     ).resolves.toEqual({ status: 'mixed_family' });
   });
 
+  it('VIL-506: opens no group and sends nothing when the model writes no opening line', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    await fake.db.insert(schema.families).values({ id: FAMILY, displayName: 'Fixture' } as never);
+    await fake.db.insert(schema.channelMessages).values({
+      familyId: FAMILY,
+      parentUserId: USER,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerChatId: CHAT,
+      providerMessageId: 'in-1',
+    } as never);
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({}, { status: 200 }),
+    );
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setSharedSpokenLineWriter({ write: async () => null });
+    try {
+      const opened = await openHouseholdLinqGroup(fake.db, {
+        familyId: FAMILY,
+        parentUserId: USER,
+        parentPhoneE164: PARENT,
+        coParentPhoneE164: COPARENT,
+        now: NOW,
+        fetch: fetchMock,
+      });
+      expect(opened).toEqual({ status: 'skipped', reason: 'no_line' });
+      expect(
+        fetchMock.mock.calls.filter(
+          ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
+        ),
+      ).toEqual([]);
+    } finally {
+      setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('creates the group from the co-parent invite, and names a sandbox refusal', async () => {
     process.env.APP_ENCRYPTION_KEY = ENC_KEY;
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -955,7 +1000,7 @@ describe('Linq household group', () => {
     const created = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(created.from).toBe('+15555550100');
     expect(created.to).toEqual([PARENT, COPARENT]);
-    expect(created.message.parts[0].value).toBe(LINQ_GROUP_OPEN_TEXT);
+    expect(created.message.parts[0].value).toBe(await linqGroupOpenLine(null));
     expect(created.message.parts[0].value).not.toMatch(/https?:\/\//);
     expect(fake.rows(schema.families).find((row) => row.id === FAMILY)?.linqGroupChatId).toBe(
       'group-1',
@@ -974,7 +1019,7 @@ describe('Linq household group', () => {
     });
     expect(again.status).toBe('degraded');
     const degrade = JSON.parse(String(refused.mock.calls.at(-1)?.[1]?.body));
-    expect(degrade.message.parts[0].value).toBe(LINQ_GROUP_UNREACHABLE_TEXT);
+    expect(degrade.message.parts[0].value).toBe(await linqGroupUnreachableLine(null));
   });
 });
 

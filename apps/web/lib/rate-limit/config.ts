@@ -56,7 +56,7 @@ export const RATE_LIMITS = {
   // limit the machine goes SILENT — replying would hand an attacker the amplification.
   'sms-inbound': { limit: 30, windowSec: 3600 },
   // Group onboarding v2 · the family GROUP, per CHAT (the Linq chat id). Spent only by a
-  // group message Hale decided to answer (linq/group-turn-policy.ts) — chatter between
+  // group message Hale decided to answer (linq/group-turn-reader.ts) — chatter between
   // parents spends nothing — and in place of the sender's 'sms-inbound' above, so a busy
   // group cannot use up a parent's own 1:1 hour. The same 30/hour: it is the same cost,
   // a model call and a reply, and one chat is one conversation. Over it the group goes

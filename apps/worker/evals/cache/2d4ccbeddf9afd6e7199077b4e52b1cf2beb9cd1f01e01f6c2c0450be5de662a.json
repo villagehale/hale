@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple fact failures: the text is in English, not the requested French. It gives 'Jour de congé at 3:00', an invented clock time for an all-day event with no start. It omits Natation entirely (Léa, 10:00-11:00 AM, Piscine Main, 120 Main St). It also says 'a bit of breathing room' although a timed event exists, which wrongly implies the day is open. Nothing is bolded, which is fine.",
+    "score": 1
+  }
+}

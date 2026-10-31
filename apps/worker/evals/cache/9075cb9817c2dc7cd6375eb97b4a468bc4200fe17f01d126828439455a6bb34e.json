@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text includes the event title (Swim class), the correct day (today), and both the start (10:00 a.m.) and end (11:00 a.m.) times with correct AM. The facts give no location, 'for' person, or planLink, so nothing is missing, and nothing was invented. It is in English as requested.",
+    "score": 5
+  }
+}

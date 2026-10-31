@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "turnedOffThisTurn covers send_email and reply_to_email, so saying 'Done' is true and the reply answers the request completely. One small blemish: the second clause repeats the first.",
+    "score": 4
+  }
+}

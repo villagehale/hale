@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "yes",
+    "role": "unclear",
+    "familyLabel": null,
+    "kidName": null,
+    "confidence": "high"
+  },
+  "latencyMs": 1084
+}

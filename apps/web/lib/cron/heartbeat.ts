@@ -22,7 +22,10 @@ export async function stampCronHeartbeat(database: Database, name: string): Prom
  * stale for up to a week). ON CONFLICT DO NOTHING keeps a concurrent real
  * stamp authoritative.
  */
-export async function armCronHeartbeats(database: Database, names: readonly string[]): Promise<void> {
+export async function armCronHeartbeats(
+  database: Database,
+  names: readonly string[],
+): Promise<void> {
   if (names.length === 0) return;
   await database
     .insert(schema.cronHeartbeats)

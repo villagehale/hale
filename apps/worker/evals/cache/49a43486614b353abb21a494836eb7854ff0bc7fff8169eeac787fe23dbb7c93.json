@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking first, and the autonomy switch for send_email and reply_to_email was turned off this turn. The reply confirms that plainly, in the parent's language, and uses the name from knows. It invents nothing. The opening 'Listo, Sam' is a brief acknowledgment, not a greeting that hurts the shape. Short, exact and correct.",
+    "score": 5
+  }
+}

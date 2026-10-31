@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with every given fact. \"Jour de congé\" is named as the all-day event tomorrow (Monday) with no clock time. Léa's swimming (Natation) is tomorrow from 10 h to 11 h at Piscine Main, 120 Main St: the day, start, end, venue name, address and who it is for are all correct, with no AM/PM ambiguity (10 h is morning). The day is not called free or empty, and nothing is invented. The text is entirely in French, there is no link, and bold is none, which is fine.",
+    "score": 5
+  }
+}

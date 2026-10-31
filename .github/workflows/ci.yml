@@ -292,8 +292,30 @@ jobs:
       - name: Reminder eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder
 
+      # VIL-450 (#919) soft path, like #956: said-line.md changed (intro_reply), so every
+      # said-line case misses cache until the paid re-record (Nov 1 batch, no spend before).
+      # REVERT this continue-on-error in the re-record commit, before merge.
       - name: Said-line composer eval (cached-only)
+        continue-on-error: true
         run: pnpm --filter @hale/worker eval:said-line
+      - name: Linq sticker eval (cached-only)
+        run: pnpm --filter @hale/worker eval:linq-sticker
+
+      - name: Group reminder eval (cached-only)
+        working-directory: apps/worker
+        run: node evals/group-reminder-eval.mjs --cached-only
+
+      - name: Group reminder eval, broken arm must fail (cached-only)
+        working-directory: apps/worker
+        run: node evals/group-reminder-eval.mjs --cached-only --broken
+
+      - name: Email alert notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:email-alert-notice
+
+      # Calibration: the code-built line main used to send must fail every silent fixture,
+      # and the judge must catch every unsupported claim (recorded; UNRECORDED fails CI).
+      - name: Email alert notice eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:email-alert-notice:broken
 
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a

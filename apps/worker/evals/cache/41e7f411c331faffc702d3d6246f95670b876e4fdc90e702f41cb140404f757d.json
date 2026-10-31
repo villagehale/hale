@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and autonomy was turned off this turn for both send_email and reply_to_email, so saying \"Done\" is true. The reply confirms the change plainly, tells the parent they will see each email first, and stops. There is no greeting, sign-off or machinery talk, and nothing in it is invented.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking, and autonomy was actually turned off this turn for send_email and reply_to_email. So 'C'est fait' is a true claim of a completed action, not a draft overclaim. The reply is in the parent's language, short, and complete, with no greeting, sign-off or machinery.",
+    "score": 5
+  }
+}

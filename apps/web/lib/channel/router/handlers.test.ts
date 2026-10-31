@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
 import { cityRecLine } from '~/lib/channel/rec-morning';
+import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
@@ -18,6 +19,7 @@ import type {
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
 import {
@@ -566,6 +568,35 @@ describe('recMorningHandler', () => {
     expect(verdict.reply).not.toContain('7:00');
     expect(verdict.reply).not.toMatch(/Sept?\s*15/i);
     expect(verdict.reply.toLowerCase()).not.toContain('activeto');
+  });
+
+  it('passes the family speech language into the rec-morning line', async () => {
+    const seen: Array<string | null> = [];
+    setSharedSpokenLineWriter({
+      write: async (request) => {
+        seen.push(request.language);
+        return request.facts?.answer ?? null;
+      },
+    });
+    const database = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [{ primaryLanguage: 'zh' }],
+          }),
+        }),
+      }),
+    } as unknown as Database;
+    try {
+      const verdict = await recMorningHandler().handle(
+        database,
+        turn('When does Toronto swim registration open?'),
+      );
+      expect(seen).toEqual(['zh']);
+      expect(verdict.claimed).toBe(true);
+    } finally {
+      setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+    }
   });
 
   it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {

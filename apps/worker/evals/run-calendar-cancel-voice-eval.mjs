@@ -25,6 +25,8 @@ import {
   makeJudge,
   readJudgeModel,
   totalUsd,
+  dryReportLine,
+  isDryRun,
 } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -149,6 +151,10 @@ async function main() {
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
+  if (isDryRun()) {
+    console.log(dryReportLine('calendar-cancel-voice', [judge.plan]));
+    process.exit(0);
+  }
   const allPass = results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
   console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);

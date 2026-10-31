@@ -196,6 +196,12 @@ export interface ColdStartProgress {
   calendarOffered?: boolean;
   /** The email link has already gone out. */
   emailOffered?: boolean;
+  /**
+   * The activity map reached the parent. Absent on older sessions, which did
+   * send it. False means both openers failed and nothing was sent, so the next
+   * inbound or the morning nudge tries the map again before a later ask.
+   */
+  findDelivered?: boolean;
 }
 
 /** How many times this ladder step was asked again after a non-answer. */
@@ -513,6 +519,7 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     schoolMentioned?: unknown;
     calendarOffered?: unknown;
     emailOffered?: unknown;
+    findDelivered?: unknown;
   };
   if (
     row.step !== 'pick' &&
@@ -537,6 +544,7 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     schoolMentioned: row.schoolMentioned === true,
     ...(row.calendarOffered === true ? { calendarOffered: true } : {}),
     ...(row.emailOffered === true ? { emailOffered: true } : {}),
+    ...(row.findDelivered === false ? { findDelivered: false } : {}),
   };
 }
 

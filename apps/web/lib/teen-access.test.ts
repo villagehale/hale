@@ -39,7 +39,9 @@ function stubDb(updateReturns: Record<string, unknown>[] = [{}], childDob = '201
   // requestTeenAccessGrant proves the target is a 13+ child of THIS family before it
   // writes anything, so the stub has to answer that read.
   const select = () => ({
-    from: () => ({ where: () => ({ limit: async () => (childDob ? [{ dateOfBirth: childDob }] : []) }) }),
+    from: () => ({
+      where: () => ({ limit: async () => (childDob ? [{ dateOfBirth: childDob }] : []) }),
+    }),
   });
 
   // The node is a real Promise with the builder methods hung off it, so a call the

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French ('Jour de congé', 'Mon, Oct 26') despite language being en, mixing languages; it gives 3:00 instead of the correct 4:45 PM start; it says the day is open with breathing room, which is a LOW-score claim when a timed event exists; and it adds an unrequested comment about the day, so it fails on facts, language and tone.",
+    "score": 1
+  }
+}

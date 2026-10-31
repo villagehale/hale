@@ -5,6 +5,7 @@ import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { cancelGroupReminders } from '~/lib/loop/reminders/group/store';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { noticeIfGroupQuiet } from './connect-link-1to1';
 import { realHumanPhone } from './group-coparent';
@@ -89,6 +90,11 @@ export async function ejectWithGroupSeats(
       });
     }
   }
+  await cancelGroupReminders(database, {
+    chatId: input.chatId,
+    reason: 'group_ejected',
+    now: input.now,
+  });
   return ejectHouseholdGroup(database, input);
 }
 
@@ -172,6 +178,12 @@ export async function stopInGroup(
       }
       await settleRosterStatus(database, roster.id, ports.now);
     }
+    await cancelGroupReminders(database, {
+      chatId: message.chatId,
+      phoneHash: hash,
+      reason: 'member_stop',
+      now: ports.now,
+    });
     outcome = 'group_stop_unseated';
   }
 
@@ -240,6 +252,12 @@ export async function removeRosterParticipant(
   const hash = phoneBlindIndex(phone);
   const member = await liveRosterMember(database, roster.id, hash);
   if (!member) return { outcome: 'roster_member_absent' };
+  await cancelGroupReminders(database, {
+    chatId: input.chatId,
+    phoneHash: hash,
+    reason: 'member_removed',
+    now: input.now,
+  });
 
   const role = member.status === 'confirmed' ? member.confirmedRole : null;
   if (role && role !== 'co_parent' && member.userId && roster.familyId) {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own. The switch was actually flipped this turn: turnedOffThisTurn lists both send_email and reply_to_email. So 'Done' is true, and the rest of the reply accurately states what the change means. It has no greeting, no machinery talk and no extra detail, and it stops there.",
+    "score": 5
+  }
+}
