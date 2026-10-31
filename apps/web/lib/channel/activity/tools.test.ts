@@ -364,3 +364,27 @@ describe('find_activities family slice (VIL-518)', () => {
     }
   });
 });
+
+describe('find_activities description: record over thread history (VIL-519, Design lock)', () => {
+  const description = findActivitiesTool({
+    reader: reader({}),
+    finder: fakeFinder([]),
+    onPromise: () => {},
+  }).description;
+
+  it('makes the family record win over older thread mentions of place and age', () => {
+    expect(description).toContain('the record wins');
+    expect(description).toContain('not from the old mention');
+  });
+
+  it('forbids profile / memory meta to the parent', () => {
+    expect(description).toContain(
+      'Never tell the parent about a record, profile, memory or mismatch',
+    );
+  });
+
+  it('keeps recheck to one soft question beside the picks', () => {
+    expect(description).toContain('at most one such question this turn');
+    expect(description).toContain('never instead of them');
+  });
+});
