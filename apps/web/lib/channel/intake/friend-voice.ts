@@ -69,6 +69,11 @@ import {
 const MAX_TOKENS = 1000;
 const SHORT_MAX_TOKENS = 600;
 
+export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
+export const ONBOARDING_REPLY_TOOL = 'reply';
+export const ONBOARDING_REPLY_TOOL_DESCRIPTION =
+  'Return the onboarding reply and any facts the parent just gave.';
+
 /** What a worried parent wants to hear and Hale cannot say: Google shares all of it. */
 const ACCESS_UNTRUE = [
   "Hale only reads, sees, or looks at the kids' emails or events",
@@ -477,7 +482,7 @@ const replyJsonSchema = {
 } as const;
 
 /** Flag off omits the choice field, so the tool the model fills is today's. */
-function replyToolSchema(): {
+export function onboardingReplyToolSchema(): {
   type: 'object';
   properties: Record<string, unknown>;
   required: readonly ['reply'];
@@ -718,10 +723,42 @@ function answeringItem(input: FriendVoiceInput): OnboardingItem | null {
   return onboardingMissing(input.checklist)[0] ?? null;
 }
 
+/** The open name ask, as the name-capture reader hands it to the model. */
+export function nameAskVoiceInput(parentWords: string): FriendVoiceInput {
+  return {
+    step: 'names',
+    language: 'en',
+    address: 'tu',
+    introduce: false,
+    parentWords,
+    recentTurns: [{ role: 'hale', body: 'What should I call you?' }],
+    placeLabel: null,
+    agesLabel: null,
+    ageMonths: [],
+    children: [],
+    findLines: [],
+    listKind: 'none',
+    activity: null,
+    day: null,
+    parentName: null,
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: false,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  };
+}
+
 /**
  * What code can read from the parent's words without the model: a lone name
  * after the name ask, or a plain yes to a connector or the group chat. The
- * model is told, and the capture is held to it.
+ * model is told, and the capture is held to it. A model `nameDeclined` is not
+ * replaced by that lone name.
  */
 export function parentReading(
   input: FriendVoiceInput,
@@ -802,6 +839,8 @@ function withReading(capture: OnboardingCapture, input: FriendVoiceInput): Onboa
   const reading = parentReading(input);
   if (!reading) return capture;
   if (reading.kind === 'name') {
+    // The model may still read a take-back. A lone capital word does not replace that.
+    if (capture.nameDeclined) return capture;
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
     if (capture.parentName || kids.includes(reading.name.toLowerCase())) return capture;
     return { ...capture, parentName: reading.name };
@@ -1759,8 +1798,12 @@ export async function speakFriend(
       : null;
   const base = pre?.input ?? given;
   const input = base;
-  const withPre = (capture: OnboardingCapture): OnboardingCapture =>
-    pre ? mergeCaptures(pre.settled, capture) : capture;
+  const withPre = (capture: OnboardingCapture): OnboardingCapture => {
+    if (!pre) return capture;
+    const merged = mergeCaptures(pre.settled, capture);
+    if (!capture.nameDeclined) return merged;
+    return { ...merged, parentName: capture.parentName };
+  };
   const finish = (
     prose: string,
     bubbles: string[],
@@ -2333,7 +2376,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
-        inputJsonSchema: replyToolSchema(),
+        inputJsonSchema: onboardingReplyToolSchema(),
         schema: replySchema,
         maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
         transport: llmTransport(),

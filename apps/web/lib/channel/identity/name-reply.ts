@@ -1,9 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { EMPTY_ONBOARDING_CAPTURE, dropTakeBackName } from '~/lib/channel/intake/onboarding-turn';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { IDENTITY_ASK_TEMPLATE_KEYS } from './asked';
-import { composeNameCapturedReceipt, defaultCallNameComposer } from './call-name-voice';
+import { defaultCallNameComposer, readModelParentName } from './call-name-voice';
 
 /**
  * THE NAME CAPTURE — a parent answering "what should I call you", read deterministically.
@@ -156,6 +157,8 @@ export type NameCaptureWrite = 'stored' | 'already_named';
 
 export type NameCaptureOutcome =
   | { status: 'declined_to_claim' }
+  /** The model read a take-back: nothing was stored, and its reply goes out. */
+  | { status: 'taken_back'; reply: string | null }
   /** `reply` is null when the model could not write the receipt: nothing is sent, #ops paged. */
   | { status: 'captured'; reply: string | null };
 
@@ -166,6 +169,14 @@ export interface NameCaptureInput {
   now: Date;
 }
 
+export interface NameCaptureRead {
+  /** The name the model returned. Empty when the message was a take-back. */
+  parentName: string | null;
+  nameDeclined: boolean;
+  /** The model's reply, or null when it could not be written. */
+  reply: string | null;
+}
+
 export interface NameCaptureDeps {
   /** Whether Hale actually asked this family for a name. Without it, every one-word
    * reply in Hale's whole inbox would be a candidate name. */
@@ -174,29 +185,37 @@ export interface NameCaptureDeps {
     database: Database,
     input: { familyId: string; parentUserId: string; name: string },
   ): Promise<NameCaptureWrite>;
-  /** The receipt, written by the onboarding model. Null when it could not be written. */
-  say(input: { name: string; parentWords: string }): Promise<string | null>;
+  /** The onboarding model reads the message. Code stores only `parentName`. */
+  read(input: { parentWords: string }): Promise<NameCaptureRead>;
 }
 
 /**
  * Claim one reply as the answer to a name ask.
  *
- * THE ORDER IS THE POINT, and it is the address capture's order: shape first (free),
- * pending-ask second (one query), write last. A body that is not name-shaped never costs
- * a query, and a name-shaped body from a family nobody asked is handed straight on to the
- * coach rather than written anywhere.
+ * The model reads the message. Code stores only the `parentName` it returns, and
+ * nothing when that field is empty or the model marked a take-back. The raw body
+ * is not parsed into a name here.
  */
 export async function handleNameCaptureReply(
   database: Database,
   input: NameCaptureInput,
   deps: NameCaptureDeps,
 ): Promise<NameCaptureOutcome> {
-  const name = soleGivenName(input.body);
-  if (!name) return { status: 'declined_to_claim' };
   // "Stop" or "start" in any wording is not a name (#868: the reader, not a word list).
   if ((await optOutIntentOf(input.body)) !== null) return { status: 'declined_to_claim' };
-
   if (!(await deps.wasAsked(database, input.familyId))) return { status: 'declined_to_claim' };
+
+  const read = await deps.read({ parentWords: input.body });
+  const kept = dropTakeBackName(input.body, {
+    ...EMPTY_ONBOARDING_CAPTURE,
+    parentName: read.parentName,
+    nameDeclined: read.nameDeclined,
+  });
+  const name = kept.parentName ? soleGivenName(kept.parentName) : null;
+  if (!name) {
+    if (read.reply) return { status: 'taken_back', reply: read.reply };
+    return { status: 'declined_to_claim' };
+  }
 
   const written = await deps.capture(database, {
     familyId: input.familyId,
@@ -207,7 +226,7 @@ export async function handleNameCaptureReply(
   // message is something else — handing it to the coach is the only reading left.
   if (written === 'already_named') return { status: 'declined_to_claim' };
 
-  return { status: 'captured', reply: await deps.say({ name, parentWords: input.body }) };
+  return { status: 'captured', reply: read.reply };
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
@@ -268,7 +287,8 @@ export function defaultNameCaptureDeps(): NameCaptureDeps {
   return {
     wasAsked: askWasDelivered,
     capture: captureParentName,
-    say: (input) => composeNameCapturedReceipt(composer, { ...input, language: 'en' }),
+    read: (input) =>
+      readModelParentName(composer, { parentWords: input.parentWords, language: 'en' }),
   };
 }
 

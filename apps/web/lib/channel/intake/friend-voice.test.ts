@@ -112,6 +112,23 @@ describe('a delayed undo during name capture', () => {
   // Code-side filter only. The stub is not the model: the skill tells the model
   // a take-back is not a name. This checks that a copied message is dropped
   // when the model already marked the take-back.
+  it('does not let a lone capital word override a model take-back', async () => {
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch school and camp email for the dates?',
+            capture: { parentName: null, nameDeclined: true },
+          };
+        },
+      },
+      { ...asked, parentWords: 'Undo' },
+      { page: async () => undefined },
+    );
+    expect(spoken.capture.parentName).toBeNull();
+    expect(spoken.capture.nameDeclined).toBe(true);
+  });
+
   it('drops a parentName that is the whole message once the model marks the take-back', async () => {
     const spoken = await speakFriend(
       {

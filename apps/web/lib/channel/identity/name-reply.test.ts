@@ -86,16 +86,17 @@ describe('soleGivenName', () => {
 describe('handleNameCaptureReply', () => {
   function deps(overrides: Partial<NameCaptureDeps> & { write?: NameCaptureWrite } = {}) {
     const captured: string[] = [];
-    const said: { name: string; parentWords: string }[] = [];
+    const said: string[] = [];
     const base: NameCaptureDeps = {
       wasAsked: async () => true,
       capture: async (_db, input) => {
         captured.push(input.name);
         return overrides.write ?? 'stored';
       },
-      say: async (input) => {
-        said.push(input);
-        return 'MODEL RECEIPT';
+      read: async ({ parentWords }) => {
+        said.push(parentWords);
+        const name = parentWords.replace(/^I'm /, '');
+        return { parentName: name, nameDeclined: false, reply: 'MODEL RECEIPT' };
       },
     };
     return { deps: { ...base, ...overrides } as NameCaptureDeps, captured, said };
@@ -110,11 +111,43 @@ describe('handleNameCaptureReply', () => {
 
     expect(captured).toEqual(['Dana']);
     expect(outcome).toEqual({ status: 'captured', reply: 'MODEL RECEIPT' });
-    expect(said).toEqual([{ name: 'Dana', parentWords: "I'm Dana" }]);
+    expect(said).toEqual(["I'm Dana"]);
   });
 
-  it('a failed receipt compose still stores the name and reports a null reply', async () => {
-    const { deps: d, captured } = deps({ say: async () => null });
+  it('stores nothing when the model leaves parentName empty', async () => {
+    const { deps: d, captured } = deps({
+      read: async () => ({
+        parentName: null,
+        nameDeclined: true,
+        reply: 'What should I call you?',
+      }),
+    });
+
+    const outcome = await handleNameCaptureReply(DB, turn('undo'), d);
+
+    expect(captured).toEqual([]);
+    expect(outcome).toEqual({ status: 'taken_back', reply: 'What should I call you?' });
+  });
+
+  it('does not store a name the model copied from a take-back', async () => {
+    const { deps: d, captured } = deps({
+      read: async () => ({
+        parentName: 'undo',
+        nameDeclined: true,
+        reply: 'What should I call you?',
+      }),
+    });
+
+    const outcome = await handleNameCaptureReply(DB, turn('undo'), d);
+
+    expect(captured).toEqual([]);
+    expect(outcome.status).toBe('taken_back');
+  });
+
+  it('still stores the name the model returned when the reply could not be written', async () => {
+    const { deps: d, captured } = deps({
+      read: async () => ({ parentName: 'Dana', nameDeclined: false, reply: null }),
+    });
 
     const outcome = await handleNameCaptureReply(DB, turn("I'm Dana"), d);
 
@@ -132,18 +165,24 @@ describe('handleNameCaptureReply', () => {
     expect(captured).toEqual([]);
   });
 
-  it('checks the shape before it checks the ledger, so an ordinary turn costs no query', async () => {
-    let asked = 0;
-    const { deps: d } = deps({
-      wasAsked: async () => {
-        asked += 1;
-        return true;
+  it('does not call the model when Hale never asked, and stores nothing when the model names nobody', async () => {
+    let reads = 0;
+    const unasked = deps({
+      wasAsked: async () => false,
+      read: async () => {
+        reads += 1;
+        return { parentName: 'Dana', nameDeclined: false, reply: 'x' };
       },
     });
+    await handleNameCaptureReply(DB, turn('Dana'), unasked.deps);
+    expect(reads).toBe(0);
+    expect(unasked.captured).toEqual([]);
 
-    await handleNameCaptureReply(DB, turn('what time is the storytime on saturday'), d);
-
-    expect(asked).toBe(0);
+    const unnamed = deps({
+      read: async () => ({ parentName: null, nameDeclined: false, reply: null }),
+    });
+    await handleNameCaptureReply(DB, turn('what time is the storytime on saturday'), unnamed.deps);
+    expect(unnamed.captured).toEqual([]);
   });
 
   /** A name already on file is somebody's considered answer, and a later text is not
