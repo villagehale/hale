@@ -862,6 +862,19 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     error.mockRestore();
   });
 
+  it('sends the draft when no judge is wired, and names that', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const draft = 'EarlyON Saturday at 10.';
+    const p = ports({ runAgent: answering(draft) });
+    const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
+    expect(reply).toBe(draft);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'not_configured' }),
+      expect.any(String),
+    );
+    error.mockRestore();
+  });
+
   it('sends nothing when the judge does not run', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const p = ports({
