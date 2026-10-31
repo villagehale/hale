@@ -39,16 +39,19 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** English and French ways a reply addresses someone by a name. */
+const NAME_ADDRESS =
+  "call you|name is|name's|t['’]appellerai|t['’]appeler|t['’]appelle[rs]?|vous appelle[zr]?";
+
 /**
- * The reply addresses the parent by the control word ("I'll call you undo").
- * Saying the word as an action ("I'll undo that") is not this.
+ * The reply addresses the parent by the control word ("I'll call you undo",
+ * `I'll call you "undo"`, "Je t'appelle undo"). Saying the word as an action
+ * ("I'll undo that") is not this.
  */
 export function replyUsesControlAsName(reply: string, parentWords: string): boolean {
   const line = controlLine(parentWords);
   if (!line || !isUndoCancelPhrase(parentWords)) return false;
-  const called = new RegExp(
-    `\\b(?:call you|name is|name's|t['’]appeler)\\s+${escapeRegExp(line)}\\b`,
-    'iu',
-  );
+  const quoted = `["“'«]*\\s*${escapeRegExp(line)}\\s*["”'»]*`;
+  const called = new RegExp(`\\b(?:${NAME_ADDRESS})\\s+${quoted}(?![\\p{L}\\p{M}])`, 'iu');
   return called.test(reply);
 }

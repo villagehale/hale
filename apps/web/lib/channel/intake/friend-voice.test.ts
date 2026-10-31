@@ -108,12 +108,22 @@ describe('a delayed undo during name capture', () => {
       kind: 'name',
       name: 'Dana',
     });
-    const brief = friendVoiceContext(asked) as { reading: string | null };
-    expect(brief.reading ?? '').not.toMatch(/is their name/i);
-    expect(brief.reading ?? '').toMatch(/not their name/i);
+    const openBrief = friendVoiceContext(asked) as { reading: { kind: string; held: boolean } };
+    expect(openBrief.reading).toEqual({ kind: 'undo', held: false });
+    const confirm = blank({
+      ...asked,
+      step: 'name_confirm',
+      parentWords: 'cancel',
+      parentName: 'Bea',
+    });
+    const heldBrief = friendVoiceContext(confirm) as { reading: { kind: string; held: boolean } };
+    expect(heldBrief.reading).toEqual({ kind: 'undo', held: true });
   });
 
-  it('does not store the word and does not send a reply that calls them by it', async () => {
+  // Code-side capture filter only. The composer is a stub, not a model: how the
+  // skill reads `reading.kind` of undo lives in onboarding-friend.md and
+  // onboarding-friend-short.md, and the detector tests cover composed replies.
+  it('drops a stubbed parentName of undo and declines the name ask', async () => {
     const spoken = await speakFriend(
       {
         async compose() {
@@ -128,14 +138,20 @@ describe('a delayed undo during name capture', () => {
     );
     expect(spoken.capture.parentName).toBeNull();
     expect(spoken.capture.nameDeclined).toBe(true);
-    expect(spoken.body.toLowerCase()).not.toContain('undo');
-    expect(spoken.source).not.toBe('unsent');
   });
 
-  it('refuses a draft that calls them by the control word', () => {
-    expect(judgeFriendReply("Got it, I'll call you undo. What should I call you?", asked).ok).toBe(
-      false,
-    );
+  it.each([
+    "Got it, I'll call you undo. What should I call you?",
+    'Got it, I\'ll call you "undo". What should I call you?',
+    'Got it, I’ll call you “undo”. What should I call you?',
+    "D'accord. Je t'appelle undo. Qu'est-ce que je surveille ensuite ?",
+    'Je t’appelle « undo ». Comment je continue ?',
+  ])('refuses a composed reply that addresses them as the control word: %s', (reply) => {
+    expect(judgeFriendReply(reply, asked)).toEqual({
+      ok: false,
+      reason: 'identity',
+      detail: 'control_name',
+    });
   });
 });
 
@@ -162,6 +178,8 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('No STOP');
     expect(skill.instructions).toContain('`lastInbound`');
     expect(skill.instructions).toContain('minutesAgo');
+    expect(skill.instructions).toContain('"kind": "undo"');
+    expect(skill.instructions).toContain('control_name');
   });
 
   it('stays lean: state and a playbook, with the gates left to code', async () => {
@@ -187,6 +205,8 @@ describe('onboarding friend fixtures', () => {
     expect(short.instructions).toContain('**find_show**');
     expect(short.instructions).toContain('**connected**');
     expect(short.instructions).toContain('lastInbound');
+    expect(short.instructions).toContain('"kind": "undo"');
+    expect(short.instructions).toContain('control_name');
     expect(short.meta.task).toBe('speak');
   });
 
