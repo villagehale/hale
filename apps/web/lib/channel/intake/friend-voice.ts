@@ -52,11 +52,11 @@ import {
  * smaller prompt that still names the step
  * (packages/agent/skills/onboarding-friend-short.md). A first attempt that
  * the retry recovers is not a page: the recovery is logged. If the retry
- * also fails, nothing canned goes out: the miss is logged, #ops is paged,
- * and the next inbound or the morning nudge tries again. The one exception
- * is the map: the activity lines are real data code found, so they go out
- * numbered on their own when both openers fail. Length is not a reason to
- * refuse a reply; the skill's "short" is tone, not a character cap.
+ * also fails, nothing goes out: the miss is logged, #ops is paged, and the
+ * next inbound or the morning nudge tries again. That includes the map. A
+ * numbered list of the lines code found is still a message Hale wrote, so
+ * both openers failing sends nothing. Length is not a reason to refuse a
+ * reply; the skill's "short" is tone, not a character cap.
  */
 
 /**
@@ -238,11 +238,8 @@ export interface FriendVoiceResult {
   prose: string;
   /** The bubbles to send, in order. One for most steps; two or three on find_show. */
   bubbles: string[];
-  /**
-   * `lines` is the map with no opener: both attempts failed, so the real
-   * numbered lines go out on their own and `fallback` says why. Only find_show.
-   */
-  source: 'composed' | 'retry' | 'lines' | 'unsent';
+  /** `unsent` means both attempts failed: nothing goes to the parent. */
+  source: 'composed' | 'retry' | 'unsent';
   fallback: FriendFallback | null;
   /** The step the reply was judged for, once this message's facts were counted. */
   step: FriendStep;
@@ -1578,21 +1575,6 @@ function unsent(reason: FriendFallback, step: FriendStep): FriendVoiceResult {
   };
 }
 
-/** The map with no opener and no leads: real lines, numbered, nothing written by code. */
-function linesOnly(input: FriendVoiceInput, reason: FriendFallback): FriendVoiceResult {
-  const bubbles = assembleFindShowBubbles('', input.findGroups ?? [], null);
-  if (bubbles.length === 0) return unsent(reason, input.step);
-  return {
-    body: bubbles.join('\n\n'),
-    prose: '',
-    bubbles,
-    source: 'lines',
-    fallback: reason,
-    step: input.step,
-    capture: acceptOnboardingCapture(null),
-  };
-}
-
 /** The step a reply is written for, once this message's facts are counted. */
 export function stepAfterCapture(current: FriendStep, gap: OnboardingItem | undefined): FriendStep {
   switch (gap) {
@@ -1755,9 +1737,7 @@ export async function speakFriend(
 
   if (!composer) {
     await page('voice_unavailable');
-    return input.step === 'find_show'
-      ? linesOnly(input, 'voice_unavailable')
-      : unsent('voice_unavailable', input.step);
+    return unsent('voice_unavailable', input.step);
   }
 
   const timeoutMs = options.attemptTimeoutMs ?? FRIEND_ATTEMPT_TIMEOUT_MS;
@@ -1974,8 +1954,7 @@ export async function speakFriend(
   // the parent; when nothing goes out, only plain facts they gave are kept.
   const failed = async (reason: FriendFallback, capture: OnboardingCapture) => {
     await page(reason);
-    const result =
-      input.step === 'find_show' ? linesOnly(input, reason) : unsent(reason, input.step);
+    const result = unsent(reason, input.step);
     return { ...result, capture: factsOnly(withPre(capture)) };
   };
 

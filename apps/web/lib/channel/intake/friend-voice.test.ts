@@ -607,7 +607,7 @@ describe('speakFriend', () => {
     expect(pivot.source).toBe('unsent');
   });
 
-  it('sends the real map lines on their own when both openers fail, and still pages', async () => {
+  it('sends nothing when both find_show openers fail, and still pages', async () => {
     const pages: string[] = [];
     const input = blank({
       step: 'find_show',
@@ -630,14 +630,44 @@ describe('speakFriend', () => {
       input,
       { page: async (text) => pages.push(text) },
     );
-    expect(spoken.source).toBe('lines');
-    expect(spoken.fallback).toBe('model_failed');
-    expect(spoken.bubbles).toEqual([
-      '1. Swim at the rec centre (ages 3-5) - Saturday',
-      '2. Story time (all ages) - Tuesday',
-    ]);
-    expect(spoken.body).not.toContain('?');
+    expect(spoken).toMatchObject({
+      source: 'unsent',
+      body: '',
+      prose: '',
+      bubbles: [],
+      fallback: 'model_failed',
+    });
+    expect(spoken.body).not.toMatch(/^\d+\.\s/m);
     expect(pages).toHaveLength(1);
+  });
+
+  it('sends nothing on find_show when the composer is missing', async () => {
+    const pages: string[] = [];
+    const spoken = await speakFriend(
+      undefined,
+      blank({
+        step: 'find_show',
+        parentWords: "she's 4",
+        findLines: ['Swim at the rec centre (ages 3-5) - Saturday'],
+        findGroups: [
+          { category: 'swimming', lines: ['Swim at the rec centre (ages 3-5) - Saturday'] },
+        ],
+      }),
+      {
+        page: async (text) => {
+          pages.push(text);
+        },
+      },
+    );
+    expect(spoken).toMatchObject({
+      source: 'unsent',
+      body: '',
+      bubbles: [],
+      fallback: 'voice_unavailable',
+    });
+    expect(pages).toEqual([
+      'onboarding friend voice unsent step=find_show reason=voice_unavailable',
+    ]);
   });
 
   it('judges a wow line on the fact, not the spelling: a weekday from the subject and a clock from the start pass', () => {
