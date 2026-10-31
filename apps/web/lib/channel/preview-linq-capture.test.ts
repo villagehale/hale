@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LinqSendError,
   createLinqChat,
+  editLinqMessage,
   listLinqParticipantHandles,
   reactToLinqMessage,
   sendLinqChatMessage,
@@ -133,6 +134,38 @@ describe('preview group capture', () => {
       }),
     ]);
     expect(JSON.stringify(sink.calls[0]?.body)).toContain('周六游泳谁去接？');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('VIL-479: captures a PATCH of one text part on a fake message', async () => {
+    openEnv();
+    await sink.record({
+      chatId: CHAT,
+      kind: 'message',
+      method: 'POST',
+      path: `/chats/${CHAT}/messages`,
+      body: null,
+      handles: null,
+      providerMessageId: 'preview-msg-1',
+    });
+    const edited = await editLinqMessage({
+      messageId: 'preview-msg-1',
+      text: 'Swim is at 5.',
+      partIndex: 0,
+      fetch: fetchSpy,
+    });
+    expect(edited.providerMessageId).toBe('preview-msg-1');
+    const captured = sink.calls.filter((call) => call.kind === 'message_edit');
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({
+      chatId: CHAT,
+      method: 'PATCH',
+      providerMessageId: 'preview-msg-1',
+      body: { text: 'Swim is at 5.', part_index: 0 },
+    });
+    await expect(
+      editLinqMessage({ messageId: 'msg_real', text: 'no', fetch: fetchSpy }),
+    ).rejects.toMatchObject({ code: 'preview_not_fake_chat', permanent: true });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

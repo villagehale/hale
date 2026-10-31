@@ -523,6 +523,51 @@ export async function sendLinqChatMessage(input: {
 }
 
 /**
+ * VIL-479 · Replace one text part of a message Hale already sent.
+ *
+ * `PATCH /v3/messages/{messageId}` with `part_index` and the new `text`. iMessage
+ * only, text parts only, and Linq keeps the same message id. There is no unsend:
+ * this is the correction, and the wording is the caller's — this function sends
+ * `text` and nothing else.
+ *
+ * https://docs.linqapp.com/channel/imessage/api/resources/messages/methods/update/
+ */
+export async function editLinqMessage(input: {
+  messageId: string;
+  text: string;
+  /** 0-based. Omitted means the first part, which is the only part of a text bubble. */
+  partIndex?: number;
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string }> {
+  const partIndex = input.partIndex ?? 0;
+  if (
+    !input.messageId ||
+    input.text.length === 0 ||
+    input.text.length > TEXT_MAX ||
+    !Number.isInteger(partIndex) ||
+    partIndex < 0
+  ) {
+    throw new LinqSendError('invalid_edit', 400, true);
+  }
+  const result = await linqRequest({
+    method: 'PATCH',
+    path: `/messages/${encodeURIComponent(input.messageId)}`,
+    body: { text: input.text, part_index: partIndex },
+    fetch: input.fetch,
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const providerMessageId = readLinqMessageId(result.payload) ?? topLevelId(result.payload);
+  return { providerMessageId: providerMessageId ?? input.messageId };
+}
+
+function topLevelId(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  return typeof payload.id === 'string' && payload.id ? payload.id : null;
+}
+
+/**
  * Mark the chat read so the parent's bubble shows a read receipt. iMessage
  * one-to-one only; Linq accepts the call on a group and delivers nothing.
  * Best-effort: a miss is a named result, never a thrown turn.

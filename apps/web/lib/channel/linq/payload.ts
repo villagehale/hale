@@ -119,10 +119,25 @@ export interface LinqLineHealthEvent {
   status: string;
 }
 
+/**
+ * VIL-479 · `message.edited` (2026-02-03 only). Confirms a text part changed.
+ * `text` is the bubble as it reads now. Never logged.
+ */
+export interface LinqMessageEdit {
+  messageId: string;
+  chatId: string | null;
+  partIndex: number;
+  text: string;
+  editedAt: Date | null;
+  direction: 'inbound' | 'outbound' | null;
+  isFromMe: boolean;
+}
+
 export type LinqParsedWebhook =
   | { kind: 'message'; message: LinqInboundText }
   | { kind: 'group'; message: LinqInboundText }
   | { kind: 'receipt'; receipt: LinqDeliveryReceipt }
+  | { kind: 'edit'; edit: LinqMessageEdit }
   | { kind: 'signal'; signal: LinqSignal }
   | { kind: 'location'; location: LinqLocationSignal }
   | { kind: 'line_health'; line: LinqLineHealthEvent }
@@ -205,6 +220,7 @@ export function parseLinqWebhook(payload: unknown, receivedAtFallback: Date): Li
     return { kind: 'ignored', reason: 'unsupported_version' };
   }
   if (isReceiptEvent(payload.event_type)) return parseReceipt(payload, payload.event_type);
+  if (payload.event_type === 'message.edited') return parseEdit(payload);
   if (isLocationEvent(payload.event_type)) return parseLocation(payload, payload.event_type);
   if (isSignalEvent(payload.event_type)) return parseSignal(payload, payload.event_type);
   // VIL-226 · read only while PROACTIVE_CADENCE is armed; unset, it stays an ignored event.
@@ -347,6 +363,39 @@ function parseChatCreated(data: Record<string, unknown>): LinqParsedWebhook {
       isFromMe: false,
       handles: otherHandles(data),
       isGroup: data.is_group === true,
+    },
+  };
+}
+
+function parseEdit(payload: Record<string, unknown>): LinqParsedWebhook {
+  if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
+  const data = payload.data;
+  const messageId = stringField(data.id);
+  const part = isRecord(data.part) ? data.part : null;
+  const text = part && typeof part.text === 'string' ? part.text : '';
+  const partIndex = part?.index;
+  if (!messageId || !part || !text || (partIndex !== undefined && typeof partIndex !== 'number')) {
+    return { kind: 'ignored', reason: 'malformed' };
+  }
+  if (typeof partIndex === 'number' && (!Number.isInteger(partIndex) || partIndex < 0)) {
+    return { kind: 'ignored', reason: 'malformed' };
+  }
+  const chat = isRecord(data.chat) ? data.chat : null;
+  const sender = isRecord(data.sender_handle) ? data.sender_handle : null;
+  const direction =
+    data.direction === 'inbound' || data.direction === 'outbound' ? data.direction : null;
+  const editedAtRaw = stringField(data.edited_at);
+  const editedAt = editedAtRaw ? new Date(editedAtRaw) : null;
+  return {
+    kind: 'edit',
+    edit: {
+      messageId,
+      chatId: chat ? stringField(chat.id) || null : null,
+      partIndex: typeof partIndex === 'number' ? partIndex : 0,
+      text,
+      editedAt: editedAt && !Number.isNaN(editedAt.getTime()) ? editedAt : null,
+      direction,
+      isFromMe: sender?.is_me === true || direction === 'outbound',
     },
   };
 }

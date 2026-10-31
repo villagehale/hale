@@ -156,6 +156,39 @@ describe('parseLinqWebhook', () => {
       },
     });
 
+    expect(parseLinqWebhook({ ...received(), event_type: 'message.edited' }, FALLBACK)).toEqual({
+      kind: 'ignored',
+      reason: 'malformed',
+    });
+    expect(
+      parseLinqWebhook(
+        {
+          ...received(),
+          event_type: 'message.edited',
+          data: {
+            id: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+            direction: 'outbound',
+            chat: { id: '8f392755-6865-4b18-880a-227f9d8b458f' },
+            sender_handle: { handle: '+12025551234', is_me: true },
+            part: { index: 0, text: 'Swim is at 5.' },
+            edited_at: '2026-03-05T02:12:46.487Z',
+          },
+        },
+        FALLBACK,
+      ),
+    ).toEqual({
+      kind: 'edit',
+      edit: {
+        messageId: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
+        chatId: '8f392755-6865-4b18-880a-227f9d8b458f',
+        partIndex: 0,
+        text: 'Swim is at 5.',
+        editedAt: new Date('2026-03-05T02:12:46.487Z'),
+        direction: 'outbound',
+        isFromMe: true,
+      },
+    });
+
     expect(parseLinqWebhook({ ...received(), event_type: 'message.read' }, FALLBACK)).toEqual({
       kind: 'receipt',
       receipt: {

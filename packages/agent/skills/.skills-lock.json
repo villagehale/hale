@@ -295,6 +295,10 @@
     "file": "kid-item-classifier.md",
     "sha256": "db282b366f5d1d5ba3066a425d1782eb93417af74d863b7b3f92233bb9f4211b"
   },
+  "linq-edit.md": {
+    "file": "linq-edit.md",
+    "sha256": "f23b478ecc60e84b1c87752198578647101e9a895bb1539ce0afd9b70557e2fb"
+  },
   "linq-sticker.md": {
     "file": "linq-sticker.md",
     "sha256": "058703a76f47c7021790ae4e2c8248b065c00937a439943af13f35df4121602d"

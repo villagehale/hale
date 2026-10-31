@@ -36,6 +36,7 @@ const PROVIDER_TOKENS = [
   'createLinqPhoneTransport(',
   'sendLinqParts(',
   'reactToLinqMessage(',
+  'editLinqMessage(',
   'shareLinqContactCard(',
   'requestLinqLocation(',
   'retrieveLinqLocation(',
@@ -58,6 +59,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'reads a shared locality after the parent accepts the location card; retrieveLinqLocation drops the street before return, and the next bubble is the intake transport, not a send from this file',
   'apps/web/lib/channel/linq/contact-card.ts':
     'Hale Name and Photo share at most once per Toronto day per chat after the first outbound; the claim and the linq_contact_card_shared audit sit beside the share',
+  'apps/web/lib/channel/linq/edit.ts':
+    'VIL-479 edits one text part of a bubble Hale already sent; editLinqMessage runs only after the model writes the replacement, the original channel_messages row is the audit target (linq_message_edited), a linq:edit receipt is inserted after Linq accepts, and a refusal sends the follow-up instead',
   'apps/web/lib/channel/linq/tapback.ts':
     'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
   'apps/web/lib/channel/linq/link-preview.ts':
