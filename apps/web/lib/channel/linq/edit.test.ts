@@ -159,6 +159,76 @@ describe('VIL-479 Linq message edit', () => {
     ).toEqual([]);
   });
 
+  it('keeps a bubble editable when a queued parent text is inserted after Hale sent it', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    const parentAt = new Date('2026-10-31T15:59:00.000Z');
+    const bubbleAt = new Date('2026-10-31T16:00:00.000Z');
+    const insertedAt = new Date('2026-10-31T16:02:00.000Z');
+    const fake = makeFakeDb();
+    await fake.db.insert(schema.channelMessages).values({
+      familyId: FAMILY,
+      parentUserId: USER,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      providerMessageId: 'in-delayed',
+      providerChatId: CHAT,
+      sentAt: parentAt,
+      body: 'It moved to 5.',
+    });
+    await seedBubble(fake, { sentAt: bubbleAt, text: 'Swim is at 4.' });
+    await fake.db.insert(schema.messages).values({
+      conversationId: CONV,
+      role: 'user',
+      content: 'It moved to 5.',
+      providerMessageId: 'in-delayed',
+      createdAt: insertedAt,
+    });
+    const offered = await listEditableLinqSends(fake.db, {
+      familyId: FAMILY,
+      conversationId: CONV,
+      chatId: CHAT,
+      now: new Date(insertedAt.getTime() + 1000),
+      inboundAt: parentAt,
+    });
+    expect(offered.map((row) => row.messageId)).toEqual([MESSAGE]);
+
+    const fetchMock = linqFetch();
+    const moment = await considerLinqReply(fake.db, {
+      route: {
+        channel: 'imessage',
+        to: '+14165550101',
+        chatId: CHAT,
+        replyToMessageId: 'in-delayed',
+      },
+      inboundBody: 'It moved to 5.',
+      outboundBody: 'Swim is at 5.',
+      templateKey: null,
+      familyId: FAMILY,
+      parentUserId: USER,
+      now: new Date(insertedAt.getTime() + 1000),
+      fetch: fetchMock,
+      edit: {
+        decider: decider({
+          edit: { messageId: MESSAGE, partIndex: 0, text: 'Swim is at 5.' },
+        }),
+        candidates: offered,
+        audience: 'direct',
+        conversationId: CONV,
+      },
+    });
+    expect(moment.handled).toBe(true);
+    if (!moment.handled) return;
+    expect(moment.threadBody).toBeNull();
+    const call = fetchMock.mock.calls[0];
+    expect(String(call?.[0])).toContain(`/messages/${MESSAGE}`);
+    expect(call?.[1]?.method).toBe('PATCH');
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ text: 'Swim is at 5.', part_index: 0 });
+    expect(fetchMock.mock.calls.some((sent) => sent[1]?.method === 'POST')).toBe(false);
+  });
+
   it('patches only the text the model wrote and rewrites that bubble', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const fake = makeFakeDb();
