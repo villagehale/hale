@@ -378,6 +378,9 @@ export const AUDIT_VERBS = [
   'action.calendar_cancelled.skipped_duplicate',
   // ── decline + undo ──────────────────────────────────────────────────────
   'action.declined_by_human',
+  // VIL-513. The parent's YES placed the occasion through the calendar offer,
+  // so the duplicate draft is closed and must not execute as well.
+  'action.superseded_by_calendar_offer',
   'action.calendar_placement_reverted',
   'action.reverted_by_human',
   // The sixth ActionGateReason; the other five were curated, this one was not.
@@ -1468,6 +1471,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   // ── decline + undo ──────────────────────────────────────────────────────
   'action.declined_by_human': { sentence: 'you dismissed a draft', family: 'done' },
+  'action.superseded_by_calendar_offer': {
+    sentence: 'set aside a calendar draft you had already answered',
+    family: 'note',
+  },
   'action.calendar_placement_reverted': {
     sentence: 'you undid a calendar entry Hale had made',
     family: 'done',
