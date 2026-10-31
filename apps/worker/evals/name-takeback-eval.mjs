@@ -1,8 +1,9 @@
 // Name take-back during the open name ask (hard rule #8: no LLM mocking).
 //
 // SUBJECT: packages/agent/skills/onboarding-friend.md, called the way
-// readModelParentName calls speakFriend. Five messages (undo, Undo, nvm,
-// laisse tomber, 算了) must come back with parentName empty. The strings are
+// readModelParentName calls speakFriend. undo, Undo, nvm, laisse tomber, and
+// 算了 come back with parentName empty. "Dana" comes back as Dana. A question
+// comes back with parentName empty and nameDeclined false. The strings are
 // the cases. Nothing here decides intent from a word list.
 //
 // The group-onboarding flag is pinned on so the tool schema matches production
@@ -31,7 +32,7 @@ import {
   makeCost,
   totalUsd,
 } from './lib/harness.mjs';
-import { NAME_TAKEBACK_FIXTURES, parentNameLeftEmpty } from './name-takeback-fixtures.mjs';
+import { NAME_TAKEBACK_FIXTURES, nameTakebackMatches } from './name-takeback-fixtures.mjs';
 
 const HARD_CAP_USD = 5;
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
@@ -99,8 +100,18 @@ async function estimate() {
     process.exit(1);
   }
   for (const fixture of NAME_TAKEBACK_FIXTURES) {
-    if (!parentNameLeftEmpty(null)) {
+    const empty = nameTakebackMatches(fixture, { parentName: null, nameDeclined: false });
+    if (fixture.expect.parentName === '' && !empty) {
       throw new Error(`${fixture.id}: empty parentName must count as left empty`);
+    }
+    if (fixture.expect.parentName !== '' && empty) {
+      throw new Error(`${fixture.id}: a name must not count as left empty`);
+    }
+    if (
+      fixture.expect.nameDeclined === false &&
+      nameTakebackMatches(fixture, { parentName: null, nameDeclined: true })
+    ) {
+      throw new Error(`${fixture.id}: a decline must not pass a non-take-back`);
     }
   }
   console.info(
@@ -154,7 +165,7 @@ async function record() {
       continue;
     }
     const parentName = result.value?.parentName ?? null;
-    const ok = parentNameLeftEmpty(parentName);
+    const ok = nameTakebackMatches(fixture, result.value);
     if (!ok) failed += 1;
     const declined = JSON.stringify(result.value?.nameDeclined ?? null);
     console.info(

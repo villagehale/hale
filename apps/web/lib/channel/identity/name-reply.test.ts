@@ -88,12 +88,12 @@ describe('handleNameCaptureReply', () => {
     const captured: string[] = [];
     const said: string[] = [];
     const base: NameCaptureDeps = {
-      wasAsked: async () => true,
+      askOpen: async () => true,
       capture: async (_db, input) => {
         captured.push(input.name);
         return overrides.write ?? 'stored';
       },
-      read: async ({ parentWords }) => {
+      read: async (_database, { parentWords }) => {
         said.push(parentWords);
         const name = parentWords.replace(/^I'm /, '');
         return { parentName: name, nameDeclined: false, reply: 'MODEL RECEIPT' };
@@ -155,8 +155,8 @@ describe('handleNameCaptureReply', () => {
     expect(outcome).toEqual({ status: 'captured', reply: null });
   });
 
-  it('falls through when Hale never asked this family for a name', async () => {
-    const { deps: d, captured } = deps({ wasAsked: async () => false });
+  it('falls through when the name ask is not open', async () => {
+    const { deps: d, captured } = deps({ askOpen: async () => false });
 
     expect(await handleNameCaptureReply(DB, turn('Dana'), d)).toEqual({
       status: 'declined_to_claim',
@@ -165,24 +165,51 @@ describe('handleNameCaptureReply', () => {
     expect(captured).toEqual([]);
   });
 
-  it('does not call the model when Hale never asked, and stores nothing when the model names nobody', async () => {
+  it('declines a named parent without calling the model', async () => {
     let reads = 0;
-    const unasked = deps({
-      wasAsked: async () => false,
+    const named = deps({
+      askOpen: async () => false,
       read: async () => {
         reads += 1;
         return { parentName: 'Dana', nameDeclined: false, reply: 'x' };
       },
     });
-    await handleNameCaptureReply(DB, turn('Dana'), unasked.deps);
-    expect(reads).toBe(0);
-    expect(unasked.captured).toEqual([]);
 
-    const unnamed = deps({
+    expect(await handleNameCaptureReply(DB, turn('what time is storytime'), named.deps)).toEqual({
+      status: 'declined_to_claim',
+    });
+    expect(reads).toBe(0);
+    expect(named.captured).toEqual([]);
+  });
+
+  it('declines an unrelated question so the coach can answer it', async () => {
+    const { deps: d, captured } = deps({
+      read: async () => ({
+        parentName: null,
+        nameDeclined: false,
+        reply: 'Storytime is at ten.',
+      }),
+    });
+
+    const outcome = await handleNameCaptureReply(
+      DB,
+      turn('what time is the storytime on Saturday?'),
+      d,
+    );
+
+    expect(captured).toEqual([]);
+    expect(outcome).toEqual({ status: 'declined_to_claim' });
+  });
+
+  it('a failed read stores nothing, sends nothing, and declines', async () => {
+    const { deps: d, captured } = deps({
       read: async () => ({ parentName: null, nameDeclined: false, reply: null }),
     });
-    await handleNameCaptureReply(DB, turn('what time is the storytime on saturday'), unnamed.deps);
-    expect(unnamed.captured).toEqual([]);
+
+    const outcome = await handleNameCaptureReply(DB, turn("I'm Dana"), d);
+
+    expect(captured).toEqual([]);
+    expect(outcome).toEqual({ status: 'declined_to_claim' });
   });
 
   /** A name already on file is somebody's considered answer, and a later text is not
