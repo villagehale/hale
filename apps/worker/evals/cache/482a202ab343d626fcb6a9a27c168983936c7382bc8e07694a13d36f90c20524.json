@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for both send_email and reply_to_email, so saying 'Done' is true and not an overclaim. The reply plainly confirms the change and what happens from now on, and stops. It has no greeting, no machinery and no app referral.",
+    "score": 5
+  }
+}
