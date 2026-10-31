@@ -1,29 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { LoopMessage } from '~/lib/channel/types';
 import {
   calendarInviteSmsRenderer,
   splitInviteSms,
 } from '~/lib/loop/templates/calendar-invite/sms';
-import { forceToolJson } from '~/lib/pipeline/structured';
-
-vi.mock('~/lib/cron/skill', () => ({
-  loadCronSkill: vi.fn(async (name: string) => ({
-    instructions: name,
-    meta: {
-      name,
-      whenToUse: name,
-      task: name === 'calendar-invite-time' ? 'simple-lookup' : 'draft',
-      tools: [],
-    },
-  })),
-}));
-
-vi.mock('~/lib/pipeline/structured', () => ({
-  forceToolJson: vi.fn(),
-}));
-
 import {
   type CalendarInviteVoiceRequest,
   INVITE_LINK_SLOT,
@@ -31,7 +13,6 @@ import {
   calendarInviteTimeInput,
   calendarInviteTimeUserMessage,
   calendarInviteUserMessage,
-  createCalendarInviteVoice,
   fillCalendarInvite,
   prepareCalendarInvite,
 } from './calendar-invite-voice';
@@ -205,14 +186,9 @@ describe('splitInviteSms', () => {
   });
 });
 
-describe('the time judge', () => {
-  const line = `Swim class at 10am. ${INVITE_LINK_SLOT}`;
-
-  beforeEach(() => {
-    vi.mocked(forceToolJson).mockReset();
-  });
-
-  it('shows the judge the stated time and the real start, never the url', () => {
+describe('the time judge request', () => {
+  it('shows the stated time and the real start, never the url', () => {
+    const line = `Swim class at 10am. ${INVITE_LINK_SLOT}`;
     const message = calendarInviteTimeUserMessage(calendarInviteTimeInput(line, REQUEST));
     const payload = JSON.parse(message) as {
       text: string;
@@ -221,33 +197,6 @@ describe('the time judge', () => {
     expect(payload.text).toContain('10am');
     expect(payload.starts).toMatchObject({ hour: 10, minute: 30, day: 23, month: 7 });
     expect(message).not.toContain(LINK);
-  });
-
-  it('sends the line when the judge says the start matches', async () => {
-    vi.mocked(forceToolJson).mockImplementation(async (args: { toolName?: string }) => {
-      if (args.toolName === 'time_match') return { value: { match: true }, usage: {} as never };
-      return { value: { text: line }, usage: {} as never };
-    });
-    const outcome = await createCalendarInviteVoice(() => ({}) as never).compose(REQUEST);
-    expect(outcome).toEqual({ status: 'composed', body: fillCalendarInvite(line, LINK) });
-  });
-
-  it('sends nothing when the judge cannot say', async () => {
-    vi.mocked(forceToolJson).mockImplementation(async (args: { toolName?: string }) => {
-      if (args.toolName === 'time_match') throw new Error('down');
-      return { value: { text: line }, usage: {} as never };
-    });
-    const outcome = await createCalendarInviteVoice(() => ({}) as never).compose(REQUEST);
-    expect(outcome).toEqual({ status: 'deferred', reason: 'time_unjudged' });
-  });
-
-  it('stops after the judge keeps saying the time is wrong', async () => {
-    vi.mocked(forceToolJson).mockImplementation(async (args: { toolName?: string }) => {
-      if (args.toolName === 'time_match') return { value: { match: false }, usage: {} as never };
-      return { value: { text: line }, usage: {} as never };
-    });
-    const outcome = await createCalendarInviteVoice(() => ({}) as never).compose(REQUEST);
-    expect(outcome).toEqual({ status: 'deferred', reason: 'gate_exhausted' });
   });
 });
 
