@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
+import { unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -284,7 +285,111 @@ export async function handleEmailAlertOfferReply(
   }
 
   await placeOfferedEvent(database, offer, input);
+  // The coach also drafted this add. The parent's YES just placed it, so the draft
+  // must leave the queue or the next YES is not answerable and the coach drafts it again.
+  await supersedeUnapprovedCalendarAdds(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    title: offer.title,
+    startsAt: offer.startsAt,
+    now: input.now,
+  });
   return { status: 'added', offerId: offer.id, facts };
+}
+
+/**
+ * Stop a coach calendar offer standing once the drafted action it asked about was
+ * approved. Expiry, not a resolution: a resolution requires the outbound that told
+ * the parent, and an approved draft sends none (VIL-504).
+ */
+export async function expireEmailAlertOffer(
+  database: Database,
+  input: { offerId: string; now: Date },
+): Promise<'expired' | 'already_closed'> {
+  const expired = await database
+    .update(schema.emailAlertOffers)
+    .set({ expiresAt: input.now })
+    .where(
+      and(
+        eq(schema.emailAlertOffers.id, input.offerId),
+        isNull(schema.emailAlertOffers.resolvedAt),
+        gt(schema.emailAlertOffers.expiresAt, input.now),
+      ),
+    )
+    .returning({ id: schema.emailAlertOffers.id });
+  return expired.length > 0 ? 'expired' : 'already_closed';
+}
+
+async function supersedeUnapprovedCalendarAdds(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    title: string;
+    startsAt: Date;
+    now: Date;
+  },
+): Promise<void> {
+  const rows = await database
+    .select({
+      id: schema.actions.id,
+      actionType: schema.actions.actionType,
+      reviewerVerdict: schema.actions.reviewerVerdict,
+      payload: schema.actions.payload,
+    })
+    .from(schema.actions)
+    .where(
+      and(
+        eq(schema.actions.familyId, input.familyId),
+        eq(schema.actions.userVisibleState, 'drafted_for_approval'),
+        eq(schema.actions.actionType, 'calendar_add'),
+      ),
+    )
+    .limit(20);
+  const ids = unapprovedCalendarAddIds(
+    rows.map((row) => ({
+      id: row.id,
+      actionType: row.actionType,
+      reviewerApproved: row.reviewerVerdict === 'approved',
+      occasion: occasionFromPayload(row.payload),
+    })),
+    { title: input.title, startsAt: input.startsAt.toISOString() },
+  );
+  for (const id of ids) {
+    await database.transaction(async (tx) => {
+      const retired = await tx
+        .update(schema.actions)
+        .set({
+          userVisibleState: 'reverted',
+          revertedAt: input.now,
+          revertedReason: 'superseded_by_calendar_offer',
+        })
+        .where(
+          and(
+            eq(schema.actions.id, id),
+            eq(schema.actions.userVisibleState, 'drafted_for_approval'),
+          ),
+        )
+        .returning({ id: schema.actions.id });
+      if (!retired[0]) return;
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: 'action.superseded_by_calendar_offer',
+        targetTable: 'actions',
+        targetId: id,
+      });
+    });
+  }
+}
+
+function occasionFromPayload(payload: unknown): { title: string; startsAt: string } | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const title = 'title' in payload && typeof payload.title === 'string' ? payload.title : '';
+  const startsAt =
+    'startsAt' in payload && typeof payload.startsAt === 'string' ? payload.startsAt : '';
+  if (title.trim() === '' || startsAt.trim() === '') return null;
+  return { title, startsAt };
 }
 
 /**

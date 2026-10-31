@@ -1,9 +1,10 @@
 import type { Database } from '@hale/db';
-import { CALL_TIMEOUT_MS, READER_TIMEOUT } from '~/lib/channel/config';
-import { actionTypeLabel } from '~/lib/format/labels';
 // Type-only, so the cycle with approval.ts (which imports `approvalSubjects` from here)
 // is erased at build time. One shape for a drafted action, owned by the spine that reads
 // them, rather than a structural copy the two files could drift apart on.
+import { matchApprovedCalendarAdd } from '~/lib/channel/calendar-ask';
+import { CALL_TIMEOUT_MS, READER_TIMEOUT } from '~/lib/channel/config';
+import { actionTypeLabel } from '~/lib/format/labels';
 import type { PendingAction } from './approval';
 import { isCallTimeout, withTimeout } from './deadline';
 import { MAX_LISTED_APPROVALS } from './fast-path';
@@ -378,6 +379,12 @@ export interface OpenQuestion {
   /** True when this class's ask PRINTS an explicit keyword instruction ("Reply YES ...")
    * — see {@link SOLICITED}. */
   solicited: boolean;
+  /**
+   * VIL-513. Set on a calendar offer that is the parent's question about one
+   * reviewer-approved `calendar_add`. A YES on this offer approves that action.
+   * Not shown to the resolver — the offer's own description is.
+   */
+  approvesActionId?: string;
 }
 
 /**
@@ -661,7 +668,17 @@ export interface OpenQuestionSources {
   emailAlertOffers(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<ReadonlyArray<{ id: string; summary: string; subject: string; askedAt: Date }>>;
+  ): Promise<
+    ReadonlyArray<{
+      id: string;
+      summary: string;
+      subject: string;
+      askedAt: Date;
+      /** The occasion, so a matching calendar draft is the same question. */
+      title?: string;
+      startsAt?: string;
+    }>
+  >;
   /**
    * The evening check-in, while its ask is Hale's last word to this parent and the
    * morning has not come — or null (VIL-353, channel/checkin/reply.ts).
@@ -885,7 +902,25 @@ export function createOpenQuestionReader(
         }
       });
 
-      const questions: OpenQuestion[] = namedApprovals(approvals).slice(0, MAX_LISTED_APPROVALS);
+      // VIL-513. A reviewer-approved calendar add that a standing coach offer already
+      // asks about is that offer, not a second question. Leaving both up makes a bare
+      // YES ambiguous, the approval handler declines to claim, and the coach drafts
+      // the same add again.
+      const approvesByOffer = new Map<string, string>();
+      const hiddenDrafts = new Set<string>();
+      for (const offer of emailOffers) {
+        if (!offer.title || !offer.startsAt) continue;
+        const match = matchApprovedCalendarAdd(approvals, {
+          title: offer.title,
+          startsAt: offer.startsAt,
+        });
+        if (!match || hiddenDrafts.has(match.actionId)) continue;
+        hiddenDrafts.add(match.actionId);
+        approvesByOffer.set(offer.id, match.actionId);
+      }
+      const questions: OpenQuestion[] = namedApprovals(
+        approvals.filter((action) => !hiddenDrafts.has(action.actionId)),
+      ).slice(0, MAX_LISTED_APPROVALS);
 
       if (optIn) {
         questions.push({
@@ -987,6 +1022,7 @@ export function createOpenQuestionReader(
       for (const [index, emailOffer] of orderedOffers.entries()) {
         // The offer row's own one-line summary: the title Hale already texted this parent
         // and nothing else — never the subject line, never the snippet (rule #1).
+        const approvesActionId = approvesByOffer.get(emailOffer.id);
         questions.push({
           id: emailOffer.id,
           kind: 'email_alert_add',
@@ -997,6 +1033,7 @@ export function createOpenQuestionReader(
           answerable: KIND_ANSWERABLE.email_alert_add,
           askedAt: emailOffer.askedAt,
           solicited: SOLICITED.email_alert_add,
+          ...(approvesActionId ? { approvesActionId } : {}),
         });
       }
       if (evening) {

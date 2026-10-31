@@ -133,6 +133,60 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
     expect(byKind.get('activity_followup')).toMatchObject({ askedAt: T0, solicited: false });
     expect(newestSolicitedKind(questions)).toBeNull();
   });
+
+  it('a coach offer of a reviewer-approved calendar add is that one question', async () => {
+    const startsAt = '2026-10-31T19:00:00.000Z';
+    const reader = createOpenQuestionReader({
+      pendingApprovals: async () => [
+        {
+          actionId: 'a-1',
+          actionType: 'calendar_add',
+          reviewerApproved: true,
+          occasion: { title: 'Trunk or Treat', startsAt },
+        },
+        {
+          actionId: 'a-other',
+          actionType: 'calendar_add',
+          reviewerApproved: true,
+          occasion: { title: 'Swim lessons', startsAt },
+        },
+      ],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [
+        {
+          id: 'offer-1',
+          summary: 'An offer to put Trunk or Treat on your week',
+          subject: 'putting Trunk or Treat on your week',
+          askedAt: T0,
+          title: 'Trunk or Treat',
+          startsAt,
+        },
+      ],
+      eveningCheckIn: async () => null,
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
+    });
+
+    const questions = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    const approvals = questions.filter((question) => question.kind === 'approval');
+    expect(approvals.map((question) => question.id)).toEqual(['a-other']);
+    expect(questions.find((question) => question.id === 'offer-1')?.approvesActionId).toBe('a-1');
+  });
 });
 
 /**

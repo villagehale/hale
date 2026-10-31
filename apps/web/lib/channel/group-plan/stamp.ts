@@ -39,6 +39,7 @@ export function groupPlanDraftPort(
 ): ChannelDraftPort {
   if (turn.audience !== 'group') return inner;
   return {
+    pendingIdentical: inner.pendingIdentical?.bind(inner),
     async draft(input) {
       const result = await inner.draft(input);
       if (input.actionType !== 'calendar_add') return result;
