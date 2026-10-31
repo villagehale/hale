@@ -175,7 +175,15 @@ describe('two nameless families get paired, named, and held for an intro channel
       const named = await handleNameCaptureReply(
         database,
         { familyId: side.familyId, parentUserId: side.parentUserId, now, body: name },
-        defaultNameCaptureDeps(),
+        {
+          ...defaultNameCaptureDeps(),
+          // The model's words are the eval's job. This journey only proves the write.
+          read: async () => ({
+            parentName: name === "I'm Dana" ? 'Dana' : 'Sam Lee',
+            nameDeclined: false,
+            reply: null,
+          }),
+        },
       );
       expect(named.status).toBe('captured');
     }
