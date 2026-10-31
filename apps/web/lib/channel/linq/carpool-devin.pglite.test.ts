@@ -5,6 +5,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
+  classifyDriverSendError,
   considerCarpoolTapback,
   considerCarpoolTurn,
   createCarpoolDriverSend,
@@ -13,6 +14,7 @@ import {
 import type { CarpoolReading } from './carpool-apply';
 import type { CarpoolReadInput } from './carpool-reading';
 import { createCarpoolComposer, fakeCarpoolComposer } from './carpool-voice';
+import { LinqSendError } from './transport';
 
 vi.mock('~/lib/monitoring/ops-slack', () => ({ postOpsSlack: async () => 'skipped' }));
 vi.mock('~/lib/cron/skill', () => ({
@@ -823,5 +825,47 @@ describe('Devin #975 round 3 + Design gate', () => {
     });
     expect(calls).toEqual([mayaId]);
     expect((await rows())[0]?.reminderDriverSentAt).not.toBeNull();
+  });
+});
+
+describe('Devin #975 round 4', () => {
+  it('timeouts, network drops, missing ids and unknown errors are not proof of non-send', () => {
+    for (const code of ['timeout', 'network', 'missing_message_id']) {
+      expect(classifyDriverSendError(new LinqSendError(code, 0, false))).toEqual({
+        kind: 'unknown',
+        code,
+      });
+    }
+    expect(classifyDriverSendError(new Error('boom')).kind).toBe('unknown');
+  });
+
+  it('a recognised provider refusal is a definite non-send', () => {
+    expect(classifyDriverSendError(new LinqSendError('not_configured', 0, true))).toEqual({
+      kind: 'refused',
+      code: 'not_configured',
+    });
+  });
+
+  it('a send_unknown:<code> result keeps the claim', async () => {
+    const { familyId, mayaId } = await seed();
+    await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
+      handle: MAYA_PHONE,
+      userId: mayaId,
+      name: 'Maya',
+    });
+    await unclaimGroup(familyId);
+    let calls = 0;
+    const opts = {
+      now: FRIDAY_EVE,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => {
+        calls += 1;
+        return { sent: false as const, skipped: 'send_unknown:timeout' };
+      },
+    };
+    await runCarpoolReminders(db.database, opts);
+    await runCarpoolReminders(db.database, opts);
+    expect(calls).toBe(1);
   });
 });

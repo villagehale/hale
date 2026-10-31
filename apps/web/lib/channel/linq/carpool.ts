@@ -927,6 +927,24 @@ async function familyOfUser(database: Database, userId: string): Promise<string 
  * ledgered (claim row first) before the provider is called, and kept out of the
  * household group thread.
  */
+/** Provider errors that cannot prove the text did not go out. */
+const AMBIGUOUS_SEND_CODES = new Set(['timeout', 'network', 'missing_message_id']);
+
+/**
+ * Devin #975 r3/r4 — an unrecognised error, a timeout, a network drop, or an
+ * accepted send with no readable id may have gone out (`unknown`: the caller
+ * keeps its claim). Only a recognised provider refusal is a definite non-send.
+ */
+export function classifyDriverSendError(err: unknown): {
+  kind: 'unknown' | 'refused';
+  code: string;
+} {
+  const refusal = readSendRefusal(err);
+  if (!refusal) return { kind: 'unknown', code: 'unrecognised' };
+  if (AMBIGUOUS_SEND_CODES.has(refusal.code)) return { kind: 'unknown', code: refusal.code };
+  return { kind: 'refused', code: refusal.code };
+}
+
 export function createCarpoolDriverSend(
   database: Database,
   now: Date,
@@ -1003,17 +1021,23 @@ export function createCarpoolDriverSend(
         }));
       }
     } catch (err) {
-      const refusal = readSendRefusal(err);
-      if (!refusal) {
-        // Devin #975 r3 — no definite refusal: it may have gone out. The
-        // caller keeps its claim rather than retrying into a duplicate.
-        return { sent: false, skipped: 'send_unknown' };
+      const outcome = classifyDriverSendError(err);
+      if (outcome.kind === 'unknown') {
+        return { sent: false, skipped: `send_unknown:${outcome.code}` };
       }
-      const code = refusal.code;
-      await database
-        .update(schema.channelMessages)
-        .set(failedSendPatch(code))
-        .where(eq(schema.channelMessages.id, claimed.id));
+      const code = outcome.code;
+      try {
+        await database
+          .update(schema.channelMessages)
+          .set(failedSendPatch(code))
+          .where(eq(schema.channelMessages.id, claimed.id));
+      } catch (ledgerErr) {
+        // A definite refusal stays a definite non-send even if logging it fails.
+        console.warn(
+          { err: ledgerErr instanceof Error ? ledgerErr.name : 'unknown', code },
+          'carpool: driver refusal not recorded on ledger',
+        );
+      }
       return { sent: false, skipped: `send_failed:${code}` };
     }
     try {
