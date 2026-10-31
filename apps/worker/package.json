@@ -56,6 +56,7 @@
     "eval:shared-group-reading:estimate": "node evals/run-shared-group-reading-eval.mjs --estimate",
     "eval:shared-group-voice:estimate": "node evals/run-shared-group-voice-eval.mjs --estimate",
     "eval:calendar-cancel-voice": "node evals/run-calendar-cancel-voice-eval.mjs --cached-only",
+    "eval:calendar-invite-time": "node evals/run-calendar-invite-time-eval.mjs --dry",
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
     "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",
     "eval:crisis-reply": "node evals/run-crisis-reply-eval.mjs --cached-only",

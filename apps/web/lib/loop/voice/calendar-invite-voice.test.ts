@@ -195,7 +195,14 @@ describe('the time judge request', () => {
       starts: { hour: number; minute: number };
     };
     expect(payload.text).toContain('10am');
-    expect(payload.starts).toMatchObject({ hour: 10, minute: 30, day: 23, month: 7 });
+    expect(payload.starts).toEqual({
+      year: 2026,
+      month: 7,
+      day: 23,
+      hour: 10,
+      minute: 30,
+      weekday: 'Thursday',
+    });
     expect(message).not.toContain(LINK);
   });
 });
