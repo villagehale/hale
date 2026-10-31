@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Chinese, that Hale stop sending email on its own. The autonomy switch for sending and replying to email was turned off this turn, so the reply is true. It answers in the parent's language, confirms that Hale will no longer send or reply on its own and will ask before each email, and stops. There is no greeting, no sign-off and no invented detail.",
+    "score": 5
+  }
+}

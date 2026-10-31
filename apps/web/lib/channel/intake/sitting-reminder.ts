@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, or } from 'drizzle-orm';
-import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
+import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { type FriendVoiceComposer, speakFriend } from '~/lib/channel/intake/friend-voice';
 import {
   type IntakeSession,
