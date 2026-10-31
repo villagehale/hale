@@ -56,6 +56,28 @@ function agrees(a: string | null | undefined, b: string | null | undefined): boo
 }
 
 /**
+ * The session start a `when` publishes, in minutes after midnight, or null
+ * when it names no clock time. "Sat 10am", "Saturday 10:00 AM" and
+ * "Saturday 10:00" all read 600; "2pm" and "14:00" read 840.
+ */
+export function sessionStart(when: string | null | undefined): number | null {
+  if (!when?.trim()) return null;
+  const match = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])/i.exec(when);
+  if (!match) return null;
+  const [, h, m, ampm] = match;
+  if (!m && !ampm) return null; // a bare number ("Nov 7") is not a time
+  let hour = Number(h);
+  const minute = m ? Number(m) : 0;
+  if (hour > 23 || minute > 59) return null;
+  if (ampm) {
+    if (hour < 1 || hour > 12) return null;
+    const pm = ampm.toLowerCase().startsWith('p');
+    hour = (hour % 12) + (pm ? 12 : 0);
+  }
+  return hour * 60 + minute;
+}
+
+/**
  * The same find, not just the same title: names match, and the venue and the
  * date do not disagree. Two venues (or two dates) sharing a title stay two finds.
  */
@@ -74,6 +96,11 @@ function sameFind(a: ActivityPick, b: ActivityPick): boolean {
     (!!a.sourceName?.trim() &&
       !!b.sourceName?.trim() &&
       squashName(a.sourceName) === squashName(b.sourceName));
+  // Both publish a session time: that decides it. Spelling ("Sat 10am" vs
+  // "Saturday 10:00 AM") is ignored, but a 10am and a 2pm session stay two.
+  const startA = sessionStart(a.when);
+  const startB = sessionStart(b.when);
+  if (startA !== null && startB !== null) return startA === startB;
   if (sameDate && sameVenue) return true;
   return agrees(a.when, b.when);
 }

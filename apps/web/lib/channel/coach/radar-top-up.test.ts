@@ -173,6 +173,23 @@ describe('VIL-522 radar top-up', () => {
     expect(picks.map((pick) => pick.name)).toEqual(['Story time', 'Harvest fair']);
   });
 
+  it('keeps two sessions the same day at the same venue as two finds (Devin)', () => {
+    const morning = find({
+      sourceName: 'Central Library',
+      eventDate: '2026-11-07',
+      when: 'Sat 10am',
+    });
+    const afternoon = find({
+      sourceName: 'Central Library',
+      eventDate: '2026-11-07',
+      when: 'Sat 2pm',
+      url: 'https://library.example/story-time-2pm',
+      sourceUrl: 'https://library.example/story-time-2pm',
+    });
+    const picks = mergeTopUp([morning], [afternoon]);
+    expect(picks.map((p) => p.when)).toEqual(['Sat 10am', 'Sat 2pm']);
+  });
+
   it('keeps the same title and date at two named venues as two finds', () => {
     const a = find({ sourceName: 'Library A', eventDate: '2026-11-07', when: 'Sat 10am' });
     const b = find({
