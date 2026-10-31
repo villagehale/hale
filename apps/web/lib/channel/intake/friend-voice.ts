@@ -1243,15 +1243,22 @@ function weekdaysOfDates(slots: readonly string[], now: Date | undefined): strin
   const out = new Set<string>();
   for (const slot of slots) {
     for (const match of slot.matchAll(
-      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/giu,
+      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,)?(?:\s+(\d{4}))?/giu,
     )) {
       const month = MONTHS.indexOf((match[1] ?? '').toLowerCase());
       const day = Number(match[2]);
+      const namedYear = match[3] ? Number(match[3]) : null;
       if (month < 0 || day < 1 || day > 31) continue;
-      let date = new Date(Date.UTC(today.getUTCFullYear(), month, day, 12));
-      if (date.getTime() < today.getTime() - 60 * 86_400_000) {
-        date = new Date(Date.UTC(today.getUTCFullYear() + 1, month, day, 12));
+      if (namedYear != null && (namedYear < 2000 || namedYear > 2100)) continue;
+      let year = namedYear ?? today.getUTCFullYear();
+      let date = new Date(Date.UTC(year, month, day, 12));
+      // A month and day with no year still means the coming one. A year on
+      // the line is that year, not the year of `now`.
+      if (namedYear == null && date.getTime() < today.getTime() - 60 * 86_400_000) {
+        year += 1;
+        date = new Date(Date.UTC(year, month, day, 12));
       }
+      if (date.getUTCMonth() !== month || date.getUTCDate() !== day) continue;
       out.add(date.toLocaleDateString('en-CA', { weekday: 'long', timeZone: 'UTC' }));
     }
   }

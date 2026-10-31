@@ -659,6 +659,33 @@ describe('speakFriend', () => {
     expect(spoken.bubbles).toEqual(['Here is what is on near you.', lead]);
   });
 
+  it('does not treat this year’s weekday as the weekday of a later year on the line', async () => {
+    const line = 'Story time (all ages) - October 14, 2027';
+    const wrong = 'Story time on Wednesday, October 14.';
+    const right = 'Story time on Thursday, October 14, 2027.';
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return { reply: 'Here is what is on near you.', groupLeads: [wrong, right] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        now: new Date('2026-10-05T14:00:00Z'),
+        findLines: [line, line],
+        findGroups: [
+          { category: 'story', lines: [line] },
+          { category: 'story_later', lines: [line] },
+        ],
+      }),
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.bubbles).toEqual(['Here is what is on near you.', right]);
+    expect(spoken.body).not.toMatch(/wednesday/i);
+  });
+
   it('keeps a nine-line onboarding map whole, and still numbers only three lines on a year list', () => {
     const lines = Array.from(
       { length: 9 },
