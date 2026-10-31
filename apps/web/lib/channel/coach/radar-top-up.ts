@@ -1,5 +1,8 @@
-import { type ActivityPick, preferVenuePage } from '~/lib/channel/activity/lane';
-import { parentFacingActivityUrl } from '~/lib/format/http-url';
+import {
+  type ActivityPick,
+  preferVenuePage,
+} from "~/lib/channel/activity/lane";
+import { parentFacingActivityUrl } from "~/lib/format/http-url";
 
 /**
  * VIL-522. The coach's `search_village` read is the radar for this turn. Two
@@ -11,7 +14,7 @@ import { parentFacingActivityUrl } from '~/lib/format/http-url';
 export const MIN_SUITABLE_FINDS = 2;
 export const RADAR_FIND_CAP = 3;
 
-export type RadarTopUpOutcome = 'not_needed' | 'searched' | 'failed';
+export type RadarTopUpOutcome = "not_needed" | "searched" | "failed";
 
 export interface RadarTopUp {
   picks: ActivityPick[];
@@ -22,14 +25,18 @@ export interface RadarTopUp {
  * A find with no page yet still is: the program can be real when its URL was
  * not on the snippet. */
 export function isSuitableFind(pick: ActivityPick): boolean {
-  if (pick.name.trim() === '' || pick.sourceName.trim() === '') return false;
-  const raws = [pick.sourceUrl, pick.url].filter((value): value is string => !!value?.trim());
+  if (pick.name.trim() === "" || pick.sourceName.trim() === "") return false;
+  const raws = [pick.sourceUrl, pick.url].filter(
+    (value): value is string => !!value?.trim(),
+  );
   if (raws.length === 0) return true;
   return raws.some((raw) => parentFacingActivityUrl(raw) !== null);
 }
 
 function pageUrl(pick: ActivityPick): string | null {
-  return parentFacingActivityUrl(pick.sourceUrl) ?? parentFacingActivityUrl(pick.url);
+  return (
+    parentFacingActivityUrl(pick.sourceUrl) ?? parentFacingActivityUrl(pick.url)
+  );
 }
 
 function withPage(pick: ActivityPick): ActivityPick {
@@ -44,15 +51,18 @@ function withPage(pick: ActivityPick): ActivityPick {
 function squashName(value: string): string {
   return value
     .toLowerCase()
-    .replace(/^the\s+/, '')
-    .replace(/[^a-z0-9]/g, '');
+    .replace(/^the\s+/, "")
+    .replace(/[^a-z0-9]/g, "");
 }
 
 /** Two values agree when either is missing or they squash to the same thing. */
-function agrees(a: string | null | undefined, b: string | null | undefined): boolean {
-  const left = a?.trim() ? squashName(a) : '';
-  const right = b?.trim() ? squashName(b) : '';
-  return left === '' || right === '' || left === right;
+function agrees(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const left = a?.trim() ? squashName(a) : "";
+  const right = b?.trim() ? squashName(b) : "";
+  return left === "" || right === "" || left === right;
 }
 
 /**
@@ -62,7 +72,8 @@ function agrees(a: string | null | undefined, b: string | null | undefined): boo
  */
 export function sessionStart(when: string | null | undefined): number | null {
   if (!when?.trim()) return null;
-  const match = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])/i.exec(when);
+  const match =
+    /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])/i.exec(when);
   if (!match) return null;
   const [, h, m, ampm] = match;
   if (!m && !ampm) return null; // a bare number ("Nov 7") is not a time
@@ -71,7 +82,7 @@ export function sessionStart(when: string | null | undefined): number | null {
   if (hour > 23 || minute > 59) return null;
   if (ampm) {
     if (hour < 1 || hour > 12) return null;
-    const pm = ampm.toLowerCase().startsWith('p');
+    const pm = ampm.toLowerCase().startsWith("p");
     hour = (hour % 12) + (pm ? 12 : 0);
   }
   return hour * 60 + minute;
@@ -92,10 +103,10 @@ const WEEKDAYS: Array<[number, RegExp]> = [
  * read Saturday), as a sorted key; '' when it names none.
  */
 export function publishedWeekdays(when: string | null | undefined): string {
-  if (!when?.trim()) return '';
+  if (!when?.trim()) return "";
   return WEEKDAYS.filter(([, re]) => re.test(when))
     .map(([day]) => day)
-    .join(',');
+    .join(",");
 }
 
 /**
@@ -105,7 +116,8 @@ export function publishedWeekdays(when: string | null | undefined): string {
 function sameFind(a: ActivityPick, b: ActivityPick): boolean {
   if (squashName(a.name) !== squashName(b.name)) return false;
   if (a.placeId && b.placeId && a.placeId !== b.placeId) return false;
-  if (a.civicVenueId && b.civicVenueId && a.civicVenueId !== b.civicVenueId) return false;
+  if (a.civicVenueId && b.civicVenueId && a.civicVenueId !== b.civicVenueId)
+    return false;
   if (!agrees(a.sourceName, b.sourceName)) return false;
   if (!agrees(a.eventDate, b.eventDate)) return false;
   // Structured identity first: a matching event date plus a matching venue id
@@ -119,11 +131,15 @@ function sameFind(a: ActivityPick, b: ActivityPick): boolean {
       squashName(a.sourceName) === squashName(b.sourceName));
   // Both publish a session time: that decides it. Spelling ("Sat 10am" vs
   // "Saturday 10:00 AM") is ignored, but a 10am and a 2pm session stay two.
-  // Schedule context first: Saturdays 10am and Sundays 10am are two sessions,
-  // even with no event date to tell them apart.
-  const daysA = publishedWeekdays(a.when);
-  const daysB = publishedWeekdays(b.when);
-  if (daysA && daysB && daysA !== daysB) return false;
+  // Weekday text only matters when an event date is missing on either side:
+  // undated Saturdays 10am and Sundays 10am are two sessions. With the same
+  // event date the date decides, so stray weekdays in `when` ("registration
+  // opens Monday") never split one session into two.
+  if (!sameDate) {
+    const daysA = publishedWeekdays(a.when);
+    const daysB = publishedWeekdays(b.when);
+    if (daysA && daysB && daysA !== daysB) return false;
+  }
   const startA = sessionStart(a.when);
   const startB = sessionStart(b.when);
   if (startA !== null && startB !== null) return startA === startB;
@@ -141,8 +157,11 @@ function better(current: ActivityPick, incoming: ActivityPick): ActivityPick {
   const incomingWins =
     !!incomingUrl &&
     (!currentUrl ||
-      preferVenuePage(currentUrl, incomingUrl, current.sourceName || incoming.sourceName) ===
-        incomingUrl);
+      preferVenuePage(
+        currentUrl,
+        incomingUrl,
+        current.sourceName || incoming.sourceName,
+      ) === incomingUrl);
   const base = incomingWins ? incoming : current;
   const other = incomingWins ? current : incoming;
   const merged: ActivityPick = { ...base };
@@ -151,11 +170,13 @@ function better(current: ActivityPick, incoming: ActivityPick): ActivityPick {
   if (!merged.ageFit?.trim() && other.ageFit) merged.ageFit = other.ageFit;
   if (!merged.eventDate && other.eventDate) merged.eventDate = other.eventDate;
   if (!merged.placeId && other.placeId) merged.placeId = other.placeId;
-  if (!merged.civicVenueId && other.civicVenueId) merged.civicVenueId = other.civicVenueId;
+  if (!merged.civicVenueId && other.civicVenueId)
+    merged.civicVenueId = other.civicVenueId;
   if (merged.indoorOutdoor == null && other.indoorOutdoor != null) {
     merged.indoorOutdoor = other.indoorOutdoor;
   }
-  if (merged.access == null && other.access != null) merged.access = other.access;
+  if (merged.access == null && other.access != null)
+    merged.access = other.access;
   return withPage(merged);
 }
 
@@ -195,16 +216,16 @@ export async function topUpShortRadar(input: {
 }): Promise<RadarTopUp> {
   const suitable = input.radar.filter(isSuitableFind);
   if (suitable.length >= MIN_SUITABLE_FINDS) {
-    return { picks: mergeTopUp(input.radar, []), outcome: 'not_needed' };
+    return { picks: mergeTopUp(input.radar, []), outcome: "not_needed" };
   }
   try {
     const live = await input.liveSearch();
-    return { picks: mergeTopUp(input.radar, live), outcome: 'searched' };
+    return { picks: mergeTopUp(input.radar, live), outcome: "searched" };
   } catch (err) {
     console.error(
-      { err: err instanceof Error ? err.name : 'unknown' },
-      'coach find: live top-up failed',
+      { err: err instanceof Error ? err.name : "unknown" },
+      "coach find: live top-up failed",
     );
-    return { picks: mergeTopUp(input.radar, []), outcome: 'failed' };
+    return { picks: mergeTopUp(input.radar, []), outcome: "failed" };
   }
 }
