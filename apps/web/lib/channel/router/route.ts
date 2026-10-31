@@ -15,7 +15,7 @@ import {
 import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
 import {
   approvalForCalendarYes,
-  pairedDraftForCalendarNo,
+  pairedDraftsForCalendarNo,
   questionsForCalendarReader,
 } from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
@@ -1882,34 +1882,36 @@ async function resolveNaturalReply(
   // and closes the offer from afterSend, once the receipt has actually gone out.
   // Expiring the offer here would drop it before that send, and a retry would
   // have nothing left to answer. The approval handler's reply is null.
-  const pairedDraft = pairedDraftForCalendarNo(questions, reading);
-  if (pairedDraft && verdict.outcome === 'declined') {
+  const pairedDrafts = pairedDraftsForCalendarNo(questions, reading);
+  if (pairedDrafts.length > 0 && verdict.outcome === 'declined') {
     const approval = deps.handlers.find((handler) => handler.resolves?.has('approval'));
     if (!approval) {
       deps.log.error({}, 'channel router: calendar ask declined, approval handler absent');
     } else {
-      try {
-        const declined = await approval.handle(deps.database, {
-          ...turn,
-          resolved: {
-            kind: 'approval',
-            questionId: pairedDraft,
-            polarity: 'no',
-            confidence: reading.confidence,
-          },
-        });
-        deps.log.info(
-          {
-            claimed: declined.claimed,
-            outcome: declined.claimed ? declined.outcome : 'unclaimed',
-          },
-          'channel router: calendar ask declined, draft declined',
-        );
-      } catch (err) {
-        deps.log.error(
-          { detail: err instanceof Error ? err.constructor.name : 'unknown' },
-          'channel router: calendar ask declined, draft not declined',
-        );
+      for (const pairedDraft of pairedDrafts) {
+        try {
+          const declined = await approval.handle(deps.database, {
+            ...turn,
+            resolved: {
+              kind: 'approval',
+              questionId: pairedDraft,
+              polarity: 'no',
+              confidence: reading.confidence,
+            },
+          });
+          deps.log.info(
+            {
+              claimed: declined.claimed,
+              outcome: declined.claimed ? declined.outcome : 'unclaimed',
+            },
+            'channel router: calendar ask declined, draft declined',
+          );
+        } catch (err) {
+          deps.log.error(
+            { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+            'channel router: calendar ask declined, draft not declined',
+          );
+        }
       }
     }
   }

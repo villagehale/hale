@@ -731,6 +731,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             revokeAutonomyForKind({ ...input, policyVersion: POLICY_VERSION }, database),
         },
         parentUserId: turn.parentUserId,
+        audience: turn.audience,
+        groupChatId: turn.groupChatId,
         now: turn.now,
         activitySignup: midActivitySignupToolEnabled()
           ? {

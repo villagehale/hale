@@ -34,12 +34,24 @@ export type RecordGroupPlanOrigin = (origin: GroupPlanOrigin) => Promise<GroupPl
 
 export function groupPlanDraftPort(
   inner: ChannelDraftPort,
-  turn: { audience: 'direct' | 'group'; conversationId: string },
+  turn: {
+    audience: 'direct' | 'group';
+    conversationId: string;
+    groupChatId?: string | null;
+  },
   recordOrigin: RecordGroupPlanOrigin,
 ): ChannelDraftPort {
   if (turn.audience !== 'group') return inner;
+  const pendingIdentical = inner.pendingIdentical;
   return {
-    pendingIdentical: inner.pendingIdentical?.bind(inner),
+    pendingIdentical: pendingIdentical
+      ? (input) =>
+          pendingIdentical({
+            ...input,
+            audience: 'group',
+            ...(turn.groupChatId ? { groupChatId: turn.groupChatId } : {}),
+          })
+      : undefined,
     async draft(input) {
       const result = await inner.draft(input);
       if (input.actionType !== 'calendar_add') return result;

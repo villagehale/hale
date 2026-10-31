@@ -284,6 +284,9 @@ export interface ChannelCoachToolArgs {
   autonomySwitchOff?: AutonomySwitchOffPorts;
   /** The texting parent. The allowlist arms this user while the global flag is unset. */
   parentUserId?: string | null;
+  /** Group asks must not dedupe against a private 1:1 calendar offer. */
+  audience?: 'direct' | 'group';
+  groupChatId?: string | null;
   now: Date;
 }
 
@@ -673,6 +676,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         startsAt: startsAt.toISOString(),
         timeZone,
         now,
+        ...(args.audience ? { audience: args.audience } : {}),
+        ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),
       });
       if (already) {
         return {

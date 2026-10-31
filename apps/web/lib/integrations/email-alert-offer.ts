@@ -667,8 +667,8 @@ export type CoachCalendarOfferOutcome =
 /**
  * The open offer that already asks about this occasion, or null.
  *
- * One offer with the title on the same local day is that ask, including a
- * minute-off clock. Two offers with the title are told apart by a close clock.
+ * One offer whose start is a close clock to this ask. Saturday morning is not
+ * Saturday afternoon. A minute off the sentence still matches.
  */
 export async function standingCalendarOfferId(
   database: Database,
@@ -677,7 +677,6 @@ export async function standingCalendarOfferId(
     parentUserId: string;
     title: string;
     startsAt: string;
-    timeZone: string;
     now: Date;
   },
 ): Promise<string | null> {
@@ -692,7 +691,7 @@ export async function standingCalendarOfferId(
       actionType: 'calendar_add' as const,
       occasion: { title: offer.title, startsAt: offer.startsAt.toISOString() },
     })),
-    { title: input.title, startsAt: input.startsAt, timeZone: input.timeZone },
+    { title: input.title, startsAt: input.startsAt },
   );
 }
 
@@ -733,13 +732,11 @@ export async function recordCoachCalendarOffer(
     return 'already_held';
   }
 
-  const timeZone = await parentTimeZone(database, input.parentUserId);
   const standing = await standingCalendarOfferId(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     title,
     startsAt: input.startsAt.toISOString(),
-    timeZone,
     now: input.now,
   });
   if (standing) return 'already_asked';

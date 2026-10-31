@@ -83,6 +83,9 @@ export interface ChannelDraftPort {
     startsAt: string;
     timeZone?: string;
     now?: Date;
+    /** A group ask must not collapse into a private 1:1 offer. */
+    audience?: 'direct' | 'group';
+    groupChatId?: string;
   }): Promise<string | null>;
 }
 
@@ -95,6 +98,32 @@ export function productionChannelDraftPort(
     draft: (input) => mintChannelCalendarDraft(input, database, client, now),
     pendingIdentical: (input) => findPendingIdenticalCalendarAdd(database, input),
   };
+}
+
+/** A group-stamped draft for this chat, so a private row is not reused as the group's. */
+async function groupDraftForChat(
+  database: Database,
+  familyId: string,
+  actionId: string,
+  groupChatId: string | undefined,
+): Promise<boolean> {
+  const rows = await database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.targetTable, 'actions'),
+        eq(schema.auditLog.targetId, actionId),
+        eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
+      ),
+    )
+    .limit(5);
+  return rows.some((row) => {
+    const chatId = (row.after as { chatId?: unknown } | null)?.chatId;
+    if (typeof chatId !== 'string') return false;
+    return groupChatId === undefined || chatId === groupChatId;
+  });
 }
 
 /**
@@ -114,6 +143,8 @@ export async function findPendingIdenticalCalendarAdd(
     startsAt: string;
     timeZone?: string;
     now?: Date;
+    audience?: 'direct' | 'group';
+    groupChatId?: string;
   },
 ): Promise<string | null> {
   const rows = await database
@@ -137,13 +168,22 @@ export async function findPendingIdenticalCalendarAdd(
       occasion: title !== '' && startsAt !== '' ? { title, startsAt } : null,
     };
   });
+  const groupAsk = input.audience === 'group';
   if (input.timeZone) {
     const hit = matchingCalendarAddId(shaped, {
       title: input.title,
       startsAt: input.startsAt,
-      timeZone: input.timeZone,
     });
-    if (hit) return hit;
+    // A private draft is not a group add. Returning it would skip the mint, and
+    // the group origin stamp is written only when a group draft is minted.
+    if (hit && !groupAsk) return hit;
+    if (
+      hit &&
+      groupAsk &&
+      (await groupDraftForChat(database, input.familyId, hit, input.groupChatId))
+    ) {
+      return hit;
+    }
   } else {
     const hit = shaped.find(
       (row) =>
@@ -151,15 +191,16 @@ export async function findPendingIdenticalCalendarAdd(
         calendarTitlesEqual(row.occasion.title, input.title) &&
         calendarInstantsEqual(row.occasion.startsAt, input.startsAt),
     );
-    if (hit) return hit.id;
+    if (hit && !groupAsk) return hit.id;
   }
+  // A 1:1 offer is private. A group ask cannot answer it, so it must still draft.
+  if (groupAsk) return null;
   if (!input.parentUserId || !input.timeZone || !input.now) return null;
   return standingCalendarOfferId(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     title: input.title,
     startsAt: input.startsAt,
-    timeZone: input.timeZone,
     now: input.now,
   });
 }
