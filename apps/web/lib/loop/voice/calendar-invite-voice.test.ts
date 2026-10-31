@@ -101,6 +101,21 @@ describe('calendarInviteRefusals', () => {
     ).toEqual([]);
   });
 
+  it('does not treat a repeated weekday title as a second date', () => {
+    const tuesday = new Date('2026-07-21T14:30:00.000Z');
+    expect(
+      calendarInviteRefusals(
+        `Sunday School on Tuesday at 10:30 AM. Sunday School again. ${INVITE_LINK_SLOT}`,
+        {
+          ...REQUEST,
+          summary: 'Sunday School',
+          when: 'Tue, Jul 21 at 10:30 AM',
+          startsAt: tuesday,
+        },
+      ),
+    ).toEqual([]);
+  });
+
   it('does not treat a weekday inside the event title as the date', () => {
     const tuesday = new Date('2026-07-21T14:30:00.000Z');
     expect(

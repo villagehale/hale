@@ -265,15 +265,59 @@ function eventWeekday(startsAt: Date, timeZone: string): number {
   return found[1];
 }
 
-function statedWeekdays(text: string): number[] {
+function summarySpans(text: string, summary: string): Array<[number, number]> {
+  if (!summary) return [];
+  const spans: Array<[number, number]> = [];
+  let from = 0;
+  while (from <= text.length) {
+    const at = text.indexOf(summary, from);
+    if (at < 0) break;
+    spans.push([at, at + summary.length]);
+    from = at + summary.length;
+  }
+  return spans;
+}
+
+/** A weekday inside a longer title is not a date. The first time the title is exactly
+ * that weekday, that copy is the title too. A later copy is a date claim. */
+function countsAsWeekday(
+  index: number,
+  length: number,
+  spans: ReadonlyArray<readonly [number, number]>,
+  skippedExact: { n: number },
+): boolean {
+  for (const [start, end] of spans) {
+    if (index < start || index + length > end) continue;
+    if (end - start > length) return false;
+    if (end - start === length && index === start && skippedExact.n === 0) {
+      skippedExact.n += 1;
+      return false;
+    }
+  }
+  return true;
+}
+
+function statedWeekdays(text: string, summary: string): number[] {
   const lower = text.toLowerCase();
+  const spans = summarySpans(lower, summary.toLowerCase());
+  const skippedExact = { n: 0 };
   const found: number[] = [];
   for (const [name, day] of WEEKDAY_NAMES) {
-    const boundary = new RegExp(`(?:^|[^\\p{L}])${name}(?=$|[^\\p{L}])`, 'iu');
-    if (boundary.test(lower)) found.push(day);
+    const boundary = new RegExp(`(?:^|[^\\p{L}])(${name})(?=$|[^\\p{L}])`, 'giu');
+    for (const match of lower.matchAll(boundary)) {
+      const word = match[1] ?? name;
+      const index = (match.index ?? 0) + match[0].length - word.length;
+      if (countsAsWeekday(index, word.length, spans, skippedExact)) found.push(day);
+    }
   }
   for (const [name, day] of ZH_WEEKDAYS) {
-    if (text.includes(name)) found.push(day);
+    let from = 0;
+    while (from <= text.length) {
+      const at = text.indexOf(name, from);
+      if (at < 0) break;
+      if (countsAsWeekday(at, name.length, spans, skippedExact)) found.push(day);
+      from = at + name.length;
+    }
   }
   return found;
 }
@@ -300,7 +344,8 @@ export function timeFactMissing(
   const clocks = statedClocks(scan);
   if (clocks.length === 0 || clocks.some((c) => !clockMatches(c, event))) return true;
   const weekday = eventWeekday(startsAt, timeZone);
-  if (statedWeekdays(scan).some((day) => day !== weekday)) return true;
+  const dated = body.split(INVITE_LINK_SLOT).join(' ');
+  if (statedWeekdays(dated, summary).some((day) => day !== weekday)) return true;
   const slash = [...scan.matchAll(/\b(\d{1,2})\/(\d{1,2})\b/g)];
   if (
     slash.some((match) => {
