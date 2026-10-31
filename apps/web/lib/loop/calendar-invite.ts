@@ -7,7 +7,7 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, asc, eq, gt, gte, inArray, isNotNull, like, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
 import { hadGroupPlanLink } from '~/lib/channel/group-plan/send';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
@@ -178,6 +178,7 @@ async function alreadyTextedThisLink(
         or(
           eq(m.dedupeKey, `${dedupeKey}:sms`),
           sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:sms:%`} ESCAPE '\\'`,
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:r%:sms%`} ESCAPE '\\'`,
         ),
         sql`${m.body} LIKE ${likeContains(url)} ESCAPE '\\'`,
         inArray(m.status, ['queued', 'sent', 'delivered']),
@@ -185,6 +186,33 @@ async function alreadyTextedThisLink(
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/** Parts already written for this revision, including earlier retries (`:rN`). */
+async function priorInviteParts(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+  dedupeKey: string,
+): Promise<number> {
+  const m = schema.channelMessages;
+  const rows = await database
+    .select({ id: m.id })
+    .from(m)
+    .where(
+      and(
+        eq(m.familyId, familyId),
+        eq(m.parentUserId, parentUserId),
+        eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
+        or(
+          eq(m.dedupeKey, `${dedupeKey}:sms`),
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:sms:%`} ESCAPE '\\'`,
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:r%:sms%`} ESCAPE '\\'`,
+        ),
+        inArray(m.status, ['queued', 'sent', 'delivered']),
+      ),
+    );
+  return rows.length;
 }
 
 async function familyLanguage(database: Database, familyId: string): Promise<string> {
@@ -222,10 +250,14 @@ async function textOneParent(
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'event_not_found' };
   }
 
-  const dedupeKey = linkDedupeKey(job.familyEventId, composed.sequence, parent.userId);
-  if (await alreadyTextedThisLink(database, job.familyId, parent.userId, dedupeKey, composed.url)) {
+  const baseKey = linkDedupeKey(job.familyEventId, composed.sequence, parent.userId);
+  if (await alreadyTextedThisLink(database, job.familyId, parent.userId, baseKey, composed.url)) {
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'already_sent' };
   }
+  // A previous attempt left a part that is not the link. A fresh key so dispatch
+  // does not skip the new part 0 when that is where the link now sits.
+  const prior = await priorInviteParts(database, job.familyId, parent.userId, baseKey);
+  const dedupeKey = prior > 0 ? `${baseKey}:r${prior}` : baseKey;
 
   const when = inviteWhenLabel(composed.startsAt, parent.timezone);
   const voiced = await voice.compose({
@@ -309,7 +341,13 @@ async function wasTextedTheLink(
         eq(m.parentUserId, parentUserId),
         eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
         like(m.dedupeKey, `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${job.familyEventId}:%`),
-        sql`${m.body} LIKE ${likeContains(`/api/ics/event/${job.familyEventId}`)} ESCAPE '\\'`,
+        // A null body is a send from before the text was stored, or one whose body
+        // retention already cleared. A stored body counts only when it holds the link,
+        // so a linkless first part is not "they have the invite".
+        or(
+          isNull(m.body),
+          sql`${m.body} LIKE ${likeContains(`/api/ics/event/${job.familyEventId}`)} ESCAPE '\\'`,
+        ),
         inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     )

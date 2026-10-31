@@ -283,8 +283,15 @@ function statedWeekdays(text: string): number[] {
  * month, when the reply gives one, must be that start too. The English `when`
  * label is not required.
  */
-export function timeFactMissing(body: string, startsAt: Date, timeZone: string): boolean {
-  const scan = body.split(INVITE_LINK_SLOT).join(' ');
+export function timeFactMissing(
+  body: string,
+  startsAt: Date,
+  timeZone: string,
+  summary = '',
+): boolean {
+  // The title is required in the text. A weekday inside it ("Sunday School") is not a date claim.
+  let scan = body.split(INVITE_LINK_SLOT).join(' ');
+  if (summary) scan = scan.split(summary).join(' ');
   const event = eventClock(startsAt, timeZone);
   const clocks = statedClocks(scan);
   if (clocks.length === 0 || clocks.some((c) => !clockMatches(c, event))) return true;
@@ -327,7 +334,9 @@ export function calendarInviteRefusals(
   if (slotCount > 1) found.push('link_repeated');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (!body.includes(request.summary)) found.push('summary_missing');
-  if (timeFactMissing(body, request.startsAt, request.timeZone)) found.push('when_missing');
+  if (timeFactMissing(body, request.startsAt, request.timeZone, request.summary)) {
+    found.push('when_missing');
+  }
   const rest = body.split(request.summary).join(' ').split(INVITE_LINK_SLOT).join(' ');
   const allowed = allowedDigits(request.summary, eventClock(request.startsAt, request.timeZone));
   if ((rest.match(/\d+/g) ?? []).some((n) => !allowed.has(n))) found.push('invented_number');

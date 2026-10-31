@@ -57,6 +57,8 @@ let cancelOutcome: CalendarCancelOutcome;
 /** What the tap-to-add composer was handed. `scripted` fills a line from those facts. */
 let inviteCalls: CalendarInviteVoiceRequest[];
 let inviteOutcome: CalendarInviteVoiceOutcome | { status: 'scripted' };
+/** When set, the scripted line leads with the url so a retry can put the link in part 0. */
+let linkFirst: boolean;
 
 /** A stand-in for the model: the facts, in words this test owns. Not a fixed product line. */
 function scriptedInviteBody(request: CalendarInviteVoiceRequest): string {
@@ -74,6 +76,12 @@ function sender() {
     inviteVoice: {
       compose: async (request) => {
         inviteCalls.push(request);
+        if (linkFirst) {
+          return {
+            status: 'composed',
+            body: `${request.url} ${request.summary}, ${request.when}. ${'week '.repeat(40)}`,
+          };
+        }
         if (inviteOutcome.status === 'scripted') {
           return { status: 'composed', body: scriptedInviteBody(request) };
         }
@@ -194,6 +202,7 @@ beforeEach(async () => {
   };
   inviteCalls = [];
   inviteOutcome = { status: 'scripted' };
+  linkFirst = false;
   vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('DATABASE_URL', 'postgres://pglite');
@@ -748,6 +757,58 @@ describe('the tap-to-add link a text-only family gets', () => {
       parents: [{ parentUserId, channel: 'sms', outcome: 'no_channel' }],
     });
     expect(sms.calls).toHaveLength(0);
+  });
+
+  it('a linkless first part does not block a retry that puts the link first', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'approval',
+      templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+      dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms:0`,
+      status: 'sent',
+      body: 'Swim class tomorrow',
+      sentAt: NOON,
+    });
+    linkFirst = true;
+
+    const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toMatchObject({
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sentTranscript()).toContain('https://app.villagehale.com/api/ics/event/');
+  });
+
+  it('a null-body invite from before bodies were stored still gets a cancellation', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'approval',
+      templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+      dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms`,
+      status: 'sent',
+      sentAt: NOON,
+    });
+    await db.database
+      .update(schema.familyEvents)
+      .set({ deletedAt: NOON })
+      .where(eq(schema.familyEvents.id, familyEventId));
+
+    const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(report).toMatchObject({
+      parents: [{ parentUserId, outcome: 'sent' }],
+    });
+    expect(cancelCalls).toHaveLength(1);
   });
 
   it('a first part that has no link does not count as the invite', async () => {
