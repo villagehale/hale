@@ -288,6 +288,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   'apps/web/lib/integrations/calendar-mirror.ts': [
     'calendar_mirror_added',
     'calendar_mirror_moved',
+    'calendar_mirror_notes_updated',
   ],
   'apps/web/lib/village/intros/consent.ts': [
     'village_intro_discoverability_granted',

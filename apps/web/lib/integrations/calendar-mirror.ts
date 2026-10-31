@@ -3,11 +3,13 @@ import { and, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { REMINDER_HORIZON_MS } from '~/lib/loop/reminders/schedule';
 import { zonedMidnight } from '~/lib/memory/period';
 import {
+  EVENT_NOTES_CONCURRENCY,
   EVENT_NOTES_FAILED,
   EVENT_NOTES_MAX_FAILED_READS,
   type EventNotesReader,
-  descriptionHash,
   eventNotesIdle,
+  mapLimited,
+  notesSourceHash,
   sameEventNotes,
 } from './event-notes';
 
@@ -242,7 +244,7 @@ async function notesFor(
 ): Promise<FamilyEventNotes | null> {
   const description = candidate.description;
   if (!description) return null;
-  const hash = descriptionHash(description);
+  const hash = notesSourceHash(candidate.title, description);
   const sameHash = stored?.sourceHash === hash;
   const priorFailures = sameHash ? (stored?.failedReads ?? 0) : 0;
   if (sameHash && (priorFailures === 0 || priorFailures >= EVENT_NOTES_MAX_FAILED_READS)) {
@@ -329,6 +331,14 @@ export async function reconcileCalendarMirrors(
     mirrors.flatMap((row) => (row.googleEventId ? [[row.googleEventId, row] as const] : [])),
   );
 
+  // Devin #930 🔴: read notes up front, in parallel and bounded (the reader carries the
+  // per-read timeout and the sweep budget), so one slow description cannot stall the sweep.
+  const toMirror = eligible.filter((c) => !known.some((row) => knownEventCovers(c, row)));
+  const notesList = await mapLimited(toMirror, EVENT_NOTES_CONCURRENCY, (c) =>
+    notesFor(c, mirrorByEvent.get(c.eventId)?.notes ?? null, input.readNotes),
+  );
+  const notesByEvent = new Map(toMirror.map((c, i) => [c.eventId, notesList[i] ?? null] as const));
+
   const kept = new Set<string>();
   for (const candidate of eligible) {
     if (known.some((row) => knownEventCovers(candidate, row))) {
@@ -343,7 +353,7 @@ export async function reconcileCalendarMirrors(
     }
     kept.add(candidate.eventId);
     const existing = mirrorByEvent.get(candidate.eventId);
-    const notes = await notesFor(candidate, existing?.notes ?? null, input.readNotes);
+    const notes = notesByEvent.get(candidate.eventId) ?? null;
     if (!existing) {
       const inserted = await database
         .insert(schema.familyEvents)
@@ -402,9 +412,18 @@ export async function reconcileCalendarMirrors(
       })
       .where(eq(schema.familyEvents.id, existing.id));
     counts.updated += 1;
-    if (moved || existing.deletedAt !== null) {
+    // Devin #930: a logistics-only change (parking / what-to-bring facts) is audited too.
+    // A failed-read counter bump alone is bookkeeping, not a change the parent would see.
+    const factsChanged =
+      (existing.notes?.parking ?? null) !== (notes?.parking ?? null) ||
+      (existing.notes?.bring ?? null) !== (notes?.bring ?? null);
+    if (moved || existing.deletedAt !== null || factsChanged) {
       const actionTaken =
-        existing.deletedAt !== null ? 'calendar_mirror_added' : 'calendar_mirror_moved';
+        existing.deletedAt !== null
+          ? 'calendar_mirror_added'
+          : moved
+            ? 'calendar_mirror_moved'
+            : 'calendar_mirror_notes_updated';
       await database.insert(schema.auditLog).values({
         familyId: input.familyId,
         actor: 'system',
@@ -443,6 +462,7 @@ async function softDeleteMirror(
       deletedAt: input.now,
       title: '',
       location: null,
+      notes: null,
       dutyOwnerLabel: null,
       sourceChangedField: null,
       sourceChangedFromStartsAt: null,

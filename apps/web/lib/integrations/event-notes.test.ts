@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   EVENT_NOTES_FAILED,
+  boundEventNotesReader,
   createEventNotesReader,
-  descriptionHash,
+  mapLimited,
+  notesSourceHash,
   sameEventNotes,
   toEventNotes,
 } from './event-notes';
@@ -58,7 +60,7 @@ describe('createEventNotesReader', () => {
 
 describe('sameEventNotes', () => {
   it('a changed failure count is a change', () => {
-    const h = descriptionHash('x');
+    const h = notesSourceHash('t', 'x');
     expect(
       sameEventNotes({ sourceHash: h, failedReads: 1 }, { sourceHash: h, failedReads: 2 }),
     ).toBe(false);
@@ -66,7 +68,7 @@ describe('sameEventNotes', () => {
   });
 
   it('compares facts and source hash', () => {
-    const h = descriptionHash('x');
+    const h = notesSourceHash('t', 'x');
     expect(sameEventNotes({ parking: 'A', sourceHash: h }, { parking: 'A', sourceHash: h })).toBe(
       true,
     );
@@ -74,5 +76,72 @@ describe('sameEventNotes', () => {
       false,
     );
     expect(sameEventNotes(null, undefined)).toBe(true);
+  });
+});
+
+describe('notesSourceHash (Devin #930)', () => {
+  it('a renamed event with the same description is a different source', () => {
+    expect(notesSourceHash('Swim', 'Park on Elm')).not.toBe(
+      notesSourceHash('Skate', 'Park on Elm'),
+    );
+    expect(notesSourceHash('Swim', 'Park on Elm')).toBe(notesSourceHash('Swim', 'Park on Elm'));
+  });
+});
+
+describe('boundEventNotesReader (Devin #930)', () => {
+  const input = { title: 'Swim', description: 'Park on Elm' };
+
+  it('a read past the timeout is a failed read, not a stall', async () => {
+    vi.useFakeTimers();
+    try {
+      const reader = boundEventNotesReader(() => new Promise(() => {}), { timeoutMs: 50 });
+      const pending = reader(input);
+      await vi.advanceTimersByTimeAsync(60);
+      await expect(pending).resolves.toBe(EVENT_NOTES_FAILED);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a thrown read is a failed read', async () => {
+    const reader = boundEventNotesReader(async () => {
+      throw new Error('boom');
+    });
+    await expect(reader(input)).resolves.toBe(EVENT_NOTES_FAILED);
+  });
+
+  it('stops starting reads past the sweep read cap (deferred, no model call)', async () => {
+    const inner = vi.fn(async () => ({ sourceHash: 'h' }));
+    const reader = boundEventNotesReader(inner, { maxReads: 2 });
+    await reader(input);
+    await reader(input);
+    await expect(reader(input)).resolves.toBeNull();
+    expect(inner).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops starting reads past the sweep time budget', async () => {
+    let t = 0;
+    const inner = vi.fn(async () => ({ sourceHash: 'h' }));
+    const reader = boundEventNotesReader(inner, { budgetMs: 100, now: () => t });
+    await reader(input);
+    t = 100;
+    await expect(reader(input)).resolves.toBeNull();
+    expect(inner).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('mapLimited', () => {
+  it('keeps order and never exceeds the limit', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const out = await mapLimited([1, 2, 3, 4, 5, 6], 2, async (n) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return n * 10;
+    });
+    expect(out).toEqual([10, 20, 30, 40, 50, 60]);
+    expect(peak).toBe(2);
   });
 });

@@ -279,6 +279,7 @@ export const AUDIT_VERBS = [
   'calendar_alert_sent',
   'calendar_mirror_added',
   'calendar_mirror_moved',
+  'calendar_mirror_notes_updated',
   'calendar_mirror_removed',
   'reminder_suppressed',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
@@ -1096,6 +1097,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   calendar_mirror_moved: {
     sentence: 'Hale followed a time that moved on your calendar',
+    family: 'note',
+  },
+  // VIL-468. Parking / what-to-bring facts read from the event changed. `after` is
+  // `{ source: 'parent' }` only — never the facts.
+  calendar_mirror_notes_updated: {
+    sentence: 'Hale updated the parking or what-to-bring for something on your calendar',
     family: 'note',
   },
   calendar_mirror_removed: {

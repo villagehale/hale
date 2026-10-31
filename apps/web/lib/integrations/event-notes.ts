@@ -50,8 +50,13 @@ export function eventNotesUserMessage(title: string, description: string): strin
   return JSON.stringify({ title, description });
 }
 
-export function descriptionHash(description: string): string {
-  return createHash('sha256').update(description).digest('hex').slice(0, 32);
+/** Hash of what the facts were read from: the title AND the description. A renamed event with
+ * the same description is a different source, so its old facts are not reused (Devin #930). */
+export function notesSourceHash(title: string, description: string): string {
+  return createHash('sha256')
+    .update(JSON.stringify([title, description]))
+    .digest('hex')
+    .slice(0, 32);
 }
 
 /** A reading becomes notes: only non-empty facts become keys. */
@@ -106,7 +111,7 @@ export function createEventNotesReader(client: () => AgentClient): EventNotesRea
         schema: eventNotesSchema,
         maxTokens: MAX_TOKENS,
       });
-      return toEventNotes(value, descriptionHash(description));
+      return toEventNotes(value, notesSourceHash(title, description));
     } catch (err) {
       console.info({ reason: 'model_failed', detail: className(err) }, 'event notes read');
       return EVENT_NOTES_FAILED;
@@ -125,4 +130,69 @@ export function sameEventNotes(
     (a?.sourceHash ?? null) === (b?.sourceHash ?? null) &&
     (a?.failedReads ?? 0) === (b?.failedReads ?? 0)
   );
+}
+
+/** Per-read wall clock. A read past it counts as a failed read (capped by MAX_FAILED_READS). */
+export const EVENT_NOTES_READ_TIMEOUT_MS = 20_000;
+/** Reads one connector sweep may start, across every connection. */
+export const EVENT_NOTES_SWEEP_MAX_READS = 24;
+/** Past this much sweep time no new read starts, so later connections still sync. */
+export const EVENT_NOTES_SWEEP_BUDGET_MS = 90_000;
+/** Reads in flight at once inside one connection. */
+export const EVENT_NOTES_CONCURRENCY = 4;
+
+/**
+ * Devin #930 🔴. Bounds a reader for one cron sweep: each read is raced against a timeout
+ * (a timeout is EVENT_NOTES_FAILED, so the per-hash retry cap applies), and once the sweep has
+ * started `maxReads` reads or spent `budgetMs`, further calls return null without a model call
+ * (deferred: nothing counted, read again next sweep). Share ONE bounded reader across a sweep.
+ */
+export function boundEventNotesReader(
+  reader: EventNotesReader,
+  opts: {
+    timeoutMs?: number;
+    maxReads?: number;
+    budgetMs?: number;
+    now?: () => number;
+  } = {},
+): EventNotesReader {
+  const timeoutMs = opts.timeoutMs ?? EVENT_NOTES_READ_TIMEOUT_MS;
+  const maxReads = opts.maxReads ?? EVENT_NOTES_SWEEP_MAX_READS;
+  const now = opts.now ?? Date.now;
+  const deadline = now() + (opts.budgetMs ?? EVENT_NOTES_SWEEP_BUDGET_MS);
+  let started = 0;
+  return async (input) => {
+    if (started >= maxReads || now() >= deadline) return null;
+    started += 1;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<typeof EVENT_NOTES_FAILED>((resolve) => {
+      timer = setTimeout(() => {
+        console.info({ reason: 'timeout' }, 'event notes read');
+        resolve(EVENT_NOTES_FAILED);
+      }, timeoutMs);
+    });
+    try {
+      return await Promise.race([reader(input).catch(() => EVENT_NOTES_FAILED), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+/** Run `fn` over `items` with at most `limit` in flight; results keep input order. */
+export async function mapLimited<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
