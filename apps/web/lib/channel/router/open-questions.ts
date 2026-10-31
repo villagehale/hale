@@ -2,7 +2,7 @@ import type { Database } from '@hale/db';
 // Type-only, so the cycle with approval.ts (which imports `approvalSubjects` from here)
 // is erased at build time. One shape for a drafted action, owned by the spine that reads
 // them, rather than a structural copy the two files could drift apart on.
-import { matchApprovedCalendarAdd } from '~/lib/channel/calendar-ask';
+import { matchApprovedCalendarAdd, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
 import { CALL_TIMEOUT_MS, READER_TIMEOUT } from '~/lib/channel/config';
 import { actionTypeLabel } from '~/lib/format/labels';
 import type { PendingAction } from './approval';
@@ -689,6 +689,8 @@ export interface OpenQuestionSources {
       /** The occasion, so a matching calendar draft is the same question. */
       title?: string;
       startsAt?: string;
+      /** The parent's zone, so a same-day draft is the ask already sent. */
+      timeZone?: string;
     }>
   >;
   /**
@@ -919,6 +921,11 @@ export function createOpenQuestionReader(
       // YES ambiguous, the approval handler declines to claim, and the coach drafts
       // the same add again.
       //
+      // VIL-525. An unapproved draft of that same occasion is the stale queue item.
+      // The offer is the ask that already went out, so the draft is not a second
+      // question. It stays in the approvals table until YES retires it or NO declines
+      // it; it is only taken off this list. Its YES stays closed.
+      //
       // Only on the thread where the offer was made. A group-plan draft with the same
       // title stays on the group list, or the group's YES has nothing to approve.
       const approvesByOffer = new Map<string, string>();
@@ -930,9 +937,22 @@ export function createOpenQuestionReader(
             title: offer.title,
             startsAt: offer.startsAt,
           });
-          if (!match || hiddenDrafts.has(match.actionId)) continue;
-          hiddenDrafts.add(match.actionId);
-          approvesByOffer.set(offer.id, match.actionId);
+          if (match && !hiddenDrafts.has(match.actionId)) {
+            hiddenDrafts.add(match.actionId);
+            approvesByOffer.set(offer.id, match.actionId);
+          }
+          if (!offer.timeZone) continue;
+          for (const id of unapprovedCalendarAddIds(
+            approvals.map((action) => ({
+              id: action.actionId,
+              actionType: action.actionType,
+              reviewerApproved: action.reviewerApproved,
+              occasion: action.occasion ?? null,
+            })),
+            { title: offer.title, startsAt: offer.startsAt, timeZone: offer.timeZone },
+          )) {
+            hiddenDrafts.add(id);
+          }
         }
       }
       const questions: OpenQuestion[] = namedApprovals(

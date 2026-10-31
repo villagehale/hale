@@ -5,6 +5,7 @@ import {
   approvalForCalendarYes,
   calendarInstantsClose,
   matchApprovedCalendarAdd,
+  matchingCalendarAddId,
   pairedDraftForCalendarNo,
   questionsForCalendarReader,
   unapprovedCalendarAddIds,
@@ -183,6 +184,67 @@ describe('pairedDraftForCalendarNo', () => {
       }),
     ).toBeNull();
     expect(pairedDraftForCalendarNo([offer('offer-1')], reading)).toBeNull();
+  });
+});
+
+describe('matchingCalendarAddId', () => {
+  const zone = 'America/Toronto';
+
+  it('is the lone same-title draft on that local day, even a minute off', () => {
+    expect(
+      matchingCalendarAddId(
+        [
+          {
+            id: 'a-1',
+            actionType: 'calendar_add',
+            occasion: { title: 'Trunk or Treat', startsAt: '2026-10-08T16:00:00.000Z' },
+          },
+        ],
+        { title: 'trunk or treat', startsAt: '2026-10-08T16:01:00.000Z', timeZone: zone },
+      ),
+    ).toBe('a-1');
+  });
+
+  it('is not a Sunday draft when the ask is Thursday', () => {
+    expect(
+      matchingCalendarAddId(
+        [
+          {
+            id: 'sunday',
+            actionType: 'calendar_add',
+            occasion: { title: 'Gymnastics', startsAt: '2026-10-11T16:00:00.000Z' },
+          },
+        ],
+        { title: 'Gymnastics', startsAt: '2026-10-08T16:00:00.000Z', timeZone: zone },
+      ),
+    ).toBeNull();
+  });
+
+  it('tells two same-title drafts apart by a close clock, not by picking one', () => {
+    const morning = {
+      id: 'morning',
+      actionType: 'calendar_add',
+      occasion: { title: 'Gymnastics', startsAt: '2026-10-08T13:00:00.000Z' },
+    };
+    const afternoon = {
+      id: 'afternoon',
+      actionType: 'calendar_add',
+      occasion: { title: 'Gymnastics', startsAt: '2026-10-08T20:00:00.000Z' },
+    };
+    expect(
+      matchingCalendarAddId([morning, afternoon], {
+        title: 'Gymnastics',
+        startsAt: '2026-10-08T13:01:00.000Z',
+        timeZone: zone,
+      }),
+    ).toBe('morning');
+    expect(
+      matchingCalendarAddId([morning, afternoon], {
+        title: 'Gymnastics',
+        startsAt: '2026-10-08T16:00:00.000Z',
+        timeZone: zone,
+      }),
+    ).toBeNull();
   });
 });
 

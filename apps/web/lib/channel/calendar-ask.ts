@@ -140,6 +140,45 @@ export function calendarSameLocalDay(left: string, right: string, timeZone: stri
 }
 
 /**
+ * The pending `calendar_add` this ask is already about, or null.
+ *
+ * One draft with the title is that draft when the start falls on the offer's
+ * local day, so a minute-off clock is the same ask and a Sunday draft is not a
+ * Thursday one. Two drafts with the title are told apart by a close clock —
+ * morning and afternoon stay different — and never by picking the newest.
+ */
+export function matchingCalendarAddId(
+  drafts: readonly {
+    id: string;
+    actionType: string;
+    occasion: { title: string; startsAt: string } | null;
+  }[],
+  offer: { title: string; startsAt: string; timeZone: string },
+): string | null {
+  const titled = drafts.filter(
+    (draft) =>
+      draft.actionType === 'calendar_add' &&
+      draft.occasion !== null &&
+      calendarTitlesEqual(draft.occasion.title, offer.title),
+  );
+  if (titled.length === 1) {
+    const only = titled[0];
+    if (
+      only?.occasion &&
+      calendarSameLocalDay(only.occasion.startsAt, offer.startsAt, offer.timeZone)
+    ) {
+      return only.id;
+    }
+    return null;
+  }
+  const timed = titled.filter(
+    (draft) =>
+      draft.occasion !== null && calendarInstantsClose(draft.occasion.startsAt, offer.startsAt),
+  );
+  return timed.length === 1 ? (timed[0]?.id ?? null) : null;
+}
+
+/**
  * Same occasion as a coach offer, among drafts that must not also execute.
  *
  * One draft with the title is retired only when its start falls on the offer's

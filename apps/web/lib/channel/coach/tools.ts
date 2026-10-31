@@ -668,8 +668,11 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       }
       const already = await draftPort.pendingIdentical?.({
         familyId,
+        ...(args.parentUserId ? { parentUserId: args.parentUserId } : {}),
         title: input.title,
         startsAt: startsAt.toISOString(),
+        timeZone,
+        now,
       });
       if (already) {
         return {

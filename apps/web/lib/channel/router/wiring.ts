@@ -61,6 +61,7 @@ import {
   emailAlertOfferSubject,
   emailAlertOfferSummary,
   loadOpenEmailAlertOffers,
+  parentTimeZoneForOffer,
 } from '~/lib/integrations/email-alert-offer';
 import { createOfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { familyMemoryKindsHandler } from '~/lib/memory/handler';
@@ -953,7 +954,10 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // the same discipline the three offers above keep — and `askedAt` is the row's own mint
       // time, which is the moment the text went out, because the row is written at send.
       emailAlertOffers: async (database, input) => {
-        const offers = await loadOpenEmailAlertOffers(database, input);
+        const [offers, timeZone] = await Promise.all([
+          loadOpenEmailAlertOffers(database, input),
+          parentTimeZoneForOffer(database, input.parentUserId),
+        ]);
         return offers.map((offer) => ({
           id: offer.id,
           summary: emailAlertOfferSummary(offer),
@@ -961,6 +965,7 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
           askedAt: offer.askedAt,
           title: offer.title,
           startsAt: offer.startsAt.toISOString(),
+          timeZone,
         }));
       },
       // The email forwarding door is retired with the email channel, so no revoke

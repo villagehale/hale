@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { declineDraftedAction } from '~/lib/actions/decline';
+import { findPendingIdenticalCalendarAdd } from '~/lib/channel/coach/draft';
 import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
@@ -964,6 +965,60 @@ describe('a coach offer is the calendar, not the sentence', () => {
       }),
     ).resolves.toBe('already_held');
     await expect(offers()).resolves.toEqual([]);
+  });
+
+  it('does not ask a pending add again once that ask has been sent', async () => {
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const minuteOff = new Date(STARTS_AT.getTime() + 60_000);
+
+    expect(
+      await findPendingIdenticalCalendarAdd(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        title: TITLE,
+        startsAt: minuteOff.toISOString(),
+        timeZone: 'America/Toronto',
+        now: NOW,
+      }),
+    ).toBe(actionId);
+
+    const channelMessageId = await sentOut(NOW);
+    await expect(coach({ title: TITLE, startsAt: minuteOff, channelMessageId })).resolves.toBe(
+      'recorded',
+    );
+
+    const questions = await defaultOpenQuestionReader().open(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(questions.map((question) => question.kind)).toContain('email_alert_add');
+
+    const again = await sentOut(new Date(NOW.getTime() + 60_000));
+    await expect(
+      coach({ title: TITLE, startsAt: STARTS_AT, channelMessageId: again }),
+    ).resolves.toBe('already_asked');
+    const open = await loadOpenEmailAlertOffers(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+    expect(open).toHaveLength(1);
+    expect(
+      await findPendingIdenticalCalendarAdd(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        title: TITLE,
+        startsAt: STARTS_AT.toISOString(),
+        timeZone: 'America/Toronto',
+        now: NOW,
+      }),
+    ).toBe(actionId);
   });
 
   it('records a future offer, expires the older one, and stops at the start', async () => {
