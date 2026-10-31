@@ -203,6 +203,81 @@ function clockMatches(stated: StatedClock, event: ZonedClock): boolean {
   return stated.hour === event.hour && stated.minute === event.minute;
 }
 
+/** Longest spelling first. Abbreviations use a letter boundary so "thu" is not "thursday". */
+const WEEKDAY_NAMES: readonly [string, number][] = [
+  ['wednesday', 3],
+  ['thursday', 4],
+  ['saturday', 6],
+  ['tuesday', 2],
+  ['friday', 5],
+  ['monday', 1],
+  ['sunday', 0],
+  ['mercredi', 3],
+  ['jeudi', 4],
+  ['dimanche', 0],
+  ['vendredi', 5],
+  ['samedi', 6],
+  ['lundi', 1],
+  ['mardi', 2],
+  ['thurs', 4],
+  ['thur', 4],
+  ['tues', 2],
+  ['wed', 3],
+  ['thu', 4],
+  ['fri', 5],
+  ['sat', 6],
+  ['mon', 1],
+  ['tue', 2],
+  ['sun', 0],
+];
+
+const ZH_WEEKDAYS: readonly [string, number][] = [
+  ['星期天', 0],
+  ['星期日', 0],
+  ['星期一', 1],
+  ['星期二', 2],
+  ['星期三', 3],
+  ['星期四', 4],
+  ['星期五', 5],
+  ['星期六', 6],
+  ['礼拜天', 0],
+  ['礼拜一', 1],
+  ['礼拜二', 2],
+  ['礼拜三', 3],
+  ['礼拜四', 4],
+  ['礼拜五', 5],
+  ['礼拜六', 6],
+  ['周日', 0],
+  ['周一', 1],
+  ['周二', 2],
+  ['周三', 3],
+  ['周四', 4],
+  ['周五', 5],
+  ['周六', 6],
+];
+
+function eventWeekday(startsAt: Date, timeZone: string): number {
+  const name = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone })
+    .format(startsAt)
+    .toLowerCase();
+  const found = WEEKDAY_NAMES.find(([weekday]) => weekday === name);
+  if (!found) throw new Error(`calendar invite: unknown weekday ${name}`);
+  return found[1];
+}
+
+function statedWeekdays(text: string): number[] {
+  const lower = text.toLowerCase();
+  const found: number[] = [];
+  for (const [name, day] of WEEKDAY_NAMES) {
+    const boundary = new RegExp(`(?:^|[^\\p{L}])${name}(?=$|[^\\p{L}])`, 'iu');
+    if (boundary.test(lower)) found.push(day);
+  }
+  for (const [name, day] of ZH_WEEKDAYS) {
+    if (text.includes(name)) found.push(day);
+  }
+  return found;
+}
+
 /**
  * The time fact. A stated clock must be the event's own start. A stated day or
  * month, when the reply gives one, must be that start too. The English `when`
@@ -213,6 +288,8 @@ export function timeFactMissing(body: string, startsAt: Date, timeZone: string):
   const event = eventClock(startsAt, timeZone);
   const clocks = statedClocks(scan);
   if (clocks.length === 0 || clocks.some((c) => !clockMatches(c, event))) return true;
+  const weekday = eventWeekday(startsAt, timeZone);
+  if (statedWeekdays(scan).some((day) => day !== weekday)) return true;
   const slash = [...scan.matchAll(/\b(\d{1,2})\/(\d{1,2})\b/g)];
   if (
     slash.some((match) => {

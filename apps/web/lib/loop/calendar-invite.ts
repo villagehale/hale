@@ -144,19 +144,27 @@ interface InviteJob {
   method: CalendarInviteMethod;
 }
 
+/** LIKE metacharacters stay literal. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/** LIKE pattern that matches `value` as a substring. */
+function likeContains(value: string): string {
+  return `%${escapeLike(value)}%`;
+}
+
 /**
- * Whether this parent was already texted this revision of the tap-to-add link.
- * Checked BEFORE the model is asked, so a re-drive costs nothing once it has landed.
- *
- * A single send stores `${dedupeKey}:sms`. A line split at send stores
- * `${dedupeKey}:sms:0` for the first part. Both are exact keys: a prefix would
- * treat revision 1 (`…:1:P`) as revision 10 (`…:10:P`).
+ * Whether this parent was already texted this revision AND the part that carries
+ * the link landed. A first bubble with no url is not the invite: dispatch still
+ * has to send the missing part. Revision 1's key is not a prefix of revision 10.
  */
 async function alreadyTextedThisLink(
   database: Database,
   familyId: string,
   parentUserId: string,
   dedupeKey: string,
+  url: string,
 ): Promise<boolean> {
   const m = schema.channelMessages;
   const rows = await database
@@ -167,7 +175,11 @@ async function alreadyTextedThisLink(
         eq(m.familyId, familyId),
         eq(m.parentUserId, parentUserId),
         eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
-        or(eq(m.dedupeKey, `${dedupeKey}:sms`), eq(m.dedupeKey, `${dedupeKey}:sms:0`)),
+        or(
+          eq(m.dedupeKey, `${dedupeKey}:sms`),
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:sms:%`} ESCAPE '\\'`,
+        ),
+        sql`${m.body} LIKE ${likeContains(url)} ESCAPE '\\'`,
         inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     )
@@ -211,7 +223,7 @@ async function textOneParent(
   }
 
   const dedupeKey = linkDedupeKey(job.familyEventId, composed.sequence, parent.userId);
-  if (await alreadyTextedThisLink(database, job.familyId, parent.userId, dedupeKey)) {
+  if (await alreadyTextedThisLink(database, job.familyId, parent.userId, dedupeKey, composed.url)) {
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'already_sent' };
   }
 
@@ -297,6 +309,7 @@ async function wasTextedTheLink(
         eq(m.parentUserId, parentUserId),
         eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
         like(m.dedupeKey, `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${job.familyEventId}:%`),
+        sql`${m.body} LIKE ${likeContains(`/api/ics/event/${job.familyEventId}`)} ESCAPE '\\'`,
         inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     )

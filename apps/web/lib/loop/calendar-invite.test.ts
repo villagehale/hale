@@ -277,9 +277,8 @@ describe('the tap-to-add link a text-only family gets', () => {
     // One row per part when the line is split at send. Born 'queued'.
     expect(rows.length).toBe(sms.calls.length);
     expect(rows.length).toBeGreaterThan(0);
-    expect(
-      rows.every((row) => row.status === 'queued' && row.channel === 'sms' && row.body === null),
-    ).toBe(true);
+    expect(rows.every((row) => row.status === 'queued' && row.channel === 'sms')).toBe(true);
+    expect(rows.some((row) => row.body?.includes('/api/ics/event/'))).toBe(true);
   });
 
   /**
@@ -749,6 +748,30 @@ describe('the tap-to-add link a text-only family gets', () => {
       parents: [{ parentUserId, channel: 'sms', outcome: 'no_channel' }],
     });
     expect(sms.calls).toHaveLength(0);
+  });
+
+  it('a first part that has no link does not count as the invite', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'approval',
+      templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+      dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms:0`,
+      status: 'sent',
+      body: 'Swim class tomorrow',
+      sentAt: NOON,
+    });
+
+    const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toMatchObject({
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sentTranscript()).toContain('https://app.villagehale.com/api/ics/event/');
   });
 
   it('a sent revision 1 does not suppress revision 10', async () => {

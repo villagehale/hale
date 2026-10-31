@@ -115,6 +115,9 @@ export const calendarInviteSmsRenderer: TemplateRenderer = {
     return {
       kind: 'sms',
       text: texts.join('\n\n'),
+      // The sent words stay on the ledger so a later pass can see whether the
+      // part that carries the link actually went out.
+      recordBody: true,
       ...(texts.length > 1 ? { texts } : {}),
     };
   },

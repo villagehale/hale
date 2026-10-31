@@ -81,6 +81,21 @@ describe('calendarInviteRefusals', () => {
     ).toEqual([]);
   });
 
+  it('refuses a weekday that is not the event, even when the date and clock match', () => {
+    expect(
+      calendarInviteRefusals(
+        `Swim class on Friday, July 23 at 10:30 AM. ${INVITE_LINK_SLOT}`,
+        REQUEST,
+      ),
+    ).toContain('when_missing');
+    expect(
+      calendarInviteRefusals(`Swim class le jeudi 23 juillet à 10 h 30. ${INVITE_LINK_SLOT}`, {
+        ...REQUEST,
+        language: 'fr',
+      }),
+    ).toEqual([]);
+  });
+
   it('refuses a clock or a day that is not the event, even when the digits were handed', () => {
     expect(
       calendarInviteRefusals(
