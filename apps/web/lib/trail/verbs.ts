@@ -277,6 +277,8 @@ export const AUDIT_VERBS = [
   'activity_booking_recorded',
   'activity_booking_cancelled',
   'calendar_alert_sent',
+  // VIL-527 · a held calendar text retired with the fixed-copy path, never sent.
+  'calendar_alert_debt_retired',
   'calendar_mirror_added',
   'calendar_mirror_moved',
   'calendar_mirror_removed',
@@ -1085,6 +1087,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   calendar_alert_sent: {
     sentence: 'Hale texted you about a change on your calendar',
     family: 'done',
+  },
+  // VIL-527. A calendar change Hale was still holding a text for when the fixed-copy
+  // path was retired. Nothing went out; the row just closes the held item.
+  calendar_alert_debt_retired: {
+    sentence: 'Hale dropped a calendar text it was holding and never sent it',
+    family: 'note',
   },
   // Copied from a calendar the parent connected, so reminders can fire without a
   // separate YES. 'note': Hale did not create the occasion, it wrote down one that
