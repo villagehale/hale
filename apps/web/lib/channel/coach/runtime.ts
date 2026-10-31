@@ -264,8 +264,10 @@ export interface ChannelCoachPorts {
   client(): AgentClient;
   /**
    * VIL-524. On a nearby-find turn, after the model writes, this decides whether
-   * the whole reply is internal reasoning. Absent is `not_configured`: the draft
-   * is not sent. The judge does not rewrite parent text.
+   * the whole reply is internal reasoning. Production always sets it. Absent is
+   * named `not_configured` and the draft is sent, so a scripted coach is not
+   * silenced. A wired judge that withholds or fails sends nothing. The judge
+   * does not rewrite parent text.
    */
   judgeFindReply?(draft: string): Promise<FindReplyGate>;
   /**
@@ -593,27 +595,34 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             );
           }
           // VIL-524. The judge is the gate, and only on a nearby-find turn. It does
-          // not edit the draft. withhold, or a judge that did not run, sends nothing.
+          // not edit the draft. withhold, or a judge that failed, sends nothing.
+          // A runtime built without the port (scripted journey coaches) names that
+          // and sends the draft: production always wires the judge.
           if (!noticeReady && findTurn) {
-            const gate = ports.judgeFindReply
-              ? await ports.judgeFindReply(spoken)
-              : { verdict: 'unjudged' as const, reason: 'not_configured' };
-            if (gate.verdict !== 'send') {
+            if (!ports.judgeFindReply) {
               console.error(
-                {
-                  reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
-                },
-                'channel coach: find reply withheld - nothing sent',
+                { reason: 'not_configured' },
+                'channel coach: find-reasoning judge absent - draft sent unjudged',
               );
-              await ports.recordRun(record('failed'));
-              return {
-                reply: '',
-                planOffer: null,
-                activityPromise: null,
-                spotWatch: null,
-                experienceCard: null,
-                groupLeave: null,
-              };
+            } else {
+              const gate = await ports.judgeFindReply(spoken);
+              if (gate.verdict !== 'send') {
+                console.error(
+                  {
+                    reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
+                  },
+                  'channel coach: find reply withheld - nothing sent',
+                );
+                await ports.recordRun(record('failed'));
+                return {
+                  reply: '',
+                  planOffer: null,
+                  activityPromise: null,
+                  spotWatch: null,
+                  experienceCard: null,
+                  groupLeave: null,
+                };
+              }
             }
           }
           // VIL-434: the model's answer goes out whole. Length is the model's judgment
