@@ -52,7 +52,31 @@ export type CalendarInviteRefusal =
   | 'third_person_self'
   | 'first_person_plural'
   | 'summary_missing'
+  | 'when_missing'
   | 'invented_number';
+
+/**
+ * Narrow fold for a label the model must echo: case, whitespace, dash/quote fold,
+ * and `a.m.` / `p.m.` written as `am` / `pm`. Not a reordering of the day or the time.
+ */
+function foldedLabel(text: string): string {
+  return plainText(text)
+    .toLowerCase()
+    .replace(/\ba\.m\./g, 'am')
+    .replace(/\bp\.m\./g, 'pm')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Digits still in the line after the summary and the when label are removed. */
+function digitsOutsideLabels(body: string, request: CalendarInviteVoiceRequest): string[] {
+  let rest = foldedLabel(body);
+  const when = foldedLabel(request.when);
+  const summary = foldedLabel(request.summary);
+  if (when) rest = rest.split(when).join(' ');
+  if (summary) rest = rest.split(summary).join(' ');
+  return rest.match(/\d+/g) ?? [];
+}
 
 export function calendarInviteRefusals(
   body: string,
@@ -70,10 +94,13 @@ export function calendarInviteRefusals(
   // Fold both sides: a child name arrives with an em dash, and plainText has already
   // folded the model's echo to a hyphen. Comparing the raw summary would refuse the
   // only wording that can go out.
-  const summary = plainText(request.summary).toLowerCase();
-  if (summary === '' || !body.toLowerCase().includes(summary)) found.push('summary_missing');
-  const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
-  if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
+  const summary = foldedLabel(request.summary);
+  if (summary === '' || !foldedLabel(body).includes(summary)) found.push('summary_missing');
+  // The when label has to appear as given. A bag of its digits would accept
+  // "Jul 10 at 23:30" for "Jul 23 at 10:30".
+  const when = foldedLabel(request.when);
+  if (when === '' || !foldedLabel(body).includes(when)) found.push('when_missing');
+  if (digitsOutsideLabels(body, request).length > 0) found.push('invented_number');
   if (slotCount === 1 && request.url && !LINK_SHAPE.test(body)) {
     const rest = body.replace(INVITE_LINK_SLOT, '');
     if (/\[\[[^\]]*\]\]/.test(rest)) found.push('stray_slot');

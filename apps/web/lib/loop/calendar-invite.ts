@@ -147,7 +147,9 @@ interface InviteJob {
 /**
  * Whether this parent was already texted this revision of the tap-to-add link.
  * Checked BEFORE the model is asked, so a re-drive costs nothing once it has landed.
- * Dispatch stores the key with a `:sms` suffix; the prefix match is that row.
+ *
+ * Dispatch stores `${dedupeKey}:sms`. The match is that exact key: a prefix would
+ * treat revision 1 (`…:1:P`) as revision 10 (`…:10:P`).
  */
 async function alreadyTextedThisLink(
   database: Database,
@@ -164,7 +166,7 @@ async function alreadyTextedThisLink(
         eq(m.familyId, familyId),
         eq(m.parentUserId, parentUserId),
         eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
-        like(m.dedupeKey, `${dedupeKey}%`),
+        eq(m.dedupeKey, `${dedupeKey}:sms`),
         inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     )

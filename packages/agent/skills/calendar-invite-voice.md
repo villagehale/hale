@@ -12,7 +12,7 @@ A parent just said yes to an event. Hale is texting them one link their phone op
 ## What you are given
 
 - `summary` - the event, already written at this parent's privacy level ("Swim class", "Maya - swim class", or a generic "Your activity"). Use it exactly as given.
-- `when` - when it happens, in the family's own time ("Wed, Jul 22 at 10:30 AM").
+- `when` - when it happens, in the family's own time ("Wed, Jul 22 at 10:30 AM"). Copy this string exactly. Do not rearrange the day and the time.
 - `linkSlot` - the placeholder for the link. Write it exactly as given (it is `[[link]]`).
 - `urlChars` - how many characters the real link is. Budget for it. Do not write this number in the text.
 - `maxSegments` - once the real link replaces the placeholder, the text must fit in this many SMS segments.
@@ -22,7 +22,7 @@ That is everything. Do not guess a place, a price, who else is going, or why the
 ## The facts the message carries
 
 - the event, by its `summary`
-- when it is
+- when it is, copied exactly from `when`
 - that it is on the calendar now
 - that opening the link puts it on their phone's calendar
 

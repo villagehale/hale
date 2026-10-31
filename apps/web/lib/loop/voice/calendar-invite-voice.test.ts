@@ -66,6 +66,31 @@ describe('calendarInviteRefusals', () => {
     expect(calendarInviteRefusals(long, REQUEST)).toContain('over_segment_cap');
   });
 
+  it('refuses a rearranged time that reuses the same digits', () => {
+    expect(
+      calendarInviteRefusals(
+        `Swim class on Jul 10 at 23:30. Open this: ${INVITE_LINK_SLOT}`,
+        REQUEST,
+      ),
+    ).toContain('when_missing');
+    // The real when is present, and a second time built from the same digits is still a different claim.
+    const extra = calendarInviteRefusals(
+      `Swim class on Thu, Jul 23 at 10:30 AM, or Jul 10 at 23:30. Open this: ${INVITE_LINK_SLOT}`,
+      REQUEST,
+    );
+    expect(extra).toContain('invented_number');
+    expect(extra).not.toContain('when_missing');
+  });
+
+  it('accepts the when label with only case and spacing folded', () => {
+    expect(
+      calendarInviteRefusals(
+        `Swim class on thu,  jul  23 at 10:30 a.m. is on the week. Open this: ${INVITE_LINK_SLOT}`,
+        REQUEST,
+      ),
+    ).toEqual([]);
+  });
+
   it('folds an em dash in the summary before deciding the event was named', () => {
     const named: CalendarInviteVoiceRequest = {
       ...REQUEST,

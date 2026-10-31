@@ -742,6 +742,42 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(sms.calls).toHaveLength(0);
   });
 
+  it('a sent revision 1 does not suppress revision 10', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'approval',
+      templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+      dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:1:${parentUserId}:sms`,
+      status: 'sent',
+      sentAt: NOON,
+    });
+    // Sequence is the count of audit rows on the event. Ten rows make this send revision 10.
+    await db.database.insert(schema.auditLog).values(
+      Array.from({ length: 10 }, () => ({
+        familyId,
+        actor: 'system' as const,
+        actionTaken: 'action.calendar_moved',
+        targetTable: 'family_events',
+        targetId: familyEventId,
+        occurredAt: NOON,
+      })),
+    );
+
+    const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toEqual({
+      status: 'reported',
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sms.calls).toHaveLength(1);
+    expect(inviteCalls).toHaveLength(1);
+  });
+
   it('re-driving the same placement texts nothing twice', async () => {
     const { familyId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);
