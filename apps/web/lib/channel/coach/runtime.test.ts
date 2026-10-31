@@ -804,3 +804,57 @@ describe('channelCoachRuntime · group leave (VIL-477)', () => {
     expect(result.groupLeave ?? null).toBeNull();
   });
 });
+
+describe('find reasoning stays off the reply (VIL-524)', () => {
+  it('does not append the private skill on a calendar edit', async () => {
+    let instructions = '';
+    const p = ports({
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(instructions).not.toContain('Keep the finding to yourself');
+  });
+
+  it('appends the private skill on a nearby-find ask', async () => {
+    let instructions = '';
+    const p = ports({
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('EarlyON Saturday at 10.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
+    expect(instructions).toContain('Keep the finding to yourself');
+    expect(instructions).toContain('Nearby finds');
+  });
+
+  it('sends the finds and drops the reasoning sentence', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const p = ports({
+      runAgent: answering('All three finds share one page. EarlyON Saturday at 10.'),
+    });
+    const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
+    expect(reply).toBe('EarlyON Saturday at 10.');
+    expect(reply).not.toContain('share one page');
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'find_reasoning', cut: 1 }),
+      expect.any(String),
+    );
+    error.mockRestore();
+  });
+
+  it('fails the turn when the reply is only reasoning', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const p = ports({
+      runAgent: answering('All three finds share one page…'),
+    });
+    await expect(
+      channelCoachRuntime(p).respond(turn("what's on this weekend"), []),
+    ).rejects.toThrow(/internal reasoning/i);
+    expect(p.recorded).toEqual([expect.objectContaining({ status: 'failed' })]);
+    error.mockRestore();
+  });
+});
