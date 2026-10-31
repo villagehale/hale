@@ -3,24 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ConsentReadingResult } from '~/lib/channel/consent-reply';
 import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import {
-  DISCOVERABILITY_ALREADY_OFF,
-  DISCOVERABILITY_ALREADY_ON,
-  DISCOVERABILITY_OFF,
-  DISCOVERABILITY_ON,
-  INTRO_ALREADY_NO,
-  INTRO_ALREADY_YES,
-  INTRO_CLOSED_AFTER_NO,
-  INTRO_NO_ACK,
-  NO_OPEN_INTRO,
-} from './copy';
-import {
   type AnswerableProposal,
+  INTRO_MUST_CONVEY,
+  INTRO_REPLY_FACTS,
   type IntroDecision,
+  type IntroReplySituation,
   type IntroStanding,
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
   introStanding,
   proposalStanding,
+  writeIntroReply,
   repeatedAnswer,
 } from './reply';
 
@@ -65,13 +58,22 @@ function proposal(overrides: Partial<AnswerableProposal> = {}): AnswerablePropos
 /** What the stub writer returns: the model's words, not product copy. */
 const MODEL_YES_ACK = 'model-written ack';
 
+/** The stub's line for one intro_reply situation, keyed on the facts it was handed. */
+function line(situation: IntroReplySituation): string {
+  return `model:${INTRO_REPLY_FACTS[situation].situation}`;
+}
+
+function stubLine(input: SaidLineInput): string {
+  return input.purpose === 'intro_yes' ? MODEL_YES_ACK : `model:${String(input.facts.situation)}`;
+}
+
 function deps(open: AnswerableProposal | null = null, standing: IntroStanding = 'unanswered') {
   const recordDiscoverability = vi.fn(async () => {});
   const recordDecision = vi.fn(async (_db: Database, _decision: IntroDecision) => {});
   const cancelOpenProposals = vi.fn(async () => {});
   // Stands in for the model (said-line): a canned write in a test, never a paid call.
   const saidLineWrite = vi.fn(
-    async (_input: SaidLineInput): Promise<string | null> => MODEL_YES_ACK,
+    async (input: SaidLineInput): Promise<string | null> => stubLine(input),
   );
   const spies: VillageIntroReplyDeps = {
     consent: { read: async ({ text }) => fixtureIntro(text) },
@@ -105,7 +107,10 @@ describe('handleVillageIntroReply', () => {
       { familyId: FAMILY_A, parentUserId: 'u-a', body: 'Yes intros!', now: NOW },
       spies,
     );
-    expect(outcome).toEqual({ status: 'discoverability_granted', reply: DISCOVERABILITY_ON });
+    expect(outcome).toEqual({
+      status: 'discoverability_granted',
+      reply: line('discoverability_on'),
+    });
     expect(recordDiscoverability).toHaveBeenCalledWith(DB, {
       familyId: FAMILY_A,
       userId: 'u-a',
@@ -124,7 +129,10 @@ describe('handleVillageIntroReply', () => {
       { familyId: FAMILY_A, parentUserId: 'u-a', body: 'NO INTROS', now: NOW },
       spies,
     );
-    expect(outcome).toEqual({ status: 'discoverability_revoked', reply: DISCOVERABILITY_OFF });
+    expect(outcome).toEqual({
+      status: 'discoverability_revoked',
+      reply: line('discoverability_off'),
+    });
     expect(recordDiscoverability).toHaveBeenCalledWith(
       DB,
       expect.objectContaining({ granted: false, verbatimReply: 'NO INTROS' }),
@@ -139,7 +147,7 @@ describe('handleVillageIntroReply', () => {
       { familyId: FAMILY_A, parentUserId: 'u-a', body: 'YES INTRO', now: NOW },
       spies,
     );
-    expect(outcome).toEqual({ status: 'no_open_intro', reply: NO_OPEN_INTRO });
+    expect(outcome).toEqual({ status: 'no_open_intro', reply: line('no_open_intro') });
     expect(recordDecision).not.toHaveBeenCalled();
   });
 
@@ -190,12 +198,11 @@ describe('handleVillageIntroReply', () => {
       { familyId: FAMILY_B, parentUserId: 'u-b', body: 'no intro', now: NOW },
       spies,
     );
-    expect(outcome).toEqual({ status: 'intro_declined', reply: INTRO_NO_ACK });
+    expect(outcome).toEqual({ status: 'intro_declined', reply: line('intro_no') });
     expect(recordDecision).toHaveBeenCalledWith(
       DB,
       expect.objectContaining({ granted: false, bothAccepted: false }),
     );
-    expect(INTRO_NO_ACK.toLowerCase()).not.toContain('they');
   });
 });
 
@@ -237,10 +244,10 @@ describe('a second affirmation of an answer already given', () => {
     // with the full "Nothing is shared until you both say yes" ack for a second time.
     expect(outcome).toEqual({
       status: 'discoverability_unchanged',
-      reply: DISCOVERABILITY_ALREADY_ON,
+      reply: line('discoverability_already_on'),
     });
     expect(outcome.status === 'discoverability_unchanged' && outcome.reply).not.toBe(
-      DISCOVERABILITY_ON,
+      line('discoverability_on'),
     );
   });
 
@@ -255,7 +262,7 @@ describe('a second affirmation of an answer already given', () => {
 
     expect(outcome).toEqual({
       status: 'discoverability_unchanged',
-      reply: DISCOVERABILITY_ALREADY_OFF,
+      reply: line('discoverability_already_off'),
     });
     expect(recordDiscoverability).not.toHaveBeenCalled();
     expect(cancelOpenProposals).not.toHaveBeenCalled();
@@ -272,7 +279,10 @@ describe('a second affirmation of an answer already given', () => {
       spies,
     );
 
-    expect(outcome).toEqual({ status: 'discoverability_revoked', reply: DISCOVERABILITY_OFF });
+    expect(outcome).toEqual({
+      status: 'discoverability_revoked',
+      reply: line('discoverability_off'),
+    });
     expect(recordDiscoverability).toHaveBeenCalled();
     expect(cancelOpenProposals).toHaveBeenCalled();
   });
@@ -287,7 +297,10 @@ describe('a second affirmation of an answer already given', () => {
       spies,
     );
 
-    expect(outcome).toEqual({ status: 'discoverability_granted', reply: DISCOVERABILITY_ON });
+    expect(outcome).toEqual({
+      status: 'discoverability_granted',
+      reply: line('discoverability_on'),
+    });
     expect(recordDiscoverability).toHaveBeenCalled();
   });
 });
@@ -321,7 +334,10 @@ describe('a first refusal is never mistaken for a repeat', () => {
       spies,
     );
 
-    expect(outcome).toEqual({ status: 'discoverability_revoked', reply: DISCOVERABILITY_OFF });
+    expect(outcome).toEqual({
+      status: 'discoverability_revoked',
+      reply: line('discoverability_off'),
+    });
     expect(recordDiscoverability).toHaveBeenCalledWith(
       DB,
       expect.objectContaining({ granted: false }),
@@ -358,7 +374,7 @@ describe('answering a proposal card that already has this side answered', () => 
       spies,
     );
 
-    expect(outcome).toEqual({ status: 'intro_unchanged', reply: INTRO_ALREADY_YES });
+    expect(outcome).toEqual({ status: 'intro_unchanged', reply: line('intro_already_yes') });
     expect(recordDecision).not.toHaveBeenCalled();
   });
 
@@ -371,7 +387,7 @@ describe('answering a proposal card that already has this side answered', () => 
       spies,
     );
 
-    expect(outcome).toEqual({ status: 'intro_unchanged', reply: INTRO_ALREADY_NO });
+    expect(outcome).toEqual({ status: 'intro_unchanged', reply: line('intro_already_no') });
     expect(recordDecision).not.toHaveBeenCalled();
   });
 
@@ -387,7 +403,7 @@ describe('answering a proposal card that already has this side answered', () => 
       spies,
     );
 
-    expect(outcome).toEqual({ status: 'intro_declined', reply: INTRO_NO_ACK });
+    expect(outcome).toEqual({ status: 'intro_declined', reply: line('intro_no') });
     expect(recordDecision).toHaveBeenCalledWith(
       DB,
       expect.objectContaining({ granted: false, bothAccepted: false }),
@@ -404,7 +420,7 @@ describe('answering a proposal card that already has this side answered', () => 
       spies,
     );
 
-    expect(outcome).toEqual({ status: 'intro_closed', reply: INTRO_CLOSED_AFTER_NO });
+    expect(outcome).toEqual({ status: 'intro_closed', reply: line('intro_closed') });
     expect(recordDecision).not.toHaveBeenCalled();
   });
 
@@ -510,5 +526,215 @@ describe('repeatedAnswer', () => {
   it('is false when nothing is on file, so a first answer is never swallowed', () => {
     expect(repeatedAnswer('unanswered', true)).toBe(false);
     expect(repeatedAnswer('unanswered', false)).toBe(false);
+  });
+});
+
+describe("VIL-450: every other intro reply is the model's, or nothing", () => {
+  const cases: Array<{
+    name: string;
+    open: AnswerableProposal | null;
+    standing: IntroStanding;
+    body: string;
+    status: string;
+    situation: IntroReplySituation;
+    recorded: 'discoverability' | 'decision' | 'none';
+  }> = [
+    {
+      name: 'opt-in',
+      open: null,
+      standing: 'unanswered',
+      body: 'yes intros',
+      status: 'discoverability_granted',
+      situation: 'discoverability_on',
+      recorded: 'discoverability',
+    },
+    {
+      name: 'opt-out',
+      open: null,
+      standing: 'granted',
+      body: 'no intros',
+      status: 'discoverability_revoked',
+      situation: 'discoverability_off',
+      recorded: 'discoverability',
+    },
+    {
+      name: 'repeat opt-in',
+      open: null,
+      standing: 'granted',
+      body: 'yes intros',
+      status: 'discoverability_unchanged',
+      situation: 'discoverability_already_on',
+      recorded: 'none',
+    },
+    {
+      name: 'repeat opt-out',
+      open: null,
+      standing: 'declined',
+      body: 'no intros',
+      status: 'discoverability_unchanged',
+      situation: 'discoverability_already_off',
+      recorded: 'none',
+    },
+    {
+      name: 'no card',
+      open: null,
+      standing: 'granted',
+      body: 'yes intro',
+      status: 'no_open_intro',
+      situation: 'no_open_intro',
+      recorded: 'none',
+    },
+    {
+      name: 'no to a card',
+      open: proposal(),
+      standing: 'granted',
+      body: 'no intro',
+      status: 'intro_declined',
+      situation: 'intro_no',
+      recorded: 'decision',
+    },
+    {
+      name: 'repeat yes',
+      open: proposal({ standing: 'granted' }),
+      standing: 'granted',
+      body: 'yes intro',
+      status: 'intro_unchanged',
+      situation: 'intro_already_yes',
+      recorded: 'none',
+    },
+    {
+      name: 'repeat no',
+      open: proposal({ standing: 'declined' }),
+      standing: 'granted',
+      body: 'no intro',
+      status: 'intro_unchanged',
+      situation: 'intro_already_no',
+      recorded: 'none',
+    },
+    {
+      name: 'yes after no',
+      open: proposal({ standing: 'declined' }),
+      standing: 'granted',
+      body: 'yes intro',
+      status: 'intro_closed',
+      situation: 'intro_closed',
+      recorded: 'none',
+    },
+  ];
+
+  it.each(cases)("$name: hands the model the situation facts and the parent's words", async (c) => {
+    const { spies, saidLineWrite } = deps(c.open, c.standing);
+    const outcome = await handleVillageIntroReply(
+      DB,
+      { familyId: FAMILY_A, parentUserId: 'u-a', body: c.body, now: NOW },
+      spies,
+    );
+    expect(outcome).toEqual({ status: c.status, reply: line(c.situation) });
+    expect(saidLineWrite).toHaveBeenCalledWith({
+      purpose: 'intro_reply',
+      language: null,
+      parentWords: c.body,
+      facts: INTRO_REPLY_FACTS[c.situation],
+      ...(INTRO_MUST_CONVEY[c.situation] ? { mustConvey: INTRO_MUST_CONVEY[c.situation] } : {}),
+    });
+  });
+
+  it.each(cases)(
+    '$name: an unusable write sends nothing and the state change stands',
+    async (c) => {
+      const { spies, saidLineWrite, recordDiscoverability, recordDecision } = deps(
+        c.open,
+        c.standing,
+      );
+      saidLineWrite.mockResolvedValue(null);
+      const outcome = await handleVillageIntroReply(
+        DB,
+        { familyId: FAMILY_A, parentUserId: 'u-a', body: c.body, now: NOW },
+        spies,
+      );
+      expect(outcome).toEqual({ status: c.status, reply: null });
+      expect(recordDiscoverability).toHaveBeenCalledTimes(c.recorded === 'discoverability' ? 1 : 0);
+      expect(recordDecision).toHaveBeenCalledTimes(c.recorded === 'decision' ? 1 : 0);
+    },
+  );
+
+  it.each(cases)('$name: no writer wired sends nothing (no fixed fallback)', async (c) => {
+    const { spies } = deps(c.open, c.standing);
+    const outcome = await handleVillageIntroReply(
+      DB,
+      { familyId: FAMILY_A, parentUserId: 'u-a', body: c.body, now: NOW },
+      { ...spies, saidLine: undefined },
+    );
+    expect(outcome).toEqual({ status: c.status, reply: null });
+  });
+
+  it('never hands the model a fact about the other family, nor why a pair died', () => {
+    // Structural, not wording: the facts are all the writer sees.
+    for (const [situation, facts] of Object.entries(INTRO_REPLY_FACTS)) {
+      expect(JSON.stringify(facts), situation).not.toMatch(/fam-|parentName|familyId/);
+    }
+    expect(JSON.stringify(INTRO_REPLY_FACTS.soft_close)).not.toMatch(
+      /they said no|declined|expired|ran out|did not answer/i,
+    );
+  });
+});
+
+describe('#919: guardrails are writer constraints, not facts to be voiced', () => {
+  it('no intro situation carries an instruction-shaped fact key', () => {
+    for (const [situation, facts] of Object.entries(INTRO_REPLY_FACTS)) {
+      for (const key of ['otherFamily', 'reason', 'match']) {
+        expect(facts, situation).not.toHaveProperty(key);
+      }
+    }
+  });
+});
+
+describe('#919: switching introductions off always conveys that pending ones are closed', () => {
+  it('discoverability_off requires the pendingClosed fact by key, and that fact exists', () => {
+    expect(INTRO_MUST_CONVEY.discoverability_off).toEqual(['pendingClosed']);
+    expect(INTRO_REPLY_FACTS.discoverability_off).toHaveProperty('pendingClosed');
+    for (const [situation, keys] of Object.entries(INTRO_MUST_CONVEY)) {
+      for (const key of keys ?? []) {
+        expect(INTRO_REPLY_FACTS[situation as keyof typeof INTRO_REPLY_FACTS], situation).toHaveProperty(key);
+      }
+    }
+  });
+
+  it('the revocation hands the writer mustConvey [pendingClosed]', async () => {
+    const write = vi.fn().mockResolvedValue('ok');
+    await writeIntroReply({ write }, 'discoverability_off', 'no more intros');
+    expect(write.mock.calls[0]?.[0]).toMatchObject({ mustConvey: ['pendingClosed'] });
+    write.mockClear();
+    await writeIntroReply({ write }, 'intro_no', 'no thanks');
+    expect(write.mock.calls[0]?.[0]).not.toHaveProperty('mustConvey');
+  });
+});
+
+describe('the said-line eval replays these exact facts', () => {
+  it('said-line-fixtures.mjs INTRO_REPLY_FACTS matches reply.ts key for key', async () => {
+    // The eval replicates the facts (it cannot reach `~/`); the cache key depends on them.
+    const path = '../../../../worker/evals/said-line-fixtures.mjs';
+    const fixtures = (await import(/* @vite-ignore */ path)) as {
+      INTRO_REPLY_FACTS: unknown;
+    };
+    expect(fixtures.INTRO_REPLY_FACTS).toEqual(INTRO_REPLY_FACTS);
+    expect((fixtures as unknown as { INTRO_MUST_CONVEY: unknown }).INTRO_MUST_CONVEY).toEqual(
+      INTRO_MUST_CONVEY,
+    );
+  });
+});
+
+describe('#919: standing is the parent\'s own state, and an open parent knows Hale texts on a match', () => {
+  const situations = Object.entries(INTRO_REPLY_FACTS) as Array<[string, Record<string, string>]>;
+  it('every situation where the parent is open carries the match-text fact (run.ts cardUnaskedSides)', () => {
+    for (const [name, facts] of situations) {
+      if (!('standing' in facts)) continue;
+      const open = name !== 'discoverability_off' && name !== 'discoverability_already_off';
+      expect(['matchText' in facts, name]).toEqual([open, name]);
+    }
+  });
+  it('the switched-off situations promise no match text', () => {
+    expect('matchText' in INTRO_REPLY_FACTS.discoverability_off).toBe(false);
+    expect('matchText' in INTRO_REPLY_FACTS.discoverability_already_off).toBe(false);
   });
 });

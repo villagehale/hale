@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Breaks privacy rule: names and reveals another family (\"The Patel family said no\"), hinting at another family's answer. Also gives a word to type (\"YES INTROS\") which the safety rule forbids, invents a Friday Nov 3 retry offer not in facts, and includes an unsupported apology. Facts say only that introductions were already off and nothing changed."
+  }
+}

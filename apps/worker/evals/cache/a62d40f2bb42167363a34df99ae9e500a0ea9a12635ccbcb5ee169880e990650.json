@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "English, matches parent's language. Says what the link connects (Google Calendar), that connecting is optional, the link is whole and matches facts, and the link works for 15 minutes is omitted though: the text never states how long the link works. That is a required fact (minutesValid: 15) left out, so this fails on omission. Google unverified-app caution is framed as expected and safe, with the steps Advanced then continue. Tone is plain and friendly."
+  }
+}

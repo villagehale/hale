@@ -16,11 +16,14 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  */
 
 const LINK_SHAPE = /https?:\/\/|www\./i;
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|cancelled|canceled|took|removed|might|may)\b/i;
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
 
-export const MAX_CANCEL_CHARS = 160;
+/*
+ * FACT CHECKS ONLY (VIL-450). The word-matching checks that used to live here
+ * (THIRD_PERSON_SELF, first-person-plural, a required "cancel" word, a capital-letter
+ * opener, a character cap) broke the no-wording-rules rule and failed every non-English
+ * parent. Voice and tone are graded by the judge model in the eval; the gate below only
+ * checks facts: no link, the event named as handed, and no number that was not handed.
+ */
 const MAX_ATTEMPTS = 3;
 const MAX_TOKENS = 160;
 
@@ -33,13 +36,8 @@ export interface CalendarCancelRequest {
 
 export type CalendarCancelRefusal =
   | 'empty'
-  | 'over_char_cap'
   | 'carries_link'
-  | 'not_a_sentence'
-  | 'third_person_self'
-  | 'first_person_plural'
   | 'summary_missing'
-  | 'cancel_word_missing'
   | 'invented_number';
 
 export function calendarCancelRefusals(
@@ -48,14 +46,9 @@ export function calendarCancelRefusals(
 ): CalendarCancelRefusal[] {
   if (body === '') return ['empty'];
   const found: CalendarCancelRefusal[] = [];
-  if (body.length > MAX_CANCEL_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
-  if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
   const lower = body.toLowerCase();
   if (!lower.includes(request.summary.toLowerCase())) found.push('summary_missing');
-  if (!/cancel/i.test(body)) found.push('cancel_word_missing');
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
   if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;

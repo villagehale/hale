@@ -85,28 +85,9 @@ describe('introAskRefusals', () => {
   describe('one speaker, first person - found by the first live recording', () => {
     it.each([
       "A Hale family near you has a toddler around Maya's age. Hale can make an intro?",
-      "A Hale family near you has a toddler around Maya's age. Hale will introduce you?",
-      "A Hale family near you has a toddler around Maya's age - Hale has an intro for you?",
-    ])('refuses Hale talking about Hale: %j', (body) => {
-      expect(introAskRefusals(body, PROPOSAL)).toContain('third_person_self');
-    });
-
-    it('still allows the brand name where it describes the other households', () => {
-      // "another Hale family nearby" is the premise of the message, not a press release.
-      expect(
-        introAskRefusals(
-          "Another Hale family near you has a toddler around Maya's age. Want an intro?",
-          PROPOSAL,
-        ),
-      ).toEqual([]);
-    });
-
-    it.each([
-      "A Hale family near you has a toddler around Maya's age. We can make an intro?",
       "A Hale family near you has a toddler around Maya's age. Let us know if you want an intro.",
-      "A Hale family near you has a toddler around Maya's age. Want us to reach out about an intro?",
-    ])('refuses the royal we: %j', (body) => {
-      expect(introAskRefusals(body, PROPOSAL)).toContain('first_person_plural');
+    ])("VIL-450: voice is the judge model's call, not a word match: %j", (body) => {
+      expect(introAskRefusals(body, PROPOSAL)).toEqual([]);
     });
 
     it('passes the first-person singular the rest of this feature already speaks in', () => {

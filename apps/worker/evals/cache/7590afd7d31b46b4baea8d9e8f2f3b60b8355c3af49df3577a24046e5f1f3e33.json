@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Facts are carried accurately and the reply is in English with a friendly tone. But \"So sorry about the mix-up\" is an apology implying something went wrong, which no fact gives, and that fails the apology rule. The \"I won't bring them up again\" line is a next step the facts do state (facts.next), so it is acceptable. The apology is the defect that caps this."
+  }
+}

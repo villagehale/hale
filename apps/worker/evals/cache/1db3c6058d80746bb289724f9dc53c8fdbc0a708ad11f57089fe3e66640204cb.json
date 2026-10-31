@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correctly says it has no current source and gives no answer from memory, matching the no_source purpose. In English, matching the parent. Tone is friendly and plain. Minor issue: it asks the parent to check sites, which is a reasonable pointer but slightly more than needed; no invented facts or promises."
+  }
+}

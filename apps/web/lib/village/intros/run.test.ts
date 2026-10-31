@@ -4,7 +4,7 @@ import { FakeIdentityAsk, FakeIntroVoice, echoIntroAsk } from '~/lib/channel/int
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
-import { INTRO_SOFT_CLOSE } from './copy';
+import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import { INTRO_GROUP_TEMPLATE_KEY, type OpenIntroGroupResult } from './group';
 import type { IntroGroupOutcome, IntroGroupRequest } from './group-voice';
 import {
@@ -18,6 +18,10 @@ import {
 } from './run';
 
 const DB = {} as Database;
+
+/** What the stub said-line writer returns for the soft close: the model's words in a
+ * test, never product copy and never a paid call. */
+const MODEL_SOFT_CLOSE = 'model-written soft close';
 const NOW = new Date('2026-08-11T15:00:00Z');
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -68,12 +72,15 @@ function family(overrides: Partial<IntroSweepFamily> & { familyId: string }): In
     parentEmail: `parent-${overrides.familyId}@example.com`,
     areaCoarse: 'M4K 1N2',
     timeZone: 'America/Toronto',
+    language: null,
     ...overrides,
   };
 }
 
 interface Harness {
   deps: IntroSweepDeps;
+  /** Every said-line write the sweep asked for (the soft close, VIL-450). */
+  saidLineCalls: SaidLineInput[];
   transport: FakeTransport;
   proposalsCreated: Array<Record<string, unknown>>;
   /** The FSAs each anchor lookup was allowed to search — the activity radius, captured
@@ -102,6 +109,10 @@ interface Harness {
 
 function harness(
   overrides: {
+    /** The said-line writer comes back null (model down or unusable). */
+    saidLineDown?: boolean;
+    /** Each family's latest inbound texts, by family id (the soft close's language read). */
+    recentWords?: Record<string, string[]>;
     families?: IntroSweepFamily[];
     discoverable?: Set<string>;
     alreadyAsked?: Set<string>;
@@ -145,6 +156,7 @@ function harness(
     parentTimeZone: async () => (overrides.hold === 'quiet_hours' ? 'America/Toronto' : 'UTC'),
   };
 
+  const saidLineCalls: SaidLineInput[] = [];
   const deps: IntroSweepDeps = {
     selectFamilies: async () => overrides.families ?? [],
     syntheticProbeFamilyIds: async () => overrides.synthetic ?? new Set(),
@@ -207,6 +219,13 @@ function harness(
         }
       );
     },
+    saidLine: {
+      write: async (input) => {
+        saidLineCalls.push(input);
+        return overrides.saidLineDown ? null : MODEL_SOFT_CLOSE;
+      },
+    },
+    recentParentWords: async (_db, familyId) => overrides.recentWords?.[familyId] ?? [],
     buildGate: () => gate,
     dedupeActive: async () => false,
     resolveSendablePhone: async (_db, userId) => `phone-${userId}`,
@@ -230,6 +249,7 @@ function harness(
 
   return {
     deps,
+    saidLineCalls,
     transport,
     proposalsCreated,
     anchorSearches,
@@ -762,7 +782,7 @@ describe('phase 3 - resolving a pair', () => {
     });
     await runVillageIntroSweep(DB, h.deps, NOW);
 
-    expect(h.transport.bodies()).toEqual([withOptOut(INTRO_SOFT_CLOSE, 'short')]);
+    expect(h.transport.bodies()).toEqual([withOptOut(MODEL_SOFT_CLOSE, 'short')]);
     expect(h.transport.sent[0]?.to).toBe(`phone-user-${A}`);
     expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'declined', closed: true }]);
   });
@@ -795,13 +815,113 @@ describe('phase 3 - resolving a pair', () => {
     });
     await runVillageIntroSweep(DB, expired.deps, NOW);
 
-    expect(declined.transport.bodies()).toEqual([withOptOut(INTRO_SOFT_CLOSE, 'short')]);
+    expect(declined.transport.bodies()).toEqual([withOptOut(MODEL_SOFT_CLOSE, 'short')]);
     // Both sides were asked and neither refused, so both are owed the same sentence.
     expect(expired.transport.bodies()).toEqual([
-      withOptOut(INTRO_SOFT_CLOSE, 'short'),
-      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+      withOptOut(MODEL_SOFT_CLOSE, 'short'),
+      withOptOut(MODEL_SOFT_CLOSE, 'short'),
     ]);
     expect(expired.statuses).toEqual([{ proposalId: 'prop-1', status: 'expired', closed: true }]);
+    // VIL-450: the WRITER is handed identical facts whatever killed the pair, so no
+    // wording the model picks can carry the reason.
+    const inputs = [...declined.saidLineCalls, ...expired.saidLineCalls];
+    expect(inputs).toHaveLength(3);
+    for (const input of inputs) expect(input).toEqual(inputs[0]);
+    expect(inputs[0]).toEqual(
+      expect.objectContaining({ purpose: 'intro_reply', parentWords: null }),
+    );
+  });
+
+  it("VIL-450: the soft close is written in each family's own language, same facts declined or expired", async () => {
+    const zhFamilies = [
+      family({ familyId: A, language: 'zh' }),
+      family({ familyId: B, language: 'zh' }),
+    ];
+    const recentWords = { [A]: ['周六的游泳课还有位置吗？'], [B]: ['谢谢！'] };
+    const declined = harness({
+      families: zhFamilies,
+      recentWords,
+      ...optedIn,
+      proposals: [
+        proposal({
+          status: 'declined',
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          familyBReply: 'no',
+        }),
+      ],
+    });
+    await runVillageIntroSweep(DB, declined.deps, NOW);
+    const expired = harness({
+      families: zhFamilies,
+      recentWords,
+      ...optedIn,
+      proposals: [
+        proposal({
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          expiresAt: new Date('2026-08-01T00:00:00Z'),
+        }),
+      ],
+    });
+    await runVillageIntroSweep(DB, expired.deps, NOW);
+
+    const [declinedA] = declined.saidLineCalls;
+    const [expiredA, expiredB] = expired.saidLineCalls;
+    expect(declinedA).toEqual(
+      expect.objectContaining({
+        purpose: 'intro_reply',
+        language: 'zh',
+        parentWords: null,
+        recentParentWords: ['周六的游泳课还有位置吗？'],
+      }),
+    );
+    // Same family, declined vs expired: byte-identical input, so no reason can leak.
+    expect(expiredA).toEqual(declinedA);
+    // Each side gets ITS OWN words, never the other family's.
+    expect(expiredB?.recentParentWords).toEqual(['谢谢！']);
+    expect(expiredB?.facts).toEqual(declinedA?.facts);
+  });
+
+  it("VIL-450: no stored language does not force English; the model reads the family's texts", async () => {
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      recentWords: { [A]: ['¿Hay clases de natación el sábado?'] },
+      ...optedIn,
+      proposals: [
+        proposal({
+          status: 'declined',
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          familyBReply: 'no',
+        }),
+      ],
+    });
+    await runVillageIntroSweep(DB, h.deps, NOW);
+    expect(h.saidLineCalls).toHaveLength(1);
+    const [input] = h.saidLineCalls;
+    expect(input?.language).toBeNull();
+    expect(input?.recentParentWords).toEqual(['¿Hay clases de natación el sábado?']);
+    expect(JSON.stringify(input)).not.toMatch(/"en"/);
+  });
+
+  it('VIL-450: sends nothing (no fixed fallback) when the model cannot write the soft close', async () => {
+    const h = harness({
+      saidLineDown: true,
+      families: [family({ familyId: A }), family({ familyId: B })],
+      ...optedIn,
+      proposals: [
+        proposal({
+          status: 'declined',
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          familyBReply: 'no',
+        }),
+      ],
+    });
+    await runVillageIntroSweep(DB, h.deps, NOW);
+    expect(h.saidLineCalls).toHaveLength(1);
+    expect(h.transport.bodies()).toEqual([]);
   });
 
   it('never soft-closes a side that was never asked', async () => {
@@ -952,8 +1072,8 @@ describe('phase 3 - the identity gap-fill', () => {
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
 
     expect(h.transport.bodies()).toEqual([
-      withOptOut(INTRO_SOFT_CLOSE, 'short'),
-      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+      withOptOut(MODEL_SOFT_CLOSE, 'short'),
+      withOptOut(MODEL_SOFT_CLOSE, 'short'),
     ]);
     expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'expired', closed: true }]);
     expect(result.closed).toBe(1);
