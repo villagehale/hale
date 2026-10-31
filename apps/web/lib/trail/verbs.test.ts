@@ -38,6 +38,11 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
       expect(isInternalTrailVerb(verb)).toBe(true);
       return;
     }
+    // VIL-478 · background audits are internal-only with no parent copy (Design lock).
+    if (verb === 'linq_group_background_set' || verb === 'linq_group_background_parent_set') {
+      expect(isInternalTrailVerb(verb)).toBe(true);
+      return;
+    }
     expect(family).not.toBe('neutral');
   });
 
