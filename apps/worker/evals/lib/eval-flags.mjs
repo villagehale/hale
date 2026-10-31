@@ -3,8 +3,7 @@
 // throws, the runner exits 2, so a typo such as `--dyr` can never fall through to a live,
 // paid run. Live runs need an explicit `--live`.
 //
-// Whichever of #926 or this PR merges second repoints flood-line to this module and
-// deletes apps/worker/evals/flood-line-flags.mjs.
+// Flood-line (#926) uses this module. apps/worker/evals/flood-line-flags.mjs is gone.
 
 import { PRICE } from './harness.mjs';
 
