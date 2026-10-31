@@ -84,8 +84,13 @@ export function parentCallNameVoice(
  */
 export async function readModelParentName(
   composer: FriendVoiceComposer | undefined,
-  input: { parentWords: string; language: ReplyLanguage },
-): Promise<{ parentName: string | null; nameDeclined: boolean; reply: string | null }> {
+  input: { parentWords: string; language: ReplyLanguage | null },
+): Promise<{
+  parentName: string | null;
+  nameDeclined: boolean;
+  nameConfirmed: boolean | null;
+  reply: string | null;
+}> {
   const spoken = await speakFriend(composer, {
     ...nameAskVoiceInput(input.parentWords),
     language: input.language,
@@ -94,6 +99,7 @@ export async function readModelParentName(
   return {
     parentName: spoken.capture.parentName,
     nameDeclined: spoken.capture.nameDeclined,
+    nameConfirmed: spoken.capture.nameConfirmed,
     reply,
   };
 }

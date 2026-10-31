@@ -2,7 +2,11 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
-import { defaultNameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
+import {
+  defaultNameCaptureDeps,
+  familyReplyLanguage,
+  handleNameCaptureReply,
+} from '~/lib/channel/identity/name-reply';
 import { FakeIdentityAsk, FakeIntroVoice } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -217,6 +221,98 @@ describe('two nameless families get paired, named, and held for an intro channel
    * make: a family Hale never asked has no window, so the same word is left for the coach.
    * Without it, every one-word reply in Hale's inbox would be a candidate name.
    */
+  it('does not call the model when the parent already has a name', async () => {
+    const side = await seedTextFamily('Named family', 'Ivo');
+    await database
+      .update(schema.users)
+      .set({ name: 'Dana' })
+      .where(eq(schema.users.id, side.parentUserId));
+    await database.insert(schema.channelMessages).values({
+      familyId: side.familyId,
+      parentUserId: side.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'intake',
+      templateKey: 'parent_name_ask',
+      status: 'sent',
+    });
+    let reads = 0;
+
+    const outcome = await handleNameCaptureReply(
+      database,
+      {
+        familyId: side.familyId,
+        parentUserId: side.parentUserId,
+        body: 'what time is storytime',
+        now: new Date(),
+      },
+      {
+        ...defaultNameCaptureDeps(),
+        read: async () => {
+          reads += 1;
+          return { parentName: 'X', nameDeclined: false, reply: 'no' };
+        },
+      },
+    );
+
+    expect(outcome).toEqual({ status: 'declined_to_claim' });
+    expect(reads).toBe(0);
+  });
+
+  it('does not call the model after Hale has sent something else', async () => {
+    const side = await seedTextFamily('Moved on', 'Ivo');
+    const earlier = new Date('2026-08-13T14:00:00Z');
+    const later = new Date('2026-08-13T15:00:00Z');
+    await database.insert(schema.channelMessages).values([
+      {
+        familyId: side.familyId,
+        parentUserId: side.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'intake',
+        templateKey: 'parent_name_ask',
+        status: 'sent',
+        createdAt: earlier,
+      },
+      {
+        familyId: side.familyId,
+        parentUserId: side.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        templateKey: 'coach_reply',
+        status: 'sent',
+        createdAt: later,
+      },
+    ]);
+    let reads = 0;
+
+    const outcome = await handleNameCaptureReply(
+      database,
+      { familyId: side.familyId, parentUserId: side.parentUserId, body: 'Dana', now: new Date() },
+      {
+        ...defaultNameCaptureDeps(),
+        read: async () => {
+          reads += 1;
+          return { parentName: 'Dana', nameDeclined: false, reply: 'ok' };
+        },
+      },
+    );
+
+    expect(outcome).toEqual({ status: 'declined_to_claim' });
+    expect(reads).toBe(0);
+  });
+
+  it('passes the family reply language, not a fixed English tag', async () => {
+    const side = await seedTextFamily('Famille', 'Ivo');
+    await database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, side.familyId));
+
+    expect(await familyReplyLanguage(database, side.familyId)).toBe('fr');
+  });
+
   it('does not capture a name from a family Hale never asked', async () => {
     const side = await seedTextFamily('Unasked family', 'Ivo');
 
