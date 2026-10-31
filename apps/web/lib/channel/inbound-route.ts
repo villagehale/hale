@@ -126,6 +126,9 @@ export type InboundRouteOutcome =
    * (or logged when no row carries that provider id). Counted on its own so a
    * receipt is not an ignored text. SMS never produces this. */
   | 'receipt'
+  /** VIL-479 · Linq `message.edited` was applied to the transcript or the inbound
+   * body, or logged when no row carries that provider id. Not an ignored text. */
+  | 'message_edited'
   /** A verified channel, but not a parent's — never handed to a household agent. */
   | 'not_a_parent'
   /** Linq year-find poll: the parent chose "None of these". Recorded, not routed,

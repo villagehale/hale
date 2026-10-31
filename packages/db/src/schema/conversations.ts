@@ -1,7 +1,7 @@
-import { pgTable, uuid, text, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { families } from './families.js';
+import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { children } from './children.js';
+import { families } from './families.js';
 
 /**
  * Multi-turn Ask Hale threads. A conversation is a family-scoped container; its
@@ -70,6 +70,12 @@ export const messages = pgTable(
      * the audit row that references it stays intact. NULL = live; the read path
      * (loadTimeline/loadTranscript) filters a stamped row out. */
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /**
+     * VIL-479 · Linq message id of this turn: an assistant bubble Hale can edit in
+     * place, or (flag on) the parent's own iMessage, so their edit reaches the thread.
+     * Null on SMS turns and on rows written before this column existed.
+     */
+    providerMessageId: text('provider_message_id'),
   },
   (table) => ({
     conversationTimeIdx: index('messages_conversation_time_idx').on(
@@ -80,6 +86,9 @@ export const messages = pgTable(
       table.conversationId,
       table.deletedAt,
     ),
+    providerMessageUniq: uniqueIndex('messages_provider_message_id_uniq')
+      .on(table.providerMessageId)
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
     roleCheck: check('messages_role_check', sql`${table.role} IN ('user', 'assistant')`),
   }),
 );
