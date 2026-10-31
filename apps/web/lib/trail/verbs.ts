@@ -177,6 +177,8 @@ export const AUDIT_VERBS = [
   'linq_group_roster_fetched',
   'linq_group_roster_numbers_released',
   'linq_group_ejected',
+  'linq_group_background_set',
+  'linq_group_background_parent_set',
   'linq_group_left_on_ask',
   'linq_group_roster_asked',
   'linq_group_role_confirmed',
@@ -767,6 +769,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_group_ejected: {
     sentence: 'Hale left your family group and went back to texting you directly',
+    family: 'note',
+  },
+  linq_group_background_set: {
+    sentence: 'Hale gave your new family group a calm background colour',
+    family: 'done',
+  },
+  linq_group_background_parent_set: {
+    sentence: 'Someone in your family group changed its background, so Hale will leave it as it is',
     family: 'note',
   },
   linq_group_left_on_ask: {
