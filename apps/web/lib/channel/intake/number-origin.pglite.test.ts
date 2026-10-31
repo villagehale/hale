@@ -76,6 +76,17 @@ describe('readNumberOrigin · how Hale has this number, from the record (#919)',
     expect(numberOriginFact(origin)).toHaveProperty('from');
   }, 30_000);
 
+  it('a referral link is not a QR scan — no fictitious "you scanned a QR code"', async () => {
+    const friend = await seedFamily(db.database, 'Origin R2');
+    await intake(friend.parentUserId, friend.familyId, 'friend-0a1b2c3d4e5f');
+    const origin = await readNumberOrigin(db.database, {
+      familyId: friend.familyId,
+      userId: friend.parentUserId,
+    });
+    expect(origin).toEqual({ kind: 'texted_first', viaQr: false });
+    expect(numberOriginFact(origin)).not.toHaveProperty('from');
+  }, 30_000);
+
   it('no record says how: null, and no fact is handed to the writer', async () => {
     const home = await seedFamily(db.database, 'Origin E');
     expect(

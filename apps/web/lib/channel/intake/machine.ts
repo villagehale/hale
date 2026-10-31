@@ -101,7 +101,7 @@ import {
 import { identityChallengeReply } from './identity-challenge';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { isCheerUpAsk, isLiveLookupAsk } from './live-lookup';
-import type { NumberOrigin } from './number-origin';
+import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
 import { isOfficialPageAsk } from './official-page';
 import {
   type CoparentGroupMode,
@@ -3190,7 +3190,7 @@ async function handleLadder(
         pendingAsk: '',
         children: session.collected.children,
         postalCode: session.collected.postalCode,
-        numberOrigin: { kind: 'texted_first', viaQr: session.sourceCode !== null },
+        numberOrigin: { kind: 'texted_first', viaQr: sourceCodeIsQr(session.sourceCode) },
         language,
       },
       deps,

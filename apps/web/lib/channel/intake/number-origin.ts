@@ -1,11 +1,17 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
+import { isReferralCode } from '~/lib/channel/referral/code';
 
 /**
  * How Hale came to have this parent's number, read from the family's own record (#919).
  * The identity disclosure carries it as a fact when a parent asks "how did you get my
  * number": never a fixed line, never a guess. Null when the record does not say.
  */
+/** A source code is a venue QR only when it is not a referral link's code (#919). */
+export function sourceCodeIsQr(sourceCode: string | null): boolean {
+  return sourceCode !== null && !isReferralCode(sourceCode);
+}
+
 export type NumberOrigin =
   /** They texted Hale first (an SMS intake session is the record); `viaQr` when that
    * first text carried a venue QR code. */
@@ -67,6 +73,6 @@ export async function readNumberOrigin(
     )
     .orderBy(asc(schema.smsIntakeSessions.createdAt))
     .limit(1);
-  if (session) return { kind: 'texted_first', viaQr: session.sourceCode !== null };
+  if (session) return { kind: 'texted_first', viaQr: sourceCodeIsQr(session.sourceCode) };
   return null;
 }

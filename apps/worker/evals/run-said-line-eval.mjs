@@ -262,6 +262,10 @@ async function drySubject(agent, opts, plan, f) {
   try {
     // A hit replays; a miss reaches the dry client, which refuses before any network.
     const hit = await cachedToolCall(opts);
+    // Only a real cache replay is free. Anything else the seam handed back in dry mode
+    // (a stand-in, an uncached value) is a writer call the live run WOULD make, so it is
+    // priced below instead of being counted as a hit (#919 Devin).
+    if (hit?.cached !== true) throw new Error('eval --dry: uncached subject call');
     plan.push({ tag: opts.tag, cached: true });
     return hit.value;
   } catch (err) {
