@@ -56,34 +56,53 @@ export function scopeFamilies<T extends { familyId: string }>(
  * pg-boss queue, retention, ops paging) or run sweeps not yet scoped, so they
  * do nothing on Preview.
  */
-export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'skip'>> = {
-  reminders: 'family_scoped',
-  'registration-sequence': 'family_scoped',
-  // Claims jobs from the shared pg-boss queue; a Preview claim would steal prod jobs.
-  drain: 'skip',
-  'queue-maintenance': 'skip',
-  // Runs eight family sweeps (follow-ups, check-ins, duty asks, ...) not yet scoped.
-  nudge: 'skip',
-  'intake-sitting-reminder': 'skip',
-  'proactive-review': 'skip',
-  'social-watch': 'skip',
-  'party-reminders': 'skip',
-  // Carpool and group-plan family sweeps, not yet scoped.
-  'carpool-reminders': 'skip',
-  'group-plan-rsvp-followups': 'skip',
-  'spend-alert': 'skip',
-  'delete-sweep': 'skip',
-  'attachment-sweep': 'skip',
-  inference: 'skip',
-  'memory-digest': 'skip',
-  'ops-daily': 'skip',
-  'registration-verify': 'skip',
-  'watched-spots': 'skip',
-  'failure-page': 'skip',
-  'connector-sync': 'skip',
-  'inbound-canary': 'skip',
-  'browser-use-watch': 'skip',
-};
+/**
+ * The pg-boss schema this deploy enqueues into and drains from. Preview gets its own
+ * schema so production never claims a Preview job and Preview never claims a
+ * production one: whatever a Preview producer enqueues (a fake family's inbound turn,
+ * a Preview reminder send) can only be drained by Preview itself.
+ */
+export const PROD_QUEUE_SCHEMA = 'pgboss';
+export const PREVIEW_QUEUE_SCHEMA = 'pgboss_preview';
+export function queueSchema(env: Env = process.env): string {
+  return isPreviewDeploy(env) ? PREVIEW_QUEUE_SCHEMA : PROD_QUEUE_SCHEMA;
+}
+
+/**
+ * `own_queue` crons touch only this deploy's pg-boss schema ({@link queueSchema}), so
+ * on Preview they run against Preview's own queue and nothing shared.
+ */
+export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'own_queue' | 'skip'>> =
+  {
+    reminders: 'family_scoped',
+    'registration-sequence': 'family_scoped',
+    // Preview drains and maintains its OWN pg-boss schema (queueSchema), never prod's.
+    // The drain's shared-table legs (first-reply, group reminders, signup watches) are
+    // skipped on Preview inside the route.
+    drain: 'own_queue',
+    'queue-maintenance': 'own_queue',
+    // Runs eight family sweeps (follow-ups, check-ins, duty asks, ...) not yet scoped.
+    nudge: 'skip',
+    'intake-sitting-reminder': 'skip',
+    'proactive-review': 'skip',
+    'social-watch': 'skip',
+    'party-reminders': 'skip',
+    // Carpool and group-plan family sweeps, not yet scoped.
+    'carpool-reminders': 'skip',
+    'group-plan-rsvp-followups': 'skip',
+    'spend-alert': 'skip',
+    'delete-sweep': 'skip',
+    'attachment-sweep': 'skip',
+    inference: 'skip',
+    'memory-digest': 'skip',
+    'ops-daily': 'skip',
+    'registration-verify': 'skip',
+    'watched-spots': 'skip',
+    'failure-page': 'skip',
+    'connector-sync': 'skip',
+    'inbound-canary': 'skip',
+    'browser-use-watch': 'skip',
+  };
 
 export type PreviewCronSkip =
   | 'preview_cron_not_scoped'
@@ -96,7 +115,8 @@ export function previewCronSkipReason(
   env: Env = process.env,
 ): PreviewCronSkip | null {
   if (!isPreviewDeploy(env)) return null;
-  if (PREVIEW_CRON_POLICY[name] !== 'family_scoped') return 'preview_cron_not_scoped';
+  const policy = PREVIEW_CRON_POLICY[name];
+  if (policy !== 'family_scoped' && policy !== 'own_queue') return 'preview_cron_not_scoped';
   if (previewTestFamilyIds(env).size === 0) return 'preview_no_test_families';
   if (env.PREVIEW_CAPTURE_TRANSPORT?.trim() !== 'on') return 'preview_capture_off';
   return null;

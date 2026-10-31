@@ -20,14 +20,28 @@ describe('cronRoute on preview', () => {
     vi.restoreAllMocks();
   });
 
-  it('skips an unscoped cron (drain) without running it', async () => {
+  it('skips an unscoped cron (nudge) without running it', async () => {
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', TEST_FAM);
     vi.stubEnv('PREVIEW_CAPTURE_TRANSPORT', 'on');
     const handler = vi.fn(async () => new Response('ran'));
-    const res = await cronRoute('drain', handler)(req());
+    const res = await cronRoute('nudge', handler)(req());
     expect(handler).not.toHaveBeenCalled();
     expect(await res.json()).toEqual({ ok: true, skipped: 'preview_cron_not_scoped' });
+  });
+
+  it('runs the drain on preview against its own queue once test families + capture are set', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    const handler = vi.fn(async () => new Response('ran'));
+    expect(await (await cronRoute('drain', handler)(req())).json()).toEqual({
+      ok: true,
+      skipped: 'preview_no_test_families',
+    });
+    vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', TEST_FAM);
+    vi.stubEnv('PREVIEW_CAPTURE_TRANSPORT', 'on');
+    const res = await cronRoute('drain', handler)(req());
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(await res.text()).toBe('ran');
   });
 
   it('skips a scoped cron when no test family or no capture door is set', async () => {

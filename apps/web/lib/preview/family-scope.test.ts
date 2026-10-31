@@ -40,7 +40,12 @@ describe('preview family scope', () => {
   });
 
   it('fails closed on preview', () => {
-    expect(previewCronSkipReason('drain', PREVIEW)).toBe('preview_cron_not_scoped');
+    expect(previewCronSkipReason('nudge', PREVIEW)).toBe('preview_cron_not_scoped');
+    // The drain runs on Preview, but only against Preview's own pg-boss schema.
+    expect(previewCronSkipReason('drain', PREVIEW)).toBeNull();
+    expect(previewCronSkipReason('drain', { VERCEL_ENV: 'preview' })).toBe(
+      'preview_no_test_families',
+    );
     expect(previewCronSkipReason('unlisted', PREVIEW)).toBe('preview_cron_not_scoped');
     expect(previewCronSkipReason('reminders', { VERCEL_ENV: 'preview' })).toBe(
       'preview_no_test_families',
@@ -60,5 +65,14 @@ describe('preview family scope', () => {
       const slug = path.replace('/api/cron/', '');
       expect(PREVIEW_CRON_POLICY[slug], slug).toBeDefined();
     }
+  });
+});
+
+describe('queueSchema', () => {
+  it('gives Preview its own pg-boss schema and leaves everything else on pgboss', async () => {
+    const { queueSchema } = await import('./family-scope');
+    expect(queueSchema({ VERCEL_ENV: 'preview' })).toBe('pgboss_preview');
+    expect(queueSchema({ VERCEL_ENV: 'production' })).toBe('pgboss');
+    expect(queueSchema({})).toBe('pgboss');
   });
 });
