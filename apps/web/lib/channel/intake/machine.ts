@@ -2084,7 +2084,7 @@ async function friendColdTurn(
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
   const { session, inbound, now } = args;
-  const progress = session.firstTouch?.coldStart;
+  let progress = session.firstTouch?.coldStart;
   const familyId = session.familyId;
   const userId = session.userId;
   if (!progress || !familyId || !userId) {
@@ -2104,6 +2104,63 @@ async function friendColdTurn(
     if (safety.body) await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'first_touch', step: 'find_sent' };
+  }
+  // The map never reached them. Retry it before any later ask. A miss sends
+  // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
+  let alreadyRecorded: {
+    transcript: TranscriptEntry[];
+    channelMessageId: string | null;
+  } | null = null;
+  if (progress.findDelivered === false) {
+    const owed = await friendSpeak(
+      deps,
+      session.transcript,
+      friendFields('find_show', language, friendAddress(ctx), {
+        parentWords: inbound.body,
+        placeLabel:
+          session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+        agesLabel: summarizeChildren(session.collected.children),
+        ageMonths: session.collected.children.flatMap((child) =>
+          child.ageMonths == null ? [] : [child.ageMonths],
+        ),
+        children: friendChildren(session.collected.children),
+        findLines: linesOfFind(progress.findBody),
+        findGroups: groupsFromFindBody(progress.findBody),
+        listKind: 'none',
+        parentName: session.firstTouch?.given?.parentName ?? null,
+        now,
+      }),
+      { pageScope: familyId },
+    );
+    if (owed.source === 'unsent') {
+      await recordInbound(database, ctx, inbound, session.transcript);
+      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+      return { status: 'first_touch_unsent', reason: unsentReason(owed) };
+    }
+    const bubbles = owed.bubbles.filter((bubble) => bubble.trim().length > 0);
+    if (bubbles.length === 0) {
+      await recordInbound(database, ctx, inbound, session.transcript);
+      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+      return { status: 'first_touch_unsent', reason: 'unusable' };
+    }
+    // Deliver the map before any reply-dependent write. A send that does not
+    // land leaves the debt and creates no reminders.
+    const recordedMap = await recordInbound(database, ctx, inbound, session.transcript);
+    let delivered = false;
+    for (const bubble of bubbles) {
+      const sentMap = await sendAndRecord(database, ctx, bubble, deps, recordedMap.transcript);
+      if (!sentMap.channelMessageId) {
+        delivered = false;
+        break;
+      }
+      delivered = true;
+    }
+    if (!delivered) {
+      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+      return { status: 'first_touch_unsent', reason: 'unusable' };
+    }
+    alreadyRecorded = recordedMap;
+    progress = { ...progress, findDelivered: true };
   }
   const lines = linesOfFind(progress.findBody);
   const needsName = await parentNeedsName(database, userId);
@@ -2156,7 +2213,8 @@ async function friendColdTurn(
     },
   );
   if (spoken.capture.stopAsking) {
-    const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+    const recorded =
+      alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
     const voiced = friendOutbound(spoken);
     if (voiced) await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
     await saveSession(
@@ -2257,7 +2315,8 @@ async function friendColdTurn(
     calendarAsked: after.calendar,
     emailAsked: after.gmail,
   };
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
+  const recorded =
+    alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
   let voiced = friendOutbound(spoken);
   await pursueNewHouseholdGroup(
     database,
@@ -2417,7 +2476,12 @@ async function runColdStartTurn(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
-  if (coldStartQuestionIsStale(progress.step, lastTranscriptAt(session.transcript), now)) {
+  // An owed map is not a legacy pick question. The six-hour pick expiry must
+  // not close the session before the map is retried.
+  if (
+    progress.findDelivered !== false &&
+    coldStartQuestionIsStale(progress.step, lastTranscriptAt(session.transcript), now)
+  ) {
     console.info(
       { stale: 'cold_start' },
       'cold-start: question is stale, handing the text to the coach',
@@ -2811,7 +2875,8 @@ async function provision(
         },
       ),
     ]);
-    if (map && map.source !== 'unsent') {
+    const mapUnsent = map?.source === 'unsent';
+    if (map && !mapUnsent) {
       let delivered = false;
       for (const bubble of map.bubbles) {
         if (bubble.trim().length === 0) continue;
@@ -2828,7 +2893,7 @@ async function provision(
       );
       if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
-    outboundBody = friendOutbound(spoken) ?? '';
+    outboundBody = mapUnsent ? '' : (friendOutbound(spoken) ?? '');
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
       outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
     }
@@ -2854,12 +2919,13 @@ async function provision(
     }
     if (discoveryOn) {
       friendCold = {
-        step: step === 'names' || step === 'find_empty' ? 'names' : 'follow',
+        step: step === 'names' || step === 'find_empty' || mapUnsent ? 'names' : 'follow',
         group: ctx.pipe.isGroup,
         findBody: radar.message,
         activity: null,
         day: null,
-        nameLineSent: true,
+        nameLineSent: !mapUnsent,
+        ...(mapUnsent ? { findDelivered: false } : {}),
         signupDateKnown: false,
         signupAsked: false,
         calendarAsked: calendarAnswered(given),
