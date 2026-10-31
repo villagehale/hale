@@ -73,6 +73,21 @@ describe('search_village uses this operation’s live evidence', () => {
     });
   });
 
+  it('searches the town the parent named instead of the home area', async () => {
+    const familyId = await household(false, 'Toronto');
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({ found: true, picks: [pick] });
+    await search(familyId, { find }, undefined, {
+      query: 'trick or treat',
+      window: 'this weekend',
+      area: 'Oakville',
+    });
+    expect(find.mock.calls[0]?.[0]).toMatchObject({
+      subject: 'trick or treat',
+      window: 'this weekend',
+      town: 'Oakville',
+    });
+  });
+
   it('offers fresh facts and records exactly the offered receipt, never an old schedule', async () => {
     const familyId = await household();
     await db.database.insert(schema.familyActivityHistory).values({

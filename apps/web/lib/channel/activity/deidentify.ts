@@ -25,9 +25,12 @@ import { townLabel } from '~/lib/channel/town-label';
  *     being remembered. The window was once capped by nothing at all, and a 431-character
  *     window — a parent's whole message pasted into the second argument — crossed the
  *     border beside a subject held to 120.
- *   · the TOWN — code-supplied from `families.area_coarse` via the FSA table. A
- *     municipality, never a postal code and never a street. The model cannot supply it,
- *     which is what makes "coarse location only" a property rather than an instruction.
+ *   · the TOWN — the family's home municipality, code-supplied from `families.area_coarse`
+ *     via the FSA table, unless the parent named a different place. That place is the
+ *     optional `area` argument: a town, city, or area name and nothing else. It replaces
+ *     the home town for this search. A street, a postal code, or a household name is
+ *     refused, and the search does not fall back to home — that would look in the wrong
+ *     place while the parent asked about another.
  *   · the STAGE WORD — code-supplied from the child's date of birth via `deriveStage`.
  *     A band, never an age and never a DOB, for the reason the medical lane keeps a band:
  *     an activity that fits a two-year-old does not fit a nine-year-old, and the band is
@@ -84,6 +87,10 @@ export type ActivityDeidRefusal =
   | 'window_too_long'
   | 'names_a_person';
 
+/** A parent-named place that must not be searched. Off {@link ActivityDeidRefusal} so a
+ * trip query, which has no `area` argument, does not grow a counter for it. */
+export type ActivityAreaRefusal = 'area_unusable' | 'area_names_a_person';
+
 /**
  * A query that has cleared phase 0 — the ONLY shape the search is allowed to see.
  *
@@ -108,7 +115,7 @@ export interface ActivityQuery {
 
 export type ActivityDeidResult =
   | { ok: true; query: ActivityQuery }
-  | { ok: false; refusal: ActivityDeidRefusal };
+  | { ok: false; refusal: ActivityDeidRefusal | ActivityAreaRefusal };
 
 /**
  * `halton_hills` → `Halton Hills`, and `whitchurch_stouffville` → `Stouffville`. Taken
@@ -154,12 +161,42 @@ function gateFreeText(
 }
 
 /**
+ * A town, city, or area name and nothing finer. Letters (any script), spaces,
+ * apostrophes, periods, hyphens. No digits, so a postal code or a house number cannot
+ * pass, and no comma, so a street cannot ride along after the city. The same shape
+ * travel uses for a destination city (`DESTINATION_SHAPE` in travel/detect.ts). It
+ * lives here because that module imports this one.
+ */
+const PLACE_NAME = /^\p{L}[\p{L}\p{M}\s'’.-]{1,59}$/u;
+
+/** The place the parent named, or null when they did not. A blank is "not named".
+ * A street, a postal code, or a household name is a refusal — never a silent return
+ * to the home town, which is the bug this argument exists to close. */
+function alternateTown(
+  area: string | null | undefined,
+  householdNames: readonly string[],
+):
+  | { ok: true; town: string | null }
+  | { ok: false; refusal: 'area_unusable' | 'area_names_a_person' } {
+  const value = area?.replace(/\s+/g, ' ').trim() ?? '';
+  if (value === '') return { ok: true, town: null };
+  if (namesAPerson(value, householdNames)) return { ok: false, refusal: 'area_names_a_person' };
+  if (!PLACE_NAME.test(value)) return { ok: false, refusal: 'area_unusable' };
+  const gated = gateFreeText(value, householdNames);
+  if (!gated.ok || gated.value !== value || gated.value.includes('[redacted]')) {
+    const named = !gated.ok && gated.refusal === 'names_a_person';
+    return { ok: false, refusal: named ? 'area_names_a_person' : 'area_unusable' };
+  }
+  return { ok: true, town: gated.value };
+}
+
+/**
  * Turn what the coach asked for into what may be searched, or refuse.
  *
- * Every field on the returned {@link ActivityQuery} comes from ONE of two places and there
- * is no third: {@link gateFreeText}, or the family's own record. That is the structural
- * half of the promise — not "the raw message is scrubbed before it is sent", which is a
- * thing somebody has to remember, but "there is nowhere for unscrubbed text to enter".
+ * Every field on the returned {@link ActivityQuery} comes from {@link gateFreeText} or the
+ * family's own record. `area`, when the parent named one, is the same gate plus the place
+ * shape — a town, city, or area, never a street or a postal code. There is nowhere for
+ * unscrubbed text to enter.
  */
 export function deidentifyActivityQuery(input: {
   subject: string;
@@ -167,6 +204,8 @@ export function deidentifyActivityQuery(input: {
   municipality: Municipality | null;
   stage: FamilyStage | null;
   householdNames: readonly string[];
+  /** A town, city, or area the parent named. Distinct from the home municipality. */
+  area?: string | null;
 }): ActivityDeidResult {
   const subject = gateFreeText(input.subject, input.householdNames);
   if (!subject.ok) {
@@ -189,12 +228,15 @@ export function deidentifyActivityQuery(input: {
     window = gated.ok ? gated.value : null;
   }
 
+  const place = alternateTown(input.area, input.householdNames);
+  if (!place.ok) return place;
+
   return {
     ok: true,
     query: {
       subject: subject.value,
       window,
-      town: input.municipality === null ? null : townFor(input.municipality),
+      town: place.town ?? (input.municipality === null ? null : townFor(input.municipality)),
       stage: input.stage,
     },
   };
@@ -278,7 +320,7 @@ export function travelQueryFor(input: {
 /** The sentence the model reads when phase 0 refuses — it answers by calling again.
  * Never echoes the subject back: the refusal exists because that string held something
  * that must not be repeated (rule #1). */
-export function refusalSentence(refusal: ActivityDeidRefusal): string {
+export function refusalSentence(refusal: ActivityDeidRefusal | ActivityAreaRefusal): string {
   switch (refusal) {
     case 'empty_subject':
       return 'That search had no subject. Call find_activities again and say what kind of activity to look for.';
@@ -288,5 +330,9 @@ export function refusalSentence(refusal: ActivityDeidRefusal): string {
       return `That window is longer than ${MAX_QUERY_FIELD_CHARS} characters. Call find_activities again with the season or the time of week in a few words, not the parent's whole message.`;
     case 'names_a_person':
       return 'That subject names somebody in the family, and a name never goes to a search. Call find_activities again with the activity alone - the age band travels with it already.';
+    case 'area_unusable':
+      return 'That area is not a town, city, or area name. Call the find again with only the place (no street, no postal code), or omit area to search around the family home.';
+    case 'area_names_a_person':
+      return 'That area names somebody in the family, and a name never goes to a search. Call the find again with the place alone, or omit area to search around home.';
   }
 }
