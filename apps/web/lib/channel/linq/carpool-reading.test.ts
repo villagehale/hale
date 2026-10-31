@@ -31,6 +31,7 @@ describe('parseCarpoolReading', () => {
     ).toEqual({
       intent: 'driver_claim',
       driverName: 'Maya',
+      driverIsSender: false,
       eventLabel: 'soccer',
       pickupAtIso: null,
       pickupPlace: null,
@@ -53,6 +54,7 @@ describe('readingFromTapback', () => {
       {
         intent: 'driver_claim',
         driverName: 'Priya',
+        driverIsSender: true,
         eventLabel: null,
         pickupAtIso: null,
         pickupPlace: null,

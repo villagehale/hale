@@ -176,11 +176,19 @@ describe('considerCarpoolTurn', () => {
         }),
       },
     });
+    const [priya] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:priya', name: 'Priya Shah', timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
+    // Devin #975 — only a member of the covering family (or seated) may swap.
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: priya?.id as string, role: 'co_parent' });
     const swapped = await considerCarpoolTurn(db.database, {
       chatId: CHAT,
       familyId,
       senderHandle: '+14165550113',
-      senderUserId: null,
+      senderUserId: priya?.id as string,
       senderName: 'Priya',
       text: 'I will take them instead',
       now: NOW,
@@ -190,6 +198,7 @@ describe('considerCarpoolTurn', () => {
         read: async () => ({
           intent: 'driver_swap',
           driverName: 'Priya',
+          driverIsSender: true,
           eventLabel: 'soccer',
           pickupAtIso: PICKUP,
           pickupPlace: 'the rec',
@@ -278,6 +287,11 @@ describe('runCarpoolReminders', () => {
     const voice = fakeCarpoolComposer();
     const door = send();
     await insertAssigned(familyId, userId);
+    // Design (#975) — the driver 1:1 runs only for a family with no claimed group.
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: null })
+      .where(eq(schema.families.id, familyId));
     const driverSends: string[] = [];
     const fired = await runCarpoolReminders(db.database, {
       now: FRIDAY_EVE,

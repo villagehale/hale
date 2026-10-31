@@ -872,6 +872,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
           senderName: null,
           text: message.text,
+          messageId: message.messageId,
           now: deps.now?.() ?? new Date(),
           send: deps.sendGroupText,
           reader: deps.carpoolReader,

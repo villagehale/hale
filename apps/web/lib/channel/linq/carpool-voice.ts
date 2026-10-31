@@ -1,10 +1,8 @@
-import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
-import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
  * VIL-445 — one carpool line, written by the model from facts.
@@ -115,33 +113,9 @@ export function createCarpoolComposer(options?: {
         }
         return composed.voice.line;
       }
-      for (let attempt = 0; attempt < CARPOOL_VOICE_ATTEMPTS; attempt += 1) {
-        try {
-          const { value } = await forceToolJson({
-            client,
-            lane: pickLane(skill.meta.task),
-            system: skill.instructions,
-            userMessage: JSON.stringify({ ...input, retry: attempt === 1 }),
-            toolName: 'send_carpool_line',
-            toolDescription: 'The one carpool text Hale sends.',
-            inputJsonSchema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: { line: { type: 'string' } },
-              required: ['line'],
-            },
-            schema: lineSchema,
-            maxTokens: attempt === 1 ? CARPOOL_VOICE_RETRY_MAX_TOKENS : CARPOOL_VOICE_MAX_TOKENS,
-          });
-          if (carpoolLineUsable(value.line, input.kind)) return value.line.trim();
-        } catch (err) {
-          console.warn(
-            { attempt, err: err instanceof Error ? err.name : 'unknown' },
-            'carpool voice: compose failed',
-          );
-        }
-      }
-      await pageUnsent(input.kind, 'model_failed');
+      // Devin #936 (security) — without the database the line cannot be
+      // grounded against the supplied facts, so nothing is sent.
+      await pageUnsent(input.kind, 'ungrounded');
       return null;
     },
   };
