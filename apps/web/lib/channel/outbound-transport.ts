@@ -11,6 +11,7 @@ import {
 } from '~/lib/channel/preview-capture-transport';
 import { previewGroupCaptureOpen } from '~/lib/channel/preview-linq-capture';
 import type { MessageTransport } from '~/lib/channel/transport-address';
+import { isPreviewDeploy } from '~/lib/preview/family-scope';
 
 /**
  * The one place a Hale-initiated text chooses its phone door.
@@ -42,6 +43,15 @@ export function createOutboundTransport(deps: { fetch?: typeof fetch } = {}): Ch
         );
       }
     });
+  }
+  // On Preview nothing goes out except through the capture door, even when a
+  // Linq key happens to be set there.
+  if (isPreviewDeploy()) {
+    return {
+      async send() {
+        throw new PreviewCaptureRefused('flag_off');
+      },
+    };
   }
   if (!linqPhoneOutboundConfigured()) {
     return {

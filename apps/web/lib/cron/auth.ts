@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { stampCronHeartbeat } from '~/lib/cron/heartbeat';
 import { db } from '~/lib/db';
+import { previewCronSkipReason } from '~/lib/preview/family-scope';
 
 /**
  * Cron-call authentication.
@@ -61,6 +62,13 @@ export function cronRoute(
   return async (req: Request) => {
     const denied = requireCronSecret(req);
     if (denied) return denied;
+    // Preview shares prod's database: only family-scoped crons with test families
+    // and the capture transport run there. No-op off preview.
+    const previewSkip = previewCronSkipReason(name);
+    if (previewSkip) {
+      console.info({ cron: name, skipped: previewSkip }, 'cron: skipped on preview');
+      return NextResponse.json({ ok: true, skipped: previewSkip }, { status: 200 });
+    }
     const response = await handler(req);
     try {
       await stampCronHeartbeat(db(), name);
