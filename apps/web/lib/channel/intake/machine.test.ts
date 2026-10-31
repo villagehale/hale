@@ -29,7 +29,6 @@ import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import { FakeTransport } from './transport';
 import { claimIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS } from './watch-consent';
-import { WELCOME_CARD_BODY } from './welcome-card';
 
 /** #868: the fixed ask is gone; any pending-ask text is a fixture. */
 const COLD_START_ASK = 'cold start ask (test fixture)';
@@ -1060,7 +1059,6 @@ describe('intake · one ladder job per reply', () => {
       `${chatId}/messages`,
       `${chatId}/share_contact_card`,
     ]);
-    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });

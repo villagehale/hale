@@ -248,7 +248,7 @@ describe('duty ask sweep', () => {
       bubbleLeaving: true,
     });
     if (!('plan' in view)) throw new Error('expected a duty plan');
-    const text = renderDutyLines(view.plan.foldLines, view.render) ?? '';
+    const text = (renderDutyLines(view.plan.foldLines, view.render)?.facts ?? []).join(' ');
     expect(text).toContain('Maya');
     expect(text).not.toContain('Noor');
     expect(text).not.toMatch(/hockey/i);

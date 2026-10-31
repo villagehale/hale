@@ -115,7 +115,13 @@ export function buildIntakeDeps(
  * is re-sending a vCard must not warm an Anthropic client on every hourly tick.
  */
 export function welcomeCardRedrivePorts(): WelcomeCardPorts {
-  return { transport: createOutboundTransport(), threadMessage: threadProactiveMessage };
+  return {
+    transport: createOutboundTransport(),
+    threadMessage: threadProactiveMessage,
+    // VIL-505: the card's line is model-written. Lazily resolved, so a tick with no
+    // held card due never warms a client.
+    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+  };
 }
 
 /**

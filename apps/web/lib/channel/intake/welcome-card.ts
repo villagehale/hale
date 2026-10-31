@@ -1,9 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { failedSendPatch } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 import type { ChannelTransport } from './transport';
@@ -34,10 +36,6 @@ export const CONTACT_CARD_URL = `${MARKETING_SITE_URL}/hale.vcf`;
 
 export const WELCOME_CARD_TEMPLATE_KEY = 'intake:welcome_card';
 
-/** Plain, and ASCII-only so smart encoding keeps it in one GSM-7 part. */
-export const WELCOME_CARD_BODY =
-  "That's me - save my card so it's a name texting you, not a number.";
-
 /** At most one card per family, ever, enforced by the partial unique index on
  * `channel_messages.dedupe_key`. */
 export function welcomeCardDedupeKey(familyId: string): string {
@@ -47,6 +45,12 @@ export function welcomeCardDedupeKey(familyId: string): string {
 export interface WelcomeCardPorts {
   transport: ChannelTransport;
   threadMessage: typeof threadProactiveMessage;
+  /**
+   * VIL-505 (absolute zero fixed copy): the sentence riding the card is the model's,
+   * every time. No writer, or a write that comes back unusable, means the card is not
+   * sent this time — nothing canned goes out in its place, and nothing is spent.
+   */
+  saidLine?: SaidLineWriter;
 }
 
 /**
@@ -62,6 +66,9 @@ export type WelcomeCardOutcome =
    * 22:36 is Hale making noise, not answering. Named on the ledger and never on the
    * dedupe key — a suppression must not spend this family's only card. */
   | { status: 'not_sent'; reason: 'suppressed_quiet_hours' }
+  /** VIL-505: the model wrote no usable line, so nothing was sent and the dedupe key
+   * stays free — the held receipt (if any) still owes this family the card. */
+  | { status: 'not_sent'; reason: 'no_line' }
   | { status: 'not_sent'; reason: 'send_failed'; code: string; permanent: boolean };
 
 /** A provider refusal that names itself (`code` + `permanent`), or an unnamed throw.
@@ -123,6 +130,22 @@ export async function sendWelcomeContactCard(
     return { status: 'not_sent', reason: 'suppressed_quiet_hours' };
   }
 
+  // THE LINE, before the claim (VIL-505): model-written or nothing. A failed write must
+  // not spend this family's only card.
+  const body = await ports.saidLine?.write({
+    purpose: 'contact_card',
+    // Design #973: the family's language, never an English default.
+    language: await familyLanguage(database, familyId),
+    facts: { attachment: "Hale's contact card (vCard)" },
+  });
+  if (!body) {
+    console.error(
+      { familyId },
+      'intake welcome card: no model-written line - nothing sent, nothing spent',
+    );
+    return { status: 'not_sent', reason: 'no_line' };
+  }
+
   // CLAIM FIRST. The unique index is the claim, so "have we sent this?" is answered by
   // the insert rather than by a read another request can race. At-most-once is the right
   // side to err on for a contact card: a duplicate is a stranger's number texting a
@@ -158,7 +181,7 @@ export async function sendWelcomeContactCard(
   try {
     const sent = await ports.transport.send({
       to: args.phoneE164,
-      body: WELCOME_CARD_BODY,
+      body,
       mediaUrls: [CONTACT_CARD_URL],
     });
     providerMessageId = sent.providerMessageId;
@@ -198,7 +221,7 @@ export async function sendWelcomeContactCard(
 
   // The sentence Hale said, where the coach reads it back (channel/thread.ts). The card
   // itself is not a sentence and has nothing to thread.
-  await ports.threadMessage(database, { familyId, parentUserId, body: WELCOME_CARD_BODY });
+  await ports.threadMessage(database, { familyId, parentUserId, body });
 
   return { status: 'sent', channelMessageId: claimed.id };
 }
@@ -212,4 +235,13 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
     .from(schema.users)
     .where(eq(schema.users.id, parentUserId));
   return rows.find((row) => row.id === parentUserId)?.timezone ?? DEFAULT_TIMEZONE;
+}
+
+/** The family's language for the card's line (Design #973). Post-filtered by id. */
+async function familyLanguage(database: Database, familyId: string) {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(rows.find((row) => row.id === familyId)?.primaryLanguage);
 }

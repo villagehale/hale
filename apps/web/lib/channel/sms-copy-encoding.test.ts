@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { connectorRevokeReply } from '~/lib/channel/connect/copy';
 import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
-import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { referralReply } from '~/lib/channel/off-domain/copy';
 import { smsEncoding, smsSegments } from './sms-segments';
@@ -266,13 +265,8 @@ describe('the disconnect receipts stay GSM-7 and say what Google still holds', (
     expect(en).toContain('nothing was changed');
   });
 
-  /** The trust line is not a command. A parent can still disconnect by saying so. */
-  it('does not teach a disconnect phrase on the connect card', () => {
-    expect(CONNECTOR_TRUST_LINE.gcal).toBe(
-      'I never see your password. You can disconnect any time.',
-    );
-    expect(CONNECTOR_TRUST_LINE.gmail).toBe(CONNECTOR_TRUST_LINE.gcal);
-    expect(matchConnectorDisconnectRequest(CONNECTOR_TRUST_LINE.gcal)).toBeNull();
+  /** VIL-509: no fixed trust line remains. A parent can still disconnect by saying so. */
+  it("reads a disconnect request from the parent's own words", () => {
     expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
     expect(matchConnectorDisconnectRequest('disconnect my gmail')).toBe('gmail');
   });

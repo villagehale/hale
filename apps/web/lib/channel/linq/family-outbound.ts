@@ -569,7 +569,7 @@ export async function flushGroupDecisionSyncs(
         if (line) lines.push(line);
       } else if (row.decision === 'duty' && row.day && row.time) {
         const copy = copyLanguage(speech.language);
-        const fallback = copy
+        const plan = copy
           ? dutySyncLine(copy, {
               name: speech.name,
               activity: row.activity,
@@ -579,7 +579,7 @@ export async function flushGroupDecisionSyncs(
             })
           : null;
         const voiced =
-          fallback && copy
+          plan && copy
             ? await replyProse(
                 {
                   client: replyClient,
@@ -590,7 +590,8 @@ export async function flushGroupDecisionSyncs(
                   surface: 'duty',
                 },
                 {
-                  fallback,
+                  purpose: plan.purpose,
+                  questionAllowed: plan.questionAllowed,
                   facts: [name, row.activity, row.kid, row.day, row.time],
                 },
               )

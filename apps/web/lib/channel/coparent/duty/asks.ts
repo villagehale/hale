@@ -41,11 +41,12 @@ import {
 import { householdEventCalendarIds } from './calendar';
 import {
   type DutyCopyParams,
+  type DutyLinePlan,
   type DutyWeekEntry,
   dutyClockLabel,
-  dutyCopy,
   dutyCopyMayLeave,
-  dutyWeekList,
+  dutyLinePlan,
+  dutyWeekFacts,
   dutyWeekdayName,
   formatDutyKids,
   spokenFirstName,
@@ -751,7 +752,7 @@ function paramsFor(line: CadenceLine, ctx: DutyRenderInput): DutyCopyParams | nu
         return [{ day, event, name: row.spokenName ?? null }];
       });
     if (entries.length === 0) return null;
-    return { list: dutyWeekList(ctx.language, entries) };
+    return { list: dutyWeekFacts(entries) };
   }
   const occasion = occasionForLine(line, ctx);
   if (!occasion) return null;
@@ -793,13 +794,11 @@ function paramsFor(line: CadenceLine, ctx: DutyRenderInput): DutyCopyParams | nu
   return null;
 }
 
-function renderOne(line: CadenceLine, ctx: DutyRenderInput): string | null {
+function planOne(line: CadenceLine, ctx: DutyRenderInput): DutyLinePlan | null {
   const params = paramsFor(line, ctx);
   if (!params) return null;
   try {
-    const text = dutyCopy(line.mode, ctx.language, params);
-    if (!dutyCopyMayLeave(text)) return null;
-    return text;
+    return dutyLinePlan(line.mode, params);
   } catch {
     return null;
   }
@@ -832,7 +831,7 @@ async function voiceDuty(
   input: {
     familyId: string;
     language: 'en' | 'fr';
-    locked: string;
+    plan: DutyLinePlan;
     facts: readonly string[];
     replyClient?: AgentClient | null;
   },
@@ -846,7 +845,11 @@ async function voiceDuty(
       audience: 'group',
       surface: 'duty',
     },
-    { fallback: input.locked, facts: input.facts },
+    {
+      purpose: input.plan.purpose,
+      questionAllowed: input.plan.questionAllowed,
+      facts: input.facts,
+    },
   );
   if (!voiced || !dutyCopyMayLeave(voiced)) return null;
   return voiced;
@@ -912,17 +915,24 @@ export function dutyNightFacts(
   };
 }
 
-/** Joined copy for a bubble. Null when nothing finished may leave. */
+/**
+ * One plan for a bubble: the purposes joined, the facts the model may use, and one
+ * question at most. Null when no line has its facts. There is no sentence here.
+ */
 export function renderDutyLines(
   lines: readonly CadenceLine[],
   ctx: DutyRenderInput,
-): string | null {
+): DutyLinePlan | null {
   if (lines.length === 0) return null;
-  const parts = lines
-    .map((line) => renderOne(line, ctx))
-    .filter((part): part is string => part !== null);
-  if (parts.length === 0) return null;
-  return parts.join('\n');
+  const plans = lines
+    .map((line) => planOne(line, ctx))
+    .filter((plan): plan is DutyLinePlan => plan !== null);
+  if (plans.length === 0) return null;
+  return {
+    purpose: plans.map((plan) => plan.purpose).join('+'),
+    questionAllowed: plans.some((plan) => plan.questionAllowed),
+    facts: plans.flatMap((plan) => plan.facts),
+  };
 }
 
 async function auditDuty(
@@ -1219,12 +1229,12 @@ async function applyPlan(
   if (input.lines.some((row) => row.mode === 'night_before')) {
     return applyNightBefore(database, input);
   }
-  const locked = renderDutyLines(input.lines, input.view.render);
-  if (!locked) return { status: 'skipped', reason: 'placeholder' };
+  const plan = renderDutyLines(input.lines, input.view.render);
+  if (!plan) return { status: 'skipped', reason: 'placeholder' };
   const text = await voiceDuty(database, {
     familyId: input.familyId,
     language: input.view.render.language,
-    locked,
+    plan,
     facts: dutyFacts(input.lines, input.view.render, input.view.open),
     replyClient: input.replyClient,
   });
@@ -1334,12 +1344,12 @@ export async function dutyOverviewForWeeklyBubble(
     bubbleLeaving: true,
   });
   if ('skipped' in view) return null;
-  const locked = renderDutyLines(view.plan.foldLines, view.render);
-  if (!locked) return null;
+  const plan = renderDutyLines(view.plan.foldLines, view.render);
+  if (!plan) return null;
   const text = await voiceDuty(database, {
     familyId: input.familyId,
     language: view.render.language,
-    locked,
+    plan,
     facts: dutyFacts(view.plan.foldLines, view.render, view.open),
     replyClient: input.replyClient,
   });

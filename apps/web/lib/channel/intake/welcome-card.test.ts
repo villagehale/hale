@@ -7,7 +7,6 @@ import { type FakeDb, makeFakeDb } from './fakes';
 import { type ChannelTransport, FakeTransport } from './transport';
 import {
   CONTACT_CARD_URL,
-  WELCOME_CARD_BODY,
   WELCOME_CARD_TEMPLATE_KEY,
   type WelcomeCardPorts,
   sendWelcomeContactCard,
@@ -19,9 +18,16 @@ const PARENT = '00000000-0000-4000-8000-0000000000a1';
 const PHONE = '+14165551234';
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
+/** Stands in for the model: what it "wrote" is test data, never shipped copy. */
+const WRITTEN = 'model-written line for the card';
+const writer = (text: string | null) => ({ write: vi.fn(async () => text) });
+
 type Threaded = Array<{ familyId: string; parentUserId: string; body: string }>;
 
-function ports(transport: ChannelTransport): { ports: WelcomeCardPorts; threaded: Threaded } {
+function ports(
+  transport: ChannelTransport,
+  saidLine: WelcomeCardPorts['saidLine'] = writer(WRITTEN),
+): { ports: WelcomeCardPorts; threaded: Threaded } {
   const threaded: Threaded = [];
   return {
     threaded,
@@ -31,6 +37,7 @@ function ports(transport: ChannelTransport): { ports: WelcomeCardPorts; threaded
         threaded.push(input);
         return 'conv-1';
       },
+      saidLine,
     },
   };
 }
@@ -76,11 +83,9 @@ describe('the welcome contact card', () => {
     const outcome = await send(fake, cardPorts);
 
     expect(outcome).toEqual({ status: 'sent', channelMessageId: expect.any(String) });
-    expect(transport.sent).toEqual([
-      { to: PHONE, body: WELCOME_CARD_BODY, mediaUrls: [CONTACT_CARD_URL] },
-    ]);
+    expect(transport.sent).toEqual([{ to: PHONE, body: WRITTEN, mediaUrls: [CONTACT_CARD_URL] }]);
     // The thread carries the sentence, so the coach can see Hale introduced itself.
-    expect(threaded).toEqual([{ familyId: FAMILY, parentUserId: PARENT, body: WELCOME_CARD_BODY }]);
+    expect(threaded).toEqual([{ familyId: FAMILY, parentUserId: PARENT, body: WRITTEN }]);
 
     const [row] = ledgerRows(fake);
     expect(row).toMatchObject({
@@ -147,6 +152,50 @@ describe('the welcome contact card', () => {
 
     expect(second).toEqual({ status: 'not_sent', reason: 'already_sent' });
     expect(transport.sent).toEqual([]);
+  });
+});
+
+describe('VIL-505 · absolute zero fixed copy on the card', () => {
+  it('asks the model for the line with purpose contact_card and sends exactly what it wrote', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const w = writer(WRITTEN);
+    await send(fake, ports(transport, w).ports);
+    expect(w.write).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'contact_card' }));
+    expect(transport.sent.map((s) => s.body)).toEqual([WRITTEN]);
+  });
+
+  it('asks in the family language, never an English default (Design #973)', async () => {
+    const fake = makeFakeDb();
+    await fake.db
+      .insert(schema.families)
+      .values({ id: FAMILY, displayName: 'F', primaryLanguage: 'fr' } as never);
+    const w = writer(WRITTEN);
+    await send(fake, ports(new FakeTransport(), w).ports);
+    expect(w.write).toHaveBeenCalledWith(expect.objectContaining({ language: 'fr' }));
+  });
+
+  it.each([
+    ['the model wrote nothing usable', writer(null)],
+    ['no writer is wired', undefined],
+  ])('sends NOTHING and spends nothing when %s', async (_name, saidLine) => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { ports: cardPorts, threaded } = ports(transport, saidLine as never);
+    (cardPorts as { saidLine?: unknown }).saidLine = saidLine;
+
+    const outcome = await send(fake, cardPorts);
+
+    expect(outcome).toEqual({ status: 'not_sent', reason: 'no_line' });
+    expect(transport.sent).toEqual([]);
+    expect(threaded).toEqual([]);
+    // The dedupe key is untouched, so the family is still owed the card.
+    expect(ledgerRows(fake)).toEqual([]);
+    vi.restoreAllMocks();
+
+    const retry = await send(fake, ports(transport).ports);
+    expect(retry.status).toBe('sent');
   });
 });
 

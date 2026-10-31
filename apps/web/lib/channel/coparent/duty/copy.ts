@@ -1,67 +1,16 @@
 import { classifyKidCalendarItem } from '~/lib/channel/linq/kid-event';
 
 /**
- * Parent-facing lines for duty asks. Sloane locked these strings (VIL-382).
+ * Facts for duty lines (VIL-507, absolute zero fixed copy).
  *
- * A line may leave when the text has no leftover `{token}`. The sends flag is
- * the caller's other gate. The model writes the sentence that actually goes out.
+ * There is no sentence here in any language. Each line is a purpose, the facts the
+ * model may use, and whether its one next step may be a question. The model writes
+ * every word (reply-copy); a miss holds the send.
  *
  * A name is filled only from words a parent said, or from the one parent whose
  * calendar holds the event. Callers pass that decision in. This module does
  * not look a name up and does not invent one.
  */
-
-export const DUTY_WHICH_KID_COPY = '{name}, got it. Which kid is that for: {kids}?';
-export const DUTY_WHICH_KID_COPY_FR = "{name}, note. C'est pour quel enfant: {kids}?";
-
-export const DUTY_BOTH_CLAIMED_COPY =
-  "You both said you've got {event}, {day}. Who's taking it, {parentA} or {parentB}?";
-export const DUTY_BOTH_CLAIMED_COPY_FR =
-  "Vous avez dit tous les deux que vous vous en occupez pour {event}, {day}. C'est {parentA} ou {parentB}?";
-
-export const DUTY_WEEK_OVERVIEW_COPY_EN = 'Who has what this week: {list}.';
-export const DUTY_WEEK_OVERVIEW_COPY_FR = "Qui s'occupe de quoi cette semaine: {list}.";
-
-export const DUTY_REASK_COPY_EN =
-  "Still nobody on {kid}'s {event}, {day} at {time}. Who's taking it?";
-export const DUTY_REASK_COPY_FR =
-  "Toujours personne pour s'occuper de {event} pour {kid}, {day} a {time}. Qui le prend?";
-
-export const DUTY_PARENT_OWNED_COPY_EN = "{name} has {kid}'s {event}, {day} at {time}.";
-export const DUTY_PARENT_OWNED_COPY_FR = "{name} s'occupe de {event} pour {kid}, {day} a {time}.";
-
-export const DUTY_PARENT_ASK_COPY_EN =
-  "Nobody has {kid}'s {event}, {day} at {time} yet. Who's taking it?";
-export const DUTY_PARENT_ASK_COPY_FR =
-  "Personne ne s'occupe encore de {event} pour {kid}, {day} a {time}. Qui le prend?";
-
-export const DUTY_SILENT_PARENT_COPY_EN = '{name}, over to you on {event}, {day}.';
-export const DUTY_SILENT_PARENT_COPY_FR = '{name}, a toi de nous dire pour {event}, {day}.';
-
-/** Owned week-list item. Unowned tails live in {@link dutyWeekList}. */
-export const DUTY_WEEK_OWNED_ITEM = '{day} {event} ({name})';
-export const DUTY_WEEK_UNOWNED_ITEM_EN = '{day} {event} (nobody yet)';
-export const DUTY_WEEK_UNOWNED_ITEM_FR = "{day} {event} (personne pour l'instant)";
-
-export const DUTY_COPY_TEMPLATES = [
-  DUTY_WHICH_KID_COPY,
-  DUTY_WHICH_KID_COPY_FR,
-  DUTY_BOTH_CLAIMED_COPY,
-  DUTY_BOTH_CLAIMED_COPY_FR,
-  DUTY_WEEK_OVERVIEW_COPY_EN,
-  DUTY_WEEK_OVERVIEW_COPY_FR,
-  DUTY_REASK_COPY_EN,
-  DUTY_REASK_COPY_FR,
-  DUTY_PARENT_OWNED_COPY_EN,
-  DUTY_PARENT_OWNED_COPY_FR,
-  DUTY_PARENT_ASK_COPY_EN,
-  DUTY_PARENT_ASK_COPY_FR,
-  DUTY_SILENT_PARENT_COPY_EN,
-  DUTY_SILENT_PARENT_COPY_FR,
-  DUTY_WEEK_OWNED_ITEM,
-  DUTY_WEEK_UNOWNED_ITEM_EN,
-  DUTY_WEEK_UNOWNED_ITEM_FR,
-] as const;
 
 export type DutyCopyId =
   | 'week_overview'
@@ -101,17 +50,6 @@ const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const BANNED = /\b(booked|enrolled|signed up)\b/i;
 const TOKEN_TEST = /\{[a-zA-Z]+\}/;
 
-const SIMPLE: Record<
-  Exclude<DutyCopyId, 'parent_initiated' | 'night_before'>,
-  { en: string; fr: string }
-> = {
-  week_overview: { en: DUTY_WEEK_OVERVIEW_COPY_EN, fr: DUTY_WEEK_OVERVIEW_COPY_FR },
-  reask_48h: { en: DUTY_REASK_COPY_EN, fr: DUTY_REASK_COPY_FR },
-  which_kid: { en: DUTY_WHICH_KID_COPY, fr: DUTY_WHICH_KID_COPY_FR },
-  both_claimed: { en: DUTY_BOTH_CLAIMED_COPY, fr: DUTY_BOTH_CLAIMED_COPY_FR },
-  silent_parent: { en: DUTY_SILENT_PARENT_COPY_EN, fr: DUTY_SILENT_PARENT_COPY_FR },
-};
-
 const REQUIRED: Record<Exclude<DutyCopyId, 'night_before'>, readonly (keyof DutyCopyParams)[]> = {
   week_overview: ['list'],
   reask_48h: ['kid', 'event', 'day', 'time'],
@@ -128,55 +66,40 @@ function filled(value: string | null | undefined): string | null {
   return trimmed;
 }
 
-function renderTemplate(
-  template: string,
-  params: DutyCopyParams,
-  required: readonly (keyof DutyCopyParams)[],
-  _language: DutyCopyLanguage,
-): string {
-  const bag = new Map<string, string>();
-  for (const key of required) {
-    const value = filled(params[key]);
-    if (!value) throw new DutyCopyError(`missing ${key}`);
-    bag.set(key, value);
-  }
-  if (filled(params.name)) bag.set('name', filled(params.name) as string);
-  const rendered = template.replace(/\{([a-zA-Z]+)\}/g, (_match, key: string) => {
-    const value = bag.get(key);
-    if (!value) throw new DutyCopyError(`missing ${key}`);
-    return value;
-  });
-  if (TOKEN_TEST.test(rendered)) throw new DutyCopyError('unrendered');
-  if (BANNED.test(rendered)) throw new DutyCopyError('banned');
-  return rendered;
+/** One duty line for the model: what it is for, its facts, and its ask budget. */
+export interface DutyLinePlan {
+  purpose: string;
+  questionAllowed: boolean;
+  facts: string[];
 }
 
 /**
- * Render one locked line. Throws {@link DutyCopyError} when a required token
- * is missing, so a caller can refuse the send. Never returns a literal `{…}`.
- * `parent_initiated` uses the owner sentence when `name` is set and the
- * nobody-yet question otherwise.
+ * Plan one line. Throws {@link DutyCopyError} when a required fact is missing, so a
+ * caller can refuse the send. `parent_initiated` is the owner statement when `name` is
+ * set and the nobody-yet question otherwise.
  */
-export function dutyCopy(
-  id: DutyCopyId,
-  language: DutyCopyLanguage,
-  params: DutyCopyParams = {},
-): string {
+export function dutyLinePlan(id: DutyCopyId, params: DutyCopyParams = {}): DutyLinePlan {
   if (id === 'night_before') {
     throw new DutyCopyError('night_before is composed from facts');
   }
-  if (id === 'parent_initiated' && filled(params.name)) {
-    return renderTemplate(
-      language === 'fr' ? DUTY_PARENT_OWNED_COPY_FR : DUTY_PARENT_OWNED_COPY_EN,
-      params,
-      ['name', 'kid', 'event', 'day', 'time'],
-      language,
-    );
+  const owned = id === 'parent_initiated' && filled(params.name) !== null;
+  const required: readonly (keyof DutyCopyParams)[] = owned
+    ? ['name', 'kid', 'event', 'day', 'time']
+    : REQUIRED[id];
+  const facts: string[] = [];
+  for (const key of required) {
+    const value = filled(params[key]);
+    if (!value) throw new DutyCopyError(`missing ${key}`);
+    if (BANNED.test(value)) throw new DutyCopyError('banned');
+    facts.push(value);
   }
-  const template = id === 'parent_initiated' ? null : SIMPLE[id][language];
-  const sentence =
-    template ?? (language === 'fr' ? DUTY_PARENT_ASK_COPY_FR : DUTY_PARENT_ASK_COPY_EN);
-  return renderTemplate(sentence, params, REQUIRED[id], language);
+  const purpose = owned ? 'duty_owner' : `duty_${id}`;
+  const questionAllowed =
+    id === 'which_kid' ||
+    id === 'both_claimed' ||
+    id === 'reask_48h' ||
+    (id === 'parent_initiated' && !owned);
+  return { purpose, questionAllowed, facts };
 }
 
 export interface DutyWeekEntry {
@@ -186,28 +109,15 @@ export interface DutyWeekEntry {
   name: string | null;
 }
 
-/** `{list}` items joined by `; `. */
-export function dutyWeekList(
-  language: DutyCopyLanguage,
-  entries: readonly DutyWeekEntry[],
-): string {
+/** Week-overview facts: one data item per event, `day event: owner` or `: unassigned`. */
+export function dutyWeekFacts(entries: readonly DutyWeekEntry[]): string {
   return entries
     .map((entry) => {
       const day = filled(entry.day);
       const event = filled(entry.event);
       if (!day || !event) throw new DutyCopyError('missing list');
       const name = filled(entry.name);
-      const template = name
-        ? DUTY_WEEK_OWNED_ITEM
-        : language === 'fr'
-          ? DUTY_WEEK_UNOWNED_ITEM_FR
-          : DUTY_WEEK_UNOWNED_ITEM_EN;
-      return renderTemplate(
-        template,
-        { day, event, name },
-        name ? ['day', 'event', 'name'] : ['day', 'event'],
-        language,
-      );
+      return `${day} ${event}: ${name ?? 'unassigned'}`;
     })
     .join('; ');
 }
@@ -292,13 +202,6 @@ export function absorbDutyLine(weekly: string, line: string | null | undefined):
   return `${weekly.trimEnd()}\n${line.trim()}`;
 }
 
-/**
- * The next step on a duty echo. The night-before text is composed, so this
- * sentence is only appended to the owner echo.
- */
-export const DUTY_CHANGE_NEXT_EN = 'Say so here if that changes.';
-export const DUTY_CHANGE_NEXT_FR = 'Dites-le ici si ca change.';
-
 /** Kid-word title only. A child's name alone does not make an adult title speakable. */
 export function dutyTitleMayBeSpoken(title: string | null | undefined): boolean {
   const trimmed = title?.trim() ?? '';
@@ -307,21 +210,18 @@ export function dutyTitleMayBeSpoken(title: string | null | undefined): boolean 
 }
 
 /**
- * One line: the owner sentence, then the "say so if that changes" next step.
- * Null when a token is missing, or the event title is not a kid event (that
- * title is not returned).
+ * Facts for the owner echo ("who has it"), for the model to word. Null when a fact is
+ * missing, or the event title is not a kid event (that title is not returned).
  */
-export function dutyOwnerEcho(language: DutyCopyLanguage, params: DutyCopyParams): string | null {
+export function dutyOwnerEcho(
+  _language: DutyCopyLanguage,
+  params: DutyCopyParams,
+): DutyLinePlan | null {
   if (!dutyTitleMayBeSpoken(params.event)) return null;
-  let owner: string;
+  if (!filled(params.name)) return null;
   try {
-    owner = dutyCopy('parent_initiated', language, params);
+    return dutyLinePlan('parent_initiated', params);
   } catch {
     return null;
   }
-  if (!filled(params.name)) return null;
-  const next = language === 'fr' ? DUTY_CHANGE_NEXT_FR : DUTY_CHANGE_NEXT_EN;
-  const line = `${owner} ${next}`;
-  if (line.includes('\n') || !dutyCopyMayLeave(line)) return null;
-  return line;
 }
