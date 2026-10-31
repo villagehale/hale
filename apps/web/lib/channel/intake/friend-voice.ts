@@ -50,11 +50,13 @@ import {
  * accents, nothing about a connected source that is not in the kid-only
  * snapshot. A failed, judged-bad, or timed-out compose is retried once on a
  * smaller prompt that still names the step
- * (packages/agent/skills/onboarding-friend-short.md). If that also fails,
- * nothing canned goes out: the miss is logged, #ops is paged, and the next
- * inbound or the morning nudge tries again. The one exception is the map:
- * the activity lines are real data code found, so they go out numbered on
- * their own when both openers fail.
+ * (packages/agent/skills/onboarding-friend-short.md). A first attempt that
+ * the retry recovers is not a page: the recovery is logged. If the retry
+ * also fails, nothing canned goes out: the miss is logged, #ops is paged,
+ * and the next inbound or the morning nudge tries again. The one exception
+ * is the map: the activity lines are real data code found, so they go out
+ * numbered on their own when both openers fail. Length is not a reason to
+ * refuse a reply; the skill's "short" is tone, not a character cap.
  */
 
 /**
@@ -64,7 +66,6 @@ import {
  */
 const MAX_TOKENS = 1000;
 const SHORT_MAX_TOKENS = 600;
-const MAP_OPENER_CHARS = 120;
 
 /** What a worried parent wants to hear and Hale cannot say: Google shares all of it. */
 const ACCESS_UNTRUE = [
@@ -88,8 +89,6 @@ const ACCESS_FACTS = {
     'they can disconnect any time',
   ],
 } as const;
-const MAX_LEAD_CHARS = 160;
-const MAX_BODY_CHARS = 1200;
 /** How far ahead the model may name a day on the schedule step. */
 export const SCHEDULE_DAYS_AHEAD = 21;
 
@@ -1283,7 +1282,6 @@ function speaksAsParent(text: string, parentName: string | null | undefined): bo
 export type FriendJudgeFailure =
   | 'privacy'
   | 'empty'
-  | 'long'
   | 'question'
   | 'banned'
   | 'compliance'
@@ -1305,7 +1303,6 @@ export function judgeFriendReply(
 ): { ok: true } | { ok: false; reason: FriendJudgeFailure; detail?: string } {
   const trimmed = body.trim();
   if (trimmed.length === 0) return { ok: false, reason: 'empty' };
-  if (trimmed.length > MAX_BODY_CHARS) return { ok: false, reason: 'long' };
   const needed = ZERO_QUESTION_STEPS.has(input.step) ? 0 : 1;
   const groupLines = (input.findGroups ?? []).flatMap((group) => group.lines);
   const asked = questionsBeyondFacts(trimmed, [
@@ -1781,6 +1778,22 @@ export async function speakFriend(
         retry?: FriendVoiceInput['retry'];
       }
   > => {
+    // The full attempt still has the short retry. An error log here is what
+    // pages #ops, so a refusal that can still recover is a warning. The short
+    // attempt is the last one: its refusal is the error, and failed() pages.
+    const terminal = prompt === 'short';
+    const noteRefusal = (fields: Record<string, unknown>, kind: 'unusable' | 'compose'): void => {
+      if (terminal) {
+        console.error(
+          fields,
+          kind === 'compose'
+            ? 'onboarding-friend: compose failed'
+            : 'onboarding-friend: unusable reply',
+        );
+        return;
+      }
+      console.warn(fields, 'onboarding-friend: attempt refused');
+    };
     const empty = acceptOnboardingCapture(null);
     try {
       const composed = await withTimeout(composer.compose(input, { prompt }), timeoutMs);
@@ -1809,14 +1822,14 @@ export async function speakFriend(
       // A refused add means the reply may confirm a reminder that was never written.
       const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
       if (refusedAdds > 0) {
-        console.error(
+        noteRefusal(
           {
             reason: 'schedule_add_refused',
             refusedAdds,
             step: input.step,
             prompt,
           },
-          'onboarding-friend: unusable reply',
+          'unusable',
         );
         return {
           fail: 'unusable',
@@ -1858,10 +1871,7 @@ export async function speakFriend(
             prose,
           ))
       ) {
-        console.error(
-          { reason: 'join_not_pointed', step: input.step, prompt },
-          'onboarding-friend: unusable reply',
-        );
+        noteRefusal({ reason: 'join_not_pointed', step: input.step, prompt }, 'unusable');
         return {
           fail: 'unusable',
           capture,
@@ -1869,10 +1879,7 @@ export async function speakFriend(
         };
       }
       if (input.coparentJoin && carriesJoin(prose, input.coparentJoin)) {
-        console.error(
-          { reason: 'join_in_prose', step: input.step, prompt },
-          'onboarding-friend: unusable reply',
-        );
+        noteRefusal({ reason: 'join_in_prose', step: input.step, prompt }, 'unusable');
         return {
           fail: 'unusable',
           capture,
@@ -1923,7 +1930,7 @@ export async function speakFriend(
       return reject(judged);
 
       function reject(judged: { ok: false; reason: FriendJudgeFailure; detail?: string }) {
-        console.error(
+        noteRefusal(
           {
             reason: judged.reason,
             ...(judged.detail ? { detail: judged.detail } : {}),
@@ -1931,7 +1938,7 @@ export async function speakFriend(
             judgedAs: judgeInput.step,
             prompt,
           },
-          'onboarding-friend: unusable reply',
+          'unusable',
         );
         return {
           fail: 'unusable' as const,
@@ -1943,7 +1950,7 @@ export async function speakFriend(
         };
       }
     } catch (err) {
-      console.error(
+      noteRefusal(
         {
           err: err instanceof Error ? err.name : 'unknown',
           ...(err instanceof z.ZodError
@@ -1956,7 +1963,7 @@ export async function speakFriend(
           step: input.step,
           prompt,
         },
-        'onboarding-friend: compose failed',
+        'compose',
       );
       return { fail: 'model_failed', capture: empty };
     }
@@ -2003,6 +2010,7 @@ export async function speakFriend(
   };
   const second = await attempt('short', retryInput);
   if ('prose' in second) {
+    console.info({ recovered: true, step: input.step }, 'onboarding-friend: retry recovered');
     const capture = advanced ? mergeCaptures(advanced.settled, second.capture) : second.capture;
     return finish(second.prose, second.bubbles, 'retry', capture, second.step);
   }
@@ -2212,14 +2220,11 @@ export function tidyProse(
     const other = about === 'gmail' ? /\b(calendars?|calendrier|agenda)\b/i : /\bgmail\b/i;
     sentences = sentences.filter((sentence) => !other.test(sentence));
   }
-  // The map opener is one short framing sentence; the group leads say the rest.
-  // A long one that tries to summarise the map goes, and the leads carry it.
+  // The map opener is one framing sentence; the group leads say the rest.
+  // Length is not a reason to drop it.
   if (input.step === 'find_show') {
     const opener = sentences.find(
-      (sentence) =>
-        !sentence.includes('?') &&
-        sentence.length <= MAP_OPENER_CHARS &&
-        sentence.split(/\s+/u).length >= 3,
+      (sentence) => !sentence.includes('?') && sentence.split(/\s+/u).length >= 3,
     );
     sentences = opener ? [opener] : [];
   }
@@ -2248,7 +2253,7 @@ function tidyLeads(
       .filter((sentence) => !sentence.includes('?'))
       .join(' ');
     // Ages, times and counts are the lines' to state: a lead that restates one can only get it wrong.
-    if (lead.length === 0 || lead.length > MAX_LEAD_CHARS || /\d/u.test(lead)) return '';
+    if (lead.length === 0 || /\d/u.test(lead)) return '';
     // A lead names only what its own lines hold ("swim and Scouts" over two swims is wrong).
     if (activitiesOutsideSlots(lead, group.lines).length > 0) return '';
     const copied = group.lines.some((line) => {

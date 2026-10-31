@@ -176,6 +176,14 @@ describe('onboarding friend fixtures', () => {
 });
 
 describe('friend-voice judge', () => {
+  it('does not refuse a long reply: length is not a reason', () => {
+    const prose = `${'Got it, I can look near you for what fits the kids. '.repeat(30)}What's your postal code?`;
+    expect(prose.length).toBeGreaterThan(1200);
+    expect(judgeFriendReply(prose, blank({ step: 'place', parentWords: 'hi' }))).toEqual({
+      ok: true,
+    });
+  });
+
   // A list with one question: the legacy numbered find a nudge still sends.
   const swim = blank({
     step: 'nudge_find',
@@ -391,6 +399,83 @@ describe('speakFriend', () => {
     expect(prompts).toEqual(['full', 'short']);
     expect(retried).toMatchObject({ source: 'retry', body: 'How old are your kids?' });
     expect(retried.body).not.toMatch(/i'll note it/i);
+  });
+
+  it('does not page when the retry recovers, and marks the recovery', async () => {
+    const pages: string[] = [];
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const spoken = await speakFriend(
+        {
+          async compose(_input, options) {
+            if (options?.prompt === 'short') return { reply: 'How old are your kids?' };
+            return { reply: "How old are the kids? I'll note it." };
+          },
+        },
+        blank({ step: 'ages', parentWords: 'Maya is 4', placeLabel: 'M5V' }),
+        {
+          page: async (text) => {
+            pages.push(text);
+          },
+        },
+      );
+      expect(spoken).toMatchObject({ source: 'retry', body: 'How old are your kids?' });
+      expect(pages).toEqual([]);
+      const errors = error.mock.calls.map((call) => call.at(-1));
+      expect(errors).not.toContain('onboarding-friend: unusable reply');
+      expect(errors).not.toContain('onboarding-friend: reply not sent');
+      expect(warn.mock.calls.map((call) => call.at(-1))).toContain(
+        'onboarding-friend: attempt refused',
+      );
+      expect(info.mock.calls).toContainEqual([
+        { recovered: true, step: 'ages' },
+        'onboarding-friend: retry recovered',
+      ]);
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('keeps a long find_show opener and a long map, and does not page', async () => {
+    const pages: string[] = [];
+    const opener =
+      'I looked near you for what fits this week, and these are the ones that came up from the city pages for their ages, the ones worth a look before the week fills up.';
+    expect(opener.length).toBeGreaterThan(120);
+    const line = 'Swim at the rec centre (ages 3-5) - Saturday morning at the community pool';
+    const lines = Array.from({ length: 24 }, () => line);
+    const lead =
+      'A calm one for the younger kid, easy to get to and easy to leave when they have had enough of it for one morning and still want the rest of the day open with nothing else planned';
+    expect(lead.length).toBeGreaterThan(160);
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return { reply: opener, groupLeads: [lead] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        findLines: lines,
+        findGroups: [{ category: 'swimming', lines }],
+      }),
+      {
+        page: async (text) => {
+          pages.push(text);
+        },
+      },
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.fallback).toBeNull();
+    expect(spoken.bubbles[0]).toBe(opener);
+    expect(spoken.bubbles[1]).toContain(lead);
+    expect(spoken.body.length).toBeGreaterThan(1200);
+    expect(pages).toEqual([]);
+    expect(spoken.body).not.toContain('?');
   });
 
   it('never sends a reply that confirmed an add code refused; the retry with real adds goes out', async () => {
