@@ -1,8 +1,15 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
-import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
+import {
+  type ActivityFinder,
+  type ActivityPick,
+  createActivityFinder,
+} from '~/lib/channel/activity/lane';
 import { linkRef } from '~/lib/channel/coach/activity-links';
+import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
+import { activityClient } from '~/lib/pipeline/client';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -175,13 +182,45 @@ export function searchVillageTool(
     touchesChildContent: false,
     handler: async (input, ctx) => {
       const now = new Date();
+      // The finder `findFamilyActivities` calls is the radar read. The same finder
+      // is the one live search VIL-522 may spend afterwards, and only then — a
+      // short radar tops up once, a radar that already has two suitable finds
+      // does not search again. Intake and the nudge keep the single read.
+      const resolved = finder ?? createActivityFinder(activityClient);
+      let searched: ActivityQuery | null = null;
+      const radarRead: ActivityFinder = {
+        async find(query) {
+          searched = query;
+          return resolved.find(query);
+        },
+      };
       const found = await findFamilyActivities(database, ctx.familyId, {
         subject: input.query,
         window: input.window,
-        finder,
+        finder: radarRead,
         now,
       });
-      const offerable: OfferableEntry[] = found.picks.map((pick) => ({
+      const query = searched;
+      const picks =
+        found.reason === null && query
+          ? (
+              await topUpShortRadar({
+                radar: found.picks,
+                liveSearch: async () => {
+                  const extra = await resolved.find(query);
+                  if (!extra.found) {
+                    console.info(
+                      { reason: extra.reason },
+                      'coach find: live top-up came back empty',
+                    );
+                    return [];
+                  }
+                  return extra.picks;
+                },
+              })
+            ).picks
+          : found.picks;
+      const offerable: OfferableEntry[] = picks.map((pick) => ({
         pick,
         candidate: {
           title: pick.name,
