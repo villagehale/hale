@@ -6,6 +6,7 @@ import {
   createLinqChat,
   createLinqPhoneTransport,
   createLinqTextTransport,
+  editLinqMessage,
   leaveLinqChat,
   listLinqChatsPage,
   listLinqParticipantHandles,
@@ -522,6 +523,76 @@ describe('Linq human-feel helpers', () => {
       fetch: ok,
     });
     expect(ok).toHaveBeenCalledTimes(1);
+  });
+
+  it('VIL-479: patches one text part and refuses an empty edit before Linq sees it', async () => {
+    vi.stubEnv('LINQ_API_KEY', '');
+    const offline = vi.fn();
+    await expect(
+      editLinqMessage({
+        messageId: 'msg-out-1',
+        text: 'Swim is at 5.',
+        partIndex: 0,
+        fetch: offline,
+      }),
+    ).rejects.toMatchObject({ code: 'not_configured', permanent: true });
+    expect(offline).not.toHaveBeenCalled();
+
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const refused = vi.fn();
+    await expect(
+      editLinqMessage({ messageId: 'msg-out-1', text: '', partIndex: 0, fetch: refused }),
+    ).rejects.toMatchObject({ code: 'invalid_edit', permanent: true });
+    await expect(
+      editLinqMessage({
+        messageId: 'msg-out-1',
+        text: 'x'.repeat(10_001),
+        partIndex: 0,
+        fetch: refused,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_edit', permanent: true });
+    await expect(
+      editLinqMessage({ messageId: '', text: 'Swim is at 5.', fetch: refused }),
+    ).rejects.toMatchObject({ code: 'invalid_edit', permanent: true });
+    await expect(
+      editLinqMessage({
+        messageId: 'msg-out-1',
+        text: 'Swim is at 5.',
+        partIndex: -1,
+        fetch: refused,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_edit', permanent: true });
+    expect(refused).not.toHaveBeenCalled();
+
+    const fetchMock = jsonFetch(200, { id: 'msg-out-1' });
+    const edited = await editLinqMessage({
+      messageId: 'msg-out-1',
+      text: 'Swim is at 5.',
+      partIndex: 0,
+      fetch: fetchMock,
+    });
+    expect(edited).toEqual({ providerMessageId: 'msg-out-1' });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe('https://api.linqapp.com/api/partner/v3/messages/msg-out-1');
+    expect(init?.method).toBe('PATCH');
+    expect(JSON.parse(String(init?.body))).toEqual({ text: 'Swim is at 5.', part_index: 0 });
+
+    const nested = jsonFetch(200, { message: { id: 'msg-out-2' } });
+    const fromNested = await editLinqMessage({
+      messageId: 'msg-out-2',
+      text: 'Swim is at 5.',
+      fetch: nested,
+    });
+    expect(fromNested.providerMessageId).toBe('msg-out-2');
+    expect(JSON.parse(String(nested.mock.calls[0]?.[1]?.body))).toEqual({
+      text: 'Swim is at 5.',
+      part_index: 0,
+    });
+
+    const denied = jsonFetch(400, { error: { code: 2019 } });
+    await expect(
+      editLinqMessage({ messageId: 'msg-out-1', text: 'Swim is at 5.', fetch: denied }),
+    ).rejects.toMatchObject({ code: '2019', httpStatus: 400, permanent: true });
   });
 
   it('adds a tapback and refuses a custom reaction with no emoji', async () => {

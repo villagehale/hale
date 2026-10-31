@@ -48,6 +48,11 @@ import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-deci
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import {
+  linqMessageEditEnabled,
+  listEditableLinqSends,
+  sharedLinqEditDecider,
+} from '~/lib/channel/linq/edit';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -2827,6 +2832,34 @@ async function sendReply(
     if (left) throw new ChatLeftError();
   }
   if (args.route.channel === 'imessage' && args.inboundBody !== undefined) {
+    let edit:
+      | {
+          decider: ReturnType<typeof sharedLinqEditDecider>;
+          candidates: Awaited<ReturnType<typeof listEditableLinqSends>>;
+          audience: 'direct' | 'group';
+          conversationId: string;
+        }
+      | undefined;
+    if (linqMessageEditEnabled() && args.conversationId) {
+      try {
+        edit = {
+          decider: sharedLinqEditDecider(),
+          candidates: await listEditableLinqSends(deps.database, {
+            familyId: args.job.family_id,
+            conversationId: args.conversationId,
+            chatId: args.route.chatId,
+            now: deps.now(),
+          }),
+          audience: args.job.in_group === false ? 'direct' : 'group',
+          conversationId: args.conversationId,
+        };
+      } catch (err) {
+        deps.log.warn(
+          { code: err instanceof Error ? err.name : 'unknown' },
+          'linq edit: candidates unread; the follow-up still goes out',
+        );
+      }
+    }
     try {
       const moment = await considerLinqReply(deps.database, {
         route: args.route,
@@ -2836,6 +2869,7 @@ async function sendReply(
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
+        ...(edit ? { edit } : {}),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
           : {}),
@@ -2921,7 +2955,13 @@ async function sendReply(
   });
 
   if (args.conversationId) {
-    await appendMessage(args.conversationId, 'assistant', args.body, deps.database);
+    await appendMessage(args.conversationId, 'assistant', args.body, deps.database, {
+      childId: null,
+      topic: null,
+      ...(linqMessageEditEnabled() && args.route.channel === 'imessage' && sent.providerMessageId
+        ? { providerMessageId: sent.providerMessageId }
+        : {}),
+    });
   }
 
   await settleOpenAsks(channelMessageId);

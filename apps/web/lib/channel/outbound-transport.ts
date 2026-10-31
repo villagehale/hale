@@ -305,6 +305,20 @@ export function outboundLineFrom(): string | null {
   return linqApiKey() !== null ? linqFromE164() : null;
 }
 
+/** VIL-479 · edit one text part of a message already sent. The text is the caller's. */
+export async function editLinqMessage(
+  input: In<typeof linq.editLinqMessage>,
+): Promise<{ providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'message_edit',
+    () => linq.editLinqMessage(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
+}
+
 export async function sendLinqChatMessage(
   input: In<typeof linq.sendLinqChatMessage>,
 ): Promise<{ providerMessageId: string }> {

@@ -57,6 +57,7 @@ import {
   linqWebhookSecret,
 } from './config';
 import { type OneToOneSend, privateAsideOneToOne, resumeConnectLink } from './connect-link-1to1';
+import { recordLinqEditWebhook } from './edit';
 import { familySpeechLanguage } from './family-outbound';
 import {
   LINQ_GROUP_CLAIMED_TEMPLATE_KEY,
@@ -292,6 +293,20 @@ export async function handleLinqInboundRequest(
     }
     await deps.countOutcome('receipt');
     return json({ outcome: 'receipt', apply });
+  }
+  if (parsed.kind === 'edit') {
+    const apply = await recordLinqEditWebhook(deps.database, parsed.edit);
+    deps.log.info(
+      {
+        apply,
+        providerMessageId: parsed.edit.messageId,
+        partIndex: parsed.edit.partIndex,
+        isFromMe: parsed.edit.isFromMe,
+      },
+      'linq edit',
+    );
+    await deps.countOutcome('message_edited');
+    return json({ outcome: 'message_edited', apply });
   }
   if (parsed.kind === 'ignored') {
     const outcome = IGNORE_OUTCOME[parsed.reason];
