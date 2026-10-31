@@ -81,6 +81,23 @@ describe('soleGivenName', () => {
   it.each(['STOP', 'HELP', 'START', 'stop'])('never claims the carrier keyword %s', (body) => {
     expect(soleGivenName(body)).toBeNull();
   });
+
+  /** A delayed "undo" during the name ask is that control, not a display name. */
+  it.each([
+    ['undo'],
+    ['Undo'],
+    ['cancel'],
+    ['canceled'],
+    ['cancelled'],
+    ['never mind'],
+    ['nvm'],
+    ['scratch that'],
+    ['scratch that.'],
+    ["I'm undo"],
+    ['call me cancel'],
+  ])('refuses the control word %s', (body) => {
+    expect(soleGivenName(body)).toBeNull();
+  });
 });
 
 describe('handleNameCaptureReply', () => {
@@ -102,6 +119,22 @@ describe('handleNameCaptureReply', () => {
   }
 
   const turn = (body: string) => ({ familyId: FAMILY, parentUserId: PARENT, body, now: NOW });
+
+  it('does not store a delayed undo, and does not ask the model to receipt it as a name', async () => {
+    let said = 0;
+    const { deps: d, captured } = deps({
+      say: async () => {
+        said += 1;
+        return "Got it, I'll call you undo.";
+      },
+    });
+
+    expect(await handleNameCaptureReply(DB, turn('undo'), d)).toEqual({
+      status: 'declined_to_claim',
+    });
+    expect(captured).toEqual([]);
+    expect(said).toBe(0);
+  });
 
   it('stores the name and hands the model the name and the parent words for the receipt', async () => {
     const { deps: d, captured, said } = deps();

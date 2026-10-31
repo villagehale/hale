@@ -7,6 +7,7 @@ import {
   friendWeekAction,
   judgeFriendReply,
   lastInboundFact,
+  parentReading,
   repairedProse,
   speakFriend,
 } from './friend-voice';
@@ -73,6 +74,68 @@ describe('friend voice brief', () => {
     expect(pickedUp).toMatchObject({
       lastInbound: { minutesAgo: 8 * 60 + 30, overnight: true, yesterday: true },
     });
+  });
+});
+
+describe('a delayed undo during name capture', () => {
+  const asked = blank({
+    step: 'names',
+    parentWords: 'undo',
+    lastInbound: lastInboundFact(
+      new Date('2026-08-28T12:00:00.000Z'),
+      new Date('2026-08-28T18:00:00.000Z'),
+    ),
+    recentTurns: [{ role: 'hale', body: 'What should I call you?' }],
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: false,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  });
+
+  it('reads undo as cancelling the name ask, not as the name', () => {
+    expect(parentReading(asked)).toEqual({ kind: 'undo', item: 'name' });
+    expect(parentReading({ ...asked, parentWords: 'Undo' })).toEqual({
+      kind: 'undo',
+      item: 'name',
+    });
+    expect(parentReading({ ...asked, parentWords: 'Dana' })).toEqual({
+      kind: 'name',
+      name: 'Dana',
+    });
+    const brief = friendVoiceContext(asked) as { reading: string | null };
+    expect(brief.reading ?? '').not.toMatch(/is their name/i);
+    expect(brief.reading ?? '').toMatch(/not their name/i);
+  });
+
+  it('does not store the word and does not send a reply that calls them by it', async () => {
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch school and camp email for the dates?',
+            capture: { parentName: 'undo', nameDeclined: false },
+          };
+        },
+      },
+      asked,
+      { page: async () => undefined },
+    );
+    expect(spoken.capture.parentName).toBeNull();
+    expect(spoken.capture.nameDeclined).toBe(true);
+    expect(spoken.body.toLowerCase()).not.toContain('undo');
+    expect(spoken.source).not.toBe('unsent');
+  });
+
+  it('refuses a draft that calls them by the control word', () => {
+    expect(judgeFriendReply("Got it, I'll call you undo. What should I call you?", asked).ok).toBe(
+      false,
+    );
   });
 });
 

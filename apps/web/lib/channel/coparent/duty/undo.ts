@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { isDutyClearPhrase } from '~/lib/channel/control-phrase';
 import { writeFact } from '~/lib/memory/facts';
 import { noteDutyBurden } from './burden';
 import { projectDutyOnFamilyEvent } from './calendar';
@@ -16,15 +17,14 @@ import { type DutyState, commitDutyUpdate, dutyStateFromFact } from './model';
 export type DutyUndo = { kind: 'clear' } | { kind: 'reassign'; name: string };
 
 export function readDutyUndo(text: string): DutyUndo | null {
-  if (text.includes('?')) return null;
+  if (isDutyClearPhrase(text)) return { kind: 'clear' };
   const line = text
     .trim()
     .replace(/[’]/g, "'")
     .replace(/\s+/g, ' ')
     .replace(/[.!]+$/, '')
     .toLowerCase();
-  if (!line) return null;
-  if (/^(undo|nvm|nm|never mind|nevermind|scratch that)$/.test(line)) return { kind: 'clear' };
+  if (!line || text.includes('?')) return null;
   const match = /^actually,? ([a-z][a-z'.-]*)(?:'s| is) (?:doing|taking) it$/.exec(line);
   const name = match?.[1];
   if (!name) return null;

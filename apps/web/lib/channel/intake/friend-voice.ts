@@ -7,6 +7,7 @@ import {
   ahaClockLabel,
   ahaWhenLabel,
 } from '~/lib/channel/connect/aha-read';
+import { isUndoCancelPhrase, replyUsesControlAsName } from '~/lib/channel/control-phrase';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import {
   type ReplyLanguage,
@@ -718,10 +719,23 @@ function answeringItem(input: FriendVoiceInput): OnboardingItem | null {
  */
 export function parentReading(
   input: FriendVoiceInput,
-): { kind: 'name'; name: string } | { kind: 'yes'; item: OnboardingItem } | null {
+):
+  | { kind: 'name'; name: string }
+  | { kind: 'yes'; item: OnboardingItem }
+  | { kind: 'undo'; item: 'name' }
+  | null {
   const words = input.parentWords.trim();
+  if (words.length === 0) return null;
+  // Undo / cancel during the name ask is that control, including "Undo"
+  // which is otherwise shaped like a lone given name.
+  if (
+    isUndoCancelPhrase(words) &&
+    (NAME_STEPS.has(input.step) || answeringItem(input) === 'name')
+  ) {
+    return { kind: 'undo', item: 'name' };
+  }
   const item = answeringItem(input);
-  if (!item || words.length === 0) return null;
+  if (!item) return null;
   // A plain "ok" answers a question only when Hale's last text asked one.
   const lastHale = [...input.recentTurns].reverse().find((turn) => turn.role === 'hale');
   if (!lastHale?.body.includes('?')) return null;
@@ -739,6 +753,13 @@ export function parentReading(
 function readingForModel(input: FriendVoiceInput): string | null {
   const reading = parentReading(input);
   if (!reading) return null;
+  if (reading.kind === 'undo') {
+    const held =
+      input.step === 'name_confirm' || (input.step === 'name_reply' && Boolean(input.parentName));
+    return held
+      ? 'parentWords cancels the held name. It is not their name. Leave parentName empty and set nameConfirmed false.'
+      : 'parentWords cancels the name ask. It is not their name. Leave parentName empty and set nameDeclined.';
+  }
   return reading.kind === 'name'
     ? `parentWords is their name (${reading.name}): it answers the name ask`
     : `parentWords is a yes to ${reading.item}`;
@@ -790,10 +811,25 @@ function settleSchedule(capture: OnboardingCapture): OnboardingCapture {
     : capture;
 }
 
+function decliningHeldName(input: FriendVoiceInput): boolean {
+  return (
+    input.step === 'name_confirm' || (input.step === 'name_reply' && Boolean(input.parentName))
+  );
+}
+
 /** The capture, held to what code read for certain. */
 function withReading(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
   const reading = parentReading(input);
   if (!reading) return capture;
+  if (reading.kind === 'undo') {
+    const held = decliningHeldName(input);
+    return {
+      ...capture,
+      parentName: null,
+      nameDeclined: held ? capture.nameDeclined : true,
+      nameConfirmed: held ? false : capture.nameConfirmed,
+    };
+  }
   if (reading.kind === 'name') {
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
     if (capture.parentName || kids.includes(reading.name.toLowerCase())) return capture;
@@ -1324,6 +1360,10 @@ export function judgeFriendReply(
   }
   // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
   if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
+  // "undo" during the name ask is not what to call them.
+  if (replyUsesControlAsName(trimmed, input.parentWords)) {
+    return { ok: false, reason: 'identity', detail: 'control_name' };
+  }
   if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
   if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
@@ -2053,7 +2093,9 @@ function retryProblem(
     case 'identity':
       return detail === 'price'
         ? 'They asked about price: say in a clause that villagehale.com has the details, including price. Never say it is free or quote a price.'
-        : 'You are Hale; talk to the parent, never about them by name, and never call yourself by their name. When they asked who this is, name the company from facts.identity.';
+        : detail === 'control_name'
+          ? 'That word cancels the ask. It is not their name. Do not address them by it. Leave parentName empty.'
+          : 'You are Hale; talk to the parent, never about them by name, and never call yourself by their name. When they asked who this is, name the company from facts.identity.';
     default:
       return `It broke a rule (${reason}). Write it again, plainly, keeping every rule.`;
   }

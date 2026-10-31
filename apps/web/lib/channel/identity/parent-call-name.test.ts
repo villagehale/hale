@@ -139,6 +139,34 @@ describe('handleParentCallNameReply', () => {
     expect(fake.rows(schema.users).find((row) => row.id === USER_B)?.googleGivenName).toBe('Other');
   });
 
+  it('a delayed undo cancels the held name and is not stored as the display name', async () => {
+    const fake = await seedConfirm('Bea');
+    const outcome = await handleParentCallNameReply(
+      fake.db,
+      { familyId: FAMILY_A, parentUserId: USER_A, body: 'undo' },
+      voiceReading({ parentName: 'undo', reply: "Got it, I'll call you undo." }),
+    );
+    expect(outcome).toMatchObject({ status: 'answered' });
+    if (outcome.status !== 'answered') return;
+    expect(outcome.reply ?? '').not.toMatch(/call you undo/i);
+    const row = fake.rows(schema.users).find((user) => user.id === USER_A);
+    expect(row?.name).toBeNull();
+    expect(row?.googleGivenName).toBeNull();
+  });
+
+  it('sends the model reply when undo cancels the confirm and the reply does not use that word as a name', async () => {
+    const fake = await seedConfirm('Bea');
+    const outcome = await handleParentCallNameReply(
+      fake.db,
+      { familyId: FAMILY_A, parentUserId: USER_A, body: 'cancel' },
+      voiceReading({ parentName: 'cancel', reply: 'What should I call you?' }),
+    );
+    expect(outcome).toEqual({ status: 'answered', reply: 'What should I call you?' });
+    const row = fake.rows(schema.users).find((user) => user.id === USER_A);
+    expect(row?.name).toBeNull();
+    expect(row?.googleGivenName).toBeNull();
+  });
+
   it('a preference stores that name, not the Google one', async () => {
     const fake = await seedConfirm('Bea');
     const outcome = await handleParentCallNameReply(

@@ -1,3 +1,4 @@
+import { isUndoCancelPhrase } from '~/lib/channel/control-phrase';
 import {
   type ParentRoleGuess,
   acceptParentRole,
@@ -197,6 +198,33 @@ function acceptName(value: unknown): string | null {
   if (trimmed.split(/\s+/u).length > 3) return null;
   if (!/\p{L}/u.test(trimmed)) return null;
   return trimmed;
+}
+
+/** A parent's display name. Undo, cancel, and the same clear phrases are not one. */
+function acceptParentDisplayName(value: unknown): string | null {
+  const name = acceptName(value);
+  if (!name || isUndoCancelPhrase(name)) return null;
+  return name;
+}
+
+/**
+ * A delayed undo or cancel during the name reply. The word is not the name.
+ * A held name is declined; an open ask is declined so it is not asked as if
+ * the word answered it.
+ */
+export function applyNameControl(
+  body: string,
+  capture: OnboardingCapture,
+  heldName: string | null,
+): OnboardingCapture {
+  if (!isUndoCancelPhrase(body)) return capture;
+  const held = Boolean(heldName?.trim());
+  return {
+    ...capture,
+    parentName: null,
+    nameConfirmed: held ? false : null,
+    nameDeclined: held ? capture.nameDeclined : true,
+  };
 }
 
 function acceptBool(value: unknown): boolean | null {
@@ -427,7 +455,7 @@ export function acceptOnboardingCapture(
     postalCode: postalCode && postalCode.length > 0 ? postalCode : null,
     city: city && city.length > 0 ? city : null,
     children,
-    parentName: acceptName(row.parentName),
+    parentName: acceptParentDisplayName(row.parentName),
     parentRole: acceptParentRole(row.parentRole, row.parentRoleBasis),
     nameConfirmed: acceptBool(row.nameConfirmed),
     connectCalendar: acceptBool(row.connectCalendar),
