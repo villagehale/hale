@@ -2083,7 +2083,7 @@ async function friendColdTurn(
   deps: IntakeDeps,
 ): Promise<IntakeOutcome> {
   const { session, inbound, now } = args;
-  const progress = session.firstTouch?.coldStart;
+  let progress = session.firstTouch?.coldStart;
   const familyId = session.familyId;
   const userId = session.userId;
   if (!progress || !familyId || !userId) {
@@ -2106,7 +2106,10 @@ async function friendColdTurn(
   }
   // The map never reached them. Retry it before any later ask. A miss sends
   // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
-  let owedMap: string[] | null = null;
+  let alreadyRecorded: {
+    transcript: TranscriptEntry[];
+    channelMessageId: string | null;
+  } | null = null;
   if (progress.findDelivered === false) {
     const owed = await friendSpeak(
       deps,
@@ -2133,12 +2136,30 @@ async function friendColdTurn(
       await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
       return { status: 'first_touch_unsent', reason: unsentReason(owed) };
     }
-    owedMap = owed.bubbles.filter((bubble) => bubble.trim().length > 0);
-    if (owedMap.length === 0) {
+    const bubbles = owed.bubbles.filter((bubble) => bubble.trim().length > 0);
+    if (bubbles.length === 0) {
       await recordInbound(database, ctx, inbound, session.transcript);
       await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
       return { status: 'first_touch_unsent', reason: 'unusable' };
     }
+    // Deliver the map before any reply-dependent write. A send that does not
+    // land leaves the debt and creates no reminders.
+    const recordedMap = await recordInbound(database, ctx, inbound, session.transcript);
+    let delivered = false;
+    for (const bubble of bubbles) {
+      const sentMap = await sendAndRecord(database, ctx, bubble, deps, recordedMap.transcript);
+      if (!sentMap.channelMessageId) {
+        delivered = false;
+        break;
+      }
+      delivered = true;
+    }
+    if (!delivered) {
+      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+      return { status: 'first_touch_unsent', reason: 'unusable' };
+    }
+    alreadyRecorded = recordedMap;
+    progress = { ...progress, findDelivered: true };
   }
   const lines = linesOfFind(progress.findBody);
   const needsName = await parentNeedsName(database, userId);
@@ -2292,22 +2313,9 @@ async function friendColdTurn(
     calendarAsked: after.calendar,
     emailAsked: after.gmail,
   };
-  const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-  let mapStillOwed = false;
-  if (owedMap) {
-    let delivered = false;
-    for (const bubble of owedMap) {
-      const sentMap = await sendAndRecord(database, ctx, bubble, deps, recorded.transcript);
-      if (!sentMap.channelMessageId) {
-        delivered = false;
-        break;
-      }
-      delivered = true;
-    }
-    nextProgress.findDelivered = delivered;
-    mapStillOwed = !delivered;
-  }
-  let voiced = mapStillOwed ? null : friendOutbound(spoken);
+  const recorded =
+    alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
+  let voiced = friendOutbound(spoken);
   await pursueNewHouseholdGroup(
     database,
     {
@@ -2466,7 +2474,12 @@ async function runColdStartTurn(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
-  if (coldStartQuestionIsStale(progress.step, lastTranscriptAt(session.transcript), now)) {
+  // An owed map is not a legacy pick question. The six-hour pick expiry must
+  // not close the session before the map is retried.
+  if (
+    progress.findDelivered !== false &&
+    coldStartQuestionIsStale(progress.step, lastTranscriptAt(session.transcript), now)
+  ) {
     console.info(
       { stale: 'cold_start' },
       'cold-start: question is stale, handing the text to the coach',
@@ -2904,11 +2917,7 @@ async function provision(
     }
     if (discoveryOn) {
       friendCold = {
-        step: mapUnsent
-          ? 'pick'
-          : step === 'names' || step === 'find_empty'
-            ? 'names'
-            : 'follow',
+        step: step === 'names' || step === 'find_empty' || mapUnsent ? 'names' : 'follow',
         group: ctx.pipe.isGroup,
         findBody: radar.message,
         activity: null,
