@@ -593,7 +593,8 @@ describe('friend voice onboarding', () => {
     expect(done.status).toBe('provisioned');
     const bodies = transport.bodies();
     expect(bodies).toHaveLength(3);
-    expect(bodies[1]).toContain('1. Swim (ages 3-5) - Saturday');
+    expect(bodies[1]).toContain('Swim (ages 3-5) - Saturday');
+    expect(bodies[1]).not.toMatch(/^\d+\.\s/m);
     expect(bodies[1]).not.toContain('?');
     expect(bodies[2]).toBe('What should I call you?');
     expect(bodies.join('\n')).not.toMatch(/postal code|how old|which of these/i);

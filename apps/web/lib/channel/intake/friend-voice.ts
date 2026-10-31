@@ -53,10 +53,11 @@ import {
  * (packages/agent/skills/onboarding-friend-short.md). A first attempt that
  * the retry recovers is not a page: the recovery is logged. If the retry
  * also fails, nothing goes out: the miss is logged, #ops is paged, and the
- * next inbound or the morning nudge tries again. That includes the map. A
- * numbered list of the lines code found is still a message Hale wrote, so
- * both openers failing sends nothing. Length is not a reason to refuse a
- * reply; the skill's "short" is tone, not a character cap.
+ * next inbound or the morning nudge tries again. That includes the map. The
+ * model writes each group bubble from the found lines; a group with no lead
+ * is not sent. Code does not assemble a numbered list of those lines. Length
+ * is not a reason to refuse a reply; the skill's "short" is tone, not a
+ * character cap.
  */
 
 /**
@@ -256,7 +257,7 @@ export interface FriendComposed {
   reply: string;
   capture?: unknown;
   ahaMention?: string | null;
-  /** On find_show: one short lead per group, same order as facts.findGroups. */
+  /** On find_show: one bubble per group, same order as facts.findGroups. The model writes it from that group's lines. */
   groupLeads?: readonly string[] | null;
 }
 
@@ -1015,10 +1016,10 @@ export function peelFriendAsk(prose: string): { lead: string; ask: string } {
 }
 
 /**
- * The activity map as bubbles: the model's opener, then one bubble per group
- * with the model's lead over the real numbered lines. Numbers run across the
- * whole map so a later "number 4" points at one line. A missing lead leaves
- * the lines on their own; a lead is never invented by code.
+ * The activity map as bubbles the model wrote. The opener is the framing
+ * sentence. Each group bubble is that group's lead, written from the found
+ * lines. Code does not number those lines or join them on. A group with no
+ * lead is skipped: nothing goes out for it.
  */
 export function assembleFindShowBubbles(
   opener: string,
@@ -1028,14 +1029,12 @@ export function assembleFindShowBubbles(
   const bubbles: string[] = [];
   const lead = opener.trim();
   if (lead.length > 0) bubbles.push(lead);
-  let from = 1;
   groups.forEach((group, index) => {
     const lines = group.lines.map((line) => line.trim()).filter((line) => line.length > 0);
     if (lines.length === 0) return;
     const head = (leads?.[index] ?? '').trim();
-    const numbered = numberedFindLines(lines, from);
-    from += lines.length;
-    bubbles.push(head.length > 0 ? `${head}\n${numbered}` : numbered);
+    if (head.length === 0) return;
+    bubbles.push(head);
   });
   return bubbles;
 }
@@ -2212,36 +2211,44 @@ export function tidyProse(
     : reply.trim();
 }
 
-/** A lead is the model's words over a group. A copied line, a question or a letter is dropped. */
+/**
+ * A group bubble the model wrote from that group's lines. A question is
+ * dropped. An activity the group's lines do not hold drops the bubble, and
+ * the group is then skipped. Code does not replace it.
+ */
 function tidyLeads(
   leads: readonly string[] | null,
   groups: readonly FriendFindGroup[],
 ): string[] | null {
   if (!leads) return null;
-  // One lead per group or none: a lead that sums up every group sits over the
-  // wrong lines. One string with a sentence per group is split back into leads.
+  // One bubble per group or none: a single string that covers every group
+  // sits on the wrong lines. One string with a sentence per group is split
+  // back into bubbles.
   let perGroup = leads;
   if (leads.length === 1 && groups.length > 1) {
     const parts = sentencesOf(leads[0] ?? '');
     if (parts.length === groups.length) perGroup = parts;
   }
   if (perGroup.length !== groups.length) return null;
-  return groups.map((group, index) => {
-    const raw = (perGroup[index] ?? '').trim();
-    const lead = sentencesOf(raw)
-      .filter((sentence) => !sentence.includes('?'))
-      .join(' ');
-    // Ages, times and counts are the lines' to state: a lead that restates one can only get it wrong.
-    if (lead.length === 0 || /\d/u.test(lead)) return '';
-    // A lead names only what its own lines hold ("swim and Scouts" over two swims is wrong).
-    if (activitiesOutsideSlots(lead, group.lines).length > 0) return '';
-    const copied = group.lines.some((line) => {
-      const a = looseText(line);
-      const b = looseText(lead);
-      return a.includes(b) || b.includes(a);
-    });
-    return copied ? '' : lead;
-  });
+  return groups.map((group, index) => tidyGroupBubble(perGroup[index] ?? '', group));
+}
+
+function tidyGroupBubble(raw: string, group: FriendFindGroup): string {
+  const kept = raw
+    .trim()
+    .split(/\n+/u)
+    .map((block) =>
+      sentencesOf(block)
+        .filter((sentence) => !sentence.includes('?'))
+        .join(' ')
+        .trim(),
+    )
+    .filter((block) => block.length > 0);
+  const lead = kept.join('\n');
+  if (lead.length === 0) return '';
+  // A bubble names only what its own lines hold ("swim and Scouts" over two swims is wrong).
+  if (activitiesOutsideSlots(lead, group.lines).length > 0) return '';
+  return lead;
 }
 
 export function createFriendVoiceComposer(client: AgentClient | null): FriendVoiceComposer {
