@@ -10,6 +10,20 @@ const TZ = 'America/Toronto';
 const NOW = new Date('2026-10-08T16:00:00.000Z');
 const PICKUP_ISO = '2026-10-10T12:00:00.000Z';
 
+function localClock(at: Date | null | undefined, timeZone: string): string {
+  if (!at) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${pick('weekday')} ${pick('hour')}:${pick('minute')}`;
+}
+
 const MAYA: CarpoolSender = {
   userId: 'user-maya',
   name: 'Maya',
@@ -171,6 +185,45 @@ describe('applyCarpoolReading', () => {
       NOW,
     );
     expect(plan?.driverName).toBeNull();
+  });
+
+  it('VIL-520: tomorrow Saturday 8am is Saturday 08:00 Toronto, not Sunday 07:00', () => {
+    // Friday 9pm EDT is Saturday 01:00 UTC. The reader attached Friday's EDT
+    // offset to Sunday 8:00, and that instant renders as Sunday 07:00 EST.
+    const skewed = '2026-11-01T08:00:00-04:00';
+    const plan = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        driverIsSender: true,
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-31',
+        pickupTime: '08:00',
+        pickupAtIso: skewed,
+      }),
+      MAYA,
+      new Date('2026-10-31T01:00:00.000Z'),
+    );
+    expect(plan?.pickupAt?.toISOString()).toBe('2026-10-31T12:00:00.000Z');
+    expect(localClock(plan?.pickupAt, TZ)).toBe('Saturday 08:00');
+  });
+
+  it('VIL-520: 8:00 on the Toronto fall-back Sunday stays 08:00, not the EDT hour', () => {
+    const plan = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'plan_needs_driver',
+        eventLabel: 'soccer',
+        pickupDate: '2026-11-01',
+        pickupTime: '08:00',
+        pickupAtIso: '2026-11-01T08:00:00-04:00',
+      }),
+      MAYA,
+      new Date('2026-10-31T01:00:00.000Z'),
+    );
+    expect(plan?.pickupAt?.toISOString()).toBe('2026-11-01T13:00:00.000Z');
+    expect(localClock(plan?.pickupAt, TZ)).toBe('Sunday 08:00');
   });
 
   it('Devin #975: a name matching the sender is not a self-claim on its own', () => {

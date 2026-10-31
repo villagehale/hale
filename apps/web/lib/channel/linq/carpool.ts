@@ -26,7 +26,7 @@ import {
   carpoolPlanKey,
   markAsked,
   markReminder,
-  parsePickupAt,
+  resolveCarpoolPickup,
 } from './carpool-apply';
 import { decideCarpoolReminder, decideCarpoolTurn, localMinutesIn } from './carpool-cadence';
 import { type CarpoolReader, readingFromTapback, sharedCarpoolReader } from './carpool-reading';
@@ -148,7 +148,7 @@ export function pickCarpoolPlan<P extends CarpoolPlanState>(
   reading: CarpoolReading,
   timeZone: string,
 ): P | null | 'ambiguous' {
-  const pickupAt = parsePickupAt(reading.pickupAtIso);
+  const pickupAt = resolveCarpoolPickup(reading, timeZone);
   const event = reading.eventLabel?.trim() || null;
   if (!pickupAt && !event) {
     if (plans.length === 0) return null;
@@ -399,7 +399,7 @@ export async function considerCarpoolTurn(
     senderName: sender.name,
     memberNames: (membership?.members ?? []).map((member) => member.userId),
     currentDriver: plans.length === 1 ? (plans[0]?.driverName ?? null) : null,
-    nowIso: input.now.toISOString(),
+    now: input.now,
     timeZone: sender.timezone,
     recent,
   });

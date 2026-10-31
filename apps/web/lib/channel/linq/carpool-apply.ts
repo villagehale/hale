@@ -1,4 +1,4 @@
-import { dayKeyIn } from '~/lib/plan/spine';
+import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import {
   type CarpoolIntent,
   type CarpoolPlanStatus,
@@ -18,6 +18,13 @@ export interface CarpoolReading {
   driverName: string | null;
   eventLabel: string | null;
   pickupAtIso: string | null;
+  /**
+   * VIL-520 — local calendar day and wall clock, copied from the family's
+   * `now.nextDays`. Code turns these into the instant. An offset on
+   * `pickupAtIso` is not the clock the parent said.
+   */
+  pickupDate?: string | null;
+  pickupTime?: string | null;
   pickupPlace: string | null;
   kids: string | null;
   confidence: 'high' | 'low';
@@ -60,6 +67,35 @@ export function parsePickupAt(iso: string | null): Date | null {
   if (!iso) return null;
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * The pickup instant.
+ *
+ * A local date plus wall clock wins. Those are the family's calendar day and
+ * the hour they said; the offset in force at that moment in `timeZone` is
+ * applied here. Trusting a model instant instead is how Friday-night
+ * "tomorrow Saturday 8am" became Sunday 7am: the UTC date rolled to Sunday,
+ * and Friday's EDT offset (−04:00) was stuck on a Sunday that is already EST.
+ * An absolute `pickupAtIso` is only the fallback for a stored instant.
+ */
+export function resolveCarpoolPickup(
+  reading: Pick<CarpoolReading, 'pickupAtIso' | 'pickupDate' | 'pickupTime'>,
+  timeZone: string,
+): Date | null {
+  const date = reading.pickupDate?.trim() ?? '';
+  const time = reading.pickupTime?.trim() ?? '';
+  if (DAY_KEY.test(date) && CLOCK.test(time)) {
+    try {
+      return zonedLocalInstant(date, time, timeZone);
+    } catch {
+      return null;
+    }
+  }
+  return parsePickupAt(reading.pickupAtIso);
 }
 
 function claimedDriverName(reading: CarpoolReading, sender: CarpoolSender): string | null {
@@ -116,11 +152,11 @@ export function applyCarpoolReading(
   if (reading.intent === 'chatter' || reading.intent === 'unclear') return plan;
 
   const previousPickupAt = plan?.pickupAt ?? null;
-  const pickupAt = parsePickupAt(reading.pickupAtIso) ?? previousPickupAt;
+  const timeZone = sender.timezone || plan?.driverTimezone || 'America/Toronto';
+  const pickupAt = resolveCarpoolPickup(reading, timeZone) ?? previousPickupAt;
   const eventLabel = reading.eventLabel?.trim() || plan?.eventLabel || null;
   const pickupPlace = reading.pickupPlace?.trim() || plan?.pickupPlace || null;
   const kids = reading.kids?.trim() || plan?.kids || null;
-  const timeZone = sender.timezone || plan?.driverTimezone || 'America/Toronto';
   const movedDay = Boolean(
     plan?.pickupAt &&
       pickupAt &&
