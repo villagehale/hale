@@ -869,3 +869,92 @@ describe('Devin #975 round 4', () => {
     expect(calls).toBe(1);
   });
 });
+
+/** Devin #984 (swapped driver zone) — the cron reminds in the driver's own zone. */
+describe('driver reminder zone', () => {
+  async function rideWithDriver(rideZone: string, driverZone: string, pickupIso: string) {
+    const { familyId } = await seed();
+    const [driver] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:driver', name: 'Dana Lee', timezone: driverZone })
+      .returning({ id: schema.users.id });
+    const pickupAt = new Date(pickupIso);
+    await db.database.insert(schema.linqGroupCarpools).values({
+      chatId: CHAT,
+      familyId,
+      planKey: `soccer:${pickupIso}`,
+      eventLabel: 'soccer',
+      pickupAt,
+      driverName: 'Dana',
+      driverUserId: driver?.id as string,
+      driverTimezone: rideZone,
+      status: 'assigned',
+      reminderStatus: 'pending',
+      // Already due, so only the quiet gate and window decide.
+      reminderFireAt: new Date(pickupAt.getTime() - 24 * 3600_000),
+    } as typeof schema.linqGroupCarpools.$inferInsert);
+  }
+  const run = (now: Date) =>
+    runCarpoolReminders(db.database, {
+      now,
+      send: door().send,
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => ({ sent: false, skipped: 'test' }),
+    });
+
+  it('a Vancouver driver on a Toronto ride: group leg is held in Toronto quiet hours (Devin #984 group quiet)', async () => {
+    await rideWithDriver('America/Toronto', 'America/Vancouver', '2026-10-11T12:00:00.000Z');
+    // Sat 21:30 Toronto (household quiet) = 18:30 Vancouver (driver not quiet).
+    const ran = await run(new Date('2026-10-11T01:30:00.000Z'));
+    expect(ran.held).toBe(1);
+    expect(ran.fired).toBe(0);
+    const [row] = await rows();
+    expect(row?.reminderStatus).toBe('pending');
+    expect(row?.reminderGroupSentAt).toBeNull();
+  });
+
+  it('a held Vancouver-driver reminder fires once both windows permit (Toronto morning)', async () => {
+    await rideWithDriver('America/Toronto', 'America/Vancouver', '2026-10-11T16:00:00.000Z');
+    // Sun 08:30 Toronto (out of quiet) = 05:30 Vancouver (driver quiet): still held.
+    expect((await run(new Date('2026-10-11T12:30:00.000Z'))).held).toBe(1);
+    // Sun 11:00 Toronto = 08:00 Vancouver: both clear, pickup still ahead.
+    const ran = await run(new Date('2026-10-11T15:00:00.000Z'));
+    expect(ran.fired).toBe(1);
+  });
+
+  it("the driver's private retry leg is gated on the driver's zone, not the household's", async () => {
+    await rideWithDriver('America/Toronto', 'America/Vancouver', '2026-10-11T16:00:00.000Z');
+    await db.database.update(schema.linqGroupCarpools).set({
+      reminderStatus: 'sent',
+      reminderGroupSentAt: new Date('2026-10-10T23:00:00.000Z'),
+      driverHaleCustomer: 'true',
+    } as Partial<typeof schema.linqGroupCarpools.$inferInsert>);
+    let calls = 0;
+    const runDriver = (now: Date) =>
+      runCarpoolReminders(db.database, {
+        now,
+        send: door().send,
+        voice: fakeCarpoolComposer(),
+        sendDriver: async () => {
+          calls += 1;
+          return { sent: false as const, skipped: 'test' };
+        },
+      });
+    // Sun 02:30 Toronto / Sat 23:30 Vancouver: driver quiet, no retry.
+    await runDriver(new Date('2026-10-11T06:30:00.000Z'));
+    expect(calls).toBe(0);
+    // Sat 22:30 Toronto (household quiet) / 19:30 Vancouver: driver leg may go.
+    await runDriver(new Date('2026-10-11T02:30:00.000Z'));
+    expect(calls).toBe(1);
+  });
+
+  it('a Toronto driver on a Vancouver-zoned ride is not reminded inside Toronto quiet hours', async () => {
+    await rideWithDriver('America/Vancouver', 'America/Toronto', '2026-10-11T15:00:00.000Z');
+    // Sat 19:30 Vancouver (evening there) = 22:30 Toronto (quiet).
+    const ran = await run(new Date('2026-10-11T02:30:00.000Z'));
+    expect(ran.held).toBe(1);
+    expect(ran.fired).toBe(0);
+    const [row] = await rows();
+    expect(row?.reminderStatus).toBe('pending');
+  });
+});

@@ -1,4 +1,4 @@
-import { dayKeyIn } from '~/lib/plan/spine';
+import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import {
   type CarpoolIntent,
   type CarpoolPlanStatus,
@@ -18,6 +18,13 @@ export interface CarpoolReading {
   driverName: string | null;
   eventLabel: string | null;
   pickupAtIso: string | null;
+  /**
+   * VIL-520 — local calendar day and wall clock, copied from the family's
+   * `now.nextDays`. Code turns these into the instant. An offset on
+   * `pickupAtIso` is not the clock the parent said.
+   */
+  pickupDate?: string | null;
+  pickupTime?: string | null;
   pickupPlace: string | null;
   kids: string | null;
   confidence: 'high' | 'low';
@@ -62,6 +69,81 @@ export function parsePickupAt(iso: string | null): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * The pickup instant.
+ *
+ * A local date plus wall clock wins. Those are the family's calendar day and
+ * the hour they said; the offset in force at that moment in `timeZone` is
+ * applied here. Trusting a model instant instead is how Friday-night
+ * "tomorrow Saturday 8am" became Sunday 7am: the UTC date rolled to Sunday,
+ * and Friday's EDT offset (−04:00) was stuck on a Sunday that is already EST.
+ * An absolute `pickupAtIso` is only the fallback for a stored instant.
+ */
+export function resolveCarpoolPickup(
+  reading: Pick<CarpoolReading, 'pickupAtIso' | 'pickupDate' | 'pickupTime'>,
+  timeZone: string,
+): Date | null {
+  const date = reading.pickupDate?.trim() ?? '';
+  const time = reading.pickupTime?.trim() ?? '';
+  if (DAY_KEY.test(date) && CLOCK.test(time)) {
+    try {
+      return zonedLocalInstant(date, time, timeZone);
+    } catch {
+      return null;
+    }
+  }
+  return parsePickupAt(reading.pickupAtIso);
+}
+
+/** `HH:MM` of an instant on the wall clock of `timeZone`. */
+function localClockIn(at: Date, timeZone: string): string | null {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(at);
+    const hour = parts.find((part) => part.type === 'hour')?.value;
+    const minute = parts.find((part) => part.type === 'minute')?.value;
+    const clock = hour && minute ? `${hour}:${minute}` : '';
+    return CLOCK.test(clock) ? clock : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Devin #984 — a date-only move ("soccer pickup moved to Sunday") names a day and
+ * no hour. It keeps the matched ride's own local hour on the new day; without this
+ * the new date was dropped and the old instant kept. Which ride is matched (and the
+ * refusal when several could be) stays with `pickCarpoolPlan`.
+ */
+export function withKnownClock<R extends Pick<CarpoolReading, 'pickupDate' | 'pickupTime'>>(
+  reading: R,
+  plan: Pick<CarpoolPlanState, 'pickupAt' | 'driverTimezone'> | null,
+  timeZone: string,
+): R {
+  const date = reading.pickupDate?.trim() ?? '';
+  const time = reading.pickupTime?.trim() ?? '';
+  if (!DAY_KEY.test(date) || CLOCK.test(time) || !plan?.pickupAt) return reading;
+  const clock = localClockIn(plan.pickupAt, plan.driverTimezone || timeZone);
+  return clock ? { ...reading, pickupTime: clock } : reading;
+}
+
+/** A reading that names a new day and no hour for a ride that already has one. */
+function isDateOnlyMove(
+  reading: Pick<CarpoolReading, 'pickupDate' | 'pickupTime'>,
+  plan: Pick<CarpoolPlanState, 'pickupAt'> | null,
+): boolean {
+  const date = reading.pickupDate?.trim() ?? '';
+  const time = reading.pickupTime?.trim() ?? '';
+  return Boolean(plan?.pickupAt) && DAY_KEY.test(date) && !CLOCK.test(time);
+}
+
 function claimedDriverName(reading: CarpoolReading, sender: CarpoolSender): string | null {
   const named = reading.driverName?.trim() || null;
   if (named) return named;
@@ -76,6 +158,7 @@ function withReminder(
   pickupAt: Date | null,
   timeZone: string,
   previousPickupAt: Date | null = plan.pickupAt,
+  reminderZone: string = timeZone,
 ): CarpoolPlanState {
   if (plan.status === 'cancelled') {
     return { ...plan, reminderStatus: 'skipped_cancelled', reminderFireAt: null };
@@ -97,9 +180,25 @@ function withReminder(
   }
   return {
     ...plan,
-    reminderFireAt: carpoolReminderFireAt(pickupAt, timeZone),
+    reminderFireAt: carpoolReminderFireAt(pickupAt, reminderZone),
     reminderStatus: 'pending',
   };
+}
+
+/**
+ * Devin #984 (swapped driver zone) — `driverTimezone` is the ride's wall-clock zone
+ * (date-only moves, day key, plan key). The driver's reminder fires and is
+ * quiet-gated in the driver's own zone: the sender's when the sender is the
+ * assigned driver, otherwise the ride zone until the cron resolves the driver.
+ */
+export function carpoolReminderZone(
+  plan: Pick<CarpoolPlanState, 'driverUserId' | 'driverTimezone'>,
+  sender: Pick<CarpoolSender, 'userId' | 'timezone'> | null,
+): string {
+  if (sender?.userId && plan.driverUserId === sender.userId && sender.timezone) {
+    return sender.timezone;
+  }
+  return plan.driverTimezone || 'America/Toronto';
 }
 
 /**
@@ -116,11 +215,20 @@ export function applyCarpoolReading(
   if (reading.intent === 'chatter' || reading.intent === 'unclear') return plan;
 
   const previousPickupAt = plan?.pickupAt ?? null;
-  const pickupAt = parsePickupAt(reading.pickupAtIso) ?? previousPickupAt;
+  // Devin #984 (cross-zone) — a date-only move of a known ride is read in the plan's
+  // own zone: the kept hour and the new date are both the ride's wall clock, and the
+  // plan keeps that zone. A Vancouver sender moving a Toronto Sat 08:00 ride to
+  // Sunday lands on Sun 08:00 Toronto, not 08:00 Vancouver.
+  const timeZone =
+    (isDateOnlyMove(reading, plan) && plan?.driverTimezone) ||
+    sender.timezone ||
+    plan?.driverTimezone ||
+    'America/Toronto';
+  const pickupAt =
+    resolveCarpoolPickup(withKnownClock(reading, plan, timeZone), timeZone) ?? previousPickupAt;
   const eventLabel = reading.eventLabel?.trim() || plan?.eventLabel || null;
   const pickupPlace = reading.pickupPlace?.trim() || plan?.pickupPlace || null;
   const kids = reading.kids?.trim() || plan?.kids || null;
-  const timeZone = sender.timezone || plan?.driverTimezone || 'America/Toronto';
   const movedDay = Boolean(
     plan?.pickupAt &&
       pickupAt &&
@@ -180,12 +288,13 @@ export function applyCarpoolReading(
     driverTimezone: timeZone,
   };
 
+  const mergedZone = carpoolReminderZone(merged, sender);
   if (reading.intent === 'plan_needs_driver') {
-    return withReminder(merged, pickupAt, timeZone, previousPickupAt);
+    return withReminder(merged, pickupAt, timeZone, previousPickupAt, mergedZone);
   }
 
   const driverName = claimedDriverName(reading, sender);
-  if (!driverName) return withReminder(merged, pickupAt, timeZone, previousPickupAt);
+  if (!driverName) return withReminder(merged, pickupAt, timeZone, previousPickupAt, mergedZone);
 
   const swapped = Boolean(merged.driverName && merged.driverName !== driverName);
   // Devin #936/#975 — "Priya is driving" from Maya is Priya, not Maya, and
@@ -205,7 +314,13 @@ export function applyCarpoolReading(
     status: 'assigned',
     reminderStatus: swapped && merged.reminderStatus === 'sent' ? 'pending' : merged.reminderStatus,
   };
-  return withReminder(assigned, pickupAt, timeZone, previousPickupAt);
+  return withReminder(
+    assigned,
+    pickupAt,
+    timeZone,
+    previousPickupAt,
+    carpoolReminderZone(assigned, sender),
+  );
 }
 
 export function markAsked(plan: CarpoolPlanState, at: Date): CarpoolPlanState {
