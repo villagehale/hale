@@ -66,6 +66,50 @@ export function httpsMediaUrl(raw: string | null | undefined): string | null {
   return parsed.toString();
 }
 
+/**
+ * Devin SEC_0001: a `.vcf` URL comes from the webhook payload, so the fetch must not
+ * reach a loopback, private, link-local, or metadata host. IP literals in those ranges
+ * and internal-looking names are refused. Redirects are followed by hand so every hop
+ * is checked again.
+ */
+export function publicMediaUrl(raw: string | null | undefined): string | null {
+  const url = httpsMediaUrl(raw);
+  if (!url) return null;
+  const host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host.includes('.') && !host.includes(':')) return null;
+  if (host === 'localhost' || /\.(localhost|local|internal|lan|home|corp|intranet)$/.test(host)) {
+    return null;
+  }
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 198 && (b === 18 || b === 19)) ||
+      a >= 224
+    ) {
+      return null;
+    }
+    return url;
+  }
+  if (host.includes(':')) {
+    // Any IPv6 literal: loopback, ULA, link-local, and v4-mapped forms are all refused;
+    // a real media host is a DNS name.
+    return null;
+  }
+  // Numeric-looking hosts that are not dotted quads (e.g. 2130706433, 0x7f.1) are refused.
+  if (/^[\d.x]+$/i.test(host) || /^0x/i.test(host)) return null;
+  return url;
+}
+
+const MAX_CONTACT_REDIRECTS = 3;
+
 export function classifyInboundMedia(
   mime: string | null,
   url: string | null,
@@ -248,19 +292,35 @@ async function readContactPart(
   part: InboundMediaPart,
   fetchImpl: typeof fetch,
 ): Promise<{ cards: CoachContact[]; truncated: boolean }> {
-  const url = httpsMediaUrl(part.url);
-  if (!url) {
-    unreadContact('not_https');
+  const first = publicMediaUrl(part.url);
+  if (!first) {
+    unreadContact(httpsMediaUrl(part.url) ? 'private_host' : 'not_https');
     return EMPTY_CONTACTS;
   }
+  let url: string = first;
   try {
-    const response = await fetchImpl(url, {
-      redirect: 'follow',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    const finalUrl = response.url ? httpsMediaUrl(response.url) : url;
-    if (!response.ok || !finalUrl) {
-      unreadContact(response.ok ? 'redirect' : 'http_status');
+    const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+    let response = await fetchImpl(url, { redirect: 'manual', signal });
+    for (let hop = 0; response.status >= 300 && response.status < 400; hop++) {
+      const location = response.headers.get('location');
+      const next: string | null =
+        location && hop < MAX_CONTACT_REDIRECTS
+          ? publicMediaUrl(new URL(location, url).toString())
+          : null;
+      if (!next) {
+        unreadContact('redirect');
+        return EMPTY_CONTACTS;
+      }
+      url = next;
+      response = await fetchImpl(url, { redirect: 'manual', signal });
+    }
+    // Belt and braces: a fetch that followed anyway must still land on a public https host.
+    if (response.url && !publicMediaUrl(response.url)) {
+      unreadContact('redirect');
+      return EMPTY_CONTACTS;
+    }
+    if (!response.ok) {
+      unreadContact('http_status');
       return EMPTY_CONTACTS;
     }
     const declared = Number(response.headers.get('content-length'));

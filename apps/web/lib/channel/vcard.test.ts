@@ -37,7 +37,6 @@ describe('parseContactCards', () => {
         org: 'Riverside Community Centre',
         title: 'Swimming coach',
         place: 'Toronto, ON, Canada',
-        note: 'Tuesday pickup',
       },
     ]);
     const dumped = JSON.stringify(parsed);
@@ -45,6 +44,7 @@ describe('parseContactCards', () => {
     expect(dumped).not.toContain('123 Secret St');
     expect(dumped).not.toContain('M5V');
     expect(dumped).not.toContain('19700401');
+    expect(dumped).not.toContain('Tuesday pickup');
   });
 
   it('uses the Apple group label, unfolds a folded name, and decodes a quoted-printable name', () => {
@@ -98,5 +98,46 @@ describe('parseContactCards', () => {
     const parsed = parseContactCards(raw);
     expect(parsed.truncated).toBe(true);
     expect(parsed.cards.map((entry) => entry.name)).toEqual(['Ada', 'Grace', 'Joan']);
+  });
+
+  it('keeps the base number and never appends an extension to it', () => {
+    const parsed = parseContactCards(
+      card([
+        'FN:Front Desk',
+        'TEL;VALUE=uri:tel:+14165550100;ext=123',
+        'TEL:+1 647 555 0123 x45',
+        'TEL:(905) 555-0199 ext. 7',
+        'TEL:+1 289 555 0111 #9',
+      ]),
+    );
+    expect(parsed.cards[0]?.phones.map((p) => p.number)).toEqual([
+      '+14165550100',
+      '+16475550123',
+      '+19055550199',
+      '+12895550111',
+    ]);
+    expect(JSON.stringify(parsed)).not.toContain('0100123');
+  });
+
+  it('keeps a preferred number listed fifth, and a preferred email listed fourth', () => {
+    const parsed = parseContactCards(
+      card([
+        'FN:Many Numbers',
+        'TEL;TYPE=WORK:+14165550101',
+        'TEL;TYPE=HOME:+14165550102',
+        'TEL;TYPE=OTHER:+14165550103',
+        'TEL;TYPE=OLD:+14165550104',
+        'TEL;TYPE=CELL,PREF:+14165550100',
+        'EMAIL:a@example.com',
+        'EMAIL:b@example.com',
+        'EMAIL:c@example.com',
+        'EMAIL;TYPE=PREF:best@example.com',
+      ]),
+    );
+    const contact = parsed.cards[0];
+    expect(contact?.phones).toHaveLength(4);
+    expect(contact?.phones[0]?.number).toBe('+14165550100');
+    expect(contact?.emails).toHaveLength(3);
+    expect(contact?.emails?.[0]?.address).toBe('best@example.com');
   });
 });

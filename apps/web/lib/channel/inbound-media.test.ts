@@ -148,4 +148,45 @@ describe('readInboundMedia', () => {
     expect(read.contacts).toEqual([]);
     expect(read.unwatched).toEqual([{ kind: 'contact' }]);
   });
+
+  it('does not fetch a contact card on a private or metadata host, and checks every redirect hop', async () => {
+    const vcf = 'BEGIN:VCARD\nFN:Jane\nTEL:+14165550100\nEND:VCARD';
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === 'https://cdn.example/hop.vcf') {
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://169.254.169.254/latest/meta-data' },
+        });
+      }
+      if (url === 'https://cdn.example/ok-hop.vcf') {
+        return new Response(null, { status: 302, headers: { location: '/real.vcf' } });
+      }
+      return new Response(vcf, { status: 200 });
+    });
+    const read = await readInboundMedia(
+      [
+        { kind: 'contact', url: 'https://127.0.0.1/card.vcf', mime: 'text/vcard' },
+        { kind: 'contact', url: 'https://10.0.0.5/card.vcf', mime: 'text/vcard' },
+        { kind: 'contact', url: 'https://[::1]/card.vcf', mime: 'text/vcard' },
+        { kind: 'contact', url: 'https://metadata.google.internal/card.vcf', mime: 'text/vcard' },
+        { kind: 'contact', url: 'https://localhost/card.vcf', mime: 'text/vcard' },
+        { kind: 'contact', url: 'https://cdn.example/hop.vcf', mime: 'text/vcard' },
+        { kind: 'contact', url: 'https://cdn.example/ok-hop.vcf', mime: 'text/vcard' },
+      ],
+      fetchImpl as unknown as typeof fetch,
+    );
+    const called = fetchImpl.mock.calls.map(([url]) => url);
+    expect(called).toEqual([
+      'https://cdn.example/hop.vcf',
+      'https://cdn.example/ok-hop.vcf',
+      'https://cdn.example/real.vcf',
+    ]);
+    for (const [, init] of fetchImpl.mock.calls as unknown as Array<[string, RequestInit]>) {
+      expect(init.redirect).toBe('manual');
+    }
+    expect(read.contacts).toEqual([
+      { name: 'Jane', phones: [{ number: '+14165550100', e164: '+14165550100', label: null }] },
+    ]);
+    expect(read.unwatched).toHaveLength(6);
+  });
 });

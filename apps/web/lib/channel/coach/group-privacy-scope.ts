@@ -25,6 +25,18 @@ export const GROUP_WITHHELD = [
 
 export function groupScopedContext<T extends AgentContext>(context: T): T {
   const { providerWatch: _withheld, ...rest } = context as T & { providerWatch?: unknown };
+  // VIL-482 (Devin SEC_0002): a .vcf on a group turn gives the model the card's name
+  // only. Phones, emails, org, title, and place are one person's private details and
+  // a group line is read by everyone, so they never reach a group prompt.
+  const contacts = (rest as { arrivedContacts?: unknown }).arrivedContacts;
+  if (Array.isArray(contacts)) {
+    Object.assign(rest, {
+      arrivedContacts: contacts.map((card: { name?: string | null }) => ({
+        name: card?.name ?? null,
+        phones: [],
+      })),
+    });
+  }
   return {
     ...(rest as T),
     memoryFacts: [],

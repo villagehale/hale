@@ -51,6 +51,31 @@ describe('VIL-439 group privacy scope', () => {
     expect(text).toContain('Maya');
   });
 
+  it('gives a group turn only the name off a contact card, never its numbers or email', () => {
+    const scoped = groupScopedContext({
+      ...PRIVATE_CONTEXT,
+      arrivedContacts: [
+        {
+          name: 'Jane Smith',
+          phones: [{ number: '+14165550100', e164: '+14165550100', label: 'cell' }],
+          emails: [{ address: 'jane@example.com', label: null }],
+          org: 'Riverside',
+          place: 'Toronto, ON',
+        },
+      ],
+    } as never) as Record<string, unknown>;
+    expect(scoped.arrivedContacts).toEqual([{ name: 'Jane Smith', phones: [] }]);
+    const text = JSON.stringify(scoped);
+    expect(text).not.toContain('5550100');
+    expect(text).not.toContain('jane@example.com');
+    expect(text).not.toContain('Riverside');
+  });
+
+  it('leaves a 1:1-shaped context without contacts unchanged in shape', () => {
+    const scoped = groupScopedContext(PRIVATE_CONTEXT as never) as Record<string, unknown>;
+    expect(scoped).not.toHaveProperty('arrivedContacts');
+  });
+
   describe('in the runtime', () => {
     const SKILL: Skill = {
       meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse', tools: [] },

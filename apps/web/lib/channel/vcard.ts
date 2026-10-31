@@ -50,7 +50,6 @@ export interface CoachContact {
   title?: string;
   /** City and region only. A street on the card is not copied. */
   place?: string;
-  note?: string;
 }
 
 export interface ParsedContactFile {
@@ -137,7 +136,9 @@ export function parseContactCards(raw: string): ParsedContactFile {
   return { cards, truncated };
 }
 
-const KEPT = new Set(['FN', 'N', 'NICKNAME', 'TEL', 'EMAIL', 'ORG', 'TITLE', 'ADR', 'NOTE']);
+// NOTE is not kept: it is free text the sender wrote, and it reached the coach as
+// if it were a field. Name and number are the use (Devin SEC_0003).
+const KEPT = new Set(['FN', 'N', 'NICKNAME', 'TEL', 'EMAIL', 'ORG', 'TITLE', 'ADR']);
 
 function buildCard(
   props: readonly Prop[],
@@ -146,11 +147,10 @@ function buildCard(
   let name: string | null = null;
   let nickname: string | null = null;
   const phones: Array<ContactPhone & { pref: boolean }> = [];
-  const emails: ContactEmail[] = [];
+  const emails: Array<ContactEmail & { pref: boolean }> = [];
   let org: string | null = null;
   let title: string | null = null;
   let place: string | null = null;
-  let note: string | null = null;
   const seenPhones = new Set<string>();
   const seenEmails = new Set<string>();
 
@@ -161,39 +161,42 @@ function buildCard(
       if (formatted) name = formatted;
     } else if (prop.name === 'N' && !name) name = nameFromN(prop.value);
     else if (prop.name === 'NICKNAME' && !nickname) nickname = clip(prop.value, 120);
-    else if (prop.name === 'TEL' && phones.length < MAX_PHONES) {
+    else if (prop.name === 'TEL') {
       const phone = cleanPhone(prop.value);
       if (!phone) continue;
       const key = phone.e164 ?? phone.number;
       if (seenPhones.has(key)) continue;
       seenPhones.add(key);
       phones.push({ ...phone, label, pref: prop.pref });
-    } else if (prop.name === 'EMAIL' && emails.length < MAX_EMAILS) {
+    } else if (prop.name === 'EMAIL') {
       const address = cleanEmail(prop.value);
       if (!address) continue;
       const key = address.toLowerCase();
       if (seenEmails.has(key)) continue;
       seenEmails.add(key);
-      emails.push({ address, label });
+      emails.push({ address, label, pref: prop.pref });
     } else if (prop.name === 'ORG' && !org) org = formatOrg(prop.value);
     else if (prop.name === 'TITLE' && !title) title = clip(prop.value, 80);
     else if (prop.name === 'ADR' && !place) place = placeFromAdr(prop.value);
-    else if (prop.name === 'NOTE' && !note) note = clip(prop.value, 200);
   }
 
   if (!name && nickname) name = nickname;
   if (!name && phones.length === 0 && emails.length === 0) return null;
 
+  // Cap after ordering, so a preferred number fifth on the card is still kept.
+  // Array.prototype.sort is stable: equal-pref entries keep card order.
   phones.sort((a, b) => Number(b.pref) - Number(a.pref));
+  emails.sort((a, b) => Number(b.pref) - Number(a.pref));
   const card: CoachContact = {
     name,
-    phones: phones.map(({ number, e164, label }) => ({ number, e164, label })),
+    phones: phones.slice(0, MAX_PHONES).map(({ number, e164, label }) => ({ number, e164, label })),
   };
-  if (emails.length > 0) card.emails = emails;
+  if (emails.length > 0) {
+    card.emails = emails.slice(0, MAX_EMAILS).map(({ address, label }) => ({ address, label }));
+  }
   if (org) card.org = org;
   if (title) card.title = title;
   if (place) card.place = place;
-  if (note) card.note = note;
   return card;
 }
 
@@ -226,8 +229,18 @@ function labelFor(abLabel: string | null, types: readonly string[]): string | nu
   return null;
 }
 
+/**
+ * An extension is not part of the number. `tel:+1416…;ext=123`, `… x123`, `… ext. 123`
+ * keep the base number only; the extension digits are never appended to it.
+ */
+const EXTENSION = /\s*(?:[,;]|ext\.?|extension|x|#)\s*\d+\s*$/i;
+
 function cleanPhone(raw: string): { number: string; e164: string | null } | null {
-  const trimmed = raw.trim().replace(/^tel:/i, '').trim();
+  let trimmed = raw.trim().replace(/^tel:/i, '').trim();
+  // tel: URI parameters (`;ext=`, `;phone-context=`, `;isub=`) are not digits of the number.
+  const uriParams = trimmed.indexOf(';');
+  if (uriParams >= 0) trimmed = trimmed.slice(0, uriParams).trim();
+  trimmed = trimmed.replace(EXTENSION, '').trim();
   if (!trimmed || trimmed.length > 40) return null;
   const e164 = normalizePhoneE164(trimmed);
   if (e164) return { number: e164, e164 };
