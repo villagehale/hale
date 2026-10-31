@@ -43,6 +43,14 @@
     "file": "calendar-cancel-voice.md",
     "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"
   },
+  "calendar-invite-time.md": {
+    "file": "calendar-invite-time.md",
+    "sha256": "c28ce5e80e0e4b55ce301261b95857abea0ce7bb1f0fc5626fcbf4bd99cde96d"
+  },
+  "calendar-invite-voice.md": {
+    "file": "calendar-invite-voice.md",
+    "sha256": "186475779c760f2d539d05b06edada16fd68b04b59d6d741dd5bc408a640be38"
+  },
   "calendar-offer-read.md": {
     "file": "calendar-offer-read.md",
     "sha256": "aea480fe0eb977faef4e918c9dde6778a6605eadede342a542e385ff7f0c676e"
