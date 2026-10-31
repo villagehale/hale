@@ -80,8 +80,8 @@ export interface FamilyFit {
 const FIT_FACT_TYPES = ['preference', 'logistic'] as const;
 /** Small on purpose: a slice, not the memory. */
 export const FAMILY_FIT_PREFERENCE_LIMIT = 8;
-/** At most this many stale keys are named back — a hint, not a questionnaire. */
-export const FAMILY_FIT_RECHECK_LIMIT = 3;
+/** One stale key at most (Design lock, one-ask): a hint, not a questionnaire. */
+export const FAMILY_FIT_RECHECK_LIMIT = 1;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /**

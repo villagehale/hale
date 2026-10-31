@@ -106,7 +106,8 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     const fit = await reader.familyFit!(db.database, familyId, NOW);
     expect(fit.preferences.map((p) => p.key)).toEqual(['stroller']);
     expect(fit.preferences[0]?.source).toBe('inferred');
-    expect(fit.recheck.map((r) => r.key).sort()).toEqual(['language', 'scary']);
+    expect(fit.recheck).toHaveLength(1);
+    expect(['language', 'scary']).toContain(fit.recheck[0]?.key);
     expect(JSON.stringify(fit.recheck)).not.toContain('french');
     expect(JSON.stringify(fit.recheck)).not.toContain('avoid');
   });

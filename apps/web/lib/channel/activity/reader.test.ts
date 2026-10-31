@@ -80,7 +80,8 @@ describe('family fit provenance + freshness (VIL-519)', () => {
     );
     const { preferences, recheck } = selectFitPreferences(rows, new Set(), NOW);
     expect(preferences).toEqual([]);
-    expect(recheck).toHaveLength(FAMILY_FIT_RECHECK_LIMIT);
+    expect(FAMILY_FIT_RECHECK_LIMIT).toBe(1);
+    expect(recheck).toHaveLength(1);
     expect(JSON.stringify(recheck)).not.toContain('secret');
   });
 
