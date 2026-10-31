@@ -2,7 +2,7 @@ import type { Database } from '@hale/db';
 // Type-only, so the cycle with approval.ts (which imports `approvalSubjects` from here)
 // is erased at build time. One shape for a drafted action, owned by the spine that reads
 // them, rather than a structural copy the two files could drift apart on.
-import { matchApprovedCalendarAdd } from '~/lib/channel/calendar-ask';
+import { matchApprovedCalendarAdd, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
 import { CALL_TIMEOUT_MS, READER_TIMEOUT } from '~/lib/channel/config';
 import { actionTypeLabel } from '~/lib/format/labels';
 import type { PendingAction } from './approval';
@@ -383,8 +383,18 @@ export interface OpenQuestion {
    * VIL-513. Set on a calendar offer that is the parent's question about one
    * reviewer-approved `calendar_add`. A YES on this offer approves that action.
    * Not shown to the resolver — the offer's own description is.
+   * A YES reads this. An unapproved draft must not be placed here.
    */
   approvesActionId?: string;
+  /**
+   * VIL-525. The unapproved draft this offer hid. A NO declines it so the next
+   * turn does not list it again. A YES does not read it and does not approve it.
+   * When several unapproved drafts share the occasion, this is the first and
+   * {@link declinesActionIds} is every one of them.
+   */
+  declinesActionId?: string;
+  /** Every unapproved draft a NO to this offer declines. A YES does not read it. */
+  declinesActionIds?: readonly string[];
 }
 
 /**
@@ -689,6 +699,8 @@ export interface OpenQuestionSources {
       /** The occasion, so a matching calendar draft is the same question. */
       title?: string;
       startsAt?: string;
+      /** The parent's zone, so a same-day draft is the ask already sent. */
+      timeZone?: string;
     }>
   >;
   /**
@@ -919,9 +931,15 @@ export function createOpenQuestionReader(
       // YES ambiguous, the approval handler declines to claim, and the coach drafts
       // the same add again.
       //
+      // VIL-525. Every unapproved draft of that same occasion (a close clock, not
+      // merely the same day) is hidden. A private draft and a group draft of one
+      // start are both that ask. A NO declines all of them. A YES does not approve
+      // any of them: they are not `approvesActionId`.
+      //
       // Only on the thread where the offer was made. A group-plan draft with the same
       // title stays on the group list, or the group's YES has nothing to approve.
       const approvesByOffer = new Map<string, string>();
+      const declinesByOffer = new Map<string, readonly string[]>();
       const hiddenDrafts = new Set<string>();
       if (input.surface !== 'group') {
         for (const offer of emailOffers) {
@@ -930,9 +948,27 @@ export function createOpenQuestionReader(
             title: offer.title,
             startsAt: offer.startsAt,
           });
-          if (!match || hiddenDrafts.has(match.actionId)) continue;
-          hiddenDrafts.add(match.actionId);
-          approvesByOffer.set(offer.id, match.actionId);
+          if (match && !hiddenDrafts.has(match.actionId)) {
+            hiddenDrafts.add(match.actionId);
+            approvesByOffer.set(offer.id, match.actionId);
+          }
+          const unapprovedIds = unapprovedCalendarAddIds(
+            approvals.map((action) => ({
+              id: action.actionId,
+              actionType: action.actionType,
+              reviewerApproved: action.reviewerApproved,
+              occasion: action.occasion ?? null,
+            })),
+            {
+              title: offer.title,
+              startsAt: offer.startsAt,
+              timeZone: offer.timeZone ?? 'UTC',
+            },
+          );
+          if (unapprovedIds.length > 0) {
+            for (const id of unapprovedIds) hiddenDrafts.add(id);
+            declinesByOffer.set(offer.id, unapprovedIds);
+          }
         }
       }
       const questions: OpenQuestion[] = namedApprovals(
@@ -1040,6 +1076,7 @@ export function createOpenQuestionReader(
         // The offer row's own one-line summary: the title Hale already texted this parent
         // and nothing else — never the subject line, never the snippet (rule #1).
         const approvesActionId = approvesByOffer.get(emailOffer.id);
+        const declinesActionIds = declinesByOffer.get(emailOffer.id);
         questions.push({
           id: emailOffer.id,
           kind: 'email_alert_add',
@@ -1051,6 +1088,9 @@ export function createOpenQuestionReader(
           askedAt: emailOffer.askedAt,
           solicited: SOLICITED.email_alert_add,
           ...(approvesActionId ? { approvesActionId } : {}),
+          ...(declinesActionIds && declinesActionIds.length > 0
+            ? { declinesActionId: declinesActionIds[0], declinesActionIds }
+            : {}),
         });
       }
       if (evening) {

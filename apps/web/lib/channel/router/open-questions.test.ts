@@ -236,6 +236,175 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       'a-1',
     ]);
   });
+
+  it('does not list an unapproved add the offer already asked', async () => {
+    const startsAt = '2026-10-31T19:00:00.000Z';
+    const reader = createOpenQuestionReader({
+      pendingApprovals: async () => [
+        {
+          actionId: 'a-1',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Trunk or Treat', startsAt },
+        },
+        {
+          actionId: 'a-other',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Swim lessons', startsAt },
+        },
+      ],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [
+        {
+          id: 'offer-1',
+          summary: 'An offer to put Trunk or Treat on your week',
+          subject: 'putting Trunk or Treat on your week',
+          askedAt: T0,
+          title: 'Trunk or Treat',
+          startsAt: '2026-10-31T19:01:00.000Z',
+          timeZone: 'America/Toronto',
+        },
+      ],
+      eveningCheckIn: async () => null,
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
+    });
+
+    const questions = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    expect(questions.filter((question) => question.kind === 'approval').map((q) => q.id)).toEqual([
+      'a-other',
+    ]);
+    const listed = questions.find((question) => question.id === 'offer-1');
+    expect(listed?.approvesActionId).toBeUndefined();
+    expect(listed?.declinesActionId).toBe('a-1');
+  });
+
+  it('keeps an afternoon add listed beside a morning offer of the same title', async () => {
+    const reader = createOpenQuestionReader({
+      pendingApprovals: async () => [
+        {
+          actionId: 'afternoon',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Gymnastics', startsAt: '2026-10-10T20:00:00.000Z' },
+        },
+      ],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [
+        {
+          id: 'offer-morning',
+          summary: 'An offer to put Gymnastics on your week',
+          subject: 'putting Gymnastics on your week',
+          askedAt: T0,
+          title: 'Gymnastics',
+          startsAt: '2026-10-10T13:00:00.000Z',
+          timeZone: 'America/Toronto',
+        },
+      ],
+      eveningCheckIn: async () => null,
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
+    });
+
+    const questions = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    expect(questions.filter((question) => question.kind === 'approval').map((q) => q.id)).toEqual([
+      'afternoon',
+    ]);
+    expect(questions.find((question) => question.id === 'offer-morning')?.declinesActionId).toBe(
+      undefined,
+    );
+  });
+
+  it('hides every unapproved draft of the occasion, including a private one and a group one', async () => {
+    const startsAt = '2026-10-31T19:00:00.000Z';
+    const reader = createOpenQuestionReader({
+      pendingApprovals: async () => [
+        {
+          actionId: 'private',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Gymnastics', startsAt },
+        },
+        {
+          actionId: 'group',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Gymnastics', startsAt: '2026-10-31T19:01:00.000Z' },
+        },
+      ],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [
+        {
+          id: 'offer-1',
+          summary: 'An offer to put Gymnastics on your week',
+          subject: 'putting Gymnastics on your week',
+          askedAt: T0,
+          title: 'Gymnastics',
+          startsAt,
+          timeZone: 'America/Toronto',
+        },
+      ],
+      eveningCheckIn: async () => null,
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
+    });
+
+    const questions = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(questions.find((question) => question.id === 'offer-1')?.declinesActionIds).toEqual([
+      'private',
+      'group',
+    ]);
+    expect(
+      questions.find((question) => question.id === 'offer-1')?.approvesActionId,
+    ).toBeUndefined();
+  });
 });
 
 /**

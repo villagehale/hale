@@ -4479,6 +4479,87 @@ describe('the weekday-care answer', () => {
     expect(h.transport.sent).toEqual([]);
   });
 
+  it('declines the hidden unapproved draft when NO answers the offer, and YES does not approve it', async () => {
+    const declined: string[] = [];
+    const approved: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-held', actionType: 'calendar_add', reviewerApproved: false },
+      ],
+      latestUndoable: async () => null,
+      approve: async (_db: unknown, args: { actionId: string }) => {
+        approved.push(args.actionId);
+        return { ok: true as const };
+      },
+      decline: async (_db: unknown, args: { actionId: string }) => {
+        declined.push(args.actionId);
+        return { ok: true as const };
+      },
+      undo: async () => ({ ok: true as const }),
+    };
+    const offer = {
+      id: 'offer-1',
+      kind: 'email_alert_add' as const,
+      description: 'An offer to put Picture day on your week',
+      subject: 'putting Picture day on your week',
+      answerable: { yes: true, no: true },
+      askedAt: NOW,
+      solicited: true,
+      declinesActionId: 'a-held',
+    };
+    const offerHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
+    };
+    const no = harness({
+      context: { body: 'NO' },
+      coach: fakeCoach(),
+      handlers: [offerHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([offer]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'no' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    await routeChannelMessage(no.deps, job());
+    expect(declined).toEqual(['a-held']);
+    expect(approved).toEqual([]);
+
+    const yesHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'added', reply: null }),
+    };
+    const yes = harness({
+      context: { body: 'YES' },
+      coach: fakeCoach(),
+      handlers: [yesHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([offer]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'yes' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(yes.deps, job());
+    expect(approved).toEqual([]);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'email_alert_add' });
+  });
+
   it('a yes to the finder ask searches and does not write a care fact', async () => {
     const searches: Array<{ familyId: string; prompt: string }> = [];
     const { h, written, coach } = careHarness({

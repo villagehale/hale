@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
-import { calendarInstantsEqual, calendarTitlesEqual } from '~/lib/channel/calendar-ask';
+import { and, eq, inArray } from 'drizzle-orm';
+import {
+  calendarInstantsEqual,
+  calendarTitlesEqual,
+  matchingCalendarAddId,
+} from '~/lib/channel/calendar-ask';
+import { standingCalendarOfferId } from '~/lib/integrations/email-alert-offer';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
 
@@ -67,14 +72,20 @@ export interface ChannelDraftResult {
 export interface ChannelDraftPort {
   draft(input: ChannelDraftInput): Promise<ChannelDraftResult>;
   /**
-   * A `calendar_add` already waiting on this occasion, or null. Absent on a port
-   * that does not look — the tool then drafts, which is what every test double did
-   * before VIL-513.
+   * A `calendar_add` already waiting on this occasion, or the offer that already
+   * asked it, or null. Absent on a port that does not look — the tool then drafts,
+   * which is what every test double did before VIL-513.
    */
   pendingIdentical?(input: {
     familyId: string;
+    parentUserId?: string;
     title: string;
     startsAt: string;
+    timeZone?: string;
+    now?: Date;
+    /** A group ask must not collapse into a private 1:1 offer. */
+    audience?: 'direct' | 'group';
+    groupChatId?: string;
   }): Promise<string | null>;
 }
 
@@ -89,10 +100,54 @@ export function productionChannelDraftPort(
   };
 }
 
-/** The drafted add for this title and start, if one is already waiting. */
+/** Group-stamped drafts among these actions, for this chat when one is named. */
+async function groupDraftIdsForChat(
+  database: Database,
+  familyId: string,
+  actionIds: readonly string[],
+  groupChatId: string | undefined,
+): Promise<Set<string>> {
+  if (actionIds.length === 0) return new Set();
+  const rows = await database
+    .select({ targetId: schema.auditLog.targetId, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.targetTable, 'actions'),
+        eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
+        inArray(schema.auditLog.targetId, [...actionIds]),
+      ),
+    );
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const chatId = (row.after as { chatId?: unknown } | null)?.chatId;
+    if (typeof chatId !== 'string' || !row.targetId) continue;
+    if (groupChatId === undefined || chatId === groupChatId) ids.add(row.targetId);
+  }
+  return ids;
+}
+
+/**
+ * The drafted add for this occasion, or the offer that already asked it.
+ *
+ * A minute-off clock on the same local day is the draft already waiting (VIL-525).
+ * An exact instant is the fallback when the caller has no zone. A standing offer
+ * is the ask that already went out, so the same occasion does not mint a second
+ * draft and is not asked again.
+ */
 export async function findPendingIdenticalCalendarAdd(
   database: Database,
-  input: { familyId: string; title: string; startsAt: string },
+  input: {
+    familyId: string;
+    parentUserId?: string;
+    title: string;
+    startsAt: string;
+    timeZone?: string;
+    now?: Date;
+    audience?: 'direct' | 'group';
+    groupChatId?: string;
+  },
 ): Promise<string | null> {
   const rows = await database
     .select({ id: schema.actions.id, payload: schema.actions.payload })
@@ -105,16 +160,54 @@ export async function findPendingIdenticalCalendarAdd(
       ),
     )
     .limit(20);
-  const hit = rows.find((row) => {
+  const shaped = rows.map((row) => {
     const payload = row.payload as { title?: unknown; startsAt?: unknown };
-    return (
-      typeof payload.title === 'string' &&
-      typeof payload.startsAt === 'string' &&
-      calendarTitlesEqual(payload.title, input.title) &&
-      calendarInstantsEqual(payload.startsAt, input.startsAt)
-    );
+    const title = typeof payload.title === 'string' ? payload.title : '';
+    const startsAt = typeof payload.startsAt === 'string' ? payload.startsAt : '';
+    return {
+      id: row.id,
+      actionType: 'calendar_add' as const,
+      occasion: title !== '' && startsAt !== '' ? { title, startsAt } : null,
+    };
   });
-  return hit?.id ?? null;
+  const groupAsk = input.audience === 'group';
+  // A private draft sitting beside the group's draft makes two close matches, and
+  // the matcher then returns null. Filter to this chat's group drafts first, so
+  // the repeat ask reuses that draft instead of minting another.
+  const groupIds = groupAsk
+    ? await groupDraftIdsForChat(
+        database,
+        input.familyId,
+        shaped.map((item) => item.id),
+        input.groupChatId,
+      )
+    : null;
+  const candidates = groupIds ? shaped.filter((row) => groupIds.has(row.id)) : shaped;
+  if (input.timeZone) {
+    const hit = matchingCalendarAddId(candidates, {
+      title: input.title,
+      startsAt: input.startsAt,
+    });
+    if (hit) return hit;
+  } else {
+    const hit = candidates.find(
+      (row) =>
+        row.occasion !== null &&
+        calendarTitlesEqual(row.occasion.title, input.title) &&
+        calendarInstantsEqual(row.occasion.startsAt, input.startsAt),
+    );
+    if (hit) return hit.id;
+  }
+  // A 1:1 offer is private. A group ask cannot answer it, so it must still draft.
+  if (groupAsk) return null;
+  if (!input.parentUserId || !input.timeZone || !input.now) return null;
+  return standingCalendarOfferId(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    title: input.title,
+    startsAt: input.startsAt,
+    now: input.now,
+  });
 }
 
 export async function mintChannelCalendarDraft(
