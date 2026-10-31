@@ -297,7 +297,13 @@ export async function handleParentCallNameReply(
   }
 
   const read = await voice.read({ ...input, heldName: held });
-  const preferred = safeGivenName(read.parentName);
+  const readName = safeGivenName(read.parentName);
+  // The model turned the held name down and copied the whole message into the
+  // name field. That copy is the message, not a display name.
+  const preferred =
+    read.nameConfirmed === false && readName && sameNameMessage(readName, input.body)
+      ? null
+      : readName;
   if (read.parentRole) {
     await storeParentRole(database, {
       familyId: input.familyId,
@@ -334,6 +340,20 @@ export async function handleParentCallNameReply(
     return { status: 'answered', reply: read.reply };
   }
   return { status: 'declined' };
+}
+
+function sameNameMessage(name: string, body: string): boolean {
+  const fold = (value: string) =>
+    value
+      .trim()
+      .replace(/^["“«']+|["”»']+$/gu, '')
+      .replace(/[.!]+$/u, '')
+      .normalize('NFD')
+      .replace(/\p{M}+/gu, '')
+      .toLowerCase()
+      .replace(/\s+/gu, ' ');
+  const left = fold(name);
+  return left.length > 0 && left === fold(body);
 }
 
 async function readHeldGivenName(database: Database, userId: string): Promise<string | null> {

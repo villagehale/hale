@@ -7,6 +7,7 @@ import {
   friendWeekAction,
   judgeFriendReply,
   lastInboundFact,
+  parentReading,
   repairedProse,
   speakFriend,
 } from './friend-voice';
@@ -76,6 +77,109 @@ describe('friend voice brief', () => {
   });
 });
 
+describe('a delayed undo during name capture', () => {
+  const asked = blank({
+    step: 'names',
+    parentWords: 'undo',
+    lastInbound: lastInboundFact(
+      new Date('2026-08-28T12:00:00.000Z'),
+      new Date('2026-08-28T18:00:00.000Z'),
+    ),
+    recentTurns: [{ role: 'hale', body: 'What should I call you?' }],
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: false,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  });
+
+  it('does not decide a take-back from the words; a lone name is still a name', () => {
+    expect(parentReading(asked)).toBeNull();
+    expect(parentReading({ ...asked, parentWords: 'Dana' })).toEqual({
+      kind: 'name',
+      name: 'Dana',
+    });
+    expect(friendVoiceContext(asked)).not.toMatchObject({
+      reading: { kind: 'undo' },
+    });
+  });
+
+  // Code-side filter only. The stub is not the model: the skill tells the model
+  // a take-back is not a name. This checks that a copied message is dropped
+  // when the model already marked the take-back.
+  it('does not let a lone capital word override a model take-back', async () => {
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch school and camp email for the dates?',
+            capture: { parentName: null, nameDeclined: true },
+          };
+        },
+      },
+      { ...asked, parentWords: 'Undo' },
+      { page: async () => undefined },
+    );
+    expect(spoken.capture.parentName).toBeNull();
+    expect(spoken.capture.nameDeclined).toBe(true);
+  });
+
+  it('drops a parentName that is the whole message once the model marks the take-back', async () => {
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch school and camp email for the dates?',
+            capture: { parentName: 'undo', nameDeclined: true },
+          };
+        },
+      },
+      asked,
+      { page: async () => undefined },
+    );
+    expect(spoken.capture.parentName).toBeNull();
+    expect(spoken.capture.nameDeclined).toBe(true);
+  });
+
+  it.each([
+    "Got it, I'll call you undo. What should I call you?",
+    'Got it, I\'ll call you "undo". What should I call you?',
+    'Got it, I’ll call you “undo”. What should I call you?',
+    "D'accord. Je t'appelle undo. Qu'est-ce que je surveille ensuite ?",
+    'Je t’appelle « undo ». Comment je continue ?',
+  ])('refuses a reply that addresses them by the take-back: %s', (reply) => {
+    expect(judgeFriendReply(reply, { ...asked, nameTakenBack: true })).toEqual({
+      ok: false,
+      reason: 'identity',
+      detail: 'unknown_name',
+    });
+  });
+
+  it('does not treat the message as a foreign name until it is a take-back or another name is known', () => {
+    expect(judgeFriendReply("I'll undo that. What should I call you?", asked)).toEqual({
+      ok: true,
+    });
+  });
+
+  it('asks what to call them after a held name is turned down', () => {
+    const confirm = blank({
+      ...asked,
+      step: 'name_confirm',
+      parentWords: 'non',
+      parentName: 'Bea',
+    });
+    expect(judgeFriendReply('What should I call you?', confirm)).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Got it, I\'ll call you "non". What should I call you?', confirm),
+    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
+  });
+});
+
 describe('friend week find', () => {
   it('skips the week bubble once ages are known, and skips an empty list', () => {
     expect(friendWeekAction(true, 3)).toBe('skip');
@@ -99,6 +203,10 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('No STOP');
     expect(skill.instructions).toContain('`lastInbound`');
     expect(skill.instructions).toContain('minutesAgo');
+    expect(skill.instructions).toContain('A take-back is not a name');
+    expect(skill.instructions).toContain('asks what to call them');
+    expect(skill.instructions).not.toContain("I'll call you");
+    expect(skill.instructions).not.toContain("Je t'appelle");
   });
 
   it('stays lean: state and a playbook, with the gates left to code', async () => {
@@ -124,6 +232,9 @@ describe('onboarding friend fixtures', () => {
     expect(short.instructions).toContain('**find_show**');
     expect(short.instructions).toContain('**connected**');
     expect(short.instructions).toContain('lastInbound');
+    expect(short.instructions).toContain('A take-back is not a name');
+    expect(short.instructions).toContain('asks what to call them');
+    expect(short.instructions).not.toContain("I'll call you");
     expect(short.meta.task).toBe('speak');
   });
 

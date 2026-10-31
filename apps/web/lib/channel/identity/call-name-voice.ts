@@ -3,6 +3,7 @@ import {
   type FriendVoiceComposer,
   type FriendVoiceInput,
   createFriendVoiceComposer,
+  nameAskVoiceInput,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -74,6 +75,32 @@ export function parentCallNameVoice(
         parentRole: spoken.capture.parentRole,
       };
     },
+  };
+}
+
+/**
+ * The onboarding model reads a reply to the open name ask.
+ * `parentName` is empty when the model read a take-back.
+ */
+export async function readModelParentName(
+  composer: FriendVoiceComposer | undefined,
+  input: { parentWords: string; language: ReplyLanguage | null },
+): Promise<{
+  parentName: string | null;
+  nameDeclined: boolean;
+  nameConfirmed: boolean | null;
+  reply: string | null;
+}> {
+  const spoken = await speakFriend(composer, {
+    ...nameAskVoiceInput(input.parentWords),
+    language: input.language,
+  });
+  const reply = spoken.source === 'unsent' || spoken.body.trim().length === 0 ? null : spoken.body;
+  return {
+    parentName: spoken.capture.parentName,
+    nameDeclined: spoken.capture.nameDeclined,
+    nameConfirmed: spoken.capture.nameConfirmed,
+    reply,
   };
 }
 

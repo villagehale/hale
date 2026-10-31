@@ -199,6 +199,30 @@ function acceptName(value: unknown): string | null {
   return trimmed;
 }
 
+function foldMessage(value: string): string {
+  return value
+    .trim()
+    .replace(/^["“«']+|["”»']+$/gu, '')
+    .replace(/[.!]+$/u, '')
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/\s+/gu, ' ');
+}
+
+/**
+ * The model says this message takes the name back (`nameDeclined`, or a held
+ * name turned down). If it also copied that whole message into `parentName`,
+ * the copy is not a display name. Intent stays the model's; this only compares
+ * the two strings.
+ */
+export function dropTakeBackName(body: string, capture: OnboardingCapture): OnboardingCapture {
+  const tookBack = capture.nameDeclined || capture.nameConfirmed === false;
+  if (!tookBack || !capture.parentName) return capture;
+  if (foldMessage(capture.parentName) !== foldMessage(body)) return capture;
+  return { ...capture, parentName: null };
+}
+
 function acceptBool(value: unknown): boolean | null {
   if (value === true || value === false) return value;
   return null;

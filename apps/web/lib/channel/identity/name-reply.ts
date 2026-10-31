@@ -1,18 +1,19 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { EMPTY_ONBOARDING_CAPTURE, dropTakeBackName } from '~/lib/channel/intake/onboarding-turn';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { IDENTITY_ASK_TEMPLATE_KEYS } from './asked';
-import { composeNameCapturedReceipt, defaultCallNameComposer } from './call-name-voice';
+import { defaultCallNameComposer, readModelParentName } from './call-name-voice';
 
 /**
- * THE NAME CAPTURE — a parent answering "what should I call you", read deterministically.
+ * THE NAME CAPTURE — a parent answering "what should I call you".
  *
- * NO MODEL DECIDES THE NAME on this path, for the reason the address capture has none: a
- * name is a literal, and a model that paraphrases one has not read a name, it has
- * invented a person. The recognizer below either sees a name or hands the turn on. The
- * receipt it sends back IS the model's (VIL-417): no fixed line, and a compose that fails
- * twice sends nothing and pages #ops.
+ * The onboarding model reads the message. Code stores only the `parentName` it
+ * returns, and only while the ask is still open. A failed read stores nothing
+ * and sends nothing. The receipt, when there is one, is the model's (VIL-417):
+ * no fixed line.
  *
  * WHY IT EXISTS AT ALL. Until now no path in Hale ever collected a parent's own name over
  * text. `provisionFromIntake` inserts `users.name = null` and nothing later fills it in —
@@ -156,6 +157,8 @@ export type NameCaptureWrite = 'stored' | 'already_named';
 
 export type NameCaptureOutcome =
   | { status: 'declined_to_claim' }
+  /** The model read a take-back: nothing was stored, and its reply goes out. */
+  | { status: 'taken_back'; reply: string | null }
   /** `reply` is null when the model could not write the receipt: nothing is sent, #ops paged. */
   | { status: 'captured'; reply: string | null };
 
@@ -166,37 +169,72 @@ export interface NameCaptureInput {
   now: Date;
 }
 
+export interface NameCaptureRead {
+  /** The name the model returned. Empty when the message was a take-back. */
+  parentName: string | null;
+  nameDeclined: boolean;
+  /** A held name turned down. The open ask usually leaves this null. */
+  nameConfirmed?: boolean | null;
+  /** The model's reply, or null when it could not be written. */
+  reply: string | null;
+}
+
 export interface NameCaptureDeps {
-  /** Whether Hale actually asked this family for a name. Without it, every one-word
-   * reply in Hale's whole inbox would be a candidate name. */
-  wasAsked(database: Database, familyId: string): Promise<boolean>;
+  /**
+   * The ask is still open: this parent has no name, and the identity ask is
+   * Hale's latest outbound to them. Otherwise the coach answers, and the model
+   * is not called.
+   */
+  askOpen(database: Database, input: { familyId: string; parentUserId: string }): Promise<boolean>;
   capture(
     database: Database,
     input: { familyId: string; parentUserId: string; name: string },
   ): Promise<NameCaptureWrite>;
-  /** The receipt, written by the onboarding model. Null when it could not be written. */
-  say(input: { name: string; parentWords: string }): Promise<string | null>;
+  /** The onboarding model reads the message. Code stores only `parentName`. */
+  read(
+    database: Database,
+    input: { familyId: string; parentWords: string },
+  ): Promise<NameCaptureRead>;
 }
 
 /**
  * Claim one reply as the answer to a name ask.
  *
- * THE ORDER IS THE POINT, and it is the address capture's order: shape first (free),
- * pending-ask second (one query), write last. A body that is not name-shaped never costs
- * a query, and a name-shaped body from a family nobody asked is handed straight on to the
- * coach rather than written anywhere.
+ * The reader runs only while the ask is open. Code stores only the `parentName`
+ * the model returns. A take-back (`nameDeclined`, or a held name turned down)
+ * stores nothing and its reply stands. Any other nameless read is declined so
+ * the coach answers. The raw body is not parsed into a name here.
  */
 export async function handleNameCaptureReply(
   database: Database,
   input: NameCaptureInput,
   deps: NameCaptureDeps,
 ): Promise<NameCaptureOutcome> {
-  const name = soleGivenName(input.body);
-  if (!name) return { status: 'declined_to_claim' };
   // "Stop" or "start" in any wording is not a name (#868: the reader, not a word list).
   if ((await optOutIntentOf(input.body)) !== null) return { status: 'declined_to_claim' };
+  if (
+    !(await deps.askOpen(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+    }))
+  ) {
+    return { status: 'declined_to_claim' };
+  }
 
-  if (!(await deps.wasAsked(database, input.familyId))) return { status: 'declined_to_claim' };
+  const read = await deps.read(database, {
+    familyId: input.familyId,
+    parentWords: input.body,
+  });
+  const kept = dropTakeBackName(input.body, {
+    ...EMPTY_ONBOARDING_CAPTURE,
+    parentName: read.parentName,
+    nameDeclined: read.nameDeclined,
+    nameConfirmed: read.nameConfirmed ?? null,
+  });
+  const tookBack = kept.nameDeclined || kept.nameConfirmed === false;
+  if (tookBack) return { status: 'taken_back', reply: read.reply };
+  const name = kept.parentName ? soleGivenName(kept.parentName) : null;
+  if (!name) return { status: 'declined_to_claim' };
 
   const written = await deps.capture(database, {
     familyId: input.familyId,
@@ -207,26 +245,60 @@ export async function handleNameCaptureReply(
   // message is something else — handing it to the coach is the only reading left.
   if (written === 'already_named') return { status: 'declined_to_claim' };
 
-  return { status: 'captured', reply: await deps.say({ name, parentWords: input.body }) };
+  return { status: 'captured', reply: read.reply };
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
 
-/** A delivered ask — the question this handler is the answer to. Either ask counts: a
- * parent does not know which of Hale's two reasons prompted the question they answered. */
-async function askWasDelivered(database: Database, familyId: string): Promise<boolean> {
+/** No name on file. A missing row is not a name. */
+async function parentStillUnnamed(database: Database, userId: string): Promise<boolean> {
   const rows = await database
-    .select({ id: schema.channelMessages.id })
+    .select({ id: schema.users.id, name: schema.users.name })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId));
+  const row = rows.find((item) => item.id === userId);
+  return (row?.name ?? '').trim().length === 0;
+}
+
+/**
+ * The identity ask is still the question in front of them: they have no name,
+ * and that ask is Hale's latest outbound. A later message from Hale closes it.
+ * A failed send never opened it.
+ */
+async function nameAskIsOpen(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<boolean> {
+  if (!(await parentStillUnnamed(database, input.parentUserId))) return false;
+  const [latest] = await database
+    .select({ templateKey: schema.channelMessages.templateKey })
     .from(schema.channelMessages)
     .where(
       and(
-        eq(schema.channelMessages.familyId, familyId),
-        inArray(schema.channelMessages.templateKey, [...IDENTITY_ASK_TEMPLATE_KEYS]),
+        eq(schema.channelMessages.familyId, input.familyId),
+        eq(schema.channelMessages.parentUserId, input.parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
+    .orderBy(desc(schema.channelMessages.createdAt))
     .limit(1);
-  return rows.length > 0;
+  return (
+    latest?.templateKey != null &&
+    (IDENTITY_ASK_TEMPLATE_KEYS as readonly string[]).includes(latest.templateKey)
+  );
+}
+
+/** The tag stored for this family. Null when the row or the tag is missing. */
+export async function familyReplyLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage | null> {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(rows.find((row) => row.id === familyId)?.primaryLanguage);
 }
 
 /**
@@ -266,9 +338,13 @@ async function captureParentName(
 export function defaultNameCaptureDeps(): NameCaptureDeps {
   const composer = defaultCallNameComposer();
   return {
-    wasAsked: askWasDelivered,
+    askOpen: nameAskIsOpen,
     capture: captureParentName,
-    say: (input) => composeNameCapturedReceipt(composer, { ...input, language: 'en' }),
+    read: async (database, input) =>
+      readModelParentName(composer, {
+        parentWords: input.parentWords,
+        language: await familyReplyLanguage(database, input.familyId),
+      }),
   };
 }
 

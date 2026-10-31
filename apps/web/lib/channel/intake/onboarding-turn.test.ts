@@ -10,6 +10,7 @@ import {
   coldStartIsStale,
   coldStartQuestionIsStale,
   countRejectedScheduleAdds,
+  dropTakeBackName,
   kidsAreNamed,
   mergeCaptures,
   mergeChildFacts,
@@ -49,6 +50,24 @@ describe('onboarding capture', () => {
     expect(storedFromCapture(prior, clean).place?.postalCode).toBe('M5V 2T6');
     const sentence = acceptOnboardingCapture({ postalCode: 'we are in M5V 2T6' });
     expect(storedFromCapture(prior, sentence).place).toBeNull();
+  });
+
+  it('drops a parentName that is the whole take-back message', () => {
+    const open = dropTakeBackName(
+      'pas maintenant',
+      acceptOnboardingCapture({ parentName: 'pas maintenant', nameDeclined: true }),
+    );
+    expect(open.parentName).toBeNull();
+    expect(open.nameDeclined).toBe(true);
+    const held = dropTakeBackName(
+      'non',
+      acceptOnboardingCapture({ parentName: 'non', nameConfirmed: false }),
+    );
+    expect(held.parentName).toBeNull();
+    expect(held.nameConfirmed).toBe(false);
+    expect(held.nameDeclined).toBe(false);
+    const named = dropTakeBackName('Dana', acceptOnboardingCapture({ parentName: 'Dana' }));
+    expect(named.parentName).toBe('Dana');
   });
 
   it('takes the parent name and the kids names from one message', () => {
