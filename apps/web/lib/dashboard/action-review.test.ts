@@ -75,6 +75,19 @@ describe('toReviewChecks — the reviewer’s invoked verifications (rule #3)', 
     ]);
   });
 
+  it('a non-blocking calendar clash never reads as "calendar clear" (Devin #927)', () => {
+    const [clash, clear] = toReviewChecks([
+      {
+        tool: 'check_calendar_conflict',
+        ok: true,
+        result: { hasConflict: true, conflictingEvents: [] },
+      },
+      { tool: 'check_calendar_conflict', ok: true, result: { hasConflict: false } },
+    ]);
+    expect(clash).toMatchObject({ label: 'calendar clash', ok: false });
+    expect(clear).toMatchObject({ label: 'calendar clear', ok: true });
+  });
+
   it('never renders a raw tool token — an unknown tool degrades to neutral copy', () => {
     const [passed, failed] = toReviewChecks([
       { tool: 'check_something_new', ok: true, result: {} },

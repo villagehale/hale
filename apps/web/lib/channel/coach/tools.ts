@@ -25,13 +25,13 @@ import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
-import { type KidClashCandidate, kidClashFacts } from './kid-clash';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
   type GmailDraftNoticeBox,
   type GmailDraftToolPorts,
   prepareGmailDraftTool,
 } from './gmail-draft-tool';
+import { type KidClashCandidate, kidClashFacts } from './kid-clash';
 import { WEEKDAYS, weekdayOf, weekdayViolation } from './weekday';
 
 /**
@@ -487,11 +487,19 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
    */
   async function liveKidClashes(date: string, timeZone: string, candidate: KidClashCandidate) {
     try {
-      const start = zonedLocalInstant(date, '00:00', timeZone);
-      const end = zonedLocalInstant(date, '23:59', timeZone);
+      // The readers select by START inside the window, so an overnight item that began
+      // the evening before (or a candidate running past midnight) would be missed. Read a
+      // day either side; kidClashFacts then keeps only true overlaps (Devin #927).
+      const DAY = 24 * 60 * 60 * 1000;
+      const dayStart = zonedLocalInstant(date, '00:00', timeZone);
+      const dayEnd = zonedLocalInstant(date, '23:59', timeZone);
+      const candEnd = candidate.endsAt ?? candidate.startsAt;
+      const start = new Date(Math.min(dayStart.getTime(), candidate.startsAt.getTime()) - DAY);
+      const end = new Date(Math.max(dayEnd.getTime(), candEnd.getTime()) + DAY);
+      const dayKeys = [start, candidate.startsAt, end].map((d) => d.toISOString().slice(0, 10));
       const [events, connected] = await Promise.all([
         reader.eventsInWeek(familyId, start, end),
-        reader.connectedWeek(familyId, start, end, [date]),
+        reader.connectedWeek(familyId, start, end, [...new Set([date, ...dayKeys])]),
       ]);
       return kidClashFacts(candidate, events, connected.blocks).map((fact) => ({
         childId: fact.childId,
@@ -594,11 +602,16 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       refuseMismatchedWeekday(input, timeZone, 'propose_calendar_move');
       const startsAt = zonedLocalInstant(input.date, input.time, timeZone);
       claimDraftBudget();
+      const length = event.endsAt ? event.endsAt.getTime() - event.startsAt.getTime() : null;
+      const movedEndsAt = length !== null ? new Date(startsAt.getTime() + length) : null;
 
       const payload: CalendarPlacementPayload = {
         title: event.title,
         startsAt: startsAt.toISOString(),
-        endsAt: null,
+        // The moved item keeps its own real length (one with no end stays an instant),
+        // and the SAME end is what the clash check reads below — the saved window and
+        // the reported clash window can never disagree (Devin #927).
+        endsAt: movedEndsAt?.toISOString() ?? null,
         location: event.location,
         childId: event.childId,
         privacySensitive: event.sensitive,
@@ -612,11 +625,9 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: move to ${localWhen(startsAt, timeZone)}`,
         teenContent: event.teen,
       });
-      // The moved item keeps its own real length; one with no end stays an instant.
-      const length = event.endsAt ? event.endsAt.getTime() - event.startsAt.getTime() : null;
       const clashes = await liveKidClashes(input.date, timeZone, {
         startsAt,
-        endsAt: length !== null ? new Date(startsAt.getTime() + length) : null,
+        endsAt: movedEndsAt,
         eventId: event.eventId,
       });
       return {
