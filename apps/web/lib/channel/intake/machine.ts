@@ -2104,6 +2104,42 @@ async function friendColdTurn(
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'first_touch', step: 'find_sent' };
   }
+  // The map never reached them. Retry it before any later ask. A miss sends
+  // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
+  let owedMap: string[] | null = null;
+  if (progress.findDelivered === false) {
+    const owed = await friendSpeak(
+      deps,
+      session.transcript,
+      friendFields('find_show', language, friendAddress(ctx), {
+        parentWords: inbound.body,
+        placeLabel:
+          session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+        agesLabel: summarizeChildren(session.collected.children),
+        ageMonths: session.collected.children.flatMap((child) =>
+          child.ageMonths == null ? [] : [child.ageMonths],
+        ),
+        children: friendChildren(session.collected.children),
+        findLines: linesOfFind(progress.findBody),
+        findGroups: groupsFromFindBody(progress.findBody),
+        listKind: 'none',
+        parentName: session.firstTouch?.given?.parentName ?? null,
+        now,
+      }),
+      { pageScope: familyId },
+    );
+    if (owed.source === 'unsent') {
+      await recordInbound(database, ctx, inbound, session.transcript);
+      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+      return { status: 'first_touch_unsent', reason: unsentReason(owed) };
+    }
+    owedMap = owed.bubbles.filter((bubble) => bubble.trim().length > 0);
+    if (owedMap.length === 0) {
+      await recordInbound(database, ctx, inbound, session.transcript);
+      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+      return { status: 'first_touch_unsent', reason: 'unusable' };
+    }
+  }
   const lines = linesOfFind(progress.findBody);
   const needsName = await parentNeedsName(database, userId);
   const given = session.firstTouch?.given ?? null;
@@ -2257,7 +2293,21 @@ async function friendColdTurn(
     emailAsked: after.gmail,
   };
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-  let voiced = friendOutbound(spoken);
+  let mapStillOwed = false;
+  if (owedMap) {
+    let delivered = false;
+    for (const bubble of owedMap) {
+      const sentMap = await sendAndRecord(database, ctx, bubble, deps, recorded.transcript);
+      if (!sentMap.channelMessageId) {
+        delivered = false;
+        break;
+      }
+      delivered = true;
+    }
+    nextProgress.findDelivered = delivered;
+    mapStillOwed = !delivered;
+  }
+  let voiced = mapStillOwed ? null : friendOutbound(spoken);
   await pursueNewHouseholdGroup(
     database,
     {
@@ -2810,7 +2860,8 @@ async function provision(
         },
       ),
     ]);
-    if (map && map.source !== 'unsent') {
+    const mapUnsent = map?.source === 'unsent';
+    if (map && !mapUnsent) {
       let delivered = false;
       for (const bubble of map.bubbles) {
         if (bubble.trim().length === 0) continue;
@@ -2827,7 +2878,7 @@ async function provision(
       );
       if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
-    outboundBody = friendOutbound(spoken) ?? '';
+    outboundBody = mapUnsent ? '' : (friendOutbound(spoken) ?? '');
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
       outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
     }
@@ -2853,12 +2904,17 @@ async function provision(
     }
     if (discoveryOn) {
       friendCold = {
-        step: step === 'names' || step === 'find_empty' ? 'names' : 'follow',
+        step: mapUnsent
+          ? 'pick'
+          : step === 'names' || step === 'find_empty'
+            ? 'names'
+            : 'follow',
         group: ctx.pipe.isGroup,
         findBody: radar.message,
         activity: null,
         day: null,
-        nameLineSent: true,
+        nameLineSent: !mapUnsent,
+        ...(mapUnsent ? { findDelivered: false } : {}),
         signupDateKnown: false,
         signupAsked: false,
         calendarAsked: calendarAnswered(given),

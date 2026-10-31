@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
+import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { type FriendVoiceComposer, speakFriend } from '~/lib/channel/intake/friend-voice';
 import {
   type IntakeSession,
@@ -333,6 +334,7 @@ async function firstTouchNudgeBody(
   if (state === 'awaiting_cold_start' && (!session || !cold || repliedSinceFind(session))) {
     return null;
   }
+  const mapOwed = state === 'awaiting_cold_start' && cold?.findDelivered === false;
   const findLines =
     state === 'awaiting_cold_start' && cold
       ? cold.findBody
@@ -342,8 +344,9 @@ async function firstTouchNudgeBody(
           .map((line) => line.replace(/^\d+\.\s+/, ''))
       : [];
   const spoken = await speakFriend(composer, {
-    step:
-      state === 'awaiting_ages'
+    step: mapOwed
+      ? 'find_show'
+      : state === 'awaiting_ages'
         ? 'nudge_ages'
         : state === 'awaiting_cold_start'
           ? 'nudge_find'
@@ -357,7 +360,8 @@ async function firstTouchNudgeBody(
     agesLabel: null,
     ageMonths: [],
     findLines,
-    listKind: findLines.length > 0 ? 'year' : 'none',
+    ...(mapOwed && cold ? { findGroups: groupsFromFindBody(cold.findBody) } : {}),
+    listKind: mapOwed ? 'none' : findLines.length > 0 ? 'year' : 'none',
     activity: cold?.activity ?? null,
     day: cold?.day ?? null,
     parentName: session?.firstTouch?.given?.parentName ?? null,
