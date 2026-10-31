@@ -289,14 +289,47 @@ export async function listEditableLinqSends(
     })
     .from(schema.messages)
     .where(eq(schema.messages.conversationId, input.conversationId));
-  // The newest parent line in the thread. A bubble sent before it has been replied to
-  // (even by a text that landed mid-turn) and is no longer Hale's to rewrite.
+  // When the parent actually texted, keyed by Linq id. The transcript row's createdAt
+  // is insertion time, which is later when a queued text is processed after Hale has
+  // already sent. That clock would hide a bubble that still follows their words.
+  const spokenAt = new Map<string, number>();
+  const inboundRows = await database
+    .select({
+      familyId: schema.channelMessages.familyId,
+      direction: schema.channelMessages.direction,
+      providerMessageId: schema.channelMessages.providerMessageId,
+      sentAt: schema.channelMessages.sentAt,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, input.familyId),
+        eq(schema.channelMessages.direction, 'in'),
+      ),
+    );
+  for (const row of inboundRows) {
+    if (row.familyId !== input.familyId || row.direction !== 'in') continue;
+    if (typeof row.providerMessageId !== 'string' || row.providerMessageId.length === 0) continue;
+    const spoken = asDate(row.sentAt);
+    if (!spoken) continue;
+    const prev = spokenAt.get(row.providerMessageId);
+    if (prev === undefined || spoken.getTime() < prev) {
+      spokenAt.set(row.providerMessageId, spoken.getTime());
+    }
+  }
+  // The newest parent line in the thread, by when they texted. A bubble sent before
+  // that has been answered and is no longer Hale's to rewrite. inboundAt is this
+  // turn's own text, already on that clock.
   let lastParentAt = input.inboundAt.getTime();
   for (const bubble of bubbles) {
     if (bubble.conversationId !== input.conversationId || bubble.role !== 'user') continue;
     if (bubble.deletedAt) continue;
-    const at = asDate(bubble.createdAt);
-    if (at && at.getTime() > lastParentAt) lastParentAt = at.getTime();
+    const linked =
+      typeof bubble.providerMessageId === 'string' && bubble.providerMessageId.length > 0;
+    const at = linked
+      ? spokenAt.get(bubble.providerMessageId as string)
+      : asDate(bubble.createdAt)?.getTime();
+    if (at !== undefined && at > lastParentAt) lastParentAt = at;
   }
   const textByProvider = new Map<string, string>();
   const ambiguous = new Set<string>();
