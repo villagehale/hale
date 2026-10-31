@@ -7,6 +7,7 @@ import {
   EVENT_NOTES_FAILED,
   EVENT_NOTES_MAX_FAILED_READS,
   type EventNotesReader,
+  legacyDescriptionHash,
   notesSourceHash,
 } from './event-notes';
 
@@ -227,6 +228,52 @@ describe('reconcileCalendarMirrors', () => {
       async () => null,
     );
     expect((await rows())[0]?.notes).toBeNull();
+  });
+
+  async function seedLegacyNotes(desc: string) {
+    await reconcile([swim({ description: desc })]);
+    await db.database
+      .update(schema.familyEvents)
+      .set({ notes: { parking: 'the back lot', sourceHash: legacyDescriptionHash(desc) } })
+      .where(eq(schema.familyEvents.familyId, family.familyId));
+  }
+
+  it('first sync after the hash format change keeps notes of an unchanged event (Devin #930)', async () => {
+    const desc = 'Park in the back lot';
+    await seedLegacyNotes(desc);
+    const readNotes = vi.fn<EventNotesReader>(async () => null);
+    const before = (await audits()).length;
+    await reconcile(
+      [swim({ description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
+    expect(readNotes).not.toHaveBeenCalled();
+    expect((await rows())[0]?.notes).toEqual({
+      parking: 'the back lot',
+      sourceHash: notesSourceHash('Swim', desc),
+    });
+    // A rehash is bookkeeping, not a logistics change.
+    expect((await audits()).length).toBe(before);
+  });
+
+  it('a legacy-hashed event that was renamed is still re-read (Devin #930)', async () => {
+    const desc = 'Park in the back lot';
+    await seedLegacyNotes(desc);
+    const readNotes = vi.fn<EventNotesReader>(async ({ title, description }) => ({
+      sourceHash: notesSourceHash(title, description),
+    }));
+    await reconcile(
+      [swim({ summary: 'Skate', description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
+    expect(readNotes).toHaveBeenCalledTimes(1);
+    expect((await rows())[0]?.notes).toEqual({ sourceHash: notesSourceHash('Skate', desc) });
   });
 
   it('a logistics-only change writes an audit row without the facts (Devin #930)', async () => {

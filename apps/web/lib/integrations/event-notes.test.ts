@@ -3,7 +3,9 @@ import {
   EVENT_NOTES_FAILED,
   boundEventNotesReader,
   createEventNotesReader,
+  legacyDescriptionHash,
   mapLimited,
+  migrateLegacyNotes,
   notesSourceHash,
   sameEventNotes,
   toEventNotes,
@@ -143,5 +145,22 @@ describe('mapLimited', () => {
     });
     expect(out).toEqual([10, 20, 30, 40, 50, 60]);
     expect(peak).toBe(2);
+  });
+});
+
+describe('migrateLegacyNotes (Devin #930)', () => {
+  const legacy = { parking: 'A', sourceHash: legacyDescriptionHash('d') };
+  it('rehashes an unchanged event, keeping facts', () => {
+    expect(migrateLegacyNotes(legacy, 'Swim', 'Swim', 'd')).toEqual({
+      parking: 'A',
+      sourceHash: notesSourceHash('Swim', 'd'),
+    });
+  });
+  it('leaves renamed, changed-description, new-format, and empty notes alone', () => {
+    expect(migrateLegacyNotes(legacy, 'Swim', 'Skate', 'd')).toBe(legacy);
+    expect(migrateLegacyNotes(legacy, 'Swim', 'Swim', 'e')).toBe(legacy);
+    const cur = { sourceHash: notesSourceHash('Swim', 'd') };
+    expect(migrateLegacyNotes(cur, 'Swim', 'Swim', 'd')).toBe(cur);
+    expect(migrateLegacyNotes(null, 'Swim', 'Swim', 'd')).toBeNull();
   });
 });

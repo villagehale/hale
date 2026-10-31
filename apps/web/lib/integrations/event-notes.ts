@@ -59,6 +59,28 @@ export function notesSourceHash(title: string, description: string): string {
     .slice(0, 32);
 }
 
+/** The pre-#930 format: description only. Read only to migrate stored notes (see
+ * `migrateLegacyNotes`); never written. */
+export function legacyDescriptionHash(description: string): string {
+  return createHash('sha256').update(description).digest('hex').slice(0, 32);
+}
+
+/**
+ * Devin #930 🔴. Notes stored under the old description-only hash, on a row whose title is
+ * unchanged, are the same source: rehash them in place (facts and failure count kept, no read).
+ * Anything else (new-format hash, renamed event, changed description) is returned as-is.
+ */
+export function migrateLegacyNotes(
+  stored: FamilyEventNotes | null,
+  storedTitle: string | null,
+  title: string,
+  description: string,
+): FamilyEventNotes | null {
+  if (!stored || storedTitle !== title) return stored;
+  if (stored.sourceHash !== legacyDescriptionHash(description)) return stored;
+  return { ...stored, sourceHash: notesSourceHash(title, description) };
+}
+
 /** A reading becomes notes: only non-empty facts become keys. */
 export function toEventNotes(
   raw: { parking: string; bring: string },

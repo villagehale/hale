@@ -9,6 +9,7 @@ import {
   type EventNotesReader,
   eventNotesIdle,
   mapLimited,
+  migrateLegacyNotes,
   notesSourceHash,
   sameEventNotes,
 } from './event-notes';
@@ -239,11 +240,15 @@ export function knownEventCovers(
  */
 async function notesFor(
   candidate: CalendarMirrorCandidate,
-  stored: FamilyEventNotes | null,
+  storedNotes: FamilyEventNotes | null,
+  storedTitle: string | null,
   readNotes: EventNotesReader = eventNotesIdle,
 ): Promise<FamilyEventNotes | null> {
   const description = candidate.description;
   if (!description) return null;
+  // Devin #930 🔴: first sync after the title+description hash change must not drop notes of
+  // an unchanged event (a deferred read would otherwise clear them). A rename still re-reads.
+  const stored = migrateLegacyNotes(storedNotes, storedTitle, candidate.title, description);
   const hash = notesSourceHash(candidate.title, description);
   const sameHash = stored?.sourceHash === hash;
   const priorFailures = sameHash ? (stored?.failedReads ?? 0) : 0;
@@ -335,7 +340,12 @@ export async function reconcileCalendarMirrors(
   // per-read timeout and the sweep budget), so one slow description cannot stall the sweep.
   const toMirror = eligible.filter((c) => !known.some((row) => knownEventCovers(c, row)));
   const notesList = await mapLimited(toMirror, EVENT_NOTES_CONCURRENCY, (c) =>
-    notesFor(c, mirrorByEvent.get(c.eventId)?.notes ?? null, input.readNotes),
+    notesFor(
+      c,
+      mirrorByEvent.get(c.eventId)?.notes ?? null,
+      mirrorByEvent.get(c.eventId)?.title ?? null,
+      input.readNotes,
+    ),
   );
   const notesByEvent = new Map(toMirror.map((c, i) => [c.eventId, notesList[i] ?? null] as const));
 
