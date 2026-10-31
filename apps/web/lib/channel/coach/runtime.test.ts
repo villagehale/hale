@@ -179,6 +179,76 @@ describe('channelCoachRuntime', () => {
     expect(seen[0]?.context.arrivedMedia).toEqual([{ kind: 'video' }]);
   });
 
+  it('reads a .vcf into the loop as contact fields, not as an attachment', async () => {
+    const seen: Array<{ context: Record<string, unknown>; attachments?: unknown[] }> = [];
+    const vcf = ['BEGIN:VCARD', 'FN:Jane Smith', 'TEL;TYPE=CELL:+14165550100', 'END:VCARD'].join(
+      '\n',
+    );
+    const p = ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(vcf, { status: 200 })) as unknown as typeof fetch,
+        ),
+      runAgent: async (args) => {
+        seen.push({
+          context: args.context as Record<string, unknown>,
+          attachments: args.attachments as unknown[],
+        });
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn('this is my mom'),
+        inboundMedia: [
+          { kind: 'contact', url: 'https://cdn.example/Jane.vcf', mime: 'text/vcard' },
+        ],
+      },
+      [],
+    );
+
+    expect(seen[0]?.attachments).toBeUndefined();
+    expect(seen[0]?.context.arrivedMedia).toBeUndefined();
+    expect(seen[0]?.context.arrivedContacts).toEqual([
+      {
+        name: 'Jane Smith',
+        phones: [{ number: '+14165550100', e164: '+14165550100', label: 'cell' }],
+      },
+    ]);
+    expect(seen[0]?.context.arrivedContactsTruncated).toBeUndefined();
+  });
+
+  it('tells the loop when a contact file had more cards than it kept', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const p = ports({
+      readInboundMedia: async () => ({
+        blocks: [],
+        unwatched: [],
+        contacts: [{ name: 'Ada', phones: [] }],
+        contactsTruncated: true,
+      }),
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn(''),
+        inboundMedia: [
+          { kind: 'contact', url: 'https://cdn.example/book.vcf', mime: 'text/vcard' },
+        ],
+      },
+      [],
+    );
+
+    expect(seen[0]?.arrivedContacts).toEqual([{ name: 'Ada', phones: [] }]);
+    expect(seen[0]?.arrivedContactsTruncated).toBe(true);
+  });
+
   it('tells the loop it is in the family group, and leaves a 1:1 context byte-identical', async () => {
     const seen: Record<string, unknown>[] = [];
     const p = ports({

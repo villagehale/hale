@@ -261,8 +261,9 @@ export interface ChannelCoachPorts {
    */
   client(): AgentClient;
   /**
-   * Fetch this turn's images into content blocks. Absent is a named gap: the
-   * parts are still told to the model as unwatched, and nothing is fetched.
+   * Fetch this turn's images into content blocks, and a `.vcf` into contact fields.
+   * Absent is a named gap: the parts are still told to the model as unwatched, and
+   * nothing is fetched.
    */
   readInboundMedia?(parts: readonly InboundMediaPart[]): Promise<ReadInboundMedia>;
   runAgent(args: RunAgentArgs): Promise<RunAgentResult>;
@@ -407,6 +408,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const media = await mediaForTurn(turn, ports);
       if (media.unwatched.length > 0) {
         Object.assign(context, { arrivedMedia: media.unwatched });
+      }
+      // VIL-482. Facts from a .vcf the parent attached. Absent when this turn had
+      // none, so an ordinary turn's prompt bytes stay the same.
+      if (media.contacts.length > 0) {
+        Object.assign(context, {
+          arrivedContacts: media.contacts,
+          ...(media.contactsTruncated ? { arrivedContactsTruncated: true } : {}),
+        });
       }
       // VIL-439 (T18): every group turn sees only group-safe context and tools. No flag:
       // the router sets the group audience for any message the door marked in_group.
@@ -803,13 +812,20 @@ async function mediaForTurn(
   ports: ChannelCoachPorts,
 ): Promise<ReadInboundMedia> {
   const parts = turn.inboundMedia ?? [];
-  if (parts.length === 0) return { blocks: [], unwatched: [] };
+  if (parts.length === 0) {
+    return { blocks: [], unwatched: [], contacts: [], contactsTruncated: false };
+  }
   if (!ports.readInboundMedia) {
     console.info(
       { reason: 'not_configured', count: parts.length },
       'channel coach: inbound media unread',
     );
-    return { blocks: [], unwatched: parts.map((part) => ({ kind: part.kind })) };
+    return {
+      blocks: [],
+      unwatched: parts.map((part) => ({ kind: part.kind })),
+      contacts: [],
+      contactsTruncated: false,
+    };
   }
   return ports.readInboundMedia(parts);
 }

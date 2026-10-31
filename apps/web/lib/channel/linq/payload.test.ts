@@ -108,6 +108,27 @@ describe('parseLinqWebhook', () => {
     ]);
   });
 
+  it('classifies a .vcf as a contact card rather than a generic file', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [
+      { type: 'text', value: 'my mom' },
+      {
+        type: 'media',
+        url: 'https://cdn.example/Jane.vcf',
+        mime_type: 'text/vcard',
+        filename: 'Jane.vcf',
+      },
+    ];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.text).toBe('my mom');
+    expect(parsed.message.media).toEqual([
+      { kind: 'contact', url: 'https://cdn.example/Jane.vcf', mime: 'text/vcard' },
+    ]);
+  });
+
   it('names a group, an outbound echo, another event, and the old payload version', () => {
     const group = received();
     (group.data as { chat: { is_group: boolean; handles?: unknown[] } }).chat.is_group = true;
