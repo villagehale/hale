@@ -588,7 +588,7 @@ describe('speakFriend', () => {
         async compose(input, options) {
           prompts.push(options?.prompt ?? 'full');
           if (options?.prompt === 'short') {
-            expect(input.retry?.problem).toMatch(/group/i);
+            expect(input.retry?.problem).toBe('no_group_bubble');
           }
           return { reply: opener, groupLeads: null };
         },
@@ -635,6 +635,28 @@ describe('speakFriend', () => {
     expect(spoken.source).toBe('composed');
     expect(spoken.bubbles).toEqual(['Here is what is on near you.', storyLead]);
     expect(spoken.body).not.toMatch(/swim on tuesday/i);
+  });
+
+  it('keeps a group bubble that names the weekday of a date in that group’s line', async () => {
+    const story = 'Story time (all ages) - October 14';
+    const lead = 'Story time on Wednesday, October 14.';
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return { reply: 'Here is what is on near you.', groupLeads: [lead] };
+        },
+      },
+      blank({
+        step: 'find_show',
+        parentWords: 'she is 4',
+        placeLabel: 'M5V',
+        now: new Date('2026-10-05T14:00:00Z'),
+        findLines: [story],
+        findGroups: [{ category: 'story', lines: [story] }],
+      }),
+    );
+    expect(spoken.source).toBe('composed');
+    expect(spoken.bubbles).toEqual(['Here is what is on near you.', lead]);
   });
 
   it('keeps a nine-line onboarding map whole, and still numbers only three lines on a year list', () => {

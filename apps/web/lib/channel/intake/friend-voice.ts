@@ -1918,8 +1918,7 @@ export async function speakFriend(
             capture,
             retry: {
               draft,
-              problem:
-                'Write one groupLeads bubble per group from that group’s own lines. An opener with no group bubble is not sent.',
+              problem: 'no_group_bubble',
             },
           };
         }
@@ -2298,7 +2297,11 @@ function tidyGroupBubble(raw: string, group: FriendFindGroup, input: FriendVoice
   if (lead.length === 0) return '';
   const slots = groupBubbleSlots(group, input);
   if (findInventedFacts(lead, slots).length > 0) return '';
-  if (weekdaysOutsideSlots(lead, slots).length > 0) return '';
+  // The weekday of a date this group's own lines name ("October 14" is a
+  // Wednesday in 2026) is that group's fact. Another group's date is not.
+  if (weekdaysOutsideSlots(lead, [...slots, ...weekdaysOfDates(slots, input.now)]).length > 0) {
+    return '';
+  }
   if (mentionsOutsideSlots(lead, PRICE, slots).length > 0) return '';
   if (priceTalkInLines(lead, group.lines).length > 0) return '';
   if (namesOutsideSlots(lead, slots).length > 0) return '';
