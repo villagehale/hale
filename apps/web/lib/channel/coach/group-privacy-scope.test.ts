@@ -64,7 +64,9 @@ describe('VIL-439 group privacy scope', () => {
         },
       ],
     } as never) as Record<string, unknown>;
-    expect(scoped.arrivedContacts).toEqual([{ name: 'Jane Smith', phones: [] }]);
+    expect(scoped.arrivedContacts).toEqual([{ name: 'Jane Smith' }]);
+    expect((scoped.arrivedContacts as unknown[])[0]).not.toHaveProperty('phones');
+    expect(scoped.arrivedContactsGroupNameOnly).toBe(true);
     const text = JSON.stringify(scoped);
     expect(text).not.toContain('5550100');
     expect(text).not.toContain('jane@example.com');
