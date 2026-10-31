@@ -349,4 +349,130 @@ describe('VIL-479 message.edited webhook', () => {
       fake.rows(schema.auditLog).filter((row) => row.actionTaken === 'linq_parent_message_edited'),
     ).toHaveLength(1);
   });
+
+  const outbound = (text: string, editedAt: Date | null, partIndex = 0) => ({
+    messageId: MESSAGE,
+    chatId: CHAT,
+    partIndex,
+    text,
+    editedAt,
+    direction: 'outbound' as const,
+    isFromMe: true,
+  });
+
+  it('does not let a late, older callback undo a newer edit', async () => {
+    const fake = makeFakeDb();
+    await seedBubble(fake);
+    const at1001 = new Date('2026-10-31T16:01:00.000Z');
+    const at1002 = new Date('2026-10-31T16:02:00.000Z');
+    expect(await recordLinqEditWebhook(fake.db, outbound('Swim is at 6.', at1002))).toBe('updated');
+    expect(await recordLinqEditWebhook(fake.db, outbound('Swim is at 5.', at1001))).toBe(
+      'unchanged',
+    );
+    expect(fake.rows(schema.messages).map((row) => row.content)).toEqual(['Swim is at 6.']);
+  });
+
+  it('refuses an edit of a part other than the one text Hale stores', async () => {
+    const fake = makeFakeDb();
+    await seedBubble(fake);
+    expect(await recordLinqEditWebhook(fake.db, outbound('at 5', NOW, 1))).toBe('unchanged');
+    expect(fake.rows(schema.messages).map((row) => row.content)).toEqual(['Swim is at 4.']);
+  });
+
+  async function seedParentText(fake: ReturnType<typeof makeFakeDb>, body: string | null) {
+    await fake.db.insert(schema.channelMessages).values({
+      familyId: FAMILY,
+      parentUserId: USER,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      providerMessageId: 'in-1',
+      providerChatId: CHAT,
+      body,
+    });
+    await fake.db.insert(schema.messages).values({
+      conversationId: CONV,
+      role: 'user',
+      content: 'Swim is at 4',
+      providerMessageId: 'in-1',
+    });
+  }
+  const parentEdit = (text: string, editedAt: Date | null) => ({
+    messageId: 'in-1',
+    chatId: CHAT,
+    partIndex: 0,
+    text,
+    editedAt,
+    direction: 'inbound' as const,
+    isFromMe: false,
+  });
+
+  it("rewrites the parent's own turn in the coach thread, not only the ledger", async () => {
+    const fake = makeFakeDb();
+    await seedParentText(fake, 'Swim is at 4');
+    expect(await recordLinqEditWebhook(fake.db, parentEdit('Swim is at 5', NOW))).toBe('updated');
+    expect(fake.rows(schema.messages).find((row) => row.role === 'user')?.content).toBe(
+      'Swim is at 5',
+    );
+    const older = new Date(NOW.getTime() - 60_000);
+    expect(await recordLinqEditWebhook(fake.db, parentEdit('Swim is at 3', older))).toBe(
+      'unchanged',
+    );
+    expect(fake.rows(schema.channelMessages).find((row) => row.direction === 'in')?.body).toBe(
+      'Swim is at 5',
+    );
+  });
+
+  it('does not bring back a parent text retention already cleared', async () => {
+    const fake = makeFakeDb();
+    await seedParentText(fake, null);
+    expect(await recordLinqEditWebhook(fake.db, parentEdit('Swim is at 5', NOW))).toBe('unchanged');
+    expect(fake.rows(schema.channelMessages).find((row) => row.direction === 'in')?.body).toBe(
+      null,
+    );
+  });
+});
+
+describe('VIL-479 edit after the turn deadline', () => {
+  it('does not patch the bubble when the turn expired during the model read', async () => {
+    const { runTurn } = await import('~/lib/channel/router/deadline');
+    const fake = makeFakeDb();
+    await seedBubble(fake);
+    const controller = new AbortController();
+    const fetchImpl = linqFetch();
+    const late: LinqEditDecider = {
+      async decide() {
+        controller.abort();
+        return { edit: { messageId: MESSAGE, partIndex: 0, text: 'Swim is at 5.' } };
+      },
+    };
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const candidates = await listEditableLinqSends(fake.db, {
+      familyId: FAMILY,
+      conversationId: CONV,
+      chatId: CHAT,
+      now: NOW,
+    });
+    let pending: Promise<unknown> = Promise.resolve();
+    const turn = runTurn(controller.signal, () => {
+      pending = applyLinqEdit({
+        decider: late,
+        database: fake.db,
+        familyId: FAMILY,
+        parentUserId: USER,
+        conversationId: CONV,
+        chatId: CHAT,
+        now: NOW,
+        read: { audience: 'direct', parentText: 'wait 5', followUp: 'Swim is at 5.' },
+        candidates,
+        fetch: fetchImpl as unknown as typeof fetch,
+      });
+      return pending;
+    });
+    await expect(turn).rejects.toThrow();
+    await expect(pending).rejects.toThrow();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fake.rows(schema.messages).map((row) => row.content)).toEqual(['Swim is at 4.']);
+  });
 });

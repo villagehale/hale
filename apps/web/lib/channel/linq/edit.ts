@@ -8,6 +8,7 @@ import { acceptedStatus } from '~/lib/channel/ledger';
 import { editLinqMessage } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { assertTurnLive } from '../router/deadline';
 import type { LinqMessageEdit } from './payload';
 import { LinqSendError } from './transport';
 
@@ -357,9 +358,17 @@ async function rewriteAssistantBubble(
   return 'updated';
 }
 
+const EDIT_ACTIONS = new Set(['linq_message_edited', 'linq_parent_message_edited']);
+
 async function auditEdit(
   database: Database,
-  input: { familyId: string; parentUserId: string; channelMessageId: string; actionTaken: string },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    channelMessageId: string;
+    actionTaken: string;
+    editedAt: Date | null;
+  },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,
@@ -367,7 +376,36 @@ async function auditEdit(
     actionTaken: input.actionTaken,
     targetTable: 'channel_messages',
     targetId: input.channelMessageId,
+    // The edit's own time, never its text: a later callback compares against it.
+    after: input.editedAt ? { editedAt: input.editedAt.toISOString() } : null,
   });
+}
+
+/**
+ * Devin BUG_0002: the newest edit time already applied to this ledger row. A callback
+ * at or before it is stale (out of order, or a late retry) and must not win.
+ */
+async function lastAppliedEditAt(database: Database, channelMessageId: string): Promise<number> {
+  const rows = await database
+    .select({
+      targetId: schema.auditLog.targetId,
+      actionTaken: schema.auditLog.actionTaken,
+      after: schema.auditLog.after,
+    })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.targetId, channelMessageId));
+  let latest = Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    if (row.targetId !== channelMessageId || !EDIT_ACTIONS.has(row.actionTaken)) continue;
+    const at = (row.after as { editedAt?: unknown } | null)?.editedAt;
+    const ms = typeof at === 'string' ? Date.parse(at) : Number.NaN;
+    if (Number.isFinite(ms) && ms > latest) latest = ms;
+  }
+  return latest;
+}
+
+function isStale(edit: LinqMessageEdit, latestApplied: number): boolean {
+  return edit.editedAt !== null && edit.editedAt.getTime() <= latestApplied;
 }
 
 export type LinqEditOutcome =
@@ -408,6 +446,9 @@ export async function applyLinqEdit(input: {
   if (!candidate || decision.edit.partIndex !== candidate.partIndex) {
     return { status: 'not_edited', reason: 'model_failed' };
   }
+  // Devin BUG_0003: the model read can outlast the turn. An expired turn throws here
+  // (the router rethrows it), so a bubble is never patched after the deadline.
+  assertTurnLive();
   try {
     await editLinqMessage({
       messageId: candidate.messageId,
@@ -443,6 +484,7 @@ export async function applyLinqEdit(input: {
         parentUserId: input.parentUserId,
         channelMessageId: candidate.channelMessageId,
         actionTaken: 'linq_message_edited',
+        editedAt: input.now,
       });
     }
     const [receipt] = await input.database
@@ -498,24 +540,46 @@ export async function recordLinqEditWebhook(
 ): Promise<'updated' | 'unchanged' | 'unknown_message'> {
   const rows = await channelRowsFor(database, edit.messageId);
   if (rows.length === 0) return 'unknown_message';
+  // Devin BUG_0004: Hale stores one text per bubble. An edit of any other part is
+  // refused rather than written over the whole joined body.
+  if (edit.partIndex !== 0) {
+    console.info({ reason: 'multi_part' }, 'linq edit webhook: not applied');
+    return 'unchanged';
+  }
   const ours = edit.direction === 'outbound' || (edit.direction === null && edit.isFromMe);
   if (!ours) {
     const inbound = rows.find((row) => row.direction === 'in');
     if (!inbound) return 'unknown_message';
+    // Devin SEC_0001: retention already cleared this body. An edit must not bring it back.
+    if (inbound.body === null) {
+      console.info({ reason: 'redacted' }, 'linq edit webhook: not applied');
+      return 'unchanged';
+    }
     if (inbound.body === edit.text) return 'unchanged';
+    if (isStale(edit, await lastAppliedEditAt(database, inbound.id))) {
+      console.info({ reason: 'stale' }, 'linq edit webhook: not applied');
+      return 'unchanged';
+    }
     await database
       .update(schema.channelMessages)
       .set({ body: edit.text })
       .where(eq(schema.channelMessages.id, inbound.id));
+    // Devin BUG_0001: the coach re-reads the thread, so the parent's turn changes too.
+    await rewriteParentTurn(database, edit.messageId, edit.text);
     await auditEdit(database, {
       familyId: inbound.familyId,
       parentUserId: inbound.parentUserId,
       channelMessageId: inbound.id,
       actionTaken: 'linq_parent_message_edited',
+      editedAt: edit.editedAt,
     });
     return 'updated';
   }
   const original = rows.find((row) => row.direction === 'out' && row.templateKey !== 'linq:edit');
+  if (original && isStale(edit, await lastAppliedEditAt(database, original.id))) {
+    console.info({ reason: 'stale' }, 'linq edit webhook: not applied');
+    return 'unchanged';
+  }
   const wrote = await rewriteAssistantBubble(database, edit.messageId, edit.text);
   if (wrote === 'missing') return original ? 'unchanged' : 'unknown_message';
   if (wrote === 'unchanged') return 'unchanged';
@@ -525,7 +589,33 @@ export async function recordLinqEditWebhook(
       parentUserId: original.parentUserId,
       channelMessageId: original.id,
       actionTaken: 'linq_message_edited',
+      editedAt: edit.editedAt,
     });
   }
   return 'updated';
+}
+
+/** The parent's own turn in the coach thread, matched by its Linq id. Absent is fine. */
+async function rewriteParentTurn(
+  database: Database,
+  providerMessageId: string,
+  text: string,
+): Promise<void> {
+  const rows = await database
+    .select({
+      id: schema.messages.id,
+      role: schema.messages.role,
+      providerMessageId: schema.messages.providerMessageId,
+      deletedAt: schema.messages.deletedAt,
+    })
+    .from(schema.messages)
+    .where(eq(schema.messages.providerMessageId, providerMessageId));
+  const match = rows.filter(
+    (row) => row.providerMessageId === providerMessageId && row.role === 'user' && !row.deletedAt,
+  );
+  if (match.length !== 1 || !match[0]) return;
+  await database
+    .update(schema.messages)
+    .set({ content: text })
+    .where(eq(schema.messages.id, match[0].id));
 }

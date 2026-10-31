@@ -996,7 +996,15 @@ async function routeChannelMessageInner(
   // Once per TEXT, not once per attempt. A deferred turn already put these words in the
   // thread, and the coach re-reads that thread on the attempt that finally works.
   if (!redriven) {
-    await appendMessage(conversationId, 'user', context.body, deps.database);
+    // VIL-479 (Devin BUG_0001): the parent's Linq id rides on their turn, so a later
+    // `message.edited` from them rewrites what the coach re-reads, not only the ledger.
+    const inboundProviderId =
+      linqMessageEditEnabled() && route.channel === 'imessage' ? job.provider_message_id : null;
+    await appendMessage(conversationId, 'user', context.body, deps.database, {
+      childId: null,
+      topic: null,
+      ...(inboundProviderId ? { providerMessageId: inboundProviderId } : {}),
+    });
   }
 
   // Read at most once per turn, by whoever needs it first — a handler about to claim a
@@ -2885,11 +2893,15 @@ async function sendReply(
         return moment.channelMessageId;
       }
     } catch (err) {
+      // VIL-479 (Devin BUG_0003): a turn that expired while the edit read ran is over.
+      // It must not edit a bubble, and it must not send the follow-up either.
+      if (isTurnTimeout(err)) throw err;
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',
       );
     }
+    assertTurnLive();
   }
   const sent = await deps.transport.send({ route: args.route, body: args.body });
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
