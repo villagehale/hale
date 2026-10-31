@@ -126,9 +126,11 @@ export function pairedDraftsForCalendarNo(
   if (reading.kind !== 'email_alert_add' || reading.polarity !== 'no') return [];
   const offer = questions.find((question) => question.id === reading.questionId);
   if (!offer) return [];
-  const ids = [offer.declinesActionId, offer.approvesActionId].filter(
-    (id): id is string => typeof id === 'string' && id !== '',
-  );
+  const ids = [
+    ...(offer.declinesActionIds ?? []),
+    offer.declinesActionId,
+    offer.approvesActionId,
+  ].filter((id): id is string => typeof id === 'string' && id !== '');
   return [...new Set(ids)];
 }
 

@@ -345,6 +345,66 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       undefined,
     );
   });
+
+  it('hides every unapproved draft of the occasion, including a private one and a group one', async () => {
+    const startsAt = '2026-10-31T19:00:00.000Z';
+    const reader = createOpenQuestionReader({
+      pendingApprovals: async () => [
+        {
+          actionId: 'private',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Gymnastics', startsAt },
+        },
+        {
+          actionId: 'group',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Gymnastics', startsAt: '2026-10-31T19:01:00.000Z' },
+        },
+      ],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [
+        {
+          id: 'offer-1',
+          summary: 'An offer to put Gymnastics on your week',
+          subject: 'putting Gymnastics on your week',
+          askedAt: T0,
+          title: 'Gymnastics',
+          startsAt,
+          timeZone: 'America/Toronto',
+        },
+      ],
+      eveningCheckIn: async () => null,
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
+    });
+
+    const questions = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(questions.find((question) => question.id === 'offer-1')?.declinesActionIds).toEqual([
+      'private',
+      'group',
+    ]);
+    expect(
+      questions.find((question) => question.id === 'offer-1')?.approvesActionId,
+    ).toBeUndefined();
+  });
 });
 
 /**

@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { invokeTool } from '@hale/agent';
+import type { GuardDeps } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { declineDraftedAction } from '~/lib/actions/decline';
+import { pairedDraftsForCalendarNo } from '~/lib/channel/calendar-ask';
 import { findPendingIdenticalCalendarAdd } from '~/lib/channel/coach/draft';
+import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { groupPlanDraftPort } from '~/lib/channel/group-plan/stamp';
 import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
@@ -1137,6 +1141,128 @@ describe('a coach offer is the calendar, not the sentence', () => {
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({ actionId: 'group-add', conversationId: 'c-group' }),
     );
+  });
+
+  it('reuses the group draft when a private draft matches the same occasion', async () => {
+    const privateId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const groupId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    await db.database.insert(schema.auditLog).values({
+      familyId: family.familyId,
+      actor: family.parentUserId,
+      actionTaken: 'group_plan.drafted',
+      targetTable: 'actions',
+      targetId: groupId,
+      after: { chatId: 'chat-family' },
+    });
+
+    let minted = 0;
+    const port = groupPlanDraftPort(
+      {
+        pendingIdentical: (input) => findPendingIdenticalCalendarAdd(db.database, input),
+        draft: async () => {
+          minted += 1;
+          return { actionId: 'third' };
+        },
+      },
+      { audience: 'group', conversationId: 'c-group', groupChatId: 'chat-family' },
+      async () => 'recorded',
+    );
+    const tools = buildChannelCoachTools({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      audience: 'group',
+      groupChatId: 'chat-family',
+      reader: {
+        timeZone: async () => 'America/Toronto',
+        weekPlanSummary: async () => null,
+        eventsInWeek: async () => [],
+        resolveEvent: async () => null,
+        connectedWeek: async () => ({
+          calendarSync: 'not_connected',
+          blocks: [],
+          mailSync: 'not_connected',
+          processedCount: 0,
+          since: null,
+          activities: [],
+          trips: [],
+        }),
+      },
+      draftPort: port,
+      villageTool: null,
+      activity: null,
+      spots: null,
+      now: NOW,
+    });
+    const tool = tools.find((candidate) => candidate.name === 'propose_calendar_add');
+    if (!tool) throw new Error('no propose_calendar_add');
+    const guard: GuardDeps = {
+      writeAudit: async () => {},
+      checkChildContentAccess: async () => ({ ok: true, reason: 'ok' }),
+    };
+    const result = await invokeTool(
+      tool,
+      { title: TITLE, date: '2026-09-19', time: '09:00', weekday: 'sat' },
+      { familyId: family.familyId, actor: family.parentUserId },
+      guard,
+    );
+
+    expect(result).toMatchObject({ alreadyPending: true, actionId: groupId });
+    expect(result).not.toMatchObject({ actionId: privateId });
+    expect(minted).toBe(0);
+  });
+
+  it('a NO clears the private draft and the group draft of that offer', async () => {
+    const privateId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const groupId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: new Date(STARTS_AT.getTime() + 60_000).toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+    const read = () =>
+      defaultOpenQuestionReader().open(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        now: NOW,
+      });
+
+    const first = await read();
+    expect(first.filter((question) => question.kind === 'approval')).toEqual([]);
+    const declined = pairedDraftsForCalendarNo(first, {
+      status: 'resolved',
+      questionId: offerId,
+      kind: 'email_alert_add',
+      polarity: 'no',
+      confidence: 'high',
+    });
+    expect(declined).toEqual(expect.arrayContaining([privateId, groupId]));
+
+    const verdict = await reply('no', { resolved: reading(offerId, 'no') });
+    expect(verdict.claimed).toBe(true);
+    for (const actionId of declined) {
+      await declineDraftedAction(db.database, {
+        actionId,
+        familyId: family.familyId,
+        declinedBy: family.parentUserId,
+      });
+    }
+    if (verdict.claimed) await verdict.afterSend?.(await receipt());
+
+    const next = await read();
+    expect(next.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(next.find((question) => question.id === offerId)).toBeUndefined();
   });
 
   it('records a future offer, expires the older one, and stops at the start', async () => {

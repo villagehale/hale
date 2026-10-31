@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   calendarInstantsEqual,
   calendarTitlesEqual,
@@ -100,30 +100,32 @@ export function productionChannelDraftPort(
   };
 }
 
-/** A group-stamped draft for this chat, so a private row is not reused as the group's. */
-async function groupDraftForChat(
+/** Group-stamped drafts among these actions, for this chat when one is named. */
+async function groupDraftIdsForChat(
   database: Database,
   familyId: string,
-  actionId: string,
+  actionIds: readonly string[],
   groupChatId: string | undefined,
-): Promise<boolean> {
+): Promise<Set<string>> {
+  if (actionIds.length === 0) return new Set();
   const rows = await database
-    .select({ after: schema.auditLog.after })
+    .select({ targetId: schema.auditLog.targetId, after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
         eq(schema.auditLog.targetTable, 'actions'),
-        eq(schema.auditLog.targetId, actionId),
         eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
+        inArray(schema.auditLog.targetId, [...actionIds]),
       ),
-    )
-    .limit(5);
-  return rows.some((row) => {
+    );
+  const ids = new Set<string>();
+  for (const row of rows) {
     const chatId = (row.after as { chatId?: unknown } | null)?.chatId;
-    if (typeof chatId !== 'string') return false;
-    return groupChatId === undefined || chatId === groupChatId;
-  });
+    if (typeof chatId !== 'string' || !row.targetId) continue;
+    if (groupChatId === undefined || chatId === groupChatId) ids.add(row.targetId);
+  }
+  return ids;
 }
 
 /**
@@ -169,29 +171,32 @@ export async function findPendingIdenticalCalendarAdd(
     };
   });
   const groupAsk = input.audience === 'group';
+  // A private draft sitting beside the group's draft makes two close matches, and
+  // the matcher then returns null. Filter to this chat's group drafts first, so
+  // the repeat ask reuses that draft instead of minting another.
+  const groupIds = groupAsk
+    ? await groupDraftIdsForChat(
+        database,
+        input.familyId,
+        shaped.map((item) => item.id),
+        input.groupChatId,
+      )
+    : null;
+  const candidates = groupIds ? shaped.filter((row) => groupIds.has(row.id)) : shaped;
   if (input.timeZone) {
-    const hit = matchingCalendarAddId(shaped, {
+    const hit = matchingCalendarAddId(candidates, {
       title: input.title,
       startsAt: input.startsAt,
     });
-    // A private draft is not a group add. Returning it would skip the mint, and
-    // the group origin stamp is written only when a group draft is minted.
-    if (hit && !groupAsk) return hit;
-    if (
-      hit &&
-      groupAsk &&
-      (await groupDraftForChat(database, input.familyId, hit, input.groupChatId))
-    ) {
-      return hit;
-    }
+    if (hit) return hit;
   } else {
-    const hit = shaped.find(
+    const hit = candidates.find(
       (row) =>
         row.occasion !== null &&
         calendarTitlesEqual(row.occasion.title, input.title) &&
         calendarInstantsEqual(row.occasion.startsAt, input.startsAt),
     );
-    if (hit && !groupAsk) return hit.id;
+    if (hit) return hit.id;
   }
   // A 1:1 offer is private. A group ask cannot answer it, so it must still draft.
   if (groupAsk) return null;
