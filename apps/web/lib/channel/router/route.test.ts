@@ -11,6 +11,11 @@ vi.mock('~/lib/channel/linq/sticker', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/channel/linq/sticker')>()),
   sharedLinqStickerDecider: () => ({ decide: stickerDecide }),
 }));
+const effectDecide = vi.hoisted(() => vi.fn());
+vi.mock('~/lib/channel/linq/effect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/linq/effect')>()),
+  sharedLinqEffectDecider: () => ({ decide: effectDecide }),
+}));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -5238,9 +5243,11 @@ describe('the reply row, written to a real database', () => {
       route: ReplyRoute,
       {
         slow = null,
+        now,
         ...options
       }: Parameters<typeof harness>[0] & {
         slow?: 'screen' | 'compose' | null;
+        now?: Date;
       } = {},
     ) {
       const turn = scripted(slow);
@@ -5251,7 +5258,9 @@ describe('the reply row, written to a real database', () => {
       });
       h.deps.database = db.database;
       // The reply rows are stamped by the database's clock, so the turn reads on it too.
-      h.deps.now = () => new Date();
+      // A pinned `now` keeps quiet-hours facts stable (VIL-473).
+      const clock = now ?? new Date();
+      h.deps.now = () => clock;
       const [inbound] = await db.database
         .insert(schema.channelMessages)
         .values({
@@ -5487,6 +5496,92 @@ describe('the reply row, written to a real database', () => {
         expect(next.said).toEqual([]);
         expect(await keptAsks(parent.familyId)).toEqual([]);
         stickerDecide.mockReset();
+      });
+
+      it('a sticker that keeps the reply sends the reply plain, with no effect read', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+        vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: true });
+        effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+        const posted: string[] = [];
+        vi.stubGlobal('fetch', async (url: string) => {
+          posted.push(new URL(url).pathname);
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        effectDecide.mockClear();
+        posted.length = 0;
+
+        const next = await text(
+          parent,
+          'we got in for swim',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('You are in for swim.'),
+            now: new Date('2026-10-28T16:00:00.000Z'),
+          },
+        );
+        vi.unstubAllGlobals();
+
+        // One moment per reply: the sticker peeled, the words go out plain.
+        expect(stickerDecide).toHaveBeenCalled();
+        expect(effectDecide).not.toHaveBeenCalled();
+        expect(posted.filter((path) => path.endsWith('/messages'))).toEqual([]);
+        expect(next.said).toEqual(['You are in for swim.']);
+        stickerDecide.mockReset();
+        effectDecide.mockReset();
+      });
+
+      it('a reply the model chose an iMessage effect for', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        effectDecide.mockResolvedValue({ effect: null });
+        const sent: unknown[] = [];
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+          if (new URL(url).pathname.endsWith('/messages'))
+            sent.push(JSON.parse(String(init?.body)));
+          return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+        const next = await text(
+          parent,
+          'we got in for swim',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('You are in for swim.'),
+            now: new Date('2026-10-28T16:00:00.000Z'),
+          },
+        );
+        vi.unstubAllGlobals();
+
+        expect(effectDecide).toHaveBeenCalledWith({
+          audience: 'direct',
+          parentText: 'we got in for swim',
+          reply: 'You are in for swim.',
+        });
+        expect(sent).toEqual([
+          {
+            message: {
+              parts: [{ type: 'text', value: 'You are in for swim.' }],
+              reply_to: { message_id: 'in-1' },
+              effect: { type: 'screen', name: 'confetti' },
+            },
+          },
+        ]);
+        // The words went out through Linq (asserted above), not the harness transport.
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+        effectDecide.mockReset();
       });
     });
 

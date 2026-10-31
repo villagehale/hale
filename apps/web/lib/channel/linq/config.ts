@@ -109,6 +109,15 @@ export function linqGroupWelcomeVoiceEnabled(): boolean {
 }
 
 /**
+ * iMessage screen and bubble effects (VIL-473). Exactly `true` enables them.
+ * Unset, empty, `on`, and `false` stay dark. Default off. Off means the model
+ * is never asked and every send stays a plain bubble.
+ */
+export function linqEffectsEnabled(): boolean {
+  return trimmed('LINQ_EFFECTS_ENABLED') === 'true';
+}
+
+/**
  * VIL-445 (T16) — read who is driving from the group and remind the night before.
  * Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
  */

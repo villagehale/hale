@@ -48,6 +48,7 @@ import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-deci
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import { sharedLinqEffectDecider } from '~/lib/channel/linq/effect';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -1153,6 +1154,10 @@ async function routeChannelMessageInner(
         // A chat Linq did not say is 1:1 might be a group, so it is read as one.
         audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
         parentAttachments: (context.media ?? []).map((part) => part.kind),
+      },
+      effectRead: {
+        // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+        audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
       },
     });
 
@@ -2784,6 +2789,8 @@ async function sendReply(
       audience: 'direct' | 'group';
       parentAttachments: readonly InboundMediaPart['kind'][];
     };
+    /** What the VIL-473 effect read sees beside the two bodies. Absent: no effect. */
+    effectRead?: { audience: 'direct' | 'group' };
   },
 ): Promise<string> {
   assertTurnLive();
@@ -2838,6 +2845,9 @@ async function sendReply(
         now: deps.now(),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
+          : {}),
+        ...(args.effectRead
+          ? { effect: { decider: sharedLinqEffectDecider(), ...args.effectRead } }
           : {}),
       });
       if (moment.handled) {
