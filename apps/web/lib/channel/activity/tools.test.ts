@@ -318,3 +318,40 @@ describe('promise_activity_followup', () => {
     expect(promises[0]?.subject).not.toContain('18 months');
   });
 });
+
+describe('find_activities family slice (VIL-518)', () => {
+  const FIT = {
+    children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
+    homeArea: 'halton_hills' as const,
+    preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
+  };
+
+  it('hands the family slice back beside the picks, and never sends it to the search', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader({ familyFit: async () => FIT }),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+    const result = (await call(tool, { subject: 'toddler gymnastics' })) as unknown as {
+      found: boolean;
+      family?: unknown;
+    };
+    expect(JSON.stringify(result)).toContain('Zephyrina');
+    expect(JSON.stringify(seen)).not.toContain('Zephyrina');
+    expect(JSON.stringify(seen)).not.toContain('indoor');
+  });
+
+  it('still finds when there is no slice or the read fails', async () => {
+    for (const familyFit of [undefined, async () => Promise.reject(new Error('db'))]) {
+      const tool = findActivitiesTool({
+        reader: reader(familyFit ? { familyFit } : {}),
+        finder: fakeFinder([]),
+        onPromise: () => {},
+      });
+      const result = JSON.stringify(await call(tool, { subject: 'toddler gymnastics' }));
+      expect(result).toContain('Halton Hills Gymnastics');
+      expect(result).not.toContain('"family"');
+    }
+  });
+});

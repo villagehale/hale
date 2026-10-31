@@ -1,7 +1,7 @@
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTurn } from '~/lib/channel/router/coach-runtime';
-import { groupScopedContext } from './group-privacy-scope';
+import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 const NOW = new Date('2026-10-25T16:00:00.000Z');
@@ -272,5 +272,18 @@ describe('VIL-439 review: group tools and group history', () => {
       [],
     );
     expect(seenTools[0]).toEqual(['lookup_week']);
+  });
+});
+
+describe('groupScopedTools find_activities (VIL-518)', () => {
+  it('strips the private family slice from a group find', async () => {
+    const tool = {
+      name: 'find_activities',
+      handler: async () => ({ found: true, picks: [], family: { preferences: [{ key: 'x' }] } }),
+    };
+    const [scoped] = groupScopedTools([tool]);
+    const result = (await scoped!.handler()) as Record<string, unknown>;
+    expect(result).toEqual({ found: true, picks: [] });
+    expect('family' in result).toBe(false);
   });
 });

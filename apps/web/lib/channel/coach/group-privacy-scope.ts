@@ -82,6 +82,21 @@ export function groupScopedTools<T extends HandlerTool>(tools: T[]): T[] {
   return tools
     .filter((tool) => !GROUP_WITHHELD_TOOLS.has(tool.name))
     .map((tool) => {
+      // VIL-518: the `family` slice is built from private memory; a group find gets picks only.
+      if (tool.name === 'find_activities') {
+        const inner = tool.handler as (...args: unknown[]) => Promise<unknown>;
+        return {
+          ...tool,
+          handler: async (...args: unknown[]) => {
+            const result = await inner(...args);
+            if (result && typeof result === 'object' && 'family' in result) {
+              const { family: _family, ...rest } = result as Record<string, unknown>;
+              return rest;
+            }
+            return result;
+          },
+        } as T;
+      }
       if (tool.name !== 'lookup_week') return tool;
       const inner = tool.handler as (...args: unknown[]) => Promise<WeekResult>;
       return {

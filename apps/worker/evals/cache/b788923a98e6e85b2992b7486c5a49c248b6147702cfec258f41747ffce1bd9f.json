@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own and to ask first. Autonomy for send_email and reply_to_email was turned off this turn, so the reply truthfully confirms that Hale will now ask before each email. It answers in the parent's own language, in two short sentences, with no greeting, sign-off or question, and it accurately covers both sending and replying.",
+    "score": 5
+  }
+}
