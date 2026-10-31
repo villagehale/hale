@@ -1,8 +1,15 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { reconcileCalendarMirrors } from './calendar-mirror';
+import {
+  EVENT_NOTES_FAILED,
+  EVENT_NOTES_MAX_FAILED_READS,
+  type EventNotesReader,
+  legacyDescriptionHash,
+  notesSourceHash,
+} from './event-notes';
 
 /**
  * A connected calendar becomes parent-sourced family_events the reminder cron
@@ -47,6 +54,7 @@ function reconcile(
   trustWindow = true,
   id = integrationId,
   userId = family.parentUserId,
+  readNotes?: EventNotesReader,
 ) {
   return reconcileCalendarMirrors(db.database, {
     familyId: family.familyId,
@@ -56,6 +64,7 @@ function reconcile(
     timeZone: TZ,
     now: NOW,
     trustWindow,
+    ...(readNotes ? { readNotes } : {}),
   });
 }
 
@@ -74,6 +83,265 @@ function audits() {
 }
 
 describe('reconcileCalendarMirrors', () => {
+  it('stores only the facts the reader returns, and reads a description once (VIL-468)', async () => {
+    const readNotes = vi.fn(async ({ description }: { title: string; description: string }) =>
+      description.includes('back lot')
+        ? {
+            parking: 'the back lot off Elm',
+            bring: 'goggles',
+            sourceHash: notesSourceHash('Swim', description),
+          }
+        : { sourceHash: notesSourceHash('Swim', description) },
+    );
+    const desc = 'Private coach note. Park in the back lot off Elm, and the kids need goggles.';
+    await reconcile(
+      [swim({ description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
+    let stored = await rows();
+    expect(stored[0]?.notes).toMatchObject({ parking: 'the back lot off Elm', bring: 'goggles' });
+    expect(JSON.stringify(stored[0])).not.toContain('Private coach note');
+
+    expect(
+      await reconcile(
+        [swim({ description: desc })],
+        true,
+        integrationId,
+        family.parentUserId,
+        readNotes,
+      ),
+    ).toMatchObject({ updated: 0 });
+    expect(readNotes).toHaveBeenCalledTimes(1);
+
+    const counts = await reconcile(
+      [swim({ description: 'See you there!' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
+    expect(counts).toMatchObject({ updated: 1 });
+    stored = await rows();
+    expect(stored[0]?.notes).toEqual({ sourceHash: notesSourceHash('Swim', 'See you there!') });
+
+    await reconcile([swim()], true, integrationId, family.parentUserId, readNotes);
+    stored = await rows();
+    expect(stored[0]?.notes).toBeNull();
+    expect(readNotes).toHaveBeenCalledTimes(2);
+  });
+
+  it('a no-attempt read (no key) stores nothing and counts nothing (VIL-468)', async () => {
+    await reconcile(
+      [swim({ description: 'Park in the back lot' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      async () => null,
+    );
+    expect((await rows())[0]?.notes).toBeNull();
+  });
+
+  it('a transient failure is retried and a success resets the count (VIL-468)', async () => {
+    const desc = 'Park in the back lot';
+    const h = notesSourceHash('Swim', desc);
+    const readNotes = vi
+      .fn<EventNotesReader>()
+      .mockResolvedValueOnce(EVENT_NOTES_FAILED)
+      .mockResolvedValueOnce({ parking: 'the back lot', sourceHash: h });
+    const run = () =>
+      reconcile([swim({ description: desc })], true, integrationId, family.parentUserId, readNotes);
+    await run();
+    expect((await rows())[0]?.notes).toEqual({ sourceHash: h, failedReads: 1 });
+    await run();
+    expect((await rows())[0]?.notes).toEqual({ parking: 'the back lot', sourceHash: h });
+    await run();
+    expect(readNotes).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops after 3 failures of one description, and a new description resets (VIL-468)', async () => {
+    const readNotes = vi.fn<EventNotesReader>(async () => EVENT_NOTES_FAILED);
+    const run = (description: string) =>
+      reconcile([swim({ description })], true, integrationId, family.parentUserId, readNotes);
+    for (let i = 0; i < 5; i += 1) await run('Park in the back lot');
+    expect(readNotes).toHaveBeenCalledTimes(EVENT_NOTES_MAX_FAILED_READS);
+    let notes = (await rows())[0]?.notes;
+    expect(notes).toEqual({
+      sourceHash: notesSourceHash('Swim', 'Park in the back lot'),
+      failedReads: 3,
+    });
+    expect(notes).not.toHaveProperty('parking');
+
+    await run('Park on Elm instead');
+    expect(readNotes).toHaveBeenCalledTimes(4);
+    notes = (await rows())[0]?.notes;
+    expect(notes).toEqual({
+      sourceHash: notesSourceHash('Swim', 'Park on Elm instead'),
+      failedReads: 1,
+    });
+  });
+
+  it('a renamed event with the same description is re-read, not given stale facts (Devin #930)', async () => {
+    const desc = 'Park in the back lot';
+    const readNotes = vi.fn<EventNotesReader>(async ({ title, description }) =>
+      title === 'Swim'
+        ? { parking: 'the back lot', sourceHash: notesSourceHash(title, description) }
+        : { sourceHash: notesSourceHash(title, description) },
+    );
+    await reconcile(
+      [swim({ description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
+    await reconcile(
+      [swim({ summary: 'Skate', description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
+    expect(readNotes).toHaveBeenCalledTimes(2);
+    expect((await rows())[0]?.notes).toEqual({ sourceHash: notesSourceHash('Skate', desc) });
+  });
+
+  it('a renamed event whose re-read is deferred keeps no stale facts (Devin #930)', async () => {
+    const desc = 'Park in the back lot';
+    await reconcile(
+      [swim({ description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      async () => ({
+        parking: 'the back lot',
+        sourceHash: notesSourceHash('Swim', desc),
+      }),
+    );
+    await reconcile(
+      [swim({ summary: 'Skate', description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      async () => null,
+    );
+    expect((await rows())[0]?.notes).toBeNull();
+  });
+
+  async function seedLegacyNotes(desc: string) {
+    await reconcile([swim({ description: desc })]);
+    await db.database
+      .update(schema.familyEvents)
+      .set({ notes: { parking: 'the back lot', sourceHash: legacyDescriptionHash(desc) } })
+      .where(eq(schema.familyEvents.familyId, family.familyId));
+  }
+
+  it('first sync after the hash format change keeps notes of an unchanged event (Devin #930)', async () => {
+    const desc = 'Park in the back lot';
+    await seedLegacyNotes(desc);
+    const readNotes = vi.fn<EventNotesReader>(async () => null);
+    const before = (await audits()).length;
+    await reconcile(
+      [swim({ description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
+    expect(readNotes).not.toHaveBeenCalled();
+    expect((await rows())[0]?.notes).toEqual({
+      parking: 'the back lot',
+      sourceHash: notesSourceHash('Swim', desc),
+    });
+    // A rehash is bookkeeping, not a logistics change.
+    expect((await audits()).length).toBe(before);
+  });
+
+  it('a legacy-hashed event that was renamed is still re-read (Devin #930)', async () => {
+    const desc = 'Park in the back lot';
+    await seedLegacyNotes(desc);
+    const readNotes = vi.fn<EventNotesReader>(async ({ title, description }) => ({
+      sourceHash: notesSourceHash(title, description),
+    }));
+    await reconcile(
+      [swim({ summary: 'Skate', description: desc })],
+      true,
+      integrationId,
+      family.parentUserId,
+      readNotes,
+    );
+    expect(readNotes).toHaveBeenCalledTimes(1);
+    expect((await rows())[0]?.notes).toEqual({ sourceHash: notesSourceHash('Skate', desc) });
+  });
+
+  it('a logistics-only change writes an audit row without the facts (Devin #930)', async () => {
+    const reader =
+      (parking: string): EventNotesReader =>
+      async ({ title, description }) => ({
+        parking,
+        sourceHash: notesSourceHash(title, description),
+      });
+    await reconcile(
+      [swim({ description: 'Park A' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      reader('lot A'),
+    );
+    await reconcile(
+      [swim({ description: 'Park B' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      reader('lot B'),
+    );
+    const rowsAudit = (await audits()).filter(
+      (a) => a.actionTaken === 'calendar_mirror_notes_updated',
+    );
+    expect(rowsAudit).toHaveLength(1);
+    expect(rowsAudit[0]?.after).toEqual({ source: 'parent' });
+    expect(JSON.stringify(rowsAudit[0])).not.toContain('lot B');
+  });
+
+  it('a failed-read count bump alone writes no audit row', async () => {
+    await reconcile(
+      [swim({ description: 'Park A' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      async () => EVENT_NOTES_FAILED,
+    );
+    await reconcile(
+      [swim({ description: 'Park A' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      async () => EVENT_NOTES_FAILED,
+    );
+    expect(
+      (await audits()).filter((a) => a.actionTaken === 'calendar_mirror_notes_updated'),
+    ).toHaveLength(0);
+  });
+
+  it('a removed mirror drops its logistics notes (Devin #930)', async () => {
+    await reconcile(
+      [swim({ description: 'Park A' })],
+      true,
+      integrationId,
+      family.parentUserId,
+      async ({ title, description }) => ({
+        parking: 'lot A',
+        sourceHash: notesSourceHash(title, description),
+      }),
+    );
+    await reconcile([]);
+    const [row] = await rows();
+    expect(row?.deletedAt).not.toBeNull();
+    expect(row?.notes).toBeNull();
+  });
+
   it('mirrors an upcoming swim as a parent event and audits it without the title', async () => {
     const counts = await reconcile([swim()]);
 

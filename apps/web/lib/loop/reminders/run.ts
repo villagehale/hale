@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
@@ -91,6 +91,8 @@ export interface LiveEvent extends EventSnapshot {
   location: string | null;
   /** VIL-474 · a change recorded from source data only (reminders/change.ts). */
   change?: SourceChange | null;
+  /** VIL-468. Parking / what-to-bring facts the source stated, or null. */
+  notes?: FamilyEventNotes | null;
   /**
    * Set when this row mirrors one event on a connected Google Calendar (VIL-416).
    * Null for every Hale-authored event. A mirror is reminded to its owner only —
@@ -248,6 +250,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
           location: schema.familyEvents.location,
+          notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
         })
@@ -366,6 +369,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
           location: schema.familyEvents.location,
+          notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
           sourceChangedField: schema.familyEvents.sourceChangedField,
@@ -487,6 +491,7 @@ interface FiringRow {
   sensitive: boolean;
   location: string | null;
   change: SourceChange | null;
+  notes: FamilyEventNotes | null;
   /** Proven non-null by the fire gate: a row whose recipient holds no seat never gets
    * here. Non-parent roles other than the three caregiver ones are suppressed too, so
    * this is either a parent role or a caregiver one. */
@@ -704,6 +709,7 @@ export async function runReminderCron(
             sensitive: event.sensitive,
             location: event.location,
             change: event.change ?? null,
+            notes: event.notes ?? null,
             // Non-null past the gate above: role null never survives it.
             role: row.role as FamilyRole,
           });
@@ -782,6 +788,7 @@ export async function runReminderCron(
             endsAt: r.endsAt ? r.endsAt.toISOString() : null,
             location: r.location,
             change: r.change,
+            notes: r.notes,
           });
         }
       }
