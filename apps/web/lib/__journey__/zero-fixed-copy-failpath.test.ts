@@ -41,9 +41,12 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
     const threaded: unknown[] = [];
+    // 09:00 America/Toronto. A wall clock inside quiet hours (21:00–08:00) holds the
+    // card before the model is asked, so this proof cannot use `new Date()`.
+    const daytime = new Date('2026-08-26T13:00:00.000Z');
     const outcome = await sendWelcomeContactCard(
       fake.db,
-      { familyId: FAMILY, parentUserId: PARENT, phoneE164: '+14375550101', now: new Date() },
+      { familyId: FAMILY, parentUserId: PARENT, phoneE164: '+14375550101', now: daytime },
       {
         transport,
         threadMessage: async (_db, input) => {
