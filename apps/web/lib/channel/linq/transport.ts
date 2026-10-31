@@ -121,10 +121,14 @@ export type LinqTextDecoration =
   | { range: readonly [number, number]; animation: LinqTextAnimation; style?: never };
 
 export type LinqOutboundPart =
-  | { type: 'text'; value: string; decorations?: readonly LinqTextDecoration[] }
+  | { type: 'text'; value: string; decorations?: readonly LinqTextDecoration[]; mention?: string }
   | { type: 'media'; url: string }
   | { type: 'media'; attachmentId: string }
   | { type: 'link'; value: string };
+
+/** Linq refused the mention: not a group (2023), gone from the chat (2015),
+ * or a handle that was never in it (1004). The answer still goes out. */
+const MENTION_REFUSED = new Set(['2023', '2015', '1004']);
 
 /** Thread a follow-up under a message the parent already has. `partIndex` is
  * 0-based and optional — Linq defaults it to the first part. */
@@ -303,12 +307,14 @@ async function linqEffect(input: {
 
 function wirePart(part: LinqOutboundPart): Record<string, unknown> {
   if (part.type === 'text') {
+    const mention = part.mention ? { mention: part.mention } : {};
     if (!part.decorations || part.decorations.length === 0) {
-      return { type: 'text', value: part.value };
+      return { type: 'text', value: part.value, ...mention };
     }
     return {
       type: 'text',
       value: part.value,
+      ...mention,
       text_decorations: part.decorations.map((d) =>
         d.style !== undefined
           ? { range: [d.range[0], d.range[1]], style: d.style }
@@ -489,22 +495,47 @@ export async function sendLinqChatMessage(input: {
   /** VIL-474 · iMessage styling the writer chose for ranges of `text`. */
   decorations?: readonly LinqTextDecoration[];
   replyTo?: LinqReplyTarget;
+  /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
+  mention?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
-  const send = (replyTo?: LinqReplyTarget) =>
+  const send = (replyTo?: LinqReplyTarget, mention?: string) =>
     sendLinqParts({
       chatId: input.chatId,
       parts: [
-        input.decorations && input.decorations.length > 0
-          ? { type: 'text', value: input.text, decorations: input.decorations }
-          : { type: 'text', value: input.text },
+        {
+          type: 'text',
+          value: input.text,
+          ...(input.decorations && input.decorations.length > 0
+            ? { decorations: input.decorations }
+            : {}),
+          ...(mention ? { mention } : {}),
+        },
       ],
       replyTo,
       fetch: input.fetch,
     });
   try {
-    return await send(input.replyTo);
-  } catch (err) {
+    return await send(input.replyTo, input.mention);
+  } catch (first) {
+    let err = first;
+    if (
+      input.mention &&
+      err instanceof LinqSendError &&
+      err.permanent &&
+      MENTION_REFUSED.has(err.code)
+    ) {
+      // Code and status only. The handle, the body, and the chat id stay out (rule #1).
+      console.warn(
+        { code: err.code, httpStatus: err.httpStatus },
+        'linq: mention refused — sending the answer without a mention',
+      );
+      try {
+        return await send(input.replyTo, undefined);
+      } catch (inner) {
+        err = inner;
+      }
+    }
     if (
       !input.replyTo ||
       !(err instanceof LinqSendError) ||
@@ -1421,6 +1452,8 @@ export function createLinqTextTransport(deps: {
   chatId: string | null;
   /** The inbound Linq message this turn is answering. Absent sends a plain bubble. */
   replyToMessageId?: string | null;
+  /** VIL-475 — pick one seated handle for this body, or undefined. */
+  mentionFor?: (text: string) => Promise<string | undefined>;
   fetch?: typeof fetch;
 }): ChannelTransport {
   return {
@@ -1429,11 +1462,13 @@ export function createLinqTextTransport(deps: {
         throw new LinqSendError('media_unsupported', 400, true);
       }
       if (!deps.chatId) throw new LinqSendError('missing_chat_id', 400, true);
+      const mention = deps.mentionFor ? await deps.mentionFor(input.body) : undefined;
       const sent = await sendLinqChatMessage({
         chatId: deps.chatId,
         text: input.body,
         decorations: input.decorations,
         replyTo: deps.replyToMessageId ? { messageId: deps.replyToMessageId } : undefined,
+        ...(mention ? { mention } : {}),
         fetch: deps.fetch,
       });
       return {

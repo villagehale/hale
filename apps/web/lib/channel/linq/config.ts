@@ -171,3 +171,15 @@ export function linqExperiencesEnabled(): boolean {
 export function linqGroupLeaveEnabled(): boolean {
   return trimmed('LINQ_GROUP_LEAVE_ENABLED') === 'true';
 }
+
+/**
+ * VIL-475 — iMessage @mentions in Linq group chats. Exactly `true` enables it.
+ * Unset, empty, `on`, and `false` stay dark. Default off.
+ *
+ * On, inbound `mentions` become facts for the group-turn reader, and a group
+ * reply may carry one outbound `mention` when the model names a seated member.
+ * Off leaves today's parse unused and every send without a mention field.
+ */
+export function linqGroupMentionsEnabled(): boolean {
+  return trimmed('LINQ_GROUP_MENTIONS_ENABLED') === 'true';
+}

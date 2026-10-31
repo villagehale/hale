@@ -55,6 +55,7 @@
     "eval:group-turn-read": "node evals/run-group-turn-read-eval.mjs --cached-only",
     "eval:shared-group-reading:estimate": "node evals/run-shared-group-reading-eval.mjs --estimate",
     "eval:shared-group-voice:estimate": "node evals/run-shared-group-voice-eval.mjs --estimate",
+    "eval:group-mention-read": "node evals/run-group-mention-read-eval.mjs --cached-only",
     "eval:calendar-cancel-voice": "node evals/run-calendar-cancel-voice-eval.mjs --cached-only",
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
     "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",
