@@ -3,7 +3,11 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { productionActivityFamilyReader } from './reader';
+import {
+  FAMILY_FIT_PREFERENCE_LIMIT,
+  FAMILY_FIT_READ_LIMIT,
+  productionActivityFamilyReader,
+} from './reader';
 
 const NOW = new Date('2026-10-30T12:00:00Z');
 const DAYS = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
@@ -128,6 +132,22 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
 
     const fit = await reader.familyFit!(db.database, familyId, NOW);
     expect(fit.preferences.map((p) => p.key)).toEqual(['stroller']);
+  });
+
+  it('a parent-stated fact survives 32+ newer inferred guesses filling the read cap (Devin #981)', async () => {
+    const { familyId } = await seedFamily(db.database);
+    await fact(familyId, null, 'not_scary', true, { source: 'parent_message', seenDaysAgo: 60 });
+    for (let i = 0; i < FAMILY_FIT_READ_LIMIT + 8; i++) {
+      await fact(familyId, null, `guess_${i}`, i, {
+        source: 'inferred',
+        seenDaysAgo: 1,
+        confidence: 1,
+      });
+    }
+
+    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    expect(fit.preferences[0]).toMatchObject({ key: 'not_scary', source: 'parent_message' });
+    expect(fit.preferences).toHaveLength(FAMILY_FIT_PREFERENCE_LIMIT);
   });
 
   it('a stale fact is held back for recheck (key only), never ranked or its value shown', async () => {

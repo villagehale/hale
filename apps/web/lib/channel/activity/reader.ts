@@ -1,6 +1,6 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
-import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
@@ -80,10 +80,24 @@ export interface FamilyFit {
 const FIT_FACT_TYPES = ['preference', 'logistic'] as const;
 /** Small on purpose: a slice, not the memory. */
 export const FAMILY_FIT_PREFERENCE_LIMIT = 8;
+/** How many candidate rows the read pulls before `selectFitPreferences` caps them. */
+export const FAMILY_FIT_READ_LIMIT = FAMILY_FIT_PREFERENCE_LIMIT * 4;
 /** One stale key at most (Design lock, one-ask): a hint, not a questionnaire. */
 export const FAMILY_FIT_RECHECK_LIMIT = 1;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * VIL-519 (Devin #981). Which source a ranked slot goes to first: what the parent said
+ * or a receipt showed outranks a calendar, which outranks Hale's own guess. Lower wins.
+ */
+export const FACT_SOURCE_RANK: Readonly<Record<FactSource, number>> = {
+  parent_message: 0,
+  receipt: 0,
+  calendar: 1,
+  legacy: 2,
+  inferred: 3,
+};
 /**
  * VIL-519. How long a fact from each source is trusted to steer a pick. A guess goes
  * stale fastest; what a parent told us or a receipt showed lasts a school year. Past
@@ -254,15 +268,19 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
               : undefined,
           ),
         )
-        // Newest first, so a pile of old high-confidence facts (held back as stale
-        // anyway) cannot fill the LIMIT and starve a fresh preference (Devin, #981).
+        // Fresh-by-its-own-source first, then parent/receipt ahead of calendar ahead of
+        // inferred, then newest. Freshness and source rank are applied BEFORE the LIMIT,
+        // so neither a pile of old high-confidence facts nor 32 newer inferred guesses can
+        // fill the read and push out what the parent told us (Devin, #981).
         .orderBy(
+          desc(freshSql(now)),
+          asc(sourceRankSql()),
           desc(schema.familyMemoryFacts.sourcedAt),
           desc(schema.familyMemoryFacts.confidence),
           desc(schema.familyMemoryFacts.validFrom),
           schema.familyMemoryFacts.id,
         )
-        .limit(FAMILY_FIT_PREFERENCE_LIMIT * 4);
+        .limit(FAMILY_FIT_READ_LIMIT);
       return {
         children,
         homeArea,
@@ -270,6 +288,27 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
       };
     },
   };
+}
+
+/** SQL twin of `asSource` + `FACT_SOURCE_RANK`: unknown sources rank as `legacy`. */
+function sourceRankSql() {
+  const col = schema.familyMemoryFacts.memorySource;
+  const cases = (Object.keys(FACT_SOURCE_RANK) as FactSource[]).map(
+    (source) => sql`when ${col} = ${source} then ${FACT_SOURCE_RANK[source]}`,
+  );
+  return sql`(case ${sql.join(cases, sql` `)} else ${FACT_SOURCE_RANK.legacy} end)`;
+}
+
+/** SQL twin of the per-source window in `selectFitPreferences`: 1 when still fresh. */
+function freshSql(now: Date) {
+  const col = schema.familyMemoryFacts.memorySource;
+  const at = schema.familyMemoryFacts.sourcedAt;
+  const cutoff = (source: FactSource) =>
+    new Date(now.getTime() - FACT_FRESH_DAYS[source] * DAY_MS).toISOString();
+  const cases = (Object.keys(FACT_FRESH_DAYS) as FactSource[])
+    .filter((source) => source !== 'legacy')
+    .map((source) => sql`when ${col} = ${source} then ${at} >= ${cutoff(source)}::timestamptz`);
+  return sql`(case ${sql.join(cases, sql` `)} else ${at} >= ${cutoff('legacy')}::timestamptz end)::int`;
 }
 
 export function toFitChild(
@@ -326,7 +365,13 @@ export function selectFitPreferences(
   }
   const preferences: FamilyFitPreference[] = [];
   const recheck: FamilyFitRecheck[] = [];
-  for (const row of newest.values()) {
+  // Parent/receipt fill the cap before inferred guesses, newest first within a source.
+  const ordered = [...newest.values()].sort(
+    (a, b) =>
+      FACT_SOURCE_RANK[asSource(a.source)] - FACT_SOURCE_RANK[asSource(b.source)] ||
+      b.sourcedAt.getTime() - a.sourcedAt.getTime(),
+  );
+  for (const row of ordered) {
     const source = asSource(row.source);
     const seenOn = row.sourcedAt.toISOString().slice(0, 10);
     const ageDays = (now.getTime() - row.sourcedAt.getTime()) / DAY_MS;
