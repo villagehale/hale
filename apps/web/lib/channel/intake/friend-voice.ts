@@ -339,13 +339,17 @@ function leadText(value: unknown): string {
   return '';
 }
 
-/** A list the model wrote as JSON text inside a string, split back into its leads. */
+/**
+ * A list the model wrote as one string instead of an array, split back into
+ * leads. A newline here separates legacy leads. A newline inside an array
+ * element does not: that element is already one bubble.
+ */
 function splitLeadString(text: string): string[] {
   const trimmed = text.trim();
   if (trimmed.startsWith('[')) {
     try {
       const parsed: unknown = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.map(leadText);
+      if (Array.isArray(parsed)) return parsed.map((item) => leadText(item).trim());
     } catch {
       // Not JSON after all; split it below.
     }
@@ -355,14 +359,13 @@ function splitLeadString(text: string): string[] {
     .map((part) => part.replace(/^[\s["]+|[\s\]"]+$/gu, '').trim());
 }
 
-function leadsFrom(value: unknown): string[] | null {
+/** One group bubble per array element. Newlines stay inside that bubble. */
+export function readGroupLeads(value: unknown): string[] | null {
   if (value == null) return null;
   if (typeof value === 'string') return splitLeadString(value);
-  if (Array.isArray(value)) return value.flatMap((item) => splitLeadString(leadText(item)));
+  if (Array.isArray(value)) return value.map((item) => leadText(item).trim());
   if (typeof value === 'object') {
-    return Object.values(value as Record<string, unknown>).flatMap((item) =>
-      splitLeadString(leadText(item)),
-    );
+    return Object.values(value as Record<string, unknown>).map((item) => leadText(item).trim());
   }
   return null;
 }
@@ -372,12 +375,13 @@ const replySchema = z.object({
     .string()
     .nullish()
     .transform((value) => value ?? ''),
-  // Leads come back in more than one shape (a list, one string per line, the
-  // group objects they were written for); their words are the leads.
+  // Leads come back in more than one shape (a list, one string, the group
+  // objects they were written for). An array element is one bubble even when
+  // it contains newlines. A single string is the legacy list, split apart.
   groupLeads: z
     .unknown()
     .optional()
-    .transform((value) => leadsFrom(value)),
+    .transform((value) => readGroupLeads(value)),
   // A malformed field reads as not given: a decision is never guessed from it.
   // Schedule adds stay strict, so a reply never confirms an add that was dropped.
   postalCode: z.string().nullable().optional().default(null).catch(null),
@@ -1016,10 +1020,28 @@ export function peelFriendAsk(prose: string): { lead: string; ask: string } {
 }
 
 /**
+ * Group bubbles only. Each lead is one bubble, newlines included. An empty
+ * lead is skipped. Code does not number the lines or join them on.
+ */
+function writtenGroupBubbles(
+  groups: readonly FriendFindGroup[],
+  leads: readonly string[] | null | undefined,
+): string[] {
+  const bubbles: string[] = [];
+  groups.forEach((group, index) => {
+    const lines = group.lines.map((line) => line.trim()).filter((line) => line.length > 0);
+    if (lines.length === 0) return;
+    const head = (leads?.[index] ?? '').trim();
+    if (head.length === 0) return;
+    bubbles.push(head);
+  });
+  return bubbles;
+}
+
+/**
  * The activity map as bubbles the model wrote. The opener is the framing
  * sentence. Each group bubble is that group's lead, written from the found
- * lines. Code does not number those lines or join them on. A group with no
- * lead is skipped: nothing goes out for it.
+ * lines. A group with no lead is skipped.
  */
 export function assembleFindShowBubbles(
   opener: string,
@@ -1029,13 +1051,7 @@ export function assembleFindShowBubbles(
   const bubbles: string[] = [];
   const lead = opener.trim();
   if (lead.length > 0) bubbles.push(lead);
-  groups.forEach((group, index) => {
-    const lines = group.lines.map((line) => line.trim()).filter((line) => line.length > 0);
-    if (lines.length === 0) return;
-    const head = (leads?.[index] ?? '').trim();
-    if (head.length === 0) return;
-    bubbles.push(head);
-  });
+  bubbles.push(...writtenGroupBubbles(groups, leads));
   return bubbles;
 }
 
@@ -1877,9 +1893,13 @@ export async function speakFriend(
       const bubblesFor = (text: string): { bubbles: string[]; judgedText: string } | null => {
         if (input.step === 'find_show') {
           const groups = input.findGroups ?? [];
-          const leads = tidyLeads(composed.groupLeads ?? null, groups);
-          const bubbles = assembleFindShowBubbles(text, groups, leads);
-          return bubbles.length === 0 ? null : { bubbles, judgedText: bubbles.join('\n\n') };
+          const leads = tidyLeads(composed.groupLeads ?? null, groups, input);
+          const groupBubbles = writtenGroupBubbles(groups, leads);
+          // An opener with no group bubble is not a map. The retry asks again.
+          if (groupBubbles.length === 0) return null;
+          const opener = text.trim();
+          const bubbles = opener.length > 0 ? [opener, ...groupBubbles] : groupBubbles;
+          return { bubbles, judgedText: bubbles.join('\n\n') };
         }
         if (text.length === 0) return null;
         return {
@@ -1890,7 +1910,21 @@ export async function speakFriend(
       // A good draft with one fixable slip (a second question mark) is repaired
       // by code and judged again rather than dropped. Length is not a reason.
       const assembled = bubblesFor(prose);
-      if (!assembled) return { fail: 'unusable', capture };
+      if (!assembled) {
+        if (input.step === 'find_show') {
+          noteRefusal({ reason: 'no_group_bubble', step: input.step, prompt }, 'unusable');
+          return {
+            fail: 'unusable',
+            capture,
+            retry: {
+              draft,
+              problem:
+                'Write one groupLeads bubble per group from that group’s own lines. An opener with no group bubble is not sent.',
+            },
+          };
+        }
+        return { fail: 'unusable', capture };
+      }
       const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
       if (judged.ok) return { prose, bubbles: assembled.bubbles, capture, step: judgeInput.step };
       const repaired = repairedProse(prose, judgeInput.step);
@@ -2212,28 +2246,44 @@ export function tidyProse(
 }
 
 /**
- * A group bubble the model wrote from that group's lines. A question is
- * dropped. An activity the group's lines do not hold drops the bubble, and
- * the group is then skipped. Code does not replace it.
+ * Facts a group bubble may use: that group's lines, plus shared context that
+ * is not another group's find (the place, the kids' ages and names, the
+ * parent's words). Another group's time or activity is not in here.
+ */
+function groupBubbleSlots(group: FriendFindGroup, input: FriendVoiceInput): string[] {
+  const slots = [input.parentWords, input.agesLabel ?? '', input.placeLabel ?? ''];
+  for (const line of group.lines) slots.push(line, ...twelveHourTimes(line));
+  for (const months of input.ageMonths) slots.push(String(months));
+  for (const child of input.children ?? []) {
+    if (child.name) slots.push(child.name);
+  }
+  if (input.parentName) slots.push(input.parentName);
+  return slots.filter((slot) => slot.length > 0);
+}
+
+function priceTalkInLines(text: string, lines: readonly string[]): string[] {
+  const prose = text.replace(/\bfeel free\b/gi, '');
+  if (!PRICE_WORD.test(prose)) return [];
+  return lines.some((line) => PRICE_WORD.test(line)) ? [] : ['price'];
+}
+
+/**
+ * A group bubble the model wrote from that group's lines. Newlines stay in
+ * the one bubble. A question is dropped. A time, day, price, name, or activity
+ * another group holds, and this one does not, drops the bubble. Code does not
+ * replace it.
  */
 function tidyLeads(
   leads: readonly string[] | null,
   groups: readonly FriendFindGroup[],
+  input: FriendVoiceInput,
 ): string[] | null {
   if (!leads) return null;
-  // One bubble per group or none: a single string that covers every group
-  // sits on the wrong lines. One string with a sentence per group is split
-  // back into bubbles.
-  let perGroup = leads;
-  if (leads.length === 1 && groups.length > 1) {
-    const parts = sentencesOf(leads[0] ?? '');
-    if (parts.length === groups.length) perGroup = parts;
-  }
-  if (perGroup.length !== groups.length) return null;
-  return groups.map((group, index) => tidyGroupBubble(perGroup[index] ?? '', group));
+  if (leads.length !== groups.length) return null;
+  return groups.map((group, index) => tidyGroupBubble(leads[index] ?? '', group, input));
 }
 
-function tidyGroupBubble(raw: string, group: FriendFindGroup): string {
+function tidyGroupBubble(raw: string, group: FriendFindGroup, input: FriendVoiceInput): string {
   const kept = raw
     .trim()
     .split(/\n+/u)
@@ -2246,7 +2296,13 @@ function tidyGroupBubble(raw: string, group: FriendFindGroup): string {
     .filter((block) => block.length > 0);
   const lead = kept.join('\n');
   if (lead.length === 0) return '';
-  // A bubble names only what its own lines hold ("swim and Scouts" over two swims is wrong).
+  const slots = groupBubbleSlots(group, input);
+  if (findInventedFacts(lead, slots).length > 0) return '';
+  if (weekdaysOutsideSlots(lead, slots).length > 0) return '';
+  if (mentionsOutsideSlots(lead, PRICE, slots).length > 0) return '';
+  if (priceTalkInLines(lead, group.lines).length > 0) return '';
+  if (namesOutsideSlots(lead, slots).length > 0) return '';
+  if (quotesOutsideSlots(lead, slots).length > 0) return '';
   if (activitiesOutsideSlots(lead, group.lines).length > 0) return '';
   return lead;
 }
