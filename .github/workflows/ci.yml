@@ -241,6 +241,9 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Group shared lists eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-lists
+
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
 

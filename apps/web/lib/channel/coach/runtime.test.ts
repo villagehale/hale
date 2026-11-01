@@ -195,6 +195,32 @@ describe('channelCoachRuntime', () => {
     expect(seen[1]).not.toHaveProperty('audience');
   });
 
+  it('offers the shared-list verbs only on a group turn with GROUP_SHARED_LISTS_ENABLED on (VIL-447)', async () => {
+    const seen: string[][] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push([...args.skill.meta.tools]);
+        return answering('ok.')(args);
+      },
+    });
+    const names = ['list_group_lists', 'add_to_group_list', 'check_off_group_list_items'];
+    try {
+      vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', '');
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', 'true');
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      await channelCoachRuntime(p).respond(turn(), []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    for (const n of names) {
+      expect(seen[0]).not.toContain(n);
+      expect(seen[1]).toContain(n);
+      expect(seen[2]).not.toContain(n);
+    }
+    expect(seen[2]).toEqual(SKILL.meta.tools);
+  });
+
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
     const seen: Record<string, unknown>[] = [];
     const reading = {

@@ -67,6 +67,8 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
+import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
+import { augmentCoachSkillForGroupLists } from '~/lib/channel/lists/tools';
 import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/signup/offer-tool';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
@@ -327,7 +329,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
       const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
       const groupedSkill =
-        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+        turn.audience === 'group'
+          ? // VIL-447: the shared-list verbs exist only in a group, and only with the flag on.
+            augmentCoachSkillForGroupLists(
+              await appendGroupCoachSkill(loadedSkill),
+              groupSharedListsEnabled(),
+            )
+          : loadedSkill;
       // VIL-510: nearby-find voice + link rules ride as an addendum so the disk
       // coach-channel-sms bytes (and every eval recording keyed on them) stay put.
       const nearbyFind = await loadCronSkill('coach-nearby-find');
@@ -742,6 +750,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               offeredThisTurn: offered.read,
             }
           : null,
+        groupLists:
+          turn.audience === 'group' && groupSharedListsEnabled()
+            ? {
+                database,
+                familyId: turn.familyId,
+                conversationId: turn.conversationId,
+                actorUserId: turn.parentUserId,
+                now: turn.now,
+              }
+            : null,
         providerWatch: browserUseWatchEnabled()
           ? {
               database,
