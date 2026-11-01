@@ -237,7 +237,9 @@ function userMessage(f) {
 }
 
 /** acceptSaidLine in said-line.ts: facts verbatim, no typed URL, each slot once, then
- * code fills the slots. Returns the filled text, or null. */
+ * code fills the slots. Returns the filled text, or null. mustConvey is keys only
+ * here. Meaning is the convey judge (VIL-530), which sends nothing on a miss and
+ * does not rewrite. This replica must not grow a word list for it. */
 function acceptText(text, f) {
   let body = (text ?? '').trim();
   if (body.length === 0) return null;

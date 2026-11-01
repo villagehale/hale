@@ -385,8 +385,7 @@ export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, strin
       'nothing about them is shared with anyone until both families say yes to the same introduction',
     offRamp: 'they can switch introductions off any time by just saying so',
     standing: 'the parent is open to introductions',
-    matchText:
-      'when Hale finds a good match for them, it texts them about it',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
   },
   discoverability_off: {
     situation: 'they just switched introductions off for themselves',
@@ -398,8 +397,7 @@ export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, strin
   discoverability_already_on: {
     situation: 'they had already said yes to introductions; nothing changed',
     standing: 'the parent is still open to introductions',
-    matchText:
-      'when Hale finds a good match for them, it texts them about it',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
   },
   discoverability_already_off: {
     situation: 'introductions were already off for them; nothing changed',
@@ -408,8 +406,7 @@ export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, strin
   intro_no: {
     situation: 'they said no to this one introduction; it is recorded',
     standing: 'the parent is still open to other introductions',
-    matchText:
-      'when Hale finds a good match for them, it texts them about it',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
   },
   intro_already_yes: {
     situation: 'they had already said yes to this introduction; nothing changed',
@@ -418,34 +415,34 @@ export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, strin
   intro_already_no: {
     situation: 'they had already passed on this introduction; nothing changed',
     standing: 'the parent is still open to other introductions',
-    matchText:
-      'when Hale finds a good match for them, it texts them about it',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
   },
   intro_closed: {
     situation: 'they said no to this introduction earlier, so it is closed and cannot be reopened',
     theirAsk: 'saying yes now does not reopen it; it stays closed',
     standing: 'the parent is still open to other introductions',
-    matchText:
-      'when Hale finds a good match for them, it texts them about it',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
   },
   no_open_intro: {
     situation: 'there is no introduction waiting for them right now',
     standing: 'the parent is open to introductions',
-    matchText:
-      'when Hale finds a good match for them, it texts them about it',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
   },
   soft_close: {
     situation: 'the introduction Hale asked them about is not happening',
     standing: 'the parent is still open to other introductions',
-    matchText:
-      'when Hale finds a good match for them, it texts them about it',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
   },
 };
 
 /**
  * Facts, by key, whose meaning every reply in that situation carries (`mustConvey`).
- * Keys only: the writer says them in its own words and language, and no code matches
- * wording. Leaving one out would change what the parent understands is true now.
+ * Keys only. The writer says them in its own words and language. A judge reads the
+ * draft for that meaning (VIL-530). No code matches wording. A miss sends nothing,
+ * and the draft is not rewritten. Leaving one out would change what the parent
+ * understands is true now.
+ *
+ * Design tip: only `pendingClosed` on `discoverability_off`. `backOn` is ungated.
  */
 export const INTRO_MUST_CONVEY: Partial<Record<IntroReplySituation, readonly string[]>> = {
   discoverability_off: ['pendingClosed'],
