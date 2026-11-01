@@ -109,6 +109,9 @@ describe('find_activities', () => {
     await expect(call(tool, { subject: 'story time', area: '42 Wallace St' })).rejects.toThrow(
       /place/,
     );
+    await expect(call(tool, { subject: 'story time', area: 'Wallace St' })).rejects.toThrow(
+      /place/,
+    );
     expect(seen).toHaveLength(0);
   });
 

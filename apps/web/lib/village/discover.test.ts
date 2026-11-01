@@ -107,6 +107,21 @@ describe('live recommendations without a catalog', () => {
     expect(found.reason).toBe('area_unusable');
   });
 
+  it('does not search home when the named place is an unnumbered street', async () => {
+    const familyId = await family(36, 'Burlington');
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: 'L7M', province: 'ON', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    const found = await findFamilyActivities(db.database, familyId, {
+      finder: { find },
+      area: 'Wallace St',
+    });
+    expect(find).not.toHaveBeenCalled();
+    expect(found.reason).toBe('area_unusable');
+  });
+
   it('keeps main’s no-area boundary for an unmapped city', async () => {
     const familyId = await family(36, 'Victoria');
     await db.database

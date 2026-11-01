@@ -169,6 +169,54 @@ function gateFreeText(
  */
 const PLACE_NAME = /^\p{L}[\p{L}\p{M}\s'’.-]{1,59}$/u;
 
+/**
+ * Street-type suffixes Hale already treats as a street. The medical residual scrub
+ * (numbered form, unambiguous tier plus the ordinary-word tier) and the Langfuse
+ * address mask (`Terr`) are the lists; there is no shared detector function, and
+ * both patterns require a house number, which is why "Wallace St" crossed. On
+ * `area` the whole string is the place, so a final token in this set is a street.
+ * A saint abbreviation stays in front ("St. Catharines"), so the city still passes.
+ */
+const STREET_TYPE = new Set([
+  'st',
+  'street',
+  'ave',
+  'avenue',
+  'rd',
+  'road',
+  'blvd',
+  'boulevard',
+  'cres',
+  'crescent',
+  'hwy',
+  'highway',
+  'pkwy',
+  'parkway',
+  'sideroad',
+  'concession',
+  'dr',
+  'drive',
+  'ct',
+  'court',
+  'ln',
+  'lane',
+  'way',
+  'pl',
+  'place',
+  'terrace',
+  'terr',
+  'trail',
+  'cir',
+  'circle',
+  'sq',
+  'square',
+]);
+
+function isStreetShaped(value: string): boolean {
+  const last = value.split(' ').at(-1)?.replace(/\.+$/, '') ?? '';
+  return STREET_TYPE.has(last.toLowerCase());
+}
+
 /** The place the parent named, or null when they did not. A blank is "not named".
  * A street, a postal code, or a household name is a refusal — never a silent return
  * to the home town, which is the bug this argument exists to close. */
@@ -187,6 +235,7 @@ function alternateTown(
     const named = !gated.ok && gated.refusal === 'names_a_person';
     return { ok: false, refusal: named ? 'area_names_a_person' : 'area_unusable' };
   }
+  if (isStreetShaped(gated.value)) return { ok: false, refusal: 'area_unusable' };
   return { ok: true, town: gated.value };
 }
 

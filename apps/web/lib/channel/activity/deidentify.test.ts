@@ -246,6 +246,21 @@ describe('the shape of what may be sent', () => {
     expect(refusalSentence('area_unusable')).not.toMatch(/Wallace|L7G|L6H/);
   });
 
+  it('refuses an unnumbered street and still accepts a town, including St. Catharines', () => {
+    for (const area of ['Wallace St', 'Bayview Drive', 'Main Street', 'Kingston Rd']) {
+      expect(deidentifyActivityQuery({ ...base, subject: 'story time', area })).toEqual({
+        ok: false,
+        refusal: 'area_unusable',
+      });
+    }
+    for (const area of ['Oakville', 'Kingston', 'St. Catharines']) {
+      expect(deidentifyActivityQuery({ ...base, subject: 'story time', area })).toMatchObject({
+        ok: true,
+        query: { town: area },
+      });
+    }
+  });
+
   it('refuses a place that names someone in the household', () => {
     expect(deidentifyActivityQuery({ ...base, subject: 'story time', area: 'Noah' })).toEqual({
       ok: false,
