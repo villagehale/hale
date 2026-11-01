@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { ChannelDraftPort } from '~/lib/channel/coach/draft';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
 
@@ -150,6 +150,27 @@ export async function groupPlanActionIds(
         eq(schema.auditLog.targetTable, 'actions'),
         eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
         sql`${schema.auditLog.after}->>'chatId' = ${input.chatId}`,
+      ),
+    );
+  return new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])));
+}
+
+/** Which of these actions a family group chat turn drafted, in any chat. */
+export async function groupDraftedActionIds(
+  database: Database,
+  familyId: string,
+  actionIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (actionIds.length === 0) return new Set();
+  const rows = await database
+    .select({ targetId: schema.auditLog.targetId })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.targetTable, 'actions'),
+        eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
+        inArray(schema.auditLog.targetId, [...actionIds]),
       ),
     );
   return new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])));

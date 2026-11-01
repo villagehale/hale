@@ -346,7 +346,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
     );
   });
 
-  it('hides every unapproved draft of the occasion, including a private one and a group one', async () => {
+  it('declines every private draft of the occasion and leaves the group-drafted one to the group', async () => {
     const startsAt = '2026-10-31T19:00:00.000Z';
     const reader = createOpenQuestionReader({
       pendingApprovals: async () => [
@@ -357,10 +357,17 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           occasion: { title: 'Gymnastics', startsAt },
         },
         {
-          actionId: 'group',
+          actionId: 'private-2',
           actionType: 'calendar_add',
           reviewerApproved: false,
           occasion: { title: 'Gymnastics', startsAt: '2026-10-31T19:01:00.000Z' },
+        },
+        {
+          actionId: 'group',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Gymnastics', startsAt },
+          groupPlan: true,
         },
       ],
       introOptInOpen: async () => false,
@@ -396,10 +403,12 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       now: T1,
     });
 
-    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(questions.filter((question) => question.kind === 'approval').map((q) => q.id)).toEqual([
+      'group',
+    ]);
     expect(questions.find((question) => question.id === 'offer-1')?.declinesActionIds).toEqual([
       'private',
-      'group',
+      'private-2',
     ]);
     expect(
       questions.find((question) => question.id === 'offer-1')?.approvesActionId,

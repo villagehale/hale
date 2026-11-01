@@ -932,8 +932,8 @@ export function createOpenQuestionReader(
       // the same add again.
       //
       // VIL-525. Every unapproved draft of that same occasion (a close clock, not
-      // merely the same day) is hidden. A private draft and a group draft of one
-      // start are both that ask. A NO declines all of them. A YES does not approve
+      // merely the same day) is hidden. Only private drafts: a group-drafted add of
+      // the same start is the group's own plan. A NO declines every private one. A YES does not approve
       // any of them: they are not `approvesActionId`.
       //
       // Only on the thread where the offer was made. A group-plan draft with the same
@@ -941,10 +941,13 @@ export function createOpenQuestionReader(
       const approvesByOffer = new Map<string, string>();
       const declinesByOffer = new Map<string, readonly string[]>();
       const hiddenDrafts = new Set<string>();
+      // A private offer never pairs with a group-drafted add (VIL-525): that draft is
+      // the group's question, answered in the group.
+      const privateApprovals = approvals.filter((action) => !action.groupPlan);
       if (input.surface !== 'group') {
         for (const offer of emailOffers) {
           if (!offer.title || !offer.startsAt) continue;
-          const match = matchApprovedCalendarAdd(approvals, {
+          const match = matchApprovedCalendarAdd(privateApprovals, {
             title: offer.title,
             startsAt: offer.startsAt,
           });
@@ -953,7 +956,7 @@ export function createOpenQuestionReader(
             approvesByOffer.set(offer.id, match.actionId);
           }
           const unapprovedIds = unapprovedCalendarAddIds(
-            approvals.map((action) => ({
+            privateApprovals.map((action) => ({
               id: action.actionId,
               actionType: action.actionType,
               reviewerApproved: action.reviewerApproved,
