@@ -10,6 +10,10 @@ import type { SaidLineFact } from './said-line';
  * `omit` means at least one meaning is absent, so the parent is sent nothing.
  * The judge does not rewrite. `unjudged` is the same outcome under a named
  * fault (rule #11): the gate did not run, so the draft does not go out.
+ *
+ * Design tip: the lane is the skill's `triage` (Haiku), not `JUDGE_MODEL`.
+ * Whether a draft actually carries the meaning is the cached convey eval,
+ * not a scripted verdict.
  */
 export type ConveyGate =
   | { verdict: 'send' }

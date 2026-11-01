@@ -1,13 +1,14 @@
 import { readFileSync } from 'node:fs';
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, HAIKU_MODEL, JUDGE_MODEL, pickLane } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { type SaidLineInput, acceptSaidLine, createSaidLineWriter } from './said-line';
+import { type SaidLineInput, createSaidLineWriter } from './said-line';
 import { judgeSaidLineConvey, saidLineConveyUserMessage } from './said-line-convey';
 
 /**
- * Mechanics of the mustConvey gate (VIL-530). Whether a real model reads the
- * meaning is a cached eval. This client never leaves the process.
+ * Transport of the mustConvey gate (VIL-530). This client returns the verdict
+ * the test hands it. It does not read meaning. Whether a draft carries
+ * pendingClosed is the cached-only convey eval (run-said-line-convey-eval.mjs).
  */
 
 /** The production pendingClosed fact. reply.test.ts pins this string to reply.ts. */
@@ -25,6 +26,7 @@ const off: SaidLineInput = {
   mustConvey: ['pendingClosed'],
 };
 
+/** Returns the verdict it is given. It does not decide whether a meaning is present. */
 function scriptedClient(decide: (user: string) => unknown) {
   const seen: string[] = [];
   const client = {
@@ -47,8 +49,8 @@ function isJudgeTurn(user: string): boolean {
   return user.includes('"draft"');
 }
 
-describe('judgeSaidLineConvey', () => {
-  it('sends when the judge says every meaning is carried, and does not rewrite', async () => {
+describe('judgeSaidLineConvey transport', () => {
+  it('maps a transport yes onto send and does not rewrite the draft', async () => {
     const draft = '紹介はオフにしました。待っていたものは、全部閉じました。';
     const seen: { user?: string; required?: string[] }[] = [];
     const gate = await judgeSaidLineConvey(
@@ -87,7 +89,7 @@ describe('judgeSaidLineConvey', () => {
     expect(seen[0]?.user).not.toContain('わかりました');
   });
 
-  it('omits when a required meaning is absent, with no replacement text', async () => {
+  it('maps a transport no onto omit and returns no replacement text', async () => {
     const gate = await judgeSaidLineConvey(
       () =>
         ({
@@ -150,6 +152,8 @@ describe('judgeSaidLineConvey', () => {
     const skill = await loadCronSkill('said-line-convey-judge');
     const prose = skill.instructions.replace(/\s+/g, ' ');
     expect(skill.meta.task).toBe('triage');
+    expect(pickLane(skill.meta.task).model).toBe(HAIKU_MODEL);
+    expect(pickLane(skill.meta.task).model).not.toBe(JUDGE_MODEL);
     expect(skill.meta.tools).toEqual([]);
     expect(prose).toContain('do not rewrite');
     expect(prose).toContain('whatever language');
@@ -171,11 +175,11 @@ describe('the convey module does not search the draft', () => {
   });
 });
 
-describe('createSaidLineWriter · intro off (VIL-530)', () => {
+describe('createSaidLineWriter · convey transport (VIL-530)', () => {
   const conveys = '紹介はオフにしました。待っていたものは、全部閉じました。';
   const omits = 'わかりました。';
 
-  it('sends the model text unchanged when the judge says the meaning is there', async () => {
+  it('returns the draft unchanged when the transport says send', async () => {
     const { client, seen } = scriptedClient((user) =>
       isJudgeTurn(user) ? { reason: 'waiting ones ended', conveyed: 'yes' } : { text: conveys },
     );
@@ -186,10 +190,9 @@ describe('createSaidLineWriter · intro off (VIL-530)', () => {
     expect(judge).toBe(
       saidLineConveyUserMessage(conveys, [{ key: 'pendingClosed', meaning: PENDING }]),
     );
-    expect(acceptSaidLine(omits, off)).toBe(omits);
   });
 
-  it('sends nothing when the draft omits the meaning, and does not rewrite it', async () => {
+  it('sends nothing when the transport says no, and does not replace the draft', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { client } = scriptedClient((user) =>
       isJudgeTurn(user) ? { reason: 'acknowledgement only', conveyed: 'no' } : { text: omits },

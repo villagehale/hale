@@ -441,6 +441,8 @@ export const INTRO_REPLY_FACTS: Record<IntroReplySituation, Record<string, strin
  * draft for that meaning (VIL-530). No code matches wording. A miss sends nothing,
  * and the draft is not rewritten. Leaving one out would change what the parent
  * understands is true now.
+ *
+ * Design tip: only `pendingClosed` on `discoverability_off`. `backOn` is ungated.
  */
 export const INTRO_MUST_CONVEY: Partial<Record<IntroReplySituation, readonly string[]>> = {
   discoverability_off: ['pendingClosed'],

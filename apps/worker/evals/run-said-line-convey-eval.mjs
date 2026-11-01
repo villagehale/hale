@@ -10,7 +10,11 @@
 //   node evals/run-said-line-convey-eval.mjs --broken        # every draft omits; judge must omit
 //   node --env-file=../../.env evals/run-said-line-convey-eval.mjs --live   # PAID
 //
-// CI runs --dry only. There is no recording yet, and this file does not spend.
+// Meaning is this cached judge, not a scripted verdict. CI runs --cached-only as a
+// soft path until the Nov 1 ~9:05 ET paid re-record: there is no recording yet, a
+// miss fails this process, and the workflow marks that step continue-on-error.
+// Do not delete the judge to keep the step green. --dry stays a hard $0 check of
+// the request. This file does not spend.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

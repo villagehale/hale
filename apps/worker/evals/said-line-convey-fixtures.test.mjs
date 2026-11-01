@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   ACK_ONLY,
@@ -36,6 +37,17 @@ describe('said-line convey fixtures (VIL-530)', () => {
     expect(unrelated?.expect).toBe('omit');
     expect(unrelated?.draft.toLowerCase().includes('closed')).toBe(true);
     expect(unrelated?.draft.includes(FACT)).toBe(false);
+  });
+
+  it('grades those expects with the cached real judge, not a scripted verdict', () => {
+    const runner = readFileSync(
+      new URL('./run-said-line-convey-eval.mjs', import.meta.url),
+      'utf8',
+    );
+    expect(runner).toContain('cachedToolCall');
+    expect(runner).toContain('grade(judged.value?.conveyed, expected)');
+    expect(runner).not.toContain('scriptedClient');
+    expect(runner).not.toMatch(/conveyed:\s*'yes'/);
   });
 
   it('puts the fact meaning in the judge payload, not a phrase to find in the draft', () => {
