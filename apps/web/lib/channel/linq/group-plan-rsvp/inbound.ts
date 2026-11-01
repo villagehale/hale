@@ -4,6 +4,11 @@ import { linqGroupPlanRsvpEnabled, linqGroupPollsEnabled, linqPollsEnabled } fro
 import { sendChoicePoll } from '../poll';
 import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
+import {
+  postgresGroupPlanCalendarWriter,
+  postgresGroupPlanHouseholds,
+  sharedCalendarConsentReader,
+} from './calendar';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
 import {
   GROUP_POLL_CHOICE_KIND,
@@ -13,7 +18,13 @@ import {
   takeGroupPollCardVote,
 } from './poll-turn';
 import type { GroupPlanRsvpReader } from './reading';
-import { GROUP_PLAN_RSVP_TEMPLATE, GROUP_POLL_TEMPLATE, sendGroupPlanRsvpLine } from './send';
+import {
+  GROUP_PLAN_CALENDAR_ASK_TEMPLATE,
+  GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE,
+  GROUP_PLAN_RSVP_TEMPLATE,
+  GROUP_POLL_TEMPLATE,
+  sendGroupPlanRsvpLine,
+} from './send';
 import { createPostgresGroupPlanRsvpStore } from './store';
 import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
 import type { GroupPlanRsvpComposer } from './voice';
@@ -37,14 +48,25 @@ async function senderNameOf(database: Database, userId: string | null): Promise<
   return row?.name?.trim().split(/\s+/)[0] || null;
 }
 
+function templateFor(kind: 'plan' | 'poll' | 'calendar_ask' | 'calendar_written' | undefined) {
+  if (kind === 'poll') return GROUP_POLL_TEMPLATE;
+  if (kind === 'calendar_ask') return GROUP_PLAN_CALENDAR_ASK_TEMPLATE;
+  if (kind === 'calendar_written') return GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE;
+  return GROUP_PLAN_RSVP_TEMPLATE;
+}
+
 function ledgeredSend(ports: GroupPlanRsvpInboundPorts) {
-  return (line: { chatId: string; text: string; kind?: 'plan' | 'poll' }) =>
+  return (line: {
+    chatId: string;
+    text: string;
+    kind?: 'plan' | 'poll' | 'calendar_ask' | 'calendar_written';
+  }) =>
     ports.send
       ? ports.send({ chatId: line.chatId, text: line.text })
       : sendGroupPlanRsvpLine(ports.database, {
           chatId: line.chatId,
           text: line.text,
-          templateKey: line.kind === 'poll' ? GROUP_POLL_TEMPLATE : GROUP_PLAN_RSVP_TEMPLATE,
+          templateKey: templateFor(line.kind),
           now: ports.now,
         });
 }
@@ -116,6 +138,7 @@ export async function considerGroupPlanRsvp(
       chatId: input.chatId,
       senderHandle: input.senderHandle,
       senderName: await senderNameOf(ports.database, input.senderUserId ?? null),
+      senderUserId: input.senderUserId ?? null,
       text: input.text,
       tapback: input.tapback,
       language: 'en',
@@ -127,6 +150,9 @@ export async function considerGroupPlanRsvp(
       composer: ports.composer,
       send: ledgeredSend(ports),
       pollCard: ports.pollCard ?? postgresGroupPollCard(ports.database),
+      households: postgresGroupPlanHouseholds(ports.database),
+      calendar: postgresGroupPlanCalendarWriter(ports.database),
+      consentReader: sharedCalendarConsentReader(),
     },
   );
 }

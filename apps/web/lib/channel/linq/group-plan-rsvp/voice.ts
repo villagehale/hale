@@ -4,6 +4,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { GroupPlanCalendarLineInput } from './calendar';
 import type { GroupPlanRsvpLineInput } from './facts';
 import type { GroupPollLineInput } from './poll-facts';
 
@@ -23,7 +24,10 @@ export type GroupPlanRsvpVoiceSkip =
   | 'model_failed'
   | 'unusable';
 
-export type GroupLineInput = GroupPlanRsvpLineInput | GroupPollLineInput;
+export type GroupLineInput =
+  | GroupPlanRsvpLineInput
+  | GroupPollLineInput
+  | GroupPlanCalendarLineInput;
 
 export interface GroupPlanRsvpComposer {
   compose(

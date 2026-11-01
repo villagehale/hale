@@ -135,6 +135,17 @@ export function linqGroupPlanRsvpEnabled(): boolean {
 }
 
 /**
+ * VIL-503 — after a household says yes to a tracked plan, Hale may ask before
+ * writing that household's calendar. Exactly `true` enables it. Unset, empty,
+ * `on`, and `false` stay dark. Default off. Dark leaves the RSVP tally as it
+ * was: no ask, no calendar copy. The plan RSVP flag still has to be on for a
+ * plan to exist.
+ */
+export function linqGroupPlanRsvpCalendarEnabled(): boolean {
+  return trimmed('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED') === 'true';
+}
+
+/**
  * VIL-471 — parent-made polls in a Linq group, read in the same group turn as
  * plan RSVPs. Exactly `true` enables it. Unset, empty, `on`, and `false` stay
  * dark. Default off. The native poll card additionally needs LINQ_POLLS.

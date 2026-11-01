@@ -3,6 +3,9 @@ import type { GroupPollRecord, GroupPollStore, NativeCardOption } from './poll-s
 import { pollOptionsFrom, withCardIds } from './poll-store';
 import { tallyGroupPoll } from './poll-tally';
 import type {
+  CalendarConsentRow,
+  CalendarConsentStatus,
+  ClaimCalendarAskInput,
   CreatePlanInput,
   ExpectedPerson,
   GroupPlanRecord,
@@ -59,6 +62,8 @@ export interface MemoryGroupPlanWorld {
   polls: Map<string, MemoryPoll>;
   /** Native poll cards Hale sent, keyed by Linq's poll message id. */
   cards: Map<string, NativeCardOption[]>;
+  /** Calendar consent rows, keyed by plan id + family id. */
+  consents: Map<string, CalendarConsentRow>;
   audits: { actionTaken: string; after: Record<string, unknown> }[];
 }
 
@@ -69,8 +74,13 @@ export function createMemoryWorld(): MemoryGroupPlanWorld {
     plans: new Map(),
     polls: new Map(),
     cards: new Map(),
+    consents: new Map(),
     audits: [],
   };
+}
+
+function consentKey(planId: string, familyId: string): string {
+  return `${planId}:${familyId}`;
 }
 
 function copyPoll(poll: MemoryPoll): GroupPollRecord {
@@ -310,6 +320,60 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         });
       }
       return due;
+    },
+
+    async loadCalendarConsent(planId, familyId) {
+      return world.consents.get(consentKey(planId, familyId)) ?? null;
+    },
+
+    async claimCalendarAsk(input: ClaimCalendarAskInput) {
+      const key = consentKey(input.planId, input.familyId);
+      if (world.consents.has(key)) return false;
+      const row: CalendarConsentRow = {
+        planId: input.planId,
+        familyId: input.familyId,
+        memberKey: input.memberKey,
+        displayName: input.displayName,
+        householdLabel: input.householdLabel,
+        status: 'asked' satisfies CalendarConsentStatus,
+        familyEventId: null,
+      };
+      world.consents.set(key, row);
+      return true;
+    },
+
+    async releaseCalendarAsk(planId, familyId) {
+      const key = consentKey(planId, familyId);
+      const row = world.consents.get(key);
+      if (row?.status === 'asked') world.consents.delete(key);
+    },
+
+    async noteCalendarAsked(input) {
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_asked',
+        after: { familyId: input.familyId },
+      });
+    },
+
+    async markCalendarDeclined(input) {
+      const row = world.consents.get(consentKey(input.planId, input.familyId));
+      if (row?.status === 'asked') row.status = 'declined';
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_declined',
+        after: { familyId: input.familyId },
+      });
+    },
+
+    async markCalendarWritten(input) {
+      const row = world.consents.get(consentKey(input.planId, input.familyId));
+      if (row) {
+        row.status = 'written';
+        row.familyEventId = input.familyEventId;
+      }
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_written',
+        after: { familyId: input.familyId, familyEventId: input.familyEventId },
+      });
     },
   };
 }

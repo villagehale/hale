@@ -15,6 +15,8 @@ import { LinqSendError } from '../transport';
 export const GROUP_PLAN_RSVP_TEMPLATE = 'linq:group_plan_rsvp';
 export const GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE = 'linq:group_plan_rsvp_followup';
 export const GROUP_POLL_TEMPLATE = 'linq:group_poll';
+export const GROUP_PLAN_CALENDAR_ASK_TEMPLATE = 'linq:group_plan_calendar_ask';
+export const GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE = 'linq:group_plan_calendar_written';
 
 export async function sendGroupPlanRsvpLine(
   database: Database,
@@ -24,7 +26,9 @@ export async function sendGroupPlanRsvpLine(
     templateKey:
       | typeof GROUP_PLAN_RSVP_TEMPLATE
       | typeof GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE
-      | typeof GROUP_POLL_TEMPLATE;
+      | typeof GROUP_POLL_TEMPLATE
+      | typeof GROUP_PLAN_CALENDAR_ASK_TEMPLATE
+      | typeof GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE;
     now: Date;
   },
 ): Promise<{ providerMessageId: string }> {

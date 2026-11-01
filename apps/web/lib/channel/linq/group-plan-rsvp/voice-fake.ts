@@ -11,6 +11,10 @@ export interface FakeGroupPlanRsvpComposer extends GroupPlanRsvpComposer {
 }
 
 function factsLine(input: GroupLineInput): string {
+  if (input.skill === 'group-plan-rsvp-calendar-voice') {
+    const facts = input.facts;
+    return `${input.kind} ${facts.title} ${facts.displayName} ${facts.startsAt ?? ''}`;
+  }
   if (input.skill === 'group-poll-voice') {
     const facts = input.facts;
     const counts = facts.options.map((option) => `${option.text}=${option.votes}`).join(' ');

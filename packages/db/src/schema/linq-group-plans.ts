@@ -10,6 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { families } from './families.js';
+import { familyEvents } from './family-events.js';
 import { users } from './users.js';
 
 /**
@@ -169,6 +170,49 @@ export const linqGroupPlanFollowups = pgTable(
   }),
 );
 
+/**
+ * VIL-503 — consent before a group plan is copied onto one household's calendar.
+ *
+ * One row per (plan, family). `asked` is the open OK. `declined` keeps the
+ * calendar untouched. `written` names the family_events copy for that family
+ * only. Another household is a different row and is not updated here.
+ */
+export const linqGroupPlanCalendarConsents = pgTable(
+  'linq_group_plan_calendar_consents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    planId: uuid('plan_id')
+      .notNull()
+      .references(() => linqGroupPlans.id, { onDelete: 'cascade' }),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    memberKey: text('member_key').notNull(),
+    displayName: text('display_name').notNull(),
+    householdLabel: text('household_label'),
+    status: text('status').notNull(),
+    familyEventId: uuid('family_event_id').references(() => familyEvents.id, {
+      onDelete: 'set null',
+    }),
+    askedAt: timestamp('asked_at', { withTimezone: true }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    statusCheck: check(
+      'linq_group_plan_calendar_consents_status_check',
+      sql`${table.status} in ('asked', 'declined', 'written')`,
+    ),
+    planFamilyUniq: uniqueIndex('linq_group_plan_calendar_consents_plan_family_uniq').on(
+      table.planId,
+      table.familyId,
+    ),
+    familyIdx: index('linq_group_plan_calendar_consents_family_idx').on(table.familyId),
+  }),
+);
+
+export type LinqGroupPlanCalendarConsent = typeof linqGroupPlanCalendarConsents.$inferSelect;
 export type LinqGroupPlan = typeof linqGroupPlans.$inferSelect;
 export type NewLinqGroupPlan = typeof linqGroupPlans.$inferInsert;
 export type LinqGroupPlanRsvp = typeof linqGroupPlanRsvps.$inferSelect;

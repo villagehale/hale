@@ -56,6 +56,27 @@ export interface CreatePlanInput {
   now: Date;
 }
 
+export type CalendarConsentStatus = 'asked' | 'declined' | 'written';
+
+export interface CalendarConsentRow {
+  planId: string;
+  familyId: string;
+  memberKey: string;
+  displayName: string;
+  householdLabel: string | null;
+  status: CalendarConsentStatus;
+  familyEventId: string | null;
+}
+
+export interface ClaimCalendarAskInput {
+  planId: string;
+  familyId: string;
+  memberKey: string;
+  displayName: string;
+  householdLabel: string | null;
+  now: Date;
+}
+
 export interface GroupPlanRsvpStore extends GroupPollStore {
   coveringFamily(chatId: string): Promise<{ familyId: string; timeZone: string } | null>;
   loadLivePlan(chatId: string): Promise<GroupPlanRecord | null>;
@@ -72,6 +93,29 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   listDueFollowups(
     now: Date,
   ): Promise<{ plan: GroupPlanRecord; timeZone: string; waitingNames: string[] }[]>;
+  loadCalendarConsent(planId: string, familyId: string): Promise<CalendarConsentRow | null>;
+  /** Inserts `asked`. False when this household already has a row for the plan. */
+  claimCalendarAsk(input: ClaimCalendarAskInput): Promise<boolean>;
+  /** Drops an unanswered ask so a failed send can be tried again. */
+  releaseCalendarAsk(planId: string, familyId: string): Promise<void>;
+  noteCalendarAsked(input: {
+    planId: string;
+    familyId: string;
+    actorUserId: string | null;
+  }): Promise<void>;
+  markCalendarDeclined(input: {
+    planId: string;
+    familyId: string;
+    actorUserId: string | null;
+    now: Date;
+  }): Promise<void>;
+  markCalendarWritten(input: {
+    planId: string;
+    familyId: string;
+    familyEventId: string;
+    actorUserId: string | null;
+    now: Date;
+  }): Promise<void>;
 }
 
 function flag(value: boolean): 'true' | 'false' {
@@ -449,6 +493,122 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         });
       }
       return due;
+    },
+
+    async loadCalendarConsent(planId, familyId) {
+      const [row] = await database
+        .select()
+        .from(schema.linqGroupPlanCalendarConsents)
+        .where(
+          and(
+            eq(schema.linqGroupPlanCalendarConsents.planId, planId),
+            eq(schema.linqGroupPlanCalendarConsents.familyId, familyId),
+          ),
+        )
+        .limit(1);
+      if (!row || row.familyId !== familyId) return null;
+      return {
+        planId: row.planId,
+        familyId: row.familyId,
+        memberKey: row.memberKey,
+        displayName: row.displayName,
+        householdLabel: row.householdLabel,
+        status: row.status as CalendarConsentStatus,
+        familyEventId: row.familyEventId,
+      };
+    },
+
+    async claimCalendarAsk(input) {
+      const inserted = await database
+        .insert(schema.linqGroupPlanCalendarConsents)
+        .values({
+          planId: input.planId,
+          familyId: input.familyId,
+          memberKey: input.memberKey,
+          displayName: input.displayName,
+          householdLabel: input.householdLabel,
+          status: 'asked',
+          askedAt: input.now,
+          createdAt: input.now,
+          updatedAt: input.now,
+        })
+        .onConflictDoNothing({
+          target: [
+            schema.linqGroupPlanCalendarConsents.planId,
+            schema.linqGroupPlanCalendarConsents.familyId,
+          ],
+        })
+        .returning({ id: schema.linqGroupPlanCalendarConsents.id });
+      return inserted.length > 0;
+    },
+
+    async releaseCalendarAsk(planId, familyId) {
+      await database
+        .delete(schema.linqGroupPlanCalendarConsents)
+        .where(
+          and(
+            eq(schema.linqGroupPlanCalendarConsents.planId, planId),
+            eq(schema.linqGroupPlanCalendarConsents.familyId, familyId),
+            eq(schema.linqGroupPlanCalendarConsents.status, 'asked'),
+          ),
+        );
+    },
+
+    async noteCalendarAsked(input) {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.actorUserId ?? 'system',
+        actionTaken: 'linq_group_plan_calendar_asked',
+        targetTable: 'linq_group_plan_calendar_consents',
+        targetId: input.planId,
+        after: { familyId: input.familyId },
+      });
+    },
+
+    async markCalendarDeclined(input) {
+      await database
+        .update(schema.linqGroupPlanCalendarConsents)
+        .set({ status: 'declined', decidedAt: input.now, updatedAt: input.now })
+        .where(
+          and(
+            eq(schema.linqGroupPlanCalendarConsents.planId, input.planId),
+            eq(schema.linqGroupPlanCalendarConsents.familyId, input.familyId),
+            eq(schema.linqGroupPlanCalendarConsents.status, 'asked'),
+          ),
+        );
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.actorUserId ?? 'system',
+        actionTaken: 'linq_group_plan_calendar_declined',
+        targetTable: 'linq_group_plan_calendar_consents',
+        targetId: input.planId,
+        after: { familyId: input.familyId },
+      });
+    },
+
+    async markCalendarWritten(input) {
+      await database
+        .update(schema.linqGroupPlanCalendarConsents)
+        .set({
+          status: 'written',
+          familyEventId: input.familyEventId,
+          decidedAt: input.now,
+          updatedAt: input.now,
+        })
+        .where(
+          and(
+            eq(schema.linqGroupPlanCalendarConsents.planId, input.planId),
+            eq(schema.linqGroupPlanCalendarConsents.familyId, input.familyId),
+          ),
+        );
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.actorUserId ?? 'system',
+        actionTaken: 'linq_group_plan_calendar_written',
+        targetTable: 'family_events',
+        targetId: input.familyEventId,
+        after: { familyId: input.familyId },
+      });
     },
   };
 }

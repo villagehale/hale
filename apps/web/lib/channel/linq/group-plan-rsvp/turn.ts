@@ -1,6 +1,20 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { linqGroupPlanRsvpEnabled, linqGroupPollsEnabled } from '../config';
+import {
+  linqGroupPlanRsvpCalendarEnabled,
+  linqGroupPlanRsvpEnabled,
+  linqGroupPollsEnabled,
+} from '../config';
 import type { LinqTapback } from '../transport';
+import type {
+  CalendarConsentReader,
+  GroupPlanCalendarWriter,
+  GroupPlanHouseholdResolver,
+} from './calendar';
+import {
+  type CalendarEffect,
+  answerPendingCalendarAsk,
+  settleCalendarAfterAnswer,
+} from './calendar-turn';
 import { groupPlanRsvpLineInput } from './facts';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
 import type { GroupPollTally } from './poll-tally';
@@ -50,10 +64,14 @@ export type GroupPlanRsvpTurnOutcome =
         | 'group_poll_spoken'
         | 'group_poll_recorded'
         | 'group_poll_unread'
-        | 'group_poll_line_unsent';
+        | 'group_poll_line_unsent'
+        | 'group_plan_calendar_written'
+        | 'group_plan_calendar_declined'
+        | 'group_plan_calendar_unwritten';
       count: 'ignored' | 'intake';
       notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' };
       tally?: PlanTally;
+      calendar?: CalendarEffect;
       card?: 'sent' | { skipped: GroupPollCardSkip };
       pollTally?: GroupPollTally;
     };
@@ -69,7 +87,10 @@ export function groupPlanRsvpTakesTheTurn(
       outcome.outcome === 'group_plan_line_unsent' ||
       outcome.outcome === 'group_poll_spoken' ||
       outcome.outcome === 'group_poll_recorded' ||
-      outcome.outcome === 'group_poll_line_unsent')
+      outcome.outcome === 'group_poll_line_unsent' ||
+      outcome.outcome === 'group_plan_calendar_written' ||
+      outcome.outcome === 'group_plan_calendar_declined' ||
+      outcome.outcome === 'group_plan_calendar_unwritten')
   );
 }
 
@@ -79,6 +100,8 @@ export interface GroupPlanRsvpTurnInput {
   senderName: string | null;
   text: string;
   tapback: LinqTapback | null;
+  /** Verified Hale user for this handle, when inbound resolved one. */
+  senderUserId?: string | null;
   language: ReplyLanguage;
   now: Date;
 }
@@ -90,10 +113,15 @@ export interface GroupPlanRsvpTurnDeps {
   send: (input: {
     chatId: string;
     text: string;
-    kind?: 'plan' | 'poll';
+    kind?: 'plan' | 'poll' | 'calendar_ask' | 'calendar_written';
   }) => Promise<{ providerMessageId: string }>;
   /** Plan RSVPs (LINQ_GROUP_PLAN_RSVP_ENABLED). */
   enabled?: () => boolean;
+  /** Calendar copy after an OK (LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED). Default off. */
+  calendarEnabled?: () => boolean;
+  households?: GroupPlanHouseholdResolver;
+  calendar?: GroupPlanCalendarWriter;
+  consentReader?: CalendarConsentReader;
   /** Group polls (LINQ_GROUP_POLLS_ENABLED). */
   pollsEnabled?: () => boolean;
   /** The native poll card. Absent is named on the outcome (`no_card_port`), never silent. */
@@ -129,6 +157,53 @@ export async function takeGroupPlanRsvpTurn(
   const seated = await deps.store.seatedExpected(input.chatId);
   const liveTally = live ? await deps.store.loadTally(live.id) : null;
   const somethingLive = Boolean(live || livePoll);
+  const calendarOn = rsvpOn && (deps.calendarEnabled ?? linqGroupPlanRsvpCalendarEnabled)();
+  const senderKey =
+    memberKeyFromHandle(input.senderHandle) ??
+    memberKeyFromName(input.senderName ?? input.senderHandle);
+  const senderSeat = seated.find((person) => person.memberKey === senderKey);
+  const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
+  const calendarUserId = input.senderUserId ?? senderSeat?.userId ?? null;
+
+  if (calendarOn && live) {
+    const answered = await answerPendingCalendarAsk(
+      {
+        chatId: input.chatId,
+        plan: live,
+        userId: calendarUserId,
+        senderName: input.senderName,
+        text: input.text,
+        tapback: input.tapback,
+        language: input.language,
+        now: input.now,
+      },
+      {
+        store: deps.store,
+        households: deps.households,
+        calendar: deps.calendar,
+        consentReader: deps.consentReader,
+        composer: deps.composer,
+        send: deps.send,
+      },
+    );
+    if (answered.consumed) {
+      const tally = (await deps.store.loadTally(live.id)).tally;
+      const outcome =
+        answered.kind === 'written'
+          ? 'group_plan_calendar_written'
+          : answered.kind === 'declined'
+            ? 'group_plan_calendar_declined'
+            : 'group_plan_calendar_unwritten';
+      return {
+        handled: true,
+        outcome,
+        count: answered.notice === 'sent' ? 'intake' : 'ignored',
+        ...(answered.notice ? { notice: answered.notice } : {}),
+        tally,
+        calendar: answered.effect,
+      };
+    }
+  }
 
   const reading = await reader.read({
     text: input.text,
@@ -159,12 +234,6 @@ export async function takeGroupPlanRsvpTurn(
     if (!somethingLive) return { handled: false };
     return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
   }
-
-  const senderKey =
-    memberKeyFromHandle(input.senderHandle) ??
-    memberKeyFromName(input.senderName ?? input.senderHandle);
-  const senderSeat = seated.find((person) => person.memberKey === senderKey);
-  const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
 
   if (isGroupPollIntent(reading.intent)) {
     if (!pollsOn) {
@@ -260,9 +329,40 @@ export async function takeGroupPlanRsvpTurn(
     after,
     householdAnswer,
   });
+  const calendar =
+    calendarOn && (reading.intent === 'rsvp' || reading.intent === 'edit') && reading.response
+      ? await settleCalendarAfterAnswer(
+          {
+            chatId: input.chatId,
+            plan,
+            userId: calendarUserId,
+            memberKey: senderKey,
+            displayName,
+            householdLabel: reading.householdLabel,
+            response: reading.response,
+            language: input.language,
+            now: input.now,
+          },
+          {
+            store: deps.store,
+            households: deps.households,
+            calendar: deps.calendar,
+            consentReader: deps.consentReader,
+            composer: deps.composer,
+            send: deps.send,
+          },
+        )
+      : undefined;
+  const calendarField = calendar ? { calendar } : {};
 
   if (!speak) {
-    return { handled: true, outcome: 'group_plan_recorded', count: 'ignored', tally: after };
+    return {
+      handled: true,
+      outcome: 'group_plan_recorded',
+      count: 'ignored',
+      tally: after,
+      ...calendarField,
+    };
   }
 
   const kind = reading.intent === 'start_tracking' ? 'tracking_started' : 'tally';
@@ -287,6 +387,7 @@ export async function takeGroupPlanRsvpTurn(
       count: 'ignored',
       notice: { skipped: spoken.reason },
       tally: after,
+      ...calendarField,
     };
   }
 
@@ -303,6 +404,7 @@ export async function takeGroupPlanRsvpTurn(
       count: 'ignored',
       notice: { skipped: 'not_sent' },
       tally: after,
+      ...calendarField,
     };
   }
 
@@ -312,5 +414,6 @@ export async function takeGroupPlanRsvpTurn(
     count: 'intake',
     notice: 'sent',
     tally: after,
+    ...calendarField,
   };
 }
