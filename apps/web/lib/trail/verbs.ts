@@ -1088,12 +1088,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale texted you about a change on your calendar',
     family: 'done',
   },
-  // VIL-527. A calendar change Hale was still holding a text for when the fixed-copy
-  // path was retired. Nothing went out; the row just closes the held item.
-  calendar_alert_debt_retired: {
-    sentence: 'Hale dropped a calendar text it was holding and never sent it',
-    family: 'note',
-  },
+  // VIL-527 · internal-only (Design lock, same as VIL-478): no parent-facing copy.
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS; the neutral token below is never rendered.
+  calendar_alert_debt_retired: { sentence: 'recorded an update', family: 'neutral' },
   // Copied from a calendar the parent connected, so reminders can fire without a
   // separate YES. 'note': Hale did not create the occasion, it wrote down one that
   // was already on the calendar. The row's `after` is `{ source: 'parent' }` only —
@@ -1986,6 +1983,7 @@ export const INTERNAL_TRAIL_VERBS = [
   'autonomy_notice_cover_released',
   'group_plan.drafted',
   'group_plan.report_released',
+  'calendar_alert_debt_retired',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {
