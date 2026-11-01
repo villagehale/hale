@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text is in English, but the parent texts in Chinese, so it fails the language rule. It also names another family (the Patels) and says they said no, which breaks the privacy rule. It tells the parent to type \"YES INTROS\", a word to type, which breaks the safety rule. It adds an apology no fact gives and a Friday Nov 3 retry date no fact states."
+  }
+}

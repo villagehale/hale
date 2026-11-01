@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Fails on privacy: names another family (Patel) and says they declined, which is exactly what the otherFamily fact forbids. It also invents facts: a Friday Nov 3 date, a \"reply YES INTROS\" instruction (tells the parent a word to type, violating the safety rule), and an apology no fact gives. It does not say the situation (already said yes, nothing changed) or that Hale will say if it goes ahead."
+  }
+}

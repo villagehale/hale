@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correct language, states only the given situation and next step in a friendly tone, no other-family hints, no word to type, no invented facts. Minor issue: \"I won't bring them up again\" is Hale's own promise, but facts.next gives it, so it is allowed. Slight deduction because \"Got it\" plus \"Nothing has changed on your side\" is a bit terse but still warm enough."
+  }
+}

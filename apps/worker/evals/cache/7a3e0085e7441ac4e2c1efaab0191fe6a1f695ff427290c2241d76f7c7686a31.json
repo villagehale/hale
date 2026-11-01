@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Japanese, correct language. Facts: introductions switched off, pending ones closed, Hale won't raise it again. The reply omits that introductions are now switched off and pending ones closed, which the facts give. \"わかりました\" and the \"I'll\" promise match facts.next, so no penalty there. Tone is friendly enough. Omitting the closed-pending-introductions fact is a facts failure, so it lands at a mid score."
+  }
+}

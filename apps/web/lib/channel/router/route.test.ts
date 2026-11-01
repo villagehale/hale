@@ -35,11 +35,10 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
-  DISCOVERABILITY_ALREADY_ON,
-  DISCOVERABILITY_OFF,
-  DISCOVERABILITY_ON,
-} from '~/lib/village/intros/copy';
-import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
+  INTRO_REPLY_FACTS,
+  type IntroReplySituation,
+  type VillageIntroReplyDeps,
+} from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
 import type {
@@ -3103,6 +3102,9 @@ describe('the 09:47 sequence', () => {
   };
 
   /** The real lane, over spies. `standing` is what the ledger already holds. */
+  const line = (situation: IntroReplySituation) =>
+    `model:${INTRO_REPLY_FACTS[situation].situation}`;
+
   function introChain(standing: 'unanswered' | 'granted') {
     const written: boolean[] = [];
     const deps: VillageIntroReplyDeps = {
@@ -3121,6 +3123,8 @@ describe('the 09:47 sequence', () => {
       answerableProposal: async () => null,
       recordDecision: async () => {},
       cancelOpenProposals: async () => {},
+      // Stands in for the model (said-line): never a paid call.
+      saidLine: { write: async (input) => `model:${String(input.facts.situation)}` },
     };
     return { written, handlers: [villageIntroHandler(deps)] };
   }
@@ -3147,7 +3151,7 @@ describe('the 09:47 sequence', () => {
     expect(result.status).toBe('resolved');
     expect(chain.written).toEqual([true]);
     // ONE message. What happened live was a coach turn about a stale calendar draft.
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ON]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_on')]);
     expect(coach.calls).toBe(0);
   });
 
@@ -3166,9 +3170,9 @@ describe('the 09:47 sequence', () => {
 
     expect(result.handler).toBe('village_intro');
     expect(chain.written).toEqual([]);
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ALREADY_ON]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_already_on')]);
     // Not the full acknowledgement a second time.
-    expect(h.transport.bodies()[0]).not.toBe(DISCOVERABILITY_ON);
+    expect(h.transport.bodies()[0]).not.toBe(line('discoverability_on'));
   });
 
   it('still honours a revocation seconds after the grant', async () => {
@@ -3183,7 +3187,7 @@ describe('the 09:47 sequence', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(chain.written).toEqual([false]);
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_OFF]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_off')]);
   });
 });
 

@@ -42,6 +42,7 @@ import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
+import { readNumberOrigin } from '~/lib/channel/intake/number-origin';
 import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
@@ -1191,6 +1192,7 @@ async function routeChannelMessageInner(
     turn.body,
     deps.saidLine,
     await readTextOnce(deps.turnReader, { text: turn.body, language: null }),
+    () => readNumberOrigin(deps.database, { familyId: turn.familyId, userId: turn.parentUserId }),
   );
   if (identity.challenge) {
     // #868: the model writes the disclosure. A failed write sends nothing.

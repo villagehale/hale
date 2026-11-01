@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text is in English though the parent texts in Chinese, so it fails the language rule. It also names another family (the Patels) and says they said no, a privacy breach. It adds an apology no fact gives, invents a \"reply YES INTROS\" instruction and a Friday Nov 3 date not in the facts, and omits the \"keeps an eye out\" next step."
+  }
+}

@@ -23,25 +23,18 @@ describe('introGroupRefusals', () => {
     );
   });
 
-  it('refuses a link, an address, a number it was not handed, and the royal we', () => {
+  it('refuses a link, an address and a number it was not handed', () => {
     const problems = introGroupRefusals(
       'Sam and Priya, we found you both at 4pm - Storytime at 10 Elm, see www.x.com or a@b.co',
       REQUEST,
     );
     expect(problems).toEqual(
-      expect.arrayContaining([
-        'carries_link',
-        'carries_address',
-        'invented_number',
-        'first_person_plural',
-      ]),
+      expect.arrayContaining(['carries_link', 'carries_address', 'invented_number']),
     );
   });
 
-  it('refuses Hale speaking about itself in the third person', () => {
-    expect(introGroupRefusals(`${GOOD} Hale will step back.`, REQUEST)).toContain(
-      'third_person_self',
-    );
+  it('VIL-450: leaves voice to the judge model - no third-person word match', () => {
+    expect(introGroupRefusals(`${GOOD} Hale will step back.`, REQUEST)).toEqual([]);
   });
 
   it('refuses an empty body outright', () => {

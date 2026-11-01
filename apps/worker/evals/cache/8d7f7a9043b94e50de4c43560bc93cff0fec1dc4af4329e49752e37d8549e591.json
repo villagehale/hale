@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Japanese language is correct, but the text states a promise (\"will not bring introductions up again,\" \"I will avoid mentioning introductions\") that is only partly in facts; it omits the situation fact that introductions are switched off and pending ones are closed. It also reads as a personal pledge rather than the facts. Tone is casual enough, but the missing situation fact and the unsupported next-step wording fail the intro_reply standard."
+  }
+}

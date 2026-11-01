@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "In French, correct language. Facts: no introduction waiting now, Hale texts when there is a match: covered. But \"dès qu'une famille proche sera disponible\" hints at another family existing and availability, and \"Super, merci pour ta réponse\" is fine. The phrase implies a family is waiting/available, a hint beyond the facts (match is \"none - do not imply a match exists\"). Also \"je t'écrirai\" is a promise roughly matching next fact. Tone is friendly. The family-availability hint breaks privacy/no-match rules, so it's a fail-level issue; score 1 by rule."
+  }
+}

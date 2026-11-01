@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Language is English, facts are respected, no other-family hint, no invented facts, and the next step matches facts.next. Minor issues: \"Okay, I won't go ahead\" is slightly blunt rather than fully warm, and \"a good match for you\" is close to the facts but acceptable. No safety or promise problems found."
+  }
+}

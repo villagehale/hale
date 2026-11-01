@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Fails several rules: the text is in English though the parent writes Chinese, so it is the wrong language. It names another family (the Patels) and says they said no, a privacy breach. It tells the parent a word to type (YES INTROS), a safety violation. It adds a Friday Nov 3 date and an apology that no fact gives. It omits the facts about nothing being shared until both say yes, the off-switch, and that Hale texts only when a match comes up."
+  }
+}

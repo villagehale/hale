@@ -101,6 +101,7 @@ import {
 import { identityChallengeReply } from './identity-challenge';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { isCheerUpAsk, isLiveLookupAsk } from './live-lookup';
+import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
 import { isOfficialPageAsk } from './official-page';
 import {
   type CoparentGroupMode,
@@ -983,6 +984,8 @@ async function offScriptReply(
     pendingAsk: string;
     children: readonly ExtractedChild[];
     postalCode?: string | null;
+    /** How Hale has this number: an intake session exists because they texted first. */
+    numberOrigin?: NumberOrigin | null;
     language?: ReplyLanguage | null;
   },
   deps: IntakeDeps,
@@ -996,11 +999,13 @@ async function offScriptReply(
       text: args.parentWords,
       language: null,
     }),
+    async () => args.numberOrigin ?? null,
   );
   if (identity.challenge) {
     return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
-  const outcome = await deps.answerComposer.compose(args);
+  const { numberOrigin: _origin, ...composeArgs } = args;
+  const outcome = await deps.answerComposer.compose(composeArgs);
   if (outcome.status === 'mental_crisis') {
     // The answer model saw a crisis the reader did not. Still the model's words.
     const written = await deps.saidLine?.write({
@@ -3185,6 +3190,7 @@ async function handleLadder(
         pendingAsk: '',
         children: session.collected.children,
         postalCode: session.collected.postalCode,
+        numberOrigin: { kind: 'texted_first', viaQr: sourceCodeIsQr(session.sourceCode) },
         language,
       },
       deps,

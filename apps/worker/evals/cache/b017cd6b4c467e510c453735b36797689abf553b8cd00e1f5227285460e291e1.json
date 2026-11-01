@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Language is English, facts are respected, no other-family hint, no word to type, no reason given. Tone is friendly. Minor issue: \"Okay, I won't go ahead\" is fine, but \"Hale will keep an eye out for another family that might be a good match\" mentions another family, which is a hint beyond the situation fact, and it promises a next action that the next fact supports only loosely. Penalized for the other-family mention and the promise of future matching."
+  }
+}

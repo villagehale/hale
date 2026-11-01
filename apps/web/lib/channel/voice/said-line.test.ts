@@ -42,3 +42,19 @@ describe('said-line · code checks the facts, the model writes the words', () =>
     expect(acceptSaidLine('[[link]] [[other]]', links)).toBeNull();
   });
 });
+
+describe('#919: mustConvey is checked by key, never by wording', () => {
+  const off: SaidLineInput = {
+    purpose: 'intro_reply',
+    language: null,
+    parentWords: '紹介はもういらないです',
+    facts: { situation: 'off', pendingClosed: 'any pending are closed' },
+    mustConvey: ['pendingClosed'],
+  };
+  it('accepts a text in any words when every key names a fact', () => {
+    expect(acceptSaidLine('わかりました。', off)).toBe('わかりました。');
+  });
+  it('refuses a mustConvey key with no fact behind it', () => {
+    expect(acceptSaidLine('ok', { ...off, mustConvey: ['missing'] })).toBeNull();
+  });
+});
