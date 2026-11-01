@@ -48,6 +48,19 @@ describe('toWeekdayCareReading', () => {
     ).toEqual({ status: 'read', care: 'starting_soon', provider: null });
   });
 
+  it('treats an omitted provider the same as null (the tool schema does not require it)', () => {
+    expect(toWeekdayCareReading({ care: 'home', confidence: 'high' })).toEqual({
+      status: 'read',
+      care: 'home',
+      provider: null,
+    });
+    expect(toWeekdayCareReading({ care: 'daycare', confidence: 'high' })).toEqual({
+      status: 'read',
+      care: 'daycare',
+      provider: null,
+    });
+  });
+
   it('files nothing unless the care is one of the three and the confidence is high', () => {
     expect(toWeekdayCareReading({ care: 'nothing', confidence: 'high' })).toEqual({
       status: 'nothing_stated',

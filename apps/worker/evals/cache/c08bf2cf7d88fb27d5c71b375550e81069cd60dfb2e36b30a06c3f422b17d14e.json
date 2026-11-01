@@ -1,0 +1,8 @@
+{
+  "value": {
+    "care": "home",
+    "confidence": "high",
+    "reason": "parent says their own child is home with them; sister's daycare ignored"
+  },
+  "latencyMs": 1363
+}

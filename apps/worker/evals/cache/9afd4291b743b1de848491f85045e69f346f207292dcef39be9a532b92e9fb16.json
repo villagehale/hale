@@ -1,0 +1,9 @@
+{
+  "value": {
+    "care": "daycare",
+    "provider": "Little Sprouts",
+    "confidence": "high",
+    "reason": "parent names organised care for this child"
+  },
+  "latencyMs": 2481
+}
