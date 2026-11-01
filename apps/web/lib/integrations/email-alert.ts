@@ -77,8 +77,8 @@ import { readRecentNotices } from './recent-notices';
  * WHAT IT MAY NOT DO, and the reasons are not stylistic:
  *   - The SMS carries no line of the email. The snippet, the quote evidence and the body
  *     never reach the writer, a wire body or an audit row (rule #1). The thread row keeps
- *     the snippet as model context for the parent's own 1:1, except a 13+ child's mail,
- *     whose snippet is stored null.
+ *     the snippet for the coach as a separate untrusted turn, not as Hale's own text,
+ *     except a 13+ child's mail, whose snippet is stored null.
  *   - A 13+ child's mail is category-only. The pipeline has already genericized the title
  *     by the time this sees it, and the facts additionally drop the sender, subject, time
  *     and place, because a therapist's domain and a Thursday 4pm are the disclosure.
@@ -625,8 +625,9 @@ export async function alertParentForEmail(
   await passport.afterSend();
 
   // The written text. The opt-out line is not appended, so this is also the wire body.
-  // The coach re-reads this row next turn (channel/thread.ts). The snippet is model
-  // context on that row, never a second sentence, and never present for a 13+ child.
+  // The coach re-reads this row next turn (channel/thread.ts). The snippet is stored
+  // beside it and replayed as a tool turn, never as Hale's own text, and never for a
+  // 13+ child.
   await ports.threadMessage(database, {
     familyId,
     parentUserId,

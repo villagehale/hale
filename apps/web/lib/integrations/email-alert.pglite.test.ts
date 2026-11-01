@@ -7,7 +7,13 @@ import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { loadTranscript, resolveNoteConversation } from '~/lib/coach/conversation';
+import {
+  appendMessage,
+  createConversation,
+  loadTranscript,
+  loadTranscriptWithAttachments,
+  resolveNoteConversation,
+} from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import * as passportCopy from '~/lib/passport/copy';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
@@ -1343,8 +1349,11 @@ describe('the notice is the whole text, and the thread keeps the email for the c
       },
     ]);
     const transcript = await loadTranscript(conversationId as string, db.database);
-    expect(transcript[0]?.content.startsWith(WRITTEN)).toBe(true);
-    expect(transcript[0]?.content).toContain(ENVELOPE.snippet);
+    expect(transcript.map((turn) => turn.role)).toEqual(['assistant', 'tool']);
+    expect(transcript[0]?.content).toBe(WRITTEN);
+    expect(transcript[0]?.content).not.toContain(ENVELOPE.snippet);
+    expect(transcript[1]?.content).toContain(ENVELOPE.snippet);
+    expect(transcript[1]?.content).toContain('"trust":"external"');
 
     const trail = JSON.stringify(await auditRows());
     expect(trail).not.toContain(ENVELOPE.snippet);
@@ -1380,8 +1389,10 @@ describe('the notice is the whole text, and the thread keeps the email for the c
       snippet: null,
     });
     const transcript = await loadTranscript(conversationId as string, db.database);
-    expect(transcript[0]?.content).toBe('Something about school was rescheduled.');
-    expect(transcript[0]?.content).not.toContain(ENVELOPE.snippet);
+    expect(transcript).toEqual([
+      { role: 'assistant', content: 'Something about school was rescheduled.' },
+    ]);
+    expect(JSON.stringify(transcript)).not.toContain(ENVELOPE.snippet);
   });
 
   it('flag on: no passport sentence is composed or joined, and the stamp is unasked', async () => {
@@ -1434,5 +1445,56 @@ describe('the notice is the whole text, and the thread keeps the email for the c
       .where(eq(schema.kidInterests.familyId, family.familyId));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.askedAt).toBeNull();
+  });
+});
+
+describe('coach transcript before messages.source exists', () => {
+  let old: TestDb;
+
+  beforeAll(async () => {
+    // 0198 is the next file after this name. The column is not added here.
+    old = await createTestDb('0197_family_event_notes.sql');
+  });
+
+  afterAll(async () => {
+    await old.close();
+  });
+
+  it('reads and appends a coach turn when the source column is absent', async () => {
+    const columns = await old.client.query<{ column_name: string }>(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'source'",
+    );
+    expect(columns.rows).toEqual([]);
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { familyId, parentUserId } = await seedFamily(old.database);
+    const conversationId = await createConversation(familyId, old.database);
+    await appendMessage(conversationId, 'user', 'What did it say', old.database);
+    await appendMessage(conversationId, 'assistant', 'Saturday swim is off.', old.database);
+
+    const transcript = await loadTranscript(conversationId, old.database);
+    expect(transcript).toEqual([
+      { role: 'user', content: 'What did it say' },
+      { role: 'assistant', content: 'Saturday swim is off.' },
+    ]);
+    const withFiles = await loadTranscriptWithAttachments(conversationId, old.database);
+    expect(withFiles).toEqual(transcript);
+
+    const threaded = await threadProactiveMessage(old.database, {
+      familyId,
+      parentUserId,
+      body: 'Notice only.',
+      source: {
+        kind: 'gmail',
+        eventId: null,
+        gmailMessageId: 'm-old',
+        snippet: 'secret snippet from the mailbox',
+      },
+    });
+    expect(JSON.stringify(error.mock.calls)).toContain('messages_source_unavailable');
+
+    const after = await loadTranscript(threaded, old.database);
+    expect(after).toEqual([{ role: 'assistant', content: 'Notice only.' }]);
+    expect(JSON.stringify(after)).not.toContain('secret snippet');
   });
 });

@@ -5063,8 +5063,6 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
       // Likewise the group bit (0185, VIL-463), which the ledger row now carries.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
-      // messages.source arrives in 0198, and the coach transcript reads it.
-      await db.exec('ALTER TABLE messages ADD COLUMN IF NOT EXISTS source jsonb');
     });
 
     afterAll(async () => {

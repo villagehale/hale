@@ -204,6 +204,15 @@ describe('compactTranscript (MEM-4)', () => {
     expect(out.transcript[out.transcript.length - 1]).toEqual(turn('assistant', 'turn answer 39'));
   });
 
+  it('does not file a mailbox snippet as Hale or the parent', () => {
+    const snippet = 'POOL-SNIPPET-XYZ';
+    const long = [{ role: 'tool' as const, content: snippet }, ...thread(30)];
+    const summary = _internal.compactTranscript(long).transcriptSummary ?? '';
+    expect(summary).toContain(`External: "${snippet}"`);
+    expect(summary).not.toContain(`Hale: "${snippet}"`);
+    expect(summary).not.toContain(`Parent: "${snippet}"`);
+  });
+
   it("names how many turns were dropped and carries the parent's earlier asks", () => {
     const long = [turn('user', 'we switched Ella to the 2pm nap'), ...thread(30)];
     const out = _internal.compactTranscript(long);
