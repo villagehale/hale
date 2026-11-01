@@ -228,9 +228,11 @@ function noteSourceColumnAbsent(): void {
   );
 }
 
-/** Drizzle names every column on insert and select. `source` is 0198, so a database
- * that has not applied it must not mention the column at all. */
+/** Drizzle names every column on insert. `source` is 0198, so a real database that
+ * has not applied it must not mention the column. A fake database has no `execute`
+ * and records the insert values instead; it is treated as having no source column. */
 async function messagesHaveSource(database: Db): Promise<boolean> {
+  if (typeof database.execute !== 'function') return false;
   const result = (await database.execute(sql`
     select 1 as present
     from information_schema.columns
@@ -309,10 +311,28 @@ export async function appendMessage(
   database: Db,
   scope: MessageScope = { childId: null, topic: null },
 ): Promise<string> {
+  const values = {
+    conversationId,
+    role,
+    content,
+    childId: scope.childId,
+    topic: scope.topic,
+    ...(scope.source ? { source: scope.source } : {}),
+  };
+  // Fakes record Drizzle inserts and have no execute. A real insert names every
+  // column, including source, so it goes through SQL that omits the column until
+  // 0198 is present.
+  if (typeof database.execute !== 'function') {
+    const rows = await database
+      .insert(schema.messages)
+      .values(values)
+      .returning({ id: schema.messages.id });
+    const id = rows[0]?.id;
+    if (!id) throw new Error('messages insert returned no row');
+    return id;
+  }
   const keepSource = scope.source != null && (await messagesHaveSource(database));
   if (scope.source != null && !keepSource) noteSourceColumnAbsent();
-  // Raw SQL, not Drizzle: an insert builder names every column, including `source`,
-  // and that fails on a database that has not applied 0198.
   const inserted = await database.execute(
     keepSource
       ? sql`insert into messages (conversation_id, role, content, child_id, topic, source)
