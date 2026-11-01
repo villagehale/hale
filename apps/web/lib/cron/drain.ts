@@ -40,6 +40,7 @@ import {
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import type { LoopMessage } from '~/lib/channel/types';
 import { POLICY_VERSION } from '~/lib/consent';
+import { queueSchema } from '~/lib/preview/family-scope';
 
 /**
  * Serverless drain of the two HOT worker queues — `events.ingested` and
@@ -841,7 +842,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // out ("Unhandled Rejection … Timekeeper.onCron").
   const boss = new PgBoss({
     connectionString,
-    schema: 'pgboss',
+    schema: queueSchema(),
     supervise: false,
     schedule: false,
     max: 2,

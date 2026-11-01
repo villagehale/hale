@@ -1,4 +1,5 @@
 import PgBoss from 'pg-boss';
+import { queueSchema } from '~/lib/preview/family-scope';
 
 /**
  * pg-boss queue maintenance (recipe #2, NON-OPTIONAL). The Vercel drain runs
@@ -17,7 +18,7 @@ export async function runQueueMaintenanceCron(): Promise<void> {
     throw new Error('DATABASE_DIRECT_URL or DATABASE_URL must be set for queue maintenance');
   }
 
-  const boss = new PgBoss({ connectionString, schema: 'pgboss', supervise: true });
+  const boss = new PgBoss({ connectionString, schema: queueSchema(), supervise: true });
   await boss.start();
   try {
     await boss.maintain();

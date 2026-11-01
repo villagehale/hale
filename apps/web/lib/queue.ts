@@ -1,4 +1,5 @@
 import PgBoss from 'pg-boss';
+import { queueSchema } from '~/lib/preview/family-scope';
 
 let cachedBoss: PgBoss | undefined;
 let startPromise: Promise<PgBoss> | undefined;
@@ -29,7 +30,7 @@ export async function getQueue(): Promise<PgBoss> {
       const boss = new PgBoss({
         connectionString: url,
         // Keep the web app's queue role lean — it only sends.
-        schema: 'pgboss',
+        schema: queueSchema(),
         // A PRODUCER, not a worker. Both of pg-boss's background loops default ON, so
         // every warm web instance was also a maintenance supervisor (a poll every 5s
         // plus `maintain()` every 120s, all contending one advisory lock with a 30s
