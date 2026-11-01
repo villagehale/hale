@@ -8,6 +8,7 @@ import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language'
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { type ConveyFact, judgeSaidLineConvey } from './said-line-convey';
 
 /**
  * #868 · the lines that used to be fixed, written by the model each time.
@@ -68,7 +69,9 @@ export interface SaidLineInput {
   mustInclude?: readonly string[];
   /**
    * Fact KEYS whose meaning the text must carry, in the model's own words and language.
-   * Checked structurally only (each key names a fact that is there); never by wording.
+   * The key must name a fact (structural, in {@link acceptSaidLine}). Whether the
+   * text carries that meaning is a judge, not a word list (VIL-530). A miss, or a
+   * judge that does not run, sends nothing. The draft is never rewritten.
    */
   mustConvey?: readonly string[];
   /**
@@ -129,6 +132,7 @@ export function acceptSaidLine(text: string, input: SaidLineInput): string | nul
   const required = input.mustInclude ?? [];
   if (!required.every((fact) => body.includes(fact))) return null;
   // A mustConvey key with no fact behind it is a wiring bug, not something to say.
+  // The meaning itself is not matched here. The writer asks the convey judge.
   if (!(input.mustConvey ?? []).every((key) => key in input.facts)) return null;
   if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
   for (const [name, url] of Object.entries(input.links ?? {})) {
@@ -163,6 +167,30 @@ export function createSaidLineWriter(
         const accepted = acceptSaidLine(value.text, input);
         if (accepted === null) {
           console.error({ purpose: input.purpose }, 'said line: unusable write - nothing sent');
+          return null;
+        }
+        // VIL-530 (Sloane): when meanings are required, a judge reads the outbound
+        // text. A miss or a judge that does not run sends nothing. The text that
+        // passed is returned as written, or not at all. It is never rewritten.
+        const required = conveyFacts(input);
+        if (required === null) {
+          console.error(
+            { purpose: input.purpose },
+            'said line: mustConvey fact missing - nothing sent',
+          );
+          return null;
+        }
+        if (required.length === 0) return accepted;
+        const gate = await judgeSaidLineConvey(() => client, accepted, required);
+        if (gate.verdict !== 'send') {
+          console.error(
+            {
+              purpose: input.purpose,
+              reason: gate.verdict === 'omit' ? 'must_convey' : gate.reason,
+            },
+            'said line: required meaning not conveyed - nothing sent',
+          );
+          return null;
         }
         return accepted;
       } catch (err) {
@@ -276,6 +304,16 @@ export async function writeCrisisLine(
     : null;
   if (!written) logCrisisUnanswered(kind, where);
   return written;
+}
+
+function conveyFacts(input: SaidLineInput): ConveyFact[] | null {
+  const facts: ConveyFact[] = [];
+  for (const key of input.mustConvey ?? []) {
+    const meaning = input.facts[key];
+    if (meaning === undefined) return null;
+    facts.push({ key, meaning });
+  }
+  return facts;
 }
 
 /** Minutes a connect link stays live, said by the model (CHANNEL_SIGNIN_TTL_MS). */

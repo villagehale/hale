@@ -43,7 +43,7 @@ describe('said-line · code checks the facts, the model writes the words', () =>
   });
 });
 
-describe('#919: mustConvey is checked by key, never by wording', () => {
+describe('#919: mustConvey keys are structural; meaning is the convey judge', () => {
   const off: SaidLineInput = {
     purpose: 'intro_reply',
     language: null,
@@ -51,7 +51,9 @@ describe('#919: mustConvey is checked by key, never by wording', () => {
     facts: { situation: 'off', pendingClosed: 'any pending are closed' },
     mustConvey: ['pendingClosed'],
   };
-  it('accepts a text in any words when every key names a fact', () => {
+  it('does not word-match: a text passes acceptSaidLine when every key names a fact', () => {
+    // The meaning gate is the writer (VIL-530). This check stays key-only so a
+    // word list cannot grow up in its place.
     expect(acceptSaidLine('わかりました。', off)).toBe('わかりました。');
   });
   it('refuses a mustConvey key with no fact behind it', () => {

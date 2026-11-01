@@ -298,6 +298,11 @@ jobs:
       - name: Said-line composer eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:said-line
+
+      # VIL-530. The meaning gate has no recording yet (no paid spend). --dry prices
+      # the judge and checks the intro-off corpus. It does not call a model.
+      - name: Said-line convey judge (dry)
+        run: pnpm --filter @hale/worker eval:said-line-convey:dry
       - name: Linq sticker eval (cached-only)
         run: pnpm --filter @hale/worker eval:linq-sticker
 
