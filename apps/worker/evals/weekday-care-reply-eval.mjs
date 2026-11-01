@@ -28,6 +28,7 @@ import {
   PRICE,
   REPO_ROOT,
   cachedToolCall,
+  evalRunTag,
   installEvalSpendCap,
   lazyAnthropic,
   makeCost,
@@ -172,7 +173,7 @@ async function main() {
       ? WEEKDAY_CARE_REPLY_BROKEN[fixture.id]
       : (
           await cachedToolCall({
-            tag: `weekday-care-reply:${fixture.id}`,
+            tag: evalRunTag(`weekday-care-reply:${fixture.id}`),
             lane,
             model: lane.model,
             system: skill.instructions,
