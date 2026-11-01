@@ -1,6 +1,6 @@
 import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 /**
@@ -224,7 +224,7 @@ export async function readGroupListsPage(
     lists = lists.filter((l) => l.nameKey === key);
   }
   const offset = options.offset ?? 0;
-  const omittedLists = Math.max(0, lists.length - READ_MAX_LISTS);
+  const omittedLists = Math.max(0, lists.length - offset - READ_MAX_LISTS);
   // The page is picked newest first, then shown in creation order like before.
   lists = lists.slice(offset, offset + READ_MAX_LISTS).reverse();
   if (lists.length === 0) return { lists: [], omittedLists };
@@ -350,6 +350,7 @@ export async function addToGroupList(
   // We were told it is already on: claim the open row so a failing turn that inserted it
   // cannot undo it out from under us.
   const lost = wanted.filter((w) => !won.has(w.key)).map((w) => w.key);
+  const ownIds = ports.journal?.insertedItemIds ?? [];
   if (lost.length > 0) {
     await ports.database
       .update(schema.groupListItems)
@@ -359,6 +360,8 @@ export async function addToGroupList(
           eq(schema.groupListItems.listId, list.id),
           inArray(schema.groupListItems.textKey, lost),
           isNull(schema.groupListItems.checkedAt),
+          // A same-turn repeat is not another turn's claim: leave our own rows undoable.
+          ownIds.length > 0 ? notInArray(schema.groupListItems.id, ownIds) : undefined,
         ),
       );
   }

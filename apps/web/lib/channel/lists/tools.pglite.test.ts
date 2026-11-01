@@ -329,6 +329,17 @@ describe('group shared lists (VIL-447)', () => {
     expect(journal).toEqual(createGroupListJournal());
   });
 
+  it('Devin 8: a failed turn that added the same item twice takes it and its list back', async () => {
+    const g = await group();
+    const journal = createGroupListJournal();
+    const turnPorts = { ...g.ports, journal };
+    await addToGroupList(turnPorts, 'Groceries', ['milk']);
+    const again = await addToGroupList(turnPorts, 'Groceries', ['milk']);
+    expect(again.alreadyOn).toEqual(['milk']);
+    await undoGroupListWrites(turnPorts, journal);
+    expect(await readGroupLists(g.ports)).toEqual([]);
+  });
+
   it('Devin 6: a failed turn keeps an item another member was told is already on', async () => {
     const g = await group();
     const journal = createGroupListJournal();
@@ -365,6 +376,7 @@ describe('group shared lists (VIL-447)', () => {
     expect(first.lists.some((l) => l.name === 'L0')).toBe(false);
     const next = await readGroupListsPage(g.ports, { offset: 20 });
     expect(next.lists.map((l) => l.name)).toEqual(['L0']);
+    expect(next.omittedLists).toBe(0);
     expect((await readGroupLists(g.ports, { listName: 'l0' })).map((l) => l.name)).toEqual(['L0']);
   });
 
