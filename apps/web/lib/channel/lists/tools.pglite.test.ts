@@ -11,13 +11,15 @@ import {
   ADD_TO_GROUP_LIST_TOOL,
   CHECK_OFF_GROUP_LIST_TOOL,
   GROUP_LIST_TOOL_NAMES,
-  LIST_GROUP_LISTS_TOOL,
   type GroupListToolPorts,
+  LIST_GROUP_LISTS_TOOL,
   addToGroupList,
   augmentCoachSkillForGroupLists,
   checkOffGroupListItems,
+  createGroupListJournal,
   groupListTools,
   readGroupLists,
+  undoGroupListWrites,
 } from './tools';
 
 /**
@@ -230,6 +232,119 @@ describe('group shared lists (VIL-447)', () => {
     expect(row?.checkedAt?.toISOString()).toBe(NOW.toISOString());
   });
 
+  it('Devin 1: a check-off that lost a race is alreadyChecked, never reported as checked', async () => {
+    const g = await group('Dana Smith');
+    const other = await secondParent(g.familyId, 'Jordan Lee');
+    await addToGroupList(g.ports, 'Groceries', ['milk']);
+    const id = (await readGroupLists(g.ports))[0]?.items[0]?.itemId ?? '';
+    const [a, b] = await Promise.all([
+      checkOffGroupListItems(g.ports, [id]),
+      checkOffGroupListItems({ ...g.ports, actorUserId: other }, [id]),
+    ]);
+    expect((a?.checked.length ?? 0) + (b?.checked.length ?? 0)).toBe(1);
+    // Sequential stale case: the read saw it open in an earlier read; the write is the truth.
+    const late = await checkOffGroupListItems(g.ports, [id]);
+    expect(late.checked).toEqual([]);
+    const [row] = await db.database
+      .select()
+      .from(schema.groupListItems)
+      .where(eq(schema.groupListItems.id, id));
+    const winner = a?.checked.length ? g.parentUserId : other;
+    expect(row?.checkedByUserId).toBe(winner);
+  });
+
+  it('Devin 2: spacing, case and full-width variants are ONE list, in code and in the index', async () => {
+    const g = await group();
+    await addToGroupList(g.ports, 'Grocery list', ['milk']);
+    await addToGroupList(g.ports, '  grocery    LIST ', ['eggs']);
+    await addToGroupList(g.ports, 'Ｇｒｏｃｅｒｙ\u3000ｌｉｓｔ', ['bread']);
+    const lists = await readGroupLists(g.ports);
+    expect(lists).toHaveLength(1);
+    expect(lists[0]?.items.map((i) => i.text).sort()).toEqual(['bread', 'eggs', 'milk']);
+    // The DB refuses a second live row with the same folded key even if code is bypassed.
+    await expect(
+      db.database.insert(schema.groupLists).values({
+        familyId: g.familyId,
+        conversationId: g.ports.conversationId,
+        name: 'GROCERY LIST',
+        nameKey: 'grocery list',
+      }),
+    ).rejects.toThrow();
+    // Concurrent variant spellings still land on one list.
+    await Promise.all([
+      addToGroupList(g.ports, 'Packing', ['hats']),
+      addToGroupList(g.ports, 'ＰＡＣＫＩＮＧ', ['socks']),
+    ]);
+    expect((await readGroupLists(g.ports)).map((l) => l.name)).toHaveLength(2);
+  });
+
+  it('Devin 3: a long list stays under the tool-result ceiling with an omitted count', async () => {
+    const g = await group();
+    const many = Array.from({ length: 299 }, (_, i) => `item ${i} ${'x'.repeat(80)}`);
+    await addToGroupList(g.ports, 'Big', many);
+    const later = { ...g.ports, now: new Date(NOW.getTime() + 60_000) };
+    await addToGroupList(later, 'Big', [`item 299 ${'x'.repeat(80)}`]);
+    await addToGroupList(g.ports, 'Small', ['milk']);
+    const { client, results } = scripted([toolUse(LIST_GROUP_LISTS_TOOL, {}), done('(r)')]);
+    await runAgent({
+      skill: SKILL,
+      context: {},
+      tools: groupListTools(g.ports),
+      client,
+      maxSteps: 3,
+      toolContext: { familyId: g.familyId, actor: g.parentUserId },
+      guardDeps: { writeAudit: async () => {} },
+    });
+    expect(results[0]?.is_error).toBeFalsy();
+    const raw = JSON.stringify(results[0]?.content);
+    expect(raw.length).toBeLessThan(8000);
+    const lists = await readGroupLists(g.ports);
+    const big = lists.find((l) => l.name === 'Big');
+    expect(big?.omittedCount).toBeGreaterThan(0);
+    expect((big?.items.length ?? 0) + (big?.omittedCount ?? 0)).toBe(300);
+    // The most recent items are the ones shown, still oldest-first.
+    expect(big?.items.at(-1)?.text.startsWith('item 299 ')).toBe(true);
+    expect(lists.find((l) => l.name === 'Small')?.items).toHaveLength(1);
+    // One list, a limit.
+    const one = await readGroupLists(g.ports, { listName: 'big', limit: 5 });
+    expect(one).toHaveLength(1);
+    expect(one[0]?.items).toHaveLength(5);
+    expect(one[0]?.omittedCount).toBe(295);
+  });
+
+  it('Devin 4: undoing a failed turn takes back its adds, check-offs and new list only', async () => {
+    const g = await group();
+    await addToGroupList(g.ports, 'Groceries', ['milk']);
+    const milk = (await readGroupLists(g.ports))[0]?.items[0]?.itemId ?? '';
+    const journal = createGroupListJournal();
+    const turnPorts = { ...g.ports, journal };
+    await addToGroupList(turnPorts, 'Groceries', ['eggs', 'milk']);
+    await addToGroupList(turnPorts, 'Packing', ['hats']);
+    await checkOffGroupListItems(turnPorts, [milk]);
+    await undoGroupListWrites(turnPorts, journal);
+    const lists = await readGroupLists(g.ports);
+    expect(lists.map((l) => l.name)).toEqual(['Groceries']);
+    expect(lists[0]?.items.map((i) => i.text)).toEqual(['milk']);
+    expect(journal).toEqual(createGroupListJournal());
+  });
+
+  it("Devin 5: a list cannot pair one family with another family's thread", async () => {
+    const a = await group();
+    const b = await group();
+    await expect(
+      db.database.insert(schema.groupLists).values({
+        familyId: b.familyId,
+        conversationId: a.ports.conversationId,
+        name: 'x',
+        nameKey: 'x',
+      }),
+    ).rejects.toThrow();
+    const crossed = { ...b.ports, conversationId: a.ports.conversationId };
+    await expect(addToGroupList(crossed, 'Groceries', ['milk'])).rejects.toThrow();
+    await expect(readGroupLists(crossed)).rejects.toThrow();
+    await expect(checkOffGroupListItems(crossed, [randomUUID()])).rejects.toThrow();
+  });
+
   it('a list in one group is invisible to another group, even in the same family', async () => {
     const g = await group();
     await addToGroupList(g.ports, 'Groceries', ['milk']);
@@ -241,7 +356,7 @@ describe('group shared lists (VIL-447)', () => {
     expect(await readGroupLists(other)).toEqual([]);
     const id = (await readGroupLists(g.ports))[0]?.items[0]?.itemId ?? '';
     const res = await checkOffGroupListItems(other, [id]);
-    expect(res).toEqual({ checked: [], unknown: [id] });
+    expect(res).toEqual({ checked: [], alreadyChecked: [], unknown: [id] });
     expect((await readGroupLists(g.ports))[0]?.items).toHaveLength(1);
   });
 
@@ -264,6 +379,7 @@ describe('group shared lists (VIL-447)', () => {
     expect(results[0]?.is_error).toBe(true);
     expect(await checkOffGroupListItems(g.ports, ['not-a-uuid'])).toEqual({
       checked: [],
+      alreadyChecked: [],
       unknown: ['not-a-uuid'],
     });
   });

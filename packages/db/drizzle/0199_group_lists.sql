@@ -5,23 +5,37 @@
 -- group added, who added it, and who checked it off. Names are read from users at read
 -- time; nothing here copies a name. No size cap.
 --
+-- A list's thread must be its own family's: (conversation_id, family_id) is a composite
+-- FK onto conversations(id, family_id), so a row can never pair one family with another
+-- family's thread. That needs a unique key on conversations(id, family_id) (id alone is
+-- already unique, so this adds no rule to conversations, only an index).
+--
+-- `name_key` is the name folded exactly as the tools fold it (NFKC, lower, whitespace
+-- collapsed, trimmed — foldListText). The live-name unique index is on that key, so the
+-- code's "same list" and the DB's "same list" are one definition.
+--
 -- Additive. Re-runnable: IF NOT EXISTS throughout.
 -- NOT RUN against any shared or prod DB. Needs Sloane, then Barton, before prod.
 --
 -- Reversible:
+--   DROP INDEX IF EXISTS conversations_id_family_uniq;  (after the two tables)
 --   DROP TABLE IF EXISTS group_list_items;
 --   DROP TABLE IF EXISTS group_lists;
+CREATE UNIQUE INDEX IF NOT EXISTS "conversations_id_family_uniq" ON "conversations" ("id","family_id");--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "group_lists" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"family_id" uuid NOT NULL REFERENCES "families"("id") ON DELETE cascade,
-	"conversation_id" uuid NOT NULL REFERENCES "conversations"("id") ON DELETE cascade,
+	"conversation_id" uuid NOT NULL,
 	"name" text NOT NULL,
+	"name_key" text NOT NULL,
 	"created_by_user_id" uuid REFERENCES "users"("id") ON DELETE set null,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"archived_at" timestamp with time zone,
-	CONSTRAINT "group_lists_name_length_check" CHECK (char_length("name") BETWEEN 1 AND 200)
+	CONSTRAINT "group_lists_name_length_check" CHECK (char_length("name") BETWEEN 1 AND 200),
+	CONSTRAINT "group_lists_name_key_length_check" CHECK (char_length("name_key") >= 1),
+	CONSTRAINT "group_lists_conversation_family_fk" FOREIGN KEY ("conversation_id","family_id") REFERENCES "conversations"("id","family_id") ON DELETE cascade
 );--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "group_lists_live_name_uniq" ON "group_lists" ("conversation_id", lower("name")) WHERE "archived_at" IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "group_lists_live_name_uniq" ON "group_lists" ("conversation_id","name_key") WHERE "archived_at" IS NULL;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "group_lists_conversation_idx" ON "group_lists" ("conversation_id");--> statement-breakpoint
 ALTER TABLE "group_lists" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "group_list_items" (

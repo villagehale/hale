@@ -29,6 +29,12 @@ import {
 } from '~/lib/channel/inbound-media';
 import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
 import { type GroupLeaveEligibility, groupLeaveEligibility } from '~/lib/channel/linq/group-leave';
+import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
+import {
+  augmentCoachSkillForGroupLists,
+  createGroupListJournal,
+  undoGroupListWrites,
+} from '~/lib/channel/lists/tools';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -67,8 +73,6 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
-import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
-import { augmentCoachSkillForGroupLists } from '~/lib/channel/lists/tools';
 import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/signup/offer-tool';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
@@ -223,6 +227,8 @@ export interface ChannelCoachPorts {
      * nearby count read the same list. */
     offered: TurnOfferLedger,
     onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
+    /** VIL-447: a tool registers how to undo a write it made; a failed turn runs them. */
+    onUndo?: (undo: () => Promise<void>) => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -311,6 +317,20 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       let experienceCard: ExperienceCardIntent | null = null;
       // VIL-477: a member asked Hale to leave this group. LAST CALL WINS.
       let groupLeave: GroupLeaveIntent | null = null;
+      // VIL-447: writes a failed turn must take back (shared-list adds and check-offs), so
+      // the router's "nothing was changed" is true. Run newest first; an undo that fails
+      // is logged by fault class and never masks the turn's own failure.
+      const undos: Array<() => Promise<void>> = [];
+      const undoAll = async () => {
+        for (const undo of undos.splice(0).reverse()) {
+          await undo().catch((err: unknown) =>
+            console.error(
+              { fault: err instanceof Error ? err.name : typeof err },
+              'coach: turn write undo failed',
+            ),
+          );
+        }
+      };
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -430,191 +450,199 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           metadata: { familyId: turn.familyId },
         },
         async (trace) => {
-          const startedAt = Date.now();
-          // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
-          // reused set would spend this text's budget on the last one's.
-          const builtTools = ports.buildTools(
-            turn,
-            (actionId) => draftedActionIds.push(actionId),
-            (offer) => {
-              planOffer = offer;
-            },
-            (share) => {
-              referral = share;
-            },
-            (promise) => {
-              activityPromise = promise;
-            },
-            (watch) => {
-              spotWatch = watch;
-            },
-            offeredThisTurn,
-            (notice) => {
-              if (gmailNotice?.status === 'unsent') return;
-              gmailNotice = notice;
-            },
-          );
-          // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
-          // are busy-only, on every group turn.
-          const tools = [
-            ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
-            ...(cardsLit
-              ? [
-                  shareExperienceCardTool({
-                    links: turnLinks,
-                    onCard: (card) => {
-                      experienceCard = card;
-                    },
-                  }),
-                ]
-              : []),
-            ...(leaveLit
-              ? [
-                  leaveGroupChatTool({
-                    memberWords: turn.body,
-                    onLeave: (intent) => {
-                      groupLeave = intent;
-                    },
-                    ...(ports.groupLeaveCheck
-                      ? {
-                          check: async () => {
-                            const chatId = turn.groupChatId;
-                            if (!chatId)
-                              return { ok: false as const, reason: 'not_group' as const };
-                            const g = await ports.groupLeaveCheck!(chatId);
-                            if (g.status === 'eligible') return { ok: true as const };
-                            if (g.status === 'failed')
-                              return { ok: false as const, reason: 'unavailable' as const };
-                            return {
-                              ok: false as const,
-                              reason:
-                                g.reason === 'no_explicit_ask'
-                                  ? ('unavailable' as const)
-                                  : g.reason,
-                            };
-                          },
-                        }
-                      : {}),
-                  }),
-                ]
-              : []),
-          ];
-          // A tool that throws, a provider that times out, a step that runs long: the
-          // loop can break anywhere, and by then the drafts it made are already rows.
-          // Re-thrown rather than handled — the router owns what a parent is told.
-          const result = await ports
-            .runAgent({
-              skill,
-              context: turnContext,
-              tools,
-              client: ports.client(),
-              maxSteps: MAX_STEPS,
-              maxTokens: MAX_TOKENS,
-              toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
-              guardDeps: ports.guardDeps,
-              ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
-            })
-            .catch((err: unknown) => {
-              throw failed(
-                err instanceof Error ? err.message : 'channel coach: agent loop failed',
-                err,
-              );
+          try {
+            const startedAt = Date.now();
+            // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
+            // reused set would spend this text's budget on the last one's.
+            const builtTools = ports.buildTools(
+              turn,
+              (actionId) => draftedActionIds.push(actionId),
+              (offer) => {
+                planOffer = offer;
+              },
+              (share) => {
+                referral = share;
+              },
+              (promise) => {
+                activityPromise = promise;
+              },
+              (watch) => {
+                spotWatch = watch;
+              },
+              offeredThisTurn,
+              (notice) => {
+                if (gmailNotice?.status === 'unsent') return;
+                gmailNotice = notice;
+              },
+              (undo) => {
+                undos.push(undo);
+              },
+            );
+            // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
+            // are busy-only, on every group turn.
+            const tools = [
+              ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
+              ...(cardsLit
+                ? [
+                    shareExperienceCardTool({
+                      links: turnLinks,
+                      onCard: (card) => {
+                        experienceCard = card;
+                      },
+                    }),
+                  ]
+                : []),
+              ...(leaveLit
+                ? [
+                    leaveGroupChatTool({
+                      memberWords: turn.body,
+                      onLeave: (intent) => {
+                        groupLeave = intent;
+                      },
+                      ...(ports.groupLeaveCheck
+                        ? {
+                            check: async () => {
+                              const chatId = turn.groupChatId;
+                              if (!chatId)
+                                return { ok: false as const, reason: 'not_group' as const };
+                              const g = await ports.groupLeaveCheck!(chatId);
+                              if (g.status === 'eligible') return { ok: true as const };
+                              if (g.status === 'failed')
+                                return { ok: false as const, reason: 'unavailable' as const };
+                              return {
+                                ok: false as const,
+                                reason:
+                                  g.reason === 'no_explicit_ask'
+                                    ? ('unavailable' as const)
+                                    : g.reason,
+                              };
+                            },
+                          }
+                        : {}),
+                    }),
+                  ]
+                : []),
+            ];
+            // A tool that throws, a provider that times out, a step that runs long: the
+            // loop can break anywhere, and by then the drafts it made are already rows.
+            // Re-thrown rather than handled — the router owns what a parent is told.
+            const result = await ports
+              .runAgent({
+                skill,
+                context: turnContext,
+                tools,
+                client: ports.client(),
+                maxSteps: MAX_STEPS,
+                maxTokens: MAX_TOKENS,
+                toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
+                guardDeps: ports.guardDeps,
+                ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
+              })
+              .catch((err: unknown) => {
+                throw failed(
+                  err instanceof Error ? err.message : 'channel coach: agent loop failed',
+                  err,
+                );
+              });
+
+            const modelUsed = pickModel(skill.meta.task);
+            trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
+              model: modelUsed,
+              usage: result.usage,
             });
 
-          const modelUsed = pickModel(skill.meta.task);
-          trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
-            model: modelUsed,
-            usage: result.usage,
-          });
+            const record = (status: 'completed' | 'failed'): ChannelRunRecord => ({
+              familyId: turn.familyId,
+              agentName: CHANNEL_AGENT_NAME,
+              status,
+              latencyMs: Date.now() - startedAt,
+              promptTokens: result.usage.promptTokens,
+              completionTokens: result.usage.completionTokens,
+              costUsd: agentRunCostUsd(modelUsed, result.usage),
+              promptCacheHit: result.usage.cacheReadTokens > 0,
+              cacheReadTokens: result.usage.cacheReadTokens,
+              cacheWriteTokens: result.usage.cacheCreationTokens,
+              langfuseTraceId: trace.traceId,
+            });
 
-          const record = (status: 'completed' | 'failed'): ChannelRunRecord => ({
-            familyId: turn.familyId,
-            agentName: CHANNEL_AGENT_NAME,
-            status,
-            latencyMs: Date.now() - startedAt,
-            promptTokens: result.usage.promptTokens,
-            completionTokens: result.usage.completionTokens,
-            costUsd: agentRunCostUsd(modelUsed, result.usage),
-            promptCacheHit: result.usage.cacheReadTokens > 0,
-            cacheReadTokens: result.usage.cacheReadTokens,
-            cacheWriteTokens: result.usage.cacheCreationTokens,
-            langfuseTraceId: trace.traceId,
-          });
+            if (gmailNotice?.status === 'unsent') {
+              await ports.recordRun(record('failed'));
+              throw failed(
+                'channel coach: gmail draft notice was not sent',
+                new GmailDraftNoticeUnsent(),
+              );
+            }
 
-          if (gmailNotice?.status === 'unsent') {
-            await ports.recordRun(record('failed'));
-            throw failed(
-              'channel coach: gmail draft notice was not sent',
-              new GmailDraftNoticeUnsent(),
-            );
-          }
+            if (result.answer === null && gmailNotice?.status !== 'ready') {
+              await ports.recordRun(record('failed'));
+              throw failed(
+                result.hitMaxSteps
+                  ? 'channel coach: agent hit maxSteps without an answer'
+                  : result.truncated
+                    ? // The ceiling failed, not the model and not the context — a
+                      // distinct event from "said nothing for its own reasons", and the
+                      // only one of the three a lane-config change can fix (rule #11).
+                      `channel coach: agent truncated before speaking (${result.truncatedRetries} re-ask)`
+                    : 'channel coach: agent returned no answer',
+              );
+            }
 
-          if (result.answer === null && gmailNotice?.status !== 'ready') {
-            await ports.recordRun(record('failed'));
-            throw failed(
-              result.hitMaxSteps
-                ? 'channel coach: agent hit maxSteps without an answer'
-                : result.truncated
-                  ? // The ceiling failed, not the model and not the context — a
-                    // distinct event from "said nothing for its own reasons", and the
-                    // only one of the three a lane-config change can fix (rule #11).
-                    `channel coach: agent truncated before speaking (${result.truncatedRetries} re-ask)`
-                  : 'channel coach: agent returned no answer',
-            );
-          }
-
-          const share = referral as ReferralShare | null;
-          const offer = planOffer as PlanOffer | null;
-          // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
-          // A count is the least important thing in any message that also carries one of
-          // those — and a turn that offered nothing has nothing to count about.
-          const nearby =
-            offer === null && share === null
-              ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
-              : null;
-          const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
-          const spoken =
-            gmailNotice !== null && gmailNotice.status === 'ready'
-              ? gmailNotice.text
-              : result.answer;
-          if (!spoken) {
-            await ports.recordRun(record('failed'));
-            throw failed(
-              'channel coach: gmail draft notice was not sent',
-              new GmailDraftNoticeUnsent(),
-            );
-          }
-          // VIL-434: the model's answer goes out whole. Length is the model's judgment
-          // (the skill, or a rewrite the model chooses). Code does not cut it, and it
-          // does not call a shorten pass because a sentence ran past two segments.
-          const reply = toSmsReply(spoken, {
-            children,
-            now,
-            ...(noticeReady
-              ? {}
-              : {
-                  planOffer: offer?.sentence,
-                  referral: share ? referralBlock(share) : undefined,
-                  activityLinks: turnLinks(),
-                  nearby: nearby ?? undefined,
-                }),
-          });
-          await ports.recordRun(record('completed'));
-          const card = experienceCard as ExperienceCardIntent | null;
-          return {
-            reply,
-            planOffer,
-            activityPromise,
-            spotWatch,
-            // The title passes the same age-derived teen floor as the answer (rule #1).
-            experienceCard:
-              card && !noticeReady
-                ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+            const share = referral as ReferralShare | null;
+            const offer = planOffer as PlanOffer | null;
+            // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
+            // A count is the least important thing in any message that also carries one of
+            // those — and a turn that offered nothing has nothing to count about.
+            const nearby =
+              offer === null && share === null
+                ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
+                : null;
+            const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
+            const spoken =
+              gmailNotice !== null && gmailNotice.status === 'ready'
+                ? gmailNotice.text
+                : result.answer;
+            if (!spoken) {
+              await ports.recordRun(record('failed'));
+              throw failed(
+                'channel coach: gmail draft notice was not sent',
+                new GmailDraftNoticeUnsent(),
+              );
+            }
+            // VIL-434: the model's answer goes out whole. Length is the model's judgment
+            // (the skill, or a rewrite the model chooses). Code does not cut it, and it
+            // does not call a shorten pass because a sentence ran past two segments.
+            const reply = toSmsReply(spoken, {
+              children,
+              now,
+              ...(noticeReady
+                ? {}
+                : {
+                    planOffer: offer?.sentence,
+                    referral: share ? referralBlock(share) : undefined,
+                    activityLinks: turnLinks(),
+                    nearby: nearby ?? undefined,
+                  }),
+            });
+            await ports.recordRun(record('completed'));
+            const card = experienceCard as ExperienceCardIntent | null;
+            return {
+              reply,
+              planOffer,
+              activityPromise,
+              spotWatch,
+              // The title passes the same age-derived teen floor as the answer (rule #1).
+              experienceCard:
+                card && !noticeReady
+                  ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+                  : null,
+              groupLeave: groupLeave
+                ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
                 : null,
-            groupLeave: groupLeave
-              ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
-              : null,
-          };
+            };
+          } catch (err) {
+            await undoAll();
+            throw err;
+          }
         },
       );
     },
@@ -688,7 +716,27 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
+    buildTools: (
+      turn,
+      onDraft,
+      onOffer,
+      onShare,
+      onPromise,
+      onWatch,
+      offered,
+      onGmailNotice,
+      onUndo,
+    ) => {
+      const listJournal = createGroupListJournal();
+      const listsLit = turn.audience === 'group' && groupSharedListsEnabled();
+      if (listsLit && onUndo) {
+        onUndo(() =>
+          undoGroupListWrites(
+            { database, actorUserId: turn.parentUserId, now: turn.now },
+            listJournal,
+          ),
+        );
+      }
       return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
@@ -750,16 +798,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               offeredThisTurn: offered.read,
             }
           : null,
-        groupLists:
-          turn.audience === 'group' && groupSharedListsEnabled()
-            ? {
-                database,
-                familyId: turn.familyId,
-                conversationId: turn.conversationId,
-                actorUserId: turn.parentUserId,
-                now: turn.now,
-              }
-            : null,
+        groupLists: listsLit
+          ? {
+              database,
+              familyId: turn.familyId,
+              conversationId: turn.conversationId,
+              actorUserId: turn.parentUserId,
+              now: turn.now,
+              journal: listJournal,
+            }
+          : null,
         providerWatch: browserUseWatchEnabled()
           ? {
               database,

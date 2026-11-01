@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  foreignKey,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { conversations } from './conversations.js';
 import { families } from './families.js';
 import { users } from './users.js';
@@ -20,10 +29,11 @@ export const groupLists = pgTable(
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
-    conversationId: uuid('conversation_id')
-      .notNull()
-      .references(() => conversations.id, { onDelete: 'cascade' }),
+    /** Same-family thread only: composite FK with family_id onto conversations. */
+    conversationId: uuid('conversation_id').notNull(),
     name: text('name').notNull(),
+    /** `name` folded by foldListText (NFKC, lower, spaces collapsed); one live list per key. */
+    nameKey: text('name_key').notNull(),
     createdByUserId: uuid('created_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -32,9 +42,18 @@ export const groupLists = pgTable(
   },
   (table) => ({
     liveNameUniq: uniqueIndex('group_lists_live_name_uniq')
-      .on(table.conversationId, sql`lower(${table.name})`)
+      .on(table.conversationId, table.nameKey)
       .where(sql`${table.archivedAt} IS NULL`),
     conversationIdx: index('group_lists_conversation_idx').on(table.conversationId),
+    conversationFamilyFk: foreignKey({
+      name: 'group_lists_conversation_family_fk',
+      columns: [table.conversationId, table.familyId],
+      foreignColumns: [conversations.id, conversations.familyId],
+    }).onDelete('cascade'),
+    nameKeyLength: check(
+      'group_lists_name_key_length_check',
+      sql`char_length(${table.nameKey}) >= 1`,
+    ),
     nameLength: check(
       'group_lists_name_length_check',
       sql`char_length(${table.name}) BETWEEN 1 AND 200`,

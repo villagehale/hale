@@ -408,6 +408,56 @@ describe('channelCoachRuntime', () => {
     expect((err as Error).cause).toBeInstanceOf(Error);
   });
 
+  it('VIL-447: a failed turn runs the undo its tools registered, and a good one does not', async () => {
+    const undone: string[] = [];
+    const failing = ports({
+      buildTools: (...args: unknown[]) => {
+        const onUndo = args[8] as (u: () => Promise<void>) => void;
+        onUndo(async () => {
+          undone.push('lists');
+        });
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        throw new Error('anthropic timeout');
+      },
+    });
+    await channelCoachRuntime(failing)
+      .respond(turn(), [])
+      .catch(() => undefined);
+    expect(undone).toEqual(['lists']);
+
+    const ok = ports({
+      buildTools: (...args: unknown[]) => {
+        const onUndo = args[8] as (u: () => Promise<void>) => void;
+        onUndo(async () => {
+          undone.push('should-not-run');
+        });
+        return [] as RegisteredTool[];
+      },
+    });
+    await channelCoachRuntime(ok).respond(turn(), []);
+    expect(undone).toEqual(['lists']);
+  });
+
+  it('VIL-447: an undo that throws never masks the turn failure', async () => {
+    const p = ports({
+      buildTools: (...args: unknown[]) => {
+        (args[8] as (u: () => Promise<void>) => void)(async () => {
+          throw new Error('db down');
+        });
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        throw new Error('anthropic timeout');
+      },
+    });
+    const err = await channelCoachRuntime(p)
+      .respond(turn(), [])
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/anthropic timeout/);
+  });
+
   it('surfaces nothing when a turn fails before it drafted anything', async () => {
     const p = ports({ runAgent: answering(null, true) });
 

@@ -1,6 +1,6 @@
 import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 /**
@@ -18,7 +18,15 @@ import { z } from 'zod';
  *   list made in one group is never read in another group or in a 1:1.
  * - IDS ARE HALE'S. Checking off takes `itemId`s that list_group_lists returned for this
  *   thread; anything else is refused.
- * - NO SIZE CAP (ticket scope). Items are bounded only by the column check (500 chars).
+ * - NO SIZE CAP on what is STORED (ticket scope); items are bounded only by the column
+ *   check (500 chars). What one list_group_lists call RETURNS is bounded (see
+ *   READ_BUDGET_CHARS) so a long list stays readable under the tool-result ceiling: the
+ *   most recent open items, and an `omittedCount` the model can read and say.
+ * - THE THREAD IS THE FAMILY'S. Every verb first confirms the conversation is this
+ *   family's (and 0199's composite FK makes the pairing impossible to store otherwise).
+ * - A FAILED TURN LEAVES NO LIST WRITE. Writes go in the turn's journal; when the turn
+ *   fails (no reply goes out), the runtime undoes them, so the router's "nothing was
+ *   changed" stays true. Hale never writes a sentence about it.
  * - NAMES ARE READ, NOT STORED. `addedBy` is the first name on the person's user row,
  *   read at call time; a person the group has not named shows as null.
  */
@@ -39,7 +47,79 @@ export interface GroupListToolPorts {
   /** The person who sent this group message. */
   actorUserId: string;
   now: Date;
+  /** This turn's write journal; the runtime undoes it when the turn fails. */
+  journal?: GroupListJournal;
 }
+
+/**
+ * What one turn wrote, so a turn that fails before any reply leaves the lists as it found
+ * them. Undo is narrow on purpose: it deletes only items this turn inserted that are
+ * still open, un-checks only items this turn checked (same instant, same person), and
+ * removes a list this turn made only if nothing else is on it.
+ */
+export interface GroupListJournal {
+  createdListIds: string[];
+  insertedItemIds: string[];
+  checkedItemIds: string[];
+}
+
+export function createGroupListJournal(): GroupListJournal {
+  return { createdListIds: [], insertedItemIds: [], checkedItemIds: [] };
+}
+
+export async function undoGroupListWrites(
+  ports: Pick<GroupListToolPorts, 'database' | 'actorUserId' | 'now'>,
+  journal: GroupListJournal,
+): Promise<void> {
+  const db = ports.database;
+  const { createdListIds, insertedItemIds, checkedItemIds } = journal;
+  if (checkedItemIds.length > 0) {
+    await db
+      .update(schema.groupListItems)
+      .set({ checkedAt: null, checkedByUserId: null })
+      .where(
+        and(
+          inArray(schema.groupListItems.id, checkedItemIds),
+          eq(schema.groupListItems.checkedAt, ports.now),
+          eq(schema.groupListItems.checkedByUserId, ports.actorUserId),
+        ),
+      )
+      // Someone re-added the same thing meanwhile: the open-key index refuses a second
+      // open row, and their row is the one that stays.
+      .catch(() => undefined);
+  }
+  if (insertedItemIds.length > 0) {
+    await db
+      .delete(schema.groupListItems)
+      .where(
+        and(
+          inArray(schema.groupListItems.id, insertedItemIds),
+          isNull(schema.groupListItems.checkedAt),
+        ),
+      );
+  }
+  if (createdListIds.length > 0) {
+    await db
+      .delete(schema.groupLists)
+      .where(
+        and(
+          inArray(schema.groupLists.id, createdListIds),
+          sql`NOT EXISTS (SELECT 1 FROM ${schema.groupListItems} WHERE ${schema.groupListItems.listId} = ${schema.groupLists.id})`,
+        ),
+      );
+  }
+  journal.createdListIds = [];
+  journal.insertedItemIds = [];
+  journal.checkedItemIds = [];
+}
+
+/**
+ * The most a single list_group_lists result spends on items, in JSON characters. The
+ * loop's tool-result ceiling is 8,000; this leaves room for names, ids and counts.
+ */
+export const READ_BUDGET_CHARS = 6000;
+/** Lists beyond this many (oldest first) are counted, not returned, in one read. */
+export const READ_MAX_LISTS = 20;
 
 /** Case, width and spacing folded, so "Milk" and "milk " are one item and one list. */
 export function foldListText(text: string): string {
@@ -50,6 +130,21 @@ function requireScope(ports: GroupListToolPorts, familyId: string): void {
   if (familyId !== ports.familyId) {
     throw new Error('This tool only acts for the group in this conversation.');
   }
+}
+
+/** The thread must be this family's; a mismatched pair reads and writes nothing. */
+async function requireThread(ports: GroupListToolPorts): Promise<void> {
+  const [row] = await ports.database
+    .select({ id: schema.conversations.id })
+    .from(schema.conversations)
+    .where(
+      and(
+        eq(schema.conversations.id, ports.conversationId),
+        eq(schema.conversations.familyId, ports.familyId),
+      ),
+    )
+    .limit(1);
+  if (!row) throw new Error('This tool only acts for the group in this conversation.');
 }
 
 function firstName(row: { givenName: string | null; name: string | null } | undefined) {
@@ -73,7 +168,11 @@ async function namesFor(db: Database, ids: (string | null)[]) {
 
 async function liveLists(ports: GroupListToolPorts) {
   return ports.database
-    .select({ id: schema.groupLists.id, name: schema.groupLists.name })
+    .select({
+      id: schema.groupLists.id,
+      name: schema.groupLists.name,
+      nameKey: schema.groupLists.nameKey,
+    })
     .from(schema.groupLists)
     .where(
       and(
@@ -85,10 +184,39 @@ async function liveLists(ports: GroupListToolPorts) {
     .orderBy(asc(schema.groupLists.createdAt));
 }
 
-/** Every list in this group thread with its open items, oldest first. */
-export async function readGroupLists(ports: GroupListToolPorts) {
-  const lists = await liveLists(ports);
-  if (lists.length === 0) return [];
+export interface ReadGroupListsOptions {
+  /** Read only the list whose folded name matches. */
+  listName?: string;
+  /** At most this many open items per list (the most recent ones). */
+  limit?: number;
+}
+
+/**
+ * The lists in this group thread with their open items. Bounded per call: each list gets
+ * an equal share of READ_BUDGET_CHARS and shows its MOST RECENT open items that fit
+ * (returned oldest first), with `omittedCount` for the rest; lists past READ_MAX_LISTS are
+ * counted in `omittedLists`. Nothing is cut mid-item.
+ */
+export async function readGroupLists(
+  ports: GroupListToolPorts,
+  options: ReadGroupListsOptions = {},
+) {
+  return (await readGroupListsPage(ports, options)).lists;
+}
+
+export async function readGroupListsPage(
+  ports: GroupListToolPorts,
+  options: ReadGroupListsOptions = {},
+) {
+  await requireThread(ports);
+  let lists = await liveLists(ports);
+  if (options.listName !== undefined) {
+    const key = foldListText(options.listName);
+    lists = lists.filter((l) => l.nameKey === key);
+  }
+  const omittedLists = Math.max(0, lists.length - READ_MAX_LISTS);
+  lists = lists.slice(0, READ_MAX_LISTS);
+  if (lists.length === 0) return { lists: [], omittedLists };
   const items = await ports.database
     .select({
       id: schema.groupListItems.id,
@@ -111,34 +239,58 @@ export async function readGroupLists(ports: GroupListToolPorts) {
     ports.database,
     items.map((i) => i.addedByUserId),
   );
-  return lists.map((list) => ({
-    listId: list.id,
-    name: list.name,
-    items: items
-      .filter((i) => i.listId === list.id)
-      .map((i) => ({
-        itemId: i.id,
-        text: i.text,
-        addedBy: i.addedByUserId ? (names.get(i.addedByUserId) ?? null) : null,
-      })),
-  }));
+  const perList = Math.floor(READ_BUDGET_CHARS / lists.length);
+  return {
+    omittedLists,
+    lists: lists.map((list) => {
+      const open = items
+        .filter((i) => i.listId === list.id)
+        .map((i) => ({
+          itemId: i.id,
+          text: i.text,
+          addedBy: i.addedByUserId ? (names.get(i.addedByUserId) ?? null) : null,
+        }));
+      const shown: typeof open = [];
+      let spent = 0;
+      for (let k = open.length - 1; k >= 0; k -= 1) {
+        if (options.limit !== undefined && shown.length >= options.limit) break;
+        const item = open[k]!;
+        const cost = JSON.stringify(item).length + 1;
+        // Always show at least the newest item: one item is ≤ ~600 chars.
+        if (shown.length > 0 && spent + cost > perList) break;
+        spent += cost;
+        shown.push(item);
+      }
+      shown.reverse();
+      return {
+        listId: list.id,
+        name: list.name,
+        items: shown,
+        omittedCount: open.length - shown.length,
+      };
+    }),
+  };
 }
 
 async function ensureList(ports: GroupListToolPorts, name: string) {
   const wanted = foldListText(name);
-  const existing = (await liveLists(ports)).find((l) => foldListText(l.name) === wanted);
+  if (!wanted) throw new Error('A list needs a name.');
+  const existing = (await liveLists(ports)).find((l) => l.nameKey === wanted);
   if (existing) return existing;
-  // Two people adding at once both reach here; the live-name unique index lets one row in.
-  await ports.database
+  // Two people adding at once both reach here; the live-key unique index lets one row in.
+  const made = await ports.database
     .insert(schema.groupLists)
     .values({
       familyId: ports.familyId,
       conversationId: ports.conversationId,
       name: name.trim(),
+      nameKey: wanted,
       createdByUserId: ports.actorUserId,
     })
-    .onConflictDoNothing();
-  const after = (await liveLists(ports)).find((l) => foldListText(l.name) === wanted);
+    .onConflictDoNothing()
+    .returning({ id: schema.groupLists.id });
+  for (const row of made) ports.journal?.createdListIds.push(row.id);
+  const after = (await liveLists(ports)).find((l) => l.nameKey === wanted);
   if (!after) throw new Error('The list could not be saved.');
   return after;
 }
@@ -149,6 +301,7 @@ export async function addToGroupList(
   listName: string,
   texts: readonly string[],
 ) {
+  await requireThread(ports);
   const list = await ensureList(ports, listName);
   // One open row per folded text, enforced by the index: two people adding "milk" at
   // the same moment write one row, and the loser hears it was already on.
@@ -178,7 +331,8 @@ export async function addToGroupList(
             })),
           )
           .onConflictDoNothing()
-          .returning({ textKey: schema.groupListItems.textKey });
+          .returning({ id: schema.groupListItems.id, textKey: schema.groupListItems.textKey });
+  for (const row of inserted) ports.journal?.insertedItemIds.push(row.id);
   const won = new Set(inserted.map((r) => r.textKey));
   const added: string[] = [];
   for (const w of wanted) (won.has(w.key) ? added : alreadyOn).push(w.text);
@@ -190,9 +344,11 @@ export async function checkOffGroupListItems(
   ports: GroupListToolPorts,
   itemIds: readonly string[],
 ) {
+  await requireThread(ports);
   const lists = await liveLists(ports);
   const ids = [...new Set(itemIds)];
-  if (lists.length === 0 || ids.length === 0) return { checked: [], unknown: ids };
+  if (lists.length === 0 || ids.length === 0)
+    return { checked: [], alreadyChecked: [], unknown: ids };
   const uuid = z.string().uuid();
   const valid = ids.filter((id) => uuid.safeParse(id).success);
   const rows =
@@ -215,24 +371,35 @@ export async function checkOffGroupListItems(
               isNull(schema.groupListItems.checkedAt),
             ),
           );
-  if (rows.length > 0) {
-    await ports.database
-      .update(schema.groupListItems)
-      .set({ checkedAt: ports.now, checkedByUserId: ports.actorUserId })
-      .where(
-        and(
-          inArray(
-            schema.groupListItems.id,
-            rows.map((r) => r.id),
-          ),
-          isNull(schema.groupListItems.checkedAt),
-        ),
-      );
-  }
+  // The conditional update is the truth: a row someone else checked between the read
+  // and this write updates 0 rows and is reported as alreadyChecked, never as checked.
+  const updated =
+    rows.length === 0
+      ? []
+      : await ports.database
+          .update(schema.groupListItems)
+          .set({ checkedAt: ports.now, checkedByUserId: ports.actorUserId })
+          .where(
+            and(
+              inArray(
+                schema.groupListItems.id,
+                rows.map((r) => r.id),
+              ),
+              isNull(schema.groupListItems.checkedAt),
+            ),
+          )
+          .returning({ id: schema.groupListItems.id });
+  const won = new Set(updated.map((r) => r.id));
+  for (const id of won) ports.journal?.checkedItemIds.push(id);
   const found = new Set(rows.map((r) => r.id));
   const listName = new Map(lists.map((l) => [l.id, l.name]));
+  const view = (r: (typeof rows)[number]) => ({
+    text: r.text,
+    listName: listName.get(r.listId) ?? null,
+  });
   return {
-    checked: rows.map((r) => ({ text: r.text, listName: listName.get(r.listId) ?? null })),
+    checked: rows.filter((r) => won.has(r.id)).map(view),
+    alreadyChecked: rows.filter((r) => !won.has(r.id)).map(view),
     unknown: ids.filter((id) => !found.has(id)),
   };
 }
@@ -241,13 +408,16 @@ export function groupListTools(ports: GroupListToolPorts): RegisteredTool[] {
   const list = defineTool({
     name: LIST_GROUP_LISTS_TOOL,
     description:
-      "The shared lists in THIS group chat (groceries, packing, anything the group keeps), each with its open items and who added each one (`addedBy`, a first name or null). Call it when someone asks what's on a list, before checking anything off, and to see a list's exact name before adding to it. Answer only from what it returns; never add an item, name or list it did not return.",
-    inputSchema: z.object({}),
+      "The shared lists in THIS group chat (groceries, packing, anything the group keeps), each with its open items and who added each one (`addedBy`, a first name or null). Call it when someone asks what's on a list, before checking anything off, and to see a list's exact name before adding to it. Answer only from what it returns; never add an item, name or list it did not return. A long list shows its most recent open items and `omittedCount` for the rest (and `omittedLists` for lists not shown); pass `listName` to read one list, and never claim an omitted item is or isn't there.",
+    inputSchema: z.object({
+      listName: z.string().min(1).max(200).optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+    }),
     monetary: false,
     touchesChildContent: false,
-    handler: async (_input, ctx) => {
+    handler: async (input, ctx) => {
       requireScope(ports, ctx.familyId);
-      return { lists: await readGroupLists(ports) };
+      return readGroupListsPage(ports, input);
     },
   });
 
@@ -270,7 +440,7 @@ export function groupListTools(ports: GroupListToolPorts): RegisteredTool[] {
   const check = defineTool({
     name: CHECK_OFF_GROUP_LIST_TOOL,
     description:
-      'Check items off this group\'s shared lists when someone says, in any words or language, that they got, packed or handled them ("got it" right after an item, "picked up the milk"). `itemIds` must come from list_group_lists. If it isn\'t clear which item they mean, ask once instead of guessing.',
+      'Check items off this group\'s shared lists when someone says, in any words or language, that they got, packed or handled them ("got it" right after an item, "picked up the milk"). `itemIds` must come from list_group_lists. If it isn\'t clear which item they mean, ask once instead of guessing. `alreadyChecked` items were checked off by someone else first.',
     inputSchema: z.object({ itemIds: z.array(z.string().min(1).max(64)).min(1) }),
     monetary: false,
     touchesChildContent: false,
