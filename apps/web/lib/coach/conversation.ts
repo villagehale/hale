@@ -180,28 +180,54 @@ export async function loadLatestThread(
   return { conversationId, timeline };
 }
 
+/** Model-only context for an email-alert turn. The stored `content` stays the notice
+ * text the parent was sent. A snippet is withheld (null) for a 13+ child's mail, and
+ * then this returns the content unchanged. */
+export function emailSourceTranscript(
+  content: string,
+  source: schema.MessageSource | null,
+): string {
+  if (source?.kind !== 'gmail' || source.snippet == null || source.snippet === '') return content;
+  return `${content}\n[email ${JSON.stringify({
+    gmailMessageId: source.gmailMessageId,
+    eventId: source.eventId,
+    snippet: source.snippet,
+  })}]`;
+}
+
 /** Loads a conversation's transcript in chronological order. Soft-deleted turns
  * (deleted_at stamped) are excluded so a removed turn never re-enters the agent's
- * context (rule #6 soft-delete: the row survives for audit, the read drops it). */
+ * context (rule #6 soft-delete: the row survives for audit, the read drops it).
+ * An email-alert turn's snippet rides here for the model only; it is not the stored
+ * content and it is not a second text. */
 export async function loadTranscript(
   conversationId: string,
   database: Database,
 ): Promise<TranscriptMessage[]> {
   const rows = await database
-    .select({ role: schema.messages.role, content: schema.messages.content })
+    .select({
+      role: schema.messages.role,
+      content: schema.messages.content,
+      source: schema.messages.source,
+    })
     .from(schema.messages)
     .where(
       and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
     )
     .orderBy(asc(schema.messages.createdAt));
 
-  return rows.map((r) => ({ role: r.role, content: r.content }));
+  return rows.map((r) => ({
+    role: r.role,
+    content: emailSourceTranscript(r.content, r.source),
+  }));
 }
 
 /** One turn's scope, persisted on the message so the timeline can filter on it. */
 export interface MessageScope {
   childId: string | null;
   topic: string | null;
+  /** What a proactive turn was about (messages.source, 0198). Omitted = null. */
+  source?: schema.MessageSource | null;
 }
 
 /** Appends one message turn to a conversation, carrying its scope (child + topic).
@@ -216,7 +242,15 @@ export async function appendMessage(
 ): Promise<string> {
   const rows = await database
     .insert(schema.messages)
-    .values({ conversationId, role, content, childId: scope.childId, topic: scope.topic })
+    .values({
+      conversationId,
+      role,
+      content,
+      childId: scope.childId,
+      topic: scope.topic,
+      // Omitted when absent so a database that has not applied 0198 can still insert.
+      ...(scope.source ? { source: scope.source } : {}),
+    })
     .returning({ id: schema.messages.id });
   const id = rows[0]?.id;
   if (!id) {
@@ -242,6 +276,7 @@ export async function loadTranscriptWithAttachments(
       id: schema.messages.id,
       role: schema.messages.role,
       content: schema.messages.content,
+      source: schema.messages.source,
     })
     .from(schema.messages)
     .where(
@@ -270,7 +305,13 @@ export async function loadTranscriptWithAttachments(
     mimesByMessage.set(a.messageId, list);
   }
 
-  return applyAttachmentMarkers(rows, mimesByMessage);
+  return applyAttachmentMarkers(
+    rows.map((row) => ({
+      ...row,
+      content: emailSourceTranscript(row.content, row.source),
+    })),
+    mimesByMessage,
+  );
 }
 
 /**
