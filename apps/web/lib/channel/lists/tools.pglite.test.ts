@@ -19,6 +19,7 @@ import {
   createGroupListJournal,
   groupListTools,
   readGroupLists,
+  readGroupListsPage,
   undoGroupListWrites,
 } from './tools';
 
@@ -326,6 +327,45 @@ describe('group shared lists (VIL-447)', () => {
     expect(lists.map((l) => l.name)).toEqual(['Groceries']);
     expect(lists[0]?.items.map((i) => i.text)).toEqual(['milk']);
     expect(journal).toEqual(createGroupListJournal());
+  });
+
+  it('Devin 6: a failed turn keeps an item another member was told is already on', async () => {
+    const g = await group();
+    const journal = createGroupListJournal();
+    const failing = { ...g.ports, journal };
+    await addToGroupList(failing, 'Groceries', ['milk']);
+    // Concurrent turn by someone else: hears milk is already on.
+    const other = await addToGroupList(
+      { ...g.ports, now: new Date(NOW.getTime() + 1) },
+      'Groceries',
+      ['milk'],
+    );
+    expect(other.alreadyOn).toEqual(['milk']);
+    await undoGroupListWrites(failing, journal);
+    const lists = await readGroupLists(g.ports);
+    expect(lists[0]?.items.map((i) => i.text)).toEqual(['milk']);
+  });
+
+  it('Devin 7: past READ_MAX_LISTS the newest lists show, offset pages older, listName finds any', async () => {
+    const g = await group();
+    for (let k = 0; k < 21; k += 1) {
+      await db.database.insert(schema.groupLists).values({
+        familyId: g.familyId,
+        conversationId: g.ports.conversationId,
+        name: `L${k}`,
+        nameKey: `l${k}`,
+        createdAt: new Date(NOW.getTime() + k * 1000),
+      });
+    }
+    const first = await readGroupListsPage(g.ports);
+    expect(first.lists).toHaveLength(20);
+    expect(first.omittedLists).toBe(1);
+    expect(first.lists.at(-1)?.name).toBe('L20');
+    expect(first.lists[0]?.name).toBe('L1');
+    expect(first.lists.some((l) => l.name === 'L0')).toBe(false);
+    const next = await readGroupListsPage(g.ports, { offset: 20 });
+    expect(next.lists.map((l) => l.name)).toEqual(['L0']);
+    expect((await readGroupLists(g.ports, { listName: 'l0' })).map((l) => l.name)).toEqual(['L0']);
   });
 
   it("Devin 5: a list cannot pair one family with another family's thread", async () => {

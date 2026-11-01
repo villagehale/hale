@@ -74,6 +74,8 @@ export const groupListItems = pgTable(
     addedByUserId: uuid('added_by_user_id').references(() => users.id, { onDelete: 'set null' }),
     addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
     checkedAt: timestamp('checked_at', { withTimezone: true }),
+    /** Set when another add was told this open row was already on; undo then keeps it. */
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
     checkedByUserId: uuid('checked_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),

@@ -1,6 +1,6 @@
 import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 /**
@@ -54,7 +54,8 @@ export interface GroupListToolPorts {
 /**
  * What one turn wrote, so a turn that fails before any reply leaves the lists as it found
  * them. Undo is narrow on purpose: it deletes only items this turn inserted that are
- * still open, un-checks only items this turn checked (same instant, same person), and
+ * still open AND that no other turn was told were already on (`claimedAt`, set when a
+ * concurrent add lands on this row; their `alreadyOn` stays true), un-checks only items this turn checked (same instant, same person), and
  * removes a list this turn made only if nothing else is on it.
  */
 export interface GroupListJournal {
@@ -95,6 +96,7 @@ export async function undoGroupListWrites(
         and(
           inArray(schema.groupListItems.id, insertedItemIds),
           isNull(schema.groupListItems.checkedAt),
+          isNull(schema.groupListItems.claimedAt),
         ),
       );
   }
@@ -118,7 +120,7 @@ export async function undoGroupListWrites(
  * loop's tool-result ceiling is 8,000; this leaves room for names, ids and counts.
  */
 export const READ_BUDGET_CHARS = 6000;
-/** Lists beyond this many (oldest first) are counted, not returned, in one read. */
+/** Lists beyond this many (newest first per page) are counted, not returned, in one read. */
 export const READ_MAX_LISTS = 20;
 
 /** Case, width and spacing folded, so "Milk" and "milk " are one item and one list. */
@@ -166,7 +168,7 @@ async function namesFor(db: Database, ids: (string | null)[]) {
   return new Map(rows.map((r) => [r.id, firstName(r)]));
 }
 
-async function liveLists(ports: GroupListToolPorts) {
+async function liveLists(ports: GroupListToolPorts, newestFirst = false) {
   return ports.database
     .select({
       id: schema.groupLists.id,
@@ -181,7 +183,10 @@ async function liveLists(ports: GroupListToolPorts) {
         isNull(schema.groupLists.archivedAt),
       ),
     )
-    .orderBy(asc(schema.groupLists.createdAt));
+    .orderBy(
+      newestFirst ? desc(schema.groupLists.createdAt) : asc(schema.groupLists.createdAt),
+      newestFirst ? desc(schema.groupLists.id) : asc(schema.groupLists.id),
+    );
 }
 
 export interface ReadGroupListsOptions {
@@ -189,6 +194,8 @@ export interface ReadGroupListsOptions {
   listName?: string;
   /** At most this many open items per list (the most recent ones). */
   limit?: number;
+  /** Skip this many lists (newest first) — the next page after `omittedLists`. */
+  offset?: number;
 }
 
 /**
@@ -209,13 +216,17 @@ export async function readGroupListsPage(
   options: ReadGroupListsOptions = {},
 ) {
   await requireThread(ports);
-  let lists = await liveLists(ports);
+  // Newest first, so a 21st list is the one shown, not the one hidden; `offset` pages
+  // back to older ones. `listName` filters the whole thread before any paging.
+  let lists = await liveLists(ports, true);
   if (options.listName !== undefined) {
     const key = foldListText(options.listName);
     lists = lists.filter((l) => l.nameKey === key);
   }
+  const offset = options.offset ?? 0;
   const omittedLists = Math.max(0, lists.length - READ_MAX_LISTS);
-  lists = lists.slice(0, READ_MAX_LISTS);
+  // The page is picked newest first, then shown in creation order like before.
+  lists = lists.slice(offset, offset + READ_MAX_LISTS).reverse();
   if (lists.length === 0) return { lists: [], omittedLists };
   const items = await ports.database
     .select({
@@ -336,6 +347,21 @@ export async function addToGroupList(
   const won = new Set(inserted.map((r) => r.textKey));
   const added: string[] = [];
   for (const w of wanted) (won.has(w.key) ? added : alreadyOn).push(w.text);
+  // We were told it is already on: claim the open row so a failing turn that inserted it
+  // cannot undo it out from under us.
+  const lost = wanted.filter((w) => !won.has(w.key)).map((w) => w.key);
+  if (lost.length > 0) {
+    await ports.database
+      .update(schema.groupListItems)
+      .set({ claimedAt: ports.now })
+      .where(
+        and(
+          eq(schema.groupListItems.listId, list.id),
+          inArray(schema.groupListItems.textKey, lost),
+          isNull(schema.groupListItems.checkedAt),
+        ),
+      );
+  }
   return { listName: list.name, added, alreadyOn };
 }
 
@@ -408,10 +434,11 @@ export function groupListTools(ports: GroupListToolPorts): RegisteredTool[] {
   const list = defineTool({
     name: LIST_GROUP_LISTS_TOOL,
     description:
-      "The shared lists in THIS group chat (groceries, packing, anything the group keeps), each with its open items and who added each one (`addedBy`, a first name or null). Call it when someone asks what's on a list, before checking anything off, and to see a list's exact name before adding to it. Answer only from what it returns; never add an item, name or list it did not return. A long list shows its most recent open items and `omittedCount` for the rest (and `omittedLists` for lists not shown); pass `listName` to read one list, and never claim an omitted item is or isn't there.",
+      "The shared lists in THIS group chat (groceries, packing, anything the group keeps), each with its open items and who added each one (`addedBy`, a first name or null). Call it when someone asks what's on a list, before checking anything off, and to see a list's exact name before adding to it. Answer only from what it returns; never add an item, name or list it did not return. A long list shows its most recent open items and `omittedCount` for the rest (and `omittedLists` for lists not shown); the newest lists are shown first page, so pass `offset` (newest lists to skip) for older ones; pass `listName` to read one list, and never claim an omitted item is or isn't there.",
     inputSchema: z.object({
       listName: z.string().min(1).max(200).optional(),
       limit: z.number().int().min(1).max(200).optional(),
+      offset: z.number().int().min(0).max(10000).optional(),
     }),
     monetary: false,
     touchesChildContent: false,

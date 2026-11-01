@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS "group_list_items" (
 	"added_by_user_id" uuid REFERENCES "users"("id") ON DELETE set null,
 	"added_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"checked_at" timestamp with time zone,
+	"claimed_at" timestamp with time zone,
 	"checked_by_user_id" uuid REFERENCES "users"("id") ON DELETE set null,
 	CONSTRAINT "group_list_items_text_length_check" CHECK (char_length("text") BETWEEN 1 AND 500)
 );--> statement-breakpoint
