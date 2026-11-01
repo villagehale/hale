@@ -147,6 +147,12 @@ export const CALENDAR_ALERT_OUTCOMES = [
    * household notice. This SMS path stays quiet so a non-kid title never
    * reaches the group and nothing is retried as a 1:1. */
   'group_home',
+  /** VIL-527: the 1:1 SMS sentence was fixed English template copy about ANY title on the
+   * calendar, adult meetings included, re-minted on every `updated` stamp. Hale's AI
+   * writes every parent message, and only kid-relevant dates are spoken (the household
+   * notice, which is model-written and kid-filtered). So this path never sends: it only
+   * remembers the shape, and any text it still owed is dropped, not re-offered. */
+  'fixed_copy_retired',
   /** CALENDAR_ALERT_ENABLED is not `true`. The shape is remembered and a text already
    * owed is left as it was and re-offered once the lane is back on; one older than
    * {@link CALENDAR_ALERT_PENDING_MAX_DAYS} is aged out by the lane-off sweep itself. */
@@ -307,6 +313,59 @@ interface Offer {
  * 11:40 p.m. is offered again at 8 a.m., and it would never survive a queue that always
  * put this minute's edits in front of it.
  */
+/** VIL-527: the fixed-copy sentence below is retired in production. Only the legacy
+ * suite flips this to keep exercising the memory/dedupe machinery it still relies on. */
+let fixedCopyRetired = true;
+export function __setCalendarAlertFixedCopyRetiredForTests(value: boolean): void {
+  fixedCopyRetired = value;
+}
+
+/** VIL-527: clear every held text on this connection so nothing fixed-copy is re-offered.
+ * Returns one `fixed_copy_retired` re-offer outcome per held text dropped (so the connector
+ * summary counts them, rule #11) and writes one immutable audit row per drop. Enums and
+ * flags only in the audit — never the held title or location. */
+async function retireDebts(
+  database: Database,
+  familyId: string,
+  integrationId: string,
+): Promise<CalendarAlertOutcome[]> {
+  const owed = (await readSnapshots(database, integrationId, [])).filter(isPending);
+  if (owed.length === 0) return [];
+  await database
+    .update(schema.calendarEventSnapshots)
+    .set({
+      pendingSince: null,
+      heldTitle: null,
+      heldLocation: null,
+      heldMovedFromAt: null,
+      heldMovedFromAllDay: null,
+    })
+    .where(
+      and(
+        eq(schema.calendarEventSnapshots.integrationId, integrationId),
+        inArray(
+          schema.calendarEventSnapshots.eventId,
+          owed.map((row) => row.eventId),
+        ),
+      ),
+    );
+  await database.insert(schema.auditLog).values(
+    owed.map((row) => ({
+      familyId,
+      actor: 'system' as const,
+      actionTaken: 'calendar_alert_debt_retired',
+      targetTable: 'calendar_event_snapshots',
+      targetId: `${integrationId}:${row.eventId}`,
+      after: {
+        reason: 'fixed_copy_retired',
+        moved: row.heldMovedFromAt !== null,
+        pendingSince: row.pendingSince.toISOString(),
+      },
+    })),
+  );
+  return owed.map((): CalendarAlertOutcome => 'fixed_copy_retired');
+}
+
 export async function alertParentForCalendarChanges(
   database: Database,
   input: CalendarAlertInput,
@@ -337,6 +396,18 @@ export async function alertParentForCalendarChanges(
   if (!f14EnabledFor(familyId)) {
     await rememberOnly(database, input, parentUserId, ports);
     return { changes: changes.map(() => 'dark'), reoffers: [] };
+  }
+  // VIL-527 — absolute-zero fixed copy. Everything below this line renders a deterministic
+  // English sentence ("X is on your calendar for …") for whatever title Google stored,
+  // with no kid-relevance check, and a dedupe key that turns over with every `updated`
+  // stamp — so one adult meeting edited or re-synced three times texted three times.
+  // The sentence cannot be made model-written here, so the lane sends nothing: it keeps
+  // the memory current (so nothing later reads as a first sighting) and retires every
+  // debt it still owes, so none of them is ever re-offered.
+  if (fixedCopyRetired) {
+    const reoffers = await retireDebts(database, familyId, integrationId);
+    await rememberOnly(database, input, parentUserId, ports);
+    return { changes: changes.map(() => 'fixed_copy_retired'), reoffers };
   }
   // The group is the home channel. Kid dates are spoken by the household
   // notice. The SMS sentence names whatever title Google stored, including

@@ -3,11 +3,7 @@ import { eq } from 'drizzle-orm';
 import type PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import {
-  CALENDAR_ALERT_TEMPLATE_KEY,
-  type CalendarChange,
-  calendarAlertDedupeKey,
-} from '~/lib/integrations/calendar-alert';
+import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import {
   EMAIL_ALERT_TEMPLATE_KEY,
   type GmailAlertEnvelope,
@@ -183,37 +179,14 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
     expect(sweep).toEqual({ changes: ['seeding_run'], reoffers: [] });
   });
 
-  it("keys the dedupe read on THIS connection, THIS event and Google's own stamp", async () => {
-    // Pre-placed, so the only way to reach `already_sent` is for the wiring to have built
-    // the very same key from connection.id + eventId + updated.
+  it('VIL-527: never sends the fixed-copy calendar sentence, whatever the stamp', async () => {
     const conn = connection({ provider: 'gcal' });
     const moved = change('ev1');
-    await db.database.insert(schema.channelMessages).values({
-      familyId: family.familyId,
-      parentUserId: family.parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'calendar_alert',
-      templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
-      dedupeKey: calendarAlertDedupeKey(conn.id, moved.eventId, moved.updated),
-      status: acceptedStatus('sms'),
-      sentAt: new Date(),
-    });
-
-    await expect(
-      calendarAlertPort()({ connection: conn, seeding: false, changes: [moved] }),
-    ).resolves.toEqual({ changes: ['already_sent'], reoffers: [] });
-    // ...and the SAME event with a new stamp is a new key, so a move is heard. The
-    // concrete outcome rather than `not.toEqual('already_sent')`: an absence assertion
-    // passes just as happily on a wiring that stopped producing outcomes at all. This
-    // family has no verified channel, so the real gate is the next thing it meets.
-    await expect(
-      calendarAlertPort()({
-        connection: conn,
-        seeding: false,
-        changes: [{ ...moved, updated: '2026-09-17T15:40:00.000Z' }],
-      }),
-    ).resolves.toEqual({ changes: ['gate_refused:not_enrolled'], reoffers: [] });
+    for (const updated of [moved.updated, '2026-09-17T15:40:00.000Z']) {
+      await expect(
+        calendarAlertPort()({ connection: conn, seeding: false, changes: [{ ...moved, updated }] }),
+      ).resolves.toEqual({ changes: ['fixed_copy_retired'], reoffers: [] });
+    }
   });
 });
 
