@@ -899,10 +899,14 @@ const TRAVEL_JUDGE_SYSTEM = [
 const TRAVEL_BRIEF_JUDGE_SYSTEM = [
   'You score the one text Hale is about to send a parent about a short trip.',
   'You are given the purpose, the facts the writer was given, and the text. Score 1-5.',
-  'Fact grounding: a place, a time, a price, or a name in the text has to be in those facts.',
+  'Fact grounding: a place, a price, or a name in the text has to be in those facts.',
+  'Name, price, and source must appear unchanged.',
+  "`language` is the parent's language. Null means English.",
+  "Every day, time, and date stated in a pick's `when` must still be in the text, written in `language`, not in the source's wording.",
+  'A schedule left in another language is a 1 or 2. A dropped or invented day, time, or date is a 1 or 2.',
   'A detail the facts do not carry is invented. A 5 names only what the facts carry.',
   'An empty price or time in the facts is a gap, and naming that gap is correct.',
-  'A 1 or 2 invents a place, a time, a price, a child, or a claim that someone went.',
+  'A 1 or 2 also invents a place, a price, a child, or a claim that someone went.',
   'Tone: one short text a person would send. Not a form, not a set of instructions,',
   'not a question, and not a claim that the visit is confirmed or that anyone has been.',
   'Length is not a fault. Leaving a fact out is not a fault when this text is the shorter',
@@ -932,7 +936,11 @@ const TRAVEL_ZOO = {
 const TRAVEL_LONG = {
   name: 'Long Island Childrens Museum',
   ageFit: 'all ages',
-  when: 'open daily '.repeat(80),
+  // Dated facts, not a quoted sentence. Keeping every one, in any language, does not fit.
+  when: Array.from({ length: 36 }, (_, index) => {
+    const day = String((index % 28) + 1).padStart(2, '0');
+    return `2026-11-${day} 10:00-11:30`;
+  }).join('; '),
   price: 'USD 17',
   sourceName: 'Long Island Childrens Museum',
   source: 'web',
@@ -965,8 +973,10 @@ const TRAVEL_TRIP = {
 
 /**
  * Fixed briefs, so the writer is recorded even when extraction has not been re-recorded.
- * `retry` is the one whose first draft cannot fit: the long schedule is verbatim, so the
- * first ask goes past the segment ceiling and the one-fewer-fact ask is the text judged.
+ * `retry` keeps a long list of days and times in the facts, not in verbatim. Writing
+ * every one of them, in the parent's language, goes past the segment ceiling. The
+ * one-fewer-fact ask is the text judged. `zh` is a parent whose schedule must not
+ * stay in English.
  */
 const TRAVEL_WRITER_CASES = [
   {
@@ -983,6 +993,21 @@ const TRAVEL_WRITER_CASES = [
     id: 'travel-writer-retry',
     expectsRetry: true,
     input: { ...TRAVEL_TRIP, picks: [TRAVEL_PICK, TRAVEL_LONG], references: [] },
+  },
+  {
+    id: 'travel-writer-zh',
+    expectsRetry: false,
+    input: {
+      ...TRAVEL_TRIP,
+      language: 'zh',
+      picks: [
+        {
+          ...TRAVEL_PICK,
+          when: 'Saturdays 10:00-11:30, from September 12 to December 18',
+        },
+      ],
+      references: [],
+    },
   },
 ];
 
@@ -1085,6 +1110,7 @@ async function gradeTravelBrief({
     const request = asks[asks.length - 1];
     const verdict = await travelBriefJudge(id, {
       purpose: request.purpose,
+      language: request.language,
       facts: request.facts ?? {},
       text,
     });

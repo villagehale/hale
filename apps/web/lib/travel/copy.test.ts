@@ -171,7 +171,11 @@ describe('renderTravelBrief', () => {
       picks: [pick(), long],
       teenNames: [],
     });
-    expect(plans.first.verbatim).toContain(long.when);
+    expect(plans.first.verbatim).toContain(long.name);
+    expect(plans.first.verbatim).toContain('USD 17');
+    expect(plans.first.verbatim).toContain(long.sourceName);
+    expect(plans.first.verbatim).not.toContain(long.when);
+    expect(plans.first.facts?.picks).toContain(long.when);
     expect(plans.first.purpose).toBe('travel_source_listings');
     const retry = plans.retry;
     if (!retry?.facts) throw new Error('expected a one-fewer-fact retry');
@@ -347,6 +351,12 @@ describe('travelBriefViolations', () => {
     // And a possessive is still the name — the boundary is a letter or a digit, not a
     // character class that lets an apostrophe smuggle one through.
     expect(travelBriefViolations(`${body} That's Al's week.`, short)).toContain('names_a_teen');
+  });
+
+  it('allows a schedule rewritten in another language when the days and times are the same', () => {
+    const body =
+      'Vous etes a New York du 12 au 15. pour Mia: American Museum of Natural History, ouvert tous les jours de 10 h a 5 h 30, USD 28 adults / 16 kids. Central Park Zoo, de 10 h a 5 h, USD 20.';
+    expect(travelBriefViolations(body, context)).not.toContain('unbacked_digit');
   });
 
   it('refuses a digit that traces to nothing', async () => {

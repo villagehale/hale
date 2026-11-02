@@ -10,6 +10,7 @@ import {
 } from '~/lib/channel/activity/reader';
 import { f14Allowlist, f14Enabled, f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound, familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -454,6 +455,11 @@ async function briefOne(
   let rendered: TravelBriefRender;
   try {
     const target = await familyOutboundTarget(database, trip.familyId);
+    const [parent] = await database
+      .select({ locale: schema.users.locale })
+      .from(schema.users)
+      .where(eq(schema.users.id, trip.parentUserId))
+      .limit(1);
     rendered = await renderTravelBrief({
       city: trip.destinationCity,
       startsOn: trip.startsOn,
@@ -463,6 +469,7 @@ async function briefOne(
       references,
       teenNames: names.teens,
       forGroup: target.channel === 'group',
+      language: acceptReplyLanguage(parent?.locale),
     });
   } catch (err) {
     result.refusedAtRender += 1;

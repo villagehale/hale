@@ -3,6 +3,7 @@ import type { ActivityReference } from '~/lib/channel/activity/facts';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import { childPhrase } from '~/lib/channel/checkin/copy';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { type SpokenLineRequest, type SpokenLineWriter, speak } from '~/lib/channel/spoken-line';
@@ -65,6 +66,8 @@ export interface TravelBriefInput {
   teenNames: readonly string[];
   /** Group versus one parent. A fact for the writer, not a sentence. */
   forGroup?: boolean;
+  /** The parent's stored BCP-47 tag. The schedule is written in this language. */
+  language?: string | null;
 }
 
 export interface TravelBriefContext {
@@ -123,16 +126,33 @@ export function travelBriefViolations(body: string, context: TravelBriefContext)
 
   // Subtract the pieces the body is ALLOWED to carry, then judge what is left. Order
   // matters only in that each subtraction removes the FIRST occurrence.
+  const allowedDigits = new Set<string>();
+  const allowDigits = (text: string | null | undefined) => {
+    for (const raw of text?.match(/\d+/g) ?? []) {
+      allowedDigits.add(raw);
+      const trimmed = raw.replace(/^0+(?=\d)/, '');
+      if (trimmed !== raw) allowedDigits.add(trimmed);
+    }
+  };
+  allowDigits(context.dayPhrase);
   let rest = without(body, context.dayPhrase);
   for (const pick of context.rendered) {
+    allowDigits(pick.name);
+    allowDigits(pick.when);
+    allowDigits(pick.price);
     rest = without(rest, pick.name);
     rest = without(rest, pick.when);
     rest = without(rest, pick.price);
   }
   for (const reference of context.renderedReferences ?? []) {
+    allowDigits(reference.name);
+    allowDigits(reference.sourceName);
     rest = without(rest, reference.name);
     rest = without(rest, reference.sourceName);
   }
+  // A schedule written in the parent's language no longer contains the source's
+  // sentence, but its days, times, and dates are the same numerals.
+  rest = rest.replace(/\d+/g, (raw) => (allowedDigits.has(raw) ? '' : raw));
   if (rest.includes('?')) violations.push('asks_a_question');
   // A DIGIT WITH NOTHING BEHIND IT. Every number in this text traces to the trip's own
   // dates or to a figure a page published; one that survives the subtraction above was
@@ -171,7 +191,7 @@ function pushPiece(pieces: string[], piece: string | null | undefined) {
   pieces.push(piece);
 }
 
-/** Name, schedule, price, and source, so a paraphrase cannot drop or rewrite them. */
+/** Name, price, and source stay exact. The schedule is not here: it is rewritten in the parent's language. */
 function listingVerbatim(
   picks: readonly ActivityPick[],
   references: readonly ActivityReference[],
@@ -179,7 +199,6 @@ function listingVerbatim(
   const pieces: string[] = [];
   for (const pick of picks) {
     pushPiece(pieces, pick.name);
-    pushPiece(pieces, pick.when);
     pushPiece(pieces, pick.price);
     pushPiece(pieces, pick.sourceName);
   }
@@ -251,7 +270,7 @@ export function travelListingRequest(
   const kids = childPhrase([...input.childNames]);
   return {
     purpose: 'travel_source_listings',
-    language: null,
+    language: acceptReplyLanguage(input.language),
     facts: listingFacts(input, dayPhrase, kids, picks, references),
     verbatim: listingVerbatim(picks, references),
   };
