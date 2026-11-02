@@ -10,7 +10,9 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * lane. The second uses a smaller model. Both failing holds the send and pages.
  */
 
-const MAX_TOKENS = 400;
+export const SPOKEN_LINE_MAX_TOKENS = 400;
+export const SPOKEN_LINE_TOOL = 'spoken_line';
+export const SPOKEN_LINE_TOOL_DESCRIPTION = 'Write the one text Hale will send.';
 
 export interface SpokenLineRequest {
   purpose: string;
@@ -26,11 +28,28 @@ export interface SpokenLineWriter {
 
 const outputSchema = z.object({ text: z.string() });
 
-const outputJsonSchema = {
+export const spokenLineJsonSchema = {
   type: 'object',
   properties: { text: { type: 'string' } },
   required: ['text'],
 } as const;
+
+/** The user message `createSpokenLineWriter` sends. The eval caches these exact bytes. */
+export function spokenLineUserMessage(request: SpokenLineRequest): string {
+  return JSON.stringify({
+    purpose: request.purpose,
+    language: request.language,
+    facts: request.facts ?? {},
+    verbatim: request.verbatim ?? [],
+  });
+}
+
+/** The skill lane, then the smaller lane. One entry when the lane is already the smaller one. */
+export function spokenLineLanes(): readonly LaneConfig[] {
+  const first = pickLane('draft');
+  const second = smallerLane(first);
+  return second === first ? [first] : [first, second];
+}
 
 export function acceptSpokenLine(
   text: string,
@@ -68,25 +87,21 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
         );
         return null;
       }
-      const first = pickLane(skill.meta.task);
-      const lanes = [first, smallerLane(first)];
+      const lanes = spokenLineLanes();
       for (let attempt = 0; attempt < lanes.length; attempt += 1) {
+        const lane = lanes[attempt];
+        if (!lane) continue;
         try {
           const { value } = await forceToolJson({
             client: client(),
-            lane: lanes[attempt] ?? first,
+            lane,
             system: skill.instructions,
-            userMessage: JSON.stringify({
-              purpose: request.purpose,
-              language: request.language,
-              facts: request.facts ?? {},
-              verbatim: request.verbatim ?? [],
-            }),
-            toolName: 'spoken_line',
-            toolDescription: 'Write the one text Hale will send.',
-            inputJsonSchema: outputJsonSchema,
+            userMessage: spokenLineUserMessage(request),
+            toolName: SPOKEN_LINE_TOOL,
+            toolDescription: SPOKEN_LINE_TOOL_DESCRIPTION,
+            inputJsonSchema: spokenLineJsonSchema,
             schema: outputSchema,
-            maxTokens: MAX_TOKENS,
+            maxTokens: SPOKEN_LINE_MAX_TOKENS,
           });
           const accepted = acceptSpokenLine(value.text, request.verbatim);
           if (accepted) return accepted;

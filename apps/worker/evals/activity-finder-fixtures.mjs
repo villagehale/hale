@@ -113,11 +113,11 @@ export const ACTIVITY_FIXTURES = [
   // search loses its dates with no error anywhere.
   //
   // `composesOwnText: true` says where this query shape STOPS. `createActivityFinder`
-  // ends at the picks, and the travel sweep hands them to `renderTravelBrief`, which is
-  // deterministic and never asks the model for a word. The follow-up composer the other
-  // fixtures are scored on is `followup-note.ts`, which the coach reaches and this lane
-  // does not — so the runner skips it here and grades the FINDS, against a rubric that
-  // asks the one question this string exists to settle. Every hard zero still runs.
+  // ends at the picks, and the travel sweep hands them to `renderTravelBrief`. That
+  // brief is the spoken-line writer (`travel_source_listings`), cached and judged with
+  // the other calls — picks-only, references, and the one-fewer-fact retry. The
+  // follow-up composer the other fixtures are scored on is `followup-note.ts`, which
+  // the coach reaches and this lane does not. Every hard zero still runs.
   //
   // And none of the three requires a PRICE, which is the bar rev 2 of the brief asked for
   // and this corpus's own header forbids: "a `when` or a `price` the SOURCE never

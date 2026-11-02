@@ -34,6 +34,7 @@
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs           # live, then caches
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs --broken  # calibration: must FAIL
 //   node evals/run-activity-finder-eval.mjs --cached-only                   # CI: replay only
+//   node evals/run-activity-finder-eval.mjs --estimate                      # no API: price the travel writer
 //   node --env-file=../../launch.env evals/run-activity-finder-eval.mjs \
 //     --anthropic-model=claude-sonnet-5-5 --only=<id,id>
 //
@@ -72,6 +73,7 @@ import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
+  PRICE,
   cacheGet,
   cacheKey,
   cachePut,
@@ -96,6 +98,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const ACTIVITY_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
+const SPOKEN_LINE_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'spoken-line.md');
 const TRAVEL_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'query.ts');
 
 // Mirrors the lane's own constants (activity/lane.ts, activity/followup-note.ts).
@@ -114,7 +117,22 @@ const {
   parentURL: import.meta.url,
   tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
 });
-const { renderTravelBrief } = await tsImport(join(REPO_ROOT, 'apps/web/lib/travel/copy.ts'), {
+const { renderTravelBrief, travelWriterPlans } = await tsImport(
+  join(REPO_ROOT, 'apps/web/lib/travel/copy.ts'),
+  {
+    parentURL: import.meta.url,
+    tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+  },
+);
+const {
+  acceptSpokenLine,
+  spokenLineUserMessage,
+  spokenLineLanes,
+  spokenLineJsonSchema,
+  SPOKEN_LINE_MAX_TOKENS,
+  SPOKEN_LINE_TOOL,
+  SPOKEN_LINE_TOOL_DESCRIPTION,
+} = await tsImport(join(REPO_ROOT, 'apps/web/lib/channel/spoken-line.ts'), {
   parentURL: import.meta.url,
   tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
 });
@@ -873,6 +891,286 @@ const TRAVEL_JUDGE_SYSTEM = [
 ].join(' ');
 
 /**
+ * THE BRIEF the writer actually sent. Grounding against the facts it was given, and
+ * the tone of a text a parent would get. A miss on this judge is a miss, never a pass.
+ * Separate from the finds rubric above so a verdict on the picks is not replayed as a
+ * verdict on the words.
+ */
+const TRAVEL_BRIEF_JUDGE_SYSTEM = [
+  'You score the one text Hale is about to send a parent about a short trip.',
+  'You are given the purpose, the facts the writer was given, and the text. Score 1-5.',
+  'Fact grounding: a place, a time, a price, or a name in the text has to be in those facts.',
+  'A detail the facts do not carry is invented. A 5 names only what the facts carry.',
+  'An empty price or time in the facts is a gap, and naming that gap is correct.',
+  'A 1 or 2 invents a place, a time, a price, a child, or a claim that someone went.',
+  'Tone: one short text a person would send. Not a form, not a set of instructions,',
+  'not a question, and not a claim that the visit is confirmed or that anyone has been.',
+  'Length is not a fault. Leaving a fact out is not a fault when this text is the shorter',
+  'ask after a first draft did not fit.',
+  'Reply with ONLY the score tool.',
+].join(' ');
+
+// Non-Haiku judges in makeJudge are billed at this ceiling. The estimate uses the same one.
+const TRAVEL_BRIEF_JUDGE_MAX_TOKENS = 8192;
+
+const TRAVEL_PICK = {
+  name: 'American Museum of Natural History',
+  ageFit: 'all ages',
+  when: 'open daily 10am-5:30pm',
+  price: 'USD 28 adults / 16 kids',
+  sourceName: 'American Museum of Natural History',
+  source: 'web',
+};
+const TRAVEL_ZOO = {
+  name: 'Central Park Zoo',
+  ageFit: 'all ages',
+  when: '10am-5pm',
+  price: 'USD 20',
+  sourceName: 'Central Park Zoo',
+  source: 'web',
+};
+const TRAVEL_LONG = {
+  name: 'Long Island Childrens Museum',
+  ageFit: 'all ages',
+  when: 'open daily '.repeat(80),
+  price: 'USD 17',
+  sourceName: 'Long Island Childrens Museum',
+  source: 'web',
+};
+const TRAVEL_REFERENCE = {
+  name: 'Discovery Club',
+  sourceName: 'City Museum',
+  sourceUrl: 'https://example.org/discovery',
+  ageFit: null,
+  when: null,
+  price: null,
+  status: 'unconfirmed',
+  evidence: {
+    program: 'Discovery Club',
+    age: null,
+    sessions: [],
+    schedule: null,
+    price: null,
+    history: null,
+    windowConfirmed: false,
+  },
+};
+const TRAVEL_TRIP = {
+  city: 'New York',
+  startsOn: '2026-11-12',
+  endsOn: '2026-11-15',
+  childNames: [],
+  teenNames: [],
+};
+
+/**
+ * Fixed briefs, so the writer is recorded even when extraction has not been re-recorded.
+ * `retry` is the one whose first draft cannot fit: the long schedule is verbatim, so the
+ * first ask goes past the segment ceiling and the one-fewer-fact ask is the text judged.
+ */
+const TRAVEL_WRITER_CASES = [
+  {
+    id: 'travel-writer-picks-only',
+    expectsRetry: false,
+    input: { ...TRAVEL_TRIP, picks: [TRAVEL_PICK, TRAVEL_ZOO], references: [] },
+  },
+  {
+    id: 'travel-writer-references',
+    expectsRetry: false,
+    input: { ...TRAVEL_TRIP, picks: [], references: [TRAVEL_REFERENCE] },
+  },
+  {
+    id: 'travel-writer-retry',
+    expectsRetry: true,
+    input: { ...TRAVEL_TRIP, picks: [TRAVEL_PICK, TRAVEL_LONG], references: [] },
+  },
+];
+
+function estimateTokens(value) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  let latin = 0;
+  let other = 0;
+  for (const ch of text) {
+    if (ch.codePointAt(0) <= 0x024f) latin += 1;
+    else other += 1;
+  }
+  return Math.ceil(latin / 4) + other;
+}
+
+function priced(model, input, output) {
+  const price = PRICE[model];
+  if (!price) throw new Error(`activity-finder estimate: no list price for ${model}`);
+  return (input / 1e6) * price.input + (output / 1e6) * price.output;
+}
+
+/** The cache key `cachedToolCall` uses for one spoken-line attempt. */
+function travelWriterCacheKey(tag, lane, system, userMessage) {
+  const canonical = JSON.stringify({
+    model: lane.model,
+    system,
+    userMessage,
+    toolName: SPOKEN_LINE_TOOL,
+    toolSchema: spokenLineJsonSchema,
+    lane,
+  });
+  return cacheKey(tag, canonical);
+}
+
+function createTravelWriter({ tag, lanes, system, cachedOnly, getClient, cost, asks, drafts }) {
+  return {
+    async write(request) {
+      asks.push(request);
+      for (let attempt = 0; attempt < lanes.length; attempt += 1) {
+        const lane = lanes[attempt];
+        if (!lane) continue;
+        // A miss exits. It is not a null write, and it is not a pass.
+        const result = await cachedToolCall({
+          tag: attempt === 0 ? tag : `${tag}:fallback`,
+          model: lane.model,
+          lane,
+          system,
+          userMessage: spokenLineUserMessage(request),
+          toolName: SPOKEN_LINE_TOOL,
+          toolSchema: spokenLineJsonSchema,
+          toolDescription: SPOKEN_LINE_TOOL_DESCRIPTION,
+          maxTokens: SPOKEN_LINE_MAX_TOKENS,
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        const text = acceptSpokenLine(result?.value?.text, request.verbatim);
+        if (text) {
+          drafts.push(text);
+          return text;
+        }
+      }
+      return null;
+    },
+  };
+}
+
+async function gradeTravelBrief({
+  id,
+  input,
+  expectsRetry,
+  spokenSkill,
+  lanes,
+  travelBriefJudge,
+  cachedOnly,
+  getClient,
+  cost,
+}) {
+  const asks = [];
+  const drafts = [];
+  const writer = createTravelWriter({
+    tag: evalRunTag(`activity-travel-writer:${id}`),
+    lanes,
+    system: spokenSkill.instructions,
+    cachedOnly,
+    getClient,
+    cost,
+    asks,
+    drafts,
+  });
+  const failures = [];
+  let brief = { body: '', rendered: [], renderedReferences: [] };
+  try {
+    brief = await renderTravelBrief(input, writer);
+  } catch (err) {
+    failures.push(`travel_copy:${err instanceof Error ? err.message : 'refused'}`);
+  }
+  if (expectsRetry && asks.length < 2) failures.push('retry_not_taken');
+  const text = brief.body || (expectsRetry && asks.length >= 2 ? (drafts.at(-1) ?? '') : '');
+  if (text && !failures.includes('retry_not_taken')) {
+    const request = asks[asks.length - 1];
+    const verdict = await travelBriefJudge(id, {
+      purpose: request.purpose,
+      facts: request.facts ?? {},
+      text,
+    });
+    if (verdict.score < JUDGE_MIN) {
+      failures.push(
+        `brief_judge:${verdict.score} of ${verdict.samples.join('/')} (${verdict.reason})`,
+      );
+    }
+  }
+  return { brief, failures };
+}
+
+async function priceTravelWriters(spokenSkill, judgeModel) {
+  const lanes = spokenLineLanes();
+  const lane = lanes[0];
+  const system = spokenSkill.instructions;
+  const tool = {
+    name: SPOKEN_LINE_TOOL,
+    description: SPOKEN_LINE_TOOL_DESCRIPTION,
+    input_schema: spokenLineJsonSchema,
+  };
+  const lines = [];
+  let usd = 0;
+  let calls = 0;
+  const priceOne = async (id, request, tag) => {
+    const userMessage = spokenLineUserMessage(request);
+    const key = travelWriterCacheKey(tag, lane, system, userMessage);
+    const hit = Boolean(await cacheGet(key));
+    if (hit) {
+      lines.push(`  ${id}  ${tag}  HIT  ${key}`);
+      return;
+    }
+    const input =
+      estimateTokens(system) + estimateTokens(userMessage) + estimateTokens(tool);
+    const row = priced(lane.model, input, SPOKEN_LINE_MAX_TOKENS);
+    usd += row;
+    calls += 1;
+    lines.push(
+      `  ${id}  ${tag}  MISS  ${key}  $${row.toFixed(4)}  in≈${input} out=${SPOKEN_LINE_MAX_TOKENS}`,
+    );
+  };
+  const priceJudge = (id) => {
+    const standIn = JSON.stringify({
+      purpose: 'travel_source_listings',
+      facts: {},
+      text: 'body not recorded yet',
+    });
+    const input =
+      estimateTokens(TRAVEL_BRIEF_JUDGE_SYSTEM) +
+      estimateTokens(standIn) +
+      estimateTokens({ name: 'score', description: 'Return the score.', input_schema: { type: 'object' } });
+    const row = priced(judgeModel, input, TRAVEL_BRIEF_JUDGE_MAX_TOKENS) * JUDGE_SAMPLES_MEDIAN;
+    usd += row;
+    calls += JUDGE_SAMPLES_MEDIAN;
+    lines.push(
+      `  ${id}  brief judge x${JUDGE_SAMPLES_MEDIAN}  key minted with the text  $${row.toFixed(4)}  out=${TRAVEL_BRIEF_JUDGE_MAX_TOKENS} each`,
+    );
+  };
+  for (const travelCase of TRAVEL_WRITER_CASES) {
+    const plans = travelWriterPlans(travelCase.input);
+    const tag = `activity-travel-writer:${travelCase.id}`;
+    await priceOne(travelCase.id, plans.first, tag);
+    if (travelCase.expectsRetry && plans.retry) await priceOne(travelCase.id, plans.retry, tag);
+    priceJudge(travelCase.id);
+  }
+  const standIn = travelWriterPlans({
+    ...TRAVEL_TRIP,
+    picks: [TRAVEL_PICK],
+    references: [],
+  }).first;
+  const standInUser = spokenLineUserMessage(standIn);
+  const standInInput =
+    estimateTokens(system) + estimateTokens(standInUser) + estimateTokens(tool);
+  const standInUsd = priced(lane.model, standInInput, SPOKEN_LINE_MAX_TOKENS);
+  for (const fixture of ACTIVITY_FIXTURES.filter((item) => item.composesOwnText === true)) {
+    usd += standInUsd;
+    calls += 1;
+    lines.push(
+      `  ${fixture.id}  activity-travel-writer:${fixture.id}  key pending the activity-picks re-record  $${standInUsd.toFixed(4)} sized as one short pick`,
+    );
+    priceJudge(fixture.id);
+  }
+  return { usd, calls, lines, model: lane.model, judgeModel };
+}
+
+/**
  * The deterministic broken stand-in - one failure per gate, so `--broken` proves each one
  * bites. Runs fully offline (no API calls).
  *
@@ -1017,6 +1315,11 @@ export async function readSourcePages(ground, fetchPage, stripHtml) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const estimateOnly = process.argv.includes('--estimate');
+  if (estimateOnly && (cachedOnly || broken)) {
+    console.error('activity-finder: --estimate does not combine with --cached-only or --broken');
+    process.exit(1);
+  }
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
   const candidateModel = process.argv
     .find((arg) => arg.startsWith('--anthropic-model='))
@@ -1096,6 +1399,22 @@ async function main() {
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder-events.md'),
   );
   const skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
+  const spokenSkill = await agent.loadSkill(SPOKEN_LINE_SKILL);
+  if (estimateOnly) {
+    const judgeModel = await readJudgeModel('sonnet');
+    const pricedWriters = await priceTravelWriters(spokenSkill, judgeModel);
+    console.log(
+      `activity-finder travel writer | estimate | live API calls: 0 | model=${pricedWriters.model} judge=${pricedWriters.judgeModel}`,
+    );
+    console.log(
+      'Input at 1x, no cache discount. Writer output at its max_tokens. Brief judge output at the makeJudge ceiling, three draws, body not recorded so the judge key is not minted yet.',
+    );
+    for (const line of pricedWriters.lines) console.log(line);
+    console.log(
+      `calls≈${pricedWriters.calls} | estimated cost of every miss, at the gate ceiling: $${pricedWriters.usd.toFixed(4)} USD`,
+    );
+    return;
+  }
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
   const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   const extractLane = subjectLane ? (agent.withoutThinking(subjectLane) ?? subjectLane) : null;
@@ -1124,6 +1443,16 @@ async function main() {
     cost,
     { samples: JUDGE_SAMPLES_MEDIAN },
   );
+  const travelBriefJudge = makeJudge(
+    judgeModel,
+    TRAVEL_BRIEF_JUDGE_SYSTEM,
+    'activity-finder-travel-brief',
+    cachedOnly,
+    getClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
+  const spokenLanes = spokenLineLanes();
 
   console.log(
     `activity-finder eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | lane=${model} judge=${judgeModel}`,
@@ -1132,7 +1461,14 @@ async function main() {
   const fixtures = only
     ? ACTIVITY_FIXTURES.filter((fixture) => selectedIds.has(fixture.id))
     : ACTIVITY_FIXTURES;
-  if (fixtures.length !== (only ? selectedIds.size : ACTIVITY_FIXTURES.length)) {
+  const writerCases = (
+    only ? TRAVEL_WRITER_CASES.filter((item) => selectedIds.has(item.id)) : TRAVEL_WRITER_CASES
+  ).filter(() => !broken);
+  const matched = fixtures.length + (broken ? 0 : writerCases.length);
+  const expected = only
+    ? selectedIds.size
+    : ACTIVITY_FIXTURES.length + (broken ? 0 : TRAVEL_WRITER_CASES.length);
+  if (matched !== expected) {
     throw new Error(`one or more fixtures did not match --only=${only}`);
   }
   if (preflight) {
@@ -1146,6 +1482,31 @@ async function main() {
   let readPasses = 0;
 
   const results = [];
+  for (const travelCase of writerCases) {
+    const graded = await gradeTravelBrief({
+      id: travelCase.id,
+      input: travelCase.input,
+      expectsRetry: travelCase.expectsRetry,
+      spokenSkill,
+      lanes: spokenLanes,
+      travelBriefJudge,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    results.push({
+      fixture: { id: travelCase.id },
+      picks: travelCase.input.picks,
+      body: graded.brief.body,
+      renderedPicks: graded.brief.rendered,
+      renderedReferences: graded.brief.renderedReferences,
+      searchCount: 0,
+      pagesRead: 0,
+      pagesRefused: 0,
+      failures: graded.failures,
+      firstDraftViolations: [],
+    });
+  }
   for (const fixture of fixtures) {
     const failures = [];
     const query = {
@@ -1295,32 +1656,36 @@ async function main() {
 
     // ── phase 3: THE FOLLOW-UP TEXT — unless the caller writes its own ───────
     //
-    // Travel uses its real deterministic renderer, never the AI follow-up composer.
-    // References can be delivered honestly but never satisfy the expectPicks gate above.
+    // Travel does not use the follow-up composer. The brief is the spoken-line writer,
+    // cached like the other calls. A miss fails. References never satisfy expectPicks.
     if (fixture.composesOwnText === true) {
       let brief = { body: '', rendered: [], renderedReferences: [] };
       const range = activityDateRange(query.window, EVAL_NOW, query.timeZone, query.dateRange);
       if (!range) failures.push('travel_dates_unresolved');
       else if (range.end < activityCalendarDate(EVAL_NOW, query.timeZone)) {
         failures.push('travel_dates_past');
-      } else {
-        try {
-          brief = await renderTravelBrief(
-            {
-              city: fixture.town,
-              startsOn: range.start,
-              endsOn: range.end,
-              childNames: [],
-              teenNames: [],
-              picks: kept,
-              references,
-            },
-            // Cached-only: a missing writer recording sends nothing. No live call.
-            { write: async () => null },
-          );
-        } catch (err) {
-          failures.push(`travel_copy:${err instanceof Error ? err.message : 'refused'}`);
-        }
+      } else if (!broken) {
+        const graded = await gradeTravelBrief({
+          id: fixture.id,
+          input: {
+            city: fixture.town,
+            startsOn: range.start,
+            endsOn: range.end,
+            childNames: [],
+            teenNames: [],
+            picks: kept,
+            references,
+          },
+          expectsRetry: false,
+          spokenSkill,
+          lanes: spokenLanes,
+          travelBriefJudge,
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        brief = graded.brief;
+        failures.push(...graded.failures);
       }
       // Skipped in broken mode for the same reason the other judge is: the deterministic
       // layer proves the calibration, and `brokenPicks` hands an `expectPicks` fixture an

@@ -5,7 +5,7 @@ import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import { childPhrase } from '~/lib/channel/checkin/copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { type SpokenLineWriter, speak } from '~/lib/channel/spoken-line';
+import { type SpokenLineRequest, type SpokenLineWriter, speak } from '~/lib/channel/spoken-line';
 
 /**
  * THE ONE TEXT A TRIP GETS. The writer composes it from the facts below. A null
@@ -166,6 +166,51 @@ export interface TravelBriefRender {
   renderedReferences: readonly ActivityReference[];
 }
 
+function pushPiece(pieces: string[], piece: string | null | undefined) {
+  if (!piece || pieces.includes(piece)) return;
+  pieces.push(piece);
+}
+
+/** Name, schedule, price, and source, so a paraphrase cannot drop or rewrite them. */
+function listingVerbatim(
+  picks: readonly ActivityPick[],
+  references: readonly ActivityReference[],
+): string[] {
+  const pieces: string[] = [];
+  for (const pick of picks) {
+    pushPiece(pieces, pick.name);
+    pushPiece(pieces, pick.when);
+    pushPiece(pieces, pick.price);
+    pushPiece(pieces, pick.sourceName);
+  }
+  for (const reference of references) {
+    pushPiece(pieces, reference.name);
+    pushPiece(pieces, reference.sourceName);
+  }
+  return pieces;
+}
+
+function slotTravelBrief(input: TravelBriefInput): {
+  picks: ActivityPick[];
+  references: ActivityReference[];
+} {
+  const picks: ActivityPick[] = [];
+  const references: ActivityReference[] = [];
+  for (const pick of input.picks.slice(0, SLOTS_IN_TEXT)) picks.push(pick);
+  for (const reference of (input.references ?? []).slice(0, SLOTS_IN_TEXT - picks.length)) {
+    references.push(reference);
+  }
+  return { picks, references };
+}
+
+function withoutLastFact(
+  picks: readonly ActivityPick[],
+  references: readonly ActivityReference[],
+): { picks: ActivityPick[]; references: ActivityReference[] } {
+  if (references.length > 0) return { picks: [...picks], references: references.slice(0, -1) };
+  return { picks: picks.slice(0, -1), references: [...references] };
+}
+
 function listingFacts(
   input: TravelBriefInput,
   dayPhrase: string,
@@ -196,6 +241,40 @@ function listingFacts(
   };
 }
 
+/** The spoken-line request for one slotted set. The eval caches this request unchanged. */
+export function travelListingRequest(
+  input: TravelBriefInput,
+  picks: readonly ActivityPick[],
+  references: readonly ActivityReference[],
+): SpokenLineRequest {
+  const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
+  const kids = childPhrase([...input.childNames]);
+  return {
+    purpose: 'travel_source_listings',
+    language: null,
+    facts: listingFacts(input, dayPhrase, kids, picks, references),
+    verbatim: listingVerbatim(picks, references),
+  };
+}
+
+/**
+ * The first ask, and the one-fewer-fact ask the segment ceiling may make. The retry
+ * request is known from the facts; whether it is sent depends on the first draft.
+ */
+export function travelWriterPlans(input: TravelBriefInput): {
+  first: SpokenLineRequest;
+  retry: SpokenLineRequest | null;
+} {
+  const slotted = slotTravelBrief(input);
+  if (slotted.picks.length + slotted.references.length === 0) {
+    throw new Error('travel brief copy refused: no_picks');
+  }
+  const first = travelListingRequest(input, slotted.picks, slotted.references);
+  if (slotted.picks.length + slotted.references.length < 2) return { first, retry: null };
+  const next = withoutLastFact(slotted.picks, slotted.references);
+  return { first, retry: travelListingRequest(input, next.picks, next.references) };
+}
+
 /**
  * The body, or nothing at all.
  *
@@ -213,24 +292,14 @@ export async function renderTravelBrief(
   writer: Pick<SpokenLineWriter, 'write'> = { write: (request) => speak(request) },
 ): Promise<TravelBriefRender> {
   const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
-  const kids = childPhrase([...input.childNames]);
-  let rendered: ActivityPick[] = [];
-  let renderedReferences: ActivityReference[] = [];
-  for (const pick of input.picks.slice(0, SLOTS_IN_TEXT)) rendered.push(pick);
-  for (const reference of (input.references ?? []).slice(0, SLOTS_IN_TEXT - rendered.length)) {
-    renderedReferences.push(reference);
-  }
+  let { picks: rendered, references: renderedReferences } = slotTravelBrief(input);
 
   if (rendered.length === 0 && renderedReferences.length === 0) {
     throw new Error('travel brief copy refused: no_picks');
   }
 
   const ask = async (picks: readonly ActivityPick[], references: readonly ActivityReference[]) => {
-    const written = await writer.write({
-      purpose: 'travel_source_listings',
-      language: null,
-      facts: listingFacts(input, dayPhrase, kids, picks, references),
-    });
+    const written = await writer.write(travelListingRequest(input, picks, references));
     if (!written) throw new Error('travel brief copy refused: model_unreachable');
     return written;
   };
@@ -249,8 +318,9 @@ export async function renderTravelBrief(
     violations[0] === 'too_many_segments' &&
     rendered.length + renderedReferences.length > 1
   ) {
-    if (renderedReferences.length > 0) renderedReferences = renderedReferences.slice(0, -1);
-    else rendered = rendered.slice(0, -1);
+    const next = withoutLastFact(rendered, renderedReferences);
+    rendered = next.picks;
+    renderedReferences = next.references;
     written = await ask(rendered, renderedReferences);
     violations = travelBriefViolations(written, {
       dayPhrase,

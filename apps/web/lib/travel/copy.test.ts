@@ -7,6 +7,7 @@ import {
   MAX_TRAVEL_BRIEF_SEGMENTS,
   renderTravelBrief,
   travelBriefViolations,
+  travelWriterPlans,
   tripDayPhrase,
 } from './copy';
 
@@ -155,6 +156,30 @@ describe('renderTravelBrief', () => {
    * The writer is asked again without the pick that did not fit. The first pick's price
    * stays whole; the long pick is not cut down to a fragment of its price.
    */
+  it('plans the one-fewer-fact retry without the pick that does not fit', () => {
+    const long = pick({
+      name: 'Long Island Childrens Museum',
+      when: 'open daily '.repeat(80),
+      price: 'USD 17',
+      sourceName: 'Long Island Childrens Museum',
+    });
+    const plans = travelWriterPlans({
+      city: 'New York',
+      startsOn: '2026-09-12',
+      endsOn: '2026-09-15',
+      childNames: ['Mia'],
+      picks: [pick(), long],
+      teenNames: [],
+    });
+    expect(plans.first.verbatim).toContain(long.when);
+    expect(plans.first.purpose).toBe('travel_source_listings');
+    const retry = plans.retry;
+    if (!retry?.facts) throw new Error('expected a one-fewer-fact retry');
+    const retryPicks = JSON.parse(retry.facts.picks ?? '[]') as { name: string }[];
+    expect(retryPicks.map((item) => item.name)).toEqual(['American Museum of Natural History']);
+    expect(retry.verbatim ?? []).not.toContain(long.when);
+  });
+
   it('leaves out a second pick that does not fit, and does not cut a price', async () => {
     const long = pick({
       name: 'Long Island Childrens Museum',
