@@ -477,6 +477,20 @@ describe('VIL-525 · group plan approval never leaks into private replies', () =
     expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
   });
 
+  it('the group thread still lists the group-started draft (its own list is unchanged)', async () => {
+    const questions = await calendarReader(approvals, startsAt).open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+      surface: 'group',
+    });
+    const listed = questions.filter((question) => question.kind === 'approval').map((q) => q.id);
+    expect(listed).toContain('group-approved');
+    expect(
+      questions.find((question) => question.id === 'offer-1')?.approvesActionId,
+    ).toBeUndefined();
+  });
+
   it('with only the group draft, the private thread has nothing to approve', async () => {
     const questions = await calendarReader([approvals[0]], startsAt).open({} as never, {
       familyId: 'fam-1',
