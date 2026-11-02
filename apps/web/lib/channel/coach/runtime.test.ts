@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
-import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
+import {
+  type ChannelTurn,
+  ChannelTurnFailed,
+  draftsFromFailure,
+} from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
@@ -851,9 +855,15 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       judgeFindReply: async () => ({ verdict: 'withhold' }),
       runAgent: answering(draft),
     });
-    const result = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
-    expect(result.reply).toBe('');
-    expect(result.reply).not.toContain(draft);
+    const failure = await channelCoachRuntime(p)
+      .respond(turn("what's on this weekend"), [])
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    // A failed turn (router keeps the drafts receipt + failed ledger), never the draft.
+    expect(failure).toBeInstanceOf(ChannelTurnFailed);
+    expect(String((failure as Error).message)).not.toContain(draft);
     expect(p.recorded).toEqual([expect.objectContaining({ status: 'failed' })]);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'find_reasoning' }),
@@ -881,8 +891,9 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       judgeFindReply: async () => ({ verdict: 'unjudged', reason: 'judge_failed' }),
       runAgent: answering('EarlyON Saturday at 10.'),
     });
-    const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
-    expect(reply).toBe('');
+    await expect(
+      channelCoachRuntime(p).respond(turn("what's on this weekend"), []),
+    ).rejects.toBeInstanceOf(ChannelTurnFailed);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'judge_failed' }),
       expect.any(String),

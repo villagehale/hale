@@ -614,14 +614,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   'channel coach: find reply withheld - nothing sent',
                 );
                 await ports.recordRun(record('failed'));
-                return {
-                  reply: '',
-                  planOffer: null,
-                  activityPromise: null,
-                  spotWatch: null,
-                  experienceCard: null,
-                  groupLeave: null,
-                };
+                // A failed turn, not a deliberate silence (Devin #983): the router's
+                // failed-turn path keeps the drafts receipt and the failed-turn ledger.
+                // The withheld draft itself is never sent.
+                throw failed(
+                  gate.verdict === 'withhold'
+                    ? 'channel coach: find reply withheld (find_reasoning)'
+                    : `channel coach: find reply judge failed (${gate.reason})`,
+                );
               }
             }
           }
