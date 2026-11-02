@@ -64,7 +64,7 @@ import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordActivityOffers, withSourceUrl } from '~/lib/village/live';
-import { groupsFromFindBody } from './activity-map';
+import { type ActivityMapGroup, groupsFromFindBody, renderActivityMapBody } from './activity-map';
 import type { IntakeAnswerComposer } from './answer';
 import {
   findReenrollableChannelOwner,
@@ -110,6 +110,7 @@ import {
   type OnboardingItem,
   agesAreComplete,
   coldStartQuestionIsStale,
+  dropAskedAnswer,
   kidsAreNamed,
   lastTranscriptAt,
   onboardingMissing,
@@ -826,10 +827,16 @@ async function sendAndRecord(
    * is the record — but a capture handler cannot read a transcript, so the one turn that
    * asks for the parent's name carries a key the name capture can query for. */
   templateKey?: string,
+  /** When set, a row that already carries this key is the send. The transport is not called again. */
+  dedupeKey?: string,
 ): Promise<{ transcript: TranscriptEntry[]; channelMessageId: string | null }> {
   if (body.trim().length === 0) {
     console.error({ reason: 'empty_outbound' }, 'intake: outbound not sent');
     return { transcript, channelMessageId: null };
+  }
+  if (dedupeKey) {
+    const already = await messageIdForDedupe(database, dedupeKey);
+    if (already) return { transcript, channelMessageId: already };
   }
   await quietStopTyping(deps);
   const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body });
@@ -854,6 +861,7 @@ async function sendAndRecord(
       entry,
       ctx.now,
       templateKey,
+      dedupeKey,
     );
     // What the parent reads back, and what the coach re-reads next turn. The body as
     // SENT: intake appends no CASL footer, so the wire and the thread are one string.
@@ -913,12 +921,23 @@ async function recordInbound(
 /** One channel_messages row + its audit row (rule #6: no message without a trail).
  * Keyed on the OWNER rather than the session: the keyword acks (STOP/START/HELP)
  * can know who a number belongs to without holding an open session. */
+/** The channel row for this dedupe key, if one was already written. */
+async function messageIdForDedupe(database: Database, dedupeKey: string): Promise<string | null> {
+  const rows = await database
+    .select({ id: schema.channelMessages.id, dedupeKey: schema.channelMessages.dedupeKey })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.dedupeKey, dedupeKey));
+  const hit = rows.find((row) => row.dedupeKey === dedupeKey);
+  return hit?.id ?? null;
+}
+
 async function writeChannelMessage(
   database: Database,
   owner: { familyId: string; parentUserId: string },
   entry: TranscriptEntry,
   now: Date,
   templateKey?: string,
+  dedupeKey?: string,
 ): Promise<string> {
   const { familyId, parentUserId } = owner;
   const channel = entry.channel === 'imessage' ? 'imessage' : 'sms';
@@ -931,6 +950,7 @@ async function writeChannelMessage(
       direction: entry.direction,
       category: 'intake',
       templateKey: templateKey ?? null,
+      dedupeKey: dedupeKey ?? null,
       providerMessageId: entry.providerId,
       providerChatId: channel === 'imessage' ? (entry.chatId ?? null) : null,
       status: entry.direction === 'in' ? 'delivered' : acceptedStatus(channel),
@@ -1291,6 +1311,71 @@ function linesOfFind(message: string): string[] {
     .map((line) => line.trim())
     .filter((line) => /^\d+\.\s+/.test(line))
     .map((line) => line.replace(/^\d+\.\s+/, ''));
+}
+
+/** Numbered storage lines, or the group lines when the body was not numbered. */
+function mapLinesFrom(
+  message: string,
+  groups?: readonly { lines: readonly string[] }[] | null,
+): string[] {
+  const numbered = linesOfFind(message);
+  if (numbered.length > 0) return numbered;
+  return (groups ?? []).flatMap((group) =>
+    group.lines.map((line) => line.trim()).filter((line) => line.length > 0),
+  );
+}
+
+/** A body `linesOfFind` can read back. Groups with no numbered body are stored numbered. */
+function storedMapBody(message: string, groups?: readonly ActivityMapGroup[] | null): string {
+  if (linesOfFind(message).length > 0) return message;
+  if (!groups || groups.length === 0) return message;
+  return renderActivityMapBody({ groups: [...groups] });
+}
+
+/** One map bubble's ledger key. A retry of the same family and bubble does not send again. */
+function findShowDedupeKey(familyId: string, bubbleKey: string): string {
+  return `find-show:${familyId}:${bubbleKey}`;
+}
+
+/**
+ * Send the map bubbles that have not landed. A key already on the session, or
+ * already on a channel row, is not sent again. A failure stops the rest; the
+ * keys that did land come back so the next try continues there.
+ */
+async function sendFindShowBubbles(
+  database: Database,
+  ctx: SendContext,
+  deps: IntakeDeps,
+  transcript: TranscriptEntry[],
+  bubbles: readonly string[],
+  keys: readonly string[],
+  already: readonly string[],
+): Promise<{ landed: string[]; complete: boolean }> {
+  const familyId = ctx.session.familyId;
+  const seen = new Set(already);
+  for (let index = 0; index < bubbles.length; index += 1) {
+    const body = bubbles[index] ?? '';
+    const key = keys[index];
+    if (body.trim().length === 0 || !key || seen.has(key)) continue;
+    const dedupeKey = familyId ? findShowDedupeKey(familyId, key) : undefined;
+    try {
+      const sent = await sendAndRecord(database, ctx, body, deps, transcript, undefined, dedupeKey);
+      if (!sent.channelMessageId) break;
+    } catch (err) {
+      console.error(
+        { err: err instanceof Error ? err.name : 'unknown', bubble: key },
+        'intake: find_show bubble not sent',
+      );
+      break;
+    }
+    seen.add(key);
+    deps.keepTyping?.();
+  }
+  const needed = bubbles.flatMap((body, index) => {
+    const key = keys[index];
+    return body.trim().length > 0 && key ? [key] : [];
+  });
+  return { landed: [...seen], complete: needed.length > 0 && needed.every((key) => seen.has(key)) };
 }
 
 function friendAddress(ctx: SendContext): 'tu' | 'vous' {
@@ -2112,10 +2197,32 @@ async function friendColdTurn(
   }
   // The map never reached them. Retry it before any later ask. A miss sends
   // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
+  // An empty stored body is a search that did not land, not a map to re-read:
+  // look once more, and if that is still empty, ask the open item. The last
+  // turn of the walk looks one more time before intake ends.
   let alreadyRecorded: {
     transcript: TranscriptEntry[];
     channelMessageId: string | null;
   } | null = null;
+  if (progress.findDelivered === false && linesOfFind(progress.findBody).length === 0) {
+    const again = await deps.radar.compose({
+      familyId,
+      children: session.collected.children,
+      areaCoarse: session.firstTouch?.place?.areaCoarse ?? session.collected.postalCode,
+      language,
+      activityMap: true,
+    });
+    if (mapLinesFrom(again.message, again.groups).length === 0) {
+      const { findDelivered: _owed, findSentKeys: _sent, ...rest } = progress;
+      progress = rest;
+    } else {
+      progress = {
+        ...progress,
+        findBody: storedMapBody(again.message, again.groups),
+        findSentKeys: [],
+      };
+    }
+  }
   if (progress.findDelivered === false) {
     const owed = await friendSpeak(
       deps,
@@ -2149,23 +2256,36 @@ async function friendColdTurn(
       return { status: 'first_touch_unsent', reason: 'unusable' };
     }
     // Deliver the map before any reply-dependent write. A send that does not
-    // land leaves the debt and creates no reminders.
+    // land leaves the debt and creates no reminders. A bubble that already
+    // landed is not sent again.
     const recordedMap = await recordInbound(database, ctx, inbound, session.transcript);
-    let delivered = false;
-    for (const bubble of bubbles) {
-      const sentMap = await sendAndRecord(database, ctx, bubble, deps, recordedMap.transcript);
-      if (!sentMap.channelMessageId) {
-        delivered = false;
-        break;
-      }
-      delivered = true;
-    }
-    if (!delivered) {
-      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+    const sentBubbles = await sendFindShowBubbles(
+      database,
+      ctx,
+      deps,
+      recordedMap.transcript,
+      owed.bubbles,
+      owed.bubbleKeys,
+      progress.findSentKeys ?? [],
+    );
+    progress = {
+      ...progress,
+      ...(sentBubbles.landed.length > 0 ? { findSentKeys: sentBubbles.landed } : {}),
+      ...(sentBubbles.complete ? { findDelivered: true } : { findDelivered: false }),
+    };
+    if (!sentBubbles.complete) {
+      await saveSession(
+        database,
+        session,
+        {
+          lastProviderId: inbound.providerId,
+          firstTouch: withColdStart(session, language, progress),
+        },
+        now,
+      );
       return { status: 'first_touch_unsent', reason: 'unusable' };
     }
     alreadyRecorded = recordedMap;
-    progress = { ...progress, findDelivered: true };
   }
   const lines = linesOfFind(progress.findBody);
   const needsName = await parentNeedsName(database, userId);
@@ -2183,6 +2303,9 @@ async function friendColdTurn(
   const gap = onboardingMissing(checklist)[0];
   const step = friendStepForGap(gap, false);
   const join = gap === 'schedule' || gap === 'coparent' ? coparentJoinFor(ctx, language) : null;
+  // `progress` is reassigned later in this turn, so a closure sees the wide
+  // declared type. This snapshot is the narrowed value.
+  const cold = progress;
   const spoken = await friendSpeak(
     deps,
     session.transcript,
@@ -2209,15 +2332,19 @@ async function friendColdTurn(
     {
       // A card rides only the ask for its own connector, and only the first time.
       linkFollows: (judged) =>
-        (judged === 'email' && !progress.emailOffered) ||
-        (judged === 'calendar' && !progress.calendarOffered),
+        (judged === 'email' && !cold.emailOffered) ||
+        (judged === 'calendar' && !cold.calendarOffered),
       linkAbove:
-        (gap === 'gmail' && progress.emailOffered === true) ||
-        (gap === 'calendar' && progress.calendarOffered === true),
+        (gap === 'gmail' && cold.emailOffered === true) ||
+        (gap === 'calendar' && cold.calendarOffered === true),
       pageScope: familyId,
     },
   );
-  if (spoken.capture.stopAsking) {
+  // A reply that is still asking did not end the walk, and it did not answer
+  // the item it is asking. Both flags set is refused before this, in the
+  // voice. The field is the only signal: the prose is not read.
+  spoken.capture = dropAskedAnswer(spoken.capture);
+  if (spoken.capture.stopAsking && spoken.capture.stillAsking == null) {
     const recorded =
       alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
     const voiced = friendOutbound(spoken);
@@ -2302,7 +2429,7 @@ async function friendColdTurn(
     lines.every((_line, index) =>
       (nextGiven?.scheduled ?? []).some((row) => row.line === index + 1),
     );
-  const after: OnboardingChecklist = {
+  let after: OnboardingChecklist = {
     postal: checklist.postal,
     kids: kidsKnown(mergedChildren, nextGiven),
     ages: agesAreComplete(mergedChildren),
@@ -2312,8 +2439,8 @@ async function friendColdTurn(
     schedule: scheduleKnown(nextGiven, lines.length) || everyLineScheduled,
     coparent: coparentKnown(nextGiven),
   };
-  const next = onboardingMissing(after)[0];
-  const nextProgress: ColdStartProgress = {
+  let next = onboardingMissing(after)[0];
+  let nextProgress: ColdStartProgress = {
     ...progress,
     step: next === 'name' || next === 'kids' ? 'names' : 'follow',
     nameLineSent: parentIsKnown || next === 'name' || next === 'kids' || next == null,
@@ -2323,6 +2450,111 @@ async function friendColdTurn(
   const recorded =
     alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
   let voiced = friendOutbound(spoken);
+  // Declining the last connect used to end intake with an empty map still
+  // unsent. The first search can miss (nothing stored, schedule skipped) and
+  // the coach then answers "what's good around here" from a city-wide look.
+  // One more search before the walk ends: when it has groups, the model writes
+  // one bubble per group and the schedule ask stays open. No lead, no bubble.
+  if (
+    next == null &&
+    pendingConnector(nextGiven, progress) == null &&
+    linesOfFind(progress.findBody).length === 0
+  ) {
+    const again = await deps.radar.compose({
+      familyId,
+      children: mergedChildren,
+      areaCoarse: session.firstTouch?.place?.areaCoarse ?? session.collected.postalCode,
+      language,
+      activityMap: true,
+    });
+    const againLines = mapLinesFrom(again.message, again.groups);
+    if (againLines.length > 0) {
+      const body = storedMapBody(again.message, again.groups);
+      const groups =
+        again.groups && again.groups.length > 0 ? again.groups : groupsFromFindBody(body);
+      const owed = await friendSpeak(
+        deps,
+        recorded.transcript,
+        friendFields('find_show', language, friendAddress(ctx), {
+          parentWords: inbound.body,
+          placeLabel:
+            session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+          agesLabel: summarizeChildren(mergedChildren),
+          ageMonths: mergedChildren.flatMap((child) =>
+            child.ageMonths == null ? [] : [child.ageMonths],
+          ),
+          children: friendChildren(mergedChildren),
+          findLines: againLines,
+          findGroups: groups.map((group) => ({
+            category: group.category,
+            lines: [...group.lines],
+          })),
+          listKind: 'none',
+          parentName: nextGiven?.parentName ?? null,
+          now,
+        }),
+        { pageScope: familyId },
+      );
+      const sentBubbles =
+        owed.source === 'unsent'
+          ? { landed: [] as string[], complete: false }
+          : await sendFindShowBubbles(
+              database,
+              ctx,
+              deps,
+              recorded.transcript,
+              owed.bubbles,
+              owed.bubbleKeys,
+              [],
+            );
+      progress = {
+        ...progress,
+        findBody: body,
+        ...(sentBubbles.landed.length > 0 ? { findSentKeys: sentBubbles.landed } : {}),
+        ...(sentBubbles.complete ? { findDelivered: true } : { findDelivered: false }),
+      };
+      after = {
+        ...after,
+        schedule: scheduleKnown(nextGiven, againLines.length) || everyLineScheduled,
+      };
+      next = onboardingMissing(after)[0];
+      nextProgress = {
+        ...progress,
+        step: next === 'name' || next === 'kids' ? 'names' : 'follow',
+        nameLineSent: parentIsKnown || next === 'name' || next === 'kids' || next == null,
+        calendarAsked: after.calendar,
+        emailAsked: after.gmail,
+      };
+      if (next === 'schedule') {
+        const asked = await friendSpeak(
+          deps,
+          recorded.transcript,
+          friendFields('schedule', language, friendAddress(ctx), {
+            parentWords: inbound.body,
+            placeLabel:
+              session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+            agesLabel: summarizeChildren(mergedChildren),
+            ageMonths: mergedChildren.flatMap((child) =>
+              child.ageMonths == null ? [] : [child.ageMonths],
+            ),
+            children: friendChildren(mergedChildren),
+            findLines: againLines,
+            findGroups: groups.map((group) => ({
+              category: group.category,
+              lines: [...group.lines],
+            })),
+            listKind: 'none',
+            parentName: nextGiven?.parentName ?? null,
+            now,
+            checklist: after,
+          }),
+          { pageScope: familyId },
+        );
+        const scheduleBody = friendOutbound(asked);
+        if (scheduleBody) voiced = scheduleBody;
+      }
+    }
+  }
   await pursueNewHouseholdGroup(
     database,
     {
@@ -2799,7 +3031,7 @@ async function provision(
     session.firstTouch?.place?.city ||
     session.firstTouch?.place?.areaCoarse ||
     gathered.location.areaCoarse;
-  const findLines = linesOfFind(radar.message);
+  const findLines = mapLinesFrom(radar.message, radar.groups);
   let outboundBody = radar.message;
   let outboundKey: string | undefined = radar.weekendPickOffered
     ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY
@@ -2881,23 +3113,35 @@ async function provision(
       ),
     ]);
     const mapUnsent = map?.source === 'unsent';
+    let mapLanded: string[] = [];
+    let mapComplete = false;
     if (map && !mapUnsent) {
-      let delivered = false;
-      for (const bubble of map.bubbles) {
-        if (bubble.trim().length === 0) continue;
-        const sentMap = await sendAndRecord(database, ctx, bubble, deps, []);
-        if (!sentMap.channelMessageId) {
-          delivered = false;
-          break;
-        }
-        delivered = true;
-        deps.keepTyping?.();
-      }
+      const sentBubbles = await sendFindShowBubbles(
+        database,
+        ctx,
+        deps,
+        [],
+        map.bubbles,
+        map.bubbleKeys,
+        [],
+      );
+      mapLanded = sentBubbles.landed;
+      mapComplete = sentBubbles.complete;
       const offered = (radar.groups?.flatMap((group) => group.picks ?? []) ?? []).map(
         withSourceUrl,
       );
-      if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
+      if (mapComplete && offered.length)
+        await recordActivityOffers(database, familyId, offered, now);
     }
+    // A failed or unconfigured search is not "nothing is on". Neither is a map
+    // that was written and then did not land. Both stay owed. An honest empty
+    // (the search ran, no lines) does not. A partial map stays owed too: the
+    // bubbles that landed are keyed, and the rest go out on the next try.
+    const searchMissed = radar.mapFinder === 'failed' || radar.mapFinder === 'not_configured';
+    const oweMap =
+      mapUnsent ||
+      (discoveryOn && !empty && !mapComplete) ||
+      (discoveryOn && empty && searchMissed);
     outboundBody = mapUnsent ? '' : (friendOutbound(spoken) ?? '');
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
       outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
@@ -2926,11 +3170,12 @@ async function provision(
       friendCold = {
         step: step === 'names' || step === 'find_empty' || mapUnsent ? 'names' : 'follow',
         group: ctx.pipe.isGroup,
-        findBody: radar.message,
+        findBody: storedMapBody(radar.message, radar.groups),
         activity: null,
         day: null,
         nameLineSent: !mapUnsent,
-        ...(mapUnsent ? { findDelivered: false } : {}),
+        ...(mapLanded.length > 0 ? { findSentKeys: mapLanded } : {}),
+        ...(oweMap ? { findDelivered: false } : {}),
         signupDateKnown: false,
         signupAsked: false,
         calendarAsked: calendarAnswered(given),

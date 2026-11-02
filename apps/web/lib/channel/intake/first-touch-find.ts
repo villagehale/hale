@@ -1,5 +1,6 @@
 import { deidentifyActivityQuery, townFor } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { activitySearchTown } from '~/lib/channel/activity/search-town';
 import type { FirstTouchPlace } from './first-touch-place';
 import { asciiCopy } from './radar-decide';
 
@@ -40,6 +41,8 @@ export async function findThisWeek(input: {
     subject: WEEK_FIND_SUBJECT,
     window: 'this week',
     municipality,
+    town:
+      activitySearchTown(input.place.areaCoarse) ?? (municipality ? townFor(municipality) : null),
     stage: null,
     householdNames: [],
   });

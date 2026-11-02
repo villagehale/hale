@@ -10,10 +10,12 @@ import {
   coldStartIsStale,
   coldStartQuestionIsStale,
   countRejectedScheduleAdds,
+  dropAskedAnswer,
   kidsAreNamed,
   mergeCaptures,
   mergeChildFacts,
   onboardingMissing,
+  stillAskingConflicts,
   storedFromCapture,
 } from './onboarding-turn';
 
@@ -44,6 +46,41 @@ describe('the onboarding order', () => {
 });
 
 describe('onboarding capture', () => {
+  it('reads stillAsking and does not treat that open ask as an answer', () => {
+    const asked = acceptOnboardingCapture({
+      stillAsking: 'group',
+      coparentGroup: false,
+      coparentGroupMode: 'new',
+      calendarLater: true,
+      stopAsking: false,
+    });
+    expect(asked.stillAsking).toBe('group');
+    expect(asked.calendarLater).toBe(true);
+    expect(dropAskedAnswer(asked)).toMatchObject({
+      coparentGroup: null,
+      coparentGroupMode: null,
+      calendarLater: true,
+    });
+    expect(stillAskingConflicts({ stopAsking: true, stillAsking: 'coparent' })).toBe(true);
+    expect(stillAskingConflicts(asked)).toBe(false);
+    expect(acceptOnboardingCapture({ stillAsking: '家长' }).stillAsking).toBeNull();
+    expect(acceptOnboardingCapture({ stillAsking: 'gmail' }).stillAsking).toBe('gmail');
+  });
+
+  it('takes stillAsking from the current capture only', () => {
+    const prior = acceptOnboardingCapture({
+      stillAsking: 'calendar',
+      calendarLater: true,
+    });
+    const quiet = acceptOnboardingCapture({ stillAsking: null, parentName: 'Sam' });
+    const merged = mergeCaptures(prior, quiet);
+    expect(merged.stillAsking).toBeNull();
+    expect(merged.calendarLater).toBe(true);
+    expect(merged.parentName).toBe('Sam');
+    const asking = acceptOnboardingCapture({ stillAsking: 'group' });
+    expect(mergeCaptures(prior, asking).stillAsking).toBe('group');
+  });
+
   it('keeps a postal field and drops a sentence', () => {
     const clean = acceptOnboardingCapture({ postalCode: 'M5V 2T6' });
     expect(storedFromCapture(prior, clean).place?.postalCode).toBe('M5V 2T6');

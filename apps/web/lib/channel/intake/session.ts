@@ -198,10 +198,15 @@ export interface ColdStartProgress {
   emailOffered?: boolean;
   /**
    * The activity map reached the parent. Absent on older sessions, which did
-   * send it. False means both openers failed and nothing was sent, so the next
-   * inbound or the morning nudge tries the map again before a later ask.
+   * send it. False means a bubble did not land, so the next inbound or the
+   * morning nudge tries the map again before a later ask.
    */
   findDelivered?: boolean;
+  /**
+   * Map bubbles that already landed (`opener`, `group:0`, …). A retry sends
+   * only the keys that are not here.
+   */
+  findSentKeys?: string[];
 }
 
 /** How many times this ladder step was asked again after a non-answer. */
@@ -520,6 +525,7 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     calendarOffered?: unknown;
     emailOffered?: unknown;
     findDelivered?: unknown;
+    findSentKeys?: unknown;
   };
   if (
     row.step !== 'pick' &&
@@ -545,7 +551,18 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     ...(row.calendarOffered === true ? { calendarOffered: true } : {}),
     ...(row.emailOffered === true ? { emailOffered: true } : {}),
     ...(row.findDelivered === false ? { findDelivered: false } : {}),
+    ...(acceptFindSentKeys(row.findSentKeys).length > 0
+      ? { findSentKeys: acceptFindSentKeys(row.findSentKeys) }
+      : {}),
   };
+}
+
+/** Keys of map bubbles that already reached the parent. Anything else is dropped. */
+function acceptFindSentKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is string => typeof item === 'string' && /^(?:opener|group:\d+)$/u.test(item),
+  );
 }
 
 function decodeFirstTouchPlace(value: unknown): FirstTouchPersisted['place'] {

@@ -1,6 +1,8 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
+import { activitySearchTown } from '~/lib/channel/activity/search-town';
+import { townLabel } from '~/lib/channel/town-label';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
 /**
@@ -21,6 +23,7 @@ export interface ActivityFamilyReader {
   municipality(database: Database, familyId: string): Promise<Municipality | null>;
   stage(database: Database, familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(database: Database, familyId: string): Promise<string[]>;
+  areaCoarse?(database: Database, familyId: string): Promise<string | null>;
   familyFit?(database: Database, familyId: string, now?: Date): Promise<FamilyFit>;
 }
 
@@ -53,6 +56,11 @@ export interface FamilyFit {
   children: FamilyFitChild[];
   /** The home municipality the search looked around, or null when unknown. */
   homeArea: Municipality | null;
+  /**
+   * The part of a big city the search stayed inside (Toronto and East York,
+   * not all of Toronto). Null when the town itself is already that size.
+   */
+  near: string | null;
   preferences: FamilyFitPreference[];
 }
 
@@ -68,6 +76,8 @@ export interface BoundActivityReader {
   municipality(familyId: string): Promise<Municipality | null>;
   stage(familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(familyId: string): Promise<string[]>;
+  /** The stored coarse area, so a Toronto search can name the district. */
+  areaCoarse?(familyId: string): Promise<string | null>;
   familyFit?(familyId: string): Promise<FamilyFit>;
 }
 
@@ -79,8 +89,23 @@ export function bindActivityReader(
     municipality: (familyId) => reader.municipality(database, familyId),
     stage: (familyId, childId) => reader.stage(database, familyId, childId),
     householdNames: (familyId) => reader.householdNames(database, familyId),
+    ...(reader.areaCoarse
+      ? {
+          areaCoarse: (familyId: string) => {
+            const read = reader.areaCoarse;
+            if (!read) return Promise.resolve(null);
+            return read(database, familyId);
+          },
+        }
+      : {}),
     ...(reader.familyFit
-      ? { familyFit: (familyId: string) => reader.familyFit!(database, familyId) }
+      ? {
+          familyFit: (familyId: string) => {
+            const read = reader.familyFit;
+            if (!read) return Promise.reject(new Error('family fit reader missing'));
+            return read(database, familyId);
+          },
+        }
       : {}),
   };
 }
@@ -105,6 +130,15 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
       if (postal === null) return null;
       const municipalities = municipalitiesForFsa(postal);
       return municipalities.length === 1 ? (municipalities[0] as Municipality) : null;
+    },
+
+    areaCoarse: async (database, familyId) => {
+      const [family] = await database
+        .select({ areaCoarse: schema.families.areaCoarse })
+        .from(schema.families)
+        .where(eq(schema.families.id, familyId))
+        .limit(1);
+      return family?.areaCoarse ?? null;
     },
 
     /**
@@ -156,8 +190,13 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
 
     familyFit: async (database, familyId, now = new Date()) => {
       const self = productionActivityFamilyReader();
-      const [homeArea, childRows] = await Promise.all([
+      const [homeArea, areaRow, childRows] = await Promise.all([
         self.municipality(database, familyId),
+        database
+          .select({ areaCoarse: schema.families.areaCoarse })
+          .from(schema.families)
+          .where(eq(schema.families.id, familyId))
+          .limit(1),
         database
           .select({
             id: schema.children.id,
@@ -204,9 +243,12 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
           schema.familyMemoryFacts.id,
         )
         .limit(FAMILY_FIT_PREFERENCE_LIMIT * 2);
+      const searched = activitySearchTown(areaRow[0]?.areaCoarse ?? null);
+      const city = homeArea ? townLabel(homeArea) : null;
       return {
         children,
         homeArea,
+        near: searched && searched !== city ? searched : null,
         preferences: selectFitPreferences(factRows, teenIds),
       };
     },

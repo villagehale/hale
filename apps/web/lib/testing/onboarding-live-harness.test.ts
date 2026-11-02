@@ -81,7 +81,7 @@ function scripted(input: FriendVoiceInput): FriendComposed {
     return {
       reply: 'Here is what is on near you for their ages.',
       capture,
-      groupLeads: (input.findGroups ?? []).map(() => 'Worth a look.'),
+      groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
     };
   }
   if (input.step === 'connected') {

@@ -74,6 +74,12 @@ export interface OnboardingCapture {
   /** Not now for email. Do not ask it again in this onboarding. */
   gmailLater: boolean;
   stopAsking: boolean;
+  /**
+   * The item this reply is still asking, or null when it asks nothing.
+   * `group` is the group chat with the other parent. Code reads this field
+   * and does not decide from punctuation or wording.
+   */
+  stillAsking: StillAsking | null;
   /** BCP-47 tag of the language this parent is writing in. Null when the model omitted it. */
   language: ReplyLanguage | null;
 }
@@ -96,8 +102,51 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   calendarLater: false,
   gmailLater: false,
   stopAsking: false,
+  stillAsking: null,
   language: null,
 };
+
+/**
+ * What a reply can still be asking. The onboarding items, plus `group` for the
+ * group chat with the other parent. The model sets one, or null.
+ */
+export const STILL_ASKING_ITEMS = [
+  'postal',
+  'kids',
+  'ages',
+  'name',
+  'gmail',
+  'calendar',
+  'schedule',
+  'coparent',
+  'group',
+] as const;
+
+export type StillAsking = (typeof STILL_ASKING_ITEMS)[number];
+
+export function acceptStillAsking(value: unknown): StillAsking | null {
+  return typeof value === 'string' && (STILL_ASKING_ITEMS as readonly string[]).includes(value)
+    ? (value as StillAsking)
+    : null;
+}
+
+/** Both set is not a capture: the reply is re-asked, or not sent. */
+export function stillAskingConflicts(
+  capture: Pick<OnboardingCapture, 'stopAsking' | 'stillAsking'>,
+): boolean {
+  return capture.stopAsking && capture.stillAsking != null;
+}
+
+/**
+ * The item this reply is still asking is not an answer. A co-parent or group
+ * question does not store a yes or a no to that chat.
+ */
+export function dropAskedAnswer(capture: OnboardingCapture): OnboardingCapture {
+  if (capture.stillAsking === 'coparent' || capture.stillAsking === 'group') {
+    return { ...capture, coparentGroup: null, coparentGroupMode: null };
+  }
+  return capture;
+}
 
 /**
  * The order Hale walks. Guidance for the model, and the order code uses once
@@ -441,6 +490,7 @@ export function acceptOnboardingCapture(
     calendarLater: row.calendarLater === true,
     gmailLater: row.gmailLater === true,
     stopAsking: row.stopAsking === true,
+    stillAsking: acceptStillAsking(row.stillAsking),
     language: acceptReplyLanguage(typeof row.language === 'string' ? row.language : null),
   };
 }
@@ -494,6 +544,9 @@ export function mergeCaptures(
     calendarLater: next.calendarLater || prior.calendarLater,
     gmailLater: next.gmailLater || prior.gmailLater,
     stopAsking: next.stopAsking || prior.stopAsking,
+    // This reply's ask only. A later reply that asks nothing must not keep
+    // the previous reply's stillAsking.
+    stillAsking: next.stillAsking,
     language: next.language ?? prior.language,
   };
 }

@@ -33,12 +33,17 @@ import {
   type OnboardingCapture,
   type OnboardingChecklist,
   type OnboardingItem,
+  STILL_ASKING_ITEMS,
   type ScheduleLimits,
+  type StillAsking,
   acceptOnboardingCapture,
+  acceptStillAsking,
   checklistAfter,
   countRejectedScheduleAdds,
+  dropAskedAnswer,
   mergeCaptures,
   onboardingMissing,
+  stillAskingConflicts,
 } from './onboarding-turn';
 
 /**
@@ -53,10 +58,11 @@ import {
  * (packages/agent/skills/onboarding-friend-short.md). A first attempt that
  * the retry recovers is not a page: the recovery is logged. If the retry
  * also fails, nothing goes out: the miss is logged, #ops is paged, and the
- * next inbound or the morning nudge tries again. That includes the map. A
- * numbered list of the lines code found is still a message Hale wrote, so
- * both openers failing sends nothing. Length is not a reason to refuse a
- * reply; the skill's "short" is tone, not a character cap.
+ * next inbound or the morning nudge tries again. That includes the map. The
+ * model writes each group bubble from the found lines; a group with no lead
+ * is not sent. Code does not assemble a numbered list of those lines. Length
+ * is not a reason to refuse a reply; the skill's "short" is tone, not a
+ * character cap.
  */
 
 /**
@@ -238,6 +244,11 @@ export interface FriendVoiceResult {
   prose: string;
   /** The bubbles to send, in order. One for most steps; two or three on find_show. */
   bubbles: string[];
+  /**
+   * Parallel to `bubbles` on find_show (`opener`, `group:0`, …). Empty otherwise.
+   * A retry skips a key that already landed.
+   */
+  bubbleKeys: readonly string[];
   /** `unsent` means both attempts failed: nothing goes to the parent. */
   source: 'composed' | 'retry' | 'unsent';
   fallback: FriendFallback | null;
@@ -256,7 +267,7 @@ export interface FriendComposed {
   reply: string;
   capture?: unknown;
   ahaMention?: string | null;
-  /** On find_show: one short lead per group, same order as facts.findGroups. */
+  /** On find_show: one bubble per group, same order as facts.findGroups. The model writes it from that group's lines. */
   groupLeads?: readonly string[] | null;
 }
 
@@ -338,13 +349,17 @@ function leadText(value: unknown): string {
   return '';
 }
 
-/** A list the model wrote as JSON text inside a string, split back into its leads. */
+/**
+ * A list the model wrote as one string instead of an array, split back into
+ * leads. A newline here separates legacy leads. A newline inside an array
+ * element does not: that element is already one bubble.
+ */
 function splitLeadString(text: string): string[] {
   const trimmed = text.trim();
   if (trimmed.startsWith('[')) {
     try {
       const parsed: unknown = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.map(leadText);
+      if (Array.isArray(parsed)) return parsed.map((item) => leadText(item).trim());
     } catch {
       // Not JSON after all; split it below.
     }
@@ -354,14 +369,13 @@ function splitLeadString(text: string): string[] {
     .map((part) => part.replace(/^[\s["]+|[\s\]"]+$/gu, '').trim());
 }
 
-function leadsFrom(value: unknown): string[] | null {
+/** One group bubble per array element. Newlines stay inside that bubble. */
+export function readGroupLeads(value: unknown): string[] | null {
   if (value == null) return null;
   if (typeof value === 'string') return splitLeadString(value);
-  if (Array.isArray(value)) return value.flatMap((item) => splitLeadString(leadText(item)));
+  if (Array.isArray(value)) return value.map((item) => leadText(item).trim());
   if (typeof value === 'object') {
-    return Object.values(value as Record<string, unknown>).flatMap((item) =>
-      splitLeadString(leadText(item)),
-    );
+    return Object.values(value as Record<string, unknown>).map((item) => leadText(item).trim());
   }
   return null;
 }
@@ -371,12 +385,13 @@ const replySchema = z.object({
     .string()
     .nullish()
     .transform((value) => value ?? ''),
-  // Leads come back in more than one shape (a list, one string per line, the
-  // group objects they were written for); their words are the leads.
+  // Leads come back in more than one shape (a list, one string, the group
+  // objects they were written for). An array element is one bubble even when
+  // it contains newlines. A single string is the legacy list, split apart.
   groupLeads: z
     .unknown()
     .optional()
-    .transform((value) => leadsFrom(value)),
+    .transform((value) => readGroupLeads(value)),
   // A malformed field reads as not given: a decision is never guessed from it.
   // Schedule adds stay strict, so a reply never confirms an add that was dropped.
   postalCode: z.string().nullable().optional().default(null).catch(null),
@@ -402,6 +417,10 @@ const replySchema = z.object({
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
+  stillAsking: z
+    .unknown()
+    .optional()
+    .transform((value) => acceptStillAsking(value)),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
@@ -463,6 +482,10 @@ const replyJsonSchema = {
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
+    stillAsking: {
+      type: ['string', 'null'],
+      enum: [...STILL_ASKING_ITEMS, null],
+    },
     ahaMention: { type: ['string', 'null'] },
     language: { type: ['string', 'null'] },
   },
@@ -1015,29 +1038,49 @@ export function peelFriendAsk(prose: string): { lead: string; ask: string } {
 }
 
 /**
- * The activity map as bubbles: the model's opener, then one bubble per group
- * with the model's lead over the real numbered lines. Numbers run across the
- * whole map so a later "number 4" points at one line. A missing lead leaves
- * the lines on their own; a lead is never invented by code.
+ * Group bubbles only. Each lead is one bubble, newlines included. An empty
+ * lead is skipped. Code does not number the lines or join them on. The key
+ * is the group's index, so a later retry can skip a bubble that already landed.
+ */
+function writtenGroupBubbles(
+  groups: readonly FriendFindGroup[],
+  leads: readonly string[] | null | undefined,
+): { key: string; body: string }[] {
+  const bubbles: { key: string; body: string }[] = [];
+  groups.forEach((group, index) => {
+    const lines = group.lines.map((line) => line.trim()).filter((line) => line.length > 0);
+    if (lines.length === 0) return;
+    const head = (leads?.[index] ?? '').trim();
+    if (head.length === 0) return;
+    bubbles.push({ key: `group:${index}`, body: head });
+  });
+  return bubbles;
+}
+
+/** Opener plus one keyed bubble per group the model wrote. */
+function findShowParts(
+  opener: string,
+  groups: readonly FriendFindGroup[],
+  leads: readonly string[] | null | undefined,
+): { key: string; body: string }[] {
+  const parts: { key: string; body: string }[] = [];
+  const lead = opener.trim();
+  if (lead.length > 0) parts.push({ key: 'opener', body: lead });
+  parts.push(...writtenGroupBubbles(groups, leads));
+  return parts;
+}
+
+/**
+ * The activity map as bubbles the model wrote. The opener is the framing
+ * sentence. Each group bubble is that group's lead, written from the found
+ * lines. A group with no lead is skipped.
  */
 export function assembleFindShowBubbles(
   opener: string,
   groups: readonly FriendFindGroup[],
   leads: readonly string[] | null | undefined,
 ): string[] {
-  const bubbles: string[] = [];
-  const lead = opener.trim();
-  if (lead.length > 0) bubbles.push(lead);
-  let from = 1;
-  groups.forEach((group, index) => {
-    const lines = group.lines.map((line) => line.trim()).filter((line) => line.length > 0);
-    if (lines.length === 0) return;
-    const head = (leads?.[index] ?? '').trim();
-    const numbered = numberedFindLines(lines, from);
-    from += lines.length;
-    bubbles.push(head.length > 0 ? `${head}\n${numbered}` : numbered);
-  });
-  return bubbles;
+  return findShowParts(opener, groups, leads).map((part) => part.body);
 }
 
 export function assembleFriendBody(
@@ -1228,15 +1271,22 @@ function weekdaysOfDates(slots: readonly string[], now: Date | undefined): strin
   const out = new Set<string>();
   for (const slot of slots) {
     for (const match of slot.matchAll(
-      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/giu,
+      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?!\d)(?:st|nd|rd|th)?(?:,\s*(\d{4})|\s+(\d{4}))?/giu,
     )) {
       const month = MONTHS.indexOf((match[1] ?? '').toLowerCase());
       const day = Number(match[2]);
+      const namedYear = match[3] || match[4] ? Number(match[3] ?? match[4]) : null;
       if (month < 0 || day < 1 || day > 31) continue;
-      let date = new Date(Date.UTC(today.getUTCFullYear(), month, day, 12));
-      if (date.getTime() < today.getTime() - 60 * 86_400_000) {
-        date = new Date(Date.UTC(today.getUTCFullYear() + 1, month, day, 12));
+      if (namedYear != null && (namedYear < 2000 || namedYear > 2100)) continue;
+      let year = namedYear ?? today.getUTCFullYear();
+      let date = new Date(Date.UTC(year, month, day, 12));
+      // A month and day with no year still means the coming one. A year on
+      // the line is that year, not the year of `now`.
+      if (namedYear == null && date.getTime() < today.getTime() - 60 * 86_400_000) {
+        year += 1;
+        date = new Date(Date.UTC(year, month, day, 12));
       }
+      if (date.getUTCMonth() !== month || date.getUTCDate() !== day) continue;
       out.add(date.toLocaleDateString('en-CA', { weekday: 'long', timeZone: 'UTC' }));
     }
   }
@@ -1568,6 +1618,7 @@ function unsent(reason: FriendFallback, step: FriendStep): FriendVoiceResult {
     body: '',
     prose: '',
     bubbles: [],
+    bubbleKeys: [],
     source: 'unsent',
     fallback: reason,
     step,
@@ -1702,6 +1753,7 @@ export async function speakFriend(
   const finish = (
     prose: string,
     bubbles: string[],
+    bubbleKeys: readonly string[],
     source: FriendVoiceResult['source'],
     turnCapture: OnboardingCapture,
     step: FriendStep,
@@ -1715,6 +1767,7 @@ export async function speakFriend(
       body,
       prose: prose.trim(),
       bubbles: input.step === 'find_show' ? bubbles : [body],
+      bubbleKeys: input.step === 'find_show' ? bubbleKeys : [],
       source,
       fallback: null,
       step,
@@ -1749,6 +1802,7 @@ export async function speakFriend(
     | {
         prose: string;
         bubbles: string[];
+        bubbleKeys: string[];
         capture: OnboardingCapture;
         step: FriendStep;
       }
@@ -1785,9 +1839,11 @@ export async function speakFriend(
           ? settleSchedule(
               withGroupMode(
                 withReading(
-                  noYesInAQuestion(
-                    ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
-                    input,
+                  dropAskedAnswer(
+                    noYesInAQuestion(
+                      ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                      input,
+                    ),
                   ),
                   input,
                 ),
@@ -1796,8 +1852,22 @@ export async function speakFriend(
             )
           : empty;
       const draft = composed.reply.trim();
+      // stopAsking and stillAsking together is not a reply. The model is asked
+      // again; if it still sets both, nothing is sent. Code does not look at
+      // the prose to decide which one the model meant.
+      if (stillAskingConflicts(capture)) {
+        noteRefusal(
+          { reason: 'still_asking', stillAsking: capture.stillAsking, step: input.step, prompt },
+          'unusable',
+        );
+        return {
+          fail: 'unusable',
+          capture: { ...capture, stopAsking: false },
+          retry: { draft, problem: retryProblem('still_asking') },
+        };
+      }
       if (options.replyDiscardedWhen?.(capture)) {
-        return { prose: '', bubbles: [], capture, step: input.step };
+        return { prose: '', bubbles: [], bubbleKeys: [], capture, step: input.step };
       }
       // A refused add means the reply may confirm a reminder that was never written.
       const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
@@ -1875,26 +1945,56 @@ export async function speakFriend(
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
       };
-      const bubblesFor = (text: string): { bubbles: string[]; judgedText: string } | null => {
+      const bubblesFor = (
+        text: string,
+      ): { bubbles: string[]; bubbleKeys: string[]; judgedText: string } | null => {
         if (input.step === 'find_show') {
           const groups = input.findGroups ?? [];
-          const leads = tidyLeads(composed.groupLeads ?? null, groups);
-          const bubbles = assembleFindShowBubbles(text, groups, leads);
-          return bubbles.length === 0 ? null : { bubbles, judgedText: bubbles.join('\n\n') };
+          const leads = tidyLeads(composed.groupLeads ?? null, groups, input);
+          const parts = findShowParts(text, groups, leads);
+          // An opener with no group bubble is not a map. The retry asks again.
+          if (!parts.some((part) => part.key.startsWith('group:'))) return null;
+          return {
+            bubbles: parts.map((part) => part.body),
+            bubbleKeys: parts.map((part) => part.key),
+            judgedText: parts.map((part) => part.body).join('\n\n'),
+          };
         }
         if (text.length === 0) return null;
         return {
           bubbles: [],
+          bubbleKeys: [],
           judgedText: assembleFriendBody(text, input, options.link, options.trailer),
         };
       };
       // A good draft with one fixable slip (a second question mark) is repaired
       // by code and judged again rather than dropped. Length is not a reason.
       const assembled = bubblesFor(prose);
-      if (!assembled) return { fail: 'unusable', capture };
+      if (!assembled) {
+        if (input.step === 'find_show') {
+          noteRefusal({ reason: 'no_group_bubble', step: input.step, prompt }, 'unusable');
+          return {
+            fail: 'unusable',
+            capture,
+            retry: {
+              draft,
+              problem: 'no_group_bubble',
+            },
+          };
+        }
+        return { fail: 'unusable', capture };
+      }
       const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
-      if (judged.ok) return { prose, bubbles: assembled.bubbles, capture, step: judgeInput.step };
-      const repaired = repairedProse(prose, judgeInput.step);
+      if (judged.ok) {
+        return {
+          prose,
+          bubbles: assembled.bubbles,
+          bubbleKeys: assembled.bubbleKeys,
+          capture,
+          step: judgeInput.step,
+        };
+      }
+      const repaired = repairedProse(prose, judgeInput.step, capture.stillAsking);
       const again = repaired.length > 0 ? bubblesFor(repaired) : null;
       if (
         again &&
@@ -1905,7 +2005,13 @@ export async function speakFriend(
           { repaired: judged.reason, step: input.step, prompt },
           'onboarding-friend: draft repaired',
         );
-        return { prose: repaired, bubbles: again.bubbles, capture, step: judgeInput.step };
+        return {
+          prose: repaired,
+          bubbles: again.bubbles,
+          bubbleKeys: again.bubbleKeys,
+          capture,
+          step: judgeInput.step,
+        };
       }
       return reject(judged);
 
@@ -1964,6 +2070,7 @@ export async function speakFriend(
     return finish(
       first.prose,
       first.bubbles,
+      first.bubbleKeys,
       firstPrompt === 'short' ? 'retry' : 'composed',
       first.capture,
       first.step,
@@ -1991,7 +2098,7 @@ export async function speakFriend(
   if ('prose' in second) {
     console.info({ recovered: true, step: input.step }, 'onboarding-friend: retry recovered');
     const capture = advanced ? mergeCaptures(advanced.settled, second.capture) : second.capture;
-    return finish(second.prose, second.bubbles, 'retry', capture, second.step);
+    return finish(second.prose, second.bubbles, second.bubbleKeys, 'retry', capture, second.step);
   }
   return failed(second.fail, mergeCaptures(first.capture, second.capture));
 }
@@ -2023,11 +2130,13 @@ function carriesJoin(prose: string, join: { line: string; phrase: string }): boo
 
 /** What the retry is told about the draft that was not sent. Plain words for the model. */
 function retryProblem(
-  reason: FriendJudgeFailure | 'schedule' | 'join',
+  reason: FriendJudgeFailure | 'schedule' | 'join' | 'still_asking',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
+    case 'still_asking':
+      return 'stopAsking and stillAsking were both set. A reply that asks names that item in stillAsking and leaves stopAsking false. A reply that stops leaves stillAsking null.';
     case 'join':
       return linqGroupOnboardingV2Enabled()
         ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Say it is below and do not write the digits or a phrase to text. When it is new, say you will start the group. A plain yes leaves coparentGroupMode null.'
@@ -2131,20 +2240,24 @@ const QUESTION_OPENER =
 /** A question that only points at the options a later one names: "Which of these would help?" */
 const OPTIONS_OPENER =
   /^(?:which|what)\b[^?]{0,40}\b(?:these|those|ones?|options?|activities|programs)\b[^?]{0,40}\?$/i;
-const COPARENT_WORDS = /\b(?:group (?:chat|text)|other parent|co-?parent)\b/i;
 
 /**
  * Code's repair of a draft that broke one countable rule. Two or three
  * questions offering choices become one: an earlier question that only opens
  * ("Which of these would help?") is dropped, any other earlier one becomes a
  * statement. Empty when there is nothing safe to repair. Length is not repaired.
+ * A reply that is still asking the co-parent or the group is not folded into
+ * another step: that comes from `stillAsking`, not from the words.
  */
-export function repairedProse(prose: string, step: FriendStep): string {
+export function repairedProse(
+  prose: string,
+  step: FriendStep,
+  stillAsking: StillAsking | null = null,
+): string {
   if (ZERO_QUESTION_STEPS.has(step)) return '';
+  if (step !== 'coparent' && (stillAsking === 'coparent' || stillAsking === 'group')) return '';
   let sentences = sentencesOf(prose);
   const asks = sentences.filter((sentence) => sentence.includes('?'));
-  // Never fold in an ask that belongs to another step.
-  if (step !== 'coparent' && asks.some((sentence) => COPARENT_WORDS.test(sentence))) return '';
   if (asks.length > 1) {
     const last = sentences.lastIndexOf(asks[asks.length - 1] ?? '');
     sentences = sentences.flatMap((sentence, index) => {
@@ -2212,36 +2325,70 @@ export function tidyProse(
     : reply.trim();
 }
 
-/** A lead is the model's words over a group. A copied line, a question or a letter is dropped. */
+/**
+ * Facts a group bubble may use: that group's lines, plus shared context that
+ * is not another group's find (the place, the kids' ages and names, the
+ * parent's words). Another group's time or activity is not in here.
+ */
+function groupBubbleSlots(group: FriendFindGroup, input: FriendVoiceInput): string[] {
+  const slots = [input.parentWords, input.agesLabel ?? '', input.placeLabel ?? ''];
+  for (const line of group.lines) slots.push(line, ...twelveHourTimes(line));
+  for (const months of input.ageMonths) slots.push(String(months));
+  for (const child of input.children ?? []) {
+    if (child.name) slots.push(child.name);
+  }
+  if (input.parentName) slots.push(input.parentName);
+  return slots.filter((slot) => slot.length > 0);
+}
+
+function priceTalkInLines(text: string, lines: readonly string[]): string[] {
+  const prose = text.replace(/\bfeel free\b/gi, '');
+  if (!PRICE_WORD.test(prose)) return [];
+  return lines.some((line) => PRICE_WORD.test(line)) ? [] : ['price'];
+}
+
+/**
+ * A group bubble the model wrote from that group's lines. Newlines stay in
+ * the one bubble. A question is dropped. A time, day, price, name, or activity
+ * another group holds, and this one does not, drops the bubble. Code does not
+ * replace it.
+ */
 function tidyLeads(
   leads: readonly string[] | null,
   groups: readonly FriendFindGroup[],
+  input: FriendVoiceInput,
 ): string[] | null {
   if (!leads) return null;
-  // One lead per group or none: a lead that sums up every group sits over the
-  // wrong lines. One string with a sentence per group is split back into leads.
-  let perGroup = leads;
-  if (leads.length === 1 && groups.length > 1) {
-    const parts = sentencesOf(leads[0] ?? '');
-    if (parts.length === groups.length) perGroup = parts;
+  if (leads.length !== groups.length) return null;
+  return groups.map((group, index) => tidyGroupBubble(leads[index] ?? '', group, input));
+}
+
+function tidyGroupBubble(raw: string, group: FriendFindGroup, input: FriendVoiceInput): string {
+  const kept = raw
+    .trim()
+    .split(/\n+/u)
+    .map((block) =>
+      sentencesOf(block)
+        .filter((sentence) => !sentence.includes('?'))
+        .join(' ')
+        .trim(),
+    )
+    .filter((block) => block.length > 0);
+  const lead = kept.join('\n');
+  if (lead.length === 0) return '';
+  const slots = groupBubbleSlots(group, input);
+  if (findInventedFacts(lead, slots).length > 0) return '';
+  // The weekday of a date this group's own lines name ("October 14" is a
+  // Wednesday in 2026) is that group's fact. Another group's date is not.
+  if (weekdaysOutsideSlots(lead, [...slots, ...weekdaysOfDates(slots, input.now)]).length > 0) {
+    return '';
   }
-  if (perGroup.length !== groups.length) return null;
-  return groups.map((group, index) => {
-    const raw = (perGroup[index] ?? '').trim();
-    const lead = sentencesOf(raw)
-      .filter((sentence) => !sentence.includes('?'))
-      .join(' ');
-    // Ages, times and counts are the lines' to state: a lead that restates one can only get it wrong.
-    if (lead.length === 0 || /\d/u.test(lead)) return '';
-    // A lead names only what its own lines hold ("swim and Scouts" over two swims is wrong).
-    if (activitiesOutsideSlots(lead, group.lines).length > 0) return '';
-    const copied = group.lines.some((line) => {
-      const a = looseText(line);
-      const b = looseText(lead);
-      return a.includes(b) || b.includes(a);
-    });
-    return copied ? '' : lead;
-  });
+  if (mentionsOutsideSlots(lead, PRICE, slots).length > 0) return '';
+  if (priceTalkInLines(lead, group.lines).length > 0) return '';
+  if (namesOutsideSlots(lead, slots).length > 0) return '';
+  if (quotesOutsideSlots(lead, slots).length > 0) return '';
+  if (activitiesOutsideSlots(lead, group.lines).length > 0) return '';
+  return lead;
 }
 
 export function createFriendVoiceComposer(client: AgentClient | null): FriendVoiceComposer {
@@ -2290,6 +2437,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           calendarLater: value.calendarLater,
           gmailLater: value.gmailLater,
           stopAsking: value.stopAsking,
+          stillAsking: value.stillAsking,
           language: acceptReplyLanguage(value.language),
         },
         ahaMention: value.ahaMention,

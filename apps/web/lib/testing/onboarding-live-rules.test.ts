@@ -29,11 +29,7 @@ function clean(): LiveReplay {
       { inbound: 'hi', bubbles: ["Hey, it's Hale. What's your postal code?"], ms: 10 },
       {
         inbound: 'Seb is 1, Mia is 6',
-        bubbles: [
-          'Here is what is on.',
-          `Worth a look.\n1. ${LINES[0]}\n2. ${LINES[1]}`,
-          'What should I call you?',
-        ],
+        bubbles: ['Here is what is on.', LINES.join('\n'), 'What should I call you?'],
         ms: 30,
       },
       { inbound: 'Barton', bubbles: [`Barton, want me to watch school email?\n${GMAIL}`], ms: 20 },

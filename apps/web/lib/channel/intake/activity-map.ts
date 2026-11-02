@@ -1,6 +1,7 @@
 import { STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { activitySearchTown } from '~/lib/channel/activity/search-town';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { activityRecommendationKey } from '~/lib/village/live';
 import { type WeekendPick, asciiCopy } from './radar-decide';
@@ -152,7 +153,7 @@ export type ActivityMapFinder = 'used' | 'not_configured' | 'refused' | 'failed'
 
 export interface ActivityMap {
   groups: ActivityMapGroup[];
-  /** Every line across groups, in map order. Index + 1 is the number the parent sees. */
+  /** Every line across groups, in map order. The stored body numbers them so a later read can group them. The parent sees the model's bubbles. */
   lines: string[];
   titles: string[];
   finder: ActivityMapFinder;
@@ -191,6 +192,7 @@ function categoryQuery(
     subject: category.subject,
     window: 'this year',
     municipality,
+    town: activitySearchTown(input.areaCoarse),
     stage: stageFromAgeInMonths(Math.min(...ages)),
     householdNames,
   });
@@ -251,7 +253,12 @@ export async function collectActivityMap(input: {
       if (!query) return empty;
       try {
         const found = await input.finder?.find(query);
-        if (!found || !found.found) return empty;
+        if (!found || !found.found) {
+          // A search that did not run is not "nothing is on". no_picks is the
+          // only honest empty; a timeout or a missing client is a miss to retry.
+          if (found && found.reason !== 'no_picks') anyFailed = true;
+          return empty;
+        }
         anyUsed = true;
         const picks = found.picks.slice(0, MAX_MAP_ITEMS_PER_GROUP);
         return {
@@ -314,10 +321,13 @@ export async function collectActivityMap(input: {
 
 /**
  * The stored shape of a map: a `[category]` marker line, then that group's
- * numbered lines, numbered across the whole map. Markers never go to the
- * parent. `linesOfFind` reads the numbered lines back; this reads the groups.
+ * numbered lines, numbered across the whole map so a later read can regroup
+ * them. Markers and these numbers stay in storage. The parent sees the model's
+ * bubbles. `linesOfFind` reads the numbered lines back; this reads the groups.
  */
-export function renderActivityMapBody(map: Pick<ActivityMap, 'groups'>): string {
+export function renderActivityMapBody(map: {
+  readonly groups: readonly ActivityMapGroup[];
+}): string {
   const parts: string[] = [];
   let index = 0;
   for (const group of map.groups) {
