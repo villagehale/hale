@@ -1016,9 +1016,15 @@ describe('friend voice onboarding', () => {
         // co-parent question. That used to close intake, and the next text
         // (the actual no, plus what's good nearby) was handed to the coach.
         if (input.step === 'calendar' && /^later$/i.test(input.parentWords.trim())) {
+          const captured: Record<string, unknown> =
+            base.capture !== null &&
+            typeof base.capture === 'object' &&
+            !Array.isArray(base.capture)
+              ? { ...(base.capture as Record<string, unknown>) }
+              : {};
           return {
             ...base,
-            capture: { ...base.capture, calendarLater: true, stopAsking: true },
+            capture: { ...captured, calendarLater: true, stopAsking: true },
           };
         }
         return base;

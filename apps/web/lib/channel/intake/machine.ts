@@ -2225,6 +2225,10 @@ async function friendColdTurn(
   const gap = onboardingMissing(checklist)[0];
   const step = friendStepForGap(gap, false);
   const join = gap === 'schedule' || gap === 'coparent' ? coparentJoinFor(ctx, language) : null;
+  // `progress` is reassigned later in this turn, so a closure sees the wide
+  // declared type. Read the offered flags once, here, where it is narrowed.
+  const emailOffered = progress.emailOffered === true;
+  const calendarOffered = progress.calendarOffered === true;
   const spoken = await friendSpeak(
     deps,
     session.transcript,
@@ -2251,11 +2255,8 @@ async function friendColdTurn(
     {
       // A card rides only the ask for its own connector, and only the first time.
       linkFollows: (judged) =>
-        (judged === 'email' && !progress.emailOffered) ||
-        (judged === 'calendar' && !progress.calendarOffered),
-      linkAbove:
-        (gap === 'gmail' && progress.emailOffered === true) ||
-        (gap === 'calendar' && progress.calendarOffered === true),
+        (judged === 'email' && !emailOffered) || (judged === 'calendar' && !calendarOffered),
+      linkAbove: (gap === 'gmail' && emailOffered) || (gap === 'calendar' && calendarOffered),
       pageScope: familyId,
     },
   );

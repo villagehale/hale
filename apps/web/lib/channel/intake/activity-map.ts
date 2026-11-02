@@ -325,7 +325,9 @@ export async function collectActivityMap(input: {
  * them. Markers and these numbers stay in storage. The parent sees the model's
  * bubbles. `linesOfFind` reads the numbered lines back; this reads the groups.
  */
-export function renderActivityMapBody(map: Pick<ActivityMap, 'groups'>): string {
+export function renderActivityMapBody(map: {
+  readonly groups: readonly ActivityMapGroup[];
+}): string {
   const parts: string[] = [];
   let index = 0;
   for (const group of map.groups) {
