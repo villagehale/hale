@@ -129,6 +129,24 @@ describe('a delayed undo during name capture', () => {
     expect(spoken.capture.nameDeclined).toBe(true);
   });
 
+  it('a take-back does not clear a refusal already settled on the capture', async () => {
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch school and camp email for the dates?',
+            capture: { parentName: 'Undo', nameDeclined: true, nameTakenBack: true },
+          };
+        },
+      },
+      { ...asked, parentWords: 'Undo' },
+      { page: async () => undefined },
+    );
+    expect(spoken.capture.parentName).toBeNull();
+    expect(spoken.capture.nameDeclined).toBe(true);
+    expect(spoken.capture.nameTakenBack).toBe(true);
+  });
+
   it('a take-back clears a copied name without closing the name', async () => {
     const spoken = await speakFriend(
       {

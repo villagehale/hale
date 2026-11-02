@@ -1807,7 +1807,8 @@ export async function speakFriend(
     return {
       ...merged,
       parentName: capture.parentName,
-      nameDeclined: capture.nameDeclined,
+      // A later take-back must not wipe a refusal an earlier pass already settled.
+      nameDeclined: merged.nameDeclined || capture.nameDeclined,
       nameTakenBack: capture.nameTakenBack,
     };
   };
