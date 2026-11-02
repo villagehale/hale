@@ -270,6 +270,44 @@ export async function writeGroupConnectAsk(
 
 export type CrisisKind = 'emergency' | 'mental';
 
+/** 988 on a mental-health crisis, 911 on a physical emergency. Presence only. */
+export function crisisMustInclude(kind: CrisisKind): readonly ['988'] | readonly ['911'] {
+  return kind === 'emergency' ? ['911'] : ['988'];
+}
+
+export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boolean {
+  return crisisMustInclude(kind).every((digit) => text.includes(digit));
+}
+
+/**
+ * The opt-out reader's crisis text, or the said-line writer when that text
+ * lacks the required number. Null when neither can be sent: the writer pages
+ * #ops, and a writer reply that still lacks the number pages here. No fixed line.
+ */
+export async function deliverCrisisReply(input: {
+  kind: CrisisKind;
+  readerText: string;
+  parentWords: string;
+  where: string;
+  region: CrisisRegion | null;
+  writer: SaidLineWriter | null | undefined;
+}): Promise<string | null> {
+  const fromReader = input.readerText.trim();
+  if (fromReader.length > 0 && crisisTextHasRequiredNumber(input.kind, fromReader)) {
+    return fromReader;
+  }
+  const written = await writeCrisisLine(
+    input.writer,
+    input.kind,
+    input.parentWords,
+    input.where,
+    input.region,
+  );
+  if (written && crisisTextHasRequiredNumber(input.kind, written)) return written;
+  if (written) logCrisisUnanswered(input.kind, input.where);
+  return null;
+}
+
 /**
  * A crisis was flagged and no reply goes out (#868: there is no fixed crisis line to
  * fall back on, anywhere). Never silent: an urgent, body-free log for #ops (rule #1).
@@ -303,7 +341,7 @@ export async function writeCrisisLine(
         language: null,
         parentWords,
         facts,
-        mustInclude: kind === 'emergency' ? ['911'] : ['988'],
+        mustInclude: crisisMustInclude(kind),
       })
     : null;
   if (!written) logCrisisUnanswered(kind, where);

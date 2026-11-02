@@ -53,7 +53,7 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
+import { type SaidLineWriter, deliverCrisisReply } from '~/lib/channel/voice/said-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { recordCommitment } from '~/lib/commitments/ledger';
@@ -1334,10 +1334,12 @@ function friendFields(
 /**
  * #868 · a crisis, routed and answered by the model. The turn's one reader call
  * (opt-out-reader.ts, shared by {@link readTurnOnce}) decides an emergency or a
- * mental-health crisis in any wording and writes the reply that points to
- * emergency or crisis help. Null: not a crisis. `body` null: a crisis whose reply
- * came back empty — the turn still ends there (no onboarding ask to a person in
- * crisis) and the miss is logged loudly for #ops.
+ * mental-health crisis in any wording and writes the reply. The reply goes out
+ * only when it carries the required number (988 for mental, 911 for emergency).
+ * A miss is handed to {@link deliverCrisisReply}'s said-line writer. If that
+ * also fails, nothing is sent and #ops is paged. There is no fixed line.
+ * Null: not a crisis. `body` null: a crisis with nothing sendable — the turn
+ * still ends there (no onboarding ask to a person in crisis).
  */
 function crisisRegionForSession(session: IntakeSession | null): 'CA' | 'US' | null {
   if (!session) return null;
@@ -1360,14 +1362,15 @@ async function crisisReply(
     region,
   });
   if (!isCrisisReading(reading)) return null;
-  const body = reading.confirmation.trim();
-  if (body.length === 0) {
-    console.error(
-      { intent: reading.intent },
-      'intake crisis: the model routed a crisis but wrote no reply - nothing sent, page #ops',
-    );
-    return { body: null };
-  }
+  const kind = reading.intent === 'crisis_emergency' ? 'emergency' : 'mental';
+  const body = await deliverCrisisReply({
+    kind,
+    readerText: reading.confirmation,
+    parentWords: inbound.body,
+    where: 'intake crisis',
+    region,
+    writer: deps.saidLine,
+  });
   return { body };
 }
 

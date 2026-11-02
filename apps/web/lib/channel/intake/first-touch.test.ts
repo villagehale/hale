@@ -714,20 +714,26 @@ describe('friend voice onboarding', () => {
       read: async () => ({ intent, confirmation: reply }),
     });
     const { fake, transport, deps } = harness({ voice: true });
-    deps.optOutReader = crisisReader('crisis_emergency', 'Emergency reply (test fixture).');
+    deps.optOutReader = crisisReader(
+      'crisis_emergency',
+      'Call 911 now. Emergency reply (test fixture).',
+    );
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
-    expect(transport.bodies()).toEqual(['Emergency reply (test fixture).']);
+    expect(transport.bodies()).toEqual(['Call 911 now. Emergency reply (test fixture).']);
 
     const { fake: fake2, transport: transport2, deps: deps2 } = harness({ voice: true });
-    deps2.optOutReader = crisisReader('crisis_mental', 'Crisis line reply (test fixture).');
+    deps2.optOutReader = crisisReader(
+      'crisis_mental',
+      'Call or text 988. Crisis line reply (test fixture).',
+    );
     const mental = await handleInboundSms(
       fake2.db,
       inbound(transport2, 'i cant do this anymore'),
       deps2,
     );
     expect(mental.status).toBe('first_touch');
-    expect(transport2.bodies()).toEqual(['Crisis line reply (test fixture).']);
+    expect(transport2.bodies()).toEqual(['Call or text 988. Crisis line reply (test fixture).']);
 
     // A crisis whose reply came back empty still ends the turn: no onboarding ask.
     const { fake: fake3, transport: transport3, deps: deps3 } = harness({ voice: true });
