@@ -44,7 +44,7 @@ describe('coach context — stale facts and the current postal code (VIL-519)', 
       childId: null,
       factType: 'logistic',
       factKey: 'home_city',
-      factValue: { city: 'Georgetown' },
+      factValue: { record: 'place', city: 'Georgetown' },
       confidence: 1,
       inferredBy: 'preview-seed',
       validFrom: DAYS(20),
@@ -52,6 +52,21 @@ describe('coach context — stale facts and the current postal code (VIL-519)', 
       memorySource: 'parent_message',
       sourcedAt: DAYS(20),
     });
+    for (const key of ['ville', 'quartier', 'lives_in']) {
+      await writeFact(db.database, {
+        familyId,
+        childId: null,
+        factType: 'logistic',
+        factKey: key,
+        factValue: { record: 'place', text: 'Georgetown' },
+        confidence: 1,
+        inferredBy: 'preview-seed',
+        validFrom: DAYS(20),
+        memoryKind: 'lasting',
+        memorySource: 'parent_message',
+        sourcedAt: DAYS(20),
+      });
+    }
     await writeFact(db.database, {
       familyId,
       childId: null,
@@ -109,9 +124,8 @@ describe('coach context — stale facts and the current postal code (VIL-519)', 
 describe('nearby-find skill — recheck is not a pick and not a template', () => {
   const skill = readFileSync(resolveRepoFile('packages/agent/skills/coach-nearby-find.md'), 'utf8');
 
-  it('tells the model a recheck must not choose the pick, and that it writes the question', () => {
+  it('tells the model a missing guess must not choose the pick, with no set sentence', () => {
     expect(skill).toContain('must not choose');
-    expect(skill).toContain('own words');
     expect(skill).toContain('no set sentence');
   });
 });

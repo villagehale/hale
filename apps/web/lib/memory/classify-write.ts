@@ -10,6 +10,7 @@ import {
 } from './facts';
 import { temporaryExpiry } from './kinds';
 import type { MemorySource } from './kinds';
+import { type RecordField, withRecordField } from './record-field';
 
 /**
  * VIL-419 — the model classifies a fact when it is saved.
@@ -58,6 +59,12 @@ export const modelClassificationShape = {
     .min(1)
     .optional()
     .describe('Live fact key this correction replaces, when it differs from factKey.'),
+  record: z
+    .enum(['age', 'place'])
+    .optional()
+    .describe(
+      'age when this fact is how old the child is or when they were born; place when it is where the family lives. Omit for a taste, a routine, or anything else. The date of birth and the postal code are the record, so a fact marked age or place is not used to find activities. The key’s spelling is not this signal.',
+    ),
 };
 
 type MemoryFactType = FactWrite['factType'];
@@ -233,6 +240,8 @@ export interface ClassifiedCommit {
   expiresAt?: string | null;
   correctsKey?: string | null;
   sourceEventId?: string;
+  /** Set by extraction. Age and place are the record, not a preference. */
+  record?: RecordField | null;
 }
 
 /**
@@ -249,7 +258,7 @@ export async function commitClassifiedMemory(
     childId: input.childId,
     factType: input.factType,
     factKey: input.factKey,
-    factValue: applyValuePatch(input.factValue, accepted.valuePatch),
+    factValue: withRecordField(applyValuePatch(input.factValue, accepted.valuePatch), input.record),
     confidence: input.confidence,
     inferredBy: input.inferredBy,
     sourceEventId: input.sourceEventId,

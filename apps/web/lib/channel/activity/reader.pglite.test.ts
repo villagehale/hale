@@ -53,7 +53,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
   it('a corrected age wins in the next find; a remembered old age never rides', async () => {
     const { familyId } = await seedFamily(db.database);
     const child = await seedChild(db.database, familyId, 'Zephyrina', 36, undefined, NOW);
-    await fact(familyId, child, 'age', 3);
+    await fact(familyId, child, 'âge', { record: 'age', years: 3 });
     // The parent corrects the date of birth: she is 5, not 3.
     await db.database
       .update(schema.children)
@@ -72,7 +72,11 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       .update(schema.families)
       .set({ areaCoarse: 'M5V' })
       .where(eq(schema.families.id, familyId));
-    await fact(familyId, null, 'home_city', 'toronto');
+    await fact(familyId, null, 'home_city', { record: 'place', text: 'Georgetown' });
+    await fact(familyId, null, 'ville', { record: 'place', text: 'Georgetown' });
+    await fact(familyId, null, 'quartier', { record: 'place', text: 'Georgetown' });
+    await fact(familyId, null, 'lives_in', { record: 'place', text: 'Georgetown' });
+    await fact(familyId, null, 'ville_market', 'weekend market');
     await db.database
       .update(schema.families)
       .set({ areaCoarse: 'L3P' })
@@ -80,7 +84,8 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
 
     const fit = await reader.familyFit!(db.database, familyId, NOW);
     expect(fit.homeArea).toBe('markham');
-    expect(JSON.stringify(fit)).not.toContain('toronto');
+    expect(fit.preferences.map((p) => p.key)).toEqual(['ville_market']);
+    expect(JSON.stringify(fit)).not.toContain('Georgetown');
   });
 
   it('a contradiction updates the fact: one live row, the newest value', async () => {
@@ -101,12 +106,12 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     ]);
   });
 
-  it.each(['dateofbirth', 'date_of_birth', 'dateOfBirth'])(
-    'a remembered %s never argues with the corrected record (Devin #981)',
+  it.each(['dateofbirth', 'date_of_birth', 'dateOfBirth', 'edad'])(
+    'a remembered %s marked as age never argues with the corrected record',
     async (key) => {
       const { familyId } = await seedFamily(db.database);
       const child = await seedChild(db.database, familyId, 'Zephyrina', 36, undefined, NOW);
-      await fact(familyId, child, key, '2023-06-01');
+      await fact(familyId, child, key, { record: 'age', text: '2023-06-01' });
       await db.database
         .update(schema.children)
         .set({ dateOfBirth: '2021-06-01' })
@@ -150,19 +155,22 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     expect(fit.preferences).toHaveLength(FAMILY_FIT_PREFERENCE_LIMIT);
   });
 
-  it('a full cap of fresh facts never hides the newest stale recheck (Devin #981)', async () => {
+  it('a stale guess is absent from the find result even when fresh facts fill the cap', async () => {
     const { familyId } = await seedFamily(db.database);
     for (let i = 0; i < FAMILY_FIT_READ_LIMIT; i++) {
       await fact(familyId, null, `said_${i}`, i, { source: 'parent_message', seenDaysAgo: 300 });
     }
-    await fact(familyId, null, 'stroller', true, { source: 'inferred', seenDaysAgo: 100 });
+    await fact(familyId, null, 'loves_swimming', 'Lin loves swimming lessons', {
+      source: 'inferred',
+      seenDaysAgo: 120,
+    });
 
     const fit = await reader.familyFit!(db.database, familyId, NOW);
-    expect(fit.recheck.map((r) => r.key)).toEqual(['stroller']);
-    expect(fit.preferences.map((p) => p.key)).not.toContain('stroller');
+    expect(fit.recheck).toEqual([]);
+    expect(JSON.stringify(fit)).not.toMatch(/swim/i);
   });
 
-  it('a stale fact is held back for recheck (key only), never ranked or its value shown', async () => {
+  it('a stale fact is omitted entirely, never ranked and never named', async () => {
     const { familyId } = await seedFamily(db.database);
     await fact(familyId, null, 'scary', 'avoid', { source: 'inferred', seenDaysAgo: 120 });
     await fact(familyId, null, 'stroller', true, { source: 'inferred', seenDaysAgo: 30 });
@@ -171,10 +179,10 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     const fit = await reader.familyFit!(db.database, familyId, NOW);
     expect(fit.preferences.map((p) => p.key)).toEqual(['stroller']);
     expect(fit.preferences[0]?.source).toBe('inferred');
-    expect(fit.recheck).toHaveLength(1);
-    expect(['language', 'scary']).toContain(fit.recheck[0]?.key);
-    expect(JSON.stringify(fit.recheck)).not.toContain('french');
-    expect(JSON.stringify(fit.recheck)).not.toContain('avoid');
+    expect(fit.recheck).toEqual([]);
+    expect(JSON.stringify(fit)).not.toContain('french');
+    expect(JSON.stringify(fit)).not.toContain('avoid');
+    expect(JSON.stringify(fit)).not.toContain('scary');
   });
 
   it('expired and closed facts are not used at all', async () => {

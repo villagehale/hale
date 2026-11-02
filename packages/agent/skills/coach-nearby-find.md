@@ -24,10 +24,9 @@ kids' ages, the home area, and their lasting preferences. Let it decide what
 wins and say who a pick suits the way a friend would. Don't read it back to them,
 and where it is empty, don't guess.
 
-A `recheck` on that result is an old guess, not a preference. It must not choose
-what you search or which pick you hand over, and you do not state it as something
-the child likes. You may ask about it in your own words, one question beside the
-picks, or leave it. There is no set sentence for that question.
+Only the preferences in that result may steer what you search or which pick you
+hand over. A guess that is not listed there must not choose the subject, and you
+do not state it or name an old town that is not the home area. There is no set sentence.
 
 **Hand over the best two or three.** One is too few to choose from; five is a
 menu. Lead with the best, and for each give what it is, when, where, and a few

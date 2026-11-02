@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   FAMILY_FIT_PREFERENCE_LIMIT,
-  FAMILY_FIT_RECHECK_LIMIT,
   type FitFactRow,
   selectFitPreferences,
   toFitChild,
@@ -64,56 +63,68 @@ describe('family fit provenance + freshness (VIL-519)', () => {
     expect(preferences[0]?.source).toBe('legacy');
   });
 
-  it('a 120-day inferred swimming guess is a recheck, never a pick, and its value stays out', () => {
+  it('a 120-day inferred swimming guess is omitted, key and value', () => {
     const value = 'Lin loves swimming lessons';
-    const { preferences, recheck } = selectFitPreferences(
-      [row({ key: 'loves_swimming', value, source: 'inferred', sourcedAt: ago(120) })],
-      new Set(),
-      NOW,
-    );
-    expect(preferences).toEqual([]);
-    expect(recheck).toEqual([{ childId: null, key: 'loves_swimming', seenOn: '2026-07-02' }]);
-    expect(JSON.stringify(recheck)).not.toContain('swimming lessons');
-    expect(JSON.stringify(preferences)).not.toContain(value);
-  });
-
-  it('a remembered Georgetown home_city is neither a preference nor a recheck', () => {
-    const { preferences, recheck } = selectFitPreferences(
+    const fit = selectFitPreferences(
       [
-        row({
-          key: 'home_city',
-          value: 'Georgetown',
-          source: 'parent_message',
-          sourcedAt: ago(20),
-        }),
+        row({ key: 'loves_swimming', value, source: 'inferred', sourcedAt: ago(120) }),
+        row({ key: 'indoor', value: true, source: 'parent_message', sourcedAt: ago(1) }),
       ],
       new Set(),
       NOW,
     );
-    expect(preferences).toEqual([]);
-    expect(recheck).toEqual([]);
-    expect(JSON.stringify({ preferences, recheck })).not.toContain('Georgetown');
+    expect(fit.preferences.map((p) => p.key)).toEqual(['indoor']);
+    expect(fit.recheck).toEqual([]);
+    expect(JSON.stringify(fit)).not.toMatch(/swim/i);
   });
 
-  it('a guess goes stale before a thing the parent said', () => {
+  it.each([
+    ['ville', 'place'],
+    ['quartier', 'place'],
+    ['lives_in', 'place'],
+    ['âge', 'age'],
+    ['edad', 'age'],
+  ] as const)(
+    'a %s fact marked %s is dropped, and the key spelling is not the signal',
+    (key, record) => {
+      const marked = selectFitPreferences(
+        [row({ key, value: { record, text: 'Georgetown' } })],
+        new Set(),
+        NOW,
+      );
+      expect(marked.preferences).toEqual([]);
+      expect(marked.recheck).toEqual([]);
+      expect(JSON.stringify(marked)).not.toContain('Georgetown');
+
+      const unmarked = selectFitPreferences(
+        [row({ key, value: 'weekend market' })],
+        new Set(),
+        NOW,
+      );
+      expect(unmarked.preferences.map((p) => p.key)).toEqual([key]);
+    },
+  );
+
+  it('a guess goes stale before a thing the parent said, and the stale key is not named', () => {
     const rows = [
       row({ key: 'guess', source: 'inferred', sourcedAt: ago(100) }),
       row({ key: 'said', source: 'parent_message', sourcedAt: ago(100) }),
     ];
     const { preferences, recheck } = selectFitPreferences(rows, new Set(), NOW);
     expect(preferences.map((p) => p.key)).toEqual(['said']);
-    expect(recheck).toEqual([{ childId: null, key: 'guess', seenOn: '2026-07-22' }]);
+    expect(recheck).toEqual([]);
+    expect(JSON.stringify({ preferences, recheck })).not.toContain('guess');
   });
 
-  it('a stale fact never leaks its old value, and the recheck list is short', () => {
+  it('a stale fact never leaks its old value or its key', () => {
     const rows = Array.from({ length: 6 }, (_, i) =>
       row({ key: `old${i}`, value: `secret${i}`, sourcedAt: ago(400) }),
     );
-    const { preferences, recheck } = selectFitPreferences(rows, new Set(), NOW);
-    expect(preferences).toEqual([]);
-    expect(FAMILY_FIT_RECHECK_LIMIT).toBe(1);
-    expect(recheck).toHaveLength(1);
-    expect(JSON.stringify(recheck)).not.toContain('secret');
+    const fit = selectFitPreferences(rows, new Set(), NOW);
+    expect(fit.preferences).toEqual([]);
+    expect(fit.recheck).toEqual([]);
+    expect(JSON.stringify(fit)).not.toContain('secret');
+    expect(JSON.stringify(fit)).not.toContain('old0');
   });
 
   it('a low-confidence hunch never ranks', () => {
@@ -126,28 +137,17 @@ describe('family fit provenance + freshness (VIL-519)', () => {
     expect(recheck).toEqual([]);
   });
 
-  it.each([
-    'age',
-    'kid_age',
-    'children_age_range',
-    'home_city',
-    'postal_code',
-    'neighbourhood',
-    'grade',
-    // Devin #981: every birth-date spelling a memory writer keeps (`isLastingFactKey`).
-    'dateofbirth',
-    'dateOfBirth',
-    'date_of_birth',
-    'date-of-birth',
-    'child_date_of_birth',
-    'birth_date',
-    'birthdate',
-    'dob',
-  ])('the record wins over a remembered %s', (key) => {
-    const { preferences, recheck } = selectFitPreferences([row({ key })], new Set(), NOW);
-    expect(preferences).toEqual([]);
-    expect(recheck).toEqual([]);
-  });
+  it.each(['home_city', 'date_of_birth', 'age'])(
+    'a remembered %s rides when extraction did not mark it as the record',
+    (key) => {
+      const { preferences } = selectFitPreferences(
+        [row({ key, value: 'not the record' })],
+        new Set(),
+        NOW,
+      );
+      expect(preferences.map((p) => p.key)).toEqual([key]);
+    },
+  );
 
   it('keeps preferences that only mention home in passing', () => {
     const { preferences } = selectFitPreferences(

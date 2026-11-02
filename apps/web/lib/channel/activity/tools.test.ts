@@ -385,9 +385,8 @@ describe('find_activities description: record over thread history (VIL-519, Desi
 
   it('keeps recheck to one question the model writes, and never a reason to pick', () => {
     expect(description).toContain('must not choose the subject you search');
-    expect(description).toContain('own words');
     expect(description).toContain('no set sentence');
-    expect(description).toContain('never instead of them');
     expect(description).not.toContain('if it would change this pick');
+    expect(description).not.toContain('loves_swimming');
   });
 });
