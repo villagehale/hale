@@ -6,6 +6,7 @@ import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
 import { toTrailView } from '~/lib/dashboard/mappers';
 import {
   AUDIT_VERBS,
+  calendarWithdrawnSentences,
   isInternalTrailVerb,
   targetLink,
   targetNoun,
@@ -253,8 +254,43 @@ describe('trail sentences stay on the receipts trail', () => {
     expect(importers.sort()).toEqual(['lib/dashboard/mappers.ts', 'lib/dashboard/trail-query.ts']);
   });
 
+  it('names a withdrawn calendar ask from the reason that was recorded', () => {
+    const reasons = {
+      send_failed: 'Hale set aside the calendar question because the message did not send',
+      household_said_no: 'Hale set aside the calendar question after your household said no',
+      plan_changed: 'Hale set aside the calendar question after the plan changed',
+    } as const;
+    for (const [reason, summary] of Object.entries(reasons)) {
+      const view = toTrailView(
+        {
+          id: 'log-withdraw',
+          familyId: 'f1',
+          actor: 'system',
+          actionTaken: 'linq_group_plan_calendar_withdrawn',
+          targetTable: 'linq_group_plan_calendar_consents',
+          targetId: 'plan-1',
+          before: null,
+          after: { familyId: 'f1', reason },
+          occurredAt: new Date('2026-10-28T16:00:00Z'),
+          ip: null,
+          userAgent: null,
+          agentRunId: null,
+        } as AuditLogEntry,
+        false,
+        'America/Toronto',
+        () => 'hale',
+      );
+      expect(view.summary).toBe(summary);
+    }
+    expect(reasons.send_failed).not.toContain('plan changed');
+    expect(reasons.household_said_no).not.toContain('plan changed');
+  });
+
   it('does not copy a calendar trail sentence into a parent message', () => {
-    const sentences = CALENDAR_VERBS.map((verb) => trailVerb(verb).sentence);
+    const sentences = [
+      ...CALENDAR_VERBS.map((verb) => trailVerb(verb).sentence),
+      ...calendarWithdrawnSentences(),
+    ];
     const hits: string[] = [];
     for (const path of [
       ...filesUnder(join(ROOT, 'lib/channel')),

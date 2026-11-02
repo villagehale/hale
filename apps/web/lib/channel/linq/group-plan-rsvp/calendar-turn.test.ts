@@ -1028,6 +1028,213 @@ describe('another parent in the same household', () => {
     expect(writer.familyIds).toEqual([]);
     expect(consent.texts).toEqual([]);
   });
+
+  it('keeps a written entry when a co-parent says no and the other is still a yes', async () => {
+    const { store, texts } = await picnic();
+    const writer = writerSpy();
+    const priv = privateSpy();
+    const homes = households({ 'u-priya': 'fam-priya', 'u-sam': 'fam-priya' });
+    const shared = {
+      store,
+      texts,
+      writer,
+      homes,
+      privateLines: priv,
+      consent: consentOf('ok'),
+    };
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('yes')) }),
+    );
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'put it on ours',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('yes')) }),
+    );
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: SAM,
+        senderName: 'Sam',
+        senderUserId: 'u-sam',
+        text: 'I cannot',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 120_000),
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('no')) }),
+    );
+    const plan = await store.loadLivePlan(CHAT);
+    expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('written');
+    expect(writer.familyIds).toEqual(['fam-priya']);
+    expect(writer.removed).toEqual([]);
+  });
+});
+
+describe('the private ask lands after the group line', () => {
+  it('sends the household ask only once the group has the tally', async () => {
+    const { store, texts } = await picnic();
+    const order: string[] = [];
+    const priv = privateSpy();
+    const deps = calendarDeps({
+      store,
+      texts,
+      reader: readerOf(rsvp('yes', { householdLabel: 'the Patels' })),
+      writer: writerSpy(),
+      privateLines: priv,
+      consent: consentOf('not_this'),
+    });
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'we are in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      {
+        ...deps,
+        send: async (line) => {
+          order.push('group');
+          return deps.send(line);
+        },
+        privateSend: {
+          async send(line) {
+            order.push('private');
+            return priv.send(line);
+          },
+        },
+      },
+    );
+    expect(order).toEqual(['group', 'private']);
+    expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
+    expect(texts.map((line) => line.kind)).toEqual(['plan']);
+  });
+});
+
+describe('why a calendar ask was set aside', () => {
+  it('records that the ask did not send', async () => {
+    const { world, store, texts } = await picnic();
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'we are in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      {
+        ...calendarDeps({
+          store,
+          texts,
+          reader: readerOf(rsvp('yes')),
+          writer: writerSpy(),
+          consent: consentOf('not_this'),
+        }),
+        privateSend: {
+          async send() {
+            return { status: 'skipped' as const, reason: 'not_sent' as const };
+          },
+        },
+      },
+    );
+    expect(
+      world.audits.filter((row) => row.actionTaken === 'linq_group_plan_calendar_withdrawn'),
+    ).toEqual([
+      expect.objectContaining({
+        after: expect.objectContaining({ reason: 'send_failed' }),
+      }),
+    ]);
+  });
+
+  it('records that the household said no', async () => {
+    const { world, store, texts } = await picnic();
+    const priv = privateSpy();
+    const shared = {
+      store,
+      texts,
+      writer: writerSpy(),
+      privateLines: priv,
+      homes: households({ 'u-priya': 'fam-priya' }),
+      consent: consentOf('not_this'),
+    };
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('yes')) }),
+    );
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'actually we cannot',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('no')) }),
+    );
+    expect(
+      world.audits.filter((row) => row.actionTaken === 'linq_group_plan_calendar_withdrawn'),
+    ).toEqual([
+      expect.objectContaining({
+        after: expect.objectContaining({ reason: 'household_said_no' }),
+      }),
+    ]);
+  });
+
+  it('records that the plan changed when that is the fact', async () => {
+    const { world, store } = await picnic();
+    const plan = await store.loadLivePlan(CHAT);
+    await store.claimCalendarAsk({
+      planId: plan?.id ?? '',
+      familyId: 'fam-priya',
+      memberKey: 'priya',
+      displayName: 'Priya',
+      householdLabel: null,
+      now: LATER,
+    });
+    expect(
+      await store.releaseCalendarAsk(plan?.id ?? '', 'fam-priya', 'u-priya', 'plan_changed'),
+    ).toBe(true);
+    expect(world.audits.at(-1)).toMatchObject({
+      actionTaken: 'linq_group_plan_calendar_withdrawn',
+      after: { reason: 'plan_changed' },
+    });
+  });
 });
 
 describe('calendarConsentUserMessage', () => {

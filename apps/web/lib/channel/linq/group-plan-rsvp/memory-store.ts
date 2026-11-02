@@ -343,14 +343,14 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       return true;
     },
 
-    async releaseCalendarAsk(planId, familyId, actorUserId) {
+    async releaseCalendarAsk(planId, familyId, actorUserId, reason) {
       const key = consentKey(planId, familyId);
       const row = world.consents.get(key);
       if (row?.status !== 'asked') return false;
       world.consents.delete(key);
       world.audits.push({
         actionTaken: 'linq_group_plan_calendar_withdrawn',
-        after: { familyId, actorUserId: actorUserId ?? 'system' },
+        after: { familyId, actorUserId: actorUserId ?? 'system', reason },
       });
       return true;
     },

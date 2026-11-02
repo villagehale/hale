@@ -38,6 +38,9 @@ export interface GroupPlanRsvpComposer {
 
 export const GROUP_PLAN_RSVP_VOICE_MAX_TOKENS = 400;
 
+export const GROUP_PLAN_VOICE_TOOL_NAME = 'send_group_line';
+export const GROUP_PLAN_VOICE_TOOL_DESCRIPTION = 'The one message Hale sends.';
+
 /** One model-written line. Code never stitches parts of a message together. */
 export const GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA = {
   type: 'object',
@@ -75,8 +78,8 @@ export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undef
         lane: pickLane(skill.meta.task),
         system: skill.instructions,
         userMessage: JSON.stringify({ ...input, retry: options?.prompt === 'short' }),
-        toolName: 'send_group_line',
-        toolDescription: 'The one message Hale sends.',
+        toolName: GROUP_PLAN_VOICE_TOOL_NAME,
+        toolDescription: GROUP_PLAN_VOICE_TOOL_DESCRIPTION,
         inputJsonSchema: GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA,
         schema: voiceAnswerSchema,
         maxTokens: options?.prompt === 'short' ? 160 : GROUP_PLAN_RSVP_VOICE_MAX_TOKENS,

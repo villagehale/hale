@@ -843,7 +843,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'done',
   },
   linq_group_plan_calendar_withdrawn: {
-    sentence: 'Hale set aside the calendar question after the plan changed',
+    sentence: 'Hale set aside the calendar question',
     family: 'note',
   },
   linq_group_poll_started: {
@@ -1988,6 +1988,27 @@ const NEUTRAL: Verb = { sentence: 'recorded an update', family: 'neutral' };
  */
 export function trailVerb(actionTaken: string): Verb {
   return VERBS[actionTaken as AuditVerb] ?? NEUTRAL;
+}
+
+/**
+ * The withdrawn-ask row's sentence, from the reason stored on the audit row.
+ * A missing reason keeps the registry sentence, which does not name a cause.
+ */
+const CALENDAR_WITHDRAW_LINE = {
+  send_failed: 'Hale set aside the calendar question because the message did not send',
+  household_said_no: 'Hale set aside the calendar question after your household said no',
+  plan_changed: 'Hale set aside the calendar question after the plan changed',
+} as const;
+
+export function calendarWithdrawnSentence(after: unknown): string | null {
+  if (typeof after !== 'object' || after === null || !('reason' in after)) return null;
+  const reason = (after as { reason?: unknown }).reason;
+  if (typeof reason !== 'string') return null;
+  return CALENDAR_WITHDRAW_LINE[reason as keyof typeof CALENDAR_WITHDRAW_LINE] ?? null;
+}
+
+export function calendarWithdrawnSentences(): readonly string[] {
+  return Object.values(CALENDAR_WITHDRAW_LINE);
 }
 
 /**

@@ -2,7 +2,14 @@ import type { ContentProvenance, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import type { EntryTone } from '../../components/hale/tone';
 import { dayKeyOf, formatDayHeading, formatTime } from '../format/datetime';
-import { EXECUTED_ON_ITS_OWN, targetLink, targetNoun, trailVerb, verbTone } from '../trail/verbs';
+import {
+  EXECUTED_ON_ITS_OWN,
+  calendarWithdrawnSentence,
+  targetLink,
+  targetNoun,
+  trailVerb,
+  verbTone,
+} from '../trail/verbs';
 
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
 
@@ -156,9 +163,13 @@ export function toTrailView(
   childLabel: string | null = null,
   now: Date = new Date(),
 ): TrailView {
-  const { sentence, family } = executedOnItsOwn(entry)
-    ? EXECUTED_ON_ITS_OWN
-    : trailVerb(entry.actionTaken);
+  const verb = executedOnItsOwn(entry) ? EXECUTED_ON_ITS_OWN : trailVerb(entry.actionTaken);
+  const fromFacts =
+    entry.actionTaken === 'linq_group_plan_calendar_withdrawn'
+      ? calendarWithdrawnSentence(entry.after)
+      : null;
+  const sentence = fromFacts ?? verb.sentence;
+  const { family } = verb;
   return {
     actionId: entry.targetTable === 'actions' ? entry.targetId : null,
     reversalKept: keptReversalHandle(entry),

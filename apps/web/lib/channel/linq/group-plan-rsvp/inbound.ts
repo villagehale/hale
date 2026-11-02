@@ -6,7 +6,8 @@ import {
   linqGroupPollsEnabled,
   linqPollsEnabled,
 } from '../config';
-import { sendHouseholdPrivateLine } from '../connect-link-1to1';
+import { type OneToOneSend, sendHouseholdPrivateLine } from '../connect-link-1to1';
+import { familySpeechLanguage } from '../family-outbound';
 import { sendChoicePoll } from '../poll';
 import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
@@ -47,6 +48,13 @@ export interface GroupPlanRsvpInboundPorts {
   composer?: GroupPlanRsvpComposer;
   pollCard?: GroupPollCardPort;
   consentReader?: CalendarConsentReader;
+  /** Test seam. Production sends through the household 1:1 door. */
+  oneToOne?: OneToOneSend;
+}
+
+/** The household's stored language. A missing tag is English; a stored `fr` or `zh` is kept. */
+async function householdLanguage(database: Database, familyId: string) {
+  return (await familySpeechLanguage(database, familyId)) ?? 'en';
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -98,6 +106,7 @@ function privateCalendarSend(ports: GroupPlanRsvpInboundPorts) {
         templateKey,
         dedupeKey: `${templateKey}:${line.planId}:${line.familyId}:${ports.now.toISOString()}`,
         now: ports.now,
+        ...(ports.oneToOne ? { send: ports.oneToOne } : {}),
       });
       if (result.status === 'sent') {
         return { status: 'sent' as const, providerMessageId: result.providerMessageId };
@@ -246,7 +255,8 @@ export async function considerPrivateCalendarReply(
   const open = await store.listOpenCalendarAsks(input.senderUserId);
   if (open.length !== 1) return { handled: false };
   const plan = open[0]?.plan;
-  if (!plan) return { handled: false };
+  const consent = open[0]?.consent;
+  if (!plan || !consent) return { handled: false };
   const answered = await answerPendingCalendarAsk(
     {
       chatId: plan.chatId,
@@ -255,7 +265,7 @@ export async function considerPrivateCalendarReply(
       senderName: input.senderName,
       text: input.text,
       tapback: null,
-      language: 'en',
+      language: await householdLanguage(ports.database, consent.familyId),
       now: ports.now,
     },
     { store, ...calendarPorts(ports) },
@@ -288,7 +298,7 @@ export async function considerCalendarTapback(
       text: '',
       tapback: input.tapback,
       tapbackMessageId: input.messageId,
-      language: 'en',
+      language: await householdLanguage(ports.database, found.consent.familyId),
       now: ports.now,
     },
     { store, ...calendarPorts(ports) },

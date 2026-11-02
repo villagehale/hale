@@ -338,7 +338,7 @@ async function reopenCalendarAsk(
     kind: 'calendar_ask',
   });
   if (sent.status === 'skipped') {
-    await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId);
+    await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId, 'send_failed');
     await ports.store.recordCalendarDecline({
       planId: input.plan.id,
       familyId,
@@ -399,7 +399,12 @@ export async function settleCalendarAfterAnswer(
       return undefined;
     }
     if (row?.status === 'asked') {
-      await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId);
+      await ports.store.releaseCalendarAsk(
+        input.plan.id,
+        familyId,
+        input.userId,
+        'household_said_no',
+      );
     }
     if (row?.status === 'written') {
       return removeWrittenCopy(input, ports, familyId, row);
@@ -436,7 +441,7 @@ export async function settleCalendarAfterAnswer(
     kind: 'calendar_ask',
   });
   if (sent.status === 'skipped') {
-    await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId);
+    await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId, 'send_failed');
     console.warn(
       { outcome: 'group_plan_calendar_ask_unsent', reason: sent.reason },
       'group plan calendar: ask not sent',

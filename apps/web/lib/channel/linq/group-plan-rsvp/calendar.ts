@@ -69,6 +69,10 @@ export const CALENDAR_CONSENT_TOOL_SCHEMA = {
 
 export const CALENDAR_CONSENT_MAX_TOKENS = 200;
 
+export const CALENDAR_CONSENT_TOOL_NAME = 'group_plan_calendar_consent';
+export const CALENDAR_CONSENT_TOOL_DESCRIPTION =
+  'Return whether this message answers the open calendar ask.';
+
 /** The user-turn payload. Facts only — no suggested reply. */
 export function calendarConsentUserMessage(input: CalendarConsentReadInput): string {
   return JSON.stringify({
@@ -97,8 +101,8 @@ export function createCalendarConsentReader(
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
       userMessage: calendarConsentUserMessage(input),
-      toolName: 'group_plan_calendar_consent',
-      toolDescription: 'Return whether this message answers the open calendar ask.',
+      toolName: CALENDAR_CONSENT_TOOL_NAME,
+      toolDescription: CALENDAR_CONSENT_TOOL_DESCRIPTION,
       inputJsonSchema: CALENDAR_CONSENT_TOOL_SCHEMA,
       schema: consentSchema,
       maxTokens: CALENDAR_CONSENT_MAX_TOKENS,

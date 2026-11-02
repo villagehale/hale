@@ -78,6 +78,14 @@ export interface ClaimCalendarAskInput {
   now: Date;
 }
 
+/** Why an open calendar ask was dropped. The trail sentence is this fact, not a fixed cause. */
+export const CALENDAR_WITHDRAW_REASONS = [
+  'send_failed',
+  'household_said_no',
+  'plan_changed',
+] as const;
+export type CalendarWithdrawReason = (typeof CALENDAR_WITHDRAW_REASONS)[number];
+
 export interface GroupPlanRsvpStore extends GroupPollStore {
   coveringFamily(chatId: string): Promise<{ familyId: string; timeZone: string } | null>;
   loadLivePlan(chatId: string): Promise<GroupPlanRecord | null>;
@@ -97,11 +105,12 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   loadCalendarConsent(planId: string, familyId: string): Promise<CalendarConsentRow | null>;
   /** Inserts `asked`. False when this household already has a row for the plan. */
   claimCalendarAsk(input: ClaimCalendarAskInput): Promise<boolean>;
-  /** Drops an unanswered ask so a failed send can be tried again. Audits only when a row went. */
+  /** Drops an unanswered ask. Audits only when a row went, with the reason that happened. */
   releaseCalendarAsk(
     planId: string,
     familyId: string,
     actorUserId: string | null,
+    reason: CalendarWithdrawReason,
   ): Promise<boolean>;
   listYesRsvps(planId: string): Promise<{ memberKey: string; userId: string | null }[]>;
   setCalendarAskMessage(planId: string, familyId: string, providerMessageId: string): Promise<void>;
@@ -217,6 +226,26 @@ export async function postgresSeatedExpected(
       haleCustomer: member?.haleCustomer ?? false,
     };
   });
+}
+
+/** Chats where this person still has a seat. A removed seat is not current. */
+async function liveSeatChatIds(database: Database, userId: string): Promise<Set<string>> {
+  const groupSeats = await database
+    .select({ chatId: schema.linqGroupMembers.chatId })
+    .from(schema.linqGroupMembers)
+    .where(
+      and(eq(schema.linqGroupMembers.userId, userId), isNull(schema.linqGroupMembers.removedAt)),
+    );
+  const sharedSeats = await database
+    .select({ chatId: schema.linqMultiFamilyMembers.chatId })
+    .from(schema.linqMultiFamilyMembers)
+    .where(
+      and(
+        eq(schema.linqMultiFamilyMembers.userId, userId),
+        isNull(schema.linqMultiFamilyMembers.removedAt),
+      ),
+    );
+  return new Set([...groupSeats, ...sharedSeats].map((row) => row.chatId));
 }
 
 export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanRsvpStore {
@@ -578,7 +607,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
       return inserted.length > 0;
     },
 
-    async releaseCalendarAsk(planId, familyId, actorUserId) {
+    async releaseCalendarAsk(planId, familyId, actorUserId, reason) {
       const deleted = await database
         .delete(schema.linqGroupPlanCalendarConsents)
         .where(
@@ -596,7 +625,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         actionTaken: 'linq_group_plan_calendar_withdrawn',
         targetTable: 'linq_group_plan_calendar_consents',
         targetId: planId,
-        after: { familyId },
+        after: { familyId, reason },
       });
       return true;
     },
@@ -673,6 +702,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .filter((row) => row.role === 'primary_parent' || row.role === 'co_parent')
         .map((row) => row.familyId);
       if (families.length === 0) return [];
+      const seated = await liveSeatChatIds(database, userId);
       const mine = await database
         .select()
         .from(schema.linqGroupPlanCalendarConsents)
@@ -689,7 +719,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           .from(schema.linqGroupPlans)
           .where(eq(schema.linqGroupPlans.id, row.planId))
           .limit(1);
-        if (!plan || plan.closedAt) continue;
+        if (!plan || plan.closedAt || !seated.has(plan.chatId)) continue;
         out.push({
           plan: {
             id: plan.id,

@@ -91,6 +91,7 @@ import {
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
 import type { GroupPickupClaimReader } from './group-pickup-claim';
+import type { CalendarConsentReader } from './group-plan-rsvp/calendar';
 import {
   considerCalendarTapback,
   considerGroupPlanRsvp,
@@ -224,6 +225,8 @@ export async function handleLinqInboundRequest(
     groupPlanRsvpReader?: GroupPlanRsvpReader;
     /** VIL-442 test seam. Production composes with the model when the flag is on. */
     groupPlanRsvpComposer?: GroupPlanRsvpComposer;
+    /** VIL-503 test seam. Production uses the shared calendar consent reader. */
+    groupPlanCalendarConsentReader?: CalendarConsentReader;
     /** VIL-457 test seam. Production uses the shared private-aside model. */
     privateAsideModel?: PrivateAsideModel;
     /** VIL-471 test seam. Production sends the native card through sendChoicePoll. */
@@ -539,6 +542,8 @@ async function privateCalendarReply(
       now: deps.now?.() ?? new Date(),
       composer: deps.groupPlanRsvpComposer,
       reader: deps.groupPlanRsvpReader,
+      consentReader: deps.groupPlanCalendarConsentReader,
+      oneToOne: deps.oneToOne,
     },
     {
       senderUserId: mapped.userId,
@@ -1709,6 +1714,8 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         database: deps.database,
         now: deps.now?.() ?? new Date(),
         composer: deps.groupPlanRsvpComposer,
+        consentReader: deps.groupPlanCalendarConsentReader,
+        oneToOne: deps.oneToOne,
       },
       {
         senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
