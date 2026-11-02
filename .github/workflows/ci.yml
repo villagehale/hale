@@ -331,12 +331,8 @@ jobs:
 
       - name: Calendar offer read eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-offer-read
-
-      # VIL-503 reader + voice. No recording yet, and this PR does not spend.
-      # A cache miss fails the step; the job continues. REVERT this
-      # continue-on-error in the re-record commit, before merge.
+      # VIL-503 reader + voice. Recorded Nov 1; a cache miss fails CI.
       - name: Group plan RSVP calendar eval (cached-only)
-        continue-on-error: true
         run: pnpm --filter @hale/worker eval:group-plan-rsvp-calendar
 
       # Soft path (like said-line): cache stale on main; misses until the Nov 1 paid
