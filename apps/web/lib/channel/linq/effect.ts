@@ -23,7 +23,8 @@ import {
  * VIL-473 — an iMessage screen or bubble effect on Hale's reply, when the model
  * says one fits.
  *
- * Behind `LINQ_EFFECTS_ENABLED`, exactly `true` (default off). The `linq-effect`
+ * Behind `LINQ_EFFECTS_ENABLED`, exactly `true`, and only on a Preview deploy.
+ * Production stays dark. The `linq-effect`
  * skill reads the parent's message and the reply Hale already wrote, and returns
  * the effect or none. Code never picks an effect and has no fallback one: a
  * failed or unusable read, or a provider that refused the effect, sends the
@@ -283,17 +284,24 @@ export async function applyLinqEffect(input: {
     });
     return { status: 'sent', effect: decision.effect, providerMessageId: sent.providerMessageId };
   } catch (err) {
-    if (err instanceof LinqSendError && err.code === 'not_configured') {
+    // Anything that is not a Linq refusal may already be on the phone. A plain
+    // second POST would be a second copy of the reply.
+    if (!(err instanceof LinqSendError)) {
+      console.warn({ code: 'unknown' }, 'linq effect: delivery uncertain; not sending again');
+      return { status: 'uncertain', code: 'unknown' };
+    }
+    if (err.code === 'not_configured') {
       console.warn({ reason: 'not_configured' }, 'linq effect: not sent');
       return { status: 'not_sent', reason: 'not_configured', code: err.code };
     }
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
-    const httpStatus = err instanceof LinqSendError ? err.httpStatus : 0;
-    if (err instanceof LinqSendError && AMBIGUOUS_EFFECT_SEND.has(err.code)) {
-      console.warn({ code }, 'linq effect: delivery uncertain; not sending again');
-      return { status: 'uncertain', code, httpStatus };
+    if (AMBIGUOUS_EFFECT_SEND.has(err.code)) {
+      console.warn({ code: err.code }, 'linq effect: delivery uncertain; not sending again');
+      return { status: 'uncertain', code: err.code, httpStatus: err.httpStatus };
     }
-    console.warn({ code, httpStatus }, 'linq effect: refused, the reply still goes out');
-    return { status: 'not_sent', reason: 'refused', code, httpStatus };
+    console.warn(
+      { code: err.code, httpStatus: err.httpStatus },
+      'linq effect: refused, the reply still goes out',
+    );
+    return { status: 'not_sent', reason: 'refused', code: err.code, httpStatus: err.httpStatus };
   }
 }

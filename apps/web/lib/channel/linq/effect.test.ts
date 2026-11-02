@@ -26,8 +26,13 @@ vi.mock('~/lib/cron/skill', () => ({
     instructions: 'decide',
   }),
 }));
+vi.mock('~/lib/channel/outbound-transport', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/channel/outbound-transport')>();
+  return { ...actual, sendLinqEffect: vi.fn(actual.sendLinqEffect) };
+});
 
 const { forceToolJson } = await import('~/lib/pipeline/structured');
+const { sendLinqEffect } = await import('~/lib/channel/outbound-transport');
 const CLIENT = {} as AgentClient;
 const NOW = new Date('2026-10-28T12:00:00.000Z');
 const FAMILY = '00000000-0000-4000-8000-0000000000f1';
@@ -124,11 +129,18 @@ describe('VIL-473 Linq message effects', () => {
     );
   });
 
-  it('is off unless the flag is exactly true', () => {
-    expect(linqEffectsEnabled()).toBe(false);
-    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'on');
+  it('is on only in Preview when the flag is exactly true', () => {
     expect(linqEffectsEnabled()).toBe(false);
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    expect(linqEffectsEnabled()).toBe(false);
+    vi.stubEnv('VERCEL_ENV', 'development');
+    expect(linqEffectsEnabled()).toBe(false);
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'on');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    expect(linqEffectsEnabled()).toBe(false);
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     expect(linqEffectsEnabled()).toBe(true);
   });
 
@@ -324,6 +336,7 @@ describe('VIL-473 Linq message effects', () => {
     ).toBeNull();
 
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const quiet = makeFakeDb();
     const quietDecider = decider({ effect: { type: 'screen', name: 'confetti' } });
@@ -360,6 +373,7 @@ describe('VIL-473 Linq message effects', () => {
 
   it('sends the reply with the effect the model chose, and audits it', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const fake = makeFakeDb();
     const sent = await moment(
@@ -380,13 +394,13 @@ describe('VIL-473 Linq message effects', () => {
     });
   });
 
-  it('keeps the reply sources on the effect row, and the reply template key on the audit', async () => {
+  it('keeps the reply sources on an unkeyed effect row', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const conversationId = '00000000-0000-4000-8000-0000000000c1';
     const fake = makeFakeDb();
     await moment(fake, decider({ effect: { type: 'screen', name: 'confetti' } }), linqFetch(), {
-      templateKey: 'flood_line',
       medicalReplySource: 'fixed',
       replySource: 'composed',
       relatedConversationId: conversationId,
@@ -398,14 +412,57 @@ describe('VIL-473 Linq message effects', () => {
       relatedConversationId: conversationId,
       providerMessageId: 'effect-1',
     });
-    expect(fake.rows(schema.auditLog)[0]).toMatchObject({
-      actionTaken: 'linq_effect',
-      after: { templateKey: 'flood_line' },
+  });
+
+  it('does not play an effect on a reply that already has its own template key', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const fake = makeFakeDb();
+    const chosen = decider({ effect: { type: 'screen', name: 'confetti' } });
+    const posted = linqFetch();
+    expect(await moment(fake, chosen, posted, { templateKey: 'flood_line' })).toEqual({
+      handled: false,
+    });
+    expect(chosen.calls).toBe(0);
+    expect(posted).not.toHaveBeenCalled();
+    expect(fake.rows(schema.channelMessages)).toHaveLength(0);
+    expect(fake.rows(schema.auditLog)).toHaveLength(0);
+  });
+
+  it('ledgers an unknown send error and does not treat it as a refusal', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.mocked(sendLinqEffect).mockRejectedValueOnce(new Error('boom'));
+    expect(
+      await applyLinqEffect({
+        decider: decider({ effect: { type: 'screen', name: 'confetti' } }),
+        chatId: CHAT,
+        text: READ.reply,
+        replyToMessageId: 'in-1',
+        read: READ,
+      }),
+    ).toEqual({ status: 'uncertain', code: 'unknown' });
+
+    const fake = makeFakeDb();
+    const posted = linqFetch();
+    vi.mocked(sendLinqEffect).mockRejectedValueOnce(new Error('boom'));
+    const sent = await moment(
+      fake,
+      decider({ effect: { type: 'screen', name: 'confetti' } }),
+      posted,
+    );
+    expect(sent).toMatchObject({ handled: true, threadBody: READ.reply });
+    expect(posted).not.toHaveBeenCalled();
+    expect(fake.rows(schema.channelMessages)[0]).toMatchObject({
+      templateKey: 'linq:effect',
+      providerMessageId: null,
     });
   });
 
   it('treats an uncertain delivery as already sent, and a ledger failure as not a second chance', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const uncertain = makeFakeDb();
     const missing = vi.fn(async () => Response.json({}, { status: 201 }));
@@ -434,6 +491,7 @@ describe('VIL-473 Linq message effects', () => {
 
   it('lets the reply go out and writes nothing when the model fails or the send is refused', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
 
     const failed = makeFakeDb();

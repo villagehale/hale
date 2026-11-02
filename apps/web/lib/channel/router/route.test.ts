@@ -4721,6 +4721,7 @@ describe('turn deadline (VIL-400)', () => {
 
   it('does not send the reply when an effect read finishes after the deadline', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'test-key');
     effectDecide.mockRejectedValue(new DeadlineError('turn_timeout'));
     const posts: string[] = [];
@@ -4757,6 +4758,7 @@ describe('an iMessage effect does not send the reply twice', () => {
 
   function effectTurn() {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'test-key');
     effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
     return harness({
@@ -5610,6 +5612,7 @@ describe('the reply row, written to a real database', () => {
         vi.stubEnv('LINQ_API_KEY', 'test-key');
         vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
         vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        vi.stubEnv('VERCEL_ENV', 'preview');
         stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: true });
         effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
         const posted: string[] = [];
@@ -5647,6 +5650,7 @@ describe('the reply row, written to a real database', () => {
         lit();
         vi.stubEnv('LINQ_API_KEY', 'test-key');
         vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        vi.stubEnv('VERCEL_ENV', 'preview');
         effectDecide.mockResolvedValue({ effect: null });
         const sent: unknown[] = [];
         vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {

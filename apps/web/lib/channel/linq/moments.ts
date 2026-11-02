@@ -165,6 +165,13 @@ export async function considerLinqReply(
   }
 
   if (!linqEffectsEnabled()) return { handled: false };
+  // A reply that already has its own ledger key (a holding line, a flood line,
+  // a handler receipt) keeps that key. An effect would replace it with
+  // `linq:effect`, and the cap or audit that reads the key would miss the reply.
+  if (args.templateKey) {
+    console.info({ reason: 'keyed_reply' }, 'linq effect: not considered');
+    return { handled: false };
+  }
   if (!args.effect) {
     console.info({ reason: 'no_decider' }, 'linq effect: not considered');
     return { handled: false };
