@@ -240,6 +240,7 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('`lastInbound`');
     expect(skill.instructions).toContain('minutesAgo');
     expect(skill.instructions).toContain('A take-back is not a name');
+    expect(skill.instructions).toContain('casual shorthand for letting go');
     expect(skill.instructions).toContain('asks what to call them');
     expect(skill.instructions).not.toContain("I'll call you");
     expect(skill.instructions).not.toContain("Je t'appelle");
@@ -269,6 +270,8 @@ describe('onboarding friend fixtures', () => {
     expect(short.instructions).toContain('**connected**');
     expect(short.instructions).toContain('lastInbound');
     expect(short.instructions).toContain('A take-back is not a name');
+    expect(short.instructions).toContain('casual shorthand for letting go');
+    expect(short.instructions).toContain('nameDeclined` stays false');
     expect(short.instructions).toContain('asks what to call them');
     expect(short.instructions).not.toContain("I'll call you");
     expect(short.meta.task).toBe('speak');
