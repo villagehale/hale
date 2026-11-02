@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Priya，周六野餐已经放进你的日历了，公园见。",
+    "why": "calendar_written"
+  },
+  "latencyMs": 854
+}

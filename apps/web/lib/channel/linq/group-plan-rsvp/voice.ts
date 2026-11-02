@@ -4,6 +4,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { GroupPlanCalendarLineInput } from './calendar';
 import type { GroupPlanRsvpLineInput } from './facts';
 import type { GroupPollLineInput } from './poll-facts';
 
@@ -23,7 +24,10 @@ export type GroupPlanRsvpVoiceSkip =
   | 'model_failed'
   | 'unusable';
 
-export type GroupLineInput = GroupPlanRsvpLineInput | GroupPollLineInput;
+export type GroupLineInput =
+  | GroupPlanRsvpLineInput
+  | GroupPollLineInput
+  | GroupPlanCalendarLineInput;
 
 export interface GroupPlanRsvpComposer {
   compose(
@@ -33,6 +37,9 @@ export interface GroupPlanRsvpComposer {
 }
 
 export const GROUP_PLAN_RSVP_VOICE_MAX_TOKENS = 400;
+
+export const GROUP_PLAN_VOICE_TOOL_NAME = 'send_group_line';
+export const GROUP_PLAN_VOICE_TOOL_DESCRIPTION = 'The one message Hale sends.';
 
 /** One model-written line. Code never stitches parts of a message together. */
 export const GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA = {
@@ -71,8 +78,8 @@ export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undef
         lane: pickLane(skill.meta.task),
         system: skill.instructions,
         userMessage: JSON.stringify({ ...input, retry: options?.prompt === 'short' }),
-        toolName: 'send_group_line',
-        toolDescription: 'The one message Hale sends.',
+        toolName: GROUP_PLAN_VOICE_TOOL_NAME,
+        toolDescription: GROUP_PLAN_VOICE_TOOL_DESCRIPTION,
         inputJsonSchema: GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA,
         schema: voiceAnswerSchema,
         maxTokens: options?.prompt === 'short' ? 160 : GROUP_PLAN_RSVP_VOICE_MAX_TOKENS,

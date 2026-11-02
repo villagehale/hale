@@ -189,6 +189,11 @@ export const AUDIT_VERBS = [
   'linq_group_plan_started',
   'linq_group_plan_rsvp_recorded',
   'linq_group_plan_rsvp_edited',
+  'linq_group_plan_calendar_asked',
+  'linq_group_plan_calendar_declined',
+  'linq_group_plan_calendar_written',
+  'linq_group_plan_calendar_removed',
+  'linq_group_plan_calendar_withdrawn',
   'linq_group_poll_started',
   'linq_group_poll_vote_recorded',
   'linq_group_poll_vote_removed',
@@ -820,6 +825,26 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_group_plan_rsvp_edited: {
     sentence: 'Hale updated who is coming to a plan in your family group',
     family: 'done',
+  },
+  linq_group_plan_calendar_asked: {
+    sentence: 'Hale asked your household before putting a group plan on your calendar',
+    family: 'awaiting',
+  },
+  linq_group_plan_calendar_declined: {
+    sentence: 'Your household said not to put a group plan on your calendar',
+    family: 'note',
+  },
+  linq_group_plan_calendar_written: {
+    sentence: 'Hale put a group plan on your household calendar after your household agreed',
+    family: 'done',
+  },
+  linq_group_plan_calendar_removed: {
+    sentence: 'Hale took a group plan off your household calendar',
+    family: 'done',
+  },
+  linq_group_plan_calendar_withdrawn: {
+    sentence: 'Hale set aside the calendar question',
+    family: 'note',
   },
   linq_group_poll_started: {
     sentence: 'Hale started a poll in your family group',
@@ -1963,6 +1988,28 @@ const NEUTRAL: Verb = { sentence: 'recorded an update', family: 'neutral' };
  */
 export function trailVerb(actionTaken: string): Verb {
   return VERBS[actionTaken as AuditVerb] ?? NEUTRAL;
+}
+
+/**
+ * The withdrawn-ask row's sentence, from the reason stored on the audit row.
+ * A missing reason keeps the registry sentence, which does not name a cause.
+ */
+const CALENDAR_WITHDRAW_LINE = {
+  send_failed: 'Hale set aside the calendar question because the message did not send',
+  household_said_no: 'Hale set aside the calendar question after your household said no',
+  household_said_maybe: 'Hale set aside the calendar question after your household said maybe',
+  plan_changed: 'Hale set aside the calendar question after the plan changed',
+} as const;
+
+export function calendarWithdrawnSentence(after: unknown): string | null {
+  if (typeof after !== 'object' || after === null || !('reason' in after)) return null;
+  const reason = (after as { reason?: unknown }).reason;
+  if (typeof reason !== 'string') return null;
+  return CALENDAR_WITHDRAW_LINE[reason as keyof typeof CALENDAR_WITHDRAW_LINE] ?? null;
+}
+
+export function calendarWithdrawnSentences(): readonly string[] {
+  return Object.values(CALENDAR_WITHDRAW_LINE);
 }
 
 /**

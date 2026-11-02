@@ -203,6 +203,14 @@
     "file": "group-plan-invite-note.md",
     "sha256": "e2398f233a3c5f97c51282d12f85cf3adecb06befb17add4b2c33d94e493b6d0"
   },
+  "group-plan-rsvp-calendar-read.md": {
+    "file": "group-plan-rsvp-calendar-read.md",
+    "sha256": "9e90e814b886ed42039a05ab0d259902708efefd54d61a1fc8aead2d62e18227"
+  },
+  "group-plan-rsvp-calendar-voice.md": {
+    "file": "group-plan-rsvp-calendar-voice.md",
+    "sha256": "c150de152fde5c5e28a696412addeb35094cb5fae0d2686b283e2d934975047b"
+  },
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",
     "sha256": "86bdc136dc1d4f8adbf6b24f1018d8bd8a4b1b230d21bf7c82e120e36a2bfe92"

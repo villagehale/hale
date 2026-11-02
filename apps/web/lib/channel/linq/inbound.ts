@@ -91,7 +91,13 @@ import {
 } from './group-members';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
 import type { GroupPickupClaimReader } from './group-pickup-claim';
-import { considerGroupPlanRsvp, considerGroupPollCardVote } from './group-plan-rsvp/inbound';
+import type { CalendarConsentReader } from './group-plan-rsvp/calendar';
+import {
+  considerCalendarTapback,
+  considerGroupPlanRsvp,
+  considerGroupPollCardVote,
+  considerPrivateCalendarReply,
+} from './group-plan-rsvp/inbound';
 import type { GroupPollCardPort } from './group-plan-rsvp/poll-turn';
 import { isGroupPollCardKind } from './group-plan-rsvp/poll-turn';
 import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
@@ -219,6 +225,8 @@ export async function handleLinqInboundRequest(
     groupPlanRsvpReader?: GroupPlanRsvpReader;
     /** VIL-442 test seam. Production composes with the model when the flag is on. */
     groupPlanRsvpComposer?: GroupPlanRsvpComposer;
+    /** VIL-503 test seam. Production uses the shared calendar consent reader. */
+    groupPlanCalendarConsentReader?: CalendarConsentReader;
     /** VIL-457 test seam. Production uses the shared private-aside model. */
     privateAsideModel?: PrivateAsideModel;
     /** VIL-471 test seam. Production sends the native card through sendChoicePoll. */
@@ -344,7 +352,13 @@ export async function handleLinqInboundRequest(
             deps.log.info({ outcome: resumed.outcome }, 'linq inbound: connect link resumed 1:1');
           }
         }
-        outcome = await routeOneToOne(deps, message);
+        const calendarReply = await privateCalendarReply(deps, message);
+        if (calendarReply) {
+          outcome = calendarReply.count;
+          answered = calendarReply.body;
+        } else {
+          outcome = await routeOneToOne(deps, message);
+        }
       }
     }
   } finally {
@@ -513,6 +527,41 @@ function multiFamilyPorts(deps: LinqDoorDeps) {
  * Banter and a missed read stay quiet and leave the rest of the group door
  * (find, multi-family, inbox) the turn.
  */
+async function privateCalendarReply(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+): Promise<{ count: InboundRouteOutcome; body: Record<string, unknown> } | null> {
+  const mapped = await mapGroupHandlesToFamily(deps.database, {
+    sender: message.senderHandle,
+    others: [],
+  });
+  if (mapped.status !== 'same_family') return null;
+  const reply = await considerPrivateCalendarReply(
+    {
+      database: deps.database,
+      now: deps.now?.() ?? new Date(),
+      composer: deps.groupPlanRsvpComposer,
+      reader: deps.groupPlanRsvpReader,
+      consentReader: deps.groupPlanCalendarConsentReader,
+      oneToOne: deps.oneToOne,
+    },
+    {
+      senderUserId: mapped.userId,
+      senderName: null,
+      text: message.text,
+    },
+  );
+  if (!reply.handled) return null;
+  deps.log.info({ outcome: reply.outcome }, 'linq inbound: private calendar reply');
+  return {
+    count: reply.count,
+    body: {
+      outcome: reply.outcome,
+      ...(reply.notice ? { notice: reply.notice } : {}),
+    },
+  };
+}
+
 async function tryGroupPlanRsvpTurn(
   deps: LinqDoorDeps,
   input: {
@@ -520,6 +569,7 @@ async function tryGroupPlanRsvpTurn(
     senderHandle: string;
     text: string;
     tapback: LinqTapback | null;
+    tapbackMessageId?: string | null;
   },
 ): Promise<Response | null> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return null;
@@ -542,6 +592,7 @@ async function tryGroupPlanRsvpTurn(
       senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
       text: input.text,
       tapback: input.tapback,
+      tapbackMessageId: input.tapbackMessageId,
     },
   );
   if (!groupPlanRsvpTakesTheTurn(rsvp)) return null;
@@ -1653,12 +1704,42 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       }
     }
   }
+  if (signal.event === 'reaction.added' && signal.senderHandle && signal.messageId) {
+    const mapped = await mapGroupHandlesToFamily(deps.database, {
+      sender: signal.senderHandle,
+      others: [],
+    });
+    const calendarTap = await considerCalendarTapback(
+      {
+        database: deps.database,
+        now: deps.now?.() ?? new Date(),
+        composer: deps.groupPlanRsvpComposer,
+        consentReader: deps.groupPlanCalendarConsentReader,
+        oneToOne: deps.oneToOne,
+      },
+      {
+        senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
+        senderName: null,
+        messageId: signal.messageId,
+        tapback: parseLinqTapback(signal.reactionType),
+      },
+    );
+    if (calendarTap.handled) {
+      deps.log.info({ outcome: calendarTap.outcome }, 'linq inbound: calendar tapback');
+      await deps.countOutcome(calendarTap.count);
+      return json({
+        outcome: calendarTap.outcome,
+        ...(calendarTap.notice ? { notice: calendarTap.notice } : {}),
+      });
+    }
+  }
   if (signal.event === 'reaction.added' && signal.senderHandle && signal.chatId) {
     const rsvp = await tryGroupPlanRsvpTurn(deps, {
       chatId: signal.chatId,
       senderHandle: signal.senderHandle,
       text: '',
       tapback: parseLinqTapback(signal.reactionType),
+      tapbackMessageId: signal.messageId,
     });
     if (rsvp) return rsvp;
   }

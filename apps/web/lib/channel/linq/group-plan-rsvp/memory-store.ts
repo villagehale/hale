@@ -3,6 +3,9 @@ import type { GroupPollRecord, GroupPollStore, NativeCardOption } from './poll-s
 import { pollOptionsFrom, withCardIds } from './poll-store';
 import { tallyGroupPoll } from './poll-tally';
 import type {
+  CalendarConsentRow,
+  CalendarConsentStatus,
+  ClaimCalendarAskInput,
   CreatePlanInput,
   ExpectedPerson,
   GroupPlanRecord,
@@ -59,6 +62,8 @@ export interface MemoryGroupPlanWorld {
   polls: Map<string, MemoryPoll>;
   /** Native poll cards Hale sent, keyed by Linq's poll message id. */
   cards: Map<string, NativeCardOption[]>;
+  /** Calendar consent rows, keyed by plan id + family id. */
+  consents: Map<string, CalendarConsentRow>;
   audits: { actionTaken: string; after: Record<string, unknown> }[];
 }
 
@@ -69,8 +74,13 @@ export function createMemoryWorld(): MemoryGroupPlanWorld {
     plans: new Map(),
     polls: new Map(),
     cards: new Map(),
+    consents: new Map(),
     audits: [],
   };
+}
+
+function consentKey(planId: string, familyId: string): string {
+  return `${planId}:${familyId}`;
 }
 
 function copyPoll(poll: MemoryPoll): GroupPollRecord {
@@ -310,6 +320,141 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         });
       }
       return due;
+    },
+
+    async loadCalendarConsent(planId, familyId) {
+      return world.consents.get(consentKey(planId, familyId)) ?? null;
+    },
+
+    async claimCalendarAsk(input: ClaimCalendarAskInput) {
+      const key = consentKey(input.planId, input.familyId);
+      if (world.consents.has(key)) return false;
+      const row: CalendarConsentRow = {
+        planId: input.planId,
+        familyId: input.familyId,
+        memberKey: input.memberKey,
+        displayName: input.displayName,
+        householdLabel: input.householdLabel,
+        status: 'asked' satisfies CalendarConsentStatus,
+        familyEventId: null,
+        askProviderMessageId: null,
+      };
+      world.consents.set(key, row);
+      return true;
+    },
+
+    async releaseCalendarAsk(planId, familyId, actorUserId, reason) {
+      const key = consentKey(planId, familyId);
+      const row = world.consents.get(key);
+      if (row?.status !== 'asked') return false;
+      world.consents.delete(key);
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_withdrawn',
+        after: { familyId, actorUserId: actorUserId ?? 'system', reason },
+      });
+      return true;
+    },
+
+    async listYesRsvps(planId) {
+      const plan = world.plans.get(planId);
+      if (!plan) return [];
+      return [...plan.rsvps.values()]
+        .filter((row) => row.response === 'yes')
+        .map((row) => ({ memberKey: row.memberKey, userId: row.userId }));
+    },
+
+    async setCalendarAskMessage(planId, familyId, providerMessageId) {
+      const row = world.consents.get(consentKey(planId, familyId));
+      if (row) row.askProviderMessageId = providerMessageId;
+    },
+
+    async findCalendarAskByMessage(providerMessageId) {
+      const row = [...world.consents.values()].find(
+        (consent) =>
+          consent.askProviderMessageId === providerMessageId && consent.status === 'asked',
+      );
+      if (!row) return null;
+      const plan = world.plans.get(row.planId);
+      if (!plan || plan.closedAt) return null;
+      return { plan: { ...plan }, consent: row };
+    },
+
+    async listOpenCalendarAsks(userId) {
+      const chats = new Set<string>();
+      for (const [chatId, seats] of world.seats) {
+        if (seats.some((seat) => seat.userId === userId)) chats.add(chatId);
+      }
+      const out: { plan: GroupPlanRecord; consent: CalendarConsentRow }[] = [];
+      for (const row of world.consents.values()) {
+        if (row.status !== 'asked' && row.status !== 'declined') continue;
+        const plan = world.plans.get(row.planId);
+        if (!plan || plan.closedAt || !chats.has(plan.chatId)) continue;
+        out.push({ plan: { ...plan }, consent: row });
+      }
+      return out;
+    },
+
+    async deleteCalendarConsent(planId, familyId, status) {
+      const key = consentKey(planId, familyId);
+      const row = world.consents.get(key);
+      if (row?.status !== status) return false;
+      world.consents.delete(key);
+      return true;
+    },
+
+    async recordCalendarDecline(input) {
+      const key = consentKey(input.planId, input.familyId);
+      if (!world.consents.has(key)) {
+        world.consents.set(key, {
+          planId: input.planId,
+          familyId: input.familyId,
+          memberKey: input.memberKey,
+          displayName: input.displayName,
+          householdLabel: input.householdLabel,
+          status: 'declined',
+          familyEventId: null,
+          askProviderMessageId: null,
+        });
+      }
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_declined',
+        after: { familyId: input.familyId, restored: true },
+      });
+    },
+
+    async noteCalendarRemoved(input) {
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_removed',
+        after: { familyId: input.familyId, familyEventId: input.familyEventId },
+      });
+    },
+
+    async noteCalendarAsked(input) {
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_asked',
+        after: { familyId: input.familyId },
+      });
+    },
+
+    async markCalendarDeclined(input) {
+      const row = world.consents.get(consentKey(input.planId, input.familyId));
+      if (row?.status === 'asked') row.status = 'declined';
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_declined',
+        after: { familyId: input.familyId },
+      });
+    },
+
+    async markCalendarWritten(input) {
+      const row = world.consents.get(consentKey(input.planId, input.familyId));
+      if (row) {
+        row.status = 'written';
+        row.familyEventId = input.familyEventId;
+      }
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_written',
+        after: { familyId: input.familyId, familyEventId: input.familyEventId },
+      });
     },
   };
 }
