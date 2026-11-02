@@ -68,7 +68,7 @@ import {
   releaseGroupOnLeave,
 } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
-import { considerLinqReply } from '~/lib/channel/linq/moments';
+import { LinqMomentDeliveredError, considerLinqReply } from '~/lib/channel/linq/moments';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
@@ -2842,6 +2842,9 @@ async function sendReply(
         inboundBody: args.inboundBody,
         outboundBody: args.body,
         templateKey: args.templateKey ?? null,
+        medicalReplySource: args.medicalSource ?? null,
+        replySource: args.replySource ?? null,
+        relatedConversationId: args.conversationId,
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
@@ -2863,12 +2866,53 @@ async function sendReply(
         return moment.channelMessageId;
       }
     } catch (err) {
+      // The deadline already ended this attempt. A plain send here would be a
+      // second reply once the drain re-drives the turn.
+      if (isTurnTimeout(err) || turnSignalAborted()) throw err;
+      // Linq already has the reply (or may). The ledger write is what failed.
+      // Another POST would put a plain copy beside it.
+      if (err instanceof LinqMomentDeliveredError) {
+        deps.log.error(
+          { providerMessageId: err.providerMessageId },
+          'linq moment: the reply landed; the ledger did not',
+        );
+        if (args.claim) {
+          try {
+            await args.claim();
+          } catch (claimErr) {
+            deps.log.warn(
+              { code: claimErr instanceof Error ? claimErr.name : 'unknown' },
+              'linq moment: the reply landed; the answer was not claimed',
+            );
+          }
+        }
+        if (args.conversationId && err.threadBody) {
+          try {
+            await appendMessage(args.conversationId, 'assistant', err.threadBody, deps.database);
+          } catch (threadErr) {
+            deps.log.warn(
+              { code: threadErr instanceof Error ? threadErr.name : 'unknown' },
+              'linq moment: the reply landed; the thread was not updated',
+            );
+          }
+        }
+        await mirrorActivityDecision(deps, args);
+        if (err.channelMessageId) {
+          await settleOpenAsks(err.channelMessageId);
+          return err.channelMessageId;
+        }
+        // No outbound row exists to point a later close at. The claim above is
+        // what stops the re-drive from sending the reply again.
+        return args.job.channel_message_id;
+      }
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',
       );
     }
   }
+  // A moment that declined, or never ran, still must not send after the deadline.
+  assertTurnLive();
   const sent = await deps.transport.send({ route: args.route, body: args.body });
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
   // after the carrier has already accepted the reply — UNSAFE_TRANSACTION did,

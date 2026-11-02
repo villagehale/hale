@@ -6,6 +6,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { sendLinqEffect } from '~/lib/channel/outbound-transport';
+import { assertTurnLive } from '~/lib/channel/router/deadline';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -25,7 +26,8 @@ import {
  * Behind `LINQ_EFFECTS_ENABLED`, exactly `true` (default off). The `linq-effect`
  * skill reads the parent's message and the reply Hale already wrote, and returns
  * the effect or none. Code never picks an effect and has no fallback one: a
- * failed or unusable read sends the reply as a plain bubble.
+ * failed or unusable read, or a provider that refused the effect, sends the
+ * reply as a plain bubble. A send that may already have landed does not.
  *
  * Two facts sit in front of the model: no effect during the parent's quiet
  * hours, and at most one effect per conversation stretch — no repeat in this
@@ -64,6 +66,9 @@ export async function lastLinqEffectAt(database: Database, chatId: string): Prom
     .select({
       sentAt: schema.channelMessages.sentAt,
       createdAt: schema.channelMessages.createdAt,
+      providerChatId: schema.channelMessages.providerChatId,
+      direction: schema.channelMessages.direction,
+      templateKey: schema.channelMessages.templateKey,
     })
     .from(schema.channelMessages)
     .where(
@@ -75,7 +80,17 @@ export async function lastLinqEffectAt(database: Database, chatId: string): Prom
     )
     .orderBy(desc(schema.channelMessages.sentAt), desc(schema.channelMessages.createdAt))
     .limit(1);
-  return row?.sentAt ?? row?.createdAt ?? null;
+  // The predicate above is the bound. A stand-in that returns some other row
+  // must not count as this chat's last effect.
+  if (
+    !row ||
+    row.providerChatId !== chatId ||
+    row.direction !== 'out' ||
+    row.templateKey !== 'linq:effect'
+  ) {
+    return null;
+  }
+  return row.sentAt ?? row.createdAt ?? null;
 }
 
 export interface LinqEffectInput {
@@ -95,12 +110,17 @@ export interface LinqEffectDecider {
 
 export const LINQ_EFFECT_TOOL = 'linq_effect';
 export const LINQ_EFFECT_MAX_TOKENS = 400;
+/**
+ * `null` is its own arm. A `oneOf` of objects beside `type: ['object','null']`
+ * rejects null, which is the decision on an ordinary reply, and `oneOf` itself
+ * cannot be compiled into the grammar so the call would go out unconstrained.
+ */
 export const LINQ_EFFECT_TOOL_SCHEMA = {
   type: 'object',
   properties: {
     effect: {
-      type: ['object', 'null'],
-      oneOf: [
+      anyOf: [
+        { type: 'null' },
         {
           type: 'object',
           properties: {
@@ -209,13 +229,35 @@ export type LinqEffectOutcome =
   | { status: 'sent'; effect: LinqMessageEffect; providerMessageId: string }
   | { status: 'declined' }
   | {
+      /**
+       * The POST may already be on the phone: the wait expired, the connection
+       * dropped, or Linq accepted and sent no message id. A second POST would
+       * be a second copy of the reply.
+       */
+      status: 'uncertain';
+      code: string;
+      httpStatus?: number;
+    }
+  | {
       status: 'not_sent';
-      reason: 'model_failed' | 'refused' | 'not_configured' | 'unreachable';
+      reason: 'model_failed' | 'refused' | 'not_configured';
       code?: string;
       httpStatus?: number;
     };
 
-/** Ask the model, then send the reply with the effect it chose. Never throws. */
+/**
+ * Provider outcomes that cannot prove the effect did not go out. A named
+ * refusal (a 4xx Linq answered with) is not in this set.
+ */
+const AMBIGUOUS_EFFECT_SEND = new Set(['timeout', 'network', 'missing_message_id']);
+
+/**
+ * Ask the model, then send the reply with the effect it chose.
+ *
+ * Throws `DeadlineError` (`turn_timeout`) when this turn's deadline has already
+ * fired, so a decision that lands after the drain has moved on cannot send.
+ * Every other failure is a result.
+ */
 export async function applyLinqEffect(input: {
   decider: LinqEffectDecider;
   chatId: string;
@@ -225,6 +267,10 @@ export async function applyLinqEffect(input: {
   fetch?: typeof fetch;
 }): Promise<LinqEffectOutcome> {
   const decision = await input.decider.decide(input.read);
+  // After the model call, before any POST. A late decision must not become a
+  // send, and must not become the plain-text fallback either: the caller sees
+  // the deadline and stops.
+  assertTurnLive();
   if (!decision) return { status: 'not_sent', reason: 'model_failed' };
   if (decision.effect === null) return { status: 'declined' };
   try {
@@ -241,12 +287,12 @@ export async function applyLinqEffect(input: {
       console.warn({ reason: 'not_configured' }, 'linq effect: not sent');
       return { status: 'not_sent', reason: 'not_configured', code: err.code };
     }
-    if (err instanceof LinqSendError && (err.code === 'timeout' || err.code === 'network')) {
-      console.warn({ code: err.code }, 'linq effect: unreachable, the reply still goes out');
-      return { status: 'not_sent', reason: 'unreachable', code: err.code };
-    }
     const code = err instanceof LinqSendError ? err.code : 'unknown';
     const httpStatus = err instanceof LinqSendError ? err.httpStatus : 0;
+    if (err instanceof LinqSendError && AMBIGUOUS_EFFECT_SEND.has(err.code)) {
+      console.warn({ code }, 'linq effect: delivery uncertain; not sending again');
+      return { status: 'uncertain', code, httpStatus };
+    }
     console.warn({ code, httpStatus }, 'linq effect: refused, the reply still goes out');
     return { status: 'not_sent', reason: 'refused', code, httpStatus };
   }

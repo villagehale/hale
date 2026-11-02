@@ -1,4 +1,4 @@
-import type { Database } from '@hale/db';
+import type { Database, MedicalReplySourceValue, ReplySourceValue } from '@hale/db';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
@@ -29,6 +29,29 @@ export type LinqMoment =
   | { handled: false }
   | { handled: true; channelMessageId: string; threadBody: string | null };
 
+/**
+ * Linq already accepted this moment (or the POST's outcome is unknowable).
+ * The ledger write failed afterwards. The caller must not send the reply again.
+ */
+export class LinqMomentDeliveredError extends Error {
+  readonly providerMessageId: string | null;
+  readonly threadBody: string | null;
+  /** Set when the outbound row landed and only the audit write failed. */
+  readonly channelMessageId: string | null;
+
+  constructor(
+    providerMessageId: string | null,
+    threadBody: string | null,
+    channelMessageId: string | null,
+  ) {
+    super('linq moment delivered');
+    this.name = 'LinqMomentDeliveredError';
+    this.providerMessageId = providerMessageId;
+    this.threadBody = threadBody;
+    this.channelMessageId = channelMessageId;
+  }
+}
+
 export async function considerLinqReply(
   database: Database,
   args: {
@@ -36,6 +59,10 @@ export async function considerLinqReply(
     inboundBody: string;
     outboundBody: string;
     templateKey: string | null;
+    /** The reply's own provenance. An effect send keeps these on its outbound row. */
+    medicalReplySource?: MedicalReplySourceValue | null;
+    replySource?: ReplySourceValue | null;
+    relatedConversationId?: string | null;
     familyId: string;
     parentUserId: string;
     now: Date;
@@ -165,21 +192,67 @@ export async function considerLinqReply(
     },
     fetch: args.fetch,
   });
-  if (sent.status !== 'sent') return { handled: false };
-  const channelMessageId = await recordMoment(database, args, {
+  // A decline or a definite refusal did not land. An uncertain POST may have.
+  if (sent.status === 'declined' || sent.status === 'not_sent') return { handled: false };
+  const providerMessageId = sent.status === 'sent' ? sent.providerMessageId : null;
+  const moment = {
     templateKey: 'linq:effect',
     actionTaken: 'linq_effect',
-    providerMessageId: sent.providerMessageId,
-  });
+    providerMessageId,
+  };
+  let channelMessageId: string | null = null;
+  try {
+    channelMessageId = await writeMomentRow(database, args, moment);
+    await writeMomentAudit(database, args, channelMessageId, moment.actionTaken);
+  } catch (err) {
+    console.error(
+      {
+        code: err instanceof Error ? err.name : 'unknown',
+        providerMessageId,
+      },
+      'linq effect: delivered; ledger write failed',
+    );
+    throw new LinqMomentDeliveredError(providerMessageId, args.outboundBody, channelMessageId);
+  }
   return { handled: true, channelMessageId, threadBody: args.outboundBody };
 }
 
 async function recordMoment(
   database: Database,
-  args: { familyId: string; parentUserId: string; route: ReplyRoute; now: Date },
+  args: Parameters<typeof writeMomentRow>[1],
   moment: { templateKey: string; actionTaken: string; providerMessageId: string | null },
 ): Promise<string> {
+  const id = await writeMomentRow(database, args, moment);
+  await writeMomentAudit(database, args, id, moment.actionTaken);
+  return id;
+}
+
+/**
+ * The outbound row. `templateKey` on an effect is `linq:effect`: that marker is
+ * what the 24h cap reads, one column, no join. The reply's own template key,
+ * when it had one, is on the audit so it is not discarded. Medical source,
+ * deflection source and the conversation stay on this row — the safety and
+ * papercut counts read those columns, and an effect must not erase them.
+ */
+async function writeMomentRow(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    route: ReplyRoute;
+    now: Date;
+    templateKey?: string | null;
+    medicalReplySource?: MedicalReplySourceValue | null;
+    replySource?: ReplySourceValue | null;
+    relatedConversationId?: string | null;
+  },
+  moment: { templateKey: string; providerMessageId: string | null },
+): Promise<string> {
   const chatId = args.route.channel === 'imessage' ? args.route.chatId : null;
+  // Only the effect send is the reply itself. A tapback or a sticker is a
+  // reaction on the parent's message, and the reply's sources stay with the
+  // text when that text still goes out.
+  const carriesReply = moment.templateKey === 'linq:effect';
   const [row] = await database
     .insert(schema.channelMessages)
     .values({
@@ -192,17 +265,35 @@ async function recordMoment(
       providerMessageId: moment.providerMessageId,
       providerChatId: chatId,
       status: acceptedStatus('imessage'),
+      medicalReplySource: carriesReply ? (args.medicalReplySource ?? null) : null,
+      replySource: carriesReply ? (args.replySource ?? null) : null,
+      relatedConversationId: carriesReply ? (args.relatedConversationId ?? null) : null,
       sentAt: args.now,
     })
     .returning({ id: schema.channelMessages.id });
   const id = row?.id;
   if (!id) throw new Error('linq moment: channel_messages insert returned no row');
+  return id;
+}
+
+async function writeMomentAudit(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    templateKey?: string | null;
+  },
+  channelMessageId: string,
+  actionTaken: string,
+): Promise<void> {
+  const replyTemplateKey = actionTaken === 'linq_effect' ? (args.templateKey ?? null) : null;
   await database.insert(schema.auditLog).values({
     familyId: args.familyId,
     actor: args.parentUserId,
-    actionTaken: moment.actionTaken,
+    actionTaken,
     targetTable: 'channel_messages',
-    targetId: id,
+    targetId: channelMessageId,
+    // The row's template key is the effect marker. The reply's own key lives here.
+    ...(replyTemplateKey ? { after: { templateKey: replyTemplateKey } } : {}),
   });
-  return id;
 }

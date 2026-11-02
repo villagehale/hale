@@ -46,6 +46,7 @@ import {
 } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
+import { DeadlineError } from './deadline';
 import type {
   DisambiguationOption,
   DisambiguationStore,
@@ -4716,6 +4717,108 @@ describe('turn deadline (VIL-400)', () => {
     expect(result.status).toBe('agent_replied');
     expect(h.transport.sent).toHaveLength(1);
     expect(h.turns.unanswered).toEqual([expect.objectContaining({ reason: 'gate_timeout' })]);
+  });
+
+  it('does not send the reply when an effect read finishes after the deadline', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    effectDecide.mockRejectedValue(new DeadlineError('turn_timeout'));
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posts.push(new URL(url).pathname);
+      return Response.json({ message: { id: 'late' } }, { status: 201 });
+    });
+    const h = harness({
+      context: {
+        body: 'we got in for swim',
+        reply: { channel: 'imessage', to: PHONE, chatId: 'chat-1', replyToMessageId: 'in-1' },
+      },
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toMatchObject({
+      name: 'TurnDeferred',
+      reason: 'turn_timeout',
+    });
+    expect(posts.filter((path) => path.endsWith('/messages'))).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
+    effectDecide.mockReset();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+});
+
+describe('an iMessage effect does not send the reply twice', () => {
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'in-1',
+  };
+
+  function effectTurn() {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+    return harness({
+      coach: fakeCoach('You are in for swim.'),
+      context: { body: 'we got in for swim', reply: IMESSAGE },
+    });
+  }
+
+  afterEach(() => {
+    effectDecide.mockReset();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('does not post a plain copy when Linq accepts and returns no message id', async () => {
+    const h = effectTurn();
+    const posts: unknown[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (new URL(url).pathname.endsWith('/messages')) posts.push(JSON.parse(String(init?.body)));
+      return Response.json({}, { status: 201 });
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(posts).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: 'linq:effect', providerMessageId: null }),
+    ]);
+  });
+
+  it('does not post a plain copy when the ledger write fails after Linq accepts', async () => {
+    const h = effectTurn();
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posts.push(new URL(url).pathname);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+    const insert = h.deps.database.insert.bind(h.deps.database);
+    h.deps.database.insert = ((table: Parameters<typeof insert>[0]) => {
+      if (table === schema.channelMessages) throw new Error('bad row');
+      return insert(table);
+    }) as typeof h.deps.database.insert;
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+  });
+
+  it('still sends the reply plain when Linq refuses the effect', async () => {
+    const h = effectTurn();
+    vi.stubGlobal('fetch', async () => Response.json({ error: { code: 409 } }, { status: 409 }));
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['You are in for swim.']);
   });
 });
 

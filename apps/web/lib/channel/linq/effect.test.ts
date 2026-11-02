@@ -1,9 +1,12 @@
 import type { AgentClient } from '@hale/agent';
+import { strictToolSchema } from '@hale/agent';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
+import { runTurn } from '~/lib/channel/router/deadline';
 import {
   LINQ_EFFECT_REPEAT_MS,
+  LINQ_EFFECT_TOOL_SCHEMA,
   type LinqEffectDecider,
   type LinqEffectDecision,
   applyLinqEffect,
@@ -13,7 +16,7 @@ import {
   linqEffectUserMessage,
   linqEffectsEnabled,
 } from './effect';
-import { considerLinqReply } from './moments';
+import { LinqMomentDeliveredError, considerLinqReply } from './moments';
 import { isLinqMessageEffect } from './transport';
 
 vi.mock('~/lib/pipeline/structured', () => ({ forceToolJson: vi.fn() }));
@@ -61,13 +64,24 @@ function moment(
   fake: ReturnType<typeof makeFakeDb>,
   d: LinqEffectDecider,
   f: typeof fetch,
-  extra: { now?: Date; lastEffectAt?: Date | null; timeZone?: string } = {},
+  extra: {
+    now?: Date;
+    lastEffectAt?: Date | null;
+    timeZone?: string;
+    templateKey?: string | null;
+    medicalReplySource?: 'fixed' | 'web_grounded' | null;
+    replySource?: 'composed' | 'fixed' | null;
+    relatedConversationId?: string | null;
+  } = {},
 ) {
   return considerLinqReply(fake.db, {
     route: { channel: 'imessage', to: '+14165550101', chatId: CHAT, replyToMessageId: 'in-1' },
     inboundBody: READ.parentText,
     outboundBody: READ.reply,
-    templateKey: null,
+    templateKey: extra.templateKey ?? null,
+    medicalReplySource: extra.medicalReplySource ?? null,
+    replySource: extra.replySource ?? null,
+    relatedConversationId: extra.relatedConversationId ?? null,
     familyId: FAMILY,
     parentUserId: USER,
     now: extra.now ?? NOW,
@@ -87,6 +101,29 @@ afterEach(() => {
 });
 
 describe('VIL-473 Linq message effects', () => {
+  it('lets the model decline with null, which the grammar accepts', () => {
+    const grammar = strictToolSchema(LINQ_EFFECT_TOOL_SCHEMA);
+    expect(grammar).not.toBeNull();
+    const effect = (grammar?.properties as { effect?: { anyOf?: unknown[] } } | undefined)?.effect;
+    expect(effect?.anyOf).toEqual(
+      expect.arrayContaining([
+        { type: 'null' },
+        expect.objectContaining({
+          type: 'object',
+          properties: expect.objectContaining({
+            type: { type: 'string', const: 'screen' },
+          }),
+        }),
+        expect.objectContaining({
+          type: 'object',
+          properties: expect.objectContaining({
+            type: { type: 'string', const: 'bubble' },
+          }),
+        }),
+      ]),
+    );
+  });
+
   it('is off unless the flag is exactly true', () => {
     expect(linqEffectsEnabled()).toBe(false);
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'on');
@@ -200,6 +237,60 @@ describe('VIL-473 Linq message effects', () => {
     expect(refused).toMatchObject({ status: 'not_sent', reason: 'refused', httpStatus: 409 });
   });
 
+  it('does not send once the turn deadline has fired', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const f = linqFetch();
+    const signal = AbortSignal.abort();
+    let inner: Promise<unknown> = Promise.resolve();
+    const outer = runTurn(signal, () => {
+      inner = applyLinqEffect({
+        decider: decider({ effect: { type: 'screen', name: 'confetti' } }),
+        chatId: CHAT,
+        text: READ.reply,
+        replyToMessageId: 'in-1',
+        read: READ,
+        fetch: f,
+      });
+      return inner;
+    });
+    await expect(outer).rejects.toMatchObject({ name: 'DeadlineError', reason: 'turn_timeout' });
+    await expect(inner).rejects.toMatchObject({ name: 'DeadlineError', reason: 'turn_timeout' });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('names a timeout or a missing message id as uncertain, and does not call it a refusal', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const aborted = new Error('The operation was aborted');
+    aborted.name = 'AbortError';
+    const timeout = vi.fn(async () => {
+      throw aborted;
+    });
+    expect(
+      await applyLinqEffect({
+        decider: decider({ effect: { type: 'screen', name: 'confetti' } }),
+        chatId: CHAT,
+        text: READ.reply,
+        replyToMessageId: 'in-1',
+        read: READ,
+        fetch: timeout,
+      }),
+    ).toMatchObject({ status: 'uncertain', code: 'timeout' });
+    expect(timeout).toHaveBeenCalledTimes(1);
+
+    const missingId = vi.fn(async () => Response.json({}, { status: 201 }));
+    expect(
+      await applyLinqEffect({
+        decider: decider({ effect: { type: 'screen', name: 'confetti' } }),
+        chatId: CHAT,
+        text: READ.reply,
+        replyToMessageId: 'in-1',
+        read: READ,
+        fetch: missingId,
+      }),
+    ).toMatchObject({ status: 'uncertain', code: 'missing_message_id' });
+    expect(missingId).toHaveBeenCalledTimes(1);
+  });
+
   it('does not play an effect during quiet hours or again in the same chat within 24h', async () => {
     const torontoAfternoon = new Date('2026-10-28T16:00:00.000Z');
     const torontoNight = new Date('2026-10-29T03:00:00.000Z');
@@ -287,6 +378,58 @@ describe('VIL-473 Linq message effects', () => {
       providerMessageId: 'effect-1',
       direction: 'out',
     });
+  });
+
+  it('keeps the reply sources on the effect row, and the reply template key on the audit', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const conversationId = '00000000-0000-4000-8000-0000000000c1';
+    const fake = makeFakeDb();
+    await moment(fake, decider({ effect: { type: 'screen', name: 'confetti' } }), linqFetch(), {
+      templateKey: 'flood_line',
+      medicalReplySource: 'fixed',
+      replySource: 'composed',
+      relatedConversationId: conversationId,
+    });
+    expect(fake.rows(schema.channelMessages)[0]).toMatchObject({
+      templateKey: 'linq:effect',
+      medicalReplySource: 'fixed',
+      replySource: 'composed',
+      relatedConversationId: conversationId,
+      providerMessageId: 'effect-1',
+    });
+    expect(fake.rows(schema.auditLog)[0]).toMatchObject({
+      actionTaken: 'linq_effect',
+      after: { templateKey: 'flood_line' },
+    });
+  });
+
+  it('treats an uncertain delivery as already sent, and a ledger failure as not a second chance', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const uncertain = makeFakeDb();
+    const missing = vi.fn(async () => Response.json({}, { status: 201 }));
+    expect(
+      await moment(uncertain, decider({ effect: { type: 'screen', name: 'confetti' } }), missing),
+    ).toMatchObject({ handled: true, threadBody: READ.reply });
+    expect(missing).toHaveBeenCalledTimes(1);
+    expect(uncertain.rows(schema.channelMessages)[0]).toMatchObject({
+      templateKey: 'linq:effect',
+      providerMessageId: null,
+    });
+
+    const broken = makeFakeDb();
+    const insert = broken.db.insert.bind(broken.db);
+    broken.db.insert = ((table: Parameters<typeof insert>[0]) => {
+      if (table === schema.channelMessages) throw new Error('bad row');
+      return insert(table);
+    }) as typeof broken.db.insert;
+    const posted = linqFetch();
+    await expect(
+      moment(broken, decider({ effect: { type: 'screen', name: 'confetti' } }), posted),
+    ).rejects.toBeInstanceOf(LinqMomentDeliveredError);
+    expect(posted).toHaveBeenCalledTimes(1);
+    expect(broken.rows(schema.channelMessages)).toHaveLength(0);
   });
 
   it('lets the reply go out and writes nothing when the model fails or the send is refused', async () => {
