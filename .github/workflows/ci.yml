@@ -241,11 +241,10 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
-      # VIL-447 (#918) soft path: group-lists cases miss cache until the paid re-record.
-      # The reply tone (coach-group-lists) is direction only. REVERT this continue-on-error
-      # in the re-record commit, before merge. These six still need that live re-record
-      # (no spend in CI): en-several-at-once, en-whats-on-packing, en-multi-family-privacy,
-      # ja-checked-off, ar-whats-on, fr-vous-add.
+      # VIL-447 (#918) soft path until the paid re-record of this tone. Direction only.
+      # REVERT this continue-on-error in the re-record commit, before merge. No spend
+      # in CI. The two that scored 3 and need that re-record: en-whats-on-packing,
+      # es-packing-add. The prompt bytes move every case's key.
       - name: Group shared lists eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:group-lists
