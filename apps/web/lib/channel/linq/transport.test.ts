@@ -202,6 +202,35 @@ describe('sendLinqChatMessage', () => {
     warn.mockRestore();
   });
 
+  it('keeps a valid mention when only the thread target is refused', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bodies: Array<{ message: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      if (bodies.length === 1) {
+        return Response.json({ error: { status: 400, code: 4001 } }, { status: 400 });
+      }
+      return Response.json({ message: { id: 'msg-unthreaded' } }, { status: 201 });
+    });
+
+    const sent = await sendLinqChatMessage({
+      chatId: CHAT,
+      text: 'Swim is at 4.',
+      replyTo: { messageId: 'msg-in-1' },
+      mention: '+14155551234',
+      fetch: fetchMock,
+    });
+
+    expect(sent).toEqual({ providerMessageId: 'msg-unthreaded' });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]?.message.reply_to).toBeUndefined();
+    expect(bodies[1]?.message.parts).toEqual([
+      { type: 'text', value: 'Swim is at 4.', mention: '+14155551234' },
+    ]);
+    warn.mockRestore();
+  });
+
   it('does not drop a retryable refusal just because a thread target was set', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
     const down = vi.fn(async () => Response.json({ error: { code: 3006 } }, { status: 500 }));

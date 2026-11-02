@@ -519,6 +519,8 @@ export async function sendLinqChatMessage(input: {
     return await send(input.replyTo, input.mention);
   } catch (first) {
     let err = first;
+    // Keep a valid mention on the unthreaded retry unless Linq refused the mention itself.
+    let mentionForRetry = input.mention;
     if (
       input.mention &&
       err instanceof LinqSendError &&
@@ -530,6 +532,7 @@ export async function sendLinqChatMessage(input: {
         { code: err.code, httpStatus: err.httpStatus },
         'linq: mention refused — sending the answer without a mention',
       );
+      mentionForRetry = undefined;
       try {
         return await send(input.replyTo, undefined);
       } catch (inner) {
@@ -549,7 +552,7 @@ export async function sendLinqChatMessage(input: {
       { code: err.code, httpStatus: err.httpStatus },
       'linq: reply_to refused — sending the answer without a thread target',
     );
-    return await send();
+    return await send(undefined, mentionForRetry);
   }
 }
 

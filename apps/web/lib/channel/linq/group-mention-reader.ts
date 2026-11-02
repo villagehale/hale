@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -124,7 +124,59 @@ export async function listMentionableMembers(
     if (!handle || haleLine(handle)) continue;
     out.push({ id: row.id, name: first, role: row.role, handle });
   }
+
+  // Roster onboarding records the verified primary parent as `known_parent`
+  // without a seat (Devin #954). They are still in this chat and mentionable.
+  const known = await database
+    .select({
+      id: schema.linqGroupRosterMembers.id,
+      phoneE164Encrypted: schema.linqGroupRosterMembers.phoneE164Encrypted,
+      name: schema.users.name,
+    })
+    .from(schema.linqGroupRosterMembers)
+    .innerJoin(schema.users, eq(schema.linqGroupRosterMembers.knownUserId, schema.users.id))
+    .where(
+      and(
+        eq(schema.linqGroupRosterMembers.chatId, chatId),
+        eq(schema.linqGroupRosterMembers.status, 'known_parent'),
+        isNotNull(schema.linqGroupRosterMembers.phoneE164Encrypted),
+      ),
+    );
+  for (const row of known) {
+    const first = row.name?.trim().split(/\s+/)[0];
+    if (!first || !row.phoneE164Encrypted) continue;
+    let phone: string;
+    try {
+      phone = decryptString(row.phoneE164Encrypted);
+    } catch {
+      console.warn(
+        { outcome: 'mention_handle_unread' },
+        'linq mention: a roster handle was not readable',
+      );
+      continue;
+    }
+    const handle = normalizePhoneE164(phone);
+    if (!handle || haleLine(handle) || out.some((m) => m.handle === handle)) continue;
+    out.push({ id: row.id, name: first, role: 'parent', handle });
+  }
   return out;
+}
+
+/** Rosters that say this chat is not (or no longer) a group Hale is in. */
+const NOT_A_GROUP = ['not_group', 'ejected'] as const;
+
+async function chatIsGroup(database: Database, chatId: string): Promise<boolean> {
+  const rows = await database
+    .select({ id: schema.linqGroupRosters.id })
+    .from(schema.linqGroupRosters)
+    .where(
+      and(
+        eq(schema.linqGroupRosters.chatId, chatId),
+        inArray(schema.linqGroupRosters.status, [...NOT_A_GROUP]),
+      ),
+    )
+    .limit(1);
+  return rows.length === 0;
 }
 
 export async function groupMentionFactsFor(
@@ -202,7 +254,19 @@ export async function resolveGroupMention(input: {
   members?: MentionableMember[];
 }): Promise<string | undefined> {
   if (!linqGroupMentionsEnabled()) return undefined;
-  const members = input.members ?? (await listMentionableMembers(input.database, input.chatId));
+  let members: MentionableMember[];
+  try {
+    // A direct chat never carries a mention (Devin #954 SEC).
+    if (!input.members && !(await chatIsGroup(input.database, input.chatId))) return undefined;
+    members = input.members ?? (await listMentionableMembers(input.database, input.chatId));
+  } catch (err) {
+    // A failed seat read must not block the group reply (Devin #954).
+    console.warn(
+      { outcome: 'mention_members_unread', err: err instanceof Error ? err.name : 'unknown' },
+      'linq mention: members were not listed — sending without a mention',
+    );
+    return undefined;
+  }
   if (members.length === 0) return undefined;
   const reader = input.reader ?? sharedGroupMentionReader();
   let mentionId: string | null;

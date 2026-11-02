@@ -134,6 +134,39 @@ describe('group mention reader', () => {
 describe('resolveGroupMention', () => {
   const database = {} as never;
 
+  it('sends the reply without a mention when the seat read fails', async () => {
+    keysUnset();
+    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const broken = {
+      select: () => {
+        throw new Error('db down');
+      },
+    } as never;
+    const reader = { read: vi.fn(async () => 'm1') };
+    await expect(
+      resolveGroupMention({ database: broken, chatId: 'chat-1', text: 'Swim is at 4.', reader }),
+    ).resolves.toBeUndefined();
+    expect(reader.read).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('never mentions in a chat whose roster says it is not a group', async () => {
+    keysUnset();
+    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+    const chain = {
+      from: () => chain,
+      where: () => chain,
+      limit: async () => [{ id: 'roster-1' }],
+    };
+    const direct = { select: () => chain } as never;
+    const reader = { read: vi.fn(async () => 'm1') };
+    await expect(
+      resolveGroupMention({ database: direct, chatId: 'chat-1', text: 'Swim is at 4.', reader }),
+    ).resolves.toBeUndefined();
+    expect(reader.read).not.toHaveBeenCalled();
+  });
+
   it('sends no mention while the flag is off', async () => {
     keysUnset();
     const reader = { read: vi.fn(async () => 'm1') };
