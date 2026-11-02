@@ -83,8 +83,20 @@ describe('runDeepLane', () => {
     const lane = deps(
       [
         leg('venue_site'),
-        leg('municipal', { status: 'failed', pagesRead: 0, pages: [], notes: '', reason: 'research_failed: timed out' }),
-        leg('registration', { status: 'unread', pagesRead: 0, pagesRefused: 2, pages: [], notes: '' }),
+        leg('municipal', {
+          status: 'failed',
+          pagesRead: 0,
+          pages: [],
+          notes: '',
+          reason: 'research_failed: timed out',
+        }),
+        leg('registration', {
+          status: 'unread',
+          pagesRead: 0,
+          pagesRefused: 2,
+          pages: [],
+          notes: '',
+        }),
       ],
       { status: 'synthesised', rows: [backedRow()] },
     );
@@ -104,27 +116,24 @@ describe('runDeepLane', () => {
   });
 
   it('drops the rows the refutation breaks and counts them in the evidence', async () => {
-    const lane = deps(
-      [leg('venue_site'), leg('municipal'), leg('registration')],
-      {
-        status: 'synthesised',
-        rows: [
-          backedRow(),
-          // Cited to a page no leg opened - the #529 citation defect.
-          backedRow({ source_url: 'https://invented.example/schedule' }),
-          // A fee that is nowhere in the notes.
-          backedRow({
-            name: 'Kinderfun, Cartwheels Gym Centre',
-            price: '$310 per term',
-            price_quote: '$310 per term',
-            when: null,
-            when_quote: null,
-            registration: null,
-            registration_quote: null,
-          }),
-        ],
-      },
-    );
+    const lane = deps([leg('venue_site'), leg('municipal'), leg('registration')], {
+      status: 'synthesised',
+      rows: [
+        backedRow(),
+        // Cited to a page no leg opened - the #529 citation defect.
+        backedRow({ source_url: 'https://invented.example/schedule' }),
+        // A fee that is nowhere in the notes.
+        backedRow({
+          name: 'Kinderfun, Cartwheels Gym Centre',
+          price: '$310 per term',
+          price_quote: '$310 per term',
+          when: null,
+          when_quote: null,
+          registration: null,
+          registration_quote: null,
+        }),
+      ],
+    });
 
     const run = await runDeepLane(lane, QUERY);
 
@@ -135,7 +144,13 @@ describe('runDeepLane', () => {
   });
 
   it('never calls the merge when no angle opened a page, and says UNREAD', async () => {
-    const unread = { status: 'unread' as const, pagesRead: 0, pagesRefused: 2, pages: [], notes: '' };
+    const unread = {
+      status: 'unread' as const,
+      pagesRead: 0,
+      pagesRefused: 2,
+      pages: [],
+      notes: '',
+    };
     const lane = deps(
       [leg('venue_site', unread), leg('municipal', unread), leg('registration', unread)],
       { status: 'synthesised', rows: [backedRow()] },
@@ -195,5 +210,27 @@ describe('runDeepLane', () => {
     if (run.result.status !== 'read') throw new Error('expected a read result');
     expect(run.result.slots).toEqual([]);
     expect(run.evidence.slotsRefused).toBe(1);
+  });
+
+  it('gives an empty toddler read the page quote for ages 8+', async () => {
+    const url = 'https://www.northfield-fencing.example/youth-programs';
+    const text = 'FOIL FUNDAMENTALS (ages 8 - 12)\nOur youngest program starts at age 8.';
+    const page = { pages: [{ url, text }], notes: text };
+    const lane = deps(
+      [leg('venue_site', page), leg('municipal', page), leg('registration', page)],
+      { status: 'synthesised', rows: [] },
+    );
+    const run = await runDeepLane(lane, {
+      ...QUERY,
+      subject: 'Northfield Fencing Club toddler classes',
+      stage: 'toddler',
+    });
+    expect(run.result.status).toBe('read');
+    if (run.result.status !== 'read') return;
+    expect(run.result.slots).toEqual([]);
+    expect(run.result.ageExclusion).toEqual({
+      quote: 'FOIL FUNDAMENTALS (ages 8 - 12)',
+      sourceUrl: url,
+    });
   });
 });

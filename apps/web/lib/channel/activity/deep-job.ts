@@ -243,6 +243,7 @@ export async function runDeepResearchJob(
       // disagree with the first.
       pageEvidence: run.result.pageVerdict,
       evidence: run.evidence,
+      ...(run.result.ageExclusion ? { pageAge: run.result.ageExclusion } : {}),
     },
     now,
   );

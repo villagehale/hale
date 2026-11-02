@@ -70,7 +70,7 @@ export type FollowUpFallback =
   | 'coparent_ask';
 
 export type FollowUpComposeOutcome =
-  | { status: 'composed'; message: string }
+  | { status: 'composed'; message: string; commitsToReturn?: boolean }
   | { status: 'deferred'; reason: FollowUpFallback; violations: readonly string[] };
 
 /**
@@ -141,6 +141,12 @@ export interface FollowUpGrounding {
    * every message with a find is composed from exactly the payload it always was.
    */
   searched?: EmptySearch;
+  /**
+   * A minimum age the opened page stated, when nothing on it fits this stage.
+   * The quote and the page it was read from. Omitted from the request when absent,
+   * so a follow-up that has a pick keeps the recording it already has.
+   */
+  pageAge?: { quote: string; sourceUrl: string } | null;
 }
 
 export interface FollowUpComposer {
@@ -229,6 +235,12 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
   if (grounding.moreRemaining > 0) {
     payload.more_remaining = grounding.moreRemaining;
     payload.more_remaining_instruction = MORE_REMAINING_INSTRUCTION;
+  }
+  if (grounding.picks.length === 0 && grounding.pageAge) {
+    payload.page_age = {
+      quote: grounding.pageAge.quote,
+      source_url: grounding.pageAge.sourceUrl,
+    };
   }
   payload.picks = grounding.picks.map((pick) => ({
     name: pick.name,
@@ -537,7 +549,11 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
 
         violations = followUpViolations(value.message, grounding, value.commits_to_return);
         if (violations.length === 0) {
-          return { status: 'composed', message: plainText(value.message) };
+          return {
+            status: 'composed',
+            message: plainText(value.message),
+            commitsToReturn: value.commits_to_return,
+          };
         }
         console.error(
           { attempt, picks: grounding.picks.length, violations: violations.length },

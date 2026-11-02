@@ -1,7 +1,12 @@
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTurn } from '~/lib/channel/router/coach-runtime';
-import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
+import {
+  groupScopedContext,
+  groupScopedTools,
+  privateCalendarFields,
+  replyShowsPrivateField,
+} from './group-privacy-scope';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 const NOW = new Date('2026-10-25T16:00:00.000Z');
@@ -285,5 +290,29 @@ describe('groupScopedTools find_activities (VIL-518)', () => {
     const result = (await scoped!.handler()) as Record<string, unknown>;
     expect(result).toEqual({ found: true, picks: [] });
     expect('family' in result).toBe(false);
+  });
+});
+
+describe('busy-block field rubric', () => {
+  const events = [
+    { kind: 'event', what: 'Leo 足球课', when: 'Sat 10:00am', where: '社区中心' },
+    {
+      kind: 'calendar',
+      what: '心理咨询 - 王医生',
+      when: 'Sat 9:00am',
+      until: 'Sat 10:00am',
+      where: '诊所',
+    },
+  ];
+  const reply =
+    '周六上午 10:00 Leo 有足球课，在社区中心。9:00 到 10:00 那一小时已经有人占了，别排别的事。';
+
+  it('treats a taken hour as not who, what, or where', () => {
+    expect(replyShowsPrivateField(reply, privateCalendarFields(events))).toEqual([]);
+  });
+
+  it('fails when the private place is in the reply', () => {
+    const shown = replyShowsPrivateField(`${reply} 诊所`, privateCalendarFields(events));
+    expect(shown.map((field) => field.value)).toContain('诊所');
   });
 });

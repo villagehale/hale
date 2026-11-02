@@ -77,6 +77,10 @@ export interface ActivityFactEvidence {
   price: string | null;
   history: string | null;
   windowConfirmed: boolean;
+  /** The page the displayed date was read from, when that page is not the listing. */
+  occurrenceUrl?: string | null;
+  /** The season that owns this fact, when the page or the request names one. */
+  season?: string | null;
 }
 
 export interface RawActivityFact {
@@ -107,6 +111,8 @@ export interface ActivityReference {
   price: string | null;
   status: 'historical' | 'unconfirmed';
   evidence: ActivityFactEvidence;
+  /** Season of the quote, when the page names one and it is not this request's season. */
+  season?: string | null;
   access?: RawActivityFact['access'];
   indoorOutdoor?: RawActivityFact['indoor_outdoor'];
 }
@@ -228,6 +234,135 @@ export function activityDateRange(
   return null;
 }
 
+const SEASON_WORDS = ['winter', 'spring', 'summer', 'fall', 'autumn'] as const;
+
+function seasonsNamed(text: string): string[] {
+  const found: string[] = [];
+  for (const season of SEASON_WORDS) {
+    if (new RegExp(`\\b${season}\\b`, 'i').test(text)) {
+      found.push(season === 'autumn' ? 'fall' : season);
+    }
+  }
+  return [...new Set(found)];
+}
+
+/** The one season a request names, or null when it names none or more than one. */
+export function requestedSeason(window: string | null): string | null {
+  if (!window) return null;
+  const seasons = seasonsNamed(window);
+  return seasons.length === 1 ? (seasons[0] ?? null) : null;
+}
+
+/** A quote that names a season other than the one the parent asked about. */
+export function quoteOwnsAnotherSeason(
+  quote: string | null | undefined,
+  window: string | null,
+): boolean {
+  const asked = requestedSeason(window);
+  if (!asked || !quote) return false;
+  const named = seasonsNamed(quote);
+  return named.length > 0 && named.some((season) => season !== asked);
+}
+
+const MONTH_NUMBER: Record<string, string> = {
+  january: '01',
+  jan: '01',
+  february: '02',
+  feb: '02',
+  march: '03',
+  mar: '03',
+  april: '04',
+  apr: '04',
+  may: '05',
+  june: '06',
+  jun: '06',
+  july: '07',
+  jul: '07',
+  august: '08',
+  aug: '08',
+  september: '09',
+  sept: '09',
+  sep: '09',
+  october: '10',
+  oct: '10',
+  november: '11',
+  nov: '11',
+  december: '12',
+  dec: '12',
+};
+
+function monthDay(iso: string): string | null {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.slice(5) : null;
+}
+
+/** The first calendar date on a page, as MM-DD. A listing page leads with a different occurrence. */
+export function firstMonthDay(text: string): string | null {
+  const named =
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?/i;
+  const iso = /\b20\d{2}-(\d{2})-(\d{2})\b/;
+  const word = named.exec(text);
+  const numeric = iso.exec(text);
+  const wordAt = word?.index ?? Number.POSITIVE_INFINITY;
+  const numericAt = numeric?.index ?? Number.POSITIVE_INFINITY;
+  if (word && wordAt <= numericAt) {
+    const month = MONTH_NUMBER[word[1]!.toLowerCase()];
+    if (!month) return null;
+    return `${month}-${String(Number(word[2])).padStart(2, '0')}`;
+  }
+  if (numeric) return `${numeric[1]}-${numeric[2]}`;
+  return null;
+}
+
+/**
+ * The page a dated fact was read from.
+ *
+ * One page containing the quote owns it. Several pages do when a listing's upcoming
+ * line repeats a date whose own page was also read: the page whose first date is
+ * that occurrence owns it. An ambiguous set does not get the listing URL.
+ */
+export function pageOwningOccurrence(
+  pages: readonly { url: string; text: string }[],
+  quote: string,
+  sessionDate: string,
+): string | null {
+  const day = monthDay(sessionDate);
+  if (!day) return null;
+  const holders = pages.filter((page) => quoted(page.text, quote));
+  if (holders.length === 0) return null;
+  if (holders.length === 1) return holders[0]!.url;
+  const owners = holders.filter((page) => firstMonthDay(page.text) === day);
+  return owners.length === 1 ? owners[0]!.url : null;
+}
+
+/**
+ * A minimum age a read page stated that starts above this stage.
+ *
+ * The stage ceiling is the existing boundary (toddler ends the month before 48).
+ * The quote is the page's own sentence. Nothing here writes a parent-facing line.
+ */
+export function statedAgeExclusion(
+  pages: readonly { url: string; text: string }[],
+  stage: FamilyStage | null | undefined,
+): { quote: string; sourceUrl: string } | null {
+  if (!stage) return null;
+  const index = FAMILY_STAGES.indexOf(stage);
+  if (index < 0) return null;
+  const ceiling = (STAGE_BOUNDARIES_MONTHS[index] ?? Number.POSITIVE_INFINITY) - 1;
+  let best: { quote: string; sourceUrl: string; min: number } | null = null;
+  for (const page of pages) {
+    for (const sentence of page.text.split(/\n+|(?<=[.!?])\s+/)) {
+      const quote = sentence.trim();
+      if (!quote) continue;
+      const band = parseStatedAgeBand(quote);
+      if (!band || band.ageMinMonths <= ceiling) continue;
+      if (!best || band.ageMinMonths < best.min) {
+        best = { quote, sourceUrl: page.url, min: band.ageMinMonths };
+      }
+    }
+  }
+  return best ? { quote: best.quote, sourceUrl: best.sourceUrl } : null;
+}
+
 const validTime = (time?: string | null) =>
   time == null || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time);
 
@@ -300,8 +435,11 @@ export function bindActivityFacts(
     const historical =
       (observed.length > 0 && observed.every((session) => session.date < conclusivelyPast)) ||
       quoted(page.text, item.historical_evidence);
+    // A fall request does not own a winter sentence on the same page, or a quote that names both.
+    const foreignSeason = quoteOwnsAnotherSeason(item.when_evidence, window);
     // A rejected dated session must never escape through a free-form schedule fallback.
     const regular =
+      !foreignSeason &&
       !item.sessions?.length &&
       item.schedule_kind &&
       quoted(page.text, item.when_evidence) &&
@@ -312,6 +450,16 @@ export function bindActivityFacts(
     const displayedSessions = range
       ? sessions
       : observed.filter((session) => session.date >= today);
+    const occurrenceUrls = [
+      ...new Set(
+        displayedSessions.flatMap((session) => {
+          const owner = pageOwningOccurrence(pages, session.evidence, session.date);
+          return owner ? [owner] : [];
+        }),
+      ),
+    ];
+    const occurrenceUrl = occurrenceUrls.length === 1 ? (occurrenceUrls[0] ?? null) : null;
+    const ownedUrl = occurrenceUrl ?? page.url;
     const when = displayedSessions.length
       ? displayedSessions
           .map(
@@ -320,6 +468,11 @@ export function bindActivityFacts(
           )
           .join('; ')
       : regular;
+    const season = foreignSeason
+      ? (seasonsNamed(item.when_evidence ?? '').find(
+          (named) => named !== requestedSeason(window),
+        ) ?? null)
+      : requestedSeason(window);
     const evidence: ActivityFactEvidence = {
       program: item.name_evidence,
       age: age ? item.age_evidence! : null,
@@ -328,6 +481,8 @@ export function bindActivityFacts(
       price: price ? item.price_evidence! : null,
       history: quoted(page.text, item.historical_evidence) ? item.historical_evidence : null,
       windowConfirmed: sessions.length > 0,
+      occurrenceUrl,
+      season,
     };
     if (
       age &&
@@ -337,16 +492,25 @@ export function bindActivityFacts(
       (!range || range.end >= today) &&
       (sessions.length > 0 || (regular && item.schedule_kind !== 'term'))
     ) {
-      picks.push({ ...item, age_fit: age, when, price, event_date: sessions[0]?.date, evidence });
+      picks.push({
+        ...item,
+        source_url: ownedUrl,
+        age_fit: age,
+        when,
+        price,
+        event_date: sessions[0]?.date,
+        evidence,
+      });
     } else {
       references.push({
         name: item.name,
         sourceName: item.source_name,
-        sourceUrl: page.url,
+        sourceUrl: ownedUrl,
         ageFit: age,
-        when,
+        when: foreignSeason ? (item.when_evidence ?? when) : when,
         price,
         status: historical ? 'historical' : 'unconfirmed',
+        season,
         evidence,
         ...(item.access ? { access: item.access } : {}),
         ...(item.indoor_outdoor ? { indoorOutdoor: item.indoor_outdoor } : {}),

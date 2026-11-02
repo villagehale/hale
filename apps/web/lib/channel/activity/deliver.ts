@@ -196,6 +196,8 @@ export interface FollowUpDeliveryInput {
   evidence: FollowUpEvidence;
   /** An empty shallow search's area and research (lane.ts `EmptySearch`), if any. */
   searched?: EmptySearch;
+  /** Quoted minimum age from a page that fits nobody in this stage. */
+  pageAge?: { quote: string; sourceUrl: string } | null;
 }
 
 /** What became of one delivery. Named rather than void, and never folded: `deferred` is
@@ -245,6 +247,7 @@ export async function deliverFollowUp(
     watch,
     moreRemaining: input.held.length,
     ...(input.searched ? { searched: input.searched } : {}),
+    ...(input.pageAge ? { pageAge: input.pageAge } : {}),
   });
   if (composed.status === 'deferred') {
     console.error(
@@ -299,6 +302,10 @@ export async function deliverFollowUp(
     familyId: input.familyId,
     body,
     now,
+    // The model said this message comes back, and this send is about to arm that
+    // page watch. A registration date in the same sentence is a fact from the page,
+    // not a municipal registration-watch row this path has to hold.
+    activityContinuation: composed.commitsToReturn === true && watch,
   });
   if (unbacked.length > 0) {
     console.error(

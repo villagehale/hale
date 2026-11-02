@@ -377,6 +377,28 @@ describe('the payload the composer is handed', () => {
     ]);
     expect(payload.picks_empty).toBe(true);
     expect(payload.picks).toEqual([]);
+    expect(payload.page_age).toBeUndefined();
+  });
+
+  it('an empty read that states ages 8+ hands the writer that quote and its page', () => {
+    const payload = JSON.parse(
+      followUpUserMessage(
+        grounding({
+          picks: [],
+          pageEvidence: 'page_has_schedule',
+          watch: true,
+          pageAge: {
+            quote: 'FOIL FUNDAMENTALS (ages 8 - 12)',
+            sourceUrl: 'https://www.northfield-fencing.example/youth-programs',
+          },
+        }),
+      ),
+    );
+    expect(payload.page_age).toEqual({
+      quote: 'FOIL FUNDAMENTALS (ages 8 - 12)',
+      source_url: 'https://www.northfield-fencing.example/youth-programs',
+    });
+    expect(payload.page_evidence).toBeUndefined();
   });
 
   it('carries the subject and the mode, and nothing about the family (rule #1)', () => {
