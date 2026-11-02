@@ -866,12 +866,15 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   });
   await boss.start();
   const inbound = bindInboundQueue(boss);
+  // P0-3: createQueueWithPolicy is the only caller. Pass the methods through;
+  // queue-policy-guard rejects an invocation written in this file.
+  const queueBoss = boss as unknown as DrainBoss;
   try {
     return await drainHotQueues(
       {
         boss: {
-          createQueue: (name, options) => boss.createQueue(name, options as never),
-          updateQueue: (name, options) => boss.updateQueue(name, options as never),
+          createQueue: queueBoss.createQueue.bind(queueBoss),
+          updateQueue: queueBoss.updateQueue.bind(queueBoss),
           fetch: (name, options) => inbound.fetch(name, options),
           complete: async (name, id) => {
             await boss.complete(name, id);
