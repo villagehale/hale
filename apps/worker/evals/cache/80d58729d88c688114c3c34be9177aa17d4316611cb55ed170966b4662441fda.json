@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: juice boxes and orange slices are on the list, and Sam's granola bars were already there. No secrets, no health or other-family details, and English matches the group. But the tone is a log-entry confirmation ('Added X and Y to Soccer snacks') followed by a status line about what's already on the list, not a natural reaction about the group's plans. It reads as a readout, so it caps at 3.",
+    "score": 3
+  }
+}
