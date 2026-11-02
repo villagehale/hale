@@ -32,7 +32,7 @@ describe('catalog history cutover', () => {
       '0190_linq_group_polls',
       '0196_linq_group_carpools',
       '0197_family_event_notes',
-      '0198_messages_provider_message_id',
+      '0201_messages_provider_message_id',
     ]);
   });
 });
