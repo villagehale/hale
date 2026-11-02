@@ -189,10 +189,10 @@ describe('usableNudgeMessage', () => {
     expect(usableNudgeMessage(`Saturday looks good. ${NUDGE_OPT_OUT}`, SWAP)).toBe(false);
   });
 
-  it('rejects a message that blows the segment budget once the opt-out is appended', () => {
+  it('sends a long grounded message (VIL-537)', () => {
     const long = 'Library story time suits Maya. '.repeat(20);
     expect(smsSegments(`${long}\n\n${NUDGE_OPT_OUT}`)).toBeGreaterThan(MAX_NUDGE_SEGMENTS);
-    expect(usableNudgeMessage(long, SWAP)).toBe(false);
+    expect(usableNudgeMessage(long, SWAP)).toBe(true);
   });
 });
 

@@ -17,7 +17,7 @@ again once. If that still cannot be sent, the parent hears nothing.
 
 ## THE MEANING IS PINNED. THE WORDS ARE YOURS.
 
-One sentence, under 160 characters, plain ASCII.
+One sentence, plain ASCII. Length is not a limit.
 
 - A draft is waiting in their Gmail, or the draft Hale had there was updated,
   or it was removed. Say which, matching the situation you are handed.

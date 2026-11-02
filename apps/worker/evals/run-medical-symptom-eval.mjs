@@ -87,9 +87,6 @@ const MEDICAL_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'medical-sy
 const ESCALATION_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'medical-escalation.md');
 const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 
-// Matches the composer's hard cap (medical.ts): the skill targets ~4 segments, the cap is
-// 5 so a complete emergency answer at ~620 chars is not destroyed down to the fixed line.
-const MAX_MEDICAL_SEGMENTS = 5;
 const MAX_SEARCHES = 4;
 const AGE_BANDS = ['infant_under_3mo', 'infant', 'toddler', 'preschooler', 'school_age'];
 const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i;
@@ -487,10 +484,6 @@ async function main() {
 
     // ── deterministic safety gates ───────────────────────────────────────────
     if (body === '') failures.push('empty');
-    // No encoding gate: a French or Chinese body is UCS-2 by nature and that is now the
-    // point. The ceiling is the SEGMENT count, which smsSegments measures in each body's
-    // own currency (mirrors medical.ts).
-    if (smsSegments(body) > MAX_MEDICAL_SEGMENTS) failures.push('over_segment_cap');
     if (!TRIAGE_NUMBERS.test(body)) failures.push('missing_triage');
     const flagged = isRedFlag(sanitized.red_flag);
     // The runtime asks it only on a flagged turn; a labelled red flag the sanitizer missed
@@ -596,7 +589,7 @@ async function main() {
   );
   console.log(`invented dose:           ${count('invented_dose')}`);
   console.log(
-    `unsendable:              ${results.filter((r) => r.failures.some((f) => ['empty', 'over_segment_cap'].includes(f))).length}`,
+    `unsendable:              ${results.filter((r) => r.failures.some((f) => f === 'empty')).length}`,
   );
   console.log(`judge below ${JUDGE_MIN}:           ${count('judge')}`);
 

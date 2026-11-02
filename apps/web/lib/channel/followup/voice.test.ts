@@ -5,7 +5,6 @@ import {
   MAX_COMPOSE_ATTEMPTS,
   createFollowupVoice,
   followupVoiceUserMessage,
-  lockedActivityFollowup,
   refusals,
 } from './voice';
 
@@ -181,17 +180,16 @@ describe('createFollowupVoice', () => {
     });
   });
 
-  it('defers an activity title that will not fit, without calling the model', async () => {
+  it('sends a long activity ask — length does not defer it (VIL-537)', async () => {
     const seen: Captured[] = [];
-    const restore = quiet();
+    const activity = 'x'.repeat(200);
     const outcome = await createFollowupVoice(clientSaying([GOOD_ACTIVITY], seen)).compose({
       kind: 'activity',
-      activity: 'x'.repeat(200),
+      activity,
     });
-    restore.mockRestore();
-    expect(outcome).toEqual({ status: 'deferred', reason: 'gate_exhausted' });
+    expect(outcome).toEqual({ status: 'composed', body: await howItWentAsk(activity) });
     expect(seen).toEqual([]);
-    expect((await lockedActivityFollowup('x'.repeat(200))).status).toBe('deferred');
+    expect((await howItWentAsk(activity))?.length).toBeGreaterThan(160);
   });
 
   /**

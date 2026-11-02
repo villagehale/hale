@@ -68,7 +68,6 @@ Ask the question like a person asks a question. The answer will be understood ho
 
 ## Shape — these are refusals, not preferences
 
-- One text. At most two SMS segments including a compliance line that may be appended after you, so keep it well under 280 characters. Shorter is better.
 - Plain GSM-7 only: straight apostrophes, plain hyphens, no em dashes, no curly quotes, no emoji. One fancy character doubles the cost of the whole message.
 - At most one question mark. A parent being interrogated stops reading.
 - Start with a capital letter. This is a whole message, not a fragment.

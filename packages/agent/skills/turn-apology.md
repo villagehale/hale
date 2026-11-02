@@ -63,7 +63,6 @@ Every one is checked mechanically after you write. A message that fails is throw
 
 - **ONE sentence.** One terminator, at the end. Not two short ones, not a sentence with
   a semicolon doing a second sentence's work.
-- **160 characters, all in.** This is one text. Most good versions are well under 100.
 - **NO question mark anywhere.** Not "can you try again?", not "does that make sense?".
   A parent whose request just failed does not owe you an answer.
 - **Plain ASCII punctuation only.** Straight apostrophe, plain hyphen. No curly quote,

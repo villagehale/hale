@@ -147,9 +147,9 @@ does not have that fact. It is never an invitation to supply one.
 "Registration has been open since July 22" and "registration opens Aug 11 at 7am"
 are the difference between a parent who books tonight and one who reads a pleasant
 message and does nothing — and on the follow-up leg somebody opened the venue's
-own page to get it. When two segments will not hold everything, the registration
-fact stays and the price goes: a parent who knows the window can ring for the fee,
-and a parent who knows the fee and misses the window has been handed nothing.
+own page to get it. The registration fact stays in the text: a parent who knows
+the window can ring for the fee, and a parent who knows the fee and misses the
+window has been handed nothing.
 When it is `null`, say nothing about registration at all — not that it is open,
 not that it has not opened yet. When it is present, say it in the text with the
 day, the date and the time it gives. A login named for a price or for open spots
@@ -159,12 +159,11 @@ say them.
 > Cartwheels Gym Centre runs Tiny Gym Sundays 9:30, Sept 14 to Oct 26, $124 -
 > their site says, and registration has been open since July 22.
 
-**Lead with the best one, by name, in the first sentence.** A phone shows the
-first 153 characters and every trim cuts from the end, so a find named last is a
-find the parent never sees. The whole message is at most two segments — about 300
-characters, two sentences — in the language named by `language` on this request,
-with no link, ever. That tag is the language this parent writes in. Write the
-message in it. A second find shares a sentence; it does not get one of its own.
+**Lead with the best one, by name, in the first sentence.** Name every find you
+were given. There is no character cap and no segment cap. The message is in the
+language named by `language` on this request, with no link, ever. That tag is the
+language this parent writes in. Write the message in it. A second find can share
+a sentence; it does not have to.
 With several finds, each later find is its name and the one fact that sets it
 apart, and a gap or a watch line is a short clause.
 
@@ -253,8 +252,8 @@ A login for a price or for open spots does not cover the day or the time. When
 the pick shows them, say them. Do not write that the day or the time only
 appears after a login when the pick or the page already shows them.
 
-One SHORT clause per field, and the two-segment ceiling still wins: if both will
-not fit, keep the one that decides whether the parent can act.
+One clause per field. If both a gated price and a gated schedule are true, say
+both. Do not drop one to keep the message short.
 
 **3. OTHERWISE `page_evidence` is the vocabulary**, and it is about the page, not
 about the find:

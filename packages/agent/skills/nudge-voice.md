@@ -61,7 +61,7 @@ There is no time of day here, and that is not an omission you may fill. Say the 
 
 ## Shape
 
-- ONE sentence is usually right. TWO is the hard ceiling. Under 220 characters all in.
+- ONE sentence is usually right. A second sentence is fine when it earns its place.
 - One thing per message. There is only ever one thing in the object; do not pad it.
 - Lead with the fact that expires. A registration date is a deadline; a weekend is an
   offer.

@@ -3,7 +3,6 @@ import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent
 import type { MedicalReplySourceValue } from '@hale/db';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { createMomentReply } from './moment-reply';
@@ -88,8 +87,6 @@ import { createMomentReply } from './moment-reply';
  * anywhere in the body drops the whole thing to ~335. Which side of that line a French
  * answer lands on is not something the composer can plan around, so medical-symptom.md
  * asks FR and ZH alike to write to the tighter budget; the cap is the same either way. */
-export const MAX_MEDICAL_SEGMENTS = 5;
-
 const MAX_SEARCHES = 4;
 const SANITIZE_MAX_TOKENS = 512;
 const GROUND_MAX_TOKENS = 4096;
@@ -556,14 +553,6 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   if (!namesUrgentCare(plainText(composed.triage))) throw new MedicalUnresolvable('missing_triage');
   const body = plainText(`${composed.answer} ${composed.triage}`);
   if (body === '') throw new MedicalUnresolvable('unsendable', 'empty');
-  // ONE ceiling, counted in the currency the carrier bills: `smsSegments` measures a
-  // French or Chinese body against UCS-2's 67 units a part rather than GSM-7's 153, so
-  // this is the same limit in every language. The GSM-7 REJECT that used to sit here is
-  // gone with the reason it existed: it fell every accented-French and every Chinese
-  // answer closed to the English safety line (answer.ts made the same move first).
-  if (smsSegments(body) > MAX_MEDICAL_SEGMENTS) {
-    throw new MedicalUnresolvable('unsendable', 'over_segment_cap');
-  }
   if (!namesUrgentCare(body)) throw new MedicalUnresolvable('missing_triage', 'lost in assembly');
   // The escalation invariant. namesUrgentCare only proves a number is PRESENT — 811 alone
   // passes it, and so does "no need to call 911" — so a mis-triaged emergency ships through

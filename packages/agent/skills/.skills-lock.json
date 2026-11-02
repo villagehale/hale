@@ -9,7 +9,7 @@
   },
   "activity-finder.md": {
     "file": "activity-finder.md",
-    "sha256": "90f074ed912a23bb83debf43b35b235b1703ba050313cf0bd62927c98ae1d4a6"
+    "sha256": "18e204352b3399f6909e9023cd08cac2c0e47c2ffe79debc3b75516dbf71249d"
   },
   "activity-synthesis.md": {
     "file": "activity-synthesis.md",
@@ -41,7 +41,7 @@
   },
   "calendar-cancel-voice.md": {
     "file": "calendar-cancel-voice.md",
-    "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"
+    "sha256": "f13979509e0f669f407db1fb91fa5cdde4236c9ba50755eb25402208728c0890"
   },
   "calendar-offer-read.md": {
     "file": "calendar-offer-read.md",
@@ -73,7 +73,7 @@
   },
   "coach-channel-shorten.md": {
     "file": "coach-channel-shorten.md",
-    "sha256": "1fa8c8140c7266765635214c3dcc4aaba596d219c055d51cbb013d2ab8479210"
+    "sha256": "a829f3ba3034535463d260ac25ee085ab570013e1de395205ae6052d071b037f"
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
@@ -85,11 +85,11 @@
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
-    "sha256": "6a2d08cba7a9806e816e433cf7e07efa70754375ef6b241c12d0f365b15a8b8c"
+    "sha256": "9cf36fe92934e918bf175e5b2898a70c6dec94609fba78f73304bd1149a5887c"
   },
   "coach-plan.md": {
     "file": "coach-plan.md",
-    "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
+    "sha256": "0eec459d47eaaa63556ba8a4f37ba537dfd46e11468ff48dfd58ddcb0ae69530"
   },
   "consent-ask.md": {
     "file": "consent-ask.md",
@@ -125,7 +125,7 @@
   },
   "experience-card-coach.md": {
     "file": "experience-card-coach.md",
-    "sha256": "5106511964cf8b0381a891cf99f16f68a3d5fe0ac5feaf37a94a600912f07bee"
+    "sha256": "430a32f14ad2badccb4dbbdf58a42c51223785999790de20184cab4a7b361cca"
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
@@ -153,7 +153,7 @@
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
-    "sha256": "2b934d020eac24f34924c5d2bfe3c658e095b3f75afa2aa5d119ca0372cdad7b"
+    "sha256": "1d00af851cafb2a6cf8a79a77912be6a1e0d1b89c027ade8dd6c1c0a73de6f43"
   },
   "general-answer-check.md": {
     "file": "general-answer-check.md",
@@ -177,7 +177,7 @@
   },
   "gmail-draft-notice.md": {
     "file": "gmail-draft-notice.md",
-    "sha256": "bbc089b1b8eda41ced0e4b6d8f0e209d101046fd6a05636d62efbb1fcab4d44b"
+    "sha256": "3893b20e4d0faf22fbc312a9077f6c216313ad219effa78a8ce5d742ff1a393a"
   },
   "group-conflict-alert.md": {
     "file": "group-conflict-alert.md",
@@ -253,7 +253,7 @@
   },
   "identity-ask.md": {
     "file": "identity-ask.md",
-    "sha256": "f2189a587b149ee815f2ab9572c29d1b72585e6c62de2d100a6b66893f1ca936"
+    "sha256": "adc75e92b3f441a94bfd0e33ff3862eb8a48330b1d3148361b737b727136839b"
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
@@ -265,7 +265,7 @@
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
-    "sha256": "3150b15c2756762ff331b1a19a3e2af98788b2c898a7a84c7fa45d77c70fd20b"
+    "sha256": "9879540abb08faead0cd5c1f5062a00caf71230fcdb8b0281a1be48a045dfc47"
   },
   "intake-extraction.md": {
     "file": "intake-extraction.md",
@@ -289,7 +289,7 @@
   },
   "intro-voice.md": {
     "file": "intro-voice.md",
-    "sha256": "bc6fe6af049867f0e7c0e99c0a546d64a429c61c002e5c86ccf15f3561b63cf5"
+    "sha256": "56a4b3d925371021203ef1ee4ab81304ca68eacfd1cf507760e0be555618303e"
   },
   "kid-item-classifier.md": {
     "file": "kid-item-classifier.md",
@@ -309,7 +309,7 @@
   },
   "medical-symptom.md": {
     "file": "medical-symptom.md",
-    "sha256": "ef7b7494d7943f38554945a450181da54f19431360d77a6e928ad6df0be4c9a4"
+    "sha256": "266de3788f6d8536336f90f22c188f8627c3ba5b4c0509cb7f5bebb6b343e7ff"
   },
   "moment-reply.md": {
     "file": "moment-reply.md",
@@ -317,11 +317,11 @@
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
-    "sha256": "ff2d07e32fbf2323e658ff343a631dba28e0051446f4df7ea8081e41d202fff4"
+    "sha256": "2d220044b889ed1013b2fe1c0c28b73359ddc30897c2d2a8f36fe478f3ab1d40"
   },
   "offer-receipt.md": {
     "file": "offer-receipt.md",
-    "sha256": "d37d130c73cfce347b741fa8b924471f2c159c37db3e2e7ccc0fc26cda597328"
+    "sha256": "9418558ba50209fac6f685de487a736baac0e636b38ce4b806c1f94af5bd2f1a"
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
@@ -353,7 +353,7 @@
   },
   "radar-voice.md": {
     "file": "radar-voice.md",
-    "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
+    "sha256": "305fbe26193de6ec85fc9720c804f6d2c1f3d8efadf9d19ad367e46839c09ce1"
   },
   "registration-evening.md": {
     "file": "registration-evening.md",
@@ -429,7 +429,7 @@
   },
   "turn-apology.md": {
     "file": "turn-apology.md",
-    "sha256": "37a3ed408410924066bf5e4e33178a5f7ab210884ec8a4cfa825978cefa7610d"
+    "sha256": "4e0fd8031d5bf69ecc15f2e982d2a5a4de25876ee681ec4d19a8f3ed17a82ec3"
   },
   "verify-registration-window.md": {
     "file": "verify-registration-window.md",
@@ -437,7 +437,7 @@
   },
   "voice-register.md": {
     "file": "voice-register.md",
-    "sha256": "f9011c0c12be48a2db00ef70cac374c9bc889fd1cb8b0fefc51098d99b2efbce"
+    "sha256": "fca31065ab0879f91a87e98c3473ae2d9114636f17c569ccdfe2effff3275286"
   },
   "weekday-care-ask.md": {
     "file": "weekday-care-ask.md",

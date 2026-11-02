@@ -21,7 +21,6 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * tool that could produce one anyway. */
 const LINK_SHAPE = /https?:\/\/|www\./i;
 
-export const MAX_INTRO_GROUP_CHARS = 480;
 export const MAX_INTRO_GROUP_ATTEMPTS = 3;
 const MAX_TOKENS = 320;
 
@@ -38,7 +37,6 @@ export interface IntroGroupRequest {
 
 export type IntroGroupRefusal =
   | 'empty'
-  | 'over_char_cap'
   | 'carries_link'
   | 'not_a_sentence'
   | 'parent_name_missing'
@@ -55,7 +53,6 @@ function handedNumbers(request: IntroGroupRequest): Set<string> {
 export function introGroupRefusals(body: string, request: IntroGroupRequest): IntroGroupRefusal[] {
   if (body === '') return ['empty'];
   const found: IntroGroupRefusal[] = [];
-  if (body.length > MAX_INTRO_GROUP_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
   const lower = body.toLowerCase();

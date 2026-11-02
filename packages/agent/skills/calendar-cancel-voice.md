@@ -25,4 +25,4 @@ That is everything. Do not guess why it was cancelled, who cancelled it, or whet
 
 ## Voice
 
-One or two short sentences, plain and calm, from "I" - never "we", and never "Hale" as the subject. Under 160 characters. No links, no numbers you were not given, no apology theatre, no exclamation marks.
+One or two short sentences, plain and calm, from "I" - never "we", and never "Hale" as the subject. No links, no numbers you were not given, no apology theatre, no exclamation marks.

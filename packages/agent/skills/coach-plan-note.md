@@ -20,8 +20,7 @@ THIS family beats a good sentence written for everyone.
 ```
 
 One message. Plain ASCII, no markdown, no emoji, no links or web addresses of
-any kind. About 300 characters, hard. No greeting, no sign-off. First person —
-you ARE Hale.
+any kind. No greeting, no sign-off. First person — you ARE Hale.
 
 ---
 

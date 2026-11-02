@@ -252,16 +252,6 @@ function checkMessage(fixture, message, judgeScore) {
     failures.push('asks a question in an unprompted text (nothing here needs an answer)');
   }
 
-  const segments = smsSegments(`${message}\n\n${NUDGE_OPT_OUT}`);
-  if (segments > MAX_PAYLOAD_SEGMENTS) {
-    failures.push(`payload is ${segments} SMS segments > ${MAX_PAYLOAD_SEGMENTS}`);
-  }
-
-  const sentences = countSentences(message);
-  if (sentences > MAX_SENTENCES) {
-    failures.push(`${sentences} sentences > ${MAX_SENTENCES}`);
-  }
-
   const lower = message.toLowerCase();
   for (const token of fixture.expect.mustRecall ?? []) {
     if (!lower.includes(token.toLowerCase())) {
@@ -421,7 +411,7 @@ async function main() {
   console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);
   console.log(`FABRICATIONS:                 ${fabricating.length}  (0 required — the hard gate)`);
   console.log(`composed behind a closed gate:${leaked.length}  (0 required — the CASL gate)`);
-  console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
+  console.log(`over the old segment budget:  ${overBudget.length}  (telemetry, not a gate)`);
   console.log(`messages asking a question:   ${asking.length}  (0 required)`);
   console.log(
     `messages writing the opt-out: ${optingOut.length}  (0 required — outbound texts do not carry one)`,
@@ -442,7 +432,6 @@ async function main() {
     accuracy === 1 &&
     fabricating.length === 0 &&
     leaked.length === 0 &&
-    overBudget.length === 0 &&
     asking.length === 0 &&
     optingOut.length === 0;
 

@@ -261,9 +261,6 @@ function sendFailures(messages, smsSegments, maxSegments, { allowMany, playbook 
   const sirenAllowed = sanctionsTheHealthLine(playbook);
   for (const [index, body] of messages.entries()) {
     if (body === '') failures.push(`empty:${index}`);
-    if (smsSegments(body) > maxSegments) {
-      failures.push(`over_budget:${index} (${smsSegments(body)} segments)`);
-    }
     if (LINK_SHAPE.test(body)) failures.push(`carries_link:${index}`);
     if (DOSING_SHAPE.test(body)) failures.push(`carries_dosing:${index}`);
     if (HEALTH_LINE_SHAPE.test(body) && !sirenAllowed) {
@@ -303,9 +300,8 @@ function citationFailures(text, playbook) {
  * the judge. Mixing them would have the eval retrying until the corpus was satisfied,
  * which is grading a loop this code does not have.
  */
-function runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan) {
+function runtimeViolations(flat, playbook, checkInDays, _smsSegments, isPlan) {
   const violations = [];
-  const maxSegments = isPlan ? MAX_PLAN_SEGMENTS : MAX_NOTE_SEGMENTS;
   const sirenAllowed = sanctionsTheHealthLine(playbook);
 
   if (isPlan && (flat.length < MIN_PLAN_MESSAGES || flat.length > MAX_PLAN_MESSAGES)) {
@@ -315,14 +311,6 @@ function runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan) {
   }
   flat.forEach((body, index) => {
     const label = isPlan ? `Message ${index + 1}` : 'The message';
-    const limit = maxSegments * 153;
-    if (smsSegments(body) > maxSegments) {
-      violations.push(
-        isPlan
-          ? `${label} is ${body.length} characters, ${body.length - limit} over the ${limit} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`
-          : `${label} is ${body.length} characters, ${body.length - limit} over the ${limit} limit. Shorten it.`,
-      );
-    }
     if (LINK_SHAPE.test(body)) violations.push(`${label} contains a link or a web address.`);
     if (DOSING_SHAPE.test(body)) violations.push(`${label} names a dose.`);
     if (HEALTH_LINE_SHAPE.test(body) && !sirenAllowed) {

@@ -43,7 +43,6 @@ const TOOL_SCHEMA = {
 const LINK_SHAPE = /https?:\/\/|www\./i;
 
 const MAX_TOKENS = 320;
-const MAX_CHARS = 480;
 
 /** Mirrors `introGroupUserMessage` in group-voice.ts. */
 function userMessage(request, rejected = []) {
@@ -61,7 +60,6 @@ function userMessage(request, rejected = []) {
 function refusals(body, request) {
   if (body === '') return ['empty'];
   const found = [];
-  if (body.length > MAX_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
   const lower = body.toLowerCase();

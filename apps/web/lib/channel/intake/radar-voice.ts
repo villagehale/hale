@@ -22,9 +22,7 @@ export { townLabel };
  * the appended tail from 46 septets to 119 — and the richest deterministic render, a
  * weekend pick PLUS a registration line with a resident note, is 205 septets on its own.
  * That payload is 324 septets, so two segments would make the grounded fallback itself
- * unsendable. Raising the cap is arithmetic forced by the approved copy, not a licence to
- * ramble: the composed message's real discipline is the radar-voice skill's own
- * three-sentence / 250-character ceiling, which the eval gates independently.
+ * unsendable. The number is not a gate on the model's reply (VIL-537).
  */
 export const MAX_PAYLOAD_SEGMENTS = 3;
 

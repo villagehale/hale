@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PlanTopic } from './topics';
@@ -32,8 +31,6 @@ import type { PlanTopic } from './topics';
 
 /** One SMS. Both notes are one message by design: a refusal that runs long reads as an
  * excuse, and a check-in that runs long is a lecture nobody asked for. */
-export const MAX_NOTE_SEGMENTS = 2;
-
 /** Same reasoning as the plan's: a model that cannot fix a named mechanical fault in
  * three tries will not fix it on the fourth. */
 export const MAX_NOTE_ATTEMPTS = 3;
@@ -116,11 +113,6 @@ export function noteViolations(body: string, grounding: NoteGrounding): string[]
   if (text === '') {
     violations.push('The message was empty.');
     return violations;
-  }
-  if (smsSegments(text) > MAX_NOTE_SEGMENTS) {
-    violations.push(
-      `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_NOTE_SEGMENTS}. Cut it to about 300 characters.`,
-    );
   }
   if (LINK_SHAPE.test(text)) {
     violations.push('The message contains a link or a web address. Never send one.');

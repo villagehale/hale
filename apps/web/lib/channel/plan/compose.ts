@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
-import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { type PlanCheckInDays, type PlanTopic, isPlanCheckInDays } from './topics';
@@ -32,14 +31,6 @@ import { type PlanCheckInDays, type PlanTopic, isPlanCheckInDays } from './topic
  * PRIVACY. The question, the child's AGE and the playbook go to the model. No name, no
  * id, no location, no schedule. Nothing here logs the question.
  */
-
-/**
- * The ceiling on ONE plan message, in segments.
- *
- * Three, where a coach reply gets two. A reply interrupts; a plan was asked for twice,
- * and a stage trimmed to two sentences is the amputation this arc exists to undo.
- */
-export const MAX_PLAN_SEGMENTS = 3;
 
 /** The plan is two or three messages. One is the answer they already had; four is a
  * document, and a document is what the app was for. */
@@ -215,9 +206,8 @@ function message(err: unknown): string {
  * Everything wrong with this plan, named the way the model needs to hear it.
  *
  * Returns an EMPTY array for a sendable plan. Each string is written as an instruction
- * rather than a diagnosis, because its second reader is the model on the next attempt —
- * "stage 2 is 4 segments, cut it to about 400 characters" is actionable where
- * "over_budget" is not.
+ * rather than a diagnosis, because its second reader is the model on the next attempt.
+ * Length is not one of the faults.
  */
 export function planViolations(
   raw: readonly string[],
@@ -238,23 +228,6 @@ export function planViolations(
 
   messages.forEach((body, index) => {
     const stage = index + 1;
-    if (smsSegments(body) > MAX_PLAN_SEGMENTS) {
-      // Named to the character, and phrased as MOVE rather than CUT. The live corpus is
-      // why: on the densest fixture (the allergen protocol) three rounds of "cut it to
-      // about 400 characters" produced 476, 470, 476 — the model was right that the
-      // content was load-bearing and wrong about where it had to live. A stage that is
-      // 20 characters over has a sentence in the wrong message, not a sentence too many.
-      //
-      // Both numbers are in the currency the carrier bills THIS body in, because the
-      // gate above is a SEGMENT count and a UCS-2 body blows three segments at 202 units
-      // where a GSM-7 one takes 460. Measured against a fixed 459-character limit, one
-      // emoji told the model it was "-249 over the limit".
-      const units = smsUnits(body);
-      const limit = smsUnitsBudget(body, MAX_PLAN_SEGMENTS);
-      violations.push(
-        `Message ${stage} is ${units} characters, ${units - limit} over the ${limit} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`,
-      );
-    }
     if (LINK_SHAPE.test(body)) {
       violations.push(`Message ${stage} contains a link or a web address. Never send one.`);
     }

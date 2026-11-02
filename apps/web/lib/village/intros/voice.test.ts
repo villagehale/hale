@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import {
-  type IntroAskRequest,
-  MAX_INTRO_ASK_CHARS,
-  introAskRefusals,
-  introAskUserMessage,
-} from './voice';
+import { type IntroAskRequest, introAskRefusals, introAskUserMessage } from './voice';
 
 /**
  * The refusals are the pinned half of "meaning pinned, words free". Each one is here
@@ -170,17 +165,11 @@ describe('introAskRefusals', () => {
     });
   });
 
-  describe('the envelope', () => {
-    it('leaves room for the compliance line inside two segments', () => {
-      const longest = 'A'.repeat(MAX_INTRO_ASK_CHARS);
-      expect(smsSegments(`${longest}\n\n${OPT_OUT_LINE}`)).toBeLessThanOrEqual(2);
-      // Non-vacuity: one character more does not fit, so the cap is the real ceiling.
-      expect(smsSegments(`${longest}X\n\n${OPT_OUT_LINE}`)).toBeGreaterThan(2);
-    });
-
-    it('refuses a body over the cap', () => {
-      const body = `Maya's toddler intro. ${'x'.repeat(MAX_INTRO_ASK_CHARS)}`;
-      expect(introAskRefusals(body, PROPOSAL)).toContain('over_char_cap');
+  describe('length is not a gate (VIL-537)', () => {
+    it('sends a body longer than two segments', () => {
+      const body = `Maya's toddler intro. ${'x'.repeat(400)}`;
+      expect(smsSegments(`${body}\n\n${OPT_OUT_LINE}`)).toBeGreaterThan(2);
+      expect(introAskRefusals(body, PROPOSAL).join('+')).not.toMatch(/over_/);
     });
 
     it('sends a curly apostrophe', () => {

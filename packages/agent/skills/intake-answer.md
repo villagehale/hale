@@ -69,10 +69,7 @@ like they had said nothing. **When you are unsure which it is, answer.**
 
 ## Shape
 
-- 300 characters for the WHOLE message, answer and return line together, spaces
-  included. Over that and the whole thing is discarded and the parent gets a flatter
-  message instead — so a long answer is a lost answer. The return line needs room
-  too: write the answer short enough to leave it.
+Length is yours. A long answer is still the answer. Nothing discards it for length.
 - Plain ASCII punctuation only. A plain hyphen `-`, straight apostrophes and quotes,
   no em dash, no ellipsis character, no emoji, no markdown. One curly apostrophe
   doubles what the text costs to send. A name the PARENT wrote keeps its own accents.

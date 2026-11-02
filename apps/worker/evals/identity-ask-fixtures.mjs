@@ -120,22 +120,4 @@ export const IDENTITY_ASK_FIXTURES = [
       'It was just told its last attempt never used the word "name". This one must contain it, keep both halves of what happens from here (Hale watches the dates by itself, they can text a question anytime), stay inside the tail budget, and not have become stiff or formal in the process. Losing the service clause to make room for the word is the failure to watch for.',
     forbiddenPatterns: [/\bthank/i, /^\s*(?:and|also)\b/i],
   },
-  {
-    /**
-     * The over-budget recompose. The commonest real failure on the tight fixture is a
-     * sentence that is good and thirty characters too long, and what matters is whether
-     * being told so produces a SHORTER one rather than a differently-worded long one.
-     */
-    id: 'recompose-too-long',
-    request: { reason: 'introduction', missing: ['name', 'email'] },
-    rejected: [
-      {
-        ask: "Before I can write that introduction I need to know what name you'd like me to use for you, and an email address I can send it to - text both back whenever you get a minute and I will take it from there.",
-        problems: ['over_char_cap'],
-      },
-    ],
-    watchFor:
-      'It was just told its last attempt was too long. This one must fit one segment while keeping both required words and the tie to the introduction - shortened, not re-padded.',
-    forbiddenPatterns: [NAMES_THE_COUNTERPART, MISPLACED_CAPABILITY_PITCH],
-  },
 ];

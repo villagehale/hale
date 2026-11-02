@@ -2,8 +2,6 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
-import { withOptOut } from '~/lib/channel/opt-out';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -185,16 +183,14 @@ function deferred(reason: ComposeDeferral, detail?: string): FollowupVoiceOutcom
  * VIL-366 · the booked-activity ask is the locked sentence, not a model line.
  *
  * Intro and daycare stay on the composer below. An activity title that fails the
- * same refusals, or that blows one GSM-7 segment with the full opt-out on it,
- * defers — the claim stays unspent. The model is not called either way.
+ * same refusals defers — the claim stays unspent. Length does not. The follow-up
+ * model is not called either way; the how-it-went line is its own writer.
  */
 export async function lockedActivityFollowup(activity: string): Promise<FollowupVoiceOutcome> {
   const body = await howItWentAsk(activity);
   if (!body) return deferred('gate_exhausted', 'language');
   const problems = refusals(body, { kind: 'activity', activity });
-  if (problems.length > 0 || smsSegments(withOptOut(body, 'full')) !== 1) {
-    return deferred('gate_exhausted', problems.join('+') || 'segment');
-  }
+  if (problems.length > 0) return deferred('gate_exhausted', problems.join('+'));
   return { status: 'composed', body };
 }
 

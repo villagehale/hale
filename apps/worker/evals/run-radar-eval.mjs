@@ -357,15 +357,6 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
     failures.push('writes a question of its own (the shell owns the only question)');
   }
 
-  const segments = smsSegments(payloadOf(fixture.decision, message));
-  if (segments > MAX_PAYLOAD_SEGMENTS) {
-    failures.push(`payload is ${segments} SMS segments > ${MAX_PAYLOAD_SEGMENTS}`);
-  }
-
-  const sentences = countSentences(message);
-  if (sentences > MAX_SENTENCES) {
-    failures.push(`${sentences} sentences > ${MAX_SENTENCES}`);
-  }
 
   const lower = message.toLowerCase();
   for (const token of fixture.expect.mustRecall ?? []) {
@@ -653,7 +644,7 @@ async function main() {
   console.log('\n--- corpus metrics ---');
   console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);
   console.log(`FABRICATIONS:                 ${fabricating.length}  (0 required — the hard gate)`);
-  console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
+  console.log(`over the old segment budget:  ${overBudget.length}  (telemetry, not a gate)`);
   console.log(`messages asking a question:   ${asking.length}  (0 required — the shell asks)`);
   console.log(`mean voice score:             ${meanScore.toFixed(2)}  (each >= ${JUDGE_MIN})`);
   console.log(
@@ -676,7 +667,6 @@ async function main() {
   const allPass =
     accuracy === 1 &&
     fabricating.length === 0 &&
-    overBudget.length === 0 &&
     asking.length === 0 &&
     unattributed.length === 0;
 

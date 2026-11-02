@@ -60,33 +60,15 @@ describe('the shape gates', () => {
     );
   });
 
-  it('names WHICH stage is over budget, because the model has to fix that one', () => {
+  it('does not refuse a long message for length (VIL-537)', () => {
     const violations = planViolations([GOOD[0] as string, chars(600)], GROUNDING, 3);
-
-    // Named to the character and phrased as MOVE, because the second reader of this
-    // string is the model on the next attempt and "cut it" lost content it should have
-    // relocated.
-    expect(
-      violations.some(
-        (v) => v.includes('Message 2') && v.includes('over the') && v.includes('Move a sentence'),
-      ),
-    ).toBe(true);
+    expect(violations.some((v) => /over the|segment|character/i.test(v))).toBe(false);
   });
 
-  /** The gate is a SEGMENT count, and a UCS-2 body blows three segments at 202 units
-   * where a GSM-7 one takes 460. A budget quoted in the wrong currency told the model it
-   * was "-249 over the limit" — a number that is not true, in the one string the
-   * recompose loop has to learn from. */
-  it('names a true overage when the overflow comes from the encoding, not the length', () => {
+  it('does not refuse a long emoji message for length (VIL-537)', () => {
     const emojiBody = `${'a'.repeat(210)} \u{1f389} Ferber Friday`;
-
-    const overBudget = planViolations([GOOD[0] as string, emojiBody], GROUNDING, 3).filter((v) =>
-      v.includes('over the'),
-    );
-
-    expect(overBudget).toHaveLength(1);
-    const overage = Number(/, (-?\d+) over the/.exec(overBudget[0] as string)?.[1]);
-    expect(overage).toBeGreaterThan(0);
+    const violations = planViolations([GOOD[0] as string, emojiBody], GROUNDING, 3);
+    expect(violations.some((v) => /over the|segment|character/i.test(v))).toBe(false);
   });
 });
 

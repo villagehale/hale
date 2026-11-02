@@ -1,6 +1,5 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -14,8 +13,6 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  */
 
 const MAX_TOKENS = 128;
-const MAX_SEGMENTS = 2;
-
 const receiptSchema = z.object({
   line: z.string(),
 });
@@ -43,13 +40,13 @@ export interface OfferReceiptWriter {
   write(facts: OfferReceiptFacts): Promise<string | null>;
 }
 
-/** A line is sendable when it carries both facts and fits in two segments. */
+/** A line is sendable when it carries both facts. Length is not a reason to drop it. */
 export function receiptLineOk(line: string, facts: OfferReceiptFacts): boolean {
   const text = line.trim();
   if (text === '') return false;
   if (!text.includes(facts.title)) return false;
   if (!text.includes(facts.when)) return false;
-  return smsSegments(text) <= MAX_SEGMENTS;
+  return true;
 }
 
 export function offerReceiptUserMessage(facts: OfferReceiptFacts): string {

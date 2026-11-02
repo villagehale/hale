@@ -2,8 +2,6 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -37,17 +35,6 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * refusal handed back; a composer that cannot produce a sendable ask DEFERS, and the sweep
  * leaves its dedupe claim unspent so the next tick is a retry rather than a duplicate.
  */
-
-/**
- * The ceiling, derived rather than typed: a proactive intro text must fit two SMS
- * segments INCLUDING the CASL opt-out line on the periods when it rides
- * (lib/channel/opt-out.ts), because a body that only fits when the line is absent is a
- * body that silently costs a third segment once a month.
- */
-export const MAX_INTRO_ASK_CHARS = 306 - (OPT_OUT_LINE.length + 2);
-
-/** The same two-segment envelope every other proactive class holds itself to. */
-export const MAX_INTRO_SEGMENTS = 2;
 
 /** Three attempts, then defer — the follow-up composer's rule, for its reason: a model
  * told its exact violation twice is not argued into it on the fourth try. */
@@ -90,8 +77,6 @@ export type IntroAskRequest =
 
 export type IntroAskRefusal =
   | 'empty'
-  | 'over_char_cap'
-  | 'over_segment_cap'
   | 'not_gsm7'
   | 'carries_link'
   | 'too_many_questions'
@@ -120,8 +105,6 @@ export type IntroAskRefusal =
 export function introAskRefusals(body: string, request: IntroAskRequest): IntroAskRefusal[] {
   const found: IntroAskRefusal[] = [];
   if (body === '') return ['empty'];
-  if (body.length > MAX_INTRO_ASK_CHARS) found.push('over_char_cap');
-  if (smsSegments(body) > MAX_INTRO_SEGMENTS) found.push('over_segment_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
