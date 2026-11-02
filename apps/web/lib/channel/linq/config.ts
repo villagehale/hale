@@ -173,13 +173,15 @@ export function linqGroupLeaveEnabled(): boolean {
 }
 
 /**
- * VIL-475 — iMessage @mentions in Linq group chats. Exactly `true` enables it.
- * Unset, empty, `on`, and `false` stay dark. Default off.
+ * VIL-475 — iMessage @mentions in Linq group chats. On only when the value is
+ * exactly `true` and `VERCEL_ENV` is exactly `preview`. Unset, empty, `on`,
+ * `false`, and any other environment — including production — stay dark.
+ * Default off. Setting the flag in production cannot turn it on.
  *
  * On, inbound `mentions` become facts for the group-turn reader, and a group
  * reply may carry one outbound `mention` when the model names a seated member.
  * Off leaves today's parse unused and every send without a mention field.
  */
 export function linqGroupMentionsEnabled(): boolean {
-  return trimmed('LINQ_GROUP_MENTIONS_ENABLED') === 'true';
+  return trimmed('LINQ_GROUP_MENTIONS_ENABLED') === 'true' && process.env.VERCEL_ENV === 'preview';
 }

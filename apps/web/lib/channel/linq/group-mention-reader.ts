@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -17,7 +17,8 @@ import type { LinqInboundMention } from './payload';
  *
  * Code owns the seats and the handle. The `group-mention-read` skill sees first
  * names and roles, never phones. Off unless `LINQ_GROUP_MENTIONS_ENABLED` is
- * exactly `true`. A failed read sends the reply without a mention and logs.
+ * exactly `true` and `VERCEL_ENV` is `preview`. A failed read sends the reply
+ * without a mention and logs.
  */
 
 export interface MentionableMember {
@@ -165,18 +166,26 @@ export async function listMentionableMembers(
 /** Rosters that say this chat is not (or no longer) a group Hale is in. */
 const NOT_A_GROUP = ['not_group', 'ejected'] as const;
 
-async function chatIsGroup(database: Database, chatId: string): Promise<boolean> {
+/**
+ * A chat is a group only when that is positively known: a roster row whose
+ * status is a group status, or `isGroup === true` (the same check
+ * `group-leave.ts` uses). A missing roster is not a group. `not_group` and
+ * `ejected` stay unmentionable even when the caller also passes `isGroup`.
+ */
+async function chatIsGroup(
+  database: Database,
+  chatId: string,
+  isGroup?: boolean | null,
+): Promise<boolean> {
   const rows = await database
-    .select({ id: schema.linqGroupRosters.id })
+    .select({ status: schema.linqGroupRosters.status })
     .from(schema.linqGroupRosters)
-    .where(
-      and(
-        eq(schema.linqGroupRosters.chatId, chatId),
-        inArray(schema.linqGroupRosters.status, [...NOT_A_GROUP]),
-      ),
-    )
+    .where(eq(schema.linqGroupRosters.chatId, chatId))
     .limit(1);
-  return rows.length === 0;
+  const status = rows[0]?.status;
+  if (status && (NOT_A_GROUP as readonly string[]).includes(status)) return false;
+  if (status) return true;
+  return isGroup === true;
 }
 
 export async function groupMentionFactsFor(
@@ -241,14 +250,16 @@ export function sharedGroupMentionReader(): GroupMentionReader {
 }
 
 /**
- * One seated handle for this group reply, or undefined. Flag off, an empty
- * roster, a failed read, or a name that is not in this chat: no mention.
- * The handle is never logged.
+ * One seated handle for this group reply, or undefined. Flag off, a chat that
+ * is not positively a group, an empty seat list, a failed read, or a name that
+ * is not in this chat: no mention. The handle is never logged.
  */
 export async function resolveGroupMention(input: {
   database: Database;
   chatId: string;
   text: string;
+  /** Linq's own chat shape, when the caller has it. Missing is not a group. */
+  isGroup?: boolean | null;
   inbound?: GroupMentionFacts;
   reader?: GroupMentionReader;
   members?: MentionableMember[];
@@ -257,7 +268,9 @@ export async function resolveGroupMention(input: {
   let members: MentionableMember[];
   try {
     // A direct chat never carries a mention (Devin #954 SEC).
-    if (!input.members && !(await chatIsGroup(input.database, input.chatId))) return undefined;
+    if (!input.members && !(await chatIsGroup(input.database, input.chatId, input.isGroup))) {
+      return undefined;
+    }
     members = input.members ?? (await listMentionableMembers(input.database, input.chatId));
   } catch (err) {
     // A failed seat read must not block the group reply (Devin #954).

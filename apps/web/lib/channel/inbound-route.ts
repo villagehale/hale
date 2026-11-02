@@ -68,7 +68,7 @@ export interface InboundRouteDeps {
    */
   intake: (
     inboundTransport: MessageTransport,
-    linq?: { chatId: string; replyToMessageId?: string | null },
+    linq?: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean },
   ) => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   /** Required, not optional: the one thing that must never happen quietly here is a
@@ -162,12 +162,12 @@ export type InboundRouteOutcome =
  */
 function linqTurnBind(
   inbound: InboundMessage,
-): { chatId: string; replyToMessageId?: string | null } | undefined {
+): { chatId: string; replyToMessageId?: string | null; isGroup: boolean } | undefined {
   if (!inbound.chatId) return undefined;
   if (inbound.isGroup === true) {
-    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId };
+    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId, isGroup: true };
   }
-  return { chatId: inbound.chatId };
+  return { chatId: inbound.chatId, isGroup: false };
 }
 
 export async function routeInboundText(

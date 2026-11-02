@@ -36,6 +36,11 @@ afterEach(() => {
   vi.mocked(forceToolJson).mockReset();
 });
 
+function mentionsPreview() {
+  vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+  vi.stubEnv('VERCEL_ENV', 'preview');
+}
+
 function keysUnset() {
   expect(process.env.LINQ_API_KEY ?? '').toBe('');
   expect(process.env.ANTHROPIC_API_KEY ?? '').toBe('');
@@ -48,14 +53,31 @@ function keysUnset() {
 }
 
 describe('LINQ_GROUP_MENTIONS_ENABLED', () => {
-  it('is on only when the flag is exactly true', () => {
+  it('is on only in preview when the flag is exactly true', () => {
     keysUnset();
+    expect(linqGroupMentionsEnabled()).toBe(false);
+    vi.stubEnv('VERCEL_ENV', 'preview');
     expect(linqGroupMentionsEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
     expect(linqGroupMentionsEnabled()).toBe(true);
     vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'on');
     expect(linqGroupMentionsEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', '');
+    expect(linqGroupMentionsEnabled()).toBe(false);
+  });
+
+  it('stays off in production when the flag is true', () => {
+    keysUnset();
+    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    expect(linqGroupMentionsEnabled()).toBe(false);
+  });
+
+  it('stays off when the flag is true outside preview', () => {
+    keysUnset();
+    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+    expect(linqGroupMentionsEnabled()).toBe(false);
+    vi.stubEnv('VERCEL_ENV', 'development');
     expect(linqGroupMentionsEnabled()).toBe(false);
   });
 });
@@ -136,7 +158,7 @@ describe('resolveGroupMention', () => {
 
   it('sends the reply without a mention when the seat read fails', async () => {
     keysUnset();
-    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+    mentionsPreview();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const broken = {
       select: () => {
@@ -153,11 +175,11 @@ describe('resolveGroupMention', () => {
 
   it('never mentions in a chat whose roster says it is not a group', async () => {
     keysUnset();
-    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+    mentionsPreview();
     const chain = {
       from: () => chain,
       where: () => chain,
-      limit: async () => [{ id: 'roster-1' }],
+      limit: async () => [{ status: 'not_group' }],
     };
     const direct = { select: () => chain } as never;
     const reader = { read: vi.fn(async () => 'm1') };
@@ -184,7 +206,7 @@ describe('resolveGroupMention', () => {
 
   it('returns the seated handle the reader named, and nothing for an unknown id', async () => {
     keysUnset();
-    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+    mentionsPreview();
     expect(
       await resolveGroupMention({
         database,
@@ -207,7 +229,7 @@ describe('resolveGroupMention', () => {
 
   it('sends no mention when the reader names nobody', async () => {
     keysUnset();
-    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
+    mentionsPreview();
     expect(
       await resolveGroupMention({
         database,

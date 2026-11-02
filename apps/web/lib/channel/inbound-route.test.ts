@@ -47,7 +47,9 @@ interface Harness {
   /** The transport each intake build was told the message arrived on. */
   intakeTransports: string[];
   /** The Linq bind each intake build received. Undefined is SMS. */
-  linqBinds: Array<{ chatId: string; replyToMessageId?: string | null } | undefined>;
+  linqBinds: Array<
+    { chatId: string; replyToMessageId?: string | null; isGroup?: boolean } | undefined
+  >;
 }
 
 function harness(): Harness {
@@ -105,7 +107,7 @@ function harness(): Harness {
       },
       intake: (
         inboundTransport?: string,
-        linq?: { chatId: string; replyToMessageId?: string | null },
+        linq?: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean },
       ) => {
         state.intakeBuilds += 1;
         h.intakeBuilds = state.intakeBuilds;
@@ -682,7 +684,7 @@ describe('iMessage first-touch door', () => {
       chatId: 'chat-1',
       isGroup: false,
     });
-    expect(h.linqBinds[0]).toEqual({ chatId: 'chat-1' });
+    expect(h.linqBinds[0]).toEqual({ chatId: 'chat-1', isGroup: false });
     expect(h.linqBinds[0]).not.toHaveProperty('replyToMessageId');
 
     const group = harness();
@@ -695,6 +697,7 @@ describe('iMessage first-touch door', () => {
     expect(group.linqBinds[0]).toEqual({
       chatId: 'chat-group',
       replyToMessageId: 'msg-g',
+      isGroup: true,
     });
   });
 
