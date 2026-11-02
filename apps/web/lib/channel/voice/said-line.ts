@@ -281,7 +281,13 @@ export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boo
 
 /** 988 and the Canadian spelling 9-8-8 are the same line. A physical emergency may not carry it. */
 export function crisisTextHas988(text: string): boolean {
-  return text.includes('988') || text.includes('9-8-8');
+  // NFKC folds full-width and other compatibility digits to ASCII; then any run of
+  // whitespace or separators between digits is dropped, so '9 8 8', '9-8-8', '9.8.8'
+  // and '９８８' all read as 988.
+  const folded = text
+    .normalize('NFKC')
+    .replace(/(?<=\d)[\s\p{Z}\p{Pd}.\u00b7\u2022\u30fb/_]+(?=\d)/gu, '');
+  return folded.includes('988');
 }
 
 /**
