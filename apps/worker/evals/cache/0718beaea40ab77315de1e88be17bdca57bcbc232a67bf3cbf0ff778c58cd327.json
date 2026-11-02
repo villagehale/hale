@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Facts are fully correct: bread and bananas were newly added for Dana, and milk was already on the list from Jordan, so there is no false add claim. No secret leaks, no health advice, and the language is English as written. The tone is a plain confirmation of the write ('Added X. Y was already on there.'), a log-entry style that mirrors the reference texts scored 2 (ref 3) while the friendly equivalent scored 5 (ref 8). It is shorter and slightly warmer than a formal log, but it is still not a natural reaction about anyone's plans. So it lands above the weakest log entries but short of 4+.",
-    "score": 3
-  }
-}

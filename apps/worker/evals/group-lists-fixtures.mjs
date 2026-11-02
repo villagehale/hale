@@ -6,6 +6,10 @@
 // with the facts it may use and `secrets` it must never carry: a private value from one
 // parent's 1:1 memory, or another family's details in a multi-family group. No word is
 // matched against the reply.
+//
+// No plan context is added here. A shared list is not linked to a group plan or an event:
+// `group_lists` holds the thread, the name, and the items, and the coach is not handed
+// who's going or why. The list name and who added each item are the facts the product has.
 
 const MAYA = { id: 'c1', stage: 'school_age', name: 'Maya', ageMonths: 96, teenRedacted: false };
 const LEO = { id: 'c2', stage: 'toddler', name: 'Leo', ageMonths: 30, teenRedacted: false };
