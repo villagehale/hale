@@ -11,6 +11,11 @@ vi.mock('~/lib/channel/linq/sticker', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/channel/linq/sticker')>()),
   sharedLinqStickerDecider: () => ({ decide: stickerDecide }),
 }));
+const effectDecide = vi.hoisted(() => vi.fn());
+vi.mock('~/lib/channel/linq/effect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/linq/effect')>()),
+  sharedLinqEffectDecider: () => ({ decide: effectDecide }),
+}));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
@@ -41,6 +46,7 @@ import {
 } from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
+import { DeadlineError } from './deadline';
 import type {
   DisambiguationOption,
   DisambiguationStore,
@@ -4712,6 +4718,152 @@ describe('turn deadline (VIL-400)', () => {
     expect(h.transport.sent).toHaveLength(1);
     expect(h.turns.unanswered).toEqual([expect.objectContaining({ reason: 'gate_timeout' })]);
   });
+
+  it('does not send the reply when an effect read finishes after the deadline', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    effectDecide.mockRejectedValue(new DeadlineError('turn_timeout'));
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posts.push(new URL(url).pathname);
+      return Response.json({ message: { id: 'late' } }, { status: 201 });
+    });
+    const h = harness({
+      context: {
+        body: 'we got in for swim',
+        reply: { channel: 'imessage', to: PHONE, chatId: 'chat-1', replyToMessageId: 'in-1' },
+      },
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toMatchObject({
+      name: 'TurnDeferred',
+      reason: 'turn_timeout',
+    });
+    expect(posts.filter((path) => path.endsWith('/messages'))).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
+    effectDecide.mockReset();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+});
+
+describe('an iMessage effect does not send the reply twice', () => {
+  const IMESSAGE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'in-1',
+  };
+
+  function effectTurn() {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_API_KEY', 'test-key');
+    effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+    return harness({
+      coach: fakeCoach('You are in for swim.'),
+      context: { body: 'we got in for swim', reply: IMESSAGE },
+    });
+  }
+
+  afterEach(() => {
+    effectDecide.mockReset();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('does not post a plain copy when Linq accepts and returns no message id', async () => {
+    const h = effectTurn();
+    const posts: unknown[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (new URL(url).pathname.endsWith('/messages')) posts.push(JSON.parse(String(init?.body)));
+      return Response.json({}, { status: 201 });
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(posts).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    expect(ledgerRows(h.fake).filter((row) => row.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: 'linq:effect', providerMessageId: null }),
+    ]);
+  });
+
+  it('does not post a plain copy when the ledger write fails after Linq accepts', async () => {
+    const h = effectTurn();
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posts.push(new URL(url).pathname);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+    const insert = h.deps.database.insert.bind(h.deps.database);
+    h.deps.database.insert = ((table: Parameters<typeof insert>[0]) => {
+      if (table === schema.channelMessages) throw new Error('bad row');
+      return insert(table);
+    }) as typeof h.deps.database.insert;
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+  });
+
+  it('does not hand a follow-up the inbound id when the effect row is not saved', async () => {
+    const h = effectTurn();
+    const closed: string[] = [];
+    h.deps.handlers = [
+      {
+        name: 'offer_close',
+        async handle() {
+          return {
+            claimed: true as const,
+            outcome: 'closed',
+            reply: 'You are in for swim.',
+            afterSend: async (id: string) => {
+              closed.push(id);
+            },
+          };
+        },
+      },
+    ];
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posts.push(new URL(url).pathname);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+    const insert = h.deps.database.insert.bind(h.deps.database);
+    h.deps.database.insert = ((table: Parameters<typeof insert>[0]) => {
+      if (table === schema.channelMessages) throw new Error('bad row');
+      return insert(table);
+    }) as typeof h.deps.database.insert;
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(closed).toEqual([]);
+    expect(h.logs).toContainEqual([
+      expect.objectContaining({ reason: 'unledgered', providerMessageId: 'effect-out' }),
+      'linq moment: the reply landed; no outbound row, follow-ups skipped',
+    ]);
+    expect(JSON.stringify(closed)).not.toContain(job().channel_message_id);
+  });
+
+  it('still sends the reply plain when Linq refuses the effect', async () => {
+    const h = effectTurn();
+    vi.stubGlobal('fetch', async () => Response.json({ error: { code: 409 } }, { status: 409 }));
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['You are in for swim.']);
+  });
 });
 
 // ── a slow answer: the typing bubble stays up and one holding line goes first ──
@@ -5242,9 +5394,11 @@ describe('the reply row, written to a real database', () => {
       route: ReplyRoute,
       {
         slow = null,
+        now,
         ...options
       }: Parameters<typeof harness>[0] & {
         slow?: 'screen' | 'compose' | null;
+        now?: Date;
       } = {},
     ) {
       const turn = scripted(slow);
@@ -5255,7 +5409,9 @@ describe('the reply row, written to a real database', () => {
       });
       h.deps.database = db.database;
       // The reply rows are stamped by the database's clock, so the turn reads on it too.
-      h.deps.now = () => new Date();
+      // A pinned `now` keeps quiet-hours facts stable (VIL-473).
+      const clock = now ?? new Date();
+      h.deps.now = () => clock;
       const [inbound] = await db.database
         .insert(schema.channelMessages)
         .values({
@@ -5491,6 +5647,94 @@ describe('the reply row, written to a real database', () => {
         expect(next.said).toEqual([]);
         expect(await keptAsks(parent.familyId)).toEqual([]);
         stickerDecide.mockReset();
+      });
+
+      it('a sticker that keeps the reply sends the reply plain, with no effect read', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+        vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        vi.stubEnv('VERCEL_ENV', 'preview');
+        stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: true });
+        effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+        const posted: string[] = [];
+        vi.stubGlobal('fetch', async (url: string) => {
+          posted.push(new URL(url).pathname);
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        effectDecide.mockClear();
+        posted.length = 0;
+
+        const next = await text(
+          parent,
+          'we got in for swim',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('You are in for swim.'),
+            now: new Date('2026-10-28T16:00:00.000Z'),
+          },
+        );
+        vi.unstubAllGlobals();
+
+        // One moment per reply: the sticker peeled, the words go out plain.
+        expect(stickerDecide).toHaveBeenCalled();
+        expect(effectDecide).not.toHaveBeenCalled();
+        expect(posted.filter((path) => path.endsWith('/messages'))).toEqual([]);
+        expect(next.said).toEqual(['You are in for swim.']);
+        stickerDecide.mockReset();
+        effectDecide.mockReset();
+      });
+
+      it('a reply the model chose an iMessage effect for', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        vi.stubEnv('VERCEL_ENV', 'preview');
+        effectDecide.mockResolvedValue({ effect: null });
+        const sent: unknown[] = [];
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+          if (new URL(url).pathname.endsWith('/messages'))
+            sent.push(JSON.parse(String(init?.body)));
+          return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+        const next = await text(
+          parent,
+          'we got in for swim',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('You are in for swim.'),
+            now: new Date('2026-10-28T16:00:00.000Z'),
+          },
+        );
+        vi.unstubAllGlobals();
+
+        expect(effectDecide).toHaveBeenCalledWith({
+          audience: 'direct',
+          parentText: 'we got in for swim',
+          reply: 'You are in for swim.',
+        });
+        expect(sent).toEqual([
+          {
+            message: {
+              parts: [{ type: 'text', value: 'You are in for swim.' }],
+              reply_to: { message_id: 'in-1' },
+              effect: { type: 'screen', name: 'confetti' },
+            },
+          },
+        ]);
+        // The words went out through Linq (asserted above), not the harness transport.
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+        effectDecide.mockReset();
       });
     });
 

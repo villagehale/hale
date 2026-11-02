@@ -1,16 +1,26 @@
-import type { Database } from '@hale/db';
+import type { Database, MedicalReplySourceValue, ReplySourceValue } from '@hale/db';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
+import { parentTimeZoneForOffer } from '~/lib/integrations/email-alert-offer';
+import {
+  type LinqEffectDecider,
+  applyLinqEffect,
+  lastLinqEffectAt,
+  linqEffectHold,
+  linqEffectsEnabled,
+} from './effect';
 import { type LinqStickerDecider, applyLinqSticker, linqStickersEnabled } from './sticker';
 import { applyLinqTapback } from './tapback';
 
 /**
  * The product moment on an iMessage reply: a tapback instead of a throwaway
  * ack, or (VIL-472, flag `LINQ_STICKERS_ENABLED`) a sticker the model chose,
- * peeled onto the parent's message. A miss falls through and the text still
+ * peeled onto the parent's message, or (VIL-473, flag `LINQ_EFFECTS_ENABLED`) the
+ * reply sent with an iMessage effect the model chose. At most one moment per reply:
+ * a peeled sticker means the reply goes plain. A miss falls through and the text still
  * goes out. SMS and email never call Linq from here. A year-find poll is not a
  * reply moment.
  */
@@ -19,6 +29,29 @@ export type LinqMoment =
   | { handled: false }
   | { handled: true; channelMessageId: string; threadBody: string | null };
 
+/**
+ * Linq already accepted this moment (or the POST's outcome is unknowable).
+ * The ledger write failed afterwards. The caller must not send the reply again.
+ */
+export class LinqMomentDeliveredError extends Error {
+  readonly providerMessageId: string | null;
+  readonly threadBody: string | null;
+  /** Set when the outbound row landed and only the audit write failed. */
+  readonly channelMessageId: string | null;
+
+  constructor(
+    providerMessageId: string | null,
+    threadBody: string | null,
+    channelMessageId: string | null,
+  ) {
+    super('linq moment delivered');
+    this.name = 'LinqMomentDeliveredError';
+    this.providerMessageId = providerMessageId;
+    this.threadBody = threadBody;
+    this.channelMessageId = channelMessageId;
+  }
+}
+
 export async function considerLinqReply(
   database: Database,
   args: {
@@ -26,6 +59,10 @@ export async function considerLinqReply(
     inboundBody: string;
     outboundBody: string;
     templateKey: string | null;
+    /** The reply's own provenance. An effect send keeps these on its outbound row. */
+    medicalReplySource?: MedicalReplySourceValue | null;
+    replySource?: ReplySourceValue | null;
+    relatedConversationId?: string | null;
     familyId: string;
     parentUserId: string;
     now: Date;
@@ -36,6 +73,16 @@ export async function considerLinqReply(
       decider: LinqStickerDecider;
       audience: 'direct' | 'group';
       parentAttachments: readonly InboundMediaKind[];
+    };
+    /** What the effect read needs. Absent: no effect is considered, and that is logged
+     * when the flag is on. */
+    effect?: {
+      decider: LinqEffectDecider;
+      audience: 'direct' | 'group';
+      /** Parent-local zone for the quiet-hours fact. Absent: loaded from the user. */
+      timeZone?: string;
+      /** Prior effect in this chat. `undefined` reads send history; `null` means none. */
+      lastEffectAt?: Date | null;
     };
   },
 ): Promise<LinqMoment> {
@@ -58,70 +105,161 @@ export async function considerLinqReply(
     return { handled: true, channelMessageId, threadBody: null };
   }
 
-  if (!linqStickersEnabled()) return { handled: false };
-  const inboundMessageId = args.route.replyToMessageId;
-  if (!args.sticker || !inboundMessageId) {
-    console.info(
-      { reason: args.sticker ? 'no_inbound_message_id' : 'no_decider' },
-      'linq sticker: not considered',
-    );
+  if (linqStickersEnabled()) {
+    const inboundMessageId = args.route.replyToMessageId;
+    if (!args.sticker || !inboundMessageId) {
+      console.info(
+        { reason: args.sticker ? 'no_inbound_message_id' : 'no_decider' },
+        'linq sticker: not considered',
+      );
+    } else {
+      // Stickers stack and a peel cannot be removed, so a re-driven turn whose reply failed
+      // after the peel must not peel a second one onto the same message.
+      const earlier = await database
+        .select({
+          templateKey: schema.channelMessages.templateKey,
+          providerMessageId: schema.channelMessages.providerMessageId,
+          familyId: schema.channelMessages.familyId,
+        })
+        .from(schema.channelMessages)
+        .where(
+          and(
+            eq(schema.channelMessages.familyId, args.familyId),
+            eq(schema.channelMessages.providerMessageId, inboundMessageId),
+            eq(schema.channelMessages.templateKey, 'linq:sticker'),
+          ),
+        )
+        .limit(1);
+      const alreadyPeeled = earlier.some(
+        (row) =>
+          row.templateKey === 'linq:sticker' &&
+          row.providerMessageId === inboundMessageId &&
+          row.familyId === args.familyId,
+      );
+      if (alreadyPeeled) {
+        console.info({ reason: 'already_peeled' }, 'linq sticker: not considered');
+      } else {
+        const sticker = await applyLinqSticker({
+          decider: args.sticker.decider,
+          inboundMessageId,
+          read: {
+            audience: args.sticker.audience,
+            parentText: args.inboundBody,
+            parentAttachments: args.sticker.parentAttachments,
+            reply: args.outboundBody,
+          },
+          fetch: args.fetch,
+        });
+        if (sticker.status === 'peeled') {
+          const channelMessageId = await recordMoment(database, args, {
+            templateKey: 'linq:sticker',
+            actionTaken: 'linq_sticker',
+            providerMessageId: inboundMessageId,
+          });
+          // One moment per reply: the words, if they still go, go plain.
+          if (sticker.sendReply) return { handled: false };
+          return { handled: true, channelMessageId, threadBody: null };
+        }
+      }
+    }
+  }
+
+  if (!linqEffectsEnabled()) return { handled: false };
+  // A reply that already has its own ledger key (a holding line, a flood line,
+  // a handler receipt) keeps that key. An effect would replace it with
+  // `linq:effect`, and the cap or audit that reads the key would miss the reply.
+  if (args.templateKey) {
+    console.info({ reason: 'keyed_reply' }, 'linq effect: not considered');
     return { handled: false };
   }
-  // Stickers stack and a peel cannot be removed, so a re-driven turn whose reply failed
-  // after the peel must not peel a second one onto the same message.
-  const earlier = await database
-    .select({
-      templateKey: schema.channelMessages.templateKey,
-      providerMessageId: schema.channelMessages.providerMessageId,
-      familyId: schema.channelMessages.familyId,
-    })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.familyId, args.familyId),
-        eq(schema.channelMessages.providerMessageId, inboundMessageId),
-        eq(schema.channelMessages.templateKey, 'linq:sticker'),
-      ),
-    )
-    .limit(1);
-  if (
-    earlier.some(
-      (row) =>
-        row.templateKey === 'linq:sticker' &&
-        row.providerMessageId === inboundMessageId &&
-        row.familyId === args.familyId,
-    )
-  ) {
-    console.info({ reason: 'already_peeled' }, 'linq sticker: not considered');
+  if (!args.effect) {
+    console.info({ reason: 'no_decider' }, 'linq effect: not considered');
     return { handled: false };
   }
-  const sticker = await applyLinqSticker({
-    decider: args.sticker.decider,
-    inboundMessageId,
+  const timeZone =
+    args.effect.timeZone ?? (await parentTimeZoneForOffer(database, args.parentUserId));
+  const lastEffectAt =
+    args.effect.lastEffectAt !== undefined
+      ? args.effect.lastEffectAt
+      : await lastLinqEffectAt(database, args.route.chatId);
+  const hold = linqEffectHold({ now: args.now, timeZone, lastEffectAt });
+  if (hold) {
+    console.info({ reason: hold }, 'linq effect: held, reply goes plain');
+    return { handled: false };
+  }
+  const sent = await applyLinqEffect({
+    decider: args.effect.decider,
+    chatId: args.route.chatId,
+    text: args.outboundBody,
+    replyToMessageId: args.route.replyToMessageId,
     read: {
-      audience: args.sticker.audience,
+      audience: args.effect.audience,
       parentText: args.inboundBody,
-      parentAttachments: args.sticker.parentAttachments,
       reply: args.outboundBody,
     },
     fetch: args.fetch,
   });
-  if (sticker.status !== 'peeled') return { handled: false };
-  const channelMessageId = await recordMoment(database, args, {
-    templateKey: 'linq:sticker',
-    actionTaken: 'linq_sticker',
-    providerMessageId: inboundMessageId,
-  });
-  if (sticker.sendReply) return { handled: false };
-  return { handled: true, channelMessageId, threadBody: null };
+  // A decline or a definite refusal did not land. An uncertain POST may have.
+  if (sent.status === 'declined' || sent.status === 'not_sent') return { handled: false };
+  const providerMessageId = sent.status === 'sent' ? sent.providerMessageId : null;
+  const moment = {
+    templateKey: 'linq:effect',
+    actionTaken: 'linq_effect',
+    providerMessageId,
+  };
+  let channelMessageId: string | null = null;
+  try {
+    channelMessageId = await writeMomentRow(database, args, moment);
+    await writeMomentAudit(database, args, channelMessageId, moment.actionTaken);
+  } catch (err) {
+    console.error(
+      {
+        code: err instanceof Error ? err.name : 'unknown',
+        providerMessageId,
+      },
+      'linq effect: delivered; ledger write failed',
+    );
+    throw new LinqMomentDeliveredError(providerMessageId, args.outboundBody, channelMessageId);
+  }
+  return { handled: true, channelMessageId, threadBody: args.outboundBody };
 }
 
 async function recordMoment(
   database: Database,
-  args: { familyId: string; parentUserId: string; route: ReplyRoute; now: Date },
+  args: Parameters<typeof writeMomentRow>[1],
   moment: { templateKey: string; actionTaken: string; providerMessageId: string | null },
 ): Promise<string> {
+  const id = await writeMomentRow(database, args, moment);
+  await writeMomentAudit(database, args, id, moment.actionTaken);
+  return id;
+}
+
+/**
+ * The outbound row. `templateKey` on an effect is `linq:effect`: that marker is
+ * what the 24h cap reads, one column, no join. The reply's own template key,
+ * when it had one, is on the audit so it is not discarded. Medical source,
+ * deflection source and the conversation stay on this row — the safety and
+ * papercut counts read those columns, and an effect must not erase them.
+ */
+async function writeMomentRow(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    route: ReplyRoute;
+    now: Date;
+    templateKey?: string | null;
+    medicalReplySource?: MedicalReplySourceValue | null;
+    replySource?: ReplySourceValue | null;
+    relatedConversationId?: string | null;
+  },
+  moment: { templateKey: string; providerMessageId: string | null },
+): Promise<string> {
   const chatId = args.route.channel === 'imessage' ? args.route.chatId : null;
+  // Only the effect send is the reply itself. A tapback or a sticker is a
+  // reaction on the parent's message, and the reply's sources stay with the
+  // text when that text still goes out.
+  const carriesReply = moment.templateKey === 'linq:effect';
   const [row] = await database
     .insert(schema.channelMessages)
     .values({
@@ -134,17 +272,35 @@ async function recordMoment(
       providerMessageId: moment.providerMessageId,
       providerChatId: chatId,
       status: acceptedStatus('imessage'),
+      medicalReplySource: carriesReply ? (args.medicalReplySource ?? null) : null,
+      replySource: carriesReply ? (args.replySource ?? null) : null,
+      relatedConversationId: carriesReply ? (args.relatedConversationId ?? null) : null,
       sentAt: args.now,
     })
     .returning({ id: schema.channelMessages.id });
   const id = row?.id;
   if (!id) throw new Error('linq moment: channel_messages insert returned no row');
+  return id;
+}
+
+async function writeMomentAudit(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    templateKey?: string | null;
+  },
+  channelMessageId: string,
+  actionTaken: string,
+): Promise<void> {
+  const replyTemplateKey = actionTaken === 'linq_effect' ? (args.templateKey ?? null) : null;
   await database.insert(schema.auditLog).values({
     familyId: args.familyId,
     actor: args.parentUserId,
-    actionTaken: moment.actionTaken,
+    actionTaken,
     targetTable: 'channel_messages',
-    targetId: id,
+    targetId: channelMessageId,
+    // The row's template key is the effect marker. The reply's own key lives here.
+    ...(replyTemplateKey ? { after: { templateKey: replyTemplateKey } } : {}),
   });
-  return id;
 }

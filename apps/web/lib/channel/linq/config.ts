@@ -171,3 +171,13 @@ export function linqExperiencesEnabled(): boolean {
 export function linqGroupLeaveEnabled(): boolean {
   return trimmed('LINQ_GROUP_LEAVE_ENABLED') === 'true';
 }
+
+/**
+ * iMessage screen and bubble effects (VIL-473). On only in a Preview deploy,
+ * and only when the flag is exactly `true` after trimming. Production stays
+ * dark even if the flag is set. Unset, empty, `on`, and `false` stay dark.
+ * Off means the model is never asked and every send stays a plain bubble.
+ */
+export function linqEffectsEnabled(): boolean {
+  return trimmed('LINQ_EFFECTS_ENABLED') === 'true' && process.env.VERCEL_ENV === 'preview';
+}
