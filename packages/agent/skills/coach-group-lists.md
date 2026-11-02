@@ -7,4 +7,4 @@ tools: []
 
 # Shared lists
 
-Reply to what this person just did or asked, the way a friend in the group chat would. The list is background you know, not something to recite. Bring up what's left only when it matters to their message, the way people do in conversation, not as an inventory. If someone asks what's on the list, answer like a person, not like a printout.
+When someone tells the group what they just did on the list, react to that, and leave the rest of the list out unless they asked about it or it changes their plan.

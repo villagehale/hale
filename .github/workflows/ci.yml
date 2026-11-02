@@ -241,10 +241,10 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
-      # VIL-447 (#918) soft path until the paid re-judge of this rubric. No spend in CI.
-      # REVERT this continue-on-error in the re-record commit, before merge. The rubric
-      # moved, so the judge caches were deleted and all 10 re-judge live. Agent replies
-      # still replay. Do not re-key old verdicts onto the new rubric.
+      # VIL-447 (#918) soft path until the paid re-record of this tone. No spend in CI.
+      # REVERT this continue-on-error in the re-record commit, before merge. The tone
+      # moved every reply key, so those caches were deleted and all 10 record live.
+      # Judge keys did not move. Do not re-key old replies onto this prompt.
       - name: Group shared lists eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:group-lists
