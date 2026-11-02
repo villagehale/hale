@@ -2238,7 +2238,7 @@ async function main() {
         guardDeps: makeGuardDeps(auditLog, children),
       });
       } catch (err) {
-        if (err && err.unrecorded) {
+        if (err?.unrecorded) {
           pendingRecord.push({ id: fixture.id, cacheKey: err.cacheKey });
           console.log(
             `UNRECORDED  ${fixture.id}  ${err.cacheKey}  (cached-only soft path until a recording exists)`,
