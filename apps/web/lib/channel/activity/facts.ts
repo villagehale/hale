@@ -19,6 +19,16 @@ export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
           when_evidence: { type: 'string' },
           schedule_kind: { type: 'string', enum: ['hours', 'recurring', 'term'] },
           historical_evidence: { type: 'string' },
+          season: {
+            type: 'string',
+            description:
+              "The season this fact belongs to, in the source's own words. Not a translation.",
+          },
+          occurrence_url: {
+            type: 'string',
+            description:
+              'The page this dated fact was read from, when that page is not source_url.',
+          },
           sessions: {
             type: 'array',
             items: {
@@ -29,6 +39,7 @@ export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
                 start_time: { type: 'string' },
                 end_time: { type: 'string' },
                 timezone: { type: 'string' },
+                occurrence_url: { type: 'string' },
               },
               required: ['evidence', 'date'],
             },
@@ -67,6 +78,8 @@ export interface ActivitySession {
   start_time?: string | null;
   end_time?: string | null;
   timezone?: string | null;
+  /** The page this occurrence was read from, when the model named one. */
+  occurrence_url?: string | null;
 }
 
 export interface ActivityFactEvidence {
@@ -94,6 +107,10 @@ export interface RawActivityFact {
   when?: string | null;
   when_evidence?: string | null;
   schedule_kind?: 'hours' | 'recurring' | 'term' | null;
+  /** Season of this fact, in the source's own words. The model sets it; code does not translate it. */
+  season?: string | null;
+  /** Page this dated fact was read from, when that page is not source_url. */
+  occurrence_url?: string | null;
   historical_evidence?: string | null;
   price?: string | null;
   price_evidence?: string | null;
@@ -234,104 +251,45 @@ export function activityDateRange(
   return null;
 }
 
-const SEASON_WORDS = ['winter', 'spring', 'summer', 'fall', 'autumn'] as const;
-
-function seasonsNamed(text: string): string[] {
-  const found: string[] = [];
-  for (const season of SEASON_WORDS) {
-    if (new RegExp(`\\b${season}\\b`, 'i').test(text)) {
-      found.push(season === 'autumn' ? 'fall' : season);
-    }
-  }
-  return [...new Set(found)];
-}
-
-/** The one season a request names, or null when it names none or more than one. */
-export function requestedSeason(window: string | null): string | null {
-  if (!window) return null;
-  const seasons = seasonsNamed(window);
-  return seasons.length === 1 ? (seasons[0] ?? null) : null;
-}
-
-/** A quote that names a season other than the one the parent asked about. */
-export function quoteOwnsAnotherSeason(
-  quote: string | null | undefined,
-  window: string | null,
+/**
+ * Whether the model's season for this fact is the season the request asked for.
+ *
+ * Both strings are the model's, in whatever language the source and the question
+ * used. A fact labelled `hiver` or `冬季` does not match a fall request. No season
+ * word list is applied.
+ */
+export function seasonMatchesRequest(
+  season: string | null | undefined,
+  window: string | null | undefined,
 ): boolean {
-  const asked = requestedSeason(window);
-  if (!asked || !quote) return false;
-  const named = seasonsNamed(quote);
-  return named.length > 0 && named.some((season) => season !== asked);
-}
-
-const MONTH_NUMBER: Record<string, string> = {
-  january: '01',
-  jan: '01',
-  february: '02',
-  feb: '02',
-  march: '03',
-  mar: '03',
-  april: '04',
-  apr: '04',
-  may: '05',
-  june: '06',
-  jun: '06',
-  july: '07',
-  jul: '07',
-  august: '08',
-  aug: '08',
-  september: '09',
-  sept: '09',
-  sep: '09',
-  october: '10',
-  oct: '10',
-  november: '11',
-  nov: '11',
-  december: '12',
-  dec: '12',
-};
-
-function monthDay(iso: string): string | null {
-  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.slice(5) : null;
-}
-
-/** The first calendar date on a page, as MM-DD. A listing page leads with a different occurrence. */
-export function firstMonthDay(text: string): string | null {
-  const named =
-    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?/i;
-  const iso = /\b20\d{2}-(\d{2})-(\d{2})\b/;
-  const word = named.exec(text);
-  const numeric = iso.exec(text);
-  const wordAt = word?.index ?? Number.POSITIVE_INFINITY;
-  const numericAt = numeric?.index ?? Number.POSITIVE_INFINITY;
-  if (word && wordAt <= numericAt) {
-    const month = MONTH_NUMBER[word[1]!.toLowerCase()];
-    if (!month) return null;
-    return `${month}-${String(Number(word[2])).padStart(2, '0')}`;
-  }
-  if (numeric) return `${numeric[1]}-${numeric[2]}`;
-  return null;
+  const fact = season?.trim().toLowerCase() ?? '';
+  const asked = window?.trim().toLowerCase() ?? '';
+  if (!fact || !asked) return true;
+  return asked.includes(fact) || fact.includes(asked);
 }
 
 /**
  * The page a dated fact was read from.
  *
- * One page containing the quote owns it. Several pages do when a listing's upcoming
- * line repeats a date whose own page was also read: the page whose first date is
- * that occurrence owns it. An ambiguous set does not get the listing URL.
+ * One page containing the quote owns it. Several pages do only when the model
+ * named that page, or when exactly one of them contains the session's ISO date.
+ * Month names are not read.
  */
 export function pageOwningOccurrence(
   pages: readonly { url: string; text: string }[],
   quote: string,
   sessionDate: string,
+  occurrenceUrl?: string | null,
 ): string | null {
-  const day = monthDay(sessionDate);
-  if (!day) return null;
   const holders = pages.filter((page) => quoted(page.text, quote));
   if (holders.length === 0) return null;
-  if (holders.length === 1) return holders[0]!.url;
-  const owners = holders.filter((page) => firstMonthDay(page.text) === day);
-  return owners.length === 1 ? owners[0]!.url : null;
+  if (occurrenceUrl) {
+    const named = holders.find((page) => page.url === occurrenceUrl);
+    if (named) return named.url;
+  }
+  if (holders.length === 1) return holders[0]?.url ?? null;
+  const dated = sessionDate ? holders.filter((page) => page.text.includes(sessionDate)) : [];
+  return dated.length === 1 ? (dated[0]?.url ?? null) : null;
 }
 
 /**
@@ -435,8 +393,8 @@ export function bindActivityFacts(
     const historical =
       (observed.length > 0 && observed.every((session) => session.date < conclusivelyPast)) ||
       quoted(page.text, item.historical_evidence);
-    // A fall request does not own a winter sentence on the same page, or a quote that names both.
-    const foreignSeason = quoteOwnsAnotherSeason(item.when_evidence, window);
+    // The model's season, not a word list. `hiver` or `冬季` is not this fall request.
+    const foreignSeason = !seasonMatchesRequest(item.season, window);
     // A rejected dated session must never escape through a free-form schedule fallback.
     const regular =
       !foreignSeason &&
@@ -453,7 +411,12 @@ export function bindActivityFacts(
     const occurrenceUrls = [
       ...new Set(
         displayedSessions.flatMap((session) => {
-          const owner = pageOwningOccurrence(pages, session.evidence, session.date);
+          const owner = pageOwningOccurrence(
+            pages,
+            session.evidence,
+            session.date,
+            session.occurrence_url ?? item.occurrence_url,
+          );
           return owner ? [owner] : [];
         }),
       ),
@@ -468,11 +431,7 @@ export function bindActivityFacts(
           )
           .join('; ')
       : regular;
-    const season = foreignSeason
-      ? (seasonsNamed(item.when_evidence ?? '').find(
-          (named) => named !== requestedSeason(window),
-        ) ?? null)
-      : requestedSeason(window);
+    const season = item.season?.trim() || null;
     const evidence: ActivityFactEvidence = {
       program: item.name_evidence,
       age: age ? item.age_evidence! : null,
@@ -485,6 +444,7 @@ export function bindActivityFacts(
       season,
     };
     if (
+      !foreignSeason &&
       age &&
       stageCompatible &&
       when &&

@@ -124,6 +124,8 @@ describe('search_village uses this operation’s live evidence', () => {
       references: [{ ...facts, ref: linkRef(sourceUrl) }],
       checkedSources: [{ ref: linkRef(sourceUrl) }],
     });
+    expect(links.every((link) => link.title !== 'Activity source')).toBe(true);
+    expect(JSON.stringify(result)).not.toContain('Activity source');
     expect(JSON.stringify(result)).not.toContain('$140');
     expect(JSON.stringify(result)).not.toContain(sourceUrl);
     const refs = links.map(({ url }) => ({ url, ref: linkRef(url) }));
@@ -221,7 +223,9 @@ describe('search_village uses this operation’s live evidence', () => {
     const result = await search(familyId, {
       find: async () => ({ found: true, picks: [{ ...pick, when: null }] }),
     });
-    expect(result.candidates[0]?.when).toBe('Current time could not be verified');
+    expect(result.candidates[0]?.when).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain('Current time could not be verified');
+    expect(JSON.stringify(result)).not.toContain('Activity source');
   });
 
   it('does not search for a teen-only household', async () => {

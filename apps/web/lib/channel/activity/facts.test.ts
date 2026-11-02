@@ -326,7 +326,16 @@ describe('activity facts stay attached to their source', () => {
       age_evidence: 'ages 2-5',
       price_evidence: 'not on the page',
       source_url: listing,
-      sessions: [{ date: '2026-10-30', start_time: '10:30', end_time: '11:00', evidence: oct30 }],
+      occurrence_url: occurrence,
+      sessions: [
+        {
+          date: '2026-10-30',
+          start_time: '10:30',
+          end_time: '11:00',
+          evidence: oct30,
+          occurrence_url: occurrence,
+        },
+      ],
     };
     const result = bindActivityFacts(
       [item],
@@ -334,36 +343,33 @@ describe('activity facts stay attached to their source', () => {
       'October 2026',
       now,
     );
-    expect(pageOwningOccurrence(pages, oct30, '2026-10-30')).toBe(occurrence);
+    expect(pageOwningOccurrence(pages, oct30, '2026-10-30')).toBeNull();
+    expect(pageOwningOccurrence(pages, oct30, '2026-10-30', occurrence)).toBe(occurrence);
     expect(result.picks[0]?.source_url).toBe(occurrence);
     expect(result.picks[0]?.evidence.occurrenceUrl).toBe(occurrence);
   });
 
-  it('keeps a winter quote off a fall pick and tags the quote with its season and page', () => {
-    const fall = 'Fall runs Sept 12 to Dec 18.';
-    const winter = 'Winter session Jan 2 to Apr 1. Winter registration begins Oct 26.';
+  it('keeps another season off a fall pick using the model field, in any language', () => {
+    const fall = 'Session du 12 sept. au 18 dec.';
+    const winter = 'Session du 2 janv. au 1 avr.';
     const page = `Parent and Tot. ${fall} ${winter}`;
-    const item: RawActivityFact = {
+    for (const season of ['hiver', '冬季', 'winter']) {
+      const item: RawActivityFact = {
+        ...raw,
+        sessions: [],
+        season,
+        when: winter,
+        schedule_kind: 'recurring',
+        when_evidence: winter,
+      };
+      const other = bindActivityFacts([item], [{ url, text: `${text} ${page}` }], 'this fall', now);
+      expect(other.picks, season).toEqual([]);
+      expect(other.references[0], season).toMatchObject({ when: winter, season, sourceUrl: url });
+    }
+    const fallItem: RawActivityFact = {
       ...raw,
       sessions: [],
-      when: winter,
-      schedule_kind: 'term',
-      when_evidence: winter,
-    };
-    const winterOnly = bindActivityFacts(
-      [item],
-      [{ url, text: `${text} ${page}` }],
-      'this fall',
-      now,
-    );
-    expect(winterOnly.picks).toEqual([]);
-    expect(winterOnly.references[0]).toMatchObject({
-      when: winter,
-      season: 'winter',
-      sourceUrl: url,
-    });
-    const fallItem: RawActivityFact = {
-      ...item,
+      season: 'fall',
       when: fall,
       when_evidence: fall,
       schedule_kind: 'recurring',

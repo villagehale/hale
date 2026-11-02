@@ -1305,15 +1305,19 @@ async function main() {
         failures.push('travel_dates_past');
       } else {
         try {
-          brief = await renderTravelBrief({
-            city: fixture.town,
-            startsOn: range.start,
-            endsOn: range.end,
-            childNames: [],
-            teenNames: [],
-            picks: kept,
-            references,
-          });
+          brief = await renderTravelBrief(
+            {
+              city: fixture.town,
+              startsOn: range.start,
+              endsOn: range.end,
+              childNames: [],
+              teenNames: [],
+              picks: kept,
+              references,
+            },
+            // Cached-only: a missing writer recording sends nothing. No live call.
+            { write: async () => null },
+          );
         } catch (err) {
           failures.push(`travel_copy:${err instanceof Error ? err.message : 'refused'}`);
         }

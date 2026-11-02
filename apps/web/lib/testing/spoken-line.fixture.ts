@@ -129,6 +129,25 @@ function render(
       );
     case 'group_travel_opening':
       return `Trip: ${facts.city}, ${facts.days}. A couple of things on for ${facts.kids}:`;
+    case 'travel_source_listings': {
+      const picks = JSON.parse(facts.picks || '[]') as {
+        name: string;
+        when?: string | null;
+        price?: string | null;
+      }[];
+      const references = JSON.parse(facts.references || '[]') as { name: string; source: string }[];
+      const opening =
+        facts.audience === 'group'
+          ? `Trip: ${facts.city}, ${facts.days}. for ${facts.kids}:`
+          : `You're in ${facts.city} ${facts.days}. for ${facts.kids}:`;
+      const lines = [opening];
+      for (const item of picks) {
+        const details = [item.when, item.price].filter((part): part is string => Boolean(part));
+        lines.push(details.length > 0 ? `${item.name} - ${details.join(', ')}.` : `${item.name}.`);
+      }
+      for (const reference of references) lines.push(`${reference.name} (${reference.source}).`);
+      return lines.join(' ');
+    }
     case 'group_departure': {
       const who = facts.name?.trim()
         ? facts.name

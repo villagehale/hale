@@ -303,6 +303,8 @@ const composeSchema = z.object({
         when: z.string().nullish(),
         when_evidence: z.string().nullish(),
         schedule_kind: z.enum(['hours', 'recurring', 'term']).nullish(),
+        season: z.string().nullish(),
+        occurrence_url: z.string().nullish(),
         historical_evidence: z.string().nullish(),
         sessions: z
           .array(
@@ -312,6 +314,7 @@ const composeSchema = z.object({
               start_time: z.string().nullish(),
               end_time: z.string().nullish(),
               timezone: z.string().nullish(),
+              occurrence_url: z.string().nullish(),
             }),
           )
           .nullish(),

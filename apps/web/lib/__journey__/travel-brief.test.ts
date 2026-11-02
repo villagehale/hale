@@ -629,7 +629,7 @@ describe(
       const sentReferences = (found.references ?? []).filter((reference) => named(reference.name));
       expect(sentPicks.map((pick) => pick.name)).toEqual([picks[0]?.name]);
       expect(sentReferences.map((reference) => reference.name)).toEqual([picks[1]?.name]);
-      expect(body).toContain('dates and age fit not confirmed for your trip');
+      expect(body).not.toContain('dates and age fit not confirmed for your trip');
       expect(body).not.toContain(picks[1]?.price);
 
       // NOTHING WAS INVENTED: every price figure in the body is one a stored pick carries
@@ -644,7 +644,7 @@ describe(
       ).toBe(true);
 
       // It claims nothing about anyone having been, and it asks nothing.
-      expect(body).toContain('These are source listings, not confirmed plans.');
+      expect(body).not.toContain('These are source listings, not confirmed plans.');
       expect(body).not.toContain('?');
       expect(body).not.toContain('Reply STOP');
       expect(body).not.toContain('STOP to opt out.');

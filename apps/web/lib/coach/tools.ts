@@ -54,7 +54,7 @@ interface OfferableActivity {
   kind: string;
   summary: string;
   venue?: string;
-  when: string;
+  when?: string;
   /** A ref for the row's own page, never the URL. The one id the model sees, and on
    * purpose: the reply cites it and code attaches that exact page, so an invented ref
    * attaches nothing and a typed URL is dropped (channel/coach/activity-links.ts). */
@@ -191,7 +191,7 @@ export function searchVillageTool(
           kind: 'activity',
           summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
           venue: pick.sourceName,
-          when: pick.when ?? 'Current time could not be verified',
+          ...(pick.when ? { when: pick.when } : {}),
           // A ref, not the page: the reply cites it and code attaches the URL.
           ...(pick.sourceUrl ? { ref: linkRef(pick.sourceUrl) } : {}),
           ...(pick.evidence ? { evidence: pick.evidence } : {}),
@@ -240,7 +240,7 @@ export function searchVillageTool(
           url: reference.sourceUrl,
         })),
         ...(found.checkedSources ?? []).map((url) => ({
-          title: input.query ?? 'Activity source',
+          title: url,
           url,
         })),
       ]);

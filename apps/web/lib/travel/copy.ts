@@ -6,6 +6,7 @@ import { childPhrase } from '~/lib/channel/checkin/copy';
 import { groupTravelBriefOpening } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { type SpokenLineWriter, speak } from '~/lib/channel/spoken-line';
 
 /**
  * THE ONE TEXT A TRIP GETS, and it is DETERMINISTIC.
@@ -195,26 +196,69 @@ export interface TravelBriefRender {
  * is not tidiness: a cut that lands inside "USD 2" publishes a wrong price. A second pick
  * that would push past the ceiling is dropped entire.
  */
-export async function renderTravelBrief(input: TravelBriefInput): Promise<TravelBriefRender> {
+export async function renderTravelBrief(
+  input: TravelBriefInput,
+  writer: Pick<SpokenLineWriter, 'write'> = { write: (request) => speak(request) },
+): Promise<TravelBriefRender> {
   const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
   const kids = childPhrase([...input.childNames]);
-  const provenance = input.references?.length
-    ? 'These are source listings, not confirmed plans.'
-    : PROVENANCE;
-  let opening = input.forGroup
+  const rendered: ActivityPick[] = [];
+  const renderedReferences: ActivityReference[] = [];
+  for (const pick of input.picks.slice(0, SLOTS_IN_TEXT)) rendered.push(pick);
+  for (const reference of (input.references ?? []).slice(0, SLOTS_IN_TEXT - rendered.length)) {
+    renderedReferences.push(reference);
+  }
+
+  if (renderedReferences.length > 0) {
+    const written = await writer.write({
+      purpose: 'travel_source_listings',
+      language: null,
+      facts: {
+        city: input.city,
+        days: dayPhrase,
+        kids,
+        audience: input.forGroup ? 'group' : 'parent',
+        picks: JSON.stringify(
+          rendered.map((pick) => ({
+            name: pick.name,
+            when: pick.when,
+            price: pick.price,
+            source: pick.sourceName,
+          })),
+        ),
+        references: JSON.stringify(
+          renderedReferences.map((reference) => ({
+            name: reference.name,
+            source: reference.sourceName,
+            status: reference.status,
+          })),
+        ),
+      },
+    });
+    if (!written) throw new Error('travel brief copy refused: model_unreachable');
+    const violations = travelBriefViolations(written, {
+      dayPhrase,
+      rendered,
+      renderedReferences,
+      teenNames: input.teenNames,
+    });
+    if (violations.length > 0) {
+      throw new Error(`travel brief copy refused: ${violations.join(', ')}`);
+    }
+    return { body: written, rendered, renderedReferences };
+  }
+
+  const provenance = PROVENANCE;
+  const opening = input.forGroup
     ? await groupTravelBriefOpening(input.city, dayPhrase, kids)
     : `You're in ${input.city} ${dayPhrase}. A couple of things on for ${kids}:`;
   if (!opening) {
     throw new Error('travel brief copy refused: model_unreachable');
   }
-  if (input.references?.length) {
-    opening = opening.replace('A couple of things on', 'Places to check');
-  }
 
-  const rendered: ActivityPick[] = [];
-  const renderedReferences: ActivityReference[] = [];
   let body = opening;
-  for (const pick of input.picks.slice(0, SLOTS_IN_TEXT)) {
+  const fitted: ActivityPick[] = [];
+  for (const pick of rendered) {
     const candidate = `${body} ${renderPick(pick)}`;
     // Measured with the closing sentence already counted, so the provenance line can never
     // be the thing that pushes a sent body over the ceiling. The opt-out line is not
@@ -223,30 +267,18 @@ export async function renderTravelBrief(input: TravelBriefInput): Promise<Travel
       break;
     }
     body = candidate;
-    rendered.push(pick);
-  }
-  for (const reference of (input.references ?? []).slice(0, SLOTS_IN_TEXT - rendered.length)) {
-    const caveat =
-      reference.status === 'historical'
-        ? 'older listing; not confirmed for your trip'
-        : 'dates and age fit not confirmed for your trip';
-    const candidate = `${body} ${reference.name} (${reference.sourceName}): ${caveat}.`;
-    if (smsSegments(withOptOut(`${candidate} ${provenance}`, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
-      break;
-    }
-    body = candidate;
-    renderedReferences.push(reference);
+    fitted.push(pick);
   }
   body = `${body} ${provenance}`;
 
   const violations = travelBriefViolations(body, {
     dayPhrase,
-    rendered,
+    rendered: fitted,
     renderedReferences,
     teenNames: input.teenNames,
   });
   if (violations.length > 0) {
     throw new Error(`travel brief copy refused: ${violations.join(', ')}`);
   }
-  return { body, rendered, renderedReferences };
+  return { body, rendered: fitted, renderedReferences };
 }

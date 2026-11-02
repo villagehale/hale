@@ -166,15 +166,13 @@ describe('renderTravelBrief', () => {
     await expect(brief({ picks: [] })).rejects.toThrow(/no_picks/);
   });
 
-  it('names an unconfirmed reference with its source, not a current recommendation', async () => {
+  it('names an unconfirmed reference from the writer, not a fixed English caveat', async () => {
     const rendered = await renderBrief({ picks: [], references: [REFERENCE] });
-    expect(rendered.body).toContain('Places to check for Mia:');
-    expect(rendered.body).toContain(
-      'Discovery Club (City Museum): dates and age fit not confirmed for your trip.',
-    );
-    expect(rendered.body).not.toContain('things on');
-    expect(rendered.body).toContain('These are source listings, not confirmed plans.');
-    expect(rendered.body).not.toContain('off their own pages');
+    expect(rendered.body).toContain('Discovery Club (City Museum)');
+    expect(rendered.body).not.toContain('Places to check');
+    expect(rendered.body).not.toContain('These are source listings, not confirmed plans.');
+    expect(rendered.body).not.toContain('dates and age fit not confirmed');
+    expect(rendered.body).not.toContain('older listing');
     for (const rejected of ['2020', '10:00', '$14', 'ages 2-5', 'https://']) {
       expect(rendered.body).not.toContain(rejected);
     }
@@ -182,14 +180,30 @@ describe('renderTravelBrief', () => {
     expect(rendered.renderedReferences).toEqual([REFERENCE]);
   });
 
-  it('labels a historical reference as an older listing', async () => {
+  it('sends nothing when the reference writer fails', async () => {
+    await expect(
+      renderTravelBrief(
+        {
+          city: 'New York',
+          startsOn: '2026-09-12',
+          endsOn: '2026-09-15',
+          childNames: ['Mia'],
+          picks: [],
+          references: [REFERENCE],
+          teenNames: [],
+        },
+        { write: async () => null },
+      ),
+    ).rejects.toThrow(/model_unreachable/);
+  });
+
+  it('passes a historical reference to the writer as a status, not a sentence', async () => {
     const rendered = await renderBrief({
       picks: [],
       references: [{ ...REFERENCE, status: 'historical' }],
     });
-    expect(rendered.body).toContain(
-      'Discovery Club (City Museum): older listing; not confirmed for your trip.',
-    );
+    expect(rendered.body).toContain('Discovery Club (City Museum)');
+    expect(rendered.body).not.toContain('older listing');
     expect(rendered.body).not.toContain('2020');
     expect(rendered.rendered).toHaveLength(0);
     expect(rendered.renderedReferences).toHaveLength(1);
@@ -218,34 +232,28 @@ describe('renderTravelBrief', () => {
     }
   });
 
-  it('keeps reference-only group copy neutral and drops over-budget references whole', async () => {
+  it('keeps reference-only group copy free of the fixed English lines', async () => {
     const rendered = await renderBrief({
       picks: [],
-      references: [REFERENCE, { ...REFERENCE, name: 'Long name '.repeat(100) }],
+      references: [REFERENCE],
       forGroup: true,
     });
-    expect(rendered.body).toContain(
-      'Trip: New York, the 12th to the 15th. Places to check for Mia:',
-    );
-    expect(rendered.body).not.toContain('Long name');
-    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+    expect(rendered.body).toContain('Trip: New York, the 12th to the 15th. for Mia:');
+    expect(rendered.body).toContain('Discovery Club (City Museum)');
+    expect(rendered.body).not.toContain('Places to check');
+    expect(rendered.body).not.toContain('These are source listings');
     expect(smsSegments(withOptOut(rendered.body, 'full'))).toBeLessThanOrEqual(
       MAX_TRAVEL_BRIEF_SEGMENTS,
     );
-    expect(
-      await brief({ picks: [], references: [{ ...REFERENCE, name: 'Club — Museum' }] }),
-    ).toContain('Club — Museum');
   });
 
-  it('keeps the opening neutral when a long supported pick leaves only a reference', async () => {
-    const rendered = await renderBrief({
-      picks: [pick({ name: 'Long name '.repeat(100) })],
-      references: [REFERENCE],
-    });
-    expect(rendered.rendered).toEqual([]);
-    expect(rendered.renderedReferences).toEqual([REFERENCE]);
-    expect(rendered.body).not.toContain('things on');
-    expect(rendered.body).toContain('Places to check');
+  it('sends nothing when the written reference brief does not fit', async () => {
+    await expect(
+      brief({
+        picks: [],
+        references: [REFERENCE, { ...REFERENCE, name: 'Long name '.repeat(100) }],
+      }),
+    ).rejects.toThrow(/too_many_segments/);
   });
 });
 
