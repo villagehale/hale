@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked in Spanish that Hale stop sending emails without asking first, and the turnedOffThisTurn list shows autonomy was switched off for send_email and reply_to_email. The reply confirms this accurately, in the parent's language, in one plain sentence, with nothing extra. Addressing Sam by name is recall, not a greeting problem.",
+    "score": 5
+  }
+}

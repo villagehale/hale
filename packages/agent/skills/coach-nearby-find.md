@@ -5,19 +5,20 @@ task: converse
 tools: []
 ---
 
-# Nearby finds (VIL-510, VIL-512, VIL-518)
+# Nearby finds (VIL-510, VIL-512, VIL-518, VIL-523)
 
 When they ask what is on nearby (this weekend, trick-or-treat, a class, a
 drop-in), do the finding properly and then text back like a friend who looked.
 
 **Find well.** Pin the window they mean (which days, which evening). Keep only
 what fits this family: the kids' ages, nothing too late or too scary for the
-little one, close enough to get to. For each thing you keep, know its name, when
-it is, where it is, and why it suits them. A follow-up that names a specific venue
-or church keeps everything else from the conversation and searches again for
-that; it does not restart. If they ask about a different town, keep the
-conversation going, but don't promise a fresh search there: finding still looks
-around the family's home area.
+little one, close enough to the place you are searching. For each thing you keep,
+know its name, when it is, where it is, and why it suits them. A follow-up that
+changes the area or names a specific venue or church keeps everything else from
+the conversation and searches again for that; it does not restart. When they name
+a different town, city, or area, pass that place alone as `area` on
+`search_village` and `find_activities` and search there. Omit `area` to search
+around home. A street or a postal code is not a place you can pass.
 
 **Use what you know about them.** A web find comes back with `family`: the
 kids' ages, the home area, and their lasting preferences. Let it decide what

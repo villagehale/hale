@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgdKDmGwciwKEPYwCX4XX",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Waking every night at 8 is less common than it is for little kids, but it happens, and it's usually something you can work on. A good first thing to try is a steady wind-down. Screens off an hour before bed, the same bedtime every night, and a short chat about the day before lights out. Worries from school or friends often show up at 2am. If it keeps going or she seems really worn out, mention it to her doctor."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1175,
+      "cache_read_input_tokens": 22369,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1175,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 127,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2128
+}

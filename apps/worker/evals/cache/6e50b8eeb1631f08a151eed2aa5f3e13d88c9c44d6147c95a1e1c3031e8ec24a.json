@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The switch-off really happened this turn: turnedOffThisTurn lists both send_email and reply_to_email. So 'Done' is true and not an overclaim. The reply then states plainly that Hale will show each email before it goes out, which matches asking before each one. It is short and exact, with no greeting, sign-off or extra question.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking first. The autonomy switch was turned off this turn for send_email and reply_to_email, so saying it is done is true. The reply is in the parent's language, short and exact. Opening with \"Listo, Sam.\" uses the parent's name, which is allowed, and works as a plain confirmation rather than a greeting.",
+    "score": 5
+  }
+}

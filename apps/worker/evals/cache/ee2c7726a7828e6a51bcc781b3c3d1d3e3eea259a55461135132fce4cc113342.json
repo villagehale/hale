@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy for sending and replying to email was turned off this turn, so 'Done' is true. The reply restates the new behaviour (ask before each email) accurately, plainly and briefly, with no greeting, sign-off or extra question.",
+    "score": 5
+  }
+}

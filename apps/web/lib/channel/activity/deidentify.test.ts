@@ -220,4 +220,52 @@ describe('the shape of what may be sent', () => {
     // The search query must not name a town by a spelling the radar never uses.
     expect(townFor('whitchurch_stouffville')).toBe('Stouffville');
   });
+
+  it('keeps the home town when the parent did not name another place', () => {
+    expect(deidentifyActivityQuery({ ...base, subject: 'story time' })).toMatchObject({
+      ok: true,
+      query: { town: 'Halton Hills' },
+    });
+    expect(deidentifyActivityQuery({ ...base, subject: 'story time', area: '   ' })).toMatchObject({
+      ok: true,
+      query: { town: 'Halton Hills' },
+    });
+  });
+
+  it('searches the town the parent named instead of the home geocode', () => {
+    expect(
+      deidentifyActivityQuery({ ...base, subject: 'trick or treat', area: 'Oakville' }),
+    ).toMatchObject({ ok: true, query: { town: 'Oakville', subject: 'trick or treat' } });
+  });
+
+  it('refuses a street or postal code as the place and does not fall back to home', () => {
+    for (const area of ['L7G 4A1', '42 Wallace St', 'Oakville L6H']) {
+      const result = deidentifyActivityQuery({ ...base, subject: 'story time', area });
+      expect(result).toEqual({ ok: false, refusal: 'area_unusable' });
+    }
+    expect(refusalSentence('area_unusable')).not.toMatch(/Wallace|L7G|L6H/);
+  });
+
+  it('refuses an unnumbered street and still accepts a town, including St. Catharines', () => {
+    for (const area of ['Wallace St', 'Bayview Drive', 'Main Street', 'Kingston Rd']) {
+      expect(deidentifyActivityQuery({ ...base, subject: 'story time', area })).toEqual({
+        ok: false,
+        refusal: 'area_unusable',
+      });
+    }
+    for (const area of ['Oakville', 'Kingston', 'St. Catharines']) {
+      expect(deidentifyActivityQuery({ ...base, subject: 'story time', area })).toMatchObject({
+        ok: true,
+        query: { town: area },
+      });
+    }
+  });
+
+  it('refuses a place that names someone in the household', () => {
+    expect(deidentifyActivityQuery({ ...base, subject: 'story time', area: 'Noah' })).toEqual({
+      ok: false,
+      refusal: 'area_names_a_person',
+    });
+    expect(refusalSentence('area_names_a_person')).not.toContain('Noah');
+  });
 });

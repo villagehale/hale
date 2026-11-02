@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It correctly resolves the single soccer event, drafts the move, and asks in plain words whether to go ahead, with no YES keyword. One small blemish: the 'Aug 8' date is not in the week rows and is borrowed from an unrelated offerable listing. It is consistent, but it is an extra detail not traceable to the schedule itself.",
+    "score": 4
+  }
+}
