@@ -87,6 +87,7 @@ const SAMPLE: OpsDailyReport = {
     },
   },
   linqChatIds: 47,
+  queue: { readable: true, expiredActive: 1, unfinished: 4, oldestSeconds: 2520 },
 };
 
 const ZERO: OpsDailyReport = {
@@ -139,6 +140,7 @@ const ZERO: OpsDailyReport = {
     },
   },
   linqChatIds: 0,
+  queue: { readable: true, expiredActive: 0, unfinished: 0, oldestSeconds: null },
 };
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -146,7 +148,7 @@ const LONG_DIGITS = /\d{7,}/;
 const NON_ASCII = /[^ -~\n]/;
 
 describe('composeOpsDailyPost', () => {
-  it('renders a day of traffic as seventeen ASCII lines of counts', () => {
+  it('renders a day of traffic as eighteen ASCII lines of counts', () => {
     expect(composeOpsDailyPost(SAMPLE)).toBe(
       [
         'Hale daily | 24h to 2026-10-12 13:00 UTC | real families 7 | excluded 3',
@@ -166,6 +168,7 @@ describe('composeOpsDailyPost', () => {
         'Unmet intents (7d): capability_booking 3, domain_medical_records 1',
         'Papercuts (7d): unmet 4 | medical fallback 1 | reply fallback 2 | voice fallback 0 | turn failures 1',
         'Linq chat IDs (DB): 47 of 200',
+        'Inbound queue: stalled | expired-active 1 | unfinished 4 | oldest 42m00s',
       ].join('\n'),
     );
   });
@@ -190,6 +193,7 @@ describe('composeOpsDailyPost', () => {
         'Unmet intents (7d): none',
         'Papercuts (7d): unmet 0 | medical fallback 0 | reply fallback 0 | voice fallback 0 | turn failures 0',
         'Linq chat IDs (DB): 0 of 200',
+        'Inbound queue: clear',
       ].join('\n'),
     );
   });
@@ -239,6 +243,25 @@ describe('composeOpsDailyPost', () => {
     expect(text).toContain(
       'Unmet intents (7d): lane_a 1, lane_b 1, lane_c 1, lane_d 1, lane_e 1 (+2 more)',
     );
+  });
+
+  it('names a stalled inbound queue, a short backlog, and an unreadable one', () => {
+    const stalled = composeOpsDailyPost(SAMPLE);
+    expect(stalled).toContain(
+      'Inbound queue: stalled | expired-active 1 | unfinished 4 | oldest 42m00s',
+    );
+    const backlog = composeOpsDailyPost({
+      ...ZERO,
+      queue: { readable: true, expiredActive: 0, unfinished: 2, oldestSeconds: 30 },
+    });
+    expect(backlog).toContain('Inbound queue: expired-active 0 | unfinished 2 | oldest 30s');
+    expect(backlog).not.toContain('stalled');
+    const unread = composeOpsDailyPost({
+      ...ZERO,
+      queue: { readable: false, expiredActive: 0, unfinished: 0, oldestSeconds: null },
+    });
+    expect(unread).toContain('Inbound queue: unreadable');
+    expect(unread).not.toContain('Inbound queue: clear');
   });
 
   it('redacts a reason or a code that carries a phone-length digit run', () => {

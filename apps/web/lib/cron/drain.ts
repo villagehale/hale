@@ -40,6 +40,7 @@ import {
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import type { LoopMessage } from '~/lib/channel/types';
 import { POLICY_VERSION } from '~/lib/consent';
+import { bindInboundQueue } from '~/lib/cron/singleton-fetch';
 import { queueSchema } from '~/lib/preview/family-scope';
 
 /**
@@ -117,12 +118,13 @@ const BATCH_SIZE = 10;
 /**
  * The inbound queue is fetched with the FULL batch window, on purpose.
  *
- * pg-boss gates a singleton-policy queue per key INSIDE the fetched batch (plans.js
- * fetchNextJob: LIMIT first, then one row per singleton_key), so a one-row window that
- * lands on a key whose earlier job is still active returns nothing at all — and the
- * whole queue, the canary included, sits behind it. Observed 2026-09-17 04:43–04:49 with a
- * window of one: four turns and the canary stayed `created` while the minute cron logged
- * processed: 0. Ten is the window that has drained this queue for months.
+ * pg-boss 10.4.2 gates a singleton key only inside the fetched batch, and a key that
+ * is already active makes the batch UPDATE raise 23505. The library swallows that
+ * and returns no rows — every other family in the batch included. Observed on
+ * Preview 2026-11-01: one expired active job, drains logging processed: 0, until
+ * someone called /api/cron/queue-maintenance. The production boss does not use that
+ * fetch for this queue (singleton-fetch.ts skips held keys first, one job at a
+ * time). Ten is still the window: one pass can start a turn for up to ten parents.
  *
  * A run works its batch one turn at a time. That is safe again because a kicked run no
  * longer lives only as long as the kick (route.ts answers 202 and works in after()), so a
@@ -152,6 +154,13 @@ export interface DrainBoss {
   fetch<T>(name: string, options: { batchSize: number }): Promise<Array<{ id: string; data: T }>>;
   complete(name: string, id: string): Promise<void>;
   fail(name: string, id: string, data: object): Promise<void>;
+  /**
+   * Fail or retry active jobs whose expire_in has elapsed, and return how many
+   * inbound jobs were in that state. pg-boss only does this from maintain();
+   * the drain calls it itself so a stuck turn does not wait on
+   * /api/cron/queue-maintenance (VIL-535).
+   */
+  expire(): Promise<number>;
 }
 
 export interface DrainHandlers {
@@ -216,6 +225,9 @@ export interface DrainSummary {
   processed: number;
   failed: number;
   dropped: number;
+  /** Inbound jobs found active past their expiry, then reaped, before this run
+   * fetched. Zero means the sweep looked and found none. */
+  expiredActive: number;
 }
 
 /**
@@ -716,9 +728,12 @@ export async function drainHotQueues(
     deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,
   });
 
+  // Before any fetch. An expired active singleton key otherwise makes pg-boss's
+  // own fetch return an empty batch for every family (VIL-535).
+  const expiredActive = await deps.boss.expire();
   const startedMs = deps.now();
   const deadlineMs = startedMs + WALL_CLOCK_BUDGET_MS;
-  const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0 };
+  const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0, expiredActive };
 
   const slice = options.queues;
   for (const step of DRAIN_PLAN) {
@@ -764,8 +779,10 @@ export function isConnectionExhaustion(err: unknown): boolean {
  * TRANSACTION pooler (port 6543) breaks. We connect via DATABASE_DIRECT_URL —
  * the direct/session 5432 URL already used for DDL/migrations — falling back to
  * DATABASE_URL only when it is unset. `supervise: false` (recipe #1): no
- * background maintenance loop in the drain function; the separate
- * queue-maintenance cron owns boss.maintain().
+ * background maintenance loop in the drain function. The run calls
+ * `boss.expire()` once before it fetches, so a stuck active job is failed or
+ * retried without waiting for the queue-maintenance cron. That cron still owns
+ * archive and purge, on the schedule in vercel.json — this does not change it.
  */
 export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSummary> {
   const connectionString = process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL;
@@ -848,10 +865,22 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
     max: 2,
   });
   await boss.start();
+  const inbound = bindInboundQueue(boss);
   try {
     return await drainHotQueues(
       {
-        boss: boss as unknown as DrainBoss,
+        boss: {
+          createQueue: (name, options) => boss.createQueue(name, options as never),
+          updateQueue: (name, options) => boss.updateQueue(name, options as never),
+          fetch: (name, options) => inbound.fetch(name, options),
+          complete: async (name, id) => {
+            await boss.complete(name, id);
+          },
+          fail: async (name, id, data) => {
+            await boss.fail(name, id, data);
+          },
+          expire: () => inbound.expire(),
+        },
         handlers: {
           runOrchestrator: (job) =>
             runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement, sendEmail }),

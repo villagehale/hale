@@ -2,11 +2,12 @@ import PgBoss from 'pg-boss';
 import { queueSchema } from '~/lib/preview/family-scope';
 
 /**
- * pg-boss queue maintenance (recipe #2, NON-OPTIONAL). The Vercel drain runs
- * pg-boss with supervision off, so nothing else expires stuck `active` jobs or
- * archives completed ones. Without periodic maintenance a
- * pipeline that crashed mid-job leaks an `active` row forever and that job never
- * re-runs. This runs boss.maintain() on a schedule to reap them.
+ * pg-boss queue maintenance (recipe #2, NON-OPTIONAL). The drain runs pg-boss
+ * with supervision off and calls `boss.expire()` itself before each fetch, so a
+ * stuck `active` job is failed or retried without waiting for this cron. This
+ * run still calls `boss.maintain()` — that expire, plus archive and purge — on
+ * the schedule in vercel.json. Without the archive half, completed rows would
+ * accumulate. The production cron schedule is unchanged.
  *
  * Same connection choice as the drain (recipe #4): the direct/session 5432 URL,
  * because pg-boss's maintenance uses prepared statements the 6543 transaction

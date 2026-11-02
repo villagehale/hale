@@ -45,6 +45,11 @@ export const INBOUND_TURN_QUEUES: readonly string[] = [CHANNEL_MESSAGE_RECEIVED_
  * expiry constant by every route that approves an action, and inbound-deps pulls
  * a db handle and a queue client — an import edge between them would put both on that
  * path for the sake of one string.
+ *
+ * The key on each job is per parent, not one key for the queue (inbound-deps.ts).
+ * A single shared key is a global lock: one active job, expired or not, is the only
+ * job the queue can run. Per parent keeps that parent's texts in order and lets
+ * every other parent — including a co-parent in the same family — run beside them.
  */
 export const CHANNEL_MESSAGE_RECEIVED_POLICY = 'singleton';
 
