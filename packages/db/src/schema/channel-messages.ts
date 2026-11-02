@@ -80,7 +80,7 @@ export type UnmetIntentCategory = (typeof UNMET_INTENT_CATEGORIES)[number];
 
 /**
  * Where the words in a medical-symptom answer came from: the composed, searched reply, or
- * the fixed 811/911 line taken after a live attempt and a retry both failed.
+ * the model-written health line (column value `fixed`) taken after a live attempt and a retry both failed. There is no preset sentence.
  *
  * THIS ARRAY IS THE SOURCE, on the same terms as the unmet vocabulary above: the composer
  * derives its own type from it, and migration 0090's CHECK restates it in SQL — the one
@@ -159,7 +159,7 @@ export const channelMessages = pgTable(
     /** The demand-signal bucket (see {@link UnmetIntentCategory}). Never free text. */
     unmetCategory: text('unmet_category').$type<UnmetIntentCategory>(),
     /** OUTBOUND medical-symptom answers only: whether the parent got the web-grounded
-     * reply or the fixed 811/911 line the lane falls back to. A present value is what
+     * reply or the model-written health line the lane falls back to. A present value is what
      * MARKS a row as a medical answer — the inbound row is deliberately left unstamped,
      * because a question Hale answered is not an unmet intent (migration 0090). */
     medicalReplySource: text('medical_reply_source').$type<MedicalReplySourceValue>(),

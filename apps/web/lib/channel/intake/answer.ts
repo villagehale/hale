@@ -165,9 +165,9 @@ export type IntakeAnswerOutcome =
   /** Not a question. The caller's own reply is the right one and this cost one call. */
   | { status: 'nothing_to_answer' }
   /**
-   * Someone is hurt, ill or in danger. Carries NO body on purpose — the words a parent
-   * gets in that moment are the reviewed ones in off-domain/copy.ts, and a variant with
-   * a text field is one a later edit could fill from a model.
+   * Someone is hurt, ill or in danger. Carries NO body on purpose — the machine
+   * has the model write the health reply from the region facts, and a variant
+   * with a text field is one a later edit could fill from this compose.
    */
   | { status: 'safety' }
   /**
@@ -284,10 +284,11 @@ function unavailable(reason: IntakeAnswerFallback, detail?: string): IntakeAnswe
 /**
  * Read the model's pair.
  *
- * The health-line tripwire runs BEFORE every other gate because it SUBSTITUTES where
- * the rest refuse: a parent who turns out to be describing a hurt child must get the
- * reviewed 811/911 line, never the flat signup question a refusal would send them
- * (skill audit P0 #3, the same ordering off-domain/answer.ts uses).
+ * The health-line tripwire runs BEFORE every other gate because it hands the turn
+ * to the health writer where the rest refuse: a parent who turns out to be
+ * describing a hurt child must get that reply, never the flat signup question a
+ * refusal would send them (skill audit P0 #3, the same ordering off-domain/answer.ts
+ * uses).
  */
 export function readPair(
   raw: { answer: string; returnLine: string },
@@ -296,7 +297,7 @@ export function readPair(
   const answer = plainText(raw.answer);
   const returnLine = plainText(raw.returnLine);
   if (reachesForTheHealthLine(`${answer} ${returnLine}`)) {
-    console.error('intake answer: composer reached for a referral; sent the fixed line');
+    console.error('intake answer: composer reached for a referral; handed to the health writer');
     return { status: 'safety' };
   }
   // Read before the gates, not after: an empty answer is the model declining, which is

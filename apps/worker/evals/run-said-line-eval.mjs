@@ -243,7 +243,15 @@ function userMessage(f) {
 function acceptText(text, f) {
   let body = (text ?? '').trim();
   if (body.length === 0) return null;
-  if (!(f.mustInclude ?? []).every((fact) => body.includes(fact))) return null;
+  // Same presence check as acceptSaidLine: digit facts ignore dashes and spaces.
+  if (
+    !(f.mustInclude ?? []).every((fact) =>
+      /^\d+$/.test(fact)
+        ? new RegExp(`\\b${fact}\\b`).test(body.replace(/(\d)[\s-]+(?=\d)/g, '$1'))
+        : body.includes(fact),
+    )
+  )
+    return null;
   if (!(f.mustConvey ?? []).every((key) => key in f.facts)) return null;
   if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
   for (const [name, url] of Object.entries(f.links ?? {})) {

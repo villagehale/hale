@@ -20,6 +20,13 @@ describe('said-line · code checks the facts, the model writes the words', () =>
     expect(acceptSaidLine('Call 811 any time.', health)).toBeNull();
   });
 
+  it('treats 8-1-1 and 9 1 1 as the required numbers, not a longer phone', () => {
+    const dashed = 'Call 8-1-1, or 9 1 1 if it is an emergency.';
+    expect(acceptSaidLine(dashed, health)).toBe(dashed);
+    expect(acceptSaidLine('Ring 647-555-0811 about it.', health)).toBeNull();
+    expect(acceptSaidLine('Swim is at 9:11.', health)).toBeNull();
+  });
+
   it('refuses an empty write', () => {
     expect(acceptSaidLine('   ', health)).toBeNull();
   });

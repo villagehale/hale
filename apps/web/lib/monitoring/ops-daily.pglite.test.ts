@@ -708,7 +708,7 @@ describe('aggregateOpsDaily — the founder counts', () => {
       'Intake (7d): 2 started | 1 provisioned | median first answer 40s (1 families)',
     );
     expect(text).toContain('Promises: 2 open | 1 overdue (1 family)');
-    expect(text).toContain('Medical (7d): 1 of 2 answers used the fixed 811/911 line');
+    expect(text).toContain('Medical (7d): 1 of 2 answers fell back to a model-written health line');
     expect(text).toContain(
       'Re-verify (7d): ran | checked 4 | confirmed 3 | discrepancies 1 | unverified 0',
     );

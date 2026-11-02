@@ -160,7 +160,7 @@ describe('composeOpsDailyPost', () => {
         'W4: 3 of 8 texted back in week 4 (pooled)',
         'Intake (7d): 5 started | 4 provisioned | median first answer 1m15s (4 families)',
         'Promises: 6 open | 2 overdue (1 family)',
-        'Medical (7d): 1 of 4 answers used the fixed 811/911 line',
+        'Medical (7d): 1 of 4 answers fell back to a model-written health line',
         'Re-verify (7d): ran | checked 20 | confirmed 17 | discrepancies 1 | unverified 2',
         'Loop (7d): week plans composed 6 | provider incidents: billing 1',
         'Unmet intents (7d): capability_booking 3, domain_medical_records 1',

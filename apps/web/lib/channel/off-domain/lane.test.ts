@@ -20,7 +20,7 @@ import {
   productionOffDomainLane,
   recordUnmetIntent,
 } from './lane';
-import type { MedicalReply } from './medical';
+import { type MedicalReply, medicalReplyUnsent } from './medical';
 import { type LaneReading, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
 // The live search is on by default in production. These tests describe the kill switch
@@ -573,6 +573,26 @@ describe('the medical-symptom answer lane', () => {
 
   /** The composer's own last-resort fixed line rides out unchanged, and STILL is not
    * recorded — the medical lane never writes a demand-signal row, answered or not. */
+  it('sends nothing when the health reply cannot be written', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+    p.medical = {
+      answer: async () => {
+        throw medicalReplyUnsent();
+      },
+    };
+
+    const verdict = await consider(p, 'she has had a fever for three days');
+
+    expect(verdict).toMatchObject({
+      status: 'unwritten',
+      moment: 'child_health',
+      reason: 'compose_failed',
+      lane: 'safety_critical',
+      category: 'medical-symptom',
+    });
+    expect(p.recorded).toEqual([]);
+  });
+
   it('carries the composer last-resort fixed line out, still unrecorded', async () => {
     const p = ports({
       read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),

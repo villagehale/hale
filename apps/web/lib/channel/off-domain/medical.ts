@@ -3,10 +3,12 @@ import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent
 import type { MedicalReplySourceValue } from '@hale/db';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
+import { type HealthRegion, textHasNumber } from '~/lib/channel/health-resources';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { type MedicalReplyKind, deliverMedicalReply } from '~/lib/channel/voice/medical-reply';
+import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { createMomentReply } from './moment-reply';
 
 /**
  * The medical-symptom answer lane (founder-locked 2026-08-17).
@@ -56,10 +58,11 @@ import { createMomentReply } from './moment-reply';
  * load, zero searches, an empty/oversized body, missing triage — is a thrown
  * {@link MedicalUnresolvable} with a NAMED reason (rule #11). The turn is attempted, and
  * on any failure RETRIED ONCE; only if the retry also fails does {@link onMedicalTurnUnresolvable}
- * ask the moment writer for a child-health reply. Never silence, never a preset line.
- * If that reply cannot be written, the miss is named and nothing goes out. That fallback
- * is deliberately ONE function so the founder can later swap it for defer without
- * touching the pipeline.
+ * ask the said-line writer for a health reply. The numbers are facts (811 for the
+ * region, both lines when the region is unknown, and 911). A reply that lacks a
+ * required number is written once more. If that still fails, nothing is sent and
+ * #ops is paged. There is no preset sentence. That fallback is deliberately ONE
+ * function so the founder can later swap it for defer without touching the pipeline.
  *
  * This lane does not run its output through a health-line swap. The router sends a
  * deflect `reply` verbatim (route.ts sendReply), and this composer does its own
@@ -135,11 +138,11 @@ export const RED_FLAG_READINGS = ['emergency', 'not_emergency', 'unsure'] as con
 export type RedFlagReading = (typeof RED_FLAG_READINGS)[number];
 
 /** Where the words that go out came from. `web_grounded` is the composed, searched
- * answer; `fixed` is the last-resort moment reply after a live attempt and a retry both
- * failed. The two values are @hale/db's, because this outcome is STAMPED on the reply's
- * channel_messages row and read back by the founder scorecard — one vocabulary, checked
- * in SQL, not a second copy that can drift out of what is writable. `fixed` names the
- * fallback slot, not a preset sentence. */
+ * answer; `fixed` is the last-resort model-written health reply after a live attempt
+ * and a retry both failed. The two values are @hale/db's, because this outcome is
+ * STAMPED on the reply's channel_messages row and read back by the founder scorecard —
+ * one vocabulary, checked in SQL, not a second copy that can drift out of what is
+ * writable. `fixed` names the fallback slot, not a preset sentence. */
 export type MedicalReplySource = MedicalReplySourceValue;
 
 export interface MedicalReply {
@@ -148,7 +151,7 @@ export interface MedicalReply {
 }
 
 export interface MedicalComposer {
-  answer(text: string): Promise<MedicalReply>;
+  answer(text: string, region?: HealthRegion | null): Promise<MedicalReply>;
 }
 
 /**
@@ -353,12 +356,11 @@ function isEnglish(text: string): boolean {
   return !NON_ENGLISH_LETTERS.test(text);
 }
 
-/** Whether a body carries the triage numbers. The positive requirement that makes
- * "always triaged" checkable: a composed answer that names neither 811 nor 911 has no
- * triage in it, whatever the model intended. This is NOT reachesForTheHealthLine — that
- * one SUBSTITUTES the fixed line; this one REQUIRES the numbers be present. */
+/** Whether a body carries a triage number. Dashes and spaces between the digits
+ * do not count. A composed answer that names neither 811 nor 911 has no triage
+ * in it, whatever the model intended. */
 function namesUrgentCare(body: string): boolean {
-  return /\b(?:811|911)\b/.test(body);
+  return textHasNumber(body, '811') || textHasNumber(body, '911');
 }
 
 /** How many real web-search results the model produced. An error result is not a result,
@@ -579,6 +581,10 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
         `${redFlagReading(sanitized.red_flag)}:${escalationReading(verdict)}`,
       );
     }
+    // 911 always on an emergency. "Go to the ER" without the number does not ship.
+    if (!textHasNumber(body, '911')) {
+      throw new MedicalUnresolvable('missing_triage', 'emergency_missing_911');
+    }
   }
   return body;
 }
@@ -617,26 +623,45 @@ async function judgeEscalation(
   }
 }
 
+/** A thrown medical failure is a reply that must not be sent. */
+export function isMedicalUnsent(err: unknown): err is { reason: MedicalFallback } {
+  return err instanceof MedicalUnresolvable;
+}
+
+/** The same error the composer throws when the health reply cannot be written. */
+export function medicalReplyUnsent(reason: MedicalFallback = 'compose_failed'): Error {
+  return new MedicalUnresolvable(reason, 'medical_unsent');
+}
+
+function fallbackKind(err: unknown): MedicalReplyKind {
+  return err instanceof MedicalUnresolvable && err.reason === 'under_escalated'
+    ? 'emergency'
+    : 'health';
+}
+
 /**
  * THE SINGLE SWAP POINT. Reached only after a live attempt AND one retry both failed
- * to produce a real, grounded answer. The moment writer writes the child-health reply
- * in the parent's language. If that cannot be written, the miss is thrown by name and
- * nothing preset goes out. Do NOT fold in the outage smoke-alarm path: that is the
- * model-UNREACHABLE case, and it defers rather than sending a preset body.
+ * to produce a real, grounded answer. The said-line writer writes the health reply.
+ * 811 and 911 are facts. A miss is one more write through that writer. If that
+ * also fails, the miss is thrown by name and nothing is sent. Do NOT fold in the
+ * outage smoke-alarm path: that is the model-UNREACHABLE case, and it defers rather
+ * than sending a preset body.
  */
 async function onMedicalTurnUnresolvable(
   client: () => AgentClient,
   text: string,
+  region: HealthRegion | null,
+  failed: unknown,
 ): Promise<MedicalReply> {
-  const written = await createMomentReply(client).write(text, 'child_health');
-  if (written.status === 'unwritten') {
-    console.error(
-      { reason: written.reason, moment: 'child_health' },
-      'off-domain medical: moment reply unwritten',
-    );
-    throw new MedicalUnresolvable('compose_failed', `moment_unwritten:${written.reason}`);
-  }
-  return { reply: written.reply, replySource: 'fixed' };
+  const written = await deliverMedicalReply({
+    kind: fallbackKind(failed),
+    parentWords: text,
+    where: 'off-domain medical',
+    region,
+    writer: createSaidLineWriter(client),
+  });
+  if (!written) throw medicalReplyUnsent();
+  return { reply: written, replySource: 'fixed' };
 }
 
 function logMedicalFailure(err: unknown, attempt: number): void {
@@ -656,15 +681,17 @@ function logMedicalFailure(err: unknown, attempt: number): void {
  */
 export function createMedicalComposer(client: () => AgentClient): MedicalComposer {
   return {
-    async answer(text) {
+    async answer(text, region: HealthRegion | null = null) {
+      let failed: unknown;
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
           return { reply: await runMedicalOnce(client, text), replySource: 'web_grounded' };
         } catch (err) {
+          failed = err;
           logMedicalFailure(err, attempt);
         }
       }
-      return onMedicalTurnUnresolvable(client, text);
+      return onMedicalTurnUnresolvable(client, text, region, failed);
     },
   };
 }

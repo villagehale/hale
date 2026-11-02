@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, desc, eq, inArray, lte } from 'drizzle-orm';
+import { type HealthRegion, healthRegionFromPlace } from '~/lib/channel/health-resources';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
@@ -19,7 +20,12 @@ import {
 } from './answer';
 import { safetyDoorFor } from './answer-request';
 import { referralReply } from './copy';
-import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
+import {
+  type MedicalComposer,
+  type MedicalReplySource,
+  createMedicalComposer,
+  isMedicalUnsent,
+} from './medical';
 import { type Moment, type MomentWriter, createMomentReply } from './moment-reply';
 import { type MomentPlace, UNKNOWN_MOMENT_PLACE } from './moment-request';
 import { readFamilyPlace } from './place';
@@ -294,20 +300,34 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // Every OTHER safety_critical category stops the ordinary answer and a moment
       // reply is written below.
       if (lane === 'safety_critical' && reading.category === 'medical-symptom') {
-        const { reply, replySource } = await ports.medical.answer(input.text);
-        return withSeenLanguage(
-          {
-            status: 'deflected',
+        let region: HealthRegion | null = null;
+        try {
+          const place = await family.place();
+          region = healthRegionFromPlace(place.status === 'known' ? place : null);
+          const { reply, replySource } = await ports.medical.answer(input.text, region);
+          return withSeenLanguage(
+            {
+              status: 'deflected',
+              lane,
+              category: reading.category,
+              reply,
+              replySource,
+              medicalSource: replySource,
+              signal: 'not_applicable',
+              pendingAsk: null,
+            },
+            reading.language,
+          );
+        } catch (err) {
+          if (!isMedicalUnsent(err)) throw err;
+          return {
+            status: 'unwritten',
+            moment: 'child_health',
+            reason: err.reason,
             lane,
             category: reading.category,
-            reply,
-            replySource,
-            medicalSource: replySource,
-            signal: 'not_applicable',
-            pendingAsk: null,
-          },
-          reading.language,
-        );
+          };
+        }
       }
 
       // A safety reading stops the ordinary answer. The moment writer is woken for it,
