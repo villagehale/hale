@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  APP_CLIP_PAY_LINE_TEMPLATE,
   APP_CLIP_PAY_LINK_TEMPLATE,
   APP_CLIP_PAY_TEMPLATE,
   fallbackAppClipPayOn4005,
@@ -58,9 +59,14 @@ describe('app clip pay 4005 ledger fallback', () => {
     return family;
   }
 
-  it('sends the sandbox URL as a link and audits it', async () => {
+  it('sends the fresh line with the link and does not write a link trail verb', async () => {
     const family = await seedCard(checkoutUrl);
-    const out = await fallbackAppClipPayOn4005(db.database, CARD_ID);
+    const bubble = 'The card did not open, so this is the link';
+    const out = await fallbackAppClipPayOn4005(db.database, CARD_ID, {
+      decider: {
+        decide: async () => ({ offer: false, tier: null, description: null, line: bubble }),
+      },
+    });
     expect(out.status).toBe('link');
     const rows = await db.database
       .select({
@@ -70,8 +76,9 @@ describe('app clip pay 4005 ledger fallback', () => {
       .from(schema.channelMessages)
       .where(eq(schema.channelMessages.familyId, family.familyId));
     expect(rows.map((row) => row.templateKey).sort()).toEqual(
-      [APP_CLIP_PAY_LINK_TEMPLATE, APP_CLIP_PAY_TEMPLATE].sort(),
+      [APP_CLIP_PAY_LINE_TEMPLATE, APP_CLIP_PAY_LINK_TEMPLATE, APP_CLIP_PAY_TEMPLATE].sort(),
     );
+    expect(rows.find((row) => row.templateKey === APP_CLIP_PAY_LINE_TEMPLATE)?.body).toBe(bubble);
     expect(rows.find((row) => row.templateKey === APP_CLIP_PAY_LINK_TEMPLATE)?.body).toBe(
       checkoutUrl,
     );
@@ -79,7 +86,21 @@ describe('app clip pay 4005 ledger fallback', () => {
       .select({ actionTaken: schema.auditLog.actionTaken })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.familyId, family.familyId));
-    expect(audits.map((row) => row.actionTaken)).toContain('linq_app_clip_pay_link');
+    expect(audits.map((row) => row.actionTaken)).toContain('sms_reply_sent');
+    expect(audits.map((row) => row.actionTaken)).not.toContain('linq_app_clip_pay_link');
+  });
+
+  it('a 4005 with no fresh line sends nothing', async () => {
+    await seedCard(checkoutUrl);
+    const out = await fallbackAppClipPayOn4005(db.database, CARD_ID, {
+      decider: { decide: async () => null },
+    });
+    expect(out).toEqual({ status: 'not_sent', reason: 'unwritten' });
+    const links = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.templateKey, APP_CLIP_PAY_LINK_TEMPLATE));
+    expect(links).toEqual([]);
   });
 
   it('a different template sends nothing, and a dark flag does not send the link', async () => {

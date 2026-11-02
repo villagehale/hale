@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import {
   type AppClipPayDecider,
   type AppClipPayOutcome,
+  type AppClipPayPrior,
   deliverAppClipPay,
+  deliverAppClipPayFallback,
   sharedAppClipPayDecider,
 } from '~/lib/channel/linq/app-clip-pay';
 import { SANDBOX_PAYMENT_CHAT_ID } from '~/lib/channel/linq/app-clip-sandbox';
@@ -13,11 +15,10 @@ import { PREVIEW_CHAT_PREFIX, previewGroupCaptureOpen } from '~/lib/channel/prev
 /**
  * VIL-481 · Preview-only Apple Pay App Clip proof, for a fake family.
  *
- * POST { to: +1437555XXXX, parentText, planTier?, failedCode? }
- * runs the real decider (Hale's AI) and, only when it writes a checkout line,
- * the real sandbox payment request plus one `app_clip` part into that
- * fictional handle's fake 1:1 chat. `failedCode: 4005` also sends the link
- * fallback. Nothing here is copy: a model that does not write sends nothing.
+ * POST { to: +1437555XXXX, parentText, planTier?, childCount?, coparent?, prior?, failedCode? }
+ * runs the real decider (Hale's AI). A checkout line sends one `app_clip` part.
+ * `failedCode: 4005` does not also send the card: a fresh model line goes out
+ * with the link, or nothing is sent. Nothing here is copy.
  *
  * Gated like every Preview route, plus PREVIEW_CAPTURE_GROUPS=on and
  * LINQ_APP_CLIP_PAY_ENABLED=true. No Linq key, so the call is captured and
@@ -57,8 +58,8 @@ export function previewAppClipBody(
     chatId,
     paymentCaptureChatId: SANDBOX_PAYMENT_CHAT_ID,
     outcome: {
-      status: 'fallback',
-      cardProviderMessageId: outcome.cardProviderMessageId,
+      status: 'link',
+      lineProviderMessageId: outcome.lineProviderMessageId,
       linkProviderMessageId: outcome.linkProviderMessageId,
       ledger: outcome.ledger,
     },
@@ -75,7 +76,15 @@ export async function handlePreviewAppClipPay(
   if (!previewGroupCaptureOpen(env)) return new Response(null, { status: 404 });
   if (!linqAppClipPayEnabled()) return json({ error: 'app_clip_pay_dark' }, 409);
 
-  let payload: { to?: unknown; parentText?: unknown; planTier?: unknown; failedCode?: unknown };
+  let payload: {
+    to?: unknown;
+    parentText?: unknown;
+    planTier?: unknown;
+    childCount?: unknown;
+    coparent?: unknown;
+    prior?: unknown;
+    failedCode?: unknown;
+  };
   try {
     payload = (await req.json()) as typeof payload;
   } catch {
@@ -84,18 +93,30 @@ export async function handlePreviewAppClipPay(
   const to = fakeSender(payload.to);
   if (!to) return json({ error: 'sender_not_fictional' }, 400);
   if (typeof payload.parentText !== 'string') return json({ error: 'parent_text_missing' }, 400);
-  const planTier =
-    payload.planTier === 'plus' || payload.planTier === 'family' || payload.planTier === 'free'
-      ? payload.planTier
-      : 'free';
+  const planTier: 'free' | 'plus' | 'family' =
+    payload.planTier === 'plus' || payload.planTier === 'family' ? payload.planTier : 'free';
+  const prior: AppClipPayPrior | null =
+    payload.prior === 'no' || payload.prior === 'no_tap' ? payload.prior : null;
+  const childCount =
+    typeof payload.childCount === 'number' &&
+    Number.isInteger(payload.childCount) &&
+    payload.childCount >= 0
+      ? payload.childCount
+      : null;
 
   const chatId = fakeAppClipChatId(to);
-  const outcome = await deliverAppClipPay({
-    channel: 'imessage',
-    chatId,
-    read: { audience: 'direct', planTier, parentText: payload.parentText },
-    decider: deps.decider ?? sharedAppClipPayDecider(),
-    unreachable: payload.failedCode === 4005,
-  });
+  const read = {
+    audience: 'direct' as const,
+    planTier,
+    parentText: payload.parentText,
+    childCount,
+    coparent: payload.coparent === true ? true : payload.coparent === false ? false : null,
+    prior,
+  };
+  const decider = deps.decider ?? sharedAppClipPayDecider();
+  const outcome =
+    payload.failedCode === 4005
+      ? await deliverAppClipPayFallback({ channel: 'imessage', chatId, read, decider })
+      : await deliverAppClipPay({ channel: 'imessage', chatId, read, decider });
   return json(previewAppClipBody(chatId, outcome));
 }

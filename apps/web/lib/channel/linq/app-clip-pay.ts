@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqParts } from '~/lib/channel/outbound-transport';
@@ -21,22 +21,23 @@ import { LinqSendError, createLinqSandboxPaymentRequest } from './transport';
  *
  * Hale's AI decides whether this turn is a pay ask and writes the checkout's
  * one line. This module holds no parent-facing sentence. A model that does not
- * answer, declines, or writes a line the card cannot carry (empty, a price, a
- * URL) sends nothing: no payment request and no message.
+ * answer, declines, or writes a line the card cannot carry (empty, too long,
+ * or more than one line) sends nothing: no payment request and no message.
+ * Price and URL are the skill's job, and a judge's, not a word list here.
  *
  * The request is sandbox (`livemode: false`, a host that cannot resolve). A
  * Linq key or a live Stripe key refuses the whole send. The card is one
- * `app_clip` part. A later `4005` sends that same sandbox URL as a `link`
- * part and nothing else.
+ * `app_clip` part. A later `4005` sends nothing unless the model writes a
+ * fresh line, in which case that bubble and the link go out together. A bare
+ * link is never sent. The card and the link are never both sent in one turn.
  *
  * https://docs.linqapp.com/channel/imessage/guides/payments/sending-payment-links/
  */
 
 const DESCRIPTION_MAX = 240;
-const PRICE = /[$€£]|\b(?:cad|usd|dollars?|cents)\b|\b\d+(?:[.,]\d{2})\b/i;
-const URL_IN_COPY = /https?:\/\/|www\./i;
 
 export const APP_CLIP_PAY_TEMPLATE = 'linq:app_clip_pay';
+export const APP_CLIP_PAY_LINE_TEMPLATE = 'linq:app_clip_pay_line';
 export const APP_CLIP_PAY_LINK_TEMPLATE = 'linq:app_clip_pay_link';
 
 export const APP_CLIP_PAY_TOOL = 'app_clip_pay';
@@ -47,26 +48,41 @@ export const APP_CLIP_PAY_TOOL_SCHEMA = {
     offer: { type: 'boolean' },
     tier: { type: ['string', 'null'] },
     description: { type: ['string', 'null'] },
+    line: { type: ['string', 'null'] },
   },
-  required: ['offer', 'tier', 'description'],
+  required: ['offer', 'tier', 'description', 'line'],
 } as const;
 
 const outputSchema = z.object({
   offer: z.boolean(),
   tier: z.enum(['plus', 'family']).nullable(),
   description: z.string().nullable(),
+  line: z.string().nullable(),
 });
+
+export type AppClipPayMoment = 'card' | 'fallback';
+export type AppClipPayPrior = 'no' | 'no_tap';
 
 export interface AppClipPayRead {
   audience: 'direct' | 'group';
   planTier: 'free' | 'plus' | 'family';
   parentText: string;
+  /** `card` decides the App Clip. `fallback` is a fresh write after a 4005. */
+  moment?: AppClipPayMoment;
+  /** Children in the household. Null when this turn was not told. */
+  childCount?: number | null;
+  /** Whether a co-parent is in the household. Null when this turn was not told. */
+  coparent?: boolean | null;
+  /** A no, or a card they did not open. Null when neither has happened. */
+  prior?: AppClipPayPrior | null;
 }
 
 export interface AppClipPayDecision {
   offer: boolean;
   tier: AppClipPayTier | null;
   description: string | null;
+  /** Thread bubble. Used only on `moment: 'fallback'`. Null sends nothing. */
+  line: string | null;
 }
 
 export interface AppClipPayDecider {
@@ -77,22 +93,27 @@ export interface AppClipPayDecider {
 /** The user-turn payload. Shared with any cached replay of this request. */
 export function appClipPayUserMessage(input: AppClipPayRead): string {
   return JSON.stringify({
+    moment: input.moment ?? 'card',
     audience: input.audience,
     planTier: input.planTier,
     parentText: input.parentText,
+    childCount: input.childCount ?? null,
+    coparent: input.coparent ?? null,
+    prior: input.prior ?? null,
   });
 }
 
-export type AppClipPayCopyRefusal = 'empty' | 'too_long' | 'price' | 'url' | 'not_one_line';
+export type AppClipPayCopyRefusal = 'empty' | 'too_long' | 'not_one_line';
 
-/** Why a model-written line cannot go on the checkout. Empty means it can. */
+/**
+ * Structural only: empty, over 240 characters, or more than one line.
+ * A price, a URL, or a billing period is for the skill and the judge.
+ */
 export function appClipPayCopyRefusals(description: string): AppClipPayCopyRefusal[] {
   const line = description.trim();
   const refusals: AppClipPayCopyRefusal[] = [];
   if (line === '') refusals.push('empty');
   if (line.length > DESCRIPTION_MAX) refusals.push('too_long');
-  if (PRICE.test(line)) refusals.push('price');
-  if (URL_IN_COPY.test(line)) refusals.push('url');
   if (/[\r\n]/.test(description)) refusals.push('not_one_line');
   return refusals;
 }
@@ -113,7 +134,7 @@ export function createAppClipPayDecider(
           userMessage: appClipPayUserMessage(input),
           toolName: APP_CLIP_PAY_TOOL,
           toolDescription:
-            'Decide whether to offer Apple Pay, and write the checkout line. Offer false sends nothing.',
+            'Decide the Apple Pay card, or on a fallback write one fresh line. A null line sends nothing. Do not guess a plan.',
           inputJsonSchema: APP_CLIP_PAY_TOOL_SCHEMA,
           schema: outputSchema,
           maxTokens: APP_CLIP_PAY_MAX_TOKENS,
@@ -161,10 +182,11 @@ export type AppClipPayOutcome =
       ledger: 'recorded' | 'not_recorded';
     }
   | {
-      status: 'fallback';
-      cardProviderMessageId: string;
-      checkoutUrl: string;
+      /** The model's line and the link. The card was not sent in this turn. */
+      status: 'link';
+      lineProviderMessageId: string;
       linkProviderMessageId: string;
+      checkoutUrl: string;
       ledger: 'recorded' | 'not_recorded';
     }
   | { status: 'not_sent'; reason: AppClipPayNotSentReason };
@@ -187,9 +209,11 @@ async function recordSend(input: {
   parentUserId?: string;
   chatId: string;
   providerMessageId: string;
-  checkoutUrl: string;
+  /** Checkout URL, or the model's thread line. Never a sentence this module wrote. */
+  body: string;
   templateKey: string;
-  audit: 'linq_app_clip_pay' | 'linq_app_clip_pay_link';
+  /** The link has no trail verb. The card and the model's bubble do. */
+  audit: 'linq_app_clip_pay' | 'sms_reply_sent' | null;
   now?: Date;
 }): Promise<'recorded' | 'not_recorded'> {
   if (!input.database || !input.familyId || !input.parentUserId) {
@@ -207,30 +231,27 @@ async function recordSend(input: {
       templateKey: input.templateKey,
       providerMessageId: input.providerMessageId,
       providerChatId: input.chatId,
-      // The sandbox checkout, so a 4005 can send the same URL. Not a sentence.
-      body: input.checkoutUrl,
+      body: input.body,
       status: acceptedStatus('imessage'),
       sentAt: input.now ?? new Date(),
     })
     .returning({ id: schema.channelMessages.id });
-  if (row?.id) {
-    const audit = {
+  if (row?.id && input.audit === 'linq_app_clip_pay') {
+    await input.database.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: input.parentUserId,
-      targetTable: 'channel_messages' as const,
+      targetTable: 'channel_messages',
       targetId: row.id,
-    };
-    if (input.audit === 'linq_app_clip_pay') {
-      await input.database.insert(schema.auditLog).values({
-        ...audit,
-        actionTaken: 'linq_app_clip_pay',
-      });
-    } else {
-      await input.database.insert(schema.auditLog).values({
-        ...audit,
-        actionTaken: 'linq_app_clip_pay_link',
-      });
-    }
+      actionTaken: 'linq_app_clip_pay',
+    });
+  } else if (row?.id && input.audit === 'sms_reply_sent') {
+    await input.database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      targetTable: 'channel_messages',
+      targetId: row.id,
+      actionTaken: 'sms_reply_sent',
+    });
   }
   return 'recorded';
 }
@@ -261,18 +282,115 @@ async function sendCheckoutPart(input: {
     parentUserId: input.parentUserId,
     chatId: input.chatId,
     providerMessageId: sent.providerMessageId,
-    checkoutUrl: input.checkoutUrl,
+    body: input.checkoutUrl,
     templateKey: input.part === 'app_clip' ? APP_CLIP_PAY_TEMPLATE : APP_CLIP_PAY_LINK_TEMPLATE,
-    audit: input.part === 'app_clip' ? 'linq_app_clip_pay' : 'linq_app_clip_pay_link',
+    // The link rides with the model's bubble, which carries the trail row.
+    audit: input.part === 'app_clip' ? 'linq_app_clip_pay' : null,
     now: input.now,
   });
   return { providerMessageId: sent.providerMessageId, ledger };
 }
 
+/** The model's fresh line, or null when it cannot be sent. No word list. */
+function freshLine(decision: AppClipPayDecision | null): string | null {
+  const line = decision?.line?.trim() ?? '';
+  if (!decision || appClipPayCopyRefusals(line).length > 0) return null;
+  return line;
+}
+
 /**
- * Ask the model, then send one App Clip card when it wrote a line the card can
- * carry. `unreachable` sends the card and then the link, the same pair a 4005
- * receipt produces. Never throws. Never sends a sentence this module wrote.
+ * Text bubble, then the link. Either both, or neither. A link is never the
+ * only part, and this never sends the card.
+ */
+async function sendLineAndLink(input: {
+  chatId: string;
+  checkoutUrl: string;
+  line: string;
+  fetch?: typeof fetch;
+  sendParts?: SendParts;
+  database?: Database;
+  familyId?: string;
+  parentUserId?: string;
+  now?: Date;
+}): Promise<
+  | {
+      status: 'link';
+      lineProviderMessageId: string;
+      linkProviderMessageId: string;
+      checkoutUrl: string;
+      ledger: 'recorded' | 'not_recorded';
+    }
+  | { status: 'not_sent'; reason: AppClipPayNotSentReason }
+> {
+  if (!isSandboxCheckoutUrl(input.checkoutUrl)) {
+    return { status: 'not_sent', reason: 'no_url' };
+  }
+  const send = input.sendParts ?? sendLinqParts;
+  let text: { providerMessageId: string };
+  try {
+    text = await send({
+      chatId: input.chatId,
+      parts: [{ type: 'text', value: input.line }],
+      fetch: input.fetch,
+    });
+  } catch (err) {
+    return { status: 'not_sent', reason: sendFailure(err) };
+  }
+  const ledger = await recordSend({
+    database: input.database,
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    chatId: input.chatId,
+    providerMessageId: text.providerMessageId,
+    body: input.line,
+    templateKey: APP_CLIP_PAY_LINE_TEMPLATE,
+    audit: 'sms_reply_sent',
+    now: input.now,
+  });
+  try {
+    const link = await sendCheckoutPart({
+      chatId: input.chatId,
+      checkoutUrl: input.checkoutUrl,
+      part: 'link',
+      fetch: input.fetch,
+      sendParts: input.sendParts,
+      database: input.database,
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      now: input.now,
+    });
+    return {
+      status: 'link',
+      lineProviderMessageId: text.providerMessageId,
+      linkProviderMessageId: link.providerMessageId,
+      checkoutUrl: input.checkoutUrl,
+      ledger,
+    };
+  } catch (err) {
+    console.warn({ reason: sendFailure(err) }, 'app clip pay: link did not follow the line');
+    return { status: 'not_sent', reason: sendFailure(err) };
+  }
+}
+
+function gate(input: {
+  channel: string;
+  chatId: string | null;
+  isGroup?: boolean;
+  read: AppClipPayRead;
+}): AppClipPayNotSentReason | null {
+  if (!linqAppClipPayEnabled()) return 'dark';
+  const blocked = sandboxPaymentBlocked();
+  if (blocked) return blocked;
+  if (input.channel !== 'imessage') return 'not_imessage';
+  if (!input.chatId) return 'no_chat';
+  if (input.isGroup || input.read.audience === 'group') return 'group_chat';
+  return null;
+}
+
+/**
+ * Ask the model, then send one App Clip card when it named a plan and wrote a
+ * checkout line. One ask. A synchronous 4005 does not also send the link: the
+ * card did not land, and a bare link is not a substitute. Never throws.
  */
 export async function deliverAppClipPay(input: {
   channel: string;
@@ -280,8 +398,6 @@ export async function deliverAppClipPay(input: {
   isGroup?: boolean;
   read: AppClipPayRead;
   decider: AppClipPayDecider;
-  /** After the card is accepted, also send the link fallback (async 4005). */
-  unreachable?: boolean;
   fetch?: typeof fetch;
   sendParts?: SendParts;
   database?: Database;
@@ -289,24 +405,19 @@ export async function deliverAppClipPay(input: {
   parentUserId?: string;
   now?: Date;
 }): Promise<AppClipPayOutcome> {
-  if (!linqAppClipPayEnabled()) return { status: 'not_sent', reason: 'dark' };
-  const blocked = sandboxPaymentBlocked();
-  if (blocked) return { status: 'not_sent', reason: blocked };
-  if (input.channel !== 'imessage') return { status: 'not_sent', reason: 'not_imessage' };
-  if (!input.chatId) return { status: 'not_sent', reason: 'no_chat' };
-  if (input.isGroup || input.read.audience === 'group') {
-    return { status: 'not_sent', reason: 'group_chat' };
-  }
+  const closed = gate(input);
+  if (closed) return { status: 'not_sent', reason: closed };
+  const chatId = input.chatId as string;
 
-  const decision = await input.decider.decide(input.read);
+  const decision = await input.decider.decide({ ...input.read, moment: 'card' });
   if (!decision) {
     console.info('app clip pay: unwritten, nothing sent');
     return { status: 'not_sent', reason: 'unwritten' };
   }
   if (!decision.offer) return { status: 'not_sent', reason: 'declined' };
   const description = decision.description?.trim() ?? '';
-  const tier = decision.tier;
-  if (!tier || appClipPayCopyRefusals(description).length > 0) {
+  // No silent Plus. A missing tier is the model declining to choose.
+  if (!decision.tier || appClipPayCopyRefusals(description).length > 0) {
     console.info('app clip pay: line unusable, nothing sent');
     return { status: 'not_sent', reason: 'unwritten' };
   }
@@ -314,7 +425,7 @@ export async function deliverAppClipPay(input: {
   let created: { id: string; checkoutUrl: string };
   try {
     created = await createLinqSandboxPaymentRequest({
-      tier,
+      tier: decision.tier,
       description,
       familyId: input.familyId,
       fetch: input.fetch,
@@ -327,7 +438,7 @@ export async function deliverAppClipPay(input: {
 
   try {
     const card = await sendCheckoutPart({
-      chatId: input.chatId,
+      chatId,
       checkoutUrl: created.checkoutUrl,
       part: 'app_clip',
       fetch: input.fetch,
@@ -337,18 +448,27 @@ export async function deliverAppClipPay(input: {
       parentUserId: input.parentUserId,
       now: input.now,
     });
-    if (!input.unreachable) {
-      return {
-        status: 'card',
-        providerMessageId: card.providerMessageId,
-        checkoutUrl: created.checkoutUrl,
-        ledger: card.ledger,
-      };
-    }
-    const link = await sendCheckoutPart({
-      chatId: input.chatId,
+    return {
+      status: 'card',
+      providerMessageId: card.providerMessageId,
       checkoutUrl: created.checkoutUrl,
-      part: 'link',
+      ledger: card.ledger,
+    };
+  } catch (err) {
+    if (!(err instanceof LinqSendError) || err.code !== '4005') {
+      return { status: 'not_sent', reason: sendFailure(err) };
+    }
+    // The card did not land. This turn is the line and the link, or nothing.
+    const again = await input.decider.decide({ ...input.read, moment: 'fallback' });
+    const line = freshLine(again);
+    if (!line) {
+      console.info('app clip pay: 4005, no fresh line, nothing sent');
+      return { status: 'not_sent', reason: 'unwritten' };
+    }
+    return sendLineAndLink({
+      chatId,
+      checkoutUrl: created.checkoutUrl,
+      line,
       fetch: input.fetch,
       sendParts: input.sendParts,
       database: input.database,
@@ -356,55 +476,77 @@ export async function deliverAppClipPay(input: {
       parentUserId: input.parentUserId,
       now: input.now,
     });
-    return {
-      status: 'fallback',
-      cardProviderMessageId: card.providerMessageId,
-      linkProviderMessageId: link.providerMessageId,
-      checkoutUrl: created.checkoutUrl,
-      ledger: link.ledger,
-    };
-  } catch (err) {
-    if (err instanceof LinqSendError && err.code === '4005') {
-      try {
-        const link = await sendCheckoutPart({
-          chatId: input.chatId,
-          checkoutUrl: created.checkoutUrl,
-          part: 'link',
-          fetch: input.fetch,
-          sendParts: input.sendParts,
-          database: input.database,
-          familyId: input.familyId,
-          parentUserId: input.parentUserId,
-          now: input.now,
-        });
-        return {
-          status: 'fallback',
-          cardProviderMessageId: '',
-          linkProviderMessageId: link.providerMessageId,
-          checkoutUrl: created.checkoutUrl,
-          ledger: link.ledger,
-        };
-      } catch (linkErr) {
-        return { status: 'not_sent', reason: sendFailure(linkErr) };
-      }
-    }
-    return { status: 'not_sent', reason: sendFailure(err) };
   }
 }
 
 /**
- * A `message.failed` whose code is 4005, for a card this module already sent.
- * Sends the same sandbox URL as a link part. Any other row, code, or URL sends
- * nothing.
+ * The 4005 turn, by itself. One fresh model write. A line goes out with the
+ * link and the card does not. No line sends nothing, including no bare link.
+ */
+export async function deliverAppClipPayFallback(input: {
+  channel: string;
+  chatId: string | null;
+  isGroup?: boolean;
+  read: AppClipPayRead;
+  decider: AppClipPayDecider;
+  fetch?: typeof fetch;
+  sendParts?: SendParts;
+  database?: Database;
+  familyId?: string;
+  parentUserId?: string;
+  now?: Date;
+}): Promise<AppClipPayOutcome> {
+  const closed = gate(input);
+  if (closed) return { status: 'not_sent', reason: closed };
+  const chatId = input.chatId as string;
+
+  const decision = await input.decider.decide({ ...input.read, moment: 'fallback' });
+  const line = freshLine(decision);
+  const description = decision?.description?.trim() ?? '';
+  if (!decision || !line || !decision.tier || appClipPayCopyRefusals(description).length > 0) {
+    console.info('app clip pay: 4005, no fresh line, nothing sent');
+    return { status: 'not_sent', reason: 'unwritten' };
+  }
+
+  let created: { checkoutUrl: string };
+  try {
+    created = await createLinqSandboxPaymentRequest({
+      tier: decision.tier,
+      description,
+      familyId: input.familyId,
+      fetch: input.fetch,
+    });
+  } catch (err) {
+    return { status: 'not_sent', reason: sendFailure(err) };
+  }
+  return sendLineAndLink({
+    chatId,
+    checkoutUrl: created.checkoutUrl,
+    line,
+    fetch: input.fetch,
+    sendParts: input.sendParts,
+    database: input.database,
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+  });
+}
+
+/**
+ * A `message.failed` 4005 for a card this module already sent. Asks the model
+ * for a fresh line. That line and the existing sandbox link go out together,
+ * or nothing does. Never a bare link.
  */
 export async function fallbackAppClipPayOn4005(
   database: Database,
   providerMessageId: string,
-  deps: { fetch?: typeof fetch; sendParts?: SendParts; now?: Date } = {},
-): Promise<
-  | { status: 'link'; providerMessageId: string; ledger: 'recorded' | 'not_recorded' }
-  | { status: 'not_sent'; reason: AppClipPayNotSentReason }
-> {
+  deps: {
+    fetch?: typeof fetch;
+    sendParts?: SendParts;
+    now?: Date;
+    decider?: AppClipPayDecider;
+  } = {},
+): Promise<AppClipPayOutcome> {
   const [row] = await database
     .select({
       templateKey: schema.channelMessages.templateKey,
@@ -429,20 +571,57 @@ export async function fallbackAppClipPayOn4005(
   if (!row.body || !isSandboxCheckoutUrl(row.body)) {
     return { status: 'not_sent', reason: 'no_url' };
   }
-  try {
-    const link = await sendCheckoutPart({
-      chatId: row.chatId,
-      checkoutUrl: row.body,
-      part: 'link',
-      fetch: deps.fetch,
-      sendParts: deps.sendParts,
-      database,
-      familyId: row.familyId,
-      parentUserId: row.parentUserId,
-      now: deps.now,
-    });
-    return { status: 'link', providerMessageId: link.providerMessageId, ledger: link.ledger };
-  } catch (err) {
-    return { status: 'not_sent', reason: sendFailure(err) };
+
+  const [family] = await database
+    .select({ planTier: schema.families.planTier })
+    .from(schema.families)
+    .where(eq(schema.families.id, row.familyId))
+    .limit(1);
+  const [inbound] = await database
+    .select({ body: schema.channelMessages.body })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.providerChatId, row.chatId),
+        eq(schema.channelMessages.direction, 'in'),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(1);
+  const kids = await database
+    .select({ id: schema.children.id })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, row.familyId));
+  const adults = await database
+    .select({ role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, row.familyId));
+  const planTier =
+    family?.planTier === 'plus' || family?.planTier === 'family' ? family.planTier : 'free';
+
+  const decision = await (deps.decider ?? sharedAppClipPayDecider()).decide({
+    moment: 'fallback',
+    audience: 'direct',
+    planTier,
+    parentText: inbound?.body ?? '',
+    childCount: kids.length,
+    coparent: adults.some((member) => member.role === 'co_parent'),
+    prior: null,
+  });
+  const line = freshLine(decision);
+  if (!line) {
+    console.info('app clip pay: 4005, no fresh line, nothing sent');
+    return { status: 'not_sent', reason: 'unwritten' };
   }
+  return sendLineAndLink({
+    chatId: row.chatId,
+    checkoutUrl: row.body,
+    line,
+    fetch: deps.fetch,
+    sendParts: deps.sendParts,
+    database,
+    familyId: row.familyId,
+    parentUserId: row.parentUserId,
+    now: deps.now,
+  });
 }

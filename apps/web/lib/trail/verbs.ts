@@ -168,7 +168,6 @@ export const AUDIT_VERBS = [
   'linq_sticker',
   'linq_link_preview',
   'linq_app_clip_pay',
-  'linq_app_clip_pay_link',
   'linq_group_opened',
   'linq_group_claimed',
   'linq_group_held',
@@ -735,7 +734,6 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_sticker: { sentence: 'Hale put a sticker on your message', family: 'note' },
   linq_link_preview: { sentence: 'Hale sent a link preview', family: 'note' },
   linq_app_clip_pay: { sentence: 'Hale sent an Apple Pay card', family: 'awaiting' },
-  linq_app_clip_pay_link: { sentence: 'Hale sent the payment link instead', family: 'done' },
   linq_group_opened: {
     sentence: 'Hale opened a household thread in Messages',
     family: 'done',

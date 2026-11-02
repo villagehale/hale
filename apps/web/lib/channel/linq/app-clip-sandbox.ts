@@ -13,10 +13,13 @@ type Env = Readonly<Record<string, string | undefined>>;
 /** RFC 2606. Nothing at this host can take a payment. */
 export const SANDBOX_PAY_HOST = 'sandbox.pay.preview.invalid';
 
-/** Not a Stripe price. Capture refuses anything else, so a real price id never leaves. */
+/**
+ * Not a Stripe price. Capture refuses anything else, so a real price id never
+ * leaves. The id does not name a billing period.
+ */
 export const SANDBOX_PRICE_IDS = {
-  plus: 'price_test_sandbox_plus_annual',
-  family: 'price_test_sandbox_family_annual',
+  plus: 'price_test_sandbox_plus',
+  family: 'price_test_sandbox_family',
 } as const;
 
 export type AppClipPayTier = keyof typeof SANDBOX_PRICE_IDS;

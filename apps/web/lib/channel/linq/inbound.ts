@@ -295,7 +295,7 @@ export async function handleLinqInboundRequest(
     if (receipt.errorCode === '4005' && apply === 'updated') {
       try {
         const fallback = await fallbackAppClipPayOn4005(deps.database, receipt.messageId);
-        if (fallback.status === 'link' || fallback.reason !== 'not_app_clip') {
+        if (!(fallback.status === 'not_sent' && fallback.reason === 'not_app_clip')) {
           deps.log.info(
             {
               status: fallback.status,

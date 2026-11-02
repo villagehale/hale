@@ -17,7 +17,7 @@ import {
 } from './transport';
 
 const CHAT = 'preview-chat-app-clip-test';
-const LINE = 'Keep it for the year, whenever you are ready';
+const LINE = 'I can send the Plus card whenever you want';
 
 function decider(decision: AppClipPayDecision | null): AppClipPayDecider & { calls: number } {
   const fake = {
@@ -30,7 +30,12 @@ function decider(decision: AppClipPayDecision | null): AppClipPayDecider & { cal
   return fake;
 }
 
-const OFFER: AppClipPayDecision = { offer: true, tier: 'plus', description: LINE };
+const OFFER: AppClipPayDecision = {
+  offer: true,
+  tier: 'plus',
+  description: LINE,
+  line: null,
+};
 
 let calls: CapturedLinqCall[];
 
@@ -90,19 +95,35 @@ describe('LINQ_APP_CLIP_PAY_ENABLED', () => {
 });
 
 describe('app clip pay copy', () => {
-  it('hands the model the audience, the plan, and the parent message', () => {
+  it('hands the model the moment, the household, and the parent message', () => {
     expect(
       JSON.parse(
-        appClipPayUserMessage({ audience: 'direct', planTier: 'free', parentText: 'plus?' }),
+        appClipPayUserMessage({
+          audience: 'direct',
+          planTier: 'free',
+          parentText: 'plus?',
+          childCount: 2,
+          coparent: true,
+          prior: null,
+        }),
       ),
-    ).toEqual({ audience: 'direct', planTier: 'free', parentText: 'plus?' });
+    ).toEqual({
+      moment: 'card',
+      audience: 'direct',
+      planTier: 'free',
+      parentText: 'plus?',
+      childCount: 2,
+      coparent: true,
+      prior: null,
+    });
   });
 
-  it('refuses an empty line, a price, a URL, or more than one line', () => {
+  it('keeps only empty, length, and newline checks', () => {
     expect(appClipPayCopyRefusals('   ')).toContain('empty');
-    expect(appClipPayCopyRefusals('Plus is $79')).toContain('price');
-    expect(appClipPayCopyRefusals('see https://pay.example')).toContain('url');
+    expect(appClipPayCopyRefusals('x'.repeat(241))).toContain('too_long');
     expect(appClipPayCopyRefusals('one\ntwo')).toContain('not_one_line');
+    expect(appClipPayCopyRefusals('Plus is $79')).toEqual([]);
+    expect(appClipPayCopyRefusals('see https://pay.example')).toEqual([]);
     expect(appClipPayCopyRefusals(LINE)).toEqual([]);
   });
 });
@@ -143,12 +164,12 @@ describe('deliverAppClipPay', () => {
     expect(calls).toEqual([]);
   });
 
-  it('a model that cannot write, declines, or names a price sends nothing', async () => {
+  it('a model that cannot write, declines, or names no plan sends nothing', async () => {
     for (const decision of [
       null,
-      { offer: false, tier: null, description: null },
-      { offer: true, tier: 'plus' as const, description: '   ' },
-      { offer: true, tier: 'plus' as const, description: 'It is $79 a year' },
+      { offer: false, tier: null, description: null, line: null },
+      { offer: true, tier: 'plus' as const, description: '   ', line: null },
+      { offer: true, tier: null, description: LINE, line: null },
     ]) {
       calls.length = 0;
       const out = await deliverAppClipPay({
@@ -187,36 +208,43 @@ describe('deliverAppClipPay', () => {
     expect(JSON.stringify(parts)).not.toContain(LINE);
   });
 
-  it('on 4005, sends the same sandbox URL as a link and no text', async () => {
+  it('a synchronous 4005 with no fresh line sends nothing', async () => {
     const out = await deliverAppClipPay({
       channel: 'imessage',
       chatId: CHAT,
       read,
       decider: decider(OFFER),
-      unreachable: true,
+      sendParts: async () => {
+        throw new LinqSendError('4005', 422, true);
+      },
     });
-    expect(out.status).toBe('fallback');
-    const parts = messageParts();
-    expect(parts.map((part) => part.type)).toEqual(['app_clip', 'link']);
-    expect(parts[0]?.value).toBe(parts[1]?.value);
-    expect(parts[0]?.value?.startsWith('https://sandbox.pay.preview.invalid/')).toBe(true);
-    expect(parts.some((part) => part.type === 'text')).toBe(false);
+    expect(out).toEqual({ status: 'not_sent', reason: 'unwritten' });
+    expect(messageParts()).toEqual([]);
   });
 
-  it('a synchronous 4005 falls back to the link and does not leave a text', async () => {
+  it('a synchronous 4005 sends the fresh line and the link, not the card', async () => {
     const { sendLinqParts } = await import('~/lib/channel/outbound-transport');
+    const BUBBLE = 'The card could not open, so here is the link';
     const out = await deliverAppClipPay({
       channel: 'imessage',
       chatId: CHAT,
       read,
-      decider: decider(OFFER),
+      decider: {
+        decide: async (input) =>
+          input.moment === 'fallback'
+            ? { offer: false, tier: null, description: null, line: BUBBLE }
+            : OFFER,
+      },
       sendParts: async (input) => {
         if (input.parts[0]?.type === 'app_clip') throw new LinqSendError('4005', 422, true);
         return sendLinqParts(input);
       },
     });
-    expect(out.status).toBe('fallback');
-    expect(messageParts().map((part) => part.type)).toEqual(['link']);
+    expect(out.status).toBe('link');
+    expect(messageParts()).toEqual([
+      { type: 'text', value: BUBBLE },
+      { type: 'link', value: out.status === 'link' ? out.checkoutUrl : '' },
+    ]);
   });
 
   it('a group chat sends nothing', async () => {

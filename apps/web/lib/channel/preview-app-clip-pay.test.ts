@@ -16,7 +16,13 @@ const env = {
   LINQ_APP_CLIP_PAY_ENABLED: 'true',
 };
 const LINE = 'Whenever you want to keep it';
-const OFFER: AppClipPayDecision = { offer: true, tier: 'family', description: LINE };
+const OFFER: AppClipPayDecision = {
+  offer: true,
+  tier: 'family',
+  description: LINE,
+  line: null,
+};
+const BUBBLE = 'Here is the link';
 
 function req(body: unknown, secret = SECRET) {
   return new Request('https://preview.test/api/channels/preview/app-clip-pay', {
@@ -80,18 +86,38 @@ describe('POST /api/channels/preview/app-clip-pay (VIL-481)', () => {
     expect(JSON.stringify(json)).not.toContain(LINE);
   });
 
-  it('failedCode 4005 also captures the link fallback', async () => {
+  it('failedCode 4005 is the line and the link, not the card', async () => {
+    const res = await handlePreviewAppClipPay(req({ ...body, failedCode: 4005 }), {
+      env,
+      decider: {
+        decide: async () => ({
+          offer: true,
+          tier: 'family' as const,
+          description: LINE,
+          line: BUBBLE,
+        }),
+      },
+    });
+    const json = await res.json();
+    expect(json.outcome.status).toBe('link');
+    const parts = calls.flatMap((call) => {
+      const message = call.body as { message?: { parts?: Array<{ type: string; value: string }> } };
+      return message?.message?.parts ?? [];
+    });
+    expect(parts.map((part) => part.type)).toEqual(['text', 'link']);
+    expect(parts[0]?.value).toBe(BUBBLE);
+    expect(parts[1]?.value).toBe(parts.find((part) => part.type === 'link')?.value);
+    expect(parts.some((part) => part.type === 'app_clip')).toBe(false);
+  });
+
+  it('failedCode 4005 with no fresh line sends nothing', async () => {
     const res = await handlePreviewAppClipPay(req({ ...body, failedCode: 4005 }), {
       env,
       decider: model,
     });
     const json = await res.json();
-    expect(json.outcome.status).toBe('fallback');
-    const types = calls.flatMap((call) => {
-      const message = call.body as { message?: { parts?: Array<{ type: string }> } };
-      return (message?.message?.parts ?? []).map((part) => part.type);
-    });
-    expect(types).toEqual(['app_clip', 'link']);
+    expect(json.outcome).toEqual({ status: 'not_sent', reason: 'unwritten' });
+    expect(calls.filter((call) => call.kind === 'message')).toEqual([]);
   });
 
   it('a model that writes nothing sends nothing', async () => {
