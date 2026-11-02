@@ -735,7 +735,16 @@ async function runActivityOnce(
     // VIL-499 stamps the page read this turn. Binding still decides which facts are picks.
     const cited = bound.picks.flatMap((raw) => {
       const [pick] = toPicks([raw], pages, evidence.searchHits ?? []);
-      return pick ? [{ ...pick, evidence: raw.evidence }] : [];
+      if (!pick) return [];
+      // The bound source is the page the fact was read from. `url` stays the
+      // page this turn stamped (VIL-499), which may be that same page.
+      return [
+        {
+          ...pick,
+          ...(raw.source_url ? { sourceUrl: raw.source_url } : {}),
+          evidence: raw.evidence,
+        },
+      ];
     });
     console.info(
       {
