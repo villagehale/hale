@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly confirms, in French, that autonomous emailing is off, and this is backed by turnedOffThisTurn. It is short with no extra questions. One small blemish: \"je ne t'enverrai plus de courriels\" literally reads as \"I won't send you emails\", which muddies \"à ta place\". \"Je n'enverrai plus\" would have been exact.",
+    "score": 4
+  }
+}

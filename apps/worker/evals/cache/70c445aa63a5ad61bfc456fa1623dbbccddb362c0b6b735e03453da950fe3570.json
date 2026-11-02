@@ -1,0 +1,59 @@
+{
+  "response": {
+    "id": "msg_011CgdKDZajDu2T52oqKyFcz",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9AYKEAgTGAI4AUIIdGhpbmtpbmcSDI5Os6XJQgNZoTurURoM8KVZZQoWzkSi00VnIjCAXFnzUq1Pq0Pcftc5shFA09NBZXT3IV1+EzfexJH/zFx4S7oPZL65vufVo5na2lIqkQbi9m00LVoLHdiImdf86jG/h0CZMpqbvZ2nJKovKKuk3ETTnRPYMopxgD+QiUHbxZpdycQcvDM0vsaf6TTt7lRujO02p/8+O8dwEKZDPLSWWLjKv4+KOPjEjIPQEZp4mpHL2xz9zihUtl1j0G1JkPUKf3zVz3F7/Hc0jgZGVEXXfidp6D9CYtBkEUwez/7adOQYOPTMaLqcc9lrNafXNS5zvXCbmit9N395VMdctbiMWNFYFzg4F6Hii0R1qVrta9e55Up1rczX4nOXba/uKQg5xLWuvPq9iiu1v/II0zB7e0BhdKrrf8gDHnOPguKcnNL2yP2WbuXj72qh01z4OqVxy7owU4OHdNhslfgOASjTlvyTxonHA9nu92ZeaBYh864LZFQ044DsFTmg79IsGelje5gDUDyuuJzMaW4ahsNY4foE9QX8vXLr3TymNeBcVpZs/QV4IL4v8RBveRs6TxieY9CG5XgCOOA2SzAdimdc0KBNsylNCbLI7MQFV2Bj4jpN2Wga6SZAwJ+Tf2IqK0c9haWrBJNzBQ/T+lEVuu+MgA+9Bo9w/P1/U2byBtlkxPljqxqufEClJSb9QWr0FtKbjl2bDN23VAhn5GFZOtRKwppMiEK+3sMJAaHICsytnwj8zl5xNCej1YIp6kwlPNSMmLF6gPDLJ/5E1mvmZ82cTjc7P6hp+o30uA37DeuuHDBn5oPh1wQcJPrMxkCZdDbq7ljGkyKki+gRNjsi1SdAKWif+e7OkgKa0aQgL7QN2LSEtQ4/x4agsavKiH32qyCj5fq5kfjUpORd5D7jMW6LGqumO2+vdoUR/gOkLWbNj9HLUNwNKAv9e8Ts1BBOTl6sXnc8x194EBaqQUdB24tL6trx9K+9n42WbDIwLNPKpx3KAkvtK+FYpHOo8yZIwWdF01DPm+IdIju4XOlTjG6EkC09K7hp3DxGebPeVqPeJ72FT2kb5OsfhdnB2qzwKbBLfAkdpCwpZvv6zBrn8vjr63peOhDHFA2LqE7rg5E9lJEVA6cNxq35rFxfywJD6wPQhhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0194z5UohFPbfau9cC32qXYB",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 101
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01FKs5pBpQoW56ytJQeUYz5c",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full plan for getting Ada sleeping through?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 387,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22369,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 321,
+      "output_tokens_details": {
+        "thinking_tokens": 123
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2710
+}

@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgdKCYGZu2mXz7VyvGeje",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Two wakings at 19 months is really common. Try this tonight: when he wakes, go in, keep it boring and quiet, and use the same short phrase like \"night night, I'm here\". Don't pick him up or turn on lights, and leave within a minute or two. Do the same thing at both wakings so he learns that nothing fun happens overnight."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 138,
+      "cache_read_input_tokens": 23363,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 138,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 111,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1900
+}

@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgdJi7AvgaZLR5sdqWRKC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStAoKEAgTGAI4AUIIdGhpbmtpbmcSDGkUnaZ8pAG8VC3m7BoMkIq3h6IeOFiSoucrIjDZICBn/crbOFPbsHGF+rK6ygbG8nl2Fw9nwUvM7WC9z70ywYU6WRC7cw8jirlIFTsq0Ql5l0clIDRwGpBBzSUXrLfwFjfuJx3YKZDZ7AWXA8oOt+5OY3Ei9BmuXGx3elr3or3nsgTwuPP5FE0JcNHYHUlhDoH6fmzldKRFD3vkmqOXhUVfpzkddVwbhUuDoIZzdatcgCHj3E95ZGYSCLnT9mGRFpHyIpxZHlUxCeUXEC2AlPjz1srHlgqUWh22Br5g4wI0cVxdXY9u0oUBo0v9Fqfa0YDBBNIi9FXBu2eX+zwGvKZyVGhSNpO1/kMJXE8VqXFAmjmgQfMP4GO19XtgtF43JrEvgwa5yzLJr4QktyW/LdQiyuPLzDMWzVHAX6j+7jwb9JH5QRFvIpemowO00JQnz19aXthjpmPfjmL6eMyMm75VoI8W9+RAMVmdqirSyXMfH4zgYKEyaIjJu2D0XxxE6h1967QkV3lLNwWRHpO1ILs/CHTaAQZZyjpeanzrTHvDvaac82IW79A+VWyk9bNPvFD9yxmZMF2CtDwr+tMYPG4tc/QyVOiudIjRW3Fb81uWODRrp47Q9x4vn6haqVyNyPTZkVSpsyLzz/2XkxucFB4M+KLDaKJVZCWraQqFR1aRFQetSzUWc2+UWAaWkgSLFQXwnD5epm0wqzzrCFRfY2fD87q/12uGEIDyBcu0urj57fqo59R0riLv68Ei++aQP9ej9nXc0G50QlXBdL5vbkQUBo+KJ9TaRJ8ZGzONz9yPzsyw1eCGF9+3T9TU6Qcy9N9rtQ5rxBW08BjFgzAZPOz2TnGDsTIpeih341qT4Rfmi7BM9U/nACyo9qGG74tsfHfWcrO0DrZm28GR3pX1Q9z7WN04WSEvPDNtpaN14CGoB9ghHsZT6wSsTMElXlUD+SFNBlWKXxwHXgbTRpQQ7P5KUWj+rdHxn9A/8/SZurz/BllZYM03YZCyvFKWvCUMkJ+vIeKZFCFgDH1V5pYnXpIy6qwthR1HvYdhC7CEETOqW76CFbhNxlMHf/tppV3Th/8YIB8K0W9KV9u1ZMblFy1jkppdZhI2n6wC7kcXAhpcd96gbytfa9Y8kwTzoWv12J0qZMG/j7Cr96PGX6PumeZvdwNdKffFE+ts+ZiWuTu9MSbvSX2LwSQL6KLNPjjNhcVYM6dM3vsBF2Fm9fgex7i4ztTJBfIAQ6EAkGUNobHsP5TXHGma2Ty3dQ/dM5sRAU7/JSNuouo8r50hQffCVbGXnRrg7AC8tSX7sUCs1mKnhv/Z079t5Mx1F2uM4onyxKuxnCTRR6jwgTKh3eCnD2UzzGqwW0wxUq37ZzO6oM4Y2hjyOgbRiMsakEtLheGZCsgYDmdBVhFHlY+ewNkKX8IzaA7fYdBwMKRtFiLVKgWR3G/PGBcJD3Cc2sW6JQikAPpGYBOvi521kFiA6Bw1DX93HYJ9Jl65bmhS8ZbbP4h+WHvayTlfjWTQo4fJxDUyPslWuLjmlguAPf7fsSZuUHDruznC1lr+623HPzWvKDoz9pt4io6MaXzyye/Kg6xAGsnG07X04RpNoKi6q5n7WgctmNA9cU2daMb5svWIPt1xyxUD00fy7mxfhR351nwrCatMcdM8NVKERLb1rgHgITBJ3jYYzgc8/NyCYVH1o8Z7yPXK2sABWUqYQinxLcFOeiAOhLvq6Y+SV5+lbn8CsfAYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Someone's free time isn't something I can share in the group chat. Text me directly and I'll check Thursday afternoon for you."
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18662,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 300,
+      "output_tokens_details": {
+        "thinking_tokens": 258
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

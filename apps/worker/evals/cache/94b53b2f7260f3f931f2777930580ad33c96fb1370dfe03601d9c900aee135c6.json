@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and turn_off_autonomy ran for send_email and reply_to_email, so the reply's confirmation is true. It is short, plain and in the parent's language. It mentions no internal machinery and does not send the parent to the app. It answers completely and stops.",
+    "score": 5
+  }
+}

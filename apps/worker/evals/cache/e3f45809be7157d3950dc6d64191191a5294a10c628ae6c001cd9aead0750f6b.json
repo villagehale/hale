@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgdKXBmZnHLYi4hHzrYCY",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuwkKEAgTGAI4AUIIdGhpbmtpbmcSDMJEiZp8hUzbBLAVQRoMMg0NOV0Wgwe6Mq0PIjAR7SVG7xJ9xLMVLbxS+HC4+jyKytkDY8bchYv0dsKXrAqf7KhDPQudWapr3anuAjUq2AjHrsFYoRvvtiWtut24LuKOtYOXAHSAHIBbF7Vn87ueSphhx3N6Xsdcfp+tIbsjYlMCtdc1XevvRYDPD7fIoXEXy5xsSY0BquQw1D2LyEIcvVX+wVbhekFLfFjucXYGq4KkBCIKHNKqPwlBiB5BtPhJjb1W3cb+LWAl0r0Y/rYRR9QPyWlS6bum5C4+Eah8M8i1UfXTXuNOj4wHjBkb+feyNR0r4dwFeI2IsVaOAEE67U5/UGJqsSpWnbpBWutXq3hkmHFMvvhShtLAnOOIiYGpqGpUIY4xkyqeP9JjEfVjasXw6chn9UI9UwviF+FZdqHAAm+T8I8OohbTxLcFv2trbrpxDoM3p93Dl9Hx0c0yYKDMu3orvKWmKt8hmU02lTxCWmpECom7DncECbDQ1PDxy59WeHZA2f9z30XIDoCFCbQ6HlRyHUifl6y7dGjPNndQe7tbtFK5wum4rwyxSsouY4nEwvvSkHECyicv34e4jggl1pAQwWyQyfAB0CQAhfEerEOp+ro4oHeoAuyMeGawXn04DWsB+KB5Om8cJUDFqMSdlVq9eapf88wj+d5RUkaWzW2FkHHnoE8sZr1yCZWkiK9GPAEX1Xoy7tB0I3VLAs0IHbphnwxrjP39AlbuWhjjt7Zj/ZmUlRVNcV6c1aSP5DduXQc0HS+myJN4T+CXxepCC3qeKqnN7x8Op43lnt3TTHP00tu0ZRqXbnz1O4J0y6l9fo0irzLa4lru6mF5aBBaDBe2qQDAUCrcyAbtt6NbIdZLAj0j+sBNRETU2GZUEHfr1ZwslJSAV+GA01M4IyquhF6tHL5kYka/EaP0jeixwIWRyx3LQuaHAwWmuN4W0f7Ec71oMqqkE9HV5TbM4nFrj7lpvMKkgOcPtUSeiA8L/uhJuAMdFxexJk3Hnr3jM2fteR6QtK5Kj/v44P3rLk5sQ62XtcCofPl0ZzaepYwBqEuAogtrJSEybOO9TQCyalwTZFPNoDTuWNb8p7iLkcDp+jyNWIar4hh3XBFlnqcklKbgGvBGoktZ10G6iWoacS5vtcxKkNsdVMEYjd8nw5NMMwIi3YCT7WQPigBIWnfVcW/pUKUObscdLRrURLytuekSUhz4JeVmbHQjTnC8iAdDMUsgWQpFyjowIq1ItfGliTgWn0rLzOY7uFtEO7TYBQ9lV4Rrtcq92Gy/HCXb9h6V/cV6VStHsMqkbieu9iX4hkOlixNhCnXaFGUQ1fcXkExEVFTDy4f9L4gWmkCyVbLBPmnVewh9Yx10rjzphPMPRdIUFcvsMlVMfcZmdElK9oPsMSb16KdIIf3j9xJ9tpY2I6PJeQsAajaLnguNtLPlZh2p2RIdhjhRQaxTvSzGOYuqhp5KfDUS+ypwZ6HK50LotVHjy1vCAWEqm1PUnBLGHpiqsPQzfYuoG9oWaEs8ZLAWSaseYvL+KrdNhDgnvZZA88f0ijzxaQoN8I4xQpEHhPXDGCYM0RgB"
+      },
+      {
+        "type": "text",
+        "text": "Tiny Gym. Remy's 19 months, so he's well under 3.5 and would go with a parent. Mini Gym is for kids who are 3.5 and going solo."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1342,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22369,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 293,
+      "output_tokens_details": {
+        "thinking_tokens": 234
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2962
+}
