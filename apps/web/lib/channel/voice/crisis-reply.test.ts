@@ -81,7 +81,11 @@ describe('deliverCrisisReply', () => {
     });
     expect(body).toBe('Call 911.');
     expect(write).toHaveBeenCalledWith(
-      expect.objectContaining({ purpose: 'crisis_emergency', mustInclude: ['911'] }),
+      expect.objectContaining({
+        purpose: 'crisis_emergency',
+        mustInclude: ['911'],
+        facts: { emergency: '911' },
+      }),
     );
   });
 

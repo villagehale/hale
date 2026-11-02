@@ -126,7 +126,10 @@ describe('crisis reply direction', () => {
     expect(skill).toMatch(/Stay with them/);
     expect(skill).toMatch(/nothing is sent/);
     expect(skill).toMatch(/Do not infer a country\s+from the language/);
-    expect(skill).toMatch(/both lines were given/);
+    expect(skill).toMatch(/The whole reply is in the sender's own/);
+    expect(skill).toMatch(/Do not add a 988 line/);
+    expect(skill).toMatch(/both\s+lines were given/);
+    expect(skill).not.toMatch(/no closing question/);
     expect(skill).toMatch(/Name no digits you were not given/);
     expect(skill).not.toMatch(/glad they told you/);
     expect(skill).not.toMatch(/3114/);

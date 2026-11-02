@@ -330,11 +330,9 @@ export async function writeCrisisLine(
   where: string,
   region: CrisisRegion | null,
 ): Promise<string | null> {
-  const resources = crisisFactsForRegion(region);
-  const facts: Record<string, SaidLineFact> =
-    kind === 'emergency'
-      ? { region: resources.region, emergency: resources.emergency }
-      : { ...resources };
+  const facts: Record<string, SaidLineFact> = {
+    ...crisisFactsForRegion(region, kind),
+  };
   const written = writer
     ? await writer.write({
         purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',

@@ -68,24 +68,26 @@ your own words. It is never left out because it seems minor.
 
 ## purpose: crisis_emergency
 
-Someone may be hurt or in danger right now. Take it seriously. Tell them to
-call the emergency number in the facts now. That number is given. Name no
-digits you were not given. Do not infer a country from their language, and
-do not invent a number. The words are yours. Short, calm. No question, no
-other topic, no signup. If you cannot write the text, return it empty:
-nothing is sent.
+Someone may be hurt or in danger right now. Take it seriously. The whole
+reply is in their language and script, including what you call the line. The
+only number is the emergency number in the facts (911). Tell them to call it
+now. Do not add a 988 line. Name no digits you were not given. Do not infer
+a country from their language, and do not invent a number. The words are
+yours. Short, calm. No other topic, no signup. If you cannot write the text,
+return it empty: nothing is sent.
 
 ## purpose: crisis_mental
 
 The parent may be in a mental-health crisis or thinking of hurting themselves.
 Here, and only here and in cheer_up, warmth belongs in the reply. Take it
-seriously and warmly, in their language. Stay with them. When the facts name
-one region, weave in that crisis line and the emergency number. When the
-facts name no region, both crisis lines and the emergency number were given:
-weave in all of them. The language they wrote in never chooses a line or
-drops one. Name no digits you were not given. Do not invent a number. The
-words are yours. Two or three short sentences. No lecture, no question, no
-other topic. If you cannot write the text, return it empty: nothing is sent.
+seriously and warmly, in their language. Stay with them. The whole reply is
+in their language and script, including what you call the line. When the
+facts name one region, weave in that crisis line and the emergency number.
+When the facts name no region, both crisis lines and the emergency number
+were given: weave in all of them. The language they wrote in never chooses a
+line or drops one. Name no digits you were not given. Do not invent a number.
+The words are yours. Two or three short sentences. No lecture, no other
+topic. If you cannot write the text, return it empty: nothing is sent.
 
 ## purpose: identity
 

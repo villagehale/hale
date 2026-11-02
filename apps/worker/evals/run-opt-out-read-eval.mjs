@@ -131,7 +131,7 @@ async function main() {
         userMessage: JSON.stringify({
           text: f.text,
           languageHint: f.language === 'fr' ? 'fr' : null,
-          facts: crisisFactsForRegion(null),
+          facts: crisisFactsForRegion(null, 'mental'),
         }),
         toolName: 'opt_out',
         toolDescription: 'Return whether the sender asked Hale to stop or start texting.',

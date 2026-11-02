@@ -91,7 +91,10 @@ export function optOutUserMessage(input: OptOutReadInput): string {
   return JSON.stringify({
     text: input.text,
     languageHint: certainLanguageHint(input.language),
-    facts: crisisFactsForRegion(input.region),
+    // The reader has not classified yet. Mental facts carry 988 (and 911 when
+    // the region is unknown). The prompt uses 911 only once it reads a physical
+    // emergency, and does not add a 988 line there.
+    facts: crisisFactsForRegion(input.region, 'mental'),
   });
 }
 

@@ -1,10 +1,12 @@
 /**
  * The crisis lines Hale may hand a model, as facts to weave in. Not a script.
  *
- * Hale serves Canada and the US. A known region gets that country's line.
- * An unknown region gets both lines. The language of the text never picks one
- * (a French text is not France, and it is not "Canada only" either). Official
- * lines, checked 2026-11-02:
+ * Hale serves Canada and the US. A physical emergency is 911 only. 988 (Canada's
+ * 9-8-8 line, or the US 988 line) is added only for a mental-health signal.
+ * A known region gets that country's 988 line. An unknown region gets both 988
+ * lines, plus 911. The language of the text never picks one (a French text is
+ * not France, and it is not "Canada only" either). Official lines, checked
+ * 2026-11-02:
  * - Canada: 9-8-8 Suicide Crisis Helpline, call or text 988, any time, English
  *   or French. Emergency is 911.
  * - United States: 988 Suicide & Crisis Lifeline, call or text 988, any time.
@@ -19,35 +21,44 @@ const CANADA_LINE =
   '9-8-8 Suicide Crisis Helpline: call or text 988, any time, in English or French';
 const US_LINE = '988 Suicide & Crisis Lifeline: call or text 988, any time';
 
-export interface KnownRegionFacts {
+/** A physical emergency. 911 only — no 988 line. */
+export interface EmergencyFacts {
+  readonly emergency: '911';
+}
+
+export interface KnownMentalFacts {
   readonly region: 'Canada' | 'United States';
   readonly crisisLine: string;
   readonly emergency: '911';
 }
 
-/** Both lines, because Hale does not know which country this parent is in. */
-export interface UnknownRegionFacts {
+/** Both 988 lines plus 911, because Hale does not know which country this parent is in. */
+export interface UnknownMentalFacts {
   readonly region: null;
   readonly canadaCrisisLine: string;
   readonly usCrisisLine: string;
   readonly emergency: '911';
 }
 
-export type CrisisFacts = KnownRegionFacts | UnknownRegionFacts;
+export type CrisisSignal = 'emergency' | 'mental';
 
-const CANADA: KnownRegionFacts = {
+export type CrisisFacts = EmergencyFacts | KnownMentalFacts | UnknownMentalFacts;
+
+const EMERGENCY: EmergencyFacts = { emergency: '911' };
+
+const CANADA_MENTAL: KnownMentalFacts = {
   region: 'Canada',
   crisisLine: CANADA_LINE,
   emergency: '911',
 };
 
-const UNITED_STATES: KnownRegionFacts = {
+const US_MENTAL: KnownMentalFacts = {
   region: 'United States',
   crisisLine: US_LINE,
   emergency: '911',
 };
 
-const UNKNOWN: UnknownRegionFacts = {
+const UNKNOWN_MENTAL: UnknownMentalFacts = {
   region: null,
   canadaCrisisLine: CANADA_LINE,
   usCrisisLine: US_LINE,
@@ -55,14 +66,29 @@ const UNKNOWN: UnknownRegionFacts = {
 };
 
 /**
- * The facts for a known region, or both lines plus 911 when Hale does not
- * know it. Never null: an unknown region is not a reason to withhold a number.
+ * Facts for a signal. Emergency is 911 only, in every region. Mental keeps the
+ * 988 line for a known region (and 911), or both 988 lines plus 911 when the
+ * region is unknown. Never null, and never chosen from the parent's language.
  */
-export function crisisFactsForRegion(region: CrisisRegion): KnownRegionFacts;
-export function crisisFactsForRegion(region: null | undefined): UnknownRegionFacts;
-export function crisisFactsForRegion(region: CrisisRegion | null | undefined): CrisisFacts;
-export function crisisFactsForRegion(region: CrisisRegion | null | undefined): CrisisFacts {
-  if (region === 'CA') return CANADA;
-  if (region === 'US') return UNITED_STATES;
-  return UNKNOWN;
+export function crisisFactsForRegion(
+  region: CrisisRegion | null | undefined,
+  signal: 'emergency',
+): EmergencyFacts;
+export function crisisFactsForRegion(region: CrisisRegion, signal: 'mental'): KnownMentalFacts;
+export function crisisFactsForRegion(
+  region: null | undefined,
+  signal: 'mental',
+): UnknownMentalFacts;
+export function crisisFactsForRegion(
+  region: CrisisRegion | null | undefined,
+  signal: CrisisSignal,
+): CrisisFacts;
+export function crisisFactsForRegion(
+  region: CrisisRegion | null | undefined,
+  signal: CrisisSignal,
+): CrisisFacts {
+  if (signal === 'emergency') return EMERGENCY;
+  if (region === 'CA') return CANADA_MENTAL;
+  if (region === 'US') return US_MENTAL;
+  return UNKNOWN_MENTAL;
 }

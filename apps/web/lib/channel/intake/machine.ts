@@ -1021,7 +1021,7 @@ async function offScriptReply(
       purpose: 'crisis_mental',
       language: null,
       parentWords: args.parentWords,
-      facts: { ...crisisFactsForRegion(args.region) },
+      facts: { ...crisisFactsForRegion(args.region, 'mental') },
       mustInclude: ['988'],
     });
     if (!written) {
