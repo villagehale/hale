@@ -483,7 +483,9 @@ describe('VIL-525 · group plan approval never leaks into private replies', () =
       parentUserId: 'parent-1',
       now: T1,
     });
-    expect(questions.find((question) => question.id === 'offer-1')?.approvesActionId).toBeUndefined();
+    expect(
+      questions.find((question) => question.id === 'offer-1')?.approvesActionId,
+    ).toBeUndefined();
     expect(questions.some((question) => question.id === 'group-approved')).toBe(false);
   });
 });
