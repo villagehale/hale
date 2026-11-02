@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The follow-up corrects the swim time (4 to 5) but also asks the parent a new question, 'Want me to tell the coach?', which cannot be part of a bubble edit; sending it as its own message with edit null is correct and safe.",
+    "score": 5
+  }
+}

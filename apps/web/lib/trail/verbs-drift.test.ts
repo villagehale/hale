@@ -42,6 +42,8 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // VIL-472. One recorder writes the tapback and the sticker moment.
   'apps/web/lib/channel/linq/moments.ts': ['linq_tapback', 'linq_sticker'],
+  // VIL-479. One helper writes Hale's edit and a parent's edit of their own bubble.
+  'apps/web/lib/channel/linq/edit.ts': ['linq_message_edited', 'linq_parent_message_edited'],
   // VIL-226. One audit helper writes every verb of the hourly proactive review, and a
   // decider send names the sweep's own verb for a nudge.
   'apps/web/lib/channel/proactive/review.ts': [

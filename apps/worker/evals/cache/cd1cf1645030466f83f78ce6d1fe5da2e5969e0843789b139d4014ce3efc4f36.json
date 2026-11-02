@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Edit is null, which is correct: the follow-up adds a new private appointment rather than correcting a fact in the editable bubble, and editing would expose a private fact to the group. Sending it as its own message is the right call.",
+    "score": 5
+  }
+}

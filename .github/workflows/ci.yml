@@ -313,6 +313,14 @@ jobs:
       - name: Linq sticker eval (cached-only)
         run: pnpm --filter @hale/worker eval:linq-sticker
 
+      # VIL-479: linq-edit decision cache recorded. A miss fails CI.
+      - name: Linq edit eval (cached-only)
+        run: pnpm --filter @hale/worker eval:linq-edit
+
+      # Request shape and price. $0, no model. Hard gate.
+      - name: Linq edit eval (dry)
+        run: pnpm --filter @hale/worker eval:linq-edit:dry
+
       - name: Group reminder eval (cached-only)
         working-directory: apps/worker
         run: node evals/group-reminder-eval.mjs --cached-only

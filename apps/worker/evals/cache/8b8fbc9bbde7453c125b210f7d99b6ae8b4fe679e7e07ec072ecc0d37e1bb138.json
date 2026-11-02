@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked a question ('isn't swim at 5?') that the follow-up answers directly, so edit null is correct: an edit would leave the question with no reply, and the follow-up must still go out as its own message.",
+    "score": 5
+  }
+}
