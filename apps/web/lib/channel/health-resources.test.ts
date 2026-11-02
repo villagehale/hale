@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  emergencyFacts,
   healthFactsForRegion,
   healthRegionFromPlace,
   healthRegionFromTokens,
@@ -60,10 +61,12 @@ describe('medical number presence', () => {
   });
 
   it('requires 911 on an emergency, and both numbers on a health worry', () => {
+    expect(emergencyFacts()).toEqual({ emergency: '911' });
     expect(medicalMustInclude('emergency')).toEqual(['911']);
     expect(medicalMustInclude('health')).toEqual(['811', '911']);
     expect(medicalTextHasRequiredNumbers('emergency', 'Call 9-1-1 now.')).toBe(true);
-    expect(medicalTextHasRequiredNumbers('emergency', 'Call 8-1-1.')).toBe(false);
+    expect(medicalTextHasRequiredNumbers('emergency', 'Call 8-1-1 or 911.')).toBe(false);
+    expect(medicalTextHasRequiredNumbers('emergency', 'Call 9 8 8 or 911.')).toBe(false);
     expect(medicalTextHasRequiredNumbers('health', 'Call 8-1-1 or 9-1-1.')).toBe(true);
     expect(medicalTextHasRequiredNumbers('health', 'Call 911 now.')).toBe(false);
   });

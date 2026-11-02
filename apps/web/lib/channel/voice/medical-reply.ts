@@ -1,13 +1,19 @@
 import {
   type HealthRegion,
+  emergencyFacts,
   healthFactsForRegion,
   medicalMustInclude,
   medicalTextHasRequiredNumbers,
 } from '~/lib/channel/health-resources';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import type { SaidLineFact, SaidLineWriter } from './said-line';
 
 export type MedicalReplyKind = 'health' | 'emergency';
 
+/**
+ * Same log the crisis page uses (`logCrisisUnanswered`): `{ urgent: true }`
+ * and a message ending `page #ops now`. That is the shape the log drain pages on.
+ */
 const PAGE = 'URGENT: medical reply flagged, no reply sent - page #ops now';
 
 /**
@@ -19,17 +25,18 @@ export function logMedicalUnanswered(kind: MedicalReplyKind, where: string): voi
 }
 
 /**
- * The medical reply in the model's words. 811 and 911 are facts. Ontario or
- * British Columbia gets that health line; an unknown region gets both. The
- * check is presence (`medicalTextHasRequiredNumbers`): 911 always on an
- * emergency, dashes and spaces ignored. A miss is one more write. If that
- * also fails, nothing is sent and #ops is paged.
+ * The medical reply in the model's words. A health worry gets the region health
+ * line (both, when the region is unknown) and 911. An emergency gets 911 only.
+ * A reply that misses 911, or that still names 811 or 988 on an emergency, is
+ * written once more from those same facts. If it still fails, nothing is sent
+ * and #ops is paged.
  */
 export async function deliverMedicalReply(input: {
   kind: MedicalReplyKind;
   parentWords: string;
   where: string;
   region: HealthRegion | null;
+  language: ReplyLanguage | null;
   writer: SaidLineWriter | null | undefined;
 }): Promise<string | null> {
   if (!input.writer) {
@@ -51,12 +58,14 @@ async function writeMedicalLine(
     kind: MedicalReplyKind;
     parentWords: string;
     region: HealthRegion | null;
+    language: ReplyLanguage | null;
   },
 ): Promise<string | null> {
-  const facts: Record<string, SaidLineFact> = { ...healthFactsForRegion(input.region) };
+  const facts: Record<string, SaidLineFact> =
+    input.kind === 'emergency' ? emergencyFacts() : { ...healthFactsForRegion(input.region) };
   return writer.write({
     purpose: 'health',
-    language: null,
+    language: input.language,
     parentWords: input.parentWords,
     facts,
     mustInclude: medicalMustInclude(input.kind),

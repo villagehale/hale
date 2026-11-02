@@ -3,7 +3,12 @@ import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent
 import type { MedicalReplySourceValue } from '@hale/db';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { type HealthRegion, textHasNumber } from '~/lib/channel/health-resources';
+import {
+  type HealthRegion,
+  emergencyFacts,
+  healthFactsForRegion,
+  medicalTextHasRequiredNumbers,
+} from '~/lib/channel/health-resources';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { type MedicalReplyKind, deliverMedicalReply } from '~/lib/channel/voice/medical-reply';
 import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
@@ -151,7 +156,11 @@ export interface MedicalReply {
 }
 
 export interface MedicalComposer {
-  answer(text: string, region?: HealthRegion | null): Promise<MedicalReply>;
+  answer(
+    text: string,
+    region?: HealthRegion | null,
+    language?: ReplyLanguage | null,
+  ): Promise<MedicalReply>;
 }
 
 /**
@@ -276,12 +285,16 @@ export function groundUserMessage(q: ClinicalQuery): string {
   });
 }
 
-/** The compose payload. It carries the one field the search deliberately does NOT get:
- * the parent's language. The search runs on English pediatric guidance whoever is asking,
- * and the query it runs is English by contract; the language matters only where words are
- * written FOR the parent, which is here. */
+/** The compose payload. It carries what the search deliberately does NOT get: the
+ * parent's language, and the health facts for their region. The search runs on English
+ * pediatric guidance whoever is asking; the language and the numbers matter only where
+ * words are written FOR the parent, which is here. */
 export function composeUserMessage(
-  q: ClinicalQuery & { language: ReplyLanguage; researchNotes: string },
+  q: ClinicalQuery & {
+    language: ReplyLanguage;
+    researchNotes: string;
+    facts: Record<string, string | null>;
+  },
 ): string {
   return JSON.stringify({
     clinical_query: q.clinicalQuery,
@@ -289,6 +302,7 @@ export function composeUserMessage(
     ...(q.duration ? { duration: q.duration } : {}),
     language: q.language,
     research_notes: q.researchNotes,
+    facts: q.facts,
   });
 }
 
@@ -356,11 +370,9 @@ function isEnglish(text: string): boolean {
   return !NON_ENGLISH_LETTERS.test(text);
 }
 
-/** Whether a body carries a triage number. Dashes and spaces between the digits
- * do not count. A composed answer that names neither 811 nor 911 has no triage
- * in it, whatever the model intended. */
-function namesUrgentCare(body: string): boolean {
-  return textHasNumber(body, '811') || textHasNumber(body, '911');
+/** A health worry needs the region line and 911. An emergency needs 911 only. */
+function triageHolds(kind: MedicalReplyKind, body: string): boolean {
+  return medicalTextHasRequiredNumbers(kind, body);
 }
 
 /** How many real web-search results the model produced. An error result is not a result,
@@ -457,7 +469,12 @@ export function scrubResidualPii(text: string): string {
  * throws a {@link MedicalUnresolvable} naming the phase that failed. Never returns an
  * ungrounded, untriaged, or unsendable body — those are throws.
  */
-async function runMedicalOnce(client: () => AgentClient, text: string): Promise<string> {
+async function runMedicalOnce(
+  client: () => AgentClient,
+  text: string,
+  region: HealthRegion | null,
+  seen: { language: ReplyLanguage | null; kind: MedicalReplyKind | null },
+): Promise<string> {
   let resolved: AgentClient;
   try {
     resolved = client();
@@ -500,6 +517,10 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   if (clinicalQuery === '') throw new MedicalUnresolvable('sanitize_failed', 'empty query');
   const duration = sanitized.duration?.trim();
   const language = normalizeLanguage(sanitized.language);
+  seen.language = language;
+  const kind: MedicalReplyKind = isRedFlag(sanitized.red_flag) ? 'emergency' : 'health';
+  seen.kind = kind;
+  const facts = kind === 'emergency' ? emergencyFacts() : healthFactsForRegion(region);
   // Deterministic backstop UNDER the blind sanitizer: strip any residual identifier the model
   // missed from the two fields that cross the border (the query AND the duration) before they
   // reach web_search. See scrubResidualPii.
@@ -542,6 +563,7 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
         ...query,
         language,
         researchNotes: researchText(research.content),
+        facts: { ...facts },
       }),
       toolName: 'medical_answer',
       toolDescription: 'Return the plain-language answer and the explicit triage guidance.',
@@ -555,7 +577,13 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
 
   // Triage is required BEFORE assembly and confirmed AFTER it, so neither a model that
   // returned an empty triage field nor an assembly that dropped the numbers can ship.
-  if (!namesUrgentCare(plainText(composed.triage))) throw new MedicalUnresolvable('missing_triage');
+  // An emergency is judged before the 911-only check, so a negation that still
+  // carries the digits is an under-escalation and not a missing number.
+  const triage = plainText(composed.triage);
+  if (triage === '') throw new MedicalUnresolvable('missing_triage');
+  if (kind === 'health' && !triageHolds(kind, triage)) {
+    throw new MedicalUnresolvable('missing_triage');
+  }
   const body = plainText(`${composed.answer} ${composed.triage}`);
   if (body === '') throw new MedicalUnresolvable('unsendable', 'empty');
   // ONE ceiling, counted in the currency the carrier bills: `smsSegments` measures a
@@ -566,14 +594,13 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
   if (smsSegments(body) > MAX_MEDICAL_SEGMENTS) {
     throw new MedicalUnresolvable('unsendable', 'over_segment_cap');
   }
-  if (!namesUrgentCare(body)) throw new MedicalUnresolvable('missing_triage', 'lost in assembly');
-  // The escalation invariant. namesUrgentCare only proves a number is PRESENT — 811 alone
-  // passes it, and so does "no need to call 911" — so a mis-triaged emergency ships through
-  // every gate above. This is the one that catches it: a judged red flag — `unsure`
-  // included — whose body is not judged an order to get emergency care now fails CLOSED to
-  // the fixed line, which itself names 911 — strictly safer than shipping an
-  // under-escalation.
-  if (isRedFlag(sanitized.red_flag)) {
+  if (kind === 'health' && !triageHolds(kind, body)) {
+    throw new MedicalUnresolvable('missing_triage', 'lost in assembly');
+  }
+  // The escalation invariant. A judged red flag — `unsure` included — whose body
+  // is not judged an order to get emergency care now fails closed. When it is an
+  // order, 911 must be present and 811 and 988 must not.
+  if (kind === 'emergency') {
     const verdict = await judgeEscalation(resolved, escalationSkill, body, language);
     if (verdict !== 'yes') {
       throw new MedicalUnresolvable(
@@ -581,9 +608,8 @@ async function runMedicalOnce(client: () => AgentClient, text: string): Promise<
         `${redFlagReading(sanitized.red_flag)}:${escalationReading(verdict)}`,
       );
     }
-    // 911 always on an emergency. "Go to the ER" without the number does not ship.
-    if (!textHasNumber(body, '911')) {
-      throw new MedicalUnresolvable('missing_triage', 'emergency_missing_911');
+    if (!triageHolds('emergency', body)) {
+      throw new MedicalUnresolvable('missing_triage', 'emergency_number');
     }
   }
   return body;
@@ -633,7 +659,8 @@ export function medicalReplyUnsent(reason: MedicalFallback = 'compose_failed'): 
   return new MedicalUnresolvable(reason, 'medical_unsent');
 }
 
-function fallbackKind(err: unknown): MedicalReplyKind {
+function fallbackKind(err: unknown, seen: { kind: MedicalReplyKind | null }): MedicalReplyKind {
+  if (seen.kind === 'emergency') return 'emergency';
   return err instanceof MedicalUnresolvable && err.reason === 'under_escalated'
     ? 'emergency'
     : 'health';
@@ -651,13 +678,16 @@ async function onMedicalTurnUnresolvable(
   client: () => AgentClient,
   text: string,
   region: HealthRegion | null,
+  language: ReplyLanguage | null,
   failed: unknown,
+  seen: { kind: MedicalReplyKind | null },
 ): Promise<MedicalReply> {
   const written = await deliverMedicalReply({
-    kind: fallbackKind(failed),
+    kind: fallbackKind(failed, seen),
     parentWords: text,
     where: 'off-domain medical',
     region,
+    language,
     writer: createSaidLineWriter(client),
   });
   if (!written) throw medicalReplyUnsent();
@@ -681,17 +711,31 @@ function logMedicalFailure(err: unknown, attempt: number): void {
  */
 export function createMedicalComposer(client: () => AgentClient): MedicalComposer {
   return {
-    async answer(text, region: HealthRegion | null = null) {
+    async answer(text, region: HealthRegion | null = null, language: ReplyLanguage | null = null) {
+      const seen = {
+        language: null as ReplyLanguage | null,
+        kind: null as MedicalReplyKind | null,
+      };
       let failed: unknown;
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
-          return { reply: await runMedicalOnce(client, text), replySource: 'web_grounded' };
+          return {
+            reply: await runMedicalOnce(client, text, region, seen),
+            replySource: 'web_grounded' as const,
+          };
         } catch (err) {
           failed = err;
           logMedicalFailure(err, attempt);
         }
       }
-      return onMedicalTurnUnresolvable(client, text, region, failed);
+      return onMedicalTurnUnresolvable(
+        client,
+        text,
+        region,
+        seen.language ?? language,
+        failed,
+        seen,
+      );
     },
   };
 }

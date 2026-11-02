@@ -573,6 +573,31 @@ describe('the medical-symptom answer lane', () => {
 
   /** The composer's own last-resort fixed line rides out unchanged, and STILL is not
    * recorded — the medical lane never writes a demand-signal row, answered or not. */
+  it('treats a failed place lookup as an unknown region and still asks for the reply', async () => {
+    const p = ports({
+      read: reading({
+        lane: 'safety_critical',
+        category: 'medical-symptom',
+        language: 'fr',
+      }),
+    });
+    const seen: { region: string | null | undefined; language: string | null | undefined }[] = [];
+    p.place = async () => {
+      throw new Error('relation missing');
+    };
+    p.medical = {
+      answer: async (_text, region, language) => {
+        seen.push({ region, language });
+        return { reply: 'Call 811 or 911.', replySource: 'web_grounded' };
+      },
+    };
+
+    const verdict = await consider(p, 'she has a fever');
+
+    expect(verdict).toMatchObject({ status: 'deflected', reply: 'Call 811 or 911.' });
+    expect(seen).toEqual([{ region: null, language: 'fr' }]);
+  });
+
   it('sends nothing when the health reply cannot be written', async () => {
     const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
     p.medical = {

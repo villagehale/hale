@@ -304,7 +304,20 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         try {
           const place = await family.place();
           region = healthRegionFromPlace(place.status === 'known' ? place : null);
-          const { reply, replySource } = await ports.medical.answer(input.text, region);
+        } catch (err) {
+          // A lookup that throws is an unknown region, not a lost reply.
+          console.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'off-domain medical: place unread, region unknown',
+          );
+          region = null;
+        }
+        try {
+          const { reply, replySource } = await ports.medical.answer(
+            input.text,
+            region,
+            reading.language,
+          );
           return withSeenLanguage(
             {
               status: 'deflected',

@@ -36,7 +36,7 @@ export type SaidLinePurpose =
   | 'no_source'
   /** A caregiver venting: warm, not a clinician, no method, no diagnosis. */
   | 'cheer_up'
-  /** Someone is hurt or ill (not a crisis): Health811 and 911, never advice. */
+  /** Someone is hurt or ill (not a crisis): the health line in the facts, and 911. An emergency is 911 only. */
   | 'health'
   /** A parent said yes to one village introduction. */
   | 'intro_yes'

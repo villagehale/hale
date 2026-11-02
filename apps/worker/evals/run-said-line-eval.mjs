@@ -3,7 +3,8 @@
 // Subject: the production said-line writer (skill `said-line`, the same request shape
 // as apps/web/lib/channel/voice/said-line.ts: saidLineUserMessage + tool said_line).
 // Rows: identity EN/FR/ZH/AR, two-link connect EN/FR, and one row each for
-// not_posted, no_source, cheer_up, health (811/911) and the single connect link. Grade:
+// not_posted, no_source, cheer_up, health by region (ON, BC, unknown, emergency,
+// French) and the single connect link. Grade:
 //   - facts (structural, the same check as acceptSaidLine): non-empty, every
 //     mustInclude string verbatim, no link that is not a required fact;
 //   - words: a judge model only, median of three draws, floor JUDGE_MIN. No phrase is
@@ -135,7 +136,7 @@ const BROKEN_CASES = [
   },
   {
     id: 'broken-invented-medical-guidance',
-    base: 'health-en',
+    base: 'health-on',
     text: "Oh no, poor guy. Ice it for 15 minutes with a cloth in between and keep it raised. Health811 can help any time, just call 811, and if it starts to look bent or he can't move his fingers, call 911.",
   },
   {
@@ -240,6 +241,13 @@ function userMessage(f) {
  * code fills the slots. Returns the filled text, or null. mustConvey is keys only
  * here. Meaning is the convey judge (VIL-530), which sends nothing on a miss and
  * does not rewrite. This replica must not grow a word list for it. */
+/** Same presence check as textHasNumber in health-resources.ts. */
+function textHasNumber(text, digits) {
+  if (!/^\d+$/.test(digits)) return text.includes(digits);
+  const collapsed = text.replace(/(\d)[\s-]+(?=\d)/g, '$1');
+  return new RegExp(`\\b${digits}\\b`).test(collapsed);
+}
+
 function acceptText(text, f) {
   let body = (text ?? '').trim();
   if (body.length === 0) return null;
@@ -389,10 +397,13 @@ async function main() {
     else out = (await cachedToolCall(subjectOpts))?.value;
     const raw = out?.text ?? '';
     const text = out?.dryStandIn ? raw : acceptText(raw, f);
-    if (text === null) {
+    const stray = (f.forbidNumbers ?? []).filter((digits) => text && textHasNumber(text, digits));
+    if (text === null || stray.length > 0) {
       failed += 1;
       results.push({ id: f.id, failed: true });
-      console.info(`FAIL  ${f.id}  facts: a fact or link slot is missing, or a URL was typed`);
+      console.info(
+        `FAIL  ${f.id}  facts: ${stray.length > 0 ? `stray number ${stray.join(',')}` : 'a fact or link slot is missing, or a URL was typed'}`,
+      );
       console.info(`      text: ${JSON.stringify(raw)}`);
       continue;
     }

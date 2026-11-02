@@ -46,12 +46,17 @@ const UNKNOWN: HealthFacts = {
 /**
  * The facts for Ontario or British Columbia, or both lines plus 911 when Hale
  * does not know which. Never null: an unknown region is not a reason to
- * withhold a number.
+ * withhold a number. A health worry only. An emergency does not get these.
  */
 export function healthFactsForRegion(region: HealthRegion | null | undefined): HealthFacts {
   if (region === 'ON') return ONTARIO;
   if (region === 'BC') return BRITISH_COLUMBIA;
   return UNKNOWN;
+}
+
+/** An emergency names 911 and no nurse line. No 811, no 988. */
+export function emergencyFacts(): { readonly emergency: '911' } {
+  return { emergency: '911' };
 }
 
 /** Ontario or British Columbia when a token says so. Anything else is unknown. */
@@ -100,6 +105,18 @@ export function medicalMustInclude(kind: 'health' | 'emergency'): readonly strin
   return kind === 'emergency' ? ['911'] : ['811', '911'];
 }
 
+/** 811 or 988 in an emergency reply. Dashes and spaces do not hide them. */
+export function textHasStrayEmergencyNumber(text: string): boolean {
+  return textHasNumber(text, '811') || textHasNumber(text, '988');
+}
+
+/**
+ * A health worry carries 811 and 911. An emergency carries 911 and neither 811
+ * nor 988.
+ */
 export function medicalTextHasRequiredNumbers(kind: 'health' | 'emergency', text: string): boolean {
+  if (kind === 'emergency') {
+    return textHasNumber(text, '911') && !textHasStrayEmergencyNumber(text);
+  }
   return medicalMustInclude(kind).every((digits) => textHasNumber(text, digits));
 }

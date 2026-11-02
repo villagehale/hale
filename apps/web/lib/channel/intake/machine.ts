@@ -1030,6 +1030,7 @@ async function offScriptReply(
       parentWords: args.parentWords,
       where: 'intake health',
       region: healthRegionFromTokens([args.postalCode]),
+      language: args.language ?? null,
       writer: deps.saidLine,
     });
     if (!written) return HELD_SILENT;

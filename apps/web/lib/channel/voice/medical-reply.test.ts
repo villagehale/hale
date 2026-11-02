@@ -26,6 +26,7 @@ describe('deliverMedicalReply', () => {
       parentWords: 'his wrist is swollen',
       where: 'intake health',
       region: 'ON',
+      language: 'en',
       writer,
     });
     expect(body).toBe('Call 811, or 911 if it is an emergency.');
@@ -33,6 +34,7 @@ describe('deliverMedicalReply', () => {
     expect(write).toHaveBeenCalledWith(
       expect.objectContaining({
         purpose: 'health',
+        language: 'en',
         parentWords: 'his wrist is swollen',
         mustInclude: ['811', '911'],
         facts: expect.objectContaining({
@@ -52,6 +54,7 @@ describe('deliverMedicalReply', () => {
       parentWords: 'fever',
       where: 'off-domain medical',
       region: 'BC',
+      language: null,
       writer,
     });
     expect(body).toBe('Call 8-1-1 or 9-1-1.');
@@ -66,6 +69,7 @@ describe('deliverMedicalReply', () => {
       parentWords: 'fever',
       where: 'intake health',
       region: null,
+      language: null,
       writer,
     });
     const facts = write.mock.calls[0]?.[0].facts;
@@ -82,11 +86,18 @@ describe('deliverMedicalReply', () => {
       kind: 'emergency',
       parentWords: 'she is not breathing',
       where: 'off-domain medical',
-      region: null,
+      region: 'ON',
+      language: 'fr',
       writer,
     });
     expect(body).toBe('Call 9-1-1 now.');
-    expect(write).toHaveBeenCalledWith(expect.objectContaining({ mustInclude: ['911'] }));
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        language: 'fr',
+        mustInclude: ['911'],
+        facts: { emergency: '911' },
+      }),
+    );
     expect(error).not.toHaveBeenCalled();
   });
 
@@ -98,6 +109,7 @@ describe('deliverMedicalReply', () => {
       parentWords: 'fever',
       where: 'intake health',
       region: 'ON',
+      language: null,
       writer,
     });
     expect(body).toBe('Call 811 or 9 1 1.');
@@ -113,6 +125,7 @@ describe('deliverMedicalReply', () => {
       parentWords: 'not breathing',
       where: 'off-domain medical',
       region: null,
+      language: null,
       writer,
     });
     expect(body).toBeNull();
@@ -131,6 +144,7 @@ describe('deliverMedicalReply', () => {
       parentWords: 'fever',
       where: 'intake health',
       region: null,
+      language: null,
       writer: null,
     });
     expect(body).toBeNull();
@@ -141,6 +155,38 @@ describe('deliverMedicalReply', () => {
     );
   });
 
+  it('rewrites an emergency once when it names 811 or 988, then pages if it is still there', async () => {
+    const stray = scriptedWriter(['Call 811 or 911.', 'Call 9-8-8 or 911.']);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const body = await deliverMedicalReply({
+      kind: 'emergency',
+      parentWords: 'not breathing',
+      where: 'off-domain medical',
+      region: 'BC',
+      language: 'en',
+      writer: stray.writer,
+    });
+    expect(body).toBeNull();
+    expect(stray.write).toHaveBeenCalledTimes(2);
+    expect(stray.write).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ facts: { emergency: '911' } }),
+    );
+    expect(error).toHaveBeenCalledTimes(1);
+
+    const cleaned = scriptedWriter(['Text 988 and 911.', 'Call 911 now.']);
+    const sent = await deliverMedicalReply({
+      kind: 'emergency',
+      parentWords: 'not breathing',
+      where: 'off-domain medical',
+      region: null,
+      language: null,
+      writer: cleaned.writer,
+    });
+    expect(sent).toBe('Call 911 now.');
+    expect(cleaned.write).toHaveBeenCalledTimes(2);
+  });
+
   it('sends nothing and pages when the writer returns nothing twice', async () => {
     const { writer, write } = scriptedWriter([null, null]);
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -149,6 +195,7 @@ describe('deliverMedicalReply', () => {
       parentWords: 'fever',
       where: 'intake health',
       region: 'BC',
+      language: null,
       writer,
     });
     expect(body).toBeNull();
