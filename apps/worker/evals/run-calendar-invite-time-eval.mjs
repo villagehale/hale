@@ -6,8 +6,8 @@
 // calendar-invite-time-fixtures.mjs. The skill body and model routing are imported
 // live, so a skill edit re-keys the cache.
 //
-// NOT YET RECORDED. No cached responses and no CI step. Do not record in this run.
-// After the Anthropic reset (8pm batch, already pre-approved):
+// Recorded 2026-11-01 @ a404b1874 (5/5 PASS). CI replays it cached-only.
+// Re-record:
 //   HALE_SPEND_LEDGER=... HALE_MAX_USD=1 node --env-file=../../.env evals/run-calendar-invite-time-eval.mjs --live
 // Replay once cached:
 //   node evals/run-calendar-invite-time-eval.mjs --cached-only
