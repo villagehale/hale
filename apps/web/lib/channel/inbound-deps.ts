@@ -27,6 +27,7 @@ import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
+import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import {
   createChatReplyTransport,
   createOutboundTransport,
@@ -65,7 +66,7 @@ function anthropicClient(): AgentClient {
  * webhook turn. */
 export function buildIntakeDeps(
   inboundTransport: MessageTransport = 'sms',
-  linq: { chatId: string; replyToMessageId?: string | null } | null = null,
+  linq: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean } | null = null,
 ): IntakeDeps {
   const database = db();
   const client = anthropicClient();
@@ -76,6 +77,15 @@ export function buildIntakeDeps(
       ? createChatReplyTransport({
           chatId: linq?.chatId ?? null,
           replyToMessageId: linq?.replyToMessageId ?? null,
+          mentionFor: linq?.chatId
+            ? (text) =>
+                resolveGroupMention({
+                  database,
+                  chatId: linq.chatId,
+                  text,
+                  isGroup: linq.isGroup,
+                })
+            : undefined,
         })
       : createOutboundTransport();
   return {

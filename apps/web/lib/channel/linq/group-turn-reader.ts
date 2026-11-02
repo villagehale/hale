@@ -36,6 +36,8 @@ export interface GroupTurnReadInput {
   senderName: string | null;
   haleNames: readonly string[];
   recent: readonly { from: 'hale' | 'member'; text: string }[];
+  /** VIL-475 — iMessage mentions Linq already resolved. Absent when the flag is off. */
+  mentions?: { haleMentioned: boolean; mentionedMembers: { name: string | null }[] };
 }
 
 export interface GroupTurnReader {
@@ -60,6 +62,7 @@ export function groupTurnUserMessage(input: GroupTurnReadInput): string {
     senderName: input.senderName,
     haleNames: [...input.haleNames],
     recent: input.recent.slice(-GROUP_TURN_RECENT_LINES),
+    ...(input.mentions ? { mentions: input.mentions } : {}),
   });
 }
 

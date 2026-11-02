@@ -80,5 +80,20 @@ describe('VIL-440 group turn reader', () => {
     const payload = JSON.parse(groupTurnUserMessage({ ...INPUT, recent }));
     expect(payload.text).toBe(INPUT.text);
     expect(payload.recent).toHaveLength(6);
+    expect(payload).not.toHaveProperty('mentions');
+  });
+
+  it('includes mention facts when they were handed in, and omits them otherwise', () => {
+    const withMentions = JSON.parse(
+      groupTurnUserMessage({
+        ...INPUT,
+        mentions: { haleMentioned: true, mentionedMembers: [{ name: 'Dana' }] },
+      }),
+    );
+    expect(withMentions.mentions).toEqual({
+      haleMentioned: true,
+      mentionedMembers: [{ name: 'Dana' }],
+    });
+    expect(JSON.parse(groupTurnUserMessage(INPUT))).not.toHaveProperty('mentions');
   });
 });

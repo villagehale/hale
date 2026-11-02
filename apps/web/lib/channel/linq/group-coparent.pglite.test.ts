@@ -149,6 +149,7 @@ function inbound(
     mediaCount: 0,
     receivedAt: NOW,
     otherHandles: [],
+    mentions: [],
     ...over,
   };
 }
