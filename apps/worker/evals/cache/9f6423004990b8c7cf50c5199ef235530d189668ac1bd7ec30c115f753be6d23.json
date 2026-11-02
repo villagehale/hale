@@ -1,6 +1,6 @@
 {
   "response": {
-    "id": "msg_011CgdKajTdyk2gRSHDZ5bH6",
+    "id": "msg_011CgdMMMnXg1wUJnGLw2BZ1",
     "type": "message",
     "role": "assistant",
     "model": "claude-sonnet-5-5",
@@ -9,18 +9,18 @@
     "content": [
       {
         "type": "text",
-        "text": "Almost. Most babies are ready around 6 months, and Theo's 5 months now, so you're about a month out. Until then, milk is still all he needs. You can start watching for readiness signs. Can he sit with support, hold his head steady, and show interest in your food? Letting him sit in on family meals is a good way to get him used to it. Health Canada's general guidance is to confirm timing with your provider or public health."
+        "text": "Almost. Health Canada's guidance is to start solids around 6 months, so Theo's about a month out. Until then, breast milk or formula is still all he needs. Right now you can watch for signs he's getting ready: sitting with little support, good head control, and reaching for your food. It's a general guideline, so confirm timing with your provider."
       }
     ],
     "usage": {
       "input_tokens": 2,
-      "cache_creation_input_tokens": 135,
-      "cache_read_input_tokens": 23597,
+      "cache_creation_input_tokens": 23732,
+      "cache_read_input_tokens": 0,
       "cache_creation": {
-        "ephemeral_5m_input_tokens": 135,
+        "ephemeral_5m_input_tokens": 23732,
         "ephemeral_1h_input_tokens": 0
       },
-      "output_tokens": 133,
+      "output_tokens": 109,
       "output_tokens_details": {
         "thinking_tokens": 0
       },
@@ -29,5 +29,5 @@
       "speed": "standard"
     }
   },
-  "latencyMs": 3177
+  "latencyMs": 3758
 }
