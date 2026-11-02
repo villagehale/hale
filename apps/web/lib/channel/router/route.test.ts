@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import type { AgentClient, RegisteredTool, Skill } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,9 @@ vi.mock('~/lib/channel/linq/sticker', async (importOriginal) => ({
 }));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
+import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
+import { createConsentAskWriter } from '~/lib/channel/consent-ask';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import {
@@ -39,7 +42,7 @@ import {
   type IntroReplySituation,
   type VillageIntroReplyDeps,
 } from '~/lib/village/intros/reply';
-import type { ApologyOutcome, TurnApology } from './apology';
+import { type ApologyOutcome, type TurnApology, createTurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
 import type {
   DisambiguationOption,
@@ -478,6 +481,7 @@ function harness(
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
     floodLine?: FloodLineComposer;
+    consentAsk?: ChannelRouterDeps['consentAsk'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -519,7 +523,7 @@ function harness(
       recordStatedState:
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       // VIL-360. No ask standing by default, for the reason above it.
-      consentAsk: askWriter(),
+      consentAsk: options.consentAsk ?? askWriter(),
       weekdayCareReader: options.weekdayCareReader ?? {
         read: async () => ({ status: 'nothing_stated' as const }),
       },
@@ -1831,11 +1835,9 @@ describe('failure honesty', () => {
     }
 
     /**
-     * The one templated line left on this path, and deliberately: it is a RECEIPT for
-     * rows that exist, not an apology. It carries a count and the YES/NO grammar that
-     * resolves against those rows, which is the same reason approvedReceipt and
-     * whichOneReply are templates the coach never touches — a model that miscounts here
-     * points a parent's "yes" at the wrong action.
+     * The parent sees whatever the consent writer returns from the count. This
+     * harness writer is a double, so the assertion is that the router sends that
+     * return value and does not also apologize. Production writes with the model.
      */
     it('names the drafts that are waiting instead of claiming nothing changed', async () => {
       const apology = fakeApology();
@@ -1872,6 +1874,203 @@ describe('failure honesty', () => {
       expect(h.transport.bodies()).toEqual([APOLOGY]);
       expect(apology.calls).toBe(1);
     });
+  });
+});
+
+/**
+ * VIL-524. A withheld or unjudged find draft throws into this same path. The
+ * parent hears a model written from facts (the situation, or a draft count),
+ * and a writer that cannot write sends nothing. The withheld draft is not a
+ * fact on that request.
+ */
+describe('a withheld find on the failed-turn path (VIL-524)', () => {
+  const FIND_TOKEN = 'storytime-9f3a';
+  const WITHHELD_DRAFT = `All three finds share one page. EarlyON at the library, ref ${FIND_TOKEN}.`;
+  const parentBody = `what's on this weekend near ${FIND_TOKEN}`;
+  const APOLOGY_BODY = 'Hale dropped that one and nothing changed.';
+  const RECEIPT_BODY = 'Holding the drafts until you say which.';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function quiet() {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  }
+
+  function findCoach(input: {
+    gate: FindReplyGate;
+    draftIds?: readonly string[];
+  }): ChannelCoachRuntime {
+    const skill: Skill = {
+      meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse', tools: [] },
+      instructions: 'be terse',
+    };
+    return channelCoachRuntime({
+      loadSkill: async () => skill,
+      loadTranscript: async () => [],
+      loadContext: async (ctx) => ({ question: ctx.question, transcript: ctx.transcript }) as never,
+      loadChildren: async () => [],
+      loadRegistrationWindows: async () => [],
+      buildTools: (_turn, onDraft) => {
+        for (const id of input.draftIds ?? []) onDraft(id);
+        return [] as RegisteredTool[];
+      },
+      nearbySaid: async () => null,
+      guardDeps: { async writeAudit() {} },
+      client: () => ({ messages: {} }) as AgentClient,
+      judgeFindReply: async () => input.gate,
+      runAgent: async () => ({
+        answer: WITHHELD_DRAFT,
+        steps: 1,
+        hitMaxSteps: false,
+        truncatedRetries: 0,
+        truncated: false,
+        usage: {
+          promptTokens: 10,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          completionTokens: 5,
+        },
+      }),
+      recordRun: async () => {},
+      now: () => NOW,
+    });
+  }
+
+  interface Captured {
+    system?: unknown;
+    messages?: Array<{ role: string; content: string }>;
+  }
+
+  function recordingClient(payload: Record<string, string>, seen: Captured[]): () => AgentClient {
+    return () =>
+      ({
+        messages: {
+          async create(request: Captured) {
+            seen.push({ system: request.system, messages: request.messages });
+            return {
+              content: [{ type: 'text', text: JSON.stringify(payload) }],
+              usage: { input_tokens: 10, output_tokens: 5 },
+              stop_reason: 'end_turn',
+            };
+          },
+        },
+      }) as unknown as AgentClient;
+  }
+
+  function failingClient(): () => AgentClient {
+    return () =>
+      ({
+        messages: {
+          create: async () => {
+            throw new Error('writer down');
+          },
+        },
+      }) as unknown as AgentClient;
+  }
+
+  function userFacts(seen: Captured[]): unknown[] {
+    return seen.map((call) => JSON.parse(call.messages?.[0]?.content ?? 'null'));
+  }
+
+  /** The whole request the writer sent, system and user. Facts, not the reply. */
+  function assertNoFindFacts(seen: Captured[]) {
+    const raw = JSON.stringify(seen);
+    expect(raw).not.toContain(FIND_TOKEN);
+    expect(raw).not.toContain(WITHHELD_DRAFT);
+    expect(raw).not.toContain('find_reasoning');
+    expect(raw).not.toContain('judge_failed');
+  }
+
+  const gates: FindReplyGate[] = [
+    { verdict: 'withhold' },
+    { verdict: 'unjudged', reason: 'judge_failed' },
+  ];
+
+  it.each(gates)('apology writer input is only the situation (%j)', async (gate) => {
+    quiet();
+    const seen: Captured[] = [];
+    const asks: unknown[] = [];
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({ gate }),
+      apology: createTurnApology(recordingClient({ apology: APOLOGY_BODY }, seen)),
+      consentAsk: {
+        write: async (ask) => {
+          asks.push(ask);
+          return RECEIPT_BODY;
+        },
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([APOLOGY_BODY]);
+    expect(asks).toEqual([]);
+    expect(userFacts(seen)).toEqual([{ situation: 'turn_failed_nothing_changed' }]);
+    assertNoFindFacts(seen);
+  });
+
+  it.each(gates)('drafts receipt writer input is only the count (%j)', async (gate) => {
+    quiet();
+    const seen: Captured[] = [];
+    const apology = fakeApology();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({
+        gate,
+        draftIds: [`draft-${FIND_TOKEN}-1`, `draft-${FIND_TOKEN}-2`],
+      }),
+      apology,
+      consentAsk: createConsentAskWriter(recordingClient({ text: RECEIPT_BODY }, seen)),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([RECEIPT_BODY]);
+    expect(apology.calls).toBe(0);
+    expect(userFacts(seen)).toEqual([{ kind: 'partial_failure', draftCount: 2 }]);
+    assertNoFindFacts(seen);
+  });
+
+  it('sends nothing when the apology writer fails', async () => {
+    quiet();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({ gate: { verdict: 'withhold' } }),
+      apology: createTurnApology(failingClient()),
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(messageRows(h.fake).filter((row) => row.role === 'assistant')).toEqual([]);
+  });
+
+  it('sends nothing when the drafts receipt writer fails', async () => {
+    quiet();
+    const apology = fakeApology();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({
+        gate: { verdict: 'unjudged', reason: 'judge_failed' },
+        draftIds: [`draft-${FIND_TOKEN}`],
+      }),
+      apology,
+      consentAsk: createConsentAskWriter(failingClient()),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(apology.calls).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(messageRows(h.fake).filter((row) => row.role === 'assistant')).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('unwritten');
   });
 });
 

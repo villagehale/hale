@@ -863,7 +863,10 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       );
     // A failed turn (router keeps the drafts receipt + failed ledger), never the draft.
     expect(failure).toBeInstanceOf(ChannelTurnFailed);
-    expect(String((failure as Error).message)).not.toContain(draft);
+    const thrown = failure as ChannelTurnFailed;
+    expect(thrown.message).not.toContain(draft);
+    expect(String(thrown.cause ?? '')).not.toContain(draft);
+    expect(thrown.draftedActionIds).toEqual([]);
     expect(p.recorded).toEqual([expect.objectContaining({ status: 'failed' })]);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'find_reasoning' }),
@@ -887,13 +890,22 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
 
   it('sends nothing when the judge does not run', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const draft = 'EarlyON Saturday at 10.';
     const p = ports({
       judgeFindReply: async () => ({ verdict: 'unjudged', reason: 'judge_failed' }),
-      runAgent: answering('EarlyON Saturday at 10.'),
+      runAgent: answering(draft),
     });
-    await expect(
-      channelCoachRuntime(p).respond(turn("what's on this weekend"), []),
-    ).rejects.toBeInstanceOf(ChannelTurnFailed);
+    const failure = await channelCoachRuntime(p)
+      .respond(turn("what's on this weekend"), [])
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    expect(failure).toBeInstanceOf(ChannelTurnFailed);
+    const thrown = failure as ChannelTurnFailed;
+    expect(thrown.message).not.toContain(draft);
+    expect(String(thrown.cause ?? '')).not.toContain(draft);
+    expect(thrown.draftedActionIds).toEqual([]);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'judge_failed' }),
       expect.any(String),

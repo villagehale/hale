@@ -129,8 +129,9 @@ import {
  * answer in the parent's history before it existed. Nothing in {@link ChannelCoachPorts}
  * can write to that table, which is the structural half of the promise.
  *
- * A failed turn THROWS. The router owns the honesty template ("nothing was changed"),
- * and it can only use it if a failure looks like one — see route.ts runAgentTurn.
+ * A failed turn THROWS. The router owns what a parent hears next (route.ts
+ * disposeOfFailedTurn): a model writes it from facts, or nothing is sent. That
+ * path only runs when a failure looks like one.
  */
 
 /** The whole turn's model budget. Six steps is enough for lookup_week → resolve → two
