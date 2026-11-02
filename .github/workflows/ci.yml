@@ -313,6 +313,17 @@ jobs:
       - name: Linq sticker eval (cached-only)
         run: pnpm --filter @hale/worker eval:linq-sticker
 
+      # VIL-479 soft path, like said-line: the linq-edit decision cache is not
+      # recorded yet. No paid call on this PR. A miss fails the step; the job
+      # continues. REVERT this continue-on-error in the re-record commit, before merge.
+      - name: Linq edit eval (cached-only)
+        continue-on-error: true
+        run: pnpm --filter @hale/worker eval:linq-edit
+
+      # Request shape and price. $0, no model. Hard gate.
+      - name: Linq edit eval (dry)
+        run: pnpm --filter @hale/worker eval:linq-edit:dry
+
       - name: Group reminder eval (cached-only)
         working-directory: apps/worker
         run: node evals/group-reminder-eval.mjs --cached-only
