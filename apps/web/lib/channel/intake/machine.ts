@@ -19,6 +19,7 @@ import {
   handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
 import { readConsent } from '~/lib/channel/consent-reply';
+import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
@@ -81,7 +82,12 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
-import { deriveDateOfBirth, parseIntakePostal, summarizeChildren } from './derive';
+import {
+  crisisRegionForPlace,
+  deriveDateOfBirth,
+  parseIntakePostal,
+  summarizeChildren,
+} from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import { firstTouchLocationCardEnabled } from './first-touch-flag';
 import { type FirstTouchPlace, placeFromVenue } from './first-touch-place';
@@ -472,6 +478,7 @@ export async function handleInboundSms(
     const reading = await readTurnOnce(reader, inbound, {
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
+      region: crisisRegionForSession(session),
     });
     await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
@@ -984,6 +991,8 @@ async function offScriptReply(
     pendingAsk: string;
     children: readonly ExtractedChild[];
     postalCode?: string | null;
+    /** Canada or the US when a postal token already says so. Never guessed. */
+    region?: 'CA' | 'US' | null;
     /** How Hale has this number: an intake session exists because they texted first. */
     numberOrigin?: NumberOrigin | null;
     language?: ReplyLanguage | null;
@@ -1004,15 +1013,17 @@ async function offScriptReply(
   if (identity.challenge) {
     return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
-  const { numberOrigin: _origin, ...composeArgs } = args;
+  const { numberOrigin: _origin, region: _region, ...composeArgs } = args;
   const outcome = await deps.answerComposer.compose(composeArgs);
   if (outcome.status === 'mental_crisis') {
     // The answer model saw a crisis the reader did not. Still the model's words.
+    const resources = crisisFactsForRegion(args.region);
     const written = await deps.saidLine?.write({
       purpose: 'crisis_mental',
       language: null,
       parentWords: args.parentWords,
-      facts: { crisisLine: '988 (call or text, Canada and US)', emergency: '911' },
+      facts: resources ? { ...resources } : {},
+      ...(resources ? { mustInclude: ['988'] } : {}),
     });
     if (!written) {
       console.error('intake crisis: answer model flagged a crisis, no reply written - page #ops');
@@ -1329,14 +1340,25 @@ function friendFields(
  * came back empty — the turn still ends there (no onboarding ask to a person in
  * crisis) and the miss is logged loudly for #ops.
  */
+function crisisRegionForSession(session: IntakeSession | null): 'CA' | 'US' | null {
+  if (!session) return null;
+  return crisisRegionForPlace([
+    session.collected.postalCode,
+    session.firstTouch?.place?.postalCode,
+    session.firstTouch?.place?.areaCoarse,
+  ]);
+}
+
 async function crisisReply(
   inbound: Inbound,
   language: ReplyLanguage | null,
+  region: 'CA' | 'US' | null,
   deps: IntakeDeps,
 ): Promise<{ body: string | null } | null> {
   const reading = await readTurnOnce(deps.optOutReader, inbound, {
     text: inbound.body,
     language,
+    region,
   });
   if (!isCrisisReading(reading)) return null;
   const body = reading.confirmation.trim();
@@ -1628,7 +1650,7 @@ async function friendOnboardingTurn(
   let language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
-  const safety = await crisisReply(inbound, language, deps);
+  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
   if (safety) {
     if (safety.body) {
       ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
@@ -2103,7 +2125,7 @@ async function friendColdTurn(
   }
   const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const ctx = sendContext(args);
-  const safety = await crisisReply(inbound, language, deps);
+  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
   if (safety) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     if (safety.body) await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
@@ -3125,7 +3147,7 @@ async function handleWatchReply(
   // The watch offer is retired under the friend voice: the find is the watch.
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
-  const safety = await crisisReply(inbound, language, deps);
+  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
   const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
   if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
@@ -3169,7 +3191,7 @@ async function handleLadder(
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
-  const crisis = await crisisReply(inbound, language, deps);
+  const crisis = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
   if (crisis) {
     if (crisis.body) await sendAndRecord(database, ctx, crisis.body, deps, recorded.transcript);
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
@@ -3190,6 +3212,7 @@ async function handleLadder(
         pendingAsk: '',
         children: session.collected.children,
         postalCode: session.collected.postalCode,
+        region: crisisRegionForSession(session),
         numberOrigin: { kind: 'texted_first', viaQr: sourceCodeIsQr(session.sourceCode) },
         language,
       },

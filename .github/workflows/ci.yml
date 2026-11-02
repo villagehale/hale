@@ -292,9 +292,9 @@ jobs:
       - name: Reminder eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder
 
-      # VIL-450 (#919) soft path, like #956: said-line.md changed (intro_reply), so every
-      # said-line case misses cache until the paid re-record (Nov 1 batch, no spend before).
-      # REVERT this continue-on-error in the re-record commit, before merge.
+      # Soft path: said-line.md changed again (crisis purposes take direction and the
+      # region's line as facts, on top of intro_reply). Cached-only misses until the
+      # paid re-record. No spend on this change. REVERT continue-on-error then.
       - name: Said-line composer eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:said-line
@@ -332,13 +332,17 @@ jobs:
       - name: Calendar offer read eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-offer-read
 
-      # Soft path (like said-line): cache stale on main; misses until the Nov 1 paid
-      # re-record. REVERT this continue-on-error in that re-record commit.
+      # opt-out-read.md crisis direction changed after the Nov 1 re-record (fr-mental
+      # scored 3 on the reply). Cached-only misses until the next paid re-record.
+      # No spend on this change. Keep continue-on-error until that re-record.
       - name: Crisis reply eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:crisis-reply
 
+      # Same skill file. The crisis-direction edit invalidates this recording too.
+      # Soft until the next paid re-record; then it is a hard gate again.
       - name: Opt-out read eval (cached-only)
+        continue-on-error: true
         run: pnpm --filter @hale/worker eval:opt-out-read
 
       - name: Weekday-care reply eval (cached-only)

@@ -2,7 +2,9 @@
 //
 // Subject: the production turn reader (skill `opt-out-read`, the same request shape
 // as apps/web/lib/channel/intake/opt-out-reader.ts). Since #868 it routes a crisis
-// AND writes the reply; there is no fixed crisis line and no token list. Grade:
+// AND writes the reply; there is no fixed crisis line and no token list. A fixture
+// with a region passes that region's real crisis line as `facts` (crisis-resources.ts).
+// Grade:
 //   - routing: the returned intent must be crisis_emergency / crisis_mental for a
 //     crisis row and must NOT be a crisis for a control row (structured field);
 //   - reply: a judge model only, median of three draws, floor JUDGE_MIN. No phrase
@@ -37,6 +39,7 @@ import {
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'opt-out-read.md');
+const CRISIS_RESOURCES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'crisis-resources.ts');
 const SUBJECT_MAX_TOKENS = 400; // MAX_TOKENS in opt-out-reader.ts
 const JUDGE_MAX_TOKENS = 4096;
 const HAIKU_IN = 1;
@@ -104,6 +107,7 @@ async function main() {
   const ids = await readModelIds();
   const model = laneModel(skill.task, ids);
   const lane = (await tsImport(AGENT_SRC, import.meta.url)).pickLane(skill.task);
+  const { crisisFactsForRegion } = await tsImport(CRISIS_RESOURCES, import.meta.url);
   const getClient = lazyAnthropic();
   const cost = makeCost();
   const judge = makeJudge(
@@ -128,9 +132,11 @@ async function main() {
         lane,
         system: skill.instructions,
         // optOutUserMessage: a hint only when certain (French), else null.
+        // facts: that region's real line, or null. Same shape production sends.
         userMessage: JSON.stringify({
           text: f.text,
           languageHint: f.language === 'fr' ? 'fr' : null,
+          facts: crisisFactsForRegion(f.region ?? null),
         }),
         toolName: 'opt_out',
         toolDescription: 'Return whether the sender asked Hale to stop or start texting.',

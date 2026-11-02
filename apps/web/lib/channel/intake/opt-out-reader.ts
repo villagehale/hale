@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
+import { type CrisisRegion, crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -53,6 +54,11 @@ export interface OptOutReading {
 export interface OptOutReadInput {
   text: string;
   language: ReplyLanguage | null;
+  /**
+   * Canada or the US when Hale already knows it. Never inferred from the
+   * language of the text. The crisis reply weaves that region's line in.
+   */
+  region?: CrisisRegion | null;
 }
 
 export interface OptOutReader {
@@ -76,10 +82,16 @@ const outputJsonSchema = {
   required: ['intent', 'verbatim', 'confirmation'],
 } as const;
 
-/** The user-turn payload. Shared with the eval, which replays this request shape. */
-export function optOutUserMessage(input: { text: string; language: ReplyLanguage | null }): string {
+/** The user-turn payload. Shared with the evals, which replay this request shape. */
+export function optOutUserMessage(input: OptOutReadInput): string {
   // A hint only when certain; the sender's words decide the reply's language (#868).
-  return JSON.stringify({ text: input.text, languageHint: certainLanguageHint(input.language) });
+  // `facts` is always present: the region's real lines, or null when unknown.
+  // The model weaves them into a crisis reply. It never recites a fixed line.
+  return JSON.stringify({
+    text: input.text,
+    languageHint: certainLanguageHint(input.language),
+    facts: crisisFactsForRegion(input.region),
+  });
 }
 
 /** Structural checks only: echo must match. A crisis reading with no reply is kept
@@ -163,7 +175,7 @@ const turnReads = new WeakMap<object, Promise<OptOutReading | null>>();
 export function readTurnOnce(
   reader: OptOutReader | null | undefined,
   turn: object,
-  input: { text: string; language: ReplyLanguage | null },
+  input: OptOutReadInput,
 ): Promise<OptOutReading | null> {
   if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
   const cached = turnReads.get(turn);
@@ -174,13 +186,14 @@ export function readTurnOnce(
 }
 
 /** Seams that see only the words (the friend voice, its judge) share the turn's read
- * by text for a minute, so one inbound is still one model call (#868). */
+ * by text for a minute, so one inbound is still one model call (#868). The first
+ * read is the one whose region the crisis facts come from. */
 const textReads = new Map<string, { at: number; read: Promise<OptOutReading | null> }>();
 const TEXT_READ_TTL_MS = 60_000;
 
 export function readTextOnce(
   reader: OptOutReader | null | undefined,
-  input: { text: string; language: ReplyLanguage | null },
+  input: OptOutReadInput,
 ): Promise<OptOutReading | null> {
   if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
   const now = Date.now();

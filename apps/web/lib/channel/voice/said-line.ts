@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { CHANNEL_SIGNIN_TTL_MS } from '~/lib/auth/channel-signin';
 import { connectorNoun } from '~/lib/channel/connect/copy';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
+import { type CrisisRegion, crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
@@ -289,17 +290,22 @@ export async function writeCrisisLine(
   kind: CrisisKind,
   parentWords: string,
   where: string,
+  region: CrisisRegion | null,
 ): Promise<string | null> {
+  const resources = crisisFactsForRegion(region);
+  const facts: Record<string, string> = {};
+  if (resources) {
+    facts.region = resources.region;
+    facts.emergency = resources.emergency;
+    if (kind === 'mental') facts.crisisLine = resources.crisisLine;
+  }
   const written = writer
     ? await writer.write({
         purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',
         language: null,
         parentWords,
-        facts:
-          kind === 'emergency'
-            ? { emergency: '911' }
-            : { crisisLine: '988 (call or text, Canada and US)', emergency: '911' },
-        mustInclude: kind === 'emergency' ? ['911'] : ['988'],
+        facts,
+        ...(resources ? { mustInclude: kind === 'emergency' ? ['911'] : ['988'] } : {}),
       })
     : null;
   if (!written) logCrisisUnanswered(kind, where);
