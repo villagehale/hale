@@ -151,9 +151,12 @@ export async function groupTurnReadContext(
   const transcript = await loadTranscript(conversationId, database);
   return {
     senderName,
-    recent: transcript.slice(-GROUP_TURN_RECENT_LINES).map((line) => ({
-      from: line.role === 'assistant' ? ('hale' as const) : ('member' as const),
-      text: line.content,
-    })),
+    recent: transcript
+      .filter((line) => line.role !== 'tool')
+      .slice(-GROUP_TURN_RECENT_LINES)
+      .map((line) => ({
+        from: line.role === 'assistant' ? ('hale' as const) : ('member' as const),
+        text: line.content,
+      })),
   };
 }

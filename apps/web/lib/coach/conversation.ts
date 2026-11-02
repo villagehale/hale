@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { applyAttachmentMarkers } from './attachment-blocks.js';
 import { isConversationVisibleToParent } from './note-key.js';
 
@@ -16,7 +16,11 @@ import { isConversationVisibleToParent } from './note-key.js';
 export type Db = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
 export interface TranscriptMessage {
-  role: 'user' | 'assistant';
+  /**
+   * `assistant` is Hale's own text. `user` is the parent. `tool` is external
+   * content (a mailbox snippet) and is not Hale's history and not the parent's.
+   */
+  role: 'user' | 'assistant' | 'tool';
   content: string;
 }
 
@@ -180,28 +184,121 @@ export async function loadLatestThread(
   return { conversationId, timeline };
 }
 
+/** Hale's stored text, plus a mailbox snippet as its own `tool` turn when one may be
+ * shown. The snippet is not appended to the assistant turn: that would make sender
+ * text look like Hale's history. A 13+ child's snippet is null and adds no turn.
+ * No parent-facing sentence is added here. */
+export function emailSourceTurns(
+  role: 'user' | 'assistant',
+  content: string,
+  source: schema.MessageSource | null,
+): TranscriptMessage[] {
+  const turn: TranscriptMessage = { role, content };
+  if (
+    role !== 'assistant' ||
+    source?.kind !== 'gmail' ||
+    source.snippet == null ||
+    source.snippet === ''
+  ) {
+    return [turn];
+  }
+  return [
+    turn,
+    {
+      role: 'tool',
+      content: JSON.stringify({
+        kind: 'gmail',
+        trust: 'external',
+        gmailMessageId: source.gmailMessageId,
+        eventId: source.eventId,
+        snippet: source.snippet,
+      }),
+    },
+  ];
+}
+
+let sourceColumnAbsentLogged = false;
+
+function noteSourceColumnAbsent(): void {
+  if (sourceColumnAbsentLogged) return;
+  sourceColumnAbsentLogged = true;
+  console.error(
+    { outcome: 'messages_source_unavailable' },
+    'messages: source column absent, transcript is content only',
+  );
+}
+
+/** Drizzle names every column on insert. `source` is 0198, so a real database that
+ * has not applied it must not mention the column. A fake database has no `execute`
+ * and records the insert values instead; it is treated as having no source column. */
+async function messagesHaveSource(database: Db): Promise<boolean> {
+  if (typeof database.execute !== 'function') return false;
+  const result = (await database.execute(sql`
+    select 1 as present
+    from information_schema.columns
+    where table_schema = 'public' and table_name = 'messages' and column_name = 'source'
+    limit 1
+  `)) as { rows?: unknown[] } | unknown[];
+  const rows = Array.isArray(result) ? result : (result.rows ?? []);
+  return rows.length > 0;
+}
+
+function insertedId(result: unknown): string | undefined {
+  const rows = Array.isArray(result)
+    ? result
+    : ((result as { rows?: Array<{ id: string }> }).rows ?? []);
+  return rows[0]?.id;
+}
+
+function liveMessages(conversationId: string) {
+  return and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt));
+}
+
+async function readTranscriptRows(
+  conversationId: string,
+  database: Database,
+): Promise<
+  Array<{ role: 'user' | 'assistant'; content: string; source: schema.MessageSource | null }>
+> {
+  if (!(await messagesHaveSource(database))) {
+    noteSourceColumnAbsent();
+    const rows = await database
+      .select({ role: schema.messages.role, content: schema.messages.content })
+      .from(schema.messages)
+      .where(liveMessages(conversationId))
+      .orderBy(asc(schema.messages.createdAt));
+    return rows.map((row) => ({ ...row, source: null }));
+  }
+  return database
+    .select({
+      role: schema.messages.role,
+      content: schema.messages.content,
+      source: schema.messages.source,
+    })
+    .from(schema.messages)
+    .where(liveMessages(conversationId))
+    .orderBy(asc(schema.messages.createdAt));
+}
+
 /** Loads a conversation's transcript in chronological order. Soft-deleted turns
  * (deleted_at stamped) are excluded so a removed turn never re-enters the agent's
- * context (rule #6 soft-delete: the row survives for audit, the read drops it). */
+ * context (rule #6 soft-delete: the row survives for audit, the read drops it).
+ * A mailbox snippet, when stored, follows Hale's text as a `tool` turn. It is not
+ * part of that text. A database that has not applied 0198 is read without `source`. */
 export async function loadTranscript(
   conversationId: string,
   database: Database,
 ): Promise<TranscriptMessage[]> {
-  const rows = await database
-    .select({ role: schema.messages.role, content: schema.messages.content })
-    .from(schema.messages)
-    .where(
-      and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
-    )
-    .orderBy(asc(schema.messages.createdAt));
-
-  return rows.map((r) => ({ role: r.role, content: r.content }));
+  const rows = await readTranscriptRows(conversationId, database);
+  return rows.flatMap((row) => emailSourceTurns(row.role, row.content, row.source));
 }
 
 /** One turn's scope, persisted on the message so the timeline can filter on it. */
 export interface MessageScope {
   childId: string | null;
   topic: string | null;
+  /** What a proactive turn was about (messages.source, 0198). Omitted = null. */
+  source?: schema.MessageSource | null;
 }
 
 /** Appends one message turn to a conversation, carrying its scope (child + topic).
@@ -214,11 +311,38 @@ export async function appendMessage(
   database: Db,
   scope: MessageScope = { childId: null, topic: null },
 ): Promise<string> {
-  const rows = await database
-    .insert(schema.messages)
-    .values({ conversationId, role, content, childId: scope.childId, topic: scope.topic })
-    .returning({ id: schema.messages.id });
-  const id = rows[0]?.id;
+  const values = {
+    conversationId,
+    role,
+    content,
+    childId: scope.childId,
+    topic: scope.topic,
+    ...(scope.source ? { source: scope.source } : {}),
+  };
+  // Fakes record Drizzle inserts and have no execute. A real insert names every
+  // column, including source, so it goes through SQL that omits the column until
+  // 0198 is present.
+  if (typeof database.execute !== 'function') {
+    const rows = await database
+      .insert(schema.messages)
+      .values(values)
+      .returning({ id: schema.messages.id });
+    const id = rows[0]?.id;
+    if (!id) throw new Error('messages insert returned no row');
+    return id;
+  }
+  const keepSource = scope.source != null && (await messagesHaveSource(database));
+  if (scope.source != null && !keepSource) noteSourceColumnAbsent();
+  const inserted = await database.execute(
+    keepSource
+      ? sql`insert into messages (conversation_id, role, content, child_id, topic, source)
+            values (${conversationId}, ${role}, ${content}, ${scope.childId}, ${scope.topic}, ${JSON.stringify(scope.source)}::jsonb)
+            returning id`
+      : sql`insert into messages (conversation_id, role, content, child_id, topic)
+            values (${conversationId}, ${role}, ${content}, ${scope.childId}, ${scope.topic})
+            returning id`,
+  );
+  const id = insertedId(inserted);
   if (!id) {
     throw new Error('messages insert returned no row');
   }
@@ -237,17 +361,28 @@ export async function loadTranscriptWithAttachments(
   conversationId: string,
   database: Database,
 ): Promise<TranscriptMessage[]> {
-  const rows = await database
-    .select({
-      id: schema.messages.id,
-      role: schema.messages.role,
-      content: schema.messages.content,
-    })
-    .from(schema.messages)
-    .where(
-      and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
-    )
-    .orderBy(asc(schema.messages.createdAt));
+  const rows = (await messagesHaveSource(database))
+    ? await database
+        .select({
+          id: schema.messages.id,
+          role: schema.messages.role,
+          content: schema.messages.content,
+          source: schema.messages.source,
+        })
+        .from(schema.messages)
+        .where(liveMessages(conversationId))
+        .orderBy(asc(schema.messages.createdAt))
+    : (
+        await database
+          .select({
+            id: schema.messages.id,
+            role: schema.messages.role,
+            content: schema.messages.content,
+          })
+          .from(schema.messages)
+          .where(liveMessages(conversationId))
+          .orderBy(asc(schema.messages.createdAt))
+      ).map((row) => ({ ...row, source: null }));
 
   const attachmentRows = await database
     .select({
@@ -270,7 +405,10 @@ export async function loadTranscriptWithAttachments(
     mimesByMessage.set(a.messageId, list);
   }
 
-  return applyAttachmentMarkers(rows, mimesByMessage);
+  const marked = applyAttachmentMarkers(rows, mimesByMessage);
+  return marked.flatMap((turn, index) =>
+    emailSourceTurns(turn.role, turn.content, rows[index]?.source ?? null),
+  );
 }
 
 /**

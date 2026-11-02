@@ -201,7 +201,8 @@ function compactTranscript(transcript: readonly TranscriptMessage[]): {
   for (let i = older.length - 1; i >= 0; i -= 1) {
     const turn = older[i];
     if (!turn) continue;
-    const speaker = turn.role === 'assistant' ? 'Hale' : 'Parent';
+    const speaker =
+      turn.role === 'assistant' ? 'Hale' : turn.role === 'user' ? 'Parent' : 'External';
     const excerpt = `${speaker}: "${clip(turn.content, COMPACTED_EXCERPT_CHARS)}"`;
     if (excerpt.length + EXCERPT_SEPARATOR.length > budget) break;
     budget -= excerpt.length + EXCERPT_SEPARATOR.length;

@@ -76,12 +76,15 @@ import { readRecentNotices } from './recent-notices';
  *
  * WHAT IT MAY NOT DO, and the reasons are not stylistic:
  *   - The SMS carries no line of the email. The snippet, the quote evidence and the body
- *     never reach the writer, a wire body or an audit row (rule #1).
+ *     never reach the writer, a wire body or an audit row (rule #1). The thread row keeps
+ *     the snippet for the coach as a separate untrusted turn, not as Hale's own text,
+ *     except a 13+ child's mail, whose snippet is stored null.
  *   - A 13+ child's mail is category-only. The pipeline has already genericized the title
  *     by the time this sees it, and the facts additionally drop the sender, subject, time
  *     and place, because a therapist's domain and a Thursday 4pm are the disclosure.
  *   - Nothing is sent that the writer did not write: an email that is not about the kids,
- *     is unclear, or could not be written ends as a named outcome with no text.
+ *     is unclear, or could not be written ends as a named outcome with no text. A passport
+ *     note is not composed and not joined onto the notice.
  *   - An email about an occasion already on the family's calendar is told only when it
  *     CHANGES it (a cancellation or a move). Anything else would be a second text about
  *     something the parent already has.
@@ -492,9 +495,11 @@ export async function alertParentForEmail(
     return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null };
   }
 
+  // The notice is the whole text. sending:false stamps the receipt and composes no
+  // second sentence to join on (absolute zero: one model write, or nothing).
   const passport = await attachPassportToEmailAlert(database, {
     body: notice.text,
-    sending: true,
+    sending: false,
     familyId,
     parentUserId,
     integrationId,
@@ -549,7 +554,7 @@ export async function alertParentForEmail(
   try {
     const sent = await sendResolvingNewChat(ports.transport, {
       to,
-      body: withOptOut(passport.body, verdict.optOut),
+      body: withOptOut(notice.text, verdict.optOut),
     });
     providerMessageId = sent.providerMessageId;
     if (sent.transport === 'imessage') {
@@ -620,8 +625,20 @@ export async function alertParentForEmail(
   await passport.afterSend();
 
   // The written text. The opt-out line is not appended, so this is also the wire body.
-  // The coach re-reads this row next turn (channel/thread.ts).
-  await ports.threadMessage(database, { familyId, parentUserId, body: passport.body });
+  // The coach re-reads this row next turn (channel/thread.ts). The snippet is stored
+  // beside it and replayed as a tool turn, never as Hale's own text, and never for a
+  // 13+ child.
+  await ports.threadMessage(database, {
+    familyId,
+    parentUserId,
+    body: notice.text,
+    source: {
+      kind: 'gmail',
+      eventId: extraction.matchedEventRef?.id ?? null,
+      gmailMessageId: messageId,
+      snippet: extraction.teenContent ? null : input.envelope.snippet,
+    },
+  });
 
   await database.insert(schema.auditLog).values({
     familyId,
