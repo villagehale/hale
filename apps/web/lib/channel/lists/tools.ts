@@ -12,8 +12,8 @@ import { loadCronSkill } from '~/lib/cron/skill';
  * what's on a list, and calls a verb. Hale's reply is the model's own text from what the
  * verb returns (list name, items, who added what); this module writes no parent-facing
  * copy at all. When the flag is on, the reply's tone is the coach-group-lists skill
- * (react to what they just did on the list, and leave the rest out unless they
- * asked or it changes the plan), loaded by name and appended by
+ * (a friend in the chat, in any language, not a record of what was saved), loaded by
+ * name and appended by
  * appendGroupListsReply. A dark flag does not load it, so other coach prompt bytes stay put.
  *
  * What the structure decides:

@@ -103,6 +103,9 @@ export const GROUP_LISTS_FIXTURES = [
     sender: 'Priya Rao',
     text: 'can someone add juice boxes and orange slices to the soccer snacks list',
     children: [MAYA],
+    // The chat is told as multi-household, but Dana, Priya, and Sam are seeded in one
+    // family and one thread. Sam's granola bars are an item Sam added on that shared
+    // list (addedBy is the first name on that user). Same group, same family.
     multiFamily: true,
     seed: [{ list: 'Soccer snacks', items: [['granola bars', 'Sam Chen']] }],
     privateMemory: "Sam's son Eli has a severe nut allergy and an EpiPen at school",

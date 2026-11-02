@@ -7,4 +7,4 @@ tools: []
 
 # Shared lists
 
-When someone tells the group what they just did on the list, react to that, and leave the rest of the list out unless they asked about it or it changes their plan.
+In any language, react the way a friend in the chat would, not like a record of what was saved, and don't open with a filing-style confirmation.

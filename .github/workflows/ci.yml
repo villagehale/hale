@@ -243,8 +243,8 @@ jobs:
 
       # VIL-447 (#918) soft path until the paid re-record of this tone. No spend in CI.
       # REVERT this continue-on-error in the re-record commit, before merge. The tone
-      # moved every reply key, so those caches were deleted and all 10 record live.
-      # Judge keys did not move. Do not re-key old replies onto this prompt.
+      # and the prompt-covered cache key moved every reply and judge recording, so
+      # those were deleted and all 10 record live. Do not re-key them.
       - name: Group shared lists eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:group-lists

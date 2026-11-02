@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Facts are accurate: sunscreen and swimsuits were added, towels were already on the list, nothing invented, no secrets, correct Spanish. But the phrasing \"Anotados en la lista Maleta playa: ...\" reads as a log entry confirming a write rather than how a friend texts it back, and it adds the towels aside. This matches the scored reference for the same case, which scored 2.",
-    "score": 2
-  }
-}

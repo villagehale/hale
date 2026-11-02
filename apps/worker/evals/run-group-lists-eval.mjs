@@ -25,6 +25,7 @@ import { projectAgentTurn } from './lib/agent-dry-plan.mjs';
 import {
   GENERAL_REFERENCE_TEXTS,
   JUDGE_MIN,
+  agentCacheMaterial,
   cacheGet,
   cacheKey,
   cachePut,
@@ -39,7 +40,6 @@ import {
   priceRates,
   summarizeJudgePlan,
   totalUsd,
-  withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -293,20 +293,14 @@ function stubTools(agent, listed, have, calls) {
   return out;
 }
 
-function cachedAgentClient(tag, cachedOnly, getClient, cost, agentPlan) {
+function cachedAgentClient(tag, cachedOnly, getClient, cost, agentPlan, prompt) {
   return {
     messages: {
       async create(params) {
         const request = evalSubjectRequest(params);
-        const canonical = JSON.stringify({
-          model: request.model,
-          system: request.system,
-          tools: request.tools,
-          messages: withoutMessageCacheMarkers(request.messages),
-          max_tokens: request.max_tokens,
-          thinking: request.thinking,
-          output_config: request.output_config,
-        });
+        // `prompt` is the skill text, not only request.system. A system block that is
+        // just a cache marker would keep the old key across a tone change (en-got-it).
+        const canonical = agentCacheMaterial(request, prompt);
         const key = cacheKey(evalRunTag(`${tag}:agent`), canonical);
         const cached = await cacheGet(key);
         if (cached) return cached.response;
@@ -471,6 +465,9 @@ async function main() {
     references: [...GENERAL_REFERENCE_TEXTS, ...GROUP_LISTS_REFERENCE_TEXTS],
     logCost: true,
     maxOutputTokens: GROUP_LISTS_JUDGE_MAX_OUTPUT_TOKENS,
+    // The reply text alone did not move en-got-it's judge key: the new prompt produced
+    // the same sentence, and the old verdict replayed. The coach prompt is part of the key.
+    cacheSalt: skill.instructions,
   });
   const dry = isDryRun();
   const agentPlan = [];
@@ -524,6 +521,7 @@ async function main() {
             getClient,
             cost,
             agentPlan,
+            skill.instructions,
           ),
           maxSteps: MAX_STEPS,
           maxTokens: MAX_TOKENS,
