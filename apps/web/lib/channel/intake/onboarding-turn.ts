@@ -544,7 +544,9 @@ export function mergeCaptures(
     calendarLater: next.calendarLater || prior.calendarLater,
     gmailLater: next.gmailLater || prior.gmailLater,
     stopAsking: next.stopAsking || prior.stopAsking,
-    stillAsking: next.stillAsking ?? prior.stillAsking,
+    // This reply's ask only. A later reply that asks nothing must not keep
+    // the previous reply's stillAsking.
+    stillAsking: next.stillAsking,
     language: next.language ?? prior.language,
   };
 }
