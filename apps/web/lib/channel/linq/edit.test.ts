@@ -75,12 +75,21 @@ afterEach(() => {
 });
 
 describe('VIL-479 Linq message edit', () => {
-  it('is off unless the flag is exactly true', () => {
+  it('is off unless the flag is exactly true on Preview', () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
     expect(linqMessageEditEnabled()).toBe(false);
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'on');
     expect(linqMessageEditEnabled()).toBe(false);
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
     expect(linqMessageEditEnabled()).toBe(true);
+  });
+
+  it('stays off in production and development even when the flag is true', () => {
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    expect(linqMessageEditEnabled()).toBe(false);
+    vi.stubEnv('VERCEL_ENV', 'development');
+    expect(linqMessageEditEnabled()).toBe(false);
   });
 
   it('offers a recent text bubble and withholds one outside the window or past the edit cap', async () => {
@@ -153,6 +162,7 @@ describe('VIL-479 Linq message edit', () => {
 
   it('keeps a bubble editable when a queued parent text is inserted after Hale sent it', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
     const parentAt = new Date('2026-10-31T15:59:00.000Z');
     const bubbleAt = new Date('2026-10-31T16:00:00.000Z');
@@ -345,6 +355,7 @@ describe('VIL-479 Linq message edit', () => {
     ).toEqual([]);
 
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
     const fake = makeFakeDb();
     await seedBubble(fake, { sentAt: NOW, text: bubble });
@@ -396,12 +407,15 @@ describe('VIL-479 Linq message edit', () => {
     expect(skill).toContain('not a second message');
     expect(skill).not.toContain('a time, a place, a name, or a count');
     expect(skill).not.toContain('When you are unsure, return `edit` null.');
-    expect(LINQ_EDIT_TOOL_DESCRIPTION).toContain('any language');
-    expect(LINQ_EDIT_TOOL_DESCRIPTION).not.toContain('a time, a place');
+    expect(LINQ_EDIT_TOOL_DESCRIPTION).toBe(
+      'edit is null, or the messageId, partIndex, and text of one part.',
+    );
+    expect(LINQ_EDIT_TOOL_DESCRIPTION).not.toMatch(/language|correct|otherwise|follow-up/i);
   });
 
   it('stands in for the follow-up when the model edits', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
     const fake = makeFakeDb();
     await seedBubble(fake);

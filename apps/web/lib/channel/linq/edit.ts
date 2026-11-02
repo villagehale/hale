@@ -16,7 +16,8 @@ import { LinqSendError } from './transport';
  * VIL-479 — edit one text part of a bubble Hale already sent, when the model
  * says the follow-up is a correction of that bubble.
  *
- * Behind `LINQ_MESSAGE_EDIT_ENABLED`, exactly `true` (default off). The
+ * On only when `LINQ_MESSAGE_EDIT_ENABLED` is exactly `true` and
+ * `VERCEL_ENV` is `preview`. Off in production and development. The
  * `linq-edit` skill reads the follow-up Hale has written and the bubbles that
  * can still be edited, and returns the replacement text or null. Code never
  * writes the replacement: a failed or unusable read sends the follow-up as its
@@ -31,7 +32,9 @@ export const LINQ_EDIT_MAX = 5;
 const TEXT_MAX = 10_000;
 
 export function linqMessageEditEnabled(): boolean {
-  return process.env.LINQ_MESSAGE_EDIT_ENABLED?.trim() === 'true';
+  return (
+    process.env.VERCEL_ENV === 'preview' && process.env.LINQ_MESSAGE_EDIT_ENABLED?.trim() === 'true'
+  );
 }
 
 /** A bubble the model may replace. `channelMessageId` stays off the model payload. */
@@ -71,16 +74,9 @@ export interface LinqEditDecider {
 
 export const LINQ_EDIT_TOOL = 'linq_edit';
 export const LINQ_EDIT_MAX_TOKENS = 800;
-/**
- * Shown to the model with the skill. A correction is a meaning, in whatever
- * language the bubble and the follow-up use. Null is a new message, not a
- * translation of the decision into one language.
- */
-export const LINQ_EDIT_TOOL_DESCRIPTION = [
-  'When the follow-up only corrects a fact this bubble already states, in any language,',
-  'return that bubble with the part rewritten so the fact is right. Otherwise return null',
-  'and the follow-up goes out as its own message.',
-].join(' ');
+/** Names the tool's fields. Whether to edit is decided only in the linq-edit skill. */
+export const LINQ_EDIT_TOOL_DESCRIPTION =
+  'edit is null, or the messageId, partIndex, and text of one part.';
 export const LINQ_EDIT_TOOL_SCHEMA = {
   type: 'object',
   properties: {
