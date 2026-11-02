@@ -62,6 +62,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
   'apps/web/lib/channel/linq/link-preview.ts':
     'a follow-up link part beside locked text; writes its own channel_messages row and linq_link_preview audit when a family id is passed',
+  'apps/web/lib/channel/linq/app-clip-pay.ts':
+    'VIL-481 Apple Pay App Clip card and its 4005 link fallback; sendCheckoutPart inserts the channel_messages row (reply, template linq:app_clip_pay or linq:app_clip_pay_link) and audits linq_app_clip_pay or linq_app_clip_pay_link when a family id is passed. A preview proof with no family names ledger not_recorded and still captures the call. Sandbox checkout only',
   'apps/web/lib/channel/linq/group.ts':
     'opens or extends the household group and writes linq:group_open / linq:group_unreachable plus linq_group_opened or linq_group_held; the unknown-sender hold is the one unledgered text because that sender has no family row to attach it to',
   'apps/web/lib/village/intros/group.ts':
