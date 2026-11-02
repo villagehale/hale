@@ -403,9 +403,8 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
       now: T1,
     });
 
-    expect(questions.filter((question) => question.kind === 'approval').map((q) => q.id)).toEqual([
-      'group',
-    ]);
+    // The group-drafted add is not listed on the private thread at all.
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
     expect(questions.find((question) => question.id === 'offer-1')?.declinesActionIds).toEqual([
       'private',
       'private-2',
@@ -413,6 +412,79 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
     expect(
       questions.find((question) => question.id === 'offer-1')?.approvesActionId,
     ).toBeUndefined();
+  });
+});
+
+function calendarReader(approvals: unknown[], startsAt: string) {
+  return createOpenQuestionReader({
+    pendingApprovals: async () => approvals as never,
+    introOptInOpen: async () => false,
+    introProposal: async () => null,
+    planOffer: async () => null,
+    checkupOffer: async () => null,
+    founderWelcomeOffer: async () => null,
+    activityPromise: async () => null,
+    registrationReadiness: async () => null,
+    coParentAssent: async () => null,
+    emailAlertOffers: async () => [
+      {
+        id: 'offer-1',
+        summary: 'An offer to put Gymnastics on your week',
+        subject: 'putting Gymnastics on your week',
+        askedAt: T0,
+        title: 'Gymnastics',
+        startsAt,
+        timeZone: 'America/Toronto',
+      },
+    ],
+    eveningCheckIn: async () => null,
+    activityFollowupAsk: async () => null,
+    weekdayCare: async () => null,
+    emptySaturday: async () => null,
+    daycareFollowup: async () => null,
+    forwardAddressRevoke: async () => null,
+  });
+}
+
+describe('VIL-525 · group plan approval never leaks into private replies', () => {
+  const startsAt = '2026-10-31T19:00:00.000Z';
+  const approvals = [
+    {
+      actionId: 'group-approved',
+      actionType: 'calendar_add',
+      reviewerApproved: true,
+      occasion: { title: 'Gymnastics', startsAt },
+      groupPlan: true,
+    },
+    {
+      actionId: 'private-approved',
+      actionType: 'calendar_add',
+      reviewerApproved: true,
+      occasion: { title: 'Gymnastics', startsAt },
+    },
+  ];
+
+  it('a private YES approves only the private draft; the group draft is untouched', async () => {
+    const questions = await calendarReader(approvals, startsAt).open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+    const offer = questions.find((question) => question.id === 'offer-1');
+    expect(offer?.approvesActionId).toBe('private-approved');
+    expect(offer?.declinesActionIds ?? []).not.toContain('group-approved');
+    expect(questions.some((question) => question.id === 'group-approved')).toBe(false);
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+  });
+
+  it('with only the group draft, the private thread has nothing to approve', async () => {
+    const questions = await calendarReader([approvals[0]], startsAt).open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+    expect(questions.find((question) => question.id === 'offer-1')?.approvesActionId).toBeUndefined();
+    expect(questions.some((question) => question.id === 'group-approved')).toBe(false);
   });
 });
 

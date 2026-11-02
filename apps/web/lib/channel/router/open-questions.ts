@@ -975,7 +975,11 @@ export function createOpenQuestionReader(
         }
       }
       const questions: OpenQuestion[] = namedApprovals(
-        approvals.filter((action) => !hiddenDrafts.has(action.actionId)),
+        // A group-drafted add is the group's question: never listed on a private
+        // thread, so a private YES/NO cannot approve or decline it (VIL-525).
+        (input.surface === 'group' ? approvals : privateApprovals).filter(
+          (action) => !hiddenDrafts.has(action.actionId),
+        ),
       ).slice(0, MAX_LISTED_APPROVALS);
 
       if (optIn) {
