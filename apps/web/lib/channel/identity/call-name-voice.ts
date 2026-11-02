@@ -88,6 +88,7 @@ export async function readModelParentName(
 ): Promise<{
   parentName: string | null;
   nameDeclined: boolean;
+  nameTakenBack: boolean;
   nameConfirmed: boolean | null;
   reply: string | null;
 }> {
@@ -99,6 +100,7 @@ export async function readModelParentName(
   return {
     parentName: spoken.capture.parentName,
     nameDeclined: spoken.capture.nameDeclined,
+    nameTakenBack: spoken.capture.nameTakenBack,
     nameConfirmed: spoken.capture.nameConfirmed,
     reply,
   };

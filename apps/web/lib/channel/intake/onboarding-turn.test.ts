@@ -66,8 +66,23 @@ describe('onboarding capture', () => {
     expect(held.parentName).toBeNull();
     expect(held.nameConfirmed).toBe(false);
     expect(held.nameDeclined).toBe(false);
+    const retracted = dropTakeBackName(
+      'Undo',
+      acceptOnboardingCapture({ parentName: 'Undo', nameTakenBack: true }),
+    );
+    expect(retracted.parentName).toBeNull();
+    expect(retracted.nameDeclined).toBe(false);
+    expect(retracted.nameTakenBack).toBe(true);
     const named = dropTakeBackName('Dana', acceptOnboardingCapture({ parentName: 'Dana' }));
     expect(named.parentName).toBe('Dana');
+  });
+
+  it('a take-back does not close the name, and does not stick', () => {
+    const capture = acceptOnboardingCapture({ nameTakenBack: true });
+    expect(checklistAfter(EMPTY_CHECKLIST, capture).name).toBe(false);
+    const later = mergeCaptures(capture, acceptOnboardingCapture(null));
+    expect(later.nameTakenBack).toBe(false);
+    expect(later.nameDeclined).toBe(false);
   });
 
   it('takes the parent name and the kids names from one message', () => {

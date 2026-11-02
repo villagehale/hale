@@ -101,8 +101,14 @@ async function estimate() {
   }
   for (const fixture of NAME_TAKEBACK_FIXTURES) {
     const empty = nameTakebackMatches(fixture, { parentName: null, nameDeclined: false });
-    if (fixture.expect.parentName === '' && !empty) {
+    if (fixture.expect.parentName === '' && fixture.expect.nameDeclined !== true && !empty) {
       throw new Error(`${fixture.id}: empty parentName must count as left empty`);
+    }
+    if (
+      fixture.expect.nameDeclined === true &&
+      !nameTakebackMatches(fixture, { parentName: null, nameDeclined: true })
+    ) {
+      throw new Error(`${fixture.id}: a lasting no must set nameDeclined`);
     }
     if (fixture.expect.parentName !== '' && empty) {
       throw new Error(`${fixture.id}: a name must not count as left empty`);

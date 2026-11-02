@@ -129,6 +129,24 @@ describe('a delayed undo during name capture', () => {
     expect(spoken.capture.nameDeclined).toBe(true);
   });
 
+  it('a take-back clears a copied name without closing the name', async () => {
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Want me to watch school and camp email for the dates?',
+            capture: { parentName: 'Undo', nameTakenBack: true, nameDeclined: false },
+          };
+        },
+      },
+      { ...asked, parentWords: 'Undo' },
+      { page: async () => undefined },
+    );
+    expect(spoken.capture.parentName).toBeNull();
+    expect(spoken.capture.nameDeclined).toBe(false);
+    expect(spoken.capture.nameTakenBack).toBe(true);
+  });
+
   it('drops a parentName that is the whole message once the model marks the take-back', async () => {
     const spoken = await speakFriend(
       {

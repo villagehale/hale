@@ -67,6 +67,11 @@ export interface OnboardingCapture {
   coparentGroupMode: CoparentGroupMode | null;
   /** They do not want to give a parent name. Do not ask it again. */
   nameDeclined: boolean;
+  /**
+   * This message retracts the name. Not a lasting no: the name stays open,
+   * and a later turn does not inherit it.
+   */
+  nameTakenBack: boolean;
   /** They do not want to give the kids' names. Do not ask that again. */
   kidsNamesDeclined: boolean;
   /** Not now for the calendar. Do not ask it again in this onboarding. */
@@ -92,6 +97,7 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   coparentGroup: null,
   coparentGroupMode: null,
   nameDeclined: false,
+  nameTakenBack: false,
   kidsNamesDeclined: false,
   calendarLater: false,
   gmailLater: false,
@@ -211,13 +217,12 @@ function foldMessage(value: string): string {
 }
 
 /**
- * The model says this message takes the name back (`nameDeclined`, or a held
- * name turned down). If it also copied that whole message into `parentName`,
- * the copy is not a display name. Intent stays the model's; this only compares
- * the two strings.
+ * The model says this message takes the name back, or turns a held name down.
+ * If it also copied that whole message into `parentName`, the copy is not a
+ * display name. This does not set `nameDeclined`: a take-back is not a lasting no.
  */
 export function dropTakeBackName(body: string, capture: OnboardingCapture): OnboardingCapture {
-  const tookBack = capture.nameDeclined || capture.nameConfirmed === false;
+  const tookBack = capture.nameTakenBack || capture.nameDeclined || capture.nameConfirmed === false;
   if (!tookBack || !capture.parentName) return capture;
   if (foldMessage(capture.parentName) !== foldMessage(body)) return capture;
   return { ...capture, parentName: null };
@@ -461,6 +466,7 @@ export function acceptOnboardingCapture(
     coparentGroup: acceptBool(row.coparentGroup),
     coparentGroupMode: acceptGroupMode(row.coparentGroupMode),
     nameDeclined: row.nameDeclined === true,
+    nameTakenBack: row.nameTakenBack === true,
     kidsNamesDeclined: row.kidsNamesDeclined === true,
     calendarLater: row.calendarLater === true,
     gmailLater: row.gmailLater === true,
@@ -514,6 +520,7 @@ export function mergeCaptures(
     coparentGroup: next.coparentGroup ?? prior.coparentGroup,
     coparentGroupMode: next.coparentGroupMode ?? prior.coparentGroupMode,
     nameDeclined: next.nameDeclined || prior.nameDeclined,
+    nameTakenBack: next.nameTakenBack === true,
     kidsNamesDeclined: next.kidsNamesDeclined || prior.kidsNamesDeclined,
     calendarLater: next.calendarLater || prior.calendarLater,
     gmailLater: next.gmailLater || prior.gmailLater,

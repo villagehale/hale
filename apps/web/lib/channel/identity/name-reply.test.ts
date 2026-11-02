@@ -118,7 +118,8 @@ describe('handleNameCaptureReply', () => {
     const { deps: d, captured } = deps({
       read: async () => ({
         parentName: null,
-        nameDeclined: true,
+        nameDeclined: false,
+        nameTakenBack: true,
         reply: 'What should I call you?',
       }),
     });

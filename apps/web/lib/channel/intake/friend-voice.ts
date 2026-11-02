@@ -410,6 +410,7 @@ const replySchema = z.object({
   coparentGroup: z.boolean().nullable().optional().default(null).catch(null),
   coparentGroupMode: z.enum(['existing', 'new']).nullable().optional().default(null).catch(null),
   nameDeclined: z.boolean().optional().default(false).catch(false),
+  nameTakenBack: z.boolean().optional().default(false).catch(false),
   kidsNamesDeclined: z.boolean().optional().default(false).catch(false),
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
@@ -471,6 +472,7 @@ const replyJsonSchema = {
     coparentGroup: { type: ['boolean', 'null'] },
     coparentGroupMode: { type: ['string', 'null'], enum: ['existing', 'new', null] },
     nameDeclined: { type: 'boolean' },
+    nameTakenBack: { type: 'boolean' },
     kidsNamesDeclined: { type: 'boolean' },
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
@@ -839,8 +841,8 @@ function withReading(capture: OnboardingCapture, input: FriendVoiceInput): Onboa
   const reading = parentReading(input);
   if (!reading) return capture;
   if (reading.kind === 'name') {
-    // The model may still read a take-back. A lone capital word does not replace that.
-    if (capture.nameDeclined) return capture;
+    // A take-back or a lasting no is the model's. A lone capital word does not replace it.
+    if (capture.nameDeclined || capture.nameTakenBack) return capture;
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
     if (capture.parentName || kids.includes(reading.name.toLowerCase())) return capture;
     return { ...capture, parentName: reading.name };
@@ -1801,8 +1803,13 @@ export async function speakFriend(
   const withPre = (capture: OnboardingCapture): OnboardingCapture => {
     if (!pre) return capture;
     const merged = mergeCaptures(pre.settled, capture);
-    if (!capture.nameDeclined) return merged;
-    return { ...merged, parentName: capture.parentName };
+    if (!capture.nameDeclined && !capture.nameTakenBack) return merged;
+    return {
+      ...merged,
+      parentName: capture.parentName,
+      nameDeclined: capture.nameDeclined,
+      nameTakenBack: capture.nameTakenBack,
+    };
   };
   const finish = (
     prose: string,
@@ -1927,7 +1934,8 @@ export async function speakFriend(
       }
       const judgeInput = {
         ...judgeInputFor(input, capture),
-        nameTakenBack: capture.nameDeclined || capture.nameConfirmed === false,
+        nameTakenBack:
+          capture.nameTakenBack || capture.nameDeclined || capture.nameConfirmed === false,
       };
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the
@@ -2399,6 +2407,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           coparentGroup: value.coparentGroup,
           coparentGroupMode: value.coparentGroupMode,
           nameDeclined: value.nameDeclined,
+          nameTakenBack: value.nameTakenBack,
           kidsNamesDeclined: value.kidsNamesDeclined,
           calendarLater: value.calendarLater,
           gmailLater: value.gmailLater,
