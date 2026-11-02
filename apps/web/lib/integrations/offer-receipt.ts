@@ -1,5 +1,6 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -39,12 +40,21 @@ const receiptJsonSchema = offerReceiptToolSchema;
  */
 export type OfferReceiptPlace = 'hale_family_calendar';
 
+/** This receipt is one parent, in private. */
+export const OFFER_RECEIPT_ADDRESS = 'tu' as const;
+
 export interface OfferReceiptFacts {
   happened: 'added' | 'declined';
   title: string;
   /** The instant, already rendered the same way the offer named it. */
   when: string;
+  /** This parent's own message. */
   parentReply: string;
+  /**
+   * The household's stored language tag, or null when it has none. Null is not
+   * English: the writer follows `parentReply`.
+   */
+  language: ReplyLanguage | null;
   /** Whether THIS parent's Google calendar is connected. Not a destination. */
   googleCalendarConnected: boolean;
   /**
@@ -52,6 +62,11 @@ export interface OfferReceiptFacts {
    * this; code does not turn it into a sentence.
    */
   placedOn: OfferReceiptPlace | null;
+  /**
+   * Whether this save was written to the parent's Google calendar. Connection
+   * is a different fact. This offer path does not write Google, so this is false.
+   */
+  alsoOnGoogle: boolean;
 }
 
 export interface OfferReceiptWriter {
@@ -72,9 +87,12 @@ export function offerReceiptUserMessage(facts: OfferReceiptFacts): string {
     happened: facts.happened,
     title: facts.title,
     when: facts.when,
-    parentReply: facts.parentReply.slice(0, 1600),
+    parentWords: facts.parentReply.slice(0, 1600),
+    language: facts.language,
+    address: OFFER_RECEIPT_ADDRESS,
     googleCalendarConnected: facts.googleCalendarConnected,
     placedOn: facts.placedOn,
+    alsoOnGoogle: facts.alsoOnGoogle,
   });
 }
 

@@ -7,7 +7,9 @@ const CARPOOL = {
   happened: 'added',
   title: "Ava's carpool",
   when: 'Saturday, Nov 7 at 8:00 a.m.',
+  language: null,
   placedOn: 'hale_family_calendar',
+  alsoOnGoogle: false,
 };
 
 export const OFFER_RECEIPT_FIXTURES = [
@@ -19,7 +21,7 @@ export const OFFER_RECEIPT_FIXTURES = [
       googleCalendarConnected: false,
     },
     watchFor:
-      'Added. The only place is Hale’s family calendar. Google calendar is not connected, so the entry is not on the parent’s Google calendar. Title and rendered instant unchanged. English. Short, warm, first person. No booking, registration, or payment.',
+      'Added. language is null, so the line follows parentWords. placedOn is hale_family_calendar. googleCalendarConnected is false. alsoOnGoogle is false, so the save is not on Google. address is tu. Title and rendered instant unchanged. Short, warm, first person. No booking, registration, or payment.',
   },
   {
     id: 'en-hale-google-connected',
@@ -29,7 +31,7 @@ export const OFFER_RECEIPT_FIXTURES = [
       googleCalendarConnected: true,
     },
     watchFor:
-      'Added. Google calendar is connected, and the entry still went only to Hale’s family calendar. Title and rendered instant unchanged. English. Short, warm, first person. No booking, registration, or payment.',
+      'Added. language is null, so the line follows parentWords. googleCalendarConnected is true and alsoOnGoogle is false: the calendar is connected and this save was not written to it. placedOn is hale_family_calendar. address is tu. Title and rendered instant unchanged. Short, warm, first person. No booking, registration, or payment.',
   },
   {
     id: 'fr-hale-no-google',
@@ -39,6 +41,6 @@ export const OFFER_RECEIPT_FIXTURES = [
       googleCalendarConnected: false,
     },
     watchFor:
-      'Added. French, tu, answering the parent. The only place is Hale’s family calendar. Google calendar is not connected. Title and rendered instant unchanged, not translated. Short, warm, first person. No booking, registration, or payment.',
+      'Added. language is null, so the line follows parentWords, which are not English. address is tu. placedOn is hale_family_calendar. googleCalendarConnected is false. alsoOnGoogle is false, so the save is not on Google. Title and rendered instant unchanged and not translated. Short, warm, first person. No booking, registration, or payment.',
   },
 ];

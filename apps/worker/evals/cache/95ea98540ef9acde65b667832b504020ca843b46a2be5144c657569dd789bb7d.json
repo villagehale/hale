@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text states the add, title and instant unchanged, English, short and plain. But googleCalendarConnected is true and placedOn is hale_family_calendar, so saying it should show up on the parent's Google calendar is a claim the facts do not support; the entry went only to Hale's family calendar, and the text implies it reached Google, which is a fact-level misstatement.",
-    "score": 2
-  }
-}

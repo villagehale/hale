@@ -39,8 +39,10 @@ describe('receiptLineOk', () => {
     title: 'Gymnastics',
     when: 'Sunday, Oct 4 at 9:00 a.m.',
     parentReply: '好的',
+    language: null,
     googleCalendarConnected: false,
     placedOn: 'hale_family_calendar' as const,
+    alsoOnGoogle: false,
   };
 
   it('accepts a line that carries both facts', () => {
@@ -60,17 +62,27 @@ describe('offer receipt facts', () => {
     title: 'Gymnastics',
     when: 'Sunday, Oct 4 at 9:00 a.m.',
     parentReply: 'yes',
+    language: null,
     googleCalendarConnected: false,
     placedOn: 'hale_family_calendar' as const,
+    alsoOnGoogle: false,
   };
 
   it('hands the model the connection and the place, and no sentence of its own', () => {
     const message = JSON.parse(offerReceiptUserMessage(facts)) as {
+      parentWords: string;
+      language: string | null;
+      address: string;
       googleCalendarConnected: boolean;
       placedOn: string;
+      alsoOnGoogle: boolean;
     };
+    expect(message.parentWords).toBe('yes');
+    expect(message.language).toBeNull();
+    expect(message.address).toBe('tu');
     expect(message.googleCalendarConnected).toBe(false);
     expect(message.placedOn).toBe('hale_family_calendar');
+    expect(message.alsoOnGoogle).toBe(false);
     const declined = JSON.parse(
       offerReceiptUserMessage({ ...facts, happened: 'declined', placedOn: null }),
     ) as { placedOn: null; googleCalendarConnected: boolean };

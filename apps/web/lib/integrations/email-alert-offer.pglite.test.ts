@@ -14,10 +14,11 @@ import {
   EMAIL_ALERT_OFFER_TTL_MS,
   handleEmailAlertOfferReply,
   loadOpenEmailAlertOffers,
+  offerSaveReachesGoogle,
   recordCoachCalendarOffer,
   recordEmailAlertOffer,
 } from './email-alert-offer';
-import type { OfferReceiptFacts } from './offer-receipt';
+import { type OfferReceiptFacts, offerReceiptUserMessage } from './offer-receipt';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT, against the real DDL.
@@ -248,9 +249,41 @@ describe('a YES puts the occasion on the family week', () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       happened: 'added',
+      language: 'en',
+      parentReply: 'yes',
       googleCalendarConnected: false,
       placedOn: 'hale_family_calendar',
+      alsoOnGoogle: false,
     });
+    expect(offerSaveReachesGoogle()).toBe(false);
+  });
+
+  it('follows the parent’s words when the household has no stored language', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: '' })
+      .where(eq(schema.families.id, family.familyId));
+    const seen: OfferReceiptFacts[] = [];
+    const offerId = await seedOffer();
+    const words = 'Oui, ça me va';
+    await emailAlertAddHandler({
+      writeReceipt: {
+        write: async (facts) => {
+          seen.push(facts);
+          return 'receipt';
+        },
+      },
+    }).handle(db.database, await turn(words, { resolved: reading(offerId, 'yes') }));
+
+    expect(seen[0]).toMatchObject({ language: null, parentReply: words });
+    const message = JSON.parse(offerReceiptUserMessage(seen[0] as OfferReceiptFacts)) as {
+      parentWords: string;
+      language: null;
+      address: string;
+    };
+    expect(message.parentWords).toBe(words);
+    expect(message.language).toBeNull();
+    expect(message.address).toBe('tu');
   });
 
   it('does not treat a co-parent’s Google calendar as this parent’s', async () => {
@@ -281,6 +314,7 @@ describe('a YES puts the occasion on the family week', () => {
       happened: 'added',
       googleCalendarConnected: false,
       placedOn: 'hale_family_calendar',
+      alsoOnGoogle: false,
     });
   });
 
@@ -301,7 +335,10 @@ describe('a YES puts the occasion on the family week', () => {
       happened: 'added',
       googleCalendarConnected: true,
       placedOn: 'hale_family_calendar',
+      alsoOnGoogle: false,
     });
+    const rows = await events();
+    expect(rows[0]?.placedGoogleEventId).toBeNull();
   });
 
   it('writes ONE family_events row at the offered instant, and answers with it', async () => {

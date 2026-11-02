@@ -3,6 +3,7 @@ import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import { calendarInstantsClose, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
 import { claimSaveConfirmation } from '~/lib/channel/calendar-save';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -279,12 +280,14 @@ export async function handleEmailAlertOfferReply(
     title: offer.title,
     when: when(offer.startsAt, timeZone, input.now),
     parentReply: input.parentReply,
+    language: await familySpeechLanguage(database, input.familyId),
     googleCalendarConnected: await googleCalendarConnected(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
     }),
     // Nothing is written on a decline. An add here is always Hale's family calendar.
     placedOn: null,
+    alsoOnGoogle: offerSaveReachesGoogle(),
   };
 
   if (input.polarity === 'no') {
@@ -305,8 +308,10 @@ export async function handleEmailAlertOfferReply(
 
   await placeOfferedEvent(database, offer, input);
   // This path writes family_events and does not deliver an ICS, so the place is
-  // Hale's family calendar. `ics` is not a value on this receipt.
+  // Hale's family calendar. `ics` is not a value on this receipt. Google is a
+  // different writer (executor syncGoogle) and this function does not call it.
   facts.placedOn = 'hale_family_calendar';
+  facts.alsoOnGoogle = offerSaveReachesGoogle();
   // The coach also drafted this add. The parent's YES just placed it, so the draft
   // must leave the queue or the next YES is not answerable and the coach drafts it again.
   await supersedeUnapprovedCalendarAdds(database, {
@@ -620,6 +625,18 @@ export async function parentTimeZoneForOffer(
 
 async function parentTimeZone(database: Database, parentUserId: string): Promise<string> {
   return parentTimeZoneForOffer(database, parentUserId);
+}
+
+/**
+ * Whether an offer save is also written to the parent's Google calendar.
+ *
+ * It is not. {@link placeOfferedEvent} inserts `family_events` and returns.
+ * Google is written only by the executor's `syncGoogle`, on a reviewed
+ * `calendar_add` / `calendar_move` / `calendar_cancel`. A connected calendar
+ * is not that write.
+ */
+export function offerSaveReachesGoogle(): false {
+  return false;
 }
 
 /**
