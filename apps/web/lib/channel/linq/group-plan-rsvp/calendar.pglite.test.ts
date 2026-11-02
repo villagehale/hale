@@ -656,6 +656,111 @@ describe('the private reply and a tapback use the household language', () => {
     expect(voice[0]?.input).toMatchObject({ language: null, parentWords: words });
     expect(JSON.stringify(voice[0]?.input)).not.toContain('"language":"en"');
   });
+
+  it('uses the household the calendar step picked, not the first membership', async () => {
+    const userId = '00000000-0000-4000-8000-0000000000b1';
+    const elsewhereId = '00000000-0000-4000-8000-0000000000a1';
+    const homeId = 'ffffffff-ffff-4fff-bfff-ffffffffffff';
+    const phone = '+14165550199';
+    await db.database.insert(schema.users).values({
+      id: userId,
+      externalAuthId: 'imessage:two-homes',
+      name: 'Priya Two',
+      timezone: 'America/Toronto',
+    });
+    await db.database.insert(schema.families).values({
+      id: elsewhereId,
+      displayName: 'Elsewhere',
+      provinceOrState: 'ON',
+      primaryLanguage: 'zh',
+    });
+    await db.database.insert(schema.familyMembers).values({
+      familyId: elsewhereId,
+      userId,
+      role: 'primary_parent',
+    });
+    await db.database.insert(schema.families).values({
+      id: homeId,
+      displayName: 'Home',
+      provinceOrState: 'ON',
+      primaryLanguage: 'fr',
+      linqGroupChatId: CHAT,
+    });
+    await db.database.insert(schema.familyMembers).values({
+      familyId: homeId,
+      userId,
+      role: 'co_parent',
+    });
+    await db.database.insert(schema.parentChannels).values({
+      userId,
+      familyId: homeId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneBlindIndex(phone),
+      verifiedAt: NOW,
+    });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: homeId,
+      chatId: CHAT,
+      userId,
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneBlindIndex(phone),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    await store.createPlan({
+      chatId: CHAT,
+      familyId: homeId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: userId,
+      expected: [],
+      now: NOW,
+    });
+    const composer = fakeGroupPlanRsvpComposer();
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    await considerGroupPlanRsvp(
+      {
+        database: db.database,
+        now: new Date(NOW.getTime() + 60_000),
+        composer,
+        reader: {
+          read: async () => ({
+            intent: 'rsvp',
+            planTitle: null,
+            startsAt: null,
+            location: null,
+            deadline: null,
+            response: 'yes',
+            headcount: 1,
+            householdLabel: null,
+            coversNames: [],
+            confidence: 'high',
+          }),
+        },
+        oneToOne: {
+          text: async () => ({ providerMessageId: 'priv-home', chatId: null }),
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      {
+        chatId: CHAT,
+        senderHandle: phone,
+        senderUserId: userId,
+        text: 'we are in',
+        tapback: null,
+      },
+    );
+    const voice = composer.calls.filter(
+      (call) => call.input.skill === 'group-plan-rsvp-calendar-voice',
+    );
+    expect(voice[0]?.input.language).toBe('fr');
+  });
 });
 
 describe('a 1:1 reply reaches the calendar ask before ordinary intake', () => {

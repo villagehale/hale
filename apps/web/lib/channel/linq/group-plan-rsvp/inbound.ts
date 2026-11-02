@@ -57,16 +57,19 @@ async function householdLanguage(database: Database, familyId: string) {
   return familySpeechLanguage(database, familyId);
 }
 
-/** Stored language for a parent, or null when they have no family or no tag. */
-async function storedLanguageForUser(database: Database, userId: string | null) {
+/**
+ * Language of the household the calendar step would write, not whichever
+ * membership comes back first. None, or two matches, stays null.
+ */
+async function calendarHouseholdLanguage(
+  database: Database,
+  chatId: string,
+  userId: string | null,
+) {
   if (!userId) return null;
-  const memberships = await database
-    .select({ familyId: schema.familyMembers.familyId, role: schema.familyMembers.role })
-    .from(schema.familyMembers)
-    .where(eq(schema.familyMembers.userId, userId));
-  const seat = memberships.find((row) => row.role === 'primary_parent' || row.role === 'co_parent');
-  if (!seat) return null;
-  return householdLanguage(database, seat.familyId);
+  const resolved = await postgresGroupPlanHouseholds(database).resolve({ chatId, userId });
+  if (resolved.status !== 'one') return null;
+  return householdLanguage(database, resolved.familyId);
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -204,7 +207,11 @@ export async function considerGroupPlanRsvp(
       tapback: input.tapback,
       tapbackMessageId: input.tapbackMessageId,
       language: 'en',
-      calendarLanguage: await storedLanguageForUser(ports.database, input.senderUserId ?? null),
+      calendarLanguage: await calendarHouseholdLanguage(
+        ports.database,
+        input.chatId,
+        input.senderUserId ?? null,
+      ),
       now: ports.now,
     },
     {

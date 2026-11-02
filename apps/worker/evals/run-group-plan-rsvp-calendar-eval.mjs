@@ -58,7 +58,8 @@ const READER_JUDGE = [
   'A laugh, an emphasize (!!), or a question (?) tapback is never a decision: not_this. A tapback that did not land on this ask does not count.',
   'A low score treats who is coming as a calendar answer, treats a laugh, emphasize, or question tapback as ok or decline,',
   'treats a heart or thumbs-up on the open ask as not a yes, treats a thumbs-down on the open ask as a yes,',
-  'agrees when they refused, refuses when they agreed, or reopens when they only said they are still coming.',
+  'agrees when they refused, or refuses when they agreed.',
+  'An attendance statement after a decline gets no decision on the ask. The decline stays final unless they bring the calendar add back themselves.',
   'Do not require particular words. Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -66,6 +67,7 @@ const VOICE_JUDGE = [
   'You score one private text Hale sends to one parent about their own calendar.',
   'You are given the input (kind, language, facts, questions) and the line. Score 1-5 on meaning.',
   'A 5 is one short bubble, in input.language, the way a friend texts. It uses only the facts it was given.',
+  'When language is null, the line follows the language of parentWords. It does not default to English.',
   'calendar_ask asks once, about putting this plan on this household calendar. calendar_written says it is on their calendar and asks nothing.',
   'A low score is the wrong language, a second question, a question when questions is 0, an invented name or time or place,',
   'a claim about someone else or about seeing their other events, a link, a keyword to reply with, or a fixed template.',
@@ -111,7 +113,7 @@ function voiceUserMessage(calendar, fixture) {
     ...calendar.groupPlanCalendarLineInput({
       kind: fixture.kind,
       language: fixture.language,
-      parentWords: null,
+      parentWords: fixture.parentWords ?? null,
       facts: fixture.facts,
     }),
     retry: false,

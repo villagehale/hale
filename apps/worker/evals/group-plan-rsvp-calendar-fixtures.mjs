@@ -80,7 +80,7 @@ export const READER_FIXTURES = [
       ask: PICNIC,
     },
     situation:
-      'The household already declined the calendar add. Priya says they are still coming. She does not bring the calendar add back up. This is about attendance, so it is not a request to ask again about the calendar.',
+      'The calendar add was already refused, and that refusal still stands. This message is only about attending. It does not bring the calendar add back. An attendance statement after a refusal gets no decision on the ask.',
   },
 ];
 
@@ -112,5 +112,20 @@ export const VOICE_FIXTURES = [
     },
     situation:
       'One private line to Priya, in Chinese, the way a friend texts. The picnic is now on her calendar. No question. Do not say it was added for anyone else, and do not claim to see her other events. Do not use a fixed phrase.',
+  },
+  {
+    id: 'unstored-follows-parent',
+    kind: 'calendar_ask',
+    language: null,
+    parentWords: 'Oui, mets le pique-nique sur notre calendrier',
+    facts: {
+      title: 'Saturday picnic',
+      startsAt: '2026-11-01T16:00:00.000Z',
+      location: 'the park',
+      displayName: 'Priya',
+      householdLabel: null,
+    },
+    situation:
+      'No language is stored. The parent wrote in French. The line follows that message: one private question, in French, about putting this picnic on their calendar. It is not in English.',
   },
 ];
