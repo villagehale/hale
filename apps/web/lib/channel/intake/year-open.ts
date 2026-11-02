@@ -1,6 +1,7 @@
 import { type FamilyStage, STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { activitySearchTown } from '~/lib/channel/activity/search-town';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { type WeekendPick, asciiCopy, parseAgeRange } from './radar-decide';
 
@@ -55,6 +56,7 @@ export function yearOpenQuery(input: {
     subject: YEAR_OPEN_SUBJECT,
     window: 'this year',
     municipality,
+    town: activitySearchTown(input.areaCoarse),
     stage,
     householdNames,
   });

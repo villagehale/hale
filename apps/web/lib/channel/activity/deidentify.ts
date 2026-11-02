@@ -167,6 +167,12 @@ export function deidentifyActivityQuery(input: {
   municipality: Municipality | null;
   stage: FamilyStage | null;
   householdNames: readonly string[];
+  /**
+   * The town the search may name, when code has already chosen one finer than
+   * the municipality (a Toronto district). Absent: derived from `municipality`.
+   * Never a postal code; callers pass {@link activitySearchTown}.
+   */
+  town?: string | null;
 }): ActivityDeidResult {
   const subject = gateFreeText(input.subject, input.householdNames);
   if (!subject.ok) {
@@ -194,7 +200,12 @@ export function deidentifyActivityQuery(input: {
     query: {
       subject: subject.value,
       window,
-      town: input.municipality === null ? null : townFor(input.municipality),
+      town:
+        input.town !== undefined
+          ? input.town
+          : input.municipality === null
+            ? null
+            : townFor(input.municipality),
       stage: input.stage,
     },
   };

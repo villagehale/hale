@@ -80,6 +80,23 @@ describe('find_activities', () => {
     });
   });
 
+  it('searches a Danforth family in Toronto and East York, not all of Toronto', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader({
+        municipality: async () => 'toronto',
+        areaCoarse: async () => 'M4K 1N1',
+      }),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+
+    await call(tool, { subject: 'kids swimming' });
+
+    expect(seen[0]).toMatchObject({ town: 'Toronto and East York' });
+    expect(JSON.stringify(seen[0])).not.toContain('M4K');
+  });
+
   it('refuses a subject naming a child with a sentence the model can act on, and searches nothing', async () => {
     const seen: unknown[] = [];
     const tool = findActivitiesTool({
@@ -323,6 +340,7 @@ describe('find_activities family slice (VIL-518)', () => {
   const FIT = {
     children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
     homeArea: 'halton_hills' as const,
+    near: null,
     preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
   };
 

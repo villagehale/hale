@@ -956,6 +956,98 @@ describe('friend voice onboarding', () => {
     expect(other?.dateOfBirth).toBe(otherDob);
     expect(transport.bodies().at(-1)).toBe('What should I call you?');
   });
+  it('sends the find_show map when finds show up after declined connects', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ voice: true });
+    const swim = 'Parent and tot swim at Pape (ages 3-5) - Saturdays 10:00';
+    const story = 'Storytime at Riverdale Library (ages 6-8) - Tuesdays 10:30';
+    let searches = 0;
+    deps.radar = {
+      async compose() {
+        searches += 1;
+        if (searches === 1) {
+          return {
+            message: '',
+            itemCount: 0,
+            followUpNeeded: true,
+            checkpointTold: null,
+            weekendPickOffered: false,
+            findWon: false,
+            firstFindPromised: false,
+            actionMove: null,
+            actionHeld: 'no_move',
+            voiceFallback: null,
+            mapFinder: 'empty' as const,
+          };
+        }
+        return {
+          message: `[swimming]\n1. ${swim}\n[free_public]\n2. ${story}`,
+          groups: [
+            {
+              category: 'swimming' as const,
+              lines: [swim],
+              titles: ['Parent and tot swim at Pape'],
+            },
+            {
+              category: 'free_public' as const,
+              lines: [story],
+              titles: ['Storytime at Riverdale Library'],
+            },
+          ],
+          itemCount: 2,
+          followUpNeeded: false,
+          checkpointTold: null,
+          weekendPickOffered: false,
+          findWon: true,
+          firstFindPromised: false,
+          actionMove: null,
+          actionHeld: 'no_move',
+          voiceFallback: null,
+          mapFinder: 'used' as const,
+        };
+      },
+    };
+    const voice = deps.friendVoice;
+    deps.friendVoice = {
+      async compose(input, options) {
+        if (!voice) throw new Error('voice missing');
+        const base = await voice.compose(input, options);
+        // The calendar decline also sets stopAsking while still asking the
+        // co-parent question. That used to close intake, and the next text
+        // (the actual no, plus what's good nearby) was handed to the coach.
+        if (input.step === 'calendar' && /^later$/i.test(input.parentWords.trim())) {
+          return {
+            ...base,
+            capture: { ...base.capture, calendarLater: true, stopAsking: true },
+          };
+        }
+        return base;
+      },
+    };
+
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 7 and Leo is 4, M4K 1N1'), deps);
+    expect(transport.bodies().join('\n')).not.toContain('Pape');
+    await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
+    await handleInboundSms(fake.db, inbound(transport, 'later'), deps);
+    const stillOpen = await loadOpenSession(fake.db, PHONE);
+    expect(stillOpen?.state).toBe('awaiting_cold_start');
+    expect(stillOpen?.firstTouch?.given?.coparentGroup).not.toBe(false);
+    expect(transport.bodies().at(-1)).toMatch(/group chat/i);
+
+    const answered = await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
+    expect(answered.status).not.toBe('ignored');
+    const mapBubbles = transport
+      .bodies()
+      .filter((body) => body.includes('Pape') || body.includes('Riverdale'));
+    expect(mapBubbles.length).toBeGreaterThanOrEqual(2);
+    for (const bubble of mapBubbles) {
+      expect(bubble).not.toMatch(/^\d+\.\s/m);
+      expect(bubble).not.toContain('?');
+    }
+    expect(await loadOpenSession(fake.db, PHONE)).not.toBeNull();
+  });
+
   it('records a no and a later and does not ask that thing again', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });

@@ -1818,6 +1818,11 @@ export async function speakFriend(
             )
           : empty;
       const draft = composed.reply.trim();
+      // A reply that still asks the next item did not end the walk. Leaving
+      // stopAsking set would judge this as stop_asking, drop the question, and
+      // close intake — the parent's next text, including "what's good around
+      // here", would be handed to the coach with the map still unsent.
+      if (capture.stopAsking && draft.includes('?')) capture.stopAsking = false;
       if (options.replyDiscardedWhen?.(capture)) {
         return { prose: '', bubbles: [], capture, step: input.step };
       }

@@ -64,7 +64,7 @@ import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordActivityOffers, withSourceUrl } from '~/lib/village/live';
-import { groupsFromFindBody } from './activity-map';
+import { type ActivityMapGroup, groupsFromFindBody, renderActivityMapBody } from './activity-map';
 import type { IntakeAnswerComposer } from './answer';
 import {
   findReenrollableChannelOwner,
@@ -1288,6 +1288,30 @@ function linesOfFind(message: string): string[] {
     .map((line) => line.replace(/^\d+\.\s+/, ''));
 }
 
+/** Numbered storage lines, or the group lines when the body was not numbered. */
+function mapLinesFrom(
+  message: string,
+  groups?: readonly { lines: readonly string[] }[] | null,
+): string[] {
+  const numbered = linesOfFind(message);
+  if (numbered.length > 0) return numbered;
+  return (groups ?? []).flatMap((group) =>
+    group.lines.map((line) => line.trim()).filter((line) => line.length > 0),
+  );
+}
+
+/** A body `linesOfFind` can read back. Groups with no numbered body are stored numbered. */
+function storedMapBody(message: string, groups?: readonly ActivityMapGroup[] | null): string {
+  if (linesOfFind(message).length > 0) return message;
+  if (!groups || groups.length === 0) return message;
+  return renderActivityMapBody({ groups });
+}
+
+/** A question that is still asking this item is not the parent's answer to it. */
+function asksCoparent(prose: string): boolean {
+  return prose.includes('?') && /\b(?:group (?:chat|text)|other parent|co-?parent)\b/i.test(prose);
+}
+
 function friendAddress(ctx: SendContext): 'tu' | 'vous' {
   return ctx.pipe.isGroup ? 'vous' : 'tu';
 }
@@ -2107,10 +2131,28 @@ async function friendColdTurn(
   }
   // The map never reached them. Retry it before any later ask. A miss sends
   // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
+  // An empty stored body is a search that did not land, not a map to re-read:
+  // look once more, and if that is still empty, ask the open item. The last
+  // turn of the walk looks one more time before intake ends.
   let alreadyRecorded: {
     transcript: TranscriptEntry[];
     channelMessageId: string | null;
   } | null = null;
+  if (progress.findDelivered === false && linesOfFind(progress.findBody).length === 0) {
+    const again = await deps.radar.compose({
+      familyId,
+      children: session.collected.children,
+      areaCoarse: session.firstTouch?.place?.areaCoarse ?? session.collected.postalCode,
+      language,
+      activityMap: true,
+    });
+    if (mapLinesFrom(again.message, again.groups).length === 0) {
+      const { findDelivered: _owed, ...rest } = progress;
+      progress = rest;
+    } else {
+      progress = { ...progress, findBody: storedMapBody(again.message, again.groups) };
+    }
+  }
   if (progress.findDelivered === false) {
     const owed = await friendSpeak(
       deps,
@@ -2212,6 +2254,18 @@ async function friendColdTurn(
       pageScope: familyId,
     },
   );
+  // A reply that still asks a question did not end the walk, and it did not
+  // answer the item it is asking. "Later is fine" on the calendar can close
+  // intake here if the model also sets stopAsking or the co-parent answer, and
+  // the parent's next text — the actual no, and "what's good around here" —
+  // is handed to the coach before the map can go out.
+  if (spoken.capture.stopAsking && spoken.prose.includes('?')) {
+    spoken.capture.stopAsking = false;
+  }
+  if (gap !== 'coparent' && asksCoparent(spoken.prose)) {
+    spoken.capture.coparentGroup = null;
+    spoken.capture.coparentGroupMode = null;
+  }
   if (spoken.capture.stopAsking) {
     const recorded =
       alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
@@ -2297,7 +2351,7 @@ async function friendColdTurn(
     lines.every((_line, index) =>
       (nextGiven?.scheduled ?? []).some((row) => row.line === index + 1),
     );
-  const after: OnboardingChecklist = {
+  let after: OnboardingChecklist = {
     postal: checklist.postal,
     kids: kidsKnown(mergedChildren, nextGiven),
     ages: agesAreComplete(mergedChildren),
@@ -2307,8 +2361,8 @@ async function friendColdTurn(
     schedule: scheduleKnown(nextGiven, lines.length) || everyLineScheduled,
     coparent: coparentKnown(nextGiven),
   };
-  const next = onboardingMissing(after)[0];
-  const nextProgress: ColdStartProgress = {
+  let next = onboardingMissing(after)[0];
+  let nextProgress: ColdStartProgress = {
     ...progress,
     step: next === 'name' || next === 'kids' ? 'names' : 'follow',
     nameLineSent: parentIsKnown || next === 'name' || next === 'kids' || next == null,
@@ -2318,6 +2372,111 @@ async function friendColdTurn(
   const recorded =
     alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
   let voiced = friendOutbound(spoken);
+  // Declining the last connect used to end intake with an empty map still
+  // unsent. The first search can miss (nothing stored, schedule skipped) and
+  // the coach then answers "what's good around here" from a city-wide look.
+  // One more search before the walk ends: when it has groups, the model writes
+  // one bubble per group and the schedule ask stays open. No lead, no bubble.
+  if (
+    next == null &&
+    pendingConnector(nextGiven, progress) == null &&
+    linesOfFind(progress.findBody).length === 0
+  ) {
+    const again = await deps.radar.compose({
+      familyId,
+      children: mergedChildren,
+      areaCoarse: session.firstTouch?.place?.areaCoarse ?? session.collected.postalCode,
+      language,
+      activityMap: true,
+    });
+    const againLines = mapLinesFrom(again.message, again.groups);
+    if (againLines.length > 0) {
+      const body = storedMapBody(again.message, again.groups);
+      const groups =
+        again.groups && again.groups.length > 0 ? again.groups : groupsFromFindBody(body);
+      const owed = await friendSpeak(
+        deps,
+        recorded.transcript,
+        friendFields('find_show', language, friendAddress(ctx), {
+          parentWords: inbound.body,
+          placeLabel:
+            session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+          agesLabel: summarizeChildren(mergedChildren),
+          ageMonths: mergedChildren.flatMap((child) =>
+            child.ageMonths == null ? [] : [child.ageMonths],
+          ),
+          children: friendChildren(mergedChildren),
+          findLines: againLines,
+          findGroups: groups.map((group) => ({
+            category: group.category,
+            lines: [...group.lines],
+          })),
+          listKind: 'none',
+          parentName: nextGiven?.parentName ?? null,
+          now,
+        }),
+        { pageScope: familyId },
+      );
+      let mapSent = false;
+      if (owed.source !== 'unsent') {
+        for (const bubble of owed.bubbles) {
+          if (bubble.trim().length === 0) continue;
+          const sentMap = await sendAndRecord(database, ctx, bubble, deps, recorded.transcript);
+          if (!sentMap.channelMessageId) {
+            mapSent = false;
+            break;
+          }
+          mapSent = true;
+          deps.keepTyping?.();
+        }
+      }
+      progress = {
+        ...progress,
+        findBody: body,
+        ...(mapSent ? { findDelivered: true } : { findDelivered: false }),
+      };
+      after = {
+        ...after,
+        schedule: scheduleKnown(nextGiven, againLines.length) || everyLineScheduled,
+      };
+      next = onboardingMissing(after)[0];
+      nextProgress = {
+        ...progress,
+        step: next === 'name' || next === 'kids' ? 'names' : 'follow',
+        nameLineSent: parentIsKnown || next === 'name' || next === 'kids' || next == null,
+        calendarAsked: after.calendar,
+        emailAsked: after.gmail,
+      };
+      if (next === 'schedule') {
+        const asked = await friendSpeak(
+          deps,
+          recorded.transcript,
+          friendFields('schedule', language, friendAddress(ctx), {
+            parentWords: inbound.body,
+            placeLabel:
+              session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+            agesLabel: summarizeChildren(mergedChildren),
+            ageMonths: mergedChildren.flatMap((child) =>
+              child.ageMonths == null ? [] : [child.ageMonths],
+            ),
+            children: friendChildren(mergedChildren),
+            findLines: againLines,
+            findGroups: groups.map((group) => ({
+              category: group.category,
+              lines: [...group.lines],
+            })),
+            listKind: 'none',
+            parentName: nextGiven?.parentName ?? null,
+            now,
+            checklist: after,
+          }),
+          { pageScope: familyId },
+        );
+        const scheduleBody = friendOutbound(asked);
+        if (scheduleBody) voiced = scheduleBody;
+      }
+    }
+  }
   await pursueNewHouseholdGroup(
     database,
     {
@@ -2794,7 +2953,7 @@ async function provision(
     session.firstTouch?.place?.city ||
     session.firstTouch?.place?.areaCoarse ||
     gathered.location.areaCoarse;
-  const findLines = linesOfFind(radar.message);
+  const findLines = mapLinesFrom(radar.message, radar.groups);
   let outboundBody = radar.message;
   let outboundKey: string | undefined = radar.weekendPickOffered
     ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY
@@ -2876,23 +3035,26 @@ async function provision(
       ),
     ]);
     const mapUnsent = map?.source === 'unsent';
+    let mapSent = false;
     if (map && !mapUnsent) {
-      let delivered = false;
       for (const bubble of map.bubbles) {
         if (bubble.trim().length === 0) continue;
         const sentMap = await sendAndRecord(database, ctx, bubble, deps, []);
-        if (!sentMap.channelMessageId) {
-          delivered = false;
-          break;
-        }
-        delivered = true;
+        if (!sentMap.channelMessageId) break;
+        mapSent = true;
         deps.keepTyping?.();
       }
       const offered = (radar.groups?.flatMap((group) => group.picks ?? []) ?? []).map(
         withSourceUrl,
       );
-      if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
+      if (mapSent && offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
+    // A failed or unconfigured search is not "nothing is on". Neither is a map
+    // that was written and then did not land. Both stay owed. An honest empty
+    // (the search ran, no lines) does not.
+    const searchMissed = radar.mapFinder === 'failed' || radar.mapFinder === 'not_configured';
+    const oweMap =
+      mapUnsent || (discoveryOn && !empty && !mapSent) || (discoveryOn && empty && searchMissed);
     outboundBody = mapUnsent ? '' : (friendOutbound(spoken) ?? '');
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
       outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
@@ -2921,11 +3083,11 @@ async function provision(
       friendCold = {
         step: step === 'names' || step === 'find_empty' || mapUnsent ? 'names' : 'follow',
         group: ctx.pipe.isGroup,
-        findBody: radar.message,
+        findBody: storedMapBody(radar.message, radar.groups),
         activity: null,
         day: null,
         nameLineSent: !mapUnsent,
-        ...(mapUnsent ? { findDelivered: false } : {}),
+        ...(oweMap ? { findDelivered: false } : {}),
         signupDateKnown: false,
         signupAsked: false,
         calendarAsked: calendarAnswered(given),

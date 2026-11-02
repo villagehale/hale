@@ -15,7 +15,12 @@ import {
   unofferedActivityPicks,
 } from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import { type ActivityMapGroup, collectActivityMap, renderActivityMapBody } from './activity-map';
+import {
+  type ActivityMapFinder,
+  type ActivityMapGroup,
+  collectActivityMap,
+  renderActivityMapBody,
+} from './activity-map';
 import type { ExtractedChild } from './extract';
 import { type RadarCandidate, type RadarChild, decideYearFinds } from './radar-decide';
 import { type RadarMessage, promisesFirstFind } from './radar-voice';
@@ -203,6 +208,11 @@ export interface RadarPayload {
   titles?: readonly string[];
   /** The grouped map when {@link RadarInput.activityMap} asked for one. */
   groups?: readonly ActivityMapGroup[];
+  /**
+   * How the activity-map search ended, when one was asked for. `failed` and
+   * `not_configured` are not an honest empty: the walk still owes the map.
+   */
+  mapFinder?: ActivityMapFinder;
   /**
    * The three rule #11 outcomes of the one turn, carried so a test and any future
    * caller can read what the log line below says. See {@link RadarMessage}: an
@@ -422,6 +432,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           itemCount: map.lines.length,
           titles: map.titles,
           groups: map.groups,
+          mapFinder: map.finder,
           followUpNeeded: !won,
           checkpointTold: null,
           weekendPickOffered: false,

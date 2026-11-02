@@ -1,6 +1,7 @@
 import { STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { activitySearchTown } from '~/lib/channel/activity/search-town';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { activityRecommendationKey } from '~/lib/village/live';
 import { type WeekendPick, asciiCopy } from './radar-decide';
@@ -191,6 +192,7 @@ function categoryQuery(
     subject: category.subject,
     window: 'this year',
     municipality,
+    town: activitySearchTown(input.areaCoarse),
     stage: stageFromAgeInMonths(Math.min(...ages)),
     householdNames,
   });
@@ -251,7 +253,12 @@ export async function collectActivityMap(input: {
       if (!query) return empty;
       try {
         const found = await input.finder?.find(query);
-        if (!found || !found.found) return empty;
+        if (!found || !found.found) {
+          // A search that did not run is not "nothing is on". no_picks is the
+          // only honest empty; a timeout or a missing client is a miss to retry.
+          if (found && found.reason !== 'no_picks') anyFailed = true;
+          return empty;
+        }
         anyUsed = true;
         const picks = found.picks.slice(0, MAX_MAP_ITEMS_PER_GROUP);
         return {

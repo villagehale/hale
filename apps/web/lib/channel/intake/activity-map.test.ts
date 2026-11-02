@@ -278,6 +278,43 @@ describe('collectActivityMap', () => {
     expect(map.groups).toEqual([]);
   });
 
+  it('searches M4K as Toronto and East York, never the postal code', async () => {
+    const towns: Array<string | null> = [];
+    const finder: ActivityFinder = {
+      async find(query) {
+        towns.push(query.town);
+        return { found: false, reason: 'no_picks' };
+      },
+    };
+    await collectActivityMap({
+      finder,
+      children: [{ name: 'Maya', ageMonths: 84 }],
+      areaCoarse: 'M4K 1N1',
+      civic: [],
+      familyId: FAMILY,
+    });
+    expect(towns.length).toBeGreaterThan(0);
+    expect(towns.every((town) => town === 'Toronto and East York')).toBe(true);
+    expect(towns.join(' ')).not.toContain('M4K');
+  });
+
+  it('names a search that could not run, instead of an honest empty', async () => {
+    const finder: ActivityFinder = {
+      async find() {
+        return { found: false, reason: 'ground_failed' };
+      },
+    };
+    const map = await collectActivityMap({
+      finder,
+      children: [{ name: 'Maya', ageMonths: 50 }],
+      areaCoarse: 'M4K',
+      civic: [],
+      familyId: FAMILY,
+    });
+    expect(map.finder).toBe('failed');
+    expect(map.lines).toEqual([]);
+  });
+
   it("never puts a kid's name into a search", async () => {
     const seen: string[] = [];
     const finder: ActivityFinder = {

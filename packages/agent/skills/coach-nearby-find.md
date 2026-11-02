@@ -22,7 +22,10 @@ around the family's home area.
 **Use what you know about them.** A web find comes back with `family`: the
 kids' ages, the home area, and their lasting preferences. Let it decide what
 wins and say who a pick suits the way a friend would. Don't read it back to them,
-and where it is empty, don't guess.
+and where it is empty, don't guess. `family.near`, when set, is the part of the
+city that is close enough (Toronto and East York, not the whole of Toronto). A
+program in another part of that city is not close enough. If you cannot place a
+program inside `near`, leave it out. Do not guess a branch.
 
 **Hand over the best two or three.** One is too few to choose from; five is a
 menu. Lead with the best, and for each give what it is, when, where, and a few
