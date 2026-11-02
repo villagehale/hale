@@ -261,6 +261,32 @@ describe('the shape of what may be sent', () => {
     }
   });
 
+  it('accepts a place whose name ends in a street word when a region follows', () => {
+    for (const area of [
+      'Terrace BC',
+      'Trail BC',
+      'Federal Way WA',
+      'College Place WA',
+      'Terrace, BC',
+      'Federal Way, WA',
+      'College Place, Washington',
+    ]) {
+      expect(deidentifyActivityQuery({ ...base, subject: 'story time', area })).toMatchObject({
+        ok: true,
+        query: { town: area },
+      });
+    }
+    for (const area of ['Wallace St', 'Wallace St, BC', '42 Wallace St', 'Bayview Ct']) {
+      expect(deidentifyActivityQuery({ ...base, subject: 'story time', area })).toEqual({
+        ok: false,
+        refusal: 'area_unusable',
+      });
+    }
+    expect(
+      deidentifyActivityQuery({ ...base, subject: 'story time', area: 'St. Catharines' }),
+    ).toMatchObject({ ok: true, query: { town: 'St. Catharines' } });
+  });
+
   it('refuses a place that names someone in the household', () => {
     expect(deidentifyActivityQuery({ ...base, subject: 'story time', area: 'Noah' })).toEqual({
       ok: false,

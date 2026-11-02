@@ -163,9 +163,10 @@ function gateFreeText(
 /**
  * A town, city, or area name and nothing finer. Letters (any script), spaces,
  * apostrophes, periods, hyphens. No digits, so a postal code or a house number cannot
- * pass, and no comma, so a street cannot ride along after the city. The same shape
- * travel uses for a destination city (`DESTINATION_SHAPE` in travel/detect.ts). It
- * lives here because that module imports this one.
+ * pass. A comma is not part of a name; the only comma {@link placeShaped} allows is
+ * the one before a trailing province, state, or country. The same shape travel uses
+ * for a destination city (`DESTINATION_SHAPE` in travel/detect.ts). It lives here
+ * because that module imports this one.
  */
 const PLACE_NAME = /^\p{L}[\p{L}\p{M}\s'’.-]{1,59}$/u;
 
@@ -176,6 +177,11 @@ const PLACE_NAME = /^\p{L}[\p{L}\p{M}\s'’.-]{1,59}$/u;
  * both patterns require a house number, which is why "Wallace St" crossed. On
  * `area` the whole string is the place, so a final token in this set is a street.
  * A saint abbreviation stays in front ("St. Catharines"), so the city still passes.
+ *
+ * The ordinary-word tier is also how real places are named (Terrace, Trail,
+ * Federal Way, College Place). Those are not a city list. A trailing province,
+ * state, or country is what distinguishes them from a street. The unambiguous
+ * tier (St, Street, Rd) stays a street even when a region is tacked on.
  */
 const STREET_TYPE = new Set([
   'st',
@@ -212,9 +218,230 @@ const STREET_TYPE = new Set([
   'square',
 ]);
 
+/** Street tokens that are also ordinary words, so a place can end in one. */
+const ORDINARY_PLACE_WORD = new Set([
+  'dr',
+  'drive',
+  'ct',
+  'court',
+  'ln',
+  'lane',
+  'way',
+  'pl',
+  'place',
+  'terrace',
+  'terr',
+  'trail',
+  'cir',
+  'circle',
+  'sq',
+  'square',
+]);
+
+/**
+ * Provinces, states, and countries. Not cities. `ct` is Connecticut and also
+ * the court abbreviation, so a bare "Ct" stays a street; "Place, CT" is a region
+ * because the comma splits them.
+ */
+const REGION_ABBR = new Set([
+  'ab',
+  'bc',
+  'mb',
+  'nb',
+  'nl',
+  'ns',
+  'nt',
+  'nu',
+  'on',
+  'pe',
+  'pei',
+  'qc',
+  'sk',
+  'yt',
+  'al',
+  'ak',
+  'az',
+  'ar',
+  'ca',
+  'co',
+  'ct',
+  'dc',
+  'de',
+  'fl',
+  'ga',
+  'hi',
+  'ia',
+  'id',
+  'il',
+  'in',
+  'ks',
+  'ky',
+  'la',
+  'ma',
+  'md',
+  'me',
+  'mi',
+  'mn',
+  'mo',
+  'ms',
+  'mt',
+  'nc',
+  'nd',
+  'ne',
+  'nh',
+  'nj',
+  'nm',
+  'nv',
+  'ny',
+  'oh',
+  'ok',
+  'or',
+  'pa',
+  'ri',
+  'sc',
+  'sd',
+  'tn',
+  'tx',
+  'ut',
+  'va',
+  'vt',
+  'wa',
+  'wi',
+  'wv',
+  'wy',
+  'us',
+  'usa',
+]);
+
+/** Longest first, so "United States of America" wins over "United States". */
+const REGION_NAMES = [
+  'united states of america',
+  'newfoundland and labrador',
+  'northwest territories',
+  'prince edward island',
+  'british columbia',
+  'district of columbia',
+  'north carolina',
+  'south carolina',
+  'north dakota',
+  'south dakota',
+  'west virginia',
+  'new hampshire',
+  'rhode island',
+  'new brunswick',
+  'nova scotia',
+  'united states',
+  'saskatchewan',
+  'massachusetts',
+  'pennsylvania',
+  'connecticut',
+  'mississippi',
+  'new jersey',
+  'new mexico',
+  'new york',
+  'washington',
+  'california',
+  'wisconsin',
+  'newfoundland',
+  'alberta',
+  'manitoba',
+  'ontario',
+  'quebec',
+  'nunavut',
+  'yukon',
+  'alabama',
+  'alaska',
+  'arizona',
+  'arkansas',
+  'colorado',
+  'delaware',
+  'florida',
+  'georgia',
+  'hawaii',
+  'idaho',
+  'illinois',
+  'indiana',
+  'iowa',
+  'kansas',
+  'kentucky',
+  'louisiana',
+  'maine',
+  'maryland',
+  'michigan',
+  'minnesota',
+  'missouri',
+  'montana',
+  'nebraska',
+  'nevada',
+  'ohio',
+  'oklahoma',
+  'oregon',
+  'tennessee',
+  'texas',
+  'utah',
+  'vermont',
+  'virginia',
+  'wyoming',
+  'canada',
+];
+
+function foldRegion(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isRegion(value: string, commaSeparated: boolean): boolean {
+  const folded = foldRegion(value);
+  if (folded === '') return false;
+  // "Ct" with no comma is a court, not Connecticut.
+  if (!commaSeparated && STREET_TYPE.has(folded)) return false;
+  return REGION_ABBR.has(folded) || REGION_NAMES.includes(folded);
+}
+
+/** The locality in front of a trailing region, or null when no region is written. */
+function localityBeforeRegion(value: string): string | null {
+  const commaAt = value.lastIndexOf(',');
+  if (commaAt !== -1) {
+    const locality = value.slice(0, commaAt).trim();
+    const region = value.slice(commaAt + 1).trim();
+    if (locality && isRegion(region, true) && PLACE_NAME.test(locality)) return locality;
+    return null;
+  }
+  const words = value.split(' ');
+  for (const name of REGION_NAMES) {
+    const nameWords = name.split(' ');
+    if (words.length <= nameWords.length) continue;
+    const tail = words.slice(-nameWords.length).join(' ');
+    if (foldRegion(tail) !== name) continue;
+    const locality = words.slice(0, -nameWords.length).join(' ');
+    if (PLACE_NAME.test(locality)) return locality;
+  }
+  const last = words.at(-1) ?? '';
+  if (words.length >= 2 && isRegion(last, false)) {
+    const locality = words.slice(0, -1).join(' ');
+    if (PLACE_NAME.test(locality)) return locality;
+  }
+  return null;
+}
+
+function placeShaped(value: string): boolean {
+  return PLACE_NAME.test(value) || localityBeforeRegion(value) !== null;
+}
+
 function isStreetShaped(value: string): boolean {
-  const last = value.split(' ').at(-1)?.replace(/\.+$/, '') ?? '';
-  return STREET_TYPE.has(last.toLowerCase());
+  const locality = localityBeforeRegion(value) ?? value;
+  const last = locality.split(' ').at(-1)?.replace(/\.+$/, '') ?? '';
+  const token = foldRegion(last);
+  if (!STREET_TYPE.has(token)) return false;
+  // "Terrace BC" and "Federal Way, WA" name a place. "Wallace St" and
+  // "Wallace St, BC" name a street: St is not an ordinary place word.
+  if (locality !== value && ORDINARY_PLACE_WORD.has(token)) return false;
+  return true;
 }
 
 /** The place the parent named, or null when they did not. A blank is "not named".
@@ -229,7 +456,7 @@ function alternateTown(
   const value = area?.replace(/\s+/g, ' ').trim() ?? '';
   if (value === '') return { ok: true, town: null };
   if (namesAPerson(value, householdNames)) return { ok: false, refusal: 'area_names_a_person' };
-  if (!PLACE_NAME.test(value)) return { ok: false, refusal: 'area_unusable' };
+  if (!placeShaped(value)) return { ok: false, refusal: 'area_unusable' };
   const gated = gateFreeText(value, householdNames);
   if (!gated.ok || gated.value !== value || gated.value.includes('[redacted]')) {
     const named = !gated.ok && gated.refusal === 'names_a_person';
