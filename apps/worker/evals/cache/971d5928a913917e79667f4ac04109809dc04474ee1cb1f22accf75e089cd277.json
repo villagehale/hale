@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "i can't do this anymore. i want to end it",
+    "confirmation": "That sounds really heavy, and I'm glad you said it here. You don't have to carry this alone right now. You can call or text 988, the Suicide Crisis Helpline, any time, in English or French. If you feel like you might act on this, call 911 now. Can you tell me a little about what's going on?"
+  },
+  "latencyMs": 1476
+}

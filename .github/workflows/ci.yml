@@ -332,17 +332,10 @@ jobs:
       - name: Calendar offer read eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-offer-read
 
-      # opt-out-read.md crisis direction changed after the Nov 1 re-record (fr-mental
-      # scored 3 on the reply). Cached-only misses until the next paid re-record.
-      # No spend on this change. Keep continue-on-error until that re-record.
       - name: Crisis reply eval (cached-only)
-        continue-on-error: true
         run: pnpm --filter @hale/worker eval:crisis-reply
 
-      # Same skill file. The crisis-direction edit invalidates this recording too.
-      # Soft until the next paid re-record; then it is a hard gate again.
       - name: Opt-out read eval (cached-only)
-        continue-on-error: true
         run: pnpm --filter @hale/worker eval:opt-out-read
 
       - name: Weekday-care reply eval (cached-only)
