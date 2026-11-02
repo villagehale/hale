@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
 import {
   type AddThemYourselfRequest,
-  MAX_ADD_THEM_YOURSELF_CHARS,
   addThemYourselfRefusals,
   addThemYourselfUserMessage,
 } from './add-them-yourself';
@@ -94,10 +93,11 @@ describe('addThemYourselfRefusals', () => {
     ).toEqual(['group_on_sms']);
   });
 
-  it('refuses an empty reply and one over the budget', () => {
+  it('refuses an empty reply and still sends a long one (VIL-537)', () => {
     expect(addThemYourselfRefusals('', GRAN_IMESSAGE)).toEqual(['empty']);
-    const long = `Add grandma to your group with me. ${'x'.repeat(MAX_ADD_THEM_YOURSELF_CHARS)}`;
-    expect(addThemYourselfRefusals(long, GRAN_IMESSAGE)).toContain('over_char_cap');
+    const long = `Add grandma to your group with me. ${'x'.repeat(400)}`;
+    expect(long.length).toBeGreaterThan(300);
+    expect(addThemYourselfRefusals(long, GRAN_IMESSAGE)).toEqual([]);
   });
 });
 

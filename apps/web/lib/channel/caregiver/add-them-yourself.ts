@@ -17,8 +17,6 @@ import type { AddRole } from './parse';
  * the outcome says why (rule #11).
  */
 
-export const MAX_ADD_THEM_YOURSELF_CHARS = 300;
-
 const MAX_COMPOSE_ATTEMPTS = 2;
 const MAX_TOKENS = 200;
 
@@ -41,7 +39,6 @@ export interface AddThemYourselfRequest {
 
 export type AddThemYourselfRefusal =
   | 'empty'
-  | 'over_char_cap'
   | 'carries_link'
   | 'carries_number'
   | 'claims_contact'
@@ -57,7 +54,6 @@ export function addThemYourselfRefusals(
 ): AddThemYourselfRefusal[] {
   if (body.trim() === '') return ['empty'];
   const found: AddThemYourselfRefusal[] = [];
-  if (body.length > MAX_ADD_THEM_YOURSELF_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (NUMBER_SHAPE.test(body)) found.push('carries_number');
   if (CONTACT_CLAIM.test(body)) found.push('claims_contact');

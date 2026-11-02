@@ -10,8 +10,6 @@ import type { ExtractedChild } from './extract';
  * never fall back to the pending ask alone.
  */
 
-const INTAKE_MAX_REPLY_CHARS = 300;
-
 const DATE_OR_CLOCK =
   /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b|\b\d{1,2}:\d{2}\b/i;
 
@@ -67,18 +65,19 @@ export function extractOfficialAnswer(notes: string): string | null {
   if (hits.length === 0) return null;
   let answer = hits[0] as string;
   const next = hits[1];
-  if (next !== undefined && `${answer} ${next}`.length <= 200) {
-    answer = `${answer} ${next}`;
-  }
+  // Both date-bearing sentences go out. A length cut here used to drop the second
+  // and, past 300 characters, the whole reply (VIL-537).
+  if (next !== undefined) answer = `${answer} ${next}`;
   return answer;
 }
 
-/** Null when the grounded answer cannot go out as one plain SMS: the caller has the
- * model say the date is not posted (#868: no fixed fallback line). */
+/** Null when the grounded answer cannot go out as plain SMS: the caller has the
+ * model say the date is not posted (#868: no fixed fallback line). Length is not a
+ * reason to drop it (VIL-537). */
 export function joinOfficialAnswer(answer: string, pendingAsk: string): string | null {
   const ask = officialPageReturnLine(pendingAsk);
   const joined = [answer, ask].filter((part) => part.length > 0).join(' ');
-  if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
+  if (joined.length === 0) return null;
   if (smsEncoding(joined) !== 'gsm7') return null;
   if (/https?:\/\/|www\./i.test(joined)) return null;
   return joined;

@@ -87,6 +87,11 @@ describe('VIL-454 calendarWriteNoticeRefusals (structure only)', () => {
     expect(calendarWriteNoticeRefusals('  ', base)).toEqual(['empty']);
     expect(calendarWriteNoticeRefusals('Done, see https://x.test', base)).toContain('carries_link');
   });
+  it('sends a notice longer than 480 characters (VIL-537)', () => {
+    const long = `Swim is on your calendar. ${'All set. '.repeat(60)}`;
+    expect(long.length).toBeGreaterThan(480);
+    expect(calendarWriteNoticeRefusals(long, base)).toEqual([]);
+  });
   it('requires the handed link exactly and no other', () => {
     const linked = { ...base, outcome: 'no_calendar' as const, connectLink: LINK };
     expect(calendarWriteNoticeRefusals('No calendar yet.', linked)).toContain('link_missing');

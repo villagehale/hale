@@ -60,6 +60,12 @@ describe('gmail draft notice', () => {
     error.mockRestore();
   });
 
+  it('does not drop a long notice for length (VIL-537)', () => {
+    const long = `A draft is in your Gmail for you to review and send. ${'Take your time. '.repeat(20)}`;
+    expect(long.length).toBeGreaterThan(160);
+    expect(noticeProblems(long)).toEqual([]);
+  });
+
   it('walks a wrapped cause to the unsent notice', () => {
     const wrapped = new Error('turn failed', { cause: new GmailDraftNoticeUnsent() });
     expect(isGmailDraftNoticeUnsent(wrapped)).toBe(true);

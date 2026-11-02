@@ -30,10 +30,6 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * to be right, it is measured, and it gets to try again.
  */
 
-/** One text. 160 GSM-7 characters is a single segment, and a check-in that costs two is
- * a check-in that was trying to say something else as well. */
-export const MAX_ASK_CHARS = 160;
-
 /** Three attempts, then defer. A model that has been told its exact violation twice and
  * still fails is not going to be argued into it on the fourth try — and the sweep runs
  * again in an hour, which is a cheaper place to retry than inside one cron request. */
@@ -68,7 +64,6 @@ export type FollowupVoiceRequest =
  */
 export type AskRefusal =
   | 'empty'
-  | 'over_char_cap'
   | 'not_gsm7'
   | 'carries_link'
   | 'not_one_question'
@@ -80,7 +75,6 @@ export type AskRefusal =
 export function refusals(body: string, request: FollowupVoiceRequest): AskRefusal[] {
   const found: AskRefusal[] = [];
   if (body === '') return ['empty'];
-  if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 

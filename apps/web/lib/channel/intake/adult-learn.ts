@@ -2,8 +2,6 @@ import { recMorningReturnLine } from '~/lib/channel/rec-morning/copy';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { townLabel } from './radar-voice';
 
-const INTAKE_MAX_REPLY_CHARS = 300;
-
 /**
  * VIL-323 Designer lock 2026-08-27 — English adult-learn door. A model does not write this.
  * Hyphens, not em dashes. Never "I don't do that."
@@ -13,7 +11,7 @@ const INTAKE_MAX_REPLY_CHARS = 300;
  * surrounding locked words are byte-identical (adult-learn.test.ts pins the Brampton
  * rendering against the original sentence), and the slot carries the session's own
  * resolved city — or "your area", because the wrong city is worse than no city. Both
- * fills are plain ASCII, so the GSM-7 budget holds for every covered municipality.
+ * fills are plain ASCII. There is no character cap on the reply (VIL-537).
  */
 export function adultLearnDoor(city: string | null): string {
   return `I'm a kids' rec helper, not adult lessons. If you've got kids, send their names and ages and I'll watch ${city ?? 'your area'} for them. If it's just you, no hard feelings.`;
@@ -57,13 +55,7 @@ export function adultLearnIntakeReply(input: {
   postal: string | null;
 }): string | null {
   if (!isAdultLearnAsk(input.parentWords)) return null;
-  const joined = [adultLearnDoor(sessionCity(input.postal)), recMorningReturnLine(input.pendingAsk)]
+  return [adultLearnDoor(sessionCity(input.postal)), recMorningReturnLine(input.pendingAsk)]
     .filter((part) => part.length > 0)
     .join(' ');
-  if (joined.length > INTAKE_MAX_REPLY_CHARS) {
-    throw new Error(
-      `adult-learn intake reply is ${joined.length} chars, cap is ${INTAKE_MAX_REPLY_CHARS}`,
-    );
-  }
-  return joined;
 }

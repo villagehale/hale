@@ -27,8 +27,8 @@
 //     is sent, because consent is the thing still outstanding (rule #4).
 //   · the verbatim re-ask — the return line repeating the pending question word for word
 //     is the bug with a preamble on it.
-//   · unsendable pairs — over the two-segment cap, non-GSM-7, carrying a link, a question
-//     mark in the answer, or a return line that does not ask anything.
+//   · unsendable pairs — carrying a link, a question mark in the answer, or a return
+//     line that does not ask anything. Length is not a gate (VIL-537).
 //   · claiming to be human — a live draw answered "is this a real person or a bot" with
 //     "It's a real person on the other end", to a stranger, on the consent turn.
 //   · app pointers and invented specifics — a texting parent has no app, and a stage with
@@ -95,7 +95,6 @@ const MAX_TOKENS = 300;
 
 // ── the composer's gates, replicated from answer.ts ─────────────────────────
 
-const MAX_REPLY_CHARS = 300;
 const LINK_SHAPE = /https?:\/\/|www\./i;
 const APP_POINTER =
   /\b((?:the|your|their|our) (?:\w+ )?apps?|in-app|the website|the site|your dashboard|villagehale)\b/i;
@@ -136,7 +135,6 @@ function flatten(text) {
 function gateFailures(answer, returnLine, fixture) {
   const failures = [];
   const joined = `${answer} ${returnLine}`;
-  if (joined.length > MAX_REPLY_CHARS) failures.push('over_char_cap');
   if (LINK_SHAPE.test(joined)) failures.push('carries_link');
   if (answer.includes('?')) failures.push('answer_carries_question');
   if (!returnLine.endsWith('?')) failures.push('return_asks_nothing');
@@ -329,7 +327,6 @@ async function main() {
   const unsendable = results.filter((r) =>
     r.failures.some((f) =>
       [
-        'over_char_cap',
         'not_gsm7',
         'carries_link',
         'answer_carries_question',

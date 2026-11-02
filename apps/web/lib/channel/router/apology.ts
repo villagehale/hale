@@ -34,10 +34,6 @@ import { classifyTurnFailure } from './smoke-alarm';
  * model is not trusted to be right, it is measured, and it gets to try again.
  */
 
-/** One text. 160 GSM-7 characters is a single segment; an apology that costs two was
- * explaining itself. */
-export const MAX_APOLOGY_CHARS = 160;
-
 /** Three attempts, then out. A model told its exact violation twice and still failing is
  * not going to be argued into it on the fourth try — and the caller's answer to "no
  * sendable apology" is to re-drive the whole turn, which may not need one at all. */
@@ -88,7 +84,6 @@ const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b
  */
 export type ApologyRefusal =
   | 'empty'
-  | 'over_char_cap'
   | 'not_gsm7'
   | 'carries_link'
   | 'not_one_sentence'
@@ -103,7 +98,6 @@ export type ApologyRefusal =
 export function refusals(body: string): ApologyRefusal[] {
   if (body === '') return ['empty'];
   const found: ApologyRefusal[] = [];
-  if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');

@@ -64,14 +64,16 @@ const INTRO = { kind: 'intro' } as const;
 const GOOD_ACTIVITY = 'How was Swim class? No pressure to reply.';
 
 describe('refusals', () => {
-  it('passes a one-question, in-budget, subject-naming ask', () => {
+  it('passes a one-question, subject-naming ask, including one longer than a segment', () => {
     expect(refusals(GOOD_ACTIVITY, ACTIVITY)).toEqual([]);
     expect(refusals('How was Swim class? Hope it’s been a good week.', ACTIVITY)).toEqual([]);
+    const long = `${'How was Swim class, and '.repeat(9)}?`;
+    expect(long.length).toBeGreaterThan(160);
+    expect(refusals(long, ACTIVITY)).toEqual([]);
   });
 
   it.each([
     ['empty', '', ['empty']],
-    ['over the one-segment budget', `${'How was Swim class, and '.repeat(9)}?`, ['over_char_cap']],
     ['a link', 'How was Swim class? More at www.example.com', ['carries_link']],
     ['a second question', 'How was Swim class? Going again?', ['not_one_question']],
     ['no question at all', 'Hope Swim class went well.', ['not_one_question']],

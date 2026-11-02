@@ -2,13 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import { smsEncoding } from '~/lib/channel/sms-segments';
-import {
-  MAX_APOLOGY_CHARS,
-  MAX_COMPOSE_ATTEMPTS,
-  apologyUserMessage,
-  createTurnApology,
-  refusals,
-} from './apology';
+import { MAX_COMPOSE_ATTEMPTS, apologyUserMessage, createTurnApology, refusals } from './apology';
 
 const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -70,10 +64,10 @@ describe('what may not be sent as an apology', () => {
     expect(refusals('Something broke on my end and nothing changed on your week.')).toEqual([]);
   });
 
-  it('refuses a body over one segment', () => {
-    const long = `${'that one broke on my end and nothing at all was changed, '.repeat(4)}truly`;
-    expect(long.length).toBeGreaterThan(MAX_APOLOGY_CHARS);
-    expect(refusals(long)).toContain('over_char_cap');
+  it('sends a long apology — length is not a reason to drop it (VIL-537)', () => {
+    const long = `${'that one broke on my end and nothing at all was changed, '.repeat(6)}truly`;
+    expect(long.length).toBeGreaterThan(300);
+    expect(refusals(long)).toEqual([]);
   });
 
   /** A trailing terminator is the sentence's own; an INTERNAL one is a second sentence.
@@ -97,10 +91,10 @@ describe('what may not be sent as an apology', () => {
     );
   });
 
-  it('keeps the sendable shape it demands — one GSM-7 segment', () => {
+  it('keeps a plain apology in GSM-7', () => {
     const body = 'That one broke on my end - nothing changed on your side.';
     expect(smsEncoding(body)).toBe('gsm7');
-    expect(body.length).toBeLessThanOrEqual(MAX_APOLOGY_CHARS);
+    expect(refusals(body)).toEqual([]);
   });
 });
 

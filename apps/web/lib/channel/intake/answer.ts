@@ -66,23 +66,10 @@ import {
  */
 
 /**
- * ONE budget for the whole message, not one per half.
- *
- * 300 GSM-7 characters is two SMS segments (153 each) — the same ceiling the coach's own
- * replies and the off-domain answer are fitted to. Two rather than intake's usual one
- * because this turn is inherently two things, an answer and a question, and cutting the
- * answer to fit one segment would produce the terse non-reply the stage exists to
- * replace.
- *
- * IT WAS TWO CAPS (220/80, then 200/100) and both live recordings refused a perfectly
- * sendable pair on one half alone — a 105-character return line riding behind a
- * 58-character answer, well inside the message a carrier would have delivered as one
- * ordinary two-part text. The split was a budget invented for the model's convenience,
- * and what a carrier actually bills is the joined body; measuring anything else refuses
- * good messages for failing a rule nothing downstream enforces.
+ * Length is the model's judgment (VIL-537, Barton's rule: no character caps). A cap
+ * here used to discard a sendable answer and leave the script, which then told a
+ * parent Hale could not pull up options the finder had already returned.
  */
-export const MAX_REPLY_CHARS = 300;
-
 const MAX_TOKENS = 300;
 
 /** No links, held structurally: this stage has no tool it could have gotten one from,
@@ -132,11 +119,10 @@ const DISCLOSES_AI = /\b(ai|a\.i\.|bot|software|a program|not a (real )?(person|
 
 /**
  * Why a composed pair may not be sent. Mechanical, and each one is a different story in
- * the log: the first six are a model writing something a carrier mangles or a shape the
- * turn cannot use, and the last four are a model writing something FALSE.
+ * the log: the first five are a model writing a shape the turn cannot use, and the
+ * last four are a model writing something FALSE. Length is not one of them (VIL-537).
  */
 export type IntakeAnswerRefusal =
-  | 'over_char_cap'
   | 'not_gsm7'
   | 'carries_link'
   | 'answer_carries_question'
@@ -257,7 +243,6 @@ export function refusals(
 ): IntakeAnswerRefusal[] {
   const found: IntakeAnswerRefusal[] = [];
   const joined = `${answer} ${returnLine}`;
-  if (joined.length > MAX_REPLY_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(joined)) found.push('carries_link');
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');
@@ -300,8 +285,8 @@ export function readPair(
     return { status: 'safety' };
   }
   // Read before the gates, not after: an empty answer is the model declining, which is
-  // a correct outcome, and grading a declined turn against a character cap would log a
-  // refusal for a stage that did its job.
+  // a correct outcome, and grading a declined turn would log a refusal for a stage
+  // that did its job.
   if (answer === '') return { status: 'nothing_to_answer' };
 
   const problems = refusals(answer, returnLine, input);

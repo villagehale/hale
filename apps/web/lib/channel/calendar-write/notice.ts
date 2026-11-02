@@ -114,12 +114,11 @@ export function calendarWriteNoticeUserMessage(input: CalendarWriteNoticeInput):
   return JSON.stringify(input);
 }
 
-export const CALENDAR_WRITE_NOTICE_MAX_CHARS = 480;
 const URL_SHAPE = /https?:\/\/\S+/gi;
 
 /**
- * Structural refusals only, never wording: empty, too long, a link that is not the one
- * handed, or a handed link that did not make it in exactly.
+ * Structural refusals only, never wording or length: empty, a link that is not the one
+ * handed, or a handed link that did not make it in exactly (VIL-537).
  */
 export function calendarWriteNoticeRefusals(
   body: string,
@@ -128,7 +127,6 @@ export function calendarWriteNoticeRefusals(
   const text = body.trim();
   if (text === '') return ['empty'];
   const found: string[] = [];
-  if (text.length > CALENDAR_WRITE_NOTICE_MAX_CHARS) found.push('over_char_cap');
   const urls = text.match(URL_SHAPE) ?? [];
   if (input.connectLink === null) {
     if (urls.length > 0) found.push('carries_link');

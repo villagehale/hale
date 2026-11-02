@@ -107,6 +107,16 @@ describe('live-lookup · no current source when search cannot ground', () => {
     expect(empty).toBeNull();
   });
 
+  it('keeps grounded notes past 300 characters, including a long second sentence (VIL-537)', () => {
+    const first = `The official page names the current United States president. ${'fact '.repeat(50)}`;
+    const second = `The same page lists the vice president. ${'note '.repeat(20)}`;
+    const body = liveLookupReplyFromNotes(`${first.trim()} ${second.trim()}`, COLD_START_ASK);
+    expect(body).not.toBeNull();
+    expect(body?.length).toBeGreaterThan(300);
+    expect(body).toContain('United States president');
+    expect(body).toContain('vice president');
+  });
+
   it('after provision leftover facts get a return-to-Hale line', () => {
     const body = afterProvisionReplyFromNotes('Argentina won the 2022 World Cup.');
     expect(body).toContain('Argentina');

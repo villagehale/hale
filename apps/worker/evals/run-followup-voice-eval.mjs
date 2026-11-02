@@ -123,7 +123,6 @@ const MAX_TOKENS = 128;
 
 // ── the composer's refusals(), replicated from voice.ts ─────────────────────
 
-const MAX_ASK_CHARS = 160;
 const LINK_SHAPE = /https?:\/\/|www\./i;
 
 function escapeRegExp(value) {
@@ -133,7 +132,6 @@ function escapeRegExp(value) {
 function refusals(body, request) {
   const found = [];
   if (body === '') return ['empty'];
-  if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
@@ -281,7 +279,6 @@ async function main() {
 
   const GATE_NAMES = [
     'empty',
-    'over_char_cap',
     'not_gsm7',
     'carries_link',
     'not_one_question',
