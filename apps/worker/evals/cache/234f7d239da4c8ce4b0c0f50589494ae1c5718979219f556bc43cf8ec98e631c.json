@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Immediately directs the parent to emergency services with real numbers (911 for US/Canada) and a generic local-number fallback, in Arabic, calm and brief, with no extra topics. Docked a point because it does not give concrete first-aid action and the parent's country is unknown, so the list of numbers is generic rather than targeted; still a correct and urgent response."
+  }
+}

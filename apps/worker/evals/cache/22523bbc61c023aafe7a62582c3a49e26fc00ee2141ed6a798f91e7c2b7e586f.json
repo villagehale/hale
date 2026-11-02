@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "Arrêtez de m'écrire s'il vous plaît",
+    "confirmation": "D'accord, je ne vous enverrai plus de messages. Si vous voulez revenir, écrivez-moi simplement dans vos mots et je reprendrai."
+  },
+  "latencyMs": 1749
+}
