@@ -6,6 +6,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadIcsFeed, mintIcsToken } from '~/lib/loop/ics-feed';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { postgresGroupPlanCalendarWriter, postgresGroupPlanHouseholds } from './calendar';
+import { considerPrivateCalendarReply } from './inbound';
 import { createPostgresGroupPlanRsvpStore } from './store';
 import { takeGroupPlanRsvpTurn } from './turn';
 import { fakeGroupPlanRsvpComposer } from './voice-fake';
@@ -96,15 +97,42 @@ describe('postgres household calendar copy', () => {
     });
 
     const homes = postgresGroupPlanHouseholds(db.database);
-    expect(await homes.resolve({ chatId: CHAT, userId: priya.userId })).toEqual({
-      status: 'one',
+    await db.database.insert(schema.linqGroupMembers).values({
       familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    await db.database.insert(schema.linqMultiFamilyMembers).values({
+      chatId: CHAT,
+      familyId: sam.familyId,
+      userId: sam.userId,
+      phoneE164Encrypted: encryptString(SAM),
+      phoneE164Hash: phoneBlindIndex(SAM),
+      role: 'parent',
+      seatedAt: NOW,
     });
     expect(await homes.resolve({ chatId: CHAT, userId: sam.userId })).toEqual({
       status: 'one',
       familyId: sam.familyId,
     });
     expect(await homes.resolve({ chatId: CHAT, userId: null })).toEqual({ status: 'none' });
+    await db.database
+      .update(schema.linqGroupMembers)
+      .set({ removedAt: NOW })
+      .where(eq(schema.linqGroupMembers.userId, priya.userId));
+    expect(await homes.resolve({ chatId: CHAT, userId: priya.userId })).toEqual({ status: 'none' });
+    await db.database
+      .update(schema.linqGroupMembers)
+      .set({ removedAt: null })
+      .where(eq(schema.linqGroupMembers.userId, priya.userId));
+    expect(await homes.resolve({ chatId: CHAT, userId: priya.userId })).toEqual({
+      status: 'one',
+      familyId: priya.familyId,
+    });
 
     const store = createPostgresGroupPlanRsvpStore(db.database);
     const plan = await store.createPlan({
@@ -132,7 +160,7 @@ describe('postgres household calendar copy', () => {
         async send(line: object) {
           expect(line).not.toHaveProperty('chatId');
           privateCalls.push(line);
-          return { status: 'sent' as const };
+          return { status: 'sent' as const, providerMessageId: `priv-${privateCalls.length}` };
         },
       },
       enabled: () => true,
@@ -183,19 +211,20 @@ describe('postgres household calendar copy', () => {
     const rowsAfterAsk = await db.database.select().from(schema.familyEvents);
     expect(rowsAfterAsk).toHaveLength(0);
 
-    await takeGroupPlanRsvpTurn(
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    const reply = await considerPrivateCalendarReply(
       {
-        chatId: CHAT,
-        senderHandle: PRIYA,
-        senderName: 'Priya',
-        senderUserId: priya.userId,
-        text: 'yes put it on our calendar',
-        tapback: null,
-        language: 'en',
+        database: db.database,
         now: new Date(NOW.getTime() + 60_000),
+        composer: fakeGroupPlanRsvpComposer(),
+        consentReader: {
+          read: async () => ({ decision: 'ok', confidence: 'high' }),
+        },
       },
-      base,
+      { senderUserId: priya.userId, senderName: 'Priya', text: 'please add it' },
     );
+    expect(reply.handled).toBe(true);
 
     const copies = await db.database
       .select({
@@ -228,7 +257,8 @@ describe('postgres household calendar copy', () => {
       ]),
     );
     expect(groupCalls).toEqual([]);
-    expect(privateCalls).toHaveLength(2);
+    expect(privateCalls).toHaveLength(1);
+    expect(privateCalls[0]).toMatchObject({ kind: 'calendar_ask', familyId: priya.familyId });
     expect(privateCalls.every((line) => !('chatId' in line))).toBe(true);
   });
 

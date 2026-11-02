@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { readGroupMembership } from '../group-membership';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
 import { type GroupPollStore, createPostgresGroupPollStore } from './poll-store';
@@ -66,6 +66,7 @@ export interface CalendarConsentRow {
   householdLabel: string | null;
   status: CalendarConsentStatus;
   familyEventId: string | null;
+  askProviderMessageId: string | null;
 }
 
 export interface ClaimCalendarAskInput {
@@ -96,8 +97,20 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   loadCalendarConsent(planId: string, familyId: string): Promise<CalendarConsentRow | null>;
   /** Inserts `asked`. False when this household already has a row for the plan. */
   claimCalendarAsk(input: ClaimCalendarAskInput): Promise<boolean>;
-  /** Drops an unanswered ask so a failed send can be tried again. */
-  releaseCalendarAsk(planId: string, familyId: string): Promise<void>;
+  /** Drops an unanswered ask so a failed send can be tried again. Audits only when a row went. */
+  releaseCalendarAsk(
+    planId: string,
+    familyId: string,
+    actorUserId: string | null,
+  ): Promise<boolean>;
+  listYesRsvps(planId: string): Promise<{ memberKey: string; userId: string | null }[]>;
+  setCalendarAskMessage(planId: string, familyId: string, providerMessageId: string): Promise<void>;
+  findCalendarAskByMessage(
+    providerMessageId: string,
+  ): Promise<{ plan: GroupPlanRecord; consent: CalendarConsentRow } | null>;
+  listOpenCalendarAsks(
+    userId: string,
+  ): Promise<{ plan: GroupPlanRecord; consent: CalendarConsentRow }[]>;
   /** Drops a declined or written row so a later yes, or a reopen, can ask again. */
   deleteCalendarConsent(
     planId: string,
@@ -537,6 +550,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         householdLabel: row.householdLabel,
         status: row.status as CalendarConsentStatus,
         familyEventId: row.familyEventId,
+        askProviderMessageId: row.askProviderMessageId,
       };
     },
 
@@ -564,8 +578,8 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
       return inserted.length > 0;
     },
 
-    async releaseCalendarAsk(planId, familyId) {
-      await database
+    async releaseCalendarAsk(planId, familyId, actorUserId) {
+      const deleted = await database
         .delete(schema.linqGroupPlanCalendarConsents)
         .where(
           and(
@@ -573,7 +587,133 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             eq(schema.linqGroupPlanCalendarConsents.familyId, familyId),
             eq(schema.linqGroupPlanCalendarConsents.status, 'asked'),
           ),
+        )
+        .returning({ id: schema.linqGroupPlanCalendarConsents.id });
+      if (deleted.length === 0) return false;
+      await database.insert(schema.auditLog).values({
+        familyId,
+        actor: actorUserId ?? 'system',
+        actionTaken: 'linq_group_plan_calendar_withdrawn',
+        targetTable: 'linq_group_plan_calendar_consents',
+        targetId: planId,
+        after: { familyId },
+      });
+      return true;
+    },
+
+    async listYesRsvps(planId) {
+      const rows = await database
+        .select({
+          memberKey: schema.linqGroupPlanRsvps.memberKey,
+          userId: schema.linqGroupPlanRsvps.userId,
+          response: schema.linqGroupPlanRsvps.response,
+        })
+        .from(schema.linqGroupPlanRsvps)
+        .where(eq(schema.linqGroupPlanRsvps.planId, planId));
+      return rows
+        .filter((row) => row.response === 'yes')
+        .map((row) => ({ memberKey: row.memberKey, userId: row.userId }));
+    },
+
+    async setCalendarAskMessage(planId, familyId, providerMessageId) {
+      await database
+        .update(schema.linqGroupPlanCalendarConsents)
+        .set({ askProviderMessageId: providerMessageId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.linqGroupPlanCalendarConsents.planId, planId),
+            eq(schema.linqGroupPlanCalendarConsents.familyId, familyId),
+          ),
         );
+    },
+
+    async findCalendarAskByMessage(providerMessageId) {
+      const [row] = await database
+        .select()
+        .from(schema.linqGroupPlanCalendarConsents)
+        .where(eq(schema.linqGroupPlanCalendarConsents.askProviderMessageId, providerMessageId))
+        .limit(1);
+      if (!row || row.status !== 'asked') return null;
+      const [plan] = await database
+        .select()
+        .from(schema.linqGroupPlans)
+        .where(eq(schema.linqGroupPlans.id, row.planId))
+        .limit(1);
+      if (!plan || plan.closedAt) return null;
+      return {
+        plan: {
+          id: plan.id,
+          chatId: plan.chatId,
+          familyId: plan.familyId,
+          title: plan.title,
+          startsAt: plan.startsAt,
+          location: plan.location,
+          rsvpDeadlineAt: plan.rsvpDeadlineAt,
+          expectedCount: plan.expectedCount,
+        },
+        consent: {
+          planId: row.planId,
+          familyId: row.familyId,
+          memberKey: row.memberKey,
+          displayName: row.displayName,
+          householdLabel: row.householdLabel,
+          status: 'asked',
+          familyEventId: row.familyEventId,
+          askProviderMessageId: row.askProviderMessageId,
+        },
+      };
+    },
+
+    async listOpenCalendarAsks(userId) {
+      const memberships = await database
+        .select({ familyId: schema.familyMembers.familyId, role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.userId, userId));
+      const families = memberships
+        .filter((row) => row.role === 'primary_parent' || row.role === 'co_parent')
+        .map((row) => row.familyId);
+      if (families.length === 0) return [];
+      const mine = await database
+        .select()
+        .from(schema.linqGroupPlanCalendarConsents)
+        .where(
+          and(
+            eq(schema.linqGroupPlanCalendarConsents.status, 'asked'),
+            inArray(schema.linqGroupPlanCalendarConsents.familyId, families),
+          ),
+        );
+      const out: { plan: GroupPlanRecord; consent: CalendarConsentRow }[] = [];
+      for (const row of mine) {
+        const [plan] = await database
+          .select()
+          .from(schema.linqGroupPlans)
+          .where(eq(schema.linqGroupPlans.id, row.planId))
+          .limit(1);
+        if (!plan || plan.closedAt) continue;
+        out.push({
+          plan: {
+            id: plan.id,
+            chatId: plan.chatId,
+            familyId: plan.familyId,
+            title: plan.title,
+            startsAt: plan.startsAt,
+            location: plan.location,
+            rsvpDeadlineAt: plan.rsvpDeadlineAt,
+            expectedCount: plan.expectedCount,
+          },
+          consent: {
+            planId: row.planId,
+            familyId: row.familyId,
+            memberKey: row.memberKey,
+            displayName: row.displayName,
+            householdLabel: row.householdLabel,
+            status: 'asked',
+            familyEventId: row.familyEventId,
+            askProviderMessageId: row.askProviderMessageId,
+          },
+        });
+      }
+      return out;
     },
 
     async deleteCalendarConsent(planId, familyId, status) {

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS "linq_group_plan_calendar_consents" (
 	"display_name" text NOT NULL,
 	"household_label" text,
 	"status" text NOT NULL,
+	"ask_provider_message_id" text,
 	"family_event_id" uuid REFERENCES "family_events"("id") ON DELETE set null,
 	"asked_at" timestamp with time zone,
 	"decided_at" timestamp with time zone,

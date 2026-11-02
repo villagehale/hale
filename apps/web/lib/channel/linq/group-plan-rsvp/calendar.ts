@@ -150,7 +150,10 @@ export interface CalendarPrivateLine {
 export interface CalendarPrivateSender {
   send(
     line: CalendarPrivateLine,
-  ): Promise<{ status: 'sent' } | { status: 'skipped'; reason: 'not_sent' | 'no_parent' }>;
+  ): Promise<
+    | { status: 'sent'; providerMessageId: string | null }
+    | { status: 'skipped'; reason: 'not_sent' | 'no_parent' }
+  >;
 }
 
 export interface GroupPlanCalendarLineInput {
@@ -214,7 +217,10 @@ export function postgresGroupPlanHouseholds(database: Database): GroupPlanHouseh
         .where(eq(schema.families.linqGroupChatId, input.chatId))
         .limit(1);
       const joined = await consentedJoinFamilyIds(database, input.chatId);
-      const eligible = parentFamilies.filter((id) => id === covering?.id || joined.has(id));
+      const seated = await liveSeatFamilies(database, input.chatId, input.userId);
+      const eligible = parentFamilies.filter(
+        (id) => seated.has(id) && (id === covering?.id || joined.has(id)),
+      );
       if (eligible.length === 1) {
         const familyId = eligible[0];
         return familyId ? { status: 'one', familyId } : { status: 'none' };
@@ -223,6 +229,35 @@ export function postgresGroupPlanHouseholds(database: Database): GroupPlanHouseh
       return { status: 'ambiguous' };
     },
   };
+}
+
+/** A parent who has left the chat is not seated, so they cannot OK a calendar write. */
+async function liveSeatFamilies(
+  database: Database,
+  chatId: string,
+  userId: string,
+): Promise<Set<string>> {
+  const groupSeats = await database
+    .select({ familyId: schema.linqGroupMembers.familyId })
+    .from(schema.linqGroupMembers)
+    .where(
+      and(
+        eq(schema.linqGroupMembers.chatId, chatId),
+        eq(schema.linqGroupMembers.userId, userId),
+        isNull(schema.linqGroupMembers.removedAt),
+      ),
+    );
+  const sharedSeats = await database
+    .select({ familyId: schema.linqMultiFamilyMembers.familyId })
+    .from(schema.linqMultiFamilyMembers)
+    .where(
+      and(
+        eq(schema.linqMultiFamilyMembers.chatId, chatId),
+        eq(schema.linqMultiFamilyMembers.userId, userId),
+        isNull(schema.linqMultiFamilyMembers.removedAt),
+      ),
+    );
+  return new Set([...groupSeats, ...sharedSeats].map((row) => row.familyId));
 }
 
 async function consentedJoinFamilyIds(database: Database, chatId: string): Promise<Set<string>> {

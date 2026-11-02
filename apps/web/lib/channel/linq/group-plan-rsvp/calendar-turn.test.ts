@@ -91,7 +91,7 @@ function privateSpy() {
     }) {
       expect(line).not.toHaveProperty('chatId');
       lines.push(line);
-      return { status: 'sent' as const };
+      return { status: 'sent' as const, providerMessageId: `priv-${lines.length}` };
     },
   };
 }
@@ -921,6 +921,112 @@ describe('a removal confirmation the model cannot write', () => {
     expect(writer.removed).toEqual(['fam-priya']);
     expect(priv.lines).toHaveLength(before);
     expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
+  });
+});
+
+describe('another parent in the same household', () => {
+  it('does not withdraw the ask when someone else says no', async () => {
+    const { store, texts } = await picnic();
+    const writer = writerSpy();
+    const priv = privateSpy();
+    const homes = households({ 'u-priya': 'fam-priya', 'u-sam': 'fam-priya' });
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        homes,
+        privateLines: priv,
+        consent: consentOf('not_this'),
+      }),
+    );
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: SAM,
+        senderName: 'Sam',
+        senderUserId: 'u-sam',
+        text: 'I cannot',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('no')),
+        writer,
+        homes,
+        privateLines: priv,
+        consent: consentOf('not_this'),
+      }),
+    );
+    const plan = await store.loadLivePlan(CHAT);
+    expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
+    expect(writer.removed).toEqual([]);
+    expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
+  });
+
+  it('ignores a tapback that did not land on the private ask', async () => {
+    const { store, texts } = await picnic();
+    const writer = writerSpy();
+    const priv = privateSpy();
+    const consent = consentOf('ok');
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        privateLines: priv,
+        consent,
+      }),
+    );
+    const missed = await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: '',
+        tapback: 'like',
+        tapbackMessageId: 'some-other-message',
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        privateLines: priv,
+        consent,
+      }),
+    );
+    expect(missed.handled && missed.outcome).not.toBe('group_plan_calendar_written');
+    expect(writer.familyIds).toEqual([]);
+    expect(consent.texts).toEqual([]);
   });
 });
 

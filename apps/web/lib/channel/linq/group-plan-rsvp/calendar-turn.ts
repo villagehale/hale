@@ -70,6 +70,22 @@ export type PendingCalendarAnswer =
       notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' };
     };
 
+async function householdStillComing(
+  ports: CalendarTurnPorts,
+  chatId: string,
+  planId: string,
+  familyId: string,
+): Promise<boolean> {
+  if (!ports.households) return false;
+  const yeses = await ports.store.listYesRsvps(planId);
+  for (const yes of yeses) {
+    if (!yes.userId) continue;
+    const home = await ports.households.resolve({ chatId, userId: yes.userId });
+    if (home.status === 'one' && home.familyId === familyId) return true;
+  }
+  return false;
+}
+
 function skipFor(resolution: HouseholdResolution): CalendarEffect | null {
   if (resolution.status === 'one') return null;
   if (resolution.status === 'ambiguous') {
@@ -139,6 +155,9 @@ async function deliverPrivate(
     kind: input.kind,
   });
   if (sent.status === 'skipped') return { status: 'skipped', reason: sent.reason };
+  if (input.kind === 'calendar_ask' && sent.providerMessageId) {
+    await ports.store.setCalendarAskMessage(input.plan.id, input.familyId, sent.providerMessageId);
+  }
   return { status: 'sent' };
 }
 
@@ -169,6 +188,8 @@ export async function answerPendingCalendarAsk(
     senderName: string | null;
     text: string;
     tapback: LinqTapback | null;
+    /** The message the tapback landed on. A reaction on anything else is not this ask. */
+    tapbackMessageId?: string | null;
     language: ReplyLanguage;
     now: Date;
   },
@@ -180,10 +201,19 @@ export async function answerPendingCalendarAsk(
   const row = await ports.store.loadCalendarConsent(input.plan.id, familyId);
   if (!row || (row.status !== 'asked' && row.status !== 'declined')) return { consumed: false };
 
+  const tapback =
+    input.tapback &&
+    input.tapbackMessageId &&
+    row.askProviderMessageId &&
+    input.tapbackMessageId === row.askProviderMessageId
+      ? input.tapback
+      : null;
+  if (!input.text.trim() && !tapback) return { consumed: false };
+
   const reader = ports.consentReader ?? sharedCalendarConsentReader();
   const reading = await reader.read({
     text: input.text,
-    tapback: input.tapback,
+    tapback,
     senderName: input.senderName,
     consent: row.status,
     ask: askFacts(input.plan, row.displayName, row.householdLabel),
@@ -308,7 +338,7 @@ async function reopenCalendarAsk(
     kind: 'calendar_ask',
   });
   if (sent.status === 'skipped') {
-    await ports.store.releaseCalendarAsk(input.plan.id, familyId);
+    await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId);
     await ports.store.recordCalendarDecline({
       planId: input.plan.id,
       familyId,
@@ -365,8 +395,11 @@ export async function settleCalendarAfterAnswer(
 
   if (input.response !== 'yes') {
     const row = await ports.store.loadCalendarConsent(input.plan.id, familyId);
+    if (row && (await householdStillComing(ports, input.chatId, input.plan.id, familyId))) {
+      return undefined;
+    }
     if (row?.status === 'asked') {
-      await ports.store.releaseCalendarAsk(input.plan.id, familyId);
+      await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId);
     }
     if (row?.status === 'written') {
       return removeWrittenCopy(input, ports, familyId, row);
@@ -403,7 +436,7 @@ export async function settleCalendarAfterAnswer(
     kind: 'calendar_ask',
   });
   if (sent.status === 'skipped') {
-    await ports.store.releaseCalendarAsk(input.plan.id, familyId);
+    await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId);
     console.warn(
       { outcome: 'group_plan_calendar_ask_unsent', reason: sent.reason },
       'group plan calendar: ask not sent',

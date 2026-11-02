@@ -3,6 +3,7 @@ import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { createOutboundTransport, sendLinqParts } from '~/lib/channel/outbound-transport';
+import { PreviewCaptureRefused } from '~/lib/channel/preview-capture-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -65,7 +66,7 @@ const PRIVATE_ASIDE_TEMPLATE = 'linq:private_aside';
 const PROVIDERS = ['gcal', 'gmail'] as const;
 
 type OneToOneSent =
-  | { outcome: 'sent'; chatId: string | null; rowId: string }
+  | { outcome: 'sent'; chatId: string | null; rowId: string; providerMessageId: string | null }
   | { outcome: 'already_sent' }
   | { outcome: 'not_sent'; code: string; permanent: boolean };
 
@@ -112,18 +113,29 @@ async function sendOneToOne(
       targetId: claimed.id,
       after: { templateKey: input.templateKey },
     });
-    return { outcome: 'sent', chatId: sent.chatId, rowId: claimed.id };
+    return {
+      outcome: 'sent',
+      chatId: sent.chatId,
+      rowId: claimed.id,
+      providerMessageId: sent.providerMessageId,
+    };
   } catch (err) {
-    if (!(err instanceof LinqSendError)) throw err;
+    const previewRefusal = err instanceof PreviewCaptureRefused ? err.reason : null;
+    if (!(err instanceof LinqSendError) && !previewRefusal) throw err;
+    const code = err instanceof LinqSendError ? err.code : previewRefusal;
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: err.code, dedupeKey: null })
+      .set({ status: 'failed', errorCode: code, dedupeKey: null })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.warn(
-      { familyId: input.familyId, templateKey: input.templateKey, code: err.code },
-      'linq 1:1 onboarding line did not land',
+      { familyId: input.familyId, templateKey: input.templateKey, code },
+      'linq 1:1 line did not land',
     );
-    return { outcome: 'not_sent', code: err.code, permanent: err.permanent };
+    return {
+      outcome: 'not_sent',
+      code: code ?? 'not_sent',
+      permanent: err instanceof LinqSendError ? err.permanent : false,
+    };
   }
 }
 
@@ -177,11 +189,15 @@ export async function sendHouseholdPrivateLine(
     now: Date;
     send?: OneToOneSend;
   },
-): Promise<'sent' | 'not_sent' | 'no_parent'> {
+): Promise<
+  | { status: 'sent'; providerMessageId: string | null }
+  | { status: 'not_sent' }
+  | { status: 'no_parent' }
+> {
   const userId = input.userId ?? (await primaryParentId(database, input.familyId));
-  if (!userId) return 'no_parent';
+  if (!userId) return { status: 'no_parent' };
   const to = await resolveSendablePhone(database, userId);
-  if (!to) return 'no_parent';
+  if (!to) return { status: 'no_parent' };
   const out = await sendOneToOne(database, {
     familyId: input.familyId,
     ledgerUserId: userId,
@@ -192,7 +208,8 @@ export async function sendHouseholdPrivateLine(
     now: input.now,
     send: input.send ?? defaultOneToOneSend(),
   });
-  return out.outcome === 'sent' ? 'sent' : 'not_sent';
+  if (out.outcome !== 'sent') return { status: 'not_sent' };
+  return { status: 'sent', providerMessageId: out.providerMessageId };
 }
 
 async function sendLinkPart(

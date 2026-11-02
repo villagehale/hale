@@ -193,6 +193,7 @@ export const AUDIT_VERBS = [
   'linq_group_plan_calendar_declined',
   'linq_group_plan_calendar_written',
   'linq_group_plan_calendar_removed',
+  'linq_group_plan_calendar_withdrawn',
   'linq_group_poll_started',
   'linq_group_poll_vote_recorded',
   'linq_group_poll_vote_removed',
@@ -840,6 +841,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_group_plan_calendar_removed: {
     sentence: 'Hale took a group plan off your household calendar',
     family: 'done',
+  },
+  linq_group_plan_calendar_withdrawn: {
+    sentence: 'Hale set aside the calendar question after the plan changed',
+    family: 'note',
   },
   linq_group_poll_started: {
     sentence: 'Hale started a poll in your family group',

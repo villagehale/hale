@@ -233,6 +233,7 @@ describe('trail sentences stay on the receipts trail', () => {
     'linq_group_plan_calendar_declined',
     'linq_group_plan_calendar_written',
     'linq_group_plan_calendar_removed',
+    'linq_group_plan_calendar_withdrawn',
   ] as const;
 
   function filesUnder(dir: string, out: string[] = []): string[] {

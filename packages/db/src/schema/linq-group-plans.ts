@@ -191,6 +191,8 @@ export const linqGroupPlanCalendarConsents = pgTable(
     displayName: text('display_name').notNull(),
     householdLabel: text('household_label'),
     status: text('status').notNull(),
+    /** Provider id of the private ask, so a tapback on some other message is not an OK. */
+    askProviderMessageId: text('ask_provider_message_id'),
     familyEventId: uuid('family_event_id').references(() => familyEvents.id, {
       onDelete: 'set null',
     }),

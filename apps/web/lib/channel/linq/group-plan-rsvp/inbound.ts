@@ -1,15 +1,22 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { linqGroupPlanRsvpEnabled, linqGroupPollsEnabled, linqPollsEnabled } from '../config';
+import {
+  linqGroupPlanRsvpCalendarEnabled,
+  linqGroupPlanRsvpEnabled,
+  linqGroupPollsEnabled,
+  linqPollsEnabled,
+} from '../config';
 import { sendHouseholdPrivateLine } from '../connect-link-1to1';
 import { sendChoicePoll } from '../poll';
 import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
 import {
+  type CalendarConsentReader,
   postgresGroupPlanCalendarWriter,
   postgresGroupPlanHouseholds,
   sharedCalendarConsentReader,
 } from './calendar';
+import { answerPendingCalendarAsk } from './calendar-turn';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
 import {
   GROUP_POLL_CHOICE_KIND,
@@ -28,6 +35,7 @@ import {
   sendGroupPlanRsvpLine,
 } from './send';
 import { createPostgresGroupPlanRsvpStore } from './store';
+import type { PlanTally } from './tally';
 import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
 import type { GroupPlanRsvpComposer } from './voice';
 
@@ -38,6 +46,7 @@ export interface GroupPlanRsvpInboundPorts {
   reader?: GroupPlanRsvpReader;
   composer?: GroupPlanRsvpComposer;
   pollCard?: GroupPollCardPort;
+  consentReader?: CalendarConsentReader;
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -90,10 +99,12 @@ function privateCalendarSend(ports: GroupPlanRsvpInboundPorts) {
         dedupeKey: `${templateKey}:${line.planId}:${line.familyId}:${ports.now.toISOString()}`,
         now: ports.now,
       });
-      if (result === 'sent') return { status: 'sent' as const };
+      if (result.status === 'sent') {
+        return { status: 'sent' as const, providerMessageId: result.providerMessageId };
+      }
       return {
         status: 'skipped' as const,
-        reason: result === 'no_parent' ? ('no_parent' as const) : ('not_sent' as const),
+        reason: result.status === 'no_parent' ? ('no_parent' as const) : ('not_sent' as const),
       };
     },
   };
@@ -152,6 +163,7 @@ export async function considerGroupPlanRsvp(
     senderUserId?: string | null;
     text: string;
     tapback: LinqTapback | null;
+    tapbackMessageId?: string | null;
   },
 ): Promise<GroupPlanRsvpTurnOutcome> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return { handled: false };
@@ -169,6 +181,7 @@ export async function considerGroupPlanRsvp(
       senderUserId: input.senderUserId ?? null,
       text: input.text,
       tapback: input.tapback,
+      tapbackMessageId: input.tapbackMessageId,
       language: 'en',
       now: ports.now,
     },
@@ -180,10 +193,109 @@ export async function considerGroupPlanRsvp(
       pollCard: ports.pollCard ?? postgresGroupPollCard(ports.database),
       households: postgresGroupPlanHouseholds(ports.database),
       calendar: postgresGroupPlanCalendarWriter(ports.database),
-      consentReader: sharedCalendarConsentReader(),
+      consentReader: ports.consentReader ?? sharedCalendarConsentReader(),
       privateSend: privateCalendarSend(ports),
     },
   );
+}
+
+function calendarPorts(ports: GroupPlanRsvpInboundPorts) {
+  return {
+    households: postgresGroupPlanHouseholds(ports.database),
+    calendar: postgresGroupPlanCalendarWriter(ports.database),
+    consentReader: ports.consentReader ?? sharedCalendarConsentReader(),
+    composer: ports.composer,
+    privateSend: privateCalendarSend(ports),
+  };
+}
+
+function calendarOutcome(
+  answered: Awaited<ReturnType<typeof answerPendingCalendarAsk>>,
+  tally: PlanTally,
+): GroupPlanRsvpTurnOutcome {
+  if (!answered.consumed) return { handled: false };
+  const outcome =
+    answered.kind === 'written'
+      ? 'group_plan_calendar_written'
+      : answered.kind === 'declined'
+        ? 'group_plan_calendar_declined'
+        : answered.kind === 'asked'
+          ? 'group_plan_calendar_asked'
+          : 'group_plan_calendar_unwritten';
+  return {
+    handled: true,
+    outcome,
+    count: answered.notice === 'sent' ? 'intake' : 'ignored',
+    ...(answered.notice ? { notice: answered.notice } : {}),
+    tally,
+    calendar: answered.effect,
+  };
+}
+
+/**
+ * A 1:1 reply to the private calendar ask. The group chat is not this message's
+ * chat. One open ask for this parent is answered here; anything else is left
+ * for the normal 1:1 door.
+ */
+export async function considerPrivateCalendarReply(
+  ports: GroupPlanRsvpInboundPorts,
+  input: { senderUserId: string; senderName: string | null; text: string },
+): Promise<GroupPlanRsvpTurnOutcome | { handled: false }> {
+  if (!linqGroupPlanRsvpCalendarEnabled()) return { handled: false };
+  const store = createPostgresGroupPlanRsvpStore(ports.database);
+  const open = await store.listOpenCalendarAsks(input.senderUserId);
+  if (open.length !== 1) return { handled: false };
+  const plan = open[0]?.plan;
+  if (!plan) return { handled: false };
+  const answered = await answerPendingCalendarAsk(
+    {
+      chatId: plan.chatId,
+      plan,
+      userId: input.senderUserId,
+      senderName: input.senderName,
+      text: input.text,
+      tapback: null,
+      language: 'en',
+      now: ports.now,
+    },
+    { store, ...calendarPorts(ports) },
+  );
+  if (!answered.consumed) return { handled: false };
+  const tally = (await store.loadTally(plan.id)).tally;
+  return calendarOutcome(answered, tally);
+}
+
+/** A tapback counts only when it lands on the private ask itself. */
+export async function considerCalendarTapback(
+  ports: GroupPlanRsvpInboundPorts,
+  input: {
+    senderUserId: string | null;
+    senderName: string | null;
+    messageId: string;
+    tapback: LinqTapback | null;
+  },
+): Promise<GroupPlanRsvpTurnOutcome | { handled: false }> {
+  if (!linqGroupPlanRsvpCalendarEnabled() || !input.tapback) return { handled: false };
+  const store = createPostgresGroupPlanRsvpStore(ports.database);
+  const found = await store.findCalendarAskByMessage(input.messageId);
+  if (!found) return { handled: false };
+  const answered = await answerPendingCalendarAsk(
+    {
+      chatId: found.plan.chatId,
+      plan: found.plan,
+      userId: input.senderUserId,
+      senderName: input.senderName,
+      text: '',
+      tapback: input.tapback,
+      tapbackMessageId: input.messageId,
+      language: 'en',
+      now: ports.now,
+    },
+    { store, ...calendarPorts(ports) },
+  );
+  if (!answered.consumed) return { handled: false };
+  const tally = (await store.loadTally(found.plan.id)).tally;
+  return calendarOutcome(answered, tally);
 }
 
 /**

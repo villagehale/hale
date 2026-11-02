@@ -31,7 +31,8 @@ describe('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', () => {
     vi.unstubAllEnvs();
   });
 
-  it('is on only when the flag is exactly true after trimming', () => {
+  it('counts only when the flag is exactly true and the deploy is preview', () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true\n');
@@ -41,6 +42,13 @@ describe('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', () => {
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'false');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
+    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+    vi.stubEnv('VERCEL_ENV', 'development');
+    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+    vi.stubEnv('VERCEL_ENV', '');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
     vi.unstubAllEnvs();
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);

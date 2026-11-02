@@ -103,6 +103,8 @@ export interface GroupPlanRsvpTurnInput {
   senderName: string | null;
   text: string;
   tapback: LinqTapback | null;
+  /** The message a tapback landed on. Absent for a plain text. */
+  tapbackMessageId?: string | null;
   /** Verified Hale user for this handle, when inbound resolved one. */
   senderUserId?: string | null;
   language: ReplyLanguage;
@@ -179,6 +181,7 @@ export async function takeGroupPlanRsvpTurn(
         senderName: input.senderName,
         text: input.text,
         tapback: input.tapback,
+        tapbackMessageId: input.tapbackMessageId,
         language: input.language,
         now: input.now,
       },
@@ -336,39 +339,45 @@ export async function takeGroupPlanRsvpTurn(
     after,
     householdAnswer,
   });
-  const calendar =
-    calendarOn && (reading.intent === 'rsvp' || reading.intent === 'edit') && reading.response
-      ? await settleCalendarAfterAnswer(
-          {
-            chatId: input.chatId,
-            plan,
-            userId: calendarUserId,
-            memberKey: senderKey,
-            displayName,
-            householdLabel: reading.householdLabel,
-            response: reading.response,
-            language: input.language,
-            now: input.now,
-          },
-          {
-            store: deps.store,
-            households: deps.households,
-            calendar: deps.calendar,
-            consentReader: deps.consentReader,
-            composer: deps.composer,
-            privateSend: deps.privateSend,
-          },
-        )
-      : undefined;
-  const calendarField = calendar ? { calendar } : {};
+  const finishCalendar = async () => {
+    if (
+      !calendarOn ||
+      (reading.intent !== 'rsvp' && reading.intent !== 'edit') ||
+      !reading.response
+    ) {
+      return undefined;
+    }
+    return settleCalendarAfterAnswer(
+      {
+        chatId: input.chatId,
+        plan,
+        userId: calendarUserId,
+        memberKey: senderKey,
+        displayName,
+        householdLabel: reading.householdLabel,
+        response: reading.response,
+        language: input.language,
+        now: input.now,
+      },
+      {
+        store: deps.store,
+        households: deps.households,
+        calendar: deps.calendar,
+        consentReader: deps.consentReader,
+        composer: deps.composer,
+        privateSend: deps.privateSend,
+      },
+    );
+  };
 
   if (!speak) {
+    const calendar = await finishCalendar();
     return {
       handled: true,
       outcome: 'group_plan_recorded',
       count: 'ignored',
       tally: after,
-      ...calendarField,
+      ...(calendar ? { calendar } : {}),
     };
   }
 
@@ -388,13 +397,14 @@ export async function takeGroupPlanRsvpTurn(
       { outcome: 'group_plan_line_unsent', reason: spoken.reason },
       'group plan rsvp: line not sent',
     );
+    const calendar = await finishCalendar();
     return {
       handled: true,
       outcome: 'group_plan_line_unsent',
       count: 'ignored',
       notice: { skipped: spoken.reason },
       tally: after,
-      ...calendarField,
+      ...(calendar ? { calendar } : {}),
     };
   }
 
@@ -405,22 +415,24 @@ export async function takeGroupPlanRsvpTurn(
       { err: err instanceof Error ? err.name : 'unknown' },
       'group plan rsvp: send failed',
     );
+    const calendar = await finishCalendar();
     return {
       handled: true,
       outcome: 'group_plan_line_unsent',
       count: 'ignored',
       notice: { skipped: 'not_sent' },
       tally: after,
-      ...calendarField,
+      ...(calendar ? { calendar } : {}),
     };
   }
 
+  const calendar = await finishCalendar();
   return {
     handled: true,
     outcome: 'group_plan_spoken',
     count: 'intake',
     notice: 'sent',
     tally: after,
-    ...calendarField,
+    ...(calendar ? { calendar } : {}),
   };
 }
