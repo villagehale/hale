@@ -13,9 +13,12 @@ import type { CapturedLinqCall, GroupCaptureSink } from './preview-linq-capture'
  * is refused before anything is stored or routed into the group handler.
  */
 
-const handleLinqGroupMessage = vi.fn(async () => Response.json({ ok: true }));
+const handleLinqGroupMessage = vi.fn<
+  (deps: unknown, message: LinqInboundText) => Promise<Response>
+>(async () => Response.json({ ok: true }));
 vi.mock('~/lib/channel/linq/inbound', () => ({
-  handleLinqGroupMessage: (...args: unknown[]) => handleLinqGroupMessage(...(args as [])),
+  handleLinqGroupMessage: (...args: unknown[]) =>
+    handleLinqGroupMessage(...(args as [unknown, LinqInboundText])),
 }));
 
 const { handlePreviewFakeGroupInbound, MAX_FAKE_GROUP_TEXT } = await import(
@@ -99,7 +102,7 @@ async function family(phones: string[], chatId: string | null = null) {
 }
 
 function routedMessage(): LinqInboundText {
-  const message = handleLinqGroupMessage.mock.calls[0]?.[1] as LinqInboundText | undefined;
+  const message = handleLinqGroupMessage.mock.calls[0]?.[1];
   if (!message) throw new Error('group handler was not called');
   return message;
 }
