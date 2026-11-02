@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The follow-up corrects the time but also asks the parent a new question, so it must go out as its own message; edit null is the correct choice and matches the safety rule that questions get a new message.",
+    "score": 5
+  }
+}

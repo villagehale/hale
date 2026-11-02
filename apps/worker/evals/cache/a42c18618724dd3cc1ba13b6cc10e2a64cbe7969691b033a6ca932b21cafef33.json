@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The follow-up only acknowledges the parent and corrects no fact in the editable bubble, so edit null is correct and the acknowledgement should go out as its own message.",
+    "score": 5
+  }
+}
