@@ -138,16 +138,28 @@ describe('family fit provenance + freshness (VIL-519)', () => {
   });
 
   it.each(['home_city', 'date_of_birth', 'age'])(
-    'a remembered %s rides when extraction did not mark it as the record',
+    'an unmarked stale %s is dropped, the same as a stale age or place fact',
     (key) => {
-      const { preferences } = selectFitPreferences(
-        [row({ key, value: 'not the record' })],
+      const value = key === 'home_city' ? 'Georgetown' : '3';
+      const fit = selectFitPreferences(
+        [row({ key, value, source: 'parent_message', sourcedAt: ago(400) })],
         new Set(),
         NOW,
       );
-      expect(preferences.map((p) => p.key)).toEqual([key]);
+      expect(fit.preferences).toEqual([]);
+      expect(fit.recheck).toEqual([]);
+      expect(JSON.stringify(fit)).not.toContain('Georgetown');
     },
   );
+
+  it('a fresh unmarked fact still rides', () => {
+    const { preferences } = selectFitPreferences(
+      [row({ key: 'indoor', value: true, source: 'parent_message', sourcedAt: ago(20) })],
+      new Set(),
+      NOW,
+    );
+    expect(preferences.map((p) => p.key)).toEqual(['indoor']);
+  });
 
   it('keeps preferences that only mention home in passing', () => {
     const { preferences } = selectFitPreferences(

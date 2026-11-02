@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { isFactFresh } from '~/lib/channel/activity/reader';
-import { shadowsRecord } from '~/lib/memory/record-field';
+import { heldFromFamilyPrompt } from '~/lib/memory/record-field';
 import { readFamilyTimezone } from '../dashboard/trail-query';
 import { promptKind, readDisposition, readObservedAt } from './classify-write';
 import { CONFIDENCE_FLOOR } from './facts';
@@ -161,13 +161,12 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
     if (isExpiredTemporary({ memoryKind: fact.memoryKind, expiresAt: fact.expiresAt }, input.now)) {
       return false;
     }
-    // Extraction marks age and home with `record`. The key's language is not the signal.
-    if (shadowsRecord(fact.factValue)) return false;
-    // A stale guess is not a preference. The find tool may name the key for a
-    // question; the brief must not hand the value over as something Hale knows.
-    if (fact.sourcedAt && !isFactFresh(fact.memorySource ?? 'legacy', fact.sourcedAt, input.now)) {
-      return false;
-    }
+    // Marked age/place always. Unmarked facts only once they are past the
+    // same freshness window. A missing sourcedAt is a fixture, treated as fresh.
+    const fresh = fact.sourcedAt
+      ? isFactFresh(fact.memorySource ?? 'legacy', fact.sourcedAt, input.now)
+      : true;
+    if (heldFromFamilyPrompt(fact.factValue, fresh)) return false;
     return true;
   });
 

@@ -9,7 +9,7 @@ import {
 } from '@hale/types';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { isFactFresh, townFromStoredArea } from '~/lib/channel/activity/reader';
-import { shadowsRecord } from '~/lib/memory/record-field';
+import { heldFromFamilyPrompt } from '~/lib/memory/record-field';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
@@ -460,7 +460,9 @@ export async function loadAgentContext(
     stages,
     memoryFacts: redactFactsForTeens(
       factRows
-        .filter((r) => !shadowsRecord(r.factValue) && isFactFresh(r.memorySource, r.sourcedAt, now))
+        .filter(
+          (r) => !heldFromFamilyPrompt(r.factValue, isFactFresh(r.memorySource, r.sourcedAt, now)),
+        )
         .map((r) => ({
           childId: r.childId,
           factType: r.factType,

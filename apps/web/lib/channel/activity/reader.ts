@@ -3,7 +3,7 @@ import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, asc, desc, eq, gt, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 import { townLabel } from '~/lib/channel/town-label';
 import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
-import { shadowsRecord } from '~/lib/memory/record-field';
+import { heldFromFamilyPrompt } from '~/lib/memory/record-field';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
 /**
@@ -350,8 +350,9 @@ function asSource(source: string): FactSource {
  * - A hunch below the write floor never ranks, even if an old writer let one in.
  * - A fact extraction marked `record: age` or `record: place` is dropped. The
  *   key's spelling is not consulted.
- * - A fact older than its source's freshness window is omitted. It is not named
- *   back: the key would be the interest.
+ * - A fact older than its source's freshness window is omitted, mark or not.
+ *   An unmarked row from before `record` existed is dropped once it is stale,
+ *   on that same window. A fresh unmarked fact stays.
  * - One per (child, key): `writeFact` keeps one live row per identity, and a row seen
  *   later than another for the same key wins should two ever reach here.
  */
@@ -364,7 +365,6 @@ export function selectFitPreferences(
   for (const row of rows) {
     if (row.childId !== null && teenIds.has(row.childId)) continue;
     if (!(row.confidence >= CONFIDENCE_FLOOR)) continue;
-    if (shadowsRecord(row.value)) continue;
     const id = `${row.childId ?? ''}\u0000${row.key}`;
     const seen = newest.get(id);
     if (!seen || row.sourcedAt.getTime() > seen.sourcedAt.getTime()) newest.set(id, row);
@@ -379,7 +379,7 @@ export function selectFitPreferences(
   for (const row of ordered) {
     const source = asSource(row.source);
     const seenOn = row.sourcedAt.toISOString().slice(0, 10);
-    if (!isFactFresh(source, row.sourcedAt, now)) continue;
+    if (heldFromFamilyPrompt(row.value, isFactFresh(source, row.sourcedAt, now))) continue;
     if (preferences.length < FAMILY_FIT_PREFERENCE_LIMIT) {
       preferences.push({ childId: row.childId, key: row.key, value: row.value, source, seenOn });
     }

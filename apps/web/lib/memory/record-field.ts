@@ -22,6 +22,21 @@ export function shadowsRecord(value: unknown): boolean {
   return recordFieldOf(value) !== null;
 }
 
+/**
+ * Leave this fact out of a find, the coach memory list, and the brief.
+ *
+ * A marked age or place is the old record, so it is out even when fresh.
+ * A fact with no mark uses the same freshness window as every other fact
+ * (`isFactFresh` / `FACT_FRESH_DAYS`): past that window it is dropped the
+ * same way a stale age or place fact is. A fresh unmarked fact stays.
+ * Parent-said facts stay for 365 days, so a 20-day unmarked `home_city` is
+ * still inside the window.
+ */
+export function heldFromFamilyPrompt(value: unknown, fresh: boolean): boolean {
+  if (shadowsRecord(value)) return true;
+  return !fresh;
+}
+
 /** Stamp the extractor's mark onto the stored value. A string value becomes an object
  * so the mark survives beside the text. */
 export function withRecordField(value: unknown, record: RecordField | null | undefined): unknown {

@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadAgentContext } from '~/lib/coach/context';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
@@ -183,6 +184,46 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     expect(JSON.stringify(fit)).not.toContain('french');
     expect(JSON.stringify(fit)).not.toContain('avoid');
     expect(JSON.stringify(fit)).not.toContain('scary');
+  });
+
+  it('an unmarked stale home_city Georgetown does not reach the find or the coach', async () => {
+    const { familyId } = await seedFamily(db.database);
+    await db.database
+      .update(schema.families)
+      .set({ postalCode: 'L3P 3J7', areaCoarse: 'L3P', city: 'Markham', country: 'Canada' })
+      .where(eq(schema.families.id, familyId));
+    // Parent-said facts last 365 days. 400 is past that window. A 20-day row is not.
+    await fact(familyId, null, 'home_city', 'Georgetown', {
+      source: 'parent_message',
+      seenDaysAgo: 400,
+    });
+    await fact(familyId, null, 'indoor', 'indoors', {
+      source: 'parent_message',
+      seenDaysAgo: 20,
+    });
+
+    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    expect(fit.preferences.map((p) => p.key)).toEqual(['indoor']);
+    expect(JSON.stringify(fit)).not.toContain('Georgetown');
+
+    const context = await loadAgentContext(
+      {
+        familyId,
+        question: 'anything fun this Sunday?',
+        intent: null,
+        focusedChildId: null,
+        transcript: [],
+        sourceNote: null,
+      },
+      db.database,
+      NOW,
+    );
+    const shown = JSON.stringify({
+      memoryFacts: context.memoryFacts,
+      brief: context.memoryBrief.text,
+    });
+    expect(shown).not.toContain('Georgetown');
+    expect(shown).toContain('indoor');
   });
 
   it('expired and closed facts are not used at all', async () => {

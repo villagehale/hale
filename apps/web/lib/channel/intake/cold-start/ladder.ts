@@ -85,7 +85,12 @@ export function ageCorrectionFact(input: {
     childId: input.childId,
     factType: 'logistic',
     factKey: 'child-age-correction',
-    factValue: { schemaVersion: 1, kind: 'age_correction', ageMonths: input.ageMonths },
+    factValue: {
+      schemaVersion: 1,
+      kind: 'age_correction',
+      ageMonths: input.ageMonths,
+      record: 'age',
+    },
     confidence: 1,
     inferredBy: 'cold_start_age_correction',
     validFrom: input.now,
