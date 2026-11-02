@@ -100,6 +100,8 @@ describe('onboarding friend fixtures', () => {
     expect(skill.instructions).toContain('**ack**');
     expect(skill.instructions).toContain('No STOP');
     expect(skill.instructions).toContain('`lastInbound`');
+    expect(skill.instructions).toContain('`stillAsking`');
+    expect(skill.instructions).toContain('`group`');
     expect(skill.instructions).toContain('minutesAgo');
   });
 
@@ -126,6 +128,7 @@ describe('onboarding friend fixtures', () => {
     expect(short.instructions).toContain('**find_show**');
     expect(short.instructions).toContain('**connected**');
     expect(short.instructions).toContain('lastInbound');
+    expect(short.instructions).toContain('stillAsking');
     expect(short.meta.task).toBe('speak');
   });
 
@@ -498,6 +501,7 @@ describe('speakFriend', () => {
     );
     expect(spoken.source).toBe('composed');
     expect(spoken.bubbles).toEqual(['Here is what is on near you.', lead]);
+    expect(spoken.bubbleKeys).toEqual(['opener', 'group:0']);
     expect(spoken.body).toContain('10:00');
     expect(spoken.body).not.toMatch(/^\d+\.\s/m);
   });
@@ -576,6 +580,7 @@ describe('speakFriend', () => {
     );
     expect(spoken.source).toBe('composed');
     expect(spoken.bubbles).toEqual(['Here is what is on near you.', swimLead, storyLead]);
+    expect(spoken.bubbleKeys).toEqual(['opener', 'group:0', 'group:1']);
     expect(spoken.bubbles).toHaveLength(3);
   });
 
@@ -1101,6 +1106,89 @@ describe('the co-parent step: their group, or a new one', () => {
   });
 });
 
+describe('stillAsking', () => {
+  const chinese = '要不要和其他家长建个群？';
+  const asking = blank({
+    step: 'calendar',
+    parentWords: '以后再说',
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: true,
+      gmail: true,
+      calendar: false,
+      schedule: true,
+      coparent: false,
+    },
+  });
+
+  it('retries a capture that sets stopAsking and stillAsking, and keeps the Chinese ask', async () => {
+    const prompts: string[] = [];
+    const spoken = await speakFriend(
+      {
+        async compose(_input, options) {
+          prompts.push(options?.prompt ?? 'full');
+          if (options?.prompt === 'short') {
+            return {
+              reply: chinese,
+              capture: {
+                stopAsking: false,
+                stillAsking: 'group',
+                coparentGroup: false,
+                calendarLater: true,
+              },
+            };
+          }
+          return {
+            reply: chinese,
+            capture: {
+              stopAsking: true,
+              stillAsking: 'coparent',
+              coparentGroup: false,
+              calendarLater: true,
+            },
+          };
+        },
+      },
+      asking,
+    );
+    expect(prompts).toEqual(['full', 'short']);
+    expect(spoken.source).toBe('retry');
+    expect(spoken.prose).toBe(chinese);
+    expect(spoken.capture.stopAsking).toBe(false);
+    expect(spoken.capture.stillAsking).toBe('group');
+    expect(spoken.capture.coparentGroup).toBeNull();
+    expect(spoken.capture.calendarLater).toBe(true);
+    expect(spoken.body).not.toMatch(/group chat|other parent|co-parent/);
+    expect(spoken.body).not.toContain('?');
+  });
+
+  it('sends nothing when both attempts set stopAsking and stillAsking', async () => {
+    const pages: string[] = [];
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: chinese,
+            capture: { stopAsking: true, stillAsking: 'coparent', coparentGroup: false },
+          };
+        },
+      },
+      asking,
+      {
+        page: async (text) => {
+          pages.push(text);
+        },
+      },
+    );
+    expect(spoken.source).toBe('unsent');
+    expect(spoken.body).toBe('');
+    expect(spoken.bubbles).toEqual([]);
+    expect(pages).toEqual(['onboarding friend voice unsent step=calendar reason=unusable']);
+  });
+});
+
 describe('repairedProse', () => {
   it('folds offered choices into one question and leaves a clean draft alone', () => {
     expect(
@@ -1132,8 +1220,11 @@ describe('repairedProse', () => {
       repairedProse(
         'Want the swim on your calendar? Would a group chat with the other parent help?',
         'schedule',
+        'coparent',
       ),
     ).toBe('');
+    // Fullwidth question mark, no English co-parent words. The field is the signal.
+    expect(repairedProse('周六游泳不错。要不要和其他家长建个群？', 'schedule', 'group')).toBe('');
     expect(repairedProse('Saw picture day. Want a reminder?', 'connected')).toBe('');
     const long = `${'Gmail helps me catch registration confirmations and activity updates for the kids. '.repeat(2)}Google shares your whole inbox with me, and I keep only what is about the kids. Want to connect?`;
     expect(repairedProse(long, 'email')).toBe('');
