@@ -63,8 +63,6 @@ const MAX_TOKENS = 300;
  * three by the v2 WATCH_OFFER: the richest deterministic render plus the now-longer
  * appended offer is 324 septets, so two would make the grounded fallback unsendable. */
 const MAX_PAYLOAD_SEGMENTS = 3;
-/** The copy contract's hard ceiling: this is a text message, not a newsletter. */
-const MAX_SENTENCES = 3;
 
 // ── replicated: the composer's context shape (radar-voice.ts radarVoiceContext) ──
 // The model sees the decision's FACTS and nothing else — no candidate uuid, no
@@ -263,20 +261,6 @@ function fabrications(message, context) {
     }
   }
   return [...new Set(offenders)];
-}
-
-/** "6:30 a.m." is ONE injected fact, not two sentence endings. The ceiling counts
- * sentences a parent reads, so the abbreviation's own periods are neutralised before
- * the split — otherwise a message that puts the opening time mid-sentence is failed for
- * a punctuation mark it was handed. */
-const CLOCK_ABBREVIATION = /\b([ap])\.m\./gi;
-
-function countSentences(message) {
-  return message
-    .replace(CLOCK_ABBREVIATION, '$1m')
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0).length;
 }
 
 /**

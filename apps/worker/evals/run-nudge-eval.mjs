@@ -51,11 +51,8 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const NUDGE_SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'nudge-voice.md');
 
 const MAX_TOKENS = 300;
-/** Mirrors MAX_NUDGE_SEGMENTS in apps/web/lib/channel/nudge/nudge-voice.ts. */
+/** Mirrors MAX_NUDGE_SEGMENTS. Telemetry only: length is not a send gate (VIL-537). */
 const MAX_PAYLOAD_SEGMENTS = 2;
-/** The copy contract's hard ceiling. Tighter than the radar's three: this message
- * interrupted someone. */
-const MAX_SENTENCES = 2;
 
 // ── replicated: the composer's context shape (nudge-voice.ts nudgeVoiceContext) ──
 // The model sees the nudge's FACTS and nothing else — no candidate uuid, no window id.
@@ -223,13 +220,6 @@ function fabrications(message, context) {
     }
   }
   return [...new Set(offenders)];
-}
-
-function countSentences(message) {
-  return message
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0).length;
 }
 
 function checkMessage(fixture, message, judgeScore) {
