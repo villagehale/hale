@@ -93,12 +93,12 @@ export type UnmetIntentCategory = (typeof UNMET_INTENT_CATEGORIES)[number];
  * a retry both failed. There is no preset sentence.
  *
  * THIS ARRAY IS THE SOURCE, on the same terms as the unmet vocabulary above: the composer
- * derives its own type from it, and migration 0198's CHECK restates it in SQL — the one
+ * derives its own type from it, and migration 0202's CHECK restates it in SQL — the one
  * copy TypeScript cannot own, held to this one by
  * `unmet-vocabulary-consistency.test.mjs`. Two values and no third: this column is read
  * by the founder scorecard's SAFETY row, so a value it does not understand would be
  * counted as neither an answer nor a fallback. `fixed` was the earlier name of
- * `said_line`; 0198 renames the stored rows.
+ * `said_line`; 0202 renames the stored rows.
  */
 export const MEDICAL_REPLY_SOURCES = ['web_grounded', 'said_line'] as const;
 
@@ -114,7 +114,7 @@ export type MedicalReplySourceValue = (typeof MEDICAL_REPLY_SOURCES)[number];
  * apps/web/lib/channel/off-domain/answer.ts).
  *
  * THIS ARRAY IS THE SOURCE, on the same terms as the two vocabularies above: migration
- * 0198's CHECK restates it in SQL — the one copy TypeScript cannot own — held to this
+ * 0202's CHECK restates it in SQL — the one copy TypeScript cannot own — held to this
  * one by `unmet-vocabulary-consistency.test.mjs`.
  */
 export const REPLY_SOURCES = [
