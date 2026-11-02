@@ -276,6 +276,87 @@ describe("VIL-522 radar top-up", () => {
     expect(picks.map((p) => p.sourceName)).toEqual(["Library A", "Library B"]);
   });
 
+  it("logs counts only on success, with nothing that identifies the family or the query (VIL-539)", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const family = find({
+      name: "Avery Chen",
+      sourceName: "Riverside Community Centre",
+      when: "Saturday 10:00 at 123 Maple Street, Toronto",
+      ageFit: "toddler swim near the Chen household",
+      sourceUrl: "https://riverside.example/avery-chen-story",
+      placeId: "family_9f3c2a81",
+    });
+    const extra = find({
+      name: "Harbour dance",
+      sourceName: "Harbour Dance Studio",
+      when: "Sunday 11:00 near Queen Street West",
+      sourceUrl: "https://harbour.example/classes?q=chen+family+swim",
+      placeId: "place_harbour_toronto",
+    });
+
+    const searched = await topUpShortRadar({
+      radar: [family],
+      liveSearch: async () => [extra],
+    });
+
+    expect(searched.outcome).toBe("searched");
+    expect(info).toHaveBeenNthCalledWith(
+      1,
+      { suitableBefore: 1, liveSearchFired: true, resultCount: 2 },
+      "radar top-up",
+    );
+
+    const held = await topUpShortRadar({
+      radar: [family, extra],
+      liveSearch: async () => {
+        throw new Error("must not search");
+      },
+    });
+
+    expect(held.outcome).toBe("not_needed");
+    expect(info).toHaveBeenCalledTimes(2);
+    expect(info).toHaveBeenNthCalledWith(
+      2,
+      { suitableBefore: 2, liveSearchFired: false, resultCount: 2 },
+      "radar top-up",
+    );
+
+    for (const call of info.mock.calls) {
+      const [fields, message] = call;
+      expect(message).toBe("radar top-up");
+      expect(fields).toEqual({
+        suitableBefore: expect.any(Number),
+        liveSearchFired: expect.any(Boolean),
+        resultCount: expect.any(Number),
+      });
+      expect(Object.keys(fields as object).sort()).toEqual([
+        "liveSearchFired",
+        "resultCount",
+        "suitableBefore",
+      ]);
+    }
+
+    const logged = JSON.stringify(info.mock.calls);
+    for (const secret of [
+      "Avery Chen",
+      "Riverside Community Centre",
+      "123 Maple Street",
+      "Toronto",
+      "Chen household",
+      "family_9f3c2a81",
+      "Harbour dance",
+      "Harbour Dance Studio",
+      "Queen Street West",
+      "chen+family+swim",
+      "avery-chen-story",
+      "place_harbour_toronto",
+    ]) {
+      expect(logged).not.toContain(secret);
+    }
+
+    info.mockRestore();
+  });
+
   it("names a failed live search and still returns the radar find", async () => {
     const liveSearch = vi.fn(async () => {
       throw new Error("socket hang up");

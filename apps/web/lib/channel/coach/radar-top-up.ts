@@ -206,21 +206,52 @@ export function mergeTopUp(
 }
 
 /**
+ * Counts only, so Preview can see whether the one live search ran. Family ids,
+ * names, query text, and locations stay off this line.
+ */
+function logRadarTopUp(counts: {
+  suitableBefore: number;
+  liveSearchFired: boolean;
+  resultCount: number;
+}): void {
+  console.info(
+    {
+      suitableBefore: counts.suitableBefore,
+      liveSearchFired: counts.liveSearchFired,
+      resultCount: counts.resultCount,
+    },
+    "radar top-up",
+  );
+}
+
+/**
  * One live search when the radar is short of two suitable finds, and none
  * otherwise. A throw is named `failed` and the radar finds still come back —
- * the search having failed is not an empty radar.
+ * the search having failed is not an empty radar. A success logs counts only.
  */
 export async function topUpShortRadar(input: {
   radar: readonly ActivityPick[];
   liveSearch: () => Promise<readonly ActivityPick[]>;
 }): Promise<RadarTopUp> {
-  const suitable = input.radar.filter(isSuitableFind);
-  if (suitable.length >= MIN_SUITABLE_FINDS) {
-    return { picks: mergeTopUp(input.radar, []), outcome: "not_needed" };
+  const suitableBefore = input.radar.filter(isSuitableFind).length;
+  if (suitableBefore >= MIN_SUITABLE_FINDS) {
+    const picks = mergeTopUp(input.radar, []);
+    logRadarTopUp({
+      suitableBefore,
+      liveSearchFired: false,
+      resultCount: picks.length,
+    });
+    return { picks, outcome: "not_needed" };
   }
   try {
     const live = await input.liveSearch();
-    return { picks: mergeTopUp(input.radar, live), outcome: "searched" };
+    const picks = mergeTopUp(input.radar, live);
+    logRadarTopUp({
+      suitableBefore,
+      liveSearchFired: true,
+      resultCount: picks.length,
+    });
+    return { picks, outcome: "searched" };
   } catch (err) {
     console.error(
       { err: err instanceof Error ? err.name : "unknown" },
