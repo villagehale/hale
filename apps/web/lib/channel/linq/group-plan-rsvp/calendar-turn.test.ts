@@ -1029,6 +1029,122 @@ describe('another parent in the same household', () => {
     expect(consent.texts).toEqual([]);
   });
 
+  it.each([
+    ['love', 'written', 'not_this'],
+    ['like', 'written', 'not_this'],
+    ['dislike', 'declined', 'ok'],
+    ['laugh', 'asked', 'ok'],
+    ['emphasize', 'asked', 'ok'],
+    ['question', 'asked', 'ok'],
+  ] as const)(
+    'a %s on the private ask is handled as protocol, not by the model',
+    async (tapback, status, modelSays) => {
+      const { store, texts } = await picnic();
+      const writer = writerSpy();
+      const priv = privateSpy();
+      const consent = consentOf(modelSays);
+      await takeGroupPlanRsvpTurn(
+        {
+          chatId: CHAT,
+          senderHandle: PRIYA,
+          senderName: 'Priya',
+          senderUserId: 'u-priya',
+          text: 'in',
+          tapback: null,
+          language: 'en',
+          now: LATER,
+        },
+        calendarDeps({
+          store,
+          texts,
+          reader: readerOf(rsvp('yes')),
+          writer,
+          privateLines: priv,
+          consent,
+        }),
+      );
+      consent.texts.length = 0;
+      await takeGroupPlanRsvpTurn(
+        {
+          chatId: CHAT,
+          senderHandle: PRIYA,
+          senderName: 'Priya',
+          senderUserId: 'u-priya',
+          text: '',
+          tapback,
+          tapbackMessageId: 'priv-1',
+          language: 'en',
+          now: new Date(LATER.getTime() + 60_000),
+        },
+        calendarDeps({
+          store,
+          texts,
+          reader: readerOf(rsvp('yes')),
+          writer,
+          privateLines: priv,
+          consent,
+        }),
+      );
+      const plan = await store.loadLivePlan(CHAT);
+      expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe(status);
+      expect(writer.familyIds).toEqual(status === 'written' ? ['fam-priya'] : []);
+      expect(consent.texts).toEqual([]);
+    },
+  );
+
+  it('a tapback in the group never counts', async () => {
+    const { store, texts } = await picnic();
+    const writer = writerSpy();
+    const priv = privateSpy();
+    const consent = consentOf('ok');
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        privateLines: priv,
+        consent,
+      }),
+    );
+    consent.texts.length = 0;
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: '',
+        tapback: 'love',
+        tapbackMessageId: 'group-message',
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        privateLines: priv,
+        consent,
+      }),
+    );
+    const plan = await store.loadLivePlan(CHAT);
+    expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
+    expect(writer.familyIds).toEqual([]);
+    expect(consent.texts).toEqual([]);
+  });
+
   it('keeps a written entry when a co-parent says no and the other is still a yes', async () => {
     const { store, texts } = await picnic();
     const writer = writerSpy();

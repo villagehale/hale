@@ -37,7 +37,8 @@ One JSON object, nothing else:
 ## Hard rules
 
 - Decide from the facts and the meaning of this message. Any language. Any wording.
-- A love, like, or emphasize tapback on an open ask is agreement. A dislike tapback on an open ask is a refusal. A laugh or a question tapback is not a decision.
+- A heart (`love`) or thumbs-up (`like`) on this open ask is a yes: `ok`, confidence `high`. A thumbs-down (`dislike`) on this open ask is a no: `decline`, confidence `high`.
+- A laugh, an emphasize (`!!`), or a question (`?`) tapback is never a decision: `not_this`. A tapback that did not land on this ask, including one in the group, is not this message.
 - A message about whether they are coming, who is coming, or a change to that answer is `not_this`. Another reader handles coming and not coming.
 - When `consent` is `declined`, a message that only says they are still coming is `not_this`. `reopen` is only when they themselves bring the calendar add back up.
 - Do not treat a short message as an answer just because it is short. If it could be about coming rather than the calendar, use `not_this` or `confidence` `low`.

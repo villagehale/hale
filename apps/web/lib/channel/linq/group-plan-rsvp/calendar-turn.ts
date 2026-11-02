@@ -8,6 +8,7 @@ import {
   type GroupPlanCalendarWriter,
   type GroupPlanHouseholdResolver,
   type HouseholdResolution,
+  calendarAskTapback,
   groupPlanCalendarLineInput,
   sharedCalendarConsentReader,
 } from './calendar';
@@ -211,16 +212,23 @@ export async function answerPendingCalendarAsk(
     input.tapbackMessageId === row.askProviderMessageId
       ? input.tapback
       : null;
-  if (!input.text.trim() && !tapback) return { consumed: false };
-
   const reader = ports.consentReader ?? sharedCalendarConsentReader();
-  const reading = await reader.read({
-    text: input.text,
-    tapback,
-    senderName: input.senderName,
-    consent: row.status,
-    ask: askFacts(input.plan, row.displayName, row.householdLabel),
-  });
+  // A bare tapback is protocol. Only heart, thumbs-up, and thumbs-down on this
+  // ask decide it. Laugh, emphasize, question, and any other message do not,
+  // and the model is not asked to overrule that.
+  const tapbackDecision =
+    !input.text.trim() && tapback && row.status === 'asked' ? calendarAskTapback(tapback) : null;
+  if (!input.text.trim() && !tapbackDecision) return { consumed: false };
+
+  const reading = tapbackDecision
+    ? { decision: tapbackDecision, confidence: 'high' as const }
+    : await reader.read({
+        text: input.text,
+        tapback,
+        senderName: input.senderName,
+        consent: row.status,
+        ask: askFacts(input.plan, row.displayName, row.householdLabel),
+      });
   if (!reading || reading.confidence !== 'high' || reading.decision === 'not_this') {
     return { consumed: false };
   }

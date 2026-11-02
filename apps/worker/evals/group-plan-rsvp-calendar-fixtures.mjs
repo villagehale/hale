@@ -44,7 +44,31 @@ export const READER_FIXTURES = [
       ask: { ...PICNIC, householdLabel: null },
     },
     situation:
-      'The turn is only a love tapback on the open private calendar ask. There is no text. A love tapback on an open ask is agreement to put the plan on the calendar, and it is clear.',
+      'The turn is only a heart on the open private calendar ask. There is no text. A heart on that ask is a clear yes to put the plan on the calendar. A laugh, an emphasize, or a question mark would not be.',
+  },
+  {
+    id: 'tapback-thumbs-down',
+    input: {
+      text: '',
+      tapback: 'dislike',
+      senderName: 'Priya',
+      consent: 'asked',
+      ask: { ...PICNIC, householdLabel: null },
+    },
+    situation:
+      'The turn is only a thumbs-down on the open private calendar ask. There is no text. A thumbs-down on that ask is a clear no to the calendar add.',
+  },
+  {
+    id: 'tapback-laugh',
+    input: {
+      text: '',
+      tapback: 'laugh',
+      senderName: 'Priya',
+      consent: 'asked',
+      ask: { ...PICNIC, householdLabel: null },
+    },
+    situation:
+      'The turn is only a laugh on the open private calendar ask. A laugh is not a yes and not a no. It does not decide the calendar add.',
   },
   {
     id: 'still-coming-not-a-reopen',

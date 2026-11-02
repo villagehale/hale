@@ -69,6 +69,17 @@ export const CALENDAR_CONSENT_TOOL_SCHEMA = {
 
 export const CALENDAR_CONSENT_MAX_TOKENS = 200;
 
+/**
+ * A tapback on the open private calendar ask. Protocol, not wording.
+ * Heart and thumbs-up are a yes. Thumbs-down is a no.
+ * Laugh, emphasize, and question are never a decision.
+ */
+export function calendarAskTapback(tapback: LinqTapback | null): 'ok' | 'decline' | null {
+  if (tapback === 'love' || tapback === 'like') return 'ok';
+  if (tapback === 'dislike') return 'decline';
+  return null;
+}
+
 export const CALENDAR_CONSENT_TOOL_NAME = 'group_plan_calendar_consent';
 export const CALENDAR_CONSENT_TOOL_DESCRIPTION =
   'Return whether this message answers the open calendar ask.';

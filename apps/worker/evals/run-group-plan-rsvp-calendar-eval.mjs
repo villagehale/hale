@@ -54,7 +54,10 @@ const READER_JUDGE = [
   'decision is one of ok, decline, reopen, not_this. confidence is high or low.',
   'Score 1-5 on whether the reading matches the situation. Grade the meaning.',
   'A 5 is the decision the situation describes. Confidence is high only when the situation is clear enough to change the calendar ask.',
-  'A low score treats a message about who is coming as a calendar answer, treats a laugh or a question tapback as a decision,',
+  'A heart (love) or thumbs-up (like) on the open ask is a yes: ok, high. A thumbs-down (dislike) on the open ask is a no: decline, high.',
+  'A laugh, an emphasize (!!), or a question (?) tapback is never a decision: not_this. A tapback that did not land on this ask does not count.',
+  'A low score treats who is coming as a calendar answer, treats a laugh, emphasize, or question tapback as ok or decline,',
+  'treats a heart or thumbs-up on the open ask as not a yes, treats a thumbs-down on the open ask as a yes,',
   'agrees when they refused, refuses when they agreed, or reopens when they only said they are still coming.',
   'Do not require particular words. Reply with ONLY the score tool.',
 ].join(' ');
