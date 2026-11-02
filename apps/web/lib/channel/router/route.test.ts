@@ -4813,6 +4813,48 @@ describe('an iMessage effect does not send the reply twice', () => {
     expect(h.turns.answered).toEqual([job().channel_message_id]);
   });
 
+  it('does not hand a follow-up the inbound id when the effect row is not saved', async () => {
+    const h = effectTurn();
+    const closed: string[] = [];
+    h.deps.handlers = [
+      {
+        name: 'offer_close',
+        async handle() {
+          return {
+            claimed: true as const,
+            outcome: 'closed',
+            reply: 'You are in for swim.',
+            afterSend: async (id: string) => {
+              closed.push(id);
+            },
+          };
+        },
+      },
+    ];
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      posts.push(new URL(url).pathname);
+      return Response.json({ message: { id: 'effect-out' } }, { status: 201 });
+    });
+    const insert = h.deps.database.insert.bind(h.deps.database);
+    h.deps.database.insert = ((table: Parameters<typeof insert>[0]) => {
+      if (table === schema.channelMessages) throw new Error('bad row');
+      return insert(table);
+    }) as typeof h.deps.database.insert;
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(posts.filter((path) => path.endsWith('/messages'))).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(closed).toEqual([]);
+    expect(h.logs).toContainEqual([
+      expect.objectContaining({ reason: 'unledgered', providerMessageId: 'effect-out' }),
+      'linq moment: the reply landed; no outbound row, follow-ups skipped',
+    ]);
+    expect(JSON.stringify(closed)).not.toContain(job().channel_message_id);
+  });
+
   it('still sends the reply plain when Linq refuses the effect', async () => {
     const h = effectTurn();
     vi.stubGlobal('fetch', async () => Response.json({ error: { code: 409 } }, { status: 409 }));
