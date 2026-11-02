@@ -866,6 +866,250 @@ describe('a 1:1 reply reaches the calendar ask before ordinary intake', () => {
   });
 });
 
+describe('a claimed group with no member seat', () => {
+  it('still asks the covering parent, and a parent who left does not get an ask', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    const composer = fakeGroupPlanRsvpComposer();
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    const yes = {
+      intent: 'rsvp' as const,
+      planTitle: null,
+      startsAt: null,
+      location: null,
+      deadline: null,
+      response: 'yes' as const,
+      headcount: 1,
+      householdLabel: null,
+      coversNames: [],
+      confidence: 'high' as const,
+    };
+    await considerGroupPlanRsvp(
+      {
+        database: db.database,
+        now: NOW,
+        composer,
+        reader: { read: async () => yes },
+        oneToOne: {
+          text: async () => ({ providerMessageId: 'priv-claim', chatId: null }),
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderUserId: priya.userId,
+        text: 'in',
+        tapback: null,
+      },
+    );
+    expect(
+      composer.calls.some((call) => call.input.skill === 'group-plan-rsvp-calendar-voice'),
+    ).toBe(true);
+
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+      removedAt: NOW,
+    });
+    expect(
+      await postgresGroupPlanHouseholds(db.database).resolve({
+        chatId: CHAT,
+        userId: priya.userId,
+      }),
+    ).toEqual({ status: 'none' });
+  });
+});
+
+describe('a private reply among calendar asks', () => {
+  it('reopens a declined ask when the reader says they brought it back', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    await store.claimCalendarAsk({
+      planId: plan.id,
+      familyId: priya.familyId,
+      memberKey: 'priya',
+      displayName: 'Priya',
+      householdLabel: null,
+      now: NOW,
+    });
+    await store.markCalendarDeclined({
+      planId: plan.id,
+      familyId: priya.familyId,
+      actorUserId: priya.userId,
+      now: NOW,
+    });
+    const composer = fakeGroupPlanRsvpComposer();
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    const quiet = await considerPrivateCalendarReply(
+      {
+        database: db.database,
+        now: new Date(NOW.getTime() + 30_000),
+        composer,
+        consentReader: { read: async () => ({ decision: 'not_this', confidence: 'high' }) },
+      },
+      { senderUserId: priya.userId, senderName: 'Priya', text: 'we are still coming' },
+    );
+    expect(quiet.handled).toBe(false);
+    expect((await store.loadCalendarConsent(plan.id, priya.familyId))?.status).toBe('declined');
+
+    const again = await considerPrivateCalendarReply(
+      {
+        database: db.database,
+        now: new Date(NOW.getTime() + 60_000),
+        composer,
+        consentReader: { read: async () => ({ decision: 'reopen', confidence: 'high' }) },
+        oneToOne: {
+          text: async () => ({ providerMessageId: 'priv-reopen', chatId: null }),
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      { senderUserId: priya.userId, senderName: 'Priya', text: 'put the picnic on our calendar' },
+    );
+    expect(again.handled).toBe(true);
+    expect((await store.loadCalendarConsent(plan.id, priya.familyId))?.status).toBe('asked');
+    expect(composer.calls.some((call) => call.input.kind === 'calendar_ask')).toBe(true);
+  });
+
+  it('answers the one plan the reply is about when two asks are open', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    const [other] = await db.database
+      .insert(schema.families)
+      .values({
+        displayName: 'Other chat',
+        provinceOrState: 'ON',
+        primaryLanguage: 'en',
+        linqGroupChatId: 'chat-museum',
+      })
+      .returning({ id: schema.families.id });
+    const otherId = other?.id as string;
+    await db.database.insert(schema.familyMembers).values({
+      familyId: otherId,
+      userId: priya.userId,
+      role: 'co_parent',
+    });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const picnic = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    const museum = await store.createPlan({
+      chatId: 'chat-museum',
+      familyId: otherId,
+      title: 'Museum Saturday',
+      startsAt: new Date('2026-11-08T16:00:00.000Z'),
+      location: 'the museum',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    for (const row of [
+      { planId: picnic.id, familyId: priya.familyId },
+      { planId: museum.id, familyId: otherId },
+    ]) {
+      await store.claimCalendarAsk({
+        planId: row.planId,
+        familyId: row.familyId,
+        memberKey: 'priya',
+        displayName: 'Priya',
+        householdLabel: null,
+        now: NOW,
+      });
+    }
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    const ports = {
+      database: db.database,
+      now: new Date(NOW.getTime() + 60_000),
+      composer: fakeGroupPlanRsvpComposer(),
+      consentReader: {
+        read: async (input: { ask: { title: string } }) =>
+          input.ask.title === 'Museum Saturday'
+            ? { decision: 'ok' as const, confidence: 'high' as const }
+            : { decision: 'not_this' as const, confidence: 'high' as const },
+      },
+      oneToOne: {
+        text: async () => ({ providerMessageId: 'priv-one', chatId: null }),
+        link: async () => ({ providerMessageId: 'link' }),
+      },
+    };
+    const both = await considerPrivateCalendarReply(
+      {
+        ...ports,
+        consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
+      },
+      { senderUserId: priya.userId, senderName: 'Priya', text: 'both of them' },
+    );
+    expect(both).toMatchObject({ handled: true, outcome: 'group_plan_calendar_unwritten' });
+    expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
+    expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('asked');
+
+    const chosen = await considerPrivateCalendarReply(
+      { ...ports, now: new Date(NOW.getTime() + 120_000) },
+      { senderUserId: priya.userId, senderName: 'Priya', text: 'the museum one' },
+    );
+    expect(chosen.handled).toBe(true);
+    expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('written');
+    expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
+  });
+});
+
 async function tableCounts(): Promise<Map<string, number>> {
   const listed = (await db.database.execute(
     sql`select tablename from pg_tables where schemaname = 'public'`,

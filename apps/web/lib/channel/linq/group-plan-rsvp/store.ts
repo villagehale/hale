@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { readGroupMembership } from '../group-membership';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
 import { type GroupPollStore, createPostgresGroupPollStore } from './poll-store';
@@ -82,6 +82,7 @@ export interface ClaimCalendarAskInput {
 export const CALENDAR_WITHDRAW_REASONS = [
   'send_failed',
   'household_said_no',
+  'household_said_maybe',
   'plan_changed',
 ] as const;
 export type CalendarWithdrawReason = (typeof CALENDAR_WITHDRAW_REASONS)[number];
@@ -226,6 +227,32 @@ export async function postgresSeatedExpected(
       haleCustomer: member?.haleCustomer ?? false,
     };
   });
+}
+
+/** Chats this person was removed from and has not rejoined. */
+async function removedSeatChatIds(
+  database: Database,
+  userId: string,
+  live: Set<string>,
+): Promise<Set<string>> {
+  const rows = await database
+    .select({ chatId: schema.linqGroupMembers.chatId })
+    .from(schema.linqGroupMembers)
+    .where(
+      and(eq(schema.linqGroupMembers.userId, userId), isNotNull(schema.linqGroupMembers.removedAt)),
+    );
+  const shared = await database
+    .select({ chatId: schema.linqMultiFamilyMembers.chatId })
+    .from(schema.linqMultiFamilyMembers)
+    .where(
+      and(
+        eq(schema.linqMultiFamilyMembers.userId, userId),
+        isNotNull(schema.linqMultiFamilyMembers.removedAt),
+      ),
+    );
+  const removed = new Set([...rows, ...shared].map((row) => row.chatId));
+  for (const chatId of live) removed.delete(chatId);
+  return removed;
 }
 
 /** Chats where this person still has a seat. A removed seat is not current. */
@@ -703,12 +730,13 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .map((row) => row.familyId);
       if (families.length === 0) return [];
       const seated = await liveSeatChatIds(database, userId);
+      const removed = await removedSeatChatIds(database, userId, seated);
       const mine = await database
         .select()
         .from(schema.linqGroupPlanCalendarConsents)
         .where(
           and(
-            eq(schema.linqGroupPlanCalendarConsents.status, 'asked'),
+            inArray(schema.linqGroupPlanCalendarConsents.status, ['asked', 'declined']),
             inArray(schema.linqGroupPlanCalendarConsents.familyId, families),
           ),
         );
@@ -719,7 +747,17 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           .from(schema.linqGroupPlans)
           .where(eq(schema.linqGroupPlans.id, row.planId))
           .limit(1);
-        if (!plan || plan.closedAt || !seated.has(plan.chatId)) continue;
+        if (!plan || plan.closedAt) continue;
+        const [cover] = await database
+          .select({ id: schema.families.id })
+          .from(schema.families)
+          .where(eq(schema.families.linqGroupChatId, plan.chatId))
+          .limit(1);
+        const claimed =
+          cover?.id === row.familyId &&
+          !removed.has(plan.chatId) &&
+          families.includes(row.familyId);
+        if (!seated.has(plan.chatId) && !claimed) continue;
         out.push({
           plan: {
             id: plan.id,
@@ -737,7 +775,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             memberKey: row.memberKey,
             displayName: row.displayName,
             householdLabel: row.householdLabel,
-            status: 'asked',
+            status: row.status === 'declined' ? 'declined' : 'asked',
             familyEventId: row.familyEventId,
             askProviderMessageId: row.askProviderMessageId,
           },

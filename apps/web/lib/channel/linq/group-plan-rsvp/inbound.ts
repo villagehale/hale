@@ -13,6 +13,7 @@ import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
 import {
   type CalendarConsentReader,
+  type CalendarConsentReading,
   postgresGroupPlanCalendarWriter,
   postgresGroupPlanHouseholds,
   sharedCalendarConsentReader,
@@ -261,6 +262,58 @@ function calendarOutcome(
   };
 }
 
+type PrivateCalendarCandidate = Awaited<
+  ReturnType<ReturnType<typeof createPostgresGroupPlanRsvpStore>['listOpenCalendarAsks']>
+>[number];
+
+/**
+ * One ask is that ask. Several asks: the reader keeps the one this message
+ * decides, and leaves the turn alone when none or more than one fit.
+ */
+async function pickPrivateCalendarAsk(
+  ports: GroupPlanRsvpInboundPorts,
+  input: { senderName: string | null; text: string },
+  open: PrivateCalendarCandidate[],
+): Promise<
+  | { kind: 'none' }
+  | { kind: 'ambiguous' }
+  | {
+      kind: 'one';
+      plan: PrivateCalendarCandidate['plan'];
+      consent: PrivateCalendarCandidate['consent'];
+      decided?: CalendarConsentReading;
+    }
+> {
+  const only = open[0];
+  if (open.length === 0 || !only) return { kind: 'none' };
+  if (open.length === 1) return { kind: 'one', plan: only.plan, consent: only.consent };
+  const reader = ports.consentReader ?? sharedCalendarConsentReader();
+  const hits: { item: PrivateCalendarCandidate; reading: CalendarConsentReading }[] = [];
+  for (const item of open) {
+    const reading = await reader.read({
+      text: input.text,
+      tapback: null,
+      senderName: input.senderName,
+      consent: item.consent.status === 'declined' ? 'declined' : 'asked',
+      ask: {
+        title: item.plan.title,
+        startsAt: item.plan.startsAt?.toISOString() ?? null,
+        location: item.plan.location,
+        displayName: item.consent.displayName,
+        householdLabel: item.consent.householdLabel,
+      },
+    });
+    if (!reading || reading.confidence !== 'high' || reading.decision === 'not_this') continue;
+    if (item.consent.status === 'declined' && reading.decision !== 'reopen') continue;
+    if (item.consent.status !== 'declined' && reading.decision === 'reopen') continue;
+    hits.push({ item, reading });
+  }
+  const hit = hits[0];
+  if (!hit) return { kind: 'none' };
+  if (hits.length > 1) return { kind: 'ambiguous' };
+  return { kind: 'one', plan: hit.item.plan, consent: hit.item.consent, decided: hit.reading };
+}
+
 /**
  * A 1:1 reply to the private calendar ask. The group chat is not this message's
  * chat. One open ask for this parent is answered here; anything else is left
@@ -273,10 +326,12 @@ export async function considerPrivateCalendarReply(
   if (!linqGroupPlanRsvpCalendarEnabled()) return { handled: false };
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const open = await store.listOpenCalendarAsks(input.senderUserId);
-  if (open.length !== 1) return { handled: false };
-  const plan = open[0]?.plan;
-  const consent = open[0]?.consent;
-  if (!plan || !consent) return { handled: false };
+  const picked = await pickPrivateCalendarAsk(ports, input, open);
+  if (picked.kind === 'none') return { handled: false };
+  if (picked.kind === 'ambiguous') {
+    return { handled: true, outcome: 'group_plan_calendar_unwritten', count: 'ignored' };
+  }
+  const { plan, consent, decided } = picked;
   const answered = await answerPendingCalendarAsk(
     {
       chatId: plan.chatId,
@@ -287,6 +342,7 @@ export async function considerPrivateCalendarReply(
       tapback: null,
       language: await householdLanguage(ports.database, consent.familyId),
       now: ports.now,
+      ...(decided ? { decided } : {}),
     },
     { store, ...calendarPorts(ports) },
   );

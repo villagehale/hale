@@ -386,7 +386,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       }
       const out: { plan: GroupPlanRecord; consent: CalendarConsentRow }[] = [];
       for (const row of world.consents.values()) {
-        if (row.status !== 'asked') continue;
+        if (row.status !== 'asked' && row.status !== 'declined') continue;
         const plan = world.plans.get(row.planId);
         if (!plan || plan.closedAt || !chats.has(plan.chatId)) continue;
         out.push({ plan: { ...plan }, consent: row });

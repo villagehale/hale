@@ -1997,6 +1997,7 @@ export function trailVerb(actionTaken: string): Verb {
 const CALENDAR_WITHDRAW_LINE = {
   send_failed: 'Hale set aside the calendar question because the message did not send',
   household_said_no: 'Hale set aside the calendar question after your household said no',
+  household_said_maybe: 'Hale set aside the calendar question after your household said maybe',
   plan_changed: 'Hale set aside the calendar question after the plan changed',
 } as const;
 

@@ -3,6 +3,7 @@ import type { LinqTapback } from '../transport';
 import {
   type CalendarAskFacts,
   type CalendarConsentReader,
+  type CalendarConsentReading,
   type CalendarPrivateKind,
   type CalendarPrivateSender,
   type GroupPlanCalendarWriter,
@@ -196,6 +197,8 @@ export async function answerPendingCalendarAsk(
     tapbackMessageId?: string | null;
     language: ReplyLanguage | null;
     now: Date;
+    /** A reading already taken while choosing among several asks. */
+    decided?: CalendarConsentReading;
   },
   ports: CalendarTurnPorts,
 ): Promise<PendingCalendarAnswer> {
@@ -218,17 +221,19 @@ export async function answerPendingCalendarAsk(
   // and the model is not asked to overrule that.
   const tapbackDecision =
     !input.text.trim() && tapback && row.status === 'asked' ? calendarAskTapback(tapback) : null;
-  if (!input.text.trim() && !tapbackDecision) return { consumed: false };
+  if (!input.decided && !input.text.trim() && !tapbackDecision) return { consumed: false };
 
-  const reading = tapbackDecision
-    ? { decision: tapbackDecision, confidence: 'high' as const }
-    : await reader.read({
-        text: input.text,
-        tapback,
-        senderName: input.senderName,
-        consent: row.status,
-        ask: askFacts(input.plan, row.displayName, row.householdLabel),
-      });
+  const reading = input.decided
+    ? input.decided
+    : tapbackDecision
+      ? { decision: tapbackDecision, confidence: 'high' as const }
+      : await reader.read({
+          text: input.text,
+          tapback,
+          senderName: input.senderName,
+          consent: row.status,
+          ask: askFacts(input.plan, row.displayName, row.householdLabel),
+        });
   if (!reading || reading.confidence !== 'high' || reading.decision === 'not_this') {
     return { consumed: false };
   }
@@ -423,7 +428,7 @@ export async function settleCalendarAfterAnswer(
         input.plan.id,
         familyId,
         input.userId,
-        'household_said_no',
+        input.response === 'maybe' ? 'household_said_maybe' : 'household_said_no',
       );
     }
     if (row?.status === 'written') {

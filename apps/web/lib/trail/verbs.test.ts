@@ -258,6 +258,7 @@ describe('trail sentences stay on the receipts trail', () => {
     const reasons = {
       send_failed: 'Hale set aside the calendar question because the message did not send',
       household_said_no: 'Hale set aside the calendar question after your household said no',
+      household_said_maybe: 'Hale set aside the calendar question after your household said maybe',
       plan_changed: 'Hale set aside the calendar question after the plan changed',
     } as const;
     for (const [reason, summary] of Object.entries(reasons)) {

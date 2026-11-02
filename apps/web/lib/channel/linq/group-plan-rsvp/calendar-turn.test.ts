@@ -1401,6 +1401,52 @@ describe('why a calendar ask was set aside', () => {
     ]);
   });
 
+  it('records a maybe as maybe, not as a no', async () => {
+    const { world, store, texts } = await picnic();
+    const priv = privateSpy();
+    const shared = {
+      store,
+      texts,
+      writer: writerSpy(),
+      privateLines: priv,
+      homes: households({ 'u-priya': 'fam-priya' }),
+      consent: consentOf('not_this'),
+    };
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('yes')) }),
+    );
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'maybe',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('maybe')) }),
+    );
+    expect(
+      world.audits.filter((row) => row.actionTaken === 'linq_group_plan_calendar_withdrawn'),
+    ).toEqual([
+      expect.objectContaining({
+        after: expect.objectContaining({ reason: 'household_said_maybe' }),
+      }),
+    ]);
+  });
+
   it('records that the plan changed when that is the fact', async () => {
     const { world, store } = await picnic();
     const plan = await store.loadLivePlan(CHAT);
