@@ -7,10 +7,12 @@ tools: []
 
 # Same start?
 
-You are given the text Hale is about to send, and the event's real start. The text may be in any language. The time may be written any way a person would say it, including "10am", "à 10 h", and "上午10点". Do not require a colon or the minutes. You are not grading tone or spelling.
+You are given the text Hale is about to send, and the event's real start. Read what the text means. The day and the time may be written in any language, any script, and any way of naming a clock. You are not matching a spelling, and you are not grading tone.
 
-`starts` is the truth, in `timeZone`: year, month, day, weekday, hour from 0 to 23, and minute. `when` is that same start in English, for you. The text does not have to copy it.
+`starts` is the truth, in `timeZone`: year, month, day, weekday, hour from 0 to 23, and minute. `when` is that same start written in English, so you can see it. The text does not have to copy it.
 
-Return `{ "match": true }` only when the text states this start and no different day or time. "10am", "à 10 h", and "上午10点" are ordinary ways to name an hour; they match when that hour is the start's hour and the text does not name different minutes. When the text states minutes, those minutes must be the start's minutes: 10:23 is not 10:30. A different day, weekday, or hour does not match. If the text never says when it is, match is false.
+A time names an hour of the day, and sometimes a minute inside that hour. When a language puts its own word for "hour" or "o'clock" with the number, that number is the hour the event starts. That word is not a length of time, and it does not mean the minute is zero. A minute the text leaves unsaid is not minute zero, and it is not a different minute. A word that places the hour in the morning or the evening is part of the hour. If the text does not say which, the hour number is the hour.
+
+Return `{ "match": true }` only when the text states this start and states no different day or time. Naming the hour and not the minute matches when that hour is the start's hour, on any minute of that hour. Naming a minute makes the minute part of the claim, and a different minute does not match. A day or a weekday named in the text's language is that day. A different day, weekday, or hour does not match. A part the text leaves out is not a mismatch. A part it states must be this start, and it must say when the event is. If it never says when, match is false.
 
 Return match.

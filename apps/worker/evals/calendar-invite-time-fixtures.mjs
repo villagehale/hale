@@ -6,8 +6,9 @@
 // JSON `calendarInviteTimeUserMessage` builds. No URL.
 //
 // expectMatch is the skill (packages/agent/skills/calendar-invite-time.md):
-// hour-only forms match the hour when they do not name different minutes;
-// stated minutes must be 30; a different weekday does not match.
+// an hour named without a minute matches that hour (the missing minute is
+// not zero); a minute the text does name must be 30; a different weekday
+// does not match.
 
 const STARTS = {
   year: 2026,
