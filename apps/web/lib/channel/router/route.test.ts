@@ -5605,6 +5605,44 @@ describe('the reply row, written to a real database', () => {
         stickerDecide.mockReset();
       });
 
+      it('a sticker that keeps the reply sends the reply plain, with no effect read', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+        vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+        stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: true });
+        effectDecide.mockResolvedValue({ effect: { type: 'screen', name: 'confetti' } });
+        const posted: string[] = [];
+        vi.stubGlobal('fetch', async (url: string) => {
+          posted.push(new URL(url).pathname);
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        effectDecide.mockClear();
+        posted.length = 0;
+
+        const next = await text(
+          parent,
+          'we got in for swim',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          {
+            offDomain: fakeLane(IN_DOMAIN),
+            coach: fakeCoach('You are in for swim.'),
+            now: new Date('2026-10-28T16:00:00.000Z'),
+          },
+        );
+        vi.unstubAllGlobals();
+
+        // One moment per reply: the sticker peeled, the words go out plain.
+        expect(stickerDecide).toHaveBeenCalled();
+        expect(effectDecide).not.toHaveBeenCalled();
+        expect(posted.filter((path) => path.endsWith('/messages'))).toEqual([]);
+        expect(next.said).toEqual(['You are in for swim.']);
+        stickerDecide.mockReset();
+        effectDecide.mockReset();
+      });
+
       it('a reply the model chose an iMessage effect for', async () => {
         lit();
         vi.stubEnv('LINQ_API_KEY', 'test-key');
