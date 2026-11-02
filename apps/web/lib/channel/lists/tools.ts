@@ -2,6 +2,7 @@ import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { loadCronSkill } from '~/lib/cron/skill';
 
 /**
  * VIL-447 (T23) — the coach's shared-list verbs for a family group.
@@ -10,7 +11,9 @@ import { z } from 'zod';
  * someone is adding ("we're out of milk"), checking something off ("got it"), or asking
  * what's on a list, and calls a verb. Hale's reply is the model's own text from what the
  * verb returns (list name, items, who added what); this module writes no parent-facing
- * copy at all.
+ * copy at all. When the flag is on, the reply's tone is the coach-group-lists skill
+ * (a friend in the group, reacting to the list), loaded by name and appended by
+ * appendGroupListsReply. A dark flag does not load it, so other coach prompt bytes stay put.
  *
  * What the structure decides:
  * - SCOPE IS THE GROUP THREAD, from the turn, never from the model. Every read and write
@@ -493,4 +496,15 @@ export function augmentCoachSkillForGroupLists(skill: Skill, enabled: boolean): 
   const missing = GROUP_LIST_TOOL_NAMES.filter((name) => !skill.meta.tools.includes(name));
   if (missing.length === 0) return skill;
   return { ...skill, meta: { ...skill.meta, tools: [...skill.meta.tools, ...missing] } };
+}
+
+/**
+ * Reply tone for a shared-list turn. Loaded by name, and only appended when the flag
+ * is on, so a dark flag leaves every other coach prompt byte (and its eval cache key)
+ * unchanged. Direction only: the skill names no phrase to copy, require, or ban.
+ * The judge scores the tone.
+ */
+export async function appendGroupListsReply(skill: Skill): Promise<Skill> {
+  const tone = await loadCronSkill('coach-group-lists');
+  return { ...skill, instructions: `${skill.instructions}\n\n${tone.instructions}` };
 }

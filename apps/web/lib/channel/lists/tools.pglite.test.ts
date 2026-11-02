@@ -4,6 +4,7 @@ import { type AgentClient, type Skill, runAgent } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { GROUP_WITHHELD_TOOLS } from '../coach/group-privacy-scope';
 import { groupSharedListsEnabled } from './flag';
@@ -14,6 +15,7 @@ import {
   type GroupListToolPorts,
   LIST_GROUP_LISTS_TOOL,
   addToGroupList,
+  appendGroupListsReply,
   augmentCoachSkillForGroupLists,
   checkOffGroupListItems,
   createGroupListJournal,
@@ -152,6 +154,14 @@ describe('group shared lists (VIL-447)', () => {
       ...GROUP_LIST_TOOL_NAMES,
     ]);
     expect(augmentCoachSkillForGroupLists(base, true).instructions).toBe('x');
+  });
+
+  it('appends the shared-list reply tone from the skill file and leaves the tool list alone', async () => {
+    const base: Skill = { meta: { ...SKILL.meta, tools: ['lookup_week'] }, instructions: 'x' };
+    const tone = await loadCronSkill('coach-group-lists');
+    const out = await appendGroupListsReply(base);
+    expect(out.meta).toEqual(base.meta);
+    expect(out.instructions).toBe(`x\n\n${tone.instructions}`);
   });
 
   it("is never withheld from a group turn (the list is the group's own)", () => {

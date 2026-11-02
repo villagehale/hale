@@ -6,6 +6,7 @@ import { readInboundMedia } from '~/lib/channel/inbound-media';
 import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 /**
@@ -196,14 +197,18 @@ describe('channelCoachRuntime', () => {
   });
 
   it('offers the shared-list verbs only on a group turn with GROUP_SHARED_LISTS_ENABLED on (VIL-447)', async () => {
-    const seen: string[][] = [];
+    const seen: Array<{ tools: string[]; instructions: string }> = [];
     const p = ports({
       runAgent: async (args) => {
-        seen.push([...args.skill.meta.tools]);
+        seen.push({
+          tools: [...args.skill.meta.tools],
+          instructions: args.skill.instructions,
+        });
         return answering('ok.')(args);
       },
     });
     const names = ['list_group_lists', 'add_to_group_list', 'check_off_group_list_items'];
+    const tone = await loadCronSkill('coach-group-lists');
     try {
       vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', '');
       await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
@@ -214,11 +219,15 @@ describe('channelCoachRuntime', () => {
       vi.unstubAllEnvs();
     }
     for (const n of names) {
-      expect(seen[0]).not.toContain(n);
-      expect(seen[1]).toContain(n);
-      expect(seen[2]).not.toContain(n);
+      expect(seen[0]?.tools).not.toContain(n);
+      expect(seen[1]?.tools).toContain(n);
+      expect(seen[2]?.tools).not.toContain(n);
     }
-    expect(seen[2]).toEqual(SKILL.meta.tools);
+    expect(seen[2]?.tools).toEqual(SKILL.meta.tools);
+    // Tone is the disk skill, appended only when the list verbs are offered.
+    expect(seen[0]?.instructions).not.toContain(tone.instructions);
+    expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
+    expect(seen[2]?.instructions).not.toContain(tone.instructions);
   });
 
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {

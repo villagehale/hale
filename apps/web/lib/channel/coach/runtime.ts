@@ -31,6 +31,7 @@ import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/lin
 import { type GroupLeaveEligibility, groupLeaveEligibility } from '~/lib/channel/linq/group-leave';
 import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
 import {
+  appendGroupListsReply,
   augmentCoachSkillForGroupLists,
   createGroupListJournal,
   undoGroupListWrites,
@@ -373,6 +374,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ),
         leaveLit,
       );
+      // VIL-447: list reply tone rides last, and only on a group turn with the flag on.
+      // Dark and 1:1 turns keep the skill bytes they already had.
+      const coachSkill =
+        turn.audience === 'group' && groupSharedListsEnabled()
+          ? await appendGroupListsReply(skill)
+          : skill;
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
       const turnLinks = () =>
@@ -528,7 +535,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             // Re-thrown rather than handled — the router owns what a parent is told.
             const result = await ports
               .runAgent({
-                skill,
+                skill: coachSkill,
                 context: turnContext,
                 tools,
                 client: ports.client(),
@@ -545,7 +552,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 );
               });
 
-            const modelUsed = pickModel(skill.meta.task);
+            const modelUsed = pickModel(coachSkill.meta.task);
             trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
               model: modelUsed,
               usage: result.usage,

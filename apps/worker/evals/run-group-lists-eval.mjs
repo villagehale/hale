@@ -1,8 +1,9 @@
 // VIL-447 (T23) shared lists · coach eval (hard rule #8: no LLM mocking).
 //
 // The subject is the REAL agent loop over the REAL coach skill plus the group appendix
-// (joined as runtime.ts does), with the list verbs appended by the REAL
-// augmentCoachSkillForGroupLists, and the REAL list tools over the REAL DDL (pglite, every
+// (joined as runtime.ts does for those two), with the list verbs appended by the REAL
+// augmentCoachSkillForGroupLists and the reply tone appended last by the REAL
+// appendGroupListsReply, and the REAL list tools over the REAL DDL (pglite, every
 // migration through 0199). The context goes through the REAL groupScopedContext and the
 // tools through groupScopedTools. Two checks per case:
 //   1. CODE: the open items left in the tables equal the fixture's `expect` (folded text).
@@ -433,9 +434,12 @@ async function main() {
   const pglite = await importTs(PGLITE_SRC);
   const coach = await agent.loadSkill(join(SKILLS, 'coach-channel-sms.md'));
   const group = await agent.loadSkill(join(SKILLS, 'coach-channel-group.md'));
-  const skill = lists.augmentCoachSkillForGroupLists(
-    { ...coach, instructions: `${coach.instructions}\n\n${group.instructions}` },
-    true,
+  // Reply tone last, after the group appendix. Tool names come from the augment.
+  const skill = await lists.appendGroupListsReply(
+    lists.augmentCoachSkillForGroupLists(
+      { ...coach, instructions: `${coach.instructions}\n\n${group.instructions}` },
+      true,
+    ),
   );
   const judgeModel = agent.SONNET_MODEL;
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'group-lists', cachedOnly, getClient, cost, {
