@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "All three items (bug spray, life jackets, sunscreen) match facts.after, with no invented items, no claimed actions, and no secrets leaked. English matches the group message. But it is a status readout in a label-colon-list pattern, the same shape as reference 4, which was capped at 3 for not reading like a friend texting.",
-    "score": 3
-  }
-}
