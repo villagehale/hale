@@ -69,6 +69,47 @@ describe('deliverCrisisReply', () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it('narrows an emergency that also carries 988 to a 911-only rewrite', async () => {
+    const { writer, write } = recordingWriter('Call 911 now.');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const body = await deliverCrisisReply({
+      kind: 'emergency',
+      readerText: 'Call 911, or text 988.',
+      parentWords: 'not breathing',
+      where: 'intake crisis',
+      region: 'CA',
+      writer,
+    });
+    expect(body).toBe('Call 911 now.');
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'crisis_emergency',
+        mustInclude: ['911'],
+        facts: { emergency: '911' },
+      }),
+    );
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing and pages when the emergency rewrite still carries 988', async () => {
+    const { writer } = recordingWriter('Call 911 or text 9-8-8.');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const body = await deliverCrisisReply({
+      kind: 'emergency',
+      readerText: 'Text 988 and call 911.',
+      parentWords: 'not breathing',
+      where: 'intake crisis',
+      region: 'US',
+      writer,
+    });
+    expect(body).toBeNull();
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'emergency', where: 'intake crisis' }),
+      PAGE,
+    );
+  });
+
   it('hands an emergency reply without 911 to writeCrisisLine and sends that text', async () => {
     const { writer, write } = recordingWriter('Call 911.');
     const body = await deliverCrisisReply({

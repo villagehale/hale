@@ -279,10 +279,27 @@ export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boo
   return crisisMustInclude(kind).every((digit) => text.includes(digit));
 }
 
+/** 988 and the Canadian spelling 9-8-8 are the same line. A physical emergency may not carry it. */
+export function crisisTextHas988(text: string): boolean {
+  return text.includes('988') || text.includes('9-8-8');
+}
+
+/**
+ * Emergency replies are 911 only: the required digit is present and the 988 line is not.
+ * Mental replies need 988. Presence of the required number, not a wording judge.
+ */
+export function crisisReplyAcceptable(kind: CrisisKind, text: string): boolean {
+  if (!crisisTextHasRequiredNumber(kind, text)) return false;
+  return kind === 'mental' || !crisisTextHas988(text);
+}
+
 /**
  * The opt-out reader's crisis text, or the said-line writer when that text
- * lacks the required number. Null when neither can be sent: the writer pages
- * #ops, and a writer reply that still lacks the number pages here. No fixed line.
+ * cannot be sent. The reader saw the mental facts. A physical emergency is
+ * narrowed here: 911 only, so a reply that also carries 988 is handed to
+ * {@link writeCrisisLine}, which is given 911-only facts. Null when neither
+ * can be sent: the writer pages #ops, and a writer reply that still misses
+ * the check pages here. No fixed line.
  */
 export async function deliverCrisisReply(input: {
   kind: CrisisKind;
@@ -293,7 +310,7 @@ export async function deliverCrisisReply(input: {
   writer: SaidLineWriter | null | undefined;
 }): Promise<string | null> {
   const fromReader = input.readerText.trim();
-  if (fromReader.length > 0 && crisisTextHasRequiredNumber(input.kind, fromReader)) {
+  if (fromReader.length > 0 && crisisReplyAcceptable(input.kind, fromReader)) {
     return fromReader;
   }
   const written = await writeCrisisLine(
@@ -303,7 +320,7 @@ export async function deliverCrisisReply(input: {
     input.where,
     input.region,
   );
-  if (written && crisisTextHasRequiredNumber(input.kind, written)) return written;
+  if (written && crisisReplyAcceptable(input.kind, written)) return written;
   if (written) logCrisisUnanswered(input.kind, input.where);
   return null;
 }

@@ -85,15 +85,12 @@ const outputJsonSchema = {
 /** The user-turn payload. Shared with the evals, which replay this request shape. */
 export function optOutUserMessage(input: OptOutReadInput): string {
   // A hint only when certain; the sender's words decide the reply's language (#868).
-  // `facts` is always present: one line when the region is known, or both 988
-  // lines and 911 when it is not. The model writes the reply. Language never
-  // picks the line.
+  // The reader has not classified yet, so every turn gets the mental facts:
+  // the 988 line for a known region, or both 988 lines, plus 911. A physical
+  // emergency is narrowed to 911-only facts after the intent is known.
   return JSON.stringify({
     text: input.text,
     languageHint: certainLanguageHint(input.language),
-    // The reader has not classified yet. Mental facts carry 988 (and 911 when
-    // the region is unknown). The prompt uses 911 only once it reads a physical
-    // emergency, and does not add a 988 line there.
     facts: crisisFactsForRegion(input.region, 'mental'),
   });
 }
