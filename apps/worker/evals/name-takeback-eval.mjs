@@ -2,8 +2,9 @@
 //
 // SUBJECT: packages/agent/skills/onboarding-friend.md, called the way
 // readModelParentName calls speakFriend. undo, Undo, nvm, laisse tomber, and
-// 算了 come back with parentName empty. "Dana" comes back as Dana. A question
-// comes back with parentName empty and nameDeclined false. The strings are
+// 算了 come back with parentName empty, nameDeclined false, and nameTakenBack.
+// "Dana" comes back as Dana. A question leaves both flags false. A real
+// refusal sets nameDeclined and leaves nameTakenBack false. The strings are
 // the cases. Nothing here decides intent from a word list.
 //
 // The group-onboarding flag is pinned on so the tool schema matches production
@@ -100,9 +101,19 @@ async function estimate() {
     process.exit(1);
   }
   for (const fixture of NAME_TAKEBACK_FIXTURES) {
-    const empty = nameTakebackMatches(fixture, { parentName: null, nameDeclined: false });
+    const empty = nameTakebackMatches(fixture, {
+      parentName: null,
+      nameDeclined: fixture.expect.nameDeclined === true,
+      nameTakenBack: fixture.expect.nameTakenBack === true,
+    });
     if (fixture.expect.parentName === '' && fixture.expect.nameDeclined !== true && !empty) {
       throw new Error(`${fixture.id}: empty parentName must count as left empty`);
+    }
+    if (
+      fixture.expect.nameTakenBack === true &&
+      nameTakebackMatches(fixture, { parentName: null, nameDeclined: false, nameTakenBack: false })
+    ) {
+      throw new Error(`${fixture.id}: a take-back must set nameTakenBack`);
     }
     if (
       fixture.expect.nameDeclined === true &&
