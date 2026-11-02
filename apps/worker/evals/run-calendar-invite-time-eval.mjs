@@ -2,7 +2,7 @@
 //
 // The subject is the REAL skill (packages/agent/skills/calendar-invite-time.md) run
 // through the REAL request shape calendarInviteTimeUserMessage builds — replicated
-// here because that module sits behind the web app's `~/` alias. The four cases are
+// here because that module sits behind the web app's `~/` alias. The cases are
 // calendar-invite-time-fixtures.mjs. The skill body and model routing are imported
 // live, so a skill edit re-keys the cache.
 //

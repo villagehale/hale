@@ -6,9 +6,9 @@
 // JSON `calendarInviteTimeUserMessage` builds. No URL.
 //
 // expectMatch is the skill (packages/agent/skills/calendar-invite-time.md):
-// an hour named without a minute matches that hour (the missing minute is
-// not zero); a minute the text does name must be 30; a different weekday
-// does not match.
+// an hour named without a minute is minute zero, so "10 h" does not match
+// 10:30; a minute the text does name must be 30, including "10 h 30";
+// a different weekday does not match.
 
 const STARTS = {
   year: 2026,
@@ -35,10 +35,17 @@ export const CALENDAR_INVITE_TIME_FIXTURES = [
     expectMatch: true,
   },
   {
-    id: 'correct-fr-hour-only',
+    id: 'wrong-fr-hour-only',
     ...SHARED,
     language: 'fr',
     text: 'Swim class jeudi à 10 h. [[link]]',
+    expectMatch: false,
+  },
+  {
+    id: 'correct-fr-hour-minute',
+    ...SHARED,
+    language: 'fr',
+    text: 'Swim class jeudi à 10 h 30. [[link]]',
     expectMatch: true,
   },
   {
