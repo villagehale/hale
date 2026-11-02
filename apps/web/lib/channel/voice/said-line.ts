@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { CHANNEL_SIGNIN_TTL_MS } from '~/lib/auth/channel-signin';
 import { connectorNoun } from '~/lib/channel/connect/copy';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
+import { textHasNumber } from '~/lib/channel/health-resources';
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
@@ -35,7 +36,7 @@ export type SaidLinePurpose =
   | 'no_source'
   /** A caregiver venting: warm, not a clinician, no method, no diagnosis. */
   | 'cheer_up'
-  /** Someone is hurt or ill (not a crisis): Health811 and 911, never advice. */
+  /** Someone is hurt or ill (not a crisis): the health line in the facts, and 911. An emergency is 911 only. */
   | 'health'
   /** A parent said yes to one village introduction. */
   | 'intro_yes'
@@ -126,11 +127,17 @@ export function saidLineUserMessage(input: SaidLineInput): string {
  * exactly once, and no URL typed by the model at all. Then code fills the slots
  * with the exact URLs, so a link can never be mistyped (#868).
  */
+function factPresent(body: string, fact: string): boolean {
+  return /^\d+$/.test(fact) ? textHasNumber(body, fact) : body.includes(fact);
+}
+
 export function acceptSaidLine(text: string, input: SaidLineInput): string | null {
   let body = text.trim();
   if (body.length === 0) return null;
   const required = input.mustInclude ?? [];
-  if (!required.every((fact) => body.includes(fact))) return null;
+  // A phone number matches with dashes and spaces ignored (`8-1-1` is 811).
+  // Anything else, including an address, must appear exactly.
+  if (!required.every((fact) => factPresent(body, fact))) return null;
   // A mustConvey key with no fact behind it is a wiring bug, not something to say.
   // The meaning itself is not matched here. The writer asks the convey judge.
   if (!(input.mustConvey ?? []).every((key) => key in input.facts)) return null;

@@ -80,14 +80,14 @@ describe('unmet-intent vocabulary · SQL CHECK ↔ TypeScript source', () => {
 });
 
 /**
- * The same seam for migration 0090's `medical_reply_source`, and for the same reason: the
- * value is what the founder scorecard's SAFETY row counts fallbacks with, so a TS value
+ * The same seam for `medical_reply_source` (migration 0202, which replaced 0090's CHECK).
+ * The value is what the founder scorecard's SAFETY row counts fallbacks with, so a TS value
  * the CHECK rejects would fail the stamp and read as a week with no medical answers at
  * all — a safety row flattered by a silent write failure.
  */
 describe('medical reply-source vocabulary · SQL CHECK ↔ TypeScript source', () => {
   const sql = fs.readFileSync(
-    path.resolve(scriptDir, '..', 'drizzle', '0090_medical_reply_source.sql'),
+    path.resolve(scriptDir, '..', 'drizzle', '0202_medical_reply_said_line.sql'),
     'utf8',
   );
   const ts = fs.readFileSync(SCHEMA, 'utf8');
@@ -106,14 +106,14 @@ describe('medical reply-source vocabulary · SQL CHECK ↔ TypeScript source', (
 });
 
 /**
- * The same seam for migration 0103's `reply_source` — the general deflection outcome the
- * papercut digest counts. The value separates a composed answer from the fixed line that
+ * The same seam for `reply_source` (migration 0202, which replaced 0103's CHECK). The
+ * papercut digest counts it. The value separates a composed answer from the fixed line that
  * stood in for one, so a TS value the CHECK rejects would fail the stamp and the week's
  * composer failures would read as zero — the silent nothing rule #11 exists to prevent.
  */
 describe('reply-source vocabulary · SQL CHECK ↔ TypeScript source', () => {
   const sql = fs.readFileSync(
-    path.resolve(scriptDir, '..', 'drizzle', '0103_reply_source.sql'),
+    path.resolve(scriptDir, '..', 'drizzle', '0202_medical_reply_said_line.sql'),
     'utf8',
   );
   const ts = fs.readFileSync(SCHEMA, 'utf8');

@@ -476,8 +476,8 @@ export interface LaneCount {
 export interface MedicalAnswers {
   /** Medical-symptom texts Hale answered this week, grounded or not. */
   answered: number;
-  /** Of those, the ones that fell back to the fixed 811/911 line because no grounded
-   * answer could be composed. */
+  /** Of those, the ones that fell back to a model-written health line because no
+   * grounded answer could be composed. */
   fallbacks: number;
 }
 
@@ -501,7 +501,7 @@ export function gradeSafety(lanes: readonly LaneCount[], medical: MedicalAnswers
   const medicalText =
     medical.answered === 0
       ? 'no medical text arrived'
-      : `${medical.fallbacks} of ${medical.answered} medical answers fell back to the fixed line`;
+      : `${medical.fallbacks} of ${medical.answered} medical answers fell back to a model-written health line`;
   const doorText =
     doors === 0
       ? 'no safety-lane deflection'

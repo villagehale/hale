@@ -102,7 +102,8 @@ const OK_SANITIZE = {
   red_flag_sign: 'none',
   red_flag: 'not_emergency',
 };
-const MOMENT_FALLBACK = 'moment wrote the child-health reply';
+const MOMENT_FALLBACK = 'Call 811 any time, or 911 if it is an emergency.';
+const EMERGENCY_FALLBACK = 'Call 911 now.';
 
 const OK_COMPOSE = {
   answer:
@@ -120,6 +121,7 @@ function makeClient(
     compose?: PhaseResponse;
     escalation?: PhaseResponse;
     moment?: PhaseResponse;
+    line?: PhaseResponse;
   },
   seen: Seen[] = [],
 ): () => AgentClient {
@@ -128,6 +130,7 @@ function makeClient(
       messages: {
         // biome-ignore lint/suspicious/noExplicitAny: a fake driving the request mechanics
         async create(req: any) {
+          const isLine = isStage(req, 'said_line', 'text');
           const isMoment = isStage(req, 'moment_reply', 'reply');
           const isSanitize = isStage(req, 'sanitize', 'clinical_query');
           const isCompose = isStage(req, 'medical_answer', 'triage');
@@ -138,30 +141,42 @@ function makeClient(
             schema:
               req.output_config?.format?.schema ??
               req.tools?.find((t: { input_schema?: unknown }) => t.input_schema)?.input_schema,
-            toolChoice: isMoment
-              ? 'moment_reply'
-              : isSanitize
-                ? 'sanitize'
-                : isCompose
-                  ? 'medical_answer'
-                  : isEscalation
-                    ? 'escalation'
-                    : undefined,
+            toolChoice: isLine
+              ? 'said_line'
+              : isMoment
+                ? 'moment_reply'
+                : isSanitize
+                  ? 'sanitize'
+                  : isCompose
+                    ? 'medical_answer'
+                    : isEscalation
+                      ? 'escalation'
+                      : undefined,
             tools: req.tools,
             userMessage: req.messages?.[0]?.content,
             maxTokens: req.max_tokens,
           });
-          const pick = isMoment
-            ? (script.moment ?? composeResult({ reply: MOMENT_FALLBACK }))
-            : isSanitize
-              ? script.sanitize
-              : isCompose
-                ? script.compose
-                : isEscalation
-                  ? script.escalation
-                  : isGround
-                    ? script.ground
-                    : undefined;
+          const pick = isLine
+            ? (script.line ??
+              composeResult({
+                text:
+                  typeof req.messages?.[0]?.content === 'string' &&
+                  req.messages[0].content.includes('"mustInclude":["911"]') &&
+                  !req.messages[0].content.includes('healthLine')
+                    ? EMERGENCY_FALLBACK
+                    : MOMENT_FALLBACK,
+              }))
+            : isMoment
+              ? (script.moment ?? composeResult({ reply: MOMENT_FALLBACK }))
+              : isSanitize
+                ? script.sanitize
+                : isCompose
+                  ? script.compose
+                  : isEscalation
+                    ? script.escalation
+                    : isGround
+                      ? script.ground
+                      : undefined;
           const resolved = typeof pick === 'function' ? (pick as () => unknown)() : pick;
           if (resolved instanceof Error) throw resolved;
           if (resolved === undefined) throw new Error('medical test: no script for this phase');
@@ -324,9 +339,9 @@ const RED_FLAG_SANITIZE = {
  * language it was written — not a list of phrases and negators. A list only knows the
  * languages it was written for: "no hace falta llamar al 911" carries the digits and no
  * negator any en/fr/zh list holds, so it read as an order. The fake below scripts the
- * VERDICT; what these prove is that the verdict, and nothing else, decides — the digits
- * neither ship a body the judgment refused nor are required for one it accepted. Whether
- * the model reads es/ar negation right is the eval's job (escalation bodies, rule #8).
+ * VERDICT; what these prove is that the verdict decides a negation the digits cannot.
+ * A red-flag body the judgment accepts still has to carry 911. Whether the model
+ * reads es/ar negation right is the eval's job (escalation bodies, rule #8).
  */
 const NOT_URGENT_TRIAGE: Record<string, string> = {
   en: 'Call 811 any time to talk it through with a nurse.',
@@ -344,8 +359,9 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
     ['es', 'Llévela a urgencias ahora mismo: son señales de dificultad para respirar.'],
     ['ar', 'خذيها إلى قسم الطوارئ الآن، فهذه علامات صعوبة في التنفس.'],
   ])(
-    'ships a %s red-flag answer the judgment reads as an emergency order, no 911 digits needed',
+    'does not ship a %s red-flag answer the judgment accepts when 911 is absent',
     async (language, answer) => {
+      const log = quiet();
       const out = await createMedicalComposer(
         makeClient({
           sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language }),
@@ -355,8 +371,10 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         }),
       ).answer('raw message');
 
-      expect(out.replySource).toBe('web_grounded');
-      expect(out.reply).toContain(answer);
+      expect(out).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
+      const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
+      expect(reasons).toContain('missing_triage');
+      log.mockRestore();
     },
   );
 
@@ -379,7 +397,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         }),
       ).answer('raw message');
 
-      expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+      expect(out).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
       const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
       expect(reasons).toEqual(['under_escalated', 'under_escalated']);
       log.mockRestore();
@@ -397,7 +415,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(out).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toEqual(['under_escalated', 'under_escalated']);
     log.mockRestore();
@@ -414,7 +432,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(out).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     const details = log.mock.calls.map((c) => (c[0] as { detail?: string })?.detail);
     expect(details).toEqual(['emergency:off_list', 'emergency:off_list']);
     log.mockRestore();
@@ -465,12 +483,15 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         name: 'MedicalUnresolvable',
         reason: 'compose_failed',
       });
-      expect(log.mock.calls.map((c) => c[0])).toEqual([
-        { reason, attempt: 1, detail: undefined },
-        { reason, attempt: 2, detail: undefined },
-        { reason, detail: undefined },
-        { reason, moment: 'child_health' },
-      ]);
+      const logged = JSON.stringify(log.mock.calls);
+      expect(logged).not.toContain('wheezing');
+      expect(log.mock.calls.map((c) => c[0])).toEqual(
+        expect.arrayContaining([
+          { reason, attempt: 1, detail: undefined },
+          { reason, attempt: 2, detail: undefined },
+          { urgent: true, kind: 'health', where: 'off-domain medical' },
+        ]),
+      );
     } finally {
       skillLoad.error = null;
       log.mockRestore();
@@ -488,7 +509,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(out).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toEqual(['escalation_unjudged', 'escalation_unjudged']);
     log.mockRestore();
@@ -497,12 +518,13 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
   it('judges the composed body and its language only, strictly, reason before verdict', async () => {
     const seen: Seen[] = [];
     const answer = 'Llévela a urgencias ahora mismo: son señales de dificultad para respirar.';
+    const triage = 'Llama al 911 ahora.';
     await createMedicalComposer(
       makeClient(
         {
           sanitize: sanitizeResult({ ...RED_FLAG_SANITIZE, language: 'es' }),
           ground: groundResult(2),
-          compose: composeResult({ answer, triage: NOT_URGENT_TRIAGE.es }),
+          compose: composeResult({ answer, triage }),
           escalation: escalationResult('yes'),
         },
         seen,
@@ -513,7 +535,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
     expect(judged).toHaveLength(1);
     expect(JSON.parse(judged[0]?.userMessage ?? '{}')).toEqual({
       language: 'es',
-      answer: `${answer} ${NOT_URGENT_TRIAGE.es}`,
+      answer: `${answer} ${triage}`,
     });
     expect(judged[0]?.userMessage).not.toContain('Emma');
     expect(systemText(judged[0]?.system)).toContain('Does this answer send them to emergency care');
@@ -566,7 +588,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(out).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('under_escalated');
     log.mockRestore();
@@ -583,7 +605,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(out).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     log.mockRestore();
   });
 
@@ -599,7 +621,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
           escalation: escalationResult('no'),
         }),
       ).answer('raw message');
-      expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+      expect(out).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     }
     log.mockRestore();
   });
@@ -614,12 +636,16 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
           red_flag: 'not_emergency',
         }),
         ground: groundResult(2),
-        compose: composeResult(SOFT_BODY),
+        compose: composeResult({
+          answer: SOFT_BODY.answer,
+          triage: `${SOFT_BODY.triage} Call 911 if it becomes an emergency.`,
+        }),
       }),
     ).answer('raw message');
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('811');
+    expect(out.reply).toContain('911');
   });
 });
 
@@ -764,7 +790,7 @@ describe('the clinical query must come back in English', () => {
       }),
     ).answer('raw message');
 
-    expect(french).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(french).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('sanitize_failed');
     log.mockRestore();
@@ -778,7 +804,7 @@ describe('the clinical query must come back in English', () => {
           compose: composeResult(OK_COMPOSE),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    ).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     quietZh.mockRestore();
   });
 
@@ -797,7 +823,7 @@ describe('the clinical query must come back in English', () => {
             compose: composeResult(OK_COMPOSE),
           }),
         ).answer('raw message'),
-      ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+      ).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     }
     log.mockRestore();
   });
@@ -817,7 +843,7 @@ describe('the clinical query must come back in English', () => {
           compose: composeResult(OK_COMPOSE),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    ).toEqual({ reply: EMERGENCY_FALLBACK, replySource: 'said_line' });
     log.mockRestore();
   });
 
@@ -831,13 +857,17 @@ describe('the clinical query must come back in English', () => {
           language: 'fr',
         }),
         ground: groundResult(2),
-        compose: composeResult(OK_COMPOSE),
+        compose: composeResult({
+          answer: 'Call 911 now. She is working hard to breathe.',
+          triage: 'Call 911 now. Do not wait.',
+        }),
         escalation: escalationResult('yes'),
       }),
     ).answer('raw message');
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('911');
+    expect(out.reply).not.toContain('811');
   });
 });
 
@@ -1012,7 +1042,7 @@ describe('retry, then fall closed', () => {
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'said_line' });
     // Both attempts named and logged, never silent (rule #11).
     const attempts = log.mock.calls.map((c) => (c[0] as { attempt?: number })?.attempt);
     expect(attempts).toEqual([1, 2]);
@@ -1028,10 +1058,116 @@ describe('retry, then fall closed', () => {
       },
     );
     expect(log.mock.calls.map((c) => c[0])).toContainEqual({
-      reason: 'client_unavailable',
-      moment: 'child_health',
+      urgent: true,
+      kind: 'health',
+      where: 'off-domain medical',
     });
+    expect(JSON.stringify(log.mock.calls)).not.toContain('ANTHROPIC_API_KEY');
     log.mockRestore();
+  });
+
+  it('passes Ontario, BC, or both lines as facts, and never a fixed sentence', async () => {
+    const cases = [
+      ['ON', 'Health811 (Ontario), call 811, any time', 'HealthLink BC'],
+      ['BC', 'HealthLink BC, call 8-1-1, any time', 'Health811'],
+      [null, 'Health811 (Ontario), call 811, any time', null],
+    ] as const;
+    for (const [region, present, absent] of cases) {
+      const seen: Seen[] = [];
+      const out = await createMedicalComposer(
+        makeClient(
+          {
+            sanitize: sanitizeResult(OK_SANITIZE),
+            ground: () => {
+              throw new Error('outage');
+            },
+          },
+          seen,
+        ),
+      ).answer('her wrist is swollen', region);
+      expect(out.reply).toBe(MOMENT_FALLBACK);
+      const line = seen.filter((s) => s.toolChoice === 'said_line').at(-1);
+      expect(line?.userMessage).toContain(present);
+      expect(line?.userMessage).toContain('911');
+      expect(line?.userMessage).toContain('her wrist is swollen');
+      if (region === null) expect(line?.userMessage).toContain('HealthLink BC');
+      if (absent && region !== null) expect(line?.userMessage).not.toContain(absent);
+    }
+  });
+
+  it('accepts 8-1-1 and 9-1-1 from the writer', async () => {
+    const dashed = 'Call 8-1-1, or 9-1-1 if it is an emergency.';
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(OK_SANITIZE),
+        ground: () => {
+          throw new Error('outage');
+        },
+        line: composeResult({ text: dashed }),
+      }),
+    ).answer('raw message', 'ON');
+    expect(out).toEqual({ reply: dashed, replySource: 'said_line' });
+  });
+
+  it('retries the writer once when 911 is missing, then sends the second reply', async () => {
+    let n = 0;
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(OK_SANITIZE),
+        ground: () => {
+          throw new Error('outage');
+        },
+        line: () => {
+          n += 1;
+          return composeResult({ text: n === 1 ? 'Call 811.' : 'Call 811 or 911.' });
+        },
+      }),
+    ).answer('raw message');
+    expect(out).toEqual({ reply: 'Call 811 or 911.', replySource: 'said_line' });
+    expect(n).toBe(2);
+  });
+
+  it('sends nothing and pages once when the writer still lacks 911', async () => {
+    const log = quiet();
+    await expect(
+      createMedicalComposer(
+        makeClient({
+          sanitize: sanitizeResult(OK_SANITIZE),
+          ground: () => {
+            throw new Error('outage');
+          },
+          line: composeResult({ text: 'Call 811.' }),
+        }),
+      ).answer('raw message'),
+    ).rejects.toMatchObject({ name: 'MedicalUnresolvable', reason: 'compose_failed' });
+    const pages = log.mock.calls.filter((c) => (c[0] as { urgent?: boolean })?.urgent === true);
+    expect(pages).toHaveLength(1);
+    expect(JSON.stringify(log.mock.calls)).not.toContain('raw message');
+    log.mockRestore();
+  });
+
+  it('requires only 911 when the grounded answer under-escalated an emergency', async () => {
+    const seen: Seen[] = [];
+    const out = await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult(RED_FLAG_SANITIZE),
+          ground: groundResult(2),
+          compose: composeResult({
+            answer: 'You do not need to call 911 for this.',
+            triage: 'Call 811 any time.',
+          }),
+          escalation: escalationResult('no'),
+          line: composeResult({ text: 'Call 911 now.' }),
+        },
+        seen,
+      ),
+    ).answer('not breathing');
+    expect(out).toEqual({ reply: 'Call 911 now.', replySource: 'said_line' });
+    const line = seen.filter((s) => s.toolChoice === 'said_line').at(-1);
+    expect(line?.userMessage).toContain('"mustInclude":["911"]');
+    expect(line?.userMessage).not.toContain('811');
+    expect(line?.userMessage).toContain('"emergency":"911"');
   });
 });
 
@@ -1051,7 +1187,7 @@ describe('grounding is required', () => {
           compose: composeResult(OK_COMPOSE),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'said_line' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('not_grounded');
     log.mockRestore();
@@ -1087,7 +1223,7 @@ describe('triage is required', () => {
           compose: composeResult(noTriage),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'said_line' });
     log.mockRestore();
   });
 
@@ -1169,7 +1305,7 @@ describe('the body must be sendable', () => {
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'said_line' });
     // Closed by the SEGMENT gate, not for missing triage: the triage names both numbers.
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('unsendable');
@@ -1218,7 +1354,7 @@ describe('the body must be sendable', () => {
       ),
     ).answer(parent);
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'said_line' });
     expect(seen.at(-1)?.userMessage).toContain(parent);
     // Closed by the SEGMENT ceiling (UCS-2 over-budget), not for missing triage.
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
@@ -1262,7 +1398,7 @@ describe('the body must be sendable', () => {
           compose: composeResult(long),
         }),
       ).answer('raw message'),
-    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'said_line' });
     log.mockRestore();
   });
 

@@ -20,6 +20,7 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
+import { healthRegionFromTokens } from '~/lib/channel/health-resources';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
@@ -52,6 +53,7 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import { deliverMedicalReply } from '~/lib/channel/voice/medical-reply';
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
@@ -1021,18 +1023,17 @@ async function offScriptReply(
     return { body: written, source: 'safety' };
   }
   if (outcome.status === 'safety') {
-    // #868: the 811 line is the model's words; the code checks both numbers are in it.
-    const written = await deps.saidLine?.write({
-      purpose: 'health',
-      language: null,
+    // The model writes it. Ontario or BC gets that health line; unknown gets both,
+    // plus 911. A miss is one more write. Nothing fixed is sent.
+    const written = await deliverMedicalReply({
+      kind: 'health',
       parentWords: args.parentWords,
-      facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
-      mustInclude: ['811', '911'],
+      where: 'intake health',
+      region: healthRegionFromTokens([args.postalCode]),
+      language: args.language ?? null,
+      writer: deps.saidLine,
     });
-    if (!written) {
-      console.error('intake health: no line written - nothing sent, page #ops');
-      return HELD_SILENT;
-    }
+    if (!written) return HELD_SILENT;
     return { body: written, source: 'safety' };
   }
   if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };

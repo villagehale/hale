@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { actions } from './actions.js';
 import { conversations } from './conversations.js';
 import {
@@ -80,34 +89,39 @@ export type UnmetIntentCategory = (typeof UNMET_INTENT_CATEGORIES)[number];
 
 /**
  * Where the words in a medical-symptom answer came from: the composed, searched reply, or
- * the fixed 811/911 line taken after a live attempt and a retry both failed.
+ * the model-written health line (column value `said_line`) taken after a live attempt and
+ * a retry both failed. There is no preset sentence.
  *
  * THIS ARRAY IS THE SOURCE, on the same terms as the unmet vocabulary above: the composer
- * derives its own type from it, and migration 0090's CHECK restates it in SQL — the one
+ * derives its own type from it, and migration 0202's CHECK restates it in SQL — the one
  * copy TypeScript cannot own, held to this one by
  * `unmet-vocabulary-consistency.test.mjs`. Two values and no third: this column is read
  * by the founder scorecard's SAFETY row, so a value it does not understand would be
- * counted as neither an answer nor a fallback.
+ * counted as neither an answer nor a fallback. `fixed` was the earlier name of
+ * `said_line`; 0202 renames the stored rows.
  */
-export const MEDICAL_REPLY_SOURCES = ['web_grounded', 'fixed'] as const;
+export const MEDICAL_REPLY_SOURCES = ['web_grounded', 'said_line'] as const;
 
 export type MedicalReplySourceValue = (typeof MEDICAL_REPLY_SOURCES)[number];
 
 /**
  * Where the words in a DEFLECTION reply came from — the off-domain lane's in-memory
  * `replySource`, persisted (migration 0103) so the weekly papercut digest can split
- * composed answers from the fixed line that stood in for one. The first three values are
- * outcomes; the last four are the named reasons the general composer could not run
- * (GeneralAnswerFallback in apps/web/lib/channel/off-domain/answer.ts).
+ * composed answers from the fixed line that stood in for one. `fixed` is a provider
+ * door. `said_line` is the medical lane's last-resort writer, copied here beside
+ * `medical_reply_source`. The last four values are the named reasons the general
+ * composer could not run (GeneralAnswerFallback in
+ * apps/web/lib/channel/off-domain/answer.ts).
  *
  * THIS ARRAY IS THE SOURCE, on the same terms as the two vocabularies above: migration
- * 0103's CHECK restates it in SQL — the one copy TypeScript cannot own — held to this
+ * 0202's CHECK restates it in SQL — the one copy TypeScript cannot own — held to this
  * one by `unmet-vocabulary-consistency.test.mjs`.
  */
 export const REPLY_SOURCES = [
   'fixed',
   'composed',
   'web_grounded',
+  'said_line',
   'client_unavailable',
   'skill_unavailable',
   'model_failed',
@@ -159,7 +173,7 @@ export const channelMessages = pgTable(
     /** The demand-signal bucket (see {@link UnmetIntentCategory}). Never free text. */
     unmetCategory: text('unmet_category').$type<UnmetIntentCategory>(),
     /** OUTBOUND medical-symptom answers only: whether the parent got the web-grounded
-     * reply or the fixed 811/911 line the lane falls back to. A present value is what
+     * reply or the model-written health line the lane falls back to. A present value is what
      * MARKS a row as a medical answer — the inbound row is deliberately left unstamped,
      * because a question Hale answered is not an unmet intent (migration 0090). */
     medicalReplySource: text('medical_reply_source').$type<MedicalReplySourceValue>(),
@@ -182,7 +196,11 @@ export const channelMessages = pgTable(
      */
     inboundMedia:
       jsonb('inbound_media').$type<
-        Array<{ kind: 'image' | 'video' | 'audio' | 'file'; url: string | null; mime: string | null }>
+        Array<{
+          kind: 'image' | 'video' | 'audio' | 'file';
+          url: string | null;
+          mime: string | null;
+        }>
       >(),
     /**
      * INBOUND only (VIL-463): whether the door saw this text in a group chat. Null on

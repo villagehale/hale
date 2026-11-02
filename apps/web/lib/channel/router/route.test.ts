@@ -885,12 +885,14 @@ describe('the off-domain lane', () => {
   };
 
   /** The lane's other answer: a symptom, answered rather than deflected. */
-  const medicalVerdict = (medicalSource: 'web_grounded' | 'fixed'): OffDomainVerdict => ({
+  const medicalVerdict = (medicalSource: 'web_grounded' | 'said_line'): OffDomainVerdict => ({
     status: 'deflected',
     lane: 'safety_critical',
     category: 'medical-symptom',
     reply:
-      medicalSource === 'fixed' ? 'MOMENT_CHILD_HEALTH' : 'Fevers at this age are usually viral.',
+      medicalSource === 'said_line'
+        ? 'MOMENT_CHILD_HEALTH'
+        : 'Fevers at this age are usually viral.',
     replySource: medicalSource,
     medicalSource,
     signal: 'not_applicable',
@@ -904,7 +906,7 @@ describe('the off-domain lane', () => {
    * that fact belongs — and the row stays bodyless, carrying a two-value enum and not one
    * word of what was said (rule #1).
    */
-  it.each(['web_grounded', 'fixed'] as const)(
+  it.each(['web_grounded', 'said_line'] as const)(
     'stamps a medical answer (%s) on the reply row it sends, body still null',
     async (source) => {
       const h = harness({

@@ -102,7 +102,8 @@ const VOICE_FAILURE_AGENTS = [
 ] as const;
 
 /** The reply_source values where the composer could not run and the fixed unavailable
- * line stood in. 'composed' / 'web_grounded' / 'fixed' are outcomes, not degradations. */
+ * line stood in. 'composed' / 'web_grounded' / 'fixed' / 'said_line' are outcomes, not
+ * degradations. */
 const REPLY_FALLBACK_SOURCES = [
   'client_unavailable',
   'skill_unavailable',
@@ -173,7 +174,7 @@ export interface OpsDailyReport {
   /** Open promises as of the window end. `open === 0` is an empty ledger, not a
    * clean week. */
   promises: { open: number; overdue: number; overdueFamilies: number };
-  /** Medical answers in the trailing 7 days, and how many were the fixed 811/911 line. */
+  /** Medical answers in the trailing 7 days, and how many fell back to a model-written health line. */
   medical: { answered: number; fallbacks: number };
   /** Whether a re-verify sweep's week overlapped the trailing 7 days, and the tally
    * that run recorded. A sweep that did not run has no outcomes; a sweep that died
@@ -536,7 +537,7 @@ async function loadWeek(
 
   const [fallbacks] = await database
     .select({
-      medical: sql<number>`count(*) filter (where ${m.medicalReplySource} = 'fixed')::int`,
+      medical: sql<number>`count(*) filter (where ${m.medicalReplySource} = 'said_line')::int`,
       reply: sql<number>`count(*) filter (where ${inArray(m.replySource, [...REPLY_FALLBACK_SOURCES])})::int`,
     })
     .from(m)
@@ -692,7 +693,7 @@ function promisesLine(promises: OpsDailyReport['promises']): string {
 
 function medicalLine(medical: OpsDailyReport['medical']): string {
   if (medical.answered === 0) return 'Medical (7d): no medical answers';
-  return `Medical (7d): ${medical.fallbacks} of ${medical.answered} answers used the fixed 811/911 line`;
+  return `Medical (7d): ${medical.fallbacks} of ${medical.answered} answers fell back to a model-written health line`;
 }
 
 function reverifyLine(reverify: OpsDailyReport['reverify']): string {

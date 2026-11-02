@@ -20,7 +20,7 @@ import {
   productionOffDomainLane,
   recordUnmetIntent,
 } from './lane';
-import type { MedicalReply } from './medical';
+import { type MedicalReply, medicalReplyUnsent } from './medical';
 import { type LaneReading, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
 // The live search is on by default in production. These tests describe the kill switch
@@ -538,9 +538,9 @@ describe('the medical-symptom answer lane', () => {
       reply: MEDICAL_ANSWER,
       replySource: 'web_grounded' satisfies ReplySource,
       // The value the router stamps on the reply it sends. Carried EXPLICITLY rather than
-      // re-derived from replySource downstream: 'fixed' is also what the two fixed doors
-      // and the general answer's safety fallback return, so a reader narrowing on it
-      // would count a provider-access door as a medical fallback.
+      // re-derived from replySource downstream: provider doors still say 'fixed', and the
+      // medical last resort is 'said_line', so a reader narrowing on 'fixed' would count
+      // a provider-access door as a medical fallback.
       medicalSource: 'web_grounded',
     });
     expect(p.medicalCalls).toBe(1);
@@ -571,12 +571,57 @@ describe('the medical-symptom answer lane', () => {
     expect(verdict).toMatchObject({ signal: 'not_applicable' });
   });
 
-  /** The composer's own last-resort fixed line rides out unchanged, and STILL is not
+  /** The composer's own last-resort said-line rides out unchanged, and STILL is not
    * recorded — the medical lane never writes a demand-signal row, answered or not. */
-  it('carries the composer last-resort fixed line out, still unrecorded', async () => {
+  it('treats a failed place lookup as an unknown region and still asks for the reply', async () => {
+    const p = ports({
+      read: reading({
+        lane: 'safety_critical',
+        category: 'medical-symptom',
+        language: 'fr',
+      }),
+    });
+    const seen: { region: string | null | undefined; language: string | null | undefined }[] = [];
+    p.place = async () => {
+      throw new Error('relation missing');
+    };
+    p.medical = {
+      answer: async (_text, region, language) => {
+        seen.push({ region, language });
+        return { reply: 'Call 811 or 911.', replySource: 'web_grounded' };
+      },
+    };
+
+    const verdict = await consider(p, 'she has a fever');
+
+    expect(verdict).toMatchObject({ status: 'deflected', reply: 'Call 811 or 911.' });
+    expect(seen).toEqual([{ region: null, language: 'fr' }]);
+  });
+
+  it('sends nothing when the health reply cannot be written', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+    p.medical = {
+      answer: async () => {
+        throw medicalReplyUnsent();
+      },
+    };
+
+    const verdict = await consider(p, 'she has had a fever for three days');
+
+    expect(verdict).toMatchObject({
+      status: 'unwritten',
+      moment: 'child_health',
+      reason: 'compose_failed',
+      lane: 'safety_critical',
+      category: 'medical-symptom',
+    });
+    expect(p.recorded).toEqual([]);
+  });
+
+  it('carries the composer last-resort said-line out, still unrecorded', async () => {
     const p = ports({
       read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
-      medical: { reply: 'MOMENT_CHILD_HEALTH', replySource: 'fixed' },
+      medical: { reply: 'MOMENT_CHILD_HEALTH', replySource: 'said_line' },
     });
 
     const verdict = await consider(p);
@@ -584,8 +629,8 @@ describe('the medical-symptom answer lane', () => {
     expect(verdict).toMatchObject({
       status: 'deflected',
       reply: 'MOMENT_CHILD_HEALTH',
-      replySource: 'fixed',
-      medicalSource: 'fixed',
+      replySource: 'said_line',
+      medicalSource: 'said_line',
       signal: 'not_applicable',
     });
     expect(p.recorded).toEqual([]);

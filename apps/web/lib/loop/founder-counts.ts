@@ -189,7 +189,7 @@ export async function aggregateRadarVerification(
 
 /**
  * The safety row's other half: medical-symptom texts Hale ANSWERED this week, and how
- * many of those answers were the fixed 811/911 line rather than a grounded reply.
+ * many of those answers fell back to a model-written health line rather than a grounded reply.
  *
  * Read off the outbound rows the lane stamps, because that is where the outcome is a
  * fact — the inbound row is deliberately left unstamped (a question Hale answered is not
@@ -223,7 +223,7 @@ export async function aggregateMedicalAnswers(
   return {
     answered: rows.reduce((sum, row) => sum + row.count, 0),
     fallbacks: rows
-      .filter((row) => row.source === 'fixed')
+      .filter((row) => row.source === 'said_line')
       .reduce((sum, row) => sum + row.count, 0),
   };
 }

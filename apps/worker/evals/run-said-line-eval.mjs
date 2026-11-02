@@ -3,7 +3,8 @@
 // Subject: the production said-line writer (skill `said-line`, the same request shape
 // as apps/web/lib/channel/voice/said-line.ts: saidLineUserMessage + tool said_line).
 // Rows: identity EN/FR/ZH/AR, two-link connect EN/FR, and one row each for
-// not_posted, no_source, cheer_up, health (811/911) and the single connect link. Grade:
+// not_posted, no_source, cheer_up, health by region (ON, BC, unknown, emergency,
+// French) and the single connect link. Grade:
 //   - facts (structural, the same check as acceptSaidLine): non-empty, every
 //     mustInclude string verbatim, no link that is not a required fact;
 //   - words: a judge model only, median of three draws, floor JUDGE_MIN. No phrase is
@@ -18,6 +19,7 @@
 //   node evals/run-said-line-eval.mjs --cached-only
 //   node evals/run-said-line-eval.mjs --cached-only --broken     # calibration: must fail
 //   HALE_ESTIMATE=1 node evals/run-said-line-eval.mjs --max-usd 5   # free dry run
+//   ... --only=health-on,health-bc                                  # exact fixture ids
 //
 // --cached-only exits on the first miss and writes nothing. Do not record from CI.
 
@@ -135,7 +137,7 @@ const BROKEN_CASES = [
   },
   {
     id: 'broken-invented-medical-guidance',
-    base: 'health-en',
+    base: 'health-on',
     text: "Oh no, poor guy. Ice it for 15 minutes with a cloth in between and keep it raised. Health811 can help any time, just call 811, and if it starts to look bent or he can't move his fingers, call 911.",
   },
   {
@@ -240,10 +242,25 @@ function userMessage(f) {
  * code fills the slots. Returns the filled text, or null. mustConvey is keys only
  * here. Meaning is the convey judge (VIL-530), which sends nothing on a miss and
  * does not rewrite. This replica must not grow a word list for it. */
+/** Same presence check as textHasNumber in health-resources.ts. */
+function textHasNumber(text, digits) {
+  if (!/^\d+$/.test(digits)) return text.includes(digits);
+  const collapsed = text.replace(/(\d)[\s-]+(?=\d)/g, '$1');
+  return new RegExp(`\\b${digits}\\b`).test(collapsed);
+}
+
 function acceptText(text, f) {
   let body = (text ?? '').trim();
   if (body.length === 0) return null;
-  if (!(f.mustInclude ?? []).every((fact) => body.includes(fact))) return null;
+  // Same presence check as acceptSaidLine: digit facts ignore dashes and spaces.
+  if (
+    !(f.mustInclude ?? []).every((fact) =>
+      /^\d+$/.test(fact)
+        ? new RegExp(`\\b${fact}\\b`).test(body.replace(/(\d)[\s-]+(?=\d)/g, '$1'))
+        : body.includes(fact),
+    )
+  )
+    return null;
   if (!(f.mustConvey ?? []).every((key) => key in f.facts)) return null;
   if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
   for (const [name, url] of Object.entries(f.links ?? {})) {
@@ -300,11 +317,18 @@ async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
   const preflight = process.argv.includes('--preflight');
   const broken = process.argv.includes('--broken');
-  // Only these fixtures when set (comma list of id prefixes): run the affected cases only.
-  const only = (process.env.SAID_LINE_ONLY ?? '').split(',').filter(Boolean);
-  const fixtures = SAID_LINE_FIXTURES.filter(
-    (f) => only.length === 0 || only.some((p) => f.id.startsWith(p)),
-  );
+  // `--only=id,id` is an exact id list (same flag as the medical runner). SAID_LINE_ONLY
+  // remains a comma list of id prefixes when --only is absent.
+  const onlyArg = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
+  const onlyIds = new Set((onlyArg ?? '').split(',').filter(Boolean));
+  const prefixOnly = onlyArg ? [] : (process.env.SAID_LINE_ONLY ?? '').split(',').filter(Boolean);
+  const fixtures = SAID_LINE_FIXTURES.filter((f) => {
+    if (onlyArg) return onlyIds.has(f.id);
+    return prefixOnly.length === 0 || prefixOnly.some((p) => f.id.startsWith(p));
+  });
+  if (onlyArg && fixtures.length !== onlyIds.size) {
+    throw new Error(`one or more fixtures did not match --only=${onlyArg}`);
+  }
   installEvalSpendCap();
   const skill = await loadSkill();
   const subjectCalls = fixtures.length;
@@ -381,10 +405,13 @@ async function main() {
     else out = (await cachedToolCall(subjectOpts))?.value;
     const raw = out?.text ?? '';
     const text = out?.dryStandIn ? raw : acceptText(raw, f);
-    if (text === null) {
+    const stray = (f.forbidNumbers ?? []).filter((digits) => text && textHasNumber(text, digits));
+    if (text === null || stray.length > 0) {
       failed += 1;
       results.push({ id: f.id, failed: true });
-      console.info(`FAIL  ${f.id}  facts: a fact or link slot is missing, or a URL was typed`);
+      console.info(
+        `FAIL  ${f.id}  facts: ${stray.length > 0 ? `stray number ${stray.join(',')}` : 'a fact or link slot is missing, or a URL was typed'}`,
+      );
       console.info(`      text: ${JSON.stringify(raw)}`);
       continue;
     }
@@ -429,7 +456,10 @@ async function main() {
           ? `DRY  judge cached    ${p.tag}  score ${p.score}`
           : `DRY  judge uncached  ${p.tag}  ~${p.inputTokens} in + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
       );
-    const subjectWorst = subjectPlan.reduce((sum, p) => sum + (p.worstUsd ?? 0), 0);
+    const subjectWorst = subjectPlan.reduce(
+      (sum, p) => sum + (p.cached ? 0 : (p.worstUsd ?? 0)),
+      0,
+    );
     const j = summarizeJudgePlan(judge.plan, { spentUsd: spentUsd + subjectWorst, capUsd });
     console.info(
       `DRY summary | subject calls ${subjectPlan.filter((p) => !p.cached).length} uncached (${subjectPlan.filter((p) => p.cached).length} cached) worst $${subjectWorst.toFixed(5)} | judge draws ${j.draws} (cached ${j.cached}) worst $${j.worstTotalUsd.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${j.projectedLedgerUsd.toFixed(5)} vs cap $${capUsd} | ${j.fitsCap ? 'FITS' : 'EXCEEDS CAP'} | live calls: 0`,
