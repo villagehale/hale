@@ -276,4 +276,12 @@ describe('ci.yml wiring', () => {
       expect(jobBlock('verify'), command).not.toContain(command);
     }
   });
+
+  it('runs the name-takeback eval as a hard cached-only gate', () => {
+    const evals = jobBlock('worker-evals');
+    const at = evals.indexOf('eval:name-takeback');
+    expect(at).toBeGreaterThan(-1);
+    expect(evals.slice(Math.max(0, at - 250), at)).not.toContain('continue-on-error');
+    expect(jobBlock('verify')).not.toContain('eval:name-takeback');
+  });
 });

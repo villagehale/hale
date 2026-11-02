@@ -353,6 +353,10 @@ jobs:
       - name: Calendar cancel composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-cancel-voice
 
+      # Hard cache gate. A miss fails the job.
+      - name: Name take-back eval (cached-only)
+        run: pnpm --filter @hale/worker eval:name-takeback
+
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
   # skipped job. Fails when workspace checks fail or when evals were required and
