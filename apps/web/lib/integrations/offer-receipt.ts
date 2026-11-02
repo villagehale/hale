@@ -1,6 +1,5 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
-import type { CalendarSavePlace } from '~/lib/channel/calendar-save';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -21,7 +20,7 @@ const receiptSchema = z.object({
   line: z.string(),
 });
 
-const receiptJsonSchema = {
+export const offerReceiptToolSchema = {
   type: 'object',
   properties: {
     line: {
@@ -32,19 +31,27 @@ const receiptJsonSchema = {
   required: ['line'],
 } as const;
 
+const receiptJsonSchema = offerReceiptToolSchema;
+
+/**
+ * Where this receipt's entry went. This path writes `family_events` and does not
+ * deliver an ICS, so `ics` is not a value here.
+ */
+export type OfferReceiptPlace = 'hale_family_calendar';
+
 export interface OfferReceiptFacts {
   happened: 'added' | 'declined';
   title: string;
   /** The instant, already rendered the same way the offer named it. */
   when: string;
   parentReply: string;
-  /** Whether this parent's Google calendar is connected. Not a destination. */
+  /** Whether THIS parent's Google calendar is connected. Not a destination. */
   googleCalendarConnected: boolean;
   /**
    * Where the entry went, or null when nothing was written. The model describes
    * this; code does not turn it into a sentence.
    */
-  placedOn: CalendarSavePlace | null;
+  placedOn: OfferReceiptPlace | null;
 }
 
 export interface OfferReceiptWriter {

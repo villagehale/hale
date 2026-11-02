@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import { calendarInstantsClose, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
-import { calendarSavePlace, claimSaveConfirmation } from '~/lib/channel/calendar-save';
+import { claimSaveConfirmation } from '~/lib/channel/calendar-save';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -279,9 +279,11 @@ export async function handleEmailAlertOfferReply(
     title: offer.title,
     when: when(offer.startsAt, timeZone, input.now),
     parentReply: input.parentReply,
-    googleCalendarConnected: await googleCalendarConnected(database, input.familyId),
-    // Nothing is written on a decline. An add on this path lands on Hale's family
-    // calendar; this handler does not deliver an ICS.
+    googleCalendarConnected: await googleCalendarConnected(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+    }),
+    // Nothing is written on a decline. An add here is always Hale's family calendar.
     placedOn: null,
   };
 
@@ -302,7 +304,9 @@ export async function handleEmailAlertOfferReply(
   }
 
   await placeOfferedEvent(database, offer, input);
-  facts.placedOn = calendarSavePlace({ icsDelivered: false });
+  // This path writes family_events and does not deliver an ICS, so the place is
+  // Hale's family calendar. `ics` is not a value on this receipt.
+  facts.placedOn = 'hale_family_calendar';
   // The coach also drafted this add. The parent's YES just placed it, so the draft
   // must leave the queue or the next YES is not answerable and the coach drafts it again.
   await supersedeUnapprovedCalendarAdds(database, {
@@ -618,15 +622,25 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
   return parentTimeZoneForOffer(database, parentUserId);
 }
 
-/** An active gcal row is a connection. Anything else, including no row, is not. */
-async function googleCalendarConnected(database: Database, familyId: string): Promise<boolean> {
+/**
+ * An active gcal row for THIS parent is a connection. A co-parent's row, a
+ * family-wide row (no user), and anything not active are not.
+ */
+async function googleCalendarConnected(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<boolean> {
   const rows = await database
-    .select({ status: schema.integrations.status })
+    .select({ userId: schema.integrations.userId, status: schema.integrations.status })
     .from(schema.integrations)
     .where(
-      and(eq(schema.integrations.familyId, familyId), eq(schema.integrations.provider, 'gcal')),
+      and(
+        eq(schema.integrations.familyId, input.familyId),
+        eq(schema.integrations.userId, input.parentUserId),
+        eq(schema.integrations.provider, 'gcal'),
+      ),
     );
-  return rows.some((row) => row.status === 'active');
+  return rows.some((row) => row.userId === input.parentUserId && row.status === 'active');
 }
 
 /**

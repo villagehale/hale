@@ -253,6 +253,37 @@ describe('a YES puts the occasion on the family week', () => {
     });
   });
 
+  it('does not treat a co-parent’s Google calendar as this parent’s', async () => {
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ email: `${randomUUID()}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!coParent) throw new Error('no co-parent');
+    await db.database.insert(schema.familyMembers).values({
+      familyId: family.familyId,
+      userId: coParent.id,
+      role: 'co_parent',
+    });
+    await seedIntegration(db.database, family.familyId, coParent.id, 'gcal');
+
+    const seen: OfferReceiptFacts[] = [];
+    const offerId = await seedOffer();
+    await emailAlertAddHandler({
+      writeReceipt: {
+        write: async (facts) => {
+          seen.push(facts);
+          return 'receipt';
+        },
+      },
+    }).handle(db.database, await turn('yes', { resolved: reading(offerId, 'yes') }));
+
+    expect(seen[0]).toMatchObject({
+      happened: 'added',
+      googleCalendarConnected: false,
+      placedOn: 'hale_family_calendar',
+    });
+  });
+
   it('reports a connected Google calendar without moving the entry off Hale’s calendar', async () => {
     await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
     const seen: OfferReceiptFacts[] = [];

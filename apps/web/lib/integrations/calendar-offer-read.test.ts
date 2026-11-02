@@ -71,12 +71,11 @@ describe('offer receipt facts', () => {
     };
     expect(message.googleCalendarConnected).toBe(false);
     expect(message.placedOn).toBe('hale_family_calendar');
-    const ics = JSON.parse(offerReceiptUserMessage({ ...facts, placedOn: 'ics' })) as {
-      placedOn: string;
-      googleCalendarConnected: boolean;
-    };
-    expect(ics.placedOn).toBe('ics');
-    expect(ics.googleCalendarConnected).toBe(false);
+    const declined = JSON.parse(
+      offerReceiptUserMessage({ ...facts, happened: 'declined', placedOn: null }),
+    ) as { placedOn: null; googleCalendarConnected: boolean };
+    expect(declined.placedOn).toBeNull();
+    expect(declined.googleCalendarConnected).toBe(false);
   });
 
   it('sends nothing when the model cannot be reached', async () => {
