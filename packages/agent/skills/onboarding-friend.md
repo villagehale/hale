@@ -78,6 +78,10 @@ One JSON object. Fill a field only when this message (or a recent turn not yet i
 - `connectGmail` / `connectCalendar` - true for a yes, false for a no; `gmailLater` / `calendarLater` for not now.
 - `scheduleAdds` - `{ "line": 4, "child": "Mia", "cadence": "weekly", "date": "2026-10-10", "time": "11:00", "weeks": 8 }`: `line` is the `n` of the line, `date` the first occurrence from `upcomingDays`, one add per line, never a line already in `scheduled`. `scheduleDone`.
 - `coparentGroup` - true or false once they answer. `stopAsking` - they want you to stop.
+- `asks` - true when this reply asks the parent something, false when it does not, in any language. Code keeps it for the next message. Punctuation is not the signal.
+- `parentQuestion` - true when their message asks something instead of agreeing to Gmail, the calendar, or the group. A yes leaves it false.
+- `otherConnector` - true when this reply asks about or offers the connector this step is not: Gmail on the calendar step, the calendar on the Gmail step. Otherwise false.
+- `joinPointer` - with `coparentJoin` and a yes: `below` when the reply points at the number and phrase code places under it; `wrong_owner` when that number is the other parent's; `placeholder` when a stand-in sits where they go; `hale_starts` when Hale starts the group; `missing` when the reply does not point at them. Otherwise null.
 - `language` - the BCP-47 tag of the language this parent is writing in (`zh`, `ar`, `fr`, `en`). Omit when you cannot tell. Do not infer it from a place.
 - `ahaMention` - on `connected`: the exact title or subject you named, else null.
 - `groupLeads` - on `find_show` only.

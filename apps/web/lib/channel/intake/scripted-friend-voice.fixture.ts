@@ -31,6 +31,8 @@ export function scriptedTurn(input: FriendVoiceInput): {
   reply: string;
   capture: OnboardingCapture;
   groupLeads?: string[];
+  asks?: boolean;
+  joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 } {
   const words = input.parentWords.trim();
   const capture: OnboardingCapture = {
@@ -205,7 +207,7 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture };
+  return { reply, capture, asks: true };
 }
 
 /** The scripted turn on the composer's wire shape (role as two flat strings). */

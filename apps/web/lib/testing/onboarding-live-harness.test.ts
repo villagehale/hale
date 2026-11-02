@@ -141,6 +141,7 @@ function scripted(input: FriendVoiceInput): FriendComposed {
       reply:
         'Great. She can text the line below with the phrase and I will loop her in. She sees the kids plans, not your email.',
       capture,
+      joinPointer: 'below',
     };
   } else return { reply: 'Anytime. I am here when you need me.', capture };
 
