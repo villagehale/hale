@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The follow-up answers the parent's question directly ('Yes, it's at 5'), so it must go out as its own message. Editing the earlier bubble would leave the parent's question unanswered and would not alert them. Edit null is correct.",
+    "score": 5
+  }
+}
