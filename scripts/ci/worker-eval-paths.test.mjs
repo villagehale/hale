@@ -250,6 +250,8 @@ describe('ci.yml wiring', () => {
       'eval:medical-symptom',
       'eval:turn-apology',
       'eval:holding-line',
+      'eval:holding-line-judge',
+      'eval:holding-line-judge:dry',
       'eval:followup-voice',
       'eval:identity-ask',
       'eval:reminder',

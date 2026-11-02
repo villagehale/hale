@@ -247,6 +247,10 @@
     "file": "group-turn-read.md",
     "sha256": "d71b65072598da1529eaed76fc46ae07f9cb45157da5aca46760106161ef04df"
   },
+  "holding-line-judge.md": {
+    "file": "holding-line-judge.md",
+    "sha256": "669173445f521aa59ca51905ac67edb7d4dc34b3c9e01a41796c94b048cf82e7"
+  },
   "holding-line.md": {
     "file": "holding-line.md",
     "sha256": "d989fc5395640746c4ac6c733b1a6c9a35d43095e84ee1e9c5d3c4137adbec3b"

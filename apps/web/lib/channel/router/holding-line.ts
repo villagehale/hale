@@ -4,6 +4,7 @@ import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { judgeHoldingLine } from './holding-line-judge';
 
 /**
  * THE HOLDING LINE — what a parent reads while a slow answer is still being composed.
@@ -17,7 +18,9 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * there is, that the answer is still coming, in the parent's language. It sees nothing the
  * parent wrote, so it cannot leak it and cannot pretend to have understood it (rule #1).
  * When no sendable line can be written, NOTHING is sent and the outcome says why — there
- * is no canned line underneath.
+ * is no canned line underneath. A time or an app or a website is a meaning, judged in
+ * whatever language the line is written (VIL-540). If that check fails or errors, nothing
+ * is sent. There is no fixed line and no fallback copy.
  */
 
 /** The ledger's name for this line, so a read-back can tell it from the turn's answer. */
@@ -43,10 +46,6 @@ export const MAX_COMPOSE_ATTEMPTS = 2;
 const MAX_TOKENS = 96;
 
 const LINK_SHAPE = /https?:\/\/|www\./i;
-/** A time nobody scheduled: nobody knows when the answer lands. */
-const PROMISED_TIME =
-  /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
-const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
 
 export type HoldingLineRefusal =
   | 'empty'
@@ -56,17 +55,16 @@ export type HoldingLineRefusal =
   | 'points_at_the_app';
 
 /**
- * Every reason this line cannot go out, all at once, fed back on the next attempt. These
- * guard facts only — a time, a number, a link or an app nobody gave it. How the line is
- * worded is the model's.
+ * Mechanical reasons this line cannot go out, fed back on the next attempt. A link or a
+ * digit is a fact in any language. Whether the line promises a time, or points at an app
+ * or a website, is {@link judgeHoldingLine} — meaning, not a word list. How the line is
+ * worded otherwise is the model's.
  */
 export function refusals(body: string): HoldingLineRefusal[] {
   if (body === '') return ['empty'];
   const found: HoldingLineRefusal[] = [];
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
-  if (PROMISED_TIME.test(body)) found.push('promised_a_time');
-  if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
 }
 
@@ -88,6 +86,8 @@ export type HoldingLineFallback =
   | 'client_unavailable'
   | 'skill_unavailable'
   | 'model_failed'
+  | 'judge_unavailable'
+  | 'judge_failed'
   | 'gate_exhausted';
 
 export type HoldingLineCompose =
@@ -149,6 +149,19 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
         }
         const line = plainText(raw);
         const problems = refusals(line);
+        // A line the mechanical facts already block is not judged: the writer can fix
+        // a digit or a link without a second model. A line that passes is judged for
+        // meaning. A verdict that does not arrive sends nothing — the unchecked line
+        // does not go out, and nothing is substituted for it.
+        if (problems.length === 0) {
+          const judged = await judgeHoldingLine(resolved, line);
+          if (judged.verdict === 'unjudged') {
+            return unavailable(
+              judged.reason === 'skill_unavailable' ? 'judge_unavailable' : 'judge_failed',
+            );
+          }
+          if (judged.verdict === 'refuse') problems.push(...judged.problems);
+        }
         if (problems.length === 0) return { status: 'composed', line };
         rejected.push({ line, problems });
       }

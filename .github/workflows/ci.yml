@@ -203,6 +203,18 @@ jobs:
       - name: Holding line composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:holding-line
 
+      # VIL-540 meaning gate: a promised time or an app/website, in any language.
+      # No recording until the paid batch (no spend on this PR). A miss fails the
+      # step; the job continues. REVERT this continue-on-error in that re-record,
+      # before merge. Do not remove the judge to keep this green.
+      - name: Holding-line judge (cached-only)
+        continue-on-error: true
+        run: pnpm --filter @hale/worker eval:holding-line-judge
+
+      # Request shape and price. $0, no model. Hard gate.
+      - name: Holding-line judge (dry)
+        run: pnpm --filter @hale/worker eval:holding-line-judge:dry
+
       - name: Follow-up ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:followup-voice
 
