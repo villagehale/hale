@@ -68,6 +68,8 @@ interface ScriptedTurn {
   reply: string;
   capture: WireCapture;
   groupLeads?: string[];
+  asks?: boolean;
+  joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 }
 
 /**
@@ -186,16 +188,22 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
     return {
       reply: 'The number is below whenever you want.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'new' },
+      joinPointer: 'below',
     };
   }
   if (input.step === 'coparent' && /\bour group\b/i.test(words)) {
     return {
       reply: 'The number is below whenever you want to add me.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'existing' },
+      joinPointer: 'below',
     };
   }
   if (input.step === 'coparent' && capture.coparentGroup === true) {
-    return { reply: 'Add the number below to your family group, whenever you like.', capture };
+    return {
+      reply: 'Add the number below to your family group, whenever you like.',
+      capture,
+      joinPointer: 'below',
+    };
   }
   // A yes to the connector just asked is answered as a yes. The next ask
   // waits for the connect receipt or the next text.
@@ -228,7 +236,7 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
 
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture };
+  return { reply, capture, asks: ask !== "I'll take it from here." };
 }
 
 function findResult() {

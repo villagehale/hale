@@ -7,7 +7,7 @@ import {
   friendWeekAction,
   judgeFriendReply,
   lastInboundFact,
-  repairedProse,
+  parentReading,
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
@@ -591,13 +591,14 @@ describe('speakFriend', () => {
     expect(receipt.capture.connectCalendar).toBe(true);
     expect(receipt.body).not.toContain('?');
 
-    // Prose about Gmail under the calendar card sends the parent to the wrong link.
+    // The model says this reply is about the other connector. The words are not the check.
     const pivot = await speakFriend(
       {
         async compose() {
           return {
             reply: 'Want me to watch Gmail for the dates too?',
             capture: { connectCalendar: true },
+            otherConnector: true,
           };
         },
       },
@@ -605,6 +606,7 @@ describe('speakFriend', () => {
       { page: async () => undefined, linkFollows: true },
     );
     expect(pivot.source).toBe('unsent');
+    expect(pivot.body).toBe('');
   });
 
   it('sends nothing when both find_show openers fail, and still pages', async () => {
@@ -785,7 +787,11 @@ describe('the co-parent step: their group, or a new one', () => {
     return speakFriend(
       {
         async compose() {
-          return { reply: 'Great, the number is below for whenever you want.', capture };
+          return {
+            reply: 'Great, the number is below for whenever you want.',
+            capture,
+            joinPointer: 'below' as const,
+          };
         },
       },
       coparentTurn(parentWords, withJoin),
@@ -839,43 +845,215 @@ describe('the co-parent step: their group, or a new one', () => {
   });
 });
 
-describe('repairedProse', () => {
-  it('folds offered choices into one question and leaves a clean draft alone', () => {
-    expect(
-      repairedProse(
-        'Which of these would help? Baby and Me storytime on Thursdays for Sebastian, or Swim Kids on Saturdays for Mia?',
-        'schedule',
-      ),
-    ).toBe('Baby and Me storytime on Thursdays for Sebastian, or Swim Kids on Saturdays for Mia?');
-    expect(
-      repairedProse(
-        'For Sebastian, how about the storytime Thursdays? For Mia, the Swim Kids class Saturdays? Want reminders for either?',
-        'schedule',
-      ),
-    ).toBe(
-      'For Sebastian, how about the storytime Thursdays. For Mia, the Swim Kids class Saturdays. Want reminders for either?',
-    );
-    expect(repairedProse('Want reminders for the swim?', 'schedule')).toBe('');
-    expect(repairedProse('Do you have kids? If so, what are their names?', 'kids_names')).toBe('');
-    expect(
-      repairedProse(
-        `Village Hale Technologies Inc. made Hale, and villagehale.com has the details. ${'It texts you the kids things that fit. '.repeat(3)}What are your kids names?`,
-        'kids_names',
-      ),
-    ).toBe('');
+describe('model fields, not text matches', () => {
+  const checklist = {
+    postal: true,
+    kids: true,
+    ages: true,
+    name: true,
+    gmail: false,
+    calendar: false,
+    schedule: false,
+    coparent: false,
+  } as const;
+
+  it('reads a yes only when the previous reply said it asked, in any script', () => {
+    const gmail = blank({
+      step: 'email',
+      parentWords: 'oui',
+      checklist: { ...checklist, gmail: false },
+      recentTurns: [{ role: 'hale', body: '想连接邮箱吗？', asked: true }],
+    });
+    expect(parentReading(gmail)).toEqual({ kind: 'yes', item: 'gmail' });
+    const punctuation = blank({
+      ...gmail,
+      recentTurns: [{ role: 'hale', body: 'Want me to watch email?' }],
+    });
+    expect(parentReading(punctuation)).toBeNull();
+    const statement = blank({
+      ...gmail,
+      parentWords: "d'accord",
+      recentTurns: [{ role: 'hale', body: 'The number is ready whenever you are.', asked: true }],
+    });
+    expect(parentReading(statement)).toEqual({ kind: 'yes', item: 'gmail' });
   });
 
-  it('never folds in another step, never repairs a no-question step, and does not cut a long draft', () => {
-    expect(
-      repairedProse(
-        'Want the swim on your calendar? Would a group chat with the other parent help?',
-        'schedule',
-      ),
-    ).toBe('');
-    expect(repairedProse('Saw picture day. Want a reminder?', 'connected')).toBe('');
-    const long = `${'Gmail helps me catch registration confirmations and activity updates for the kids. '.repeat(2)}Google shares your whole inbox with me, and I keep only what is about the kids. Want to connect?`;
-    expect(repairedProse(long, 'email')).toBe('');
-    expect(long.length).toBeGreaterThan(220);
+  it('a question is not a yes when the model says so, including with no Latin question mark', async () => {
+    const input = blank({
+      step: 'calendar',
+      parentWords: '你会读我所有的邮件吗',
+      checklist: { ...checklist, gmail: true },
+    });
+    const asked = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply:
+              'Google shares the whole calendar, and I keep what is about the kids. Want to connect it?',
+            capture: { connectCalendar: true },
+            parentQuestion: true,
+            asks: true,
+          };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(asked.source).toBe('composed');
+    expect(asked.capture.connectCalendar).toBeNull();
+    expect(asked.asks).toBe(true);
+
+    const rhetorical = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: "Great, the link is right there. Tap it and I'll text you what I see.",
+            capture: { connectCalendar: true },
+            parentQuestion: false,
+          };
+        },
+      },
+      blank({ ...input, parentWords: 'yes?' }),
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(rhetorical.source).toBe('composed');
+    expect(rhetorical.capture.connectCalendar).toBe(true);
+  });
+
+  it('the other connector is the model field, in English and in Chinese', async () => {
+    const input = blank({
+      step: 'calendar',
+      parentWords: 'calendar',
+      checklist: { ...checklist, gmail: true },
+    });
+    const ask = 'The calendar card is the one to tap. Want gmail as well?';
+    const english = await speakFriend(
+      {
+        async compose() {
+          return { reply: ask, otherConnector: false };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(english.source).toBe('composed');
+    expect(english.body).toContain('gmail');
+
+    const chinese = await speakFriend(
+      {
+        async compose() {
+          return { reply: '也要连邮箱吗？', otherConnector: true };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(chinese.source).toBe('unsent');
+    expect(chinese.body).toBe('');
+
+    const chineseOk = await speakFriend(
+      {
+        async compose() {
+          return { reply: '也要连邮箱吗？', otherConnector: false };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(chineseOk.source).toBe('composed');
+    expect(chineseOk.body).toContain('邮箱');
+  });
+
+  it('a co-parent yes points at the number only when joinPointer says so', async () => {
+    const input = blank({
+      step: 'coparent',
+      parentWords: 'oui',
+      checklist: { ...checklist, gmail: true, calendar: true, schedule: true, coparent: false },
+      coparentJoin: { line: '+1 555-555-0100', phrase: 'this is our year' },
+      recentTurns: [{ role: 'hale', body: 'On fait un groupe ?', asked: true }],
+    });
+    const pointed = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Le numéro est juste en dessous, pour quand tu veux.',
+            capture: { coparentGroup: true },
+            joinPointer: 'below',
+          };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(pointed.source).toBe('composed');
+    expect(pointed.body).toContain('en dessous');
+
+    const wordsOnly = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Add the number below whenever you want.',
+            capture: { coparentGroup: true },
+          };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(wordsOnly.source).toBe('unsent');
+    expect(wordsOnly.body).toBe('');
+
+    const noEnglishCue = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: '好，按你方便的时候用就行。',
+            capture: { coparentGroup: true },
+            joinPointer: 'below',
+          };
+        },
+      },
+      blank({ ...input, parentWords: '好' }),
+      { page: async () => undefined },
+    );
+    expect(noEnglishCue.source).toBe('composed');
+    expect(noEnglishCue.body).toContain('好');
+  });
+
+  it('does not rewrite a draft that asks twice, in English or Chinese', async () => {
+    const schedule = blank({
+      step: 'schedule',
+      parentWords: 'maybe',
+      findLines: ['Swim Kids on Saturdays'],
+      checklist: { ...checklist, gmail: true, calendar: true },
+    });
+    const english = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply:
+              'Which of these would help? Baby and Me storytime on Thursdays, or Swim Kids on Saturdays?',
+          };
+        },
+      },
+      schedule,
+      { page: async () => undefined },
+    );
+    expect(english.source).toBe('unsent');
+    expect(english.body).toBe('');
+    expect(english.prose).toBe('');
+
+    const chinese = await speakFriend(
+      {
+        async compose() {
+          return { reply: '哪个适合？周六的游泳怎么样？' };
+        },
+      },
+      schedule,
+      { page: async () => undefined },
+    );
+    expect(chinese.source).toBe('unsent');
+    expect(chinese.body).toBe('');
   });
 });
 
