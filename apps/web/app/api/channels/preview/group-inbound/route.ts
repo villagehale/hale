@@ -9,6 +9,8 @@ export const runtime = 'nodejs';
 /**
  * POST /api/channels/preview/group-inbound — VIL-466 groups. One fake parent's
  * message in a fake household group, run through the Linq door's group handler.
+ * Optional `media` (an https url, or Linq's media_url / mime_type / filename) is
+ * delivered as the same media parts the signed group webhook parses.
  * 404 everywhere else; gates live in lib/channel/preview-fake-group-inbound.ts.
  */
 export async function POST(req: Request): Promise<Response> {

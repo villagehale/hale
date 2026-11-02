@@ -3,6 +3,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { mediaPartFromLinq } from './inbound-media';
+import type { LinqInboundText } from './linq/payload';
 import type { CapturedLinqCall, GroupCaptureSink } from './preview-linq-capture';
 
 /**
@@ -96,6 +98,12 @@ async function family(phones: string[], chatId: string | null = null) {
   return familyId;
 }
 
+function routedMessage(): LinqInboundText {
+  const message = handleLinqGroupMessage.mock.calls[0]?.[1] as LinqInboundText | undefined;
+  if (!message) throw new Error('group handler was not called');
+  return message;
+}
+
 function post(body: Record<string, unknown>) {
   return handlePreviewFakeGroupInbound(
     new Request('https://preview.example/api/channels/preview/group-inbound', {
@@ -119,6 +127,80 @@ describe('preview fake group door reaches fake households only', () => {
     const res = await post({ text: 'who has Maya at 4?' });
     expect(res.status).toBe(200);
     expect(handleLinqGroupMessage).toHaveBeenCalledTimes(1);
+    expect(routedMessage().media).toEqual([]);
+  });
+
+  it('shares a .vcf into the group as the media part the Linq webhook would parse', async () => {
+    await family([FAKE_A, FAKE_B], CHAT);
+    const url = 'https://cdn.example/cards/John_Doe.vcf';
+    const res = await post({
+      text: 'This is John, our babysitter.',
+      media: [{ url, mime: 'text/vcard', filename: 'John_Doe.vcf' }],
+    });
+    expect(res.status).toBe(200);
+    const message = routedMessage();
+    expect(message.text).toBe('This is John, our babysitter.');
+    expect(message.chatId).toBe(CHAT);
+    expect(message.senderHandle).toBe(FAKE_A);
+    expect(message.media).toEqual([
+      mediaPartFromLinq({
+        type: 'media',
+        url,
+        mime_type: 'text/vcard',
+        filename: 'John_Doe.vcf',
+      }),
+    ]);
+    expect(calls[0]?.body).toMatchObject({
+      from: FAKE_A,
+      text: 'This is John, our babysitter.',
+      media: [{ url, mime: 'text/vcard', filename: 'John_Doe.vcf' }],
+    });
+  });
+
+  it('accepts a Linq-shaped attachment with no text, including a filename the parser uses', async () => {
+    await family([FAKE_A, FAKE_B], CHAT);
+    const url = 'https://cdn.example/upload/abc';
+    const res = await post({
+      text: '',
+      media: [{ media_url: url, mime_type: 'application/octet-stream', filename: 'flyer.jpg' }],
+    });
+    expect(res.status).toBe(200);
+    const message = routedMessage();
+    expect(message.text).toBe('');
+    expect(message.media).toEqual([
+      mediaPartFromLinq({
+        type: 'media',
+        media_url: url,
+        mime_type: 'application/octet-stream',
+        filename: 'flyer.jpg',
+      }),
+    ]);
+  });
+
+  it('refuses a non-https attachment and stores nothing', async () => {
+    await family([FAKE_A, FAKE_B], CHAT);
+    const res = await post({
+      text: 'card',
+      media: [{ url: 'http://cdn.example/cards/John_Doe.vcf', mime: 'text/vcard' }],
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'media_invalid' });
+    expect(calls).toEqual([]);
+    expect(handleLinqGroupMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['empty list', []],
+    ['too many', Array.from({ length: 9 }, () => ({ url: 'https://cdn.example/a.jpg' }))],
+    ['missing url', [{ mime: 'text/vcard' }]],
+    ['non-object', ['https://cdn.example/a.vcf']],
+  ])('refuses media that is %s', async (_label, media) => {
+    await family([FAKE_A, FAKE_B], CHAT);
+    const res = await post({ text: 'hi', media });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'media_invalid' });
+    expect(calls).toEqual([]);
+    expect(handleLinqGroupMessage).not.toHaveBeenCalled();
   });
 
   it('refuses a fake chat id a real household holds, and stores nothing', async () => {
@@ -155,6 +237,17 @@ describe('preview fake group door reaches fake households only', () => {
   it('refuses text past the size cap before storing it', async () => {
     await family([FAKE_A, FAKE_B], CHAT);
     const res = await post({ text: 'x'.repeat(MAX_FAKE_GROUP_TEXT + 1) });
+    expect(res.status).toBe(413);
+    expect(calls).toEqual([]);
+    expect(handleLinqGroupMessage).not.toHaveBeenCalled();
+  });
+
+  it('refuses an oversized caption even when a .vcf is attached', async () => {
+    await family([FAKE_A, FAKE_B], CHAT);
+    const res = await post({
+      text: 'x'.repeat(MAX_FAKE_GROUP_TEXT + 1),
+      media: [{ url: 'https://cdn.example/cards/John_Doe.vcf', mime: 'text/vcard' }],
+    });
     expect(res.status).toBe(413);
     expect(calls).toEqual([]);
     expect(handleLinqGroupMessage).not.toHaveBeenCalled();
