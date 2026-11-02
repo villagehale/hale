@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in English while parentReply was French (\"Oui, ça me va\") and watchFor requires French with tu, so the language is wrong. Otherwise the facts are accurate: title and instant are unchanged, the entry is on the Hale family calendar, and Google not being connected is stated correctly.",
+    "score": 2
+  }
+}
