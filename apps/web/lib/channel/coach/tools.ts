@@ -214,7 +214,7 @@ export interface ChannelCoachToolArgs {
    */
   offeredThisTurn?: () => readonly OfferedCandidate[];
   /** Live-web pages this turn found, appended when the reply names the pick. */
-  recordActivityLinks?: (links: readonly { title: string; url: string }[]) => void;
+  recordActivityLinks?: (links: readonly NamedLink[]) => void;
   /**
    * The live web-search lane and the family facts phase 0 needs, or null in a test that
    * is not exercising them. The two travel together on purpose: a finder with no reader
@@ -727,7 +727,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
    *   + save_memory, no skill prose                      3/3                     2/3
    *   + save_memory, 6-line section at the end           2/3                     1/3
    *
-   * That is the budget this lane already runs at (MAX_TOKENS 400, thinking and text
+   * That is the budget this lane already runs at (MAX_TOKENS 2000, thinking and text
    * sharing it — see runtime.ts), and a turn that stops reaching for the live web is a
    * parent handed nothing about the fall.
    *

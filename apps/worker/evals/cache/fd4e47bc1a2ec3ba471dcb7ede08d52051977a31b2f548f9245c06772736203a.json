@@ -1,0 +1,15 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "As a museum entirely devoted to the links between society and the environment, the Biosphère's mission is to raise citizen awareness, action, and engagement on significant environmental issues",
+        "name": "Biosphère, Environment Museum, Parc Jean-Drapeau",
+        "source_name": "Parc Jean-Drapeau",
+        "source_url": "https://www.parcjeandrapeau.com/en/biosphere-environment-museum-montreal/",
+        "indoor_outdoor": "indoor",
+        "access": "drop_in"
+      }
+    ]
+  },
+  "latencyMs": 2630
+}

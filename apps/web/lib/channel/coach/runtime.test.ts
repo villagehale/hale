@@ -126,6 +126,20 @@ describe('channelCoachRuntime', () => {
     ]);
   });
 
+  it('hands the loop 2000 completion tokens, thinking and the reply together', async () => {
+    let maxTokens: number | undefined;
+    const p = ports({
+      runAgent: async (args) => {
+        maxTokens = args.maxTokens;
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(maxTokens).toBe(2000);
+  });
+
   it('hands the loop the channel context: the surface and the family clock', async () => {
     const seen: unknown[] = [];
     const p = ports({

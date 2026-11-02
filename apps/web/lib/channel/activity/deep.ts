@@ -132,6 +132,8 @@ export type DeepResult =
        * (evidence.ts). Never derived from how many facts survived the check — a refusal
        * is Hale not knowing, and a page publishing nothing is a different thing. */
       pageVerdict: PageVerdict;
+      /** Quoted minimum age from a page that was read, when no slot fits the stage. */
+      ageExclusion?: { quote: string; sourceUrl: string };
     }
   | { status: 'unread'; searchResults: number; pagesRefused: number }
   | { status: 'unavailable'; reason: DeepFailure };

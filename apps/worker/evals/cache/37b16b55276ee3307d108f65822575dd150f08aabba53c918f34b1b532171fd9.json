@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single pick, the Canadian Museum of Nature at 240 McLeod Street, is a real, specific venue in Ottawa. It is something to turn up to rather than a term or a registration session, so it avoids the main failure this rubric targets. However, both pages read were resellers (Pelago and Tiqets), not the museum's own page. Labelling sourceName as 'Canadian Museum of Nature' misattributes the evidence. The price adds 'about CA$26-28 per ticket via resellers', a figure that appears nowhere in the notes; only USD 21.03 is published, so the CA$ range is invented. The hours come from a reseller listing that also says hours vary seasonally, and the Labour Day weekend window is unconfirmed (Sep 6 is a Monday holiday). Aggregator sourcing, misattribution and an invented price figure pull this down despite the venue being right.",
+    "score": 2
+  }
+}

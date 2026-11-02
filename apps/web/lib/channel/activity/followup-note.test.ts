@@ -8,7 +8,15 @@ import {
   topPickLeads,
   waitsOnAPageItCouldNotRead,
 } from './followup-note';
+import { asksTheParent } from './followup-note';
 import type { ActivityPick } from './lane';
+
+it('does not mistake a checked source URL query for an approval question', () => {
+  expect(
+    asksTheParent('Current dates remain unconfirmed. https://example.org/events?topic=kids#dates'),
+  ).toBe(false);
+  expect(asksTheParent('Would you like that? https://example.org/events?topic=kids')).toBe(true);
+});
 
 /**
  * THE TWO GATES THE FOLLOW-UP TEXT CANNOT SHIP WITHOUT PASSING.
@@ -369,6 +377,28 @@ describe('the payload the composer is handed', () => {
     ]);
     expect(payload.picks_empty).toBe(true);
     expect(payload.picks).toEqual([]);
+    expect(payload.page_age).toBeUndefined();
+  });
+
+  it('an empty read that states ages 8+ hands the writer that quote and its page', () => {
+    const payload = JSON.parse(
+      followUpUserMessage(
+        grounding({
+          picks: [],
+          pageEvidence: 'page_has_schedule',
+          watch: true,
+          pageAge: {
+            quote: 'FOIL FUNDAMENTALS (ages 8 - 12)',
+            sourceUrl: 'https://www.northfield-fencing.example/youth-programs',
+          },
+        }),
+      ),
+    );
+    expect(payload.page_age).toEqual({
+      quote: 'FOIL FUNDAMENTALS (ages 8 - 12)',
+      source_url: 'https://www.northfield-fencing.example/youth-programs',
+    });
+    expect(payload.page_evidence).toBeUndefined();
   });
 
   it('carries the subject and the mode, and nothing about the family (rule #1)', () => {
@@ -623,10 +653,100 @@ describe('an empty search tells the composer where it looked', () => {
     moreRemaining: 0,
   };
 
-  it('carries the area and the research only when there are no picks', () => {
+  it('keeps uncertain references beside supported picks without exposing research notes', () => {
+    const reference = {
+      name: 'Family workshop',
+      sourceName: 'Example Library',
+      sourceUrl: 'https://library.example/workshop',
+      ageFit: null,
+      when: null,
+      price: null,
+      status: 'unconfirmed' as const,
+      evidence: {
+        program: 'Family workshop',
+        age: null,
+        sessions: [],
+        schedule: null,
+        price: null,
+        history: null,
+        windowConfirmed: false,
+      },
+    };
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [PICK],
+        searched: {
+          ...searched,
+          notes: 'Rejected research says $999 and ages 12-18.',
+          references: [reference],
+          checkedSources: [reference.sourceUrl],
+        },
+      }),
+    );
+    expect(payload.picks.map((pick: ActivityPick) => pick.name)).toEqual([PICK.name]);
+    expect(payload.page_evidence).toBe(base.pageEvidence);
+    expect(payload).not.toHaveProperty('picks_empty');
+    expect(payload.searched).toEqual({
+      town: searched.town,
+      references: [reference],
+      checkedSources: [reference.sourceUrl],
+    });
+    expect(JSON.stringify(payload)).not.toContain('$999');
+    expect(payload.searched).not.toHaveProperty('notes');
+    expect(
+      followUpUserMessage({ ...base, picks: [PICK], searched: { ...searched, references: [] } }),
+    ).toBe(followUpUserMessage({ ...base, picks: [PICK] }));
+  });
+
+  it('never returns rejected research facts to the writer through empty-search notes', () => {
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [],
+        searched: {
+          ...searched,
+          notes: 'Cartwheels costs $140',
+          references: [],
+          checkedSources: ['https://gym.example/classes'],
+        },
+      }),
+    );
+    expect(payload.searched).toEqual({
+      town: searched.town,
+      references: [],
+      checkedSources: ['https://gym.example/classes'],
+    });
+    expect(JSON.stringify(payload)).not.toContain('$140');
+  });
+
+  it('keeps fact evidence alongside main’s language and held-option handoff', () => {
+    const evidence = {
+      program: 'Family storytime',
+      age: 'ages 2-5',
+      sessions: ['October 23 at 10:30'],
+      schedule: null,
+      price: null,
+      history: null,
+      windowConfirmed: true,
+    };
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        language: 'fr-CA',
+        moreRemaining: 2,
+        picks: [{ ...PICK, evidence }],
+      }),
+    );
+    expect(payload.language).toBe('fr-CA');
+    expect(payload.more_remaining).toBe(2);
+    expect(payload.picks[0].evidence).toEqual(evidence);
+  });
+
+  it('carries the area, not unvalidated research, when there are no picks', () => {
     const empty = JSON.parse(followUpUserMessage({ ...base, picks: [], searched }));
     expect(empty.picks_empty).toBe(true);
-    expect(empty.searched).toEqual(searched);
+    expect(empty.searched).toEqual({ town: searched.town });
   });
 
   it('leaves a message with a find composed from the payload it always had', () => {

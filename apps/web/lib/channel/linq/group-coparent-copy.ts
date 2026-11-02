@@ -92,18 +92,6 @@ export async function groupActivityHowItWent(
 }
 
 /**
- * Sloane, locked. The group does not guess who is travelling.
- * `Trip: {city}, {days}. A couple of things on for {kids}:`
- */
-export function groupTravelBriefOpening(
-  city: string,
-  days: string,
-  kids: string,
-): Promise<string | null> {
-  return speak({ purpose: 'group_travel_opening', language: null, facts: { city, days, kids } });
-}
-
-/**
  * Sloane, locked. Said in the group when a parent leaves.
  * An unknown name is `Your co-parent` / `Votre co-parent`.
  */

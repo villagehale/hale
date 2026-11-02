@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single pick, the Canadian Museum of Nature at 240 McLeod Street, is the right kind of find: a real, specific museum in Ottawa that a visiting family can simply turn up to over the Labour Day weekend, and it is not a session or a registration date. It falls down on sourcing. Both pages read were ticket resellers (Pelago and Tiqets), not the museum's own site, yet sourceName credits 'Canadian Museum of Nature', which misattributes the evidence. The hours come from Tiqets' listing. The price is padded: 'From USD 21.03' does appear on Pelago, but 'about CA$26-28 per ticket via resellers' is a conversion range that no source published. The rubric scores an aggregator source low, and the misattribution and invented figure compound it.",
+    "score": 2
+  }
+}

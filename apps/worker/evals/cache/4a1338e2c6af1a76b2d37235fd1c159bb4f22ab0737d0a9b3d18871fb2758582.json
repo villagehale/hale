@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgUm6A7duuteYKj5qkg9f",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvwYKEAgTGAI4AUIIdGhpbmtpbmcSDDiR5/pW4fWX/iWPRRoM+3wAnNXTKy5wiQPhIjDxjQX+IioFRG9yIa4SzqMIFT2RjmgkzgXmBCpufhCgimMtmPNtcAdJED4jdhvPa68q3AU8nyMxobEFlVN/tCuHq8J95mYwWwwfogXNOB8NSmEjX136XNnZ9tFwKkaBCBZfFSSHjbhPK0CTie9+FAJuHyMd95yyJTEHjiPhWz3ZFNx3ytzONtFBiNwaFu2kTgsk4/D7UAmYAu1DfRu4PtP0UQT2NUlLT6O6b8KpHc621FCuEgyva7VC7rbbR/sjGXr2gxTREmhX2bg8VNpupf7iCzYjlMPHkfdJQIUNKPj337Xxrnuv8uVFow9HrUB4P6Epnxj066L5z5Yg+x+BiKc58ON4etFO0qrJvs1ubrMrQq+wqzavfyHgGMi1twAviUzClNaOyL+JvHxqUhO/6V/F87gPhA93QzDdvwaqG1jSqTw5XeEU+6MgVKsMSWTsI1mJZaNX9icweTKR/oj+bD5luq3rB3HbH5utCA1eu3NwJxoen89Qc+eL0kT53iAL7UXyiTnlBVeqHuYwru3Z5RDCxk/HGEzdZbNecfsqqHmYAte/HSXzQ7sykr2MdEJMlC7UHM7P1ddA0gyYJyUkT/mmsjznKW/VgAu2KbOGepnfG2+t8TXfmMtIDxjbwyhwKU8sponbscZ6B7N2Mpkc5xzkYv12Q7A0wrBIpoztXCCfi5Trn6uedFb93rYoCQp4ssx5U4TEF/qrv2wKg98sjF55iGxAEBfMp2jUu3Bdt7b1DzFO0Z/lSq6mVNXC9cLgtI23GuN5tpq02FCQxAI82IO1QhzL1ERJ1CrjN0hhJq2fMEGhYokgNuXY59j+GALGc1kpnU4extDrFSX0hCyWUVJ+c0js8s8LsGsiez6iiGP0Xf9n4JCnPVPBVwG0pJYnml/M59FyHIirxCehcohgfcg/ANtnhn6746Ue3bCXOzfPLrDOURlfxxoi10VOi+GDdYrNlBhtFaIXXSFKstD71a0ZntlvwBcO+FFSwmfQFyKc0HZZ/2Fd0JKt4ueHujCrnJEUnwMUYcnT+eWdDczQFdgYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "There's Central Library story time at the Bloor/Gladstone branch on Sat, Aug 8. It's a free indoor drop-in, all ages welcome. [link-c9bfa2]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 608,
+      "cache_read_input_tokens": 21679,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 608,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 162,
+      "output_tokens_details": {
+        "thinking_tokens": 98
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2826
+}

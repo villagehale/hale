@@ -16,6 +16,7 @@ export interface FirstTouchPlace {
   /** One municipality when the FSA or the city names exactly one. */
   municipality: Municipality | null;
   city: string | null;
+  country?: 'United States';
 }
 
 const POSTAL_IN_TEXT =
@@ -62,7 +63,9 @@ export function placeFromMessage(body: string): FirstTouchPlace | null {
 }
 
 function fromPostal(postal: PostalContext): FirstTouchPlace {
-  const municipalities = resolveMunicipalities(postal.postalCode ?? postal.areaCoarse);
+  const municipalities = postal.countryCode === 'US'
+    ? []
+    : resolveMunicipalities(postal.postalCode ?? postal.areaCoarse);
   const only = municipalities.length === 1 ? (municipalities[0] ?? null) : null;
   return {
     kind: 'postal',
@@ -70,6 +73,7 @@ function fromPostal(postal: PostalContext): FirstTouchPlace {
     postalCode: postal.postalCode ?? postal.areaCoarse,
     municipality: only,
     city: null,
+    ...(postal.country === 'United States' ? { country: postal.country } : {}),
   };
 }
 

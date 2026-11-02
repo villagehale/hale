@@ -1,0 +1,31 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Goldfish Swim School - Oakville 1130 Eighth Line Unit 17, Oakville, ON L6H 2R4",
+        "name": "Preschool swim lessons (Mini and Junior levels), Goldfish Swim School - Oakville",
+        "age_evidence": "Mini (4-35 months) Junior (3-4 years)",
+        "age_fit": "Mini 4-35 months; Junior 3-4 years (school enrols from 4 months to 12 years)",
+        "when": "Weekly 30-minute lessons; school hours Mon 9:30 AM-8:30 PM, Tue 11:00 AM-8:00 PM, Wed 10:30 AM-8:00 PM, Thu 9:00 AM-8:00 PM, Fri closed, Sat 8:30 AM-3:00 PM, Sun 8:30 AM-7:00 PM. Specific class times not posted on the page.",
+        "when_evidence": "Hours of Operation Monday: 9:30 AM - 8:30 PM Tuesday: 11:00 AM - 8:00 PM Wednesday: 10:30 AM - 8:00 PM Thursday: 9:00 AM - 8:00 PM Friday: CLOSED Saturday: 8:30 AM - 3:00 PM Sunday: 8:30 AM - 7:00 PM",
+        "schedule_kind": "hours",
+        "price_evidence": "Weekly Swim Lessons Starting at $32.50 Per Lesson",
+        "price": "Starting at $32.50 per lesson",
+        "source_name": "Goldfish Swim School - Oakville",
+        "source_url": "https://goldfishswimschool.com/oakville/",
+        "indoor_outdoor": "indoor"
+      },
+      {
+        "name_evidence": "Our Aquatics programs adhere to the highest standards of safety, supervision and programming. All of our aquatics programs are HIGH FIVE certified. The Town of Oakville offers lessons according to the Lifesaving Society Swim for Life program.",
+        "name": "Learn to Swim preschool levels, Town of Oakville Aquatics",
+        "age_evidence": "Children who are five years-old do not need to complete all preschool levels before moving to the Swimmer programs.",
+        "age_fit": "Preschool levels (children under 5; five-year-olds who completed Preschool E move on to Swimmer 2)",
+        "source_name": "Town of Oakville",
+        "source_url": "https://www.oakville.ca/parks-recreation-culture/programs-activities/swimming/aquatics-programs/",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 8414
+}

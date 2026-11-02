@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message honestly says no underwater basket weaving lessons for toddlers were found in Halton Hills, and the empty pick list is the right result for a nonexistent program. It attributes the Water Babies swim lessons to their own site, invents no day or price, and states the gap in the first person, which is fine under page_has_no_schedule. The continuation promise is correctly first person because watch is true, and there is no question and no link. Shortfalls: Water Babies is named in the message but missing from the picks, so the two are inconsistent. It also has no specific Halton Hills location ('multiple locations' across Halton/Waterloo/Guelph). The empty-result report says little about what was actually looked at.",
+    "score": 4
+  }
+}

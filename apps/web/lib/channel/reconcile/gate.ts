@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { extractStateClaims } from './claims';
+import { type StateClaim, extractStateClaims } from './claims';
 import { type ReconcileVerdict, reconcile } from './reconcile';
 import { loadReconcileView } from './view';
 
@@ -43,11 +43,24 @@ export function unsendableReasons(verdict: ReconcileVerdict): SendRefusalReason[
  * Read the family's ledger and judge the body against it — the whole primitive, for a
  * caller that has a database handle and one string to decide about.
  */
+/**
+ * An activity follow-up the model already marked as a return (`commits_to_return`)
+ * is that follow-up, not a municipal registration watch. The wording gate reads
+ * "registration" and "I'll text you" as a registration watch; this send is arming
+ * the page watch the promise needs. Other claim kinds are left as they are.
+ */
+export function claimsForActivityContinuation(claims: readonly StateClaim[]): StateClaim[] {
+  return claims.map((claim) =>
+    claim.kind === 'registration_watch' ? { ...claim, kind: 'activity_followup' } : claim,
+  );
+}
+
 export async function refuseUnbackedSend(
   database: Database,
-  input: { familyId: string; body: string; now: Date },
+  input: { familyId: string; body: string; now: Date; activityContinuation?: boolean },
 ): Promise<SendRefusalReason[]> {
-  const claims = extractStateClaims(input.body);
+  const extracted = extractStateClaims(input.body);
+  const claims = input.activityContinuation ? claimsForActivityContinuation(extracted) : extracted;
   // NO CLAIM, NO QUERY. The overwhelming majority of bodies assert nothing this
   // primitive owns, and those must not cost a sweep four selects per message.
   if (claims.length === 0) return [];

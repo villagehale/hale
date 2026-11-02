@@ -25,4 +25,6 @@ When `purpose` is `rec_morning`, `facts.answer` is the reviewed registration ans
 
 When `verbatim` is present, each of those strings must appear in your text unchanged. A url or a phone number that you retype is a different address.
 
+When `purpose` is `travel_source_listings`, the name, the price, and the source are those verbatim strings. The schedule (`when` on each pick) is not. Keep every day, every time, and every date it states. Write that schedule in `language`. Do not leave it in another language. Do not add a day, a time, or a date.
+
 Return `{ "text": "the message" }`.

@@ -1,0 +1,48 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Tiny Gym (1 and walking to 3 years) 45 minutes $140.00 per term --> Your child's first gym class! This class is for our youngest gymnasts with their parent/caregiver.",
+        "name": "Tiny Gym, Cartwheels Gym Centre",
+        "age_evidence": "Tiny Gym (1 and walking to 3 years)",
+        "age_fit": "1 (walking) to 3 years, with parent/caregiver",
+        "when": "Weekly classes of 45 minutes: Mon 9:15-10:00, 10:15-11:00; Tue 9:15-10:00, 10:15-11:00, 4:00-4:45, 5:00-5:45, 6:00-6:45; Wed 10:15-11:00, 5:00-5:45, 6:00-6:45; Sat 9:30-10:15, 10:30-11:15; Sun 8:30-9:15, 9:30-10:15, 10:30-11:15",
+        "schedule_kind": "recurring",
+        "price_evidence": "Tiny Gym (1 and walking to 3 years) 45 minutes $140.00 per term",
+        "price": "$140.00 per term",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      },
+      {
+        "name_evidence": "Parent and Tot 18 months - 3.11 yrs 18 months - 3.11 yrs. This program is for the toddler who loves to be on the move! This class involves parent participation",
+        "name": "Parent and Tot, Halton Hills Gymnastics Centre",
+        "age_evidence": "Parent and Tot 18 months - 3.11 yrs",
+        "age_fit": "18 months - 3.11 years, with parent participation",
+        "when": "Fall 2026 session: September 12 - December 18 (14 (13) weeks); 30 minute class",
+        "schedule_kind": "term",
+        "price": "",
+        "source_name": "Halton Hills Gymnastics Centre",
+        "source_url": "https://haltonhillsgymnastics.com/index.php/programs/recreational-programs/preschool-kinderfun",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      },
+      {
+        "name_evidence": "Pre-School Drop-in under 4 yrs Cost: $15, one parent/up to 4 children. No pre-registration neccessary and payment can be made in person.",
+        "name": "Pre-School Drop-in, Halton Hills Gymnastics Centre",
+        "age_evidence": "Pre-School Drop-in under 4 yrs",
+        "age_fit": "under 4 years, with a parent",
+        "when": "Tuesday and Thursday 9:30 am - 12:00pm",
+        "schedule_kind": "recurring",
+        "price_evidence": "Cost: $15, one parent/up to 4 children.",
+        "price": "$15, one parent/up to 4 children",
+        "source_name": "Halton Hills Gymnastics Centre",
+        "source_url": "https://haltonhillsgymnastics.com/index.php/programs/recreational-programs/preschool-kinderfun",
+        "indoor_outdoor": "indoor",
+        "access": "drop_in"
+      }
+    ]
+  },
+  "latencyMs": 6543
+}

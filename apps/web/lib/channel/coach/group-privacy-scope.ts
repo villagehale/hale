@@ -50,6 +50,42 @@ type WeekResult = {
   [key: string]: unknown;
 };
 
+export interface PrivateCalendarField {
+  field: 'what' | 'where';
+  value: string;
+}
+
+/**
+ * Who / what / where of a connected-calendar block. The time is not one of them:
+ * saying the hour is taken does not name the block.
+ */
+export function privateCalendarFields(
+  events: readonly { kind?: string; what?: unknown; where?: unknown }[],
+): PrivateCalendarField[] {
+  const fields: PrivateCalendarField[] = [];
+  for (const event of events) {
+    if (event.kind !== 'calendar') continue;
+    for (const field of ['what', 'where'] as const) {
+      const value = typeof event[field] === 'string' ? event[field].trim() : '';
+      if (value.length < 2) continue;
+      fields.push({ field, value });
+      for (const part of value.split(/\s*[-–—/]\s*/)) {
+        const piece = part.trim();
+        if (piece.length >= 2 && piece !== value) fields.push({ field, value: piece });
+      }
+    }
+  }
+  return fields;
+}
+
+/** Private who/what/where values that actually appear in the reply. */
+export function replyShowsPrivateField(
+  reply: string,
+  fields: readonly PrivateCalendarField[],
+): PrivateCalendarField[] {
+  return fields.filter((field) => reply.includes(field.value));
+}
+
 export function groupSafeWeek<T extends WeekResult>(week: T): T {
   return {
     ...week,

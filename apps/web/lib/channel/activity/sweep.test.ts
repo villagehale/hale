@@ -238,6 +238,85 @@ describe('a promise with finds', () => {
 });
 
 describe('the promise is kept when the news is bad', () => {
+  it('preserves uncertain references when the same search also returns supported picks', async () => {
+    armed();
+    const reference = {
+      name: 'Family workshop',
+      sourceName: 'Example Library',
+      sourceUrl: 'https://library.example/workshop',
+      ageFit: null,
+      when: null,
+      price: null,
+      status: 'unconfirmed' as const,
+      evidence: {
+        program: 'Family workshop',
+        age: null,
+        sessions: [],
+        schedule: null,
+        price: null,
+        history: null,
+        windowConfirmed: false,
+      },
+    };
+    const h = harness({
+      find: {
+        found: true,
+        picks: [PICK],
+        references: [reference],
+        checkedSources: [reference.sourceUrl],
+      },
+    });
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    expect(result).toMatchObject({ sent: 1, sentEmptyHanded: 0 });
+    expect(h.composed[0]).toMatchObject({
+      picks: [PICK],
+      searched: {
+        town: 'Halton Hills, Ontario, Canada',
+        notes: '',
+        references: [reference],
+        checkedSources: [reference.sourceUrl],
+      },
+    });
+    expect(h.transport.sent[0]?.body).toContain(reference.sourceUrl);
+  });
+
+  it('appends only checked HTTP sources to an unconfirmed follow-up, without treating URL queries as questions', async () => {
+    armed();
+    const url = 'https://venue.example/programs?topic=kids#dates';
+    const h = harness({
+      find: {
+        found: false,
+        reason: 'no_picks',
+        searched: {
+          town: 'Halton Hills',
+          notes: 'The current session could not be established.',
+          checkedSources: [
+            url,
+            url,
+            'javascript:alert(1)',
+            'https://app.villagehale.com/a/retired',
+          ],
+          references: [],
+        },
+      },
+      compose: {
+        status: 'composed',
+        message: 'I could not establish a current session from the page. I will keep looking.',
+      },
+    });
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    expect(result.sent).toBe(1);
+    expect(h.transport.sent[0]?.body).toContain(url);
+    expect(h.transport.sent[0]?.body.split(url)).toHaveLength(2);
+    expect(h.transport.sent[0]?.body).not.toContain('javascript:');
+    expect(h.transport.sent[0]?.body).not.toContain('villagehale.com/a/');
+    expect(h.composed[0]).toMatchObject({
+      searched: {
+        checkedSources: [url, url, 'javascript:alert(1)', 'https://app.villagehale.com/a/retired'],
+      },
+    });
+  });
+
   it('sends the empty-handed message and STILL closes the row', async () => {
     armed();
     const h = harness({

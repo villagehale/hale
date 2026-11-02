@@ -45,10 +45,8 @@ export const INTAKE_CONSENT_SCOPE = 'sms_intake_origination';
 
 /**
  * Where the family is, as established during intake — the same shape whichever of the
- * three routes established it: a full Canadian postal code, a bare FSA (D2), or a QR
- * venue whose OWN coarse area we know. Only the first carries a `postalCode`; all
- * three are Canadian by construction (the region gate runs in the caller), so
- * provisioning never guesses a country.
+ * routes established it: Canadian postal/FSA, a Canadian QR venue, or a full US ZIP.
+ * Country and timezone come from that postal context, never a default.
  */
 export type IntakeLocation = PostalContext;
 

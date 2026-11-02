@@ -99,6 +99,8 @@ const RULES: readonly Rule[] = [
     low: 'zero',
     high: 'years-exclusive',
   },
+  { re: rx(`up to\\s*${NUM}\\s*${MONTH}`), low: 'zero', high: 'months' },
+  { re: rx(`up to\\s*${NUM}\\s*${YEAR}`), low: 'zero', high: 'years' },
   { re: rx(`${AGE_CUE}${NUM}\\s*${DASH}\\s*${NUM}`), low: 'years', high: 'years' },
 ];
 
@@ -172,6 +174,25 @@ export function parseStatedAgeBand(text: string | null | undefined): StatedAgeBa
     if (ageMinMonths > ageMaxMonths) continue;
     if (ageMinMonths > PRODUCT_AGE_CEILING_MONTHS) continue;
     return { ageMinMonths, ageMaxMonths };
+  }
+  const minimumSuffix = '(?:\\+|(?:and|or)\\s*(?:up|older|over))(?=$|\\s|[.,;:)])';
+  const minimum =
+    rx(`${NUM}\\s*(${MONTH}|${YEAR})\\s*${minimumSuffix}`).exec(plain) ??
+    rx(`${AGE_CUE}${NUM}\\s*${minimumSuffix}`).exec(plain) ??
+    new RegExp(`^${NUM}\\s*(?:and|or)\\s*(?:up|older|over)$`, 'i').exec(plain);
+  if (minimum) {
+    const ageMinMonths = toMonths(
+      Number(minimum[1]),
+      /^m/i.test(minimum[2] ?? '') ? 'months' : 'years',
+      'low',
+    );
+    if (ageMinMonths <= PRODUCT_AGE_CEILING_MONTHS) {
+      return { ageMinMonths, ageMaxMonths: PRODUCT_AGE_CEILING_MONTHS };
+    }
+    return null;
+  }
+  if (/\ball[\s-]+ages\b/i.test(plain)) {
+    return { ageMinMonths: 0, ageMaxMonths: PRODUCT_AGE_CEILING_MONTHS };
   }
   return null;
 }

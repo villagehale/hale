@@ -6,6 +6,7 @@ import type { OptOutForm } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import type { fulfillCommitment } from '~/lib/commitments/ledger';
+import { safeHttpUrl } from '~/lib/format/http-url';
 import {
   ACTIVITY_WATCH_DUE_HOURS,
   type ActivityPromise,
@@ -195,6 +196,8 @@ export interface FollowUpDeliveryInput {
   evidence: FollowUpEvidence;
   /** An empty shallow search's area and research (lane.ts `EmptySearch`), if any. */
   searched?: EmptySearch;
+  /** Quoted minimum age from a page that fits nobody in this stage. */
+  pageAge?: { quote: string; sourceUrl: string } | null;
 }
 
 /** What became of one delivery. Named rather than void, and never folded: `deferred` is
@@ -244,6 +247,7 @@ export async function deliverFollowUp(
     watch,
     moreRemaining: input.held.length,
     ...(input.searched ? { searched: input.searched } : {}),
+    ...(input.pageAge ? { pageAge: input.pageAge } : {}),
   });
   if (composed.status === 'deferred') {
     console.error(
@@ -262,13 +266,15 @@ export async function deliverFollowUp(
     );
   }
 
-  // THE VENUE'S OWN PAGE, appended by code after the composer's gates. The model is
-  // refused any URL, and that gate stays: a model that may write links will write a
-  // wrong one. Each page here is the address the pick was read off.
-  const message = withVenuePages(
-    composed.message,
-    input.picks.map((pick) => venuePage(pick)).filter((url): url is string => url !== null),
-  );
+  // Append only source URLs from this read; no retired public Hale share page.
+  const sources = [
+    ...input.picks.map(venuePage),
+    ...(input.searched?.checkedSources ?? []),
+  ].flatMap((source) => {
+    const url = source ? safeHttpUrl(source) : null;
+    return url ? [url] : [];
+  });
+  const message = withVenuePages(composed.message, sources);
 
   const body = withOptOut(message, input.optOut);
   // THE GATE, RE-READ ON THE STRING THAT ACTUALLY LEAVES — and it must stay the last
@@ -296,6 +302,10 @@ export async function deliverFollowUp(
     familyId: input.familyId,
     body,
     now,
+    // The model said this message comes back, and this send is about to arm that
+    // page watch. A registration date in the same sentence is a fact from the page,
+    // not a municipal registration-watch row this path has to hold.
+    activityContinuation: composed.commitsToReturn === true && watch,
   });
   if (unbacked.length > 0) {
     console.error(

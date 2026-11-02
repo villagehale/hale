@@ -1,0 +1,22 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Welcome to CMOM, NYC\\u2019s premier destination for interactive learning and play! Located on the Upper West Side, our engaging exhibits and programs inspire children ages 0-6",
+        "name": "Children's Museum of Manhattan (CMOM)",
+        "age_evidence": "Designed for young learners ages 0\\u20136",
+        "age_fit": "Ages 0\\u20136 (PlayWorks for ages 0\\u20134)",
+        "when": "Regular museum hours Tuesday\\u2013Sunday, 10 am\\u20135 pm (closed Mondays). The specific dates November 12\\u201315, 2026 could not be confirmed on the page.",
+        "when_evidence": "Hours 10 am \\u2013 5 pm, Tuesday \\u2013 Sunday",
+        "schedule_kind": "hours",
+        "price_evidence": "Adults Tickets In-Person: $18 $17 Online Pricing",
+        "price": "$18 in person, $17 online per adult or child (ages 1\\u201318); infants under 12 months free",
+        "source_name": "Children's Museum of Manhattan",
+        "source_url": "https://cmom.org/plan-your-visit/",
+        "indoor_outdoor": "indoor",
+        "access": "drop_in"
+      }
+    ]
+  },
+  "latencyMs": 4266
+}

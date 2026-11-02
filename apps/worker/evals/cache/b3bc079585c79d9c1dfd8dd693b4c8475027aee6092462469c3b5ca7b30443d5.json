@@ -1,0 +1,44 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Tiny Gym (1 and walking to 3 years) 45 minutes $140.00 per term --> Your child's first gym class! This class is for our youngest gymnasts with their parent/caregiver.",
+        "name": "Tiny Gym (parent/caregiver class), Cartwheels Gym Centre, Georgetown",
+        "age_evidence": "Tiny Gym (1 and walking to 3 years)",
+        "age_fit": "1 (walking) to 3 years, with parent/caregiver",
+        "when": "Weekly 45-minute classes. Monday 9:15-10:00 and 10:15-11:00; Tuesday 9:15-10:00, 10:15-11:00, 4:00-4:45, 5:00-5:45, 6:00-6:45; Wednesday 10:15-11:00, 5:00-5:45, 6:00-6:45; Saturday 9:30-10:15 and 10:30-11:15; Sunday 8:30-9:15, 9:30-10:15, 10:30-11:15. Not scheduled Thursday. Term 1/Fall registration was Wednesday July 22, 2026 at 8:00am online; availability is shown on their registration website.",
+        "when_evidence": "MONDAY 9:15 - 10:00 10:15 - 11:00 TUESDAY 9:15-10:00 10:15 - 11:00 4:00 - 4:45 5:00 - 5:45 6:00 - 6:45 WEDNESDAY 10:15 - 11:00 5:00 - 5:45 6:00 - 6:45 THURSDAY not scheduled SATURDAY 9:30 - 10:15 10:30 - 11:15 SUNDAY 8:30 - 9:15 9:30 - 10:15 10:30 - 11:15",
+        "schedule_kind": "recurring",
+        "price_evidence": "Tiny Gym (1 and walking to 3 years) 45 minutes $140.00 per term",
+        "price": "$140.00 per term",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      },
+      {
+        "name_evidence": "Rock n' Roll with Miss Kelly (0+ years) 45 minutes $140.00 per term --> This class offers a safe environment for your child to grow physically, cognitively, and socially through music and movement.",
+        "name": "Rock n' Roll with Miss Kelly (music and movement), Cartwheels Gym Centre, Georgetown",
+        "age_evidence": "Rock n' Roll with Miss Kelly (0+ years)",
+        "age_fit": "0+ years",
+        "price_evidence": "Rock n' Roll with Miss Kelly (0+ years) 45 minutes $140.00 per term",
+        "price": "$140.00 per term",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      },
+      {
+        "name_evidence": "Tumble & Learn (2y 11m to 4 years) 2 hours $ per term --> Preschool & Kindergarten readiness program at Cartwheels.",
+        "name": "Tumble & Learn (2-hour preschool readiness program), Cartwheels Gym Centre, Georgetown",
+        "age_evidence": "Tumble & Learn (2y 11m to 4 years)",
+        "age_fit": "2 years 11 months to 4 years (drop-off program)",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://www.cartwheelsgymcentre.com/programs.php",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 7516
+}

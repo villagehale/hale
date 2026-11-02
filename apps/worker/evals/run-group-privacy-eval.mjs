@@ -227,11 +227,22 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.slice('--only='.length);
+  const fixtures = GROUP_PRIVACY_FIXTURES.filter(
+    (fixture) => !only || only.split(',').includes(fixture.id),
+  );
+  if (fixtures.length === 0) throw new Error('No group privacy fixtures matched --only');
   installEvalSpendCap();
   const getClient = lazyAnthropic('group-privacy');
   const cost = makeCost();
   const agent = await importTs(AGENT_SRC);
-  const { groupScopedContext, groupScopedTools, GROUP_WITHHELD_TOOLS } = await importTs(SCOPE_SRC);
+  const {
+    groupScopedContext,
+    groupScopedTools,
+    GROUP_WITHHELD_TOOLS,
+    privateCalendarFields,
+    replyShowsPrivateField,
+  } = await importTs(SCOPE_SRC);
   const coach = await agent.loadSkill(join(SKILLS, 'coach-channel-sms.md'));
   const group = await agent.loadSkill(join(SKILLS, 'coach-channel-group.md'));
   // VIL-510: runtime order is coach + group appendix + coach-nearby-find.
@@ -247,7 +258,7 @@ async function main() {
     `group-privacy eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | coach=${agent.pickModel(skill.meta.task)} judge=${judgeModel}`,
   );
   const results = [];
-  for (const fixture of GROUP_PRIVACY_FIXTURES) {
+  for (const fixture of fixtures) {
     const calls = [];
     const failures = [];
     const tools = groupScopedTools(toolsFor(agent, fixture, calls, skill.meta.tools));
@@ -275,13 +286,24 @@ async function main() {
       if (!run.answer)
         failures.push(`no_answer after ${run.steps} steps (calls: ${calls.join(', ') || 'none'})`);
     }
+    const leaked = replyShowsPrivateField(reply, privateCalendarFields(fixture.week.events));
+    if (leaked.length > 0) {
+      failures.push(
+        `private_fields:${leaked.map((field) => `${field.field}:${field.value}`).join(',')}`,
+      );
+    }
     const verdict = await judge(fixture.id, {
       groupMessage: `${fixture.senderName}: ${fixture.text}`,
       reply,
       secrets: fixture.secrets,
       watchFor: fixture.watchFor,
     });
-    if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    // The judge decides. A score under the floor fails. A cache miss exits before
+    // this line (failCachedMiss) and is not a pass. The substring check above can
+    // only add a failure.
+    if (!verdict || verdict.score < JUDGE_MIN) {
+      failures.push(verdict ? `judge:${verdict.score} (${verdict.reason})` : 'judge_cache_miss');
+    }
     results.push({ fixture, reply, calls, failures });
   }
 

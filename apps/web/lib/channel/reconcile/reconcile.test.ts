@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import type { CommitmentKind } from '~/lib/commitments/ledger';
 import { extractStateClaims } from './claims';
+import { claimsForActivityContinuation } from './gate';
 import {
   type ReconcileView,
   reconcile,
@@ -426,6 +427,33 @@ describe('reconcile — a co-parent invite the model did not send', () => {
     expect(verdict.refused.map((r) => r.reason)).toEqual(['no_coparent_invite']);
     expect(withoutRefusedClaims(live, verdict)).toBe('');
     expect(reconcileViolations(verdict)[0]).toContain('Only the co-parent invite path');
+  });
+
+  it('arms an activity continuation instead of demanding a registration watch', () => {
+    const sentence =
+      "Registration opens Tuesday, September 1, and I'll keep watching and text you when they post them.";
+    expect(extractStateClaims(sentence).map((claim) => claim.kind)).toEqual(['registration_watch']);
+    const open = reconcile(
+      claimsForActivityContinuation(extractStateClaims(sentence)),
+      view({
+        openKinds: new Set(['activity_followup']),
+      }),
+    );
+    expect(open.refused).toEqual([]);
+    expect(open.resolutions[0]).toMatchObject({
+      status: 'matched',
+      matchedBy: 'open_commitment',
+    });
+    const unarmed = reconcile(claimsForActivityContinuation(extractStateClaims(sentence)), view());
+    expect(unarmed.refused.map((resolution) => resolution.reason)).toEqual(['no_activity_promise']);
+    const booked = `Your well-baby visit is booked. ${sentence}`;
+    const both = reconcile(
+      claimsForActivityContinuation(extractStateClaims(booked)),
+      view({
+        openKinds: new Set(['activity_followup']),
+      }),
+    );
+    expect(both.refused.map((resolution) => resolution.reason)).toEqual(['no_scheduled_row']);
   });
 
   it('does not refuse the ack the invite path actually sends', async () => {

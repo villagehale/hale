@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: day, times, Sept 12 to Nov 28 dates and the 3-5 age band. Price is correctly null because the page prints no fee. The registration line is quoted verbatim and cited to the operator URL, and there is no invented third level. The message leads with Preschool A by name and attributes with 'their site says'. It carries 'Registration opens Tue Aug 11 at 7 a.m.', which matches the registration fact. The missing price is owned in first person ('I couldn't pin down the price') rather than reported as 'not posted', which suits page_has_schedule. With watch true, 'I'll keep watching and text you' is a correct first-person commitment. The text is plain ASCII with no link and no question. One small miss: it does not mention that fees are in the Recreation Guide.",
+    "score": 5
+  }
+}

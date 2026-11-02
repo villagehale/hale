@@ -4,6 +4,7 @@ import type { DeepFailure, DeepResult } from './deep';
 import type { ActivityQuery } from './deidentify';
 import type { FollowUpEvidence } from './deliver';
 import { readPageVerdict } from './evidence';
+import { statedAgeExclusion } from './facts';
 import {
   type AngleResearcher,
   type FanOutResult,
@@ -174,11 +175,14 @@ export async function runDeepLane(deps: DeepLaneDeps, query: ActivityQuery): Pro
   // refused fifty-three of them).
   const pages = fanOut.legs.flatMap((leg) => [...leg.pages]);
   const refutation = refuteSlots(merged.rows, pages);
+  const ageExclusion =
+    refutation.slots.length === 0 ? statedAgeExclusion(pages, query.stage) : null;
 
   return {
     result: {
       status: 'read',
       slots: refutation.slots,
+      ...(ageExclusion ? { ageExclusion } : {}),
       searchResults: fanOut.searchResults,
       pagesRead: fanOut.pagesRead,
       pagesStale: fanOut.pagesStale,
