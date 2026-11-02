@@ -33,6 +33,9 @@ export const conversations = pgTable(
   },
   (table) => ({
     familyIdx: index('conversations_family_idx').on(table.familyId),
+    // VIL-447 (0199): the target of group_lists' (conversation_id, family_id) FK, so a
+    // shared list can only point at its own family's thread.
+    idFamilyUniq: uniqueIndex('conversations_id_family_uniq').on(table.id, table.familyId),
     // At most one note-anchored conversation per (family, note). Partial (note_key
     // NOT NULL) so the general thread — which leaves note_key null — is unconstrained.
     familyNoteKeyIdx: uniqueIndex('conversations_family_note_key_idx')

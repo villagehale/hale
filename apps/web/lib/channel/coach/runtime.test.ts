@@ -6,6 +6,7 @@ import { readInboundMedia } from '~/lib/channel/inbound-media';
 import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 /**
@@ -195,6 +196,40 @@ describe('channelCoachRuntime', () => {
     expect(seen[1]).not.toHaveProperty('audience');
   });
 
+  it('offers the shared-list verbs only on a group turn with GROUP_SHARED_LISTS_ENABLED on (VIL-447)', async () => {
+    const seen: Array<{ tools: string[]; instructions: string }> = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push({
+          tools: [...args.skill.meta.tools],
+          instructions: args.skill.instructions,
+        });
+        return answering('ok.')(args);
+      },
+    });
+    const names = ['list_group_lists', 'add_to_group_list', 'check_off_group_list_items'];
+    const tone = await loadCronSkill('coach-group-lists');
+    try {
+      vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', '');
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', 'true');
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      await channelCoachRuntime(p).respond(turn(), []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    for (const n of names) {
+      expect(seen[0]?.tools).not.toContain(n);
+      expect(seen[1]?.tools).toContain(n);
+      expect(seen[2]?.tools).not.toContain(n);
+    }
+    expect(seen[2]?.tools).toEqual(SKILL.meta.tools);
+    // Tone is the disk skill, appended only when the list verbs are offered.
+    expect(seen[0]?.instructions).not.toContain(tone.instructions);
+    expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
+    expect(seen[2]?.instructions).not.toContain(tone.instructions);
+  });
+
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
     const seen: Record<string, unknown>[] = [];
     const reading = {
@@ -380,6 +415,56 @@ describe('channelCoachRuntime', () => {
     expect(draftsFromFailure(err)).toEqual(['action-1', 'action-2']);
     // The original failure is not swallowed by the enrichment.
     expect((err as Error).cause).toBeInstanceOf(Error);
+  });
+
+  it('VIL-447: a failed turn runs the undo its tools registered, and a good one does not', async () => {
+    const undone: string[] = [];
+    const failing = ports({
+      buildTools: (...args: unknown[]) => {
+        const onUndo = args[8] as (u: () => Promise<void>) => void;
+        onUndo(async () => {
+          undone.push('lists');
+        });
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        throw new Error('anthropic timeout');
+      },
+    });
+    await channelCoachRuntime(failing)
+      .respond(turn(), [])
+      .catch(() => undefined);
+    expect(undone).toEqual(['lists']);
+
+    const ok = ports({
+      buildTools: (...args: unknown[]) => {
+        const onUndo = args[8] as (u: () => Promise<void>) => void;
+        onUndo(async () => {
+          undone.push('should-not-run');
+        });
+        return [] as RegisteredTool[];
+      },
+    });
+    await channelCoachRuntime(ok).respond(turn(), []);
+    expect(undone).toEqual(['lists']);
+  });
+
+  it('VIL-447: an undo that throws never masks the turn failure', async () => {
+    const p = ports({
+      buildTools: (...args: unknown[]) => {
+        (args[8] as (u: () => Promise<void>) => void)(async () => {
+          throw new Error('db down');
+        });
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        throw new Error('anthropic timeout');
+      },
+    });
+    const err = await channelCoachRuntime(p)
+      .respond(turn(), [])
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/anthropic timeout/);
   });
 
   it('surfaces nothing when a turn fails before it drafted anything', async () => {
