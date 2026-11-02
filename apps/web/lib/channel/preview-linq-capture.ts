@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, isNotNull, like, notExists, sql } from 'drizzle-orm';
+import {
+  SANDBOX_PAYMENT_CHAT_ID,
+  isSandboxPaymentBody,
+  sandboxCheckoutUrl,
+} from '~/lib/channel/linq/app-clip-sandbox';
 import { linqApiKey, linqFromE164, linqWebhookSecret } from '~/lib/channel/linq/config';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone';
@@ -61,7 +66,8 @@ export type CapturedLinqKind =
   | 'location_request'
   | 'roster'
   | 'voice_memo'
-  | 'capability_check';
+  | 'capability_check'
+  | 'payment_request';
 
 export type CapturedLinqCall = {
   chatId: string;
@@ -143,6 +149,35 @@ export async function captureLinqCall(
   // VIL-476 · a capability check names one handle, not a chat. Only a fake handle is
   // answered (always `available`, so the iMessage path is the one proven); the call is
   // recorded under a fixed fake chat id so the capture table stays chat-keyed.
+  // VIL-481 · a sandbox payment request has no chat. Answered only when the body
+  // is livemode false with a sandbox price. A live-shaped body is refused, and
+  // the checkout host cannot resolve, so the captured call cannot charge anyone.
+  if (method === 'POST' && path === '/payment_requests') {
+    if (!isSandboxPaymentBody(body)) throw new PreviewGroupCaptureRefused('unknown_call');
+    const id = `pr_test_${randomUUID()}`;
+    const session = `tok_test_${randomUUID()}`;
+    await sink.record({
+      chatId: SANDBOX_PAYMENT_CHAT_ID,
+      kind: 'payment_request',
+      method,
+      path,
+      body,
+      handles: null,
+      providerMessageId: id,
+    });
+    return {
+      status: 201,
+      payload: {
+        id,
+        status: 'requested',
+        livemode: false,
+        mode: 'subscription',
+        checkout_url: sandboxCheckoutUrl(session),
+        currency: 'cad',
+      },
+    };
+  }
+
   if (method === 'POST' && path === '/capability/check_imessage') {
     const handles = isRecord(body) ? fakeHandles([body.address]) : null;
     if (!handles) throw new PreviewGroupCaptureRefused('not_fake_handle');

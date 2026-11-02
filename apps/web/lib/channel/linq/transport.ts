@@ -9,6 +9,13 @@ import {
   previewGroupCaptureOpen,
 } from '~/lib/channel/preview-linq-capture';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
+import {
+  type AppClipPayTier,
+  SANDBOX_PRICE_IDS,
+  isSandboxCheckoutUrl,
+  isSandboxPaymentBody,
+  sandboxPaymentBlocked,
+} from './app-clip-sandbox';
 import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
 
 /**
@@ -124,7 +131,8 @@ export type LinqOutboundPart =
   | { type: 'text'; value: string; decorations?: readonly LinqTextDecoration[] }
   | { type: 'media'; url: string }
   | { type: 'media'; attachmentId: string }
-  | { type: 'link'; value: string };
+  | { type: 'link'; value: string }
+  | { type: 'app_clip'; value: string };
 
 /** Thread a follow-up under a message the parent already has. `partIndex` is
  * 0-based and optional — Linq defaults it to the first part. */
@@ -317,6 +325,7 @@ function wirePart(part: LinqOutboundPart): Record<string, unknown> {
     };
   }
   if (part.type === 'link') return { type: 'link', value: part.value };
+  if (part.type === 'app_clip') return { type: 'app_clip', value: part.value };
   if ('attachmentId' in part && part.attachmentId) {
     return { type: 'media', attachment_id: part.attachmentId };
   }
@@ -369,6 +378,11 @@ function assertParts(parts: readonly LinqOutboundPart[]): void {
   if (linkCount > 0 && parts.length !== 1) {
     throw new LinqSendError('link_not_alone', 400, true);
   }
+  // An App Clip card is the whole message. Linq rejects it beside anything else.
+  const clipCount = parts.filter((part) => part.type === 'app_clip').length;
+  if (clipCount > 0 && parts.length !== 1) {
+    throw new LinqSendError('app_clip_not_alone', 400, true);
+  }
   for (let i = 1; i < parts.length; i += 1) {
     if (parts[i]?.type === 'text' && parts[i - 1]?.type === 'text') {
       throw new LinqSendError('consecutive_text', 400, true);
@@ -382,6 +396,14 @@ function assertParts(parts: readonly LinqOutboundPart[]): void {
       assertDecorations(part.value, part.decorations);
     }
     if (part.type === 'link' && (part.value.length === 0 || part.value.length > LINK_MAX)) {
+      throw new LinqSendError('invalid_parts', 400, true);
+    }
+    if (
+      part.type === 'app_clip' &&
+      (part.value.length === 0 ||
+        part.value.length > LINK_MAX ||
+        !part.value.startsWith('https://'))
+    ) {
       throw new LinqSendError('invalid_parts', 400, true);
     }
   }
@@ -473,6 +495,57 @@ export async function sendLinqExperience(input: {
   const providerMessageId = readLinqMessageId(result.payload);
   if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
   return { providerMessageId };
+}
+
+/**
+ * VIL-481 · Create a sandbox subscription payment request. Never a live charge:
+ * refused outside Preview, refused when a Linq key or a non-test Stripe key is
+ * set, and refused unless the partner (or the Preview capture door) answers
+ * `livemode: false` with a sandbox checkout URL. The description is the model's
+ * words; this function does not write one.
+ */
+export async function createLinqSandboxPaymentRequest(input: {
+  tier: AppClipPayTier;
+  description: string;
+  familyId?: string;
+  fetch?: typeof fetch;
+}): Promise<{ id: string; checkoutUrl: string }> {
+  const blocked = sandboxPaymentBlocked();
+  if (blocked) throw new LinqSendError(blocked, 0, true);
+  const body = {
+    mode: 'subscription' as const,
+    price_id: SANDBOX_PRICE_IDS[input.tier],
+    description: input.description,
+    livemode: false as const,
+    metadata: {
+      hale_payment_mode: 'sandbox' as const,
+      tier: input.tier,
+      ...(input.familyId ? { family_id: input.familyId } : {}),
+    },
+  };
+  if (!isSandboxPaymentBody(body)) throw new LinqSendError('live_payment', 400, true);
+  const result = await linqRequest({
+    method: 'POST',
+    path: '/payment_requests',
+    body,
+    fetch: input.fetch,
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const payload = result.payload;
+  if (!isRecord(payload) || payload.livemode !== false) {
+    throw new LinqSendError('live_payment', result.status, true);
+  }
+  const id = payload.id;
+  const checkout = payload.checkout_url;
+  if (typeof id !== 'string' || !id.startsWith('pr_test_')) {
+    throw new LinqSendError('live_payment', result.status, true);
+  }
+  if (typeof checkout !== 'string' || !isSandboxCheckoutUrl(checkout)) {
+    throw new LinqSendError('live_payment', result.status, true);
+  }
+  return { id, checkoutUrl: checkout };
 }
 
 /**

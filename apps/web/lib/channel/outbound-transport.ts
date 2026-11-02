@@ -259,9 +259,9 @@ function defaultTextSender<R>(
 /*
  * Chat-addressed sends. Every Linq call that puts something in front of a parent
  * (a chat message, parts, a reaction, a new chat, a roster or name change, typing,
- * read receipts, a contact card, a poll, an effect, a location request) is made
- * through one of these, never by importing linq/transport directly
- * (one-door.test.ts enforces it).
+ * read receipts, a contact card, a poll, an effect, a location request, a sandbox
+ * payment request) is made through one of these, never by importing linq/transport
+ * directly (one-door.test.ts enforces it).
  *
  * Capture flag off: each one is exactly the linq/transport call, same arguments,
  * same result, same throw. Capture flag on without group capture: the call is
@@ -607,4 +607,18 @@ export async function checkLinqIMessageCapability(
 ): ReturnType<typeof linq.checkLinqIMessageCapability> {
   refuseCaptureWithoutGroups();
   return linq.checkLinqIMessageCapability(input);
+}
+
+/**
+ * VIL-481 · a sandbox Apple Pay request. Capture off: exactly the linq/transport
+ * call, which still refuses outside Preview and refuses a Linq key or a live
+ * Stripe key. Capture on: only the group-capture door records a payment request
+ * (and mints the sandbox checkout URL), so without PREVIEW_CAPTURE_GROUPS this
+ * refuses before any fetch.
+ */
+export async function createLinqSandboxPaymentRequest(
+  input: In<typeof linq.createLinqSandboxPaymentRequest>,
+): ReturnType<typeof linq.createLinqSandboxPaymentRequest> {
+  refuseCaptureWithoutGroups();
+  return linq.createLinqSandboxPaymentRequest(input);
 }

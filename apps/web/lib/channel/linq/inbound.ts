@@ -13,6 +13,7 @@ import {
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { loadOpenSession } from '~/lib/channel/intake/session';
+import { fallbackAppClipPayOn4005 } from '~/lib/channel/linq/app-clip-pay';
 import { markLinqChatRead, outboundLineFrom } from '~/lib/channel/outbound-transport';
 import {
   lineStatusKnown,
@@ -288,6 +289,27 @@ export async function handleLinqInboundRequest(
         { event: receipt.event, providerMessageId: receipt.messageId },
         'linq receipt: no ledger row for this provider id',
       );
+    }
+    // VIL-481 · an App Clip card that the device cannot show falls back to the
+    // same sandbox checkout as a link. Any other failure sends nothing extra.
+    if (receipt.errorCode === '4005' && apply === 'updated') {
+      try {
+        const fallback = await fallbackAppClipPayOn4005(deps.database, receipt.messageId);
+        if (!(fallback.status === 'not_sent' && fallback.reason === 'not_app_clip')) {
+          deps.log.info(
+            {
+              status: fallback.status,
+              ...(fallback.status === 'not_sent' ? { reason: fallback.reason } : {}),
+            },
+            'linq app clip pay: 4005',
+          );
+        }
+      } catch (err) {
+        deps.log.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'linq app clip pay: 4005 fallback failed',
+        );
+      }
     }
     await deps.countOutcome('receipt');
     return json({ outcome: 'receipt', apply });

@@ -164,6 +164,15 @@ export function linqExperiencesEnabled(): boolean {
 }
 
 /**
+ * VIL-481 — Apple Pay App Clip cards for Plus / Family. Exactly `true`, and only
+ * on a Vercel Preview deploy. Unset, empty, `on`, `false`, and every production
+ * deploy stay dark: dark never creates a payment request and never sends a card.
+ */
+export function linqAppClipPayEnabled(): boolean {
+  return process.env.VERCEL_ENV === 'preview' && trimmed('LINQ_APP_CLIP_PAY_ENABLED') === 'true';
+}
+
+/**
  * VIL-477 — Hale may leave a group chat when the family explicitly asks. Exactly
  * `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off: off,
  * Hale never calls Linq's leave endpoint.

@@ -422,6 +422,26 @@ describe('Linq human-feel helpers', () => {
         fetch: vi.fn(),
       }),
     ).rejects.toMatchObject({ code: 'link_not_alone', permanent: true });
+
+    const clip = jsonFetch(201, { message: { id: 'msg-clip' } });
+    await sendLinqParts({
+      chatId: CHAT,
+      parts: [{ type: 'app_clip', value: 'https://example.com/pay' }],
+      fetch: clip,
+    });
+    expect(JSON.parse(String(clip.mock.calls[0]?.[1]?.body))).toEqual({
+      message: { parts: [{ type: 'app_clip', value: 'https://example.com/pay' }] },
+    });
+    await expect(
+      sendLinqParts({
+        chatId: CHAT,
+        parts: [
+          { type: 'app_clip', value: 'https://example.com/pay' },
+          { type: 'text', value: 'pay here' },
+        ],
+        fetch: vi.fn(),
+      }),
+    ).rejects.toMatchObject({ code: 'app_clip_not_alone', permanent: true });
   });
 
   it('VIL-474: sends text decorations on the wire and plain text without them', async () => {
