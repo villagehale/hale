@@ -1,5 +1,6 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
+import type { CalendarSavePlace } from '~/lib/channel/calendar-save';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -37,6 +38,13 @@ export interface OfferReceiptFacts {
   /** The instant, already rendered the same way the offer named it. */
   when: string;
   parentReply: string;
+  /** Whether this parent's Google calendar is connected. Not a destination. */
+  googleCalendarConnected: boolean;
+  /**
+   * Where the entry went, or null when nothing was written. The model describes
+   * this; code does not turn it into a sentence.
+   */
+  placedOn: CalendarSavePlace | null;
 }
 
 export interface OfferReceiptWriter {
@@ -58,6 +66,8 @@ export function offerReceiptUserMessage(facts: OfferReceiptFacts): string {
     title: facts.title,
     when: facts.when,
     parentReply: facts.parentReply.slice(0, 1600),
+    googleCalendarConnected: facts.googleCalendarConnected,
+    placedOn: facts.placedOn,
   });
 }
 

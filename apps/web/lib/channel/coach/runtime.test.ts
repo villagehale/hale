@@ -105,6 +105,56 @@ describe('channelCoachRuntime', () => {
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
   });
 
+  it('sends nothing when the only thing this turn did was reconfirm a save', async () => {
+    const p = ports({
+      runAgent: answering('Add the carpool for Saturday at 8?'),
+      buildTools: (
+        _turn,
+        _onDraft,
+        _onOffer,
+        _onShare,
+        _onPromise,
+        _onWatch,
+        _offered,
+        _notice,
+        onDuplicate,
+      ) => {
+        onDuplicate?.();
+        return [];
+      },
+    });
+
+    const { reply } = await channelCoachRuntime(p).respond(turn('yes, saturday'), []);
+
+    expect(reply).toBe('');
+  });
+
+  it('still sends when this turn drafted a new save beside a duplicate confirmation', async () => {
+    const line = 'Add piano Thursday at 4?';
+    const p = ports({
+      runAgent: answering(line),
+      buildTools: (
+        _turn,
+        onDraft,
+        _onOffer,
+        _onShare,
+        _onPromise,
+        _onWatch,
+        _offered,
+        _notice,
+        onDuplicate,
+      ) => {
+        onDraft('action-new');
+        onDuplicate?.();
+        return [];
+      },
+    });
+
+    const { reply } = await channelCoachRuntime(p).respond(turn('add piano too'), []);
+
+    expect(reply).toBe(line);
+  });
+
   /**
    * The turn is grounded on the thread rather than on the job: C1 has already appended
    * the parent's message, so the runtime reads the conversation and never re-states the

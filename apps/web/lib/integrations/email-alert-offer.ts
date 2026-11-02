@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import { calendarInstantsClose, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
+import { calendarSavePlace, claimSaveConfirmation } from '~/lib/channel/calendar-save';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -278,6 +279,10 @@ export async function handleEmailAlertOfferReply(
     title: offer.title,
     when: when(offer.startsAt, timeZone, input.now),
     parentReply: input.parentReply,
+    googleCalendarConnected: await googleCalendarConnected(database, input.familyId),
+    // Nothing is written on a decline. An add on this path lands on Hale's family
+    // calendar; this handler does not deliver an ICS.
+    placedOn: null,
   };
 
   if (input.polarity === 'no') {
@@ -297,6 +302,7 @@ export async function handleEmailAlertOfferReply(
   }
 
   await placeOfferedEvent(database, offer, input);
+  facts.placedOn = calendarSavePlace({ icsDelivered: false });
   // The coach also drafted this add. The parent's YES just placed it, so the draft
   // must leave the queue or the next YES is not answerable and the coach drafts it again.
   await supersedeUnapprovedCalendarAdds(database, {
@@ -612,6 +618,17 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
   return parentTimeZoneForOffer(database, parentUserId);
 }
 
+/** An active gcal row is a connection. Anything else, including no row, is not. */
+async function googleCalendarConnected(database: Database, familyId: string): Promise<boolean> {
+  const rows = await database
+    .select({ status: schema.integrations.status })
+    .from(schema.integrations)
+    .where(
+      and(eq(schema.integrations.familyId, familyId), eq(schema.integrations.provider, 'gcal')),
+    );
+  return rows.some((row) => row.status === 'active');
+}
+
 /**
  * The occasion is already on the week the household shares, or on this parent's
  * kid-related Google block. A mirror row (`google_event_id` set) is one parent's
@@ -657,6 +674,7 @@ export type CoachCalendarOfferOutcome =
   | 'recorded'
   | 'event_started'
   | 'already_held'
+  | 'already_confirming'
   | 'unreadable';
 
 /**
@@ -691,6 +709,18 @@ export async function recordCoachCalendarOffer(
     })
   ) {
     return 'already_held';
+  }
+
+  // One confirmation per save. An open offer for this title and a close clock is
+  // that confirmation: do not expire it and do not open a second one.
+  const open = await loadOpenEmailAlertOffers(database, input);
+  if (
+    claimSaveConfirmation(
+      open.map((row) => ({ title: row.title, startsAt: row.startsAt.toISOString() })),
+      { title, startsAt: input.startsAt.toISOString() },
+    ) === 'duplicate'
+  ) {
+    return 'already_confirming';
   }
 
   await database

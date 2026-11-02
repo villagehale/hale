@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { calendarInstantsEqual, calendarTitlesEqual } from '~/lib/channel/calendar-ask';
+import { claimSaveConfirmation } from '~/lib/channel/calendar-save';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
 
@@ -76,6 +77,17 @@ export interface ChannelDraftPort {
     title: string;
     startsAt: string;
   }): Promise<string | null>;
+  /**
+   * An open confirmation already stands for this save (title + close clock).
+   * Absent on a port that does not look — the tool then drafts.
+   */
+  confirmingSave?(input: {
+    familyId: string;
+    parentUserId: string;
+    title: string;
+    startsAt: string;
+    now: Date;
+  }): Promise<boolean>;
 }
 
 export function productionChannelDraftPort(
@@ -86,6 +98,7 @@ export function productionChannelDraftPort(
   return {
     draft: (input) => mintChannelCalendarDraft(input, database, client, now),
     pendingIdentical: (input) => findPendingIdenticalCalendarAdd(database, input),
+    confirmingSave: (input) => findOpenSaveConfirmation(database, input),
   };
 }
 
@@ -115,6 +128,40 @@ export async function findPendingIdenticalCalendarAdd(
     );
   });
   return hit?.id ?? null;
+}
+
+/** True when an open offer is already the confirmation for this save. */
+export async function findOpenSaveConfirmation(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    title: string;
+    startsAt: string;
+    now: Date;
+  },
+): Promise<boolean> {
+  const rows = await database
+    .select({
+      title: schema.emailAlertOffers.title,
+      startsAt: schema.emailAlertOffers.startsAt,
+    })
+    .from(schema.emailAlertOffers)
+    .where(
+      and(
+        eq(schema.emailAlertOffers.familyId, input.familyId),
+        eq(schema.emailAlertOffers.parentUserId, input.parentUserId),
+        isNull(schema.emailAlertOffers.resolvedAt),
+        gt(schema.emailAlertOffers.expiresAt, input.now),
+        gt(schema.emailAlertOffers.startsAt, input.now),
+      ),
+    );
+  return (
+    claimSaveConfirmation(
+      rows.map((row) => ({ title: row.title, startsAt: row.startsAt.toISOString() })),
+      { title: input.title, startsAt: input.startsAt },
+    ) === 'duplicate'
+  );
 }
 
 export async function mintChannelCalendarDraft(

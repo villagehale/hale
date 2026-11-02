@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { toCoachOffer } from './calendar-offer-read';
-import { receiptLineOk } from './offer-receipt';
+import { createOfferReceiptWriter, offerReceiptUserMessage, receiptLineOk } from './offer-receipt';
 
 describe('toCoachOffer', () => {
   it('keeps a past instant for the recorder to refuse', () => {
@@ -39,6 +39,8 @@ describe('receiptLineOk', () => {
     title: 'Gymnastics',
     when: 'Sunday, Oct 4 at 9:00 a.m.',
     parentReply: '好的',
+    googleCalendarConnected: false,
+    placedOn: 'hale_family_calendar' as const,
   };
 
   it('accepts a line that carries both facts', () => {
@@ -49,5 +51,40 @@ describe('receiptLineOk', () => {
 
   it('rejects a line that drops the rendered instant', () => {
     expect(receiptLineOk('Gymnastics is on your week.', facts)).toBe(false);
+  });
+});
+
+describe('offer receipt facts', () => {
+  const facts = {
+    happened: 'added' as const,
+    title: 'Gymnastics',
+    when: 'Sunday, Oct 4 at 9:00 a.m.',
+    parentReply: 'yes',
+    googleCalendarConnected: false,
+    placedOn: 'hale_family_calendar' as const,
+  };
+
+  it('hands the model the connection and the place, and no sentence of its own', () => {
+    const message = JSON.parse(offerReceiptUserMessage(facts)) as {
+      googleCalendarConnected: boolean;
+      placedOn: string;
+    };
+    expect(message.googleCalendarConnected).toBe(false);
+    expect(message.placedOn).toBe('hale_family_calendar');
+    const ics = JSON.parse(offerReceiptUserMessage({ ...facts, placedOn: 'ics' })) as {
+      placedOn: string;
+      googleCalendarConnected: boolean;
+    };
+    expect(ics.placedOn).toBe('ics');
+    expect(ics.googleCalendarConnected).toBe(false);
+  });
+
+  it('sends nothing when the model cannot be reached', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const writer = createOfferReceiptWriter(() => {
+      throw new Error('down');
+    });
+    await expect(writer.write(facts)).resolves.toBeNull();
+    vi.unstubAllEnvs();
   });
 });
