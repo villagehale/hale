@@ -24,7 +24,7 @@ export const GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL = 'group-plan-rsvp-calendar-vo
 
 const PARENT_ROLES = ['primary_parent', 'co_parent'] as const;
 
-export type CalendarConsentDecision = 'ok' | 'decline' | 'not_this';
+export type CalendarConsentDecision = 'ok' | 'decline' | 'reopen' | 'not_this';
 
 export interface CalendarAskFacts {
   title: string;
@@ -38,6 +38,8 @@ export interface CalendarConsentReadInput {
   text: string;
   tapback: LinqTapback | null;
   senderName: string | null;
+  /** `asked` is an open OK. `declined` is closed unless they bring it up again. */
+  consent: 'asked' | 'declined';
   ask: CalendarAskFacts;
 }
 
@@ -51,7 +53,7 @@ export interface CalendarConsentReader {
 }
 
 const consentSchema = z.object({
-  decision: z.enum(['ok', 'decline', 'not_this']),
+  decision: z.enum(['ok', 'decline', 'reopen', 'not_this']),
   confidence: z.enum(['high', 'low']),
 });
 
@@ -59,7 +61,7 @@ export const CALENDAR_CONSENT_TOOL_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    decision: { type: 'string', enum: ['ok', 'decline', 'not_this'] },
+    decision: { type: 'string', enum: ['ok', 'decline', 'reopen', 'not_this'] },
     confidence: { type: 'string', enum: ['high', 'low'] },
   },
   required: ['decision', 'confidence'],
@@ -73,6 +75,7 @@ export function calendarConsentUserMessage(input: CalendarConsentReadInput): str
     text: input.text,
     tapback: input.tapback,
     senderName: input.senderName,
+    consent: input.consent,
     ask: {
       title: input.ask.title,
       startsAt: input.ask.startsAt,
@@ -131,7 +134,24 @@ export function sharedCalendarConsentReader(): CalendarConsentReader {
   return sharedReader;
 }
 
-export type GroupPlanCalendarVoiceKind = 'calendar_ask' | 'calendar_written';
+export type GroupPlanCalendarVoiceKind = 'calendar_ask' | 'calendar_written' | 'calendar_removed';
+
+/** A private line to one parent. There is no group chat id on this send. */
+export type CalendarPrivateKind = GroupPlanCalendarVoiceKind;
+
+export interface CalendarPrivateLine {
+  planId: string;
+  familyId: string;
+  userId: string | null;
+  text: string;
+  kind: CalendarPrivateKind;
+}
+
+export interface CalendarPrivateSender {
+  send(
+    line: CalendarPrivateLine,
+  ): Promise<{ status: 'sent' } | { status: 'skipped'; reason: 'not_sent' | 'no_parent' }>;
+}
 
 export interface GroupPlanCalendarLineInput {
   skill: typeof GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL;
@@ -263,6 +283,16 @@ export interface GroupPlanCalendarWriter {
     | { status: 'unchanged'; familyEventId: string }
     | { status: 'failed' }
   >;
+  /**
+   * Soft-deletes the copy Hale placed for this plan and family. A row the
+   * parent added themselves has no group-plan key and is left alone.
+   */
+  remove(input: {
+    planId: string;
+    familyId: string;
+  }): Promise<
+    { status: 'removed'; familyEventId: string } | { status: 'none' } | { status: 'failed' }
+  >;
 }
 
 /** One family_events copy for this family. The key is (plan, family). */
@@ -291,6 +321,29 @@ export function postgresGroupPlanCalendarWriter(database: Database): GroupPlanCa
         console.error(
           { err: err instanceof Error ? err.name : 'unknown' },
           'group plan calendar: write failed',
+        );
+        return { status: 'failed' };
+      }
+    },
+    async remove(input) {
+      try {
+        const familyEventId = await copies.cancelCopy(
+          {
+            groupPlanId: input.planId,
+            chatId: '',
+            title: '',
+            startsAt: new Date(0),
+            endsAt: null,
+            location: null,
+            cancelled: true,
+          },
+          input.familyId,
+        );
+        return familyEventId ? { status: 'removed', familyEventId } : { status: 'none' };
+      } catch (err) {
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'group plan calendar: remove failed',
         );
         return { status: 'failed' };
       }

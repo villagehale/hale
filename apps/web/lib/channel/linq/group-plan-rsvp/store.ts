@@ -98,6 +98,28 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   claimCalendarAsk(input: ClaimCalendarAskInput): Promise<boolean>;
   /** Drops an unanswered ask so a failed send can be tried again. */
   releaseCalendarAsk(planId: string, familyId: string): Promise<void>;
+  /** Drops a declined or written row so a later yes, or a reopen, can ask again. */
+  deleteCalendarConsent(
+    planId: string,
+    familyId: string,
+    status: CalendarConsentStatus,
+  ): Promise<boolean>;
+  /** Puts a decline back when a reopen ask could not be sent. */
+  recordCalendarDecline(input: {
+    planId: string;
+    familyId: string;
+    memberKey: string;
+    displayName: string;
+    householdLabel: string | null;
+    actorUserId: string | null;
+    now: Date;
+  }): Promise<void>;
+  noteCalendarRemoved(input: {
+    planId: string;
+    familyId: string;
+    familyEventId: string;
+    actorUserId: string | null;
+  }): Promise<void>;
   noteCalendarAsked(input: {
     planId: string;
     familyId: string;
@@ -552,6 +574,61 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             eq(schema.linqGroupPlanCalendarConsents.status, 'asked'),
           ),
         );
+    },
+
+    async deleteCalendarConsent(planId, familyId, status) {
+      const deleted = await database
+        .delete(schema.linqGroupPlanCalendarConsents)
+        .where(
+          and(
+            eq(schema.linqGroupPlanCalendarConsents.planId, planId),
+            eq(schema.linqGroupPlanCalendarConsents.familyId, familyId),
+            eq(schema.linqGroupPlanCalendarConsents.status, status),
+          ),
+        )
+        .returning({ id: schema.linqGroupPlanCalendarConsents.id });
+      return deleted.length > 0;
+    },
+
+    async recordCalendarDecline(input) {
+      await database
+        .insert(schema.linqGroupPlanCalendarConsents)
+        .values({
+          planId: input.planId,
+          familyId: input.familyId,
+          memberKey: input.memberKey,
+          displayName: input.displayName,
+          householdLabel: input.householdLabel,
+          status: 'declined',
+          decidedAt: input.now,
+          createdAt: input.now,
+          updatedAt: input.now,
+        })
+        .onConflictDoNothing({
+          target: [
+            schema.linqGroupPlanCalendarConsents.planId,
+            schema.linqGroupPlanCalendarConsents.familyId,
+          ],
+        });
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.actorUserId ?? 'system',
+        actionTaken: 'linq_group_plan_calendar_declined',
+        targetTable: 'linq_group_plan_calendar_consents',
+        targetId: input.planId,
+        after: { familyId: input.familyId, restored: true },
+      });
+    },
+
+    async noteCalendarRemoved(input) {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.actorUserId ?? 'system',
+        actionTaken: 'linq_group_plan_calendar_removed',
+        targetTable: 'family_events',
+        targetId: input.familyEventId,
+        after: { familyId: input.familyId },
+      });
     },
 
     async noteCalendarAsked(input) {

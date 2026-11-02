@@ -42,7 +42,7 @@ function rsvp(
 }
 
 function consentOf(
-  decision: 'ok' | 'decline' | 'not_this',
+  decision: 'ok' | 'decline' | 'reopen' | 'not_this',
   confidence: 'high' | 'low' = 'high',
 ): CalendarConsentReader & { texts: string[] } {
   const texts: string[] = [];
@@ -55,13 +55,43 @@ function consentOf(
   };
 }
 
-function writerSpy(): GroupPlanCalendarWriter & { familyIds: string[] } {
+function writerSpy(): GroupPlanCalendarWriter & { familyIds: string[]; removed: string[] } {
   const familyIds: string[] = [];
+  const removed: string[] = [];
   return {
     familyIds,
+    removed,
     async write(input) {
       familyIds.push(input.familyId);
       return { status: 'written', familyEventId: `evt-${input.familyId}` };
+    },
+    async remove(input) {
+      removed.push(input.familyId);
+      return { status: 'removed', familyEventId: `evt-${input.familyId}` };
+    },
+  };
+}
+
+function privateSpy() {
+  const lines: {
+    familyId: string;
+    userId: string | null;
+    kind: string;
+    text: string;
+    planId: string;
+  }[] = [];
+  return {
+    lines,
+    async send(line: {
+      planId: string;
+      familyId: string;
+      userId: string | null;
+      text: string;
+      kind: string;
+    }) {
+      expect(line).not.toHaveProperty('chatId');
+      lines.push(line);
+      return { status: 'sent' as const };
     },
   };
 }
@@ -138,6 +168,7 @@ function calendarDeps(input: {
   consent?: CalendarConsentReader;
   writer?: GroupPlanCalendarWriter;
   homes?: ReturnType<typeof households>;
+  privateLines?: ReturnType<typeof privateSpy>;
   composer?: ReturnType<typeof fakeGroupPlanRsvpComposer>;
   enabled?: boolean;
 }) {
@@ -148,6 +179,7 @@ function calendarDeps(input: {
     calendar: input.writer,
     households: input.homes ?? households({ 'u-priya': 'fam-priya', 'u-sam': 'fam-sam' }),
     composer: input.composer ?? fakeGroupPlanRsvpComposer(),
+    privateSend: input.privateLines ?? privateSpy(),
     send: async ({ text, kind }: { text: string; kind?: string }) => {
       input.texts.push({ text, kind });
       return { providerMessageId: `msg-${input.texts.length}` };
@@ -192,6 +224,7 @@ describe('group plan calendar consent', () => {
     const { store, texts } = await picnic();
     const writer = writerSpy();
     const consent = consentOf('ok');
+    const priv = privateSpy();
     const asked = await takeGroupPlanRsvpTurn(
       {
         chatId: CHAT,
@@ -209,6 +242,7 @@ describe('group plan calendar consent', () => {
         reader: readerOf(rsvp('yes', { householdLabel: 'the Patels', headcount: 3 })),
         writer,
         consent,
+        privateLines: priv,
       }),
     );
     expect(asked).toMatchObject({
@@ -216,7 +250,10 @@ describe('group plan calendar consent', () => {
       calendar: { status: 'asked' },
     });
     expect(writer.familyIds).toEqual([]);
-    expect(texts.map((line) => line.kind)).toEqual(['calendar_ask', 'plan']);
+    expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
+    expect(priv.lines[0]?.familyId).toBe('fam-priya');
+    expect(texts.map((line) => line.kind)).toEqual(['plan']);
+    expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
     expect(consent.texts).toEqual([]);
 
     const written = await takeGroupPlanRsvpTurn(
@@ -236,6 +273,7 @@ describe('group plan calendar consent', () => {
         reader: readerOf(rsvp('yes')),
         writer,
         consent,
+        privateLines: priv,
       }),
     );
     expect(written).toMatchObject({
@@ -245,7 +283,9 @@ describe('group plan calendar consent', () => {
       notice: 'sent',
     });
     expect(writer.familyIds).toEqual(['fam-priya']);
-    expect(texts.map((line) => line.kind)).toEqual(['calendar_ask', 'plan', 'calendar_written']);
+    expect(texts.map((line) => line.kind)).toEqual(['plan']);
+    expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask', 'calendar_written']);
+    expect(priv.lines.every((line) => line.familyId === 'fam-priya')).toBe(true);
     expect(consent.texts).toEqual(['please do, the kids would love having it there']);
     const plan = await store.loadLivePlan(CHAT);
     const row = await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya');
@@ -336,7 +376,6 @@ describe('group plan calendar consent', () => {
       calendar: { status: 'declined' },
     });
     expect(writer.familyIds).toEqual([]);
-    const asks = texts.filter((line) => line.kind === 'calendar_ask').length;
     const again = await takeGroupPlanRsvpTurn(
       {
         chatId: CHAT,
@@ -358,7 +397,7 @@ describe('group plan calendar consent', () => {
     );
     expect(again).toMatchObject({ handled: true, outcome: 'group_plan_recorded' });
     expect(again.handled && again.calendar).toBeUndefined();
-    expect(texts.filter((line) => line.kind === 'calendar_ask')).toHaveLength(asks);
+    expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
     expect(writer.familyIds).toEqual([]);
   });
 
@@ -652,6 +691,237 @@ describe('group plan calendar consent', () => {
     expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya')).toBeNull();
     expect(writer.familyIds).toEqual([]);
   });
+
+  it('reopens a decline only when the reader says they brought the calendar up again', async () => {
+    const { store, texts } = await picnic();
+    const writer = writerSpy();
+    const priv = privateSpy();
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        privateLines: priv,
+        consent: consentOf('not_this'),
+      }),
+    );
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'leave it off',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        privateLines: priv,
+        consent: consentOf('decline'),
+      }),
+    );
+    const plan = await store.loadLivePlan(CHAT);
+    expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('declined');
+
+    const reopened = await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'actually, could it go on our calendar after all',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 120_000),
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        privateLines: priv,
+        consent: consentOf('reopen'),
+      }),
+    );
+    expect(reopened).toMatchObject({
+      handled: true,
+      outcome: 'group_plan_calendar_asked',
+      calendar: { status: 'asked' },
+    });
+    expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask', 'calendar_ask']);
+    expect(priv.lines.every((line) => line.familyId === 'fam-priya')).toBe(true);
+    expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
+    expect(writer.familyIds).toEqual([]);
+  });
+
+  it('a later no removes only the copy Hale wrote and confirms in private', async () => {
+    const { store, texts } = await picnic();
+    const writer = writerSpy();
+    const priv = privateSpy();
+    const deps = {
+      store,
+      texts,
+      writer,
+      privateLines: priv,
+      consent: consentOf('ok'),
+    };
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({ ...deps, reader: readerOf(rsvp('yes')) }),
+    );
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'put it on ours',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({ ...deps, reader: readerOf(rsvp('yes')) }),
+    );
+    const removed = await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'we cannot make it',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 120_000),
+      },
+      calendarDeps({
+        ...deps,
+        reader: readerOf({
+          intent: 'edit',
+          planTitle: null,
+          startsAt: null,
+          location: null,
+          deadline: null,
+          response: 'no',
+          headcount: 1,
+          householdLabel: null,
+          coversNames: [],
+          confidence: 'high',
+        }),
+        consent: consentOf('not_this'),
+      }),
+    );
+    expect(removed).toMatchObject({
+      calendar: { status: 'removed', familyId: 'fam-priya', familyEventId: 'evt-fam-priya' },
+    });
+    expect(writer.removed).toEqual(['fam-priya']);
+    expect(writer.familyIds).toEqual(['fam-priya']);
+    expect(priv.lines.map((line) => line.kind)).toEqual([
+      'calendar_ask',
+      'calendar_written',
+      'calendar_removed',
+    ]);
+    expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
+    const plan = await store.loadLivePlan(CHAT);
+    expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya')).toBeNull();
+  });
+});
+
+describe('a removal confirmation the model cannot write', () => {
+  it('still removes the copy and sends nothing', async () => {
+    const { store, texts } = await picnic();
+    const writer = writerSpy();
+    const priv = privateSpy();
+    const shared = {
+      store,
+      texts,
+      writer,
+      privateLines: priv,
+    };
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('yes')), consent: consentOf('not_this') }),
+    );
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'add it',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({ ...shared, reader: readerOf(rsvp('yes')), consent: consentOf('ok') }),
+    );
+    const before = priv.lines.length;
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'out',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 120_000),
+      },
+      calendarDeps({
+        ...shared,
+        composer: fakeGroupPlanRsvpComposer({ fail: true }),
+        reader: readerOf({
+          intent: 'edit',
+          planTitle: null,
+          startsAt: null,
+          location: null,
+          deadline: null,
+          response: 'no',
+          headcount: 1,
+          householdLabel: null,
+          coversNames: [],
+          confidence: 'high',
+        }),
+        consent: consentOf('not_this'),
+      }),
+    );
+    expect(writer.removed).toEqual(['fam-priya']);
+    expect(priv.lines).toHaveLength(before);
+    expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
+  });
 });
 
 describe('calendarConsentUserMessage', () => {
@@ -660,6 +930,7 @@ describe('calendarConsentUserMessage', () => {
       text: 'sounds right for us',
       tapback: null,
       senderName: 'Priya',
+      consent: 'asked',
       ask: {
         title: 'Saturday picnic',
         startsAt: '2026-11-01T16:00:00.000Z',

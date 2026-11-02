@@ -1,8 +1,9 @@
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { loadIcsFeed, mintIcsToken } from '~/lib/loop/ics-feed';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { postgresGroupPlanCalendarWriter, postgresGroupPlanHouseholds } from './calendar';
 import { createPostgresGroupPlanRsvpStore } from './store';
@@ -118,11 +119,22 @@ describe('postgres household calendar copy', () => {
       now: NOW,
     });
     const writer = postgresGroupPlanCalendarWriter(db.database);
-    const send = async () => ({ providerMessageId: 'm' });
+    const groupCalls: { chatId?: string }[] = [];
+    const privateCalls: object[] = [];
     const base = {
       store,
       composer: fakeGroupPlanRsvpComposer(),
-      send,
+      send: async (line: { chatId: string }) => {
+        groupCalls.push(line);
+        return { providerMessageId: 'm' };
+      },
+      privateSend: {
+        async send(line: object) {
+          expect(line).not.toHaveProperty('chatId');
+          privateCalls.push(line);
+          return { status: 'sent' as const };
+        },
+      },
       enabled: () => true,
       calendarEnabled: () => true,
       households: homes,
@@ -215,5 +227,83 @@ describe('postgres household calendar copy', () => {
         'linq_group_plan_calendar_written',
       ]),
     );
+    expect(groupCalls).toEqual([]);
+    expect(privateCalls).toHaveLength(2);
+    expect(privateCalls.every((line) => !('chatId' in line))).toBe(true);
+  });
+
+  it('writes one family_events row and that family ICS feed, and nothing else', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    const sam = await parent({ name: 'Sam', phone: SAM });
+    await db.database.insert(schema.familyEvents).values({
+      familyId: priya.familyId,
+      title: 'Priya added this',
+      startsAt: new Date('2026-11-02T15:00:00.000Z'),
+      source: 'parent',
+    });
+    const priyaFeed = await mintIcsToken(db.database, priya.familyId, 'feed_subscription');
+    const samFeed = await mintIcsToken(db.database, sam.familyId, 'feed_subscription');
+    const before = await tableCounts();
+    const writer = postgresGroupPlanCalendarWriter(db.database);
+    const written = await writer.write({
+      planId: '11111111-1111-4111-8111-111111111111',
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+    });
+    expect(written.status).toBe('written');
+    const after = await tableCounts();
+    const changed = [...after.entries()].filter(([table, count]) => count !== before.get(table));
+    expect(changed).toEqual([['family_events', (before.get('family_events') ?? 0) + 1]]);
+
+    const rows = await db.database.select().from(schema.familyEvents);
+    const placed = rows.filter((row) => row.title === 'Saturday picnic');
+    expect(placed).toHaveLength(1);
+    expect(placed[0]?.familyId).toBe(priya.familyId);
+    expect(placed[0]?.source).toBe('placement');
+    expect(placed[0]?.placedGoogleEventId).toBeNull();
+    expect(rows.filter((row) => row.familyId === sam.familyId)).toEqual([]);
+    expect(rows.filter((row) => row.title === 'Priya added this')).toHaveLength(1);
+
+    const priyaIcs = await loadIcsFeed(db.database, priyaFeed.token, NOW);
+    const samIcs = await loadIcsFeed(db.database, samFeed.token, NOW);
+    expect(priyaIcs).toContain('Saturday picnic');
+    expect(priyaIcs).toContain('Priya added this');
+    expect(samIcs ?? '').not.toContain('Saturday picnic');
+
+    const removed = await writer.remove({
+      planId: '11111111-1111-4111-8111-111111111111',
+      familyId: priya.familyId,
+    });
+    expect(removed.status).toBe('removed');
+    const live = await db.database
+      .select({ title: schema.familyEvents.title, deletedAt: schema.familyEvents.deletedAt })
+      .from(schema.familyEvents);
+    expect(live.find((row) => row.title === 'Saturday picnic')?.deletedAt).not.toBeNull();
+    expect(live.find((row) => row.title === 'Priya added this')?.deletedAt).toBeNull();
+    const afterRemoval = await loadIcsFeed(db.database, priyaFeed.token, NOW);
+    expect(afterRemoval).not.toContain('Saturday picnic');
+    expect(afterRemoval).toContain('Priya added this');
+    expect((await loadIcsFeed(db.database, samFeed.token, NOW)) ?? '').not.toContain(
+      'Saturday picnic',
+    );
   });
 });
+
+async function tableCounts(): Promise<Map<string, number>> {
+  const listed = (await db.database.execute(
+    sql`select tablename from pg_tables where schemaname = 'public'`,
+  )) as unknown as { rows: { tablename: string }[] };
+  const counts = new Map<string, number>();
+  for (const row of listed.rows) {
+    const name = row.tablename;
+    if (!/^[a-z0-9_]+$/.test(name)) continue;
+    const counted = (await db.database.execute(
+      sql.raw(`select count(*)::int as n from "${name}"`),
+    )) as unknown as { rows: { n: number }[] };
+    counts.set(name, Number(counted.rows[0]?.n ?? 0));
+  }
+  return counts;
+}

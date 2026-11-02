@@ -1,8 +1,17 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { describe, expect, it } from 'vitest';
 import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
 import { toTrailView } from '~/lib/dashboard/mappers';
-import { AUDIT_VERBS, isInternalTrailVerb, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
+import {
+  AUDIT_VERBS,
+  isInternalTrailVerb,
+  targetLink,
+  targetNoun,
+  trailVerb,
+  verbTone,
+} from './verbs.js';
 
 /** No trail row may ever render a raw table name, a raw snake_case/dotted action
  * token, or a bare UUID (defect: /trail leaked `families · family_created · <uuid>`).
@@ -214,5 +223,47 @@ describe('targetLink — a UUID becomes a deep link, never a bare id', () => {
     expect(targetLink('events', 'evt-1')).toBeNull();
     expect(targetLink('families', 'fam-1')).toBeNull();
     expect(targetLink(null, null)).toBeNull();
+  });
+});
+
+describe('trail sentences stay on the receipts trail', () => {
+  const ROOT = join(import.meta.dirname, '../..');
+  const CALENDAR_VERBS = [
+    'linq_group_plan_calendar_asked',
+    'linq_group_plan_calendar_declined',
+    'linq_group_plan_calendar_written',
+    'linq_group_plan_calendar_removed',
+  ] as const;
+
+  function filesUnder(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry === 'dist') continue;
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) filesUnder(path, out);
+      else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry)) out.push(path);
+    }
+    return out;
+  }
+
+  it('is rendered by the dashboard, not by a channel or calendar send', () => {
+    const importers = filesUnder(join(ROOT, 'lib'))
+      .filter((path) => /from ['"][^'"]*trail\/verbs['"]/.test(readFileSync(path, 'utf8')))
+      .map((path) => path.slice(ROOT.length + 1));
+    expect(importers.sort()).toEqual(['lib/dashboard/mappers.ts', 'lib/dashboard/trail-query.ts']);
+  });
+
+  it('does not copy a calendar trail sentence into a parent message', () => {
+    const sentences = CALENDAR_VERBS.map((verb) => trailVerb(verb).sentence);
+    const hits: string[] = [];
+    for (const path of [
+      ...filesUnder(join(ROOT, 'lib/channel')),
+      ...filesUnder(join(ROOT, 'lib/loop')),
+    ]) {
+      const text = readFileSync(path, 'utf8');
+      for (const sentence of sentences) {
+        if (text.includes(sentence)) hits.push(`${path.slice(ROOT.length + 1)}: ${sentence}`);
+      }
+    }
+    expect(hits).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import {
 import type { LinqTapback } from '../transport';
 import type {
   CalendarConsentReader,
+  CalendarPrivateSender,
   GroupPlanCalendarWriter,
   GroupPlanHouseholdResolver,
 } from './calendar';
@@ -67,6 +68,7 @@ export type GroupPlanRsvpTurnOutcome =
         | 'group_poll_line_unsent'
         | 'group_plan_calendar_written'
         | 'group_plan_calendar_declined'
+        | 'group_plan_calendar_asked'
         | 'group_plan_calendar_unwritten';
       count: 'ignored' | 'intake';
       notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' };
@@ -90,6 +92,7 @@ export function groupPlanRsvpTakesTheTurn(
       outcome.outcome === 'group_poll_line_unsent' ||
       outcome.outcome === 'group_plan_calendar_written' ||
       outcome.outcome === 'group_plan_calendar_declined' ||
+      outcome.outcome === 'group_plan_calendar_asked' ||
       outcome.outcome === 'group_plan_calendar_unwritten')
   );
 }
@@ -113,7 +116,7 @@ export interface GroupPlanRsvpTurnDeps {
   send: (input: {
     chatId: string;
     text: string;
-    kind?: 'plan' | 'poll' | 'calendar_ask' | 'calendar_written';
+    kind?: 'plan' | 'poll';
   }) => Promise<{ providerMessageId: string }>;
   /** Plan RSVPs (LINQ_GROUP_PLAN_RSVP_ENABLED). */
   enabled?: () => boolean;
@@ -122,6 +125,8 @@ export interface GroupPlanRsvpTurnDeps {
   households?: GroupPlanHouseholdResolver;
   calendar?: GroupPlanCalendarWriter;
   consentReader?: CalendarConsentReader;
+  /** 1:1 calendar lines. Never the group chat. */
+  privateSend?: CalendarPrivateSender;
   /** Group polls (LINQ_GROUP_POLLS_ENABLED). */
   pollsEnabled?: () => boolean;
   /** The native poll card. Absent is named on the outcome (`no_card_port`), never silent. */
@@ -183,7 +188,7 @@ export async function takeGroupPlanRsvpTurn(
         calendar: deps.calendar,
         consentReader: deps.consentReader,
         composer: deps.composer,
-        send: deps.send,
+        privateSend: deps.privateSend,
       },
     );
     if (answered.consumed) {
@@ -193,7 +198,9 @@ export async function takeGroupPlanRsvpTurn(
           ? 'group_plan_calendar_written'
           : answered.kind === 'declined'
             ? 'group_plan_calendar_declined'
-            : 'group_plan_calendar_unwritten';
+            : answered.kind === 'asked'
+              ? 'group_plan_calendar_asked'
+              : 'group_plan_calendar_unwritten';
       return {
         handled: true,
         outcome,
@@ -349,7 +356,7 @@ export async function takeGroupPlanRsvpTurn(
             calendar: deps.calendar,
             consentReader: deps.consentReader,
             composer: deps.composer,
-            send: deps.send,
+            privateSend: deps.privateSend,
           },
         )
       : undefined;

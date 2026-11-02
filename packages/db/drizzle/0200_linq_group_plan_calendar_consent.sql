@@ -4,6 +4,8 @@
 -- Re-runnable: IF NOT EXISTS. Reversible:
 --   DROP TABLE IF EXISTS linq_group_plan_calendar_consents;
 --
+-- Numbered 0200. 0198 and 0199 belong to other branches.
+--
 -- A household that said yes to a tracked plan gets one row per plan. The
 -- calendar copy is written only after that row is `written`, and only for
 -- this family_id. Another household's row is a different key.

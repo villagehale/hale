@@ -348,6 +348,40 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       if (row?.status === 'asked') world.consents.delete(key);
     },
 
+    async deleteCalendarConsent(planId, familyId, status) {
+      const key = consentKey(planId, familyId);
+      const row = world.consents.get(key);
+      if (row?.status !== status) return false;
+      world.consents.delete(key);
+      return true;
+    },
+
+    async recordCalendarDecline(input) {
+      const key = consentKey(input.planId, input.familyId);
+      if (!world.consents.has(key)) {
+        world.consents.set(key, {
+          planId: input.planId,
+          familyId: input.familyId,
+          memberKey: input.memberKey,
+          displayName: input.displayName,
+          householdLabel: input.householdLabel,
+          status: 'declined',
+          familyEventId: null,
+        });
+      }
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_declined',
+        after: { familyId: input.familyId, restored: true },
+      });
+    },
+
+    async noteCalendarRemoved(input) {
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_removed',
+        after: { familyId: input.familyId, familyEventId: input.familyEventId },
+      });
+    },
+
     async noteCalendarAsked(input) {
       world.audits.push({
         actionTaken: 'linq_group_plan_calendar_asked',

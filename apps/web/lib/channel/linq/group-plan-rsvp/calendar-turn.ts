@@ -3,13 +3,15 @@ import type { LinqTapback } from '../transport';
 import {
   type CalendarAskFacts,
   type CalendarConsentReader,
+  type CalendarPrivateKind,
+  type CalendarPrivateSender,
   type GroupPlanCalendarWriter,
   type GroupPlanHouseholdResolver,
   type HouseholdResolution,
   groupPlanCalendarLineInput,
   sharedCalendarConsentReader,
 } from './calendar';
-import type { GroupPlanRecord, GroupPlanRsvpStore } from './store';
+import type { CalendarConsentRow, GroupPlanRecord, GroupPlanRsvpStore } from './store';
 import type { PlanRsvpResponse } from './tally';
 import {
   type GroupPlanRsvpComposer,
@@ -21,11 +23,11 @@ import {
 /**
  * VIL-503 — the calendar half of a group-plan turn.
  *
- * A yes opens one model-written ask for that household. A later message is
- * an OK only when the consent reader says so. The write uses the consent
- * row's family id, never the plan's covering family and never another
- * household. The message text is handed to the reader and is not compared
- * here.
+ * A yes opens one model-written ask, sent 1:1 to that household's parent.
+ * The group hears the RSVP only. A later message is an OK, a no, or a reopen
+ * only when the consent reader says so. The write and the removal use the
+ * consent row's family id. A removal soft-deletes the copy Hale placed and
+ * leaves a row the parent added themselves.
  */
 
 export type CalendarSkipReason =
@@ -38,12 +40,15 @@ export type CalendarSkipReason =
   | 'model_failed'
   | 'unusable'
   | 'not_sent'
-  | 'write_failed';
+  | 'no_parent'
+  | 'write_failed'
+  | 'remove_failed';
 
 export type CalendarEffect =
   | { status: 'asked' }
   | { status: 'written'; familyId: string; familyEventId: string }
   | { status: 'declined' }
+  | { status: 'removed'; familyId: string; familyEventId: string }
   | { status: 'skipped'; reason: CalendarSkipReason };
 
 export interface CalendarTurnPorts {
@@ -52,18 +57,15 @@ export interface CalendarTurnPorts {
   calendar?: GroupPlanCalendarWriter;
   consentReader?: CalendarConsentReader;
   composer?: GroupPlanRsvpComposer;
-  send: (input: {
-    chatId: string;
-    text: string;
-    kind?: 'calendar_ask' | 'calendar_written';
-  }) => Promise<{ providerMessageId: string }>;
+  /** 1:1 to the household parent. This port has no group chat id. */
+  privateSend?: CalendarPrivateSender;
 }
 
 export type PendingCalendarAnswer =
   | { consumed: false }
   | {
       consumed: true;
-      kind: 'written' | 'declined' | 'unwritten';
+      kind: 'written' | 'declined' | 'unwritten' | 'asked';
       effect: CalendarEffect;
       notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' };
     };
@@ -104,9 +106,59 @@ async function resolveHousehold(
   return ports.households.resolve({ chatId, userId });
 }
 
+async function deliverPrivate(
+  ports: CalendarTurnPorts,
+  input: {
+    plan: GroupPlanRecord;
+    familyId: string;
+    userId: string | null;
+    displayName: string;
+    householdLabel: string | null;
+    language: ReplyLanguage;
+    kind: CalendarPrivateKind;
+  },
+): Promise<{ status: 'sent' } | { status: 'skipped'; reason: CalendarSkipReason }> {
+  const spoken = await composeGroupPlanRsvpLine(
+    groupPlanCalendarLineInput({
+      kind: input.kind,
+      language: input.language,
+      facts: askFacts(input.plan, input.displayName, input.householdLabel),
+    }),
+    ports.composer ?? productionGroupPlanRsvpComposer(),
+  );
+  if (spoken.status === 'skipped') return { status: 'skipped', reason: spoken.reason };
+  if (!ports.privateSend) {
+    console.warn({ outcome: 'not_configured' }, 'group plan calendar: no private sender');
+    return { status: 'skipped', reason: 'not_configured' };
+  }
+  const sent = await ports.privateSend.send({
+    planId: input.plan.id,
+    familyId: input.familyId,
+    userId: input.userId,
+    text: spoken.line,
+    kind: input.kind,
+  });
+  if (sent.status === 'skipped') return { status: 'skipped', reason: sent.reason };
+  return { status: 'sent' };
+}
+
+function privateNotice(reason: CalendarSkipReason): {
+  skipped: GroupPlanRsvpVoiceSkip | 'not_sent';
+} {
+  if (
+    reason === 'voice_unavailable' ||
+    reason === 'skill_unavailable' ||
+    reason === 'model_failed' ||
+    reason === 'unusable'
+  ) {
+    return { skipped: reason };
+  }
+  return { skipped: 'not_sent' };
+}
+
 /**
- * When this sender's household has an open ask, the reader decides the message.
- * Anything that is not a high-confidence OK or decline leaves the RSVP door
+ * When this sender's household has an open ask, or a decline they might
+ * reopen, the reader decides the message. Anything else leaves the RSVP door
  * the turn.
  */
 export async function answerPendingCalendarAsk(
@@ -126,18 +178,26 @@ export async function answerPendingCalendarAsk(
   if (!('status' in resolved) || resolved.status !== 'one') return { consumed: false };
   const familyId = resolved.familyId;
   const row = await ports.store.loadCalendarConsent(input.plan.id, familyId);
-  if (!row || row.status !== 'asked') return { consumed: false };
+  if (!row || (row.status !== 'asked' && row.status !== 'declined')) return { consumed: false };
 
   const reader = ports.consentReader ?? sharedCalendarConsentReader();
   const reading = await reader.read({
     text: input.text,
     tapback: input.tapback,
     senderName: input.senderName,
+    consent: row.status,
     ask: askFacts(input.plan, row.displayName, row.householdLabel),
   });
   if (!reading || reading.confidence !== 'high' || reading.decision === 'not_this') {
     return { consumed: false };
   }
+
+  if (row.status === 'declined') {
+    if (reading.decision !== 'reopen') return { consumed: false };
+    return reopenCalendarAsk(input, ports, familyId, row);
+  }
+
+  if (reading.decision === 'reopen') return { consumed: false };
   if (reading.decision === 'decline') {
     await ports.store.markCalendarDeclined({
       planId: input.plan.id,
@@ -187,38 +247,25 @@ export async function answerPendingCalendarAsk(
     now: input.now,
   });
 
-  const spoken = await composeGroupPlanRsvpLine(
-    groupPlanCalendarLineInput({
-      kind: 'calendar_written',
-      language: input.language,
-      facts: askFacts(input.plan, row.displayName, row.householdLabel),
-    }),
-    ports.composer ?? productionGroupPlanRsvpComposer(),
-  );
-  if (spoken.status === 'skipped') {
+  const notice = await deliverPrivate(ports, {
+    plan: input.plan,
+    familyId,
+    userId: input.userId,
+    displayName: row.displayName,
+    householdLabel: row.householdLabel,
+    language: input.language,
+    kind: 'calendar_written',
+  });
+  if (notice.status === 'skipped') {
     console.warn(
-      { outcome: 'group_plan_calendar_notice_unsent', reason: spoken.reason },
+      { outcome: 'group_plan_calendar_notice_unsent', reason: notice.reason },
       'group plan calendar: confirmation not sent',
     );
     return {
       consumed: true,
       kind: 'written',
       effect: { status: 'written', familyId, familyEventId: written.familyEventId },
-      notice: { skipped: spoken.reason },
-    };
-  }
-  try {
-    await ports.send({ chatId: input.chatId, text: spoken.line, kind: 'calendar_written' });
-  } catch (err) {
-    console.error(
-      { err: err instanceof Error ? err.name : 'unknown' },
-      'group plan calendar: confirmation send failed',
-    );
-    return {
-      consumed: true,
-      kind: 'written',
-      effect: { status: 'written', familyId, familyEventId: written.familyEventId },
-      notice: { skipped: 'not_sent' },
+      notice: privateNotice(notice.reason),
     };
   }
   return {
@@ -229,9 +276,70 @@ export async function answerPendingCalendarAsk(
   };
 }
 
+async function reopenCalendarAsk(
+  input: {
+    plan: GroupPlanRecord;
+    userId: string | null;
+    language: ReplyLanguage;
+    now: Date;
+  },
+  ports: CalendarTurnPorts,
+  familyId: string,
+  row: CalendarConsentRow,
+): Promise<PendingCalendarAnswer> {
+  const cleared = await ports.store.deleteCalendarConsent(input.plan.id, familyId, 'declined');
+  if (!cleared) return { consumed: false };
+  const claimed = await ports.store.claimCalendarAsk({
+    planId: input.plan.id,
+    familyId,
+    memberKey: row.memberKey,
+    displayName: row.displayName,
+    householdLabel: row.householdLabel,
+    now: input.now,
+  });
+  if (!claimed) return { consumed: false };
+  const sent = await deliverPrivate(ports, {
+    plan: input.plan,
+    familyId,
+    userId: input.userId,
+    displayName: row.displayName,
+    householdLabel: row.householdLabel,
+    language: input.language,
+    kind: 'calendar_ask',
+  });
+  if (sent.status === 'skipped') {
+    await ports.store.releaseCalendarAsk(input.plan.id, familyId);
+    await ports.store.recordCalendarDecline({
+      planId: input.plan.id,
+      familyId,
+      memberKey: row.memberKey,
+      displayName: row.displayName,
+      householdLabel: row.householdLabel,
+      actorUserId: input.userId,
+      now: input.now,
+    });
+    console.warn(
+      { outcome: 'group_plan_calendar_reopen_unsent', reason: sent.reason },
+      'group plan calendar: reopen ask not sent',
+    );
+    return {
+      consumed: true,
+      kind: 'unwritten',
+      effect: { status: 'skipped', reason: sent.reason },
+    };
+  }
+  await ports.store.noteCalendarAsked({
+    planId: input.plan.id,
+    familyId,
+    actorUserId: input.userId,
+  });
+  return { consumed: true, kind: 'asked', effect: { status: 'asked' } };
+}
+
 /**
- * After a yes is recorded, ask once. A no or a maybe withdraws an ask that
- * has not been answered. A decline or a finished write is left as it is.
+ * After a yes is recorded, ask once, 1:1. A no or a maybe withdraws an open
+ * ask. A no or a maybe after a write removes only Hale's copy and confirms
+ * in private when the model can write that line.
  */
 export async function settleCalendarAfterAnswer(
   input: {
@@ -256,7 +364,13 @@ export async function settleCalendarAfterAnswer(
   const familyId = resolved.familyId;
 
   if (input.response !== 'yes') {
-    await ports.store.releaseCalendarAsk(input.plan.id, familyId);
+    const row = await ports.store.loadCalendarConsent(input.plan.id, familyId);
+    if (row?.status === 'asked') {
+      await ports.store.releaseCalendarAsk(input.plan.id, familyId);
+    }
+    if (row?.status === 'written') {
+      return removeWrittenCopy(input, ports, familyId, row);
+    }
     return undefined;
   }
 
@@ -279,31 +393,22 @@ export async function settleCalendarAfterAnswer(
   });
   if (!claimed) return undefined;
 
-  const spoken = await composeGroupPlanRsvpLine(
-    groupPlanCalendarLineInput({
-      kind: 'calendar_ask',
-      language: input.language,
-      facts: askFacts(input.plan, input.displayName, input.householdLabel),
-    }),
-    ports.composer ?? productionGroupPlanRsvpComposer(),
-  );
-  if (spoken.status === 'skipped') {
+  const sent = await deliverPrivate(ports, {
+    plan: input.plan,
+    familyId,
+    userId: input.userId,
+    displayName: input.displayName,
+    householdLabel: input.householdLabel,
+    language: input.language,
+    kind: 'calendar_ask',
+  });
+  if (sent.status === 'skipped') {
     await ports.store.releaseCalendarAsk(input.plan.id, familyId);
     console.warn(
-      { outcome: 'group_plan_calendar_ask_unsent', reason: spoken.reason },
+      { outcome: 'group_plan_calendar_ask_unsent', reason: sent.reason },
       'group plan calendar: ask not sent',
     );
-    return { status: 'skipped', reason: spoken.reason };
-  }
-  try {
-    await ports.send({ chatId: input.chatId, text: spoken.line, kind: 'calendar_ask' });
-  } catch (err) {
-    await ports.store.releaseCalendarAsk(input.plan.id, familyId);
-    console.error(
-      { err: err instanceof Error ? err.name : 'unknown' },
-      'group plan calendar: ask send failed',
-    );
-    return { status: 'skipped', reason: 'not_sent' };
+    return { status: 'skipped', reason: sent.reason };
   }
   await ports.store.noteCalendarAsked({
     planId: input.plan.id,
@@ -311,4 +416,49 @@ export async function settleCalendarAfterAnswer(
     actorUserId: input.userId,
   });
   return { status: 'asked' };
+}
+
+async function removeWrittenCopy(
+  input: {
+    plan: GroupPlanRecord;
+    userId: string | null;
+    language: ReplyLanguage;
+  },
+  ports: CalendarTurnPorts,
+  familyId: string,
+  row: CalendarConsentRow,
+): Promise<CalendarEffect> {
+  if (!ports.calendar) {
+    console.warn({ outcome: 'not_configured' }, 'group plan calendar: no writer');
+    return { status: 'skipped', reason: 'not_configured' };
+  }
+  const removed = await ports.calendar.remove({ planId: input.plan.id, familyId });
+  if (removed.status === 'failed') return { status: 'skipped', reason: 'remove_failed' };
+  if (removed.status === 'none') {
+    await ports.store.deleteCalendarConsent(input.plan.id, familyId, 'written');
+    return { status: 'skipped', reason: 'remove_failed' };
+  }
+  await ports.store.noteCalendarRemoved({
+    planId: input.plan.id,
+    familyId,
+    familyEventId: removed.familyEventId,
+    actorUserId: input.userId,
+  });
+  await ports.store.deleteCalendarConsent(input.plan.id, familyId, 'written');
+  const notice = await deliverPrivate(ports, {
+    plan: input.plan,
+    familyId,
+    userId: input.userId,
+    displayName: row.displayName,
+    householdLabel: row.householdLabel,
+    language: input.language,
+    kind: 'calendar_removed',
+  });
+  if (notice.status === 'skipped') {
+    console.warn(
+      { outcome: 'group_plan_calendar_removal_unsent', reason: notice.reason },
+      'group plan calendar: removal confirmation not sent',
+    );
+  }
+  return { status: 'removed', familyId, familyEventId: removed.familyEventId };
 }

@@ -161,6 +161,40 @@ export function privateAsideOneToOne(
   };
 }
 
+/**
+ * VIL-503 — a private line to one household parent. Same 1:1 door as the
+ * private aside: the parent's own number, never a group chat id. No phone
+ * means nothing is sent.
+ */
+export async function sendHouseholdPrivateLine(
+  database: Database,
+  input: {
+    familyId: string;
+    userId: string | null;
+    body: string;
+    templateKey: string;
+    dedupeKey: string;
+    now: Date;
+    send?: OneToOneSend;
+  },
+): Promise<'sent' | 'not_sent' | 'no_parent'> {
+  const userId = input.userId ?? (await primaryParentId(database, input.familyId));
+  if (!userId) return 'no_parent';
+  const to = await resolveSendablePhone(database, userId);
+  if (!to) return 'no_parent';
+  const out = await sendOneToOne(database, {
+    familyId: input.familyId,
+    ledgerUserId: userId,
+    to,
+    body: input.body,
+    templateKey: input.templateKey,
+    dedupeKey: input.dedupeKey,
+    now: input.now,
+    send: input.send ?? defaultOneToOneSend(),
+  });
+  return out.outcome === 'sent' ? 'sent' : 'not_sent';
+}
+
 async function sendLinkPart(
   database: Database,
   input: {

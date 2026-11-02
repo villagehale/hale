@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { linqGroupPlanRsvpEnabled, linqGroupPollsEnabled, linqPollsEnabled } from '../config';
+import { sendHouseholdPrivateLine } from '../connect-link-1to1';
 import { sendChoicePoll } from '../poll';
 import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
@@ -20,6 +21,7 @@ import {
 import type { GroupPlanRsvpReader } from './reading';
 import {
   GROUP_PLAN_CALENDAR_ASK_TEMPLATE,
+  GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE,
   GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE,
   GROUP_PLAN_RSVP_TEMPLATE,
   GROUP_POLL_TEMPLATE,
@@ -48,27 +50,53 @@ async function senderNameOf(database: Database, userId: string | null): Promise<
   return row?.name?.trim().split(/\s+/)[0] || null;
 }
 
-function templateFor(kind: 'plan' | 'poll' | 'calendar_ask' | 'calendar_written' | undefined) {
-  if (kind === 'poll') return GROUP_POLL_TEMPLATE;
+function groupTemplate(kind: 'plan' | 'poll' | undefined) {
+  return kind === 'poll' ? GROUP_POLL_TEMPLATE : GROUP_PLAN_RSVP_TEMPLATE;
+}
+
+function calendarTemplate(kind: 'calendar_ask' | 'calendar_written' | 'calendar_removed'): string {
   if (kind === 'calendar_ask') return GROUP_PLAN_CALENDAR_ASK_TEMPLATE;
   if (kind === 'calendar_written') return GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE;
-  return GROUP_PLAN_RSVP_TEMPLATE;
+  return GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE;
 }
 
 function ledgeredSend(ports: GroupPlanRsvpInboundPorts) {
-  return (line: {
-    chatId: string;
-    text: string;
-    kind?: 'plan' | 'poll' | 'calendar_ask' | 'calendar_written';
-  }) =>
+  return (line: { chatId: string; text: string; kind?: 'plan' | 'poll' }) =>
     ports.send
       ? ports.send({ chatId: line.chatId, text: line.text })
       : sendGroupPlanRsvpLine(ports.database, {
           chatId: line.chatId,
           text: line.text,
-          templateKey: templateFor(line.kind),
+          templateKey: groupTemplate(line.kind),
           now: ports.now,
         });
+}
+
+function privateCalendarSend(ports: GroupPlanRsvpInboundPorts) {
+  return {
+    async send(line: {
+      planId: string;
+      familyId: string;
+      userId: string | null;
+      text: string;
+      kind: 'calendar_ask' | 'calendar_written' | 'calendar_removed';
+    }) {
+      const templateKey = calendarTemplate(line.kind);
+      const result = await sendHouseholdPrivateLine(ports.database, {
+        familyId: line.familyId,
+        userId: line.userId,
+        body: line.text,
+        templateKey,
+        dedupeKey: `${templateKey}:${line.planId}:${line.familyId}:${ports.now.toISOString()}`,
+        now: ports.now,
+      });
+      if (result === 'sent') return { status: 'sent' as const };
+      return {
+        status: 'skipped' as const,
+        reason: result === 'no_parent' ? ('no_parent' as const) : ('not_sent' as const),
+      };
+    },
+  };
 }
 
 /**
@@ -153,6 +181,7 @@ export async function considerGroupPlanRsvp(
       households: postgresGroupPlanHouseholds(ports.database),
       calendar: postgresGroupPlanCalendarWriter(ports.database),
       consentReader: sharedCalendarConsentReader(),
+      privateSend: privateCalendarSend(ports),
     },
   );
 }
