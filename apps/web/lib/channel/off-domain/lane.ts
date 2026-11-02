@@ -85,14 +85,19 @@ import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScree
 export type UnmetSignalOutcome = 'recorded' | 'not_recorded' | 'not_applicable';
 
 /**
- * Where the words that went out came from. `fixed` is a provider-door line in copy.ts
- * (or the medical lane's last-resort moment reply, stamped on the medical column);
- * `composed` is a model-written reply, including a moment reply; `web_grounded` is the
- * medical-symptom answer, searched and composed; anything else is a
+ * Where the words that went out came from. `fixed` is a provider-door line in copy.ts.
+ * `said_line` is the medical lane's last-resort writer, also stamped on the medical
+ * column. `composed` is a model-written reply, including a moment reply; `web_grounded`
+ * is the medical-symptom answer, searched and composed; anything else is a
  * {@link GeneralAnswerFallback} naming why the general composer could not run. The
  * could-not-answer words are still a moment reply (rule #11).
  */
-export type ReplySource = 'fixed' | 'composed' | 'web_grounded' | GeneralAnswerFallback;
+export type ReplySource =
+  | 'fixed'
+  | 'said_line'
+  | 'composed'
+  | 'web_grounded'
+  | GeneralAnswerFallback;
 
 export type OffDomainVerdict =
   /** Hale's job. The turn continues to the coach exactly as it did before this stage
@@ -114,11 +119,11 @@ export type OffDomainVerdict =
        * and null on every other branch, which is what MARKS a sent row as a medical
        * answer at all (migration 0090).
        *
-       * Carried explicitly rather than narrowed out of `replySource` downstream. Both
-       * fixed doors and the general answer's safety fallback also say `fixed`, so a
-       * reader deriving this from the source alone would count a provider-access door as
-       * a medical failure — in the one row of the founder scorecard that must never be
-       * wrong in that direction.
+       * Carried explicitly rather than narrowed out of `replySource` downstream. Provider
+       * doors still say `fixed`, so a reader deriving a medical fallback from that word
+       * alone would count a provider-access door as a medical failure — in the one row
+       * of the founder scorecard that must never be wrong in that direction. The medical
+       * last resort is `said_line`.
        */
       medicalSource: MedicalReplySource | null;
       signal: UnmetSignalOutcome;

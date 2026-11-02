@@ -223,7 +223,7 @@ export async function aggregateMedicalAnswers(
   return {
     answered: rows.reduce((sum, row) => sum + row.count, 0),
     fallbacks: rows
-      .filter((row) => row.source === 'fixed')
+      .filter((row) => row.source === 'said_line')
       .reduce((sum, row) => sum + row.count, 0),
   };
 }

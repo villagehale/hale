@@ -39,6 +39,24 @@ export const USD_PER_WEB_SEARCH = 0.01;
  */
 export const SEARCH_WORST_INPUT_TOKENS = 250_000;
 
+/**
+ * Tokens a search turn is priced at before the call. The default is
+ * {@link SEARCH_WORST_INPUT_TOKENS}. A runner that has measured its own result
+ * size may set `HALE_SEARCH_WORST_INPUT_TOKENS` to a smaller positive integer
+ * for that process only. Production callers leave it unset.
+ */
+export function searchWorstInputTokens(env = process.env) {
+  const raw = env.HALE_SEARCH_WORST_INPUT_TOKENS;
+  if (raw === undefined || raw === '') return SEARCH_WORST_INPUT_TOKENS;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(
+      `spend-cap: HALE_SEARCH_WORST_INPUT_TOKENS must be a positive integer (got ${raw})`,
+    );
+  }
+  return n;
+}
+
 export function isEstimate() {
   return process.env.HALE_ESTIMATE === '1';
 }
@@ -167,13 +185,14 @@ export function projectUsd(rates, request, inputTokens) {
 }
 
 /**
- * Worst case charged BEFORE the call. A search turn is max_uses × $0.01 plus 250k
- * input tokens, and still the full max_tokens of output. Any other turn is the
- * counted input plus that same output ceiling.
+ * Worst case charged BEFORE the call. A search turn is max_uses × $0.01 plus the
+ * search input ceiling (250k, or HALE_SEARCH_WORST_INPUT_TOKENS), and still the full
+ * max_tokens of output. Any other turn is the counted input plus that same output
+ * ceiling.
  */
 export function worstCaseUsd(rates, request, inputTokens) {
   const search = webSearchWorst(request);
-  const tokens = search ? SEARCH_WORST_INPUT_TOKENS : inputTokens;
+  const tokens = search ? searchWorstInputTokens() : inputTokens;
   return projectUsd(rates, request, tokens) + (search?.feeUsd ?? 0);
 }
 
@@ -400,7 +419,7 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
       estimate: true,
       tag,
       model: request.model,
-      inputTokens: search ? SEARCH_WORST_INPUT_TOKENS : inputTokens,
+      inputTokens: search ? searchWorstInputTokens() : inputTokens,
       maxTokens: request.max_tokens,
       projected,
     });

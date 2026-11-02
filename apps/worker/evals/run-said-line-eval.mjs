@@ -19,6 +19,7 @@
 //   node evals/run-said-line-eval.mjs --cached-only
 //   node evals/run-said-line-eval.mjs --cached-only --broken     # calibration: must fail
 //   HALE_ESTIMATE=1 node evals/run-said-line-eval.mjs --max-usd 5   # free dry run
+//   ... --only=health-on,health-bc                                  # exact fixture ids
 //
 // --cached-only exits on the first miss and writes nothing. Do not record from CI.
 
@@ -316,11 +317,18 @@ async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
   const preflight = process.argv.includes('--preflight');
   const broken = process.argv.includes('--broken');
-  // Only these fixtures when set (comma list of id prefixes): run the affected cases only.
-  const only = (process.env.SAID_LINE_ONLY ?? '').split(',').filter(Boolean);
-  const fixtures = SAID_LINE_FIXTURES.filter(
-    (f) => only.length === 0 || only.some((p) => f.id.startsWith(p)),
-  );
+  // `--only=id,id` is an exact id list (same flag as the medical runner). SAID_LINE_ONLY
+  // remains a comma list of id prefixes when --only is absent.
+  const onlyArg = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];
+  const onlyIds = new Set((onlyArg ?? '').split(',').filter(Boolean));
+  const prefixOnly = onlyArg ? [] : (process.env.SAID_LINE_ONLY ?? '').split(',').filter(Boolean);
+  const fixtures = SAID_LINE_FIXTURES.filter((f) => {
+    if (onlyArg) return onlyIds.has(f.id);
+    return prefixOnly.length === 0 || prefixOnly.some((p) => f.id.startsWith(p));
+  });
+  if (onlyArg && fixtures.length !== onlyIds.size) {
+    throw new Error(`one or more fixtures did not match --only=${onlyArg}`);
+  }
   installEvalSpendCap();
   const skill = await loadSkill();
   const subjectCalls = fixtures.length;
@@ -448,7 +456,10 @@ async function main() {
           ? `DRY  judge cached    ${p.tag}  score ${p.score}`
           : `DRY  judge uncached  ${p.tag}  ~${p.inputTokens} in + ${p.maxTokens} max out  worst $${p.worstUsd.toFixed(5)}`,
       );
-    const subjectWorst = subjectPlan.reduce((sum, p) => sum + (p.worstUsd ?? 0), 0);
+    const subjectWorst = subjectPlan.reduce(
+      (sum, p) => sum + (p.cached ? 0 : (p.worstUsd ?? 0)),
+      0,
+    );
     const j = summarizeJudgePlan(judge.plan, { spentUsd: spentUsd + subjectWorst, capUsd });
     console.info(
       `DRY summary | subject calls ${subjectPlan.filter((p) => !p.cached).length} uncached (${subjectPlan.filter((p) => p.cached).length} cached) worst $${subjectWorst.toFixed(5)} | judge draws ${j.draws} (cached ${j.cached}) worst $${j.worstTotalUsd.toFixed(5)} | ledger $${spentUsd.toFixed(5)} -> projected $${j.projectedLedgerUsd.toFixed(5)} vs cap $${capUsd} | ${j.fitsCap ? 'FITS' : 'EXCEEDS CAP'} | live calls: 0`,

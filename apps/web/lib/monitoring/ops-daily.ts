@@ -102,7 +102,8 @@ const VOICE_FAILURE_AGENTS = [
 ] as const;
 
 /** The reply_source values where the composer could not run and the fixed unavailable
- * line stood in. 'composed' / 'web_grounded' / 'fixed' are outcomes, not degradations. */
+ * line stood in. 'composed' / 'web_grounded' / 'fixed' / 'said_line' are outcomes, not
+ * degradations. */
 const REPLY_FALLBACK_SOURCES = [
   'client_unavailable',
   'skill_unavailable',
@@ -536,7 +537,7 @@ async function loadWeek(
 
   const [fallbacks] = await database
     .select({
-      medical: sql<number>`count(*) filter (where ${m.medicalReplySource} = 'fixed')::int`,
+      medical: sql<number>`count(*) filter (where ${m.medicalReplySource} = 'said_line')::int`,
       reply: sql<number>`count(*) filter (where ${inArray(m.replySource, [...REPLY_FALLBACK_SOURCES])})::int`,
     })
     .from(m)

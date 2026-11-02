@@ -62,14 +62,15 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { readCapUsd, readLedger, worstCaseUsd } from '../../web/lib/testing/spend-cap.mjs';
 import {
+  DRY_SUBJECT_PLAN,
   JUDGE_MIN,
   cacheGet,
   cacheKey,
   cachePut,
   cachedToolCall,
   evalRunTag,
-  DRY_SUBJECT_PLAN,
   installEvalSpendCap,
   isDryRun,
   lazyAnthropic,
@@ -81,7 +82,6 @@ import {
   summarizeJudgePlan,
   totalUsd,
 } from './lib/harness.mjs';
-import { readCapUsd, readLedger, worstCaseUsd } from '../../web/lib/testing/spend-cap.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { ESCALATION_BODIES, MEDICAL_FIXTURES } from './medical-symptom-fixtures.mjs';
 
@@ -97,7 +97,16 @@ const HEALTH_FACTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'healt
 // Matches the composer's hard cap (medical.ts): the skill targets ~4 segments, the cap is
 // 5 so a complete emergency answer at ~620 chars is not destroyed down to the fixed line.
 const MAX_MEDICAL_SEGMENTS = 5;
-const MAX_SEARCHES = 4;
+// Eval-only search ceiling. Production medical.ts stays at 4096 output tokens and 4
+// searches. 112 recorded medical ground caches store result-item counts, not input
+// tokens: p50 10, p95 29, max 36. The four caches that still hold web_search_tool_result
+// bodies run about 480 tokens a result. p95 is 29 × 480 plus the ~2040-token skill,
+// about 16k; the recorded max is about 19.3k. 20_000 input tokens covers that max.
+// max_uses 3 covers the p95 (about three searches of ten results) and 108 of those 112
+// turns. The spend guard reads HALE_SEARCH_WORST_INPUT_TOKENS; production leaves it unset.
+const EVAL_SEARCH_INPUT_TOKENS = 20_000;
+const MAX_SEARCHES = 3;
+process.env.HALE_SEARCH_WORST_INPUT_TOKENS = String(EVAL_SEARCH_INPUT_TOKENS);
 const AGE_BANDS = ['infant_under_3mo', 'infant', 'toddler', 'preschooler', 'school_age'];
 const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i;
 const RED_FLAG_READINGS = ['emergency', 'not_emergency', 'unsure'];
@@ -279,7 +288,7 @@ async function cachedGround(opts) {
   const cached = await cacheGet(key);
   if (cached) return cached;
   if (isDryRun()) {
-    // Search turns are priced as 250k input tokens plus max_uses × $0.01 (spend-cap.mjs).
+    // Search turns are priced at this runner's input ceiling plus max_uses × $0.01.
     const request = {
       model,
       max_tokens: 4096,
@@ -360,7 +369,10 @@ async function main() {
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
-  const { emergencyFacts, healthFactsForRegion } = await tsImport(HEALTH_FACTS_SRC, import.meta.url);
+  const { emergencyFacts, healthFactsForRegion } = await tsImport(
+    HEALTH_FACTS_SRC,
+    import.meta.url,
+  );
   const sanitizeSkill = await agent.loadSkill(SANITIZE_SKILL);
   const medicalSkill = await agent.loadSkill(MEDICAL_SKILL);
   const escalationSkill = await agent.loadSkill(ESCALATION_SKILL);
@@ -504,8 +516,7 @@ async function main() {
     // Facts follow the sanitizer, the same way production does. A labelled red
     // flag the sanitizer missed is still a health-worry compose.
     const flaggedForFacts = isRedFlag(sanitized.red_flag);
-    const region =
-      fixture.region === 'ON' || fixture.region === 'BC' ? fixture.region : null;
+    const region = fixture.region === 'ON' || fixture.region === 'BC' ? fixture.region : null;
     const facts = flaggedForFacts ? emergencyFacts() : healthFactsForRegion(region);
     const composed = broken
       ? BROKEN_COMPOSE

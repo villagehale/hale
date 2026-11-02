@@ -432,7 +432,7 @@ describe('aggregateOpsDaily — the loop week (retired weekly emails)', () => {
           direction: 'out' as const,
           category: 'reply' as const,
           status: 'sent' as const,
-          medicalReplySource: 'fixed' as const,
+          medicalReplySource: 'said_line' as const,
         },
         {
           ...base,
@@ -575,7 +575,7 @@ describe('aggregateOpsDaily — the founder counts', () => {
 
   async function medical(
     family: SeededFamily,
-    source: 'fixed' | 'web_grounded',
+    source: 'said_line' | 'web_grounded',
     at: Date,
   ): Promise<void> {
     await db.database.insert(schema.channelMessages).values({
@@ -650,8 +650,8 @@ describe('aggregateOpsDaily — the founder counts', () => {
     await inbound(kept, IN_WEEK_4, 'ops-daily-real-chat');
     await inbound(listed, IN_WEEK_4, 'canary-ops-daily');
     await medical(kept, 'web_grounded', IN_TRAILING_WEEK);
-    await medical(kept, 'fixed', IN_TRAILING_WEEK);
-    await medical(listed, 'fixed', IN_TRAILING_WEEK);
+    await medical(kept, 'said_line', IN_TRAILING_WEEK);
+    await medical(listed, 'said_line', IN_TRAILING_WEEK);
     await promise(kept, 'first_find', new Date('2026-06-01T00:00:00Z'));
     await promise(kept, 'registration_plan', new Date('2026-06-20T00:00:00Z'));
     await promise(listed, 'first_find', new Date('2026-06-01T00:00:00Z'));

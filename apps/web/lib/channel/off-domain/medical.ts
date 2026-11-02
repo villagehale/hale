@@ -143,11 +143,11 @@ export const RED_FLAG_READINGS = ['emergency', 'not_emergency', 'unsure'] as con
 export type RedFlagReading = (typeof RED_FLAG_READINGS)[number];
 
 /** Where the words that go out came from. `web_grounded` is the composed, searched
- * answer; `fixed` is the last-resort model-written health reply after a live attempt
- * and a retry both failed. The two values are @hale/db's, because this outcome is
- * STAMPED on the reply's channel_messages row and read back by the founder scorecard —
+ * answer; `said_line` is the last-resort model-written health reply after a live
+ * attempt and a retry both failed. The two values are @hale/db's, because this outcome
+ * is STAMPED on the reply's channel_messages row and read back by the founder scorecard —
  * one vocabulary, checked in SQL, not a second copy that can drift out of what is
- * writable. `fixed` names the fallback slot, not a preset sentence. */
+ * writable. `said_line` names the writer, not a preset sentence. */
 export type MedicalReplySource = MedicalReplySourceValue;
 
 export interface MedicalReply {
@@ -691,7 +691,7 @@ async function onMedicalTurnUnresolvable(
     writer: createSaidLineWriter(client),
   });
   if (!written) throw medicalReplyUnsent();
-  return { reply: written, replySource: 'fixed' };
+  return { reply: written, replySource: 'said_line' };
 }
 
 function logMedicalFailure(err: unknown, attempt: number): void {

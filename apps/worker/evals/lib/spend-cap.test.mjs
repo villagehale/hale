@@ -143,6 +143,21 @@ describe('worst case', () => {
     const projected = worstCaseUsd(rates, request, 1000);
     expect(projected).toBeCloseTo((1000 * 2 + 1000 * 10) / 1e6, 9);
   });
+
+  it('prices a search turn at HALE_SEARCH_WORST_INPUT_TOKENS when that ceiling is set', () => {
+    const previous = process.env.HALE_SEARCH_WORST_INPUT_TOKENS;
+    process.env.HALE_SEARCH_WORST_INPUT_TOKENS = '20000';
+    try {
+      const projected = worstCaseUsd(rates, searchRequest, 12);
+      const expected = (20_000 * 2 + searchRequest.max_tokens * 10) / 1e6 + 2 * USD_PER_WEB_SEARCH;
+      expect(projected).toBeCloseTo(expected, 9);
+      expect(projected).toBeLessThan(
+        (SEARCH_WORST_INPUT_TOKENS * 2 + searchRequest.max_tokens * 10) / 1e6,
+      );
+    } finally {
+      process.env.HALE_SEARCH_WORST_INPUT_TOKENS = previous ?? '';
+    }
+  });
 });
 
 describe('spend cap at the call site', () => {
