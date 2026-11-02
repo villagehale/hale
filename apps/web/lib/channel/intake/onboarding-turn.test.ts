@@ -67,6 +67,20 @@ describe('onboarding capture', () => {
     expect(acceptOnboardingCapture({ stillAsking: 'gmail' }).stillAsking).toBe('gmail');
   });
 
+  it('takes stillAsking from the current capture only', () => {
+    const prior = acceptOnboardingCapture({
+      stillAsking: 'calendar',
+      calendarLater: true,
+    });
+    const quiet = acceptOnboardingCapture({ stillAsking: null, parentName: 'Sam' });
+    const merged = mergeCaptures(prior, quiet);
+    expect(merged.stillAsking).toBeNull();
+    expect(merged.calendarLater).toBe(true);
+    expect(merged.parentName).toBe('Sam');
+    const asking = acceptOnboardingCapture({ stillAsking: 'group' });
+    expect(mergeCaptures(prior, asking).stillAsking).toBe('group');
+  });
+
   it('keeps a postal field and drops a sentence', () => {
     const clean = acceptOnboardingCapture({ postalCode: 'M5V 2T6' });
     expect(storedFromCapture(prior, clean).place?.postalCode).toBe('M5V 2T6');
