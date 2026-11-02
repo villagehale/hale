@@ -6,7 +6,8 @@
  *
  * Design (Oct 31): a same-turn self-correction edits; a non-correction follow-up
  * returns null; a parent's question about the old fact returns null; one
- * correction is not in English. The skill's other decision edges are here too:
+ * correction is not in English and is still an edit. The decision is the
+ * meaning, in any language. The skill's other decision edges are here too:
  * a follow-up that also asks something new is its own message, and in a group
  * an edit corrects only a fact the bubble already said.
  */

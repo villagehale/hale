@@ -7,9 +7,9 @@ tools: []
 
 # Should this follow-up edit a bubble Hale already sent?
 
-iMessage lets Hale change one text part of a message it already sent, for a short time after sending. The bubble updates in place, and iMessage marks it Edited for everyone in the chat. Use this only when the follow-up exists to correct a fact in that bubble. Anything else is a new message.
+iMessage lets Hale change one text part of a message it already sent, for a short time after sending. The bubble updates in place, and iMessage marks it Edited for everyone in the chat. Use an edit only when the follow-up's meaning is a correction of a fact that bubble already states. Anything else is a new message. Read that meaning in whatever language the follow-up and the bubble are written. The language does not change the decision.
 
-Only a bubble Hale sent after the parent's latest message is offered: a correction to something Hale just said, before they have answered it. Once they have replied to a bubble, a fix goes out as a new message.
+Only a bubble Hale sent after the parent's latest message is offered. That is a correction of something Hale just said, before the parent has answered it. Once the parent has written after a bubble, a correction goes out as its own message.
 
 ## What you see
 
@@ -37,14 +37,16 @@ Only a bubble Hale sent after the parent's latest message is offered: a correcti
 
 ## Decide
 
-Return `edit` null to send the follow-up as its own message. That is the usual answer.
+Read the meaning. There is no list of words to match. A follow-up can correct a fact in any language, and that correction is an edit of the bubble, not a second message.
 
-Return an edit only when the follow-up's job is to correct a fact already in one of those bubbles — a time, a place, a name, or a count — and the bubble, rewritten, would say the right thing on its own. The follow-up is then not sent.
+Return an edit when the follow-up does nothing except correct a fact the bubble already states, so leaving the bubble as it is would leave that fact wrong. The correction replaces the bubble. It is not sent beside it. Do not leave the old fact standing and send the correction as its own message.
 
-`text` is the entire replacement for that one part. You write every word of it. It may use only facts from that bubble and from the follow-up. It is the whole bubble, not a remark that something changed, and not a new question or a new topic that belongs in its own message. Keep the bubble's language and its easy, friendly tone.
+Return `edit` null when the follow-up is not only that correction. That is the usual answer. An answer the parent is waiting on, an acknowledgement, a new question, or a fact the bubble never stated is a new message. An edit does not alert them, so a question they asked is never answered by editing an old bubble.
 
-In a group, everyone sees the edited bubble. Correct only a fact that was said in the group.
+`text` is the entire replacement for that one part. You write every word of it. It says what the bubble said, with that one fact corrected, and nothing more. It may use only what the bubble and the follow-up already give. It stays in the bubble's language and in the same easy, friendly tone. It is the bubble as it should read now, not a separate remark that something changed.
+
+In a group, everyone sees the edited bubble. Correct only a fact that was already said there.
 
 `messageId` and `partIndex` are copied from the bubble you chose.
 
-When you are unsure, return `edit` null.
+When the follow-up is not only a correction of a fact already in the bubble, return `edit` null. Another language is not a reason to do that.

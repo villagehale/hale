@@ -1,30 +1,23 @@
-import type { AgentClient } from '@hale/agent';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import {
   LINQ_EDIT_MAX,
+  LINQ_EDIT_TOOL_DESCRIPTION,
   type LinqEditDecider,
   type LinqEditDecision,
   applyLinqEdit,
-  createLinqEditDecider,
   linqEditRefusals,
+  linqEditUserMessage,
   linqMessageEditEnabled,
   listEditableLinqSends,
   recordLinqEditWebhook,
 } from './edit';
 import { considerLinqReply } from './moments';
 
-vi.mock('~/lib/pipeline/structured', () => ({ forceToolJson: vi.fn() }));
-vi.mock('~/lib/cron/skill', () => ({
-  loadCronSkill: async () => ({
-    meta: { name: 'linq-edit', whenToUse: 'x', task: 'screen', tools: [] },
-    instructions: 'decide',
-  }),
-}));
-
-const { forceToolJson } = await import('~/lib/pipeline/structured');
-const CLIENT = {} as AgentClient;
 const NOW = new Date('2026-10-31T16:00:00.000Z');
 const INBOUND = new Date(NOW.getTime() - 60 * 1000);
 const FAMILY = '00000000-0000-4000-8000-0000000000f1';
@@ -79,7 +72,6 @@ async function seedBubble(
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  vi.mocked(forceToolJson).mockReset();
 });
 
 describe('VIL-479 Linq message edit', () => {
@@ -311,7 +303,7 @@ describe('VIL-479 Linq message edit', () => {
     expect(fake.rows(schema.messages).map((row) => row.content)).toEqual(['Swim is at 4.']);
   });
 
-  it('refuses a reading that is not one of the bubbles, and does not invent wording', async () => {
+  it('refuses a reading that is not one of the bubbles, and does not invent wording', () => {
     const editable = [{ messageId: MESSAGE, partIndex: 0, text: 'Swim is at 4.' }];
     expect(
       linqEditRefusals(
@@ -326,22 +318,86 @@ describe('VIL-479 Linq message edit', () => {
       ),
     ).toContain('unchanged');
     expect(linqEditRefusals({ edit: null }, editable)).toEqual([]);
+    expect(
+      linqEditRefusals({ edit: { messageId: MESSAGE, partIndex: 1, text: 'nope' } }, editable),
+    ).toEqual(['wrong_part']);
 
-    vi.mocked(forceToolJson).mockResolvedValue({
-      value: { edit: { messageId: MESSAGE, partIndex: 1, text: 'nope' } },
-    } as never);
     const bubble = editable[0];
     if (!bubble) throw new Error('fixture');
-    const decided = await createLinqEditDecider(CLIENT).decide({
+    const userMessage = linqEditUserMessage({
       audience: 'direct',
       parentText: 'It moved.',
       followUp: 'Swim is at 5.',
       editable: [{ ...bubble, sentAt: NOW.toISOString(), editsUsed: 0 }],
     });
-    expect(decided).toBeNull();
-    const userMessage = String(vi.mocked(forceToolJson).mock.calls[0]?.[0]?.userMessage);
     expect(userMessage).toContain('Swim is at 5.');
     expect(userMessage).not.toContain('Updated:');
+  });
+
+  it('edits a correction in another language instead of sending it as a second message', async () => {
+    const bubble = 'La natation de samedi est à 16 h à la piscine Regent Park.';
+    const corrected = 'La natation de samedi est à 17 h à la piscine Regent Park.';
+    const followUp = 'La natation est à 17 h, pas à 16 h.';
+    expect(
+      linqEditRefusals({ edit: { messageId: MESSAGE, partIndex: 0, text: corrected } }, [
+        { messageId: MESSAGE, partIndex: 0, text: bubble },
+      ]),
+    ).toEqual([]);
+
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    const fake = makeFakeDb();
+    await seedBubble(fake, { sentAt: NOW, text: bubble });
+    const candidates = await listEditableLinqSends(fake.db, {
+      familyId: FAMILY,
+      conversationId: CONV,
+      chatId: CHAT,
+      now: NOW,
+      inboundAt: INBOUND,
+    });
+    const fetchMock = linqFetch();
+    const moment = await considerLinqReply(fake.db, {
+      route: { channel: 'imessage', to: '+14165550101', chatId: CHAT, replyToMessageId: 'in-1' },
+      inboundBody: 'samedi ça marche',
+      outboundBody: followUp,
+      templateKey: null,
+      familyId: FAMILY,
+      parentUserId: USER,
+      now: NOW,
+      fetch: fetchMock,
+      edit: {
+        decider: decider({
+          edit: { messageId: MESSAGE, partIndex: 0, text: corrected },
+        }),
+        candidates,
+        audience: 'direct',
+        conversationId: CONV,
+      },
+    });
+    expect(moment.handled).toBe(true);
+    if (!moment.handled) return;
+    expect(moment.threadBody).toBeNull();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('PATCH');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).text).toBe(corrected);
+    expect(fake.rows(schema.messages).map((row) => row.content)).toEqual([corrected]);
+  });
+
+  it('asks for that correction by meaning, in any language, with no word list', () => {
+    const skill = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '../../../../../packages/agent/skills/linq-edit.md',
+      ),
+      'utf8',
+    );
+    expect(skill).toContain('There is no list of words to match.');
+    expect(skill).toContain('any language');
+    expect(skill).toContain('not a second message');
+    expect(skill).not.toContain('a time, a place, a name, or a count');
+    expect(skill).not.toContain('When you are unsure, return `edit` null.');
+    expect(LINQ_EDIT_TOOL_DESCRIPTION).toContain('any language');
+    expect(LINQ_EDIT_TOOL_DESCRIPTION).not.toContain('a time, a place');
   });
 
   it('stands in for the follow-up when the model edits', async () => {

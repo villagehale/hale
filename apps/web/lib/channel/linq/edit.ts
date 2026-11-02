@@ -71,6 +71,16 @@ export interface LinqEditDecider {
 
 export const LINQ_EDIT_TOOL = 'linq_edit';
 export const LINQ_EDIT_MAX_TOKENS = 800;
+/**
+ * Shown to the model with the skill. A correction is a meaning, in whatever
+ * language the bubble and the follow-up use. Null is a new message, not a
+ * translation of the decision into one language.
+ */
+export const LINQ_EDIT_TOOL_DESCRIPTION = [
+  'When the follow-up only corrects a fact this bubble already states, in any language,',
+  'return that bubble with the part rewritten so the fact is right. Otherwise return null',
+  'and the follow-up goes out as its own message.',
+].join(' ');
 export const LINQ_EDIT_TOOL_SCHEMA = {
   type: 'object',
   properties: {
@@ -160,8 +170,7 @@ export function createLinqEditDecider(clientOrResolver: ClientSource): LinqEditD
           system: skill.instructions,
           userMessage: linqEditUserMessage(input),
           toolName: LINQ_EDIT_TOOL,
-          toolDescription:
-            'Return the bubble to replace, with the full new text of that part, or null to send the follow-up.',
+          toolDescription: LINQ_EDIT_TOOL_DESCRIPTION,
           inputJsonSchema: LINQ_EDIT_TOOL_SCHEMA,
           schema: outputSchema,
           maxTokens: LINQ_EDIT_MAX_TOKENS,
