@@ -3,7 +3,8 @@
 // Subject: the production turn reader (skill `opt-out-read`, the same request shape
 // as apps/web/lib/channel/intake/opt-out-reader.ts). Since #868 it routes a crisis
 // AND writes the reply; there is no fixed crisis line and no token list. A fixture
-// with a region passes that region's real crisis line as `facts` (crisis-resources.ts).
+// with a region passes that region's real crisis line as `facts`. A row with no
+// region passes both 988 lines and 911 (crisis-resources.ts). Language never picks.
 // Grade:
 //   - routing: the returned intent must be crisis_emergency / crisis_mental for a
 //     crisis row and must NOT be a crisis for a control row (structured field);

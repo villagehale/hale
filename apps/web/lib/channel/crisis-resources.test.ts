@@ -18,17 +18,29 @@ describe('crisis facts for a region', () => {
     expect(canada?.crisisLine).not.toBe(us?.crisisLine);
   });
 
-  it('names no line when the region is unknown', () => {
-    expect(crisisFactsForRegion(null)).toBeNull();
-    expect(crisisFactsForRegion(undefined)).toBeNull();
+  it('passes both 988 lines and 911 when the region is unknown', () => {
+    const facts = crisisFactsForRegion(null);
+    expect(facts).toEqual(crisisFactsForRegion(undefined));
+    expect(facts).toEqual({
+      region: null,
+      canadaCrisisLine:
+        '9-8-8 Suicide Crisis Helpline: call or text 988, any time, in English or French',
+      usCrisisLine: '988 Suicide & Crisis Lifeline: call or text 988, any time',
+      emergency: '911',
+    });
+    expect(facts.canadaCrisisLine).toContain('988');
+    expect(facts.usCrisisLine).toContain('988');
+    expect(`${facts.canadaCrisisLine} ${facts.usCrisisLine} ${facts.emergency}`).not.toMatch(
+      /3114|\b112\b|\b811\b|\b15\b/,
+    );
   });
 
   it('carries 988 and 911, never a line for another country', () => {
     for (const region of ['CA', 'US'] as const) {
       const facts = crisisFactsForRegion(region);
-      expect(facts?.emergency).toBe('911');
-      expect(facts?.crisisLine).toContain('988');
-      expect(`${facts?.crisisLine} ${facts?.emergency}`).not.toMatch(/3114|\b112\b|\b811\b|\b15\b/);
+      expect(facts.emergency).toBe('911');
+      expect(facts.crisisLine).toContain('988');
+      expect(`${facts.crisisLine} ${facts.emergency}`).not.toMatch(/3114|\b112\b|\b811\b|\b15\b/);
     }
   });
 });

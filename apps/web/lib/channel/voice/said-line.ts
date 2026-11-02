@@ -293,19 +293,17 @@ export async function writeCrisisLine(
   region: CrisisRegion | null,
 ): Promise<string | null> {
   const resources = crisisFactsForRegion(region);
-  const facts: Record<string, string> = {};
-  if (resources) {
-    facts.region = resources.region;
-    facts.emergency = resources.emergency;
-    if (kind === 'mental') facts.crisisLine = resources.crisisLine;
-  }
+  const facts: Record<string, SaidLineFact> =
+    kind === 'emergency'
+      ? { region: resources.region, emergency: resources.emergency }
+      : { ...resources };
   const written = writer
     ? await writer.write({
         purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',
         language: null,
         parentWords,
         facts,
-        ...(resources ? { mustInclude: kind === 'emergency' ? ['911'] : ['988'] } : {}),
+        mustInclude: kind === 'emergency' ? ['911'] : ['988'],
       })
     : null;
   if (!written) logCrisisUnanswered(kind, where);

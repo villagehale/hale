@@ -27,12 +27,24 @@ describe('opt-out reader guards (structural, no model)', () => {
     ).toEqual({ intent: 'none', confirmation: '' });
   });
 
-  it('sends the text, a language hint only when certain, and no crisis facts when the region is unknown', () => {
-    expect(JSON.parse(optOutUserMessage({ text: 'لا تراسلني', language: null }))).toEqual({
-      text: 'لا تراسلني',
-      languageHint: null,
-      facts: null,
-    });
+  it('sends the text, a language hint only when certain, and both lines when the region is unknown', () => {
+    const message = JSON.parse(optOutUserMessage({ text: 'لا تراسلني', language: null }));
+    expect(message.languageHint).toBeNull();
+    expect(message.facts.region).toBeNull();
+    expect(message.facts.canadaCrisisLine).toContain('9-8-8 Suicide Crisis Helpline');
+    expect(message.facts.usCrisisLine).toContain('988 Suicide & Crisis Lifeline');
+    expect(message.facts.emergency).toBe('911');
+  });
+
+  it('does not drop the US line because the parent wrote in French', () => {
+    const message = JSON.parse(
+      optOutUserMessage({ text: "je n'en peux plus, j'ai envie de mourir", language: 'fr' }),
+    );
+    expect(message.languageHint).toBe('fr');
+    expect(message.facts.region).toBeNull();
+    expect(message.facts.canadaCrisisLine).toContain('9-8-8 Suicide Crisis Helpline');
+    expect(message.facts.usCrisisLine).toContain('988 Suicide & Crisis Lifeline');
+    expect(message.facts.emergency).toBe('911');
   });
 
   it('passes the real line for the known region as facts to weave in', () => {
@@ -113,7 +125,9 @@ describe('crisis reply direction', () => {
     );
     expect(skill).toMatch(/Stay with them/);
     expect(skill).toMatch(/nothing is sent/);
-    expect(skill).toMatch(/Do not infer a country from the language/);
+    expect(skill).toMatch(/Do not infer a country\s+from the language/);
+    expect(skill).toMatch(/both lines were given/);
+    expect(skill).toMatch(/Name no digits you were not given/);
     expect(skill).not.toMatch(/glad they told you/);
     expect(skill).not.toMatch(/3114/);
     const saidLine = readFileSync(

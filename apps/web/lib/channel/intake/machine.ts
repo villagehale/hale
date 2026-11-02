@@ -1017,13 +1017,12 @@ async function offScriptReply(
   const outcome = await deps.answerComposer.compose(composeArgs);
   if (outcome.status === 'mental_crisis') {
     // The answer model saw a crisis the reader did not. Still the model's words.
-    const resources = crisisFactsForRegion(args.region);
     const written = await deps.saidLine?.write({
       purpose: 'crisis_mental',
       language: null,
       parentWords: args.parentWords,
-      facts: resources ? { ...resources } : {},
-      ...(resources ? { mustInclude: ['988'] } : {}),
+      facts: { ...crisisFactsForRegion(args.region) },
+      mustInclude: ['988'],
     });
     if (!written) {
       console.error('intake crisis: answer model flagged a crisis, no reply written - page #ops');

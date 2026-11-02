@@ -1,8 +1,9 @@
 /**
  * The crisis lines Hale may hand a model, as facts to weave in. Not a script.
  *
- * Hale serves Canada and the US. The line is the one for that region, never one
- * guessed from the language of the text (a French text is not France). Official
+ * Hale serves Canada and the US. A known region gets that country's line.
+ * An unknown region gets both lines. The language of the text never picks one
+ * (a French text is not France, and it is not "Canada only" either). Official
  * lines, checked 2026-11-02:
  * - Canada: 9-8-8 Suicide Crisis Helpline, call or text 988, any time, English
  *   or French. Emergency is 911.
@@ -14,29 +15,54 @@
 
 export type CrisisRegion = 'CA' | 'US';
 
-export interface CrisisResourceFacts {
+const CANADA_LINE =
+  '9-8-8 Suicide Crisis Helpline: call or text 988, any time, in English or French';
+const US_LINE = '988 Suicide & Crisis Lifeline: call or text 988, any time';
+
+export interface KnownRegionFacts {
   readonly region: 'Canada' | 'United States';
   readonly crisisLine: string;
-  readonly emergency: string;
+  readonly emergency: '911';
 }
 
-const CANADA: CrisisResourceFacts = {
+/** Both lines, because Hale does not know which country this parent is in. */
+export interface UnknownRegionFacts {
+  readonly region: null;
+  readonly canadaCrisisLine: string;
+  readonly usCrisisLine: string;
+  readonly emergency: '911';
+}
+
+export type CrisisFacts = KnownRegionFacts | UnknownRegionFacts;
+
+const CANADA: KnownRegionFacts = {
   region: 'Canada',
-  crisisLine: '9-8-8 Suicide Crisis Helpline: call or text 988, any time, in English or French',
+  crisisLine: CANADA_LINE,
   emergency: '911',
 };
 
-const UNITED_STATES: CrisisResourceFacts = {
+const UNITED_STATES: KnownRegionFacts = {
   region: 'United States',
-  crisisLine: '988 Suicide & Crisis Lifeline: call or text 988, any time',
+  crisisLine: US_LINE,
   emergency: '911',
 };
 
-/** The facts for a known region, or null when Hale does not know it. */
-export function crisisFactsForRegion(
-  region: CrisisRegion | null | undefined,
-): CrisisResourceFacts | null {
+const UNKNOWN: UnknownRegionFacts = {
+  region: null,
+  canadaCrisisLine: CANADA_LINE,
+  usCrisisLine: US_LINE,
+  emergency: '911',
+};
+
+/**
+ * The facts for a known region, or both lines plus 911 when Hale does not
+ * know it. Never null: an unknown region is not a reason to withhold a number.
+ */
+export function crisisFactsForRegion(region: CrisisRegion): KnownRegionFacts;
+export function crisisFactsForRegion(region: null | undefined): UnknownRegionFacts;
+export function crisisFactsForRegion(region: CrisisRegion | null | undefined): CrisisFacts;
+export function crisisFactsForRegion(region: CrisisRegion | null | undefined): CrisisFacts {
   if (region === 'CA') return CANADA;
   if (region === 'US') return UNITED_STATES;
-  return null;
+  return UNKNOWN;
 }

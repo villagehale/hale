@@ -127,7 +127,7 @@ async function main() {
         lane,
         system: skill.instructions,
         // optOutUserMessage: a hint only when certain (French), else null.
-        // These rows have no known region, so facts is null, as production sends.
+        // Region is unknown here, so facts are both 988 lines and 911, as production sends.
         userMessage: JSON.stringify({
           text: f.text,
           languageHint: f.language === 'fr' ? 'fr' : null,

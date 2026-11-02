@@ -85,8 +85,9 @@ const outputJsonSchema = {
 /** The user-turn payload. Shared with the evals, which replay this request shape. */
 export function optOutUserMessage(input: OptOutReadInput): string {
   // A hint only when certain; the sender's words decide the reply's language (#868).
-  // `facts` is always present: the region's real lines, or null when unknown.
-  // The model weaves them into a crisis reply. It never recites a fixed line.
+  // `facts` is always present: one line when the region is known, or both 988
+  // lines and 911 when it is not. The model writes the reply. Language never
+  // picks the line.
   return JSON.stringify({
     text: input.text,
     languageHint: certainLanguageHint(input.language),
