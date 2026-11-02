@@ -24,6 +24,11 @@ export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
             description:
               "The season this fact belongs to, in the source's own words. Not a translation.",
           },
+          matches_requested_season: {
+            type: 'boolean',
+            description:
+              'Whether this fact is for the requested window. Omit when the request names no season.',
+          },
           occurrence_url: {
             type: 'string',
             description:
@@ -109,6 +114,11 @@ export interface RawActivityFact {
   schedule_kind?: 'hours' | 'recurring' | 'term' | null;
   /** Season of this fact, in the source's own words. The model sets it; code does not translate it. */
   season?: string | null;
+  /**
+   * The extraction model's yes/no: this fact is for the requested window.
+   * Absent means the request named no season. Code does not compare season strings.
+   */
+  matches_requested_season?: boolean | null;
   /** Page this dated fact was read from, when that page is not source_url. */
   occurrence_url?: string | null;
   historical_evidence?: string | null;
@@ -252,23 +262,6 @@ export function activityDateRange(
 }
 
 /**
- * Whether the model's season for this fact is the season the request asked for.
- *
- * Both strings are the model's, in whatever language the source and the question
- * used. A fact labelled `hiver` or `冬季` does not match a fall request. No season
- * word list is applied.
- */
-export function seasonMatchesRequest(
-  season: string | null | undefined,
-  window: string | null | undefined,
-): boolean {
-  const fact = season?.trim().toLowerCase() ?? '';
-  const asked = window?.trim().toLowerCase() ?? '';
-  if (!fact || !asked) return true;
-  return asked.includes(fact) || fact.includes(asked);
-}
-
-/**
  * The page a dated fact was read from.
  *
  * One page containing the quote owns it. Several pages do only when the model
@@ -393,8 +386,8 @@ export function bindActivityFacts(
     const historical =
       (observed.length > 0 && observed.every((session) => session.date < conclusivelyPast)) ||
       quoted(page.text, item.historical_evidence);
-    // The model's season, not a word list. `hiver` or `冬季` is not this fall request.
-    const foreignSeason = !seasonMatchesRequest(item.season, window);
+    // The model's yes/no. `automne`, `秋季`, and `autumn` are a match when it says so.
+    const foreignSeason = item.matches_requested_season === false;
     // A rejected dated session must never escape through a free-form schedule fallback.
     const regular =
       !foreignSeason &&

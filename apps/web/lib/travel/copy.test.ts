@@ -72,26 +72,39 @@ async function renderBrief(overrides: Partial<Parameters<typeof renderTravelBrie
 }
 
 describe('renderTravelBrief', () => {
-  it('uses the locked group opening and does not guess who is travelling', async () => {
+  it('uses the group audience fact and does not guess who is travelling', async () => {
     const body = await brief({ forGroup: true });
-    expect(
-      body.startsWith('Trip: New York, the 12th to the 15th. A couple of things on for Mia:'),
-    ).toBe(true);
+    expect(body.startsWith('Trip: New York, the 12th to the 15th. for Mia:')).toBe(true);
     expect(body).not.toContain("You're in");
   });
 
-  it('names the city, the days and two things, and claims nothing about having been', async () => {
+  it('names the city, the days and two things, from the writer', async () => {
     const body = await brief();
-    expect(body).toBe(
-      "You're in New York the 12th to the 15th. A couple of things on for Mia: " +
-        'American Museum of Natural History - open daily 10am-5:30pm, USD 28 adults / 16 kids ' +
-        '(their site). Central Park Zoo - 10am-5pm, USD 20 (their site). ' +
-        "That's off their own pages, not from anyone who's been.",
-    );
-    // No link, and no question: there is no reply handler behind this text, and a question
-    // with nothing behind it is the recorded 2026-08-22 defect.
+    expect(body).toContain("You're in New York the 12th to the 15th");
+    expect(body).toContain('for Mia:');
+    expect(body).toContain('American Museum of Natural History - open daily 10am-5:30pm');
+    expect(body).toContain('Central Park Zoo - 10am-5pm, USD 20');
+    expect(body).not.toContain('(their site)');
+    expect(body).not.toContain("That's off their own pages");
+    expect(body).not.toContain('A couple of things on');
     expect(body).not.toContain('http');
     expect(body).not.toContain('?');
+  });
+
+  it('sends nothing when the picks-only writer returns nothing', async () => {
+    await expect(
+      renderTravelBrief(
+        {
+          city: 'New York',
+          startsOn: '2026-09-12',
+          endsOn: '2026-09-15',
+          childNames: ['Mia'],
+          picks: [pick()],
+          teenNames: [],
+        },
+        { write: async () => null },
+      ),
+    ).rejects.toThrow(/model_unreachable/);
   });
 
   it('fits four segments against the FULL opt-out form, in GSM-7', async () => {
@@ -109,9 +122,8 @@ describe('renderTravelBrief', () => {
 
   it('omits a clause the source never published, and invents nothing in its place', async () => {
     const body = await brief({ picks: [pick({ price: null }), ZOO] });
-    expect(body).toContain(
-      'American Museum of Natural History - open daily 10am-5:30pm (their site).',
-    );
+    expect(body).toContain('American Museum of Natural History - open daily 10am-5:30pm.');
+    expect(body).not.toContain('(their site)');
     expect(body).not.toContain('USD 28');
     // THE POSITIVE CONTROL: the same pick WITH a price renders it, so the absence above is
     // a claim about the null rather than about a renderer that never prints prices.
@@ -120,7 +132,8 @@ describe('renderTravelBrief', () => {
 
   it('renders a pick with neither a time nor a price rather than dropping it', async () => {
     const body = await brief({ picks: [pick({ when: null, price: null })] });
-    expect(body).toContain('American Museum of Natural History (their site).');
+    expect(body).toContain('American Museum of Natural History.');
+    expect(body).not.toContain('(their site)');
   });
 
   it('carries at most two picks — the third is dropped, not linked', async () => {
@@ -139,26 +152,30 @@ describe('renderTravelBrief', () => {
   });
 
   /**
-   * WHOLE-PICK-AT-A-TIME. A cut that lands inside "USD 2" publishes a wrong price, so a
-   * pick that would not fit whole is dropped entire — asserted by the FIRST pick's
-   * complete price string still being present.
+   * The writer is asked again without the pick that did not fit. The first pick's price
+   * stays whole; the long pick is not cut down to a fragment of its price.
    */
-  it('drops a second pick whole rather than cutting one in half', async () => {
+  it('leaves out a second pick that does not fit, and does not cut a price', async () => {
     const long = pick({
-      name: 'Long Island Childrens Museum and Discovery Centre at Mitchel Field',
-      when: 'Tuesday to Sunday 10am to 5pm, and every statutory holiday Monday as well, with the last admission half an hour before closing and the whole building shut for the first week of September',
-      price:
-        'USD 17 per person over one year old, members free, EBT card holders USD 3, and a family membership that covers two adults and up to four children for the year',
+      name: 'Long Island Childrens Museum',
+      when: 'open daily '.repeat(80),
+      price: 'USD 17 per person',
       sourceName: 'Long Island Childrens Museum',
     });
     const render = await renderBrief({ picks: [pick(), long] });
-    const body = render.body;
-    expect(body).toContain('USD 28 adults / 16 kids (their site).');
-    expect(body).not.toContain('USD 17');
-    expect(body).not.toContain('USD 1');
-    expect(smsSegments(withOptOut(body, 'full'))).toBeLessThanOrEqual(MAX_TRAVEL_BRIEF_SEGMENTS);
-    // A pick dropped for length is a pick the receipt must not count either.
+    expect(render.body).toContain('USD 28 adults / 16 kids');
+    expect(render.body).not.toContain('USD 17');
+    expect(render.body).not.toContain('Long Island');
     expect(render.rendered).toHaveLength(1);
+    expect(smsSegments(withOptOut(render.body, 'full'))).toBeLessThanOrEqual(
+      MAX_TRAVEL_BRIEF_SEGMENTS,
+    );
+  });
+
+  it('sends nothing when the only pick still does not fit', async () => {
+    await expect(brief({ picks: [pick({ when: 'open daily '.repeat(80) })] })).rejects.toThrow(
+      /too_many_segments/,
+    );
   });
 
   it('throws rather than shortening when the body cannot be trusted', async () => {
@@ -247,11 +264,21 @@ describe('renderTravelBrief', () => {
     );
   });
 
-  it('sends nothing when the written reference brief does not fit', async () => {
+  it('leaves out a reference that does not fit and keeps the one that does', async () => {
+    const rendered = await renderBrief({
+      picks: [],
+      references: [REFERENCE, { ...REFERENCE, name: 'Long name '.repeat(100) }],
+    });
+    expect(rendered.body).toContain('Discovery Club (City Museum)');
+    expect(rendered.body).not.toContain('Long name Long name');
+    expect(rendered.renderedReferences).toEqual([REFERENCE]);
+  });
+
+  it('sends nothing when the only reference does not fit', async () => {
     await expect(
       brief({
         picks: [],
-        references: [REFERENCE, { ...REFERENCE, name: 'Long name '.repeat(100) }],
+        references: [{ ...REFERENCE, name: 'Long name '.repeat(100) }],
       }),
     ).rejects.toThrow(/too_many_segments/);
   });
@@ -298,7 +325,7 @@ describe('travelBriefViolations', () => {
   });
 
   it('refuses a digit that traces to nothing', async () => {
-    const body = (await brief()).replace("That's off", "Roughly 40 minutes away. That's off");
+    const body = `${await brief()} Roughly 40 minutes away.`;
     expect(travelBriefViolations(body, context)).toContain('unbacked_digit');
     // Positive control: the same body without the invented figure is clean, so the rule is
     // about the digit rather than about the sentence.

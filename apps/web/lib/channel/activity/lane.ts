@@ -304,6 +304,7 @@ const composeSchema = z.object({
         when_evidence: z.string().nullish(),
         schedule_kind: z.enum(['hours', 'recurring', 'term']).nullish(),
         season: z.string().nullish(),
+        matches_requested_season: z.boolean().nullish(),
         occurrence_url: z.string().nullish(),
         historical_evidence: z.string().nullish(),
         sessions: z

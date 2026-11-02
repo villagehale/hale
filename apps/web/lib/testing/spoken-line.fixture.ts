@@ -127,8 +127,6 @@ function render(
         ),
         facts,
       );
-    case 'group_travel_opening':
-      return `Trip: ${facts.city}, ${facts.days}. A couple of things on for ${facts.kids}:`;
     case 'travel_source_listings': {
       const picks = JSON.parse(facts.picks || '[]') as {
         name: string;
