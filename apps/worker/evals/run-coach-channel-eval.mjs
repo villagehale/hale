@@ -99,6 +99,7 @@
 // gate, the two-draft cap, the rule-#4 tense check and the app-pointing gate.
 
 import { readFileSync } from 'node:fs';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // The stage primitives are IMPORTED, never replicated: the coaching fixtures make a
@@ -147,9 +148,9 @@ import {
   evalRunTag,
   evalSubjectClient,
   evalSubjectRequest,
-  installEvalSpendCap,
   isDryRun,
   lazyAnthropic,
+  priceRates,
   loadAgent,
   makeCost,
   makeJudge,
@@ -215,7 +216,7 @@ const AUTONOMY_SWITCH_OFF_SRC = join(
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
 const MAX_DRAFTS_PER_TURN = 2;
 /** The per-fixture voice FLOOR that sits alongside the corpus mean. See the header for
@@ -2017,9 +2018,19 @@ async function main() {
     notFoundPage: spotPage('markham-course-not-found'),
   };
   const compact = contextInternal.compactTranscript;
-  installEvalSpendCap();
-  const getJudgeClient = lazyAnthropic('coach-channel-judge');
-  const getCurrentClient = lazyAnthropic('coach-channel');
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
+  const rawJudge = lazyAnthropic();
+  const rawSubject = lazyAnthropic();
+  const getJudgeClient = () =>
+    capSdkClient(rawJudge(), { rates: priceRates, tag: 'coach-channel-judge' });
+  const getCurrentClient = () =>
+    capSdkClient(rawSubject(), { rates: priceRates, tag: 'coach-channel' });
   const getSubjectClient = () => evalSubjectClient(getCurrentClient);
   const cost = makeCost();
   const subjectLatencies = [];

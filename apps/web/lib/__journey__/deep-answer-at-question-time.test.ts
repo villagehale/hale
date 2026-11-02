@@ -93,6 +93,10 @@ const judgeSchema = z.object({ says_not_posted: z.boolean(), reason: z.string() 
 async function saysNotPosted(
   message: string,
 ): Promise<{ says_not_posted: boolean; reason: string }> {
+  // Same ceiling and ledger as the eval suites. `--max-usd` on the vitest argv
+  // (after `--`) sets it; a recording with no ceiling is refused by recorded-model.
+  const { installSpendCap } = await import('../testing/spend-cap.mjs');
+  installSpendCap();
   const judged = recordedModel(JUDGE_RECORDINGS, pipelineClient);
   const { value } = await forceToolJson({
     client: judged.client(),

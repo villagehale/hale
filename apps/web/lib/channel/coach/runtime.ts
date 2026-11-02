@@ -137,33 +137,15 @@ const MAX_STEPS = 6;
 /**
  * The whole COMPLETION budget for one step — thinking and text share it.
  *
- * Left at 400, and that is a decision rather than an omission. 400 was set as a reply
- * ceiling when this lane emitted text and nothing else: a two-segment reply is ~40
- * tokens, so 400 was ten times what an answer could need. Then `converse` became
- * `{ thinking: 'adaptive', effort: 'high' }` (packages/agent/src/model.ts) and it stopped
- * being a reply ceiling — it became the ceiling on thinking PLUS reply, spent in that
- * order, and a hard turn spends all of it thinking and emits no text at all. That is
- * prod's one failed `coach-channel-sms` run, 2026-08-22 17:41: 16,828 prompt tokens, 400
- * completion tokens, 399 of them thinking, zero text blocks — the founder's own "Tiny
- * gym" follow-up, whose antecedent was in the transcript at index 17 of 20 the whole
- * time. The context was never the problem on that turn. The budget was.
- *
- * THE FIX IS NOT A BIGGER NUMBER HERE, and the corpus is what settled that. Raising this
- * to 1,024 does cure the truncation, and it also makes the model reason its way past its
- * second source: across live re-records `registration-window-plus-a-find` went from 0/3
- * to 2/4 failures on "never called find_activities", and `village-one-verified-one-not`
- * from 2/3 to 4/4 on "never called search_village". 700 splits the difference and gets
- * neither — it still truncated `yes-with-nothing-open` on the full corpus run. Room given
- * to every turn is room the model finds something to do with.
- *
- * So the room goes to the turn that PROVED it needed it: `runAgent` re-asks a step that
- * hit the ceiling before saying anything, once, with thinking OFF at this same budget
- * (packages/agent/src/agent.ts `isTruncatedBeforeSpeaking`, model.ts `withoutThinking`)
- * — the one request shape on which 400 is a reply ceiling again, because no field on
- * Sonnet 5 bounds the thinking half. Ordinary turns keep the ceiling — and their
- * prompt-cache keys — untouched.
+ * 400 was a reply ceiling when this lane emitted text and nothing else. Then `converse`
+ * became `{ thinking: 'adaptive', effort: 'high' }` and the 400 was spent thinking:
+ * prod's failed `coach-channel-sms` run on 2026-08-22 returned 399 thinking tokens and
+ * no text. The continuity re-record is against 2000, so a step can think and still
+ * answer. `runAgent` re-asks a step that hits this ceiling before saying anything, once,
+ * with thinking off at the same budget (`isTruncatedBeforeSpeaking`, `withoutThinking`).
+ * Changing this number moves the coach prompt-cache keys.
  */
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 
 /** The agent_runs name for a texted turn (migration 0075). The texted coach is the
  * live surface, with its own latency and cost shape. */

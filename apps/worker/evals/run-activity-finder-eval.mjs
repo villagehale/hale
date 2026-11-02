@@ -35,6 +35,8 @@
 //   node --env-file=../../.env evals/run-activity-finder-eval.mjs --broken  # calibration: must FAIL
 //   node evals/run-activity-finder-eval.mjs --cached-only                   # CI: replay only
 //   node evals/run-activity-finder-eval.mjs --estimate                      # no API: price the travel writer
+//   node evals/run-activity-finder-eval.mjs --max-usd 7                     # live, booked on HALE_SPEND_LEDGER
+//   node evals/run-activity-finder-eval.mjs --skip-travel-brief             # compose and picks only
 //   node --env-file=../../launch.env evals/run-activity-finder-eval.mjs \
 //     --anthropic-model=claude-sonnet-5-5 --only=<id,id>
 //
@@ -68,6 +70,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { ACTIVITY_FIXTURES } from './activity-finder-fixtures.mjs';
 import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import {
@@ -79,8 +82,8 @@ import {
   cachePut,
   cachedToolCall,
   evalRunTag,
-  installEvalSpendCap,
   lazyAnthropic,
+  priceRates,
   loadAgent,
   makeCost,
   makeJudge,
@@ -1342,6 +1345,7 @@ async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const estimateOnly = process.argv.includes('--estimate');
+  const skipTravelBrief = process.argv.includes('--skip-travel-brief');
   if (estimateOnly && (cachedOnly || broken)) {
     console.error('activity-finder: --estimate does not combine with --cached-only or --broken');
     process.exit(1);
@@ -1366,8 +1370,15 @@ async function main() {
   if (!Number.isInteger(followupMaxTokens) || followupMaxTokens < 1) {
     throw new Error('--followup-max-tokens must be a positive integer');
   }
-  installEvalSpendCap();
-  const getClient = lazyAnthropic('activity-finder');
+  const cap = installSpendCap(process.argv);
+  if (cap !== null) {
+    const ledger = readLedger();
+    console.info(
+      `spend cap $${cap.toFixed(4)} | already spent $${ledger.spentUsd.toFixed(4)} | ${process.env.HALE_SPEND_LEDGER}`,
+    );
+  }
+  const rawClient = lazyAnthropic();
+  const getClient = () => capSdkClient(rawClient(), { rates: priceRates, tag: 'activity-finder' });
   const cost = makeCost();
 
   const agent = await loadAgent();
@@ -1489,11 +1500,11 @@ async function main() {
     : ACTIVITY_FIXTURES;
   const writerCases = (
     only ? TRAVEL_WRITER_CASES.filter((item) => selectedIds.has(item.id)) : TRAVEL_WRITER_CASES
-  ).filter(() => !broken);
+  ).filter(() => !broken && !skipTravelBrief);
   const matched = fixtures.length + (broken ? 0 : writerCases.length);
   const expected = only
     ? selectedIds.size
-    : ACTIVITY_FIXTURES.length + (broken ? 0 : TRAVEL_WRITER_CASES.length);
+    : ACTIVITY_FIXTURES.length + (broken || skipTravelBrief ? 0 : TRAVEL_WRITER_CASES.length);
   if (matched !== expected) {
     throw new Error(`one or more fixtures did not match --only=${only}`);
   }
@@ -1690,7 +1701,7 @@ async function main() {
       if (!range) failures.push('travel_dates_unresolved');
       else if (range.end < activityCalendarDate(EVAL_NOW, query.timeZone)) {
         failures.push('travel_dates_past');
-      } else if (!broken) {
+      } else if (!broken && !skipTravelBrief) {
         const graded = await gradeTravelBrief({
           id: fixture.id,
           input: {
