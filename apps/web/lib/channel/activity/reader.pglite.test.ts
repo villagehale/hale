@@ -150,6 +150,18 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     expect(fit.preferences).toHaveLength(FAMILY_FIT_PREFERENCE_LIMIT);
   });
 
+  it('a full cap of fresh facts never hides the newest stale recheck (Devin #981)', async () => {
+    const { familyId } = await seedFamily(db.database);
+    for (let i = 0; i < FAMILY_FIT_READ_LIMIT; i++) {
+      await fact(familyId, null, `said_${i}`, i, { source: 'parent_message', seenDaysAgo: 300 });
+    }
+    await fact(familyId, null, 'stroller', true, { source: 'inferred', seenDaysAgo: 100 });
+
+    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    expect(fit.recheck.map((r) => r.key)).toEqual(['stroller']);
+    expect(fit.preferences.map((p) => p.key)).not.toContain('stroller');
+  });
+
   it('a stale fact is held back for recheck (key only), never ranked or its value shown', async () => {
     const { familyId } = await seedFamily(db.database);
     await fact(familyId, null, 'scary', 'avoid', { source: 'inferred', seenDaysAgo: 120 });

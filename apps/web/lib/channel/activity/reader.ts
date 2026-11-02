@@ -238,49 +238,60 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
       const teenIds = new Set(
         children.filter((child) => child.stage === 'teenager').map((child) => child.childId),
       );
-      const factRows = await database
-        .select({
-          childId: schema.familyMemoryFacts.childId,
-          key: schema.familyMemoryFacts.factKey,
-          value: schema.familyMemoryFacts.factValue,
-          confidence: schema.familyMemoryFacts.confidence,
-          source: schema.familyMemoryFacts.memorySource,
-          sourcedAt: schema.familyMemoryFacts.sourcedAt,
-        })
-        .from(schema.familyMemoryFacts)
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, familyId),
-            inArray(schema.familyMemoryFacts.factType, [...FIT_FACT_TYPES]),
-            isNull(schema.familyMemoryFacts.validUntil),
-            // A passing question (`one_off`) is not a family preference (Devin, #980).
-            ne(schema.familyMemoryFacts.memoryKind, 'one_off'),
-            or(
-              isNull(schema.familyMemoryFacts.expiresAt),
-              gt(schema.familyMemoryFacts.expiresAt, now),
-            ),
-            // Teen facts are dropped in SQL so they never eat the LIMIT (Devin, #980).
-            teenIds.size > 0
-              ? or(
-                  isNull(schema.familyMemoryFacts.childId),
-                  notInArray(schema.familyMemoryFacts.childId, [...teenIds]),
-                )
-              : undefined,
+      const factColumns = {
+        childId: schema.familyMemoryFacts.childId,
+        key: schema.familyMemoryFacts.factKey,
+        value: schema.familyMemoryFacts.factValue,
+        confidence: schema.familyMemoryFacts.confidence,
+        source: schema.familyMemoryFacts.memorySource,
+        sourcedAt: schema.familyMemoryFacts.sourcedAt,
+      };
+      const factWhere = (fresh: boolean) =>
+        and(
+          eq(freshSql(now), fresh ? 1 : 0),
+
+          eq(schema.familyMemoryFacts.familyId, familyId),
+          inArray(schema.familyMemoryFacts.factType, [...FIT_FACT_TYPES]),
+          isNull(schema.familyMemoryFacts.validUntil),
+          // A passing question (`one_off`) is not a family preference (Devin, #980).
+          ne(schema.familyMemoryFacts.memoryKind, 'one_off'),
+          or(
+            isNull(schema.familyMemoryFacts.expiresAt),
+            gt(schema.familyMemoryFacts.expiresAt, now),
           ),
-        )
-        // Fresh-by-its-own-source first, then parent/receipt ahead of calendar ahead of
-        // inferred, then newest. Freshness and source rank are applied BEFORE the LIMIT,
-        // so neither a pile of old high-confidence facts nor 32 newer inferred guesses can
-        // fill the read and push out what the parent told us (Devin, #981).
-        .orderBy(
-          desc(freshSql(now)),
-          asc(sourceRankSql()),
-          desc(schema.familyMemoryFacts.sourcedAt),
-          desc(schema.familyMemoryFacts.confidence),
-          desc(schema.familyMemoryFacts.validFrom),
-          schema.familyMemoryFacts.id,
-        )
-        .limit(FAMILY_FIT_READ_LIMIT);
+          // Teen facts are dropped in SQL so they never eat the LIMIT (Devin, #980).
+          teenIds.size > 0
+            ? or(
+                isNull(schema.familyMemoryFacts.childId),
+                notInArray(schema.familyMemoryFacts.childId, [...teenIds]),
+              )
+            : undefined,
+        );
+      // Fresh rows and stale recheck candidates get separate reads so a full cap of
+      // fresh facts can never hide the newest stale preference's recheck (Devin, #981).
+      const [freshRows, staleRows] = await Promise.all([
+        database
+          .select(factColumns)
+          .from(schema.familyMemoryFacts)
+          .where(factWhere(true))
+          // Parent/receipt ahead of calendar ahead of inferred, then newest. Applied
+          // BEFORE the LIMIT so 32 newer guesses cannot push out what the parent said.
+          .orderBy(
+            asc(sourceRankSql()),
+            desc(schema.familyMemoryFacts.sourcedAt),
+            desc(schema.familyMemoryFacts.confidence),
+            desc(schema.familyMemoryFacts.validFrom),
+            schema.familyMemoryFacts.id,
+          )
+          .limit(FAMILY_FIT_READ_LIMIT),
+        database
+          .select(factColumns)
+          .from(schema.familyMemoryFacts)
+          .where(factWhere(false))
+          .orderBy(desc(schema.familyMemoryFacts.sourcedAt), schema.familyMemoryFacts.id)
+          .limit(FAMILY_FIT_READ_LIMIT),
+      ]);
+      const factRows = [...freshRows, ...staleRows];
       return {
         children,
         homeArea,
