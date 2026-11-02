@@ -267,10 +267,9 @@ export async function resolveGroupMention(input: {
   if (!linqGroupMentionsEnabled()) return undefined;
   let members: MentionableMember[];
   try {
-    // A direct chat never carries a mention (Devin #954 SEC).
-    if (!input.members && !(await chatIsGroup(input.database, input.chatId, input.isGroup))) {
-      return undefined;
-    }
+    // A direct chat never carries a mention, even when the caller already
+    // has the roster (Devin #954 SEC).
+    if (!(await chatIsGroup(input.database, input.chatId, input.isGroup))) return undefined;
     members = input.members ?? (await listMentionableMembers(input.database, input.chatId));
   } catch (err) {
     // A failed seat read must not block the group reply (Devin #954).

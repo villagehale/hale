@@ -41,6 +41,16 @@ function mentionsPreview() {
   vi.stubEnv('VERCEL_ENV', 'preview');
 }
 
+/** A roster row in a group status, so the group check passes. */
+function groupDatabase() {
+  const chain = {
+    from: () => chain,
+    where: () => chain,
+    limit: async () => [{ status: 'confirmed' }],
+  };
+  return { select: () => chain } as never;
+}
+
 function keysUnset() {
   expect(process.env.LINQ_API_KEY ?? '').toBe('');
   expect(process.env.ANTHROPIC_API_KEY ?? '').toBe('');
@@ -173,6 +183,28 @@ describe('resolveGroupMention', () => {
     warn.mockRestore();
   });
 
+  it('checks the chat is a group even when the roster is passed in', async () => {
+    keysUnset();
+    mentionsPreview();
+    const chain = {
+      from: () => chain,
+      where: () => chain,
+      limit: async () => [],
+    };
+    const direct = { select: () => chain } as never;
+    const reader = { read: vi.fn(async () => 'm1') };
+    await expect(
+      resolveGroupMention({
+        database: direct,
+        chatId: 'chat-1',
+        text: 'Swim is at 4.',
+        reader,
+        members: [DANA],
+      }),
+    ).resolves.toBeUndefined();
+    expect(reader.read).not.toHaveBeenCalled();
+  });
+
   it('never mentions in a chat whose roster says it is not a group', async () => {
     keysUnset();
     mentionsPreview();
@@ -207,6 +239,7 @@ describe('resolveGroupMention', () => {
   it('returns the seated handle the reader named, and nothing for an unknown id', async () => {
     keysUnset();
     mentionsPreview();
+    const database = groupDatabase();
     expect(
       await resolveGroupMention({
         database,
@@ -232,7 +265,7 @@ describe('resolveGroupMention', () => {
     mentionsPreview();
     expect(
       await resolveGroupMention({
-        database,
+        database: groupDatabase(),
         chatId: 'chat-1',
         text: 'Swim is at 4.',
         reader: { read: async () => null },
