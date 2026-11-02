@@ -14,9 +14,11 @@ import {
   EMAIL_ALERT_OFFER_TTL_MS,
   handleEmailAlertOfferReply,
   loadOpenEmailAlertOffers,
+  offerSaveReachesGoogle,
   recordCoachCalendarOffer,
   recordEmailAlertOffer,
 } from './email-alert-offer';
+import { type OfferReceiptFacts, offerReceiptUserMessage } from './offer-receipt';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT, against the real DDL.
@@ -231,6 +233,114 @@ function offers() {
 }
 
 describe('a YES puts the occasion on the family week', () => {
+  it('passes whether Google calendar is connected and where the entry went', async () => {
+    const seen: OfferReceiptFacts[] = [];
+    const offerId = await seedOffer();
+    const verdict = await emailAlertAddHandler({
+      writeReceipt: {
+        write: async (facts) => {
+          seen.push(facts);
+          return 'receipt';
+        },
+      },
+    }).handle(db.database, await turn('yes', { resolved: reading(offerId, 'yes') }));
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      happened: 'added',
+      language: 'en',
+      parentReply: 'yes',
+      googleCalendarConnected: false,
+      placedOn: 'hale_family_calendar',
+      alsoOnGoogle: false,
+    });
+    expect(offerSaveReachesGoogle()).toBe(false);
+  });
+
+  it('follows the parent’s words when the household has no stored language', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: '' })
+      .where(eq(schema.families.id, family.familyId));
+    const seen: OfferReceiptFacts[] = [];
+    const offerId = await seedOffer();
+    const words = 'Oui, ça me va';
+    await emailAlertAddHandler({
+      writeReceipt: {
+        write: async (facts) => {
+          seen.push(facts);
+          return 'receipt';
+        },
+      },
+    }).handle(db.database, await turn(words, { resolved: reading(offerId, 'yes') }));
+
+    expect(seen[0]).toMatchObject({ language: null, parentReply: words });
+    const message = JSON.parse(offerReceiptUserMessage(seen[0] as OfferReceiptFacts)) as {
+      parentWords: string;
+      language: null;
+      address: string;
+    };
+    expect(message.parentWords).toBe(words);
+    expect(message.language).toBeNull();
+    expect(message.address).toBe('tu');
+  });
+
+  it('does not treat a co-parent’s Google calendar as this parent’s', async () => {
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ email: `${randomUUID()}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!coParent) throw new Error('no co-parent');
+    await db.database.insert(schema.familyMembers).values({
+      familyId: family.familyId,
+      userId: coParent.id,
+      role: 'co_parent',
+    });
+    await seedIntegration(db.database, family.familyId, coParent.id, 'gcal');
+
+    const seen: OfferReceiptFacts[] = [];
+    const offerId = await seedOffer();
+    await emailAlertAddHandler({
+      writeReceipt: {
+        write: async (facts) => {
+          seen.push(facts);
+          return 'receipt';
+        },
+      },
+    }).handle(db.database, await turn('yes', { resolved: reading(offerId, 'yes') }));
+
+    expect(seen[0]).toMatchObject({
+      happened: 'added',
+      googleCalendarConnected: false,
+      placedOn: 'hale_family_calendar',
+      alsoOnGoogle: false,
+    });
+  });
+
+  it('reports a connected Google calendar without moving the entry off Hale’s calendar', async () => {
+    await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
+    const seen: OfferReceiptFacts[] = [];
+    const offerId = await seedOffer();
+    await emailAlertAddHandler({
+      writeReceipt: {
+        write: async (facts) => {
+          seen.push(facts);
+          return 'receipt';
+        },
+      },
+    }).handle(db.database, await turn('yes', { resolved: reading(offerId, 'yes') }));
+
+    expect(seen[0]).toMatchObject({
+      happened: 'added',
+      googleCalendarConnected: true,
+      placedOn: 'hale_family_calendar',
+      alsoOnGoogle: false,
+    });
+    const rows = await events();
+    expect(rows[0]?.placedGoogleEventId).toBeNull();
+  });
+
   it('writes ONE family_events row at the offered instant, and answers with it', async () => {
     const offerId = await seedOffer();
 
@@ -964,6 +1074,27 @@ describe('a coach offer is the calendar, not the sentence', () => {
       }),
     ).resolves.toBe('already_held');
     await expect(offers()).resolves.toEqual([]);
+  });
+
+  it('keeps the first confirmation for a save and does not open a second', async () => {
+    const channelMessageId = await sentOut(NOW);
+    await expect(coach({ title: 'Gymnastics', startsAt: SUNDAY, channelMessageId })).resolves.toBe(
+      'recorded',
+    );
+
+    const again = await sentOut(new Date(NOW.getTime() + 1000));
+    await expect(
+      coach({
+        title: '  gymnastics ',
+        startsAt: new Date(SUNDAY.getTime() + 60_000),
+        channelMessageId: again,
+      }),
+    ).resolves.toBe('already_confirming');
+
+    const rows = await offers();
+    const standing = rows.filter((row) => row.resolvedAt === null && row.expiresAt > NOW);
+    expect(standing).toHaveLength(1);
+    expect(standing[0]?.messageId).toBe(`coach:${channelMessageId}`);
   });
 
   it('records a future offer, expires the older one, and stops at the start', async () => {

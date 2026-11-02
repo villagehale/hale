@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AuthoredPlanView } from './authored.js';
-import { buildPlanSpine, orderedWeekdays } from './spine.js';
+import { buildPlanSpine, orderedWeekdays, zonedLocalInstant } from './spine.js';
 
 const TZ = 'America/Toronto';
 // Friday, 2026-07-03, mid-afternoon ET. The family's current week is Mon 2026-06-29
@@ -152,5 +152,47 @@ describe('buildPlanSpine — settling', () => {
     expect(settled.map((p) => p.id)).toEqual(['past']);
     expect(days.every((d) => d.plans.length === 0)).toBe(true);
     expect(undated).toHaveLength(0);
+  });
+});
+
+describe('zonedLocalInstant — DST (Devin #984)', () => {
+  const clock = (at: Date, timeZone: string) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(at);
+
+  it.each([
+    ['2027-03-14', '03:30'],
+    ['2027-03-14', '08:00'],
+    ['2027-03-13', '23:30'],
+    ['2026-11-01', '08:00'],
+    ['2026-11-01', '00:30'],
+    ['2026-10-31', '22:00'],
+  ])('Toronto %s %s round-trips', (day, time) => {
+    const at = zonedLocalInstant(day, time, 'America/Toronto');
+    expect(clock(at, 'America/Toronto')).toBe(`${day}, ${time}`);
+  });
+
+  it('spring-forward 03:30 Toronto is 07:30Z, not 04:30 EDT', () => {
+    expect(zonedLocalInstant('2027-03-14', '03:30', 'America/Toronto').toISOString()).toBe(
+      '2027-03-14T07:30:00.000Z',
+    );
+  });
+
+  it('a skipped wall clock (02:30) moves forward with the clocks', () => {
+    expect(zonedLocalInstant('2027-03-14', '02:30', 'America/Toronto').toISOString()).toBe(
+      '2027-03-14T07:30:00.000Z',
+    );
+  });
+
+  it('round-trips in a zone east of UTC', () => {
+    const at = zonedLocalInstant('2027-03-28', '03:30', 'Europe/Paris');
+    expect(clock(at, 'Europe/Paris')).toBe('2027-03-28, 03:30');
   });
 });

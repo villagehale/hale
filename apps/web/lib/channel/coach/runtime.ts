@@ -18,6 +18,7 @@ import { recordAgentRun } from '~/lib/agent-run';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { suppressDuplicateSaveConfirmation } from '~/lib/channel/calendar-save';
 import {
   groupPlanDraftPort,
   productionRecordGroupPlanOrigin,
@@ -221,6 +222,8 @@ export interface ChannelCoachPorts {
      * nearby count read the same list. */
     offered: TurnOfferLedger,
     onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
+    /** A save this turn tried to confirm already has a confirmation standing. */
+    onDuplicateSaveConfirmation?: () => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -280,6 +283,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // carries it out (see `failed` below) — a draft is a row the parent can approve,
       // so a failure that hid it would leave them holding an action they never heard of.
       const draftedActionIds: string[] = [];
+      let duplicateSaveConfirmation = false;
       // The plan this turn offered, if it offered one. LAST CALL WINS rather than a
       // list: the skill allows exactly one question per message, so a second offer in
       // one turn is a model that changed its mind mid-compose, and the offer the parent
@@ -445,6 +449,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               if (gmailNotice?.status === 'unsent') return;
               gmailNotice = notice;
             },
+            () => {
+              duplicateSaveConfirmation = true;
+            },
           );
           // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
           // are busy-only, on every group turn.
@@ -579,6 +586,28 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           // VIL-434: the model's answer goes out whole. Length is the model's judgment
           // (the skill, or a rewrite the model chooses). Code does not cut it, and it
           // does not call a shorten pass because a sentence ran past two segments.
+          // One confirmation per save. The model's second ask is not sent, and no
+          // sentence is written in its place.
+          if (
+            suppressDuplicateSaveConfirmation({
+              alreadyConfirming: duplicateSaveConfirmation,
+              newDrafts: draftedActionIds.length,
+            })
+          ) {
+            await ports.recordRun(record('completed'));
+            console.info(
+              { familyId: turn.familyId, outcome: 'duplicate_save_confirmation' },
+              'channel coach: confirmation already open, nothing sent',
+            );
+            return {
+              reply: '',
+              planOffer: null,
+              activityPromise: null,
+              spotWatch: null,
+              experienceCard: null,
+              groupLeave: null,
+            };
+          }
           const reply = toSmsReply(spoken, {
             children,
             now,
@@ -680,7 +709,17 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
+    buildTools: (
+      turn,
+      onDraft,
+      onOffer,
+      onShare,
+      onPromise,
+      onWatch,
+      offered,
+      onGmailNotice,
+      onDuplicateSaveConfirmation,
+    ) => {
       return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
@@ -719,6 +758,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           watchConsentGranted: buildOutboundGatePorts(database).watchConsentGranted,
         },
         onDraft,
+        onDuplicateSaveConfirmation,
         onOffer,
         onShare,
         onPromise,

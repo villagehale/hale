@@ -4,11 +4,27 @@ import {
   type CarpoolSender,
   applyCarpoolReading,
   carpoolPlanKey,
+  carpoolReminderZone,
 } from './carpool-apply';
+import { carpoolReminderFireAt } from './carpool-cadence';
 
 const TZ = 'America/Toronto';
 const NOW = new Date('2026-10-08T16:00:00.000Z');
 const PICKUP_ISO = '2026-10-10T12:00:00.000Z';
+
+function localClock(at: Date | null | undefined, timeZone: string): string {
+  if (!at) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return `${pick('weekday')} ${pick('hour')}:${pick('minute')}`;
+}
 
 const MAYA: CarpoolSender = {
   userId: 'user-maya',
@@ -173,6 +189,45 @@ describe('applyCarpoolReading', () => {
     expect(plan?.driverName).toBeNull();
   });
 
+  it('VIL-520: tomorrow Saturday 8am is Saturday 08:00 Toronto, not Sunday 07:00', () => {
+    // Friday 9pm EDT is Saturday 01:00 UTC. The reader attached Friday's EDT
+    // offset to Sunday 8:00, and that instant renders as Sunday 07:00 EST.
+    const skewed = '2026-11-01T08:00:00-04:00';
+    const plan = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        driverIsSender: true,
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-31',
+        pickupTime: '08:00',
+        pickupAtIso: skewed,
+      }),
+      MAYA,
+      new Date('2026-10-31T01:00:00.000Z'),
+    );
+    expect(plan?.pickupAt?.toISOString()).toBe('2026-10-31T12:00:00.000Z');
+    expect(localClock(plan?.pickupAt, TZ)).toBe('Saturday 08:00');
+  });
+
+  it('VIL-520: 8:00 on the Toronto fall-back Sunday stays 08:00, not the EDT hour', () => {
+    const plan = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'plan_needs_driver',
+        eventLabel: 'soccer',
+        pickupDate: '2026-11-01',
+        pickupTime: '08:00',
+        pickupAtIso: '2026-11-01T08:00:00-04:00',
+      }),
+      MAYA,
+      new Date('2026-10-31T01:00:00.000Z'),
+    );
+    expect(plan?.pickupAt?.toISOString()).toBe('2026-11-01T13:00:00.000Z');
+    expect(localClock(plan?.pickupAt, TZ)).toBe('Sunday 08:00');
+  });
+
   it('Devin #975: a name matching the sender is not a self-claim on its own', () => {
     const plan = applyCarpoolReading(
       null,
@@ -190,5 +245,176 @@ describe('applyCarpoolReading', () => {
       driverUserId: null,
       driverHaleCustomer: false,
     });
+  });
+});
+
+describe('date-only ride move (Devin #984)', () => {
+  it('"soccer pickup moved to Sunday" keeps the Saturday 08:00 hour on Sunday', () => {
+    const saturday = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-10',
+        pickupTime: '08:00',
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(localClock(saturday?.pickupAt, TZ)).toBe('Saturday 08:00');
+
+    const moved = applyCarpoolReading(
+      saturday,
+      reading({
+        intent: 'plan_needs_driver',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-11',
+        pickupTime: null,
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(localClock(moved?.pickupAt, TZ)).toBe('Sunday 08:00');
+    expect(moved?.planKey).toBe(carpoolPlanKey('soccer', moved?.pickupAt ?? null, TZ));
+  });
+
+  it('keeps the known hour across a DST change (Sat EDT → Sun after fall-back)', () => {
+    const saturday = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-31',
+        pickupTime: '08:00',
+      }),
+      MAYA,
+      NOW,
+    );
+    const moved = applyCarpoolReading(
+      saturday,
+      reading({ intent: 'plan_needs_driver', pickupDate: '2026-11-01', pickupTime: null }),
+      MAYA,
+      NOW,
+    );
+    expect(localClock(moved?.pickupAt, TZ)).toBe('Sunday 08:00');
+  });
+
+  it('a Vancouver sender moving a Toronto Sat 08:00 ride lands on Sun 08:00 Toronto (Devin #984 cross-zone)', () => {
+    const saturday = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-10',
+        pickupTime: '08:00',
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(saturday?.driverTimezone).toBe(TZ);
+    const vancouver = { ...MAYA, timezone: 'America/Vancouver' };
+    const moved = applyCarpoolReading(
+      saturday,
+      reading({
+        intent: 'plan_needs_driver',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-11',
+        pickupTime: null,
+      }),
+      vancouver,
+      NOW,
+    );
+    expect(localClock(moved?.pickupAt, TZ)).toBe('Sunday 08:00');
+    expect(moved?.pickupAt?.toISOString()).toBe('2026-10-11T12:00:00.000Z');
+    expect(moved?.driverTimezone).toBe(TZ);
+    expect(moved?.planKey).toBe(carpoolPlanKey('soccer', moved?.pickupAt ?? null, TZ));
+  });
+
+  it('a Vancouver member taking a Toronto ride on Sunday keeps Toronto pickup, reminder on Vancouver evening (Devin #984 swapped zone)', () => {
+    const saturday = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'driver_claim',
+        driverName: 'Maya',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-10',
+        pickupTime: '08:00',
+      }),
+      MAYA,
+      NOW,
+    );
+    const vancouver = { ...MAYA, userId: 'user-van', name: 'Priya', timezone: 'America/Vancouver' };
+    const moved = applyCarpoolReading(
+      saturday,
+      reading({
+        intent: 'driver_swap',
+        driverName: null,
+        driverIsSender: true,
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-11',
+        pickupTime: null,
+      }),
+      vancouver,
+      NOW,
+    );
+    expect(moved?.pickupAt?.toISOString()).toBe('2026-10-11T12:00:00.000Z');
+    expect(moved?.driverTimezone).toBe(TZ);
+    expect(moved?.driverUserId).toBe('user-van');
+    expect(moved?.reminderFireAt?.toISOString()).toBe(
+      carpoolReminderFireAt(
+        new Date('2026-10-11T12:00:00.000Z'),
+        'America/Vancouver',
+      ).toISOString(),
+    );
+    expect(moved?.reminderFireAt?.toISOString()).not.toBe(
+      carpoolReminderFireAt(new Date('2026-10-11T12:00:00.000Z'), TZ).toISOString(),
+    );
+    expect(moved && carpoolReminderZone(moved, vancouver)).toBe('America/Vancouver');
+  });
+
+  it('a Toronto driver on a Vancouver-zoned ride gets a Toronto reminder zone (Devin #984 reverse)', () => {
+    const van = { ...MAYA, userId: 'user-van', timezone: 'America/Vancouver' };
+    const ride = applyCarpoolReading(
+      null,
+      reading({
+        intent: 'plan_needs_driver',
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-10',
+        pickupTime: '08:00',
+      }),
+      van,
+      NOW,
+    );
+    expect(ride?.driverTimezone).toBe('America/Vancouver');
+    const claimed = applyCarpoolReading(
+      ride,
+      reading({
+        intent: 'driver_claim',
+        driverIsSender: true,
+        eventLabel: 'soccer',
+        pickupDate: '2026-10-11',
+        pickupTime: null,
+      }),
+      MAYA,
+      NOW,
+    );
+    expect(claimed?.pickupAt?.toISOString()).toBe('2026-10-11T15:00:00.000Z');
+    expect(claimed?.driverTimezone).toBe('America/Vancouver');
+    expect(claimed?.reminderFireAt?.toISOString()).toBe(
+      carpoolReminderFireAt(new Date('2026-10-11T15:00:00.000Z'), TZ).toISOString(),
+    );
+  });
+
+  it('a date with no hour and no known ride sets no instant', () => {
+    const plan = applyCarpoolReading(
+      null,
+      reading({ intent: 'plan_needs_driver', eventLabel: 'soccer', pickupDate: '2026-10-11' }),
+      MAYA,
+      NOW,
+    );
+    expect(plan?.pickupAt ?? null).toBeNull();
   });
 });

@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import { calendarInstantsClose, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
+import { claimSaveConfirmation } from '~/lib/channel/calendar-save';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -278,6 +280,14 @@ export async function handleEmailAlertOfferReply(
     title: offer.title,
     when: when(offer.startsAt, timeZone, input.now),
     parentReply: input.parentReply,
+    language: await familySpeechLanguage(database, input.familyId),
+    googleCalendarConnected: await googleCalendarConnected(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+    }),
+    // Nothing is written on a decline. An add here is always Hale's family calendar.
+    placedOn: null,
+    alsoOnGoogle: offerSaveReachesGoogle(),
   };
 
   if (input.polarity === 'no') {
@@ -297,6 +307,11 @@ export async function handleEmailAlertOfferReply(
   }
 
   await placeOfferedEvent(database, offer, input);
+  // This path writes family_events and does not deliver an ICS, so the place is
+  // Hale's family calendar. `ics` is not a value on this receipt. Google is a
+  // different writer (executor syncGoogle) and this function does not call it.
+  facts.placedOn = 'hale_family_calendar';
+  facts.alsoOnGoogle = offerSaveReachesGoogle();
   // The coach also drafted this add. The parent's YES just placed it, so the draft
   // must leave the queue or the next YES is not answerable and the coach drafts it again.
   await supersedeUnapprovedCalendarAdds(database, {
@@ -613,6 +628,39 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
 }
 
 /**
+ * Whether an offer save is also written to the parent's Google calendar.
+ *
+ * It is not. {@link placeOfferedEvent} inserts `family_events` and returns.
+ * Google is written only by the executor's `syncGoogle`, on a reviewed
+ * `calendar_add` / `calendar_move` / `calendar_cancel`. A connected calendar
+ * is not that write.
+ */
+export function offerSaveReachesGoogle(): false {
+  return false;
+}
+
+/**
+ * An active gcal row for THIS parent is a connection. A co-parent's row, a
+ * family-wide row (no user), and anything not active are not.
+ */
+async function googleCalendarConnected(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<boolean> {
+  const rows = await database
+    .select({ userId: schema.integrations.userId, status: schema.integrations.status })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, input.familyId),
+        eq(schema.integrations.userId, input.parentUserId),
+        eq(schema.integrations.provider, 'gcal'),
+      ),
+    );
+  return rows.some((row) => row.userId === input.parentUserId && row.status === 'active');
+}
+
+/**
  * The occasion is already on the week the household shares, or on this parent's
  * kid-related Google block. A mirror row (`google_event_id` set) is one parent's
  * calendar and is not a household event — the household predicate keeps it out.
@@ -657,6 +705,7 @@ export type CoachCalendarOfferOutcome =
   | 'recorded'
   | 'event_started'
   | 'already_held'
+  | 'already_confirming'
   | 'unreadable';
 
 /**
@@ -691,6 +740,18 @@ export async function recordCoachCalendarOffer(
     })
   ) {
     return 'already_held';
+  }
+
+  // One confirmation per save. An open offer for this title and a close clock is
+  // that confirmation: do not expire it and do not open a second one.
+  const open = await loadOpenEmailAlertOffers(database, input);
+  if (
+    claimSaveConfirmation(
+      open.map((row) => ({ title: row.title, startsAt: row.startsAt.toISOString() })),
+      { title, startsAt: input.startsAt.toISOString() },
+    ) === 'duplicate'
+  ) {
+    return 'already_confirming';
   }
 
   await database

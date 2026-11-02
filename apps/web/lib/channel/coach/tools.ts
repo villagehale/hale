@@ -227,6 +227,11 @@ export interface ChannelCoachToolArgs {
    * and the router can only be honest about that if something counted (VIL-260). */
   onDraft?: (actionId: string) => void;
   /**
+   * This save already has a confirmation standing. The runtime sends nothing when
+   * the turn drafted no new save. Not a sentence, and not a second ask.
+   */
+  onDuplicateSaveConfirmation?: () => void;
+  /**
    * Told when the turn OFFERS a full coaching plan. The mirror image of `onDraft`: a
    * draft is a row the tool already wrote, while an offer is a row that cannot be
    * written yet — `agent_commitments.created_from` needs the outbound message id, and
@@ -672,11 +677,27 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         startsAt: startsAt.toISOString(),
       });
       if (already) {
+        args.onDuplicateSaveConfirmation?.();
         return {
           drafted: true as const,
           actionId: already,
           when: longWhen(startsAt, timeZone),
           alreadyPending: true as const,
+        };
+      }
+      const confirming = await draftPort.confirmingSave?.({
+        familyId,
+        parentUserId: ctx.actor,
+        title: input.title,
+        startsAt: startsAt.toISOString(),
+        now,
+      });
+      if (confirming) {
+        args.onDuplicateSaveConfirmation?.();
+        return {
+          drafted: false as const,
+          alreadyConfirming: true as const,
+          when: longWhen(startsAt, timeZone),
         };
       }
       claimDraftBudget();
