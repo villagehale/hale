@@ -621,16 +621,16 @@ describe(
         Boolean(name) && (body.includes(name ?? '') || fold(body).includes(fold(name ?? '')));
       expect(picks.some((pick) => named(pick.name))).toBe(true);
 
-      // The recorded museum age is explicit; the zoo's "Child (3 - 12)" tariff
-      // does not establish an activity age band and stays a caveated reference.
+      // The recording has one supported pick. A second item the finder will not
+      // stand behind would arrive as a reference; this recording has none.
       expect(found?.found).toBe(true);
       if (!found?.found) throw new Error('expected a supported travel recommendation');
       const sentPicks = found.picks.filter((pick) => named(pick.name));
       const sentReferences = (found.references ?? []).filter((reference) => named(reference.name));
+      expect(picks).toHaveLength(1);
       expect(sentPicks.map((pick) => pick.name)).toEqual([picks[0]?.name]);
-      expect(sentReferences.map((reference) => reference.name)).toEqual([picks[1]?.name]);
+      expect(sentReferences).toEqual([]);
       expect(body).not.toContain('dates and age fit not confirmed for your trip');
-      expect(body).not.toContain(picks[1]?.price);
 
       // NOTHING WAS INVENTED: every price figure in the body is one a stored pick carries
       // (none at all when no pick has a price), and at least one stored `when` reaches the
@@ -681,7 +681,7 @@ describe(
       expect(sentPicks.length).toBeGreaterThan(0);
       expect(audit.find((e) => e.verb === 'travel_brief_sent')?.after).toEqual({
         picks: sentPicks.length,
-        references: sentReferences.length,
+        ...(sentReferences.length > 0 ? { references: sentReferences.length } : {}),
         merged: 0,
       });
       expect(JSON.stringify(audit)).not.toContain('New York');

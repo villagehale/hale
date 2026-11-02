@@ -175,6 +175,24 @@ const noteJsonSchema = {
 } as const;
 
 /**
+ * Evidence the composer is shown.
+ *
+ * A null occurrence page or season is the page not having named one. The key stays
+ * off the request, which is the same question the follow-up recordings already
+ * answer. A url or a season the page did name stays, and that request is a new one.
+ */
+function composerEvidence(
+  evidence: NonNullable<FollowUpPick['evidence']>,
+): NonNullable<FollowUpPick['evidence']> {
+  const { occurrenceUrl, season, ...rest } = evidence;
+  return {
+    ...rest,
+    ...(occurrenceUrl != null ? { occurrenceUrl } : {}),
+    ...(season != null ? { season } : {}),
+  };
+}
+
+/**
  * Shared with the eval, which REPLICATES this request shape. It carries the picks and the
  * subject and nothing else — no family, no child, no thread (rule #1).
  *
@@ -250,7 +268,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     registration: pick.registration ?? null,
     source_name: pick.sourceName,
     source: pick.source,
-    ...(pick.evidence ? { evidence: pick.evidence } : {}),
+    ...(pick.evidence ? { evidence: composerEvidence(pick.evidence) } : {}),
   }));
   return JSON.stringify(payload);
 }

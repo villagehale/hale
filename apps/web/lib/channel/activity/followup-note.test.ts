@@ -743,6 +743,55 @@ describe('an empty search tells the composer where it looked', () => {
     expect(payload.picks[0].evidence).toEqual(evidence);
   });
 
+  it('omits a null occurrence page and season, and keeps one the page named', () => {
+    const payload = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [
+          {
+            ...PICK,
+            evidence: {
+              program: 'Family storytime',
+              age: 'ages 2-5',
+              sessions: [],
+              schedule: null,
+              price: null,
+              history: null,
+              windowConfirmed: false,
+              occurrenceUrl: null,
+              season: null,
+            },
+          },
+        ],
+      }),
+    );
+    expect(payload.picks[0].evidence).not.toHaveProperty('occurrenceUrl');
+    expect(payload.picks[0].evidence).not.toHaveProperty('season');
+    const named = JSON.parse(
+      followUpUserMessage({
+        ...base,
+        picks: [
+          {
+            ...PICK,
+            evidence: {
+              program: 'Family storytime',
+              age: 'ages 2-5',
+              sessions: [],
+              schedule: null,
+              price: null,
+              history: null,
+              windowConfirmed: false,
+              occurrenceUrl: 'https://gym.example/fall',
+              season: 'automne',
+            },
+          },
+        ],
+      }),
+    );
+    expect(named.picks[0].evidence.occurrenceUrl).toBe('https://gym.example/fall');
+    expect(named.picks[0].evidence.season).toBe('automne');
+  });
+
   it('carries the area, not unvalidated research, when there are no picks', () => {
     const empty = JSON.parse(followUpUserMessage({ ...base, picks: [], searched }));
     expect(empty.picks_empty).toBe(true);

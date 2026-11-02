@@ -286,7 +286,7 @@ describe('what the parent actually gets', () => {
       expect((await run(h)).sent).toBe(1);
       expect(h.sent).toHaveLength(1);
       expect(h.sent[0]?.body).toContain('Discovery Club (City Museum)');
-      expect(h.sent[0]?.body).toContain('not confirmed for your trip');
+      expect(h.sent[0]?.body).not.toContain('not confirmed for your trip');
       for (const rejected of ['2020', '$14', '$999', '10:00', 'ages 2-5', 'https://']) {
         expect(h.sent[0]?.body).not.toContain(rejected);
       }
@@ -311,7 +311,7 @@ describe('what the parent actually gets', () => {
     expect((await run(h)).sent).toBe(1);
     expect(h.sent[0]?.body).toContain('American Museum of Natural History');
     expect(h.sent[0]?.body).toContain(REFERENCE.name);
-    expect(h.sent[0]?.body).toContain('not confirmed for your trip');
+    expect(h.sent[0]?.body).not.toContain('not confirmed for your trip');
     const [audit] = await database
       .select({ after: schema.auditLog.after })
       .from(schema.auditLog)
