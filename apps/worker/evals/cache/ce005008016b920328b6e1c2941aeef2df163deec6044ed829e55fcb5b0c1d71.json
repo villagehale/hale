@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Correct French and no other-family hints, but it breaks the facts: \"Je t'écrirai dès qu'une famille proche sera disponible\" implies a family exists and promises a future text, while the facts say only that Hale texts when there is a match and give no match exists. \"Super, merci pour ta réponse\" is a bit form-like but acceptable. The \"famille proche sera disponible\" wording hints a family is waiting, which breaks the no-match-implied rule."
+  }
+}

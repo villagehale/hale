@@ -296,6 +296,21 @@ async function primaryParentDisplayName(
   return row?.name ?? null;
 }
 
+/** Title and start off a calendar payload, or nothing. Used to see that a coach offer
+ * and a draft are one occasion (VIL-513). Not a sentence a parent reads. */
+function calendarOccasion(
+  actionType: string,
+  payload: unknown,
+): { title: string; startsAt: string } | undefined {
+  if (actionType !== 'calendar_add') return undefined;
+  if (!payload || typeof payload !== 'object') return undefined;
+  const title = 'title' in payload && typeof payload.title === 'string' ? payload.title : '';
+  const startsAt =
+    'startsAt' in payload && typeof payload.startsAt === 'string' ? payload.startsAt : '';
+  if (title.trim() === '' || startsAt.trim() === '') return undefined;
+  return { title, startsAt };
+}
+
 /**
  * The approvals spine, bound to the SAME functions the app's buttons call.
  *
@@ -320,6 +335,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
           id: schema.actions.id,
           actionType: schema.actions.actionType,
           reviewerVerdict: schema.actions.reviewerVerdict,
+          payload: schema.actions.payload,
         })
         .from(schema.actions)
         .where(
@@ -335,11 +351,15 @@ export function defaultApprovalSpine(): ApprovalSpine {
       // decline, so removing it would take away an answer they have. What it cannot be is
       // approved — `approveDraftedAction` refuses it (rule #3) — so it is listed as
       // no-only, and the resolver stops binding a yes to a row it knows will refuse one.
-      return rows.map((row) => ({
-        actionId: row.id,
-        actionType: row.actionType,
-        reviewerApproved: row.reviewerVerdict === 'approved',
-      }));
+      return rows.map((row) => {
+        const occasion = calendarOccasion(row.actionType, row.payload);
+        return {
+          actionId: row.id,
+          actionType: row.actionType,
+          reviewerApproved: row.reviewerVerdict === 'approved',
+          ...(occasion ? { occasion } : {}),
+        };
+      });
     },
 
     /**
@@ -939,6 +959,8 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
           summary: emailAlertOfferSummary(offer),
           subject: emailAlertOfferSubject(offer),
           askedAt: offer.askedAt,
+          title: offer.title,
+          startsAt: offer.startsAt.toISOString(),
         }));
       },
       // The email forwarding door is retired with the email channel, so no revoke

@@ -8,6 +8,7 @@ import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language'
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { type ConveyFact, judgeSaidLineConvey } from './said-line-convey';
 
 /**
  * #868 · the lines that used to be fixed, written by the model each time.
@@ -38,6 +39,9 @@ export type SaidLinePurpose =
   | 'health'
   /** A parent said yes to one village introduction. */
   | 'intro_yes'
+  /** Any other answer about introductions, or the soft close (VIL-450). `facts.situation`
+   * says what is true; the model words it. */
+  | 'intro_reply'
   /** VIL-505: the line riding Hale's contact card (vCard MMS) at intake. */
   | 'contact_card';
 
@@ -53,10 +57,23 @@ export interface SaidLineInput {
   language: ReplyLanguage | null;
   /** The parent's own words, when the line answers a text. */
   parentWords?: string | null;
+  /**
+   * The parent's latest texts, oldest first, when the line answers none of them (a
+   * proactive line such as the intro soft close). Read for the reply's LANGUAGE only;
+   * the model never quotes or answers them. The language is inferred, never defaulted.
+   */
+  recentParentWords?: readonly string[] | null;
   /** Plain values, or a small structured fact (a list, or named parts) the model words itself. */
   facts: Record<string, SaidLineFact>;
   /** Strings that must appear verbatim (numbers, addresses). Never a URL: see links. */
   mustInclude?: readonly string[];
+  /**
+   * Fact KEYS whose meaning the text must carry, in the model's own words and language.
+   * The key must name a fact (structural, in {@link acceptSaidLine}). Whether the
+   * text carries that meaning is a judge, not a word list (VIL-530). A miss, or a
+   * judge that does not run, sends nothing. The draft is never rewritten.
+   */
+  mustConvey?: readonly string[];
   /**
    * Links by slot name. The model never sees or types a URL (#868): it writes the
    * placeholder `[[name]]` where each link goes, and code puts the exact URL in.
@@ -91,8 +108,15 @@ export function saidLineUserMessage(input: SaidLineInput): string {
     // A hint only when certain; the parent's words decide the reply's language (#868).
     languageHint: certainLanguageHint(input.language),
     parentWords: input.parentWords ?? null,
+    // Sent only when present, so every existing line's payload (and its cached evals)
+    // is byte-for-byte unchanged.
+    ...(input.recentParentWords && input.recentParentWords.length > 0
+      ? { recentParentWords: input.recentParentWords }
+      : {}),
     facts: input.facts,
     mustInclude: input.mustInclude ?? [],
+    // Sent only when present, so every other line's payload (and cache key) is unchanged.
+    ...(input.mustConvey && input.mustConvey.length > 0 ? { mustConvey: input.mustConvey } : {}),
     linkSlots: Object.keys(input.links ?? {}).map(linkSlot),
   });
 }
@@ -107,6 +131,9 @@ export function acceptSaidLine(text: string, input: SaidLineInput): string | nul
   if (body.length === 0) return null;
   const required = input.mustInclude ?? [];
   if (!required.every((fact) => body.includes(fact))) return null;
+  // A mustConvey key with no fact behind it is a wiring bug, not something to say.
+  // The meaning itself is not matched here. The writer asks the convey judge.
+  if (!(input.mustConvey ?? []).every((key) => key in input.facts)) return null;
   if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
   for (const [name, url] of Object.entries(input.links ?? {})) {
     const slot = linkSlot(name);
@@ -140,6 +167,30 @@ export function createSaidLineWriter(
         const accepted = acceptSaidLine(value.text, input);
         if (accepted === null) {
           console.error({ purpose: input.purpose }, 'said line: unusable write - nothing sent');
+          return null;
+        }
+        // VIL-530 (Sloane): when meanings are required, a judge reads the outbound
+        // text. A miss or a judge that does not run sends nothing. The text that
+        // passed is returned as written, or not at all. It is never rewritten.
+        const required = conveyFacts(input);
+        if (required === null) {
+          console.error(
+            { purpose: input.purpose },
+            'said line: mustConvey fact missing - nothing sent',
+          );
+          return null;
+        }
+        if (required.length === 0) return accepted;
+        const gate = await judgeSaidLineConvey(() => client, accepted, required);
+        if (gate.verdict !== 'send') {
+          console.error(
+            {
+              purpose: input.purpose,
+              reason: gate.verdict === 'omit' ? 'must_convey' : gate.reason,
+            },
+            'said line: required meaning not conveyed - nothing sent',
+          );
+          return null;
         }
         return accepted;
       } catch (err) {
@@ -253,6 +304,16 @@ export async function writeCrisisLine(
     : null;
   if (!written) logCrisisUnanswered(kind, where);
   return written;
+}
+
+function conveyFacts(input: SaidLineInput): ConveyFact[] | null {
+  const facts: ConveyFact[] = [];
+  for (const key of input.mustConvey ?? []) {
+    const meaning = input.facts[key];
+    if (meaning === undefined) return null;
+    facts.push({ key, meaning });
+  }
+  return facts;
 }
 
 /** Minutes a connect link stays live, said by the model (CHANNEL_SIGNIN_TTL_MS). */

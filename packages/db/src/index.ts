@@ -8,7 +8,11 @@ export type {
   WeekPlanVoice,
   NewWeekPlan,
 } from './schema/week-plans.js';
-export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
+export type {
+  FamilyEvent,
+  FamilyEventNotes,
+  NewFamilyEvent,
+} from './schema/family-events.js';
 export { householdFamilyEvent } from './family-event-scope.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {

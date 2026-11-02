@@ -2,7 +2,7 @@ import { after } from 'next/server';
 import { INBOUND_TURN_QUEUES } from '~/lib/channel/config';
 import { linqInboundDeps } from '~/lib/channel/linq/deps';
 import { handlePreviewFakeInbound } from '~/lib/channel/preview-fake-inbound';
-import { kickDrain } from '~/lib/cron/kick-drain';
+import { drainOrigin, kickDrain } from '~/lib/cron/kick-drain';
 
 export const runtime = 'nodejs';
 
@@ -13,7 +13,7 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: Request): Promise<Response> {
   const deps = linqInboundDeps();
-  const origin = process.env.APP_URL ?? new URL(req.url).origin;
+  const origin = drainOrigin(req);
   return handlePreviewFakeInbound(req, {
     ...deps,
     countOutcome: async () => {},

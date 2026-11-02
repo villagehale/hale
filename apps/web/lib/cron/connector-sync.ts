@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
@@ -36,6 +37,11 @@ import {
   gmailAlertSweepInput,
 } from '~/lib/integrations/email-alert';
 import { composeEmailAlertNotice } from '~/lib/integrations/email-alert-notice';
+import {
+  type EventNotesReader,
+  boundEventNotesReader,
+  createEventNotesReader,
+} from '~/lib/integrations/event-notes';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
 import { readNoticeLanguage } from '~/lib/integrations/notice-language';
@@ -57,7 +63,7 @@ import {
   syncConnection,
 } from '~/lib/integrations/sync';
 import { decryptTokens } from '~/lib/integrations/token-vault';
-import { pipelineClient } from '~/lib/pipeline/client';
+import { budgetedAnthropic, pipelineClient } from '~/lib/pipeline/client';
 import {
   type FamilyChildRef,
   classifyChildEventEmail,
@@ -215,6 +221,8 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
   const enqueue = async (event: IngestedEventPayload): Promise<void> => {
     await queue.send('events.ingested', event, { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
   };
+  // One bounded notes reader per sweep: per-read timeout + sweep-wide read/time budget.
+  const readNotes = boundEventNotesReader(createEventNotesReader(eventNotesClient));
   const base: BaseSyncDeps = {
     googleFetch: googleGetFetch,
     enqueue,
@@ -225,7 +233,7 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
     alertGmailEnvelopes: (batch) => alertGmailSweep(database, batch),
     alertCalendarChanges: (batch) => alertCalendarSweep(database, batch),
     detectTravelBookings: (batch) => detectTravelSweep(database, batch),
-    mirrorCalendarWindow: (batch) => mirrorCalendarWindow(database, batch),
+    mirrorCalendarWindow: (batch) => mirrorCalendarWindow(database, batch, readNotes),
   };
   return {
     listConnections: () => listActiveConnectorConnections(database),
@@ -327,6 +335,7 @@ function travelDetectPorts(
 async function mirrorCalendarWindow(
   database: Database,
   batch: CalendarMirrorBatch,
+  readNotes: EventNotesReader,
 ): Promise<CalendarMirrorCounts> {
   if (!laneEnabled('parent_calendar_mirror')) {
     console.info(
@@ -364,7 +373,19 @@ async function mirrorCalendarWindow(
     timeZone,
     now: batch.now,
     trustWindow: batch.trustWindow,
+    readNotes,
   });
+}
+
+/** No SDK retry and a short wire timeout: the per-hash failure cap is the retry policy. */
+const EVENT_NOTES_CLIENT_OPTIONS = { timeout: 20_000, maxRetries: 0 } as const;
+let eventNotesAnthropic: AgentClient | undefined;
+/** VIL-468. Lazy, so a missing key is a null reading, never a thrown sync. */
+function eventNotesClient(): AgentClient {
+  eventNotesAnthropic ??= budgetedAnthropic(EVENT_NOTES_CLIENT_OPTIONS, {
+    stage: 'classify_event',
+  });
+  return eventNotesAnthropic;
 }
 
 /** Deps for the connect-time backfill kick. The cursor write merges onto the row

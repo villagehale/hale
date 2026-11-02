@@ -1,0 +1,9 @@
+{
+  "value": {
+    "care": "starting_soon",
+    "provider": null,
+    "confidence": "high",
+    "reason": "care not started; future start in September"
+  },
+  "latencyMs": 2171
+}

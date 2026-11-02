@@ -387,9 +387,13 @@
     "file": "reply-resolver.md",
     "sha256": "83fec3c09426b2c2a8b811ee00266fe2f12a0ff5b2a26752644a181e95a8890c"
   },
+  "said-line-convey-judge.md": {
+    "file": "said-line-convey-judge.md",
+    "sha256": "5ee8ad5e65d7138488f2b786169bb2af046858bcd3f4591ad4929678f88db513"
+  },
   "said-line.md": {
     "file": "said-line.md",
-    "sha256": "b9ea40b94bd8bc9825b32248cd8ab1119294bfb1afb604402a1b204f44a5c957"
+    "sha256": "2daeca7022da586e7b57b7e9742c33cfeb198fc8627eec1498fe6ee8cbfe1100"
   },
   "shared-group-reading.md": {
     "file": "shared-group-reading.md",

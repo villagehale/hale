@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { eq, sql } from 'drizzle-orm';
+import { schema } from '@hale/db';
+import { sql } from 'drizzle-orm';
 import { answerParentDutyAsk } from '~/lib/channel/coparent/duty/asks';
 import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
@@ -99,7 +99,6 @@ import { parseLinqTapback } from './group-plan-rsvp/reading';
 import { groupPlanRsvpTakesTheTurn } from './group-plan-rsvp/turn';
 import type { GroupPlanRsvpComposer } from './group-plan-rsvp/voice';
 import { type PrivateAsideModel, sharedPrivateAsideModel } from './group-private-aside';
-import { decideGroupTurn } from './group-turn-policy';
 import {
   type GroupTurnReader,
   groupTurnFromReading,
@@ -898,29 +897,37 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
   let budget: 'sender' | 'chat' = 'sender';
   if (linqGroupOnboardingV2Enabled()) {
     const optOut = await optOutIntentOf(message.text);
-    const turn = linqGroupTurnAiEnabled()
-      ? groupTurnFromReading(
-          optOut
-            ? null
-            : await (deps.groupTurnReader ?? sharedGroupTurnReader()).read({
-                text: message.text,
-                haleNames: ['Hale'],
-                ...(await groupTurnReadContext(deps.database, {
-                  familyId: mapped.status === 'same_family' ? mapped.familyId : null,
-                  chatId: message.chatId,
-                  senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
-                })),
-              }),
-          optOut,
-        )
-      : decideGroupTurn({
+    // Items 5 (groups split): the model reads whether this is Hale's turn. There is no
+    // name or keyword matching behind it. With the reader dark, or a failed read, Hale
+    // stays silent in the group: nothing is recorded and nothing is sent.
+    if (!optOut && !linqGroupTurnAiEnabled()) {
+      deps.log.info(
+        { outcome: 'group_turn_reader_off', providerMessageId: message.messageId },
+        'linq inbound: group turn',
+      );
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_turn_reader_off' });
+    }
+    const reading = optOut
+      ? null
+      : await (deps.groupTurnReader ?? sharedGroupTurnReader()).read({
           text: message.text,
-          optOut,
-          kidNames:
-            mapped.status === 'same_family'
-              ? await kidFirstNames(deps.database, mapped.familyId)
-              : [],
+          haleNames: ['Hale'],
+          ...(await groupTurnReadContext(deps.database, {
+            familyId: mapped.status === 'same_family' ? mapped.familyId : null,
+            chatId: message.chatId,
+            senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
+          })),
         });
+    if (!optOut && reading === null) {
+      deps.log.info(
+        { outcome: 'group_turn_unread', providerMessageId: message.messageId },
+        'linq inbound: group turn',
+      );
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_turn_unread' });
+    }
+    const turn = groupTurnFromReading(reading, optOut);
     if (turn.route === 'duty' || turn.route === 'ignore') {
       const outcome = turn.route === 'duty' ? 'group_duty_statement' : turn.outcome;
       deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group turn');
@@ -1047,16 +1054,6 @@ const GROUP_INBOUND_ROUTE = 'linq-group-inbound';
  * empty. Every scoped role holds all of `GROUP_CONTENT`, so the class chosen among them
  * does not change the verdict. */
 const GROUP_COACH_LINE: GroupLineClass = 'schedule';
-
-/** The family's kids' first names, read only to tell a question about one of them from
- * chatter. Never logged and never sent. */
-async function kidFirstNames(database: Database, familyId: string): Promise<string[]> {
-  const rows = await database
-    .select({ name: schema.children.name })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  return rows.map((row) => row.name);
-}
 
 async function claimGroupFromTrigger(
   deps: LinqDoorDeps,

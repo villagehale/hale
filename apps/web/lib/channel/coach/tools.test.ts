@@ -93,13 +93,16 @@ function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
   };
 }
 
-function fakePort(): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
+function fakePort(
+  pendingIdentical?: ChannelDraftPort['pendingIdentical'],
+): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
   const port = {
     drafts: [] as ChannelDraftInput[],
     async draft(input: ChannelDraftInput) {
       port.drafts.push(input);
       return { actionId: `action-${port.drafts.length}` };
     },
+    ...(pendingIdentical ? { pendingIdentical } : {}),
   };
   return port;
 }
@@ -133,8 +136,9 @@ function harness(
   events: ScheduleEvent[] = [scheduleEvent()],
   teenChildIds: ReadonlySet<string> = new Set(),
   offered: readonly OfferedCandidate[] = [],
+  pendingIdentical?: ChannelDraftPort['pendingIdentical'],
 ): Harness {
-  const port = fakePort();
+  const port = fakePort(pendingIdentical);
   const audit: unknown[] = [];
   const minted: string[] = [];
   const deps = guardDeps(audit, teenChildIds);
@@ -356,6 +360,25 @@ describe('propose_calendar_add', () => {
       }),
     ).rejects.toThrow(/already started/i);
     expect(h.port.drafts).toEqual([]);
+  });
+
+  it('does not draft again when that add is already waiting', async () => {
+    const h = harness([scheduleEvent()], new Set(), [], async () => 'action-waiting');
+
+    const result = await h.call('propose_calendar_add', {
+      title: 'Trunk or Treat',
+      date: '2026-08-05',
+      time: '10:00',
+      weekday: 'wed',
+    });
+
+    expect(result).toMatchObject({
+      drafted: true,
+      actionId: 'action-waiting',
+      alreadyPending: true,
+    });
+    expect(h.port.drafts).toEqual([]);
+    expect(h.minted).toEqual([]);
   });
 
   it('drafts an add from a family-local date and time', async () => {

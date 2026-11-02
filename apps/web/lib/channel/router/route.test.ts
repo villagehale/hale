@@ -35,11 +35,10 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
-  DISCOVERABILITY_ALREADY_ON,
-  DISCOVERABILITY_OFF,
-  DISCOVERABILITY_ON,
-} from '~/lib/village/intros/copy';
-import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
+  INTRO_REPLY_FACTS,
+  type IntroReplySituation,
+  type VillageIntroReplyDeps,
+} from '~/lib/village/intros/reply';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
 import type {
@@ -461,6 +460,7 @@ function harness(
     apology?: TurnApology;
     questions?: OpenQuestionReader;
     replyResolver?: ReplyResolver;
+    calendarOffers?: ChannelRouterDeps['calendarOffers'];
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
@@ -545,7 +545,7 @@ function harness(
       questions: options.questions ?? fakeQuestions([]),
       replyResolver:
         options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
-      calendarOffers: calendarOffersIdle,
+      calendarOffers: options.calendarOffers ?? calendarOffersIdle,
       disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
@@ -3102,6 +3102,9 @@ describe('the 09:47 sequence', () => {
   };
 
   /** The real lane, over spies. `standing` is what the ledger already holds. */
+  const line = (situation: IntroReplySituation) =>
+    `model:${INTRO_REPLY_FACTS[situation].situation}`;
+
   function introChain(standing: 'unanswered' | 'granted') {
     const written: boolean[] = [];
     const deps: VillageIntroReplyDeps = {
@@ -3120,6 +3123,8 @@ describe('the 09:47 sequence', () => {
       answerableProposal: async () => null,
       recordDecision: async () => {},
       cancelOpenProposals: async () => {},
+      // Stands in for the model (said-line): never a paid call.
+      saidLine: { write: async (input) => `model:${String(input.facts.situation)}` },
     };
     return { written, handlers: [villageIntroHandler(deps)] };
   }
@@ -3146,7 +3151,7 @@ describe('the 09:47 sequence', () => {
     expect(result.status).toBe('resolved');
     expect(chain.written).toEqual([true]);
     // ONE message. What happened live was a coach turn about a stale calendar draft.
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ON]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_on')]);
     expect(coach.calls).toBe(0);
   });
 
@@ -3165,9 +3170,9 @@ describe('the 09:47 sequence', () => {
 
     expect(result.handler).toBe('village_intro');
     expect(chain.written).toEqual([]);
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ALREADY_ON]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_already_on')]);
     // Not the full acknowledgement a second time.
-    expect(h.transport.bodies()[0]).not.toBe(DISCOVERABILITY_ON);
+    expect(h.transport.bodies()[0]).not.toBe(line('discoverability_on'));
   });
 
   it('still honours a revocation seconds after the grant', async () => {
@@ -3182,7 +3187,7 @@ describe('the 09:47 sequence', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(chain.written).toEqual([false]);
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_OFF]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_off')]);
   });
 });
 
@@ -4346,6 +4351,136 @@ describe('the weekday-care answer', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(queue.approved).toEqual(['a-1']);
+  });
+
+  /**
+   * VIL-513. The coach asked "Add Trunk or Treat …?" which is one drafted calendar
+   * add. A bare YES must approve that draft. It must not reach the coach, which
+   * would draft the same add again.
+   */
+  it('approves the pending calendar add when YES answers the coach offer', async () => {
+    const approved: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true },
+      ],
+      latestUndoable: async () => null,
+      approve: async (_db: unknown, args: { actionId: string }) => {
+        approved.push(args.actionId);
+        return { ok: true as const };
+      },
+      decline: async () => ({ ok: true as const }),
+      undo: async () => ({ ok: true as const }),
+    };
+    const coach = fakeCoach();
+    let calendarReads = 0;
+    const resolver = fakeResolver({ status: 'unresolved', reason: 'ambiguous' });
+    const offer: OpenQuestion = {
+      id: 'offer-1',
+      kind: 'email_alert_add',
+      description: 'An offer to put Trunk or Treat on your week, starting 2026-10-31T19:00:00.000Z',
+      subject: 'putting Trunk or Treat on your week',
+      answerable: { yes: true, no: true },
+      askedAt: NOW,
+      solicited: true,
+      approvesActionId: 'a-1',
+    };
+    const h = harness({
+      context: { body: 'YES' },
+      coach,
+      handlers: [approvalHandler(spine as never)],
+      questions: fakeQuestions([
+        {
+          id: 'a-flagged',
+          kind: 'approval',
+          description: 'Add to your calendar',
+          subject: 'add to your calendar',
+          answerable: { yes: false, no: true },
+          askedAt: null,
+          solicited: false,
+        },
+        offer,
+      ]),
+      replyResolver: resolver,
+      calendarOffers: {
+        readParent: async () => {
+          calendarReads += 1;
+          return {
+            status: 'resolved' as const,
+            questionId: 'offer-1',
+            kind: 'email_alert_add' as const,
+            polarity: 'yes' as const,
+            confidence: 'high' as const,
+          };
+        },
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(calendarReads).toBe(1);
+    expect(resolver.calls).toBe(0);
+    expect(approved).toEqual(['a-1']);
+    expect(coach.calls).toBe(0);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'approval' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('declines the paired calendar draft when NO answers the coach offer', async () => {
+    const declined: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true },
+      ],
+      latestUndoable: async () => null,
+      approve: async () => ({ ok: true as const }),
+      decline: async (_db: unknown, args: { actionId: string }) => {
+        declined.push(args.actionId);
+        return { ok: true as const };
+      },
+      undo: async () => ({ ok: true as const }),
+    };
+    const coach = fakeCoach();
+    const offerHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
+    };
+    const h = harness({
+      context: { body: 'NO' },
+      coach,
+      handlers: [offerHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([
+        {
+          id: 'offer-1',
+          kind: 'email_alert_add',
+          description: 'An offer to put Trunk or Treat on your week',
+          subject: 'putting Trunk or Treat on your week',
+          answerable: { yes: true, no: true },
+          askedAt: NOW,
+          solicited: true,
+          approvesActionId: 'a-1',
+        },
+      ]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'no' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(declined).toEqual(['a-1']);
+    expect(coach.calls).toBe(0);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'email_alert_add' });
+    expect(h.transport.sent).toEqual([]);
   });
 
   it('a yes to the finder ask searches and does not write a care fact', async () => {

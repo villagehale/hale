@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "English matches the parent. Names Google Calendar implicitly via the link and \"connect my google calendar\" context; states the unverified-app screen is normal and safe, gives the Advanced then continue path, says connecting is optional, gives the full link unchanged, and states 15 minutes validity. Friendly, brief tone. No invented facts or promises, no apology."
+  }
+}

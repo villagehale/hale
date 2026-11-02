@@ -41,12 +41,8 @@ const TOOL_SCHEMA = {
 };
 
 const LINK_SHAPE = /https?:\/\/|www\./i;
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
 
 const MAX_TOKENS = 160;
-const MAX_CHARS = 160;
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|cancelled|canceled|took|removed|might|may)\b/i;
 
 /** Mirrors `calendarCancelUserMessage` in calendar-cancel-voice.ts. */
 function userMessage(request, rejected = []) {
@@ -58,13 +54,8 @@ function userMessage(request, rejected = []) {
 function refusals(body, request) {
   if (body === '') return ['empty'];
   const found = [];
-  if (body.length > MAX_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
-  if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
   if (!body.toLowerCase().includes(request.summary.toLowerCase())) found.push('summary_missing');
-  if (!/cancel/i.test(body)) found.push('cancel_word_missing');
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
   if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;

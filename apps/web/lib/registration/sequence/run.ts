@@ -35,6 +35,7 @@ import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { pipelineClient } from '~/lib/pipeline/client';
+import { familyInPreviewScope } from '~/lib/preview/family-scope';
 import {
   type RegistrationMatch,
   matchRegistrationWindows,
@@ -1341,7 +1342,9 @@ export async function runRegistrationSequenceCron(
   if (!allFamilies && allowlist.size === 0) return emptyResult(false);
 
   const result = emptyResult(true);
-  const armed = (family: { familyId: string }) => allFamilies || allowlist.has(family.familyId);
+  // On Preview, only allowlisted test families (no-op elsewhere).
+  const armed = (family: { familyId: string }) =>
+    familyInPreviewScope(family.familyId) && (allFamilies || allowlist.has(family.familyId));
 
   // ── Phase A: propose ────────────────────────────────────────────────────────
   const families = (await deps.selectFamilies(database, now))

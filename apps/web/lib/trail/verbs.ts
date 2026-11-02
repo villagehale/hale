@@ -277,8 +277,11 @@ export const AUDIT_VERBS = [
   'activity_booking_recorded',
   'activity_booking_cancelled',
   'calendar_alert_sent',
+  // VIL-527 · a held calendar text retired with the fixed-copy path, never sent.
+  'calendar_alert_debt_retired',
   'calendar_mirror_added',
   'calendar_mirror_moved',
+  'calendar_mirror_notes_updated',
   'calendar_mirror_removed',
   'reminder_suppressed',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
@@ -378,6 +381,9 @@ export const AUDIT_VERBS = [
   'action.calendar_cancelled.skipped_duplicate',
   // ── decline + undo ──────────────────────────────────────────────────────
   'action.declined_by_human',
+  // VIL-513. The parent's YES placed the occasion through the calendar offer,
+  // so the duplicate draft is closed and must not execute as well.
+  'action.superseded_by_calendar_offer',
   'action.calendar_placement_reverted',
   'action.reverted_by_human',
   // The sixth ActionGateReason; the other five were curated, this one was not.
@@ -1083,6 +1089,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale texted you about a change on your calendar',
     family: 'done',
   },
+  // VIL-527 · internal-only (Design lock, same as VIL-478): no parent-facing copy.
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS; the neutral token below is never rendered.
+  calendar_alert_debt_retired: { sentence: 'recorded an update', family: 'neutral' },
   // Copied from a calendar the parent connected, so reminders can fire without a
   // separate YES. 'note': Hale did not create the occasion, it wrote down one that
   // was already on the calendar. The row's `after` is `{ source: 'parent' }` only —
@@ -1093,6 +1102,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   calendar_mirror_moved: {
     sentence: 'Hale followed a time that moved on your calendar',
+    family: 'note',
+  },
+  // VIL-468. Parking / what-to-bring facts read from the event changed. `after` is
+  // `{ source: 'parent' }` only — never the facts.
+  calendar_mirror_notes_updated: {
+    sentence: 'Hale updated the parking or what-to-bring for something on your calendar',
     family: 'note',
   },
   calendar_mirror_removed: {
@@ -1468,6 +1483,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   // ── decline + undo ──────────────────────────────────────────────────────
   'action.declined_by_human': { sentence: 'you dismissed a draft', family: 'done' },
+  'action.superseded_by_calendar_offer': {
+    sentence: 'set aside a calendar draft you had already answered',
+    family: 'note',
+  },
   'action.calendar_placement_reverted': {
     sentence: 'you undid a calendar entry Hale had made',
     family: 'done',
@@ -1971,6 +1990,7 @@ export const INTERNAL_TRAIL_VERBS = [
   'autonomy_notice_cover_released',
   'group_plan.drafted',
   'group_plan.report_released',
+  'calendar_alert_debt_retired',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

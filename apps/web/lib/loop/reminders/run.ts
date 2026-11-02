@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
@@ -25,6 +25,7 @@ import type {
   ReminderPayload,
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { scopeFamilies } from '~/lib/preview/family-scope';
 import { getQueue } from '~/lib/queue';
 import type { SourceChange } from './change';
 import { changeFromColumns } from './change';
@@ -91,6 +92,8 @@ export interface LiveEvent extends EventSnapshot {
   location: string | null;
   /** VIL-474 · a change recorded from source data only (reminders/change.ts). */
   change?: SourceChange | null;
+  /** VIL-468. Parking / what-to-bring facts the source stated, or null. */
+  notes?: FamilyEventNotes | null;
   /**
    * Set when this row mirrors one event on a connected Google Calendar (VIL-416).
    * Null for every Hale-authored event. A mirror is reminded to its owner only —
@@ -154,6 +157,12 @@ export interface ChannelSendJob {
 }
 
 export interface ReminderRunDeps {
+  /**
+   * Preview family scope applied to the audience and due rows. Defaults to the
+   * PREVIEW_FAMILY_ALLOWLIST filter (a no-op off preview). The VIL-466 Preview trigger
+   * replaces it, since it already narrows the run to one verified fake family.
+   */
+  scopeFamilies?: <T extends { familyId: string }>(rows: readonly T[]) => T[];
   selectReminderParents: (db: Database) => Promise<ReminderParent[]>;
   /**
    * The family's ACTIVE caregiver seats (caregiver-audience.ts) — the second audience,
@@ -248,6 +257,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
           location: schema.familyEvents.location,
+          notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
         })
@@ -366,6 +376,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           childId: schema.familyEvents.childId,
           sensitive: schema.familyEvents.sensitive,
           location: schema.familyEvents.location,
+          notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
           sourceChangedField: schema.familyEvents.sourceChangedField,
@@ -487,6 +498,7 @@ interface FiringRow {
   sensitive: boolean;
   location: string | null;
   change: SourceChange | null;
+  notes: FamilyEventNotes | null;
   /** Proven non-null by the fire gate: a row whose recipient holds no seat never gets
    * here. Non-parent roles other than the three caregiver ones are suppressed too, so
    * this is either a parent role or a caregiver one. */
@@ -539,9 +551,12 @@ export async function runReminderCron(
     return loaded;
   };
 
+  const scope = deps.scopeFamilies ?? ((rows) => scopeFamilies(rows));
+
   // ── Phase A: converge the ledger from live placed events ─────────────────────
-  const parents = await deps.selectReminderParents(db);
-  const caregiverSeats = await deps.selectReminderCaregivers(db);
+  // On Preview, only allowlisted test families (no-op elsewhere).
+  const parents = scope(await deps.selectReminderParents(db));
+  const caregiverSeats = scope(await deps.selectReminderCaregivers(db));
 
   const familyParents = new Map<string, ReminderParent[]>();
   for (const p of parents) {
@@ -632,7 +647,7 @@ export async function runReminderCron(
   };
 
   // ── Phase B: fire — classify each due row against the LIVE event ──────────────
-  const due = await deps.loadDueReminders(db, now);
+  const due = scope(await deps.loadDueReminders(db, now));
   const firing: FiringRow[] = [];
   let suppressed = 0;
   let cancelled = 0;
@@ -704,6 +719,7 @@ export async function runReminderCron(
             sensitive: event.sensitive,
             location: event.location,
             change: event.change ?? null,
+            notes: event.notes ?? null,
             // Non-null past the gate above: role null never survives it.
             role: row.role as FamilyRole,
           });
@@ -782,6 +798,7 @@ export async function runReminderCron(
             endsAt: r.endsAt ? r.endsAt.toISOString() : null,
             location: r.location,
             change: r.change,
+            notes: r.notes,
           });
         }
       }

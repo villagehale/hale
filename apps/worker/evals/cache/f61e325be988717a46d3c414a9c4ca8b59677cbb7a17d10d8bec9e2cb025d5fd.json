@@ -1,0 +1,6 @@
+{
+  "value": {
+    "text": "Sure. Google may show an \"unverified app\" screen when you connect. That's a normal Google step for this connection and it's safe to pass. Click \"Advanced\", then \"continue\". Connecting is optional. Here's your link, valid for 15 minutes:\n[[link]]"
+  },
+  "latencyMs": 1999
+}

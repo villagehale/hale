@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Spanish matches parent's language, but the text names \"esa otra familia\", which hints another family exists and was involved, breaking the privacy rule. It also states Hale will keep looking for another match, a promise the facts give only as \"keeps an eye out\", which is roughly fine. The phrasing is casual enough, but the other-family reference is a hard failure, so the score is capped at 1 or 2; I give 2 for the warm tone and correct language but the privacy breach should lower it further."
+  }
+}

@@ -31,6 +31,7 @@ describe('catalog history cutover', () => {
       '0195_linq_shared_group_people',
       '0190_linq_group_polls',
       '0196_linq_group_carpools',
+      '0197_family_event_notes',
     ]);
   });
 });

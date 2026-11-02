@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "English matches parent. Names the service implicitly (Google Calendar link via gcal), says connecting is optional, gives the link whole matching the fact, states 15-minute validity, and frames the unverified-app screen as normal and safe with the Advanced then continue path. Friendly, brief, no invented facts or promises. Minor: it says \"Sure\" and doesn't name Google Calendar explicitly, but the purpose is met."
+  }
+}

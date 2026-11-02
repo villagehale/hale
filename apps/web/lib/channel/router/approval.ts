@@ -44,6 +44,13 @@ export interface PendingAction {
    * is the one failure the oldest-first ordering exists to prevent.
    */
   reviewerApproved: boolean;
+  /**
+   * The occasion a calendar draft would place. Present only for `calendar_add`
+   * (and move/cancel) rows whose payload names a title and a start. The open-question
+   * reader uses it to see that a coach offer of the same occasion is this draft, not
+   * a second question (VIL-513). Never rendered to a parent from here.
+   */
+  occasion?: { title: string; startsAt: string };
 }
 
 /**
