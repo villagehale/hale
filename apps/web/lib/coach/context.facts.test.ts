@@ -123,8 +123,10 @@ describe('coach context — focused-child scoping', () => {
         familyId,
         childId: null,
         factType: 'logistic' as const,
-        factKey: 'home_city',
-        factValue: { city: 'Toronto' },
+        // Not home_city: a remembered area is the old place, and the postal code is
+        // the one the coach is given (VIL-519). This row is only here as a family-wide fact.
+        factKey: 'stroller',
+        factValue: { fits: true },
         confidence: 0.9,
       },
       {
@@ -156,7 +158,7 @@ describe('coach context — focused-child scoping', () => {
   it('keeps family-wide facts — focusing a child narrows, it does not blind', async () => {
     const keys = (await load(familyId, ellaId)).memoryFacts.map((f) => f.factKey);
 
-    expect(keys).toContain('home_city');
+    expect(keys).toContain('stroller');
   });
 
   it("ignores a focus id that is not one of this family's children", async () => {
@@ -164,7 +166,7 @@ describe('coach context — focused-child scoping', () => {
     const keys = (await load(familyId, stranger)).memoryFacts.map((f) => f.factKey);
 
     // A focus that resolved to nobody falls back to the whole family, and hides nothing.
-    expect(keys).toEqual(expect.arrayContaining(['home_city', 'ella_naptime', 'noah_bedtime']));
+    expect(keys).toEqual(expect.arrayContaining(['stroller', 'ella_naptime', 'noah_bedtime']));
   });
 
   it('excludes superseded facts', async () => {

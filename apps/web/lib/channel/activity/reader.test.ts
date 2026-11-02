@@ -64,6 +64,37 @@ describe('family fit provenance + freshness (VIL-519)', () => {
     expect(preferences[0]?.source).toBe('legacy');
   });
 
+  it('a 120-day inferred swimming guess is a recheck, never a pick, and its value stays out', () => {
+    const value = 'Lin loves swimming lessons';
+    const { preferences, recheck } = selectFitPreferences(
+      [row({ key: 'loves_swimming', value, source: 'inferred', sourcedAt: ago(120) })],
+      new Set(),
+      NOW,
+    );
+    expect(preferences).toEqual([]);
+    expect(recheck).toEqual([{ childId: null, key: 'loves_swimming', seenOn: '2026-07-02' }]);
+    expect(JSON.stringify(recheck)).not.toContain('swimming lessons');
+    expect(JSON.stringify(preferences)).not.toContain(value);
+  });
+
+  it('a remembered Georgetown home_city is neither a preference nor a recheck', () => {
+    const { preferences, recheck } = selectFitPreferences(
+      [
+        row({
+          key: 'home_city',
+          value: 'Georgetown',
+          source: 'parent_message',
+          sourcedAt: ago(20),
+        }),
+      ],
+      new Set(),
+      NOW,
+    );
+    expect(preferences).toEqual([]);
+    expect(recheck).toEqual([]);
+    expect(JSON.stringify({ preferences, recheck })).not.toContain('Georgetown');
+  });
+
   it('a guess goes stale before a thing the parent said', () => {
     const rows = [
       row({ key: 'guess', source: 'inferred', sourcedAt: ago(100) }),

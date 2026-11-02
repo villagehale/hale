@@ -1,6 +1,7 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, asc, desc, eq, gt, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
+import { townLabel } from '~/lib/channel/town-label';
 import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
@@ -127,6 +128,36 @@ function shadowForm(key: string): string {
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_');
+}
+
+/** A remembered age or home area. The child record and the postal code are the truth. */
+export function isRecordShadowKey(key: string): boolean {
+  return SHADOW_KEY.test(shadowForm(key));
+}
+
+/**
+ * Still inside its source's window. Unknown sources are `legacy` (a school year).
+ * A fact past the window may be rechecked; it is not a fact to rank or to state.
+ */
+export function isFactFresh(source: string, sourcedAt: Date, now: Date): boolean {
+  const known = asSource(source);
+  const ageDays = (now.getTime() - sourcedAt.getTime()) / DAY_MS;
+  return ageDays <= FACT_FRESH_DAYS[known];
+}
+
+/**
+ * The town a stored postal code or coarse area names, or null when it names none
+ * or two. `L3P` and `L3P 3J7` are the same area. A city name stored in the area
+ * column ("Georgetown") is not an FSA and resolves to null — the caller then
+ * keeps the city only when no postal area wins.
+ */
+export function townFromStoredArea(area: string | null | undefined): string | null {
+  if (!area) return null;
+  const fsa = area.replace(/\s+/g, '').toUpperCase().slice(0, 3);
+  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return null;
+  const municipalities = municipalitiesForFsa(fsa);
+  const only = municipalities.length === 1 ? municipalities[0] : null;
+  return only ? townLabel(only) : null;
 }
 
 /** The same three reads with the database already closed over — the shape a coach tool
@@ -369,7 +400,7 @@ export function selectFitPreferences(
   for (const row of rows) {
     if (row.childId !== null && teenIds.has(row.childId)) continue;
     if (!(row.confidence >= CONFIDENCE_FLOOR)) continue;
-    if (SHADOW_KEY.test(shadowForm(row.key))) continue;
+    if (isRecordShadowKey(row.key)) continue;
     const id = `${row.childId ?? ''}\u0000${row.key}`;
     const seen = newest.get(id);
     if (!seen || row.sourcedAt.getTime() > seen.sourcedAt.getTime()) newest.set(id, row);
@@ -385,8 +416,7 @@ export function selectFitPreferences(
   for (const row of ordered) {
     const source = asSource(row.source);
     const seenOn = row.sourcedAt.toISOString().slice(0, 10);
-    const ageDays = (now.getTime() - row.sourcedAt.getTime()) / DAY_MS;
-    if (ageDays > FACT_FRESH_DAYS[source]) {
+    if (!isFactFresh(source, row.sourcedAt, now)) {
       if (recheck.length < FAMILY_FIT_RECHECK_LIMIT) {
         recheck.push({ childId: row.childId, key: row.key, seenOn });
       }

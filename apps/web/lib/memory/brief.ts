@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import { isFactFresh, isRecordShadowKey } from '~/lib/channel/activity/reader';
 import { readFamilyTimezone } from '../dashboard/trail-query';
 import { promptKind, readDisposition, readObservedAt } from './classify-write';
 import { CONFIDENCE_FLOOR } from './facts';
@@ -65,6 +66,8 @@ interface BriefFact {
   childId: string | null;
   memoryKind?: string | null;
   memorySource?: string | null;
+  /** When the source was seen. Absent on an in-memory fixture, which is treated as fresh. */
+  sourcedAt?: Date | null;
   expiresAt?: Date | string | null;
 }
 
@@ -155,6 +158,14 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
     // Decay is a read-time filter. An expired obligation stays stored and leaves
     // the prompt, so a finished one-off does not keep steering.
     if (isExpiredTemporary({ memoryKind: fact.memoryKind, expiresAt: fact.expiresAt }, input.now)) {
+      return false;
+    }
+    // Age and home area live on the child record and the postal code. A remembered
+    // copy is the old value, so it never rides — not even as a recheck.
+    if (isRecordShadowKey(fact.factKey)) return false;
+    // A stale guess is not a preference. The find tool may name the key for a
+    // question; the brief must not hand the value over as something Hale knows.
+    if (fact.sourcedAt && !isFactFresh(fact.memorySource ?? 'legacy', fact.sourcedAt, input.now)) {
       return false;
     }
     return true;
@@ -268,6 +279,7 @@ export async function assembleMemoryBrief(
           childId: schema.familyMemoryFacts.childId,
           memoryKind: schema.familyMemoryFacts.memoryKind,
           memorySource: schema.familyMemoryFacts.memorySource,
+          sourcedAt: schema.familyMemoryFacts.sourcedAt,
           expiresAt: schema.familyMemoryFacts.expiresAt,
         })
         .from(schema.familyMemoryFacts)
