@@ -52,9 +52,21 @@ export interface GroupPlanRsvpInboundPorts {
   oneToOne?: OneToOneSend;
 }
 
-/** The household's stored language. A missing tag is English; a stored `fr` or `zh` is kept. */
+/** The household's stored language. A missing tag stays null so the writer follows their words. */
 async function householdLanguage(database: Database, familyId: string) {
-  return (await familySpeechLanguage(database, familyId)) ?? 'en';
+  return familySpeechLanguage(database, familyId);
+}
+
+/** Stored language for a parent, or null when they have no family or no tag. */
+async function storedLanguageForUser(database: Database, userId: string | null) {
+  if (!userId) return null;
+  const memberships = await database
+    .select({ familyId: schema.familyMembers.familyId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.userId, userId));
+  const seat = memberships.find((row) => row.role === 'primary_parent' || row.role === 'co_parent');
+  if (!seat) return null;
+  return householdLanguage(database, seat.familyId);
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -192,6 +204,7 @@ export async function considerGroupPlanRsvp(
       tapback: input.tapback,
       tapbackMessageId: input.tapbackMessageId,
       language: 'en',
+      calendarLanguage: await storedLanguageForUser(ports.database, input.senderUserId ?? null),
       now: ports.now,
     },
     {

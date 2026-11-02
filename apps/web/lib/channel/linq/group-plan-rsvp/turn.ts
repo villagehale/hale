@@ -107,7 +107,13 @@ export interface GroupPlanRsvpTurnInput {
   tapbackMessageId?: string | null;
   /** Verified Hale user for this handle, when inbound resolved one. */
   senderUserId?: string | null;
+  /** Language for the group line. Calendar lines use {@link calendarLanguage}. */
   language: ReplyLanguage;
+  /**
+   * Stored household language for a private calendar line, or null when none is
+   * stored. Absent means the tests' turn language. Null is not English.
+   */
+  calendarLanguage?: ReplyLanguage | null;
   now: Date;
 }
 
@@ -165,6 +171,8 @@ export async function takeGroupPlanRsvpTurn(
   const liveTally = live ? await deps.store.loadTally(live.id) : null;
   const somethingLive = Boolean(live || livePoll);
   const calendarOn = rsvpOn && (deps.calendarEnabled ?? linqGroupPlanRsvpCalendarEnabled)();
+  const calendarLanguage =
+    input.calendarLanguage === undefined ? input.language : input.calendarLanguage;
   const senderKey =
     memberKeyFromHandle(input.senderHandle) ??
     memberKeyFromName(input.senderName ?? input.senderHandle);
@@ -182,7 +190,7 @@ export async function takeGroupPlanRsvpTurn(
         text: input.text,
         tapback: input.tapback,
         tapbackMessageId: input.tapbackMessageId,
-        language: input.language,
+        language: calendarLanguage,
         now: input.now,
       },
       {
@@ -356,7 +364,8 @@ export async function takeGroupPlanRsvpTurn(
         displayName,
         householdLabel: reading.householdLabel,
         response: reading.response,
-        language: input.language,
+        language: calendarLanguage,
+        parentWords: input.text.trim() || null,
         now: input.now,
       },
       {

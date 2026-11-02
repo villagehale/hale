@@ -130,7 +130,9 @@ async function deliverPrivate(
     userId: string | null;
     displayName: string;
     householdLabel: string | null;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
+    /** The parent's own message, or null when this turn has no words. */
+    parentWords: string | null;
     kind: CalendarPrivateKind;
   },
 ): Promise<{ status: 'sent' } | { status: 'skipped'; reason: CalendarSkipReason }> {
@@ -138,6 +140,7 @@ async function deliverPrivate(
     groupPlanCalendarLineInput({
       kind: input.kind,
       language: input.language,
+      parentWords: input.parentWords,
       facts: askFacts(input.plan, input.displayName, input.householdLabel),
     }),
     ports.composer ?? productionGroupPlanRsvpComposer(),
@@ -190,7 +193,7 @@ export async function answerPendingCalendarAsk(
     tapback: LinqTapback | null;
     /** The message the tapback landed on. A reaction on anything else is not this ask. */
     tapbackMessageId?: string | null;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     now: Date;
   },
   ports: CalendarTurnPorts,
@@ -224,7 +227,12 @@ export async function answerPendingCalendarAsk(
 
   if (row.status === 'declined') {
     if (reading.decision !== 'reopen') return { consumed: false };
-    return reopenCalendarAsk(input, ports, familyId, row);
+    return reopenCalendarAsk(
+      { ...input, parentWords: input.text.trim() || null },
+      ports,
+      familyId,
+      row,
+    );
   }
 
   if (reading.decision === 'reopen') return { consumed: false };
@@ -284,6 +292,7 @@ export async function answerPendingCalendarAsk(
     displayName: row.displayName,
     householdLabel: row.householdLabel,
     language: input.language,
+    parentWords: input.text.trim() || null,
     kind: 'calendar_written',
   });
   if (notice.status === 'skipped') {
@@ -310,7 +319,8 @@ async function reopenCalendarAsk(
   input: {
     plan: GroupPlanRecord;
     userId: string | null;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
+    parentWords: string | null;
     now: Date;
   },
   ports: CalendarTurnPorts,
@@ -335,6 +345,7 @@ async function reopenCalendarAsk(
     displayName: row.displayName,
     householdLabel: row.householdLabel,
     language: input.language,
+    parentWords: input.parentWords,
     kind: 'calendar_ask',
   });
   if (sent.status === 'skipped') {
@@ -380,7 +391,8 @@ export async function settleCalendarAfterAnswer(
     displayName: string;
     householdLabel: string | null;
     response: PlanRsvpResponse;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
+    parentWords: string | null;
     now: Date;
   },
   ports: CalendarTurnPorts,
@@ -438,6 +450,7 @@ export async function settleCalendarAfterAnswer(
     displayName: input.displayName,
     householdLabel: input.householdLabel,
     language: input.language,
+    parentWords: input.parentWords,
     kind: 'calendar_ask',
   });
   if (sent.status === 'skipped') {
@@ -460,7 +473,8 @@ async function removeWrittenCopy(
   input: {
     plan: GroupPlanRecord;
     userId: string | null;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
+    parentWords: string | null;
   },
   ports: CalendarTurnPorts,
   familyId: string,
@@ -490,6 +504,7 @@ async function removeWrittenCopy(
     displayName: row.displayName,
     householdLabel: row.householdLabel,
     language: input.language,
+    parentWords: input.parentWords,
     kind: 'calendar_removed',
   });
   if (notice.status === 'skipped') {

@@ -163,20 +163,25 @@ export interface CalendarPrivateSender {
 export interface GroupPlanCalendarLineInput {
   skill: typeof GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL;
   kind: GroupPlanCalendarVoiceKind;
-  language: ReplyLanguage;
+  /** A stored tag, or null when the household has none. Null is not English. */
+  language: ReplyLanguage | null;
+  /** This parent's own message, or null when the turn has no words. */
+  parentWords: string | null;
   facts: CalendarAskFacts;
   questions: 0 | 1;
 }
 
 export function groupPlanCalendarLineInput(input: {
   kind: GroupPlanCalendarVoiceKind;
-  language: ReplyLanguage;
+  language: ReplyLanguage | null;
+  parentWords: string | null;
   facts: CalendarAskFacts;
 }): GroupPlanCalendarLineInput {
   return {
     skill: GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL,
     kind: input.kind,
     language: input.language,
+    parentWords: input.parentWords,
     facts: input.facts,
     questions: input.kind === 'calendar_ask' ? 1 : 0,
   };

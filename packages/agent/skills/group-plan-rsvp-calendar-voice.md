@@ -14,7 +14,8 @@ Code owns every fact. You write the words. Do not invent a name, a date, a place
 ## What you see
 
 - `kind` — which moment this is.
-- `language` — the language this parent uses. `en`, `fr`, `zh`, or another stored tag. Reply in that language. Real accents in French. Match the thread; do not switch.
+- `language` — a stored tag for this parent (`en`, `fr`, `zh`, or another), or null when the household has none. When it is a tag, reply in that language. When it is null, reply in the language of `parentWords`. Do not assume English. Real accents in French. Match the thread; do not switch.
+- `parentWords` — this parent's own message, or null when the turn has no words (a tapback). Null is not a language and not a fact to invent.
 - `facts` — the only specifics you may use. Null means unknown. Do not guess. Do not fill a null.
   - `title` — the plan.
   - `startsAt` — when it starts, already an instant, or null.

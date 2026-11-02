@@ -108,6 +108,7 @@ function voiceUserMessage(calendar, fixture) {
     ...calendar.groupPlanCalendarLineInput({
       kind: fixture.kind,
       language: fixture.language,
+      parentWords: null,
       facts: fixture.facts,
     }),
     retry: false,

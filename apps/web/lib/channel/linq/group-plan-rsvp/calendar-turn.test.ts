@@ -1132,6 +1132,75 @@ describe('the private ask lands after the group line', () => {
   });
 });
 
+describe('a calendar line with no stored language', () => {
+  it('follows the parent’s own message instead of English', async () => {
+    const { store, texts } = await picnic();
+    const composer = fakeGroupPlanRsvpComposer();
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'Oui, on est partants',
+        tapback: null,
+        language: 'en',
+        calendarLanguage: null,
+        now: LATER,
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer: writerSpy(),
+        privateLines: privateSpy(),
+        consent: consentOf('not_this'),
+        composer,
+      }),
+    );
+    const voice = composer.calls.filter(
+      (call) => call.input.skill === 'group-plan-rsvp-calendar-voice',
+    );
+    expect(voice).toHaveLength(1);
+    expect(voice[0]?.input).toMatchObject({
+      language: null,
+      parentWords: 'Oui, on est partants',
+    });
+    expect(JSON.stringify(voice[0]?.input)).not.toContain('"language":"en"');
+  });
+
+  it('keeps a stored language and still hands the writer their words', async () => {
+    const { store, texts } = await picnic();
+    const composer = fakeGroupPlanRsvpComposer();
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'yes please',
+        tapback: null,
+        language: 'en',
+        calendarLanguage: 'zh',
+        now: LATER,
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer: writerSpy(),
+        privateLines: privateSpy(),
+        consent: consentOf('not_this'),
+        composer,
+      }),
+    );
+    const voice = composer.calls.filter(
+      (call) => call.input.skill === 'group-plan-rsvp-calendar-voice',
+    );
+    expect(voice[0]?.input).toMatchObject({ language: 'zh', parentWords: 'yes please' });
+  });
+});
+
 describe('why a calendar ask was set aside', () => {
   it('records that the ask did not send', async () => {
     const { world, store, texts } = await picnic();

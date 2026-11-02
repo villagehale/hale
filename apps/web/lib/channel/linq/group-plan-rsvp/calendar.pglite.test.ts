@@ -8,7 +8,11 @@ import { loadIcsFeed, mintIcsToken } from '~/lib/loop/ics-feed';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { handleLinqInboundRequest } from '../inbound';
 import { postgresGroupPlanCalendarWriter, postgresGroupPlanHouseholds } from './calendar';
-import { considerCalendarTapback, considerPrivateCalendarReply } from './inbound';
+import {
+  considerCalendarTapback,
+  considerGroupPlanRsvp,
+  considerPrivateCalendarReply,
+} from './inbound';
 import { createPostgresGroupPlanRsvpStore } from './store';
 import { takeGroupPlanRsvpTurn } from './turn';
 import { fakeGroupPlanRsvpComposer } from './voice-fake';
@@ -473,6 +477,184 @@ describe('the private reply and a tapback use the household language', () => {
     );
     expect(reply.handled).toBe(true);
     expect(composer.calls.map((call) => call.input.language)).toEqual(['zh']);
+  });
+
+  it('follows the reply when the household has no stored language', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT, language: '' });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    await store.claimCalendarAsk({
+      planId: plan.id,
+      familyId: priya.familyId,
+      memberKey: 'priya',
+      displayName: 'Priya',
+      householdLabel: null,
+      now: NOW,
+    });
+    const composer = fakeGroupPlanRsvpComposer();
+    const words = 'Oui, mets-le sur notre calendrier';
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    const reply = await considerPrivateCalendarReply(
+      {
+        database: db.database,
+        now: new Date(NOW.getTime() + 60_000),
+        composer,
+        consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
+        oneToOne: {
+          text: async () => ({ providerMessageId: 'priv-words', chatId: null }),
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      { senderUserId: priya.userId, senderName: 'Priya', text: words },
+    );
+    expect(reply.handled).toBe(true);
+    expect(composer.calls[0]?.input).toMatchObject({ language: null, parentWords: words });
+    expect(JSON.stringify(composer.calls[0]?.input)).not.toContain('"language":"en"');
+  });
+
+  it('does not invent English for a tapback when no language is stored', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT, language: '' });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    await store.claimCalendarAsk({
+      planId: plan.id,
+      familyId: priya.familyId,
+      memberKey: 'priya',
+      displayName: 'Priya',
+      householdLabel: null,
+      now: NOW,
+    });
+    await store.setCalendarAskMessage(plan.id, priya.familyId, 'ask-msg');
+    const composer = fakeGroupPlanRsvpComposer();
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    const reply = await considerCalendarTapback(
+      {
+        database: db.database,
+        now: new Date(NOW.getTime() + 60_000),
+        composer,
+        consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
+        oneToOne: {
+          text: async () => ({ providerMessageId: 'priv-tap', chatId: null }),
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      {
+        senderUserId: priya.userId,
+        senderName: 'Priya',
+        messageId: 'ask-msg',
+        tapback: 'love',
+      },
+    );
+    expect(reply.handled).toBe(true);
+    expect(composer.calls[0]?.input).toMatchObject({ language: null, parentWords: null });
+    expect(JSON.stringify(composer.calls[0]?.input)).not.toContain('"language":"en"');
+  });
+
+  it('asks in the language of the RSVP when the household has no stored language', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT, language: '' });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    const composer = fakeGroupPlanRsvpComposer();
+    const words = 'Oui, on est partants';
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    await considerGroupPlanRsvp(
+      {
+        database: db.database,
+        now: new Date(NOW.getTime() + 60_000),
+        composer,
+        reader: {
+          read: async () => ({
+            intent: 'rsvp',
+            planTitle: null,
+            startsAt: null,
+            location: null,
+            deadline: null,
+            response: 'yes',
+            headcount: 1,
+            householdLabel: null,
+            coversNames: [],
+            confidence: 'high',
+          }),
+        },
+        oneToOne: {
+          text: async () => ({ providerMessageId: 'priv-ask', chatId: null }),
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderUserId: priya.userId,
+        text: words,
+        tapback: null,
+      },
+    );
+    const voice = composer.calls.filter(
+      (call) => call.input.skill === 'group-plan-rsvp-calendar-voice',
+    );
+    expect(voice[0]?.input).toMatchObject({ language: null, parentWords: words });
+    expect(JSON.stringify(voice[0]?.input)).not.toContain('"language":"en"');
   });
 });
 
