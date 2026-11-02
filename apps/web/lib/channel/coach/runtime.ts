@@ -331,9 +331,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // VIL-510: nearby-find voice + link rules ride as an addendum so the disk
       // coach-channel-sms bytes (and every eval recording keyed on them) stay put.
       const nearbyFind = await loadCronSkill('coach-nearby-find');
+      // Postal town is home. A separate file so the standing coach-channel recordings,
+      // keyed on sms + nearby-find, stay put until they are re-recorded.
+      const homePlace = await loadCronSkill('coach-home-place');
       const baseSkill = {
         ...groupedSkill,
-        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}`,
+        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
       };
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for

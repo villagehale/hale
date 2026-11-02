@@ -79,6 +79,10 @@
     "file": "coach-channel-sms.md",
     "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
   },
+  "coach-home-place.md": {
+    "file": "coach-home-place.md",
+    "sha256": "4378d2408d92114e500a311f69154a4ccfa4633c1b78c02980541c53d3884065"
+  },
   "coach-nearby-find.md": {
     "file": "coach-nearby-find.md",
     "sha256": "9830307841af476ba8ac7659c001f15d270ad4ffa103b23b80aede979a3ae306"

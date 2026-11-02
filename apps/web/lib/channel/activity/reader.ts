@@ -1,10 +1,13 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, asc, desc, eq, gt, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
-import { townLabel } from '~/lib/channel/town-label';
+import { townFromStoredArea } from '~/lib/channel/town-from-area';
 import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
+import { FACT_FRESH_DAYS, type FactSource, isFactFresh } from '~/lib/memory/freshness';
 import { heldFromFamilyPrompt } from '~/lib/memory/record-field';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
+
+export { FACT_FRESH_DAYS, isFactFresh, townFromStoredArea };
 
 /**
  * THE THREE FACTS THE ACTIVITY LANE READS FROM THE DATABASE — and the whole reason it
@@ -57,7 +60,7 @@ export interface FamilyFitPreference {
   seenOn: string;
 }
 
-export type FactSource = 'parent_message' | 'calendar' | 'receipt' | 'inferred' | 'legacy';
+export type { FactSource };
 
 /** Kept on the result so a caller can see there is nothing to re-ask. Always empty:
  * a stale guess's key would name the interest (`loves_swimming`), so it is omitted
@@ -84,8 +87,6 @@ const FIT_FACT_TYPES = ['preference', 'logistic'] as const;
 export const FAMILY_FIT_PREFERENCE_LIMIT = 8;
 /** How many candidate rows the read pulls before `selectFitPreferences` caps them. */
 export const FAMILY_FIT_READ_LIMIT = FAMILY_FIT_PREFERENCE_LIMIT * 4;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
  * VIL-519 (Devin #981). Which source a ranked slot goes to first: what the parent said
  * or a receipt showed outranks a calendar, which outranks Hale's own guess. Lower wins.
@@ -97,45 +98,6 @@ export const FACT_SOURCE_RANK: Readonly<Record<FactSource, number>> = {
   legacy: 2,
   inferred: 3,
 };
-/**
- * VIL-519. How long a fact from each source is trusted to steer a pick. A guess goes
- * stale fastest; what a parent told us or a receipt showed lasts a school year. Past
- * this the fact is left out of the find result. It is not named back: the key
- * itself would tell the finder the interest.
- */
-export const FACT_FRESH_DAYS: Readonly<Record<FactSource, number>> = {
-  inferred: 90,
-  calendar: 180,
-  receipt: 365,
-  parent_message: 365,
-  legacy: 365,
-};
-
-/**
- * Still inside its source's window. Unknown sources are `legacy` (a school year).
- * A fact past the window is omitted from the find result.
- */
-export function isFactFresh(source: string, sourcedAt: Date, now: Date): boolean {
-  const known = asSource(source);
-  const ageDays = (now.getTime() - sourcedAt.getTime()) / DAY_MS;
-  return ageDays <= FACT_FRESH_DAYS[known];
-}
-
-/**
- * The town a stored postal code or coarse area names, or null when it names none
- * or two. `L3P` and `L3P 3J7` are the same area. A city name stored in the area
- * column ("Georgetown") is not an FSA and resolves to null — the caller then
- * keeps the city only when no postal area wins.
- */
-export function townFromStoredArea(area: string | null | undefined): string | null {
-  if (!area) return null;
-  const fsa = area.replace(/\s+/g, '').toUpperCase().slice(0, 3);
-  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return null;
-  const municipalities = municipalitiesForFsa(fsa);
-  const only = municipalities.length === 1 ? municipalities[0] : null;
-  return only ? townLabel(only) : null;
-}
-
 /** The same three reads with the database already closed over — the shape a coach tool
  * wants, since a tool handler is handed a family and not a connection. */
 export interface BoundActivityReader {
@@ -294,6 +256,8 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
     },
   };
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** SQL twin of `asSource` + `FACT_SOURCE_RANK`: unknown sources rank as `legacy`. */
 function sourceRankSql() {

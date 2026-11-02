@@ -1,14 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { isFactFresh } from '~/lib/channel/activity/reader';
-import { heldFromFamilyPrompt } from '~/lib/memory/record-field';
 import { readFamilyTimezone } from '../dashboard/trail-query';
 import { promptKind, readDisposition, readObservedAt } from './classify-write';
 import { CONFIDENCE_FLOOR } from './facts';
+import { isFactFresh } from './freshness';
 import { isExpiredTemporary } from './kinds';
 import { isReceiptKey, valueText } from './lexicon';
 import { digestWindows } from './period';
+import { heldFromFamilyPrompt } from './record-field';
 
 /**
  * The memory one-pager injected at the start of an agent turn.

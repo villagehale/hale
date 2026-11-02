@@ -724,7 +724,7 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) {
+function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs, searchTown = null) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
@@ -874,8 +874,12 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
       { subject: 'toddler gymnastics', window: 'this fall' },
       { subject: 'indoor swim lessons' },
     ],
-    handler: async () => {
-      record('find_activities');
+    handler: async (input) => {
+      // Standing fixtures record the call alone, so their tool-result bytes stay the
+      // ones the cache was recorded against. A postal-town fixture also records the
+      // town the record attached, which is the town the search actually uses.
+      if (searchTown) record('find_activities', { subject: input.subject, town: searchTown });
+      else record('find_activities');
       // What the model sees: each page's ref, never its URL (activity/tools.ts).
       // One pick for the standing corpus — the same object the single-pick path built.
       const result = {
@@ -885,6 +889,9 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
           const { url, ...shown } = webPick;
           return url ? { ...shown, ref: linkRef(url) } : shown;
         }),
+        ...(searchTown
+          ? { family: { homeArea: searchTown, preferences: [], recheck: [] } }
+          : {}),
       };
       toolOutputs.push(result);
       return result;
@@ -1136,7 +1143,10 @@ function channelContext(fixture, compact, severed = false) {
     children: injected,
     focusedChild: null,
     stages: [...new Set(injected.map((c) => c.stage))],
-    memoryFacts: [],
+    memoryFacts: fixture.memoryFacts ?? [],
+    // Absent on the standing corpus. A present brief is part of this turn's context
+    // only, so other recordings keep the key set they were hashed with.
+    ...(fixture.memoryBrief ? { memoryBrief: fixture.memoryBrief } : {}),
     recentEpisodes: [],
     // The thread so far, THROUGH THE REAL COMPACTOR — verbatim tail plus the digest of
     // what it dropped, exactly the two fields loadAgentContext puts on the context. This
@@ -1181,6 +1191,7 @@ function makeCachedAgentClient(
   legs,
   anthropicModel,
   subjectLatencies,
+  softMiss = false,
 ) {
   return {
     messages: {
@@ -1217,13 +1228,17 @@ function makeCachedAgentClient(
         };
         const cached = await cacheGet(key);
         if (isDryRun()) {
-          // --dry (VIL-467): price this leg as the guard would, cached or not, and never
-          // call. An uncached leg ends the turn with a max-length stand-in reply, so a
-          // tool loop past it is not priced (the worst case is per leg made, see report).
+          // --dry / --estimate: price this leg as the guard would, cached or not, and
+          // never call. An uncached leg ends the turn with a max-length stand-in reply,
+          // so a tool loop past it is not priced (the worst case is per leg made).
+          const priced = dryRequestPlanEntry(`${tag}:agent`, request);
+          priced.key = key;
           DRY_SUBJECT_PLAN.push({
-            ...dryRequestPlanEntry(`${tag}:agent`, request),
+            ...priced,
             cached: Boolean(cached),
+            key,
           });
+          console.log(`cache-key subject ${tag} ${key} ${cached ? 'hit' : 'miss'}`);
           if (!cached) {
             return note({
               id: 'dry',
@@ -1241,6 +1256,12 @@ function makeCachedAgentClient(
           return note(cached.response);
         }
         if (cachedOnly) {
+          if (softMiss) {
+            const missed = new Error(`unrecorded ${tag}`);
+            missed.unrecorded = true;
+            missed.cacheKey = key;
+            throw missed;
+          }
           console.error(
             `agent cache miss in --cached-only mode (${tag}, key ${key}). Re-run live to populate, then commit the cache.`,
           );
@@ -1382,6 +1403,12 @@ function groundedHay(fixture, toolResults) {
   // The parent's own name and town ride on the same context object (loadAgentContext
   // parentName / location), so addressing them by name is recall, not invention.
   parts.push(CONTEXT_PARENT_NAME, cityFor(fixture));
+  for (const fact of fixture.memoryFacts ?? []) {
+    parts.push(
+      fact.factKey,
+      typeof fact.factValue === 'string' ? fact.factValue : JSON.stringify(fact.factValue),
+    );
+  }
   // THE THREAD GROUNDS TOO. A venue Hale itself named two messages ago is recall — and
   // on a fixture whose whole subject is a "yes" to that message, every noun in it would
   // otherwise be read as an invention by the gate that exists to catch inventions.
@@ -1531,6 +1558,23 @@ function checkFixture(fixture, reply, calls, auditLog, truncatedRetries = 0) {
 
   for (const tool of expect.mustCall ?? []) {
     if (!toolNames.has(tool)) failures.push(`never called ${tool}`);
+  }
+  if (expect.searchTown) {
+    const searches = calls.filter((call) => call.tool === 'find_activities');
+    if (searches.length === 0) failures.push('never searched');
+    for (const call of searches) {
+      if (call.town !== expect.searchTown) {
+        failures.push(`searched ${call.town ?? 'no town'}, not ${expect.searchTown}`);
+      }
+    }
+  }
+  if (expect.subjectMustNotName) {
+    const banned = String(expect.subjectMustNotName).toLowerCase();
+    for (const call of calls.filter((call) => call.tool === 'find_activities')) {
+      if (String(call.subject ?? '').toLowerCase().includes(banned)) {
+        failures.push(`search subject names ${expect.subjectMustNotName}`);
+      }
+    }
   }
   if (expect.cardForUrl) {
     const card = calls.find((call) => call.tool === 'share_experience_card');
@@ -1953,6 +1997,7 @@ const BROKEN_CALLS = [
 ];
 
 async function main() {
+  if (process.argv.includes('--estimate')) process.env.HALE_EVAL_DRY = '1';
   assertRunFlags([
     '--broken',
     '--show',
@@ -1964,6 +2009,7 @@ async function main() {
     '--min-samples',
     '--env-file',
     '--max-usd',
+    '--estimate',
   ]);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -2017,6 +2063,9 @@ async function main() {
     notFoundPage: spotPage('markham-course-not-found'),
   };
   const compact = contextInternal.compactTranscript;
+  if (process.argv.includes('--estimate') && !process.env.HALE_SPEND_LEDGER) {
+    process.env.HALE_SPEND_LEDGER = '/tmp/hale-eval-estimate-ledger.json';
+  }
   installEvalSpendCap();
   const getJudgeClient = lazyAnthropic('coach-channel-judge');
   const getCurrentClient = lazyAnthropic('coach-channel');
@@ -2029,6 +2078,11 @@ async function main() {
   const skill = withAddendum(
     await agent.loadSkill(SKILL_PATH),
     await agent.loadSkill(join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-nearby-find.md')),
+  );
+  // Production appends this on every channel turn. The standing corpus does not, so
+  // those recordings keep their keys. The postal-home fixture does, matching production.
+  const homePlaceSkill = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-home-place.md'),
   );
   const { shareExperienceCardTool, augmentCoachSkillForExperienceCards } = await tsImport(
     EXPERIENCE_CARD_TOOL_SRC,
@@ -2102,6 +2156,7 @@ async function main() {
   }
 
   const results = [];
+  const pendingRecord = [];
   for (const fixture of corpus) {
     const calls = [];
     const auditLog = [];
@@ -2138,6 +2193,7 @@ async function main() {
           spots,
           webPicksFor(fixture),
           toolOutputs,
+          fixture.postalTown ?? null,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
         ...(fixture.autonomy
@@ -2145,6 +2201,7 @@ async function main() {
           : []),
       ];
       let turnSkill = augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true);
+      if (fixture.postalTown) turnSkill = withAddendum(turnSkill, homePlaceSkill);
       // VIL-500: only these fixtures see the card verb and the lit addendum. Every other
       // turn keeps the disk skill and the tool list the cache was recorded against.
       if (fixture.experienceCard) {
@@ -2166,8 +2223,11 @@ async function main() {
         legs,
         anthropicModel,
         subjectLatencies,
+        fixture.unrecorded === true,
       );
-      const run = await agent.runAgent({
+      let run;
+      try {
+        run = await agent.runAgent({
         skill: turnSkill,
         context: turnContext,
         tools,
@@ -2177,6 +2237,16 @@ async function main() {
         toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
         guardDeps: makeGuardDeps(auditLog, children),
       });
+      } catch (err) {
+        if (err && err.unrecorded) {
+          pendingRecord.push({ id: fixture.id, cacheKey: err.cacheKey });
+          console.log(
+            `UNRECORDED  ${fixture.id}  ${err.cacheKey}  (cached-only soft path until a recording exists)`,
+          );
+          continue;
+        }
+        throw err;
+      }
       if (run.answer === null) {
         // WHAT IT SPENT THE BUDGET ON. A bare "no answer" is unactionable: the loop can
         // end empty because it looped on a rejected tool call, or because it ran the
@@ -2305,6 +2375,10 @@ async function main() {
               //
               // `undefined`, not `null`, on every turn without one — JSON.stringify
               // drops undefined, so every judge verdict already committed stays valid.
+              home:
+                fixture.judgeHome === undefined
+                  ? undefined
+                  : fixture.judgeHome,
               nearbyCountAppended:
                 fixture.nearby &&
                 nearbyCountWasAppended(
@@ -2475,7 +2549,14 @@ async function main() {
     !severed &&
     (!voiceRequired || (scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0));
   const segments = answered.map((r) => smsSegments(r.reply));
-  const accuracy = passes.length / results.length;
+  // An unrecorded fixture is not in `results`. A run of only that fixture has
+  // nothing to grade and is not a failure; a run that graded nothing else is.
+  const accuracy =
+    results.length === 0
+      ? pendingRecord.length > 0
+        ? 1
+        : 0
+      : passes.length / results.length;
 
   console.log('\n--- corpus metrics ---');
   console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);
@@ -2595,8 +2676,23 @@ async function main() {
     voiceOk &&
     (broken || clashWrong.length === 0);
 
+  if (pendingRecord.length > 0) {
+    console.log('\n--- unrecorded (cached-only soft path) ---');
+    for (const row of pendingRecord) console.log(`  ${row.id}  ${row.cacheKey}`);
+  }
   if (isDryRun()) {
     console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan]));
+    const seen = new Set();
+    for (const row of DRY_SUBJECT_PLAN) {
+      if (!row.key || seen.has(row.key)) continue;
+      seen.add(row.key);
+      console.log(`cache-key subject ${row.tag} ${row.key}`);
+    }
+    for (const row of [...(judge.plan ?? []), ...(clashJudge.plan ?? [])]) {
+      if (!row.key || seen.has(row.key)) continue;
+      seen.add(row.key);
+      console.log(`cache-key judge ${row.tag} ${row.key}`);
+    }
     process.exit(0);
   }
   console.log('\n--- gate ---');

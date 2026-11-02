@@ -8,9 +8,10 @@ import {
   deriveStage,
 } from '@hale/types';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
-import { isFactFresh, townFromStoredArea } from '~/lib/channel/activity/reader';
-import { heldFromFamilyPrompt } from '~/lib/memory/record-field';
+import { townFromStoredArea } from '../channel/town-from-area';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
+import { isFactFresh } from '../memory/freshness';
+import { heldFromFamilyPrompt } from '../memory/record-field';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
