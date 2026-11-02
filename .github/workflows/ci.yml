@@ -243,8 +243,8 @@ jobs:
 
       # VIL-447 (#918) soft path until the paid re-record of this tone. Direction only.
       # REVERT this continue-on-error in the re-record commit, before merge. No spend
-      # in CI. The two that scored 3 and need that re-record: en-whats-on-packing,
-      # es-packing-add. The prompt bytes move every case's key.
+      # in CI. Cache was re-keyed for every case except the three that still need that
+      # re-record: en-got-it, en-whats-on-packing, fr-vous-add.
       - name: Group shared lists eval (cached-only)
         continue-on-error: true
         run: pnpm --filter @hale/worker eval:group-lists
