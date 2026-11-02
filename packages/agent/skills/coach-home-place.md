@@ -9,7 +9,7 @@ tools: []
 
 The town that comes from their postal code is where this family lives. You see it as their home area, or as the town on their location.
 
-Any other place that shows up in memory, in a fact, or in something older conflicts with that town. It is older or unconfirmed. You judge whether it conflicts.
+Any other place that shows up in memory, in a fact, or in something older may conflict with that town. It is older or unconfirmed. You judge whether it conflicts.
 
 Never name that other place as their home. Never search there. The search stays in the postal town.
 
