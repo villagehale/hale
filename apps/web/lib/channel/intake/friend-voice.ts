@@ -33,12 +33,17 @@ import {
   type OnboardingCapture,
   type OnboardingChecklist,
   type OnboardingItem,
+  STILL_ASKING_ITEMS,
   type ScheduleLimits,
+  type StillAsking,
   acceptOnboardingCapture,
+  acceptStillAsking,
   checklistAfter,
   countRejectedScheduleAdds,
+  dropAskedAnswer,
   mergeCaptures,
   onboardingMissing,
+  stillAskingConflicts,
 } from './onboarding-turn';
 
 /**
@@ -239,6 +244,11 @@ export interface FriendVoiceResult {
   prose: string;
   /** The bubbles to send, in order. One for most steps; two or three on find_show. */
   bubbles: string[];
+  /**
+   * Parallel to `bubbles` on find_show (`opener`, `group:0`, …). Empty otherwise.
+   * A retry skips a key that already landed.
+   */
+  bubbleKeys: readonly string[];
   /** `unsent` means both attempts failed: nothing goes to the parent. */
   source: 'composed' | 'retry' | 'unsent';
   fallback: FriendFallback | null;
@@ -407,6 +417,10 @@ const replySchema = z.object({
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
+  stillAsking: z
+    .unknown()
+    .optional()
+    .transform((value) => acceptStillAsking(value)),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
@@ -468,6 +482,10 @@ const replyJsonSchema = {
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
+    stillAsking: {
+      type: ['string', 'null'],
+      enum: [...STILL_ASKING_ITEMS, null],
+    },
     ahaMention: { type: ['string', 'null'] },
     language: { type: ['string', 'null'] },
   },
@@ -1021,21 +1039,35 @@ export function peelFriendAsk(prose: string): { lead: string; ask: string } {
 
 /**
  * Group bubbles only. Each lead is one bubble, newlines included. An empty
- * lead is skipped. Code does not number the lines or join them on.
+ * lead is skipped. Code does not number the lines or join them on. The key
+ * is the group's index, so a later retry can skip a bubble that already landed.
  */
 function writtenGroupBubbles(
   groups: readonly FriendFindGroup[],
   leads: readonly string[] | null | undefined,
-): string[] {
-  const bubbles: string[] = [];
+): { key: string; body: string }[] {
+  const bubbles: { key: string; body: string }[] = [];
   groups.forEach((group, index) => {
     const lines = group.lines.map((line) => line.trim()).filter((line) => line.length > 0);
     if (lines.length === 0) return;
     const head = (leads?.[index] ?? '').trim();
     if (head.length === 0) return;
-    bubbles.push(head);
+    bubbles.push({ key: `group:${index}`, body: head });
   });
   return bubbles;
+}
+
+/** Opener plus one keyed bubble per group the model wrote. */
+function findShowParts(
+  opener: string,
+  groups: readonly FriendFindGroup[],
+  leads: readonly string[] | null | undefined,
+): { key: string; body: string }[] {
+  const parts: { key: string; body: string }[] = [];
+  const lead = opener.trim();
+  if (lead.length > 0) parts.push({ key: 'opener', body: lead });
+  parts.push(...writtenGroupBubbles(groups, leads));
+  return parts;
 }
 
 /**
@@ -1048,11 +1080,7 @@ export function assembleFindShowBubbles(
   groups: readonly FriendFindGroup[],
   leads: readonly string[] | null | undefined,
 ): string[] {
-  const bubbles: string[] = [];
-  const lead = opener.trim();
-  if (lead.length > 0) bubbles.push(lead);
-  bubbles.push(...writtenGroupBubbles(groups, leads));
-  return bubbles;
+  return findShowParts(opener, groups, leads).map((part) => part.body);
 }
 
 export function assembleFriendBody(
@@ -1590,6 +1618,7 @@ function unsent(reason: FriendFallback, step: FriendStep): FriendVoiceResult {
     body: '',
     prose: '',
     bubbles: [],
+    bubbleKeys: [],
     source: 'unsent',
     fallback: reason,
     step,
@@ -1724,6 +1753,7 @@ export async function speakFriend(
   const finish = (
     prose: string,
     bubbles: string[],
+    bubbleKeys: readonly string[],
     source: FriendVoiceResult['source'],
     turnCapture: OnboardingCapture,
     step: FriendStep,
@@ -1737,6 +1767,7 @@ export async function speakFriend(
       body,
       prose: prose.trim(),
       bubbles: input.step === 'find_show' ? bubbles : [body],
+      bubbleKeys: input.step === 'find_show' ? bubbleKeys : [],
       source,
       fallback: null,
       step,
@@ -1771,6 +1802,7 @@ export async function speakFriend(
     | {
         prose: string;
         bubbles: string[];
+        bubbleKeys: string[];
         capture: OnboardingCapture;
         step: FriendStep;
       }
@@ -1807,9 +1839,11 @@ export async function speakFriend(
           ? settleSchedule(
               withGroupMode(
                 withReading(
-                  noYesInAQuestion(
-                    ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
-                    input,
+                  dropAskedAnswer(
+                    noYesInAQuestion(
+                      ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                      input,
+                    ),
                   ),
                   input,
                 ),
@@ -1818,13 +1852,22 @@ export async function speakFriend(
             )
           : empty;
       const draft = composed.reply.trim();
-      // A reply that still asks the next item did not end the walk. Leaving
-      // stopAsking set would judge this as stop_asking, drop the question, and
-      // close intake — the parent's next text, including "what's good around
-      // here", would be handed to the coach with the map still unsent.
-      if (capture.stopAsking && draft.includes('?')) capture.stopAsking = false;
+      // stopAsking and stillAsking together is not a reply. The model is asked
+      // again; if it still sets both, nothing is sent. Code does not look at
+      // the prose to decide which one the model meant.
+      if (stillAskingConflicts(capture)) {
+        noteRefusal(
+          { reason: 'still_asking', stillAsking: capture.stillAsking, step: input.step, prompt },
+          'unusable',
+        );
+        return {
+          fail: 'unusable',
+          capture: { ...capture, stopAsking: false },
+          retry: { draft, problem: retryProblem('still_asking') },
+        };
+      }
       if (options.replyDiscardedWhen?.(capture)) {
-        return { prose: '', bubbles: [], capture, step: input.step };
+        return { prose: '', bubbles: [], bubbleKeys: [], capture, step: input.step };
       }
       // A refused add means the reply may confirm a reminder that was never written.
       const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
@@ -1902,20 +1945,25 @@ export async function speakFriend(
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
       };
-      const bubblesFor = (text: string): { bubbles: string[]; judgedText: string } | null => {
+      const bubblesFor = (
+        text: string,
+      ): { bubbles: string[]; bubbleKeys: string[]; judgedText: string } | null => {
         if (input.step === 'find_show') {
           const groups = input.findGroups ?? [];
           const leads = tidyLeads(composed.groupLeads ?? null, groups, input);
-          const groupBubbles = writtenGroupBubbles(groups, leads);
+          const parts = findShowParts(text, groups, leads);
           // An opener with no group bubble is not a map. The retry asks again.
-          if (groupBubbles.length === 0) return null;
-          const opener = text.trim();
-          const bubbles = opener.length > 0 ? [opener, ...groupBubbles] : groupBubbles;
-          return { bubbles, judgedText: bubbles.join('\n\n') };
+          if (!parts.some((part) => part.key.startsWith('group:'))) return null;
+          return {
+            bubbles: parts.map((part) => part.body),
+            bubbleKeys: parts.map((part) => part.key),
+            judgedText: parts.map((part) => part.body).join('\n\n'),
+          };
         }
         if (text.length === 0) return null;
         return {
           bubbles: [],
+          bubbleKeys: [],
           judgedText: assembleFriendBody(text, input, options.link, options.trailer),
         };
       };
@@ -1937,8 +1985,16 @@ export async function speakFriend(
         return { fail: 'unusable', capture };
       }
       const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
-      if (judged.ok) return { prose, bubbles: assembled.bubbles, capture, step: judgeInput.step };
-      const repaired = repairedProse(prose, judgeInput.step);
+      if (judged.ok) {
+        return {
+          prose,
+          bubbles: assembled.bubbles,
+          bubbleKeys: assembled.bubbleKeys,
+          capture,
+          step: judgeInput.step,
+        };
+      }
+      const repaired = repairedProse(prose, judgeInput.step, capture.stillAsking);
       const again = repaired.length > 0 ? bubblesFor(repaired) : null;
       if (
         again &&
@@ -1949,7 +2005,13 @@ export async function speakFriend(
           { repaired: judged.reason, step: input.step, prompt },
           'onboarding-friend: draft repaired',
         );
-        return { prose: repaired, bubbles: again.bubbles, capture, step: judgeInput.step };
+        return {
+          prose: repaired,
+          bubbles: again.bubbles,
+          bubbleKeys: again.bubbleKeys,
+          capture,
+          step: judgeInput.step,
+        };
       }
       return reject(judged);
 
@@ -2008,6 +2070,7 @@ export async function speakFriend(
     return finish(
       first.prose,
       first.bubbles,
+      first.bubbleKeys,
       firstPrompt === 'short' ? 'retry' : 'composed',
       first.capture,
       first.step,
@@ -2035,7 +2098,7 @@ export async function speakFriend(
   if ('prose' in second) {
     console.info({ recovered: true, step: input.step }, 'onboarding-friend: retry recovered');
     const capture = advanced ? mergeCaptures(advanced.settled, second.capture) : second.capture;
-    return finish(second.prose, second.bubbles, 'retry', capture, second.step);
+    return finish(second.prose, second.bubbles, second.bubbleKeys, 'retry', capture, second.step);
   }
   return failed(second.fail, mergeCaptures(first.capture, second.capture));
 }
@@ -2067,11 +2130,13 @@ function carriesJoin(prose: string, join: { line: string; phrase: string }): boo
 
 /** What the retry is told about the draft that was not sent. Plain words for the model. */
 function retryProblem(
-  reason: FriendJudgeFailure | 'schedule' | 'join',
+  reason: FriendJudgeFailure | 'schedule' | 'join' | 'still_asking',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
+    case 'still_asking':
+      return 'stopAsking and stillAsking were both set. A reply that asks names that item in stillAsking and leaves stopAsking false. A reply that stops leaves stillAsking null.';
     case 'join':
       return linqGroupOnboardingV2Enabled()
         ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Say it is below and do not write the digits or a phrase to text. When it is new, say you will start the group. A plain yes leaves coparentGroupMode null.'
@@ -2175,20 +2240,24 @@ const QUESTION_OPENER =
 /** A question that only points at the options a later one names: "Which of these would help?" */
 const OPTIONS_OPENER =
   /^(?:which|what)\b[^?]{0,40}\b(?:these|those|ones?|options?|activities|programs)\b[^?]{0,40}\?$/i;
-const COPARENT_WORDS = /\b(?:group (?:chat|text)|other parent|co-?parent)\b/i;
 
 /**
  * Code's repair of a draft that broke one countable rule. Two or three
  * questions offering choices become one: an earlier question that only opens
  * ("Which of these would help?") is dropped, any other earlier one becomes a
  * statement. Empty when there is nothing safe to repair. Length is not repaired.
+ * A reply that is still asking the co-parent or the group is not folded into
+ * another step: that comes from `stillAsking`, not from the words.
  */
-export function repairedProse(prose: string, step: FriendStep): string {
+export function repairedProse(
+  prose: string,
+  step: FriendStep,
+  stillAsking: StillAsking | null = null,
+): string {
   if (ZERO_QUESTION_STEPS.has(step)) return '';
+  if (step !== 'coparent' && (stillAsking === 'coparent' || stillAsking === 'group')) return '';
   let sentences = sentencesOf(prose);
   const asks = sentences.filter((sentence) => sentence.includes('?'));
-  // Never fold in an ask that belongs to another step.
-  if (step !== 'coparent' && asks.some((sentence) => COPARENT_WORDS.test(sentence))) return '';
   if (asks.length > 1) {
     const last = sentences.lastIndexOf(asks[asks.length - 1] ?? '');
     sentences = sentences.flatMap((sentence, index) => {
@@ -2368,6 +2437,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           calendarLater: value.calendarLater,
           gmailLater: value.gmailLater,
           stopAsking: value.stopAsking,
+          stillAsking: value.stillAsking,
           language: acceptReplyLanguage(value.language),
         },
         ahaMention: value.ahaMention,

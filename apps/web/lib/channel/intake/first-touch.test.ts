@@ -918,6 +918,71 @@ describe('friend voice onboarding', () => {
     const delivered = await loadOpenSession(fake.db, PHONE);
     expect(delivered?.firstTouch?.coldStart?.findDelivered).not.toBe(false);
   });
+
+  it('does not resend a map bubble that already landed', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ voice: true });
+    const swim = 'Parent and tot swim at Pape (ages 3-5) - Saturdays 10:00';
+    const story = 'Storytime at Riverdale Library (ages 6-8) - Tuesdays 10:30';
+    deps.radar = {
+      async compose() {
+        return {
+          message: `[swimming]\n1. ${swim}\n[free_public]\n2. ${story}`,
+          groups: [
+            {
+              category: 'swimming' as const,
+              lines: [swim],
+              titles: ['Parent and tot swim at Pape'],
+            },
+            {
+              category: 'free_public' as const,
+              lines: [story],
+              titles: ['Storytime at Riverdale Library'],
+            },
+          ],
+          itemCount: 2,
+          followUpNeeded: false,
+          checkpointTold: null,
+          weekendPickOffered: false,
+          findWon: true,
+          firstFindPromised: false,
+          actionMove: null,
+          actionHeld: 'no_move',
+          voiceFallback: null,
+          mapFinder: 'used' as const,
+        };
+      },
+    };
+    const send = transport.send.bind(transport);
+    transport.send = async (input) => {
+      if (input.body.includes('Riverdale')) throw new Error('bubble down');
+      return send(input);
+    };
+    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
+    const owed = await loadOpenSession(fake.db, PHONE);
+    expect(owed?.firstTouch?.coldStart?.findDelivered).toBe(false);
+    expect(owed?.firstTouch?.coldStart?.findSentKeys).toEqual(['opener', 'group:0']);
+    expect(transport.bodies().filter((body) => body.includes('Pape'))).toHaveLength(1);
+    expect(transport.bodies().some((body) => body.includes('Riverdale'))).toBe(false);
+
+    transport.send = send;
+    await handleInboundSms(fake.db, inbound(transport, 'still here'), deps);
+    expect(transport.bodies().filter((body) => body.includes('Pape'))).toHaveLength(1);
+    expect(transport.bodies().filter((body) => body.includes('Riverdale'))).toHaveLength(1);
+    expect(transport.bodies().filter((body) => body.startsWith('Here is what is on'))).toHaveLength(
+      1,
+    );
+    const delivered = await loadOpenSession(fake.db, PHONE);
+    expect(delivered?.firstTouch?.coldStart?.findDelivered).not.toBe(false);
+    const keys = fake
+      .rows(schema.channelMessages)
+      .map((row) => row.dedupeKey)
+      .filter((key) => typeof key === 'string');
+    expect(keys.filter((key) => String(key).endsWith(':opener'))).toHaveLength(1);
+    expect(keys.filter((key) => String(key).endsWith(':group:0'))).toHaveLength(1);
+    expect(keys.filter((key) => String(key).endsWith(':group:1'))).toHaveLength(1);
+  });
+
   it('updates the child age without re-running the find, and leaves the other family alone', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });
@@ -1016,9 +1081,22 @@ describe('friend voice onboarding', () => {
         // co-parent question. That used to close intake, and the next text
         // (the actual no, plus what's good nearby) was handed to the coach.
         if (input.step === 'calendar' && /^later$/i.test(input.parentWords.trim())) {
+          const prior =
+            base.capture && typeof base.capture === 'object'
+              ? { ...(base.capture as Record<string, unknown>) }
+              : {};
+          // Both flags is not a reply. The retry names the open ask and does
+          // not stop. The prose is Chinese, with a fullwidth question mark and
+          // none of the English co-parent words.
           return {
-            ...base,
-            capture: { ...base.capture, calendarLater: true, stopAsking: true },
+            reply: '要不要和其他家长建个群？',
+            capture: {
+              ...prior,
+              calendarLater: true,
+              coparentGroup: false,
+              stillAsking: 'coparent',
+              stopAsking: input.retry == null,
+            },
           };
         }
         return base;
@@ -1033,7 +1111,8 @@ describe('friend voice onboarding', () => {
     const stillOpen = await loadOpenSession(fake.db, PHONE);
     expect(stillOpen?.state).toBe('awaiting_cold_start');
     expect(stillOpen?.firstTouch?.given?.coparentGroup).not.toBe(false);
-    expect(transport.bodies().at(-1)).toMatch(/group chat/i);
+    expect(transport.bodies().at(-1)).toBe('要不要和其他家长建个群？');
+    expect(transport.bodies().at(-1)).not.toMatch(/group chat|other parent|co-parent/);
 
     const answered = await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
     expect(answered.status).not.toBe('ignored');

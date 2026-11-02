@@ -77,7 +77,7 @@ One JSON object. Fill a field only when this message (or a recent turn not yet i
 - `nameConfirmed`, `nameDeclined`, `kidsNamesDeclined`.
 - `connectGmail` / `connectCalendar` - true for a yes, false for a no; `gmailLater` / `calendarLater` for not now.
 - `scheduleAdds` - `{ "line": 4, "child": "Mia", "cadence": "weekly", "date": "2026-10-10", "time": "11:00", "weeks": 8 }`: `line` is the `n` of the line, `date` the first occurrence from `upcomingDays`, one add per line, never a line already in `scheduled`. `scheduleDone`.
-- `coparentGroup` - true or false once they answer. `stopAsking` - they want you to stop.
+- `coparentGroup` - true or false once they answer. `stopAsking` - they want you to stop. `stillAsking` - the item this reply is asking (`postal`, `kids`, `ages`, `name`, `gmail`, `calendar`, `schedule`, `coparent`, or `group` for the group chat), or null when it asks nothing, in any language. A reply that asks sets `stillAsking` and leaves `stopAsking` false. A reply that stops sets `stopAsking` and leaves `stillAsking` null. The two are never both set.
 - `language` - the BCP-47 tag of the language this parent is writing in (`zh`, `ar`, `fr`, `en`). Omit when you cannot tell. Do not infer it from a place.
 - `ahaMention` - on `connected`: the exact title or subject you named, else null.
 - `groupLeads` - on `find_show` only: one bubble per group, written from that group's lines, blank when you cannot write it.
