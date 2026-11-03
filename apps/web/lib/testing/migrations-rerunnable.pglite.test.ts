@@ -80,78 +80,85 @@ describe('0204 watch storage', () => {
     'registration_sequences_date_review_check',
     'registration_sequences_target_check',
   ];
+  const files = migrationFiles();
+  const before = files[files.indexOf(WATCH_FILE as string) - 1];
+
+  // Booted in hooks, never inside it(): a fresh pglite plus a replay through `before`
+  // runs past the 5s test timeout on CI.
+  let full: TestDb;
+  let legacy: TestDb;
+
+  beforeAll(async () => {
+    full = await createTestDb();
+    legacy = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await full.close();
+    await legacy.close();
+  });
 
   it('applies twice, and a replay of 0110 and 0111 afterwards does not tighten it back', async () => {
     expect(WATCH_FILE).toMatch(/^\d{4}_registration_live_watch_storage\.sql$/);
-    const db = await createTestDb();
-    try {
-      await db.applyMigration(WATCH_FILE as string);
-      await db.applyMigration(WATCH_FILE as string);
-      await db.applyMigration('0110_registration_sequence_prepared.sql');
-      await db.applyMigration('0111_registration_sequence_course_url_length.sql');
+    const db = full;
+    await db.applyMigration(WATCH_FILE as string);
+    await db.applyMigration(WATCH_FILE as string);
+    await db.applyMigration('0110_registration_sequence_prepared.sql');
+    await db.applyMigration('0111_registration_sequence_course_url_length.sql');
 
-      const { familyId, parentUserId } = await seedFamily(db.database, 'Replay Family');
-      await expect(
-        db.exec(`
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Replay Family');
+    await expect(
+      db.exec(`
           INSERT INTO registration_sequences (family_id, parent_user_id, course_url)
           VALUES ('${familyId}', '${parentUserId}', '${LONG_URL}')
         `),
-      ).resolves.toBeDefined();
+    ).resolves.toBeDefined();
 
-      // Positive control: the scoped pairing is the one in place, so a window-bound row
-      // with a link and no date is still refused.
-      const window = await db.client.query<{ id: string }>(`
+    // Positive control: the scoped pairing is the one in place, so a window-bound row
+    // with a link and no date is still refused.
+    const window = await db.client.query<{ id: string }>(`
         INSERT INTO registration_windows (municipality, program_domain, cycle_label, open_at, source_url, verified_at)
         VALUES ('markham', 'rec_program', 'Replay', '2026-08-11T10:30:00Z', 'https://example.test/window', '2026-09-01T00:00:00Z')
         RETURNING id
       `);
-      await expect(
-        db.exec(`
+    await expect(
+      db.exec(`
           INSERT INTO registration_sequences (family_id, window_id, parent_user_id, course_url)
           VALUES ('${familyId}', '${window.rows[0]?.id}', '${parentUserId}', 'https://registration.example.org/c/bound')
         `),
-      ).rejects.toThrow(/registration_sequences_course_check/);
+    ).rejects.toThrow(/registration_sequences_course_check/);
 
-      const constraints = await db.client.query<{ conname: string; convalidated: boolean }>(
-        'SELECT conname, convalidated FROM pg_constraint WHERE conname = ANY($1) ORDER BY conname',
-        [NOT_VALID],
-      );
-      expect(constraints.rows).toEqual(
-        NOT_VALID.map((conname) => ({ conname, convalidated: false })),
-      );
-    } finally {
-      await db.close();
-    }
+    const constraints = await db.client.query<{ conname: string; convalidated: boolean }>(
+      'SELECT conname, convalidated FROM pg_constraint WHERE conname = ANY($1) ORDER BY conname',
+      [NOT_VALID],
+    );
+    expect(constraints.rows).toEqual(
+      NOT_VALID.map((conname) => ({ conname, convalidated: false })),
+    );
   });
 
   it('applies over a legacy empty link, which VALIDATE would then refuse', async () => {
     expect(WATCH_FILE).toMatch(/^\d{4}_registration_live_watch_storage\.sql$/);
-    const files = migrationFiles();
-    const before = files[files.indexOf(WATCH_FILE as string) - 1] as string;
-    const db = await createTestDb(before);
-    try {
-      const { familyId, parentUserId } = await seedFamily(db.database, 'Legacy Family');
-      const window = await db.client.query<{ id: string }>(`
+    const db = legacy;
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Legacy Family');
+    const window = await db.client.query<{ id: string }>(`
         INSERT INTO registration_windows (municipality, program_domain, cycle_label, open_at, source_url, verified_at)
         VALUES ('markham', 'rec_program', 'Legacy', '2026-08-11T10:30:00Z', 'https://example.test/window', '2026-09-01T00:00:00Z')
         RETURNING id
       `);
-      // Valid under 0110/0111: a non-NULL link (empty) paired with a date, length 0 <= 200.
-      await db.exec(`
+    // Valid under 0110/0111: a non-NULL link (empty) paired with a date, length 0 <= 200.
+    await db.exec(`
         INSERT INTO registration_sequences (family_id, window_id, parent_user_id, course_url, course_opens_at)
         VALUES ('${familyId}', '${window.rows[0]?.id}', '${parentUserId}', '', '2026-08-12T10:30:00Z')
       `);
 
-      await expect(db.applyMigration(WATCH_FILE as string)).resolves.toBeUndefined();
+    await expect(db.applyMigration(WATCH_FILE as string)).resolves.toBeUndefined();
 
-      // Positive control, and the follow-up's recipe: the legacy row really does violate.
-      await expect(
-        db.exec(
-          'ALTER TABLE registration_sequences VALIDATE CONSTRAINT registration_sequences_course_url_length_check',
-        ),
-      ).rejects.toThrow(/violate/);
-    } finally {
-      await db.close();
-    }
+    // Positive control, and the follow-up's recipe: the legacy row really does violate.
+    await expect(
+      db.exec(
+        'ALTER TABLE registration_sequences VALIDATE CONSTRAINT registration_sequences_course_url_length_check',
+      ),
+    ).rejects.toThrow(/violate/);
   });
 });
