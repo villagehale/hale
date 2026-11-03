@@ -92,10 +92,7 @@ export async function readModelParentName(
   nameConfirmed: boolean | null;
   reply: string | null;
 }> {
-  const spoken = await speakFriend(composer, {
-    ...nameAskVoiceInput(input.parentWords),
-    language: input.language,
-  });
+  const spoken = await speakFriend(composer, nameAskVoiceInput(input.parentWords, input.language));
   const reply = spoken.source === 'unsent' || spoken.body.trim().length === 0 ? null : spoken.body;
   return {
     parentName: spoken.capture.parentName,
@@ -104,19 +101,6 @@ export async function readModelParentName(
     nameConfirmed: spoken.capture.nameConfirmed,
     reply,
   };
-}
-
-/** The receipt after a typed name was stored, or null when the model could not write one. */
-export async function composeNameCapturedReceipt(
-  composer: FriendVoiceComposer | undefined,
-  input: { name: string; parentWords: string; language: ReplyLanguage },
-): Promise<string | null> {
-  const spoken = await speakFriend(composer, {
-    ...base('name_reply', input.language, input.parentWords),
-    parentName: input.name,
-  });
-  if (spoken.source === 'unsent' || spoken.body.trim().length === 0) return null;
-  return spoken.body;
 }
 
 export function defaultCallNameComposer(client: AgentClient | null = voiceClient()) {

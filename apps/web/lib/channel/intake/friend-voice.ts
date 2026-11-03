@@ -725,15 +725,21 @@ function answeringItem(input: FriendVoiceInput): OnboardingItem | null {
   return onboardingMissing(input.checklist)[0] ?? null;
 }
 
-/** The open name ask, as the name-capture reader hands it to the model. */
-export function nameAskVoiceInput(parentWords: string): FriendVoiceInput {
+/**
+ * The open name ask, as the name-capture reader hands it to the model. The ask
+ * is the structured `answering` fact; no Hale turn is written here.
+ */
+export function nameAskVoiceInput(
+  parentWords: string,
+  language: ReplyLanguage | null,
+): FriendVoiceInput {
   return {
     step: 'names',
-    language: 'en',
+    language,
     address: 'tu',
     introduce: false,
     parentWords,
-    recentTurns: [{ role: 'hale', body: 'What should I call you?' }],
+    recentTurns: [],
     placeLabel: null,
     agesLabel: null,
     ageMonths: [],

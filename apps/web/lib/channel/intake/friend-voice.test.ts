@@ -7,6 +7,7 @@ import {
   friendWeekAction,
   judgeFriendReply,
   lastInboundFact,
+  nameAskVoiceInput,
   parentReading,
   repairedProse,
   speakFriend,
@@ -74,6 +75,21 @@ describe('friend voice brief', () => {
     expect(pickedUp).toMatchObject({
       lastInbound: { minutesAgo: 8 * 60 + 30, overnight: true, yesterday: true },
     });
+  });
+});
+
+describe('the open name ask, as the name-capture reader hands it to the model', () => {
+  it('carries no Hale turn code wrote, and answers the name ask as a structured fact', () => {
+    const input = nameAskVoiceInput('laisse tomber', 'fr');
+    expect(input.recentTurns).toEqual([]);
+    const context = friendVoiceContext(input);
+    expect(context).toMatchObject({ answering: 'name', recentTurns: [] });
+    expect(JSON.stringify(context)).not.toContain('What should I call you');
+  });
+
+  it("uses the family's own language, and none when none is stored", () => {
+    expect(nameAskVoiceInput('laisse tomber', 'fr').language).toBe('fr');
+    expect(nameAskVoiceInput('undo', null).language).toBeNull();
   });
 });
 

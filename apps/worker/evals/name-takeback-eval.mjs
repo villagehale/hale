@@ -68,7 +68,7 @@ function suiteUsd({ lane, skill, voice }) {
   let usd = 0;
   for (const fixture of NAME_TAKEBACK_FIXTURES) {
     const userMessage = JSON.stringify(
-      voice.friendVoiceContext(voice.nameAskVoiceInput(fixture.parentWords)),
+      voice.friendVoiceContext(voice.nameAskVoiceInput(fixture.parentWords, null)),
     );
     const input =
       estimateTokens(skill.instructions) +
@@ -162,7 +162,7 @@ async function record() {
   let failed = 0;
   for (const fixture of NAME_TAKEBACK_FIXTURES) {
     const userMessage = JSON.stringify(
-      voice.friendVoiceContext(voice.nameAskVoiceInput(fixture.parentWords)),
+      voice.friendVoiceContext(voice.nameAskVoiceInput(fixture.parentWords, null)),
     );
     const result = await cachedToolCall({
       tag: `name-takeback:${fixture.id}`,
