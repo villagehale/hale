@@ -27,6 +27,7 @@ import {
   noteFirstHelloFailure,
   pageFailureAlerts,
 } from './failure-page';
+import type { IncidentFailure } from './provider-health';
 
 /**
  * VIL-404 — a failed turn and a failed first hello each page Slack #ops once.
@@ -380,7 +381,7 @@ describe('provider incidents, dead letters, and deferral pile-ups', () => {
 
   async function seedDeferred(
     family: { familyId: string; parentUserId: string },
-    over: { providerFailure?: 'billing' | 'auth'; targetId?: string; occurredAt?: Date } = {},
+    over: { providerFailure?: IncidentFailure; targetId?: string; occurredAt?: Date } = {},
   ) {
     const [row] = await db.database
       .insert(schema.auditLog)
@@ -423,6 +424,30 @@ describe('provider incidents, dead letters, and deferral pile-ups', () => {
     expect(texts.join(' ')).not.toContain(PHONE_SHAPED);
     expect(texts.join(' ')).not.toContain(PARENT_WORDS);
     expect(texts.join(' ')).not.toContain(messageId);
+  });
+
+  it('pages a usage-limit incident once, with the provider, the class, and the turn count', async () => {
+    const family = await seedFamily(db.database, 'Usage Limit');
+    const other = await seedFamily(db.database, 'Usage Limit Two');
+    const messageId = randomUUID();
+    await seedDeferred(family, { providerFailure: 'usage_limit', targetId: messageId });
+    await seedDeferred(family, { providerFailure: 'usage_limit', targetId: messageId });
+    await seedDeferred(other, { providerFailure: 'usage_limit' });
+    const { texts, post } = recorder();
+
+    const first = await pageFailureAlerts(db.database, { post, now: NOW });
+    const second = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(first.providerIncidents).toEqual({ posted: 1, deduped: 0, failed: 0 });
+    expect(second.providerIncidents).toEqual({ posted: 0, deduped: 1, failed: 0 });
+    expect(texts).toHaveLength(1);
+    const [page] = texts;
+    expect(page).toContain('provider anthropic');
+    expect(page).toContain('class usage_limit');
+    expect(page).toContain('affected turns 2');
+    assertNoParentPayload(page ?? '');
+    expect(page).not.toContain(messageId);
+    expect(page).not.toContain(family.familyId);
   });
 
   it('does not page a deferral that is not billing or auth', async () => {

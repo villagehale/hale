@@ -1,3 +1,5 @@
+import type { IncidentFailure } from '~/lib/monitoring/provider-health';
+
 /**
  * HOW FAR THIS TEXT ALREADY GOT — the router's memory of its own attempts at one inbound
  * message.
@@ -106,11 +108,11 @@ export interface InboundTurnLedger {
      * callers that only need the stage. */
     reason?: string;
     /**
-     * Billing or auth, when the provider call that deferred this turn was one
-     * of those. A closed pair. The ops page counts these rows; the value is
-     * never a provider message.
+     * The incident class, when the provider call that deferred this turn was
+     * one (INCIDENT_FAILURES). A closed set. The ops page counts these rows; the
+     * value is never a provider message.
      */
-    providerFailure?: 'billing' | 'auth';
+    providerFailure?: IncidentFailure;
   }): Promise<void>;
   /**
    * A known parent's inbound ended a step with nothing sent, or a step gave

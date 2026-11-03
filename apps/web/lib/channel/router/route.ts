@@ -107,7 +107,10 @@ import {
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
-import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
+import {
+  type IncidentFailure,
+  classifyChainedProviderFailure,
+} from '~/lib/monitoring/provider-health';
 import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -2593,8 +2596,8 @@ type FailedTurnDisposition =
   | {
       outcome: 'deferred';
       reason: TurnDeferralReason;
-      /** Billing or auth on the provider call that deferred the turn. */
-      providerFailure?: 'billing' | 'auth';
+      /** The incident class (INCIDENT_FAILURES) of the provider call that deferred the turn. */
+      providerFailure?: IncidentFailure;
       log: object;
     };
 

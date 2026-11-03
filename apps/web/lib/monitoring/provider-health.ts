@@ -27,13 +27,20 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 // ── classification ───────────────────────────────────────────────────────────
 
 /**
- * What the provider said, in the only four shapes that change what we do:
- *  - `billing`   the account cannot pay (credit balance exhausted / payment required)
- *  - `auth`      the key is wrong, revoked, or lacks permission
- *  - `quota`     rate limited (429) — real, but usually a burst
- *  - `transient` everything else: 5xx, overload, network, and anything unrecognised
+ * What the provider said, in the only shapes that change what we do:
+ *  - `billing`     the account cannot pay (credit balance exhausted / payment required)
+ *  - `auth`        the key is wrong, revoked, or lacks permission
+ *  - `usage_limit` the account hit its configured API usage limit (VIL-552, 2026-10-31)
+ *  - `quota`       rate limited (429) — real, but usually a burst
+ *  - `transient`   everything else: 5xx, overload, network, and anything unrecognised
+ *
+ * {@link INCIDENT_FAILURES} is the one list of classes that are certain to fail for
+ * EVERY family. The abort guard, the chained classifier and the turn-path page loop
+ * are all derived from it, so a new incident class is one edit here.
  */
-export type ProviderFailureClass = 'billing' | 'auth' | 'quota' | 'transient';
+export const INCIDENT_FAILURES = ['billing', 'auth', 'usage_limit'] as const;
+export type IncidentFailure = (typeof INCIDENT_FAILURES)[number];
+export type ProviderFailureClass = IncidentFailure | 'quota' | 'transient';
 
 export type ProviderHealth =
   | { ok: true }
@@ -50,6 +57,24 @@ export type SendWindow =
  * against the provider's own message — Anthropic reports an exhausted balance as a
  * plain 400 whose only distinguishing mark is this text. */
 const BILLING_MARKERS = ['credit balance', 'billing', 'purchase credits', 'payment'];
+
+/** Provider text, not parent text: Anthropic refuses every call on an account past its
+ * configured limit with a 400 `invalid_request_error` whose message says "You have
+ * reached your specified API usage limits". */
+const USAGE_LIMIT_MARKER = 'usage limit';
+const USAGE_LIMIT_ERROR_TYPE = 'invalid_request_error';
+
+/** The usage-limit 400, read from the SDK's structured response body only — never the
+ * composed `err.message`, so a wrapper that quotes something cannot classify. */
+function isUsageLimitError(err: unknown): boolean {
+  const body = (err as { error?: { error?: { type?: unknown; message?: unknown } } } | null)?.error
+    ?.error;
+  return (
+    body?.type === USAGE_LIMIT_ERROR_TYPE &&
+    typeof body.message === 'string' &&
+    body.message.toLowerCase().includes(USAGE_LIMIT_MARKER)
+  );
+}
 
 /** The provider's own explanation: the structured `error.message` from the response
  * body when present (the SDK buries it two levels deep), else the SDK's composed
@@ -86,6 +111,11 @@ export function classifyProviderFailure(err: unknown): ProviderFailureClass {
   if (status === 429) {
     return 'quota';
   }
+  // Before billing: a usage-limit message that also points at "Plans & Billing" still
+  // needs the usage-limit remedy, not a top-up.
+  if (status === 400 && isUsageLimitError(err)) {
+    return 'usage_limit';
+  }
   if (status === 400 || status === 402) {
     const detail = providerFailureDetail(err).toLowerCase();
     return BILLING_MARKERS.some((marker) => detail.includes(marker)) ? 'billing' : 'transient';
@@ -94,14 +124,14 @@ export function classifyProviderFailure(err: unknown): ProviderFailureClass {
 }
 
 /**
- * Whether a failure class is worth cancelling a send window over. Only the two that
- * are certain to fail for EVERY family and cannot fix themselves: an empty balance and
- * a bad key. A 429 is usually a burst and a 5xx is usually seconds long — cancelling a
+ * Whether a failure class is worth cancelling a send window over. Only the
+ * {@link INCIDENT_FAILURES}, which are certain to fail for EVERY family and cannot fix
+ * themselves: an empty balance, a bad key, a reached usage limit. A 429 is usually a burst and a 5xx is usually seconds long — cancelling a
  * once-a-week plan over either would cost more than the retries do. A sustained one of
  * those is caught within the hour by the failed-run backstop instead.
  */
-export function abortsSendWindow(failure: ProviderFailureClass): failure is 'billing' | 'auth' {
-  return failure === 'billing' || failure === 'auth';
+export function abortsSendWindow(failure: ProviderFailureClass): failure is IncidentFailure {
+  return (INCIDENT_FAILURES as readonly string[]).includes(failure);
 }
 
 /** How far down a `cause` chain to look. The coach wraps the SDK error once
@@ -109,7 +139,7 @@ export function abortsSendWindow(failure: ProviderFailureClass): failure is 'bil
 const PROVIDER_CAUSE_DEPTH = 5;
 
 /**
- * The billing or auth class of a provider failure, looking through wrappers.
+ * The incident class of a provider failure, looking through wrappers.
  *
  * {@link classifyProviderFailure} reads the error it is handed. A coach turn
  * wraps that error, and the wrapper has no HTTP status, so the outer frame is
@@ -117,7 +147,7 @@ const PROVIDER_CAUSE_DEPTH = 5;
  * frame that would abort a send window wins. Quota, a 5xx, and a bug return
  * null: those are not an incident to page.
  */
-export function classifyChainedProviderFailure(err: unknown): 'billing' | 'auth' | null {
+export function classifyChainedProviderFailure(err: unknown): IncidentFailure | null {
   let current: unknown = err;
   for (
     let depth = 0;
@@ -158,7 +188,8 @@ export async function probeProviderHealth(client: AgentClient): Promise<Provider
 
 export type ProviderIncident =
   | { kind: 'preflight'; window: SendWindow; failure: ProviderFailureClass; detail: string }
-  | { kind: 'run_spike'; failed: number; total: number; windowStart: Date; windowEnd: Date };
+  | { kind: 'run_spike'; failed: number; total: number; windowStart: Date; windowEnd: Date }
+  | { kind: 'spend_threshold'; totalUsd: number; thresholdUsd: number };
 
 /**
  * An incident's identity. Keyed on the CAUSE, not the window — one empty balance is one
@@ -171,6 +202,8 @@ export function providerIncidentKey(incident: ProviderIncident): string {
       return `provider_health:${incident.failure}`;
     case 'run_spike':
       return 'provider_health:run_spike';
+    case 'spend_threshold':
+      return 'provider_health:spend_threshold';
   }
 }
 
@@ -263,6 +296,8 @@ const WINDOW_LABEL: Record<SendWindow, string> = {
 const FAILURE_EXPLANATION: Record<ProviderFailureClass, string> = {
   billing: 'the account cannot pay — an exhausted credit balance or a declined payment.',
   auth: 'the API key is rejected — wrong, revoked, or missing a permission.',
+  usage_limit:
+    'the account hit its configured API usage limit; every call is refused until it is raised or resets.',
   quota: 'rate limited.',
   transient: 'a temporary provider fault.',
 };
@@ -270,6 +305,8 @@ const FAILURE_EXPLANATION: Record<ProviderFailureClass, string> = {
 const FAILURE_REMEDY: Record<ProviderFailureClass, string> = {
   billing: 'top up at console.anthropic.com → Plans & Billing, then re-run the window.',
   auth: 'check ANTHROPIC_API_KEY in the Vercel production environment, then re-run the window.',
+  usage_limit:
+    'raise the usage limit in the Anthropic console (Limits), or wait for the reset time the provider names above; then re-run the window.',
   quota: 'no action if it clears on its own; raise the rate limit if it does not.',
   transient: 'no action — the next window retries.',
 };
@@ -297,6 +334,28 @@ export function formatProviderAlert(
         'what to do',
         '  read the failed runs in agent_runs for this window and the Langfuse traces',
         '  they carry.',
+        '',
+        `raised ${at.toISOString()}. one #ops post per incident per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
+      ].join('\n'),
+    };
+  }
+
+  if (incident.kind === 'spend_threshold') {
+    const total = `$${incident.totalUsd.toFixed(2)}`;
+    const threshold = `$${incident.thresholdUsd.toFixed(2)}`;
+    const month = at.toISOString().slice(0, 7);
+    return {
+      subject: `Hale ops: Anthropic spend ${total} this month reached the ${threshold} alert`,
+      text: [
+        `agent_runs recorded ${total} of Anthropic spend in ${month} (UTC), at or above the ${threshold} alert.`,
+        '',
+        'what this is',
+        '  the sum of agent_runs.cost_usd only. Lanes that write no cost row, the',
+        '  pre-flight probes and eval/dev spend are not in it, so the console total is higher.',
+        '',
+        'what to do',
+        "  check the console usage page and this month's agent_runs by agent; raise",
+        '  ANTHROPIC_SPEND_ALERT_USD if this spend is expected.',
         '',
         `raised ${at.toISOString()}. one #ops post per incident per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
       ].join('\n'),
@@ -349,6 +408,9 @@ export interface ProviderHealthDeps {
   sender: ProviderAlertSender;
 }
 
+/** The two ports raising an incident uses. A full {@link ProviderHealthDeps} satisfies it. */
+export type ProviderIncidentDeps = Pick<ProviderHealthDeps, 'claim' | 'sender'>;
+
 export function defaultProviderHealthDeps(): ProviderHealthDeps {
   return {
     probe: probeProviderHealth,
@@ -371,7 +433,7 @@ export interface ProviderAlertOutcome {
 export async function raiseProviderIncident(
   database: Database,
   incident: ProviderIncident,
-  deps: ProviderHealthDeps,
+  deps: ProviderIncidentDeps,
   now: Date,
 ): Promise<ProviderAlertOutcome> {
   const key = providerIncidentKey(incident);

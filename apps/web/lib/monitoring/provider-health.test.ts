@@ -42,6 +42,12 @@ const CREDIT_EXHAUSTED = apiError(
   'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.',
 );
 
+/** The 2026-10-31 outage: every call refused for ~19 h. The first sentence is the
+ * provider's text from that day; the regain clause is the usual Anthropic shape. */
+const USAGE_LIMIT_TEXT =
+  'You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC.';
+const USAGE_LIMIT = apiError(400, 'invalid_request_error', USAGE_LIMIT_TEXT);
+
 describe('classifyChainedProviderFailure', () => {
   it('reads a billing 400 through the coach wrapper and ignores a 5xx', () => {
     const wrapped = new Error('channel coach: agent loop failed', { cause: CREDIT_EXHAUSTED });
@@ -54,6 +60,11 @@ describe('classifyChainedProviderFailure', () => {
     expect(
       classifyChainedProviderFailure(apiError(401, 'authentication_error', 'invalid x-api-key')),
     ).toBe('auth');
+  });
+
+  it('reads a usage-limit 400 through the coach wrapper', () => {
+    const wrapped = new Error('channel coach: agent loop failed', { cause: USAGE_LIMIT });
+    expect(classifyChainedProviderFailure(wrapped)).toBe('usage_limit');
   });
 });
 
@@ -101,6 +112,30 @@ describe('classifyProviderFailure — the failure table', () => {
       expected: 'transient',
     },
     {
+      name: 'the 10-31 usage-limit 400',
+      err: USAGE_LIMIT,
+      expected: 'usage_limit',
+    },
+    {
+      name: 'a usage-limit 400 that also mentions Plans & Billing (usage limit wins)',
+      err: apiError(
+        400,
+        'invalid_request_error',
+        `${USAGE_LIMIT_TEXT} Manage limits in Plans & Billing.`,
+      ),
+      expected: 'usage_limit',
+    },
+    {
+      name: 'usage-limit text under a non-invalid_request type stays transient — control for the 10-31 row',
+      err: apiError(400, 'api_error', USAGE_LIMIT_TEXT),
+      expected: 'transient',
+    },
+    {
+      name: 'usage-limit text only in a wrapper message, with no provider body',
+      err: Object.assign(new Error(USAGE_LIMIT_TEXT), { status: 400 }),
+      expected: 'transient',
+    },
+    {
       name: 'an error that is not an SDK error at all',
       err: new TypeError('client.messages is not a function'),
       expected: 'transient',
@@ -120,6 +155,10 @@ describe('abortsSendWindow', () => {
     expect(abortsSendWindow('auth')).toBe(true);
     expect(abortsSendWindow('quota')).toBe(false);
     expect(abortsSendWindow('transient')).toBe(false);
+  });
+
+  it('aborts on usage_limit: every call is refused until the limit is raised or resets', () => {
+    expect(abortsSendWindow('usage_limit')).toBe(true);
   });
 });
 
@@ -232,6 +271,38 @@ describe('formatProviderAlert', () => {
     expect(text).toContain('7 of 8');
     expect(text).toContain('2026-08-01T12:00:00.000Z');
     expect(text).toContain('2026-08-01T13:00:00.000Z');
+  });
+
+  it('reports the spend threshold with both dollar amounts, the month and the env name', () => {
+    const { subject, text } = formatProviderAlert(
+      { kind: 'spend_threshold', totalUsd: 50, thresholdUsd: 50 },
+      new Date('2026-10-31T10:27:00Z'),
+    );
+
+    expect(subject).toContain('$50.00');
+    expect(text).toContain('$50.00');
+    expect(text).toContain('2026-10');
+    expect(text).toContain('ANTHROPIC_SPEND_ALERT_USD');
+  });
+
+  it('gives the usage-limit class its own explanation and remedy', () => {
+    const { subject, text } = formatProviderAlert(
+      {
+        kind: 'preflight',
+        window: 'nudge_sweep',
+        failure: 'usage_limit',
+        detail: USAGE_LIMIT_TEXT,
+      },
+      AT,
+    );
+
+    expect(subject).toBe('Hale ops: nudge sweep did not send — Anthropic usage_limit');
+    expect(text).toContain(
+      'classification: usage_limit — the account hit its configured API usage limit',
+    );
+    expect(text).toContain('raise the usage limit in the Anthropic console');
+    expect(text).not.toContain('undefined');
+    expect(text).not.toContain('top up');
   });
 });
 
