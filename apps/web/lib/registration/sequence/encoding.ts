@@ -31,7 +31,8 @@ const tables = [
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 const LATIN = /\p{Script=Latin}/u;
 const NOT_LATIN_OR_SHARED = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
-// A word-final capital É, Ê or Ë before a no-break space, an ellipsis or curly punctuation reads back as one of these.
+// A word-final capital É, Ê or Ë before a no-break space, an ellipsis or curly punctuation, or a word-final
+// capital Â or Ā before an ellipsis or curly punctuation, reads back as one of these.
 const NEVER_MEANT = /[\u0080-\u009f\u0240-\u02ff]/u;
 
 function isGarbledSegment(bytes: number[]): boolean {

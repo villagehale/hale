@@ -17,6 +17,7 @@ describe('hasEncodingCorruption', () => {
     ['Latin-1 emoji', 'ð\u009f\u008e\u0089 bravo'],
     ['Latin-1 ß', 'GrÃ¼Ã\u009fe'],
     ['8859-2 é', 'dĂŠbut'],
+    ['8859-2 ö', 'schĂśn'],
     ['8859-16 é', 'dĂ©but'],
     ['8859-16 û', 'aoĂ»t'],
     ['8859-16 ê', 'ĂȘtes'],
@@ -27,6 +28,7 @@ describe('hasEncodingCorruption', () => {
     ['double garbling', 'ÃƒÂ©tÃƒÂ©'],
     ['mixed with a real ’', 'd’aprĂšs'],
     ['one garbled word in clean text', 'Inscription en aoÃ»t'],
+    ['garbled word glued to clean text by an emoji', 'aoÃ»t🎉été'],
   ])('holds UTF-8 read back through a legacy charset: %s', (_name, message) => {
     expect(hasEncodingCorruption(message)).toBe(true);
   });
@@ -66,6 +68,7 @@ describe('hasEncodingCorruption', () => {
     ['upstream French row', 'début août êtes d’après — été, Noël, Zoë'],
     ['upstream Central European row', 'Łódź, București, Český Krumlov, Ăngela'],
     ['Lithuanian', 'Ačiū! Registracija prasidės rugpjūčio mėnesį.'],
+    ['Latvian caps Ā + ellipsis', 'JĀ…'],
   ])('leaves correct text alone: %s', (_name, message) => {
     expect(hasEncodingCorruption(message)).toBe(false);
   });
