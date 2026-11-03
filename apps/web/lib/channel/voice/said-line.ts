@@ -300,35 +300,94 @@ function foldCrisisDigits(text: string): string {
   );
 }
 
-// The hours a line may be followed by. Any other digit after a separator run makes
-// a longer number.
-const CRISIS_HOURS_AFTER_NUMBER = [
+// Hours forms a crisis line may sit next to. Their digits are not another number.
+const CRISIS_HOURS_FORMS = [
+  '24 heures sur 24',
+  '24 h sur 24',
+  '24h sur 24',
+  '24 h/24',
+  '24h/24',
   '24/7',
   '24 h',
   '24h',
-  '24 hours',
-  '24 heures',
-  '24 horas',
   '24小时',
-  '全天',
+].sort((a, b) => b.length - a.length);
+
+const CRISIS_LINES: readonly string[] = [
+  ...crisisMustInclude('mental'),
+  ...crisisMustInclude('emergency'),
 ];
 
-// Separators count only inside the number. Bounded on both sides: Room 49881, 1988,
-// 988-555-0100 and 988 555 0100 are not the line. Listed hours and the other crisis
-// line may sit next to it, so '988 – 24/7' and '988. 911 if you are in danger' are.
-function crisisNumberPattern(digits: string): RegExp {
-  const sep = CRISIS_DIGIT_SEPARATOR;
-  const spaced = (number: string) => [...number].join(`${sep}*`);
-  const lines = `(?:${[...crisisMustInclude('mental'), ...crisisMustInclude('emergency')].map(spaced).join('|')})`;
-  const hours = `(?:${CRISIS_HOURS_AFTER_NUMBER.join('|')})`;
-  const before = `(?<=(?<!\\d${sep}*)(?:(?:${hours}|${lines})${sep}+)*)`;
-  const after = `(?=(?:${sep}+${lines})*(?:${sep}+${hours}(?!\\d)|(?!${sep}*\\d)))`;
-  return new RegExp(`${before}${spaced(digits)}${after}`, 'iu');
+const TOKEN_BREAK = /[\p{L}\n\r\v\f\u0085\u2028\u2029]/u;
+
+interface CrisisDigitGroup {
+  digits: string;
+  /** Part of a listed hours form. */
+  hours: boolean;
+  /** Built from single digits only, so the next single digit joins it. */
+  spelled: boolean;
 }
 
-export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boolean {
+function hoursFormEnd(ascii: string, at: number): number {
+  for (const form of CRISIS_HOURS_FORMS) {
+    const end = at + form.length;
+    if (ascii.slice(at, end).toLowerCase() === form && !/\d/.test(ascii[end] ?? '')) return end;
+  }
+  return -1;
+}
+
+/**
+ * Number tokens: maximal runs of digit groups joined by anything but a letter or a
+ * line break, so a number is one token whatever separates its parts. A run of single
+ * digits is one group ('9-8-8' is 988). There is no separator list to fall outside.
+ */
+function crisisNumberTokens(text: string): CrisisDigitGroup[][] {
   const ascii = asciiCrisisDigits(text);
-  return crisisMustInclude(kind).every((digits) => crisisNumberPattern(digits).test(ascii));
+  const tokens: CrisisDigitGroup[][] = [];
+  let hoursUntil = -1;
+  let lastEnd = 0;
+  for (const match of ascii.matchAll(/\d+/g)) {
+    const at = match.index;
+    if (at >= hoursUntil) hoursUntil = hoursFormEnd(ascii, at);
+    const hours = at < hoursUntil;
+    const single = match[0].length === 1 && !hours;
+    const token = tokens.at(-1);
+    const prev = token?.at(-1);
+    if (!token || TOKEN_BREAK.test(ascii.slice(lastEnd, at))) {
+      tokens.push([{ digits: match[0], hours, spelled: single }]);
+    } else if (single && prev?.spelled) {
+      prev.digits += match[0];
+    } else {
+      token.push({ digits: match[0], hours, spelled: single });
+    }
+    lastEnd = at + match[0].length;
+  }
+  return tokens;
+}
+
+function tokenIsCrisisLinesOnly(token: readonly CrisisDigitGroup[]): boolean {
+  return token.every((group) => group.hours || CRISIS_LINES.includes(group.digits));
+}
+
+/** Some token carries the required line, and every number in that token is a crisis line or hours. */
+export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boolean {
+  const tokens = crisisNumberTokens(text);
+  return crisisMustInclude(kind).every((digits) =>
+    tokens.some(
+      (token) =>
+        tokenIsCrisisLinesOnly(token) &&
+        token.some((group) => !group.hours && group.digits === digits),
+    ),
+  );
+}
+
+const LINK_SCHEME = /[a-z][a-z\d+.-]*:\/\/|\bwww\./i;
+const BARE_DOMAIN = /[\p{L}\d-]\.[a-z]{2,}(?![\p{L}\d])/u;
+
+/** Any number that is not a crisis line or hours, or any link: not ours to hand a parent. */
+export function crisisTextHasOtherNumberOrLink(text: string): boolean {
+  if (LINK_SCHEME.test(text) || BARE_DOMAIN.test(text.normalize('NFKC'))) return true;
+  return crisisNumberTokens(text).some((token) => !tokenIsCrisisLinesOnly(token));
 }
 
 /** 988 and the Canadian spelling 9-8-8 are the same line. A physical emergency may not carry it. */
@@ -347,7 +406,8 @@ export function crisisReplyAcceptable(kind: CrisisKind, text: string): boolean {
 
 /**
  * The opt-out reader's crisis text, or the said-line writer when that text
- * cannot be sent. The reader saw the mental facts. A physical emergency is
+ * cannot be sent: it lacks the line, or carries a number or link the facts never
+ * gave. The reader saw the mental facts. A physical emergency is
  * narrowed here: 911 only, so a reply that also carries 988 is handed to
  * {@link writeCrisisLine}, which is given 911-only facts. Null when neither
  * can be sent: the writer pages #ops, and a writer reply that still misses
@@ -362,7 +422,11 @@ export async function deliverCrisisReply(input: {
   writer: SaidLineWriter | null | undefined;
 }): Promise<string | null> {
   const fromReader = input.readerText.trim();
-  if (fromReader.length > 0 && crisisReplyAcceptable(input.kind, fromReader)) {
+  if (
+    fromReader.length > 0 &&
+    crisisReplyAcceptable(input.kind, fromReader) &&
+    !crisisTextHasOtherNumberOrLink(fromReader)
+  ) {
     return fromReader;
   }
   const written = await writeCrisisLine(

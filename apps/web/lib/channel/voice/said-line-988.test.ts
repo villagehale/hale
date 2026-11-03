@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { crisisReplyAcceptable, crisisTextHas988 } from './said-line';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  type CrisisKind,
+  crisisReplyAcceptable,
+  crisisTextHas988,
+  deliverCrisisReply,
+} from './said-line';
 
 describe('crisisTextHas988 digit variants', () => {
   it.each([
@@ -140,5 +145,61 @@ describe('every decimal digit script folds', () => {
 
   it('a Bengali run-on is a longer number', () => {
     expect(crisisReplyAcceptable('mental', 'Call 988 ৫৫৫ ০১০০')).toBe(false);
+  });
+});
+
+// Hand-written expectations: a reader reply is sent only when every number in it is a
+// crisis line or a listed hours form. Each row goes through deliverCrisisReply, the
+// seam a parent's crisis reply actually passes. Digit runs are fictional (555-01xx).
+describe('evasion table: the reader reply carries the crisis line and nothing longer', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  async function readerTextSent(kind: CrisisKind, readerText: string): Promise<boolean> {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const write = vi.fn(async () => null);
+    const body = await deliverCrisisReply({
+      kind,
+      readerText,
+      parentWords: 'parent words',
+      where: 'evasion table',
+      region: null,
+      writer: { write },
+    });
+    expect(write).toHaveBeenCalledTimes(body === null ? 1 : 0);
+    return body === readerText;
+  }
+
+  it.each([
+    ['mental', '988 555 0100'],
+    ['mental', '988/555/0100'],
+    ['mental', '988,555,0100'],
+    ['mental', '988:555:0100'],
+    ['mental', "988'555'0100"],
+    ['mental', '(988) 555-0100'],
+    ['mental', '+1 988 555 0100'],
+    ['emergency', '911 555 0100'],
+    ['mental', '988 24/75'],
+    ['emergency', '911 24/7-555-0100'],
+    ['mental', '1988'],
+    ['mental', 'Room 49881'],
+    ['mental', '988x5550100'],
+    ['mental', 'Call 988~555~0100'],
+    ['mental', 'Call or text 988.\n555 0100'],
+  ] as const)('%s %j is not sent', async (kind, text) => {
+    expect(await readerTextSent(kind, text)).toBe(false);
+  });
+
+  it.each([
+    ['mental', '988 24/7'],
+    ['mental', 'Appelle le 988 24 h sur 24'],
+    ['mental', '拨打988，24小时'],
+    ['mental', '٩٨٨'],
+    ['mental', '988. 911 if you are in danger'],
+    ['mental', '988 / 911'],
+    ['mental', 'Call or text 988.'],
+    ['mental', 'Appelle ou texte le 9-8-8, 24 h/24.'],
+    ['emergency', 'Appelle le 9-1-1 maintenant.'],
+  ] as const)('%s %j is sent', async (kind, text) => {
+    expect(await readerTextSent(kind, text)).toBe(true);
   });
 });

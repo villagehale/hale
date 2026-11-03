@@ -183,4 +183,57 @@ describe('deliverCrisisReply', () => {
       PAGE,
     );
   });
+
+  it('hands a reader reply with another phone number to the writer, and sends a clean one as is', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stray = recordingWriter('Call or text 988, any time.');
+    const strayBody = await deliverCrisisReply({
+      kind: 'mental',
+      readerText: 'Call or text 988, or the clinic on 555 0100.',
+      parentWords: 'i want to end it',
+      where: 'intake crisis',
+      region: 'US',
+      writer: stray.writer,
+    });
+    expect(strayBody).toBe('Call or text 988, any time.');
+    expect(stray.write).toHaveBeenCalledTimes(1);
+
+    const clean = recordingWriter('should not be asked');
+    const cleanBody = await deliverCrisisReply({
+      kind: 'mental',
+      readerText: 'Call or text 988, any time. 911 if you are in danger.',
+      parentWords: 'i want to end it',
+      where: 'intake crisis',
+      region: 'US',
+      writer: clean.writer,
+    });
+    expect(cleanBody).toBe('Call or text 988, any time. 911 if you are in danger.');
+    expect(clean.write).not.toHaveBeenCalled();
+  });
+
+  it('hands a reader reply with a link to the writer; with no writer text it sends nothing', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const readerText of [
+      'Call or text 988, or chat at https://example.org/help.',
+      'Call or text 988 or visit www.example.org.',
+      'Call or text 988, or see example.org',
+    ]) {
+      const { writer, write } = recordingWriter(null);
+      const body = await deliverCrisisReply({
+        kind: 'mental',
+        readerText,
+        parentWords: 'i want to end it',
+        where: 'intake crisis',
+        region: 'CA',
+        writer,
+      });
+      expect(body).toBeNull();
+      expect(write).toHaveBeenCalledTimes(1);
+    }
+    expect(error).toHaveBeenCalledTimes(3);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'mental', where: 'intake crisis' }),
+      PAGE,
+    );
+  });
 });
