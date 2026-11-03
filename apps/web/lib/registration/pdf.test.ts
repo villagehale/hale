@@ -25,11 +25,19 @@ function cpuMicros(usage: NodeJS.CpuUsage): number {
   return usage.user + usage.system;
 }
 
+async function readText(...args: Parameters<typeof registrationPdfText>): Promise<string> {
+  const result = await registrationPdfText(...args);
+  expect(result.outcome).toBe('read');
+  return result.outcome === 'read' ? result.pageDerivedText : '';
+}
+
+const refused = (reason: string, limit: string | null) => ({ outcome: 'refused', reason, limit });
+
 describe('local registration PDF text extraction', () => {
   it('extracts real PDF bytes with page boundaries, not a binary UTF-8 string', async () => {
     const bytes = registrationPdfFixture(TWO_PAGE_GUIDE);
     const byteLength = bytes.byteLength;
-    const text = await registrationPdfText(bytes);
+    const text = await readText(bytes);
     expect(text).toContain('[PDF page 1]');
     expect(text).toContain('[PDF page 2]');
     expect(text).toContain('Winter registration begins November 10, 2026 at 9:00 a.m.');
@@ -40,52 +48,94 @@ describe('local registration PDF text extraction', () => {
   });
 
   it('rejects malformed PDFs without trying to extract dates from their raw strings', async () => {
-    await expect(registrationPdfText(Buffer.from('%PDF-1.4 broken'))).rejects.toMatchObject({
-      reason: 'pdf_unreadable',
-      limit: null,
-    });
+    await expect(registrationPdfText(Buffer.from('%PDF-1.4 broken'))).resolves.toEqual(
+      refused('pdf_unreadable', null),
+    );
   });
 
   it('does not treat an empty/image-only text layer as an unpublished date', async () => {
-    await expect(registrationPdfText(registrationPdfFixture(['']))).rejects.toMatchObject({
-      reason: 'pdf_no_text',
-      limit: null,
-    });
-    await expect(
-      registrationPdfText(registrationPdfFixture(['Session one opens soon'])),
-    ).resolves.toContain('Session one opens soon');
+    await expect(registrationPdfText(registrationPdfFixture(['']))).resolves.toEqual(
+      refused('pdf_no_text', null),
+    );
+    expect(await readText(registrationPdfFixture(['Session one opens soon']))).toContain(
+      'Session one opens soon',
+    );
   });
 
   it('refuses binary input over the byte ceiling before parsing, and parses at the ceiling', async () => {
-    await expect(registrationPdfText(new Uint8Array(MAX_PAGE_BYTES + 1))).rejects.toMatchObject({
-      reason: 'pdf_read_budget',
-      limit: 'bytes',
-    });
-    await expect(registrationPdfText(new Uint8Array(MAX_PAGE_BYTES))).rejects.toMatchObject({
-      reason: 'pdf_unreadable',
-      limit: null,
-    });
+    await expect(registrationPdfText(new Uint8Array(MAX_PAGE_BYTES + 1))).resolves.toEqual(
+      refused('pdf_read_budget', 'bytes'),
+    );
+    await expect(registrationPdfText(new Uint8Array(MAX_PAGE_BYTES))).resolves.toEqual(
+      refused('pdf_unreadable', null),
+    );
   });
 
   it('bounds page count before reading every page', async () => {
     await expect(
       registrationPdfText(registrationPdfFixture(Array(MAX_PDF_PAGES + 1).fill('2026'))),
-    ).rejects.toMatchObject({ reason: 'pdf_read_budget', limit: 'pages' });
-    await expect(
-      registrationPdfText(registrationPdfFixture(Array(MAX_PDF_PAGES).fill('2026'))),
-    ).resolves.toContain(`[PDF page ${MAX_PDF_PAGES}]`);
+    ).resolves.toEqual(refused('pdf_read_budget', 'pages'));
+    expect(await readText(registrationPdfFixture(Array(MAX_PDF_PAGES).fill('2026')))).toContain(
+      `[PDF page ${MAX_PDF_PAGES}]`,
+    );
   });
 
   it('refuses oversized extracted text instead of silently hiding later registration pages', async () => {
     const page = 'x'.repeat(3_000);
     const under = Math.floor(MAX_PAGE_TEXT_CHARS / CHARS_PER_TEXT_PAGE) - 5;
     const over = Math.floor(MAX_PAGE_TEXT_CHARS / CHARS_PER_TEXT_PAGE) + 5;
-    await expect(
-      registrationPdfText(registrationPdfFixture(Array(under).fill(page))),
-    ).resolves.toContain(`[PDF page ${under}]`);
+    expect(await readText(registrationPdfFixture(Array(under).fill(page)))).toContain(
+      `[PDF page ${under}]`,
+    );
     await expect(
       registrationPdfText(registrationPdfFixture(Array(over).fill(page))),
-    ).rejects.toMatchObject({ reason: 'pdf_read_budget', limit: 'text' });
+    ).resolves.toEqual(refused('pdf_read_budget', 'text'));
+  });
+
+  it('returns the text only as an explicitly page-derived field', async () => {
+    const result = await registrationPdfText(registrationPdfFixture(TWO_PAGE_GUIDE));
+    expect(result).toEqual({
+      outcome: 'read',
+      pageDerivedText:
+        '[PDF page 1] Fall 2026. Preview August 3. [PDF page 2] Winter registration begins November 10, 2026 at 9:00 a.m.',
+    });
+    expect(Object.keys(result)).toEqual(['outcome', 'pageDerivedText']);
+    expect(result).toHaveProperty('pageDerivedText');
+    expect(result).not.toHaveProperty('text');
+  });
+
+  it('reads two PDFs at once and names a third busy (instance protection, not a send rule)', async () => {
+    const guide = registrationPdfFixture(TWO_PAGE_GUIDE);
+    const broken = Buffer.from('%PDF-1.4 broken');
+    const outcomes = async (reads: ReturnType<typeof registrationPdfText>[]) =>
+      (await Promise.all(reads)).map((result) => result.outcome);
+
+    const reads = [
+      registrationPdfText(guide),
+      registrationPdfText(guide),
+      registrationPdfText(guide),
+    ];
+    await expect(reads[2]).resolves.toEqual({ outcome: 'busy', reason: 'pdf_readers_busy' });
+    expect(await outcomes(reads.slice(0, 2))).toEqual(['read', 'read']);
+
+    expect(await outcomes([registrationPdfText(guide), registrationPdfText(guide)])).toEqual([
+      'read',
+      'read',
+    ]);
+
+    await expect(
+      Promise.all([registrationPdfText(broken), registrationPdfText(broken)]),
+    ).resolves.toEqual([refused('pdf_unreadable', null), refused('pdf_unreadable', null)]);
+    expect(await outcomes([registrationPdfText(guide), registrationPdfText(guide)])).toEqual([
+      'read',
+      'read',
+    ]);
+
+    const inFlight = [registrationPdfText(guide), registrationPdfText(guide)];
+    await expect(registrationPdfText(new Uint8Array(MAX_PAGE_BYTES + 1))).resolves.toEqual(
+      refused('pdf_read_budget', 'bytes'),
+    );
+    expect(await outcomes(inFlight)).toEqual(['read', 'read']);
   });
 
   describe('a small file whose content stream inflates past every ceiling', () => {
@@ -106,11 +156,11 @@ describe('local registration PDF text extraction', () => {
 
       const started = performance.now();
       const readCpuStart = process.cpuUsage();
-      const outcome = await registrationPdfText(flateBomb, budget).catch((error: unknown) => error);
+      const outcome = await registrationPdfText(flateBomb, budget);
       const readCpu = cpuMicros(process.cpuUsage(readCpuStart));
       const elapsed = performance.now() - started;
 
-      expect(outcome).toMatchObject({ reason: 'pdf_read_budget', limit: 'time' });
+      expect(outcome).toEqual(refused('pdf_read_budget', 'time'));
       expect(elapsed).toBeLessThan(budget.timeoutMs + 1_000);
       expect(readCpu).toBeGreaterThanOrEqual(0.5 * budget.timeoutMs * MICROS_PER_MS);
 
@@ -118,9 +168,9 @@ describe('local registration PDF text extraction', () => {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       expect(cpuMicros(process.cpuUsage(afterKillStart))).toBeLessThan(300_000);
 
-      await expect(
-        registrationPdfText(registrationPdfFixture(TWO_PAGE_GUIDE), budget),
-      ).resolves.toContain('Winter registration begins November 10, 2026');
+      expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE), budget)).toContain(
+        'Winter registration begins November 10, 2026',
+      );
     }, 30_000);
 
     it('is killed when memory grows past the ceiling, long before the deadline', async () => {
@@ -132,10 +182,9 @@ describe('local registration PDF text extraction', () => {
       expect(memoryBomb.byteLength).toBeLessThanOrEqual(MAX_PAGE_BYTES);
 
       const started = performance.now();
-      await expect(registrationPdfText(memoryBomb, budget)).rejects.toMatchObject({
-        reason: 'pdf_read_budget',
-        limit: 'memory',
-      });
+      await expect(registrationPdfText(memoryBomb, budget)).resolves.toEqual(
+        refused('pdf_read_budget', 'memory'),
+      );
       expect(performance.now() - started).toBeLessThan(5_000);
 
       // The largest read the page and text ceilings allow, sampled every millisecond, so the
@@ -145,9 +194,9 @@ describe('local registration PDF text extraction', () => {
       const largestLegalRead = registrationPdfFixture(
         Array(MAX_PDF_PAGES).fill('y'.repeat(LARGEST_LEGAL_PAGE_CHARS)),
       );
-      await expect(
-        registrationPdfText(largestLegalRead, { ...budget, memoryPollMs: DENSE_MEMORY_POLL_MS }),
-      ).resolves.toContain(`[PDF page ${MAX_PDF_PAGES}]`);
+      expect(
+        await readText(largestLegalRead, { ...budget, memoryPollMs: DENSE_MEMORY_POLL_MS }),
+      ).toContain(`[PDF page ${MAX_PDF_PAGES}]`);
     }, 30_000);
   });
 });
