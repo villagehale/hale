@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The inbound asks whether Saturday's swimming class is booked; sentence 0 says it is booked for 10 AM. Row e1 is the swimming class on Sat Nov 7 at 10:00 AM, matching the day and time, so it backs the scheduled_event claim.",
+    "reason": "The reply confirms the Saturday swim class is booked at 10 AM, answering the parent's question. Row e1 is the swim class on Sat, Nov 7 at 10:00 AM, so it backs the claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1699
+  "latencyMs": 2104
 }

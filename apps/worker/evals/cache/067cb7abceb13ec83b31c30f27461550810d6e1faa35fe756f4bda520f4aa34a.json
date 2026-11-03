@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Hale is watching one class page, the Tuesday gymnastics class, for a spot. The only row is a Saturday swimming class, which is a different class, so the claim is not backed.",
+    "reason": "The sentence says Hale is watching one class, the Tuesday gymnastics class, for an open spot. The only row is a Saturday swimming class, which is a different class, so the claim is cited to none.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2129
+  "latencyMs": 2261
 }

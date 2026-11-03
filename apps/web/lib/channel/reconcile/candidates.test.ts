@@ -13,7 +13,7 @@ import {
  */
 
 const FAM = 'fam-a';
-const TZ = 'America/Edmonton';
+const TZ = 'America/Denver';
 const AT = new Date('2026-11-07T15:00:00Z');
 
 const cal = (what: string, startsAt = AT): ClaimCandidateRow => ({
@@ -159,11 +159,11 @@ describe('the projection', () => {
   });
 
   it('formats `when` in the family zone it is given', () => {
-    const edmonton = buildClaimCandidates(FAM, [cal('Swim lesson')], 'America/Edmonton');
-    const halifax = buildClaimCandidates(FAM, [cal('Swim lesson')], 'America/Halifax');
-    expect(edmonton.projected[0]?.when).toContain('Sat');
-    expect(edmonton.projected[0]?.when).toContain('8:00');
-    expect(halifax.projected[0]?.when).toContain('11:00');
+    const mountain = buildClaimCandidates(FAM, [cal('Swim lesson')], 'America/Denver');
+    const eastern = buildClaimCandidates(FAM, [cal('Swim lesson')], 'America/New_York');
+    expect(mountain.projected[0]?.when).toContain('Sat');
+    expect(mountain.projected[0]?.when).toContain('8:00');
+    expect(eastern.projected[0]?.when).toContain('10:00');
   });
 
   it('names each state', () => {

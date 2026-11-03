@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "The sentence reports what Hale supposedly said ('you told me'), which is attributed speech rather than a claim by Hale, and there are no rows on record.",
+    "reason": "The sentence attributes the dentist booking to what the parent said ('you told me'), so it is reported speech, not Hale's own claim. No rows exist either.",
     "claims": []
   },
-  "latencyMs": 2512
+  "latencyMs": 2457
 }

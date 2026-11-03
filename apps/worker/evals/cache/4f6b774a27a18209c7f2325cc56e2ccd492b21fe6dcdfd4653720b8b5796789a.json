@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 says the 18-month checkup is booked, which is a scheduled_event claim. Row s1 is the 18-month checkup, so it backs the claim.",
+    "reason": "Sentence 0 states the 18-month checkup is booked, which is a scheduled_event claim. Row s1 is the 18-month checkup scheduled event, so it backs the claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1872
+  "latencyMs": 1847
 }

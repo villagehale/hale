@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "The only sentence is a question offering to watch the registration day. Offers and questions are not claims, so there are no claims.",
+    "reason": "The only sentence is a question offering to watch the registration day, which is an offer, not a claim. No rows exist.",
     "claims": []
   },
-  "latencyMs": 1996
+  "latencyMs": 1899
 }

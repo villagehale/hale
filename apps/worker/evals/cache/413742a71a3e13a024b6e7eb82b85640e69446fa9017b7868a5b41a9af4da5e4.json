@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 says the Saturday swimming class is already booked, which is a scheduled_event claim. The only row is a dentist appointment on Thursday, so it does not back a swimming class booking and the claim cites none.",
+    "reason": "The sentence says Saturday's swimming class is already booked, which is a scheduled_event. The only row is a dentist appointment on Thursday, so it does not back the swim booking.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1935
+  "latencyMs": 1849
 }

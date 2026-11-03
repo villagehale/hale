@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says, in French, that the 18-month appointment is booked, which claims a placement. Row s1 is the same 18-month appointment.",
+    "reason": "The French sentence says Hale is glad the 18-month appointment is booked, which asserts a placement. It is about the same appointment as row s1, so it is backed by s1.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2555
+  "latencyMs": 3082
 }

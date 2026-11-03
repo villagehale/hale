@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale says it keeps looking and will write once the details are confirmed, which is a follow-up on pending details. Row c1 is the open follow-up for the swim class schedule details.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "c1"
+      }
+    ]
+  },
+  "latencyMs": 2411
+}

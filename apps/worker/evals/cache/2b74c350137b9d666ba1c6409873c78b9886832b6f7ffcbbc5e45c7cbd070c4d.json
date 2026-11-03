@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 says Hale is watching the class page for an opening and will text when a spot opens. That is a spot_watch on the Saturday swim class, which matches row g1 (open state, same class).",
+    "reason": "Sentence 0 says Hale is watching the Saturday swim class page and will text when a spot opens, which is a spot_watch on that one class. Row g1 is the Saturday swim class, so it backs the claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1327
+  "latencyMs": 1533
 }

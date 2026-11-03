@@ -3,10 +3,10 @@ import { dayTimeConflict } from './day-time';
 
 /**
  * VIL-581 · the refusal-only day/time cross-check on a booking cited to a calendar row.
- * Row: Tuesday 2026-11-03 at 09:00 in the family's own zone (Edmonton, UTC−7).
+ * Row: Tuesday 2026-11-03 at 09:00 in the family's own zone (Denver, UTC−7).
  */
 
-const TZ = 'America/Edmonton';
+const TZ = 'America/Denver';
 const TUE_9 = new Date('2026-11-03T16:00:00Z');
 const TUE_21 = new Date('2026-11-04T04:00:00Z');
 

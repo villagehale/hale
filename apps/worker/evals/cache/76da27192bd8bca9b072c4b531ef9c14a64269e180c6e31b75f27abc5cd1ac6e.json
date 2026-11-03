@@ -1,7 +1,0 @@
-{
-  "value": {
-    "reason": "The only sentence is a question offering to watch a morning ('Do you want me to watch that morning?'). Offers and questions are not claims, and there are no rows.",
-    "claims": []
-  },
-  "latencyMs": 1418
-}

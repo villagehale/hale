@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The first clause only repeats what the parent said, so it is not a claim. The second clause says Hale has added a swim booking to the calendar, which is a scheduled_event claim. Row e1 is the Saturday 10:00 swim lesson, so it backs the claim.",
+    "reason": "The 'You said swim is booked' part is the parent's words, so it is not a claim. 'I've added it to your calendar' is Hale claiming a scheduled event, and row e1 is the swim lesson on Saturday at 10:00, so it backs that claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2504
+  "latencyMs": 2653
 }

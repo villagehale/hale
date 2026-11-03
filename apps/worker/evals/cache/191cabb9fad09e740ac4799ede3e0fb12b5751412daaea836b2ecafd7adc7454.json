@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence states that the parent's appointment is booked, with a tag question asking for confirmation, so it claims a scheduled event. No rows are on record, so it cannot be backed.",
+    "reason": "The sentence states that the parent's appointment is booked, with a tag question asking for confirmation, which claims a scheduled event. No rows are on record, so the claim is not backed.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2054
+  "latencyMs": 2183
 }

@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Hale is watching the Saturday swim class the parent asked about and will message when a spot opens. That is a spot watch on that one class, which matches row g1.",
+    "reason": "The sentence says Hale is watching the class the parent asked about and will message when a spot opens, which is a spot watch on the Saturday swimming class (row g1).",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2824
+  "latencyMs": 2052
 }

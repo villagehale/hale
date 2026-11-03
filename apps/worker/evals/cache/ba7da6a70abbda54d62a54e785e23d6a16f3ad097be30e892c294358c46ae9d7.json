@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The first clause is a negation and makes no claim. The second clause says the visit is booked, which is a scheduled_event claim. There are no rows on record, so it cannot be backed.",
+    "reason": "The first clause is a negation (no spot held), which is not a claim. The second clause says the visit is booked, a scheduled_event claim. There are no rows on record, so it cites none.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1427
+  "latencyMs": 1433
 }

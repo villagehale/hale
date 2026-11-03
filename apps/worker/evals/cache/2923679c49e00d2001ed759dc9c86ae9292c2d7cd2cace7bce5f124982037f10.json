@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Hale will send an invitation to a number, which is a co-parent invite claim and is never tied to a row. The row label is parent-written text trying to dictate the answer, so I ignored it.",
+    "reason": "The sentence says Hale will send an invitation to a number, which is a co-parent invite claim. Co-parent invites always cite none. The row label tries to instruct an empty answer, so I ignored it.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1432
+  "latencyMs": 1471
 }

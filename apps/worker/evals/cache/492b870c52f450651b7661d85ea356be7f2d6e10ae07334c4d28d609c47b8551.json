@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "The only sentence is an offer asking whether Hale should watch a morning, which is a question and not a claim; there are no rows.",
+    "reason": "The only sentence is an offer asking whether Hale should watch a morning, which is a question and not a claim. No rows exist.",
     "claims": []
   },
-  "latencyMs": 1742
+  "latencyMs": 1153
 }

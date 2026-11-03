@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Hale will send an invitation to a number, which is a co-parent or caregiver invite. Invites are never tied to a row, so the row is none.",
+    "reason": "The sentence says Hale will send an invitation to a number, which is a co-parent invite claim. Invites are never tied to a row, so the row is none.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1774
+  "latencyMs": 1875
 }

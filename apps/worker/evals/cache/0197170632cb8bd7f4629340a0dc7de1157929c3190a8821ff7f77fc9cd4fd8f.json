@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Hale says it is watching the Tuesday gymnastics class for a spot, which is a spot watch. The only row is a Saturday swim class, a different class, so it cannot back the claim.",
+    "reason": "The sentence says Hale is watching one class, the Tuesday gymnastics class, for an opening. The only row is a watch on a different class (Saturday swim), so it does not back this claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1518
+  "latencyMs": 1592
 }

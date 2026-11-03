@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Hale cannot hold a spot, which is a negation and not a claim, but it also says the parent's appointment is already booked, a scheduled_event. There are no rows on record, so the claim cites none.",
+    "reason": "The sentence says Hale cannot hold a spot (not a claim), but that the parent's appointment is already booked, which is a scheduled_event claim. There are no rows on record, so it cites none.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2016
+  "latencyMs": 2066
 }

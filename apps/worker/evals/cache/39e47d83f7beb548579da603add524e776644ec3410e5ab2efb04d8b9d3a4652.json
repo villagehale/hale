@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "The only sentence says nothing is booked yet, which is a negation and not a claim. No rows exist to cite.",
+    "reason": "The only sentence says nothing is booked, which is a negation and not a claim. No rows exist to cite.",
     "claims": []
   },
-  "latencyMs": 1560
+  "latencyMs": 1476
 }

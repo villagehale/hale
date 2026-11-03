@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 says the Tuesday swim is booked, which matches row e1 (Swim lesson, Tue Nov 10). The registration-opening part states a fact about the world and makes no promise Hale is watching anything, and no row covers it, so it is not listed as a claim.",
+    "reason": "Sentence 0 says the Tuesday swim is booked, which matches the Tue, Nov 10 swim lesson row. The registration opening is stated as a fact with no watch promise and no matching registration row, so it is not a claimed watch.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 3596
+  "latencyMs": 3809
 }

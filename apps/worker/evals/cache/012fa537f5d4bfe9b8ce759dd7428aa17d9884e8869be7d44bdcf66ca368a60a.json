@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "The sentence attributes the dentist booking to something the parent said ('tu m'as dit'), not to Hale's own record. There are no rows, so Hale claims nothing.",
+    "reason": "The sentence attributes the dentist booking to something the parent said ('Tu m'as dit'), so it is reported speech rather than Hale's own claim. There are no rows on record anyway.",
     "claims": []
   },
-  "latencyMs": 2449
+  "latencyMs": 3187
 }

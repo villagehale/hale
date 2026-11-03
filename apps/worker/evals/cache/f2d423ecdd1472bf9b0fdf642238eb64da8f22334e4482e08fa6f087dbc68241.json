@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Hale promises to text the parent before Riverford soccer registration opens, which is a registration watch. The only row is for Maple Bend swim lessons, a different program, so it cannot back the claim.",
+    "reason": "Sentence 0 promises a text before Riverford soccer registration opens, which is a registration_watch. The only row, q1, is for Maple Bend swim lessons, a different program, so it cannot back the claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2574
+  "latencyMs": 2324
 }

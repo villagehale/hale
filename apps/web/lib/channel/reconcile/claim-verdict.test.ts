@@ -10,7 +10,7 @@ import { segmentSentences } from './sentences';
  */
 
 const FAM = 'fam-a';
-const TZ = 'America/Edmonton';
+const TZ = 'America/Denver';
 const TUE_9 = new Date('2026-11-03T16:00:00Z');
 
 const ROW = {

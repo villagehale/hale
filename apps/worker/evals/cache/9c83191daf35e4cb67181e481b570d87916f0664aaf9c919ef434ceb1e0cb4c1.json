@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says the baby's checkup is already booked, but no row covers a checkup, so that claim cites none. It also says Hale will keep looking for toddler activities, which matches the pending activity row p1.",
+    "reason": "The sentence claims the baby's checkup is already booked, but no row is a booking for it, so the claim is uncited. It also promises to keep looking for toddler activities, which matches the pending activity row p1. The Tuesday registration opening is stated as information, not as a watch Hale promises, so I did not count it.",
     "claims": [
       {
         "sentence": 0,
@@ -14,5 +14,5 @@
       }
     ]
   },
-  "latencyMs": 3351
+  "latencyMs": 3867
 }

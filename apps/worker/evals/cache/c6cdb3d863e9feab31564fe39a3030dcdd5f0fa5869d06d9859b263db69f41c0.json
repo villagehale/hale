@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Hale will send an invitation to the spouse's number, which is a co-parent invite claim. Co-parent invites are never tied to a row, so the row is none.",
+    "reason": "The sentence says Hale will send an invitation to the parent's spouse's number, which is a co-parent invite. Co-parent invites are never tied to a row, so the row is none.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1493
+  "latencyMs": 1505
 }

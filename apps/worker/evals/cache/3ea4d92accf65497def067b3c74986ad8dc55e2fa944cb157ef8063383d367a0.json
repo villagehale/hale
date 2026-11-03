@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The first clause reports what the parent said, so it is not a claim. The second clause says Hale already put the Saturday swim on the calendar, which claims a placement. Row e1 is the Saturday 10:00 swim class, so it backs that claim.",
+    "reason": "The 'you told me it's booked' part is reported speech from the parent, so it is not a claim. 'I already added it to your calendar' is Hale claiming a placement on the calendar for the Saturday swimming class, which matches row e1 (Sat Nov 7, 10:00 AM).",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 3435
+  "latencyMs": 3649
 }

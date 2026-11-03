@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Hale is watching one swimming class page and will message the parent when a spot opens. That is a spot_watch on the Saturday swimming class, which matches the pending row p2.",
+    "reason": "Sentence 0 says Hale is watching one class page (the Saturday swim class) and will message when a spot opens. That matches the pending spot_watch row p2, which is the same class.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1958
+  "latencyMs": 1689
 }

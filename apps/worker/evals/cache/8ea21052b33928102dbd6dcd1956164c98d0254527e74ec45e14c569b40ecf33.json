@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The first clause reports what the parent said, so it is not a claim. The second clause says Hale added the swimming lesson to the parent's calendar, which claims a scheduled placement. Row e1 is the Saturday swimming class.",
+    "reason": "The sentence says Hale added the swimming class to the parent's calendar, which claims a booked placement. Row e1 is the Saturday swimming class, so it backs the claim. The 'you told me it's reserved' part is the parent's own words and is not a separate claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2837
+  "latencyMs": 2740
 }

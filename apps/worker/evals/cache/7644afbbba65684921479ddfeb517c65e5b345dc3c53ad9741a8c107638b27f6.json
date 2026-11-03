@@ -1,7 +1,0 @@
-{
-  "value": {
-    "reason": "The sentence reports what the parent said ('You said...'), which is attributed speech, not a Hale claim. There are no rows on record anyway.",
-    "claims": []
-  },
-  "latencyMs": 1104
-}

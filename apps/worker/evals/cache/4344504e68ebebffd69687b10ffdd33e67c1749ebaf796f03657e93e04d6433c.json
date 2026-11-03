@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 says Hale will send an invite to the partner's number, which is a co_parent_invite claim. Co-parent invites are never about a row, so row is none.",
+    "reason": "Sentence 0 says Hale will send an invite to the partner's number, which is a co-parent invite. Co-parent invite claims are never about a row, so the row is none.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1839
+  "latencyMs": 1161
 }

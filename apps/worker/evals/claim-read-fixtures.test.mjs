@@ -167,7 +167,7 @@ describe('the JS compatibility table agrees with the production verifier', () =>
     for (const kind of READ_CLAIM_KINDS) {
       for (const shape of SOURCES) {
         const row = { familyId: 'eval', what: 'Row', ...shape };
-        const candidates = buildClaimCandidates('eval', [row], 'America/Edmonton');
+        const candidates = buildClaimCandidates('eval', [row], 'America/Denver');
         const [alias] = candidates.byAlias.keys();
         const verdict = verifyClaimRead(
           {
@@ -178,7 +178,7 @@ describe('the JS compatibility table agrees with the production verifier', () =>
             latencyMs: 0,
             attempts: 1,
           },
-          { candidates, locale: 'en', timeZone: 'America/Edmonton' },
+          { candidates, locale: 'en', timeZone: 'America/Denver' },
         );
         const verifierBacks = verdict.resolutions[0].status !== 'refused';
         const jsBacks = compatibleRefs({ candidates: [{ ref: 'x', ...shape }] }, kind).length === 1;

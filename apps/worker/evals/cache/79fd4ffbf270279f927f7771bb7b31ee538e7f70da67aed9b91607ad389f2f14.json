@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 says Hale will keep watching and follow up once the details are confirmed, which is an activity follow-up. Row c1 is the swim class schedule details Hale is waiting on, so it backs the claim.",
+    "reason": "Hale says it will keep watching and text the parent once the details are confirmed, which is a follow-up on the swim class schedule details it is still waiting on. That matches row c1.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2418
+  "latencyMs": 2675
 }

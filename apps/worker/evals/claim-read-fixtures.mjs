@@ -13,11 +13,16 @@ const AF = 'activity_followup';
 const INVITE = 'co_parent_invite';
 const SELF = 'self_referential';
 
-/** Standard-time offsets after the 2026-11-01 change, for the zones the fixtures use. */
+/**
+ * Standard-time offsets after the 2026-11-01 change, for the zones the fixtures use. US
+ * zones only: their rules are federal and the same in every tzdata a runner may carry.
+ * America/Edmonton was dropped because CI's tzdata reads it as UTC-6 in November 2026 and
+ * this machine's as UTC-7, which moved every Edmonton cache key between the two.
+ */
 export const OFFSET_HOURS = {
-  'America/Edmonton': -7,
-  'America/Halifax': -4,
-  'America/Vancouver': -8,
+  'America/Denver': -7,
+  'America/New_York': -5,
+  'America/Los_Angeles': -8,
   'America/Chicago': -6,
 };
 const ZONES = Object.keys(OFFSET_HOURS);

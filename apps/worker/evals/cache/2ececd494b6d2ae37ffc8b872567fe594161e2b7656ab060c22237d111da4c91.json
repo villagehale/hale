@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says the Saturday swimming class is booked, which is a placement. Row e1 is the swimming class on Saturday, Nov 7 at 10:00 AM, so it backs the claim.",
+    "reason": "Sentence 0 says the Saturday swimming class is booked, which is a scheduled_event claim. Row e1 is the swimming class on Sat, Nov 7 at 10:00 AM, matching the day and time, so it backs the claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2123
+  "latencyMs": 1807
 }

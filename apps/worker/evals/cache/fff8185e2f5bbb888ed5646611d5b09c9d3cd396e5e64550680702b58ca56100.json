@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Saturday's swimming is booked, which is a placement claim. The only row is a dentist appointment on Thursday, so nothing on record backs it.",
+    "reason": "The sentence says Saturday's swimming is booked, which is a scheduled_event claim. The only row is a dentist appointment on Thursday, so no row backs it.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2066
+  "latencyMs": 1935
 }

@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence promises to watch the Riverford winter registration morning and message before it opens, which is a registration watch. The only row is a pending spot watch on one swimming class, which is a different thing, so it cannot back this claim.",
+    "reason": "The sentence says Hale is watching the Riverford winter registration morning and will message before it opens, answering the parent's question. That is a registration watch. The only row is a pending spot watch on one swimming class, which is a different thing, so it cannot back this claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2475
+  "latencyMs": 2571
 }

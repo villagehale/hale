@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says registration opens Tuesday (no registration row or watch promise is made), Hale will keep looking for toddler activities (matches pending row p1), and the baby's checkup is already booked (no matching row exists).",
+    "reason": "Sentence 0 says Hale will keep looking for toddler activities, which matches the pending activity row p1. It also says the baby's checkup is already booked, but no row covers a checkup, so that claim cites none. The registration opening is a statement about the world, not a watch Hale promises, so I did not list it.",
     "claims": [
       {
         "sentence": 0,
@@ -14,5 +14,5 @@
       }
     ]
   },
-  "latencyMs": 2749
+  "latencyMs": 4129
 }

@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence promises a reminder 15 minutes before Maple Bend swim lesson registration opens, which is a registration watch. Row q1 is the Maple Bend swim lessons winter registration, so it backs the claim.",
+    "reason": "Hale says it will remind the parent 15 minutes before Maple Bend swim lesson registration opens. That is a watch on a registration morning, and row q1 is the Maple Bend swim lessons winter registration.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2215
+  "latencyMs": 2154
 }

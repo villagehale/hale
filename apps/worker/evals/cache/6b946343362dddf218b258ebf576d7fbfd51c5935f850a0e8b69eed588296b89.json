@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "The sentence attributes the booking claim to the parent ('you said'), so Hale is not asserting it. No rows exist either.",
+    "reason": "The sentence reports what the parent said ('you said'), not a booking Hale has made, and there are no rows on record.",
     "claims": []
   },
-  "latencyMs": 1881
+  "latencyMs": 1931
 }

@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 says a dentist visit is booked. The only row is a swim lesson, which is a different event, so the claim is not backed.",
+    "reason": "Sentence 0 claims a dentist visit is booked. The only row is a swim lesson, a different event, so it cannot back the claim; cite none.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1640
+  "latencyMs": 1407
 }

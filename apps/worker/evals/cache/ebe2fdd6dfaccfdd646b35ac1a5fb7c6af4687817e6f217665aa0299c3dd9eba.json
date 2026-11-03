@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 says the child is all set for Saturday swim, which is a placement on a specific day. Row e1 is a swim lesson on Sat Nov 7 at 10:00 AM, matching the day and activity, so it backs a scheduled_event claim.",
+    "reason": "Sentence 0 says the family is set for Saturday swim, which is a placement claim. Row e1 is a swim lesson on Sat Nov 7 at 10:00 AM, matching the day and activity.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1251
+  "latencyMs": 1752
 }

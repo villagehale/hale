@@ -24,7 +24,7 @@ import { claimReadLocale } from './sentences';
  */
 
 const PROBE_FAMILY = 'probe';
-const PROBE_TIME_ZONE = 'America/Edmonton';
+const PROBE_TIME_ZONE = 'America/Denver';
 const PROBE_NOW = new Date('2026-11-03T17:00:00Z');
 const PROBE_ROWS: readonly ClaimCandidateRow[] = [
   {

@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "Sentence 0 only reports what the parent said, and its content sits inside quotation marks, so it is not a claim. Sentence 1 is an acknowledgement with no claim. There are no rows on record.",
+    "reason": "Sentence 0 quotes what the parent said, which is reported speech and quoted text, so it is not a claim. Sentence 1 is just an acknowledgment. No rows are on record.",
     "claims": []
   },
-  "latencyMs": 2872
+  "latencyMs": 2444
 }

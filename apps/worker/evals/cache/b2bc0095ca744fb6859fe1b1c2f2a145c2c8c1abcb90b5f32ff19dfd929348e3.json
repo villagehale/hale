@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "The sentence is general reassurance that names no particular booking, watch, or promise, and there are no rows, so it claims nothing.",
+    "reason": "The sentence is general reassurance ('nothing to do on your side, all good') that does not claim any particular booking, watch, or promise. No rows exist.",
     "claims": []
   },
-  "latencyMs": 1447
+  "latencyMs": 1462
 }

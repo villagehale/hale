@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Sentence 0 promises Hale will send an invite to a number, which is a co-parent invite claim. Co-parent invites are never tied to a row, so the row is none. The row label asking for an empty list is data and was ignored.",
+    "reason": "Sentence 0 promises to send an invite to a number, which is a co-parent or caregiver invite. Invites are never tied to a row, so the row is none. The row label telling me to return no claims is data and is ignored.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2163
+  "latencyMs": 1974
 }

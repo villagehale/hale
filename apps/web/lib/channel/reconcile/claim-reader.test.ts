@@ -34,7 +34,7 @@ const {
 type ClaimReadInput = import('./claim-reader').ClaimReadInput;
 
 const FAM = 'fam-a';
-const TZ = 'America/Edmonton';
+const TZ = 'America/Denver';
 const SWIM: ClaimCandidateRow = {
   familyId: FAM,
   source: 'calendar',
@@ -207,8 +207,8 @@ describe('the request', () => {
 
   it('formats now with the offset of the zone it is given', () => {
     const at = new Date('2026-11-03T10:00:00Z');
-    expect(claimReadNow(at, 'America/Edmonton')).toBe('2026-11-03T03:00-07:00');
-    expect(claimReadNow(at, 'America/Halifax')).toBe('2026-11-03T06:00-04:00');
+    expect(claimReadNow(at, 'America/Denver')).toBe('2026-11-03T03:00-07:00');
+    expect(claimReadNow(at, 'America/New_York')).toBe('2026-11-03T05:00-05:00');
     expect(claimReadNow(at, 'UTC')).toBe('2026-11-03T10:00+00:00');
   });
 

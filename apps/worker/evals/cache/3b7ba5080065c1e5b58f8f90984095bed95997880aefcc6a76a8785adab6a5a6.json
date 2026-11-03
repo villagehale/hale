@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says Hale will write when Maple Bend swim registration opens, which matches the live winter swim registration row q1. It also says Hale keeps looking for visual arts classes, a follow-up with no matching row, so it cites none.",
+    "reason": "The sentence says Hale will tell the parent when Maple Bend swim registration opens, which matches the live Maple Bend swim registration row. It also says Hale keeps looking for visual arts classes, and no row covers that.",
     "claims": [
       {
         "sentence": 0,
@@ -14,5 +14,5 @@
       }
     ]
   },
-  "latencyMs": 2090
+  "latencyMs": 1862
 }

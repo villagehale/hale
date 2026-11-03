@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "Hale promises to return with art class finds this week. The only row is about swim classes, so it does not back this follow-up.",
+    "reason": "Hale promises to come back with art class options this week. The only row is about swim classes, so it does not back this follow-up.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 1722
+  "latencyMs": 1208
 }

@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence says a Thursday 3 p.m. swim is booked. The only row is a Tuesday 9:00 AM swim class, which has a different day and time, so it cannot back the claim.",
+    "reason": "The sentence says a Thursday 3 p.m. swim is booked. The only row is a Tuesday 9:00 AM swim class, which is a different time, so it cannot back the claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2035
+  "latencyMs": 1886
 }

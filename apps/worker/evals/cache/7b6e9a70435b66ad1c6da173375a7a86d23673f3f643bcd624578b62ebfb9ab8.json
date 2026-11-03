@@ -1,7 +1,7 @@
 {
   "value": {
-    "reason": "The only sentence is a question offering to watch a morning, which is an offer, not a claim. No rows exist, so nothing can be backed.",
+    "reason": "The only sentence is a question offering to watch a morning, which is an offer, not a claim. There are no rows on record.",
     "claims": []
   },
-  "latencyMs": 1412
+  "latencyMs": 1898
 }

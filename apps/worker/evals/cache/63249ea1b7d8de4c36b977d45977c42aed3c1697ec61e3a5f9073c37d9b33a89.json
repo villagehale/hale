@@ -1,6 +1,6 @@
 {
   "value": {
-    "reason": "The sentence claims a booking for the neighbours' swim on Saturday. The only row is the family's own swim lesson on Sat Nov 7, with no sign it is the neighbours' booking, so it does not back the claim.",
+    "reason": "The sentence claims a booking for the neighbours' swim on Saturday. The only row is this family's swim lesson on Sat Nov 7, which is a different appointment, so it does not back the claim.",
     "claims": [
       {
         "sentence": 0,
@@ -9,5 +9,5 @@
       }
     ]
   },
-  "latencyMs": 2790
+  "latencyMs": 2549
 }
