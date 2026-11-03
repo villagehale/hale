@@ -70,6 +70,8 @@ export type RegistrationPageFetch =
 // URL keys are URL structure, not parent text. Both sets are written separator-free (urlKey).
 const CREDENTIAL_KEYS = new Set([
   'password',
+  'passwd',
+  'pwd',
   'accesstoken',
   'authorization',
   'auth',
@@ -79,7 +81,10 @@ const CREDENTIAL_KEYS = new Set([
   'jsessionid',
   'phpsessid',
   'apikey',
+  'accesskey',
+  'awsaccesskeyid',
   'secret',
+  'clientsecret',
   'signature',
   'sig',
   'xamzcredential',
@@ -90,16 +95,21 @@ const CREDENTIAL_KEYS = new Set([
   'otp',
   'magic',
 ]);
+const CREDENTIAL_KEY_SUFFIXES = ['token', 'password'];
 const AMBIGUOUS_QUERY_KEYS = new Set(['session', 'code', 'key', 'ticket', 'sid']);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 function urlKey(raw: string): string {
-  return raw.toLowerCase().replace(/\[\]$/, '').replace(/[-_.]/g, '');
+  // Any trailing index: `token[]`, `token[0]`, `token[a][b]`.
+  return raw
+    .toLowerCase()
+    .replace(/(\[[^\]]*\])+$/, '')
+    .replace(/[-_.]/g, '');
 }
 
 function isCredentialKey(raw: string): boolean {
   const key = urlKey(raw);
-  return CREDENTIAL_KEYS.has(key) || key.endsWith('token');
+  return CREDENTIAL_KEYS.has(key) || CREDENTIAL_KEY_SUFFIXES.some((suffix) => key.endsWith(suffix));
 }
 
 function decoded(text: string): string {
@@ -110,18 +120,27 @@ function decoded(text: string): string {
   }
 }
 
-/** Keys of `k=v` parts only: a bare `#auth` anchor or `;b` path part has no key. */
+/** Keys of `k=v` parts only: a bare `;b` path part has no key. */
 function assignedKeys(parts: string[]): string[] {
   return parts
     .filter((part) => part.includes('='))
     .map((part) => decoded(part.slice(0, part.indexOf('='))));
 }
 
+/**
+ * Every key assigned anywhere in the fragment: the run of key characters right before each
+ * `=`, whatever delimits it (`&`, `;`, `/`, a hash route's own `?`). A bare `#auth` anchor
+ * assigns nothing, so it has no key.
+ */
+function fragmentKeys(hash: string): string[] {
+  return [...decoded(hash.slice(1)).matchAll(/([^&;?#/=,\s]+)=/g)].map((match) => match[1]!);
+}
+
 function carriesCredential(url: URL): boolean {
   return (
     Boolean(url.username || url.password) ||
     [...url.searchParams.keys()].some(isCredentialKey) ||
-    assignedKeys(url.hash.slice(1).split('&')).some(isCredentialKey) ||
+    fragmentKeys(url.hash).some(isCredentialKey) ||
     // Servlet path parameters (`/reg;jsessionid=…`) never reach searchParams.
     url.pathname
       .split('/')

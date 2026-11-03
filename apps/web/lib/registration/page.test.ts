@@ -20,6 +20,21 @@ describe('registration page network boundary', () => {
     'https://example.com/a?CFTOKEN=1',
     'https://example.com/a#access_token=x',
     'https://example.com/a#id_token=x',
+    'https://example.com/a?client_secret=x',
+    'https://example.com/a?passwd=x',
+    'https://example.com/a?pwd=x',
+    'https://example.com/a?accesskey=x',
+    'https://example.com/a?AWSAccessKeyId=x',
+    'https://example.com/a?token[0]=x',
+    'https://example.com/a?token%5B0%5D=x',
+    'https://example.com/a?newPassword=x',
+    // SPA hash routes carry their own query after the first '?'.
+    'https://example.com/a#/cb?password=x',
+    'https://example.com/a#/cb?season=fall&access_token=x',
+    // A credential key followed by '=' anywhere in the fragment, not only at a segment start.
+    'https://example.com/a#state=1;access_token=x',
+    'https://example.com/a#/cb/id_token=x',
+    'https://example.com/a#newpassword=x',
     'https://example.com/reg;jsessionid=1',
     'https://u:p@example.com/a',
     'http://u:p@example.com/?session=fall',
@@ -65,6 +80,8 @@ describe('registration page network boundary', () => {
     'https://example.com/a?session_name=fall',
     'https://example.com/a#session',
     'https://example.com/a#auth',
+    'https://example.com/a#/section',
+    'https://example.com/a#/program?season=fall&id=4',
     'https://example.com/a;b/c',
   ])('allows the ordinary link %s', (url) => {
     expect(registrationPageUrl(url)).toEqual({ outcome: 'allowed', url });
