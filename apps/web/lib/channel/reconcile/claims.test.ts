@@ -10,6 +10,94 @@ import { claimsNoLedgerCanBack, extractStateClaims } from './claims';
 
 const kinds = (body: string) => extractStateClaims(body).map((claim) => claim.kind);
 
+describe('independent claims within one sentence', () => {
+  it.each(['; ', ', ', ' and ', ' but ', ' — ', '—', ' - ', ': '])(
+    'keeps the booking separate from an activity promise joined by %j',
+    (separator) => {
+      const booking = 'your well-baby visit is booked.';
+      const body = `I'll keep looking for toddler activities${separator}${booking}`;
+      const claims = extractStateClaims(body);
+      expect(claims.map((claim) => claim.kind)).toEqual(['activity_followup', 'scheduled_event']);
+      expect(claims[1]?.sentence).toBe(body);
+      expect(claims[1]?.words).toEqual(['baby', 'visit']);
+      expect(body.includes(claims[1]?.sentence ?? '')).toBe(true);
+    },
+  );
+
+  it('keeps two independent booking subjects separate', () => {
+    const claims = extractStateClaims('Your dentist is booked and your swim lesson is booked.');
+    expect(claims.map((claim) => claim.kind)).toEqual(['scheduled_event', 'scheduled_event']);
+    expect(claims.map((claim) => claim.words)).toEqual([['dentist'], ['swim', 'lesson']]);
+  });
+
+  it.each([
+    'Nothing is booked',
+    'Your visit is not booked',
+    'Your visit is booked?',
+    'You said your visit is booked',
+    'You said your dentist is booked and your swim lesson is booked',
+    'You said: your visit is booked',
+    '"your visit is booked; your dentist is booked"',
+  ])('does not turn a negative, question, report, or quotation into a booking: %s', (extra) => {
+    expect(kinds(`I'll keep looking for activities; ${extra}`)).not.toContain('scheduled_event');
+  });
+
+  it('a negated promise does not hide an independent positive booking', () => {
+    expect(kinds("I won't look for activities; your well-baby visit is booked.")).toEqual([
+      'scheduled_event',
+    ]);
+  });
+
+  it('a report does not hide an independent positive booking after a semicolon', () => {
+    const claims = extractStateClaims(
+      'You said the dentist is booked; your swim lesson is booked.',
+    );
+    expect(claims.map((claim) => claim.words)).toEqual([['swim', 'lesson']]);
+  });
+
+  it('keeps both kinds of promises no ledger can back in a combined activity reply', () => {
+    expect(
+      claimsNoLedgerCanBack(
+        "I'll keep looking for activities, I'll send an invite, and I'll stop sending messages.",
+      ).map((claim) => claim.kind),
+    ).toEqual(['co_parent_invite', 'self_referential']);
+  });
+});
+
+describe('a registration object carried from an earlier clause', () => {
+  it.each(["I'll remind you.", "I'll text you a reminder.", "I'll make sure to remind you."])(
+    'retains the object only when the caller provides its context: %s',
+    (body) => {
+      expect(kinds(body)).toEqual([]);
+      expect(extractStateClaims(body, true).map((claim) => claim.kind)).toEqual([
+        'registration_watch',
+      ]);
+    },
+  );
+
+  it.each(["I won't remind you.", 'They said "I will remind you".', 'Your reminder is ready.'])(
+    'does not turn a negation, report, or fact into a promise: %s',
+    (body) => {
+      expect(extractStateClaims(body, true)).toEqual([]);
+    },
+  );
+
+  it('keeps a positive activity discovery separate from registration reminders', () => {
+    expect(
+      extractStateClaims(
+        "I'll keep looking for toddler activities and text you what I find.",
+        true,
+      ).map((claim) => claim.kind),
+    ).toEqual(['activity_followup']);
+  });
+
+  it('recognizes an explicit notify promise about the registration object', () => {
+    expect(
+      kinds("Markham fall registration opens Tuesday, and I'll make sure to notify you."),
+    ).toEqual(['registration_watch']);
+  });
+});
+
 describe('extractStateClaims — the audit sentences', () => {
   it('reads the Aug 21 registration watch as a registration_watch claim', () => {
     expect(kinds("I'm watching that morning and I'll text you before it goes live.")).toEqual([

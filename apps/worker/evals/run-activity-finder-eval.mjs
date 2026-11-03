@@ -114,6 +114,13 @@ const {
   parentURL: import.meta.url,
   tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
 });
+const { readActivityPages } = await tsImport(
+  join(REPO_ROOT, 'apps/web/lib/channel/activity/page.ts'),
+  {
+    parentURL: import.meta.url,
+    tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+  },
+);
 const { renderTravelBrief } = await tsImport(join(REPO_ROOT, 'apps/web/lib/travel/copy.ts'), {
   parentURL: import.meta.url,
   tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
@@ -218,6 +225,7 @@ function followUpUserMessage(subject, picks, pageEvidence, watch, searched, lang
       name: pick.name,
       age_fit: pick.ageFit,
       when: pick.when,
+      ...(pick.term ? { term: pick.term } : {}),
       price: pick.price,
       registration: pick.registration ?? null,
       source_name: pick.sourceName,
@@ -686,7 +694,7 @@ function decodePicks(value) {
   return value;
 }
 
-function normalizePicks(raw, ground, query) {
+export function normalizePicks(raw, ground, query) {
   const kept = [];
   const dropped = [];
   let decoded = decodePicks(raw);
@@ -709,8 +717,10 @@ function normalizePicks(raw, ground, query) {
       name: flatten(item?.name),
       ageFit: flatten(item?.age_fit),
       when: flatten(item?.when) || null,
+      ...(item?.term ? { term: item.term } : {}),
       price: flatten(item?.price) || null,
       sourceName: flatten(item?.source_name),
+      ...(item?.source_url ? { sourceUrl: item.source_url } : {}),
       ...(item?.evidence ? { evidence: item.evidence } : {}),
     };
     if (pick.name && pick.ageFit && pick.sourceName) kept.push(pick);
@@ -982,7 +992,7 @@ async function cachedGround(opts) {
 }
 
 /** Same source URL budget and pinned reader as production, without trusting research prose. */
-export async function readSourcePages(ground, fetchPage, stripHtml) {
+export async function readSourcePages(ground, fetchPage, town) {
   const urls = [
     ...new Set([
       ...(ground.pages ?? []).map((page) => page.url),
@@ -991,26 +1001,20 @@ export async function readSourcePages(ground, fetchPage, stripHtml) {
         .filter((line) => /^https?:\/\//.test(line)),
     ]),
   ].slice(0, MAX_INLINE_FETCHES);
-  const pages = (
-    await Promise.all(
-      urls.map(async (raw) => {
-        try {
-          const { url, text: html } = await fetchPage(raw);
-          const text = stripHtml(html).slice(0, 20_000);
-          return text.trim() ? { url, text } : null;
-        } catch {
-          return null;
-        }
-      }),
-    )
-  ).filter(Boolean);
+  const read = await readActivityPages(urls, fetchPage, town);
+  const pages = read.pages.filter((page) => town === undefined || page.locationVerified);
   return {
     pages,
     pagesRead: pages.length,
-    pagesRefused: urls.length - pages.length,
+    pagesRefused: read.pagesRefused + read.pages.length - pages.length,
     pagesStale: 0,
     checkedAt: new Date().toISOString(),
-    notes: pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n'),
+    notes: pages
+      .map(
+        (page) =>
+          `SOURCE: ${page.url}\n${page.occurrence !== undefined ? `PAGE EVENT: ${JSON.stringify(page.occurrence)}\n` : ''}${page.text}`,
+      )
+      .join('\n\n'),
   };
 }
 
@@ -1046,15 +1050,13 @@ async function main() {
     join(REPO_ROOT, 'apps/web/lib/channel/activity/page.ts'),
     { parentURL: import.meta.url, tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json') },
   );
-  const { stripHtml } = await tsImport(join(REPO_ROOT, 'apps/web/lib/registration/fetch.ts'), {
-    parentURL: import.meta.url,
-    tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
-  });
   const fetchPage = createActivityPageFetch();
-  const withSourcePages = async (ground) => {
+  const withSourcePages = async (ground, town) => {
     const key = cacheKey(
       'activity-official-pages',
       JSON.stringify({
+        version: 3,
+        town,
         evidence: ground.evidence,
         urls: (ground.pages ?? []).map((page) => page.url),
       }),
@@ -1063,7 +1065,7 @@ async function main() {
     if (!pages) {
       if (cachedOnly)
         throw new Error(`official-page cache miss ${key}; record real page reads before replay`);
-      pages = await readSourcePages(ground, fetchPage, stripHtml);
+      pages = await readSourcePages(ground, fetchPage, town);
       await cachePut(key, pages);
     }
     return { ...ground, ...pages };
@@ -1176,7 +1178,7 @@ async function main() {
           getClient,
           cost,
         });
-    if (!broken) ground = await withSourcePages(ground);
+    if (!broken) ground = await withSourcePages(ground, query.town);
     // Mirrors the lane's grounding invariant, BOTH halves of it (lane.ts): zero results is
     // ungrounded, and so is a turn that searched and wrote nothing down. The second half
     // exists because the corpus produced it - 24 real results and an empty notes string,
@@ -1240,7 +1242,7 @@ async function main() {
         getClient,
         cost,
       });
-      ground = await withSourcePages(ground);
+      ground = await withSourcePages(ground, query.town);
       extracted = (
         await cachedToolCall({
           tag: evalRunTag(`activity-picks-read:${fixture.id}`),

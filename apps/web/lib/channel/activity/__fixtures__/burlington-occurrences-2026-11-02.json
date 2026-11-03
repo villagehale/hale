@@ -1,0 +1,15 @@
+{
+  "description": "Primary Event metadata captured from both official detail pages on 2026-11-02; HTML minimized. The Oct 30 sidebar link/date is reconstructed to reproduce the recorded Oct 28 mismatch, not a current sidebar snapshot.",
+  "pages": [
+    {
+      "url": "https://attend.bpl.on.ca/event/16944994",
+      "html": "<title>Family Storytime - Burlington Public Library</title><script type=\"application/ld+json\">{\"@context\":\"https:\\/\\/schema.org\\/\",\"@type\":\"Event\",\"name\":\"Family Storytime\",\"startDate\":\"2026-10-23T10:30\",\"endDate\":\"2026-10-23T11:00\",\"description\":\"Enjoy stories, songs &amp; more at a branch!\",\"image\":\"https:\\/\\/attend.bpl.on.ca\\/images\\/events\\/bpl\\/family-storytime.png\",\"url\":\"https:\\/\\/attend.bpl.on.ca\\/event\\/16944994\",\"location\":{\"@type\":\"Place\",\"name\":\"Central\",\"url\":\"\",\"address\":{\"@type\":\"PostalAddress\",\"streetAddress\":\"2331 New Street\",\"addressLocality\":\"Burlington\",\"addressRegion\":\"ON\",\"postalCode\":\"L7R 1J4\"}}}</script><h1>Family Storytime</h1><p>Central, Burlington, Ontario, Canada. Ages 5 and under.</p><h4>Friday, October 23</h4><p>10:30am - 11:00am</p><aside><h4>Upcoming events</h4><a href=\"/event/16944995\">Family Storytime</a><p>Friday, October 30, 2026, 10:30am - 11:00am</p></aside>",
+      "rawSha256": "3a27275446348dc262ba29c44adc7b856e579736bbac6a6127fb86f7bf68cce3"
+    },
+    {
+      "url": "https://attend.bpl.on.ca/event/16944995",
+      "html": "<title>Family Storytime - Burlington Public Library</title><script type=\"application/ld+json\">{\"@context\":\"https:\\/\\/schema.org\\/\",\"@type\":\"Event\",\"name\":\"Family Storytime\",\"startDate\":\"2026-10-30T10:30\",\"endDate\":\"2026-10-30T11:00\",\"description\":\"Enjoy stories, songs &amp; more at a branch!\",\"image\":\"https:\\/\\/attend.bpl.on.ca\\/images\\/events\\/bpl\\/family-storytime.png\",\"url\":\"https:\\/\\/attend.bpl.on.ca\\/event\\/16944995\",\"location\":{\"@type\":\"Place\",\"name\":\"Central\",\"url\":\"\",\"address\":{\"@type\":\"PostalAddress\",\"streetAddress\":\"2331 New Street\",\"addressLocality\":\"Burlington\",\"addressRegion\":\"ON\",\"postalCode\":\"L7R 1J4\"}}}</script><h1>Family Storytime</h1><p>Central, Burlington, Ontario, Canada. Ages 5 and under.</p><h4>Friday, October 30</h4><p>10:30am - 11:00am</p>",
+      "rawSha256": "d44c9e4acd5ca4cfed708d8d4791d019918986e3fd4fb8d544c57b5c5bd64e3b"
+    }
+  ]
+}

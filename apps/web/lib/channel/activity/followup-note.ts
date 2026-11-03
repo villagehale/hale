@@ -234,6 +234,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     name: pick.name,
     age_fit: pick.ageFit,
     when: pick.when,
+    ...(pick.term ? { term: pick.term } : {}),
     price: pick.price,
     registration: pick.registration ?? null,
     source_name: pick.sourceName,

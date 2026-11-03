@@ -6,6 +6,30 @@ import {
 } from './location';
 
 describe('activity location evidence', () => {
+  it.each([
+    'Montréal, Québec, Canada',
+    'Montréal (Québec) H2S 0C4',
+    'Montreal (Quebec) H2S 0C4',
+    'Montréal (QC) H2S 0C4',
+    'Montre\u0301al (Que\u0301bec) H2S 0C4',
+  ])('accepts a French Canadian address: %s', (address) => {
+    expect(activityLocationMatches('Montréal, Quebec, Canada', address)).toBe(true);
+  });
+
+  it('qualifies an accented province without changing the city spelling', () => {
+    expect(qualifyActivityLocation('Montréal', 'Québec')).toBe('Montréal, Quebec, Canada');
+  });
+
+  it.each([
+    'Montréal (Ontario) Canada',
+    'Montréal, Texas, United States',
+    'NewMontréal (Québec) Canada',
+    'Montréal — Québec history collection',
+    'Ville de Montréal — Heure du conte (3 à 6 ans)',
+  ])('does not loosen location proof for %s', (text) => {
+    expect(activityLocationMatches('Montréal, Quebec, Canada', text)).toBe(false);
+  });
+
   it('prioritizes regional source hints without treating a domain as location proof', () => {
     const town = 'Burlington, Ontario, Canada';
     expect(

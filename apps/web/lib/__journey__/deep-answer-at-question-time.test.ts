@@ -11,7 +11,11 @@ import type { DeepResearchPayload } from '@hale/tools-contracts';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { cancelActivityPromise } from '~/lib/channel/activity/commitment';
+import {
+  cancelActivityPromise,
+  defaultActivityPromisePorts,
+  recordActivityPromise,
+} from '~/lib/channel/activity/commitment';
 import { type DeepJobDeps, runDeepResearchJob } from '~/lib/channel/activity/deep-job';
 import type { DeepLaneDeps } from '~/lib/channel/activity/deep-lane';
 import { MAX_PAGE_NOTE_CHARS, boundEvidence } from '~/lib/channel/activity/fanout';
@@ -1031,6 +1035,39 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     expect(outcome).toMatchObject({ status: 'sent', watch: true });
     const second = transport.bodies()[1] ?? '';
     expect(await saysNotPosted(second)).toMatchObject({ says_not_posted: true });
+  });
+
+  it('sends the activity continuation and records its next check without a registration watch', async () => {
+    const transport = new FakeTransport();
+    const enqueued: DeepResearchPayload[] = [];
+    await askAboutTheGym(transport, enqueued, false, 'Gellert Community Centre fall swim schedule');
+    const payload = enqueued[0];
+    if (!payload) throw new Error('journey: nothing was enqueued');
+
+    const deps = jobDeps(transport, gellertLane({ silentPage: true }));
+    deps.delivery.recordWatch = (db2, input) =>
+      recordActivityPromise(db2, input, defaultActivityPromisePorts());
+    const outcome = await runDeepResearchJob(database, payload, deps, JOB_AT);
+
+    expect(outcome).toMatchObject({ status: 'sent', watch: true });
+    expect(transport.bodies()).toHaveLength(2);
+    const promises = await promiseRows();
+    expect(promises).toHaveLength(2);
+    expect(promises.find((row) => row.id === payload.commitment_id)).toMatchObject({
+      fulfilledAt: expect.any(Date),
+    });
+    expect(promises.filter((row) => row.fulfilledAt === null && row.cancelledAt === null)).toEqual([
+      expect.objectContaining({
+        topic: 'Gellert Community Centre fall swim schedule',
+        createdFrom: expect.any(String),
+      }),
+    ]);
+    expect(
+      await database
+        .select({ id: schema.registrationSequences.id })
+        .from(schema.registrationSequences)
+        .where(eq(schema.registrationSequences.familyId, familyId)),
+    ).toEqual([]);
   });
 
   // ── THE FALLBACK ───────────────────────────────────────────────────────────

@@ -109,7 +109,7 @@ const NEGATIVE_SUBJECT = /\b(?:nothing|none|nobody|neither|no)\b/i;
 
 /** Hale will TELL the parent, or is watching so it can. */
 const NOTIFY_VERB =
-  /\b(?:watch|watching|keep\s+an\s+eye|monitor|monitoring|text|texting|message|messaging|ping|let\s+you\s+know|flag|alert|remind|tell\s+you|send)\b/i;
+  /\b(?:watch|watching|keep\s+an\s+eye|monitor|monitoring|text|texting|message|messaging|notify|notifying|ping|let\s+you\s+know|flag|alert|remind|tell\s+you|send)\b/i;
 /** The registration morning, named as ITSELF. Deliberately NOT "window" or "spot": the
  * ladder's own check-in reply says "I'll flag the next Halton Hills window early", and
  * that sentence is about a cycle nobody has published yet.
@@ -224,54 +224,64 @@ function isCoParentInviteClaim(text: string): boolean {
   return /\b(?:invite|invitation)\b/i.test(text);
 }
 
-function kindOf(sentence: string): ClaimKind | null {
+function promiseKindsOf(sentence: string, registrationContext: boolean): ClaimKind[] {
   // A question is a proposal, not a claim. "Want me to watch that morning?" asks for
   // permission Hale does not yet have, and refusing it would refuse the honest move.
-  if (sentence.trimEnd().endsWith('?')) return null;
+  if (sentence.trimEnd().endsWith('?')) return [];
 
   const text = withoutQuotedSpans(sentence);
-  if (REPORTED_SPEECH.test(text)) return null;
-  if (FIRST_PERSON_NEGATED.test(text)) return null;
-  // Before the other first-person families. "I'll send an invite" also contains a
-  // notify verb, and classifying it as a watch or a follow-up would let a ledger
-  // row about something else back a text to a stranger.
-  if (isCoParentInviteClaim(text)) return 'co_parent_invite';
+  if (REPORTED_SPEECH.test(text)) return [];
+  if (FIRST_PERSON_NEGATED.test(text)) return [];
+  const kinds: ClaimKind[] = [];
+  if (isCoParentInviteClaim(text)) kinds.push('co_parent_invite');
 
   const speaks = FIRST_PERSON_FUTURE.test(text) || FIRST_PERSON_PROGRESSIVE.test(text);
   if (speaks) {
-    if (CEASE_VERB.test(text) && OWN_OUTPUT.test(text)) return 'self_referential';
+    if (CEASE_VERB.test(text) && OWN_OUTPUT.test(text)) kinds.push('self_referential');
     if (
       NOTIFY_VERB.test(text) &&
-      (REGISTRATION_NAMED.test(text) || REGISTRATION_OPENING.test(text))
+      (REGISTRATION_NAMED.test(text) ||
+        REGISTRATION_OPENING.test(text) ||
+        (registrationContext && /\bremind(?:er)?s?\b/i.test(text)))
     ) {
-      return 'registration_watch';
+      kinds.push('registration_watch');
+    } else if (RETURN_VERB.test(text) && ACTIVITY_SUBJECT.test(text)) {
+      kinds.push('activity_followup');
     }
-    if (RETURN_VERB.test(text) && ACTIVITY_SUBJECT.test(text)) return 'activity_followup';
   }
-  const assertion = SCHEDULED_ASSERTION.exec(text);
-  if (assertion && !NEGATIVE_SUBJECT.test(text.slice(0, assertion.index + 2))) {
-    return 'scheduled_event';
-  }
-  return null;
+  return kinds;
 }
 
 /**
- * Every claim this body makes, in the order it makes them.
+ * Every claim this body makes, in sentence order.
  *
  * An empty array is the ordinary answer and means exactly what it says: nothing in here
  * asserts a row. It does NOT mean the message is true — only that nothing in it is this
  * primitive's to check.
+ * A caller carrying an explicit registration topic can retain it on an objectless reminder.
  */
-export function extractStateClaims(body: string): StateClaim[] {
+export function extractStateClaims(body: string, registrationContext = false): StateClaim[] {
   const claims: StateClaim[] = [];
   for (const sentence of sentencesOf(body)) {
-    const kind = kindOf(sentence);
-    if (kind === null) continue;
-    claims.push({
-      sentence,
-      kind,
-      words: kind === 'scheduled_event' ? contentWords(sentence) : [],
-    });
+    for (const kind of promiseKindsOf(sentence, registrationContext)) {
+      claims.push({ sentence, kind, words: [] });
+    }
+    // Check bookings independently; a backed promise cannot back another claim in its sentence.
+    const text = withoutQuotedSpans(sentence);
+    for (const statement of text.split(';')) {
+      // A reported statement still owns its coordinated clauses and colon explanation.
+      if (REPORTED_SPEECH.test(statement)) continue;
+      for (const clause of statement.split(/[,—–]|:\s+|\s+(?:and|but)\s+|\s+-\s+/i)) {
+        if (clause.trimEnd().endsWith('?') || FIRST_PERSON_NEGATED.test(clause)) continue;
+        const assertion = SCHEDULED_ASSERTION.exec(clause);
+        if (!assertion || NEGATIVE_SUBJECT.test(clause.slice(0, assertion.index + 2))) continue;
+        claims.push({
+          sentence,
+          kind: 'scheduled_event',
+          words: contentWords(clause),
+        });
+      }
+    }
   }
   return claims;
 }

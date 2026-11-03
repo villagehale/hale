@@ -2,6 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
 import * as sourcePage from '~/lib/registration/page';
 import { isStage } from '~/lib/testing/structured-reply';
+import burlington from './__fixtures__/burlington-occurrences-2026-11-02.json';
+import montreal from './__fixtures__/montreal-location-2026-10-30.json';
 import type { ActivityQuery } from './deidentify';
 import {
   MAX_SEARCHES,
@@ -275,6 +277,70 @@ describe('the grounding request the eval corpus replays', () => {
 });
 
 describe('an ungrounded find never ships', () => {
+  it('keeps the October 30 detail URL after extraction and rejects the same date on the October 23 URL', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-15T12:00:00Z'));
+    const [old, current] = burlington.pages;
+    const ground = groundResult(1);
+    (ground.content[1]!.content as Array<{ url: string }>)[0]!.url = old!.url;
+    const fetch = vi
+      .spyOn(sourcePage, 'createRegistrationPageFetch')
+      .mockReturnValue(async (url) => burlington.pages.find((page) => page.url === url)!.html);
+    const raw = {
+      name: 'Family Storytime',
+      name_evidence: 'Family Storytime',
+      source_name: 'Burlington Public Library',
+      age_fit: 'Ages 5 and under.',
+      age_evidence: 'Ages 5 and under.',
+      sessions: [
+        {
+          date: '2026-10-30',
+          start_time: '10:30',
+          end_time: '11:00',
+          evidence: 'Friday, October 30',
+        },
+      ],
+    };
+    const seen: Seen[] = [];
+    try {
+      const result = await createActivityFinder(
+        makeClient(
+          {
+            ground,
+            compose: composeResult({
+              picks: [
+                { ...raw, source_url: old!.url },
+                { ...raw, source_url: current!.url },
+              ],
+            }),
+          },
+          seen,
+        ),
+      ).find({
+        subject: 'library storytime',
+        town: 'Burlington, Ontario, Canada',
+        window: 'October 2026',
+        stage: 'toddler',
+      });
+      expect(result).toMatchObject({
+        found: true,
+        picks: [
+          {
+            url: current!.url,
+            sourceUrl: current!.url,
+            eventDate: '2026-10-30',
+            when: '2026-10-30 10:30-11:00',
+          },
+        ],
+        references: [{ sourceUrl: old!.url, when: null, evidence: { sessions: [] } }],
+      });
+      expect(result.found && result.picks).toHaveLength(1);
+      expect(seen.find((call) => call.toolChoice)?.userMessage).toContain('PAGE EVENT:');
+    } finally {
+      fetch.mockRestore();
+      vi.useRealTimers();
+    }
+  });
   it('extracts from the canonical moved page without first spending a call on thinking', async () => {
     const current = 'https://venue.example/current';
     const fetch = vi
@@ -409,6 +475,128 @@ describe('an ungrounded find never ships', () => {
     expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'not_grounded' });
     expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
     fetch.mockRestore();
+  });
+
+  it('keeps only the requested term after decoding extraction, including unconfirmed references', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-15T12:00:00Z'));
+    const fallText = 'Fall 2026 Session: September 12 - December 18.';
+    const winterText =
+      'Winter 2027 Session: January 2 - April 1 - Registration begins October 26th.';
+    const fetch = vi
+      .spyOn(sourcePage, 'createRegistrationPageFetch')
+      .mockReturnValue(
+        async () => `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT} ${fallText} ${winterText}`,
+      );
+    const seen: Seen[] = [];
+    const item = { ...WHOLE_PICK, schedule_kind: 'term', sessions: [] };
+    try {
+      const result = await createActivityFinder(
+        makeClient(
+          {
+            ground: groundResult(1),
+            compose: composeResult({
+              picks: [
+                {
+                  ...item,
+                  when: fallText,
+                  when_evidence: fallText,
+                  term: { label: 'Fall 2026', start_date: '2026-09-12', end_date: '2026-12-18' },
+                },
+                {
+                  ...item,
+                  when: winterText,
+                  when_evidence: winterText,
+                  term: { label: 'Winter 2027', start_date: '2027-01-02', end_date: '2027-04-01' },
+                },
+              ],
+            }),
+          },
+          seen,
+        ),
+      ).find({ ...QUERY, window: 'September to December' });
+      expect(result).toMatchObject({
+        found: false,
+        reason: 'no_picks',
+        searched: { references: [{ term: { label: 'Fall 2026' }, when: fallText }] },
+      });
+      const references = result.found ? result.references : result.searched?.references;
+      expect(JSON.stringify(references)).not.toContain('October 26');
+      expect(JSON.stringify(references)).not.toContain('Winter');
+      const input = JSON.parse(
+        seen.find((call) => call.toolChoice === 'activity_picks')?.userMessage ?? '{}',
+      );
+      expect(input.requested_date_range).toEqual({ start: '2026-09-01', end: '2026-12-31' });
+    } finally {
+      fetch.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([false, true])(
+    'excludes challenge sources, with a readable source: %s',
+    async (mixed) => {
+      const fetch = vi
+        .spyOn(sourcePage, 'createRegistrationPageFetch')
+        .mockReturnValue(async (url) =>
+          url.endsWith('/0')
+            ? '<title>Verify you are human</title><p>Please enable JavaScript</p>'
+            : `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+        );
+      const seen: Seen[] = [];
+      try {
+        const result = await createActivityFinder(
+          makeClient(
+            {
+              ground: groundResult(mixed ? 2 : 1),
+              compose: composeResult({
+                picks: [{ ...WHOLE_PICK, source_url: 'https://venue.example/1' }],
+              }),
+            },
+            seen,
+          ),
+        ).find(QUERY);
+        if (mixed) {
+          expect(result).toMatchObject({
+            found: true,
+            checkedSources: ['https://venue.example/1'],
+          });
+          expect(
+            seen.find((call) => call.toolChoice === 'activity_picks')?.userMessage,
+          ).not.toContain('Verify you are human');
+        } else {
+          expect(result).toEqual({ found: false, reason: 'not_grounded' });
+          expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
+        }
+      } finally {
+        fetch.mockRestore();
+      }
+    },
+  );
+
+  it('uses the event venue address only for geographic verification before extraction', async () => {
+    const fetch = vi
+      .spyOn(sourcePage, 'createRegistrationPageFetch')
+      .mockReturnValue(async (url) =>
+        url === montreal.venue.url
+          ? `${montreal.venue.html}<p>Other event: December 25, $99.</p>`
+          : `${montreal.event.html} ${PROGRAM_TEXT}`,
+      );
+    const seen: Seen[] = [];
+    try {
+      const result = await createActivityFinder(
+        makeClient(
+          { ground: groundResult(1), compose: composeResult({ picks: [WHOLE_PICK] }) },
+          seen,
+        ),
+      ).find({ ...QUERY, town: 'Montréal, Quebec, Canada' });
+      expect(result).toMatchObject({ found: true, checkedSources: ['https://venue.example/0'] });
+      expect(seen.find((call) => call.toolChoice === 'activity_picks')?.userMessage).not.toContain(
+        '$99',
+      );
+    } finally {
+      fetch.mockRestore();
+    }
   });
   it('drops a composed URL that was not among the pages just read', async () => {
     const finder = createActivityFinder(

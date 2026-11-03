@@ -348,6 +348,19 @@ describe('the payload the composer is handed', () => {
     ).toBe('page_has_schedule');
   });
 
+  it('carries the selected term as one record without borrowing another term', () => {
+    const term = { label: 'Fall 2026', start_date: '2026-09-12', end_date: '2026-12-18' };
+    const payload = JSON.parse(
+      followUpUserMessage(
+        grounding({
+          picks: [{ ...PICK, when: 'Fall 2026: September 12 - December 18', term }],
+        }),
+      ),
+    );
+    expect(payload.picks[0]).toMatchObject({ term, when: 'Fall 2026: September 12 - December 18' });
+    expect(JSON.stringify(payload)).not.toContain('Winter');
+  });
+
   /**
    * WITH NO PICKS THERE ARE NO PAGES TO REPORT ON, so the payload carries none.
    *

@@ -107,10 +107,8 @@ export const ACTIVITY_FIXTURES = [
   // year, never ISO — because the year is what `scrubResidualPii` eats, and `town`
   // carries the code-composed "City, REGION" the trip row produces.
   //
-  // `dropsFromQuery` therefore includes the YEAR on every one of them. That is not a
-  // privacy assertion like the others: it is the landmine test. A window written
-  // "2026-09-12 to 2026-09-15" crosses the border as "[redacted] to [redacted]" and the
-  // search loses its dates with no error anywhere.
+  // Legacy month-only cases guard against ISO dates being scrubbed out of the search;
+  // an explicit public year in a requested window is not a private identifier.
   //
   // `composesOwnText: true` says where this query shape STOPS. `createActivityFinder`
   // ends at the picks, and the travel sweep hands them to `renderTravelBrief`, which is
@@ -147,7 +145,7 @@ export const ACTIVITY_FIXTURES = [
     town: 'New York, NY',
     stage: 'preschool',
     rawSubject: 'things to do in New York with Mia, 4, from 2026-11-12 to 2026-11-15',
-    dropsFromQuery: ['mia', '2026', '4 year'],
+    dropsFromQuery: ['mia', '4 year'],
     expectPicks: true,
     composesOwnText: true,
     watchFor:

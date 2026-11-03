@@ -5,19 +5,19 @@ import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { stripHtml } from '~/lib/registration/fetch';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
 import {
   type ActivityFactEvidence,
   type ActivityReference,
+  type ActivityTerm,
   activityCalendarDate,
   activityDateRange,
   activityPicksJsonSchema,
   bindActivityFacts,
 } from './facts';
-import { activityLocationMatches, activitySourceLocationScore } from './location';
-import { createActivityPageFetch } from './page';
+import { activitySourceLocationScore } from './location';
+import { MAX_ACTIVITY_SOURCE_PAGES, createActivityPageFetch, readActivityPages } from './page';
 import { namesRetiredRecPortal } from './retired-portal';
 
 /**
@@ -135,7 +135,7 @@ export const MAX_ACTIVITY_CALLS_PER_TURN = 2;
  * and the registration or fees page. That is the path both benchmark defects needed, and
  * a fourth does not fit the turn.
  */
-export const MAX_INLINE_FETCHES = 3;
+export const MAX_INLINE_FETCHES = MAX_ACTIVITY_SOURCE_PAGES;
 
 const GROUND_MAX_TOKENS = 4096;
 /** Generous on purpose: `forceToolJson` throws on a max_tokens cutoff, and a pick cut in
@@ -171,6 +171,7 @@ export interface ActivityPick {
   /** When it runs, in the source's own words ("Saturdays 9:15am, fall session from
    * Sept 13"), or null where the source had not published it. Never a guess. */
   when: string | null;
+  term?: ActivityTerm;
   /** What it costs, in the source's own words, or null when the source did not say. */
   price: string | null;
   /** WHOSE page this came off — the organisation, not a URL. Hale never texts a link
@@ -303,6 +304,9 @@ const composeSchema = z.object({
         when: z.string().nullish(),
         when_evidence: z.string().nullish(),
         schedule_kind: z.enum(['hours', 'recurring', 'term']).nullish(),
+        term: z
+          .object({ label: z.string(), start_date: z.string(), end_date: z.string() })
+          .nullish(),
         historical_evidence: z.string().nullish(),
         sessions: z
           .array(
@@ -462,6 +466,7 @@ export function toPicks(raw: z.infer<typeof composeSchema>['picks']): ActivityPi
     if (item.event_date) pick.eventDate = item.event_date;
     if (item.indoor_outdoor) pick.indoorOutdoor = item.indoor_outdoor;
     if (item.access) pick.access = item.access;
+    if (item.term) pick.term = item.term;
     if (
       namesRetiredRecPortal(
         `${pick.name} ${pick.ageFit} ${pick.when ?? ''} ${pick.price ?? ''} ${pick.sourceName}`,
@@ -546,29 +551,20 @@ async function runActivityOnce(
       }
     }
     const fetchPage = createActivityPageFetch();
-    const readablePages = (
-      await Promise.all(
-        [...sourceUrls]
-          .sort(
-            (a, b) =>
-              activitySourceLocationScore(query.town, b, sourceTitles.get(b) ?? '') -
-              activitySourceLocationScore(query.town, a, sourceTitles.get(a) ?? ''),
-          )
-          .slice(0, MAX_INLINE_FETCHES)
-          .map(async (raw) => {
-            try {
-              const { url, text: html } = await fetchPage(raw);
-              const text = stripHtml(html).slice(0, 20_000);
-              return text.trim() ? { url, text } : null;
-            } catch {
-              return null;
-            }
-          }),
-      )
-    ).filter((page): page is { url: string; text: string } => page !== null);
+    const { pages: readablePages } = await readActivityPages(
+      [...sourceUrls]
+        .sort(
+          (a, b) =>
+            activitySourceLocationScore(query.town, b, sourceTitles.get(b) ?? '') -
+            activitySourceLocationScore(query.town, a, sourceTitles.get(a) ?? ''),
+        )
+        .slice(0, MAX_INLINE_FETCHES),
+      fetchPage,
+      query.town,
+    );
     if (readablePages.length === 0)
       throw new ActivityUnresolvable('not_grounded', 'sources_unreadable');
-    const pages = readablePages.filter((page) => activityLocationMatches(query.town, page.text));
+    const pages = readablePages.filter((page) => page.locationVerified);
     if (pages.length === 0)
       throw new ActivityUnresolvable('location_unverified', undefined, {
         town: query.town,
@@ -577,7 +573,12 @@ async function runActivityOnce(
         references: [],
         checkedSources: [...new Set(readablePages.map((page) => page.url))],
       });
-    const researchNotes = pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n');
+    const researchNotes = pages
+      .map(
+        (page) =>
+          `SOURCE: ${page.url}\n${page.occurrence !== undefined ? `PAGE EVENT: ${JSON.stringify(page.occurrence)}\n` : ''}${page.text}`,
+      )
+      .join('\n\n');
     if (evidence.pagesRefused > 0 && evidence.pagesRead === 0) {
       // The turn tried to open the venue's pages and was turned away every time, so any gap
       // in what follows is UNREAD rather than unposted. It is not a failure — the snippets

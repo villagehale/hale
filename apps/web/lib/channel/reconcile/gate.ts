@@ -26,7 +26,9 @@ import { loadReconcileView } from './view';
 
 /** Why the wire body was refused. The reconcile's own reasons, plus the one this gate
  * adds for a promise a sweep would have had to write and cannot. */
-export type SendRefusalReason = ReconcileVerdict['refused'][number]['reason'] | 'unrecorded_promise';
+export type SendRefusalReason =
+  | ReconcileVerdict['refused'][number]['reason']
+  | 'unrecorded_promise';
 
 /** Every reason this body may not go out, in the order the claims appear. Empty means
  * send it. */
@@ -43,12 +45,50 @@ export function unsendableReasons(verdict: ReconcileVerdict): SendRefusalReason[
  */
 export async function refuseUnbackedSend(
   database: Database,
-  input: { familyId: string; body: string; now: Date },
+  input: {
+    familyId: string;
+    body: string;
+    now: Date;
+    /** The activity composer validated a continuation that this send will record. */
+    activityFollowUp?: boolean;
+  },
 ): Promise<SendRefusalReason[]> {
   const claims = extractStateClaims(input.body);
   // NO CLAIM, NO QUERY. The overwhelming majority of bodies assert nothing this
   // primitive owns, and those must not cost a sweep four selects per message.
   if (claims.length === 0) return [];
   const view = await loadReconcileView(database, { familyId: input.familyId, now: input.now });
-  return unsendableReasons(reconcile(claims, view));
+  const activityFollowUp = input.activityFollowUp && view.openKinds.has('activity_followup');
+  // Keep the named registration object for a later "I'll remind you" in this message.
+  const contextualClaims =
+    activityFollowUp && claims.some((claim) => claim.kind === 'registration_watch')
+      ? extractStateClaims(input.body, true)
+      : claims;
+  // A factual registration preamble must not change the kind of an activity continuation.
+  const remaining = activityFollowUp
+    ? contextualClaims.flatMap((claim) => {
+        if (claim.kind === 'activity_followup') return [];
+        if (claim.kind !== 'registration_watch') return [claim];
+        const promise = claim.sentence.search(
+          /\bi(?:'ll|\s+will|'m\s+\w+ing|\s+am\s+going\s+to)\b/i,
+        );
+        if (promise < 0) return [claim];
+        const continuation = claim.sentence.slice(promise);
+        // Booking claims remain in contextualClaims and always get their own row check.
+        const scoped = extractStateClaims(continuation, true).filter(
+          (claim) => claim.kind !== 'scheduled_event',
+        );
+        const publicationCheck =
+          /\bkeep\s+watching\b/i.test(continuation) &&
+          /\b(?:when|once|as soon as)\b[^.!?]*\b(?:post(?:s|ed|ing)?|publish(?:es|ed|ing)?)\b/i.test(
+            continuation,
+          );
+        // An unrecognized remainder is not proof that the registration promise vanished.
+        const activityOnly =
+          (scoped.length > 0 || publicationCheck) &&
+          scoped.every((claim) => claim.kind === 'activity_followup');
+        return activityOnly ? [] : [claim];
+      })
+    : claims;
+  return unsendableReasons(reconcile(remaining, view));
 }

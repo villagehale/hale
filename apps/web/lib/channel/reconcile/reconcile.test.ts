@@ -409,6 +409,14 @@ describe('reconcile — what a refused body produces', () => {
     expect(withoutRefusedClaims(only, verdictFor(only, view()))).toBe('');
   });
 
+  it('cuts the whole mixed sentence if only its booking is unbacked', () => {
+    const body =
+      "Swim runs Tuesdays. I'll keep looking for toddler activities; your well-baby visit is booked.";
+    const verdict = verdictFor(body, view({ openKinds: new Set(['activity_followup']) }));
+    expect(verdict.refused.map((resolution) => resolution.reason)).toEqual(['no_scheduled_row']);
+    expect(withoutRefusedClaims(body, verdict)).toBe('Swim runs Tuesdays.');
+  });
+
   it('leaves a clean body untouched and asks for nothing', () => {
     const clean = 'Swim runs Tuesdays at 4 at the Gellert.';
     const verdict = verdictFor(clean, view());

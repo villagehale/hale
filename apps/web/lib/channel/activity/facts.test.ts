@@ -41,6 +41,221 @@ const raw = {
 const bind = (items: RawActivityFact[] = [raw], window: string | null = 'October 2026') =>
   bindActivityFacts(items, pages, window, now);
 
+describe('occurrence clocks', () => {
+  const run = (
+    startDate: string,
+    endDate: string,
+    date: string,
+    start_time: string,
+    end_time: string,
+    timezone: string | undefined = 'America/Toronto',
+  ) => {
+    const evidence = `${date} ${start_time}-${end_time} ${timezone ?? ''}`.trim();
+    return bindActivityFacts(
+      [{ ...raw, sessions: [{ date, start_time, end_time, timezone, evidence }] }],
+      [
+        {
+          url,
+          text: `${text} ${evidence}`,
+          occurrence: { name: 'Leaf Workshop', startDate, endDate },
+        },
+      ],
+      null,
+      now,
+    );
+  };
+
+  it.each([
+    ['2026-10-30T14:30:00Z', '2026-10-30T15:00:00Z', '2026-10-30', '10:30', '11:00'],
+    ['2026-10-30T16:30:00+02:00', '2026-10-30T17:00:00+02:00', '2026-10-30', '10:30', '11:00'],
+    ['2026-10-30T00:30:00Z', '2026-10-30T01:00:00Z', '2026-10-29', '20:30', '21:00'],
+    ['2027-01-01T01:30:00Z', '2027-01-01T02:00:00Z', '2026-12-31', '20:30', '21:00'],
+    ['2026-11-02T15:30:00Z', '2026-11-02T16:00:00Z', '2026-11-02', '10:30', '11:00'],
+    ['2026-10-30T10:30', '2026-10-30T11:00', '2026-10-30', '10:30', '11:00'],
+    ['2026-11-01T05:30:00Z', '2026-11-01T06:00:00Z', '2026-11-01', '01:30', '01:00'],
+  ])(
+    'matches published instants to the explicit session clock: %s',
+    (start, end, date, from, to) => {
+      expect(run(start!, end!, date!, from!, to!).picks).toHaveLength(1);
+    },
+  );
+
+  it('still rejects a genuine local clock mismatch', () => {
+    expect(
+      run('2026-10-30T14:30:00Z', '2026-10-30T15:00:00Z', '2026-10-30', '11:30', '12:00').picks,
+    ).toEqual([]);
+  });
+
+  it('does not accept an invalid declared time zone or a reversed source interval', () => {
+    expect(
+      run(
+        '2026-10-30T14:30:00Z',
+        '2026-10-30T15:00:00Z',
+        '2026-10-30',
+        '10:30',
+        '11:00',
+        'Mars/Olympus',
+      ).picks,
+    ).toEqual([]);
+    expect(
+      run('2026-10-30T15:00:00Z', '2026-10-30T14:30:00Z', '2026-10-30', '11:00', '10:30').picks,
+    ).toEqual([]);
+  });
+});
+
+describe('one result per published term', () => {
+  const fallText = 'Fall 2026 Session: September 12 - December 18.';
+  const winterText = 'Winter 2027 Session: January 2 - April 1 - Registration begins October 26th.';
+  const termPages = [{ url, text: `${text} ${fallText} ${winterText}` }];
+  const fall: RawActivityFact = {
+    ...raw,
+    sessions: undefined,
+    schedule_kind: 'term',
+    when: fallText,
+    when_evidence: fallText,
+    term: { label: 'Fall 2026', start_date: '2026-09-12', end_date: '2026-12-18' },
+  };
+  const winter: RawActivityFact = {
+    ...fall,
+    when: winterText,
+    when_evidence: winterText,
+    term: { label: 'Winter 2027', start_date: '2027-01-02', end_date: '2027-04-01' },
+  };
+  const terms = (window: string) => bindActivityFacts([fall, winter], termPages, window, now);
+
+  it('binds each session to its validated term before retaining dates or evidence', () => {
+    const sessions = [
+      { date: '2026-10-16', evidence: 'October 16, 2026, 10:30-11:30.' },
+      { date: '2027-01-02', evidence: winterText },
+    ];
+    const result = bindActivityFacts([{ ...fall, sessions }], termPages, 'this fall', now);
+    expect(result.references[0]).toMatchObject({
+      term: fall.term,
+      when: '2026-10-16',
+      evidence: { sessions: [sessions[0]!.evidence] },
+    });
+    expect(JSON.stringify(result)).not.toContain('Winter');
+    expect(JSON.stringify(result)).not.toContain('2027-01-02');
+  });
+
+  it('does not use sessions to bypass an invalid term', () => {
+    const result = bindActivityFacts(
+      [{ ...fall, term: { ...fall.term!, end_date: '2026-02-30' }, sessions: raw.sessions }],
+      termPages,
+      'this fall',
+      now,
+    );
+    expect(result.picks).toEqual([]);
+    expect(result.references[0]).toMatchObject({ when: null, evidence: { sessions: [] } });
+    expect(result.references[0]?.term).toBeUndefined();
+  });
+
+  it('filters winter from fall references by class dates, not its October registration date', () => {
+    const result = terms('September to December');
+    expect(result.picks).toEqual([]);
+    expect(result.references).toHaveLength(1);
+    expect(result.references[0]).toMatchObject({
+      term: fall.term,
+      when: fallText,
+      status: 'unconfirmed',
+    });
+    expect(JSON.stringify(result)).not.toContain('October 26');
+    expect(JSON.stringify(result)).not.toContain('Winter');
+  });
+
+  it('retains the winter registration wording on the independently selected winter term', () => {
+    const result = terms('January to April 2027');
+    expect(result.references).toHaveLength(1);
+    expect(result.references[0]).toMatchObject({ term: winter.term, when: winterText });
+    expect(JSON.stringify(result)).not.toContain('Fall');
+  });
+
+  it('does not broaden a named season merely because it has no normalized date range', () => {
+    expect(terms('this fall').references.map((item) => item.term?.label)).toEqual(['Fall 2026']);
+    expect(terms('this winter').references.map((item) => item.term?.label)).toEqual([
+      'Winter 2027',
+    ]);
+    expect(terms('fall and winter').references.map((item) => item.term?.label)).toEqual([
+      'Fall 2026',
+      'Winter 2027',
+    ]);
+  });
+
+  it('does not let a still-merged term schedule escape through references or evidence', () => {
+    const result = bindActivityFacts(
+      [{ ...fall, when: `${fallText} ${winterText}`, when_evidence: `${fallText} ${winterText}` }],
+      termPages,
+      'September to December',
+      now,
+    );
+    expect(result.references).toHaveLength(1);
+    expect(result.references[0]).toMatchObject({ when: null, evidence: { schedule: null } });
+    expect(result.references[0]?.term).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain('October 26');
+  });
+
+  it('does not copy a model-added registration date outside the term quote', () => {
+    const result = bindActivityFacts(
+      [{ ...fall, when: `${fallText} Registration begins October 26th.` }],
+      termPages,
+      'September to December',
+      now,
+    );
+    expect(result.references[0]?.when).toBe(fallText);
+    expect(JSON.stringify(result)).not.toContain('October 26');
+  });
+
+  it('does not accept a mixed term block mislabeled as a recurrence', () => {
+    const result = bindActivityFacts(
+      [
+        {
+          ...fall,
+          term: undefined,
+          schedule_kind: 'recurring',
+          when: `${fallText} ${winterText}`,
+          when_evidence: `${fallText} ${winterText}`,
+        },
+      ],
+      termPages,
+      'September to December',
+      now,
+    );
+    expect(result.references[0]).toMatchObject({ when: null, evidence: { schedule: null } });
+  });
+
+  it.each([
+    { label: 'Fall 2026', start_date: '2026-09-01', end_date: '2026-12-18' },
+    { label: 'Fall 2026', start_date: '2025-09-12', end_date: '2025-12-18' },
+    { label: 'Fall 2026', start_date: '2026-12-18', end_date: '2026-09-12' },
+  ])('holds unsupported or reversed term dates: %j', (term) => {
+    const result = bindActivityFacts([{ ...fall, term }], termPages, 'September to December', now);
+    expect(result.references[0]).toMatchObject({ when: null, evidence: { schedule: null } });
+    expect(result.references[0]?.term).toBeUndefined();
+  });
+
+  it('does not infer a published year for an otherwise undated term', () => {
+    const when = 'Fall Session: September 12 - December 18.';
+    const result = bindActivityFacts(
+      [{ ...fall, when, when_evidence: when, term: { ...fall.term!, label: 'Fall Session' } }],
+      [{ url, text: `${text} ${when}` }],
+      'September to December',
+      now,
+    );
+    expect(result.references[0]).toMatchObject({ when: null, evidence: { schedule: null } });
+  });
+
+  it('supports a source using ISO dates and non-season term names', () => {
+    const when = 'Term A: 2026-09-12 to 2026-12-18';
+    const result = bindActivityFacts(
+      [{ ...fall, when, when_evidence: when, term: { ...fall.term!, label: 'Term A' } }],
+      [{ url, text: `${text} ${when}` }],
+      'September to December',
+      now,
+    );
+    expect(result.references[0]).toMatchObject({ term: { label: 'Term A' }, when });
+  });
+});
+
 describe('activity facts stay attached to their source', () => {
   it('recovers the recorded Georgetown schedules without recommending the infant-only group', () => {
     const recorded = JSON.parse(
@@ -269,7 +484,7 @@ describe('activity facts stay attached to their source', () => {
     const result = bind([{ ...raw, sessions: [{ ...raw.sessions[0]!, date: '2026-10-14' }] }]);
     expect(result.references[0]?.status).toBe('unconfirmed');
   });
-  it('does not infer current applicability from a free-form term range', () => {
+  it('keeps a named reference but withholds a term schedule without a supported period', () => {
     const result = bind([
       {
         ...raw,
@@ -280,9 +495,17 @@ describe('activity facts stay attached to their source', () => {
       },
     ]);
     expect(result.picks).toEqual([]);
-    expect(result.references[0]?.when).toBe('October 16, 2026, 10:30-11:30.');
+    expect(result.references[0]).toMatchObject({
+      name: raw.name,
+      when: null,
+      evidence: { schedule: null },
+    });
   });
   it.each([
+    ['September to December', { start: '2026-09-01', end: '2026-12-31' }],
+    ['January to April 2027', { start: '2027-01-01', end: '2027-04-30' }],
+    ['December to January', null],
+    ['September to December 0000', null],
     ['October 2026', { start: '2026-10-01', end: '2026-10-31' }],
     ['October 16 to 21, 2026', { start: '2026-10-16', end: '2026-10-21' }],
     ['2026-10-16 to 2026-10-21', { start: '2026-10-16', end: '2026-10-21' }],

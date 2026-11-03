@@ -18,6 +18,17 @@ export const activityPicksJsonSchema: Anthropic.Tool.InputSchema = {
           when: { type: 'string' },
           when_evidence: { type: 'string' },
           schedule_kind: { type: 'string', enum: ['hours', 'recurring', 'term'] },
+          term: {
+            type: 'object',
+            description:
+              'One published term per item. Its dates are class dates, never registration dates; when_evidence must quote only this term.',
+            properties: {
+              label: { type: 'string' },
+              start_date: { type: 'string' },
+              end_date: { type: 'string' },
+            },
+            required: ['label', 'start_date', 'end_date'],
+          },
           historical_evidence: { type: 'string' },
           sessions: {
             type: 'array',
@@ -69,6 +80,25 @@ export interface ActivitySession {
   timezone?: string | null;
 }
 
+export interface ActivityTerm {
+  label: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface ActivityOccurrence {
+  name: string;
+  startDate: string;
+  endDate?: string | null;
+}
+
+export interface ActivitySourcePage {
+  url: string;
+  text: string;
+  /** Fresh page metadata for this exact URL; null means conflicting/invalid metadata. */
+  occurrence?: ActivityOccurrence | null;
+}
+
 export interface ActivityFactEvidence {
   program: string;
   age: string | null;
@@ -90,6 +120,7 @@ export interface RawActivityFact {
   when?: string | null;
   when_evidence?: string | null;
   schedule_kind?: 'hours' | 'recurring' | 'term' | null;
+  term?: ActivityTerm | null;
   historical_evidence?: string | null;
   price?: string | null;
   price_evidence?: string | null;
@@ -104,6 +135,7 @@ export interface ActivityReference {
   sourceUrl: string;
   ageFit: string | null;
   when: string | null;
+  term?: ActivityTerm;
   price: string | null;
   status: 'historical' | 'unconfirmed';
   evidence: ActivityFactEvidence;
@@ -183,6 +215,18 @@ export function activityDateRange(
   const calendarNow = new Date(`${today}T12:00:00Z`);
   if (!window) return { start: today, end: '9999-12-31' };
   const value = window.trim().toLowerCase();
+  const monthRange = value.match(
+    new RegExp(`^(${months.join('|')}) to (${months.join('|')})(?: (\\d{4}))?$`),
+  );
+  if (monthRange) {
+    const year = Number(monthRange[3] ?? calendarNow.getUTCFullYear());
+    const startMonth = months.indexOf(monthRange[1] ?? '');
+    const endMonth = months.indexOf(monthRange[2] ?? '');
+    if (startMonth > endMonth) return null;
+    const start = `${year}-${String(startMonth + 1).padStart(2, '0')}-01`;
+    const end = new Date(Date.UTC(year, endMonth + 1, 0)).toISOString().slice(0, 10);
+    return validDate(start) && validDate(end) && start <= end ? { start, end } : null;
+  }
   const dates = value.match(/\b\d{4}-\d{2}-\d{2}\b/g);
   if (dates?.length && dates.every(validDate)) {
     return dates.length <= 2 && dates[0]! <= dates.at(-1)!
@@ -231,9 +275,125 @@ export function activityDateRange(
 const validTime = (time?: string | null) =>
   time == null || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time);
 
+const seasons = (text: string) => [
+  ...new Set(
+    (normalize(text).match(/\b(?:spring|summer|fall|autumn|winter)\b/g) ?? []).map((value) =>
+      value === 'autumn' ? 'fall' : value,
+    ),
+  ),
+];
+
+function dateQuoted(date: string, evidence: string): boolean {
+  // shortcut: ISO and English term dates; add localized forms with source-backed fixtures.
+  if (normalize(evidence).includes(date)) return true;
+  const [year, month, day] = date.split('-');
+  const name = months[Number(month) - 1];
+  if (!name || !new RegExp(`\\b${year}\\b`).test(evidence)) return false;
+  const names = [name, name.slice(0, 3), ...(name === 'september' ? ['sept'] : [])].join('|');
+  return new RegExp(
+    `\\b(?:${names})\\.?\\s+0?${Number(day)}(?:st|nd|rd|th)?\\b|\\b0?${Number(day)}\\s+(?:${names})\\b`,
+    'i',
+  ).test(evidence);
+}
+
+function mixedTerms(quote: string): boolean {
+  const headings =
+    normalize(quote).match(/\b(?:spring|summer|fall|autumn|winter)\s+(?:19|20)\d{2}\b/g) ?? [];
+  return new Set(headings).size > 1;
+}
+
+function publishedTerm(
+  item: RawActivityFact,
+  page: string,
+  labels: readonly string[],
+): ActivityTerm | null {
+  const term = item.term;
+  const quote = item.when_evidence;
+  if (
+    !term ||
+    !validDate(term.start_date) ||
+    !validDate(term.end_date) ||
+    term.start_date > term.end_date ||
+    !quoted(page, quote) ||
+    !quoted(quote, term.label) ||
+    !dateQuoted(term.start_date, quote) ||
+    !dateQuoted(term.end_date, quote)
+  )
+    return null;
+  if (
+    mixedTerms(quote) ||
+    labels.some((label) => normalize(label) !== normalize(term.label) && quoted(quote, label))
+  )
+    return null;
+  return term;
+}
+
+function occurrenceMatches(
+  occurrence: ActivityOccurrence | null,
+  item: RawActivityFact,
+  session: ActivitySession,
+): boolean {
+  if (!occurrence || !quoted(item.name_evidence ?? '', occurrence.name)) return false;
+  try {
+    const zone = session.timezone
+      ? new Intl.DateTimeFormat('en-CA', {
+          timeZone: session.timezone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle: 'h23',
+        })
+      : null;
+    const timestamp = (value: string) => {
+      const match = value.match(
+        /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2})(?::[0-5]\d(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/,
+      );
+      if (!match || !validDate(match[1]!) || !validTime(match[2])) return null;
+      const instant = match[3] ? Date.parse(value) : undefined;
+      if (instant !== undefined && !Number.isFinite(instant)) return null;
+      if (instant !== undefined && zone) {
+        const parts = zone.formatToParts(instant);
+        const part = (type: Intl.DateTimeFormatPartTypes) =>
+          parts.find((value) => value.type === type)!.value;
+        return {
+          date: `${part('year')}-${part('month')}-${part('day')}`,
+          time: `${part('hour')}:${part('minute')}`,
+          instant,
+        };
+      }
+      return { date: match[1]!, time: match[2], instant };
+    };
+    const start = timestamp(occurrence.startDate);
+    const end = occurrence.endDate
+      ? timestamp(occurrence.endDate)
+      : start && { date: start.date, time: undefined, instant: undefined };
+    return !!(
+      start &&
+      end &&
+      start.date <= end.date &&
+      (start.instant !== undefined && end.instant !== undefined
+        ? start.instant <= end.instant
+        : start.date !== end.date || !start.time || !end.time || start.time <= end.time) &&
+      session.date >= start.date &&
+      session.date <= end.date &&
+      dateQuoted(session.date, `${session.evidence} ${session.date.slice(0, 4)}`) &&
+      (!session.start_time ||
+        session.date !== start.date ||
+        !start.time ||
+        session.start_time === start.time) &&
+      (!session.end_time || session.date !== end.date || !end.time || session.end_time === end.time)
+    );
+  } catch {
+    // An invalid declared time zone cannot establish occurrence ownership.
+    return false;
+  }
+}
+
 export function bindActivityFacts(
   raw: readonly RawActivityFact[],
-  pages: readonly { url: string; text: string }[],
+  pages: readonly ActivitySourcePage[],
   window: string | null,
   now: Date,
   timeZone?: string | null,
@@ -248,6 +408,7 @@ export function bindActivityFacts(
   })[] = [];
   const references: ActivityReference[] = [];
   const range = activityDateRange(window, now, timeZone, knownRange);
+  const requestedSeasons = seasons(window ?? '');
   const stageBands = requestedStages?.map((stage) => {
     const index = FAMILY_STAGES.indexOf(stage);
     return {
@@ -267,6 +428,25 @@ export function bindActivityFacts(
       !item.name?.trim() ||
       !item.source_name?.trim() ||
       !quoted(page.text, item.name_evidence)
+    )
+      continue;
+    const termLabels = raw
+      .filter(
+        (other) =>
+          other.source_url === item.source_url &&
+          normalize(other.name ?? '') === normalize(item.name ?? ''),
+      )
+      .flatMap((other) => (typeof other.term?.label === 'string' ? [other.term.label] : []));
+    const term =
+      item.schedule_kind === 'term' && page.occurrence === undefined
+        ? publishedTerm(item, page.text, termLabels)
+        : null;
+    if (
+      term &&
+      ((range && (term.end_date < range.start || term.start_date > range.end)) ||
+        (requestedSeasons.length > 0 &&
+          seasons(term.label).length > 0 &&
+          !seasons(term.label).some((value) => requestedSeasons.includes(value))))
     )
       continue;
     const age =
@@ -290,7 +470,10 @@ export function bindActivityFacts(
         validDate(session.date) &&
         (statedYears.length === 0 || statedYears.includes(session.date.slice(0, 4))) &&
         validTime(session.start_time) &&
-        validTime(session.end_time)
+        validTime(session.end_time) &&
+        (!item.term ||
+          (term && session.date >= term.start_date && session.date <= term.end_date)) &&
+        (page.occurrence === undefined || occurrenceMatches(page.occurrence, item, session))
       );
     });
     const sessions = observed.filter(
@@ -298,14 +481,19 @@ export function bindActivityFacts(
         range && session.date >= today && session.date >= range.start && session.date <= range.end,
     );
     const historical =
+      (term !== null && term.end_date < conclusivelyPast) ||
       (observed.length > 0 && observed.every((session) => session.date < conclusivelyPast)) ||
       quoted(page.text, item.historical_evidence);
     // A rejected dated session must never escape through a free-form schedule fallback.
     const regular =
       !item.sessions?.length &&
+      page.occurrence === undefined &&
       item.schedule_kind &&
       quoted(page.text, item.when_evidence) &&
       item.when?.trim() &&
+      !mixedTerms(item.when_evidence) &&
+      (!item.term || term !== null) &&
+      (item.schedule_kind !== 'term' || term !== null) &&
       !historical
         ? item.when_evidence
         : null;
@@ -337,7 +525,16 @@ export function bindActivityFacts(
       (!range || range.end >= today) &&
       (sessions.length > 0 || (regular && item.schedule_kind !== 'term'))
     ) {
-      picks.push({ ...item, age_fit: age, when, price, event_date: sessions[0]?.date, evidence });
+      picks.push({
+        ...item,
+        sessions: displayedSessions,
+        term: term ?? undefined,
+        age_fit: age,
+        when,
+        price,
+        event_date: sessions[0]?.date,
+        evidence,
+      });
     } else {
       references.push({
         name: item.name,
@@ -345,6 +542,7 @@ export function bindActivityFacts(
         sourceUrl: page.url,
         ageFit: age,
         when,
+        ...(term ? { term } : {}),
         price,
         status: historical ? 'historical' : 'unconfirmed',
         evidence,

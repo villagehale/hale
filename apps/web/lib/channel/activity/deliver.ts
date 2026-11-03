@@ -289,16 +289,12 @@ export async function deliverFollowUp(
     );
     return { status: 'refused_at_send', reasons: ['asks_the_parent'] };
   }
-  // THE SECOND HALF OF THE SAME BOUNDARY (VIL-293). The gate above asks whether the wire
-  // body asks anything; this asks whether it CLAIMS anything — a booking with nothing on
-  // the calendar, a registration watch nothing is watching, a promise about Hale's own
-  // behaviour. The composer's own grounding gates cover the claim this lane is most
-  // likely to invent ("I'll keep looking" with `watch: false`, followup-note.ts); these
-  // are the three it has no opinion about.
+  // The composer checks the continuation against `watch`; still check unrelated claims.
   const unbacked = await deps.refuseUnbackedSend(database, {
     familyId: input.familyId,
     body,
     now,
+    activityFollowUp: watch,
   });
   if (unbacked.length > 0) {
     console.error(

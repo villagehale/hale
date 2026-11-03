@@ -1,0 +1,14 @@
+{
+  "capturedAt": "2026-10-30",
+  "note": "Current public pages, not the original recording. Only the event location and venue address excerpts are retained.",
+  "event": {
+    "url": "https://montreal.ca/evenements/heure-du-conte-pour-les-3-5-ans-69400",
+    "sha256": "dabbc04ff9111e8ceaa5c8a3363aa7e9f03dd550e8fddaf3a96003f57dae7b24",
+    "html": "<title>Heure du conte pour les 3 à 5 ans | Ville de Montréal</title><main>Heure du conte pour les 3 à 5 ans. Bibliothèque Marc-Favreau</main><script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Event\",\"name\":\"Heure du conte pour les 3 à 5 ans\",\"description\":\"<p>Les enfants auront la chance de découvrir des histoires amusantes, touchantes ou étonnantes!</p>\",\"image\":\"https://res.cloudinary.com/villemontreal/image/upload/w_1920,ar_16:9,c_lfill/f_auto,dpr_auto,q_auto/v1/portail/alwmabebf1vbq5iyf4of.png\",\"url\":\"https://montreal.ca/evenements/heure-du-conte-pour-les-3-5-ans-120697\",\"eventAttendanceMode\":\"OfflineEventAttendanceMode\",\"location\":{\"@type\":\"Place\",\"name\":\"Bibliothèque Marc-Favreau\",\"url\":\"https://montreal.ca/lieux/bibliotheque-marc-favreau\",\"address\":{\"@type\":\"PostalAddress\"}},\"startDate\":\"2026-11-01T10:30:00-05:00\",\"endDate\":\"2026-11-01T11:15:00-05:00\",\"eventStatus\":\"https://schema.org/EventCancelled\",\"offers\":{\"@type\":\"Offer\",\"price\":0,\"priceCurrency\":\"CAD\"}}</script>"
+  },
+  "venue": {
+    "url": "https://montreal.ca/lieux/bibliotheque-marc-favreau",
+    "sha256": "04c465bf52311eabab7f8b4f7adacb394399b86e357db4808b879923a15e4853",
+    "html": "<title>Bibliothèque Marc-Favreau | Ville de Montréal</title><main>Adresse 500, boulevard Rosemont Montréal (Québec) H2S&nbsp;0C4</main>"
+  }
+}

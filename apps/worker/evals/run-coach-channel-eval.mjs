@@ -187,7 +187,7 @@ const AUTONOMY_SWITCH_OFF_SRC = join(
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
 const MAX_DRAFTS_PER_TURN = 2;
 /** The per-fixture voice FLOOR that sits alongside the corpus mean. See the header for

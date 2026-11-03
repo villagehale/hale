@@ -105,6 +105,16 @@ all three in for does not go in the list:
   sessions. A calculated weekday describes that date only, not a weekly recurrence.
   Keep a published term range or registration date when that is all the source
   provides. "Ongoing" is not a when. **Leave it out when the page has not posted one.**
+- **One item per program AND term.** Fall and winter editions of the same named
+  course are separate items, never one combined `when`. Keep the published program
+  name; attach `term` with its printed `label` and source-backed `start_date` and
+  `end_date` in YYYY-MM-DD. These are CLASS dates, not registration dates. Prioritize
+  the term requested before the three-item limit. `when_evidence` must be a
+  contiguous quote for just that one term, retaining its label and date range;
+  include a registration date only inside the term it belongs to. Never borrow
+  winter registration for a fall item. If the source does not establish the dates
+  and years, omit `term` rather than invent them; code keeps the named program as
+  an unconfirmed reference without an unsupported term schedule.
 - **Dated occurrences use `sessions`, not `when`.** Each session has its own
   `evidence` passage identifying the program/branch and date/time, `date` in
   YYYY-MM-DD, and local `start_time`/`end_time` in HH:MM only where published.
@@ -113,6 +123,10 @@ all three in for does not go in the list:
   removes expired/out-of-window sessions from recommendations but retains their
   provenance. If a page is only an archive, include a verbatim `historical_evidence`
   passage; an old program page does not establish that the program still runs.
+  A detail page's `PAGE EVENT` identifies the occurrence owned by that exact
+  `SOURCE` URL. Upcoming/related entries belong to their own detail URLs. Return
+  separate items for separate detail URLs, only after those pages were read;
+  never pair a related entry's date with the current detail page's URL.
   Use `when` only for explicitly published undated hours, recurrence or term ranges,
   with `schedule_kind` (`hours`, `recurring`, `term`) and verbatim `when_evidence`.
   Do not copy another program's sidebar schedule into this program.

@@ -29,9 +29,13 @@ const COUNTRIES = [
   ],
 ];
 
+const normalizePlace = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '');
+
 function canadianRegion(value: string) {
+  const normalized = normalizePlace(value);
   return Object.entries(CANADIAN_REGIONS).find(
-    ([code, name]) => code === value.toUpperCase() || name.toLowerCase() === value.toLowerCase(),
+    ([code, name]) =>
+      code === normalized.toUpperCase() || name.toLowerCase() === normalized.toLowerCase(),
   );
 }
 
@@ -96,16 +100,17 @@ function startsWithPlace(text: string, value: string): boolean {
   const aliases = region ?? [value];
   return aliases.some((alias) =>
     new RegExp(
-      `^[\\s,;|]+${escapeRegex(alias)}(?=$|[^\\p{L}])`,
+      `^[\\s,;|(]+${escapeRegex(alias)}(?=$|[^\\p{L}])`,
       alias.length <= 3 ? 'u' : 'iu',
     ).test(text),
   );
 }
 
 /** A city name alone cannot establish which country its source belongs to. */
-export function activityLocationMatches(town: string | null, text: string): boolean {
+export function activityLocationMatches(town: string | null, rawText: string): boolean {
+  const text = normalizePlace(rawText);
   const parts =
-    town
+    (town ? normalizePlace(town) : null)
       ?.split(',')
       .map((part) => part.trim())
       .filter(Boolean) ?? [];
@@ -117,7 +122,7 @@ export function activityLocationMatches(town: string | null, text: string): bool
   if (region && (country === 'Canada' || parts.length === 1)) {
     // A nearby town may differ from the municipality label (e.g. Georgetown / Halton Hills).
     const address = new RegExp(
-      `\\b(?:${escapeRegex(region[1])}|${region[0]})[\\s,]+${CANADIAN_POSTAL_CODE}\\b`,
+      `\\b(?:${escapeRegex(region[1])}|${region[0]})[\\s,)]+${CANADIAN_POSTAL_CODE}\\b`,
       'u',
     );
     if (address.test(text)) return true;
@@ -133,7 +138,7 @@ export function activityLocationMatches(town: string | null, text: string): bool
     if (region && (country === 'Canada' || parts.length === 1)) {
       if (/\bUnited States(?: of America)?\b|\bUSA\b|\bUnited Kingdom\b/i.test(address)) continue;
       const fullProvince = new RegExp(
-        `^[\\s,;|]+${escapeRegex(region[1])}(?=$|[^\\p{L}])`,
+        `^[\\s,;|(]+${escapeRegex(region[1])}(?=$|[^\\p{L}])`,
         'iu',
       ).test(address);
       const canadianAddress = new RegExp(`\\bCanada\\b|\\b${CANADIAN_POSTAL_CODE}\\b`, 'i').test(

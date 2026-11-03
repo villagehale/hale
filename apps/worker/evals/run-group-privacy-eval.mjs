@@ -46,7 +46,7 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
 const MAX_STEPS = 6;
-const MAX_TOKENS = 400;
+const MAX_TOKENS = 2000;
 const NOW = new Date('2026-10-25T16:00:00.000Z');
 
 const JUDGE_SYSTEM = [
