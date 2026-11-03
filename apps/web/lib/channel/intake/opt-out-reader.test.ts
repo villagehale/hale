@@ -77,6 +77,26 @@ describe('opt-out reader guards (structural, no model)', () => {
     await readTextOnce(reader(), { text, language: null });
     expect(calls).toEqual([text]);
   });
+
+  it('two families in different regions sending the same words each get their own reading', async () => {
+    const reader: OptOutReader = {
+      read: async (input) => ({
+        intent: 'crisis_mental',
+        confirmation: `reading for ${input.region}`,
+      }),
+    };
+    const text = `same words ${Math.random()}`;
+    const canada = await readTextOnce(reader, { text, language: null, region: 'CA' });
+    const us = await readTextOnce(reader, { text, language: null, region: 'US' });
+    expect(canada?.confirmation).toBe('reading for CA');
+    expect(us?.confirmation).toBe('reading for US');
+    // Positive control: the same region still shares one read.
+    const canadaAgain = await readTextOnce(
+      { read: async () => ({ intent: 'none', confirmation: 'second read' }) },
+      { text, language: null, region: 'CA' },
+    );
+    expect(canadaAgain?.confirmation).toBe('reading for CA');
+  });
 });
 
 describe('VIL-477 leave_group reading', () => {

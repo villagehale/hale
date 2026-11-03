@@ -187,8 +187,9 @@ export function readTurnOnce(
 }
 
 /** Seams that see only the words (the friend voice, its judge) share the turn's read
- * by text for a minute, so one inbound is still one model call (#868). The first
- * read is the one whose region the crisis facts come from. */
+ * by text for a minute, so one inbound is still one model call (#868). Keyed by the
+ * region too: the reading carries that region's crisis line, so a family elsewhere
+ * sending the same words gets its own read. */
 const textReads = new Map<string, { at: number; read: Promise<OptOutReading | null> }>();
 const TEXT_READ_TTL_MS = 60_000;
 
@@ -201,7 +202,7 @@ export function readTextOnce(
   for (const [key, entry] of textReads) {
     if (now - entry.at > TEXT_READ_TTL_MS) textReads.delete(key);
   }
-  const key = input.text;
+  const key = JSON.stringify([input.region ?? null, input.text]);
   const hit = textReads.get(key);
   if (hit) return hit.read;
   const read = reader.read(input);
