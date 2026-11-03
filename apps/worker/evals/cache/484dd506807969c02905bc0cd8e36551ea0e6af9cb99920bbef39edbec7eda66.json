@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "من فضلك توقف عن مراسلتي",
+    "language": "ar",
+    "situation": "none",
+    "confirmation": "تمام، لن أراسلك مرة أخرى. إذا أردت أن أعود، اكتب لي بكلماتك."
+  },
+  "latencyMs": 2634
+}

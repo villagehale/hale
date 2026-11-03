@@ -1,6 +1,10 @@
+import { strictToolSchema } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CRISIS_SITUATIONS } from '~/lib/channel/crisis-resources';
 import {
+  OPT_OUT_READ_TOOL_SCHEMA,
   type OptOutReader,
+  TEXT_READ_MAX_ENTRIES,
   acceptOptOutReading,
   optOutUserMessage,
   readIntentOnce,
@@ -38,10 +42,16 @@ describe('opt-out reader guards (structural, no model)', () => {
     for (const intent of ['crisis_mental', 'crisis_emergency'] as const) {
       expect(
         acceptOptOutReading(
-          { intent, verbatim: 'x', language: 'fr', confirmation: 'Appelle le 988.' },
+          {
+            intent,
+            verbatim: 'x',
+            language: 'fr',
+            situation: 'unresponsive',
+            confirmation: 'Appelle le 988.',
+          },
           'x',
         ),
-      ).toEqual({ intent, confirmation: '', language: 'fr' });
+      ).toEqual({ intent, confirmation: '', language: 'fr', situation: 'unresponsive' });
     }
   });
 
@@ -90,6 +100,147 @@ describe('opt-out reader guards (structural, no model)', () => {
     expect(us.facts.region).toBe('United States');
     expect(us.facts.crisisLine).toContain('988 Suicide & Crisis Lifeline');
     expect(us.facts.crisisLine).not.toContain('9-8-8 Suicide Crisis Helpline');
+  });
+});
+
+describe('crisis situation: a closed enum, validated in code', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const crisis = (situation: string | undefined) =>
+    acceptOptOutReading(
+      {
+        intent: 'crisis_emergency',
+        verbatim: 'x',
+        language: 'en',
+        confirmation: '',
+        ...(situation === undefined ? {} : { situation }),
+      },
+      'x',
+    );
+
+  it('keeps every listed situation as read', () => {
+    for (const situation of CRISIS_SITUATIONS) {
+      expect(crisis(situation)?.situation).toBe(situation);
+    }
+  });
+
+  it('an unknown value becomes other, named in the log', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(crisis('call 555 0100 now')?.situation).toBe('other');
+    expect(crisis('none')?.situation).toBe('other');
+    expect(warn).toHaveBeenCalledWith(
+      { reason: 'situation_unknown' },
+      'opt-out reader: crisis situation not in the list - the writer gets other',
+    );
+  });
+
+  it('a missing value (a non-strict tool may skip it) becomes other, under its own name', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(crisis(undefined)?.situation).toBe('other');
+    expect(warn).toHaveBeenCalledWith(
+      { reason: 'situation_missing' },
+      'opt-out reader: crisis situation not in the list - the writer gets other',
+    );
+  });
+
+  it('a reading that is not a crisis carries no situation, whatever the model wrote', () => {
+    const r = acceptOptOutReading(
+      { intent: 'none', verbatim: 'x', language: 'en', situation: 'fire', confirmation: '' },
+      'x',
+    );
+    expect(r).toEqual({ intent: 'none', confirmation: '', language: 'en' });
+  });
+
+  it('the tool schema asks for it as a required closed enum, and still compiles to the strict grammar', () => {
+    const { properties, required } = OPT_OUT_READ_TOOL_SCHEMA;
+    expect(properties.situation).toEqual({ type: 'string', enum: [...CRISIS_SITUATIONS, 'none'] });
+    expect(required).toContain('situation');
+    const grammar = strictToolSchema(
+      OPT_OUT_READ_TOOL_SCHEMA as unknown as Parameters<typeof strictToolSchema>[0],
+    ) as { properties: Record<string, unknown>; required: string[] } | null;
+    expect(grammar).not.toBeNull();
+    expect(grammar?.properties.situation).toEqual(properties.situation);
+    expect(grammar?.required).toContain('situation');
+  });
+
+  it('the skill teaches every situation by name', async () => {
+    const { readFileSync } = await import('node:fs');
+    const skill = readFileSync(
+      new URL('../../../../../packages/agent/skills/opt-out-read.md', import.meta.url),
+      'utf8',
+    );
+    for (const situation of [...CRISIS_SITUATIONS, 'none']) {
+      expect(skill).toContain(`\`${situation}\``);
+    }
+  });
+});
+
+describe('stop/start confirmation: no number, no link (written from raw parent text)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('a confirmation with a URL is not kept; the stop still stands, and the withholding is named', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = acceptOptOutReading(
+      {
+        intent: 'stop',
+        verbatim: 'stop',
+        language: 'en',
+        confirmation: 'Done. Come back at https://example.org/start',
+      },
+      'stop',
+    );
+    expect(r).toEqual({ intent: 'stop', confirmation: '', language: 'en' });
+    expect(error).toHaveBeenCalledWith(
+      { intent: 'stop', reason: 'link' },
+      'opt-out reader: confirmation carried a number or link - not sent',
+    );
+  });
+
+  it('a start confirmation with a number is not kept; the start still stands', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = acceptOptOutReading(
+      { intent: 'start', verbatim: 'start', language: 'en', confirmation: 'Back! Call 555 0100' },
+      'start',
+    );
+    expect(r).toEqual({ intent: 'start', confirmation: '', language: 'en' });
+    expect(error).toHaveBeenCalledWith(
+      { intent: 'start', reason: 'other_number' },
+      'opt-out reader: confirmation carried a number or link - not sent',
+    );
+  });
+
+  it('positive control: a plain confirmation is kept and nothing is logged', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = acceptOptOutReading(
+      {
+        intent: 'stop',
+        verbatim: 'stop',
+        language: 'en',
+        confirmation: 'Got it, no more texts. Text START to come back.',
+      },
+      'stop',
+    );
+    expect(r?.confirmation).toBe('Got it, no more texts. Text START to come back.');
+    expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe('text-read cache is bounded', () => {
+  it('past the bound the oldest read is evicted, and the newest still answers from cache', async () => {
+    const { reader, calls } = countingReader('stop');
+    const run = Math.random();
+    for (let i = 0; i <= TEXT_READ_MAX_ENTRIES; i += 1) {
+      await readReplyOnce(reader, { text: `bound ${run} ${i}`, language: null });
+    }
+    expect(calls).toHaveLength(TEXT_READ_MAX_ENTRIES + 1);
+    await readReplyOnce(reader, { text: `bound ${run} ${TEXT_READ_MAX_ENTRIES}`, language: null });
+    expect(calls).toHaveLength(TEXT_READ_MAX_ENTRIES + 1);
+    await readReplyOnce(reader, { text: `bound ${run} 0`, language: null });
+    expect(calls).toHaveLength(TEXT_READ_MAX_ENTRIES + 2);
   });
 });
 

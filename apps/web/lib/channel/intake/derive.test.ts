@@ -58,9 +58,10 @@ describe('parseIntakePostal', () => {
   });
 
   it('reads a region only from a Canadian or US code', () => {
-    expect(crisisRegionForPlace(['M5V 2T6', null])).toBe('CA');
+    expect(crisisRegionForPlace(['T2P 1J9', null])).toBe('CA');
+    expect(crisisRegionForPlace(['V6B'])).toBe('CA');
     expect(crisisRegionForPlace([undefined, '10001'])).toBe('US');
-    expect(crisisRegionForPlace(['the Danforth', 'SW1A 1AA', null])).toBeNull();
+    expect(crisisRegionForPlace(['Maplewick Heights', 'SW1A 1AA', null])).toBeNull();
   });
 
   it('returns null for a code that is neither Canadian nor US', () => {

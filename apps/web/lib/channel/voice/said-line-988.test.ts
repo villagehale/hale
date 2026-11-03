@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CrisisKind, crisisReplyViolation } from './said-line';
+import { type CrisisKind, crisisReplyViolation, readerConfirmationViolation } from './said-line';
 
 // One acceptance check for every crisis reply (design B). Expectations are hand-written
 // from the rule: the required line is present, an emergency carries no 988, no other
@@ -53,10 +53,19 @@ describe('the required line', () => {
 
   it('a longer number that contains the digits is not the line', () => {
     expect(crisisReplyViolation('mental', 'Appelle le 9-8-8 ou le 911.', null)).toBeNull();
-    for (const text of ['Salle 4-988-12.', 'Room 49881.', 'Call 1988.']) {
+    for (const text of ['Room 49881.', 'Call 1988.']) {
       expect(crisisReplyViolation('mental', text, null)).toBe('missing_line');
     }
     expect(crisisReplyViolation('emergency', 'Ref 19112.', null)).toBe('missing_line');
+  });
+
+  it('names other_number, not missing_line, when the line is there next to another number', () => {
+    // The re-ask tells the writer why: a draft that carried 988 did not miss it.
+    expect(crisisReplyViolation('mental', 'Call or text 988, 24-8.', null)).toBe('other_number');
+    expect(crisisReplyViolation('mental', 'Salle 4-988-12.', null)).toBe('other_number');
+    expect(crisisReplyViolation('emergency', 'Call 911 555 0100', null)).toBe('other_number');
+    // Positive control: with no 988 at all, it is still missing_line.
+    expect(crisisReplyViolation('mental', 'Call 911, 24-8.', null)).toBe('missing_line');
   });
 });
 
@@ -72,7 +81,7 @@ describe('native-script digits', () => {
   });
 
   it('a Bengali run-on is a longer number, not the line', () => {
-    expect(crisisReplyViolation('mental', 'Call 988 ৫৫৫ ০১০০', null)).toBe('missing_line');
+    expect(crisisReplyViolation('mental', 'Call 988 ৫৫৫ ০১০০', null)).toBe('other_number');
     expect(crisisReplyViolation('mental', 'Call 988 now, or ৫৫৫ ০১০০', null)).toBe('other_number');
   });
 });
@@ -120,8 +129,9 @@ const EVASION_TABLE: ReadonlyArray<readonly [kind: CrisisKind, text: string, pas
   ['mental', 'Available 24/7 988', true],
   ['mental', 'Call or text 988 24 hours a day', true],
   // Round 4: writer outputs that must not go out.
-  ['mental', '741741', false],
-  ['mental', 'Text 741741 or call 988.', false],
+  // A fictional short code: US and Canadian short codes never start with 0.
+  ['mental', '012012', false],
+  ['mental', 'Text 012012 or call 988.', false],
   ['mental', 'Call or text 988, or see EXAMPLE.COM', false],
   ['mental', 'Call or text 988, or see example。com', false],
   ['mental', 'Call or text 988, or see example[.]com', false],
@@ -143,6 +153,21 @@ const EVASION_TABLE: ReadonlyArray<readonly [kind: CrisisKind, text: string, pas
   ['mental', 'Call 988, 7 days 5550100', false],
   ['mental', 'Call 988, 24 hommes', false],
   ['mental', 'Call 988, 24 hiver', false],
+  // Round 5: natural hours forms a correct reply uses.
+  ['mental', 'Call or text 988, 24-7.', true],
+  ['emergency', 'Call 911 now, 24-7.', true],
+  ['mental', 'Call or text 988, 24x7.', true],
+  ['mental', 'Call or text 988, 24 hrs a day.', true],
+  ['mental', 'Le 988 répond 24 heures par jour.', true],
+  ['mental', 'Appelle le 9-8-8, 24/24 et 7/7.', true],
+  ['mental', '請撥打988，24小時都有人接聽。', true],
+  ['mental', '請撥打 988，24 小時，每週 7 天。', true],
+  ['mental', '请拨打 988，24 小时，每周 7 天。', true],
+  ['mental', 'कृपया 988 पर कॉल करें, 24 घंटे, 7 दिन।', true],
+  ['mental', 'कृपया 988 पर कॉल करें, 24x7 उपलब्ध।', true],
+  ['mental', 'Call 988, 24-75', false],
+  ['mental', 'Call 988, 24x75', false],
+  ['mental', 'Call 988, 24 hrsx 5550100', false],
 ];
 
 describe('evasion table', () => {
@@ -197,6 +222,8 @@ describe('the reply is in the script of its language', () => {
     ['English for a Traditional Chinese reply', 'mental', 'Call or text 988.', 'zh-tw'],
     ['English for a Hindi reply', 'mental', 'Call or text 988.', 'hi'],
     ['Arabic for a French reply', 'mental', 'اتصل على ٩٨٨', 'fr'],
+    ['Latin for a Punjabi reply', 'mental', 'Call or text 988.', 'pa'],
+    ['Cyrillic for a Punjabi reply', 'mental', 'Позови 988.', 'pa'],
   ] as const)('%s is wrong_script', (_name, kind, text, language) => {
     expect(crisisReplyViolation(kind, text, language)).toBe('wrong_script');
   });
@@ -213,6 +240,12 @@ describe('the reply is in the script of its language', () => {
     ['Traditional Chinese', 'mental', '請撥打988', 'zh-tw'],
     ['Hindi', 'mental', 'कृपया ९८८ पर कॉल करें', 'hi'],
     ['French', 'mental', 'Appelle ou texte le 9-8-8.', 'fr-ca'],
+    ['Traditional Chinese for zh', 'mental', '請撥打988', 'zh'],
+    ['Simplified Chinese for zh-hant', 'mental', '请拨打988', 'zh-hant'],
+    ['Punjabi in Gurmukhi', 'mental', 'ਕਿਰਪਾ ਕਰਕੇ 988 ਤੇ ਕਾਲ ਕਰੋ', 'pa'],
+    ['Punjabi in Shahmukhi', 'mental', 'مہربانی کر کے 988 تے کال کرو', 'pa'],
+    ['Serbian in Latin', 'emergency', 'Pozovi 911 odmah.', 'sr'],
+    ['Serbian in Cyrillic', 'emergency', 'Позови 911 одмах.', 'sr'],
   ] as const)('%s in its own script passes', (_name, kind, text, language) => {
     expect(crisisReplyViolation(kind, text, language)).toBeNull();
   });
@@ -226,5 +259,34 @@ describe('the reply is in the script of its language', () => {
 
   it('a number or link violation is still named first', () => {
     expect(crisisReplyViolation('mental', 'Call 911.', 'zh')).toBe('missing_line');
+  });
+});
+
+// A stop or start confirmation is the reader's text, written while it read the parent's
+// words. It is given no number and no link, so any number or link in it is injected.
+describe('reader confirmation: no number, no link', () => {
+  it.each([
+    ['a URL', "You're off the list. Come back at https://example.org/start"],
+    ['a bare domain', "You're off the list, see example.org"],
+    ['a phone number', "You're off the list. Questions? 555 0100"],
+    ['a crisis line', 'Done, no more texts. If you need someone, text 988.'],
+    ['a spelled number', 'Okay, stopping. Call 5-5-5-0-1-0-0 any time.'],
+  ])('%s is refused', (_name, text) => {
+    expect(readerConfirmationViolation(text)).not.toBeNull();
+  });
+
+  it('names a link as link and a number as other_number', () => {
+    expect(readerConfirmationViolation('Done. See example.org')).toBe('link');
+    expect(readerConfirmationViolation('Done. Call 555 0100')).toBe('other_number');
+  });
+
+  it.each([
+    ['Got it, no more texts from Hale. Text START if you change your mind.'],
+    ["C'est noté, plus de messages. Écris START si tu changes d'avis."],
+    ['好的，不再给你发消息了。想回来就发 START。'],
+    ['حسناً، لن نراسلك بعد الآن.'],
+    ["Welcome back! Hale's here 24/7."],
+  ])('positive control: %j passes', (text) => {
+    expect(readerConfirmationViolation(text)).toBeNull();
   });
 });

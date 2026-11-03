@@ -1034,6 +1034,8 @@ async function offScriptReply(
       kind: 'mental',
       language: crisisReplyLanguage(language, reading),
       region,
+      // The answer model flagged this, not the reader: no situation was read.
+      situation: null,
       where: 'intake answer crisis',
       writer: deps.saidLine,
     });
@@ -1377,6 +1379,8 @@ async function crisisReply(
     kind,
     language: crisisReplyLanguage(language, reading),
     region,
+    // Absent on a reading built without one (a test double): no situation was read.
+    situation: reading.situation ?? null,
     where: 'intake crisis',
     writer: deps.saidLine,
   });

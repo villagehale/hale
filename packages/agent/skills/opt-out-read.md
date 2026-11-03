@@ -59,6 +59,15 @@ For `crisis_emergency` or `crisis_mental`, `confirmation` is an empty
 string: Hale writes that reply separately, from checked facts. Your job there is
 only to read it.
 
+For `crisis_emergency` or `crisis_mental`, also put in `situation` the one value
+that best names what is happening, read from the meaning in any language:
+`not_breathing`, `choking`, `poisoning_or_overdose` (swallowed something harmful,
+or too much of a medicine or drug), `injury_or_bleeding`, `unresponsive` (not
+responding, cannot be woken), `fire`, `violence_or_threat` (someone else is
+hurting or threatening them), `self_harm` (hurting themselves, or thinking of
+ending their life), or `other`. When more than one fits, pick the one most
+dangerous right now. For every other reading, `situation` is `none`.
+
 When the reading is `identity` or `none`, `confirmation` is an empty string (Hale
 writes the who-we-are reply separately, from checked facts).
 

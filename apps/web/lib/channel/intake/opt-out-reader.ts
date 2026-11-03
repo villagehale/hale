@@ -1,13 +1,19 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { type CrisisRegion, crisisFactsForRegion } from '~/lib/channel/crisis-resources';
+import {
+  CRISIS_SITUATIONS,
+  type CrisisRegion,
+  type CrisisSituation,
+  crisisFactsForRegion,
+} from '~/lib/channel/crisis-resources';
 import {
   type ReplyLanguage,
   acceptReplyLanguage,
   certainLanguageHint,
 } from '~/lib/channel/language';
 import { linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
+import { readerConfirmationViolation } from '~/lib/channel/voice/said-line';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -60,6 +66,8 @@ export interface OptOutReading extends OptOutIntentReading {
   confirmation: string;
   /** The language the text is written in, as the reader read it. Absent or null: it named none. */
   language?: ReplyLanguage | null;
+  /** What the reader read happening, on a crisis reading only. Absent: not a crisis. */
+  situation?: CrisisSituation;
 }
 
 export interface OptOutReadInput {
@@ -77,10 +85,15 @@ export interface OptOutReader {
   read(input: OptOutReadInput): Promise<OptOutReading | null>;
 }
 
+const SITUATIONS = [...CRISIS_SITUATIONS, 'none'] as const;
+
+// `situation` is a plain optional string here, not an enum: an unknown or missing value
+// must not fail the read (that would drop a stop or a crisis), so code validates it.
 const outputSchema = z.object({
   intent: z.enum(INTENTS),
   verbatim: z.string(),
   language: z.string(),
+  situation: z.string().optional(),
   confirmation: z.string(),
 });
 
@@ -90,9 +103,10 @@ const outputJsonSchema = {
     intent: { type: 'string', enum: [...INTENTS] },
     verbatim: { type: 'string' },
     language: { type: 'string' },
+    situation: { type: 'string', enum: [...SITUATIONS] },
     confirmation: { type: 'string' },
   },
-  required: ['intent', 'verbatim', 'language', 'confirmation'],
+  required: ['intent', 'verbatim', 'language', 'situation', 'confirmation'],
 } as const;
 
 /** The user-turn payload. Shared with the evals, which replay this request shape. */
@@ -108,6 +122,32 @@ export function optOutUserMessage(input: OptOutReadInput): string {
   });
 }
 
+function crisisSituation(value: string | undefined): CrisisSituation {
+  const listed = CRISIS_SITUATIONS.find((situation) => situation === value);
+  if (listed) return listed;
+  console.warn(
+    { reason: value === undefined ? 'situation_missing' : 'situation_unknown' },
+    'opt-out reader: crisis situation not in the list - the writer gets other',
+  );
+  return 'other';
+}
+
+/**
+ * The reader wrote the confirmation while reading the parent's raw words, and it is
+ * given no number and no link, so one in it came from those words. Not sent; the stop
+ * or start itself still runs.
+ */
+function acceptConfirmation(intent: 'stop' | 'start', text: string): string {
+  const confirmation = text.trim();
+  const violation = readerConfirmationViolation(confirmation);
+  if (violation === null) return confirmation;
+  console.error(
+    { intent, reason: violation },
+    'opt-out reader: confirmation carried a number or link - not sent',
+  );
+  return '';
+}
+
 /** Structural checks only: echo must match. Only a stop or a start keeps the reader's
  * text; a crisis reading keeps its routing and drops the text, which is never sent. */
 export function acceptOptOutReading(
@@ -115,7 +155,6 @@ export function acceptOptOutReading(
   text: string,
 ): OptOutReading | null {
   if (value.verbatim !== text) return null;
-  const confirmation = value.confirmation.trim();
   const language = acceptReplyLanguage(value.language);
   // VIL-477: "Hale, leave this group" is its own reading only while Hale can leave
   // (LINQ_GROUP_LEAVE_ENABLED). Dark, it stays the stop it always was, so the dark
@@ -123,10 +162,22 @@ export function acceptOptOutReading(
   if (value.intent === 'leave_group') {
     return linqGroupLeaveEnabled()
       ? { intent: 'leave_group', confirmation: '', language }
-      : { intent: 'stop', confirmation, language };
+      : { intent: 'stop', confirmation: acceptConfirmation('stop', value.confirmation), language };
   }
   if (value.intent === 'stop' || value.intent === 'start') {
-    return { intent: value.intent, confirmation, language };
+    return {
+      intent: value.intent,
+      confirmation: acceptConfirmation(value.intent, value.confirmation),
+      language,
+    };
+  }
+  if (value.intent === 'crisis_emergency' || value.intent === 'crisis_mental') {
+    return {
+      intent: value.intent,
+      confirmation: '',
+      language,
+      situation: crisisSituation(value.situation),
+    };
   }
   return { intent: value.intent, confirmation: '', language };
 }
@@ -206,6 +257,8 @@ const textReads = new Map<
   { at: number; text: string; read: Promise<OptOutReading | null> }
 >();
 const TEXT_READ_TTL_MS = 60_000;
+/** A memory bound, not a send rule: past it the oldest read is dropped and read again if asked. */
+export const TEXT_READ_MAX_ENTRIES = 500;
 
 function liveTextReads(): typeof textReads {
   const now = Date.now();
@@ -213,6 +266,18 @@ function liveTextReads(): typeof textReads {
     if (now - entry.at > TEXT_READ_TTL_MS) textReads.delete(key);
   }
   return textReads;
+}
+
+function rememberTextRead(
+  key: string,
+  entry: { at: number; text: string; read: Promise<OptOutReading | null> },
+): void {
+  // A Map iterates in insertion order, so the first key is the oldest read.
+  while (textReads.size >= TEXT_READ_MAX_ENTRIES) {
+    const oldest = textReads.keys().next().value as string;
+    textReads.delete(oldest);
+  }
+  textReads.set(key, entry);
 }
 
 /**
@@ -233,7 +298,7 @@ export function readReplyOnce(
   const hit = liveTextReads().get(key);
   if (hit) return hit.read;
   const read = reader.read(input);
-  textReads.set(key, { at: Date.now(), text: input.text, read });
+  rememberTextRead(key, { at: Date.now(), text: input.text, read });
   // A failed read is not remembered: the next ask reads again.
   void read.then((reading) => {
     if (reading === null && textReads.get(key)?.read === read) textReads.delete(key);

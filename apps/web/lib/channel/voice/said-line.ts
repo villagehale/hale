@@ -4,7 +4,11 @@ import { z } from 'zod';
 import { CHANNEL_SIGNIN_TTL_MS } from '~/lib/auth/channel-signin';
 import { connectorNoun } from '~/lib/channel/connect/copy';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
-import { type CrisisRegion, crisisFactsForRegion } from '~/lib/channel/crisis-resources';
+import {
+  type CrisisRegion,
+  type CrisisSituation,
+  crisisFactsForRegion,
+} from '~/lib/channel/crisis-resources';
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
@@ -301,19 +305,33 @@ const CRISIS_HOURS_FORMS = [
   '24h sur 24',
   '24 h/24',
   '24h/24',
+  '24 heures',
   '7 jours sur 7',
   '7 j/7',
   '7j/7',
+  '24/24',
+  '7/7',
   '24/7',
+  '24-7',
+  '24x7',
+  '24×7',
+  '24 hrs',
+  '24hrs',
   '24 horas',
   '24 h',
   '24h',
   '24小时',
+  '24 小时',
+  '24小時',
+  '24 小時',
   '24 ساعة',
+  '24 घंटे',
   '7 days',
   '7 días',
   '7天',
+  '7 天',
   '7 أيام',
+  '7 दिन',
 ].sort((a, b) => b.length - a.length);
 
 // A form ending in a letter ends at a word boundary ('24 h' is not '24 hommes'). Han
@@ -413,6 +431,29 @@ const WRITING_SYSTEM_SCRIPTS: Readonly<Record<string, readonly string[]>> = {
   Kore: ['Hangul', 'Han'],
 };
 
+// Languages with more than one standard script (CLDR). Intl's likely script names only
+// one of them, so a correct reply in the other (Shahmukhi Punjabi, Latin Serbian) would
+// read as the wrong script.
+const LANGUAGE_SCRIPTS: Readonly<Record<string, readonly string[]>> = {
+  az: ['Latn', 'Cyrl', 'Arab'],
+  bs: ['Latn', 'Cyrl'],
+  ff: ['Latn', 'Adlm'],
+  ha: ['Latn', 'Arab'],
+  kk: ['Cyrl', 'Latn', 'Arab'],
+  ks: ['Arab', 'Deva'],
+  ku: ['Latn', 'Arab'],
+  ky: ['Cyrl', 'Latn'],
+  mn: ['Cyrl', 'Mong'],
+  ms: ['Latn', 'Arab'],
+  pa: ['Guru', 'Arab'],
+  sd: ['Arab', 'Deva'],
+  sr: ['Cyrl', 'Latn'],
+  tg: ['Cyrl', 'Arab'],
+  tk: ['Latn', 'Cyrl'],
+  ug: ['Arab', 'Cyrl', 'Latn'],
+  uz: ['Latn', 'Cyrl', 'Arab'],
+};
+
 /** The tag as an Intl locale, or null when it is not one Intl can read. */
 function replyLocale(language: ReplyLanguage | null): Intl.Locale | null {
   if (!language) return null;
@@ -424,11 +465,12 @@ function replyLocale(language: ReplyLanguage | null): Intl.Locale | null {
   }
 }
 
-/** A letter of the reply language's script, or null when the tag names no known script. */
+/** A letter of a script standard for the reply language, or null when the tag names no known script. */
 function replyScriptLetter(language: ReplyLanguage | null): RegExp | null {
-  const script = replyLocale(language)?.maximize().script;
-  if (!script) return null;
-  const scripts = WRITING_SYSTEM_SCRIPTS[script] ?? [script];
+  const locale = replyLocale(language)?.maximize();
+  if (!locale?.script) return null;
+  const tags = new Set([locale.script, ...(LANGUAGE_SCRIPTS[locale.language] ?? [])]);
+  const scripts = [...tags].flatMap((tag) => WRITING_SYSTEM_SCRIPTS[tag] ?? [tag]);
   try {
     return new RegExp(`[${scripts.map((name) => `\\p{Script=${name}}`).join('')}]`, 'u');
   } catch (err) {
@@ -458,13 +500,11 @@ export function crisisReplyViolation(
 ): CrisisViolation | null {
   const tokens = crisisNumberTokens(text);
   const [required] = crisisMustInclude(kind);
-  const lineToken = tokens.some(
-    (token) =>
-      tokenIsCrisisLinesOnly(token) &&
-      token.some((group) => !group.hours && group.digits === required),
-  );
-  if (!lineToken) return 'missing_line';
   const numbers = tokens.flat().filter((group) => !group.hours);
+  // The line counts only in a token of crisis lines and hours (checked below), so a
+  // longer number holding its digits is refused; that refusal is other_number, since
+  // the line itself is there.
+  if (!numbers.some((group) => group.digits === required)) return 'missing_line';
   if (kind === 'emergency' && numbers.some((group) => group.digits === '988')) {
     return 'emergency_988';
   }
@@ -475,8 +515,22 @@ export function crisisReplyViolation(
   return null;
 }
 
+/**
+ * A stop or start confirmation the reader wrote: it is handed no number and no link, so
+ * any number (hours forms aside) or link in it is refused. Null: it may be sent.
+ */
+export function readerConfirmationViolation(text: string): 'other_number' | 'link' | null {
+  const numbers = crisisNumberTokens(text)
+    .flat()
+    .filter((group) => !group.hours);
+  if (numbers.length > 0) return 'other_number';
+  if (crisisTextHasLink(text)) return 'link';
+  return null;
+}
+
 /** Why the last draft was not sent, handed back to the writer as a fact on its one re-ask. */
-export const CRISIS_VIOLATION_FACT: Readonly<Record<CrisisViolation, string>> = {
+export const CRISIS_VIOLATION_FACT: Readonly<Record<CrisisViolation | 'write_failed', string>> = {
+  write_failed: 'the last draft could not be used, so it was not sent',
   missing_line: 'the last draft did not carry the line in facts, so it was not sent',
   emergency_988: 'the last draft carried 988, and an emergency reply carries 911 only',
   other_number: 'the last draft carried a number that is not in facts, so it was not sent',
@@ -485,11 +539,24 @@ export const CRISIS_VIOLATION_FACT: Readonly<Record<CrisisViolation, string>> = 
 };
 
 /**
- * What the reader read on an emergency, as a fact. The writer no longer sees the
- * parent's words, so it would otherwise word the emergency as an "if". No digits.
+ * What the reader read happening on an emergency, as a fact. The writer never sees the
+ * parent's words, so without it the reply is a generic "call 911". One fixed fact per
+ * closed situation: no digits, no link, nothing from the parent's text.
  */
-export const EMERGENCY_SITUATION_FACT =
-  'they just told Hale someone is hurt or in danger right now';
+export const EMERGENCY_SITUATION_FACTS: Readonly<Record<CrisisSituation, string>> = {
+  not_breathing:
+    'they just told Hale someone is not breathing or is struggling to breathe, right now',
+  choking: 'they just told Hale someone is choking right now',
+  poisoning_or_overdose:
+    'they just told Hale someone may have swallowed something harmful or taken too much of a medicine or drug, right now',
+  injury_or_bleeding: 'they just told Hale someone is injured or bleeding right now',
+  unresponsive: 'they just told Hale someone is not responding or cannot be woken, right now',
+  fire: 'they just told Hale there is a fire right now',
+  violence_or_threat:
+    'they just told Hale someone is being hurt or threatened by another person right now',
+  self_harm: 'they just told Hale someone has hurt themselves and may be in danger right now',
+  other: 'they just told Hale someone is hurt or in danger right now',
+};
 
 /**
  * The reply language's name in its own language ('العربية' for ar). With only the tag,
@@ -514,7 +581,8 @@ export function crisisLineInput(
   kind: CrisisKind,
   region: CrisisRegion | null,
   language: ReplyLanguage | null,
-  rejected?: CrisisViolation,
+  situation: CrisisSituation | null,
+  rejected?: CrisisViolation | 'write_failed',
 ): SaidLineInput {
   const languageName = replyLanguageName(language);
   return {
@@ -522,7 +590,11 @@ export function crisisLineInput(
     language,
     facts: {
       ...crisisFactsForRegion(region, kind),
-      ...(kind === 'emergency' ? { situation: EMERGENCY_SITUATION_FACT } : {}),
+      // A mental-health reply's facts are its lines; what happened changes only what an
+      // emergency reply says first. No situation read is the generic emergency.
+      ...(kind === 'emergency'
+        ? { situation: EMERGENCY_SITUATION_FACTS[situation ?? 'other'] }
+        : {}),
       ...(languageName ? { replyLanguage: languageName } : {}),
       ...(rejected ? { previousTextNotSent: CRISIS_VIOLATION_FACT[rejected] } : {}),
     },
@@ -543,32 +615,49 @@ export type CrisisReplyOutcome =
 
 /**
  * Every crisis reply: the said-line writer, from facts only, through
- * {@link crisisReplyViolation}. A failed check is re-asked once with the violation
- * named as a fact. A second failure, a failed write, or no writer pages #ops and
- * sends nothing (#868: there is no fixed crisis line).
+ * {@link crisisReplyViolation}. A failed check, or a write that returned nothing (the
+ * said-line structural check refused it, or the call failed), is re-asked once with the
+ * reason named as a fact. A second failure, or no writer, pages #ops and sends nothing
+ * (#868: there is no fixed crisis line).
  */
 export async function deliverCrisisReply(input: {
   kind: CrisisKind;
   language: ReplyLanguage | null;
   region: CrisisRegion | null;
+  /** What the reader read happening; null when no crisis reading named one. */
+  situation: CrisisSituation | null;
   where: string;
   writer: SaidLineWriter | null | undefined;
 }): Promise<CrisisReplyOutcome> {
-  const { kind, region, language, where, writer } = input;
-  const unanswered = (reason: 'no_writer' | 'write_failed' | CrisisViolation) => {
-    logCrisisUnanswered(kind, where, reason);
-    return { status: 'unanswered', reason } as const;
-  };
-  if (!writer) return unanswered('no_writer');
-  const first = await writer.write(crisisLineInput(kind, region, language));
-  if (!first) return unanswered('write_failed');
-  const firstViolation = crisisReplyViolation(kind, first, language);
-  if (firstViolation === null) return { status: 'sent', body: first, attempts: 1 };
-  const second = await writer.write(crisisLineInput(kind, region, language, firstViolation));
-  if (!second) return unanswered('write_failed');
-  const secondViolation = crisisReplyViolation(kind, second, language);
-  if (secondViolation === null) return { status: 'sent', body: second, attempts: 2 };
-  return unanswered(secondViolation);
+  const { kind, region, language, situation, where, writer } = input;
+  if (!writer) {
+    logCrisisUnanswered(kind, where, 'no_writer');
+    return { status: 'unanswered', reason: 'no_writer' };
+  }
+  const first = checkCrisisDraft(
+    kind,
+    await writer.write(crisisLineInput(kind, region, language, situation)),
+    language,
+  );
+  if ('body' in first) return { status: 'sent', body: first.body, attempts: 1 };
+  const second = checkCrisisDraft(
+    kind,
+    await writer.write(crisisLineInput(kind, region, language, situation, first.reason)),
+    language,
+  );
+  if ('body' in second) return { status: 'sent', body: second.body, attempts: 2 };
+  logCrisisUnanswered(kind, where, second.reason);
+  return { status: 'unanswered', reason: second.reason };
+}
+
+function checkCrisisDraft(
+  kind: CrisisKind,
+  draft: string | null,
+  language: ReplyLanguage | null,
+): { body: string } | { reason: CrisisViolation | 'write_failed' } {
+  if (draft === null) return { reason: 'write_failed' };
+  const reason = crisisReplyViolation(kind, draft, language);
+  return reason === null ? { body: draft } : { reason };
 }
 
 /**

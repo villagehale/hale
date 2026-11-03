@@ -92,3 +92,22 @@ export function crisisFactsForRegion(
   if (region === 'US') return US_MENTAL;
   return UNKNOWN_MENTAL;
 }
+
+/**
+ * What the reader read happening in a crisis, as a closed list. The writer gets it as
+ * a fact instead of the parent's words: a value from this list can carry no number,
+ * link or instruction.
+ */
+export const CRISIS_SITUATIONS = [
+  'not_breathing',
+  'choking',
+  'poisoning_or_overdose',
+  'injury_or_bleeding',
+  'unresponsive',
+  'fire',
+  'violence_or_threat',
+  'self_harm',
+  'other',
+] as const;
+
+export type CrisisSituation = (typeof CRISIS_SITUATIONS)[number];

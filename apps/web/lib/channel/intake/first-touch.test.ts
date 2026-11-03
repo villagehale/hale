@@ -4,7 +4,7 @@ import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import {
-  EMERGENCY_SITUATION_FACT,
+  EMERGENCY_SITUATION_FACTS,
   type SaidLineInput,
   type SaidLineWriter,
 } from '~/lib/channel/voice/said-line';
@@ -749,21 +749,27 @@ describe('friend voice onboarding', () => {
   it('routes a crisis through the model reader; the writer answers from facts before any ask', async () => {
     // Design B: the reader only classifies. Its own draft is never sent; the said-line
     // writer writes from facts alone, in the language the reader read.
-    const crisisReader = (intent: 'crisis_emergency' | 'crisis_mental', language: string) => ({
+    const crisisReader = (
+      intent: 'crisis_emergency' | 'crisis_mental',
+      language: string,
+      situation?: 'not_breathing',
+    ) => ({
       read: async () => ({
         intent,
         confirmation: 'Reader draft with room 5550100 (test fixture).',
         language,
+        ...(situation ? { situation } : {}),
       }),
     });
     const calls: SaidLineInput[] = [];
     const { fake, transport, deps } = harness({ voice: true });
-    deps.optOutReader = crisisReader('crisis_emergency', 'en');
+    deps.optOutReader = crisisReader('crisis_emergency', 'en', 'not_breathing');
     deps.saidLine = scriptedSaidLine(calls);
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
+    // The situation the reader read reaches the writer as its closed fact.
     expect(transport.bodies()).toEqual([
-      `[crisis_emergency/en]\nemergency=911\nsituation=${EMERGENCY_SITUATION_FACT}\nreplyLanguage=English`,
+      `[crisis_emergency/en]\nemergency=911\nsituation=${EMERGENCY_SITUATION_FACTS.not_breathing}\nreplyLanguage=English`,
     ]);
     expect(calls.map((c) => c.purpose)).toEqual(['crisis_emergency']);
     expect(calls[0]).not.toHaveProperty('parentWords');
