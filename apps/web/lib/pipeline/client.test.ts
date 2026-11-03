@@ -1,6 +1,16 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { beforeAll, describe, expect, it } from 'vitest';
-import { HOT_SMS_CLIENT_OPTIONS, pipelineClient } from './client';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  CRON_SWEEP_CLIENT_OPTIONS,
+  HOT_SMS_CLIENT_OPTIONS,
+  budgetedAiGateway,
+  pipelineClient,
+} from './client';
+import {
+  type NonGoogleClearance,
+  ProviderClearanceError,
+  clearForNonAnthropic,
+} from './provider-clearance';
 
 /**
  * The SMS hot-path budget, read off the constructed client rather than off the constant,
@@ -32,5 +42,47 @@ describe('the anthropic client budgets', () => {
 
   it('hands back the same cached instance', () => {
     expect(pipelineClient()).toBe(pipelineClient());
+  });
+});
+
+/**
+ * VIL-556: the gateway client is a non-Anthropic transport, so it is built only for a
+ * minted NonGoogleClearance. No request is made here: `.messages.create` is never called,
+ * and the global fetch is replaced so a regression cannot reach the network.
+ */
+describe('budgetedAiGateway requires a clearance', () => {
+  let globalHosts: string[];
+  beforeEach(() => {
+    globalHosts = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        globalHosts.push(new URL(String(url)).host);
+        return Response.json({});
+      }),
+    );
+    vi.stubEnv('AI_GATEWAY_API_KEY', 'test-key-no-network');
+    vi.stubEnv('VERCEL_KEY', '');
+    vi.stubEnv('JEV_KEY', '');
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('refuses to build a client for a forged clearance', () => {
+    const forged = { basis: 'family_without_google' } as unknown as NonGoogleClearance;
+    expect(() => budgetedAiGateway(CRON_SWEEP_CLIENT_OPTIONS, forged)).toThrow(
+      ProviderClearanceError,
+    );
+    expect(globalHosts).toEqual([]);
+  });
+
+  it('positive control: a minted clearance builds a client and sends nothing', async () => {
+    const decision = await clearForNonAnthropic({ kind: 'parent_text' }, 'client test');
+    if (!('cleared' in decision)) throw new Error('expected a clearance for parent text');
+    const gateway = budgetedAiGateway(CRON_SWEEP_CLIENT_OPTIONS, decision.cleared) as Anthropic;
+    expect(gateway.timeout).toBe(CRON_SWEEP_CLIENT_OPTIONS.timeout);
+    expect(globalHosts).toEqual([]);
   });
 });

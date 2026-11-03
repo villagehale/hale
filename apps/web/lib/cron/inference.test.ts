@@ -1,4 +1,4 @@
-import { type AgentClient, DEEPSEEK_MODEL, SONNET_MODEL } from '@hale/agent';
+import { type AgentClient, SONNET_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultInferenceDeps, runInferenceForFamily } from './inference';
@@ -127,7 +127,13 @@ describe('runInferenceForFamily', () => {
       expect(deps.modelMode).toBe('current');
       const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0, agentRuns: [] };
       const client = fakeClient(0.9);
-      await runInferenceForFamily(FAMILY_ID, fakeDb(capture), { ...deps, client }, NOW);
+      const result = await runInferenceForFamily(
+        FAMILY_ID,
+        fakeDb(capture),
+        { ...deps, client },
+        NOW,
+      );
+      expect(result.candidateRefusal).toBeNull();
       expect(client.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({ model: SONNET_MODEL }),
       );
@@ -214,22 +220,5 @@ describe('runInferenceForFamily', () => {
     expect(capture.factSupersedes).toBe(0);
     // The tool call itself still ran through the guard, so it is audited.
     expect(capture.auditLog).toHaveLength(1);
-  });
-
-  it('uses DeepSeek only when candidate mode is explicit', async () => {
-    const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0, agentRuns: [] };
-    const client = fakeClient(0.9);
-
-    await runInferenceForFamily(
-      FAMILY_ID,
-      fakeDb(capture),
-      { client, modelMode: 'candidate' },
-      NOW,
-    );
-
-    expect(client.messages.create).toHaveBeenCalledWith(
-      expect.objectContaining({ model: DEEPSEEK_MODEL, thinking: { type: 'disabled' } }),
-    );
-    expect(capture.agentRuns[0]?.modelUsed).toBe(DEEPSEEK_MODEL);
   });
 });
