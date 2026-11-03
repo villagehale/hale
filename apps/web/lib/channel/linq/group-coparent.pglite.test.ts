@@ -1057,6 +1057,43 @@ describe('a co-parent seat whose grant ends between the read and the seat', () =
     expect(wire.groupTexts()).toEqual([]);
   });
 
+  it("seats nobody when the open grant's inviter stops being a parent in between", async () => {
+    const { parentUserId, inviteId } = await grantedInClaimedGroup();
+    const leaving = interleaved(async () => {
+      await db.database
+        .delete(schema.familyMembers)
+        .where(eq(schema.familyMembers.userId, parentUserId));
+    });
+    const wire = linqFetch();
+
+    const effect = await considerGroupCoparent(
+      leaving,
+      inbound({ messageId: 'm-race', senderHandle: COPARENT_PHONE, text: 'hi there' }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+
+    expect(effect).toEqual({ type: 'none' });
+    expect(await db.database.select().from(schema.familyMembers)).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(COPARENT_PHONE))),
+    ).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, 'sms_coparent_invite_reply')),
+    ).toEqual([]);
+    const [invite] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(invite?.state).toBe('awaiting_caregiver_reply');
+    expect(wire.groupTexts()).toEqual([]);
+  });
+
   it('seats through the same interleaving when nothing changes the grant', async () => {
     await grantedInClaimedGroup();
     const wire = linqFetch();

@@ -513,10 +513,13 @@ describe('seatConfirmedMember without a parent grant', () => {
     expect(seated).toMatchObject({ outcome: 'seated', role: 'co_parent', groupRole: 'co_parent' });
     if (seated.outcome !== 'seated') throw new Error('not seated');
     const [membership] = await db.database
-      .select({ role: schema.familyMembers.role })
+      .select({
+        role: schema.familyMembers.role,
+        invitedByUserId: schema.familyMembers.invitedByUserId,
+      })
       .from(schema.familyMembers)
       .where(eq(schema.familyMembers.userId, seated.userId));
-    expect(membership?.role).toBe('co_parent');
+    expect(membership).toEqual({ role: 'co_parent', invitedByUserId: parentUserId });
     const channels = await db.database
       .select({ verifiedAt: schema.parentChannels.verifiedAt })
       .from(schema.parentChannels)
@@ -755,7 +758,7 @@ describe('seatConfirmedMember when the grant ends between the read and the seat'
       now: NOW,
     });
     await askedRoster([PARENT, GUEST]);
-    return { familyId, inviteId };
+    return { familyId, parentUserId, inviteId };
   }
 
   it('rolls the seat back and names grant_changed_during_seat when the invite closes in between', async () => {
@@ -806,6 +809,106 @@ describe('seatConfirmedMember when the grant ends between the read and the seat'
       .from(schema.caregiverInvites)
       .where(eq(schema.caregiverInvites.id, inviteId));
     expect(invite?.state).toBe('declined');
+  });
+
+  it("rolls the seat back when the open grant's inviter stops being a parent in between", async () => {
+    const { familyId, parentUserId, inviteId } = await grantedGuest();
+    const leaving = interleaved(async () => {
+      await db.database
+        .delete(schema.familyMembers)
+        .where(eq(schema.familyMembers.userId, parentUserId));
+    });
+
+    const result = await seatConfirmedMember(leaving, {
+      rosterMemberId: (await memberFor(GUEST)).id,
+      reading: { role: 'parent', parentRole: 'mother' },
+      verbatimReply: "I'm Mila's mom",
+      now: NOW,
+    });
+
+    expect(result).toEqual({ outcome: 'grant_changed_during_seat' });
+    expect(
+      await db.database
+        .select()
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId)),
+    ).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(GUEST))),
+    ).toEqual([]);
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+    const [invite] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(invite?.state).toBe('awaiting_caregiver_reply');
+  });
+
+  /** A grandparent who accepted 1:1 and still holds the role: an accepted (not open) grant. */
+  async function acceptedGran() {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    const invite = await loadOpenInviteByPhone(db.database, GRAN, NOW);
+    if (!invite || invite.role === 'co_parent') throw new Error('no open caregiver invite');
+    await acceptInvite(db.database, { invite, verbatimReply: 'yes', now: NOW });
+    await askedRoster([PARENT, GRAN]);
+    const [gran] = await db.database
+      .select({ userId: schema.familyMembers.userId })
+      .from(schema.familyMembers)
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, familyId),
+          eq(schema.familyMembers.role, 'grandparent'),
+        ),
+      );
+    if (!gran) throw new Error('accept left no grandparent member');
+    return { familyId, granUserId: gran.userId };
+  }
+
+  async function claimGran(database: TestDb['database']) {
+    return seatConfirmedMember(database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: NOW,
+    });
+  }
+
+  it("rolls the seat back when the accepted grant's member leaves in between, and does not re-add them", async () => {
+    const { granUserId } = await acceptedGran();
+    const departing = interleaved(async () => {
+      await db.database
+        .delete(schema.familyMembers)
+        .where(eq(schema.familyMembers.userId, granUserId));
+    });
+
+    expect(await claimGran(departing)).toEqual({ outcome: 'grant_changed_during_seat' });
+    expect(
+      await db.database
+        .select()
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.userId, granUserId)),
+    ).toEqual([]);
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+  });
+
+  it('seats the same accepted grant through the interleaving when its member stays', async () => {
+    const { granUserId } = await acceptedGran();
+
+    expect(await claimGran(interleaved(async () => {}))).toMatchObject({
+      outcome: 'seated',
+      role: 'grandparent',
+      userId: granUserId,
+    });
   });
 
   it('seats through the same interleaving when nothing changes the grant', async () => {

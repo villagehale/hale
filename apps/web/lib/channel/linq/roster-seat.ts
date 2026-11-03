@@ -294,7 +294,12 @@ export async function seatConfirmedMember(
 
     await tx
       .insert(schema.familyMembers)
-      .values({ familyId: member.familyId, userId: seatedUserId, role })
+      .values({
+        familyId: member.familyId,
+        userId: seatedUserId,
+        role,
+        invitedByUserId: held.grantedByUserId,
+      })
       .onConflictDoUpdate({
         target: [schema.familyMembers.familyId, schema.familyMembers.userId],
         set: { role },
