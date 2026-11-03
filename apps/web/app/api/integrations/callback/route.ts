@@ -206,9 +206,13 @@ export async function GET(req: NextRequest) {
       // A required box left unticked, with nothing broader than we asked, is
       // partial: nothing is stored, and a text connect still gets a fresh link.
       // A scope outside the allowed set stays denied.
-      const missingRequired = expected.some((sc) => !scopes.includes(sc));
-      const broader = scopes.some((sc) => !allowed.has(sc));
-      const grantStatus = missingRequired && !broader ? 'partial' : 'denied';
+      const missing = expected.filter((sc) => !scopes.includes(sc));
+      const unexpected = scopes.filter((sc) => !allowed.has(sc));
+      const grantStatus = missing.length > 0 && unexpected.length === 0 ? 'partial' : 'denied';
+      console.info(
+        { familyId: bound.familyId, provider: bound.provider, grantStatus, unexpected, missing },
+        'connector grant: refused - nothing stored',
+      );
       if (surface === 'text' && textProvider) {
         return textFailure(grantStatus, textProvider, {
           familyId: bound.familyId,

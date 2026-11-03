@@ -76,6 +76,8 @@ function location(res: Response): string {
   return res.headers.get('location') ?? '';
 }
 
+const REFUSED_GRANT_LOG = 'connector grant: refused - nothing stored';
+
 describe('GET /api/integrations/callback — consent-fixation binding (rule #1)', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -363,6 +365,32 @@ describe('GET /api/integrations/callback — the text surface', () => {
     expect(saveConnectionMock).not.toHaveBeenCalled();
   });
 
+  it('logs a refused text grant once, by name, with the scopes outside the ask', async () => {
+    const info = vi.spyOn(console, 'info');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.send',
+    });
+
+    await callCallback(await textState('gcal'));
+
+    const refused = info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG);
+    expect(refused).toEqual([
+      [
+        {
+          familyId: FAMILY,
+          provider: 'gcal',
+          grantStatus: 'denied',
+          unexpected: ['https://www.googleapis.com/auth/gmail.send'],
+          missing: [],
+        },
+        REFUSED_GRANT_LOG,
+      ],
+    ]);
+    info.mockRestore();
+  });
+
   it('binds the completer to the minter exactly as the web leg does', async () => {
     resolveUserIdMock.mockResolvedValue(ATTACKER);
 
@@ -474,6 +502,77 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     const res = await callCallback(await minterState());
     expect(location(res)).toContain('connect=partial');
     expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('WEB: logs a grant broader than asked, by name, with the extra scope and no secret', async () => {
+    const info = vi.spyOn(console, 'info');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.web-secret',
+      scope:
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.readonly',
+    });
+
+    const res = await callCallback(await minterState('gcal'), 'code-secret');
+
+    expect(location(res)).toContain('connect=denied');
+    const refused = info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG);
+    expect(refused).toEqual([
+      [
+        {
+          familyId: FAMILY,
+          provider: 'gcal',
+          grantStatus: 'denied',
+          unexpected: ['https://www.googleapis.com/auth/gmail.readonly'],
+          missing: [],
+        },
+        REFUSED_GRANT_LOG,
+      ],
+    ]);
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).toContain('gmail.readonly');
+    expect(logged).not.toContain('ya29.web-secret');
+    expect(logged).not.toContain('code-secret');
+    info.mockRestore();
+  });
+
+  it('WEB: logs a partial grant, by name, with the required scope it lacked', async () => {
+    const info = vi.spyOn(console, 'info');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/userinfo.profile',
+    });
+
+    const res = await callCallback(await minterState('gcal'));
+
+    expect(location(res)).toContain('connect=partial');
+    const refused = info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG);
+    expect(refused).toEqual([
+      [
+        {
+          familyId: FAMILY,
+          provider: 'gcal',
+          grantStatus: 'partial',
+          unexpected: [],
+          missing: ['https://www.googleapis.com/auth/calendar.events.owned.readonly'],
+        },
+        REFUSED_GRANT_LOG,
+      ],
+    ]);
+    info.mockRestore();
+  });
+
+  it('WEB: an exact grant logs no refusal', async () => {
+    const info = vi.spyOn(console, 'info');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
+    });
+
+    await callCallback(await minterState('gcal'));
+
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG)).toEqual([]);
+    info.mockRestore();
   });
 
   it('rejects a grant BROADER than the readonly universe — denied, nothing stored', async () => {
