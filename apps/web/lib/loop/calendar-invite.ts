@@ -76,6 +76,8 @@ interface InvitedParent {
   userId: string;
   timezone: string;
   role: string;
+  /** The family's language, read with the membership so there is no row without one. */
+  language: string;
 }
 
 /** The parents an invite is addressed to, primary first. */
@@ -85,9 +87,11 @@ async function loadInvitedParents(database: Database, familyId: string): Promise
       userId: schema.users.id,
       timezone: schema.users.timezone,
       role: schema.familyMembers.role,
+      language: schema.families.primaryLanguage,
     })
     .from(schema.familyMembers)
     .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+    .innerJoin(schema.families, eq(schema.familyMembers.familyId, schema.families.id))
     .where(
       and(
         eq(schema.familyMembers.familyId, familyId),
@@ -224,14 +228,6 @@ async function nextInviteKey(
   return `${baseKey}:r${max + 1}`;
 }
 
-async function familyLanguage(database: Database, familyId: string): Promise<string> {
-  const [row] = await database
-    .select({ primaryLanguage: schema.families.primaryLanguage })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId));
-  return row?.primaryLanguage ?? 'en';
-}
-
 /**
  * Text one parent the placement as a tap-to-add link.
  *
@@ -245,7 +241,6 @@ async function textOneParent(
   job: InviteJob,
   parent: InvitedParent,
   now: Date,
-  language: string,
 ): Promise<CalendarInviteParentOutcome> {
   const composed = await composeEventLink(
     {
@@ -274,7 +269,7 @@ async function textOneParent(
     url: composed.url,
     startsAt: composed.startsAt,
     timeZone: parent.timezone,
-    language,
+    language: parent.language,
   });
   // No fixed fallback: a deferred compose sends nothing and is named back, so the
   // confirmation is never a canned line (Barton: the model writes it, or nothing goes).
@@ -473,13 +468,10 @@ export function createCalendarInviteSender(
         familyEventId: request.familyEventId,
         method: request.method,
       };
-      const language = await familyLanguage(database, request.familyId);
       const outcomes: CalendarInviteParentOutcome[] = [];
       for (const parent of parents) {
         if (request.method === 'REQUEST') {
-          outcomes.push(
-            await textOneParent(database, ports, deps.inviteVoice, job, parent, now, language),
-          );
+          outcomes.push(await textOneParent(database, ports, deps.inviteVoice, job, parent, now));
         } else {
           outcomes.push(await cancelOneParent(database, ports, deps.cancelVoice, job, parent, now));
         }
