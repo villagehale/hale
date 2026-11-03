@@ -235,6 +235,9 @@ describe('a delayed undo during name capture', () => {
     });
   });
 
+  // Code wiring only, with a fake at the composer port: the model's read of
+  // "non" is not under test here. This pins that speakFriend hands the judge
+  // the model's nameConfirmed false, so the draft check runs.
   it('a turned-down held name: speakFriend refuses a draft that calls them by the message', async () => {
     const drafts = [
       'Got it, I\'ll call you "non". What should I call you?',
