@@ -129,11 +129,20 @@ describe('crisis situation: a closed enum, validated in code', () => {
   it('an unknown value becomes other, named in the log', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(crisis('call 555 0100 now')?.situation).toBe('other');
-    expect(crisis('none')?.situation).toBe('other');
     expect(warn).toHaveBeenCalledWith(
       { reason: 'situation_unknown' },
       'opt-out reader: crisis situation not in the list - the writer gets other',
     );
+  });
+
+  it('none on a crisis reading is a contradiction, named as one; the writer gets other', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(crisis('none')?.situation).toBe('other');
+    expect(warn).toHaveBeenCalledWith(
+      { reason: 'situation_none_on_crisis' },
+      'opt-out reader: crisis situation not in the list - the writer gets other',
+    );
+    expect(warn).not.toHaveBeenCalledWith({ reason: 'situation_unknown' }, expect.anything());
   });
 
   it('a missing value (a non-strict tool may skip it) becomes other, under its own name', () => {
@@ -338,6 +347,13 @@ describe('VIL-477 leave_group reading', () => {
       confirmation: 'ok, bye',
       language: 'en',
     });
+  });
+  it('dark: a confirmation carrying a link is not sent, and the stop still runs', () => {
+    vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', '');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(
+      acceptOptOutReading({ ...value, confirmation: 'ok, bye. Back at https://example.org' }, text),
+    ).toEqual({ intent: 'stop', confirmation: '', language: 'en' });
   });
   it('lit: not a stop, no confirmation', () => {
     vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', 'true');

@@ -122,20 +122,25 @@ export function optOutUserMessage(input: OptOutReadInput): string {
   });
 }
 
+function situationFallbackReason(value: string | undefined): string {
+  if (value === undefined) return 'situation_missing';
+  return value === 'none' ? 'situation_none_on_crisis' : 'situation_unknown';
+}
+
 function crisisSituation(value: string | undefined): CrisisSituation {
   const listed = CRISIS_SITUATIONS.find((situation) => situation === value);
   if (listed) return listed;
   console.warn(
-    { reason: value === undefined ? 'situation_missing' : 'situation_unknown' },
+    { reason: situationFallbackReason(value) },
     'opt-out reader: crisis situation not in the list - the writer gets other',
   );
   return 'other';
 }
 
 /**
- * The reader wrote the confirmation while reading the parent's raw words, and it is
- * given no number and no link, so one in it came from those words. Not sent; the stop
- * or start itself still runs.
+ * The reader wrote the confirmation while reading the parent's raw words. Its job is to
+ * say stop or start, so a number or link in it is not sent; the stop or start itself
+ * still runs.
  */
 function acceptConfirmation(intent: 'stop' | 'start', text: string): string {
   const confirmation = text.trim();

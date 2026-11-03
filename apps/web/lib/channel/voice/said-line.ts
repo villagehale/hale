@@ -297,8 +297,10 @@ function asciiCrisisDigits(text: string): string {
 }
 
 // Hours forms a crisis line may sit next to, matched after the digit fold. Their
-// digits are not another number.
-const CRISIS_HOURS_FORMS = [
+// digits are not another number. A per-day form may be followed by a per-week form
+// ('24/24 7/7'); any other two forms joined in one number token dial a code
+// ('24-7-24-7' is 247247).
+const CRISIS_DAY_FORMS = [
   '24 heures sur 24',
   '24 hours',
   '24 h sur 24',
@@ -306,15 +308,7 @@ const CRISIS_HOURS_FORMS = [
   '24 h/24',
   '24h/24',
   '24 heures',
-  '7 jours sur 7',
-  '7 j/7',
-  '7j/7',
   '24/24',
-  '7/7',
-  '24/7',
-  '24-7',
-  '24x7',
-  '24×7',
   '24 hrs',
   '24hrs',
   '24 horas',
@@ -326,12 +320,24 @@ const CRISIS_HOURS_FORMS = [
   '24 小時',
   '24 ساعة',
   '24 घंटे',
+];
+const CRISIS_WEEK_FORMS = [
+  '7 jours sur 7',
+  '7 j/7',
+  '7j/7',
+  '7/7',
   '7 days',
   '7 días',
   '7天',
   '7 天',
   '7 أيام',
   '7 दिन',
+];
+const CRISIS_DAY_AND_WEEK_FORMS = ['24/7', '24-7', '24x7', '24×7'];
+const CRISIS_HOURS_FORMS = [
+  ...CRISIS_DAY_FORMS,
+  ...CRISIS_WEEK_FORMS,
+  ...CRISIS_DAY_AND_WEEK_FORMS,
 ].sort((a, b) => b.length - a.length);
 
 // A form ending in a letter ends at a word boundary ('24 h' is not '24 hommes'). Han
@@ -348,23 +354,30 @@ const CRISIS_LINES: readonly string[] = [
 
 const TOKEN_BREAK = /[\p{L}\n\r\v\f\u0085\u2028\u2029]/u;
 
+interface HoursFormMatch {
+  form: string;
+  /** Where this occurrence starts, so two occurrences of one form stay two. */
+  at: number;
+  end: number;
+}
+
 interface CrisisDigitGroup {
   digits: string;
-  /** Part of a listed hours form. */
-  hours: boolean;
+  /** The listed hours form this group is part of, or null. */
+  hours: HoursFormMatch | null;
   /** Built from single digits only, so the next single digit joins it. */
   spelled: boolean;
 }
 
-function hoursFormEnd(ascii: string, at: number): number {
+function hoursFormAt(ascii: string, at: number): HoursFormMatch | null {
   for (const form of CRISIS_HOURS_FORMS) {
     const end = at + form.length;
     const next = ascii[end] ?? '';
     if (ascii.slice(at, end).toLowerCase() !== form || /\d/.test(next)) continue;
     if (hoursFormEndsWord(form) && /\p{L}/u.test(next)) continue;
-    return end;
+    return { form, at, end };
   }
-  return -1;
+  return null;
 }
 
 /**
@@ -375,12 +388,12 @@ function hoursFormEnd(ascii: string, at: number): number {
 function crisisNumberTokens(text: string): CrisisDigitGroup[][] {
   const ascii = asciiCrisisDigits(text);
   const tokens: CrisisDigitGroup[][] = [];
-  let hoursUntil = -1;
+  let current: HoursFormMatch | null = null;
   let lastEnd = 0;
   for (const match of ascii.matchAll(/\d+/g)) {
     const at = match.index;
-    if (at >= hoursUntil) hoursUntil = hoursFormEnd(ascii, at);
-    const hours = at < hoursUntil;
+    if (!current || at >= current.end) current = hoursFormAt(ascii, at);
+    const hours = current;
     const single = match[0].length === 1 && !hours;
     const token = tokens.at(-1);
     const prev = token?.at(-1);
@@ -396,8 +409,19 @@ function crisisNumberTokens(text: string): CrisisDigitGroup[][] {
   return tokens;
 }
 
+/** One hours form, or a per-day form then a per-week form; never more. */
+function tokenHoursFormsStandAlone(token: readonly CrisisDigitGroup[]): boolean {
+  const forms = [...new Set(token.map((group) => group.hours).filter((hours) => hours !== null))];
+  if (forms.length !== 2) return forms.length <= 1;
+  const [day, week] = forms as [HoursFormMatch, HoursFormMatch];
+  return CRISIS_DAY_FORMS.includes(day.form) && CRISIS_WEEK_FORMS.includes(week.form);
+}
+
 function tokenIsCrisisLinesOnly(token: readonly CrisisDigitGroup[]): boolean {
-  return token.every((group) => group.hours || CRISIS_LINES.includes(group.digits));
+  return (
+    token.every((group) => group.hours || CRISIS_LINES.includes(group.digits)) &&
+    tokenHoursFormsStandAlone(token)
+  );
 }
 
 const LINK_SCHEME = /[a-z][a-z\d+.-]*:\/\/|\bwww\./i;
@@ -516,14 +540,11 @@ export function crisisReplyViolation(
 }
 
 /**
- * A stop or start confirmation the reader wrote: it is handed no number and no link, so
- * any number (hours forms aside) or link in it is refused. Null: it may be sent.
+ * A stop or start confirmation the reader wrote. Its job is to say stop or start, so any
+ * number in it (an hours form too) or link is refused. Null: it may be sent.
  */
 export function readerConfirmationViolation(text: string): 'other_number' | 'link' | null {
-  const numbers = crisisNumberTokens(text)
-    .flat()
-    .filter((group) => !group.hours);
-  if (numbers.length > 0) return 'other_number';
+  if (crisisNumberTokens(text).length > 0) return 'other_number';
   if (crisisTextHasLink(text)) return 'link';
   return null;
 }

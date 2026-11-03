@@ -168,6 +168,15 @@ const EVASION_TABLE: ReadonlyArray<readonly [kind: CrisisKind, text: string, pas
   ['mental', 'Call 988, 24-75', false],
   ['mental', 'Call 988, 24x75', false],
   ['mental', 'Call 988, 24 hrsx 5550100', false],
+  // Hours forms joined to each other dial a code ('24-7-24-7' is 247247).
+  ['mental', 'Text 24-7-24-7 now. Call 988.', false],
+  ['mental', 'Call 988, 24/7/24/7.', false],
+  ['mental', 'Call 988, 24x7 24x7.', false],
+  ['mental', 'Call 988, 24/7 7/7.', false],
+  ['mental', 'Call 988, 24/24 24/24.', false],
+  ['emergency', 'Call 911, 24-7 24-7.', false],
+  // Positive control: one hours-per-day form then one days-per-week form is not a code.
+  ['mental', 'Appelle le 9-8-8, 24/24 7/7.', true],
 ];
 
 describe('evasion table', () => {
@@ -263,7 +272,8 @@ describe('the reply is in the script of its language', () => {
 });
 
 // A stop or start confirmation is the reader's text, written while it read the parent's
-// words. It is given no number and no link, so any number or link in it is injected.
+// words. Its job is to say stop or start, so any number (an hours form too) or link in
+// it is refused.
 describe('reader confirmation: no number, no link', () => {
   it.each([
     ['a URL', "You're off the list. Come back at https://example.org/start"],
@@ -271,6 +281,11 @@ describe('reader confirmation: no number, no link', () => {
     ['a phone number', "You're off the list. Questions? 555 0100"],
     ['a crisis line', 'Done, no more texts. If you need someone, text 988.'],
     ['a spelled number', 'Okay, stopping. Call 5-5-5-0-1-0-0 any time.'],
+    ['chained hours forms', 'Done, no more texts. For help text 24/7/24/7.'],
+    ['chained dashed hours forms', 'Done, no more texts. For help text 24-7-24-7.'],
+    ['repeated hours forms', 'Done, no more texts. For help text 24x7 24x7.'],
+    ['an hours form', 'Done, no more texts. Call 24 hrs.'],
+    ['an hours form in a welcome', "Welcome back! Hale's here 24/7."],
   ])('%s is refused', (_name, text) => {
     expect(readerConfirmationViolation(text)).not.toBeNull();
   });
@@ -285,7 +300,7 @@ describe('reader confirmation: no number, no link', () => {
     ["C'est noté, plus de messages. Écris START si tu changes d'avis."],
     ['好的，不再给你发消息了。想回来就发 START。'],
     ['حسناً، لن نراسلك بعد الآن.'],
-    ["Welcome back! Hale's here 24/7."],
+    ["Welcome back! Hale's here any time."],
   ])('positive control: %j passes', (text) => {
     expect(readerConfirmationViolation(text)).toBeNull();
   });
