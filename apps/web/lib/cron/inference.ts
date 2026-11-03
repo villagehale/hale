@@ -40,6 +40,13 @@ import { loadInferMemorySkill } from './skill';
  * Audit actor is 'system' (rule #6). The Anthropic client is injected so tests
  * drive the loop mechanics with a fake; inference QUALITY is an eval against real
  * cached Claude (rule #8), not asserted here.
+ *
+ * RESIDUAL (VIL-556, check-then-use): in candidate mode the Google witness is read ONCE,
+ * before the agent loop. If a parent connects Gmail or Calendar and a sync lands while a
+ * cleared family's run is in progress, the read tools can hand that new content to the
+ * gateway model for the rest of the run. The window is one run (at most MAX_STEPS steps);
+ * the next run reads the witness again and refuses. Closing it means re-checking inside
+ * the read tools (inference-tools.ts), which this guard does not do.
  */
 
 const MAX_STEPS = 8;
