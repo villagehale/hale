@@ -193,6 +193,24 @@ const EVASION_TABLE: ReadonlyArray<readonly [kind: CrisisKind, text: string, pas
   ['mental', 'Call 988 (24/7).', true],
   ['mental', 'Call 988 - 24/7.', true],
   ['emergency', 'Call 911, 24/7.', true],
+  // Round 6 fix: any joiner other than a space or a bracket glues them, invisible ones too.
+  ['mental', 'Call 988.24/7.', false],
+  ['mental', 'Call 988\u221224/7.', false],
+  ['mental', 'Call 988-\u200b24/7.', false],
+  ['mental', 'Call 988\u200b24/7.', false],
+  ['mental', 'Call 988\u00ad24/7.', false],
+  ['mental', 'Call 988_24/7.', false],
+  ['mental', 'Call 988+24/7.', false],
+  ['mental', 'Call 988:24/7.', false],
+  ['mental', 'Call 988~24/7.', false],
+  ['mental', 'Call 988\u00b724/7.', false],
+  ['mental', 'Call 988\u204424/7.', false],
+  ['mental', 'Call 988\\24/7.', false],
+  ['mental', 'Call 988,24/7.', false],
+  ['mental', 'Call 24/7.988.', false],
+  // Positive controls: a CJK comma is a phrase break; a space hidden behind a Cf mark still is one.
+  ['mental', '请拨打988、24小时。', true],
+  ['mental', 'Call 988\u200b 24/7.', true],
 ];
 
 describe('evasion table', () => {

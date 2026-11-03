@@ -85,8 +85,28 @@ describe('opt-out reader guards (structural, no model)', () => {
     expect(read('en-call5550')).toBe('en');
     // An open subtag never reaches the writer, and an unlisted language is null.
     expect(read('xx')).toBeNull();
-    expect(read('tlh')).toBeNull();
     expect(read('xx-callnow')).toBeNull();
+  });
+
+  it('keeps any language CLDR names, so a Korean or Haitian crisis reply is not written in English', () => {
+    const read = (language: string) =>
+      acceptOptOutReading({ intent: 'none', verbatim: 'x', language, confirmation: '' }, 'x')
+        ?.language;
+    expect(read('ko')).toBe('ko');
+    expect(read('vi')).toBe('vi');
+    expect(read('ht')).toBe('ht');
+    expect(read('ko-kr')).toBe('ko');
+    // Chinese keeps its script: a region names it when no script subtag does.
+    expect(read('zh-hant-tw')).toBe('zh-Hant');
+    expect(read('zh-tw')).toBe('zh-Hant');
+    expect(read('zh-hk')).toBe('zh-Hant');
+    expect(read('zh-cn')).toBe('zh-Hans');
+    expect(read('pa-arab')).toBe('pa-Arab');
+    // Not a language: no code, the special ISO 639 codes, an unnamed script subtag.
+    expect(read('qq')).toBeNull();
+    expect(read('zxx')).toBeNull();
+    expect(read('mul')).toBeNull();
+    expect(read('ko-qaaa')).toBe('ko');
   });
 
   it('sends the text, a language hint only when certain, and both lines when the region is unknown', () => {

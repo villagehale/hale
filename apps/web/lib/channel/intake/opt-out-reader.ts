@@ -16,7 +16,7 @@ import {
   certainLanguageHint,
 } from '~/lib/channel/language';
 import { linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
-import { readerConfirmationViolation } from '~/lib/channel/voice/said-line';
+import { readerConfirmationViolation } from '~/lib/channel/voice/crisis-check';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -159,20 +159,33 @@ function crisisWho(value: string | undefined): CrisisWho {
 }
 
 /**
- * The languages a reader's tag may name, as a closed list: the tag reaches the crisis
- * writer, so an open tag's subtags would be text the parent's words chose. A region or
- * other subtag on a listed language keeps the language ('fr-ca' is 'fr'). Anything else
- * is null, and the language Hale already holds decides.
+ * The reader's tag reaches the crisis writer, so an open tag's subtags would be text the
+ * parent's words chose. Only a language CLDR names survives, with a script CLDR names;
+ * a region and every other subtag are dropped ('fr-ca' is 'fr'). Chinese is the one
+ * language whose region names its script ('zh-tw' is 'zh-Hant'). Anything else is null,
+ * and the language Hale already holds decides. A fixed short list sent a Korean
+ * parent's crisis reply in English (round 6 review).
  */
-const READER_LANGUAGES = ['en', 'fr', 'es', 'zh', 'zh-Hans', 'zh-Hant', 'ar', 'hi', 'pa'] as const;
+const LANGUAGE_NAMES = new Intl.DisplayNames(['en'], { type: 'language', fallback: 'none' });
+const SCRIPT_NAMES = new Intl.DisplayNames(['en'], { type: 'script', fallback: 'none' });
+// ISO 639 codes CLDR names that are not a language.
+const NOT_A_LANGUAGE = new Set(['mis', 'mul', 'und', 'zxx']);
 
 function readerLanguage(value: string): ReplyLanguage | null {
   const tag = acceptReplyLanguage(value);
   if (!tag) return null;
-  const listed = READER_LANGUAGES.find((language) => language.toLowerCase() === tag);
-  if (listed) return listed;
-  const base = tag.split('-')[0];
-  return READER_LANGUAGES.find((language) => language === base) ?? null;
+  let locale: Intl.Locale;
+  try {
+    locale = new Intl.Locale(tag);
+  } catch (err) {
+    if (err instanceof RangeError) return null;
+    throw err;
+  }
+  const { language } = locale;
+  if (NOT_A_LANGUAGE.has(language) || !LANGUAGE_NAMES.of(language)) return null;
+  const script =
+    locale.script ?? (language === 'zh' && locale.region ? locale.maximize().script : undefined);
+  return script && SCRIPT_NAMES.of(script) ? `${language}-${script}` : language;
 }
 
 /**
@@ -377,7 +390,7 @@ export async function readIntentOnce(
   return reading ? { intent: reading.intent } : null;
 }
 
-/** The text-read cache as tests see it: keys and text hashes, never the reads. */
+/** @internal The text-read cache as tests see it: keys and text hashes, never the reads. */
 export function textReadCacheSnapshot(): Array<{ key: string; textKey: string }> {
   return [...textReads].map(([key, entry]) => ({ key, textKey: entry.textKey }));
 }
