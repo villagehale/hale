@@ -108,3 +108,37 @@ describe('native-script digits', () => {
     expect(crisisReplyAcceptable('mental', 'اتصل بـ ٩١١')).toBe(false);
   });
 });
+
+describe('separators before listed hours or the other crisis line', () => {
+  it.each([
+    ['en dash then hours', 'mental', 'Call or text 988 – 24/7, free and confidential.'],
+    ['hyphen then hours', 'mental', 'Call or text 988 - 24/7.'],
+    ['em dash then French hours', 'mental', 'Appelle le 9-8-8 — 24 heures sur 24.'],
+    ['emergency, hyphen then hours', 'emergency', 'Call 911 - 24/7.'],
+    ['French 24 h/24', 'mental', 'Appelle le 988 24 h/24.'],
+    ['988, a full stop, then 911', 'mental', 'Call or text 988. 911 if you are in danger.'],
+    ['988 slash 911', 'mental', 'Call 988 / 911 if in danger.'],
+    ['911 slash 988', 'mental', 'Call 911 / 988.'],
+    ['hours before the line', 'mental', 'Available 24/7 988'],
+  ] as const)('%s: the reply carries the line', (_name, kind, text) => {
+    expect(crisisReplyAcceptable(kind, text)).toBe(true);
+  });
+
+  it('listed hours or a crisis line that run on into more digits still make a longer number', () => {
+    expect(crisisReplyAcceptable('mental', 'Call 988 24h5550100')).toBe(false);
+    expect(crisisReplyAcceptable('mental', 'Call 988 24/7555')).toBe(false);
+    expect(crisisReplyAcceptable('mental', 'Call 988 / 911 555 0100')).toBe(false);
+    expect(crisisReplyAcceptable('mental', 'Ref 5 911 988')).toBe(false);
+    expect(crisisReplyAcceptable('emergency', 'Call 911 / 988.')).toBe(false);
+  });
+});
+
+describe('every decimal digit script folds', () => {
+  it('Thai digits read as the line', () => {
+    expect(crisisReplyAcceptable('mental', 'โทร ๙๘๘')).toBe(true);
+  });
+
+  it('a Bengali run-on is a longer number', () => {
+    expect(crisisReplyAcceptable('mental', 'Call 988 ৫৫৫ ০১০০')).toBe(false);
+  });
+});

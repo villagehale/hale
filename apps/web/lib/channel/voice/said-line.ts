@@ -277,18 +277,18 @@ export function crisisMustInclude(kind: CrisisKind): readonly ['988'] | readonly
 
 const CRISIS_DIGIT_SEPARATOR = String.raw`[\s\p{Z}\p{Pd}.\u00b7\u2022\u30fb/_]`;
 
-// NFKC leaves these decimal digits alone, so a reply in Arabic or Hindi script would
-// not carry its 988 or 911.
-const NATIVE_DIGIT_ZEROS = [0x0660, 0x06f0, 0x0966] as const;
+// NFKC leaves native-script decimal digits (Arabic-Indic, Devanagari, Bengali, Thai...)
+// alone, so a reply in those scripts would not carry its 988 or 911. Unicode encodes
+// every decimal digit in a contiguous 0-9 run, so a digit's value is its distance from
+// the start of its run.
+function decimalDigitValue(digit: string): number {
+  let zero = digit.codePointAt(0) as number;
+  while (/\p{Nd}/u.test(String.fromCodePoint(zero - 1))) zero -= 1;
+  return ((digit.codePointAt(0) as number) - zero) % 10;
+}
 
-// NFKC folds full-width and other compatibility digits to ASCII, and the native
-// digits above are folded by hand.
 function asciiCrisisDigits(text: string): string {
-  return text.normalize('NFKC').replace(/[\u0660-\u0669\u06f0-\u06f9\u0966-\u096f]/gu, (d) => {
-    const code = d.codePointAt(0) as number;
-    const zero = NATIVE_DIGIT_ZEROS.find((z) => code >= z && code <= z + 9) as number;
-    return String(code - zero);
-  });
+  return text.normalize('NFKC').replace(/[^\P{Nd}0-9]/gu, (d) => String(decimalDigitValue(d)));
 }
 
 // Then any run of whitespace or separators between digits is dropped, so '9 8 8',
@@ -314,12 +314,16 @@ const CRISIS_HOURS_AFTER_NUMBER = [
 ];
 
 // Separators count only inside the number. Bounded on both sides: Room 49881, 1988,
-// 988-555-0100 and 988 555 0100 are not the line, while '988 24/7' is.
+// 988-555-0100 and 988 555 0100 are not the line. Listed hours and the other crisis
+// line may sit next to it, so '988 – 24/7' and '988. 911 if you are in danger' are.
 function crisisNumberPattern(digits: string): RegExp {
   const sep = CRISIS_DIGIT_SEPARATOR;
-  const body = [...digits].join(`${sep}*`);
-  const hours = CRISIS_HOURS_AFTER_NUMBER.join('|');
-  return new RegExp(`(?<!\\d${sep}*)${body}(?:(?=[\\s\\p{Z}]+(?:${hours}))|(?!${sep}*\\d))`, 'iu');
+  const spaced = (number: string) => [...number].join(`${sep}*`);
+  const lines = `(?:${[...crisisMustInclude('mental'), ...crisisMustInclude('emergency')].map(spaced).join('|')})`;
+  const hours = `(?:${CRISIS_HOURS_AFTER_NUMBER.join('|')})`;
+  const before = `(?<=(?<!\\d${sep}*)(?:(?:${hours}|${lines})${sep}+)*)`;
+  const after = `(?=(?:${sep}+${lines})*(?:${sep}+${hours}(?!\\d)|(?!${sep}*\\d)))`;
+  return new RegExp(`${before}${spaced(digits)}${after}`, 'iu');
 }
 
 export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boolean {
