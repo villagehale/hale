@@ -48,9 +48,11 @@ describe('crisisTextHasRequiredNumber through crisisReplyAcceptable', () => {
 
   it('a longer number that contains the digits is not the line', () => {
     expect(crisisReplyAcceptable('mental', 'Appelle le 9-8-8 ou le 911.')).toBe(true);
-    expect(crisisReplyAcceptable('mental', 'Appelle le 1-866-988-0000.')).toBe(false);
+    expect(crisisReplyAcceptable('mental', 'Salle 4-988-12.')).toBe(false);
+    expect(crisisReplyAcceptable('mental', 'Room 49881.')).toBe(false);
     expect(crisisReplyAcceptable('mental', 'Call 1988.')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', 'Call 1-800-911-0000.')).toBe(false);
+    expect(crisisReplyAcceptable('emergency', 'Ref 1-911-2.')).toBe(false);
+    expect(crisisReplyAcceptable('emergency', 'Ref 19112.')).toBe(false);
   });
 
   it.each([
@@ -66,7 +68,43 @@ describe('crisisTextHasRequiredNumber through crisisReplyAcceptable', () => {
   it('a hyphen or dot that runs on into more digits still makes a longer number', () => {
     expect(crisisReplyAcceptable('mental', 'Call or text 988 24/7.')).toBe(true);
     expect(crisisReplyAcceptable('mental', 'Call 988-555-0100.')).toBe(false);
-    expect(crisisReplyAcceptable('mental', 'Call 1 866 988 0000.')).toBe(false);
+    expect(crisisReplyAcceptable('mental', 'Ref 4 988 12.')).toBe(false);
     expect(crisisReplyAcceptable('emergency', 'Call 911.555.0100.')).toBe(false);
+  });
+
+  it('a space or slash that runs on into more digits makes a longer number too', () => {
+    expect(crisisReplyAcceptable('mental', 'Call 988 555 0100')).toBe(false);
+    expect(crisisReplyAcceptable('mental', '988/555/0100')).toBe(false);
+    expect(crisisReplyAcceptable('emergency', '911 555 0100')).toBe(false);
+  });
+
+  it.each([
+    ['988 then 24/7', 'mental', '988 24/7'],
+    ['French 24 h', 'mental', 'Appelle le 988 24 h sur 24'],
+    ['Chinese comma then 24小时', 'mental', '拨打988，24小时'],
+    ['Chinese 全天', 'mental', '拨打988 全天'],
+    ['24 hours', 'mental', 'Call or text 988 24 hours a day'],
+    ['24 heures', 'mental', 'Le 988, 24 heures sur 24'],
+    ['24 horas', 'mental', 'Llama al 988 24 horas'],
+    ['24h', 'emergency', 'Appelle le 911 24h sur 24'],
+  ] as const)('%s: only listed hours text may follow the number', (_name, kind, text) => {
+    expect(crisisReplyAcceptable(kind, text)).toBe(true);
+  });
+});
+
+describe('native-script digits', () => {
+  it.each([
+    ['Arabic-Indic', 'mental', 'اتصل على ٩٨٨'],
+    ['Extended Arabic-Indic', 'mental', 'تماس با ۹۸۸'],
+    ['Devanagari', 'mental', 'कृपया ९८८ पर कॉल करें'],
+    ['Arabic-Indic 911', 'emergency', 'اتصل بـ ٩١١ الآن'],
+  ] as const)('%s digits read as the line', (_name, kind, text) => {
+    expect(crisisReplyAcceptable(kind, text)).toBe(true);
+  });
+
+  it('an emergency reply with Arabic-Indic 988 still leaks the 988 line', () => {
+    expect(crisisTextHas988('٩٨٨')).toBe(true);
+    expect(crisisReplyAcceptable('emergency', 'اتصل بـ ٩١١ أو ٩٨٨')).toBe(false);
+    expect(crisisReplyAcceptable('mental', 'اتصل بـ ٩١١')).toBe(false);
   });
 });

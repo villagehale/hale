@@ -277,26 +277,54 @@ export function crisisMustInclude(kind: CrisisKind): readonly ['988'] | readonly
 
 const CRISIS_DIGIT_SEPARATOR = String.raw`[\s\p{Z}\p{Pd}.\u00b7\u2022\u30fb/_]`;
 
-// NFKC folds full-width and other compatibility digits to ASCII; then any run of
-// whitespace or separators between digits is dropped, so '9 8 8', '9-8-8', '9.8.8'
-// and '９８８' all read as 988.
-function foldCrisisDigits(text: string): string {
-  return text
-    .normalize('NFKC')
-    .replace(new RegExp(`(?<=\\d)${CRISIS_DIGIT_SEPARATOR}+(?=\\d)`, 'gu'), '');
+// NFKC leaves these decimal digits alone, so a reply in Arabic or Hindi script would
+// not carry its 988 or 911.
+const NATIVE_DIGIT_ZEROS = [0x0660, 0x06f0, 0x0966] as const;
+
+// NFKC folds full-width and other compatibility digits to ASCII, and the native
+// digits above are folded by hand.
+function asciiCrisisDigits(text: string): string {
+  return text.normalize('NFKC').replace(/[\u0660-\u0669\u06f0-\u06f9\u0966-\u096f]/gu, (d) => {
+    const code = d.codePointAt(0) as number;
+    const zero = NATIVE_DIGIT_ZEROS.find((z) => code >= z && code <= z + 9) as number;
+    return String(code - zero);
+  });
 }
 
-// Separators count only inside the number, not around it. Bounded: 1-866-988-0000,
-// 1988 and 988-555-0100 are not the line, while '988 24/7' is: a space, then the hours.
+// Then any run of whitespace or separators between digits is dropped, so '9 8 8',
+// '9-8-8', '9.8.8', '９８８' and '٩٨٨' all read as 988.
+function foldCrisisDigits(text: string): string {
+  return asciiCrisisDigits(text).replace(
+    new RegExp(`(?<=\\d)${CRISIS_DIGIT_SEPARATOR}+(?=\\d)`, 'gu'),
+    '',
+  );
+}
+
+// The hours a line may be followed by. Any other digit after a separator run makes
+// a longer number.
+const CRISIS_HOURS_AFTER_NUMBER = [
+  '24/7',
+  '24 h',
+  '24h',
+  '24 hours',
+  '24 heures',
+  '24 horas',
+  '24小时',
+  '全天',
+];
+
+// Separators count only inside the number. Bounded on both sides: Room 49881, 1988,
+// 988-555-0100 and 988 555 0100 are not the line, while '988 24/7' is.
 function crisisNumberPattern(digits: string): RegExp {
   const sep = CRISIS_DIGIT_SEPARATOR;
   const body = [...digits].join(`${sep}*`);
-  return new RegExp(`(?<!\\d${sep}*)${body}(?!\\d|[\\p{Pd}.]\\d)`, 'u');
+  const hours = CRISIS_HOURS_AFTER_NUMBER.join('|');
+  return new RegExp(`(?<!\\d${sep}*)${body}(?:(?=[\\s\\p{Z}]+(?:${hours}))|(?!${sep}*\\d))`, 'iu');
 }
 
 export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boolean {
-  const normalized = text.normalize('NFKC');
-  return crisisMustInclude(kind).every((digits) => crisisNumberPattern(digits).test(normalized));
+  const ascii = asciiCrisisDigits(text);
+  return crisisMustInclude(kind).every((digits) => crisisNumberPattern(digits).test(ascii));
 }
 
 /** 988 and the Canadian spelling 9-8-8 are the same line. A physical emergency may not carry it. */
