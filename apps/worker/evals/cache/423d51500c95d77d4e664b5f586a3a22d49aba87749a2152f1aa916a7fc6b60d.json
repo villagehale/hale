@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly reports sold_out with confirmed false and does not claim a booking, hold, or spot. It carries the registration link exactly, uses tu for a direct audience in French, names no child or personal details, and makes no retry or follow-up promise. Only minor nit: 'pas pu être inscrit' is accurate and clear, and the wording about seeing what is still offered is neutral, not a hint of a reopening spot.",
+    "score": 5
+  }
+}

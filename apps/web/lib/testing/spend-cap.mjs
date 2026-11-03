@@ -412,6 +412,7 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
   if (l.spentUsd + l.reservedUsd + projected > cap) {
     l.refused += 1;
     l.log.push({ refused: true, tag, model: request.model, projected });
+    l.halted = `budget refusal on ${request.model}`;
     save(l);
     throw new Error(
       `spend-cap: refusing ${tag}; spent $${l.spentUsd.toFixed(4)} + in-flight $${l.reservedUsd.toFixed(4)} + worst case $${projected.toFixed(4)} > cap $${cap}`,
@@ -487,20 +488,20 @@ export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
   const wrapped = {
     messages: {
       countTokens: (req) => messages.countTokens(req),
-      create: (request) =>
+      create: (request, options) =>
         cappedCall({
           client,
           request,
-          call: () => messages.create(request),
+          call: () => messages.create(request, { ...options, maxRetries: 0 }),
           rates,
           tag: webSearchTool(request) ? `${tag}:search` : tag,
         }),
-      stream: (request) => ({
+      stream: (request, options) => ({
         finalMessage: () =>
           cappedCall({
             client,
             request,
-            call: () => messages.stream(request).finalMessage(),
+            call: () => messages.stream(request, { ...options, maxRetries: 0 }).finalMessage(),
             rates,
             tag: webSearchTool(request) ? `${tag}:search` : tag,
           }),

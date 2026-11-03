@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the周六9:30 session is not signed up, uses the registration_page link exactly, asks a parent to sign up there, names no child or personal details, makes no retry promise, avoids claiming a login failed, and is in Chinese as required. Minor: 'Hale还不能在这个网站上自动完成报名' is accurate to the reason code without system talk.",
+    "score": 5
+  }
+}
