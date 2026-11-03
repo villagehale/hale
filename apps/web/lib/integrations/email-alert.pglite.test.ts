@@ -18,6 +18,7 @@ import {
   alertParentForEmail,
   alertParentForGmailSweep,
   emailAlertDedupeKey,
+  emailAlertOccasion,
   emailAlertOfferDraft,
 } from './email-alert';
 import type { EmailAlertNotice } from './email-alert-notice';
@@ -174,6 +175,7 @@ function alertPair(
       parentUserId: family.parentUserId,
       integrationId: INTEGRATION,
       messageId,
+      threadId: `t-${messageId}`,
       envelope: ENVELOPE,
       cancelledThisSweep: new Set<string>(),
       timeZone: 'America/Toronto',
@@ -189,6 +191,18 @@ function alertPair(
  * kept apart here so a change to one never silently rewrites the other's assertions. */
 async function alert(h: Harness, messageId = 'm1'): Promise<EmailAlertOutcome> {
   return (await alertPair(h, messageId)).alert;
+}
+
+/** The key the default classification is claimed under, for message `messageId` in its
+ * own thread. */
+function alertKey(messageId: string): string {
+  const { extraction } = classified();
+  if (extraction === null) throw new Error('the default classification has an extraction');
+  return emailAlertDedupeKey(
+    INTEGRATION,
+    `t-${messageId}`,
+    emailAlertOccasion(extraction, messageId),
+  );
 }
 
 function ledgerRows() {
@@ -233,7 +247,7 @@ describe('alertParentForEmail', () => {
       direction: 'out',
       channel: 'sms',
       templateKey: EMAIL_ALERT_TEMPLATE_KEY,
-      dedupeKey: emailAlertDedupeKey(INTEGRATION, 'm1'),
+      dedupeKey: alertKey('m1'),
       status: 'queued',
       providerMessageId: 'fake-out-1',
     });
@@ -296,13 +310,15 @@ describe('alertParentForEmail', () => {
     await expect(ledgerRows()).resolves.toEqual([]);
   });
 
-  it('a second sweep over the same message sends nothing and costs no classifier call', async () => {
+  it('a second sweep over the same message sends nothing and costs one classifier call, no writer call', async () => {
     const first = harness();
     await expect(alert(first)).resolves.toBe('sent');
 
+    // The key is the thread and the OCCASION, which only the extraction knows.
     const second = harness();
     await expect(alert(second)).resolves.toBe('already_sent');
-    expect(second.classifyCalls).toBe(0);
+    expect(second.classifyCalls).toBe(1);
+    expect(second.writer.seen).toEqual([]);
     expect(second.transport.sent).toEqual([]);
     await expect(ledgerRows()).resolves.toHaveLength(1);
   });
@@ -382,8 +398,9 @@ describe('alertParentForEmail', () => {
 
     const rows = await ledgerRows();
     expect(rows[0]).toMatchObject({ status: 'failed', errorCode: '21610' });
-    // At-most-once: a failed delivery must never un-consume idempotency.
-    await expect(alert(harness())).resolves.toBe('already_sent');
+    // At-most-once: a failed delivery must never un-consume idempotency. A re-read is named
+    // for what it is — never told — rather than folded into `already_sent`.
+    await expect(alert(harness())).resolves.toBe('occasion_send_failed');
     await expect(auditRows()).resolves.toEqual([]);
   });
 
@@ -399,6 +416,8 @@ describe('alertParentForGmailSweep', () => {
   function envelope(n: number, receivedAt?: string): GmailAlertEnvelope {
     return {
       messageId: `m${n}`,
+      threadId: `t-m${n}`,
+      labelIds: ['INBOX'],
       subject: ENVELOPE.subject,
       from: ENVELOPE.from,
       snippet: ENVELOPE.snippet,
@@ -466,9 +485,9 @@ describe('alertParentForGmailSweep', () => {
     expect(h.classifyCalls).toBe(12);
     const rows = await ledgerRows();
     const alerted = new Set(rows.map((r) => r.dedupeKey));
-    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm12'))).toBe(true);
-    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm1'))).toBe(true);
-    expect(alerted.has(emailAlertDedupeKey(INTEGRATION, 'm2'))).toBe(true);
+    expect(alerted.has(alertKey('m12'))).toBe(true);
+    expect(alerted.has(alertKey('m1'))).toBe(true);
+    expect(alerted.has(alertKey('m2'))).toBe(true);
   });
 
   it('skips a message Gmail gave no internalDate for, and still reads the rest', async () => {
@@ -515,8 +534,15 @@ describe('the email_alert lane', () => {
       integrationId: INTEGRATION,
       seeding: false,
       envelopes: [
-        { messageId: 'm1', ...ENVELOPE },
-        { messageId: 'm2', subject: ENVELOPE.subject, from: ENVELOPE.from, snippet: '' },
+        { messageId: 'm1', threadId: 't-m1', labelIds: ['INBOX'], ...ENVELOPE },
+        {
+          messageId: 'm2',
+          threadId: 't-m2',
+          labelIds: ['INBOX'],
+          subject: ENVELOPE.subject,
+          from: ENVELOPE.from,
+          snippet: '',
+        },
       ],
       now: NOW,
       ...over,
@@ -574,7 +600,10 @@ describe('the email_alert lane', () => {
 
     const outcomes = await alertParentForGmailSweep(
       db.database,
-      sweepInput({ backfill: true, envelopes: [{ messageId: 'm1', ...ENVELOPE }] }),
+      sweepInput({
+        backfill: true,
+        envelopes: [{ messageId: 'm1', threadId: 't-m1', labelIds: ['INBOX'], ...ENVELOPE }],
+      }),
       h.ports,
     );
 
@@ -1267,6 +1296,7 @@ describe('the going count in the alert path', () => {
         parentUserId: household.parentUserId,
         integrationId: randomUUID(),
         messageId,
+        threadId: `t-${messageId}`,
         envelope: RECEIPT,
         cancelledThisSweep: new Set<string>(),
         timeZone: 'America/Toronto',

@@ -786,6 +786,10 @@ interface GmailHistoryResponse {
 }
 interface GmailMessageResponse {
   id?: string;
+  threadId?: string;
+  /** Gmail's system and user labels. `format=metadata` returns them unasked; SENT and
+   * DRAFT are how the alert lane knows a message is the parent's own. */
+  labelIds?: string[];
   snippet?: string;
   /** Epoch milliseconds, as a string. Gmail returns it on `format=metadata` without
    * being asked, and it is the ONLY timestamp this sync has: the metadata GET requests
@@ -932,6 +936,7 @@ async function readGmailMessageBatch(
     );
     envelopes.push({
       messageId: id,
+      ...threadAndLabels(data),
       subject: subject ?? '',
       from: from ?? '',
       snippet: data.snippet ?? '',
@@ -1103,6 +1108,7 @@ export async function backfillBookedMail(
         envelopes: [
           {
             messageId: id,
+            ...threadAndLabels(data),
             subject,
             from,
             snippet: data.snippet ?? '',
@@ -1313,6 +1319,19 @@ async function syncDrive(
 /** Gmail's `internalDate` as an ISO instant, or undefined when it is absent or not a
  * number — the extraction anchors relative dates ("this Saturday") on it, so a guessed
  * one would move an appointment rather than fail to mention it. */
+/** The thread and labels of a SUCCESSFUL metadata read. Gmail's JSON omits an empty
+ * repeated field, so a 200 with no `labelIds` is a message with no labels (archived, read
+ * mail), not an unread one: `[]`. An envelope with no `labelIds` at all is one no label
+ * read produced, and the alert lane refuses it (`labels_unread`). */
+function threadAndLabels(
+  data: GmailMessageResponse,
+): Pick<GmailAlertEnvelope, 'threadId' | 'labelIds'> {
+  return {
+    ...(data.threadId ? { threadId: data.threadId } : {}),
+    labelIds: data.labelIds ?? [],
+  };
+}
+
 function epochMsToIso(internalDate: string | undefined): string | undefined {
   if (internalDate === undefined) return undefined;
   const ms = Number(internalDate);

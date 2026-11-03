@@ -208,6 +208,7 @@ function alert(h: Harness, messageId = 'm1', now = NOW) {
       parentUserId: family.parentUserId,
       integrationId: INTEGRATION,
       messageId,
+      threadId: `t-${messageId}`,
       envelope: ENVELOPE,
       cancelledThisSweep: new Set<string>(),
       timeZone: 'America/Toronto',
@@ -757,10 +758,18 @@ describe('a provider cancellation closes what it cancelled', () => {
  * closed by it — is named in the commit and is a missing question rather than a wrong one.
  */
 describe('a cancellation the same sweep has already read', () => {
-  const RECEIPT = { ...ENVELOPE, messageId: 'm-receipt', receivedAt: '2026-09-17T14:00:00.000Z' };
+  const RECEIPT = {
+    ...ENVELOPE,
+    messageId: 'm-receipt',
+    threadId: 't-receipt',
+    labelIds: ['INBOX'],
+    receivedAt: '2026-09-17T14:00:00.000Z',
+  };
   const CANCELLED = {
     ...ENVELOPE,
     messageId: 'm-cancelled',
+    threadId: 't-cancelled',
+    labelIds: ['INBOX'],
     subject: 'CANCELLED - Swim Level 2',
     snippet: 'Swim Level 2 on Sep 26 has been cancelled.',
     receivedAt: '2026-09-17T14:30:00.000Z',
@@ -1125,6 +1134,7 @@ describe('record_failed', () => {
           parentUserId: family.parentUserId,
           integrationId: INTEGRATION,
           messageId: 'm1',
+          threadId: 't-m1',
           envelope: ENVELOPE,
           cancelledThisSweep: new Set<string>(),
           timeZone: 'America/Toronto',
@@ -1178,6 +1188,7 @@ describe('record_failed', () => {
           parentUserId: family.parentUserId,
           integrationId: INTEGRATION,
           messageId: 'm1',
+          threadId: 't-m1',
           envelope: ENVELOPE,
           cancelledThisSweep: new Set<string>(),
           timeZone: 'America/Toronto',

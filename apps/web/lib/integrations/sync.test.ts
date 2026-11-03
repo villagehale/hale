@@ -943,6 +943,7 @@ describe('syncConnection — the gmail alert hand-off', () => {
 
     expect(onlyEnvelope(cap)).toEqual({
       messageId: 'm2',
+      labelIds: [],
       subject: 'Swim cancelled',
       from: 'Pool <info@pool.example>',
       snippet: "Mila's swim class is cancelled",
@@ -1055,6 +1056,76 @@ describe('syncConnection — the gmail alert hand-off', () => {
     expect(cap.cursor).toEqual({ historyId: '9100' });
     expect(thrown.emailAlerts).toEqual([{ alert: 'dark', booking: null, going: null }]);
     expect(cap.enqueued).toHaveLength(1);
+  });
+});
+
+describe('syncConnection — the envelope keeps the labels and thread the metadata read returned', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const LABELLED = {
+    id: 'm1',
+    threadId: 't1',
+    labelIds: ['INBOX', 'IMPORTANT'],
+    snippet: 'Swim is on Saturday',
+    internalDate: '1789000000000',
+    payload: { headers: [{ name: 'Subject', value: 'Swim' }] },
+  };
+  const BARE = {
+    id: 'm2',
+    snippet: 'Swim is on Saturday',
+    internalDate: '1789000060000',
+    payload: { headers: [{ name: 'Subject', value: 'Swim' }] },
+  };
+
+  function mailbox(list: 'history' | 'backfill'): GoogleFetch {
+    return async (url) => {
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+      if (url.includes('/messages/m1')) return ok(LABELLED);
+      if (url.includes('/messages/m2')) return ok(BARE);
+      if (url.includes('/history')) {
+        return ok({
+          history:
+            list === 'history'
+              ? [{ messagesAdded: [{ message: { id: 'm1' } }, { message: { id: 'm2' } }] }]
+              : [],
+          historyId: '9100',
+        });
+      }
+      if (url.includes('/messages?')) return ok({ messages: [{ id: 'm1' }, { id: 'm2' }] });
+      throw new Error(`no route for ${url}`);
+    };
+  }
+
+  function expectCarried(envelopes: readonly GmailAlertEnvelope[]) {
+    expect(envelopes.map((e) => e.messageId)).toEqual(['m1', 'm2']);
+    const [labelled, bare] = envelopes;
+    expect(labelled?.threadId).toBe('t1');
+    expect(labelled?.labelIds).toEqual(['INBOX', 'IMPORTANT']);
+    // A 200 IS a label read: Gmail omits an empty repeated field, so no key means no labels.
+    expect(bare?.labelIds).toEqual([]);
+    expect(bare !== undefined && 'threadId' in bare).toBe(false);
+  }
+
+  it('on the live pass', async () => {
+    const { deps, cap } = stubDeps({ googleFetch: mailbox('history') });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    expect(cap.alerted).toHaveLength(1);
+    expectCarried(cap.alerted[0]?.envelopes ?? []);
+  });
+
+  it('on the booked-detection backfill pass', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    vi.stubEnv('BOOKED_DETECTION_BACKFILL_ENABLED', 'true');
+    const { deps, cap } = stubDeps({ googleFetch: mailbox('backfill') });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+    const backfill = cap.alerted.filter((batch) => batch.pass === 'backfill');
+    expectCarried(backfill.flatMap((batch) => batch.envelopes));
   });
 });
 
@@ -1694,6 +1765,7 @@ describe('syncConnection — booked-detection backfill', () => {
     expect(backfill[0]?.envelopes).toEqual([
       {
         messageId: 'old-receipt',
+        labelIds: [],
         subject: 'Invoice #00061460',
         from: 'Cartwheels <hello@uplifterinc.com>',
         snippet: 'Payment received for swim.',
